@@ -169,6 +169,9 @@ capture: version.txt version-full.txt $(DELIVERABLES) checksums.txt
 	V=`cat version.txt` && cat checksums.txt > releases/$$V.txt && cat version-full.txt >> releases/$$V.txt && mkdir -p releases/$$V; cp $(DELIVERABLES) releases/$$V
 	@echo
 	@echo "      Version: " `cat version.txt`
+	@echo
+	V=`cat version.txt` && git tag -am "Bootloader version $$V" "bootloader-"$$V
+	git add -f releases/*/bootloader.*
 
 # Pull out the version string from binary object (already linked in) and 
 # construct a text file (version.txt) with those contents
