@@ -2,3 +2,10 @@
 namedlist
 pyusb
 
+-r ./cli/requirements.txt
+-r ./external/ckcc-protocol/requirements.txt
+-r ./testing/requirements.txt
+-r ./unix/requirements.txt
+
+ckcc-protocol[cli]
+
