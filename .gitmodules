@@ -2,9 +2,6 @@
 	path = external/micropython
 	url = https://github.com/Coldcard/micropython.git
 	branch = master
-[submodule "external/trezor-crypto"]
-	path = external/trezor-crypto
-	url = https://github.com/trezor/trezor-crypto.git
 [submodule "external/modcryptocurrency"]
 	path = external/modcryptocurrency
 	url = https://github.com/Coldcard/modcryptocurrency.git
