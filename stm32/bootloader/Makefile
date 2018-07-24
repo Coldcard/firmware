@@ -15,8 +15,9 @@ OBJCOPY = $(TOOLCHAIN)objcopy
 NM = $(TOOLCHAIN)nm
 SIZE = $(TOOLCHAIN)size
 
-PYTHON_DFU = python ../../external/micropython/tools/dfu.py
-PYTHON_PYDFU = python ../../external/micropython/tools/pydfu.py
+MPY_TOP = ../../external/micropython
+PYTHON_MAKE_DFU = $(MPY_TOP)/tools/dfu.py
+PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
 
 # Basename of all targets
 TARGET_NAME = bootloader
@@ -125,7 +126,7 @@ $(TARGET_ELF): $(OBJS) $(LINKER_SCRIPT) Makefile
 
 # dfu packaged file
 %.dfu: %.bin
-	$(PYTHON_DFU) -b $(BL_FLASH_BASE):$< $@
+	$(PYTHON_MAKE_DFU) -b $(BL_FLASH_BASE):$< $@
 
 assets/screens.c: assets/Makefile assets/*.png assets/convert.py
 	(cd assets; $(MAKE))
@@ -141,10 +142,11 @@ dfu-slow: $(TARGET_NAME).dfu
 	dfu-util -d 0483:df11 -a 0 -D $<
 
 dfu: $(TARGET_NAME).dfu
-	$(PYTHON_PYDFU) -u $<
+	$(PYTHON_DO_DFU) -u $<
 
-dfu2:
-	$(PYTHON_PYDFU) -u $(TARGET_NAME).dfu
+# upload current production version (or latest release version anyway)
+latest:
+	$(PYTHON_DO_DFU) -u `ls -t1 releases/*/bootloader.dfu | head -1`
 
 # make a 'release' build
 release: code-committed clean all capture
