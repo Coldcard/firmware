@@ -1,0 +1,7 @@
+*
+!README.md
+!00.pem
+!00.pubkey.bin
+!00.pubkey.pem
+!??.pubkey.*
+!.gitignore

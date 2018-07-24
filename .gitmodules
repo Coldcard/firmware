@@ -1,0 +1,22 @@
+[submodule "external/micropython"]
+	path = external/micropython
+	url = git@github.com:Coldcard/micropython.git
+	branch = master
+[submodule "external/trezor-crypto"]
+	path = external/trezor-crypto
+	url = https://github.com/trezor/trezor-crypto.git
+[submodule "external/modcryptocurrency"]
+	path = external/modcryptocurrency
+	url = git@github.com:Coldcard/modcryptocurrency.git
+[submodule "external/crypto"]
+	path = external/crypto
+	url = git@github.com:Coldcard/trezor-crypto.git
+[submodule "external/qrduino"]
+	path = external/qrduino
+	url = https://github.com/tz1/qrduino
+[submodule "external/cifra"]
+	path = external/cifra
+	url = https://github.com/ctz/cifra.git
+[submodule "external/ckcc-protocol"]
+	path = external/ckcc-protocol
+	url = https://github.com/Coldcard/ckcc-protocol.git

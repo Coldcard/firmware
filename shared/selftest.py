@@ -1,0 +1,267 @@
+# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
+# and is covered by GPLv3 license found in COPYING.
+#
+# selftest.py - Interactive Selftest code
+#
+import ckcc
+from uasyncio import sleep_ms
+from main import dis, settings
+from display import FontLarge
+from ux import ux_wait_keyup, ux_clear_keys, ux_poll_once
+from ux import ux_show_story
+from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
+from utils import imported
+
+async def test_touch():
+    # do an interactive self test
+
+    keys = list('123456789x0y')
+
+    for ch in keys:
+        dis.clear()
+        dis.text(0,0, "Touch Test. Press:")
+        dis.text(None,24, ch if ch != 'y' else 'OK', FontLarge)
+        dis.show()
+
+        k = await ux_wait_keyup(ch + 'x')
+        if k == 'x' and ch != 'x':
+            raise RuntimeError("touch test aborted")
+        assert k == ch
+
+# async def test_dfu_button():
+# 
+#     # can't pass on simulator
+#     if ckcc.is_simulator(): return
+# 
+#     for ph in range(2):
+#         dis.clear()
+#         dis.text(None,10, "Press DFU" if not ph else "Release DFU")
+#         dis.text(None,28, "on rear side.")
+#         dis.show()
+# 
+#         while 1:
+#             st = get_dfu_button()
+#             if st == (not ph):
+#                 break
+#             await sleep_ms(100)
+
+def set_genuine():
+    # PIN must be blank for this to work
+    # - or logged in already as main
+    from main import pa
+
+    if pa.is_secondary:
+        return
+
+    if not pa.is_successful():
+        # assume blank pin during factory selftest
+        pa.setup(b'')
+        assert not pa.is_delay_needed(), "PIN failures?"
+
+        if not pa.is_successful():
+            pa.login()
+            assert pa.is_successful(), "PIN not blank?"
+
+    # do verify step
+    pa.greenlight_firmware()
+
+    dis.show()
+
+async def test_ae508a():
+
+    assert not get_is_bricked(), "AE508a is bricked"
+
+    for ph in range(5):
+        gg = get_genuine()
+
+        dis.clear()
+        if gg:
+            dis.text(-1, 8, "Green ON? -->")
+        else:
+            dis.text(-1,50, "Red ON? -->")
+
+        dis.show()
+        k = await ux_wait_keyup('xy')
+        assert k == 'y', "LED bust"
+
+        if ph and gg:
+            # stop once it's on and we've tested both states
+            return
+
+        # attempt to switch to other state
+        if gg:
+            clear_genuine()
+        else:
+            # very slow!
+            dis.text(0,0, "Wait")
+            dis.show()
+            set_genuine()
+            ux_clear_keys()
+
+        ng = get_genuine()
+        assert ng != gg, "Could not invert LED"
+            
+
+async def test_multipress():
+    dis.clear()
+    dis.text(None, 10, 'Welcome', font=FontLarge)
+    dis.show()
+
+    while 1:
+        pr = await numpad.get()
+        dis.clear()
+        dis.text(None, 20, 'Pressed', font=FontSmall)
+        dis.text(None, 35, pr, font=FontLarge)
+        dis.show()
+
+async def test_sflash():
+    dis.clear()
+    dis.text(None, 18, 'Serial Flash')
+    dis.show()
+
+    #if ckcc.is_simulator(): return
+
+    from main import sf
+    from ustruct import pack
+    import tcc
+
+    msize = 1024*1024
+    sf.chip_erase()
+
+    for phase in [0, 1]:
+        steps = 7*4
+        for i in range(steps):
+            dis.progress_bar(i/steps)
+            dis.show()
+            await sleep_ms(250)
+            if not sf.is_busy(): break
+
+        assert not sf.is_busy(), "sflash erase didn't finish"
+
+        # leave chip blank
+        if phase == 1: break
+
+
+        buf = bytearray(32)
+        for addr in range(0, msize, 1024):
+            sf.read(addr, buf)
+            assert set(buf) == {255}, "sflash not blank:"+repr(buf)
+
+            rnd = tcc.sha256(pack('I', addr)).digest()
+            sf.write(addr, rnd)
+            sf.read(addr, buf)
+            assert buf == rnd, "sflash write failed"
+
+            dis.progress_bar_show(addr/msize)
+
+        # check no aliasing, also right size part
+        for addr in range(0, msize, 1024):
+            expect = tcc.sha256(pack('I', addr)).digest()
+            sf.read(addr, buf)
+            assert buf == expect, "sflash readback failed"
+
+            dis.progress_bar_show(addr/msize)
+
+async def test_oled():
+    # all on/off tests
+    for ph in (1, 0):
+        dis.clear()
+        dis.dis.fill(ph)
+        dis.text(None,2, "Selftest", invert=ph)
+        dis.text(None,30, "All on?" if ph else 'All off?', invert=ph, font=FontLarge)
+        dis.show()
+
+        ch = await ux_wait_keyup('yx')
+        if ch != 'y':
+            raise RuntimeError("OLED test aborted")
+
+async def test_microsd():
+    if ckcc.is_simulator(): return
+
+    from main import numpad
+    numpad.stop()
+
+    try:
+        import pyb
+        sd = pyb.SDCard()
+        sd.power(0)
+
+        # test presence switch
+        for ph in range(7):
+            want = not sd.present()
+
+            dis.clear()
+            dis.text(None, 10, 'MicroSD Card:')
+            dis.text(None, 34, 'Remove' if sd.present() else 'Insert', font=FontLarge)
+            dis.show()
+
+            while 1:
+                if want == sd.present(): break
+                await sleep_ms(100)
+                if ux_poll_once():
+                    raise RuntimeError("MicroSD test aborted")
+
+            if ph >= 2 and sd.present():
+                # debounce
+                await sleep_ms(100)
+                if sd.present(): break
+                if ux_poll_once():
+                    raise RuntimeError("MicroSD test aborted")
+
+        dis.clear()
+        dis.text(None, 10, 'MicroSD Card:')
+        dis.text(None, 34, 'Testing', font=FontLarge)
+        dis.show()
+
+        # card inserted
+        assert sd.present(), "SD not present?"
+
+        # power up?
+        sd.power(1)
+        await sleep_ms(100)
+
+        try:
+            blks, bsize, ctype = sd.info()
+            assert bsize == 512, "wrong block size"
+        except:
+            assert 0, "unable to get card info"
+
+        # just read it a bit, writing would prove little
+        buf = bytearray(512)
+        msize = 1024*1024
+        for addr in range(0, msize, 1024):
+            sd.readblocks(addr, buf)
+            dis.progress_bar_show(addr/msize)
+
+            if addr == 0:
+                assert buf[-2:] == b'\x55\xaa', "Bad read"
+
+    finally:
+        # CRTICAL: power it back down
+        sd.power(0)
+        numpad.start()
+
+
+async def start_selftest():
+
+    try:
+        await test_oled()
+        await test_microsd()
+        await test_touch()
+        await test_sflash()
+        #await test_dfu_button()        # no need
+        await test_ae508a()
+
+        # TODO:
+        # - PIN diode
+
+        # add more tests here
+
+        settings.set('tested', True)
+        await ux_show_story("Selftest complete", 'PASS')
+
+    except (RuntimeError, AssertionError) as e:
+        await ux_show_story("Test failed:\n" + str(e), 'FAIL')
+        
+    
+# EOF

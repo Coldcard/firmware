@@ -1,0 +1,4 @@
+# desktop python modules required to build firmware binaries
+namedlist
+pyusb
+
