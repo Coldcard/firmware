@@ -1,0 +1,6 @@
+# see also? ../cli/requirements.txt
+
+# for testing (only)
+pytest
+pycoin==0.80
+python-bitcoinrpc>=1.0

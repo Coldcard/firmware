@@ -1,0 +1,13 @@
+# symlinks created by makefile
+l-port
+l-mpy
+
+# build products
+build/
+mpy-files.timestamp
+firmware.lss
+firmware-signed.*
+
+# somewhat useful binary snapshots
+mostly.dfu
+firmware-signed.dfu

@@ -1,0 +1,11 @@
+# symlinks managed by Makefile
+l-port
+l-mpy
+micropython
+coldcard-mpy
+
+# my personal virtualenv
+ENV
+
+snapshot-*.png
+movie-*.gif

@@ -1,0 +1,7 @@
+# You will need SDL2 library installed to make use of this: on Mac, that means:
+#
+#   brew install sdl2
+#
+PySDL2
+Pillow
+

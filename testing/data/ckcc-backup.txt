@@ -1,0 +1,21 @@
+# Coldcard backup file! DO NOT CHANGE.
+
+# Private key details: Bitcoin
+mnemonic = "wife shiver author away frog air rough vanish fantasy frozen noodle athlete pioneer citizen symptom firm much faith extend rare axis garment kiwi clarify"
+chain = "BTC"
+xprv = "xprv9s21ZrQH143K3i4kfV4tE2qAvhys9WDCpHJXKz2biqWkZwLKma1dzWaqin8CxCKPF3tX2fVRD9tBggJtxvdAxTpKfz8zRUoJZa3S7MtMgwy"
+xpub = "xpub661MyMwAqRbcGC9DmWbtbAmuUjpMYxw4BWE88NSDHB3jSjfUK7KtYJuKa52GbowD3DVLkgsxH9QwPnTx5mjdHykYFEncnmAsNsCTbWzBhA7"
+raw_secret = "82faf8c43d8835d20aef178a530bb658071a5252b722ba910a4143d9010ebfded9"
+
+# Firmware version (informational)
+fw_date = "2018-02-30"
+fw_version = "S.M"
+serial = "F1F1F1F1F1F1"
+
+# User preferences
+setting.xfp = 252012867
+setting.terms_ok = 1
+setting.idle_to = 28800
+setting.chain = "BTC"
+
+# EOF
