@@ -1,8 +1,8 @@
-
 # Coldcard Wallet
 
-Coldcard is a Cheap, Ultra-secure & Opensource Hardware Wallet for #Bitcoin and other crypto-currencies. 
-Get yours at [ColdcardWallet.com](http://coldcardwallet.com)
+Coldcard is a Cheap, Ultra-secure & Opensource Hardware Wallet for Bitcoin and other crypto-currencies. Get yours at [ColdcardWallet.com](http://coldcardwallet.com)
+
+[Follow us on Twitter](https://twitter.com/coldcardwallet) to feep up with the latest updates and security alerts. 
 
 ## Check-out and Setup
 
