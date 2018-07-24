@@ -1,0 +1,53 @@
+2cc7a4d55aa706ec8d23a6a9b0396e770e01148e3e4596090f696fb892406f38  bootloader.dfu
+a8613ec68d2b70917f1bd49265a876f51ef477c262d13c9b06ade9f9b824e4cd  bootloader.bin
+8c53f40d84ca209b5880ddbaa9ace93dff1e22818895e2301a2bc666bbbe9919  bootloader.lss
+1.0.0 time=20180724.152822 git=master@6ce5492
+
+>>> import callgate
+>>> callgate.get_bl_version()
+('1.0.0', [('time', '20180724.152822'), ('git', 'master@6ce5492')])
+>>> from h import *
+>>> b2a_hex(callgate.get_bl_checksum())[-8:]
+b'b362c11b'
+>>> for i in range(10):
+...     print(b2a_hex(callgate.get_bl_checksum(i)))
+... 
+b'a2a36b1d5adc6e5c6d4ce3f92d08d31217d5437011a9cd96bd3eb823b362c11b'
+b'001d106b95d3fd166a22c99cbcccbecd89b22c065eca9af6e79dfe7b08f47ef4'
+b'fd5e4caebc872f38f1d9440066ebb03e5029c6817290f0fd3e34106d6473f1c0'
+b'68964cac1d93d9f25615226b037e9b1eacb418399071419560c74c785cf8e5c2'
+b'211023cbbc99ae9d6e0b9adf3c1cd607deb088b563e2f6cde78125fe83165d09'
+b'2cc2f44d8523211152d929ed52554a30ff3c2657995479877cab6abc31a7dc9e'
+b'dd295e4f9aac12315a312eaeaf10447e0d214659dbf3029075b458505a57faff'
+b'4daec0c0137ee51127c32668264b3c17883eb8f818e47a2776bb2b1969173b82'
+b'1c9b0aa00e2e1df58a44e0359e03ca1301106717cb3c3597115f2a311956928d'
+b'4cf569e0163fa77b3f77da7e967a16ec90e407a0258a5b81d4096a57f36b396b'
+
+
+Expect to see:
+
+    1.0.0
+    b362c11b
+
+on versions screen
+
+Also...
+
+[ENV] [releases/1.0.0 1195] dd if=/dev/zero bs=4 count=1 > zz
+1+0 records in
+1+0 records out
+4 bytes transferred in 0.000040 secs (100462 bytes/sec)
+[ENV] [releases/1.0.0 1196] ls -l
+total 1896
+-rw-r--r--  1 peter  staff    30K 24 Jul 15:28 bootloader.bin
+-rw-r--r--  1 peter  staff    30K 24 Jul 15:28 bootloader.dfu
+-rw-r--r--  1 peter  staff   879K 24 Jul 15:28 bootloader.lss
+-rw-r--r--  1 peter  staff     4B 24 Jul 16:04 zz
+[ENV] [releases/1.0.0 1197] hd zz
+00000000  00 00 00 00                                       |....|
+00000004
+[ENV] [releases/1.0.0 1198] cat zz bootloader.bin | sha256 
+a2a36b1d5adc6e5c6d4ce3f92d08d31217d5437011a9cd96bd3eb823b362c11b  -
+
+- note b362c11b at end there.
+
