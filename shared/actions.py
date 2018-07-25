@@ -404,7 +404,7 @@ async def start_login_sequence():
     import version
 
     if pa.is_blank():
-        # blank devices, with no PIN set all, can continue w/o login
+        # Blank devices, with no PIN set all, can continue w/o login
 
         # Do green-light set immediately after firmware upgrade
         if version.is_fresh_version():
