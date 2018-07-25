@@ -38,9 +38,9 @@ def test_sign1(dev, need_keypress, finalize):
 @pytest.fixture
 def try_sign(start_sign, end_sign):
 
-    def doit(filename_or_data, accept=True):
-        ip = start_sign(filename_or_data)
-        return ip, end_sign(accept)
+    def doit(filename_or_data, accept=True, finalize=False):
+        ip = start_sign(filename_or_data, finalize=finalize)
+        return ip, end_sign(accept, finalize=finalize)
 
     return doit
 
@@ -97,6 +97,7 @@ def end_sign(dev, need_keypress):
         else:
             from pycoin.tx.Tx import Tx
             # parse it
+            res = psbt_out
             assert res[0:4] != b'psbt'
             t = Tx.from_bin(res)
             assert t.version in [1, 2]
@@ -313,15 +314,16 @@ def fake_txn():
 @pytest.mark.parametrize('io', [
     (1,1),
     (10, 10),
-    (20, 1),
     (1, 20),
     (1, 400),
-    #(30, 1),            # almost
-    #(50, 50),          # real dev can't
+    (22, 1),
+    #(23, 1),       # v1.0.0 max size (observed)
+    #(30, 1),
+    #(50, 50),      
     #(100, 100),
     #(200, 200),
-    #(400, 400),        # too big even for simulator
-    #(400, 1),       # too big even for simulator
+    #(400, 400),    # too big even for simulator
+    #(400, 1),      # too big even for simulator
 ])
 def test_io_size(io, fake_txn, try_sign, dev):
     # try a bunch of different bigger
@@ -368,14 +370,21 @@ def XXX_test_txn_wait_for_confirm(simple_fake_txn, try_sign):
 
     try_sign(psbt, None)
     
-def test_with_addr(fake_txn, try_sign, dev):
+@pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
+def test_real_signing(fake_txn, try_sign, dev, num_ins):
     # create a TXN using actual addresses that are correct for DUT
     xp = dev.master_xpub
 
-    psbt = fake_txn(2, 1, xp)
-    open('debug/addr.psbt', 'wb').write(psbt)
+    psbt = fake_txn(num_ins, 1, xp)
+    open('debug/real-%d.psbt' % num_ins, 'wb').write(psbt)
 
-    try_sign(psbt, True)
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+
+    print('Signed; ' + B2A(txn))
+
+    # too slow / connection breaks during process
+    #decode = bitcoind.decoderawtransaction(B2A(txn))
+    
 
 @pytest.fixture()
 def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
@@ -489,7 +498,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         network = a2b_hex(resp['hex'])
 
         # assert resp['complete']
-        print("Final txn: %r" % network)
+        #print("Final txn: %r" % network)
 
         # try to send it
         txed = bitcoind.sendrawtransaction(B2A(network))
@@ -497,7 +506,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
 
     else:
         assert signed[0:4] != b'psbt', "expecting raw bitcoin txn"
-        print("Final txn: %s" % B2A(signed))
+        #print("Final txn: %s" % B2A(signed))
         open('debug/finalized.psbt', 'wb').write(signed)
 
         txed = bitcoind.sendrawtransaction(B2A(signed))
@@ -536,7 +545,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     #signed = end_sign(None)
     open('debug/p2sh-signed.psbt', 'wb').write(signed)
 
-    print('my finalization: ' + B2A(signed))
+    #print('my finalization: ' + B2A(signed))
 
     start_sign(psbt, finalize=False)
     signed_psbt = end_sign(accept=True)
@@ -548,7 +557,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     assert resp['complete'] == True, "bitcoind wasn't able to finalize it"
     network = a2b_hex(resp['hex'])
 
-    print('his finalization: ' + B2A(network))
+    #print('his finalization: ' + B2A(network))
 
     assert network == signed
 
@@ -739,7 +748,7 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_st
 
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,])
 
-    print(story)
+    #print(story)
 
     signed = end_sign(True)
 
