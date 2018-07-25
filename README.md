@@ -32,7 +32,7 @@ Setup and Run the Desktop-based Coldcard simulator:
 Building the firmware:
 
 - `cd ../cli; pip install --editable .`
-- `cd ../stm32; make; make firmware-signed.dfu`
+- `cd ../stm32; make setup && make; make firmware-signed.dfu`
 - The resulting file, `firmware-signed.dfu` can be loaded directly onto a Coldcard, using this
   command (already installed based on above)
 - `ckcc upgrade firmware-signed.dfu`
