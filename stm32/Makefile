@@ -57,7 +57,7 @@ BOOTLOADER_VERSION = 1.0.0
 release: NEW_VERSION = $(shell $(SIGNIT) version production.bin)
 release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
 release: production.bin
-	test ! -f $(RELEASE_FNAME) # Release already file exists!
+	test ! -f $(RELEASE_FNAME)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):production.bin \
 		-b $(BOOTLOADER_BASE):bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)
