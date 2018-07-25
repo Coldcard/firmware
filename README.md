@@ -46,7 +46,7 @@ Which looks like this:
 
 ### MacOS
 
-You'll probably need to install these at least these packages:
+You'll probably need to install at least these packages:
 
     brew install sdl2 gcc-arm-embedded
 
