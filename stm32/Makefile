@@ -84,6 +84,8 @@ code-committed:
 # - use when a new release is built
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
 tag-source: code-committed
+	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
+	git commit -am "New release: "$(PUBLIC_VERSION)
 	git push
 	echo "Taging version: " $(PUBLIC_VERSION)
 	git tag -a $(PUBLIC_VERSION) -m "Release "$(PUBLIC_VERSION)
