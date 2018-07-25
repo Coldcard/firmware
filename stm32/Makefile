@@ -8,7 +8,9 @@ PORT_TOP = $(MPY_TOP)/ports/stm32
 MPY_CROSS = $(MPY_TOP)/mpy-cross/mpy-cross
 PYTHON_MAKE_DFU = $(MPY_TOP)/tools/dfu.py
 PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
-SIGNIT = ../ENV/bin/signit
+
+# aka ../cli/signit.py
+SIGNIT = signit
 
 MAKE_ARGS = BOARD=COLDCARD -j 4
 
