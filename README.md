@@ -24,8 +24,13 @@ Then:
 - `virtualenv -p python3 ENV`
 - `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
 - `pip install -r requirements.txt`
+
+Setup and Run the Desktop-based Coldcard simulator:
+
 - `cd unix; make setup && make; ./simulator.py`
-- Desktop-based Coldcard simulator will open at this point, enjoy! Explore!
+
+Building the firmware:
+
 - `cd ../cli; pip install --editable .`
 - `cd ../stm32; make; make firmware-signed.dfu`
 - The resulting file, `firmware-signed.dfu` can be loaded directly onto a Coldcard, using this
