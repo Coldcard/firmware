@@ -561,11 +561,15 @@ class USBHandler:
 
     def handle_bag_number(self, bag_num):
         import version, callgate
-        from main import dis, pa, is_devmode
+        from main import dis, pa, is_devmode, settings
 
         if version.is_factory_mode() and bag_num:
-            # do the change
+            # check state first
+            assert settings.get('tested', False)
+            assert pa.is_blank()
             assert bag_num[0:2] == b'C0' and len(bag_num) == 8
+
+            # do the change
             failed = callgate.set_bag_number(bag_num)
             assert not failed
 
