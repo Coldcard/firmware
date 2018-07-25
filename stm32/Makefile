@@ -56,7 +56,7 @@ BOOTLOADER_VERSION = 1.0.0
 .PHONY: release
 release: NEW_VERSION = $(shell $(SIGNIT) version production.bin)
 release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
-release: production.bin code-committed
+release: production.bin
 	test ! -f $(RELEASE_FNAME) # Release already file exists!
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):production.bin \
 		-b $(BOOTLOADER_BASE):bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
@@ -66,8 +66,12 @@ release: production.bin code-committed
 	@echo
 
 # Use DFU to install the latest production version you have on hand
-latest: 
+dfu-latest: 
 	$(PYTHON_DO_DFU) -u `ls -t1 ../releases/*.dfu | head -1`
+
+# Use slow USB upload and reboot method.
+latest:
+	ckcc upgrade `ls -t1 ../releases/*.dfu | head -1`
 
 # sent latest/all versions to factory
 publish-factory:

@@ -27,6 +27,7 @@ nvstore_buf = _alloc(4096-32)
 display_buf = _alloc(1024)
 usb_buf = _alloc(2048+12)       # 2060 @ 0x10001be0
 tmp_buf = _alloc(1024)
+psbt_tmp256 = _alloc(256)
 
 assert _start <= 0x10006000
 
