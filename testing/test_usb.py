@@ -101,7 +101,7 @@ def test_version(dev):
     # read the version, yawn.
     v = dev.send_recv(CCProtocolPacker.version())
     assert '\n' in v
-    date, label, bl = v.split('\n')
+    date, label, bl, *extras = v.split('\n')
     assert '-' in date
     assert '.' in label
     assert '.' in bl
