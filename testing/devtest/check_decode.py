@@ -35,7 +35,7 @@ for (val, addr), (idx, txo) in zip(expect['destinations'], p.output_iter()):
 
 change_set = set()
 for n in range(len(p.outputs)):
-     if p.outputs[n].is_change:
+     if p.outputs[n] and p.outputs[n].is_change:
         change_set.add(n)
 
 if 'change_outs' in expect:

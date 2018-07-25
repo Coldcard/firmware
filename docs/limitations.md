@@ -39,7 +39,8 @@
 - we support transactions up to 384k-bytes in size when serialized into PSBT format
 - bitcoin limits transactions to 100k, but there could be large input transactions 
   inside the PSBT. Reduce this by using segwit signatures and provide only the
-  individual UTXO (out points).
+  individual UTXO ("out points").
+- we can handle transactions with up to 20 inputs to be signed at one time.
 
 
 # P2SH / Multisig

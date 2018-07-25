@@ -9,9 +9,10 @@ from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256
 from serializations import ser_string
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-import tcc, stash
+import tcc, stash, gc
 from uio import BytesIO
 from sffile import SizerFile
+from sram2 import psbt_tmp256
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -87,11 +88,11 @@ def _skip_n_objs(fd, n, cls):
 
 class psbtProxy:
     # store offsets to values, but track the keys in-memory.
+    short_values = ()
+    no_keys = ()
 
     def __init__(self):
         self.fd = None
-        self.short_values = ()
-        self.no_keys = ()
         self.unknown = {}
 
     def parse(self, fd):
@@ -156,16 +157,15 @@ class psbtProxy:
     def get_hash256(self, val, hasher=None):
         # return the double-sha256 of a value, without loading it into memory
         pos, ll = val
-        blk = bytearray(256)
         rv = hasher or tcc.sha256()
 
         self.fd.seek(pos)
         while ll:
-            here = self.fd.read_into(blk)
+            here = self.fd.read_into(psbt_tmp256)
             if not here: break
             if here > ll:
                 here = ll
-            rv.update(blk[0:here])
+            rv.update(memoryview(psbt_tmp256)[0:here])
             ll -= here
 
         if hasher:
@@ -219,9 +219,10 @@ class psbtProxy:
 # Track details of each output of PSBT
 #
 class psbtOutputProxy(psbtProxy):
+    no_keys = { PSBT_OUT_REDEEM_SCRIPT }
+
     def __init__(self, fd, idx):
         super().__init__()
-        self.no_keys = { PSBT_OUT_REDEEM_SCRIPT }
 
         # things we track
         self.subpaths = {}
@@ -229,10 +230,24 @@ class psbtOutputProxy(psbtProxy):
 
         self.my_index = idx
 
-        # this becomes a tuple: (pubkey, subkey path) if we're change output
+        # this becomes a tuple: (pubkey, subkey path) iff we are a change output
         self.is_change = False
 
         self.parse(fd)
+
+    @classmethod
+    def maybe(cls, fd, idx):
+        # read and parse it, but return None if it's a typical empty
+        # output that we need to store nothing about (memory saver).
+        # - remember we need to pass-thru data sometimes.
+        rv = cls(fd, idx)
+
+        if rv.subpaths or rv.redeem_script or rv.unknown:
+            return rv
+
+        del rv
+
+        return None
 
     def store(self, kt, key, val):
         # No use yet for this yet, so treat as 'unknowns'
@@ -339,6 +354,15 @@ class psbtOutputProxy(psbtProxy):
 # Track details of each input of PSBT
 #
 class psbtInputProxy(psbtProxy):
+
+    # just need to store a simple number for these
+    short_values = { PSBT_IN_SIGHASH_TYPE }
+
+    # only part-sigs have a key to be stored.
+    no_keys = { PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE,
+                     PSBT_IN_REDEEM_SCRIPT, PSBT_IN_WITNESS_SCRIPT, PSBT_IN_FINAL_SCRIPTSIG,
+                     PSBT_IN_FINAL_SCRIPTWITNESS }
+
     def __init__(self, fd, idx):
         super().__init__()
 
@@ -352,14 +376,6 @@ class psbtInputProxy(psbtProxy):
         self.witness_script = None
 
         self.our_keys = None
-
-        # just need to store a simple number for these
-        self.short_values = { PSBT_IN_SIGHASH_TYPE }
-
-        # only part-sigs have a key to be stored.
-        self.no_keys = { PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO, PSBT_IN_SIGHASH_TYPE,
-                         PSBT_IN_REDEEM_SCRIPT, PSBT_IN_WITNESS_SCRIPT, PSBT_IN_FINAL_SCRIPTSIG,
-                         PSBT_IN_FINAL_SCRIPTWITNESS }
 
         # things we've learned
         self.already_signed = None
@@ -674,16 +690,15 @@ class psbtInputProxy(psbtProxy):
 class psbtObject(psbtProxy):
     "Just? parse and store"
 
+    no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
+
     def __init__(self):
         super().__init__()
 
         self.txn = None
 
-        # which ones are a simple number only: num_inputs
-        self.short_values = ()
 
         # some don't need/want key (just a single value)
-        self.no_keys = { PSBT_GLOBAL_UNSIGNED_TX }
 
         from main import settings, dis
         self.my_xfp = settings.get('xfp', 0)
@@ -843,13 +858,16 @@ class psbtObject(psbtProxy):
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
             self.inputs[idx].validate(idx, txin, self.my_xfp)
+            gc.collect()
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
 
         assert self.num_outputs >= 1, 'need outs'
 
         for idx, txo in self.output_iter():
-            self.outputs[idx].validate(idx, txo, self.my_xfp)
+            gc.collect()
+            if self.outputs[idx]:
+                self.outputs[idx].validate(idx, txo, self.my_xfp)
 
         our_keys = sum(i.our_keys for i in self.inputs)
 
@@ -975,7 +993,7 @@ class psbtObject(psbtProxy):
         rv.parse_txn()
 
         rv.inputs = [psbtInputProxy(fd, idx) for idx in range(rv.num_inputs)]
-        rv.outputs = [psbtOutputProxy(fd, idx) for idx in range(rv.num_outputs)]
+        rv.outputs = [psbtOutputProxy.maybe(fd, idx) for idx in range(rv.num_outputs)]
 
         return rv
             
@@ -1015,7 +1033,8 @@ class psbtObject(psbtProxy):
             out_fd.write(b'\0')
 
         for idx, outp in enumerate(self.outputs):
-            outp.serialize(out_fd, idx)
+            if outp:
+                outp.serialize(out_fd, idx)
             out_fd.write(b'\0')
 
     def sign_it(self):
@@ -1030,7 +1049,7 @@ class psbtObject(psbtProxy):
 
         # Double check the change outputs are right. This is slow, but critical because
         # it detects bad actors, not bugs or mistakes.
-        change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o.is_change]
+        change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o and o.is_change]
         if change_paths:
             with stash.SensitiveValues() as sv:
                 for out_idx, (pubkey, subpath) in change_paths:

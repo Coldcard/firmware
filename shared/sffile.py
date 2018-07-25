@@ -24,7 +24,7 @@ def PADOUT(n):
 class SFFile:
     def __init__(self, start, length=0, max_size=None, message=None, pre_erased=False):
         if not pre_erased:
-            assert start % blksize == 0, 'misaligned'
+            assert start % blksize == 0 # 'misaligned'
         self.start = start
         self.pos = 0
         self.length = length        # byte-wise length
@@ -65,13 +65,13 @@ class SFFile:
         else:
             raise ValueError(whence)
         
-        assert 0 <= offset <= self.length, "bad offset"
+        assert 0 <= offset <= self.length # "bad offset"
         self.pos = offset
 
     async def erase(self):
         # must be used by caller before writing any bytes
         assert not self.readonly
-        assert self.length == 0, 'already wrote?'
+        assert self.length == 0 # 'already wrote?'
 
         for i in range(0, self.max_size, blksize):
             self.sf.block_erase(self.start + i)
@@ -105,8 +105,8 @@ class SFFile:
     def write(self, b):
         # immediate write, no buffering
         assert not self.readonly
-        assert self.pos == self.length, "can only append"
-        assert self.pos + len(b) <= self.max_size, "past end: %r" % [self.pos, len(b), self.max_size]
+        assert self.pos == self.length # "can only append"
+        assert self.pos + len(b) <= self.max_size # "past end: %r" % [self.pos, len(b), self.max_size]
 
         left = len(b)
     
@@ -117,7 +117,7 @@ class SFFile:
         while left:
             if (self.pos + sofar) % 256 != 0:
                 # start is unaligned, do a partial write to align
-                assert sofar == 0, (sofar, (self.pos+sofar))       # can only happen on first page
+                assert sofar == 0 #, (sofar, (self.pos+sofar))       # can only happen on first page
                 runt = min(left, 256 - (self.pos % 256))
                 here = memoryview(b)[0:runt]
                 assert len(here) == runt
@@ -202,7 +202,7 @@ class SizerFile(SFFile):
 
     def write(self, b):
         # immediate write, no buffering
-        assert self.pos == self.length, "can only append"
+        assert self.pos == self.length # "can only append"
 
         here = len(b)
 

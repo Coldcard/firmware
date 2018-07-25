@@ -240,6 +240,8 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure(exc.args[0])
         except BaseException as exc:
             sys.print_exception(exc)
+            del self.psbt
+            gc.collect()
             if isinstance(exc, MemoryError):
                 msg = "Transaction is too complex."
             else:
@@ -251,47 +253,51 @@ class ApproveTransaction(UserAuthorizedAction):
         # - fee 
         #
         # notes: 
-        # - handle 100+ outputs
-        # - show some info about inputs
-        # - calc fee as sat/byte but also as percent
-        # - impose extra confirmations for:
+        # - try to handle lots of outputs
+        # - cannot calc fee as sat/byte, only as percent
+        # - somethings are 'warnings':
         #       - fee too big
-        #       - non-zero locktime
-        #       - inputs we can't sign (not key)
-        #       - when we don't have UTXO to verify amounts
+        #       - inputs we can't sign (no key)
         #
-        outs_msg = self.output_summary_text()
-        #print(outs_msg)
-
-        gc.collect()
-
         msg = ''
+        try:
+            outs_msg = self.output_summary_text()
+            gc.collect()
 
-        # mention warning at top
-        wl= len(self.psbt.warnings)
-        if wl == 1:
-            msg += '(1 warning below)\n\n'
-        elif wl >= 2:
-            msg += '(%d warnings below)\n\n' % wl
+            # mention warning at top
+            wl= len(self.psbt.warnings)
+            if wl == 1:
+                msg += '(1 warning below)\n\n'
+            elif wl >= 2:
+                msg += '(%d warnings below)\n\n' % wl
 
-        msg += outs_msg
+            msg += outs_msg
 
-        fee = self.psbt.calculate_fee()
-        if fee is not None:
-            msg += "\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee)
+            fee = self.psbt.calculate_fee()
+            if fee is not None:
+                msg += "\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee)
 
-        if self.psbt.warnings:
-            warn = '\n---WARNING---\n\n'
+            if self.psbt.warnings:
+                warn = '\n---WARNING---\n\n'
 
-            for label,m in self.psbt.warnings:
-                warn += '- %s: %s\n\n' % (label, m)
+                for label,m in self.psbt.warnings:
+                    warn += '- %s: %s\n\n' % (label, m)
 
-            print(warn)
-            msg += warn
+                print(warn)
+                msg += warn
 
-        msg += "\nPress OK to approve and sign transaction. X to abort."
+            msg += "\nPress OK to approve and sign transaction. X to abort."
 
-        ch = await ux_show_story(msg, title="OK TO SEND?")
+            ch = await ux_show_story(msg, title="OK TO SEND?")
+        except MemoryError as exc:
+            # recovery? maybe.
+            del self.psbt
+            del msg
+            del outs_msg
+            gc.collect()
+
+            msg = "Transaction is too complex."
+            return await self.failure(msg, exc)
 
         if ch != 'y':
             # they don't want to!
@@ -349,9 +355,10 @@ class ApproveTransaction(UserAuthorizedAction):
         if self.psbt.num_outputs <= MAX_VISIBLE_OUTPUTS+1:
             # simple, common case: don't sort outputs, and do show all of them
             for idx, tx_out in self.psbt.output_iter():
-                if self.psbt.outputs[idx].is_change:
+                outp = self.psbt.outputs[idx]
+                if outp and outp.is_change:
                     continue
-                if idx:
+                if msg:
                     msg += '\n'
                 msg += self.render_output(tx_out)
 
@@ -361,7 +368,8 @@ class ApproveTransaction(UserAuthorizedAction):
         # find largest N outputs, and track total amount
         largest = []
         for idx, tx_out in self.psbt.output_iter():
-            if self.psbt.outputs[idx].is_change:
+            outp = self.psbt.outputs[idx]
+            if outp and outp.is_change:
                 continue
 
             largest.append(tx_out)
