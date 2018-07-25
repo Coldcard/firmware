@@ -44,6 +44,20 @@ Which looks like this:
     Uploading  [##########--------------------------]   29%  0d 00:01:04
 
 
+### MacOS
+
+You'll probably need to install these at least these packages:
+
+    brew install sdl2 gcc-arm-embedded
+
+### Linux
+
+You'll probably need to install these:
+
+    apt install libudev-dev python-sdl2
+
+
+
 ## Code Organization
 
 Top-level dirs:
