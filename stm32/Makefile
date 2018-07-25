@@ -173,6 +173,5 @@ setup:
 	-ln -s $(PORT_TOP) l-port
 	-ln -s $(MPY_TOP) l-mpy
 	-cd $(PORT_TOP)/boards ; ln -s ../../../../../stm32/COLDCARD COLDCARD
-	ln -s COLDCARD
 
 # EOF
