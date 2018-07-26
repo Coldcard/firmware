@@ -48,7 +48,8 @@ Which looks like this:
 
 You'll probably need to install at least these packages:
 
-    brew install sdl2 gcc-arm-embedded
+    brew install sdl2
+    brew cask install  gcc-arm-embedded
 
 ### Linux
 
