@@ -429,7 +429,7 @@ words. However, if the victim tries a few different PIN prefixes,
 they can protect themselves (limited only by their mental storage
 capacity for random words). You don't even have to use your real
 PIN prefix for testing against phishing... you can enter and cancel
-as many attempts before proceeding with your real PIN. I plan to
+as many attempts before proceeding with your real PIN. (Personally, I plan to
 search until I find a memorable pair of words, like "angle burger"
 or "lazy goose").
 
