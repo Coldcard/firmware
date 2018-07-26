@@ -52,9 +52,9 @@ You'll probably need to install at least these packages:
 
 ### Linux
 
-You'll probably need to install these:
+You'll probably need to install these (Ubuntu 16):
 
-    apt install libudev-dev python-sdl2
+    apt install libudev-dev python-sdl2 gcc-arm-none-eabi
 
 
 
