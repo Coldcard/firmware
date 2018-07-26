@@ -2,7 +2,7 @@
 
 ## What happens when I enter a PIN?
 
-1) Enter between 4 and 8 digits of PIN code prefix and press Checkmark.
+1) Enter between 2 and 6 digits of your PIN code prefix and press OK (checkmark).
 
 2) The Coldcard will use those digits to find two specific words from the BIP39
 word list. This two word response is unique to your Coldcard and pin combination.
@@ -13,9 +13,9 @@ press X and try again, and/or talk to your
 Do not continue to enter more digits of your real PIN!
 
 4) If you want to proceed, and you have a secondary wallet enabled, press (2) to select
-   the secondary wallet, otherwise, just press checkmark to continue for primary wallet (1). 
+   the secondary wallet, otherwise, just press OK to continue for primary wallet (1). 
   
-5) Then enter the remaining digits of the PIN. Press checkmark.
+5) Then enter the remaining digits of the PIN (between 2 and 6 digits). Press OK.
 
 6) Is it the user-defined "brick me" PIN? If so, it's used to wipe
     the secure element and **irreversibly brick** the Coldcard immediately. There is no
@@ -211,12 +211,12 @@ to capture the updated hash value into the secure element.
 
 ### Code Signatures
 
-At this time the bootloader will not run the main firmware if it
+The bootloader will not run the main firmware if it
 is unsigned or signed incorrectly. This means only Coinkite Inc.
 can produce firmware that will run on this platform. We are open
 to suggestions on how we could safely allow third parties to write
 software that can be run on the device. Here are some of the
-approached we are considering:
+approached we considered:
 
 -  a "red PCB" version of the hardware that looks different (and
 therefore cannot be used as a doppelgänger) but does not enforce
@@ -230,11 +230,77 @@ required to do the opt-in, and it would probably be a one-way trip.
 your team---a walled garden. (Considered a hopeless approach, but
 in our list regardless.)
 
-Regardless of the code signing policies, the the genuine/caution
-feature can work and be a useful defence.
+Regardless of the code signing policies, we want the the genuine/caution
+feature to work and be a useful defense against maids.
 
-We want altcoiners to be able to experiment on our platform, and
-their coins are just as precious to them.
+We want everyone to be able to experiment on our platform, and
+their coins are just as precious to them, as Bitcoin are to us.
+
+### Production vs. Development Key
+
+What we've done to satisfy these needs is as follows:
+
+- the bootloader knows and trusts five public keys
+- main firmware code is always checksumed and needs a correct signature
+- (the private part of) key zero has been published on Github as part of the source tree.
+- keys 1 through 4 are factory keys we will keep secret.
+- official releases are using key 1 for now, but
+  all keys other than zero are considered "official"
+
+Experimental code, written by anyone, can be signed with key zero,
+and the bootloader will accept it. However, if the genuine light
+is red, it will show a scary notice to the user during boot time,
+and enforce a delay of 25 seconds. If the main PIN
+is used to "bless the firmware", meaning the light is green during
+boot, the warning message is **not** shown, and bootup proceeds
+as normal.
+
+Here's what the warning screen looks like:
+
+![dev-warning screen](dev-warning.png)
+
+
+## How To Develop Professional Code on Coldcard
+
+- Hire and pay a dev to write the changes
+- Dev signs binary release with private zero key published in our Github
+- Give firmware binary file to users (via web download probably)
+- They upgrade via normal process (copy to microsd, or USB upgrade)
+- On first reboot, big "unauthorized firmware" warning is shown, with delay
+- If they know the main PIN (since they are the owner), they follow process to set green light
+- Next reboot and following, as long as "genuine" mode is maintained, they boot without warnings
+
+### Benefits
+
+- no warnings, but still trustable thanks to ATECC508a
+- random devs can replace 99% of firmware at micropython layer
+- but they need to retain our code for talking to bootloader and 508a,
+  so that PIN can be entered and verified
+- all PIN related policy is enforced by unchangeable bootloader code, per this document
+
+### Limitation
+
+- if new device is intercepted from our factory (ie. without a main pin set),
+  anyone could put any code onto it, and it would boot exactly like a real factory-direct unit
+- that's why we need the serialized, tamper-evident bag
+- flip side of this limitation: altcoiners can ship a modified version of our
+  product that boots and runs normally when their customer first gets it.
+
+### Obvious Hack-Attack
+
+Idea: Find or steal a Coldcard. Load your trojan firmware onto it. Profit.
+
+- but you don't know the main PIN (or else you'd have already stolen the funds)
+- so changing the firmware is not easy since it does little without the main PIN: you
+  will have to crack the welded case, and do some difficult soldering.
+- regardless, once you change the firmware, red caution light will show
+- since you can't set the genuine light without the PIN, and your trojan is signed 
+  with key zero, when the victim gets back,
+  they will see the big "unauthorized firmware" warning, plus the red light and probably
+  some scratches on the case, etc.
+- weak solution: "helpfully" power up the coldcard for them, and say... "Here it
+  is ready for your pin, sir. No idea why the light is red today."
+- so we need to warn users to power up the Coldcard themselves every time they enter the PIN.
 
 ## Four Types of wallets, one Coldcard
 
@@ -274,7 +340,7 @@ with some funds after setup.
 
 ### Recovery of Funds from Duress Wallet
 
-To recover funds from the "duress wallet", import your orignal seed
+To recover funds from the "duress wallet", import your original seed
 words into a new Coldcard, and assign a duress PIN again. Then login
 to the duress wallet and re-import that into your desktop wallet.
 
@@ -327,7 +393,7 @@ bump the counters unless we know the PIN isn't the duress PIN.
 Known limitation:
 
 - When you login with the duress PIN, the real PIN failure counter
-cannot (and should not be) reset. We supress display of that count
+cannot (and should not be) reset. We suppress display of that count
 if we know the duress PIN was recently used.
 
 ## Anti-Phishing Feature
@@ -382,7 +448,7 @@ We are rate-limiting this as follows: 150ms response time for first
 25 tries, we crash the system and a power cycle will be required
 to continue. With about 9,999 combinations to cover all 4-digit
 prefixes, it would take between least 10 hours to generate all
-4-digit prefixes. To acheive that, you would have to write custom
+4-digit prefixes. To achieve that, you would have to write custom
 firmware and get it onto the device. Any successful login resets
 the rate limiting, so normal users will never see the impact of
 this limiting.
@@ -468,7 +534,7 @@ the chip.
 ## "Knowledge of" Keys
 
 In this document we say you "need knowledge of" a specific key to
-be able to do something. What that means in practise, is you have
+be able to do something. What that means in practice, is you have
 to complete this sequence:
 
 - pick 20 bytes of nonce (`numin`)
@@ -535,11 +601,28 @@ This sequence is implemented with a data structure that is signed
 by an HMAC generated by the bootloader. The HMAC includes both the
 pairing secret and also a unique value-per-boot to prevent replays.
 
+
+### Delay Policy
+
+Here is the delay you'll be forced into based on the
+number of failed PIN attempts, since your last successful login:
+
+
+| Failures  | Forced Delay Between Attempts
+|:---------:|-----------
+| 1 ... 2   | 15 seconds
+| 3 ... 4   | 1 minute
+| 5 ... 9   | 5 minutes
+| 10 ... 19 | 30 minutes
+| 20 ... 49 | 2 hours
+| more      | 8 hours
+
+
 ## Limitation
 
 The main PIN holder can brute-force the secondary wallet's PIN
 because they can use the API for pin-change without rate limiting.
-(Some micropython code would need to be writen.) Similarly, the
+(Some micropython code would need to be written.) Similarly, the
 brickme and duress change-pin commands are not rate-limited, so if
 you have the main PIN (or secondary) you could brute-force the
 corresponding PIN codes.
