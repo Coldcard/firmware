@@ -75,10 +75,6 @@ dfu-latest:
 latest:
 	ckcc upgrade `ls -t1 ../releases/*.dfu | head -1`
 
-# sent latest/all versions to factory
-publish-factory:
-	rsync -av ../releases/20*.dfu ckcc-prod:src
-
 .PHONY: code-committed
 code-committed:
 	@echo ""
