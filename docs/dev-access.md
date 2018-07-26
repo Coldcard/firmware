@@ -12,7 +12,9 @@ Yes, external developers can modify Coldcard... We've saved 128k of flash just f
 - you can replace any part of the python code, and even the mpy interpreter itself
 - you cannot change the bootrom, and it still runs first
 - your code will not be signed by the factory key, so warning and delay, is shown:
-  ![dev-warning screen](dev-warning.png)
+
+![dev-warning screen](dev-warning.png)
+
 - to get green light, the user (who knows the main PIN) must do the "bless" operation
 - you can distrubute your DFU file to the world
 - you can take factory-fresh Coldcards, destroy the tamper-evident bag, and load your
