@@ -11,7 +11,8 @@ Yes, external developers can modify Coldcard... We've saved 128k of flash just f
 - install your DFU file using existing upgrade methods (microSD, usb upload)
 - you can replace any part of the python code, and even the mpy interpreter itself
 - you cannot change the bootrom, and it still runs first
-- your code will not be signed by the factory key, so warning and delay, is shown
+- your code will not be signed by the factory key, so warning and delay, is shown:
+  ![dev-warning screen](dev-warning.png)
 - to get green light, the user (who knows the main PIN) must do the "bless" operation
 - you can distrubute your DFU file to the world
 - you can take factory-fresh Coldcards, destroy the tamper-evident bag, and load your
@@ -51,18 +52,22 @@ Yes, external developers can modify Coldcard... We've saved 128k of flash just f
 - You can enable USB, or USB disk emulation, automatically at the end of `boot2.py`. 
   Mount the emulated disk, and create this file, as `/Volumes/COLDCARD/lib/boot2.py`
 
-    # start the REPL very early
-    import uasyncio.core as asyncio
-    from usb import enable_usb
+```python
+# start the REPL very early
+import uasyncio.core as asyncio
+from usb import enable_usb
 
-    loop = asyncio.get_event_loop()
-    enable_usb(loop, True)
+loop = asyncio.get_event_loop()
+enable_usb(loop, True)
+```
 
 - To skip the prompts for the PIN, assuming correct PIN is '12-12'... add this code
   to `boot2.py` or run once when the system hasn't yet logged in.
 
-        from main import settings
-        settings.set('_skip_pin', '12-12')
+```python
+from main import settings
+settings.set('_skip_pin', '12-12')
+```
 
 - For max crash-change-rerun speed, enable the mass storage all the
   time, and work directly in `/COLDCARD/lib` files. After making a
@@ -80,7 +85,7 @@ Yes, external developers can modify Coldcard... We've saved 128k of flash just f
   takes large amounts of RAM. Some files in the normal code are too big to even
   fit in RAM. The solution is to freeze your code before copying onto Coldcard. See the
   `stm32/Makefile` target `up` which does a build (freezing all the files, using
-  `mpy-cross`)  and then rsyncs the changed `.mpy` files into place. You'll want to do
+  `mpy-cross`) and then rsyncs the changed `.mpy` files into place. You'll want to do
   this on a smaller scale, and probably only for the files you are working on.
 
 
