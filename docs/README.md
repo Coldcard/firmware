@@ -7,7 +7,7 @@ wants to understand why it's safe to put your moneys into Coldcard.
 - [`dev-access.md`](dev-access.md) How developers can modify Coldcard to extend it.
 - [`memory-map.md`](memory-map.md) Memory map highlights
 - [`backup-files.md`](backup-files.md) Some details of our encrypted backup files.
-- [`electrum-recovery.md`](electrum-recovery.md) Importing seed words into Electrum for funds recovery.
+- [`electrum-usage.md`](electrum-usage.md) Importing seed words into Electrum for funds usage (and other tips).
 - [`bitcoin-core-usage.md`](bitcoin-core-usage.md) How to use with Bitcoin Core.
 - [`limitations.md`](limitations.md) Documented limitations, policy choices, and TODO items.
 
