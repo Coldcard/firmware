@@ -1,0 +1,17 @@
+8c6e991355d465139ab7a361b215711fa0cf71afaa233fb82ed2359308397d0b  bootloader.dfu
+069828758f3c8e7208e35f56db9c92788c4b70e0259b961cb83f1d6a9248e57d  bootloader.bin
+6a374397614279a387a1fbd026e8dcc7350347003a14de04a29dc46e072dcea4  bootloader.lss
+1.0.1 time=20180807.112012 git=master@6e7f044
+
+Expect to see:
+
+    1.0.1
+    50def122   
+
+on versions screen.
+
+    [bootloader/releases] cat zz 1.0.1/bootloader.bin | sha256
+    3bbd550fd9b8bfa07a3803eb2ae608c494a58ec59d376372d18990a850def122  -
+
+
+
