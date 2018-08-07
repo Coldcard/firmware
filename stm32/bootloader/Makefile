@@ -149,7 +149,7 @@ latest:
 	$(PYTHON_DO_DFU) -u `ls -t1 releases/*/bootloader.dfu | head -1`
 
 # make a 'release' build
-release: code-committed clean all capture check-fontawesome
+release: code-committed check-fontawesome clean all capture
 release: CFLAGS += -DRELEASE=1 -Werror
 
 check-fontawesome:
