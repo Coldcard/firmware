@@ -476,6 +476,7 @@ HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pData, uint
     __HAL_SPI_ENABLE(hspi);
   }
 
+#if 0
   /* Transmit data in 16 Bit mode */
   if (hspi->Init.DataSize > SPI_DATASIZE_8BIT)
   {
@@ -509,6 +510,7 @@ HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pData, uint
   /* Transmit data in 8 Bit mode */
   else
   {
+#endif
     if ((hspi->Init.Mode == SPI_MODE_SLAVE) || (hspi->TxXferCount == 0x01U))
     {
       if (hspi->TxXferCount > 1U)
@@ -552,7 +554,7 @@ HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pData, uint
         }
       }
     }
-  }
+//  }
 #if (USE_SPI_CRC != 0U)
   /* Enable CRC Transmission */
   if (hspi->Init.CRCCalculation == SPI_CRCCALCULATION_ENABLE)
@@ -936,8 +938,10 @@ HAL_StatusTypeDef HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pData, uint1
   }
 
   /* Receive data in 8 Bit mode */
+#if 0
   if (hspi->Init.DataSize <= SPI_DATASIZE_8BIT)
   {
+#endif
     /* Transfer loop */
     while (hspi->RxXferCount > 0U)
     {
@@ -959,6 +963,7 @@ HAL_StatusTypeDef HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pData, uint1
         }
       }
     }
+#if 0
   }
   else
   {
@@ -983,6 +988,7 @@ HAL_StatusTypeDef HAL_SPI_Receive(SPI_HandleTypeDef *hspi, uint8_t *pData, uint1
       }
     }
   }
+#endif
 
 #if (USE_SPI_CRC != 0U)
   /* Handle the CRC Transmission */
@@ -1169,6 +1175,7 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxD
     __HAL_SPI_ENABLE(hspi);
   }
 
+#if 0
   /* Transmit and Receive data in 16 Bit mode */
   if (hspi->Init.DataSize > SPI_DATASIZE_8BIT)
   {
@@ -1222,6 +1229,7 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxD
   /* Transmit and Receive data in 8 Bit mode */
   else
   {
+#endif
     if ((hspi->Init.Mode == SPI_MODE_SLAVE) || (hspi->TxXferCount == 0x01U))
     {
       if (hspi->TxXferCount > 1U)
@@ -1297,7 +1305,7 @@ HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *hspi, uint8_t *pTxD
         goto error;
       }
     }
-  }
+//  }
 
 #if (USE_SPI_CRC != 0U)
   /* Read CRC from DR to close CRC calculation process */
