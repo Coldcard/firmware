@@ -1,7 +1,7 @@
 # Backup Feature
 
-The user can do a "full backup" of a Coldcard to external SD card,
-or it's internal flash. Simply choose the option from the menu and
+The user can do a "full backup" of a Coldcard to external SD card.
+Simply choose the option from the menu and
 the Coldcard will pick a strong password for you and display it.
 
 The file we create is a [standard 7z archive](https://en.wikipedia.org/wiki/7z)
