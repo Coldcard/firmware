@@ -11,6 +11,7 @@
 #include "stm32l4xx_hal.h"
 #include "sigheader.h"
 #include "verify.h"
+#include "sha256.h"
 #include "oled.h"
 #include "dispatch.h"
 #include "storage.h"
@@ -232,7 +233,6 @@ sf_do_upgrade(uint32_t size)
     ASSERT(size >= FW_MIN_LENGTH);
 
     flash_setup0();
-
     flash_unlock();
 
     uint8_t     tmp[256] __attribute__((aligned(8)));
@@ -267,10 +267,73 @@ sf_do_upgrade(uint32_t size)
             flash_lock();
 
             dfu_by_request();
+            // NOT-REACHED
         }
     }
 
     flash_lock();
+}
+
+// sf_calc_checksum()
+//
+// Do double-sha256 of the contents of the firmware upgrade, presently
+// in SPI flash. Similar to checksum_flash() in verify.c except only
+// concerned with firmware, not the rest of flash.
+//
+    void
+sf_calc_checksum(const coldcardFirmwareHeader_t *hdr, uint8_t fw_digest[32])
+{
+
+    SHA256_CTX  ctx;
+    uint32_t    total_len = hdr->firmware_length;
+
+    sha256_init(&ctx);
+
+    uint32_t pos = 0;
+    uint8_t buf[128];
+    STATIC_ASSERT(FW_HEADER_OFFSET % sizeof(buf) == 0);
+
+    oled_show_progress(screen_verify, 1);
+
+    // do part up to header.
+    for(; pos < FW_HEADER_OFFSET; pos += sizeof(buf)) { 
+        if(sf_read(pos, sizeof(buf), buf) != HAL_OK) {
+        fail:
+            // fail for sure with bad signature; user can try again
+            memset(fw_digest, 0, 32);
+            return;
+        }
+
+        sha256_update(&ctx, buf, sizeof(buf));
+    }
+
+    // include file header (but not the signature)
+    ASSERT(pos == FW_HEADER_OFFSET);
+    sha256_update(&ctx, (const uint8_t *)hdr, FW_HEADER_SIZE - 64);
+
+    // then the rest after the 'header' ... the useful firmware
+    pos += FW_HEADER_SIZE;
+
+    for(int count=0; pos < total_len; pos += sizeof(buf), count++) { 
+        if(sf_read(pos, sizeof(buf), buf) != HAL_OK) {
+            goto fail;
+        }
+        sha256_update(&ctx, buf, sizeof(buf));
+
+        if((count % 16) == 0) {
+            int percent = (pos * 100) / total_len;
+            oled_show_progress(screen_verify, percent);
+        }
+    }
+
+    ASSERT(pos == hdr->firmware_length);
+
+    sha256_final(&ctx, fw_digest);
+
+    // double SHA256
+    sha256_init(&ctx);
+    sha256_update(&ctx, fw_digest, 32);
+    sha256_final(&ctx, fw_digest);
 }
 
 // sf_firmware_upgrade()
@@ -296,49 +359,68 @@ sf_firmware_upgrade(void)
     }
 
     // We have a good header so we can assume whole file there properly, right? (We could
-    // check the signature first, but would be super slow.) Some risk of bricking but not
-    // real bricking because DFU can always be used to recover.... and yet, if you unpluged
-    // during the 'upload' process, after first part written, but before you get to the
-    // end, we'd be left in DFU-only for recover. Seems really likely to happen.
+    // check the signature first, but would be super slow.) And yet,
+    // if you unpluged during the 'upload' process, after first part written, but before
+    // you get to the end, we'd be bricked. Plus that seems really likely to happen.
     //
     // Solution: Look for a duplicated header at end of file. Will always write that last,
-    // and even do a checksum over the data in the sflash before writing final header it out.
+    // and even do a checksum over the data uploaded into the sflash before writing final
+    // header out.
+    // 
     uint32_t off = hdr.firmware_length;
 
     coldcardFirmwareHeader_t    hdr2 = {};
     if(sf_read(off, sizeof(hdr2), (void *)&hdr2) != HAL_OK) {
-        // Huh??? 
+        // Huh??? Hardware issue?
         return;
     }
 
     if(memcmp(&hdr, &hdr2, sizeof(hdr)) != 0) {
-        // mismatch? -- erase stuff to recover? Or just leave it.
+        // mismatch? -- erase stuff to recover? Or just leave it?
         return;
     }
 
-    // We might continue now ... but only want to try once, so wipe the
+    // We might upgrade now ... but only want to try once, so wipe the
     // second header to assure that we won't get stuck in an upgrade loop.
     //
     // LATER: if they unplug power part way thru, they land in fully-bricked mode,
     // even tho we have enough data (from SPI) to complete upgrade successfully.
+    // So only clear flash once we've comlpeted successfully, or determined it
+    // cannot work (bad signature, etc).
 
     // Check for downgrade attack: show warning and stop.
     if(check_is_downgrade(hdr.timestamp)) {
         oled_show(screen_downgrade);
 
-        // prevent second attempts.
-        uint8_t zeros[128] = { 0 };
-        sf_write(off, sizeof(zeros), zeros);
+    fail:{
+            // prevent second attempts. pointless
+            uint8_t zeros[128] = { 0 };
+            sf_write(off, sizeof(zeros), zeros);
+        }
 
         LOCKUP_FOREVER();
+    }
+
+    // Check the firmware signature before changing main flash at all.
+    uint8_t fw_digest[32];
+    sf_calc_checksum(&hdr, fw_digest);
+
+    bool ok = verify_signature(&hdr, fw_digest);
+    if(!ok) {
+        // Bad signature over SPI contents; might be corruption or bad signature
+        // We would not run the resulting firmware in main flash, so don't erase
+        // what we have there now and abort.
+        oled_show(screen_corrupt);
+
+        goto fail;
     }
 
     // Start the upgrade ... takes about a minute.
     sf_do_upgrade(hdr.firmware_length);
 
     if(hdr.install_flags & FWHIF_HIGH_WATER) {
-        // set a new high-waterlevel for future versions.
-        // ignore failures, since we can't recover anyway
+        // Maybe set a new high-waterlevel for future versions.
+        // Ignore failures, since we can't recover anyway.
         record_highwater_version(hdr.timestamp);
     }
 
@@ -346,7 +428,7 @@ sf_firmware_upgrade(void)
     uint8_t zeros[128] = { 0 };
     sf_write(off, sizeof(zeros), zeros);
 
-    // tell python, ultimately, that it worked.
+    // Tell python, ultimately, that it worked.
     sf_completed_upgrade = SF_COMPLETED_UPGRADE;
 }
 
