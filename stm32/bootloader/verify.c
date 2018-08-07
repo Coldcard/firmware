@@ -195,6 +195,18 @@ fail:
     return false;
 }
 
+// verify_signature()
+//
+// Given double-sha256 over the firmware bytes, check the signature.
+//
+    bool
+verify_signature(const coldcardFirmwareHeader_t *hdr, const uint8_t fw_check[32])
+{
+    int ok = uECC_verify(approved_pubkeys[hdr->pubkey_num], fw_check, 32,
+                                    hdr->signature, uECC_secp256k1());
+    return ok;
+}
+
 // verify_firmware()
 //
     void
@@ -210,12 +222,9 @@ verify_firmware(void)
     uint8_t fw_check[32], world_check[32];
     checksum_flash(fw_check, world_check);
 
-    // verify the signature
+    // Verify the signature
     // - use pubkey_num to pick a specific key
-    // - maybe show warning if dev key
-    int ok = uECC_verify(approved_pubkeys[FW_HDR->pubkey_num], fw_check, 32,
-                                    FW_HDR->signature, uECC_secp256k1());
-    if(!ok) goto fail;
+    if(!verify_signature(FW_HDR, fw_check)) goto fail;
  
     // Push the hash to the 508a which might make the Genuine light green,
     // but only if we arrived at same hash before. It decides.

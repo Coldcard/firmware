@@ -21,6 +21,11 @@ void checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32]);
 // do some range/sanity checking on a signed header
 bool verify_header(const coldcardFirmwareHeader_t *hdr);
 
+// give digest over firmware, check the signature from header
+// - use only with a verified header (call verify_header first)
+// - return T if ok.
+bool verify_signature(const coldcardFirmwareHeader_t *hdr, const uint8_t fw_check[32]);
+
 // check if proposed version is new enough (based on OTP values)
 bool check_is_downgrade(const uint8_t timestamp[8]);
 
