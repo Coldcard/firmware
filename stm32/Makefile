@@ -53,7 +53,7 @@ production.bin: firmware-signed.bin Makefile
 	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o production.bin
 
 # This is release of the bootloader that will be build into the release firmware.
-BOOTLOADER_VERSION = 1.0.0
+BOOTLOADER_VERSION = 1.0.1
 
 .PHONY: release
 release: NEW_VERSION = $(shell $(SIGNIT) version production.bin)

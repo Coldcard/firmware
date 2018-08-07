@@ -149,8 +149,12 @@ latest:
 	$(PYTHON_DO_DFU) -u `ls -t1 releases/*/bootloader.dfu | head -1`
 
 # make a 'release' build
-release: code-committed clean all capture
+release: code-committed clean all capture check-fontawesome
 release: CFLAGS += -DRELEASE=1 -Werror
+
+check-fontawesome:
+	# You must have commerical license for Font Awesome (altho fallback looks ok)
+	test -f assets/FontAwesome5Pro-Light-300.otf
 
 .PHONY: code-committed
 code-committed:
