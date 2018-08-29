@@ -12,7 +12,7 @@ from pprint import pprint
 from decimal import Decimal
 from base64 import b64encode, b64decode
 
-    
+
 def U2SAT(v):
     return int(v * Decimal('1E8'))
 
@@ -152,7 +152,7 @@ def test_psbt_parse_good(try_sign, fn, accept):
                 or ('None of the keys' in msg) \
                 or ('completely signed already' in msg) \
                 or ('require subpaths' in msg), msg
-    
+
 
 # works, but annoying output
 def xxx_test_sign_truncated(dev):
@@ -208,7 +208,7 @@ def simple_fake_txn():
     def doit(num_ins, num_outs, fat=0):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
-        
+
         for i in range(num_ins):
             h = TxIn(pack('4Q', 0, 0, 0, i), i)
             txn.txs_in.append(h)
@@ -252,7 +252,7 @@ def fake_txn():
     def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
-        
+
         # we have a key; use it to provide "plausible" value inputs
         from pycoin.key.BIP32Node import BIP32Node
         mk = BIP32Node.from_wallet_key(master_xpub)
@@ -319,7 +319,7 @@ def fake_txn():
     (22, 1),
     #(23, 1),       # v1.0.0 max size (observed)
     #(30, 1),
-    #(50, 50),      
+    #(50, 50),
     #(100, 100),
     #(200, 200),
     #(400, 400),    # too big even for simulator
@@ -331,7 +331,7 @@ def test_io_size(io, fake_txn, try_sign, dev):
     ni, no = io
     psbt = fake_txn(ni, no, dev.master_xpub)
 
-    # PROBLEM: 
+    # PROBLEM:
     # - this "simple" txn fails validation because too simple
     # - this code isn't testing the display of txn details anymore
 
@@ -369,7 +369,7 @@ def XXX_test_txn_wait_for_confirm(simple_fake_txn, try_sign):
     #open('debug/last.psbt', 'wb').write(psbt)
 
     try_sign(psbt, None)
-    
+
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 def test_real_signing(fake_txn, try_sign, dev, num_ins):
     # create a TXN using actual addresses that are correct for DUT
@@ -384,13 +384,13 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins):
 
     # too slow / connection breaks during process
     #decode = bitcoind.decoderawtransaction(B2A(txn))
-    
+
 
 @pytest.fixture()
 def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
 
     def doit(hex_txn, fee, num_warn=0, change_outs=None):
-        # verify our understanding of a TXN (and esp it's outputs) matches
+        # verify our understanding of a TXN (and esp its outputs) matches
         # the same values as what bitcoind generates
 
         decode = bitcoind.decoderawtransaction(hex_txn)
@@ -515,7 +515,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
 def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
     # use the private key given in BIP 174 and do similar signing
     # as the examples.
-    
+
     exk = 'tprv8ZgxMBicQKsPdHrvvmuEXXZ7f5EheFqshqVmtPjeLLMjqwrWbSeuGDcgJU1icTHtLjYiGewa5zcMScbGSRR8AqB8A5wvB3XRdNYBDMhXpBS'
     set_master_key(exk)
 
@@ -567,7 +567,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     # PROBLEM: revised BIP174 has p2sh multisig cases which we don't support yet.
     raise pytest.skip('not ready for multisig')
-    
+
     # expect xfp=0x4f6a0cd9
     exk = 'tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF'
     set_master_key(exk)
@@ -589,7 +589,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
     assert aft == expect
 
 def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
-    # is change shown/hidden at right times. no fraud checks 
+    # is change shown/hidden at right times. no fraud checks
 
     # NOTE: out#1 is change:
     chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'

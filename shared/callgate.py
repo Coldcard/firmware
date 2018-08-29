@@ -1,7 +1,7 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# callgate.py - thin wrapper around modckcc and the bootloader and it's services.
+# callgate.py - thin wrapper around modckcc and the bootloader and its services.
 #
 import ckcc
 
@@ -12,13 +12,13 @@ def get_bl_version():
     ln = ckcc.gate(0, rv, 0)
     ver, *args = str(rv[0:ln], 'utf8').split(' ')
     return ver, [tuple(i.split('=', 1)) for i in args]
-    
+
 def get_bl_checksum(salt=0):
     # salted checksum over code
     rv = bytearray(32)
     ckcc.gate(1, rv, salt)
     return rv
-    
+
 def enter_dfu(msg=0):
     # enter DFU while showing a message
     #   0 = normal DFU
@@ -84,7 +84,7 @@ def get_highwater():
     ckcc.gate(21, arg, 0)
 
     return arg
-    
+
 def set_highwater(ts):
     arg = bytearray(ts)
     return ckcc.gate(21, arg, 2)

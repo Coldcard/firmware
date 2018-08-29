@@ -15,7 +15,7 @@ from uio import StringIO
 num_pw_words = const(12)
 
 def render_backup_contents():
-    # simple text format: 
+    # simple text format:
     #   key = value
     # or #comments
     # but value is JSON
@@ -58,7 +58,7 @@ def render_backup_contents():
             dpk = sv.duress_root()
             ADD('duress_xprv', chain.serialize_private(dpk))
             ADD('duress_xpub', chain.serialize_public(dpk))
-    
+
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
     ADD('fw_date', date)
@@ -256,7 +256,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
                 msg = '''Backup file written:\n\n%s\n\n\
 To view or restore the file, you must have the full password.\n\n\
 Insert another SD card and press 2 to make another copy.''' % (nice)
-    
+
                 ch = await ux_show_story(msg, escape='2')
 
                 if ch == 'y': return
@@ -329,7 +329,7 @@ async def restore_complete_doit(fname_or_fd, words):
     # build password
     password = ' '.join(words)
 
-    # filename already picked, taste it and maybe consider using it's data.
+    # filename already picked, taste it and maybe consider using its data.
     try:
         fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
     except:
@@ -387,7 +387,7 @@ async def restore_complete_doit(fname_or_fd, words):
 def generate_public_contents():
     # Generate public details about wallet.
     #
-    # simple text format: 
+    # simple text format:
     #   key = value
     # or #comments
     # but value is JSON
@@ -413,7 +413,7 @@ For BIP44, this is coin_type '{ct}', and internally we use symbol {sym} for this
 Derived public keys, as may be needed for different systems:
 
 
-'''.format(nb=chain.name, xpub=chain.serialize_public(sv.node), 
+'''.format(nb=chain.name, xpub=chain.serialize_public(sv.node),
             sym=chain.ctype, ct=chain.b44_cointype))
 
         for name, path, addr_fmt in chains.CommonDerivations:
@@ -451,7 +451,7 @@ async def make_summary_file(fname_pattern='public.txt'):
     body = generate_public_contents()
 
     # choose a filename
-        
+
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)
@@ -503,7 +503,7 @@ def generate_electrum_wallet(is_segwit):
                             label='Coldcard Import 0x%08x' % xfp,
                             type='hardware',
                             derivation=derive, xpub=top)
-        
+
     return rv
 
 async def make_electrum_wallet(fname_pattern='new-wallet.json', is_segwit=False):
@@ -518,7 +518,7 @@ async def make_electrum_wallet(fname_pattern='new-wallet.json', is_segwit=False)
     body = generate_electrum_wallet(is_segwit)
 
     # choose a filename
-        
+
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)

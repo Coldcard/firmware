@@ -102,9 +102,9 @@ def main():
     # PIN and corresponding protected secrets
     # - if you know old value of PIN, you can write it (to change to new PIN)
     for kn, sec_num, lg_num in [
-            (KEYNUM.pin_1, KEYNUM.secret_1, KEYNUM.lastgood_1), 
-            (KEYNUM.pin_2, KEYNUM.secret_2, KEYNUM.lastgood_2), 
-            (KEYNUM.pin_3, KEYNUM.secret_3, None), 
+            (KEYNUM.pin_1, KEYNUM.secret_1, KEYNUM.lastgood_1),
+            (KEYNUM.pin_2, KEYNUM.secret_2, KEYNUM.lastgood_2),
+            (KEYNUM.pin_3, KEYNUM.secret_3, None),
             (KEYNUM.pin_4, KEYNUM.secret_4, None)
     ]:
         cc[kn].hash_key(write_kn=kn).require_auth(KEYNUM.pairing)
@@ -121,7 +121,7 @@ def main():
     # - to change it, you need the primary pin
     cc[KEYNUM.firmware].secret_storage(KEYNUM.pin_1).no_read().require_auth(KEYNUM.pairing)
 
-    # Slot 8 is special because it's data area is larger and could hold a
+    # Slot 8 is special because its data area is larger and could hold a
     # certificate in DER format. All ther others are 36/72 bytes only
     # BTW: an errata limits this to just 224 bytes, which is not enough
     assert cc[8].kc.KeyType == 7
