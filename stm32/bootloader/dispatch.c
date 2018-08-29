@@ -42,7 +42,7 @@ typedef struct {
 // reboot_seed_setup()
 //
 // We need to know when we are rebooted, so write some noise
-// into SRAM and lock it's value. Not secrets. One page = 1k bytes here.
+// into SRAM and lock its value. Not secrets. One page = 1k bytes here.
 //
     void
 reboot_seed_setup(void)

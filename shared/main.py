@@ -89,7 +89,7 @@ async def done_splash2():
 async def mainline():
     # Mainline of program, after startup
     #
-    # - Do not add to this function, it's vars are
+    # - Do not add to this function, its vars are
     #   in memory forever; instead, extend done_splash2 above.
     from ux import the_ux
 

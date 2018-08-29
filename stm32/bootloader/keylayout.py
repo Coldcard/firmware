@@ -121,7 +121,7 @@ def main():
     # - to change it, you need the primary pin
     cc[KEYNUM.firmware].secret_storage(KEYNUM.pin_1).no_read().require_auth(KEYNUM.pairing)
 
-    # Slot 8 is special because it's data area is larger and could hold a
+    # Slot 8 is special because its data area is larger and could hold a
     # certificate in DER format. All ther others are 36/72 bytes only
     # BTW: an errata limits this to just 224 bytes, which is not enough
     assert cc[8].kc.KeyType == 7
