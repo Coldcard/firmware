@@ -344,7 +344,7 @@ class SecureElement:
             else:
                 delay = 20
 
-        # delay for chip to do it's maths
+        # delay for chip to do its maths
         sleep_ms(delay)
 
         while 1:
