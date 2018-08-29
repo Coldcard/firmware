@@ -1,8 +1,8 @@
 // (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 // and is covered by GPLv3 license found in COPYING.
 //
-// 
-// storage.c -- manage flash and it's sensitive contents.
+//
+// storage.c -- manage flash and its sensitive contents.
 //
 // NOTE: ST's flash is different from others: it has ECC in effect, and can only
 // be programmed once. Writing ones is included in that. I'm used to flash that
@@ -436,7 +436,7 @@ flash_setup(void)
     // implied by that are in place. If wrong, do the
     // appropriate lockdown, which might be one-way.
     // That's fine if we intend to ship units locked already.
-    
+
     // Do NOT do write every boot, as it might wear-out
     // the flash bits in OB.
 
@@ -448,7 +448,7 @@ flash_setup(void)
 // - ensure bootloader isn't overwritten easily.
 // - enable level 2 flash protect
 // - once level 2 is set, no going back.
-// 
+//
 // This is a one-way trip. Might need power cycle to (fully?) take effect.
 //
     void

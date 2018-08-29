@@ -42,7 +42,7 @@ typedef struct {
 // reboot_seed_setup()
 //
 // We need to know when we are rebooted, so write some noise
-// into SRAM and lock it's value. Not secrets. One page = 1k bytes here.
+// into SRAM and lock its value. Not secrets. One page = 1k bytes here.
 //
     void
 reboot_seed_setup(void)
@@ -151,7 +151,7 @@ system_startup(void)
     ae_setup();
     ae_set_gpio(0);         // not checking return on purpose
 
-    // protect our flash, and/or check it's protected 
+    // protect our flash, and/or check it's protected
     // - and pick pairing secret if we don't already have one
     // - may also do one-time setup of 508a
     // - note: ae_setup must already be called, since it can talk to that
@@ -174,7 +174,7 @@ system_startup(void)
     // - must be near end of boot process, ie: here.
     reboot_seed_setup();
 
-    // load a blank-ish screen, so that 
+    // load a blank-ish screen, so that
     // if the firmware crashes, we are showing
     // something reasonable
     oled_show(screen_blank);
@@ -240,7 +240,7 @@ enter_dfu(void)
 
     __HAL_FIREWALL_PREARM_ENABLE();
 
-    // Wipe all of memory SRAM, just in case 
+    // Wipe all of memory SRAM, just in case
     // there is some way to trick us into DFU
     // after sensitive content in place.
     memset4((void *)SRAM1_BASE, noise, SRAM1_SIZE_MAX);
@@ -280,7 +280,7 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
         if(!b) return EFAULT;               // gave no buffer
         if(len < minlen) return ERANGE;     // too small
     }
-        
+
 
     if((x >= SRAM1_BASE) && ((x-SRAM1_BASE) < SRAM1_SIZE_MAX)) {
         // inside SRAM1, okay
@@ -346,7 +346,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
     // - range check pointers so we aren't tricked into revealing our secrets
     // - check buf_io points to main SRAM, and not into us!
     // - range check len_in tightly
-    // - calling convention only gives me enough for 4 args to this function, so 
+    // - calling convention only gives me enough for 4 args to this function, so
     //   using read/write in place.
     // - use arg2 use when a simple number is needed; never a pointer!
     // - mpy may provide a pointer to flash if we give it a qstr or small value, and if
@@ -375,7 +375,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
         }
 
         case 1: {
-            // Perform SHA256 over ourselves, with 32-bits of salt, to imply we 
+            // Perform SHA256 over ourselves, with 32-bits of salt, to imply we
             // haven't stored valid responses.
             REQUIRE_OUT(32);
 
@@ -444,7 +444,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 3:
             // logout: wipe all of memory and lock up. Must powercycle to recover.
-            switch(arg2) { 
+            switch(arg2) {
                 case 0:
                 case 2:
                     oled_show(screen_logout);
@@ -500,7 +500,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
             break;
 
-        case 5:     
+        case 5:
             // Are we a brick?
             // if the pairing secret doesn't work anymore, that
             // means we've been bricked.
@@ -517,7 +517,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
 
         case 15: {
-            // Read a dataslot directly. Will fail on 
+            // Read a dataslot directly. Will fail on
             // encrypted slots.
             if(len_in != 4 && len_in != 32 && len_in != 72) {
                 rv = ERANGE;
@@ -529,7 +529,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     rv = EIO;
                 }
             }
-            
+
             break;
         }
 
@@ -622,7 +622,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
             break;
         }
-            
+
 
         case 20:
             // Read a single byte of config dataspace
@@ -634,7 +634,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             } else {
                 buf_io[0] = rv;
                 rv = 0;
-            } 
+            }
             break;
 
         case 21:
@@ -688,7 +688,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                 rv = EPERM;
             } else {
                 system_startup();
-            }            
+            }
             break;
 
 
@@ -714,7 +714,7 @@ fail:
     __HAL_FLASH_INSTRUCTION_CACHE_DISABLE();
     __HAL_FLASH_INSTRUCTION_CACHE_RESET();
     __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
-    
+
 
     // authorize return from firewall into user's code
     __HAL_FIREWALL_PREARM_ENABLE();

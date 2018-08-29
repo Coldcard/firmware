@@ -3,7 +3,7 @@
 // and is covered by GPLv3 license found in COPYING.
 //
 // modckcc.c - module for Coldcard hardware features and glue.
-// 
+//
 #include <stdio.h>
 #include <string.h>
 
@@ -43,7 +43,7 @@ STATIC int callgate_lower(uint32_t method_num, uint32_t arg2, mp_buffer_info_t *
 
     // +4 because that's required by call gate for firewall
     // +1 to set LSB because we know a BLX instruction will be used to
-    // get there and we know it's thumb code
+    // get there and we know its thumb code
     // - also 0x100 aligned.
     assert((dest & 0xff) == 0x05);
 
@@ -54,7 +54,7 @@ STATIC int callgate_lower(uint32_t method_num, uint32_t arg2, mp_buffer_info_t *
     // Call the gate; it will trash the normal function-call registers (r0-4)
     // but also r9 and r10. Does not use our stack.
     //
-    // references: 
+    // references:
     // - <http://www.ethernut.de/en/documents/arm-inline-asm.html>
     // - <https://gcc.gnu.org/onlinedocs/gcc/Extended-Asm.html>
     //
@@ -64,7 +64,7 @@ STATIC int callgate_lower(uint32_t method_num, uint32_t arg2, mp_buffer_info_t *
     register uint32_t tx_len asm("r2") = io_buf ? io_buf->len: 0;
     register uint32_t r_arg2 asm("r3") = arg2;
 
-    asm volatile(   "blx %[dest] \n" 
+    asm volatile(   "blx %[dest] \n"
                     "str r0, %[rv]"
         : [rv] "=m" (rv)
         : [dest] "r" (dest), "r" (tx), "r" (tx_len), "r" (r_arg2), "r" (r_method)
@@ -114,7 +114,7 @@ STATIC mp_obj_t sec_oneway_gate(mp_obj_t method_obj, mp_obj_t arg2_obj)
     register uint32_t tx_len asm("r2") = 0;
     register uint32_t r_arg2 asm("r3") = arg2;
 
-    asm volatile(   "blx %[dest] \n" 
+    asm volatile(   "blx %[dest] \n"
                     "str r0, %[rv]"
         : [rv] "=m" (rv)
         : [dest] "r" (dest), "r" (tx), "r" (tx_len), "r" (r_arg2), "r" (method_num)
@@ -194,7 +194,7 @@ STATIC mp_obj_t wipe_fs(void)
     // after, it will be remounted already
 
     // see initfs.c
-    extern bool init_flash_fs(uint reset_mode);     
+    extern bool init_flash_fs(uint reset_mode);
 
     return MP_OBJ_NEW_SMALL_INT(init_flash_fs(3));
 }

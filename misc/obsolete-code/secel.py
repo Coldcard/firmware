@@ -90,7 +90,7 @@ def slot_layout(slot_num):
 
     raise ValueError(slot_num)
 
-    
+
 def crc16w(data, starting_value = 0):
     # CRC algo used by chip for error detect in communications
     data = bytearray(data)
@@ -344,7 +344,7 @@ class SecureElement:
             else:
                 delay = 20
 
-        # delay for chip to do it's maths
+        # delay for chip to do its maths
         sleep_ms(delay)
 
         while 1:
@@ -387,7 +387,7 @@ class SecureElement:
 
             if expect != resp[-2:]:
                 raise CRCError()
-            
+
             return resp[1:-2]
 
     def ae_cmd(self, **kws):
@@ -537,7 +537,7 @@ class SecureElement:
                                         [n for n in included if not self.d_slot[n]])
             assert all(len(self.d_slot[i]) == slot_layout(i)[1] for i in included), \
                         repr([len(i) for i in self.d_slot])
-    
+
             data = b''.join(data)
 
             # we're not supporting pre-loading OTP area yet, so better be blank
@@ -638,7 +638,7 @@ class SecureElement:
             # NOTE: response is the (old) contents of the RNG, not the TempKey value itself.
             assert len(rndout) == 32
 
-            # TempKey on the chip will be set to the output of SHA256 over 
+            # TempKey on the chip will be set to the output of SHA256 over
             # a message composed of my challenge, the RNG and 3 bytes of constants:
             return sha256(bytes(rndout) + ch2 + b'\x16\0\0').digest()
 
@@ -673,7 +673,7 @@ class SecureElement:
         skey = SigningKey.from_string(secret, curve=NIST256p, hashfunc=sha256)
 
         skey.verifying_key.verify_digest(sig_rs, mhash)
-        
+
 
     def write_ec_pubkey(self, slot_num, pubxy, signkey=None, do_lock=False):
         "Write a known public key, and verify it is right."
@@ -738,10 +738,10 @@ class SecureElement:
         "verify we know the SHA256 key in slot n"
         assert len(hkey) == 32
 
-        # Note: cannot read back while data zone is unlocked, but we 
+        # Note: cannot read back while data zone is unlocked, but we
         # can use the key right away in a CheckMac operation and that verifies
         # it real good.
-        
+
         challenge = self.load_nonce()
 
         # 32 bytes of "client challenge" and 13 bytes of "other data" are needed, but
@@ -830,13 +830,13 @@ class SecureElement:
 
         # "authorizing mac" is also required to be sent:
         # SHA-256(TempKey, Opcode, Param1, Param2, SN<8>, SN<0:1>, <25 bytes of zeros>, PlainTextData)
-        msg = (dig 
-                + ustruct.pack('<bbH', OP.Write, args['p1'], args['p2']) 
+        msg = (dig
+                + ustruct.pack('<bbH', OP.Write, args['p1'], args['p2'])
                 + b'\xee\x01\x23'
                 + (b'\0'*25)
                 + new_value)
         assert len(msg) == 32+1+1+2+1+2+25+32
-                                
+
         auth_mac = sha256(msg).digest()
 
         rv = self.ae_cmd1(body=enc+auth_mac, **args)
