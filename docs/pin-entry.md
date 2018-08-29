@@ -8,13 +8,13 @@
 word list. This two word response is unique to your Coldcard and pin combination.
 
 3) Look at the words. Are they right and what you expected? If not,
-press X and try again, and/or talk to your 
+press X and try again, and/or talk to your
 ["evil maid" about her activities](https://en.wikipedia.org/wiki/Rootkit#bootkit).
 Do not continue to enter more digits of your real PIN!
 
 4) If you want to proceed, and you have a secondary wallet enabled, press (2) to select
-   the secondary wallet, otherwise, just press OK to continue for primary wallet (1). 
-  
+   the secondary wallet, otherwise, just press OK to continue for primary wallet (1).
+
 5) Then enter the remaining digits of the PIN (between 2 and 6 digits). Press OK.
 
 6) Is it the user-defined "brick me" PIN? If so, it's used to wipe
@@ -101,7 +101,7 @@ But this approach doesn't work because:
 - You might not be able to directly touch the subject Coldcard at the critical moment.
 - You might be forced to give a PIN code via phone or text message
 - You can write down a duress or brickme PIN in places where it might be found by
-  bad actors, but you can't trick someone into pressing an undocumented key at a 
+  bad actors, but you can't trick someone into pressing an undocumented key at a
   specific time.
 - Special PIN codes are fully configurable for the same reason: we can't make 666-666
   do something special if a quick Google tells anyone that's a trap.
@@ -120,7 +120,7 @@ the main protection against replay attacks, and monitoring the bus passively.
 
 Furthermore:
 
-- you cannot separate the secure element from main micro, and then brute-force the PIN. 
+- you cannot separate the secure element from main micro, and then brute-force the PIN.
 - monitoring the connection to the secure element does not reveal the PIN (or any protected secrets)
 - there is no way to read (or change) the wallet seed without the PIN
 - there is no way to change the PIN without knowing the old PIN
@@ -294,7 +294,7 @@ Idea: Find or steal a Coldcard. Load your trojan firmware onto it. Profit.
 - so changing the firmware is not easy since it does little without the main PIN: you
   will have to crack the welded case, and do some difficult soldering.
 - regardless, once you change the firmware, red caution light will show
-- since you can't set the genuine light without the PIN, and your trojan is signed 
+- since you can't set the genuine light without the PIN, and your trojan is signed
   with key zero, when the victim gets back,
   they will see the big "unauthorized firmware" warning, plus the red light and probably
   some scratches on the case, etc.
@@ -304,7 +304,7 @@ Idea: Find or steal a Coldcard. Load your trojan firmware onto it. Profit.
 
 ## Four Types of wallets, one Coldcard
 
-The Coldcard effectively supports four independent wallets: 
+The Coldcard effectively supports four independent wallets:
 primary (main), secondary, main duress, secondary duress.
 
 The secondary wallet is a little less capable than the main one,
@@ -328,8 +328,8 @@ higher levels of software, operation proceeds normally.
 When creating the duress wallet, Coldcard derives the wallet root
 from the real wallet by a one-way process. This means when you
 backup the main wallet, you are also backing up the corresponding
-duress wallet and it's give-away funds. Writing down the main
-wallet's seed words, will include the duress wallet and it's funds.
+duress wallet and its give-away funds. Writing down the main
+wallet's seed words will include the duress wallet and its funds.
 
 The duress wallet operates like any other wallet on the Coldcard.
 Load value and sign transactions as normal. By design, it acts just
@@ -458,7 +458,7 @@ this limiting.
 We've made some bold claims above. How can you be sure we implemented it
 as described?
 
-First, please learn more about the secure element: the 
+First, please learn more about the secure element: the
 [Microchip ATECC508A](https://www.microchip.com/wwwproducts/en/ATECC508A)
 The full datasheet recently has been made public after being under NDA for
 years. To get further into our design, you will need to understand the chip's

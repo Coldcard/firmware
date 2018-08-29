@@ -37,7 +37,7 @@
 # Max Transaction Size
 
 - we support transactions up to 384k-bytes in size when serialized into PSBT format
-- bitcoin limits transactions to 100k, but there could be large input transactions 
+- bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
 - we can handle transactions with up to 20 inputs to be signed at one time.
@@ -64,7 +64,7 @@
 
 # Policy Stuff
 
-- Coldcard will reject any txn that pays a fee of more than 10% of it's total value to miners.
+- Coldcard will reject any txn that pays a fee of more than 10% of its total value to miners.
   (Might become a setting someday.)
 
 # Developer / Source Code

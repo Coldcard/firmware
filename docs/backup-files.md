@@ -8,7 +8,7 @@ The file we create is a [standard 7z archive](https://en.wikipedia.org/wiki/7z)
 with AES-256 encryption, in CBC mode. The 256-bit key is a SHA256 hash of a passphrase,
 hashed in a particular way to support 7z compatibility. We know
 the passphrase has at least 128-bits of entropy because the Coldcard
-uses it's true random number generator (TRNG) to pick it.
+uses its true random number generator (TRNG) to pick it.
 
 Once decrypted, which is possible using any 7z archive tool, the
 contents are a simple text file with everything you could need to
@@ -54,7 +54,7 @@ easy to read.
 ### Encrypted File
 
 ```
-% hd backup.7z 
+% hd backup.7z
 00000000  37 7a bc af 27 1c 00 03  46 de 5e ba 30 02 00 00  |7z..'...F.^.0...|
 00000010  00 00 00 00 6e 00 00 00  00 00 00 00 e0 5c a0 0e  |....n........\..|
 00000020  68 1a 57 0a ed 5b 77 89  ea 4a 84 72 d4 75 d6 bd  |h.W..[w..J.r.u..|
@@ -112,7 +112,7 @@ a real Coldcard to make your own.
 ### Archive Contents
 
 ```
-% 7z l backup.7z 
+% 7z l backup.7z
 
 7-Zip [64] 15.09 beta : Copyright (c) 1999-2015 Igor Pavlov : 2015-10-16
 p7zip Version 15.09 beta (locale=utf8,Utf16=on,HugeFiles=on,64 bits,4 CPUs x64)
@@ -138,7 +138,7 @@ Blocks = 1
                                    559          560  1 files
 ```
 
-No passphrase is required to do this, and it does check CRC32 values, so 
+No passphrase is required to do this, and it does check CRC32 values, so
 simple truncation or unintentional corruption can be easily detected, without
 knowledge of the passphrase.
 
@@ -164,9 +164,9 @@ Method = 7zAES
 Solid = -
 Blocks = 1
 
-    
+
 Enter password (will not be echoed):
-Everything is Ok      
+Everything is Ok
 
 Size:       559
 Compressed: 702
@@ -178,7 +178,7 @@ This process creates a file `ckcc-backup.txt` in the current directory.
 ### Contents of ckcc-backup.txt
 
 ```
-% cat ckcc-backup.txt 
+% cat ckcc-backup.txt
 # Coldcard backup file! DO NOT CHANGE.
 
 # Private key details
