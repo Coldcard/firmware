@@ -7,7 +7,7 @@ important part in that process.
 
 # Firewalled Code/Data
 
-This code is linked separately from other executables, and resides in it's own
+This code is linked separately from other executables, and resides in its own
 reserved area at the start of flash memory. That area is protected from readback
 using chip features: "Proprietary Code Read-Out Protection (PCROP)" aka. firewall.
 
@@ -36,7 +36,7 @@ your key storage per-system unique.
 - To clear flash with write protect on... FLASH regs at 0x40022000 base
     FLASH->CR = 0x40022014
     FLASH->WRP1AR = 0x4002202c
-    
+
     # have DFU active. doesn't work from running
     halt
     # expect 0x40000000, if it's 0xc0000000, can't work; reboot w/ DFU pressed, to fix
@@ -68,11 +68,11 @@ your key storage per-system unique.
 - working in RAM @ 0x10000000
 - need to encode the reset vector (into boot loader) and also be a valid sequence of thumb insts
 - best if it doesn't mangle R1-R4,LR so they can be used for callgate API
-- I require: 08000 xxxx where 
+- I require: 08000 xxxx where
         - LSB of x is one (thumb mode),
         - and (x) is less than 0x7800
         - preferably x is small
-    
+
     mwh 0x10000000 0x00b1
     mwh 0x10000002 0x0800
     stm32l4x.cpu arm disassemble 0x10000000 2 thumb
