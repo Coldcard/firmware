@@ -48,7 +48,7 @@ def test_addr_vs_bitcoind(bitcoind, match_key, need_keypress, example_addr, dev)
     # check our p2wpkh wrapped in p2sh is right
     
     # PROBLEM: your bitcoind probably needs same transaction history as mine, so it knows
-    # about this address and it's contents/key path.
+    # about this address and its contents/key path.
 
     assert example_addr[0] == '2'
     resp = bitcoind.getaddressinfo(example_addr)
