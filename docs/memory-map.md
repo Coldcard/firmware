@@ -33,7 +33,7 @@ Flash above `0x0800 8000` can be examined directly from python programs.
 
 ## Security Measures
 
-- On entry the bootloader always wipes it's entire working SRAM2 area. You may change 
+- On entry the bootloader always wipes its entire working SRAM2 area. You may change
   it, or even use it for very temporary storage, but it will be destroyed once the callgate
   into the bootloader is accessed.
 - All of SRAM1 and SRAM2 is cleared on boot up, and when the "secure logout" feature is used.
