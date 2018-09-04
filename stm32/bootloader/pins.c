@@ -502,7 +502,11 @@ pin_delay(pinAttempt_t *args)
     if(rv) return rv;
 
     // prevent any monkey business w/ systick rate
+    // - we don't use interrupts, but this code is called after mpy starts sometimes,
+    //   and in those cases, we want to keep their interrupt support working.
+    uint32_t b4 = SysTick->CTRL;
     systick_setup();
+    SysTick->CTRL |= (b4 & SysTick_CTRL_TICKINT_Msk);
 
     delay_ms(500);
 

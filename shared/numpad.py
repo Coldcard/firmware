@@ -124,7 +124,7 @@ class Numpad:
         else:
             self.levels[self.scan_pin] = val
 
-        # must let lines dischange for 1ms
+        # must let lines discharge for 1ms
         self.tsc.discharge()
 
         # do next step, after 1ms delay

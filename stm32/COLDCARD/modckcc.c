@@ -147,6 +147,12 @@ STATIC mp_obj_t sec_gate(mp_obj_t method_obj, mp_obj_t send_arg, mp_obj_t arg2_o
 
     int rv = callgate_lower(method_num, arg2, is_none ? NULL : &send_buf);
 
+    // bugfix: if bootloader (V1.0.1) calls systick_setup(), this will correct register
+    SysTick->CTRL  = SysTick_CTRL_CLKSOURCE_Msk |
+                     SysTick_CTRL_TICKINT_Msk   |
+                     SysTick_CTRL_ENABLE_Msk;
+
+
     return mp_obj_new_int(rv);
 }
 MP_DEFINE_CONST_FUN_OBJ_3(sec_gate_obj, sec_gate);
