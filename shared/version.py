@@ -65,7 +65,7 @@ def is_factory_mode():
 
     bn = callgate.get_bag_number()
     if bn:
-        # XXX until we master RDP=2, we need this workaround
+        # this path supports testing/dev with RDP!=2, which normal production bootroms enforce
         is_factory = False
 
     return is_factory
