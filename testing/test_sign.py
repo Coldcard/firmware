@@ -755,9 +755,11 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_st
 def test_sign_multisig_partial_fail(start_sign, end_sign):
 
     # file from AChow, via slack: a partially signed multisig setup (which we can't handle)
-    fn = 'data/multisig-single.psbt'
+    #fn = 'data/multisig-single.psbt'
+    fn = 'data/multisig-single-unsigned.psbt'
+    from base64 import b64decode
 
-    psbt = a2b_hex(open(fn, 'rb').read())
+    psbt = b64decode(open(fn, 'rb').read())
 
     with pytest.raises(CCProtoError) as ee:
         start_sign(psbt, finalize=True)
