@@ -2,7 +2,7 @@
 // and is covered by GPLv3 license found in COPYING.
 //
 // 
-// storage.c -- manage flash and it's sensitive contents.
+// storage.c -- manage flash and its sensitive contents.
 //
 // NOTE: ST's flash is different from others: it has ECC in effect, and can only
 // be programmed once. Writing ones is included in that. I'm used to flash that

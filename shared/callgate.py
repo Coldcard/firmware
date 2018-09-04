@@ -1,7 +1,7 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# callgate.py - thin wrapper around modckcc and the bootloader and it's services.
+# callgate.py - thin wrapper around modckcc and the bootloader and its services.
 #
 import ckcc
 
