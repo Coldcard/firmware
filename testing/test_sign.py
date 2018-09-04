@@ -752,5 +752,17 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_st
 
     signed = end_sign(True)
 
+def test_sign_multisig_partial_fail(start_sign, end_sign):
+
+    # file from AChow, via slack: a partially signed multisig setup (which we can't handle)
+    fn = 'data/multisig-single.psbt'
+
+    psbt = a2b_hex(open(fn, 'rb').read())
+
+    with pytest.raises(CCProtoError) as ee:
+        start_sign(psbt, finalize=True)
+        signed = end_sign(accept=True)
+    assert 'looks completely signed' in str(ee)
+
 
 # EOF
