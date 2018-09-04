@@ -155,17 +155,12 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         ckcc.rng_bytes(b)
         words = tcc.bip39.from_data(b).split(' ')[0:num_pw_words]
 
-        #print('File pw: ' + ' '.join(words))
-
         ch = await seed.show_words(words,
-                        prompt="Record this (%d word) backup file password:\n", respin=1)
-        if ch == '2':
-            # respin
-            continue
+                        prompt="Record this (%d word) backup file password:\n", escape='6')
 
         if ch == '6' and not write_sflash:
             # Secret feature: plaintext mode
-            # - only safe for people living in faraday cages inside vaults.
+            # - only safe for people living in faraday cages inside locked vaults.
             if await ux_confirm("The file will **NOT** be encrypted and "
                                 "anyone who finds the file will get all of your money for free!"):
                 words = []
