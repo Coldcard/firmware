@@ -329,7 +329,7 @@ async def restore_complete_doit(fname_or_fd, words):
     # build password
     password = ' '.join(words)
 
-    # filename already picked, taste it and maybe consider using it's data.
+    # filename already picked, taste it and maybe consider using its data.
     try:
         fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
     except:

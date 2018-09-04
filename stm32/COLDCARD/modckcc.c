@@ -43,7 +43,7 @@ STATIC int callgate_lower(uint32_t method_num, uint32_t arg2, mp_buffer_info_t *
 
     // +4 because that's required by call gate for firewall
     // +1 to set LSB because we know a BLX instruction will be used to
-    // get there and we know it's thumb code
+    // get there and we know its thumb code
     // - also 0x100 aligned.
     assert((dest & 0xff) == 0x05);
 

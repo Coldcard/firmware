@@ -390,7 +390,7 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins):
 def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
 
     def doit(hex_txn, fee, num_warn=0, change_outs=None):
-        # verify our understanding of a TXN (and esp it's outputs) matches
+        # verify our understanding of a TXN (and esp its outputs) matches
         # the same values as what bitcoind generates
 
         decode = bitcoind.decoderawtransaction(hex_txn)
