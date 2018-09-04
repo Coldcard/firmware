@@ -249,14 +249,12 @@ individual words if you wish.''')
         dis.text(-18-(6 if count >= 10 else 0), y, "Word", FontTiny, invert=invert)
 
 
-async def show_words(words, respin=False, prompt=None):
+async def show_words(words, prompt=None, escape=None):
     msg = (prompt or 'Record these %d secret words!\n') % len(words)
     msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
     msg += '\n\nPlease check and double check your notes. There will be a test! ' 
-    if respin:
-        msg += 'If you don\'t like these words, you can spin again by pressing 2 now.'
 
-    return await ux_show_story(msg, escape='26' if respin else None)
+    return await ux_show_story(msg, escape=escape)
 
 async def make_new_wallet():
     # pick a new random seed, and force them to 
@@ -268,51 +266,56 @@ async def make_new_wallet():
     # CONCERN: memory is really contaminated with secrets in this process, much more so
     # than during normal operation. Maybe we should block USB and force a reboot as well?
 
+    # LESSON LEARNED: if the user is writting down the words, as we have
+    # vividly instructed, then it's a big deal to lose those words and have to start
+    # over. So confirm that action, and don't volunteer it.
+
+    # dramatic pause
+    await ux_dramatic_pause('Generating...', 4)
+
+    # always full 24-word (256 bit) entropy
+    seed = bytearray(32)
+    rng_bytes(seed)
+
+    assert len(set(seed)) > 4, "impossible luck?"
+
+    # hash to mitigate bias in TRNG
+    seed = tcc.sha256(seed).digest()
+
+    words = tcc.bip39.from_data(seed).split(' ')
+    assert len(words) == 24
+    
+    #print('words: ' + ' '.join(words))
+
     while 1:
-        # dramatic pause
-        await ux_dramatic_pause('Generating...', 4)
-
-        # always full 24-word (256 bit) entropy
-        seed = bytearray(32)
-        rng_bytes(seed)
-
-        assert len(set(seed)) > 4, "impossible luck?"
-
-        # hash to remove any noise from TRNG?
-        seed = tcc.sha256(seed).digest()
-
-        words = tcc.bip39.from_data(seed).split(' ')
-        assert len(words) == 24
-        
-        #print('words: ' + ' '.join(words))
-
-        # show the seed
-        ch = await show_words(words, respin=True)
-
-        if ch == '2':
-            # respin to get new words
-            continue
+        # show the seed words
+        ch = await show_words(words, escape='6')
 
         if ch == 'x': 
             # user abort
-            return
+            if await ux_confirm("Throw away those words and stop this process?"):
+                return
+            else:
+                continue
 
         if ch == '6':
             # wants to skip the quiz (undocumented)
-            if not await ux_confirm("Skipping the quiz means you might have recorded the seed wrong and will be crying later."):
-                ch = 'y'
+            if await ux_confirm("Skipping the quiz means you might have "
+                                        "recorded the seed wrong and will be crying later."):
+                break
 
-        break
-
-    # Perform a test, to check they wrote them down
-    if ch == '6':
-        # hack, warning above: press 6 to skip the quiz
-        pass
-    else:
+        # Perform a test, to check they wrote them down
         ch = await word_quiz(words)
         if ch == 'x':
-            # user abort
-            return
+            # user abort quiz
+            if await ux_confirm("Throw away those words and stop this process? Press X to see the word list again and restart the quiz."):
+                return
+
+            # show the words again, but don't change them
+            continue
+
+        # quiz passed
+        break
 
     # Done!
     set_seed_value(words)
