@@ -162,11 +162,15 @@ class LoginUX:
     async def do_delay(self, pa):
         # show # of failures and implement the delay, which could be 
         # very long.
+        from main import numpad
 
         dis.clear()
-        dis.text(None, 0, "Please Wait", FontLarge)
-        dis.text(None, 24, pretty_delay(pa.delay_required * pa.seconds_per_tick))
-        dis.text(None, 40, "# of failures: %d" % pa.num_fails)
+        dis.text(None, 0, "Checking...", FontLarge)
+        dis.text(None, 24, 'Wait '+pretty_delay(pa.delay_required * pa.seconds_per_tick))
+        dis.text(None, 40, "(%d failures)" % pa.num_fails)
+
+        # save a little bit of interrupt load/overhead
+        numpad.stop()
 
         while pa.is_delay_needed():
             dis.progress_bar(pa.delay_achieved / pa.delay_required)
@@ -174,11 +178,7 @@ class LoginUX:
 
             pa.delay()
 
-            ch = ux_poll_once('x')
-            if ch == 'x':
-                return False
-
-        return True
+        numpad.start()
 
     async def try_login(self, retry=True):
         from main import pa
@@ -194,9 +194,7 @@ class LoginUX:
             pa.setup(pin, self.is_secondary)
 
             if pa.is_delay_needed() or pa.num_fails:
-                ok = await self.do_delay(pa)
-                if not ok:
-                    continue
+                await self.do_delay(pa)
 
             # do the actual login attempt now
             dis.fullscreen("Wait...")
