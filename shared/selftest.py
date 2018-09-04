@@ -181,6 +181,19 @@ async def test_microsd():
     from main import numpad
     numpad.stop()
 
+
+    async def wait_til_state(want):
+        dis.clear()
+        dis.text(None, 10, 'MicroSD Card:')
+        dis.text(None, 34, 'Remove' if sd.present() else 'Insert', font=FontLarge)
+        dis.show()
+
+        while 1:
+            if want == sd.present(): return
+            await sleep_ms(100)
+            if ux_poll_once():
+                raise RuntimeError("MicroSD test aborted")
+
     try:
         import pyb
         sd = pyb.SDCard()
@@ -188,18 +201,7 @@ async def test_microsd():
 
         # test presence switch
         for ph in range(7):
-            want = not sd.present()
-
-            dis.clear()
-            dis.text(None, 10, 'MicroSD Card:')
-            dis.text(None, 34, 'Remove' if sd.present() else 'Insert', font=FontLarge)
-            dis.show()
-
-            while 1:
-                if want == sd.present(): break
-                await sleep_ms(100)
-                if ux_poll_once():
-                    raise RuntimeError("MicroSD test aborted")
+            await wait_til_state(not sd.present())
 
             if ph >= 2 and sd.present():
                 # debounce
@@ -228,13 +230,16 @@ async def test_microsd():
 
         # just read it a bit, writing would prove little
         buf = bytearray(512)
-        msize = 1024*1024
+        msize = 256*1024
         for addr in range(0, msize, 1024):
             sd.readblocks(addr, buf)
             dis.progress_bar_show(addr/msize)
 
             if addr == 0:
                 assert buf[-2:] == b'\x55\xaa', "Bad read"
+
+        # force removal, so cards don't get stuck in finished units
+        await wait_til_state(False)
 
     finally:
         # CRTICAL: power it back down
