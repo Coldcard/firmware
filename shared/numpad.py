@@ -13,9 +13,9 @@ _singleton = None
 
 NUM_PINS = const(7)
 
-# the critical "threshold" .. remember, values below this are
+# The critical "threshold" .. remember, values below this
 # might be "light" touches or proximity. 
-THRESHOLD = const(170)
+THRESHOLD = const(200)
 
 class Numpad:
 
@@ -65,15 +65,18 @@ class Numpad:
         # - higher CTPH (high pulse length) helps w/ sensitivity and reliability
         # - decrease prescale to speed up acq, but to a point.
         # - CTPH+CTPL has big impact on overal sample time
+        # - larger pulse prescale => more noise margin, MAYBE; but too slow to do own averaging
         #
         self.tsc = touch.Touch(channels=self.pins, caps=['CS0', 'CS1', 'CS2'],
                         handler=self.irq, float_unused=0,
-                        CTPH=2, CTPL=2, pulse_prescale=8, max_count=16383)
+                        CTPH=12, CTPL=12, pulse_prescale=4, max_count=16383)
 
-        self.debug = 0          # or 1 or 2
+        self.debug = 0                # 0..2
+        self.sensitivity = 1          # 0..2: 0=sensitive, 2=less-so
         self.baseline = None
         self.count = 0
         self.levels = array.array('I', (0 for i in range(NUM_PINS)))
+        self.prev_levels = array.array('I', (0 for i in range(NUM_PINS)))
         self.scan_pin = 0
 
         self.last_event_time = utime.ticks_ms()
@@ -183,61 +186,76 @@ class Numpad:
             from main import dis
             dis.clear()
 
+        # should we remember this as a reference point (of no keys pressed)
+        if self.trigger_baseline:
+            self.baseline = array.array('I', self.prev_levels)
+            self.trigger_baseline = False
+
+            if 0:
+                LABELS = [('col%d' % n) for n in range(3)] + [('row%d' % n) for n in range(4)]
+                print("Baselines:")
+                for idx in range(NUM_PINS):
+                    print('%s: %5d' % (LABELS[idx], self.baseline[idx]))
+
+            return
+
         pressed = set()
-        now = []
-        diffs = []
+        diffs = array.array('I')
+
         for idx in range(NUM_PINS):
-            avg = self.levels[idx]      # not an average anymore
-            now.append(avg)
+            # track a running average, using different weights depending on sensitivity mode
+            if self.sensitivity == 0:
+                avg = self.levels[idx]
+            elif self.sensitivity == 1:
+                avg = (self.prev_levels[idx] + self.levels[idx]) // 2
+            else:
+                avg = ((self.prev_levels[idx]*3) + self.levels[idx]) // 4
+
+            self.prev_levels[idx] = avg
 
             if self.baseline:
                 diff = self.baseline[idx] - avg
+                diffs.append(diff)
 
                 # the critical "threshold" .. remember, values below this are
                 # might be "light" touches or proximity. 
                 if diff > THRESHOLD:
                     pressed.add(idx)
 
+                # handle baseline drift, in one direction at least
+                if diff < 0:
+                    self.baseline[idx] = avg
+
                 if self.debug == 1:
                     print('%s: %5d   %4d   %d' % (LABELS[idx], avg, diff, idx in pressed))
-                    diffs.append(diff)
 
                 if self.debug == 2:
                     from main import dis
                     y = (idx * 6)+ 3
 
-                    if 0:
-                        x = int((avg * 128) / 16384.)
-                        bx = int((self.baseline[idx] * 128) / 16384.)
-
-                        for j in range(4):
-                            dis.dis.line(0, y+j, 128, y+j, 0)
-
-                        dis.dis.pixel(x, y, 1)
-                        dis.dis.pixel(bx, y+1, 1)
-
                     dx = 64 + int(diff/8)
                     dx = min(max(0, dx), 127)
+                    dis.dis.pixel(dx, y+1, 1)
                     dis.dis.pixel(dx, y+2, 1)
+
+                    dx = 64 + int(THRESHOLD/8)
+                    dis.dis.pixel(dx, y, 1)
                     dis.dis.pixel(dx, y+3, 1)
 
-                    if idx == 0:
-                        dx = 64 + int(THRESHOLD/8)
-                        dis.dis.vline(dx, 60, 64, 1)
-
                     dis.show()
+
+        if max(diffs, default=0) < -10 or (len(pressed) > 4):
+            print("auto recal")
+            self.baseline = array.array('I', self.prev_levels)
 
         if self.debug == 1:
             print('\n')
             if diffs:
-                print('min_diff = %d' % min(diffs))
-                print('avg_diff = %d' % (sum(diffs) / len(diffs)))
-
-        # should we remember this as a reference point (of no keys pressed)
-        if self.trigger_baseline:
-            self.baseline = now.copy()
-            self.trigger_baseline = False
-            pressed.clear()
+                print('min_diff = %5d / %5d / %5d' % (
+                    min(diffs),
+                    (sum(diffs) / len(diffs)),
+                    max(diffs)
+                ))
 
         if self.debug == 2: return
 
@@ -269,7 +287,5 @@ class Numpad:
             self._changes.put_nowait(key)
 
             self.last_event_time = utime.ticks_ms()
-
-
     
 # EOF
