@@ -52,7 +52,7 @@ dfu: firmware-signed.dfu
 production.bin: firmware-signed.bin Makefile
 	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o production.bin
 
-# This is release of the bootloader that will be build into the release firmware.
+# This is release of the bootloader that will be built into the release firmware.
 BOOTLOADER_VERSION = 1.0.1
 
 .PHONY: release
