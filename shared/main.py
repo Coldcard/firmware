@@ -135,7 +135,7 @@ def go():
             # preserve GUI state, but want to see where we are
             print("KeyboardInterrupt")
             raise
-        elif is_debug and isinstance(exc, SystemExit):
+        elif isinstance(exc, SystemExit):
             # Ctrl-D and warm reboot cause this, not bugs
             raise
         else:
