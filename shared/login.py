@@ -181,7 +181,7 @@ class LoginUX:
         numpad.start()
 
     async def try_login(self, retry=True):
-        from main import pa
+        from main import pa, numpad
 
         while retry:
             self.reset()
@@ -189,6 +189,8 @@ class LoginUX:
             pin = await self.interact()
 
             if pin is None:
+                # Perhaps they are having trouble with touch pad?
+                numpad.sensitivity = 2
                 continue
             
             pa.setup(pin, self.is_secondary)
