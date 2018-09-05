@@ -400,7 +400,7 @@ consequences.''', escape='4')
 async def start_login_sequence():
     # Boot up login sequence here.
     #
-    from main import pa, settings, dis, loop
+    from main import pa, settings, dis, loop, numpad
     import version
 
     if pa.is_blank():
@@ -432,6 +432,9 @@ async def start_login_sequence():
     # Must read settings after login
     settings.set_key()
     settings.load()
+
+    # Restore a login preference or two
+    numpad.sensitivity = settings.get('sens', numpad.sensitivity)
 
     # Do green-light set immediately after firmware upgrade
     if not pa.is_secondary:
