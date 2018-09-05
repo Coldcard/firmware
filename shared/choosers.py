@@ -59,4 +59,22 @@ def chain_chooser():
 
     return which, [t for _,t in ch], set_chain
 
+def sensitivity_chooser():
+    from main import numpad
+
+    ch = [  'Sensitive',
+            'Normal',
+            'Less Sensitive']
+
+    try:
+        which = numpad.sensitivity
+    except ValueError:
+        which = 0
+
+    def set_it(idx, text):
+        settings.set('sens', idx)
+        numpad.sensitivity = idx
+
+    return which, ch, set_it
+
 # EOF
