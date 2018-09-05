@@ -60,10 +60,25 @@ async def usb_keypad_emu():
                 from machine import soft_reset
                 soft_reset()
 
+            if k == 'T':
+                numpad.debug = 2
+                continue
+            if k == 't':
+                numpad.debug = 1
+                continue
+            if k == 'n':
+                numpad.debug = 0
+                continue
+            if k == 'r':
+                numpad.trigger_baseline = True
+                continue
+            if k == 's':
+                numpad.sensitivity = (numpad.sensitivity + 1) %3
+                print("sensi = %d" % numpad.sensitivity)
+                continue
+
             if k == 'U':
                 # enter DFU
-                #from machine import bootloader
-                #bootloader()
                 import callgate
                 callgate.enter_dfu()
 
