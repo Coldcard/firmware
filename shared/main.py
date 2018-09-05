@@ -94,7 +94,7 @@ async def mainline():
     from ux import the_ux
 
     gc.collect()
-    print("Free mem: %d" % gc.mem_free())
+    #print("Free mem: %d" % gc.mem_free())
 
     while 1:
         await the_ux.interact()
