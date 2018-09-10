@@ -592,7 +592,7 @@ async def import_xprv(*A):
         # unable
         await ux_show_story('''\
 Sorry, wasn't able to find an extended private key to import. It should be at \
-the start of a line, and probably starts with "xprv".''', title="Failed")
+the start of a line, and probably starts with "xprv".''', title="FAILED")
         return
 
     # encode it in our style
@@ -604,25 +604,43 @@ the start of a line, and probably starts with "xprv".''', title="Failed")
    
     # not reached; will do reset. 
                             
+EMPTY_RESTORE_MSG = '''\
+You must clear the wallet seed before restoring a backup because it replaces \
+the seed value and the old seed would be lost.\n\n\
+Visit the advanced menu and choose 'Destroy Seed'.'''
 
 async def restore_everything(*A):
     from main import pa
 
     if not pa.is_secret_blank():
-        await ux_show_story('''\
-You must clear the wallet seed before restoring a backup because it replaces \
-the seed value and the old seed would be lost.\n\n\
-Visit the advanced menu and choose 'Destroy Seed'.''')
+        await ux_show_story(EMPTY_RESTORE_MSG)
         return
 
-    # save everything, using a password, into single encrypted file, typically on SD
+    # restore everything, using a password, from single encrypted 7z file
     fn = await file_picker('Select file containing the backup to be restored, and '
                             'then enter the password.', suffix='.7z', max_size=10000)
 
     if fn:
         with imported('backups') as bk:
             await bk.restore_complete(fn)
-        
+
+async def restore_everything_cleartext(*A):
+    # Asssume no password on backup file; devs and crazy people only
+    from main import pa
+
+    if not pa.is_secret_blank():
+        await ux_show_story(EMPTY_RESTORE_MSG)
+        return
+
+    # restore everything, using NO password, from single text file, like would be wrapped in 7z
+    fn = await file_picker('Select the cleartext file containing the backup to be restored.',
+                             suffix='.txt', max_size=10000)
+
+    if fn:
+        with imported('backups') as bk:
+            prob = await bk.restore_complete_doit(fn, [])
+            if prob:
+                await ux_show_story(prob, title='FAILED')
 
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
