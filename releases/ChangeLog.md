@@ -1,4 +1,15 @@
 
+## 1.0.2
+- Add support for [SLIP-132](https://github.com/satoshilabs/slips/blob/master/slip-0132.md)
+    - yprv/zprv keys can now be imported
+    - public.txt file includes both SLIP-132 and BIP-32 values where needed (segwit cases)
+    - test cases added to match
+- Can create Electrum skeleton wallet for Segwit Native and Segwit P2SH now.
+    - caveat: the plugin is not ready yet for P2SH case, but Segwit native is fine
+- Improvements to backup and restore
+    - can now restore cleartext backups (for devs only!)
+    - fix "Unable to open ... /sd/backup.7z" error
+
 ## 1.0.1
 - Touch sensitivity improvements: now less sensitive (by default) and a new setting can
   change that back to fast and sensitive, or select low sensitivity for noisy environments or
