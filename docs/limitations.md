@@ -1,4 +1,3 @@
-
 # BIP39 Import
 
 - there must be 12, 16 or 24 words in your mnemonic
@@ -9,6 +8,8 @@
 
 - we can import a BIP32 HD-wallet root private key in XPRV format
 - it's assumed to be top-level, and we don't store the parent fingerprint or depth value
+- SLIP-132 format HD-wallet keys are also supported (xprv/yprv/zprv), but we strip
+  the implied address format
 
 # PIN Codes
 
@@ -28,9 +29,9 @@
 
 # Signing / Wallet Types
 
-- with Electrum, we can do only traditional BIP32, p2pkh wallets (not bech32, nor segwit)
-    - because their export/import of unsigned txn is limited
-    - this will improve in time as they make updates
+- with Electrum, we support classic payment addresses (p2pkh), Bech32 Segwit and P2SH/Segwit
+    - however, each wallet must be of a single address type; cannot be mixed (their limitation)
+    - the same Coldcard could be used in each of the three modes (we don't care about address format)
 - with Bitcoin Core (version 0.17?), we can do PSBT transactions, which support everything
 - we don't support coinbase transactions, so don't mine directly into a Coldcard wallet
 
@@ -50,7 +51,7 @@
   P2SH signatures (but you can do your own combine step off-device)
   [This might be handled in future versions, but low priority for now.]
 - Electrum plugin does not support multisig at this time
-- no support for multisig signing yet, but will in a future version.
+- IMPORTANT: no support for multisig signing yet, but we will in a future version.
 
 # SIGHASH types
 
@@ -69,9 +70,8 @@
 
 # Developer / Source Code
 
-- source code can probably only be compiled and developed on Mac OS
-- we have very limited time support other devs geting their setups working
-
+- source code can probably only be compiled and developed on Mac OS and Linux
+- we have very limited time to support other devs geting their setups working
 
 # Change Outputs
 
