@@ -71,7 +71,7 @@
 # Developer / Source Code
 
 - source code can probably only be compiled and developed on Mac OS and Linux
-- we have very limited time to support other devs geting their setups working
+- we have very limited time to support other devs getting their setups working
 
 # Change Outputs
 
