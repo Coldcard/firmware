@@ -65,7 +65,7 @@ DevelopersMenu = [
     MenuItem("Enable USB Disk", f=dev_enable_disk),
     MenuItem("Wipe Patch Area", f=wipe_filesystem),
     MenuItem('Warm Reset', f=reset_self),
-    MenuItem("Restore Ct Bu", f=restore_everything_cleartext),
+    MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
 ]
 
 AdvancedVirginMenu = [
