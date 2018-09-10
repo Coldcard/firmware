@@ -10,6 +10,7 @@ from utils import imported
 from ux import ux_show_story, ux_confirm
 import version, ujson
 from uio import StringIO
+import seed
 
 # we make passwords with this number of words
 num_pw_words = const(12)
@@ -80,6 +81,7 @@ def render_backup_contents():
 
 async def restore_from_dict(vals):
     # Restore from a dict of values. Already JSON decoded.
+    # Reboot on success, return string on failure
     from main import pa, dis, settings
     from pincodes import AE_SECRET_LEN
 
@@ -106,10 +108,8 @@ async def restore_from_dict(vals):
             assert check_xprv == vals['xprv'], 'xprv mismatch'
 
     except Exception as e:
-        raise
-        await ux_show_story('Unable to decode raw_secret and '
-                                'restore the seed value!\n\n\n'+str(e), title='FAILED')
-        return
+        return ('Unable to decode raw_secret and '
+                                'restore the seed value!\n\n\n'+str(e))
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.25)
@@ -146,7 +146,6 @@ async def restore_from_dict(vals):
 
 
 async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
-    import seed
 
     # pick a password: like bip39 but no checksum word
     #
@@ -305,63 +304,71 @@ async def verify_backup_file(fname_or_fd):
 async def restore_complete(fname_or_fd):
     from ux import the_ux
 
-    with imported('seed') as seed:
+    async def done(words):
+        # remove all pw-picking from menu stack
+        seed.WordNestMenu.pop_all()
 
-        async def done(words):
-            # remove all pw-picking from menu stack
-            seed.WordNestMenu.pop_all()
+        prob = await restore_complete_doit(fname_or_fd, words)
 
-            await restore_complete_doit(fname_or_fd, words)
+        if prob:
+            await ux_show_story(prob, title='FAILED')
 
-        # give them a menu to pick from
-        m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
+    # give them a menu to pick from, and start picking
+    m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
 
     the_ux.push(m)
 
 async def restore_complete_doit(fname_or_fd, words):
+    # Open file, read it, maybe decrypt it; return string if any error
+    # - some errors will be shown, None return in that case
+    # - no return if successful (due to reboot)
     from main import dis
+    from files import CardSlot, CardMissingError
 
     # build password
     password = ' '.join(words)
 
-    # filename already picked, taste it and maybe consider using its data.
+    prob = None
+
     try:
-        fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
-    except:
-        await ux_show_story('Unable to open backup file. \n\n' + str(fname_or_fd))
+        with CardSlot() as card:
+            # filename already picked, taste it and maybe consider using its data.
+            try:
+                fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
+            except:
+                return 'Unable to open backup file.\n\n' + str(fname_or_fd)
+
+            try:
+                if not words:
+                    contents = fd.read()
+                else:
+                    try:
+                        compat7z.check_file_headers(fd)
+                    except Exception as e:
+                        return 'Unable to read backup file. Has it been touched?\n\nError: ' \
+                                            + str(e)
+
+                    dis.fullscreen("Decrypting...")
+                    try:
+                        zz = compat7z.Builder()
+                        fname, contents = zz.read_file(fd, password,
+                                                progress_fcn=dis.progress_bar_show)
+
+                        # simple quick sanity checks
+                        assert fname == 'ckcc-backup.txt'
+                        assert contents[0:1] == b'#' and contents[-1:] == b'\n'
+
+                    except Exception as e:
+                        # assume everything here is "password wrong" errors
+                        #print("pw wrong?  %s" % e)
+
+                        return ('Unable to decrypt backup file. Incorrect password?'
+                                                '\n\nTried:\n\n' + password)
+            finally:
+                fd.close()
+    except CardMissingError:
+        await needs_microsd()
         return
-
-    try:
-        if not words:
-            contents = fd.read()
-        else:
-            try:
-                compat7z.check_file_headers(fd)
-            except Exception as e:
-                await ux_show_story('Unable to read backup file. Has it been touched?'
-                                        '\n\nError: ' + str(e))
-                return
-
-            dis.fullscreen("Decrypting...")
-            try:
-                zz = compat7z.Builder()
-                fname, contents = zz.read_file(fd, password, progress_fcn=dis.progress_bar_show)
-
-                assert fname == 'ckcc-backup.txt', "Wrong filename in archive"
-
-                # simple quick sanity check
-                assert contents[0:1] == b'#' and contents[-1:] == b'\n', "Corrupted after decrypt"
-
-            except Exception as e:
-                # assume everything here is "password wrong" errors
-                print("pw wrong?  %s" % e)
-
-                await ux_show_story('Unable to decrypt backup file. Incorrect password?'
-                                        '\n\nTried:\n\n' + password)
-
-                return
-    finally:
-        fd.close()
 
     vals = {}
     for line in contents.decode().split('\n'):
@@ -377,7 +384,8 @@ async def restore_complete_doit(fname_or_fd, words):
             print("unable to decode line: %r" % line)
             # but keep going!
 
-    await restore_from_dict(vals)
+    # this leads to reboot if it works, else errors shown, etc.
+    return await restore_from_dict(vals)
 
 def generate_public_contents():
     # Generate public details about wallet.
