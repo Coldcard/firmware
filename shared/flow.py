@@ -65,6 +65,7 @@ DevelopersMenu = [
     MenuItem("Enable USB Disk", f=dev_enable_disk),
     MenuItem("Wipe Patch Area", f=wipe_filesystem),
     MenuItem('Warm Reset', f=reset_self),
+    MenuItem("Restore Ct Bu", f=restore_everything_cleartext),
 ]
 
 AdvancedVirginMenu = [
@@ -77,6 +78,7 @@ AdvancedVirginMenu = [
 ]
 
 DebugFunctionsMenu = [
+    #         xxxxxxxxxxxxxxxx
     MenuItem('Debug: assert', f=debug_assert),
     MenuItem('Debug: except', f=debug_except),
     MenuItem('Check: BL FW', f=check_firewall_read),
