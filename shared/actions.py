@@ -446,7 +446,7 @@ async def start_login_sequence():
     # - can happen for first-time login of duress wallet
     # - might indicate lost settings?
     # - these values are important to USB protocol
-    if not (settings.get('xfp', 0) and settings.get('xpub', 0)):
+    if not (settings.get('xfp', 0) and settings.get('xpub', 0)) and not pa.is_secret_blank():
         try:
             import stash
 
