@@ -506,19 +506,41 @@ that you will need to import other wallet software to track balance.''' + SENSIT
     with imported('backups') as bk:
         await bk.make_summary_file()
 
+
 async def electrum_skeleton(*A):
     # save xpub, and some other public details into a file
-    if not await ux_confirm('''\
-Saves a skeleton wallet file which Electrum can open, on to MicroSD. \
-You can then open that file in Electrum without ever connecting the
-Coldcard to a computer.''' + SENSITIVE_NOT_SECRET):
+    import chains
+
+    ch = chains.current_chain()
+
+    if not await ux_show_story('''\
+This saves a skeleton Electrum wallet file onto the MicroSD card. \
+You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
+Choose an address type for the wallet on the next screen.
+''' + SENSITIVE_NOT_SECRET):
         return
 
-    # TODO: pick segwit or classic derivation+such
+    # pick segwit or classic derivation+such
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    from menu import MenuSystem, MenuItem
 
-    # pick a semi-random file name, save it.
+    # Ordering and terminology from similar screen in Electrum. I prefer
+    # 'classic' instead of 'legacy' personallly.
+    rv = []
+
+    if AF_CLASSIC in ch.slip132:
+        rv.append(MenuItem("Legacy (P2PKH)", f=electrum_skeleton_step2, arg=AF_CLASSIC))
+    if AF_P2WPKH_P2SH in ch.slip132:
+        rv.append(MenuItem("P2SH-Segwit", f=electrum_skeleton_step2, arg=AF_P2WPKH_P2SH))
+    if AF_P2WPKH in ch.slip132:
+        rv.append(MenuItem("Native Segwit", f=electrum_skeleton_step2, arg=AF_P2WPKH))
+
+    return MenuSystem(rv)
+
+async def electrum_skeleton_step2(_1, _2, item):
+    # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
-        await bk.make_electrum_wallet(is_segwit=False)
+        await bk.make_electrum_wallet(addr_type=item.arg)
 
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
@@ -564,10 +586,10 @@ async def import_xprv(*A):
 
     if not fn: return
 
-    node, chain = None, None
+    node, chain, addr_fmt = None, None, None
 
     # open file and do it
-    pat=ure.compile(r'[xtyz]prv[A-Za-z0-9]+')
+    pat=ure.compile(r'.prv[A-Za-z0-9]+')
     with CardSlot() as card:
         with open(fn, 'rt') as fd:
             for ln in fd.readlines():
@@ -579,12 +601,16 @@ async def import_xprv(*A):
                 found = found.group(0)
 
                 for ch in chains.AllChains:
-                    try:
-                        node = tcc.bip32.deserialize(found, ch.b32_version_pub, ch.b32_version_priv)
-                        chain = ch
-                        break
-                    except ValueError:
-                        pass
+                    for kk in ch.slip132:
+                        if found[0] == ch.slip132[kk].hint:
+                            try:
+                                node = tcc.bip32.deserialize(found,
+                                            ch.slip132[kk].pub, ch.slip132[kk].priv)
+                                chain = ch
+                                addr_fmt = kk
+                                break
+                            except ValueError:
+                                pass
                 if node:
                     break
 
@@ -598,6 +624,10 @@ the start of a line, and probably starts with "xprv".''', title="FAILED")
     # encode it in our style
     d = dict(chain=chain.ctype, raw_secret=b2a_hex(SecretStash.encode(xprv=node)))
     node.blank()
+
+    # TODO: capture the address format implied by SLIP32 version bytes
+    #addr_fmt = 
+    
 
     # restore as if it was a backup (code reuse)
     await restore_from_dict(d)

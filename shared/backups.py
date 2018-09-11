@@ -395,6 +395,7 @@ def generate_public_contents():
     # or #comments
     # but value is JSON
     from main import settings
+    from public_constants import AF_CLASSIC
 
     num_rx = 5
 
@@ -424,6 +425,9 @@ Derived public keys, as may be needed for different systems:
             if '{coin_type}' in path:
                 path = path.replace('{coin_type}', str(chain.b44_cointype))
 
+            if '{' in name:
+                name = name.format(core_name=chain.core_name)
+
             yield ('''## For {name}: {path}\n\n'''.format(name=name, path=path))
 
             submaster, kids = path.split('/{', 1)
@@ -432,6 +436,9 @@ Derived public keys, as may be needed for different systems:
             node = sv.derive_path(submaster)
 
             yield ("%s => %s\n" % (submaster, chain.serialize_public(node)))
+            if addr_fmt != AF_CLASSIC and (addr_fmt in chain.slip132):
+                yield ("# SLIP-132 style\n%s => %s\n" % (
+                            submaster, chain.serialize_public(node, addr_fmt)))
 
             yield ('''\n... first %d receive addresses (account=0, change=0):\n\n''' % num_rx)
 
@@ -474,25 +481,33 @@ async def make_summary_file(fname_pattern='public.txt'):
     msg = '''Summary file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
-def generate_electrum_wallet(is_segwit):
+def generate_electrum_wallet(addr_type):
     # Generate line-by-line JSON details about wallet.
     #
     # Much reverse enginerring of Electrum here. It's a complex
     # legacy file format.
     from main import settings
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
     chain = chains.current_chain()
 
     xfp = settings.get('xfp')
 
-    if is_segwit:
-        derive = "m/84'/{coin_type}'/{account}'".format(account=0, coin_type=chain.b44_cointype)
+    # Must get the derivation path, and the SLIP32 version bytes right!
+    if addr_type == AF_CLASSIC:
+        mode = 44
+    elif addr_type == AF_P2WPKH:
+        mode = 84
+    elif addr_type == AF_P2WPKH_P2SH:
+        mode = 49
     else:
-        derive = "m/44'/{coin_type}'/{account}'".format(account=0, coin_type=chain.b44_cointype)
+        raise ValueError(addr_type)
+
+    derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
+                                    account=0, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
-
-        top = chain.serialize_public(sv.derive_path(derive))
+        top = chain.serialize_public(sv.derive_path(derive), addr_type)
 
     # most values are nicely defaulted, and for max forward compat, don't want to set
     # anything more than I need to
@@ -509,7 +524,7 @@ def generate_electrum_wallet(is_segwit):
         
     return rv
 
-async def make_electrum_wallet(fname_pattern='new-wallet.json', is_segwit=False):
+async def make_electrum_wallet(addr_type, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
     from main import dis, pa, settings
@@ -518,7 +533,7 @@ async def make_electrum_wallet(fname_pattern='new-wallet.json', is_segwit=False)
 
     dis.fullscreen('Generating...')
 
-    body = generate_electrum_wallet(is_segwit)
+    body = generate_electrum_wallet(addr_type)
 
     # choose a filename
         
@@ -537,7 +552,7 @@ async def make_electrum_wallet(fname_pattern='new-wallet.json', is_segwit=False)
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''New Electrum wallet file written:\n\n%s''' % nice
+    msg = '''Electrum wallet file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
 # EOF
