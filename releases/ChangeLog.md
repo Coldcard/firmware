@@ -5,7 +5,10 @@
     - public.txt file includes both SLIP-132 and BIP-32 values where needed (segwit cases)
     - test cases added to match
 - Can create Electrum skeleton wallet for Segwit Native and Segwit P2SH now.
-    - caveat: the plugin is not ready yet for P2SH case, but Segwit native is fine
+    - caveat: the plugin is not ready yet for P2SH/Segwit, but Segwit native is fine
+- Improvements in 'public.txt' output:
+    - add SLIP-132 values where we can
+    - correct names when used for Litecoin
 - Improvements to backup and restore
     - can now restore cleartext backups (for devs only!)
     - fix "Unable to open ... /sd/backup.7z" error
