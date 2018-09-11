@@ -48,8 +48,16 @@ def test_public(sim_execfile):
 
             sk = node_prv.subkey_for_path(subpath[2:])
 
-            if result[0:2] in {'tp', 'xp'}:
-                expect = BIP32Node.from_wallet_key(result)
+            if result[1:4] == 'pub':
+                try:
+                    expect = BIP32Node.from_wallet_key(result)
+                except Exception as e:
+                    if 'unknown prefix' in str(e):
+                        # pycoin not yet ready for SLIP-132
+                        assert result[0] != 'x'
+                        print("SKIP: " + ln)
+                        continue
+                    raise
                 assert sk.hwif(as_private=False) == result
             elif result[0] in '1mn':
                 assert result == sk.address(False)
@@ -89,5 +97,9 @@ def test_addr_decode(unit_test):
 def test_clear_seed(unit_test):
     # just testing the test?
     unit_test('devtest/clear_seed.py')
+
+def test_slip132(unit_test):
+    # slip132 ?pub stuff
+    unit_test('devtest/unit_slip132.py')
 
 # EOF
