@@ -7,6 +7,11 @@ import tcc
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
 from serializations import hash160
+from ucollections import namedtuple
+
+# See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md> 
+# for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
+Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 
 # See also:
 # - <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
@@ -22,6 +27,7 @@ class ChainsBase:
 
     curve = 'secp256k1'
     menu_name = None        # use 'name' if this isn't defined
+    core_name = None        # name of chain's "core" p2p software
 
     # b44_cointype comes from
     #    <https://github.com/satoshilabs/slips/blob/master/slip-0044.md>
@@ -33,14 +39,14 @@ class ChainsBase:
         return cls.name.encode() + b' Signed Message:\n'
 
     @classmethod
-    def serialize_private(cls, node):
+    def serialize_private(cls, node, addr_fmt=AF_CLASSIC):
         # output a xprv
-        return node.serialize_private(cls.b32_version_priv)
+        return node.serialize_private(cls.slip132[addr_fmt].priv)
 
     @classmethod
-    def serialize_public(cls, node):
+    def serialize_public(cls, node, addr_fmt=AF_CLASSIC):
         # output a xpub
-        return node.serialize_public(cls.b32_version_pub)
+        return node.serialize_public(cls.slip132[addr_fmt].pub)
 
     @classmethod
     def address(cls, node, addr_fmt):
@@ -130,9 +136,15 @@ class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
     ctype = 'BTC'
     name = 'Bitcoin'
+    core_name = 'Bitcoin Core'
 
-    b32_version_pub  = 0x0488B21E
-    b32_version_priv = 0x0488ADE4
+    slip132 = {
+        AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
+        AF_P2WPKH_P2SH: Slip132Version(0x049d7cb2, 0x049d7878, 'y'),
+        AF_P2WPKH:      Slip132Version(0x04b24746, 0x04b2430c, 'z'),
+    }
+    #b32_version_pub  = 0x0488B21E
+    #b32_version_priv = 0x0488ADE4
 
     bech32_hrp = 'bc'
 
@@ -147,8 +159,11 @@ class BitcoinTestnet(BitcoinMain):
     name = 'Bitcoin Testnet'
     menu_name = 'Testnet: BTC'
 
-    b32_version_pub  = 0x043587CF
-    b32_version_priv = 0x04358394
+    slip132 = {
+        AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),
+        AF_P2WPKH_P2SH: Slip132Version(0x044a5262, 0x044a4e28, 'u'),
+        AF_P2WPKH:      Slip132Version(0x045f1cf6, 0x045f18bc, 'v'),
+    }
 
     bech32_hrp = 'tb'
 
@@ -164,11 +179,17 @@ class BitcoinTestnet(BitcoinMain):
 
 class LitecoinMain(ChainsBase):
     # see <https://github.com/litecoin-project/litecoin/blob/master/src/chainparams.cpp#L134>
+    # but SLIP32 values taken from the SLIP, not their source ... all this is UNTESTED
     ctype = 'LTC'
     name = 'Litecoin'
+    core_name = 'Litecoin Core'
 
-    b32_version_pub  = 0x0488B21E
-    b32_version_priv = 0x0488ADE4
+    # See <https://github.com/bitcoinjs/bitcoinjs-lib/pull/819>
+    # where Litecoin (coblee) says they'll support both xprv/xpub and Ltpv/Ltub values.
+    slip132 = {
+        AF_CLASSIC:     Slip132Version(0x019da462, 0x019d9cfe, 'L'),
+        AF_P2WPKH_P2SH: Slip132Version(0x01b26ef6, 0x01b26792, 'M')
+    }
 
     bech32_hrp = 'ltc'
 
@@ -184,8 +205,12 @@ class LitecoinTestnet(LitecoinMain):
     name = 'Litecoin Testnet'
     menu_name = 'Testnet: LTC'
 
-    b32_version_pub  = 0x043587CF
-    b32_version_priv = 0x04358394
+    # See <https://github.com/bitcoinjs/bitcoinjs-lib/pull/819>
+    # where Litecoin (coblee) says they'll support both xprv/xpub and Ltpv/Ltub values.
+    slip132 = {
+        AF_CLASSIC:     Slip132Version(0x0436f6e1, 0x0436ef7d, 't'),
+        #AF_P2WPKH_P2SH: Slip132Version(, , '')      # not listed in SLIP132?
+    }
 
     b58_addr    = bytes([111])
     b58_script  = bytes([196])
@@ -233,8 +258,9 @@ def current_chain():
 # see bip49 for meaning of the meta vars
 CommonDerivations = [
     # name, path.format(), addr format
-    ( 'Bitcoin Core', "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
-    ( 'Bitcoin Core (Segregated Witness, P2PKH)', "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
+    ( '{core_name}', "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
+    ( '{core_name} (Segregated Witness, P2PKH)',
+                "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
     ( 'Electrum (not BIP44)', "m/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
