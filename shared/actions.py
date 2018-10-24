@@ -41,7 +41,7 @@ async def show_bag_number(*a):
     await ux_show_story('''\
 Your new Coldcard should have arrived SEALED in a bag with the above number. Please take a moment to confirm the number and look for any signs of tampering.
 \n
-Take pictures and contact support@coinkite if you have concerns.''', title=bn)
+Take pictures and contact support@coinkite.com if you have concerns.''', title=bn)
 
 async def accept_terms(*a):
     # do nothing if they have accepted the terms once (ever), otherwise
@@ -277,7 +277,7 @@ Pick the main wallet's PIN code now. Be more clever, but an example:
 123-4567
 
 It has two parts: prefix (123-) and suffix (-4567). \
-Each part must between 2 to 6 digits long. Total length \
+Each part must be between 2 and 6 digits long. Total length \
 can be as long as 12 digits.
 
 The prefix part determines the anti-phishing words you will \
