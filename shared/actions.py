@@ -58,7 +58,7 @@ Read the full document at:
 
 https://
   coldcardwallet
-  .com/terms
+  .com/legal
 
 Press OK to accept terms and continue.""", escape='7')
 
