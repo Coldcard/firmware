@@ -53,13 +53,10 @@ async def accept_terms(*a):
     while 1:
         ch = await ux_show_story("""\
 By using this product, you are accepting our Terms of Sale and Use.
-
 Read the full document at:
-
 https://
   coldcardwallet
   .com/legal
-
 Press OK to accept terms and continue.""", escape='7')
 
         if ch == 'y':
@@ -79,15 +76,10 @@ async def view_ident(*a):
 
     tpl = '''\
 Master Key Fingerprint:
-
   {xfp:08x}
-
 USB Serial Number:
-
   {serial}
-
 Extended Master Key:
-
 {xpub}
 '''
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
@@ -161,7 +153,7 @@ async def dev_enable_protocol(*a):
 
     cur = pyb.usb_mode()
     if cur and 'HID' in cur:
-        await ux_show_story('Coldcard USB protocol is already enabled (HID mode)')
+        await ux_show_story('Coldcard USB protocol is already enabled (HID mode).')
         return
 
     # might need to reset stuff?
@@ -181,7 +173,7 @@ async def microsd_upgrade(*a):
     # - copy it over (slow)
     # - reboot into bootloader, which finishes install
 
-    fn = await file_picker('Pick firmware image to use (.DFU)', suffix='.dfu', min_size=0x7800)
+    fn = await file_picker('Pick firmware image to use (.DFU).', suffix='.dfu', min_size=0x7800)
 
     if not fn: return
 
@@ -272,17 +264,13 @@ async def initial_pin_setup(*a):
     from login import LoginUX
     lll = LoginUX()
     pin = await lll.get_new_pin('Choose PIN', '''\
-Pick the main wallet's PIN code now. Be more clever, but an example:
-
+Pick the main wallet's PIN code now. Be more clever, but an example is:
 123-4567
-
 It has two parts: prefix (123-) and suffix (-4567). \
-Each part must be between 2 and 6 digits long. Total length \
+Each part must be between 2-6 digits long. Total length \
 can be as long as 12 digits.
-
 The prefix part determines the anti-phishing words you will \
 see each time you login.
-
 Your new PIN protects access to \
 this Coldcard device and is not a factor in the wallet's \
 seed words or private keys.
@@ -356,9 +344,7 @@ async def virgin_help(*a):
 OK = Checkmark
 X = Cancel/Back
 0 = Go to top
-
 More on our website:
-
  coldcardwallet
            .com
 """)
@@ -380,10 +366,10 @@ async def clear_seed(*a):
     from main import pa
 
     if pa.has_duress_pin():
-        await ux_show_story('''Please empty the duress wallet, and clear the duress PIN before clearing main seed.''')
+        await ux_show_story('''Please empty the duress wallet and clear the duress PIN before clearing main seed.''')
         return
 
-    if not await ux_confirm('''Wipe seed words and reset wallet. All funds will be lost. You better have a backup of the seed words.'''):
+    if not await ux_confirm('''Wipe seed words and reset wallet. All funds will be lost. You better have a backup of the seed words!'''):
         return await ux_aborted()
 
     ch = await ux_show_story('''Are you REALLY sure though???\n\n\
@@ -489,7 +475,6 @@ def goto_top_menu():
     return m
 
 SENSITIVE_NOT_SECRET = '''
-
 The file created is sensitive--in terms of privacy--but should not \
 compromise your funds directly.'''
 
@@ -617,8 +602,8 @@ async def import_xprv(*A):
     if not node:
         # unable
         await ux_show_story('''\
-Sorry, wasn't able to find an extended private key to import. It should be at \
-the start of a line, and probably starts with "xprv".''', title="FAILED")
+Sorry, could not find an extended private key to import. It should be at \
+the start of a line and probably starts with "xprv".''', title="FAILED")
         return
 
     # encode it in our style
@@ -635,8 +620,8 @@ the start of a line, and probably starts with "xprv".''', title="FAILED")
     # not reached; will do reset. 
                             
 EMPTY_RESTORE_MSG = '''\
-You must clear the wallet seed before restoring a backup because it replaces \
-the seed value and the old seed would be lost.\n\n\
+You must clear the wallet seed before restoring a backup, because it replaces \
+the seed value, and the old seed would be lost.\n\n\
 Visit the advanced menu and choose 'Destroy Seed'.'''
 
 async def restore_everything(*A):
@@ -676,7 +661,7 @@ async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
 used for code patches. Does not affect funds, settings or seed words. \
-Does not affect SD card, if any.'''):
+Does not affect MicroSD card, if any.'''):
         return
 
     from files import wipe_flash_filesystem
@@ -686,7 +671,7 @@ Does not affect SD card, if any.'''):
 
 async def list_files(*A):
     # list files, don't do anything with them?
-    fn = await file_picker('List files on MicroSD')
+    fn = await file_picker('List files on MicroSD.')
     return
 
 async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None):
@@ -760,7 +745,7 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
         if suffix:
             msg += 'The filename must end in "%s". ' % suffix
 
-        msg += '\n\nMaybe insert (another) SD card and try again?'
+        msg += '\n\nMaybe insert (another) MicroSD card and try again?'
 
         await ux_show_story(msg)
         return
@@ -839,12 +824,10 @@ async def ready2sign(*a):
     if not choices:
         await ux_show_story("""\
 Coldcard is ready to sign spending transactions!
-
-Put the proposed transaction onto MicroSD card \
-in PSBT format (Partially Signed Bitcoin Transaction) \
+Put the proposed transaction onto MicroSD card, \
+in PSBT format (Partially Signed Bitcoin Transaction); \
 or upload a transaction to be signed \
 from your wallet software (Electrum) or command line tools. \
-
 You will always be prompted to confirm the details before any signature is performed.
 """)
         return
@@ -885,12 +868,12 @@ async def pin_changer(_1, _2, item):
                         'from main seed backup, but not as easily.'),
             'secondary': ('Second PIN',
                         'This PIN protects the "secondary" wallet that can be used to '
-                         'segregate funds or other banking purposes. This other wallet is '
+                         'segregate funds or for other banking purposes. This other wallet is '
                          'completely independant of the primary.'),
             'brickme': ('Brickme PIN',
                        'Use of this special PIN code at any prompt will destroy the '
                        'Coldcard completely. It cannot be reused or salvaged, and '
-                       'the secrets it held are destroyed forever.\n\nDO NOT TEST THIS!'),
+                       'the secrets it held will be destroyed forever.\n\nDO NOT TEST THIS!'),
     }
 
     if pa.is_secondary:
@@ -918,8 +901,7 @@ async def pin_changer(_1, _2, item):
 
     # standard threats for all PIN's
     msg += '''\n\n\
-We strongly recommend all PIN codes used be unique between each other.
-
+We strongly recommend all PIN codes used be unique, amongst each other.
 There is absolutely no means to recover a lost or forgotten PIN, so please write them down!
 '''
     if not is_login_pin:
@@ -1046,18 +1028,13 @@ async def show_version(*a):
 
     msg = '''\
 Coldcard Firmware
-
   {rel}
   {built}
-
-
 Bootloader:
   {bl}
   {chk}
-
 Serial:
   {ser}
-
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, ser=version.serial_number()))
@@ -1097,7 +1074,6 @@ async def set_highwater(*a):
         return
 
     ok = await ux_confirm('''Mark current version (%s) as the minimum, and prevent any downgrades below this version.
-
 Rarely needed as critical security updates will set this automatically.''' % have)
 
     if not ok: return
