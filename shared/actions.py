@@ -1052,12 +1052,10 @@ Coldcard Firmware
 
 
 Bootloader:
-
   {bl}
   {chk}
 
 Serial:
-
   {ser}
 
 '''
