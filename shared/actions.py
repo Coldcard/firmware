@@ -41,7 +41,7 @@ async def show_bag_number(*a):
     await ux_show_story('''\
 Your new Coldcard should have arrived SEALED in a bag with the above number. Please take a moment to confirm the number and look for any signs of tampering.
 \n
-Take pictures and contact support@coinkite.com if you have concerns.''', title=bn)
+Take pictures and contact support@coinkite if you have concerns.''', title=bn)
 
 async def accept_terms(*a):
     # do nothing if they have accepted the terms once (ever), otherwise
