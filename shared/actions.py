@@ -53,10 +53,13 @@ async def accept_terms(*a):
     while 1:
         ch = await ux_show_story("""\
 By using this product, you are accepting our Terms of Sale and Use.
+
 Read the full document at:
+
 https://
   coldcardwallet
   .com/legal
+
 Press OK to accept terms and continue.""", escape='7')
 
         if ch == 'y':
@@ -76,10 +79,15 @@ async def view_ident(*a):
 
     tpl = '''\
 Master Key Fingerprint:
+
   {xfp:08x}
+
 USB Serial Number:
+
   {serial}
+
 Extended Master Key:
+
 {xpub}
 '''
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
@@ -265,12 +273,16 @@ async def initial_pin_setup(*a):
     lll = LoginUX()
     pin = await lll.get_new_pin('Choose PIN', '''\
 Pick the main wallet's PIN code now. Be more clever, but an example is:
+
 123-4567
+
 It has two parts: prefix (123-) and suffix (-4567). \
 Each part must be between 2-6 digits long. Total length \
 can be as long as 12 digits.
+
 The prefix part determines the anti-phishing words you will \
 see each time you login.
+
 Your new PIN protects access to \
 this Coldcard device and is not a factor in the wallet's \
 seed words or private keys.
@@ -344,7 +356,9 @@ async def virgin_help(*a):
 OK = Checkmark
 X = Cancel/Back
 0 = Go to top
+
 More on our website:
+
  coldcardwallet
            .com
 """)
@@ -475,7 +489,8 @@ def goto_top_menu():
     return m
 
 SENSITIVE_NOT_SECRET = '''
-The file created is sensitive--in terms of privacy--but should not \
+
+The file created is sensitive (in terms of privacy) but should not \
 compromise your funds directly.'''
 
 
@@ -602,7 +617,7 @@ async def import_xprv(*A):
     if not node:
         # unable
         await ux_show_story('''\
-Sorry, could not find an extended private key to import. It should be at \
+Sorry, couldn't find an extended private key to import. It should be at \
 the start of a line and probably starts with "xprv".''', title="FAILED")
         return
 
@@ -824,10 +839,12 @@ async def ready2sign(*a):
     if not choices:
         await ux_show_story("""\
 Coldcard is ready to sign spending transactions!
+
 Put the proposed transaction onto MicroSD card, \
 in PSBT format (Partially Signed Bitcoin Transaction); \
 or upload a transaction to be signed \
 from your wallet software (Electrum) or command line tools. \
+
 You will always be prompted to confirm the details before any signature is performed.
 """)
         return
@@ -902,6 +919,7 @@ async def pin_changer(_1, _2, item):
     # standard threats for all PIN's
     msg += '''\n\n\
 We strongly recommend all PIN codes used be unique, amongst each other.
+
 There is absolutely no means to recover a lost or forgotten PIN, so please write them down!
 '''
     if not is_login_pin:
@@ -1028,13 +1046,20 @@ async def show_version(*a):
 
     msg = '''\
 Coldcard Firmware
+
   {rel}
   {built}
+
+
 Bootloader:
+
   {bl}
   {chk}
+
 Serial:
+
   {ser}
+
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, ser=version.serial_number()))
@@ -1074,6 +1099,7 @@ async def set_highwater(*a):
         return
 
     ok = await ux_confirm('''Mark current version (%s) as the minimum, and prevent any downgrades below this version.
+
 Rarely needed as critical security updates will set this automatically.''' % have)
 
     if not ok: return
