@@ -345,30 +345,6 @@ def test_io_size(io, fake_txn, try_sign, dev):
         msg = ee.value.args[0]
         assert ('Missing UTXO' in msg) or \
                 ('require subpath' in msg)
-
-# not reliable, and not the right way to size the max
-def XXX_test_max_size(simple_fake_txn, try_sign):
-    # 670/670/500 => 392815 bytes
-    psbt = simple_fake_txn(670, 670, fat=500)
-    open('debug/last.psbt', 'wb').write(psbt)
-    try_sign(psbt, False)
-
-
-def find_max_size(simple_fake_txn):
-    # construct a psbt close to MAX_TXN_LEN in size
-
-    for n in range(300, 1000):
-        p = simple_fake_txn(n, n, fat=500)
-        print("%d => %s bytes" % (n, len(p)))
-        if len(p) > MAX_TXN_LEN: break
-
-
-def XXX_test_txn_wait_for_confirm(simple_fake_txn, try_sign):
-
-    psbt = simple_fake_txn(1, 12)
-    #open('debug/last.psbt', 'wb').write(psbt)
-
-    try_sign(psbt, None)
     
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 def test_real_signing(fake_txn, try_sign, dev, num_ins):
