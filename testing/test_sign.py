@@ -766,5 +766,41 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
         signed = end_sign(accept=True)
     assert 'looks completely signed' in str(ee)
 
+def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile):
+
+    # Example from SomberNight: we can sign it, but signature won't be accepted by
+    # network because the PSBT lies about the UTXO amount and tries to give away to miners,
+    # as overly-large fee.
+
+    set_seed_words('fault lava rice chest uncle exclude power tornado catalog stool'
+                    ' swear rival sun aspect oyster deer pepper exchange scrap toward'
+                    ' mix second world shaft')
+
+    in_psbt = a2b_hex(open('data/snight-example.psbt', 'rb').read()[:-1])
+
+    for fin in (False, True):
+        start_sign(in_psbt, finalize=fin)
+
+        time.sleep(.1)
+        _, story = cap_story()
+
+        #print(story)
+
+        assert 'Network fee:\n0.00000500 XTN' in story
+
+        ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[True], 
+                    miner_fee=500, warnings_expected=0,
+                    lock_time=1442308, total_value_out=99500,
+                    total_value_in=100000)
+
+        # check we understood it right
+        rv= sim_exec('import main; main.EXPECT = %r; ' % ex)
+        if rv: pytest.fail(rv)
+        rv = sim_execfile('devtest/check_decode.py')
+        if rv: pytest.fail(rv)
+
+        signed = end_sign(True, finalize=fin)
+
+        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wb').write(signed)
 
 # EOF
