@@ -72,7 +72,7 @@ class Numpad:
                         CTPH=12, CTPL=12, pulse_prescale=4, max_count=16383)
 
         self.debug = 0                # 0..2
-        self.sensitivity = 1          # 0..2: 0=sensitive, 2=less-so
+        self.sensitivity = 1          # 0..2: 0=sensitive, 2=less-so, 3=new level, etc
         self.baseline = None
         self.count = 0
         self.levels = array.array('I', (0 for i in range(NUM_PINS)))
@@ -204,12 +204,16 @@ class Numpad:
 
         for idx in range(NUM_PINS):
             # track a running average, using different weights depending on sensitivity mode
-            if self.sensitivity == 0:
+            if self.sensitivity == 0:       # "sensitive"
                 avg = self.levels[idx]
-            elif self.sensitivity == 1:
+            elif self.sensitivity == 1:     # "normal"
                 avg = (self.prev_levels[idx] + self.levels[idx]) // 2
-            else:
+            elif self.sensitivity == 2:     # "less sensitive"
                 avg = ((self.prev_levels[idx]*3) + self.levels[idx]) // 4
+            elif self.sensitivity == 3:     # "med. sensitive"
+                avg = ((self.prev_levels[idx]*2) + self.levels[idx]) // 3
+            else:   #elif self.sensitivity == 4:     # more sensitive
+                avg = int((self.prev_levels[idx]*0.25) + (self.levels[idx] * 0.75))
 
             self.prev_levels[idx] = avg
 
