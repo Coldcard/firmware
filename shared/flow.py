@@ -37,6 +37,7 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Touch', chooser=sensitivity_chooser),
+    MenuItem("Max Network Fee", chooser=max_fee_chooser),
     MenuItem('Blockchain', chooser=chain_chooser),
     MenuItem('Change PIN code', menu=which_pin_menu),
 ]
