@@ -8,7 +8,10 @@ from stash import SecretStash, SensitiveValues
 
 tn = chains.BitcoinTestnet
 
-node = tcc.bip32.deserialize(main.TPRV, tn.b32_version_pub, tn.b32_version_priv)
+b32_version_pub  = 0x043587cf
+b32_version_priv = 0x04358394
+
+node = tcc.bip32.deserialize(main.TPRV, b32_version_pub, b32_version_priv)
 assert node
 
 if settings.get('xfp') == node.my_fingerprint():
