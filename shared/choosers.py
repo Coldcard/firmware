@@ -5,6 +5,23 @@
 #
 from main import settings
 
+def max_fee_chooser():
+    from psbt import DEFAULT_MAX_FEE_PERCENTAGE
+    limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
+
+    ch = [  '10% (default)', '25%', '50%', 'no limit']
+    va = [ 10, 25, 50, -1]
+
+    try:
+        which = va.index(limit)
+    except ValueError:
+        which = 0
+
+    def set(idx, text):
+        settings.set('fee_limit', va[idx])
+
+    return which, ch, set
+
 def idle_timeout_chooser():
     from ux import DEFAULT_IDLE_TIMEOUT
 
