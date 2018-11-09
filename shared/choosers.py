@@ -97,6 +97,16 @@ def sensitivity_chooser():
         settings.set('sens', value)
         numpad.sensitivity = value
 
+        # save also for next login time.
+        from main import pa
+        from nvstore import SettingsObject
+
+        if not pa.is_secondary:
+            tmp = SettingsObject()
+            tmp.set('sens', value)
+            tmp.save()
+            del tmp
+
     return which, [n for k,n in ch], set_it
 
 # EOF

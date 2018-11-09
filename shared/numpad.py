@@ -72,7 +72,7 @@ class Numpad:
                         CTPH=12, CTPL=12, pulse_prescale=4, max_count=16383)
 
         self.debug = 0                # 0..2
-        self.sensitivity = 1          # 0..2: 0=sensitive, 2=less-so, 3=new level, etc
+        self.sensitivity = 1          # 0..4: random order now, see chooser.py
         self.baseline = None
         self.count = 0
         self.levels = array.array('I', (0 for i in range(NUM_PINS)))
