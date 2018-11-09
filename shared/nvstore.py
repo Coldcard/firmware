@@ -48,7 +48,7 @@ _tmp = nvstore_buf
 
 class SettingsObject:
 
-    def __init__(self, loop):
+    def __init__(self, loop=None):
         self.loop = loop
         self.current = {}
         self.is_dirty = 0
@@ -202,7 +202,7 @@ class SettingsObject:
 
     def changed(self):
         self.is_dirty += 1
-        if self.is_dirty < 2:
+        if self.is_dirty < 2 and self.loop:
             self.loop.call_later_ms(250, self.write_out())
 
     def put(self, kn, v):
