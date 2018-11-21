@@ -1,12 +1,12 @@
 
 
-    xx
-   xxx
-  xxxx
- xxxxxxxx
-xxxxxxxxx
- xxxxxxxx
-  xxxx
-   xxx
-    xx
-    
+             xx
+            xx
+           xx
+          xx
+  xx     xx
+   xx   xx
+    xx xx 
+     xxx
+      x
+   
