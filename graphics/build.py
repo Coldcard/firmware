@@ -66,6 +66,8 @@ def crunch(n):
 
 def doit(outfname, fnames):
 
+    assert fnames, "need some files"
+
     fp = open(outfname, 'wt')
 
     fp.write("""\
