@@ -57,6 +57,9 @@ sf = SPIFlash()
 from nvstore import SettingsObject
 settings = SettingsObject(loop)
 
+# important default/restore preference
+numpad.sensitivity = settings.get('sens', numpad.sensitivity)
+
 
 async def done_splash2():
     # Boot up code; after splash screen is done.

@@ -22,6 +22,10 @@ from public_constants import (
     PSBT_OUT_BIP32_DERIVATION
 )
 
+# Max miner's fee, as percentage of output value, that we will allow to be signed.
+# Amounts over 1% are warned regardless.
+DEFAULT_MAX_FEE_PERCENTAGE = const(10)
+
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
 class FatalPSBTIssue(RuntimeError):
@@ -493,6 +497,9 @@ class psbtInputProxy(psbtProxy):
             # Going forward? Just what we will witness; no other junk
             # - prefer this format, altho does that imply segwit txn must be generated?
             # - I don't know why we wouldn't always use this
+            # - once we use this partial utxo data, we must create witness data out
+            self.is_segwit = True
+
             fd.seek(self.witness_utxo[0])
             utxo = CTxOut()
             utxo.deserialize(fd)
@@ -536,12 +543,15 @@ class psbtInputProxy(psbtProxy):
         # - type of script
         # - which pubkey needed
         # - scriptSig value
-        addr_type, addr_or_pubkey, self.is_segwit = utxo.get_address()
+        addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
 
         which_key = None
         self.is_multisig = False
         self.is_p2sh = False
         self.amount = utxo.nValue
+
+        if addr_is_segwit and not self.is_segwit:
+            self.is_segwit = True
 
         if addr_type == 'p2sh':
             # multisig input
@@ -569,7 +579,7 @@ class psbtInputProxy(psbtProxy):
                         which_key = pubkey
                         break
 
-            if not self.is_segwit and \
+            if not addr_is_segwit and \
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
                 # it's actually segwit p2pkh inside p2sh
@@ -886,12 +896,18 @@ class psbtObject(psbtProxy):
                 pass
 
         # check fee is reasonable
-        per_fee = self.calculate_fee() * 100 / self.total_value_out
+        if self.total_value_out == 0:
+            per_fee = 100
+        else:
+            per_fee = self.calculate_fee() * 100 / self.total_value_out
         #print("percent fee: %f" % per_fee)
 
-        if per_fee >= 10:
-            raise FatalPSBTIssue("Network fee bigger than 10%% of total amount (it is %.0f%%)."
-                                % per_fee)
+        from main import settings
+        fee_limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
+
+        if fee_limit != -1 and per_fee >= fee_limit:
+            raise FatalPSBTIssue("Network fee bigger than %d%% of total amount (it is %.0f%%)."
+                                % (fee_limit, per_fee))
         if per_fee >= 1:
             self.warnings.append(('Big Fee', 'Network fee is more than '
                                     '1%% of total value (%.1f%%).' % per_fee))
@@ -1158,7 +1174,10 @@ class psbtObject(psbtProxy):
         # inputs
         rv.update(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
+
             if in_idx == replace_idx:
+                assert not self.inputs[in_idx].witness_utxo
+                assert not self.inputs[in_idx].is_segwit
                 assert replacement.scriptSig
                 rv.update(replacement.serialize())
             else:
