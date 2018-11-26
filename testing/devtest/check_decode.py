@@ -27,11 +27,16 @@ for fn in ['had_witness', 'num_inputs', 'num_outputs',
     assert expect[fn] == val, "%s: expected %r, got %r" % (fn, expect[fn], val)
 
 # check outputs: amt and dest addr
-for (val, addr), (idx, txo) in zip(expect['destinations'], p.output_iter()):
-    assert val == txo.nValue
-    txt = active_request.render_output(txo)
-    assert addr in txt
-    assert '%.8f'%(val/1E8) in txt
+if 'destinations' in expect:
+    for (val, addr), (idx, txo) in zip(expect['destinations'], p.output_iter()):
+        assert val == txo.nValue
+        txt = active_request.render_output(txo)
+        assert addr in txt
+        assert '%.8f'%(val/1E8) in txt
+
+if 'sw_inputs' in expect:
+    sw_ins = [i.is_segwit for i in p.inputs]
+    assert sw_ins == expect['sw_inputs'], sw_ins
 
 change_set = set()
 for n in range(len(p.outputs)):

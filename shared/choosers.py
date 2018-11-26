@@ -5,6 +5,23 @@
 #
 from main import settings
 
+def max_fee_chooser():
+    from psbt import DEFAULT_MAX_FEE_PERCENTAGE
+    limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
+
+    ch = [  '10% (default)', '25%', '50%', 'no limit']
+    va = [ 10, 25, 50, -1]
+
+    try:
+        which = va.index(limit)
+    except ValueError:
+        which = 0
+
+    def set(idx, text):
+        settings.set('fee_limit', va[idx])
+
+    return which, ch, set
+
 def idle_timeout_chooser():
     from ux import DEFAULT_IDLE_TIMEOUT
 
@@ -62,19 +79,34 @@ def chain_chooser():
 def sensitivity_chooser():
     from main import numpad
 
-    ch = [  'Sensitive',
-            'Normal',
-            'Less Sensitive']
+    #            xxxxxxxxxxxxxxxx
+    ch = [  (0, '+2 Sensitive'),
+            (4, '+1 '),
+            (1, ' 0 Default'),
+            (3, '-1 '),
+            (2, '-2 Sensitive'),
+        ]
 
     try:
-        which = numpad.sensitivity
-    except ValueError:
+        which = [n for n, (k,v) in enumerate(ch) if k == numpad.sensitivity][0]
+    except IndexError:
         which = 0
 
     def set_it(idx, text):
-        settings.set('sens', idx)
-        numpad.sensitivity = idx
+        value = ch[idx][0]
+        settings.set('sens', value)
+        numpad.sensitivity = value
 
-    return which, ch, set_it
+        # save also for next login time.
+        from main import pa
+        from nvstore import SettingsObject
+
+        if not pa.is_secondary:
+            tmp = SettingsObject()
+            tmp.set('sens', value)
+            tmp.save()
+            del tmp
+
+    return which, [n for k,n in ch], set_it
 
 # EOF

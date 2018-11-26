@@ -249,7 +249,7 @@ def fake_txn():
     from pycoin.serialize import h2b_rev
     from struct import pack
 
-    def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000):
+    def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000, outvals=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         
@@ -295,7 +295,11 @@ def fake_txn():
         for i in range(num_outs):
             # random P2PKH
             scr = bytes([0x76, 0xa9, 0x14]) + pack('I', i+1) + bytes(16) + bytes([0x88, 0xac])
-            h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
+            if not outvals:
+                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
+            else:
+                h = TxOut(outvals[i], scr)
+
             txn.txs_out.append(h)
 
         with BytesIO() as b:
@@ -345,30 +349,6 @@ def test_io_size(io, fake_txn, try_sign, dev):
         msg = ee.value.args[0]
         assert ('Missing UTXO' in msg) or \
                 ('require subpath' in msg)
-
-# not reliable, and not the right way to size the max
-def XXX_test_max_size(simple_fake_txn, try_sign):
-    # 670/670/500 => 392815 bytes
-    psbt = simple_fake_txn(670, 670, fat=500)
-    open('debug/last.psbt', 'wb').write(psbt)
-    try_sign(psbt, False)
-
-
-def find_max_size(simple_fake_txn):
-    # construct a psbt close to MAX_TXN_LEN in size
-
-    for n in range(300, 1000):
-        p = simple_fake_txn(n, n, fat=500)
-        print("%d => %s bytes" % (n, len(p)))
-        if len(p) > MAX_TXN_LEN: break
-
-
-def XXX_test_txn_wait_for_confirm(simple_fake_txn, try_sign):
-
-    psbt = simple_fake_txn(1, 12)
-    #open('debug/last.psbt', 'wb').write(psbt)
-
-    try_sign(psbt, None)
     
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 def test_real_signing(fake_txn, try_sign, dev, num_ins):
@@ -766,5 +746,97 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
         signed = end_sign(accept=True)
     assert 'looks completely signed' in str(ee)
 
+def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile):
+
+    # Example from SomberNight: we can sign it, but signature won't be accepted by
+    # network because the PSBT lies about the UTXO amount and tries to give away to miners,
+    # as overly-large fee.
+
+    set_seed_words('fault lava rice chest uncle exclude power tornado catalog stool'
+                    ' swear rival sun aspect oyster deer pepper exchange scrap toward'
+                    ' mix second world shaft')
+
+    in_psbt = a2b_hex(open('data/snight-example.psbt', 'rb').read()[:-1])
+
+    for fin in (False, True):
+        start_sign(in_psbt, finalize=fin)
+
+        time.sleep(.1)
+        _, story = cap_story()
+
+        #print(story)
+
+        assert 'Network fee:\n0.00000500 XTN' in story
+
+        ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[True], 
+                    miner_fee=500, warnings_expected=0,
+                    lock_time=1442308, total_value_out=99500,
+                    total_value_in=100000)
+
+        # check we understood it right
+        rv= sim_exec('import main; main.EXPECT = %r; ' % ex)
+        if rv: pytest.fail(rv)
+        rv = sim_execfile('devtest/check_decode.py')
+        if rv: pytest.fail(rv)
+
+        signed = end_sign(True, finalize=fin)
+
+        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wb').write(signed)
+
+@pytest.mark.parametrize('fee_max', [ 10, 25, 50])
+@pytest.mark.parametrize('under', [ False, True])
+def test_network_fee_amts(fee_max, under, fake_txn, try_sign, start_sign, dev, settings_set, sim_exec, cap_story):
+
+    settings_set('fee_limit', fee_max)
+
+    # creat a txn with single 1BTC input, and one output, equal to 1BTC-fee
+    target = (fee_max - 2) if under else fee_max
+    outval = int(1E8 / ((target/100.) + 1.))
+
+    psbt = fake_txn(1, 1, dev.master_xpub, fee=None, outvals=[outval])
+
+    open('debug/fee.psbt', 'wb').write(psbt)
+
+    if not under:
+        with pytest.raises(CCProtoError) as ee:
+            try_sign(psbt, False)
+        msg = ee.value.args[0]
+        assert 'Network fee bigger than' in msg
+        assert ('than %d%% of total' % target) in msg
+    else:
+        start_sign(psbt, False)
+        time.sleep(.1)
+        _, story = cap_story()
+
+        assert 'warning below' in story
+        assert 'Big Fee' in story
+        assert 'more than 1% of total' in story
+
+    settings_set('fee_limit', 10)
+
+def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set, cap_story):
+
+    settings_set('fee_limit', -1)
+
+    # creat a txn with single 1BTC input, and tiny one output; the rest is fee
+    outval = 100
+
+    psbt = fake_txn(1, 1, dev.master_xpub, fee=None, outvals=[outval])
+
+    open('debug/fee-un.psbt', 'wb').write(psbt)
+
+    # should be able to sign, but get warning
+    start_sign(psbt, False)
+
+    time.sleep(.1)
+    _, story = cap_story()
+
+    #print(story)
+
+    assert 'warning below' in story
+    assert 'Big Fee' in story
+    assert 'more than 1% of total' in story
+
+    settings_set('fee_limit', 10)
 
 # EOF

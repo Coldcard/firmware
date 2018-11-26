@@ -291,5 +291,35 @@ def set_master_key(sim_exec, sim_execfile, simulator):
     simulator_fixed_xprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
     doit(simulator_fixed_xprv)
 
+@pytest.fixture()
+def set_seed_words(sim_exec, sim_execfile, simulator, set_master_key):
+    # load simulator w/ a specific bip32 master key
+
+    def doit(words):
+
+        sim_exec('import main; main.WORDS = %r; ' % words.split())
+        rv = sim_execfile('devtest/set_seed.py')
+        if rv: pytest.fail(rv)
+
+        simulator.start_encryption()
+
+        print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+
+    yield doit
+
+    # Important cleanup: restore normal key, because other tests assume that
+
+    simulator_fixed_xprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
+    set_master_key(simulator_fixed_xprv)
+
+
+@pytest.fixture()
+def settings_set(sim_exec):
+
+    def doit(key, val):
+        x = sim_exec("from main import settings; settings.set('%s', %r)" % (key, val))
+        assert x == ''
+
+    return doit
 
 #EOF

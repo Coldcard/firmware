@@ -73,7 +73,7 @@ async def usb_keypad_emu():
                 numpad.trigger_baseline = True
                 continue
             if k == 's':
-                numpad.sensitivity = (numpad.sensitivity + 1) %3
+                numpad.sensitivity = (numpad.sensitivity + 1) % 5
                 print("sensi = %d" % numpad.sensitivity)
                 continue
 
