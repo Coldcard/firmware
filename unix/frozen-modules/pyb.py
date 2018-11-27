@@ -24,6 +24,9 @@ class USB_HID:
         fn = b'/tmp/ckcc-simulator.sock'
         self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         addr = bytes([len(fn)+2, socket.AF_UNIX] + list(fn))
+        # If on linux, try uncommenting the following two lines
+        #import struct
+        #addr = struct.pack('H108s', socket.AF_UNIX, fn)
         while 1:
             try:
                 self.pipe.bind(addr)
