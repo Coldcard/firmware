@@ -215,7 +215,7 @@ _flush_rx(void)
 //
 // Read upto N bytes of response. Suspress echo of 0x88 and
 // return actual number of (deserialized) bytes received.
-// We ignore dump extra bytes not expected, and always read until a timeout.
+// We ignore extra bytes not expected, and always read until a timeout.
 // Cmds to chip can be up to 155 bytes, but not clear what max len for responses.
 //
     static int
@@ -1149,7 +1149,7 @@ ae_gendig_slot(int slot_num, const uint8_t slot_key[32], uint8_t digest[32])
 {
 /*
 is_delay_needed
-        # Construct a digest on the device (and here) than depends on the secret
+        # Construct a digest on the device (and here) that depends on the secret
         # contents of a specific slot.
         assert len(hkey) == 32
         assert not noMac, "don't know how to handle noMac=1 on orig key"
