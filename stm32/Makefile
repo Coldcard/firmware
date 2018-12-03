@@ -83,6 +83,7 @@ code-committed:
 	@echo '... yes'
 
 .PHONY: sign-release
+sign-release: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | gpg --clearsign -u A3A31BAD5A2A5B10 --output signatures.txt --yes - )
 	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
