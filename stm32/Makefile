@@ -82,10 +82,15 @@ code-committed:
 	git diff --stat --exit-code .
 	@echo '... yes'
 
+.PHONY: sign-release
+sign-release:
+	(cd ../releases; shasum -a 256 *.dfu *.md | gpg --clearsign -u A3A31BAD5A2A5B10 --output signatures.txt --yes - )
+	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
+
 # Tag source code associate with built release version.
 # - use when a new release is built
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
-tag-source: code-committed
+tag-source: sign-release code-committed
 	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
 	git commit -am "New release: "$(PUBLIC_VERSION)
 	git push
