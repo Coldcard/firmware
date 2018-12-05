@@ -12,11 +12,11 @@
 #define NUM_OPT_SLOTS      128
 
 // This is what we're keeping secret... Kept in flash, written mostly once.
-// fields must be 64-bit aligned so they can be written independantly
+// fields must be 64-bit aligned so they can be written independently
 typedef struct {
-    // Piaring secret: picked once at factory when turned on
-    // for the first time. Crypto-tied into all the secrets of the ATECC508A on the
-    // same board.
+    // Pairing secret: picked once at factory when turned on
+    // for the first time. Tied into all the secrets of the ATECC508A
+    // on the same board.
     //
     uint8_t pairing_secret[32];
     uint8_t pairing_secret_xor[32];
