@@ -60,8 +60,11 @@ int ae_encrypted_write(int data_slot, int write_kn, const uint8_t write_key[32],
 // Use the pairing secret to validate ourselves to AE chip.
 int ae_pair_unlock(void);
 
-// Do a CheckMac operation.
+// Do a CheckMac operation. Caution: don't rely on return value, it can be faked.
 int ae_checkmac(uint8_t keynum, const uint8_t secret[32]);
+
+// Verify the chip and I know the same value for a keynum. Cannot be faked by MitM.
+int ae_checkmac_hard(uint8_t keynum, const uint8_t secret[32]);
 
 // Send a one-byte command, maybe with args.
 int ae_send(aeopcode_t opcode, uint8_t p1, uint16_t p2);
@@ -79,6 +82,13 @@ int ae_random(uint8_t randout[32]);
 
 // Roll (derive) a key using random number we forget. One way!
 int ae_destroy_key(int keynum);
+
+// Ask the chip to make a digest of a counter's value or data slot's contents.
+int ae_gendig_counter(int counter_num, const uint32_t expected_value, uint8_t digest[32]);
+int ae_gendig_slot(int slot_num, const uint8_t slot_contents[32], uint8_t digest[32]);
+
+// Verify the chip has arrived at the same digest we have.
+bool ae_is_correct_tempkey(const uint8_t expected_tempkey[32]);
 
 // Do Info(p1=2) command, and return result; p1=3 if get_gpio
 uint16_t ae_get_info(void);

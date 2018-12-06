@@ -74,8 +74,8 @@ pin_is_blank(whichPin_t which)
     ae_reset_chip();
     ae_pair_unlock();
 
-    // passing this check with zeros, means it was blank.
-    int is_blank = (ae_checkmac(keynum, blank) == 0);
+    // Passing this check with zeros, means PIN was blank.
+    int is_blank = (ae_checkmac_hard(keynum, blank) == 0);
 
     // CAUTION? We've unlocked something maybe, but it's blank, so...
     ae_reset_chip();
@@ -85,7 +85,7 @@ pin_is_blank(whichPin_t which)
 
 // lookup_secret_lastgood()
 //
-// Map from PIN keynum to corresponding secret/last good counter.
+// Map from PIN keynum to corresponding secret key number, and last good counter (if any).
 //
     static void
 lookup_secret_lastgood(int kn, int *secret_kn, int *lastgood_kn)
@@ -126,6 +126,10 @@ is_duress_pin(bool is_secondary, const uint8_t digest[32], bool is_blank, int *p
 
     int kn = is_secondary ? KEYNUM_pin_4 : KEYNUM_pin_3;
 
+    // LIMITATION: an active MitM could change what we write
+    // to something else (wrong) and thus we'd never see that
+    // the duress PIN was used.
+
     ae_reset_chip();
     ae_pair_unlock();
     if(ae_checkmac(kn, digest) == 0) {
@@ -151,7 +155,7 @@ is_real_pin(bool is_secondary, const uint8_t digest[32], bool is_blank, int *pin
     ae_reset_chip();
     ae_pair_unlock();
 
-    if(ae_checkmac(kn, digest) == 0) {
+    if(ae_checkmac_hard(kn, digest) == 0) {
         *pin_kn = kn;
 
         return true;
@@ -311,24 +315,40 @@ _sign_attempt(pinAttempt_t *args)
 //
 // Read state about previous attempt(s) from AE. Chip already unlocked.
 //
-    static int
+    static int __attribute__ ((noinline))
 get_last_success(bool is_secondary, uint32_t *counter, uint32_t *lastgood)
 {
     int kn = is_secondary ? KEYNUM_lastgood_2 : KEYNUM_lastgood_1;
 
     uint32_t     tmp;
 
-    // use first 32-bits only
+    // Read counter value of last-good login. Important that this be authenticated.
+    // - using first 32-bits only
     if(ae_read_data_slot(kn, (uint8_t *)&tmp, 4)) return -1;
 
+#if 0
+    // - see if chip can verify that value
+    uint32_t padded[32/4] = { 0 };
+    padded[0] = tmp;
+
+    uint8_t tempkey[32];
+    if(ae_gendig_slot(kn, (const uint8_t *)padded, tempkey)) return -1;
+
+    if(!ae_is_correct_tempkey(tempkey)) {
+        fatal_error("MitM");
+    }
+#endif
+
+    // now we can trust the value.
     *lastgood = tmp;
+
+    // NOTE: to prevent **active** attackers on the bus, it is critical
+    // this counter read is authenticated via the shared secret,
+    // using GenDig(counter) and then MAC(shared secret). That check is
+    // part of ae_get_counter().
 
     int rv = ae_get_counter(counter, is_secondary ? 1 : 0, false);
     if(rv) return -1;
-
-    // TODO: to prevent **active** attackers on the bus, add a checkmac step
-    // here, using gendig over the counter and that slot. This validates
-    // the data we just read. 
 
     return 0;
 }
@@ -354,6 +374,10 @@ warmup_ae(void)
     uint32_t
 _calc_delay_required(int num_fails)
 {
+#ifndef RELEASE
+    // DEBUG/dev only!
+    return num_fails;
+#else
     // implement our PIN retry delay policy
     // - 500ms ticks
 #define SECONDS(n)          ((n)*2)
@@ -370,6 +394,7 @@ _calc_delay_required(int num_fails)
     }
 #undef SECONDS
 #undef MINUTES
+#endif
 }
 
 // maybe_brick_myself()
@@ -391,6 +416,8 @@ maybe_brick_myself(const char *pin, int pin_len)
     ae_reset_chip();
 
     ae_pair_unlock();
+
+    // XXX MitM could block this by trashing our write
 
     if(ae_checkmac(KEYNUM_brickme, digest) == 0) {
         // success... kinda: brick time.
@@ -473,13 +500,6 @@ pin_setup_attempt(pinAttempt_t *args)
 
     args->delay_required = _calc_delay_required(args->num_fails);
     args->delay_achieved = 0;
-
-#if 0
-    if(count == 0 && last_good == 0) {
-        // Very unused; probably blank slot... test and 
-        // tell the caller that, so we can present as empty device.
-    }
-#endif
 
     // need to know if we are blank/unused device
     if(pin_is_blank(args->is_secondary ? PIN_secondary : PIN_primary)) {
@@ -569,7 +589,7 @@ pin_login_attempt(pinAttempt_t *args)
             return EPIN_OLD_ATTEMPT;
         }
 
-        // try it out / and determine if we should proceed under duress
+        // try it out / and determine if we should proceed
         if(!is_real_pin(args->is_secondary, digest, (args->pin_len == 0), &pin_kn)) {
             // code is just wrong.
             return EPIN_AUTH_FAIL;
@@ -581,7 +601,7 @@ pin_login_attempt(pinAttempt_t *args)
     // reset rate-limiting on word lookups
     backup_data_set(IDX_WORD_LOOKUPS_USED, 0);
 
-    // ASIDE: even if they above was bypassed, the following code will
+    // ASIDE: even if the above was bypassed, the following code will
     // fail when it tries to read/update the corresponding slots in the 508a.
 
     int secret_kn = -1, lastgood_kn = -1;
@@ -599,6 +619,10 @@ pin_login_attempt(pinAttempt_t *args)
 
             return EPIN_AE_FAIL;
         }
+
+        // CONCERN: the above write could be blocked (fake success) by an active
+        // MitM attacker, but that would be pointless since it would only slow future
+        // login attempts. Plus he's already got the right PIN at this point, so...
     }
 
     // mark as success
@@ -776,6 +800,10 @@ pin_change(pinAttempt_t *args)
             // they got old PIN wrong, we won't be able to help them
             ae_reset_chip();
 
+            // NOTE: altho we are changing flow based on result of ae_checkmac() here,
+            // if the response is faked by an active bus attacker, it doesn't matter
+            // because the change to the keyslot below will fail due to wrong PIN.
+
             return EPIN_OLD_AUTH_FAIL;
         }
     } else {
@@ -883,6 +911,10 @@ pin_fetch_secret(pinAttempt_t *args)
         if(ae_checkmac(target_kn, target_digest)) {
             // they got old PIN wrong, we won't be able to help them
             ae_reset_chip();
+
+            // NOTE: altho we are changing flow based on result of ae_checkmac() here,
+            // if the response is faked by an active bus attacker, it doesn't matter
+            // because the decryption of the secret below will fail if we had been lied to.
 
             return EPIN_AUTH_FAIL;
         }
