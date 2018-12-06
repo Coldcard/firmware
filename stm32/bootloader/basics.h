@@ -41,7 +41,7 @@ extern void fatal_error(const char *);
 #define INCONSISTENT(x)     fatal_error("incon")
 
 // Wait for an interrupt which will never happen (ie. die)
-#define LOCKUP_FOREVER()      while(1) { __WFI(); }
+#define LOCKUP_FOREVER()    while(1) { __WFI(); }
 
 // Like "sizeof()" but works on arrays, and returns the "numberof" elements.
 //
