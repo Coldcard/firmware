@@ -98,6 +98,11 @@ your key storage per-system unique.
   is needed.
 
 
+# Reading 'pairing secret'
+
+This is a useful command, but only works on non-production units:
+
+    dfu-util -d 0483:df11 -a 0 -s 0x08007800:256 -U pairing.bin
 
 
 # Resources
