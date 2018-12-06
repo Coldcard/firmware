@@ -42,6 +42,8 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
     print('OTPmode = 0x%x' % blk[18])
     print('ChipMode = 0x%x' % blk[19])
 
+    print()
+
     for i in which_nums:
         slot_conf = blk[20+(2*i):22+(2*i)]
         conf = SlotConfig.unpack(slot_conf)
