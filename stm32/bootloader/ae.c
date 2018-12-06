@@ -803,6 +803,81 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 	return 0;
 }
 
+// ae_is_correct_tempkey()
+//
+// Check that TempKey is holding what we think it does. Uses the MAC
+// command over contents of Tempkey and our shared secret. Die if wrong.
+//
+    bool
+ae_is_correct_tempkey(const uint8_t expected_tempkey[32])
+{
+	ae_keep_alive();
+
+    const uint8_t mode =   (1<<6)     // include full serial number
+                         | (0<<2)     // TempKey.SourceFlag == 0 == 'rand'
+                         | (0<<1)     // first 32 bytes are the shared secret
+                         | (1<<0);    // second 32 bytes are tempkey
+
+	int rv = ae_send(OP_MAC, mode, KEYNUM_pairing);
+    if(rv) return false;
+
+	ae_delay(OP_MAC);
+
+    // read chip's answer
+	uint8_t resp[32];
+	rv = ae_read_n(32, resp);
+    if(rv) return false;
+
+    // Duplicate the hash process, and then compare.
+	SHA256_CTX ctx;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, rom_secrets->pairing_secret, 32);
+    sha256_update(&ctx, expected_tempkey, 32);
+
+	const uint8_t fixed[16] = { OP_MAC, mode, KEYNUM_pairing, 0x0,
+                                    0,0,0,0, 0,0,0,0,       // eight zeros
+                                    0,0,0,                  // three zeros
+                                    0xEE };
+    sha256_update(&ctx, fixed, sizeof(fixed));
+
+    sha256_update(&ctx, ((const uint8_t *)rom_secrets->ae_serial_number)+4, 4);
+    sha256_update(&ctx, ((const uint8_t *)rom_secrets->ae_serial_number)+0, 4);
+
+#if 0
+	// this verifies no problem.
+	ASSERT(ctx.datalen + (ctx.bitlen/8) == 32+32+1+1+2+8+3+1+4+2+2);        // == 88
+#endif
+
+    uint8_t         actual[32];
+    sha256_final(&ctx, actual);
+
+    return check_equal(actual, resp, 32);
+}
+
+// ae_checkmac_hard()
+//
+// Check the chip produces a hash over various things the same way we would
+// meaning that we both know the shared secret and the state of stuff in
+// the 508a is what we expect.
+//
+    int
+ae_checkmac_hard(uint8_t keynum, const uint8_t secret[32])
+{
+    uint8_t     digest[32];
+
+    int rv = ae_gendig_slot(keynum, secret, digest);
+    RET_IF_BAD(rv);
+
+    // NOTE: we use this sometime when we know the value is wrong, like
+    // checking for blank pin codes... so not a huge error/security issue
+    // if wrong here.
+    if(!ae_is_correct_tempkey(digest)) return -2;
+
+    // worked.
+    return 0;
+}
+
 // ae_pair_unlock()
 //
 // Do a dance that unlocks access to the private key for signing.
@@ -815,6 +890,12 @@ ae_pair_unlock()
 }
 
 // ae_checkmac()
+//
+// CAUTION: The result from this function could be modified by an
+// active attacker on the bus because the one-byte response from the chip
+// is easily replaced. This command is useful for us to authorize actions
+// inside the 508a, like use of a specific key, not for us to authenticate
+// the 508a or its contents/state.
 //
     int
 ae_checkmac(uint8_t keynum, const uint8_t secret[32])
@@ -950,9 +1031,24 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
 	rv = ae_read_n(4, (uint8_t *)result);
 	RET_IF_BAD(rv);
 
-	return 0;
+    // IMPORTANT: Always verify the counter's value because otherwise
+    // nothing prevents an active MitM changing the value that we think
+    // we just read.
+
+    uint8_t     digest[32];
+    rv = ae_gendig_counter(counter_number, *result, digest);
+	RET_IF_BAD(rv);
+
+    if(!ae_is_correct_tempkey(digest)) {
+        // no legit way for this to happen, so just die.
+        fatal_error("MitM");
+    }
+
+    // worked.
+    return 0;
 }
 
+#if 0
 // ae_make_mac()
 //
 // Generate a MAC for the indicated key. Will be dependent on serial number.
@@ -969,6 +1065,7 @@ ae_make_mac(uint8_t keynum, uint8_t challenge[32], uint8_t mac_out[32])
 
 	return 0;
 }
+#endif
 
 #if 0
 // ae_hmac()
@@ -1144,32 +1241,11 @@ ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 
 // ae_gendig_slot()
 //
-    static int
-ae_gendig_slot(int slot_num, const uint8_t slot_key[32], uint8_t digest[32])
+    int
+ae_gendig_slot(int slot_num, const uint8_t slot_contents[32], uint8_t digest[32])
 {
-/*
-is_delay_needed
-        # Construct a digest on the device (and here) that depends on the secret
-        # contents of a specific slot.
-        assert len(hkey) == 32
-        assert not noMac, "don't know how to handle noMac=1 on orig key"
-
-        challenge = self.load_nonce()
-
-        # using Zone=2="Data" => "KeyID specifies a slot in the Data zone"
-
-        msg = hkey + b'\x15\x02' + ustruct.pack("<H", slot_num)
-        msg += b'\xee\x01\x23' + (b'\0'*25) + challenge
-        assert len(msg) == 32+1+1+2+1+2+25+32
-
-        rv = self.ae_cmd1(opcode=OP.GenDig, p1=0x2, p2=slot_num)
-        if rv:
-            raise ChipErrorResponse(hex(rv))
-
-        self.reset_watchdog()
-
-        return sha256(msg).digest()
-*/
+    // Construct a digest on the device (and here) that depends on the secret
+    // contents of a specific slot.
     uint8_t num_in[20], tempkey[32];
 
 	rng_buffer(num_in, sizeof(num_in));
@@ -1200,9 +1276,59 @@ is_delay_needed
 	uint8_t args[7] = { OP_GenDig, 2, slot_num, 0, 0xEE, 0x01, 0x23 };
     uint8_t zeros[25] = { 0 };
 
-    sha256_update(&ctx, slot_key, 32);
+    sha256_update(&ctx, slot_contents, 32);
     sha256_update(&ctx, args, sizeof(args));
     sha256_update(&ctx, zeros, sizeof(zeros));
+    sha256_update(&ctx, tempkey, 32);
+
+    sha256_final(&ctx, digest);
+
+    return 0;
+}
+
+// ae_gendig_counter()
+//
+// Construct a digest over one of the two counters. Track what we think
+// the digest should be, and ask the chip to do the same. Verify we match
+// using MAC command (done elsewhere).
+//
+    int
+ae_gendig_counter(int counter_num, const uint32_t expected_value, uint8_t digest[32])
+{
+    uint8_t num_in[20], tempkey[32];
+
+	rng_buffer(num_in, sizeof(num_in));
+	int rv = ae_pick_nonce(num_in, tempkey);
+    RET_IF_BAD(rv);
+
+    //using Zone=4="Counter" => "KeyID specifies the monotonic counter ID"
+    rv = ae_send(OP_GenDig, 0x4, counter_num);
+    RET_IF_BAD(rv);
+
+    ae_delay(OP_GenDig);
+
+    rv = ae_read1();
+    RET_IF_BAD(rv);
+
+    ae_keep_alive();
+
+    // we now have to match the digesting (hashing) that has happened on
+    // the chip. No feedback at this point if it's right tho.
+    //
+    //   msg = hkey + b'\x15\x02' + ustruct.pack("<H", slot_num)
+    //   msg += b'\xee\x01\x23' + (b'\0'*25) + challenge
+    //   assert len(msg) == 32+1+1+2+1+2+25+32
+    //
+	SHA256_CTX ctx;
+    sha256_init(&ctx);
+
+    uint8_t zeros[32] = { 0 };
+	uint8_t args[8] = { OP_GenDig, 0x4, counter_num, 0,  0xEE, 0x01, 0x23, 0x0 };
+
+    sha256_update(&ctx, zeros, 32);
+    sha256_update(&ctx, args, sizeof(args));
+    sha256_update(&ctx, (const uint8_t *)&expected_value, 4);
+    sha256_update(&ctx, zeros, 20);
     sha256_update(&ctx, tempkey, 32);
 
     sha256_final(&ctx, digest);
