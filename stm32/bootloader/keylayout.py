@@ -5,6 +5,7 @@
 # Resulting data travels in the bootloader and is used once during
 # factory setup.
 #
+import sys
 from secel_config import *
 from textwrap import TextWrapper
 
@@ -147,7 +148,7 @@ def main():
 
     ae.checks()
 
-    ae.dump()
+    #ae.dump()
 
     # generate a single header file we will need
 
@@ -168,6 +169,11 @@ def main():
         names = [nm for nm in dir(KEYNUM) if nm[0] != '_']
         for v,nm in sorted((getattr(KEYNUM, nm), nm) for nm in names):
             print('#define KEYNUM_%-20s\t%d' % (nm.lower(), v), file=fp)
+
+        print('\n/*\n', file=fp)
+        sys.stdout = fp
+        ae.dump()
+        print('\n*/', file=fp)
 
 if __name__ == '__main__':
     main()
