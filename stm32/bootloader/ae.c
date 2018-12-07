@@ -41,6 +41,10 @@ static void crc16_chain(uint8_t length, const uint8_t *data, uint8_t crc[2]);
 static void ae_delay(aeopcode_t opcode);
 static void ae_wake(void);
 
+// Enable some powerful debug features.
+#if 0
+#define DEV_STATS
+
 static struct {
     int crc_error;
     int len_error;
@@ -52,7 +56,13 @@ static struct {
     aeopcode_t last_op;
     uint8_t last_resp1, last_p1;
     uint16_t last_p2;
+    uint8_t     last_n_data[32];
+    uint8_t     last_n_len;
 } stats;
+#define STATS(x)         stats. x;
+#else
+#define STATS(x)
+#endif
 
 // Bit patterns to be sent
 #define BIT0    0x7d
@@ -319,22 +329,9 @@ ae_reset_chip(void)
     void
 ae_setup(void)
 {
-#if 0
-    self.ow = UART(4, baudrate=230400, bits=7, parity=None, stop=1,
-                            timeout=1, read_buf_len=(80*8))
-
-    # correct pin settings, because we have external pullup
-    self.pa0 = Pin('A0', mode=Pin.ALT, pull=Pin.PULL_NONE, af=Pin.AF8_UART4)
-
-	// setup UART4: 7N1, 230400 bps.
-        .BaudRate = 230400,
-        .WordLength = UART_WORDLENGTH_7B,
-        .StopBits = UART_STOPBITS_1,
-        .Parity = UART_PARITY_NONE,
-        .Mode = UART_MODE_TX_RX,
-#endif
-
+#ifdef DEV_STATS
     memset(&stats, 0, sizeof(stats));
+#endif
 
     // enable clock to that part of chip
     __HAL_RCC_UART4_CLK_ENABLE();
@@ -380,7 +377,6 @@ ae_setup(void)
 	const char *
 ae_probe(void)
 {
-
     // Make it sleep / wake it up.
 	ae_send_sleep();
 
@@ -393,15 +389,6 @@ ae_probe(void)
 
 	uint8_t chk = ae_read1();
 	if(chk != AE_AFTER_WAKE) return "wk fl";
-
-#if 0
-    if(is_personalized()) {
-        // attempt pairing?
-        if(ae_pair_unlock()) return "pair";
-    } else {
-        // test the chip works?
-    }
-#endif
 
     // read the serial number one time
     uint8_t serial[6];
@@ -477,7 +464,7 @@ ae_check_crc(const uint8_t *data, uint8_t length)
 
 	if(data[0] != length) {
 		// length is wrong
-        stats.crc_len_error++;
+        STATS(crc_len_error++);
 		return false;
 	}
 
@@ -496,7 +483,7 @@ ae_read1(void)
 {
 	uint8_t msg[4];
 
-	for(int retry=3; retry >= 0; retry--) {
+	for(int retry=7; retry >= 0; retry--) {
         ae_wake();
 
         // tell it we want to read a response, read it, and deserialize
@@ -504,7 +491,7 @@ ae_read1(void)
 
         if(rv != 4) {
             ERR("rx len");
-            stats.len_error++;
+            STATS(len_error++);
             goto try_again;
         }
 
@@ -512,17 +499,17 @@ ae_read1(void)
 		// if they are wrong.
 		if(!ae_check_crc(msg, 4)) {
 			ERR("bad crc");
-            stats.crc_error++;
+            STATS(crc_error++);
 			goto try_again;
 		}
 
-        stats.last_resp1 = msg[1];
+        STATS(last_resp1 = msg[1]);
 
 		// done, and it worked; return the one byte.
 		return msg[1];
 
 	try_again:
-        stats.l1_retry++;
+        STATS(l1_retry++);
 		ae_wake();
 	}
 
@@ -539,23 +526,23 @@ ae_read_n(uint8_t len, uint8_t *body)
 {
     uint8_t tmp[1+len+2];
 
-	for(int retry=3; retry >= 0; retry--) {
+	for(int retry=7; retry >= 0; retry--) {
 
         int actual = ae_read_response(tmp, len+3);
         if(actual < 4) {
             ERR("too short");
-            stats.short_error++;
+            STATS(short_error++);
             goto try_again;
         }
 
         uint8_t resp_len = tmp[0];
 		if(resp_len != (len + 3)) {
-            stats.len_error++;
+            STATS(len_error++);
             if(resp_len == 4) {
 				// Probably an unexpected error. But no way to return a short read, so
 				// just print out debug info.
                 ERRV(msg[1], "ae errcode");
-                stats.last_resp1 = tmp[1];
+                STATS(last_resp1 = tmp[1]);
 
                 return -1;
             }
@@ -565,16 +552,22 @@ ae_read_n(uint8_t len, uint8_t *body)
 
 		if(!ae_check_crc(tmp, actual)) {
 			ERR("bad crc");
-            stats.crc_error++;
+            STATS(crc_error++);
 			goto try_again;
 		}
 
 		// normal case: copy out body of message w/o framing
         memcpy(body, tmp+1, actual-3);
+
+#ifdef DEV_STATS
+        memcpy(stats.last_n_data, body, MIN(32, actual-3));
+        stats.last_n_len =  actual-3;
+#endif
+
 		return 0;
 
 	try_again:
-        stats.ln_retry++;
+        STATS(ln_retry++);
 		ae_wake();
 	}
 
@@ -613,9 +606,9 @@ ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8
 
 	STATIC_ASSERT(sizeof(known) == 6);
 
-    stats.last_op = opcode;
-    stats.last_p1 = p1;
-    stats.last_p2 = p2;
+    STATS(last_op = opcode);
+    STATS(last_p1 = p1);
+    STATS(last_p2 = p2);
 
     ae_wake();
 
@@ -772,6 +765,8 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 	// we provide some 20 bytes of randomness to chip
 	int	rv;
 
+	ae_keep_alive();
+
 	// The chip must provide 32-bytes of random-ness,
 	// so no choice in args to OP.Nonce here (due to ReqRandom).
 	rv = ae_send_n(OP_Nonce, 0, 0, num_in, 20);
@@ -811,8 +806,6 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
     bool
 ae_is_correct_tempkey(const uint8_t expected_tempkey[32])
 {
-	ae_keep_alive();
-
     const uint8_t mode =   (1<<6)     // include full serial number
                          | (0<<2)     // TempKey.SourceFlag == 0 == 'rand'
                          | (0<<1)     // first 32 bytes are the shared secret
@@ -827,6 +820,8 @@ ae_is_correct_tempkey(const uint8_t expected_tempkey[32])
 	uint8_t resp[32];
 	rv = ae_read_n(32, resp);
     if(rv) return false;
+
+    ae_keep_alive();
 
     // Duplicate the hash process, and then compare.
 	SHA256_CTX ctx;
@@ -1041,7 +1036,7 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
 
     if(!ae_is_correct_tempkey(digest)) {
         // no legit way for this to happen, so just die.
-        fatal_error("MitM");
+        fatal_mitm();
     }
 
     // worked.

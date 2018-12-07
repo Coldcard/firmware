@@ -20,7 +20,7 @@ MEMORY
 }
 
 /* The stack size used by the bootloader. */
-STACK_SIZE = DEFINED(STACK_SIZE) ? STACK_SIZE : DEFINED(__stack_size__) ? __stack_size__ : 0x400;
+STACK_SIZE = DEFINED(STACK_SIZE) ? STACK_SIZE : DEFINED(__stack_size__) ? __stack_size__ : 0x800;
 
 /* Section Definitions */
 SECTIONS

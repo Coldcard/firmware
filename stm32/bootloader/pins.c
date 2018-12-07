@@ -318,39 +318,31 @@ _sign_attempt(pinAttempt_t *args)
     static int __attribute__ ((noinline))
 get_last_success(bool is_secondary, uint32_t *counter, uint32_t *lastgood)
 {
-    int kn = is_secondary ? KEYNUM_lastgood_2 : KEYNUM_lastgood_1;
+    int slot = is_secondary ? KEYNUM_lastgood_2 : KEYNUM_lastgood_1;
 
-    uint32_t     tmp;
+    ae_pair_unlock();
 
     // Read counter value of last-good login. Important that this be authenticated.
-    // - using first 32-bits only
-    if(ae_read_data_slot(kn, (uint8_t *)&tmp, 4)) return -1;
-
-#if 0
-    // - see if chip can verify that value
+    // - using first 32-bits only, others will be zero
     uint32_t padded[32/4] = { 0 };
-    padded[0] = tmp;
+    if(ae_read_data_slot(slot, (uint8_t *)padded, 32)) return -1;
 
     uint8_t tempkey[32];
-    if(ae_gendig_slot(kn, (const uint8_t *)padded, tempkey)) return -1;
+    if(ae_gendig_slot(slot, (const uint8_t *)padded, tempkey)) return -1;
 
     if(!ae_is_correct_tempkey(tempkey)) {
-        fatal_error("MitM");
+        fatal_mitm();
     }
-#endif
 
     // now we can trust the value.
-    *lastgood = tmp;
+    *lastgood = padded[0];
 
     // NOTE: to prevent **active** attackers on the bus, it is critical
     // this counter read is authenticated via the shared secret,
     // using GenDig(counter) and then MAC(shared secret). That check is
-    // part of ae_get_counter().
+    // now part of ae_get_counter().
 
-    int rv = ae_get_counter(counter, is_secondary ? 1 : 0, false);
-    if(rv) return -1;
-
-    return 0;
+    return ae_get_counter(counter, is_secondary ? 1 : 0, false);
 }
 
 // warmup_ae()
@@ -365,6 +357,9 @@ warmup_ae(void)
     }
 
     if(ae_pair_unlock()) return -1;
+
+    // reset watchdog timer
+    ae_keep_alive();
 
     return 0;
 }
@@ -414,7 +409,6 @@ maybe_brick_myself(const char *pin, int pin_len)
     pin_hash(pin, pin_len, digest, PIN_PURPOSE_NORMAL);
 
     ae_reset_chip();
-
     ae_pair_unlock();
 
     // XXX MitM could block this by trashing our write
@@ -462,12 +456,16 @@ pin_setup_attempt(pinAttempt_t *args)
     memcpy(args->pin, pin_copy, pin_len);
 
     // unlock the AE chip
-    if(warmup_ae()) return EPIN_I_AM_BRICK;
+    if(warmup_ae()) {
+        BREAKPOINT;
+        return EPIN_I_AM_BRICK;
+    }
 
     if(args->pin_len) {
         // Implement the brickme feature here, nice and early: Immediate brickage if
         // provided PIN matches that special PIN.
         if(maybe_brick_myself(args->pin, args->pin_len)) {
+            BREAKPOINT;
             return EPIN_I_AM_BRICK;
         }
     }
