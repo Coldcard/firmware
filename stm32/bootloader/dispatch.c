@@ -174,10 +174,9 @@ system_startup(void)
     // - must be near end of boot process, ie: here.
     reboot_seed_setup();
 
-    // load a blank-ish screen, so that 
-    // if the firmware crashes, we are showing
-    // something reasonable
-    oled_show(screen_blank);
+    // load a blank screen, so that if the firmware crashes, we are showing
+    // something reasonable and not misleading.
+    oled_show(screen_blankish);
 }
 
 // fatal_error(const char *msg)
@@ -188,8 +187,23 @@ fatal_error(const char *msgvoid)
     oled_setup();
     oled_show(screen_fatal);
 
-    // TODO: perhaps should do a reset after a delay, like with
+    // Maybe should do a reset after a delay, like with
     // the watchdog timer or something.
+    LOCKUP_FOREVER();
+}
+
+// fatal_mitm()
+//
+    void
+fatal_mitm(void)
+{
+    oled_setup();
+    oled_show(screen_mitm);
+
+#ifdef RELEASE
+    wipe_all_sram();
+#endif
+
     LOCKUP_FOREVER();
 }
 
@@ -411,7 +425,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     scr = screen_downgrade;
                     break;
                 case 2:
-                    scr = screen_blank;
+                    scr = screen_blankish;
                     break;
                 case 3:
                     scr = screen_brick;
@@ -494,7 +508,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
                     rv = ae_set_gpio_secure(world_digest);
 
-                    oled_show(screen_blank);
+                    oled_show(screen_blankish);
                     break;
                 }
             }
@@ -585,6 +599,10 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     rv = ENOENT;
                     break;
             }
+
+#ifndef RELEASE
+            if(rv == EPIN_AE_FAIL) BREAKPOINT;
+#endif
 
             break;
         }

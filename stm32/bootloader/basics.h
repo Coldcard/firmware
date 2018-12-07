@@ -24,8 +24,12 @@ extern void fatal_error(const char *);
 #define ASSERT(x)
 #endif
 
-// Use anywhere. Will crash on production, but useful in dev.
-#define BREAKPOINT          asm("BKPT #0")
+// Use anywhere. Will just crash on production, but useful in dev.
+#ifndef RELEASE
+#define BREAKPOINT          asm("BKPT #0") 
+#else
+#define BREAKPOINT          #error
+#endif
 
 // An assertion that we will check at *compile* time. GCC feature.
 #define STATIC_ASSERT(cond)		_Static_assert(cond, #cond)

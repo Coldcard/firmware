@@ -149,4 +149,7 @@ int ae_read_config_byte(int offset);
 // Read a 4-byte area from config area, or -1 if fail.
 int ae_read_config_word(int offset, uint8_t *dest);
 
+// Call this if possible mitm is detected.
+extern void fatal_mitm(void);
+
 // EOF

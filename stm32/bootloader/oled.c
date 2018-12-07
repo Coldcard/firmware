@@ -10,7 +10,6 @@
 #include "stm32l4xx_hal_spi.h"
 #include <string.h>
 
-
 // Reset and config sequence.
 //
 // As measured! No attempt to understand them here.
@@ -180,7 +179,6 @@ oled_show_raw(uint32_t len, const uint8_t *pixels)
 
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
 }
-
 
 // oled_show()
 //
