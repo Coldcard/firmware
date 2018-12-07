@@ -4,10 +4,13 @@
 extern const unsigned char screen_verify[];
 
 
-extern const unsigned char screen_blank[];
+extern const unsigned char screen_blankish[];
 
 
 extern const unsigned char screen_fatal[];
+
+
+extern const unsigned char screen_mitm[];
 
 
 extern const unsigned char screen_brick[];

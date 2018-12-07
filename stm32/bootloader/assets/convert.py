@@ -48,6 +48,7 @@ icons = {
     'thumbs-up': '',
     'graph-up': '',
     'logout': '',
+    'ticket': '',
     'dots': '',
 }
 
@@ -163,15 +164,19 @@ def serialize(img, label, fp):
 
     return len(final)
 
-# Actual screens and their contents:
+# Actual screens and their contents.
+#
+# - getting the exact hight/position of the text aligned w/ 8-bits helps alot sometimes
+# - rare screens don't need to be pretty
 #
 results = [
     ( 'verify', 'Verifying', 'clock', {} ),
-    ( 'blank', '. . .', None, dict(text_pos=36) ), # shown while we boot micropython (momentary)
-    ( 'fatal', '#fwfail', None, {} ),           # don't waste space on rarely-seen screens
-    ( 'brick', 'Bricked', None, {} ),           # was: icon=Trash / I am brick.
+    ( 'blankish', '. . .', None, dict(text_pos=36) ), # shown while we boot micropython (momentary)
+    ( 'fatal', '#fwf', None, dict(text_pos=38) ),    # don't waste space on rarely-seen screens
+    ( 'mitm', '--', None, {} ),                # don't waste space on rarely-seen screens
+    ( 'brick', '', 'ticket', dict(icon_pos=12) ),           # was: icon=Trash / I am brick.
     #( 'dfu', 'Send Upgrade', 'download', {} ), # was beautiful, but won't be seen with RDP=2
-    ( 'dfu', 'DFU', None, {} ),
+    ( 'dfu', 'DFU', None, dict(text_pos=37) ),
     ( 'downgrade', 'Downgrade?', 'history', {} ),
     ( 'corrupt', 'Firmware?', 'lemon', {} ),
     ( 'logout', 'Logout Done', 'logout', {}),
@@ -191,7 +196,11 @@ if __name__ == '__main__':
     y = 6
     total = 0
     for label, txt, icon, args in results:
-        #icon = None     # XXX saves a lot of memory!
+        if 0:
+            icon = None     # XXX saves a lot of memory!
+        elif 1:
+            icon = None if label not in ('verify', 'devmode', 'logout', 'brick') else icon
+
         img = make_frame(bg, txt, icon, **args)
         sampler.paste(img, (4, y))
         y += 64+4
