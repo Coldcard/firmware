@@ -39,7 +39,7 @@ SettingsMenu = [
     MenuItem("Touch Setting", chooser=sensitivity_chooser),
     MenuItem("Max Network Fee", chooser=max_fee_chooser),
     MenuItem('Blockchain', chooser=chain_chooser),
-    MenuItem('Change PIN code', menu=which_pin_menu),
+    MenuItem('PIN Options', menu=which_pin_menu),
 ]
 
 SDCardMenu = [
