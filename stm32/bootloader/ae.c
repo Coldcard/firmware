@@ -1637,12 +1637,30 @@ ae_set_gpio_secure(uint8_t digest[32])
     ae_pair_unlock();
     ae_checkmac(KEYNUM_firmware, digest);
 
-    return ae_set_gpio(1);
+    int rv = ae_set_gpio(1);
+
+    if(rv == 0) {
+        // We set the output, and we got a successful readback, but we can't
+        // trust that readback, and so do a verify that the chip has 
+        // the digest we think it does. If MitM wanted to turn off the output,
+        // they can do that anytime regardless. We just don't want them to be
+        // able to fake it being set, and therefore bypass the
+        // "unsigned firmware" delay and warning.
+        ae_pair_unlock();
+
+        if(ae_checkmac_hard(KEYNUM_firmware, digest) != 0) {
+            fatal_mitm();
+        }
+    }
+
+    return rv;
 }
 
 // ae_get_gpio()
 //
 // Do Info(p1=3) command, and return result.
+//
+// IMPORTANT: do not trust this result, could be MitM'ed.
 //
 	uint8_t
 ae_get_gpio(void)
