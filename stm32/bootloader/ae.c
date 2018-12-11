@@ -801,7 +801,7 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 // ae_is_correct_tempkey()
 //
 // Check that TempKey is holding what we think it does. Uses the MAC
-// command over contents of Tempkey and our shared secret. Die if wrong.
+// command over contents of Tempkey and our shared secret.
 //
     bool
 ae_is_correct_tempkey(const uint8_t expected_tempkey[32])
@@ -864,7 +864,7 @@ ae_checkmac_hard(uint8_t keynum, const uint8_t secret[32])
     int rv = ae_gendig_slot(keynum, secret, digest);
     RET_IF_BAD(rv);
 
-    // NOTE: we use this sometime when we know the value is wrong, like
+    // NOTE: we use this sometimes when we know the value is wrong, like
     // checking for blank pin codes... so not a huge error/security issue
     // if wrong here.
     if(!ae_is_correct_tempkey(digest)) return -2;
@@ -1028,7 +1028,7 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
 
     // IMPORTANT: Always verify the counter's value because otherwise
     // nothing prevents an active MitM changing the value that we think
-    // we just read.
+    // we just read. They could also stop us increamenting the counter.
 
     uint8_t     digest[32];
     rv = ae_gendig_counter(counter_number, *result, digest);
@@ -1042,25 +1042,6 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
     // worked.
     return 0;
 }
-
-#if 0
-// ae_make_mac()
-//
-// Generate a MAC for the indicated key. Will be dependent on serial number.
-//
-	int
-ae_make_mac(uint8_t keynum, uint8_t challenge[32], uint8_t mac_out[32])
-{
-	int rv = ae_send_n(OP_MAC, (1<<6), keynum, challenge, 32);
-
-	ae_delay(OP_MAC);
-
-	rv = ae_read_n(32, mac_out);
-	RET_IF_BAD(rv);
-
-	return 0;
-}
-#endif
 
 #if 0
 // ae_hmac()
@@ -1159,7 +1140,7 @@ ae_get_serial(uint8_t serial[6])
 	return 0;
 }
 
-
+#if 0
 // ae_slot_locks()
 //
 // Read a 16-bit bitmask of which data slots are presently locked.
@@ -1181,6 +1162,7 @@ ae_slot_locks(void)
     // returns positive 16-bit number on success
 	return (tmp[1] << 8) | tmp[0];
 }
+#endif
 
 // ae_write_data_slot()
 //
@@ -1567,7 +1549,7 @@ ae_lock_data_zone(void)
     return ae_read1();
 }
 
-
+#if 0
 // ae_sha256()
 //
 	int
@@ -1605,6 +1587,7 @@ ae_sha256(const uint8_t *msg, int msg_len, uint8_t digest[32])
 
 	return 0;
 }
+#endif
 
 // ae_set_gpio()
 //

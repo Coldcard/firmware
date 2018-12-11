@@ -116,9 +116,6 @@ int ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32]);
 // Increment and return a one-way counter.
 int ae_get_counter(uint32_t *result, int counter_number, bool incr);
 
-// Generate a MAC for the indicated key. Will be dependant on serial number.
-int ae_make_mac(uint8_t keynum, uint8_t challenge[32], uint8_t mac_out[32]);
-
 // Perform HMAC on the chip, using a particular key.
 int ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]);
 int ae_hmac32(uint8_t keynum, const uint8_t *msg, uint8_t digest[32]);
