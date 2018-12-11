@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-extern void fatal_error(const char *);
+extern void fatal_error(const char *) __attribute__((noreturn));
 
 // I don't like the ususal assert macro, so here is my replacement,
 // and BTW: "assert()" is actually a macro, so it should
