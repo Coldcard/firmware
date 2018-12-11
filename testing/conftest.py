@@ -322,4 +322,97 @@ def settings_set(sim_exec):
 
     return doit
 
+@pytest.fixture(scope='session')
+def repl(dev=None):
+    # Provide an interactive connection to the REPL. Has to be real device, with
+    # dev features enabled. Best really with unit in factory mode.
+    import sys, serial
+    from serial.tools.list_ports import comports
+
+    # NOTE: 
+    # - tested only on Mac, but might work elsewhere.
+    # - board needs to be reset between runs, because USB protocol (not serial) is disabled by this
+
+    class USBRepl:
+        def __init__(self):
+            for d in comports():
+                if d.pid != 0xcc10: continue
+                if dev:
+                    if d.serial_number != dev.serial: continue
+                self.sio = serial.Serial(d.device, write_timeout=1)
+
+                print("Connected to: %s" % d.device)
+                break
+            else:
+                raise RuntimeError("Can't find usb serial port")
+
+            self.sio.timeout = 0.250
+            greet = self.sio.readlines()
+            if greet and b'Welcome to Coldcard!' in greet[1]:
+                self.sio.write(b'\x03')     # ctrl-C
+                while 1:
+                    self.sio.timeout = 1
+                    lns = self.sio.readlines()
+                    if not lns: break
+
+            # hit enter, expect prompt
+            self.sio.timeout = 0.100
+            self.sio.write(b'\r')
+            ln = self.sio.readlines()
+            assert ln[-1] == b'>>> ', ln
+
+            self.sio.timeout = 0.250
+
+        def eval(self, cmd, max_time=3):
+            # send a command, wait for it to finish (next prompt) and eval the response
+            print("eval: %r" % cmd)
+
+            self.sio.write(cmd.encode('ascii') + b'\r')
+
+            self.sio.timeout = max_time
+            lines = []
+            while 1:
+                resp = self.sio.readline().decode('ascii')
+                if resp.startswith('>>> '): break
+                lines.append(resp)
+
+            if any('Traceback' in l for l in lines):
+                raise RuntimeError(''.join(lines))
+
+            if len(lines) == 0:
+                raise RuntimeError("timeout/got nothing")
+
+            if len(lines) == 1:
+                # cmd printed nothing, meaning it returned None and REPL hid that
+                assert lines[0].startswith(cmd), lines
+                return None
+
+            try:
+                return eval(lines[-1])
+            except:
+                raise RuntimeError(''.join(lines))
+                
+            
+
+        def exec(self, cmd, proc_time=1):
+            # send a (one line) command and read the one-line response
+            print("exec: %r" % cmd)
+
+            self.sio.write(cmd.encode('ascii') + b'\r')
+
+            self.sio.timeout = 0.2
+            echo = self.sio.readline()
+            #print("echo: %r" % echo.decode('ascii'))
+
+            assert cmd.encode('ascii') in echo
+
+            self.sio.timeout = proc_time
+            resp =  self.sio.readline().decode('ascii')
+
+            #print("resp: %r" % resp)
+
+            return resp
+
+    return USBRepl()
+
 #EOF
