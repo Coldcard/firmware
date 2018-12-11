@@ -219,7 +219,7 @@ pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result)
 
     if(count > 25) {
         // there is hacking. no human does this many.
-        INCONSISTENT("prefix attempts");
+        fatal_mitm();
     }
 
     delay_ms((count < 10) ? 150 : 2500);
@@ -457,7 +457,6 @@ pin_setup_attempt(pinAttempt_t *args)
 
     // unlock the AE chip
     if(warmup_ae()) {
-        BREAKPOINT;
         return EPIN_I_AM_BRICK;
     }
 
@@ -465,7 +464,6 @@ pin_setup_attempt(pinAttempt_t *args)
         // Implement the brickme feature here, nice and early: Immediate brickage if
         // provided PIN matches that special PIN.
         if(maybe_brick_myself(args->pin, args->pin_len)) {
-            BREAKPOINT;
             return EPIN_I_AM_BRICK;
         }
     }

@@ -147,6 +147,6 @@ int ae_read_config_byte(int offset);
 int ae_read_config_word(int offset, uint8_t *dest);
 
 // Call this if possible mitm is detected.
-extern void fatal_mitm(void);
+extern void fatal_mitm(void) __attribute__((noreturn));
 
 // EOF
