@@ -1,3 +1,9 @@
+## 1.1.1 - Dec 2018
+
+- Rename menu item "Change PIN code" => "PIN Options"
+- Trivial bugfix in unused codepath (`get_duress_secret` hits assertion).
+
+
 ## 1.1.0 - Nov 2018
 
 - Allow setting max network fee to a number of possible levels, or disable it (was
