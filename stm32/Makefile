@@ -34,7 +34,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 1.1.0
+VERSION_STRING = 1.1.1
 
 #
 # Sign and merge various parts
@@ -53,7 +53,7 @@ production.bin: firmware-signed.bin Makefile
 	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o production.bin
 
 # This is release of the bootloader that will be built into the release firmware.
-BOOTLOADER_VERSION = 1.0.1
+BOOTLOADER_VERSION = 1.1.0
 
 .PHONY: release
 release: NEW_VERSION = $(shell $(SIGNIT) version production.bin)
