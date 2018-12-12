@@ -134,7 +134,6 @@ class PinAttempt:
 
         if get_duress_secret:
             # special case for reading duress secret from main wallet
-            assert msg == 4
             change_flags |= CHANGE_DURESS_SECRET 
 
         if new_pin is not None:
