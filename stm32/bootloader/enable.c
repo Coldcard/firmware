@@ -81,7 +81,7 @@ firewall_setup(void)
 
     int rv = HAL_FIREWALL_Config((FIREWALL_InitTypeDef *)&init);
     if(rv) {
-        BREAKPOINT;
+        INCONSISTENT("fw");
     }
 
     __HAL_FIREWALL_PREARM_DISABLE();
