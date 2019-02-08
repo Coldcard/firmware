@@ -45,9 +45,14 @@ from display import Display, FontFixed, FontSmall, FontLarge
 dis = Display()
 dis.splash()
 
-# Setup touch numpad
-from numpad import Numpad
-numpad = Numpad(loop)
+if version.is_mark2():
+    # Setup membrane numpad (mark 2)
+    from mempad import MembraneNumpad
+    numpad = MembraneNumpad(loop)
+else:
+    # Setup touch numpad (mark 1 hardware)
+    from touchpad import TouchNumpad
+    numpad = TouchNumpad(loop)
 
 # Serial Flash memory
 from sflash import SPIFlash
