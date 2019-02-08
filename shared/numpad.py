@@ -3,7 +3,7 @@
 #
 # numpad.py - Base class for numeric keypads. Touch or membrane matrix.
 #
-import array, utime
+import utime
 from uasyncio.queues import Queue
 
 class NumpadBase:
@@ -40,6 +40,7 @@ class NumpadBase:
 
         self.debug = 0                # 0..2
         self.sensitivity = 0          # 0..4: random order now, see chooser.py
+        self.repeat_delay = 450       # (ms) time to wait before first key-repeat
 
         self.last_event_time = utime.ticks_ms()
 

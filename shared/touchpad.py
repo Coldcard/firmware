@@ -211,6 +211,6 @@ class TouchNumpad(NumpadBase):
             # not sure, or all up
             key = ''
 
-        sel._key_event(key)
+        self._key_event(key)
     
 # EOF

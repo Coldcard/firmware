@@ -131,14 +131,24 @@ class PressRelease:
 
         armed = None
         while 1:
-            if self.last_key and numpad.key_pressed == self.last_key:
-                # key repeat-rate, and also key-repeat delay time in (ms)
-                await sleep_ms(450 if not self.num_repeats else 100) 
-                if numpad.empty() and numpad.key_pressed == self.last_key:
-                    self.num_repeats += 1
-                    return self.last_key
+            rep_delay = numpad.repeat_delay if not self.num_repeats else 100
+            so_far = 0
 
-            ch = await numpad.get()
+            while 1:
+                try:
+                    # Poll for an event
+                    ch = numpad.get_nowait()
+                    break
+                except QueueEmpty:
+                    so_far += 5
+                    await sleep_ms(5)
+
+                    if self.last_key and numpad.key_pressed == self.last_key:
+                        if so_far >= rep_delay:
+                            self.num_repeats += 1
+                            return self.last_key
+
+                    continue
 
             if ch == numpad.ABORT_KEY:
                 raise AbortInteraction

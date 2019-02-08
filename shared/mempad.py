@@ -9,11 +9,9 @@ from machine import Pin
 from random import shuffle
 from numpad import NumpadBase
 
-_singleton = None
-
 NUM_ROWS = const(4)
 HISTORY_LEN = const(3)
-SAMPLE_RATE = const(10)        # ms
+SAMPLE_RATE = const(5)        # ms
 NUM_SAMPLES = const(NUM_ROWS * HISTORY_LEN)
 
 class MembraneNumpad(NumpadBase):
@@ -21,9 +19,8 @@ class MembraneNumpad(NumpadBase):
     def __init__(self, loop):
         super(MembraneNumpad, self).__init__(loop)
 
-        global _singleton
-        assert not _singleton
-        _singleton = self
+        # we can handle faster key-repeat start
+        self.repeat_delay = 250
 
         # No idea how to pick a safe timer number.
         self.timer = pyb.Timer(7)
@@ -33,13 +30,14 @@ class MembraneNumpad(NumpadBase):
         self.rows = [Pin(i, Pin.OUT_OD, value=0) 
                         for i in ('M2_ROW0', 'M2_ROW1', 'M2_ROW2', 'M2_ROW3')]
 
-        # Scan in random order, because Tempest.
-        # However, we only scan where there is a touch, and we mustn't
-        # reveal which one by doing anything differently (in terms of scan pattern).
         self.scan_order = array.array('i', list(range(NUM_ROWS)) * HISTORY_LEN)
+        self.history = array.array('i', (-1 for i in range(NUM_SAMPLES)))
+
+        # We scan in random order, because Tempest.
+        # - scanning only starts when something pressed
+        # - complete scan is done before acting on what was measured
         shuffle(self.scan_order)
 
-        self.history = array.array('i', (-1 for i in range(NUM_SAMPLES)))
         self.scan_idx = 0
         self.waiting_for_any = True
 
@@ -132,12 +130,9 @@ class MembraneNumpad(NumpadBase):
             self._wait_any()
 
         else:
-            # perform debounce
-            # - do nothing if abiguous or in transition.
+            # do nothing if abiguous or in transition (bounce).
             if len(down) == 1:
                 self._key_event(down.pop())
-            else:
-                print('bounce: ' + ' '.join(down))
 
             self._start_scan()
     
