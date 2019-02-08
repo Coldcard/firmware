@@ -10,7 +10,7 @@ from random import shuffle
 from numpad import NumpadBase
 
 NUM_ROWS = const(4)
-HISTORY_LEN = const(3)
+HISTORY_LEN = const(5)
 SAMPLE_RATE = const(5)        # ms
 NUM_SAMPLES = const(NUM_ROWS * HISTORY_LEN)
 
