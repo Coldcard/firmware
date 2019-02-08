@@ -108,3 +108,15 @@ class ExtInt:
 
     IRQ_RISING = 1
     IRQ_RISING_FALLING = 2
+
+class Timer:
+    def __init__(self, n):
+        # hack in the fake "touch" for mark 2 boards.
+        assert n == 7
+        from touch import Touch
+        Touch()
+
+    def deinit(self): pass
+    def init(self, **k): pass
+
+
