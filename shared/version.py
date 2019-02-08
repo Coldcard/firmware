@@ -89,4 +89,11 @@ def serial_number():
     i = machine.unique_id()
     return "%02X%02X%02X%02X%02X%02X" % (i[11], i[10] + i[2], i[9], i[8] + i[0], i[7], i[6])
 
+def is_mark2():
+    from machine import Pin
+
+    # PA10 is pulled-down in Mark2, open in previous revs
+
+    return Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0
+
 # EOF
