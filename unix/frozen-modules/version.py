@@ -23,4 +23,5 @@ def get_header_value(fld_name):
 
 def is_mark2():
     return True
+    #return False
 

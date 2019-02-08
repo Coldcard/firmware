@@ -3,7 +3,16 @@ from mock import Mock
 Pin = Mock
 Pin.ALT = None
 Pin.PULL_NONE = None
+Pin.PULL_UP = None
+Pin.OUT_OD = None
 Pin.AF8_UART4 = None
+Pin.IN = None
+Pin.IRQ_FALLING = 1
+Pin.IRQ_RISING = 2
+Pin.irq = lambda a,b,c: None
+Pin.on = lambda s: None
+Pin.off = lambda s: None
+Pin.value = lambda *s: 0
 
 SPI = Mock
 
