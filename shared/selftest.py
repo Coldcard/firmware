@@ -12,38 +12,21 @@ from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
 from utils import imported
 
-async def test_touch():
+async def test_numpad():
     # do an interactive self test
 
     keys = list('123456789x0y')
 
     for ch in keys:
         dis.clear()
-        dis.text(0,0, "Touch Test. Press:")
+        dis.text(0,0, "Numpad Test. Press:")
         dis.text(None,24, ch if ch != 'y' else 'OK', FontLarge)
         dis.show()
 
         k = await ux_wait_keyup(ch + 'x')
         if k == 'x' and ch != 'x':
-            raise RuntimeError("touch test aborted")
+            raise RuntimeError("numpad test aborted")
         assert k == ch
-
-# async def test_dfu_button():
-# 
-#     # can't pass on simulator
-#     if ckcc.is_simulator(): return
-# 
-#     for ph in range(2):
-#         dis.clear()
-#         dis.text(None,10, "Press DFU" if not ph else "Release DFU")
-#         dis.text(None,28, "on rear side.")
-#         dis.show()
-# 
-#         while 1:
-#             st = get_dfu_button()
-#             if st == (not ph):
-#                 break
-#             await sleep_ms(100)
 
 def set_genuine():
     # PIN must be blank for this to work
@@ -68,6 +51,7 @@ def set_genuine():
     dis.show()
 
 async def test_ae508a():
+    if ckcc.is_simulator(): return
 
     assert not get_is_bricked(), "AE508a is bricked"
 
@@ -101,6 +85,24 @@ async def test_ae508a():
         ng = get_genuine()
         assert ng != gg, "Could not invert LED"
             
+async def test_sd_active():
+    # Mark 2: SD Card active light.
+    from machine import Pin
+    led = Pin('SD_ACTIVE', Pin.OUT)
+
+    for ph in range(2):
+        gg = not ph
+        led.value(gg)
+
+        dis.clear()
+        if gg:
+            dis.text(0,16, "<-- Green ON?")
+        else:
+            dis.text(0,16, "<-- Green off?")
+
+        dis.show()
+        k = await ux_wait_keyup('xy')
+        assert k == 'y', "SD Active LED bust"
 
 async def test_multipress():
     dis.clear()
@@ -118,8 +120,6 @@ async def test_sflash():
     dis.clear()
     dis.text(None, 18, 'Serial Flash')
     dis.show()
-
-    #if ckcc.is_simulator(): return
 
     from main import sf
     from ustruct import pack
@@ -248,17 +248,17 @@ async def test_microsd():
 
 
 async def start_selftest():
+    import version
 
     try:
         await test_oled()
         await test_microsd()
-        await test_touch()
+        await test_numpad()
         await test_sflash()
-        #await test_dfu_button()        # no need
         await test_ae508a()
 
-        # TODO:
-        # - PIN diode
+        if version.is_mark2():
+            await test_sd_active()
 
         # add more tests here
 
