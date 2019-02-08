@@ -4,6 +4,7 @@
 # flow.py - Menu structure
 #
 from menu import MenuItem
+import version
 
 from actions import *
 from choosers import *
@@ -33,14 +34,23 @@ async def which_pin_menu(_1,_2, item):
     from main import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
-SettingsMenu = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
-    MenuItem("Touch Setting", chooser=sensitivity_chooser),
-    MenuItem("Max Network Fee", chooser=max_fee_chooser),
-    MenuItem('Blockchain', chooser=chain_chooser),
-    MenuItem('PIN Options', menu=which_pin_menu),
-]
+if version.is_mark2():
+    SettingsMenu = [
+        #         xxxxxxxxxxxxxxxx
+        MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+        MenuItem("Max Network Fee", chooser=max_fee_chooser),
+        MenuItem('Blockchain', chooser=chain_chooser),
+        MenuItem('PIN Options', menu=which_pin_menu),
+    ]
+else:
+    SettingsMenu = [
+        #         xxxxxxxxxxxxxxxx
+        MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+        MenuItem("Touch Setting", chooser=sensitivity_chooser),
+        MenuItem("Max Network Fee", chooser=max_fee_chooser),
+        MenuItem('Blockchain', chooser=chain_chooser),
+        MenuItem('PIN Options', menu=which_pin_menu),
+    ]
 
 SDCardMenu = [
     MenuItem("Verify Backup", f=verify_backup),
