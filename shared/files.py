@@ -162,6 +162,7 @@ class CardMissingError(RuntimeError):
 class CardSlot:
     # Touch interface must be disabled during any SD Card usage!
     last_change = None
+    active_led = None
 
     @classmethod
     def setup(cls):
@@ -178,11 +179,20 @@ class CardSlot:
 
         cls.irq = ExtInt(Pin('SD_SW'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
+        # mark 2 boards have a light for SD activity.
+        import version
+        from machine import Pin
+
+        if version.is_mark2():
+            cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+
     def __init__(self):
         self.active = False
 
     def __enter__(self):
         # Get ready!
+        if self.active_led:
+            self.active_led.on()
 
         # turn of touch scanning
         from main import numpad
@@ -214,6 +224,9 @@ class CardSlot:
     def recover(self):
         # done using the microSD -- unpower it
         from main import numpad
+
+        if self.active_led:
+            self.active_led.off()
 
         self.active = False
 
