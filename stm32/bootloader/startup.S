@@ -65,9 +65,9 @@ my_version_code:
 
 
     .align      4
-    .ascii      "(c) Copyright 2018 by Coinkite Inc. \n"
+    .ascii      "(c) Copyright 2018-2019 by Coinkite Inc. \n"
     .ascii      " \n"
-    .ascii      "This space for rent. Just 1BTC/year. \n"
+    .ascii      "This space for rent! Just 2BTC/year. \n"
     .ascii      " \n"
 
     //
@@ -125,14 +125,17 @@ wipe_loop1:
     cmp         r9, r10
     bne         wipe_loop1
 
-    // switch to our own stack
+    // switch to our own stack (but save caller's stack ptr)
+    mov         r10, sp
     mov         sp, r9
 
+    push        {r10, lr}
     // do the real work
-    push        {lr}
 dispatcher:                                     // just for debuger view
     bl          firewall_dispatch
-    pop         {lr}
+
+    pop         {r10, lr}
+    mov         sp, r10
 
     // clear our sram completely
     movw        r9, BL_SRAM_BASE & 0xffff
