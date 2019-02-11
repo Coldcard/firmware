@@ -76,19 +76,22 @@ class LoginUX:
 
         dis.show()
 
-    def show_words(self, words, has_secondary=False):
+    def _show_words(self, has_secondary=False):
 
         dis.clear()
         dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
                             else "Write these down:")
 
+        if not self.is_setting:
+            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
+
+        dis.show()
+        words = pincodes.PinAttempt.prefix_words(self.pin.encode())
+
         y = 15
         x = 18
         dis.text(x, y,    words[0], FontLarge)
         dis.text(x, y+18, words[1], FontLarge)
-
-        if not self.is_setting:
-            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
 
         dis.show()
 
@@ -129,9 +132,7 @@ class LoginUX:
                     # done!
                     return (self.pin_prefix + '-' + self.pin)
 
-                words = pincodes.PinAttempt.prefix_words(self.pin.encode())
-
-                self.show_words(words)
+                self._show_words()
 
                 nxt = await ux_wait_keyup('xy2')
                 if nxt == 'y' or nxt == '2':
