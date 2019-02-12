@@ -1,7 +1,7 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# numpad.py - Numeric keypad. Touch button matrix.
+# numpad.py - Numeric keypad implemented with Membrane tech, not touch.
 #
 import array, utime, pyb
 from uasyncio.queues import Queue
