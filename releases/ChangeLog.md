@@ -1,3 +1,8 @@
+## 1.2.0 - Feb 2018
+
+- Changes to support Mark 2 hardware (no functional changes).
+- Paired with version 1.2.0 of the bootrom with some MitM defenses added.
+
 ## 1.1.1 - Dec 2018
 
 - Rename menu item "Change PIN code" => "PIN Options"
