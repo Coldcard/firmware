@@ -60,15 +60,19 @@ async def usb_keypad_emu():
                 from machine import soft_reset
                 soft_reset()
 
-            if k == 'T':
-                numpad.debug = 2
+            if k == 'd':
+                numpad.debug = (numpad.debug + 1) % 3
                 continue
-            if k == 't':
-                numpad.debug = 1
-                continue
+
             if k == 'n':
-                numpad.debug = 0
+                if numpad.disabled:
+                    numpad.start()
+                else:
+                    numpad.stop()
+
+                print("npdis = %d" % numpad.disabled)
                 continue
+
             if k == 'r':
                 numpad.trigger_baseline = True
                 continue
