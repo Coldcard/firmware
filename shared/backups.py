@@ -190,6 +190,8 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
     dis.fullscreen('Encrypting...' if words else 'Generating...')
     body = render_backup_contents().encode()
 
+    gc.collect()
+
     if words:
         # NOTE: Takes a few seconds to do the key-streching, but little actual
         # time to do the encryption.
@@ -199,15 +201,22 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
         zz.add_data(body)
 
         hdr, footer = zz.save('ckcc-backup.txt')
+
+        filesize = len(body)+2000
+
+        del body
+
+        gc.collect()
     else:
         # cleartext dump
         zz = None
+        filesize = len(body)+10
 
     if write_sflash:
         # for use over USB and unit testing: commit file into SPI flash
         from sffile import SFFile
 
-        with SFFile(0, max_size=len(body)+2000, message='Saving...') as fd:
+        with SFFile(0, max_size=filesize, message='Saving...') as fd:
             await fd.erase()
 
             if zz:
