@@ -21,7 +21,7 @@ Then:
 - `cd firmware`
 - `git submodule update --init` _(if needed?)_
 - `brew install autogen`
-- `virtualenv -p python3 ENV`
+- `virtualenv -p python3 ENV` (Python > 3.5 is required)
 - `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
 - `pip install -r requirements.txt`
 
@@ -49,8 +49,11 @@ Which looks like this:
 You'll probably need to install at least these packages:
 
     brew install sdl2
-    brew cask install  gcc-arm-embedded
-
+    brew tap PX4/px4
+    brew search px4
+    brew cask install gcc-arm-embedded
+    brew install px4/px4/gcc-arm-none-eabi-80 (latest gcc-arm-none-eabi-XX, currently 80)
+    
 ### Linux
 
 You'll probably need to install these (Ubuntu 16):
