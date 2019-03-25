@@ -54,7 +54,7 @@ have the seed words.
 - On the Coldcard, choose `Dump Summary` from the Advanced menu, and open the
         `public.txt` file that generated on your computer.
 - In `public.txt`, look for the section labeled "BIP44 / Electrum" and
-    Copy the top `xpub` value, beside: `m/44'/1'`
+    Copy the top `xpub` value, beside: `m/44'/0'`
 - In Electrum, choose New/Restore => (filename) => Standard Wallet => Use a master key
 - Paste in the `xpub` value into the text box and press Next.
 - Verify your work by selecting View -> Show Addresses and clicking on the Addresses tab.
