@@ -24,10 +24,6 @@ clean-mpy:
 clean: clean-mpy
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
 
-up: mpy-files.timestamp
-	-rm -rf /Volumes/COLDCARD/{main.py,.Trashes,._.Trashes}
-	rsync -ra --exclude Makefile build/ /Volumes/COLDCARD/lib
-
 # These values used to make .DFU files. Flash memory locations.
 FIRMWARE_BASE   = 0x08008000
 BOOTLOADER_BASE = 0x08000000
@@ -141,10 +137,6 @@ files:
 PY_FILES = $(shell find ../shared -name \*.py)
 ALL_MPY_FILES = $(addprefix build/, $(PY_FILES:../shared/%.py=%.mpy))
 MPY_FILES = $(filter-out build/obsolete/%, $(ALL_MPY_FILES))
-
-mpy-files.timestamp: Makefile build/boot.py $(MPY_FILES)
-	touch build/SKIPSD
-	date > $@
 
 build/%.mpy: ../shared/%.py Makefile
 	mkdir -p $(dir $@)
