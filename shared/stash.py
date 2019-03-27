@@ -30,11 +30,13 @@ def blank_object(item):
     else:
         raise TypeError(item)
 
+
 # Chip can hold 72-bytes as a secret: we need to store either
 # a list of seed words (packed), of various lengths, or maybe
 # a raw master secret, and so on
 
 class SecretStash:
+
     @staticmethod
     def encode(seed_phrase=None, master_secret=None, xprv=None):
         nv = bytearray(AE_SECRET_LEN)
@@ -65,7 +67,7 @@ class SecretStash:
         return nv
 
     @staticmethod
-    def decode(secret):
+    def decode(secret, _bip39pw=''):
         # expecting 72-bytes of secret payload; decode meaning
         # returns:
         #    type, secrets bytes, HDNode(root)
@@ -88,9 +90,9 @@ class SecretStash:
             # - not storing checksum
             assert ll in [16, 24, 32]
 
-            # make master secret, using the memonic words, and empty passphrase
+            # make master secret, using the memonic words, and passphrase (or empty string)
             seed_bits = secret[1:1+ll]
-            ms = tcc.bip39.seed(tcc.bip39.from_data(seed_bits), '')
+            ms = tcc.bip39.seed(tcc.bip39.from_data(seed_bits), _bip39pw)
 
             hd = tcc.bip32.from_seed(ms, 'secp256k1')
 
@@ -106,10 +108,13 @@ class SecretStash:
 
             return 'master', ms, hd
 
+# optional global value: user-supplied passphrase to salt BIP39 seed process
+bip39_passphrase = ''
+
 class SensitiveValues:
     # be a context manager, and holder to secrets in-memory
 
-    def __init__(self, secret=None):
+    def __init__(self, secret=None, for_backup=False):
         if secret is None:
             # fetch the secret from bootloader/atecc508a
             from main import pa
@@ -123,10 +128,13 @@ class SensitiveValues:
             assert set(secret) != {0}
             self.secret = secret
 
+        # backup during volatile bip39 encryption: do not use passphrase
+        self._bip39pw = '' if for_backup else str(bip39_passphrase)
+
     def __enter__(self):
         import chains
 
-        self.mode, self.raw, self.node = SecretStash.decode(self.secret)
+        self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
 
         self.chain = chains.current_chain()
 
@@ -164,18 +172,29 @@ class SensitiveValues:
 
     def capture_xpub(self):
         # track my xpubkey fingerprint & value in settings (not sensitive really)
-        # - we share this on any USB connection
+        # - we share these on any USB connection
         from main import settings
 
-        #print("capture xfp/xpub/chain")
-        settings.set('xfp', self.node.my_fingerprint())
-        settings.set('xpub', self.chain.serialize_public(self.node))
-        settings.set('chain', self.chain.ctype)
+        # Implicit in the values is the BIP39 encryption passphrase,
+        # which we might not want to actually store.
+        xfp = self.node.my_fingerprint()
+        xpub = self.chain.serialize_public(self.node)
+
+        if self._bip39pw:
+            settings.put_volatile('xfp', xfp)
+            settings.put_volatile('xpub', xpub)
+        else:
+            settings.overrides.clear()
+            settings.put('xfp', xfp)
+            settings.put('xpub', xpub)
+
+        settings.put('chain', self.chain.ctype)
+
 
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
         # typically would be byte arrays or byte strings, but also
-        # support bip32 nodes
+        # supports bip32 nodes
         self.spots.append(item)
 
     def derive_path(self, path, master=None):

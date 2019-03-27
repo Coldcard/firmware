@@ -74,6 +74,7 @@ def enable_usb(loop, repl_enable=False):
         loop.create_task(handler.usb_hid_recv())
 
 def is_vcp_active():
+    # VCP = Virtual Comm Port
     en = ckcc.vcp_enabled(None)
     cur = pyb.usb_mode()
 
@@ -358,7 +359,7 @@ class USBHandler:
             sign_transaction(txn_len, bool(finalize))
             return None
 
-        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok':
+        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
             from auth import active_request, UserAuthorizedAction
@@ -379,7 +380,12 @@ class USBHandler:
                 # STILL waiting on user
                 return None
 
-            if cmd == 'smok':
+            if cmd == 'pwok':
+                # return new root xpub
+                xpub = active_request.result
+                UserAuthorizedAction.cleanup()
+                return b'asci' + bytes(xpub, 'ascii')
+            elif cmd == 'smok':
                 # signed message done: just give them the signature
                 addr, sig = active_request.address, active_request.result
                 UserAuthorizedAction.cleanup()
@@ -390,10 +396,22 @@ class USBHandler:
                 UserAuthorizedAction.cleanup()
                 return pack('<4sI32s', 'strx', resp_len, sha)
 
+        if cmd == 'pass':
+            # bip39 passphrase provided, maybe use it if authorized
+            assert self.encrypted_req, 'must encrypt'
+            from auth import start_bip39_passphrase
+
+            assert len(args) < 400, 'too long'
+            pw = str(args, 'utf8')
+            assert len(pw) < 100, 'too long'
+
+            return start_bip39_passphrase(pw)
+
         if cmd == 'back':
             # start backup: asks user, takes long time.
             from auth import start_remote_backup
             return start_remote_backup()
+
 
         if cmd == 'bagi':
             return self.handle_bag_number(args)

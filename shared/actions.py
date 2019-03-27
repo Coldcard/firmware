@@ -75,7 +75,7 @@ async def view_ident(*a):
     # show the XPUB, and other ident on screen
     from main import settings, pa
     from version import serial_number
-    import callgate
+    import callgate, stash
 
     tpl = '''\
 Master Key Fingerprint:
@@ -96,6 +96,9 @@ Extended Master Key:
 
     if pa.is_secondary:
         msg += '\n(Secondary wallet)\n'
+
+    if stash.bip39_passphrase:
+        msg += '\nA passphrase (BIP39) is in effect.\n'
 
     bn = callgate.get_bag_number()
     if bn:
@@ -371,7 +374,24 @@ async def start_seed_import(menu, label, item):
 def pick_new_wallet(*a):
     import seed
     return seed.make_new_wallet()
-    
+
+async def convert_bip39_to_bip32(*a):
+    if not await ux_confirm('''This operation computes the extended master private key using your BIP39 seed words and optional passphrase, and then saves the resulting value (which is an xprv) as the wallet secret.
+
+The seed words themselves are erased forever, but effectively there is no other change. If a BIP39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with other passphrases.
+
+A reboot is part of this process. PIN code, and funds are not affected.
+'''):
+        return await ux_aborted()
+
+    import seed
+    await seed.remember_bip39_passphrase()
+
+async def set_bip39_phrase(*a):
+    # gather a passphrase, up to 100 chars long via a complex ux process
+    import seed
+    pw = 'test'
+    seed.set_bip39_passphrase(pw)
 
 async def clear_seed(*a):
     # Erase the seed words, and private key from this wallet!
@@ -444,7 +464,7 @@ async def start_login_sequence():
 
     # Populate xfp/xpub values, if missing.
     # - can happen for first-time login of duress wallet
-    # - might indicate lost settings?
+    # - may indicate lost settings, which we can easily recover from
     # - these values are important to USB protocol
     if not (settings.get('xfp', 0) and settings.get('xpub', 0)) and not pa.is_secret_blank():
         try:
@@ -457,7 +477,6 @@ async def start_login_sequence():
             # just in case, keep going; we're not useless and this
             # is early in boot process
             print("XFP save failed: %s" % exc)
-        
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb

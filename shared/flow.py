@@ -121,6 +121,7 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
+    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -157,10 +158,12 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
+    MenuItem('Passphrase BIP39', f=set_bip39_phrase),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
+
 
 # Shown until unit is put into a numbered bag
 FactoryMenu = [
