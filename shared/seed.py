@@ -324,7 +324,9 @@ async def make_new_wallet():
     goto_top_menu()
                 
 
-def set_seed_value(words, pw=''):
+def set_seed_value(words):
+    # Save the seed words into secure element, and reboot. BIP39 password
+    # is not set at this point (empty string)
     ok = tcc.bip39.check(' '.join(words))
     assert ok, "seed check: %r" % words
 
@@ -350,6 +352,53 @@ def set_seed_value(words, pw=''):
     # encode it for our limited secret space
     nv = SecretStash.encode(seed_phrase=seed)
 
+    dis.fullscreen('Applying...')
+    pa.change(new_secret=nv)
+
+    # re-read settings since key is now different
+    # - also captures xfp, xpub at this point
+    pa.new_main_secret(nv)
+
+    # check and reload secret
+    pa.reset()
+    pa.login()
+
+def set_bip39_passphrase(pw):
+    # apply bip39 passphrase for now (volatile)
+    import stash
+
+    stash.bip39_passphrase = pw
+
+    with stash.SensitiveValues() as sv:
+        if sv.mode != 'words':
+            # can't do it without original seed woods
+            return 'No BIP39 seed words'
+
+        sv.capture_xpub()
+
+    # Might need to bounce the USB connection, because our pubkey has changed,
+    # altho if they have already picked a shared session key, no need, and
+    # only affects MitM testing.
+
+async def remember_bip39_passphrase():
+    # Compute current xprv and switch to using that as root secret.
+    import stash
+    from main import dis, pa
+
+    if not stash.bip39_passphrase:
+        if not await ux_confirm('''You do not have a BIP39 passphrase set right now, so this command does little except forget the seed words. It does not enhance security.'''):
+            return
+
+    dis.fullscreen('Check...')
+
+    with stash.SensitiveValues() as sv:
+        if sv.mode != 'words':
+            # not a BIP39 derived secret, so cannot work.
+            await ux_show_story('''The wallet secret was not based on a seed phrase, so we cannot add a BIP39 passphrase at this time.''', title='Failed')
+            return
+
+        nv = SecretStash.encode(xprv=sv.node)
+    
     dis.fullscreen('Saving...')
     pa.change(new_secret=nv)
 

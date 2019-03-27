@@ -58,7 +58,7 @@ class UserAuthorizedAction:
 
     @classmethod
     def check_busy(cls, allowed_cls=None):
-        # see if we're busy. don't interrupt that... unless it's of allowed_clas
+        # see if we're busy. don't interrupt that... unless it's of allowed_cls
         # - also handle cleanup of stale actions
         global active_request
 
@@ -552,6 +552,67 @@ def start_remote_backup():
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
 
+
+class NewPassphrase(UserAuthorizedAction):
+    def __init__(self, pw):
+        super().__init__()
+        self._pw = pw
+        # self.result ... will be (len, sha256) of the resulting file at zero
+
+    async def interact(self):
+        # prompt them
+
+        showit = False
+        while 1:
+            if showit:
+                ch = await ux_show_story('''Given:\n\n%s\n\nShould we switch to that wallet now?
+
+OK to continue, X to cancel.''' % self._pw, title="Passphrase")
+            else:
+                ch = await ux_show_story('''BIP39 passphrase (%d chars long) has been provided over USB connection. Should we switch to that wallet now?
+
+Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % len(self._pw), title="Passphrase", escape='2')
+
+            if ch == '2':
+                showit = True
+                continue
+            break
+
+        try:
+            if ch != 'y':
+                # they don't want to!
+                self.refused = True
+                await ux_dramatic_pause("Refused.", 1)
+            else:
+                from seed import set_bip39_passphrase
+                from main import settings
+
+                await ux_dramatic_pause("Switching....", 0.25)
+
+                err = set_bip39_passphrase(self._pw)
+
+                if err:
+                    await self.failure(err)
+                else:
+                    self.result = settings.get('xpub')
+        except BaseException as exc:
+            self.failed = "Exception"
+            sys.print_exception(exc)
+        finally:
+            self.done()
+
+
+def start_bip39_passphrase(pw):
+    # tell the local user the secret words, and then save to SPI flash
+    # USB caller has to come back and download encrypted contents.
+    global active_request
+
+    UserAuthorizedAction.cleanup()
+
+    active_request = NewPassphrase(pw)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(active_request)
 
     
 SHOW_ADDR_TEMPLATE = '''\

@@ -5,3 +5,4 @@ pytest
 pycoin==0.80
 python-bitcoinrpc>=1.0
 pyserial
+mnemonic==0.18

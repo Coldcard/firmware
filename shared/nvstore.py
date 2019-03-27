@@ -50,12 +50,12 @@ class SettingsObject:
 
     def __init__(self, loop=None):
         self.loop = loop
-        self.current = {}
         self.is_dirty = 0
         self.my_pos = 0
 
         self.nvram_key = b'\0'*32
         self.current = self.default_values()
+        self.overrides = {}     # volatile overide values
 
         self.load()
 
@@ -108,7 +108,8 @@ class SettingsObject:
         from main import sf
 
         # reset
-        self.current = {}
+        self.current.clear()
+        self.overrides.clear()
         self.my_pos = 0
         self.is_dirty = 0
 
@@ -198,7 +199,10 @@ class SettingsObject:
                     sf.write(pos+i, h)
 
     def get(self, kn, default=None):
-        return self.current.get(kn, default)
+        if kn in self.overrides:
+            return self.overrides.get(kn)
+        else:
+            return self.current.get(kn, default)
 
     def changed(self):
         self.is_dirty += 1
@@ -208,6 +212,9 @@ class SettingsObject:
     def put(self, kn, v):
         self.current[kn] = v
         self.changed()
+
+    def put_volatile(self, kn, v):
+        self.overrides[kn] = v
 
     set = put
 
@@ -219,6 +226,7 @@ class SettingsObject:
         for k in rk:
             del self.current[k]
             
+        self.overrides.clear()
         self.changed()
         
     async def write_out(self):
@@ -322,7 +330,8 @@ class SettingsObject:
             self.my_pos = 0
 
         # act blank too, just in case.
-        self.current = {}
+        self.current.clear()
+        self.overrides.clear()
         self.is_dirty = 0
 
     @staticmethod

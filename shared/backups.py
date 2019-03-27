@@ -39,7 +39,7 @@ def render_backup_contents():
 
     COMMENT('Private key details: ' + chain.name)
 
-    with stash.SensitiveValues() as sv:
+    with stash.SensitiveValues(for_backup=True) as sv:
 
         if sv.mode == 'words':
             ADD('mnemonic', tcc.bip39.from_data(sv.raw))
@@ -72,7 +72,8 @@ def render_backup_contents():
     # user preferences
     for k,v in settings.current.items():
         if k[0] == '_': continue        # debug stuff in simulator
-        if k == 'xpub': continue        # redundant
+        if k == 'xpub': continue        # redundant, and wrong if bip39pw
+        if k == 'xfp': continue         # redundant, and wrong if bip39pw
         ADD('setting.' + k, v)
 
     rv.write('\n# EOF\n')

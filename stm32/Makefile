@@ -41,7 +41,7 @@ firmware-signed.dfu: firmware-signed.bin Makefile
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
 # This is fast for Coinkite devs, but no DFU support in wild.
-dfu: firmware-signed.dfu
+dfu up: firmware-signed.dfu
 	$(PYTHON_DO_DFU) -u firmware-signed.dfu
 
 # Make a factory release: using key #1

@@ -8,6 +8,11 @@ from api import bitcoind, match_key
 
 SIM_PATH = '/tmp/ckcc-simulator.sock'
 
+# Simulator normally powers up with this 'wallet'
+simulator_fixed_xprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
+simulator_fixed_words = "wife shiver author away frog air rough vanish fantasy frozen noodle athlete pioneer citizen symptom firm much faith extend rare axis garment kiwi clarify"
+simulator_fixed_xfp = 0x4369050f
+
 def pytest_addoption(parser):
     parser.addoption("--dev", action="store_true",
                      default=False, help="run on real dev")
@@ -43,7 +48,6 @@ def simulator(request):
     try:
         return ColdcardDevice(sn=SIM_PATH)
     except:
-        raise
         print("Simulator is required for this test")
         raise pytest.fail('missing simulator')
 
@@ -281,6 +285,7 @@ def set_master_key(sim_exec, sim_execfile, simulator):
         if rv: pytest.fail(rv)
 
         simulator.start_encryption()
+        simulator.check_mitm()
 
         print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
@@ -288,11 +293,10 @@ def set_master_key(sim_exec, sim_execfile, simulator):
 
     # Important cleanup: restore normal key, because other tests assume that
 
-    simulator_fixed_xprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
     doit(simulator_fixed_xprv)
 
 @pytest.fixture()
-def set_seed_words(sim_exec, sim_execfile, simulator, set_master_key):
+def set_seed_words(sim_exec, sim_execfile, simulator):
     # load simulator w/ a specific bip32 master key
 
     def doit(words):
@@ -302,6 +306,7 @@ def set_seed_words(sim_exec, sim_execfile, simulator, set_master_key):
         if rv: pytest.fail(rv)
 
         simulator.start_encryption()
+        simulator.check_mitm()
 
         print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
@@ -309,8 +314,30 @@ def set_seed_words(sim_exec, sim_execfile, simulator, set_master_key):
 
     # Important cleanup: restore normal key, because other tests assume that
 
-    simulator_fixed_xprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
-    set_master_key(simulator_fixed_xprv)
+    doit(simulator_fixed_words)
+
+@pytest.fixture()
+def reset_seed_words(sim_exec, sim_execfile, simulator):
+    # load simulator w/ a specific bip39 seed phrase
+
+    def doit():
+        words = simulator_fixed_words
+
+        sim_exec('import main; main.WORDS = %r; ' % words.split())
+        rv = sim_execfile('devtest/set_seed.py')
+        if rv: pytest.fail(rv)
+
+        simulator.start_encryption()
+        simulator.check_mitm()
+
+        print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
+        assert simulator.master_fingerprint == simulator_fixed_xfp
+
+        return words
+
+    yield doit
+
+
 
 
 @pytest.fixture()

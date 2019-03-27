@@ -19,6 +19,7 @@ if settings.get('xfp') == node.my_fingerprint():
 
 else:
     settings.current = sim_defaults
+    settings.overrides.clear()
     settings.set('chain', 'XTN')
 
     raw = SecretStash.encode(xprv=node)
