@@ -153,12 +153,11 @@ EmptyWallet = [
 ]
 
 
-
 # In operation, normal system, after a good PIN received.
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
-    MenuItem('Passphrase BIP39', f=set_bip39_phrase),
+    MenuItem('Passphrase BIP39', f=start_b39_pw),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
@@ -174,4 +173,3 @@ FactoryMenu = [
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),
     MenuItem("Perform Selftest", f=start_selftest),
 ]
-
