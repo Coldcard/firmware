@@ -371,6 +371,10 @@ async def start_seed_import(menu, label, item):
     import seed
     return seed.WordNestMenu(item.arg)
 
+async def start_b39_pw(menu, label, item):
+    import seed
+    return seed.PassphraseMenu()
+
 def pick_new_wallet(*a):
     import seed
     return seed.make_new_wallet()

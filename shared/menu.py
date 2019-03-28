@@ -102,6 +102,9 @@ class MenuSystem:
             else:
                 dis.text(x, y, msg)
 
+            if msg[0] == ' ':
+                dis.icon(x-2, y+11, 'space', invert=is_sel)
+
             if self.chosen is not None and (n+self.ypos) == self.chosen:
                 dis.icon(108, y, 'selected', invert=is_sel)
 
