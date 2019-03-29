@@ -338,7 +338,7 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
     __attribute__ ((used))
     int
 firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
-                        uint32_t arg2, uint32_t incoming_lr)
+                        uint32_t arg2, uint32_t incoming_sp, uint32_t incoming_lr)
 {
 
     // from linker, offset of firewall entry
@@ -429,6 +429,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     break;
                 case 3:
                     scr = screen_brick;
+                    secure = true;      // no point going into DFU, if even possible
                     break;
             }
 
