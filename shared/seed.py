@@ -367,6 +367,7 @@ def set_seed_value(words):
 
 def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
+    # - return None or error msg
     import stash
 
     stash.bip39_passphrase = pw
@@ -515,8 +516,8 @@ class PassphraseMenu(MenuSystem):
             #MenuItem('+Symbol'),
             #MenuItem('-Backspace', f=self.backspace),
             MenuItem('Clear All', f=self.empty_phrase),
-            MenuItem('SAVE', f=self.done_done),
-            MenuItem('CANCEL', f=self.done_done),
+            MenuItem('APPLY', f=self.done_apply),
+            MenuItem('CANCEL', f=self.done_cancel),
         ]
 
         super(PassphraseMenu, self).__init__(items)
@@ -634,16 +635,39 @@ class PassphraseMenu(MenuSystem):
         while not isinstance(the_ux.top_of_stack(), PassphraseMenu):
             the_ux.pop()
 
-    async def done_done(self, *a):
-        # import to work on empty string here too.
-        the_ux.pop()
-        err = set_bip39_passphrase(pp_sofar)
-        await ux_dramatic_pause("Switching....", 0.25)
+    async def done_cancel(self, *a):
+        global pp_sofar
 
-    def on_cancel(self):
-        if the_ux.pop():
-            # top of stack (main top-level menu)
-            self.top()
+        if len(pp_sofar) > 3:
+            if not await ux_confirm("Passphrase entered will be forgotten."):
+                return
+
+        goto_top_menu()
+
+    async def done_apply(self, *a):
+        # apply the passphrase.
+        # - important to work on empty string here too.
+        from stash import bip39_passphrase
+        old_pw = str(bip39_passphrase)
+
+        err = set_bip39_passphrase(pp_sofar)
+        if err:
+            # kinda very late: but if not BIP39 based key, ends up here.
+            return await ux_show_story(err, title="Fail")
+
+        from main import settings
+        xfp = settings.get('xfp')
+
+        ch = await ux_show_story('''Above is the fingerprint of the new wallet.
+
+Press X to abort and keep editing passphrase. OK to continue with new wallet.''',
+                                title="0x%08x" % xfp)
+        if ch == 'x':
+            # go back!
+            set_bip39_passphrase(old_pw)
+            return
+
+        goto_top_menu()
 
 class SingleWordMenu(WordNestMenu):
     def __init__(self, items=None, **kws):
@@ -654,10 +678,14 @@ class SingleWordMenu(WordNestMenu):
 
     @staticmethod
     async def all_done(new_words):
+        # create one more menu w/ the word and some variations on that word
         word = new_words[0]
         options = [word, word[0].upper() + word[1:], word.upper()]
         for w in options[:]:
             options.append(' ' + w)
+
+        # bugfix: in case they cancel from new menu
+        WordNestMenu.words = []
 
         return [MenuItem(w, f=PassphraseMenu.add_text) for n,w in enumerate(options)]
 
@@ -683,21 +711,22 @@ async def spinner_edit(pw):
     pw = bytearray(pw or 'A')
 
     pos = len(pw)-1       # which part being changed
-    n_visible = const(14)
-    ch_x = n_visible//2
+    n_visible = const(9)
+    scroll_x = max(pos - n_visible, 0)
 
     def cycle_set(which):
+        # pick next item in set of choices
         for n, s in enumerate(which):
             if pw[pos] == s:
                 try:
                     pw[pos] = which[n+1]
                 except IndexError:
                     pw[pos] = which[0]
-                break
-        else:
-            pw[pos] = which[0]
+                return
+        pw[pos] = which[0]
 
     def change(dx):
+        # next/prev by digit
         ch = pw[pos] + dx
         if ch not in my_rng:
             ch = (my_rng.stop-1) if dx < 0 else my_rng.start
@@ -707,9 +736,14 @@ async def spinner_edit(pw):
     while 1:
         dis.clear()
 
+        if pos < scroll_x:
+            scroll_x = pos
+        if pos >= scroll_x + n_visible:
+            scroll_x = pos - n_visible
+
         for i in range(n_visible):
             # calc abs position in string
-            ax = i
+            ax = scroll_x + i
             x = 4 + (13*i)
             try:
                 ch = pw[ax]
@@ -723,6 +757,9 @@ async def spinner_edit(pw):
                 dis.icon(x, y+11, 'space')
             else:
                 dis.text(x, y, chr(ch) if ch in my_rng else chr(215), FontSmall)
+
+        if scroll_x > 0:
+            dis.text(2, y-14, str(pw, 'ascii')[0:scroll_x]+'...', FontTiny)
 
         if 0:
             wy = 6
@@ -765,7 +802,7 @@ async def spinner_edit(pw):
             if (pw[pos] & ~0x20) in range(65, 91):
                 pw[pos] ^= 0x20
         elif ch == '3':     # numbers
-            pw[pos] = 0x30
+            cycle_set(b'1234567890')
         elif ch == '4':     # symbols (all of them)
             cycle_set(symbols)
         elif ch == '0':     # help
