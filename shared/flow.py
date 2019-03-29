@@ -157,7 +157,7 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
-    MenuItem('Passphrase BIP39', f=start_b39_pw),
+    MenuItem('Passphrase', f=start_b39_pw),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
