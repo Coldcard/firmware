@@ -704,7 +704,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             // System startup code. Cannot be reached by any code (that hopes to run
             // again) except our reset stub.
             if(incoming_lr <= BL_FLASH_BASE || incoming_lr >= (uint32_t)&firewall_starts) {
-                rv = EPERM;
+                fatal_error("LR");
             } else {
                 system_startup();
             }            
