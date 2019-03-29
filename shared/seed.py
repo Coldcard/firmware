@@ -14,7 +14,8 @@
 from menu import MenuItem, MenuSystem
 from utils import pop_count
 import tcc, uctypes
-from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, ux_wait_keyup
+from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
+from ux import PressRelease
 from pincodes import AE_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
@@ -193,7 +194,6 @@ class WordNestMenu(MenuSystem):
         # - when the word list is empty and they cancel, stop
         words = WordNestMenu.words
         if self.is_commit and words:
-            print('cancel commit')
             words.pop()
 
             # replace the menu we are show w/ top-level (a-) menu
@@ -201,10 +201,7 @@ class WordNestMenu(MenuSystem):
             nxt = WordNestMenu(is_commit=True)
             the_ux.push(nxt)
         else:
-            print('normal cancel')
             the_ux.pop()
-
-        print(("after cancel[%d]: " % len(words)) + ' '.join(words))
 
     @staticmethod
     async def all_done(new_words):
@@ -372,6 +369,10 @@ def set_bip39_passphrase(pw):
 
     stash.bip39_passphrase = pw
 
+    # takes a bit, so show something
+    from main import dis
+    dis.fullscreen("Working...")
+
     with stash.SensitiveValues() as sv:
         if sv.mode != 'words':
             # can't do it without original seed woods
@@ -510,11 +511,7 @@ class PassphraseMenu(MenuSystem):
             #         xxxxxxxxxxxxxxxx
             MenuItem('Edit Phrase', f=self.view_edit_phrase),
             MenuItem('Add Word', menu=self.word_menu),
-            #MenuItem('+Space', f=self.add_space),
             MenuItem('Add Numbers', f=self.add_numbers),
-            #MenuItem('+Letter'),
-            #MenuItem('+Symbol'),
-            #MenuItem('-Backspace', f=self.backspace),
             MenuItem('Clear All', f=self.empty_phrase),
             MenuItem('APPLY', f=self.done_apply),
             MenuItem('CANCEL', f=self.done_cancel),
@@ -528,34 +525,17 @@ class PassphraseMenu(MenuSystem):
         while isinstance(the_ux.top_of_stack(), cls):
             the_ux.pop()
 
-    def late_draw(self, dis):
-        # add an overlay with "word N" in small text, top right.
-
-        invert = (self.cursor == self.ypos)
-        self.draw_chars(dis, invert)
-
-    @classmethod
-    def draw_chars(cls, dis, invert=False, plus=0):
-        # note: imperfect when showing 100 chars, and that's ok.
-        from display import FontTiny
-        count = len(pp_sofar) + plus
-        y = 6
-        dis.text(-8, y-4, "%d" % count, invert=invert)
-        dis.text(-18-(6 if count >= 10 else 0), y, "Chars", FontTiny, invert=invert)
-
     async def word_menu(self, *a):
         return SingleWordMenu()
-
-    async def add_space(self, *a):
-        global pp_sofar
-        pp_sofar += ' '
-        self.check_length()
 
     async def add_numbers(self, *a):
         # collect a series of digits
         from main import dis
         from display import FontTiny, FontSmall
         global pp_sofar
+
+        # allow key repeat on X only
+        press = PressRelease('1234567890y')
         
         footer = "X to DELETE, or OK when DONE."
         lx = 6
@@ -568,7 +548,7 @@ class PassphraseMenu(MenuSystem):
             msg = here
             by = y
             bx = dis.text(lx, y, msg[0:16])
-            dis.text(lx, y-8, pp_sofar, FontTiny)
+            dis.text(lx, y-9, str(pp_sofar, 'ascii').replace(' ', '_'), FontTiny)
 
             if len(msg) > 16:
                 # second line when needed (left just)
@@ -581,7 +561,7 @@ class PassphraseMenu(MenuSystem):
             dis.text(None, -1, footer, FontTiny)
             dis.show()
 
-            ch = await ux_wait_keyup('0123456789xy')
+            ch = await press.wait()
             if ch == 'y':
                 pp_sofar += here
                 self.check_length()
@@ -598,11 +578,13 @@ class PassphraseMenu(MenuSystem):
 
     async def empty_phrase(self, *a):
         global pp_sofar
-        if not pp_sofar or len(pp_sofar) < 3:
-            pp_sofar = ''
-        else:
-            if await ux_confirm("Press OK to clear passphrase. X to cancel."):
-                pp_sofar = ''
+
+        if pp_sofar and len(pp_sofar) >= 3:
+            if not await ux_confirm("Press OK to clear passphrase. X to cancel."):
+                return
+
+        pp_sofar = ''
+        await ux_dramatic_pause('Cleared...', 0.25)
 
     async def backspace(self, *a):
         global pp_sofar
@@ -639,7 +621,7 @@ class PassphraseMenu(MenuSystem):
         global pp_sofar
 
         if len(pp_sofar) > 3:
-            if not await ux_confirm("Passphrase entered will be forgotten."):
+            if not await ux_confirm("What you have entered will be forgotten."):
                 return
 
         goto_top_menu()
@@ -658,10 +640,10 @@ class PassphraseMenu(MenuSystem):
         from main import settings
         xfp = settings.get('xfp')
 
-        ch = await ux_show_story('''Above is the fingerprint of the new wallet.
+        ch = await ux_show_story('''Above is the master key fingerprint of the new wallet.
 
-Press X to abort and keep editing passphrase. OK to continue with new wallet.''',
-                                title="0x%08x" % xfp)
+Press X to abort and keep editing passphrase. OK to use the new wallet.''',
+                                title="[%08x]" % xfp)
         if ch == 'x':
             # go back!
             set_bip39_passphrase(old_pw)
@@ -704,6 +686,10 @@ async def spinner_edit(pw):
     # - 8-bit codepoints only
     my_rng = range(32, 127)          # FontSmall.code_range
     symbols = b' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+    letters = b'abcdefghijklmnopqrstuvwxyz'
+    Letters = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    numbers = b'1234567890'
+    #assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
     
     footer1 = "1=A 2=Case 3=# 4=Symbols 0=HELP"
     footer2 = "Arrows then OK when DONE."
@@ -714,32 +700,44 @@ async def spinner_edit(pw):
     n_visible = const(9)
     scroll_x = max(pos - n_visible, 0)
 
-    def cycle_set(which):
+    def cycle_set(which, direction=1):
         # pick next item in set of choices
         for n, s in enumerate(which):
             if pw[pos] == s:
                 try:
-                    pw[pos] = which[n+1]
+                    pw[pos] = which[n+direction]
                 except IndexError:
-                    pw[pos] = which[0]
+                    pw[pos] = which[0 if direction==1 else -1]
                 return
         pw[pos] = which[0]
 
     def change(dx):
-        # next/prev by digit
+        # next/prev within the same subset of related chars
+        ch = pw[pos]
+        for subset in [symbols, letters, Letters, numbers]:
+            if ch in subset:
+                return cycle_set(subset, dx)
+
+        # probably unreachable code: numeric up/down
         ch = pw[pos] + dx
         if ch not in my_rng:
             ch = (my_rng.stop-1) if dx < 0 else my_rng.start
             assert ch in my_rng
         pw[pos] = ch
 
+    # no key-repeat on certain keys
+    press = PressRelease('2xy')
     while 1:
         dis.clear()
 
-        if pos < scroll_x:
+        lr = pos - scroll_x     # left/right distance of cursor
+        if lr < 4 and scroll_x:
+            scroll_x -= 1
+        elif lr < 0:
             scroll_x = pos
-        if pos >= scroll_x + n_visible:
-            scroll_x = pos - n_visible
+        elif lr >= (n_visible-1):
+            # past right edge
+            scroll_x += 1
 
         for i in range(n_visible):
             # calc abs position in string
@@ -749,8 +747,11 @@ async def spinner_edit(pw):
                 ch = pw[ax]
             except IndexError:
                 continue
+
             if ax == pos:
-                dis.text(x-4, y-19, '0x%02X' % ch, FontTiny)
+                # draw cursor
+                if len(pw) < 2*n_visible:
+                    dis.text(x-4, y-19, '0x%02X' % ch, FontTiny)
                 dis.icon(x-2, y-10, 'spin')
 
             if ch == 0x20:
@@ -759,7 +760,7 @@ async def spinner_edit(pw):
                 dis.text(x, y, chr(ch) if ch in my_rng else chr(215), FontSmall)
 
         if scroll_x > 0:
-            dis.text(2, y-14, str(pw, 'ascii')[0:scroll_x]+'...', FontTiny)
+            dis.text(2, y-14, str(pw, 'ascii')[0:scroll_x].replace(' ', '_'), FontTiny)
 
         if 0:
             wy = 6
@@ -771,7 +772,7 @@ async def spinner_edit(pw):
         dis.text(None, -1, footer2, FontTiny)
         dis.show()
 
-        ch = await ux_wait_keyup('0123456789xy')
+        ch = await press.wait()
         if ch == 'y':
             return str(pw, 'ascii')
         elif ch == 'x':
@@ -783,7 +784,7 @@ async def spinner_edit(pw):
             else:
                 pp = await ux_show_story("Leaving without any change. Press 2 to set password to empty string instead. X to cancel leaving.", escape='2')
                 if pp == 'x': continue
-                return None if pp == '2' else ''
+                return '' if pp == '2' else None
 
         elif ch == '7':      # left
             pos -= 1
@@ -791,18 +792,22 @@ async def spinner_edit(pw):
         elif ch == '9':      # right
             pos += 1
             if pos >= len(pw):
-                pw += ' '       # expand with spaces
+                if len(pw) < 100 and pw[-3:] != b'   ':
+                    pw += ' '       # expand with spaces
+                else:
+                    pos -= 1        # abort addition
+
         elif ch == '5':     # up
             change(1)
         elif ch == '8':     # down
             change(-1)
         elif ch == '1':     # alpha
-            cycle_set(b'AaZzMm')
+            cycle_set(b'Aa')
         elif ch == '2':     # toggle case
             if (pw[pos] & ~0x20) in range(65, 91):
                 pw[pos] ^= 0x20
         elif ch == '3':     # numbers
-            cycle_set(b'1234567890')
+            cycle_set(numbers)
         elif ch == '4':     # symbols (all of them)
             cycle_set(symbols)
         elif ch == '0':     # help

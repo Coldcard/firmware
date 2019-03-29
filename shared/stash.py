@@ -190,7 +190,6 @@ class SensitiveValues:
 
         settings.put('chain', self.chain.ctype)
 
-
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
         # typically would be byte arrays or byte strings, but also

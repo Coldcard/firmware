@@ -587,8 +587,7 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
                 from seed import set_bip39_passphrase
                 from main import settings
 
-                await ux_dramatic_pause("Switching....", 0.25)
-
+                # full screen message shown: "Working..."
                 err = set_bip39_passphrase(self._pw)
 
                 if err:
