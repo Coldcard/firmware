@@ -13,12 +13,13 @@ from uasyncio import sleep_ms
 PER_M = 4
 
 class MenuItem:
-    def __init__(self, label, menu=None, f=None, chooser=None, arg=None):
+    def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None):
         self.label = label
         self.next_menu = menu
         self.next_function = f
         self.chooser = chooser
         self.arg = arg
+        self.predicate = predicate
     
     async def activate(self, menu, idx):
 
@@ -65,8 +66,8 @@ class MenuSystem:
         self.should_continue = should_cont or (lambda: True)
         self.cursor = 0
         self.ypos = 0
-        self.items = menu_items
-        self.count = len(menu_items)
+        self.items = [m for m in menu_items if not m.predicate or m.predicate()]
+        self.count = len(self.items)
         self.chosen = chosen
         if chosen is not None:
             self.goto_idx(chosen)
