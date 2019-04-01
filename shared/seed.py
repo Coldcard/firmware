@@ -691,8 +691,8 @@ async def spinner_edit(pw):
     numbers = b'1234567890'
     #assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
     
-    footer1 = "1=A 2=Case 3=# 4=Symbols 0=HELP"
-    footer2 = "Arrows then OK when DONE."
+    footer1 = "1=Letters  2=Numbers  3=Symbols"
+    footer2 = "4=SwapCase  0=HELP"
     y = 20
     pw = bytearray(pw or 'A')
 
@@ -761,12 +761,14 @@ async def spinner_edit(pw):
 
         if scroll_x > 0:
             dis.text(2, y-14, str(pw, 'ascii')[0:scroll_x].replace(' ', '_'), FontTiny)
+        if scroll_x + n_visible < len(pw):
+            dis.text(-1, 1, "MORE >", FontTiny)
 
         if 0:
             wy = 6
             count = len(pw)
             dis.text(-8, wy-4, "%d" % count)
-            dis.text(-18-(6 if count >= 10 else 0), wy, "Chars", FontTiny)
+
 
         dis.text(None, -10, footer1, FontTiny)
         dis.text(None, -1, footer2, FontTiny)
@@ -803,24 +805,25 @@ async def spinner_edit(pw):
             change(-1)
         elif ch == '1':     # alpha
             cycle_set(b'Aa')
-        elif ch == '2':     # toggle case
+        elif ch == '4':     # toggle case
             if (pw[pos] & ~0x20) in range(65, 91):
                 pw[pos] ^= 0x20
-        elif ch == '3':     # numbers
+        elif ch == '2':     # numbers
             cycle_set(numbers)
-        elif ch == '4':     # symbols (all of them)
+        elif ch == '3':     # symbols (all of them)
             cycle_set(symbols)
         elif ch == '0':     # help
             await ux_show_story('''\
 Use arrow keys (4789) to select letter and move around. 
 
-1=Letters (AaZzMm)
+1=Letters (Aa)
 2=Toggle Case (q vs Q)
-3=Numbers (starts at zero)
+3=Numbers
 4=Symbols (all of them)
 X=Delete character
 
 To quit without changes, delete everything.
+Add more characters by moving past end (right side).
 ''')
 
 # EOF

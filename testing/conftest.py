@@ -198,6 +198,18 @@ def cap_story(sim_execfile):
     return doit
 
 @pytest.fixture(scope='module')
+def get_pp_sofar(sim_execfile):
+    # get entry value for bip39 passphrase
+    def doit():
+        from json import loads
+        rv = dict()
+        resp = sim_execfile('devtest/get_pp_sofar.py')
+        assert 'Error' not in resp
+        return resp
+
+    return doit
+
+@pytest.fixture(scope='module')
 def get_secrets(sim_execfile):
     # returns big dict based on what we'd normally put into a backup file.
     def doit():
@@ -219,13 +231,19 @@ def get_secrets(sim_execfile):
     return doit
 
 @pytest.fixture
-def goto_home(cap_menu, need_keypress):
+def goto_home(cap_menu, need_keypress, pick_menu_item):
 
     def doit():
         # get to top, force a redraw
         for i in range(10):
             need_keypress('x')
             time.sleep(.01)      # required
+
+            # special case to get out of passphrase menu
+            if 'CANCEL' in cap_menu():
+                pick_menu_item('CANCEL')
+                time.sleep(.01)
+                need_keypress('y')
 
         need_keypress('0')
         
