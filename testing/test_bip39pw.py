@@ -105,4 +105,5 @@ def test_b39p_refused(dev, need_keypress, pw='testing 123'):
             done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
 
+
 # EOF

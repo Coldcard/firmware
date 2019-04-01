@@ -25,11 +25,14 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
     assert 'Secure Logout' in m
     assert 'Advanced' in m
     assert 'Settings' in m
-    assert len(m) == 4
+    if len(m) == 5:
+        assert 'Passphrase' in m
+    else:
+        assert len(m) == 4
 
     # check 4 lines of menu are shown right
     scr = cap_screen()
-    chk = '\n'.join(m[0:4])
+    chk = '\n'.join(m[0:5])
     assert scr == chk
 
     # pick first item, expect a story
@@ -48,7 +51,7 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
 def word_menu_entry(cap_menu, pick_menu_item):
     def doit(words):
         # do the massive drilling-down to pick a specific pass phrase
-        assert len(words) in {12, 18, 24}
+        assert len(words) in {1, 12, 18, 24}
 
         for word in words:
             while 1:
@@ -285,5 +288,139 @@ def test_import_prv(goto_home, pick_menu_item, cap_story, need_keypress, unit_te
 
     assert v['xpub'] == node.hwif()
     assert v['xprv'] == node.hwif(as_private=True)
+
+
+@pytest.mark.parametrize('target', ['baby', 'struggle', 'youth'])
+@pytest.mark.parametrize('version', range(8))
+def test_bip39_pick_words(target, version, goto_home, pick_menu_item, cap_story, need_keypress,
+                                cap_menu, word_menu_entry, get_pp_sofar):
+    # Check we can pick words
+
+    goto_home()
+    pick_menu_item('Passphrase')
+    pick_menu_item('Add Word')
+
+    word_menu_entry([target])
+    if version%4 == 0:
+        mw = target
+    if version%4 == 1:
+        mw = target.upper()
+    if version%4 == 2:
+        mw = target.lower()
+    if version%4 == 3:
+        mw = target.title()
+    if version >= 4:
+        mw = ' ' + mw
+
+    pick_menu_item(mw)
+
+    chk = get_pp_sofar()
+
+    assert chk == mw
+
+@pytest.mark.parametrize('target', ['123', '1', '4'*32, '12'*8])
+@pytest.mark.parametrize('backspaces', [1, 0, 12])
+def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story, 
+                                cap_menu, word_menu_entry, get_pp_sofar, need_keypress):
+
+    # Check we can pick numbers (appended)
+    # - also the "clear all" menu item
+
+    goto_home()
+    pick_menu_item('Passphrase')
+    pick_menu_item('Add Numbers')
+
+    for d in target:
+        time.sleep(.01)      # required
+        need_keypress(d)
+
+    if backspaces < len(target):
+        for x in range(backspaces):
+            time.sleep(.01)      # required
+            need_keypress('x')
+
+        if backspaces:
+            for d in target[-backspaces:]:
+                time.sleep(.01)      # required
+                need_keypress(d)
+
+    time.sleep(0.01)      # required
+    need_keypress('y')
+
+    time.sleep(0.01)      # required
+    chk = get_pp_sofar()
+    assert chk == target
+
+    # And clear it
+
+    pick_menu_item('Clear All')
+    time.sleep(0.01)      # required
+
+    need_keypress('y')
+    time.sleep(0.01)      # required
+    chk = get_pp_sofar()
+    assert chk == ''
+
+@pytest.mark.parametrize('target', ['abc123', 'AbcZz1203', 'Test 123',
+        '&*!#^$*&@#^*&^$abcdABCD^%182736',
+        'I be stacking sats!! Come at me bro....',
+        'Aa'*50,
+])
+def test_bip39_complex(target, goto_home, pick_menu_item, cap_story, 
+                                cap_menu, word_menu_entry, get_pp_sofar, need_keypress):
+    # full entry mode
+    # - just left to right here
+    # - not testing case swap, because might remove that
+    symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+
+    # failed run recovery; gets out of edit screen
+    #need_keypress('y')
+    #need_keypress('x')
+    goto_home()
+    pick_menu_item('Passphrase')
+    pick_menu_item('Edit Phrase')
+
+    for pos, d in enumerate(target):
+        time.sleep(.01)      # required
+        if d.isalpha():
+            if pos != 0:        # A is already default first
+                need_keypress('1')
+
+            if d.islower():
+                time.sleep(.01)      # required
+                need_keypress('1')
+
+            cnt = ord(d.lower()) - ord('a')
+
+        elif d.isdigit():
+            need_keypress('2')
+            if d == '0':
+                time.sleep(.01)      # required
+                need_keypress('8')
+                cnt = 0
+            else:
+                cnt = ord(d) - ord('1')
+        else:
+            assert d in symbols
+            if pos == 0:
+                need_keypress('3')
+
+            cnt = symbols.find(d)
+
+        for i in range(cnt):
+            time.sleep(.01)      # required
+            need_keypress('5')
+
+        if pos != len(target)-1:
+            time.sleep(.01)      # required
+            need_keypress('9')
+
+    time.sleep(0.01)      # required
+    need_keypress('y')
+
+    time.sleep(0.01)      # required
+    assert get_pp_sofar() == target
+
+
 
 # EOF
