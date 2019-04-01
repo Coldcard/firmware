@@ -189,6 +189,7 @@ class SensitiveValues:
             settings.put('xpub', xpub)
 
         settings.put('chain', self.chain.ctype)
+        settings.put('words', (self.mode == 'words'))
 
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper

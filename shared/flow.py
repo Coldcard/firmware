@@ -5,6 +5,7 @@
 #
 from menu import MenuItem
 import version
+from main import settings
 
 from actions import *
 from choosers import *
@@ -34,23 +35,15 @@ async def which_pin_menu(_1,_2, item):
     from main import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
-if version.is_mark2():
-    SettingsMenu = [
-        #         xxxxxxxxxxxxxxxx
-        MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
-        MenuItem("Max Network Fee", chooser=max_fee_chooser),
-        MenuItem('Blockchain', chooser=chain_chooser),
-        MenuItem('PIN Options', menu=which_pin_menu),
-    ]
-else:
-    SettingsMenu = [
-        #         xxxxxxxxxxxxxxxx
-        MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
-        MenuItem("Touch Setting", chooser=sensitivity_chooser),
-        MenuItem("Max Network Fee", chooser=max_fee_chooser),
-        MenuItem('Blockchain', chooser=chain_chooser),
-        MenuItem('PIN Options', menu=which_pin_menu),
-    ]
+SettingsMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+    MenuItem("Touch Setting", chooser=sensitivity_chooser,
+                                predicate=lambda: not version.is_mark2()),
+    MenuItem("Max Network Fee", chooser=max_fee_chooser),
+    MenuItem('Blockchain', chooser=chain_chooser),
+    MenuItem('PIN Options', menu=which_pin_menu),
+]
 
 SDCardMenu = [
     MenuItem("Verify Backup", f=verify_backup),
@@ -121,7 +114,8 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
-    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
+    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32,
+                                predicate=lambda: settings.get('words', True)),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -157,7 +151,7 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
-    MenuItem('Passphrase', f=start_b39_pw),
+    MenuItem('Passphrase', f=start_b39_pw, predicate=lambda: settings.get('words', True)),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
