@@ -380,9 +380,9 @@ def pick_new_wallet(*a):
     return seed.make_new_wallet()
 
 async def convert_bip39_to_bip32(*a):
-    if not await ux_confirm('''This operation computes the extended master private key using your BIP39 seed words and optional passphrase, and then saves the resulting value (which is an xprv) as the wallet secret.
+    if not await ux_confirm('''This operation computes the extended master private key using your BIP39 seed words and passphrase, and then saves the resulting value (xprv) as the wallet secret.
 
-The seed words themselves are erased forever, but effectively there is no other change. If a BIP39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with other passphrases.
+The seed words themselves are erased forever, but effectively there is no other change. If a BIP39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with any other passphrase.
 
 A reboot is part of this process. PIN code, and funds are not affected.
 '''):
@@ -390,6 +390,10 @@ A reboot is part of this process. PIN code, and funds are not affected.
 
     import seed
     await seed.remember_bip39_passphrase()
+
+    settings.save()
+
+    await login_now()
 
 async def set_bip39_phrase(*a):
     # gather a passphrase, up to 100 chars long via a complex ux process

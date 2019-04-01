@@ -93,6 +93,8 @@ DebugFunctionsMenu = [
 DangerZoneMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),       # actually harmless
+    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32,
+                                predicate=lambda: settings.get('words', True)),
     MenuItem("Destroy Seed", f=clear_seed),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem("Wipe Patch Area", f=wipe_filesystem),             # needs better label
@@ -114,8 +116,6 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
-    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32,
-                                predicate=lambda: settings.get('words', True)),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
