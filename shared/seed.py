@@ -724,7 +724,7 @@ async def spinner_edit(pw):
         pw[pos] = ch
 
     # no key-repeat on certain keys
-    press = PressRelease('2xy')
+    press = PressRelease('4xy')
     while 1:
         dis.clear()
 
