@@ -1,7 +1,7 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# numpad.py - Numeric keypad implemented with Membrane tech, not touch.
+# mempad.py - Numeric keypad implemented with membrane metal-dome, not touch.
 #
 import array, utime, pyb
 from uasyncio.queues import Queue
@@ -10,8 +10,8 @@ from random import shuffle
 from numpad import NumpadBase
 
 NUM_ROWS = const(4)
-HISTORY_LEN = const(5)
-SAMPLE_RATE = const(5)        # ms
+HISTORY_LEN = const(3)
+SAMPLE_RATE = const(10)        # ms
 NUM_SAMPLES = const(NUM_ROWS * HISTORY_LEN)
 
 class MembraneNumpad(NumpadBase):
@@ -30,8 +30,8 @@ class MembraneNumpad(NumpadBase):
         self.rows = [Pin(i, Pin.OUT_OD, value=0) 
                         for i in ('M2_ROW0', 'M2_ROW1', 'M2_ROW2', 'M2_ROW3')]
 
-        self.scan_order = array.array('i', list(range(NUM_ROWS)) * HISTORY_LEN)
-        self.history = array.array('i', (-1 for i in range(NUM_SAMPLES)))
+        self.scan_order = array.array('b', list(range(NUM_ROWS)) * HISTORY_LEN)
+        self.history = array.array('b', (-1 for i in range(NUM_SAMPLES)))
 
         # We scan in random order, because Tempest.
         # - scanning only starts when something pressed
@@ -71,9 +71,10 @@ class MembraneNumpad(NumpadBase):
         if self._disabled: return
 
         self.waiting_for_any = False
-        self.scan_idx = NUM_SAMPLES-1
 
-        self._scan_next()
+        # First irq may be a runt of unknown length, so don't collect data 
+        # until after first time called.
+        self.scan_idx = NUM_SAMPLES
         self.timer.init(freq=1000//SAMPLE_RATE, callback=self._measure_irq)
         self.loop.call_later_ms(SAMPLE_RATE * (NUM_SAMPLES + 2), self._finish_scan)
 
@@ -100,8 +101,9 @@ class MembraneNumpad(NumpadBase):
         else:
             col_press = -1
 
-        # track sample data
-        self.history[self.scan_idx] = col_press
+        if self.scan_idx != NUM_SAMPLES:
+            # track sample data
+            self.history[self.scan_idx] = col_press
 
         # move to next column, or stop
         if self.scan_idx == 0:
@@ -113,26 +115,39 @@ class MembraneNumpad(NumpadBase):
 
     def _finish_scan(self):
         # we're done a full scan (mulitple times: HISTORY_LEN)
-        down = set()
+        score = {}
 
-        for i in range(NUM_ROWS * HISTORY_LEN):
-            # anything down?
-            col_press = self.history[i]
-            if col_press != -1:
-                key = self.DECODER[(self.scan_order[i], col_press)]
-                down.add(key)
+        for i, col_press in enumerate(self.history):
+            if col_press == -1:
+                # nothing pressed in this row
+                continue
 
-        if not down:
-            # all keys are up.
+            key = self.DECODER[(self.scan_order[i], col_press)]
+
+            if key not in score:
+                score[key] = 1
+            else:
+                score[key] += 1
+
+        if not score:
+            # all keys are 100% up.
             self._key_event('')
 
             # stop scanning for now
             self._wait_any()
 
         else:
-            # do nothing if abiguous or in transition (bounce).
-            if len(down) == 1:
-                self._key_event(down.pop())
+            # handle debounce, which happens in both directions: press and release
+            # - all samples must be in agreement to count as either
+
+            for key, count in score.items():
+                if count == HISTORY_LEN:
+                    self._key_event(key)
+                    break
+
+            # last key was fully released
+            if self.key_pressed not in score:
+                self._key_event('')
 
             self._start_scan()
     
