@@ -10,25 +10,6 @@ class NumpadBase:
 
     KEYS = '0123456789xy'
 
-    # (row, col) => keycode
-    DECODER = {
-            (3,2): '1',
-            (3,1): '2',
-            (3,0): '3',
-
-            (2,2): '4',
-            (2,1): '5',
-            (2,0): '6',
-
-            (1,2): '7',
-            (1,1): '8',
-            (1,0): '9',
-
-            (0,2): 'x',
-            (0,1): '0',
-            (0,0): 'y',
-        }
-
     # this signals a need to stop user interaction and re-look at ux stack
     ABORT_KEY = '\xff'
 
@@ -66,9 +47,6 @@ class NumpadBase:
     def stop(self):
         # Stop scanning
         self._disabled = True
-
-    #def start(self): # Begin scanning for events
-
 
     def abort_ux(self):
         # pretend a key was pressed, in order to unblock things

@@ -19,6 +19,24 @@ NUM_PINS = const(7)
 THRESHOLD = const(200)
 
 class TouchNumpad(NumpadBase):
+    # (row, col) => keycode
+    DECODER = {
+            (3,2): '1',
+            (3,1): '2',
+            (3,0): '3',
+
+            (2,2): '4',
+            (2,1): '5',
+            (2,0): '6',
+
+            (1,2): '7',
+            (1,1): '8',
+            (1,0): '9',
+
+            (0,2): 'x',
+            (0,1): '0',
+            (0,0): 'y',
+        }
 
     def __init__(self, loop):
         super(TouchNumpad, self).__init__(loop)
