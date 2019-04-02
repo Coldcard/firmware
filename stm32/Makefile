@@ -124,6 +124,14 @@ stlink:
 unsigned-dfu:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) deploy
 
+# make a dev.dfu with production key so it loads faster
+dev:
+	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
+	$(SIGNIT) sign "test123" -k 1 -o dev.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
+	rm dev.bin
+	ckcc upgrade dev.dfu
+
 # see COLDCARD/mpconfigboard.mk
 tags: 
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) tags
