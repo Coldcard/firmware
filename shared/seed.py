@@ -519,11 +519,9 @@ class PassphraseMenu(MenuSystem):
 
         super(PassphraseMenu, self).__init__(items)
 
-
-    @classmethod
-    def pop_all(cls):
-        while isinstance(the_ux.top_of_stack(), cls):
-            the_ux.pop()
+    def on_cancel(self):
+        # zip to cancel item when they fail to exit via X button
+        self.goto_idx(self.count - 1)
 
     async def word_menu(self, *a):
         return SingleWordMenu()

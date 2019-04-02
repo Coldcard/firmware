@@ -379,14 +379,14 @@ This creates an entirely new wallet, for every possible passphrase.
 
 By default, the Coldcard uses an empty string as the passphrase.
 
-On the next menu, you can create a passphrase by selecting \
+On the next menu, you can enter a passphrase by selecting \
 individual lettters, choosing from the word list (recommended), \
 or by typing numbers.
 
 Please write down the fingerprint of all your wallets, so you can \
-confirm when you've got the right passphrase. (If you are writing down
+confirm when you've got the right passphrase. (If you are writing down \
 the passphrase as well, it's okay to put them together.) There is no way for \
-the Coldcard to know if your password is correct, and if you have it wrong \
+the Coldcard to know if your password is correct, and if you have it wrong, \
 you will be looking at an empty wallet.
 
 Limitations: 100 characters max length, ASCII \
