@@ -73,9 +73,6 @@ def word_menu_entry(cap_menu, pick_menu_item):
                 pick_menu_item(which)
                 if '-' not in which: break
 
-                    
-
-
     return doit
 
 @pytest.fixture
@@ -298,6 +295,7 @@ def test_bip39_pick_words(target, version, goto_home, pick_menu_item, cap_story,
 
     goto_home()
     pick_menu_item('Passphrase')
+    time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
     pick_menu_item('Add Word')
 
     word_menu_entry([target])
@@ -328,6 +326,7 @@ def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story
 
     goto_home()
     pick_menu_item('Passphrase')
+    time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
     pick_menu_item('Add Numbers')
 
     for d in target:
@@ -378,6 +377,7 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
     #need_keypress('x')
     goto_home()
     pick_menu_item('Passphrase')
+    time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
     pick_menu_item('Edit Phrase')
 
     for pos, d in enumerate(target):
