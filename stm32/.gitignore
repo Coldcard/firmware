@@ -11,3 +11,6 @@ firmware-signed.*
 # somewhat useful binary snapshots
 mostly.dfu
 firmware-signed.dfu
+
+dev.bin
+dev.dfu
