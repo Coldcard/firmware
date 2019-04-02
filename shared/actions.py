@@ -98,7 +98,7 @@ Extended Master Key:
         msg += '\n(Secondary wallet)\n'
 
     if stash.bip39_passphrase:
-        msg += '\nA passphrase (BIP39) is in effect.\n'
+        msg += '\nBIP39 passphrase is in effect.\n'
 
     bn = callgate.get_bag_number()
     if bn:
@@ -372,6 +372,34 @@ async def start_seed_import(menu, label, item):
     return seed.WordNestMenu(item.arg)
 
 async def start_b39_pw(menu, label, item):
+    if not settings.get('b39skip', False):
+        ch = await ux_show_story('''\
+You may add a passphrase to your BIP39 seed words. \
+This creates an entirely new wallet, for every possible passphrase.
+
+By default, the Coldcard uses an empty string as the passphrase.
+
+On the next menu, you can create a passphrase by selecting \
+individual lettters, choosing from the word list (recommended), \
+or by typing numbers.
+
+Please write down the fingerprint of all your wallets, so you can \
+confirm when you've got the right passphrase. (If you are writing down
+the passphrase as well, it's okay to put them together.) There is no way for \
+the Coldcard to know if your password is correct, and if you have it wrong \
+you will be looking at an empty wallet.
+
+Limitations: 100 characters max length, ASCII \
+characters 32-126 (0x20-0x7e) only.
+
+OK to start.
+X to go back. Or press 2 to hide this message forever.
+''', escape='2')
+        if ch == '2':
+            settings.set('b39skip', True)
+        if ch == 'x':
+            return
+
     import seed
     return seed.PassphraseMenu()
 
@@ -394,12 +422,6 @@ A reboot is part of this process. PIN code, and funds are not affected.
     settings.save()
 
     await login_now()
-
-async def set_bip39_phrase(*a):
-    # gather a passphrase, up to 100 chars long via a complex ux process
-    import seed
-    pw = 'test'
-    seed.set_bip39_passphrase(pw)
 
 async def clear_seed(*a):
     # Erase the seed words, and private key from this wallet!
