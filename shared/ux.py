@@ -120,6 +120,7 @@ def ux_poll_once(expected='x'):
 
 class PressRelease:
     def __init__(self, need_release='xy'):
+        # Manage key-repeat: track last key, measure time it's held down, etc.
         self.need_release = need_release
         self.last_key = None
         self.num_repeats = 0
@@ -127,9 +128,8 @@ class PressRelease:
     async def wait(self):
         from main import numpad
 
-        # never do key-repeat on keys that need "ups"
-
         armed = None
+
         while 1:
             rep_delay = numpad.repeat_delay if not self.num_repeats else 100
             so_far = 0
@@ -153,6 +153,8 @@ class PressRelease:
             if ch == numpad.ABORT_KEY:
                 raise AbortInteraction
 
+            self.num_repeats = 0
+
             if len(ch) > 1:
                 # multipress: cancel press/release cycle and be a keyup
                 # for other keys.
@@ -160,15 +162,14 @@ class PressRelease:
                 continue
 
             if ch == '':
+                self.last_key = None
                 if armed:
-                    self.last_key = None        # no key-repeat on these
                     return armed
             elif ch in self.need_release:
+                # no key-repeat on these ones
                 armed = ch
             else:
                 self.last_key = ch
-                self.num_repeats = 0
-
                 return ch
 
 async def ux_press_release(need_release='xy', key_repeat=None):
