@@ -816,11 +816,11 @@ async def spinner_edit(pw):
             await ux_show_story('''\
 Use arrow keys (4789) to select letter and move around. 
 
-1=Letters (Aa)
-2=Toggle Case (q vs Q)
-3=Numbers
-4=Symbols (all of them)
-X=Delete character
+1=Letters (Aa..)
+2=Numbers (12..)
+3=Symbols (!@#&*)
+4=Swap Case (q/Q)
+X=Delete char
 
 To quit without changes, delete everything.
 Add more characters by moving past end (right side).
