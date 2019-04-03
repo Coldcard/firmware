@@ -1,7 +1,15 @@
-## 1.2.0 - Feb 2018
+## 2.0.0 - Apr 2019
 
-- Changes to support Mark 2 hardware (no functional changes).
-- Paired with version 1.2.0 of the bootrom with some MitM defenses added.
+- BIP39 Passphrase support: enter up to 100 characters to create
+    new wallets  from your existing seed words. Each is a completely
+    independant wallet to Electrum and PSBT files, so please make note
+    of the extended master fingerprint (eight hex digits).
+- Support for Mark2 hardware, with membrane keypad replacing touch interface.
+- Adds activity light during MicroSD card read/write (Mk2 only)
+- New command: "Lock down seed" which converts BIP39 seed words and passphrase into the
+    master xprv and saves that as new wallet secret. Locks in the passphrase, deletes seed words.
+- New bootrom, version 1.2.1 with Mk2 hardware support and improved one-wire bus MitM defenses.
+- Bugfix: extra keypress occurs during certain interactions involving key repeat.
 
 ## 1.1.1 - Dec 2018
 
