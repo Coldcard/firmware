@@ -104,7 +104,7 @@ class OLEDSimulator:
 
 def start():
     print('''\nColdcard Simulator: Commands (over simulated window):
-  - Q to quit
+  - Control-Q to quit
   - Z to snapshot screen.
   - S/E to start/end movie recording
 ''')
@@ -194,7 +194,7 @@ def start():
             if event.type == sdl2.SDL_KEYUP or event.type == sdl2.SDL_KEYDOWN:
                 try:
                     ch = chr(event.key.keysym.sym)
-                    #print('0x%0x => %s' % (event.key.keysym.sym, ch))
+                    #print('0x%0x => %s  mod=0x%x'%(event.key.keysym.sym, ch, event.key.keysym.mod))
                 except:
                     # things like 'shift' by itself
                     #print('0x%0x' % event.key.keysym.sym)
@@ -210,7 +210,8 @@ def start():
                 elif ch == '\x0d':
                     ch = 'y'
 
-                if ch in '\x1bqQ':
+                if ch == 'q' and event.key.keysym.mod == 0x40:
+                    # control-Q
                     running = False
                     break
 
