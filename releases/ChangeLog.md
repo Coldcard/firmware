@@ -8,7 +8,7 @@
 - Adds activity light during MicroSD card read/write (Mk2 only)
 - New command: "Lock down seed" which converts BIP39 seed words and passphrase into the
     master xprv and saves that as new wallet secret. Locks in the passphrase, deletes seed words.
-- New bootrom, version 1.2.1 with Mk2 hardware support and improved one-wire bus MitM defenses.
+- New bootrom, version 1.2.1 with Mk2 hardware support and improved one-wire bus MitM defences.
 - Bugfix: extra keypress occurs during certain interactions involving key repeat.
 
 ## 1.1.1 - Dec 2018
