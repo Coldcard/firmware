@@ -782,7 +782,7 @@ async def spinner_edit(pw):
                 if pos >= len(pw):
                     pos = len(pw)-1
             else:
-                pp = await ux_show_story("OK to leave without any change. X to cancel leaving.")
+                pp = await ux_show_story("OK to leave without any changes? Or X to cancel leaving.")
                 if pp == 'x': continue
                 return None
 
