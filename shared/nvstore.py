@@ -27,6 +27,8 @@ from sffile import SFFile
 #   xfp = master xpub's fingerprint (32 bit unsigned)
 #   xpub = master xpub in base58
 #   chain = 3-letter codename for chain we are working on (BTC)
+#   words = (bool) BIP39 seed words exist (else XPRV or master secret based)
+#   b39skip = (bool) skip discussion about use of BIP39 passphrase
 #   idle_to = idle timeout period (seconds)
 #   _age = internal verison number for data (see below)
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -39,8 +41,8 @@ from sffile import SFFile
 SLOTS = range((1024-128)*1024, 1024*1024, 4096)
 
 # Altho seems bad to statically alloc this big block, it solves
-# concerns with heap fragmentation, and saving settings is core to our
-# mission.
+# concerns with heap fragmentation, and saving settings is clearly
+# core to our mission!
 # 4k, but last 32 bytes are a SHA (itself encrypted)
 #_tmp = bytearray(4096-32)
 from sram2 import nvstore_buf
