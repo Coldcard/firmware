@@ -2,7 +2,7 @@
 
 - there must be 12, 16 or 24 words in your mnemonic
 - we have only the English word list
-- ~we do not support BIP39 passwords during import~~ Full support added in version 2.0.0!
+- ~~we do not support BIP39 passwords during import~~ (full support added in version 2.0.0)
 
 # XPRV Import
 
