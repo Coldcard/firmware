@@ -10,7 +10,7 @@
 # instance of micropython that simulates the micropython that would be running in the main
 # chip.
 #
-import os, sys, tty, pty, termios, time, pdb
+import os, sys, tty, pty, termios, time, pdb, tempfile
 import subprocess
 import sdl2.ext
 from PIL import Image
@@ -65,7 +65,12 @@ class OLEDSimulator:
 
     def snapshot(self):
         fn = time.strftime('../snapshot-%j-%H%M%S.png')
-        sdl2.SDL_SaveBMP(self.sprite.surface, fn.encode('ascii'))
+        with tempfile.NamedTemporaryFile() as tmp:
+            sdl2.SDL_SaveBMP(self.sprite.surface, tmp.name.encode('ascii'))
+            tmp.file.seek(0)
+            img = Image.open(tmp.file)
+            img.save(fn)
+
         print("Snapshot saved: %s" % fn.split('/', 1)[1])
 
     def movie_start(self):
@@ -89,7 +94,6 @@ class OLEDSimulator:
 
     def new_frame(self):
         from PIL import Image
-        import tempfile
 
         dt = int((time.time() - self.last_frame) * 1000)
         self.last_frame = time.time()
