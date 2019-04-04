@@ -65,8 +65,8 @@
 
 # Policy Stuff
 
-- Coldcard will reject any txn that pays a fee of more than 10% of its total value to miners.
-  (Might become a setting someday.)
+- Coldcard will, by default, reject any txn that pays a fee of more than 10% of its total
+  value to miners. This limit is a setting: 10% (default), 25%, 50% or 'no limit'.
 
 # Developer / Source Code
 
