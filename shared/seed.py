@@ -667,7 +667,8 @@ class SingleWordMenu(WordNestMenu):
         # bugfix: in case they cancel from new menu
         WordNestMenu.words = []
 
-        return [MenuItem(w, f=PassphraseMenu.add_text) for n,w in enumerate(options)]
+        return MenuSystem([MenuItem(w, f=PassphraseMenu.add_text) 
+                                    for n,w in enumerate(options)], space_indicators=True)
 
     def late_draw(self, dis):
         #PassphraseMenu.late_draw(self, dis)
@@ -812,7 +813,7 @@ async def spinner_edit(pw):
             cycle_set(symbols)
         elif ch == '0':     # help
             await ux_show_story('''\
-Use arrow keys (4789) to select letter and move around. 
+Use arrow keys (5789) to select letter and move around. 
 
 1=Letters (Aa..)
 2=Numbers (12..)
@@ -820,7 +821,7 @@ Use arrow keys (4789) to select letter and move around.
 4=Swap Case (q/Q)
 X=Delete char
 
-To quit without changes, delete everything.
+To quit without changes, delete everything. \
 Add more characters by moving past end (right side).
 ''')
 

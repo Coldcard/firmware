@@ -62,12 +62,13 @@ class MenuItem:
 
 class MenuSystem:
 
-    def __init__(self, menu_items, chosen=None, should_cont=None):
+    def __init__(self, menu_items, chosen=None, should_cont=None, space_indicators=False):
         self.should_continue = should_cont or (lambda: True)
         self.cursor = 0
         self.ypos = 0
         self.items = [m for m in menu_items if not m.predicate or m.predicate()]
         self.count = len(self.items)
+        self.space_indicators = space_indicators
         self.chosen = chosen
         if chosen is not None:
             self.goto_idx(chosen)
@@ -103,7 +104,7 @@ class MenuSystem:
             else:
                 dis.text(x, y, msg)
 
-            if msg[0] == ' ':
+            if msg[0] == ' ' and self.space_indicators:
                 dis.icon(x-2, y+11, 'space', invert=is_sel)
 
             if self.chosen is not None and (n+self.ypos) == self.chosen:
