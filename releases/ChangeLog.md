@@ -1,4 +1,4 @@
-## 2.0.0 - Apr 2019
+## 2.0.1 - Apr 2019
 
 - BIP39 Passphrase support: enter up to 100 characters to create
     new wallets  from your existing seed words. Each is a completely
@@ -10,6 +10,7 @@
     master xprv and saves that as new wallet secret. Locks in the passphrase, deletes seed words.
 - New bootrom, version 1.2.1 with Mk2 hardware support and improved one-wire bus MitM defences.
 - Bugfix: extra keypress occurs during certain interactions involving key repeat.
+- 2.0.0 vs 2.0.1 bugfix: underscore/space indicator shown on Settings > Idle Timeout menu
 
 ## 1.1.1 - Dec 2018
 
