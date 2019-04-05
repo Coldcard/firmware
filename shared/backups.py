@@ -415,8 +415,9 @@ def generate_public_contents():
 
         yield ('''\
 # Coldcard Wallet Summary File
+## For wallet with master key fingerprint: 0x{xfp:08x}
 
-## Wallet operates on blockchain: {nb}
+### Wallet operates on blockchain: {nb}
 
 For BIP44, this is coin_type '{ct}', and internally we use symbol {sym} for this blockchain.
 
@@ -424,11 +425,12 @@ For BIP44, this is coin_type '{ct}', and internally we use symbol {sym} for this
 
 {xpub}
 
+
 Derived public keys, as may be needed for different systems:
 
 
 '''.format(nb=chain.name, xpub=chain.serialize_public(sv.node), 
-            sym=chain.ctype, ct=chain.b44_cointype))
+            sym=chain.ctype, ct=chain.b44_cointype, xfp=sv.node.my_fingerprint()))
 
         for name, path, addr_fmt in chains.CommonDerivations:
 
