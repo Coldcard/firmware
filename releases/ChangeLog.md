@@ -1,3 +1,7 @@
+## 2.0x - ??
+
+- Public summary file now includes extended master key fingerprint near top of file.
+
 ## 2.0.1 - Apr 2019
 
 - BIP39 Passphrase support: enter up to 100 characters to create
