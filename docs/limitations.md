@@ -32,7 +32,7 @@
 - with Electrum, we support classic payment addresses (p2pkh), Bech32 Segwit and P2SH/Segwit
     - however, each wallet must be of a single address type; cannot be mixed (their limitation)
     - the same Coldcard could be used in each of the three modes (we don't care about address format)
-- with Bitcoin Core (version 0.17?), we can do PSBT transactions, which support everything
+- with Bitcoin Core (version 0.17?), we can do PSBT transactions, which support all address types
 - we don't support coinbase transactions, so don't mine directly into a Coldcard wallet
 
 # Max Transaction Size
@@ -41,7 +41,7 @@
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
-- we can handle transactions with up to 20 inputs to be signed at one time.
+- we can handle transactions with up to 16 inputs to be signed at one time.
 
 
 # P2SH / Multisig
@@ -61,7 +61,7 @@
 # U2F Protocol / Web Access to USB / WebUSB
 
 - we do not support U2F protocol, WebUSB or any other means for random websites to talk to us
-- only native desktop/mobile apps, or helpers for those will be able to talk USB to Coldcard
+- only native desktop/mobile apps, or helpers for those, will be able to talk USB to Coldcard
 
 # Policy Stuff
 
