@@ -15,15 +15,19 @@ PER_M = 4
 class MenuItem:
     def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None):
         self.label = label
-        self.next_menu = menu
-        self.next_function = f
-        self.chooser = chooser
         self.arg = arg
-        self.predicate = predicate
+        if menu:
+            self.next_menu = menu
+        if f:
+            self.next_function = f
+        if chooser:
+            self.chooser = chooser
+        if predicate:
+            self.predicate = predicate
     
     async def activate(self, menu, idx):
 
-        if self.chooser:
+        if getattr(self, 'chooser', None):
             # get which one to show as selected, list of choices, and fcn to call after
             selected, choices, setter = self.chooser()
 
@@ -41,7 +45,7 @@ class MenuItem:
 
         else:
             # nesting menus, and functions and so on.
-            f = self.next_function
+            f = getattr(self, 'next_function', None)
             if f:
                 rv = await f(menu, idx, self)
                 if isinstance(rv, MenuSystem):
@@ -49,7 +53,7 @@ class MenuItem:
                     # go to new menu
                     the_ux.replace(rv)
 
-            m = self.next_menu
+            m = getattr(self, 'next_menu', None)
 
             if callable(m):
                 m = await m(menu, idx, self)
@@ -66,7 +70,7 @@ class MenuSystem:
         self.should_continue = should_cont or (lambda: True)
         self.cursor = 0
         self.ypos = 0
-        self.items = [m for m in menu_items if not m.predicate or m.predicate()]
+        self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
         self.count = len(self.items)
         self.space_indicators = space_indicators
         self.chosen = chosen
