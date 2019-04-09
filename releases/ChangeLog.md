@@ -1,8 +1,10 @@
-## 2.0x - ??
 
+## 2.0.2 - Apr 9, 2019
+- Page up/down on long text displays with 7/9 keys
 - Public summary file now includes extended master key fingerprint near top of file.
+- Bugfix: signing larger transactions could fail due to lack of memory
 
-## 2.0.1 - Apr 2019
+## 2.0.1 - Apr 4, 2019
 
 - BIP39 Passphrase support: enter up to 100 characters to create
     new wallets  from your existing seed words. Each is a completely
