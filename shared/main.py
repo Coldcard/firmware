@@ -25,6 +25,7 @@ if 0:
 if is_devmode:
     # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!
     # - using relative paths here so works better on simulator
+    # - you must boot w/ non-production-signed firmware to get here
     sys.path.insert(0, 'flash/lib')
 
     # Give external devs a way to start stuff early, but not before this point
@@ -41,7 +42,7 @@ loop = asyncio.get_event_loop()
 print("---\nColdcard Wallet from Coinkite Inc. (c) 2018.\n")
 
 # Setup OLED and get something onto it.
-from display import Display, FontFixed, FontSmall, FontLarge
+from display import Display
 dis = Display()
 dis.splash()
 
@@ -131,7 +132,7 @@ except RuntimeError as e:
     print("Problem: %r" % e)
 
 def go():
-    # Wrapper for better error handling/recover at top level.
+    # Wrapper for better error handling/recovery at top level.
     #
     try:
         loop.run_forever()
