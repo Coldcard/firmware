@@ -306,9 +306,13 @@ async def ux_show_story(msg, title=None, escape=None):
             return ch
         elif ch == '0':
             top = 0
-        elif ch == '5':
+        elif ch == '7':     # page up
+            top = max(0, top-H)
+        elif ch == '9':     # page dn
+            top = min(len(lines)-2, top+H)
+        elif ch == '5':     # scroll up
             top = max(0, top-1)
-        elif ch == '8':
+        elif ch == '8':     # scroll dn
             top = min(len(lines)-2, top+1)
 
         
