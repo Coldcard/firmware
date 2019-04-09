@@ -320,35 +320,30 @@ def fake_txn():
     (10, 10),
     (1, 20),
     (1, 400),
-    (22, 1),
-    #(23, 1),       # v1.0.0 max size (observed)
+    (16, 1),       # v2.0.2 limit
+    #(23, 1),       # v1.0.0 max size (observed, but validation only)
     #(30, 1),
     #(50, 50),      
     #(100, 100),
     #(200, 200),
-    #(400, 400),    # too big even for simulator
-    #(400, 1),      # too big even for simulator
+    #(400, 400),    # works on simulator [takes minutes]
+    #(400, 1),      # works on simulator [takes minutes]
 ])
-def test_io_size(io, fake_txn, try_sign, dev):
-    # try a bunch of different bigger
+@pytest.mark.parametrize('accept', [False, True])
+def test_io_size(io, fake_txn, try_sign, dev, accept):
+    # try a bunch of different bigger sized txns
+
+    # - important to test on real device, due to it's limited memory
+    # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s"
 
     ni, no = io
     psbt = fake_txn(ni, no, dev.master_xpub)
 
-    # PROBLEM: 
-    # - this "simple" txn fails validation because too simple
-    # - this code isn't testing the display of txn details anymore
+    # - this code isn't testing the display of txn details
 
     open('debug/last.psbt', 'wb').write(psbt)
 
-    if 1:
-        try_sign(psbt, False)
-    else:
-        with pytest.raises(CCProtoError) as ee:
-            try_sign(psbt, False)
-        msg = ee.value.args[0]
-        assert ('Missing UTXO' in msg) or \
-                ('require subpath' in msg)
+    _, txn = try_sign(psbt, accept=accept)
     
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 def test_real_signing(fake_txn, try_sign, dev, num_ins):
