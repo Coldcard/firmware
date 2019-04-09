@@ -30,7 +30,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 2.0.1
+VERSION_STRING = 2.0.2
 
 #
 # Sign and merge various parts
