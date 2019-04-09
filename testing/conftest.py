@@ -1,7 +1,7 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-import pytest, glob, time
+import pytest, glob, time, sys
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 
 from api import bitcoind, match_key
@@ -18,6 +18,8 @@ def pytest_addoption(parser):
                      default=False, help="run on real dev")
     parser.addoption("--sim", action="store_true",
                      default=True, help="run on simulator")
+    parser.addoption("--manual", action="store_true",
+                     default=True, help="operator must press keys on real CC")
 
 @pytest.fixture(scope='session')
 def dev(request):
@@ -82,11 +84,15 @@ def sim_execfile(simulator):
     return doit
 
 @pytest.fixture(scope='module')
-def need_keypress(dev):
+def need_keypress(dev, request):
 
     def doit(k):
         if hasattr(dev.dev, 'pipe'):
+            # simulator has special USB command
             dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')))
+        elif request.config.getoption("--manual"):
+            # need actual user interaction
+            print("==> NOW, on the Coldcard, press key: %r" % k, file=sys.stderr)
         else:
             # try to use debug interface to simulate the press
             # XXX for some reason, picocom must **already** be running for this to work.
@@ -96,8 +102,7 @@ def need_keypress(dev):
                 with open(devs[0], 'wb', 0) as fd:
                     fd.write(k.encode('ascii'))
             else:
-                # need actual user interaction
-                print("NOW, on the Coldcard, press key: %s" % k)
+                raise pytest.fail('need to provide keypresses')
 
     return doit
     
