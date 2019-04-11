@@ -19,7 +19,7 @@ is_devmode = version.is_devmode()
 if 0:
     # useful for debug: keep this stub
     from usb import enable_usb
-    enable_usb(loop, True)
+    enable_usb(None, True)
     raise SystemExit
 
 if is_devmode:
@@ -28,11 +28,10 @@ if is_devmode:
     # - you must boot w/ non-production-signed firmware to get here
     sys.path.insert(0, 'flash/lib')
 
-    # Give external devs a way to start stuff early, but not before this point
+    # Give external devs a way to start stuff early
     try:
         import boot2
     except: pass
-
 
 import ckcc
 import uasyncio.core as asyncio
