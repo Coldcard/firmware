@@ -33,7 +33,7 @@ async def usb_keypad_emu():
     #
     # IMPORTANT: 
     # - code is **not** used in real product, but left here for devs to use
-    # - this code isn't even called; unless you add code to do so.
+    # - this code isn't even called; unless you add code to do so, see ../stm32/my_lib_boot2.py
     #
     u = pyb.USB_VCP()
 
@@ -85,6 +85,11 @@ async def usb_keypad_emu():
                 # enter DFU
                 import callgate
                 callgate.enter_dfu()
+
+            if k == 't':
+                ckcc.vcp_enabled(True)
+                print("Repl enabled")
+                continue
 
             if k in '0123456789xy':
                 numpad.inject(k)
