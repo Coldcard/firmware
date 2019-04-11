@@ -315,6 +315,9 @@ class ApproveTransaction(UserAuthorizedAction):
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
+        except MemoryError as exc:
+            msg = "Transaction is too complex."
+            return await self.failure(msg, exc)
         except BaseException as exc:
             sys.print_exception(exc)
             return await self.failure("Signing failed late: %s" % exc)
