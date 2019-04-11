@@ -19,7 +19,7 @@ def pytest_addoption(parser):
     parser.addoption("--sim", action="store_true",
                      default=True, help="run on simulator")
     parser.addoption("--manual", action="store_true",
-                     default=True, help="operator must press keys on real CC")
+                     default=False, help="operator must press keys on real CC")
 
 @pytest.fixture(scope='session')
 def dev(request):

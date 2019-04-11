@@ -760,6 +760,7 @@ class psbtObject(psbtProxy):
 
             cont = fd.tell()
             yield idx, tx_out
+
             fd.seek(cont)
 
         if self.total_value_out is None:
@@ -838,6 +839,7 @@ class psbtObject(psbtProxy):
 
             cont = fd.tell()
             yield idx, txin
+
             fd.seek(cont)
 
     def input_witness_iter(self):
@@ -856,6 +858,7 @@ class psbtObject(psbtProxy):
 
             cont = fd.tell()
             yield idx, wit
+
             fd.seek(cont)
 
 
@@ -868,14 +871,12 @@ class psbtObject(psbtProxy):
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
             self.inputs[idx].validate(idx, txin, self.my_xfp)
-            gc.collect()
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
 
         assert self.num_outputs >= 1, 'need outs'
 
         for idx, txo in self.output_iter():
-            gc.collect()
             if self.outputs[idx]:
                 self.outputs[idx].validate(idx, txo, self.my_xfp)
 
@@ -900,7 +901,6 @@ class psbtObject(psbtProxy):
             per_fee = 100
         else:
             per_fee = self.calculate_fee() * 100 / self.total_value_out
-        #print("percent fee: %f" % per_fee)
 
         from main import settings
         fee_limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
@@ -908,9 +908,9 @@ class psbtObject(psbtProxy):
         if fee_limit != -1 and per_fee >= fee_limit:
             raise FatalPSBTIssue("Network fee bigger than %d%% of total amount (it is %.0f%%)."
                                 % (fee_limit, per_fee))
-        if per_fee >= 1:
+        if per_fee >= 5:
             self.warnings.append(('Big Fee', 'Network fee is more than '
-                                    '1%% of total value (%.1f%%).' % per_fee))
+                                    '5%% of total value (%.1f%%).' % per_fee))
 
     def consider_inputs(self):
         # Look an the UTXO's that we are spending. Do we have them? Do the
@@ -921,7 +921,7 @@ class psbtObject(psbtProxy):
 
         for i, txi in self.input_iter():
             if txi.scriptSig:
-                # consider anythign in scriptsig of the input to be a complete signature
+                # consider anything in scriptsig of the input to be a complete signature
                 self.presigned_inputs.add(i)
 
             inp = self.inputs[i]
@@ -942,6 +942,8 @@ class psbtObject(psbtProxy):
             # Look at what kind of input this will be, and therefore what
             # type of signing will be required, and which key we need.
             inp.determine_my_signing_key(utxo)
+
+            del utxo
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
 
@@ -1081,45 +1083,45 @@ class psbtObject(psbtProxy):
 
         sigs = 0
         success = set()
-        for in_idx, txi in self.input_iter():
-            dis.progress_bar_show(in_idx / self.num_inputs)
+        with stash.SensitiveValues() as sv:
+            for in_idx, txi in self.input_iter():
+                dis.progress_bar_show(in_idx / self.num_inputs)
 
-            inp = self.inputs[in_idx]
+                inp = self.inputs[in_idx]
 
-            if not inp.has_utxo():
-                # maybe they didn't provide the UTXO
-                continue
+                if not inp.has_utxo():
+                    # maybe they didn't provide the UTXO
+                    continue
 
-            if not inp.required_key:
-                # we don't know the key for this input
-                continue
+                if not inp.required_key:
+                    # we don't know the key for this input
+                    continue
 
-            if inp.already_signed and not inp.is_multisig:
-                # for multisig, it's possible I need to add another sig
-                # but in other cases, no more signatures are possible
-                continue
+                if inp.already_signed and not inp.is_multisig:
+                    # for multisig, it's possible I need to add another sig
+                    # but in other cases, no more signatures are possible
+                    continue
 
-            which_key = inp.required_key
-            assert not inp.added_sig, "already done??"
-            assert which_key in inp.subpaths, 'unk key'
+                which_key = inp.required_key
+                assert not inp.added_sig, "already done??"
+                assert which_key in inp.subpaths, 'unk key'
 
-            if inp.subpaths[which_key][0] != self.my_xfp:
-                # we don't have the key for this subkey
-                continue
+                if inp.subpaths[which_key][0] != self.my_xfp:
+                    # we don't have the key for this subkey
+                    continue
 
-            txi.scriptSig = inp.scriptSig
-            assert txi.scriptSig, "no scriptsig?"
+                txi.scriptSig = inp.scriptSig
+                assert txi.scriptSig, "no scriptsig?"
 
-            if not inp.is_segwit:
-                # Hash by serializing/blanking various subparts of the transaction
-                digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
-            else:
-                # Hash the inputs and such in totally new ways, based on BIP-143
-                digest = self.make_txn_segwit_sighash(in_idx, txi,
-                                inp.amount, inp.scriptCode, inp.sighash)
+                if not inp.is_segwit:
+                    # Hash by serializing/blanking various subparts of the transaction
+                    digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
+                else:
+                    # Hash the inputs and such in totally new ways, based on BIP-143
+                    digest = self.make_txn_segwit_sighash(in_idx, txi,
+                                    inp.amount, inp.scriptCode, inp.sighash)
 
-            # Do the ACTUAL signature ... finally!!!
-            with stash.SensitiveValues() as sv:
+                # Do the ACTUAL signature ... finally!!!
                 skp = path_to_str(inp.subpaths[which_key])
                 node = sv.derive_path(skp)
 
