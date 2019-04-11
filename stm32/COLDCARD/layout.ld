@@ -39,7 +39,7 @@ _estack = ORIGIN(RAM) + LENGTH(RAM);
 _ram_start = ORIGIN(RAM);
 _ram_end = ORIGIN(RAM) + LENGTH(RAM);
 _heap_start = _ebss; /* heap starts just after statically allocated memory */
-_heap_end = 0x20014000; /* tunable */
+_heap_end = _ram_end - 0x2000; /* reserve just 8k for stack */
 
 _flash_fs_start = ORIGIN(FLASH_FS);
 _flash_fs_end   = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);
