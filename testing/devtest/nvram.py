@@ -19,9 +19,9 @@ for v in [123, 'hello', 34.56, dict(a=45)]:
     settings.set('abc', v)
     assert settings.get('abc') == v
 
-a = settings.get('_age')
+a = settings.get('_age', -1)
 settings.save()
-assert settings.get('_age') == a+1
+assert settings.get('_age') >= a+1, [settings.get('_age'), a+1]
 
 chk = dict(settings.current)
 settings.load()

@@ -41,7 +41,8 @@
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
-- we can handle transactions with up to 16 inputs to be signed at one time.
+- we can handle transactions with up to 20 inputs to be signed at one time.
+- a minimum of 250 outputs per transaction is supported (will attempt more if memory allows)
 
 
 # P2SH / Multisig
@@ -67,6 +68,7 @@
 
 - Coldcard will, by default, reject any txn that pays a fee of more than 10% of its total
   value to miners. This limit is a setting: 10% (default), 25%, 50% or 'no limit'.
+- Fees over 5% (was 1%) are warnings only.
 
 # Developer / Source Code
 

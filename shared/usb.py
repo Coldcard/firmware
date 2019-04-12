@@ -69,7 +69,7 @@ def enable_usb(loop, repl_enable=False):
             return
 
     global handler
-    if not handler:
+    if loop and not handler:
         handler = USBHandler()
         loop.create_task(handler.usb_hid_recv())
 

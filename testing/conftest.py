@@ -19,7 +19,7 @@ def pytest_addoption(parser):
     parser.addoption("--sim", action="store_true",
                      default=True, help="run on simulator")
     parser.addoption("--manual", action="store_true",
-                     default=True, help="operator must press keys on real CC")
+                     default=False, help="operator must press keys on real CC")
 
 @pytest.fixture(scope='session')
 def dev(request):
@@ -114,8 +114,8 @@ def master_xpub(dev):
 
     if r[0:4] == dev.master_xpub[0:4]:
         assert r == dev.master_xpub
-    else:
-        # testnet vs. mainnet
+    elif dev.master_xpub:
+        # testnet vs. mainnet difference
         from pycoin.key.BIP32Node import BIP32Node
         a = BIP32Node.from_wallet_key(r)
         b = BIP32Node.from_wallet_key(dev.master_xpub)
