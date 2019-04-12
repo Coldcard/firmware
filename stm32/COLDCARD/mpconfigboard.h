@@ -106,6 +106,3 @@ extern void ckcc_early_init(void);
 #define USBD_INTERFACE_HS_STRING      "HS Interface"
 #define USBD_CONFIGURATION_FS_STRING  "FS Config"
 #define USBD_INTERFACE_FS_STRING      "FS Interface"
-
-// Check for stack overflows.
-#define MICROPY_STACK_CHECK     (1)

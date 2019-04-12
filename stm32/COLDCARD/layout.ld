@@ -18,7 +18,8 @@ MEMORY
     /* SRAM2 is 32k of SRAM used for:
         - filesyste cache (2k at zero)
         - top 8k reserved for bootloader/call gate
-        - remainder manually-allocated for some runtime python stuff (see sram2.py)
+        - manually-allocated for some runtime python stuff (see sram2.py) from bottom
+        - remainder is the stack, growing down from 0x10006000
     */
     FS_CACHE(xrw)   : ORIGIN = 0x10000000, LENGTH = 2K
     SRAM2 (xrw)     : ORIGIN = 0x10000800, LENGTH = 22K
@@ -27,19 +28,19 @@ MEMORY
 ENTRY(Reset_Handler)
 
 /* produce a link error if there is not this amount of RAM for these sections */
-_minimum_stack_size = 2K;
+_minimum_stack_size = 0;        /* now in SRAM2, so no need to reserve any space here */
 _minimum_heap_size = 16K;
 
 /* Define the top end of the stack.  The stack is full descending so begins just
    above last byte of RAM.  Note that EABI requires the stack to be 8-byte
    aligned for a call. */
-_estack = ORIGIN(RAM) + LENGTH(RAM);
+_estack = ORIGIN(SRAM2) + LENGTH(SRAM2);
 
 /* RAM extents for the garbage collector */
 _ram_start = ORIGIN(RAM);
 _ram_end = ORIGIN(RAM) + LENGTH(RAM);
 _heap_start = _ebss; /* heap starts just after statically allocated memory */
-_heap_end = _ram_end - 0x2000; /* reserve just 8k for stack */
+_heap_end = _ram_end; /* reserving nothing for stack, it's in SRAM2 */
 
 _flash_fs_start = ORIGIN(FLASH_FS);
 _flash_fs_end   = ORIGIN(FLASH_FS) + LENGTH(FLASH_FS);
