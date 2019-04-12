@@ -316,17 +316,16 @@ def fake_txn():
 
 
 @pytest.mark.parametrize('num_out', [1, 10, 250])
-@pytest.mark.parametrize('num_in', [1, 10, 20, 25])
+@pytest.mark.parametrize('num_in', [28, 1, 10, 20])
 @pytest.mark.parametrize('accept', [True, False])
 def test_io_size(num_in,fake_txn, try_sign, dev, accept, num_out):
     # try a bunch of different bigger sized txns
     # - important to test on real device, due to it's limited memory
     # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s --durations=50"
     # - simulator can do 400/400 but takes long time
+    # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub)
-
-    # - this code isn't testing the display of txn details
 
     open('debug/last.psbt', 'wb').write(psbt)
 
