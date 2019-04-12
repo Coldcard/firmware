@@ -315,31 +315,17 @@ def fake_txn():
     return doit
 
 
-@pytest.mark.parametrize('io', [
-    (1,1),
-    (10, 10),
-    (1, 20),
-    (1, 400),
-    (16, 1),       # v2.0.2 limit
-    #(23, 1),       # v1.0.0 max size (observed, but validation only)
-    #(30, 1),
-    #(50, 50),      
-    #(100, 100),
-    #(200, 200),
-    #(400, 400),    # works on simulator [takes minutes]
-    #(400, 1),      # works on simulator [takes minutes]
-])
-@pytest.mark.parametrize('accept', [False, True])
-def test_io_size(io, fake_txn, try_sign, dev, accept):
+@pytest.mark.parametrize('num_out', [1, 10, 250])
+@pytest.mark.parametrize('num_in', [28, 1, 10, 20])
+@pytest.mark.parametrize('accept', [True, False])
+def test_io_size(num_in,fake_txn, try_sign, dev, accept, num_out):
     # try a bunch of different bigger sized txns
-
     # - important to test on real device, due to it's limited memory
-    # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s"
+    # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s --durations=50"
+    # - simulator can do 400/400 but takes long time
+    # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
 
-    ni, no = io
-    psbt = fake_txn(ni, no, dev.master_xpub)
-
-    # - this code isn't testing the display of txn details
+    psbt = fake_txn(num_in, num_out, dev.master_xpub)
 
     open('debug/last.psbt', 'wb').write(psbt)
 
@@ -403,6 +389,7 @@ def B2A(s):
 
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
+@pytest.mark.bitcoind
 def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, we_finalize, num_dests):
 
     bal = bitcoind.getbalance()
@@ -437,7 +424,8 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         psbt = b64decode(bitcoind.converttopsbt(txn2, True))
     else:
         # use walletcreatefundedpsbt
-        resp = bitcoind.walletcreatefundedpsbt([], args, 0, False, {}, True)
+        # - updated/validated against 0.17.1
+        resp = bitcoind.walletcreatefundedpsbt([], args, 0, {}, True)
 
         psbt = b64decode(resp['psbt'])
         fee = resp['fee']
@@ -563,6 +551,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     assert aft == expect
 
+@pytest.mark.bitcoind
 def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
     # is change shown/hidden at right times. no fraud checks 
 
@@ -604,6 +593,7 @@ def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
     assert aft.txn == aft2.txn
 
 @pytest.mark.parametrize('case', [ 1, 2])
+@pytest.mark.bitcoind
 def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, cap_story):
     # fraud: BIP32 path of output doesn't lead to pubkey indicated
 
@@ -646,6 +636,7 @@ def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, c
 
         signed = end_sign(True)
 
+@pytest.mark.bitcoind
 def test_change_fraud_addr(start_sign, end_sign, check_against_bitcoind, cap_story):
     # fraud: BIP32 path of output doesn't match TXO address
     from pycoin.tx.Tx import Tx
@@ -679,6 +670,7 @@ def test_change_fraud_addr(start_sign, end_sign, check_against_bitcoind, cap_sto
 
 
 @pytest.mark.parametrize('case', [ 'p2wpkh', 'p2sh'])
+@pytest.mark.bitcoind
 def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_story, case):
     # not fraud: output address encoded in various equiv forms
     from pycoin.tx.Tx import Tx
@@ -805,7 +797,7 @@ def test_network_fee_amts(fee_max, under, fake_txn, try_sign, start_sign, dev, s
 
         assert 'warning below' in story
         assert 'Big Fee' in story
-        assert 'more than 1% of total' in story
+        assert 'more than 5% of total' in story
 
     settings_set('fee_limit', 10)
 
@@ -830,7 +822,7 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
 
     assert 'warning below' in story
     assert 'Big Fee' in story
-    assert 'more than 1% of total' in story
+    assert 'more than 5% of total' in story
 
     settings_set('fee_limit', 10)
 

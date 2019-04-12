@@ -10,12 +10,13 @@
 # - 2k at bottom reserved for code in `flashbdev.c` to use as cache data for flash writing
 # - keep this file in sync with simulated version 
 #
-import uctypes
-
-SRAM2_START = const(0x10000000)
+import uctypes, ckcc
 
 # see stm32/COLDCARD/layout.ld where this is effectively defined
-_start = SRAM2_START + 2048
+SRAM2_START = const(0x10000800)
+SRAM2_LENGTH = const(0x5800)
+
+_start = SRAM2_START
 
 def _alloc(ln):
     global _start
@@ -30,5 +31,8 @@ tmp_buf = _alloc(1024)
 psbt_tmp256 = _alloc(256)
 
 assert _start <= 0x10006000
+
+# observed: about 14k
+ckcc.stack_limit(SRAM2_LENGTH - (_start - SRAM2_START))
 
 # EOF

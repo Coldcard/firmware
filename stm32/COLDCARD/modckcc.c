@@ -14,6 +14,8 @@
 #include "py/gc.h"
 #include "py/runtime.h"
 #include "py/mphal.h"
+#include "py/mpstate.h"
+#include "py/stackctrl.h"
 
 #include "storage.h"
 #include "usb.h"
@@ -190,6 +192,23 @@ STATIC mp_obj_t vcp_enabled(mp_obj_t new_val)
 MP_DEFINE_CONST_FUN_OBJ_1(vcp_enabled_obj, vcp_enabled);
 
 
+STATIC mp_obj_t stack_limit(mp_obj_t new_val)
+{
+    // Report or change the stack limit, in bytes. Probably less than 0x4000.
+    if(mp_obj_is_integer(new_val)) {
+        mp_int_t limit = mp_obj_get_int_truncated(new_val);
+
+        // Small values will cause immediate crash due to stack-depth checking, so avoid.
+        if((limit < 1024) || (limit > 64*1024)) {
+            mp_raise_ValueError("out of range");
+        }
+
+        mp_stack_set_limit(limit);
+    }
+
+    return MP_OBJ_NEW_SMALL_INT(MP_STATE_THREAD(stack_limit));
+}
+MP_DEFINE_CONST_FUN_OBJ_1(stack_limit_obj, stack_limit);
 
 STATIC mp_obj_t wipe_fs(void)
 {
@@ -237,6 +256,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_presume_green),       MP_ROM_PTR(&presume_green_obj) },
     { MP_ROM_QSTR(MP_QSTR_breakpoint),          MP_ROM_PTR(&breakpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_watchpoint),          MP_ROM_PTR(&watchpoint_obj) },
+    { MP_ROM_QSTR(MP_QSTR_stack_limit),         MP_ROM_PTR(&stack_limit_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(ckcc_module_globals, ckcc_module_globals_table);
