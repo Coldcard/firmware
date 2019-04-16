@@ -270,7 +270,7 @@ def start():
                 window.refresh()
             elif r is led_rx:
                 assert len(c) == 1, repr(c)
-                print("LED change: 0x%02x" % c[0])
+                #print("LED change: 0x%02x" % c[0])
 
                 mask = (c[0] >> 4) & 0xf
                 lset = c[0] & 0xf
