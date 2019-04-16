@@ -121,6 +121,7 @@ def start():
     # for genuine/caution lights
     led_red = factory.from_image("led-red.png")
     led_green = factory.from_image("led-green.png")
+    led_sdcard = factory.from_image("led-sd.png")
 
     window = sdl2.ext.Window("Coldcard Simulator", size=bg.size, position=(100, 100))
     window.show()
@@ -134,6 +135,7 @@ def start():
     spriterenderer.render(oled.sprite)
     spriterenderer.render(led_red)
     genuine_state = False
+    sd_active = False
 
     # capture exec path and move into intended working directory
     mpy_exec = os.path.realpath('l-port/coldcard-mpy')
@@ -267,11 +269,26 @@ def start():
                 spriterenderer.render(oled.sprite)
                 window.refresh()
             elif r is led_rx:
-                genuine_state = (c[0] == 1)
+                assert len(c) == 1, repr(c)
+                print("LED change: 0x%02x" % c[0])
+
+                mask = (c[0] >> 4) & 0xf
+                lset = c[0] & 0xf
+                GEN_LED = 0x1
+                SD_LED = 0x2
+
+                if mask & GEN_LED:
+                    genuine_state = ((mask & lset) == GEN_LED)
+                if mask & SD_LED:
+                    sd_active = ((mask & lset) == SD_LED)
+
                 #print("Genuine LED: %r" % genuine_state)
                 spriterenderer.render(bg)
                 spriterenderer.render(oled.sprite)
                 spriterenderer.render(led_green if genuine_state else led_red)
+                if sd_active:
+                    spriterenderer.render(led_sdcard)
+
                 window.refresh()
             else:
                 pass
