@@ -8,7 +8,7 @@ import stash, ure, tcc, ux, chains, sys, gc
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause
+from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, problem_file_line
 from usb import CCBusyError
 from utils import HexWriter
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
@@ -242,10 +242,12 @@ class ApproveTransaction(UserAuthorizedAction):
             sys.print_exception(exc)
             del self.psbt
             gc.collect()
+
             if isinstance(exc, MemoryError):
                 msg = "Transaction is too complex."
             else:
-                msg = "Invalid PSBT: " + str(exc)
+                msg = "Invalid PSBT: " + (str(exc) or problem_file_line(exc))
+
             return await self.failure(msg, exc)
 
         # step 2: figure out what we are approving, so we can get sign-off
