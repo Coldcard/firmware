@@ -123,6 +123,7 @@ class psbtProxy:
                 self.store(kt, bytes(key), actual)
             else:
                 # skip actual data for now
+                # TODO: could this be stored more compactly?
                 proxy = (fd.tell(), vs)
                 fd.seek(vs, 1)
 
@@ -233,8 +234,6 @@ class psbtOutputProxy(psbtProxy):
         self.redeem_script = None
         self.witness_script = None
 
-        self.my_index = idx
-
         # this becomes a tuple: (pubkey, subkey path) iff we are a change output
         self.is_change = False
 
@@ -264,11 +263,9 @@ class psbtOutputProxy(psbtProxy):
             wr(k[0], self.unknown[k], k[1:])
 
     def validate(self, out_idx, txo, my_xfp):
-        # do things make sense?
-        assert self.my_index == out_idx
-
-        # We might be a change output, because the PSBT
-        # creator has given a key path. However, we must be
+        # Do things make sense for this output?
+        # NOTE: We might be a change output, because the PSBT
+        # creator has given us a key path. However, we must be
         # **very** careful and validate this fully.
         # - no output info is needed, in general, so
         #   any output info provided better be right, or fail
@@ -297,8 +294,7 @@ class psbtOutputProxy(psbtProxy):
             assert len(addr_or_pubkey) == 33
 
             if addr_or_pubkey != expect_pubkey:
-                raise FraudulentChangeOutput("Output#%d: P2PK change output is fraudulent"
-                                                    % self.my_index)
+                raise FraudulentChangeOutput("Output#%d: P2PK change output is fraudulent" % out_idx)
 
             self.is_change = ours
             return
@@ -311,7 +307,7 @@ class psbtOutputProxy(psbtProxy):
             # we must have the redeem script already (else fail)
             if not self.redeem_script:
                 # perhaps an omission, so let's not call fraud on it
-                raise AssertionError("Missing redeem script for output #%d" % self.my_index)
+                raise AssertionError("Missing redeem script for output #%d" % out_idx)
 
             redeem_script = self.get(self.redeem_script)
 
@@ -335,8 +331,7 @@ class psbtOutputProxy(psbtProxy):
             return
 
         if pkh != expect_pkh:
-            raise FraudulentChangeOutput("Output#%d: P2PKH change output is fraudulent"
-                                                    % self.my_index)
+            raise FraudulentChangeOutput("Output#%d: P2PKH change output is fraudulent" % out_idx)
         self.is_change = ours
 
 
@@ -355,7 +350,6 @@ class psbtInputProxy(psbtProxy):
     def __init__(self, fd, idx):
         super().__init__()
 
-        self.my_index = idx
         self.utxo = None
         self.witness_utxo = None
         self.part_sig = {}
@@ -386,7 +380,6 @@ class psbtInputProxy(psbtProxy):
 
     def validate(self, idx, txin, my_xfp):
         # Validate this txn input: given deserialized CTxIn and maybe witness
-        assert idx == self.my_index 
 
         # TODO: tighten these
         if self.witness_script:
@@ -427,7 +420,7 @@ class psbtInputProxy(psbtProxy):
         # Given the (pos,len) of a transaction, return the txid for that.
         # - doesn't validate data
         # - does detected witness txn vs. old style
-        # - simple dsha256() if old style txn, other wise witness must be skipped
+        # - simple dsha256() if old style txn, otherwise witness data must be skipped
 
         # see if witness encoding in effect
         fd = self.fd
@@ -523,7 +516,7 @@ class psbtInputProxy(psbtProxy):
         return utxo
 
 
-    def determine_my_signing_key(self, utxo):
+    def determine_my_signing_key(self, my_idx, utxo):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
@@ -544,7 +537,7 @@ class psbtInputProxy(psbtProxy):
 
             # we must have the redeem script already (else fail)
             if not self.redeem_script:
-                raise AssertionError("missing redeem script for in #%d" % self.my_index)
+                raise AssertionError("missing redeem script for in #%d" % my_idx)
 
             redeem_script = self.get(self.redeem_script)
             self.scriptSig = ser_string(redeem_script)
@@ -599,7 +592,7 @@ class psbtInputProxy(psbtProxy):
 
         if not which_key:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
-                    self.my_index, addr_type, self.is_segwit,
+                    my_idx, addr_type, self.is_segwit,
                     b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
 
         self.required_key = which_key
@@ -619,7 +612,7 @@ class psbtInputProxy(psbtProxy):
             elif not self.scriptCode:
                 # Segwit P2SH segwit. We need the script!
                 if not self.witness_script:
-                    raise AssertionError('Need witness script for input #%d' % self.my_index)
+                    raise AssertionError('Need witness script for input #%d' % my_idx)
 
                 self.scriptCode = self.get(self.witness_script)
 
@@ -925,7 +918,7 @@ class psbtObject(psbtProxy):
 
             # Look at what kind of input this will be, and therefore what
             # type of signing will be required, and which key we need.
-            inp.determine_my_signing_key(utxo)
+            inp.determine_my_signing_key(i, utxo)
 
             del utxo
 
@@ -951,7 +944,8 @@ class psbtObject(psbtProxy):
 
         # We should know pubkey required for each input now.
         # - but we may not be the signer for those inputs, which is fine.
-        no_keys = set(inp.my_index for inp in self.inputs if inp and inp.required_key == None)
+        no_keys = set(n for n,inp in enumerate(self.inputs)
+                            if inp and inp.required_key == None)
         if self.presigned_inputs - no_keys:
             self.warnings.append(('Missing Keys', 
                 'We do not know the keypair for some inputs: %r' % list(no_keys)))
