@@ -122,11 +122,11 @@ class ChainsBase:
         if ll == 23 and script[0:2] == b'\xA9\x14' and script[22] == 0x87:
             return tcc.codecs.b58_encode(cls.b58_script + script[2:2+20])
 
-        # P2WPKH - untested
+        # P2WPKH
         if ll == 22 and script[0:2] == b'\x00\x14':
             return tcc.codecs.bech32_encode(cls.bech32_hrp, 0, script[2:])
 
-        # P2WSH - untested
+        # P2WSH
         if ll == 34 and script[0:2] == b'\x00\x20':
             return tcc.codecs.bech32_encode(cls.bech32_hrp, 0, script[2:])
 
