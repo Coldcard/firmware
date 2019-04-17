@@ -143,8 +143,6 @@ class BitcoinMain(ChainsBase):
         AF_P2WPKH_P2SH: Slip132Version(0x049d7cb2, 0x049d7878, 'y'),
         AF_P2WPKH:      Slip132Version(0x04b24746, 0x04b2430c, 'z'),
     }
-    #b32_version_pub  = 0x0488B21E
-    #b32_version_priv = 0x0488ADE4
 
     bech32_hrp = 'bc'
 
