@@ -223,7 +223,7 @@ class psbtProxy:
 # Track details of each output of PSBT
 #
 class psbtOutputProxy(psbtProxy):
-    no_keys = { PSBT_OUT_REDEEM_SCRIPT }
+    no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -231,6 +231,7 @@ class psbtOutputProxy(psbtProxy):
         # things we track
         self.subpaths = {}
         self.redeem_script = None
+        self.witness_script = None
 
         self.my_index = idx
 
@@ -239,29 +240,13 @@ class psbtOutputProxy(psbtProxy):
 
         self.parse(fd)
 
-    @classmethod
-    def maybe(cls, fd, idx):
-        # read and parse it, but return None if it's a typical empty
-        # output that we need to store nothing about (memory saver).
-        # - remember we need to pass-thru data sometimes.
-        rv = cls(fd, idx)
-
-        if rv.subpaths or rv.redeem_script or rv.unknown:
-            return rv
-
-        del rv
-
-        return None
-
     def store(self, kt, key, val):
-        # No use yet for this yet, so treat as 'unknowns'
-        #
-        #   PSBT_OUT_WITNESS_SCRIPT
-
         if kt == PSBT_OUT_BIP32_DERIVATION:
             self.subpaths[key[1:]] = val
         elif kt == PSBT_OUT_REDEEM_SCRIPT:
             self.redeem_script = val
+        elif kt == PSBT_OUT_WITNESS_SCRIPT:
+            self.witness_script = val
         else:
             self.unknown[key] = val
 
@@ -877,8 +862,7 @@ class psbtObject(psbtProxy):
         assert self.num_outputs >= 1, 'need outs'
 
         for idx, txo in self.output_iter():
-            if self.outputs[idx]:
-                self.outputs[idx].validate(idx, txo, self.my_xfp)
+            self.outputs[idx].validate(idx, txo, self.my_xfp)
 
         our_keys = sum(i.our_keys for i in self.inputs)
 
@@ -1011,7 +995,7 @@ class psbtObject(psbtProxy):
         rv.parse_txn()
 
         rv.inputs = [psbtInputProxy(fd, idx) for idx in range(rv.num_inputs)]
-        rv.outputs = [psbtOutputProxy.maybe(fd, idx) for idx in range(rv.num_outputs)]
+        rv.outputs = [psbtOutputProxy(fd, idx) for idx in range(rv.num_outputs)]
 
         return rv
             
@@ -1051,8 +1035,7 @@ class psbtObject(psbtProxy):
             out_fd.write(b'\0')
 
         for idx, outp in enumerate(self.outputs):
-            if outp:
-                outp.serialize(out_fd, idx)
+            outp.serialize(out_fd, idx)
             out_fd.write(b'\0')
 
     def sign_it(self):
