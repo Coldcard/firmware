@@ -2,9 +2,12 @@
 # and is covered by GPLv3 license found in COPYING.
 #
 import pytest, glob, time, sys
+from pprint import pprint
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
+from helpers import B2A, U2SAT
 
 from api import bitcoind, match_key
+
 
 SIM_PATH = '/tmp/ckcc-simulator.sock'
 
@@ -44,8 +47,8 @@ def simulator(request):
     # get a connection to simulator (only, never USB dev)
     from ckcc_protocol.client import ColdcardDevice
 
-    if request.config.getoption("--dev"):
-        raise pytest.skip('USB dev')
+    if not request.config.getoption("--sim") or request.config.getoption("--dev"):
+        raise pytest.skip('need simulator for this test, have real device')
 
     try:
         return ColdcardDevice(sn=SIM_PATH)
@@ -303,6 +306,7 @@ def set_master_key(sim_exec, sim_execfile, simulator):
     def doit(prv):
         assert prv[1:4] == 'prv'
 
+
         sim_exec('import main; main.TPRV = %r; ' % prv)
         rv = sim_execfile('devtest/set_tprv.py')
         if rv: pytest.fail(rv)
@@ -464,5 +468,67 @@ def repl(dev=None):
             return resp
 
     return USBRepl()
+
+@pytest.fixture()
+def decode_with_bitcoind(bitcoind):
+
+    def doit(raw_txn):
+        # verify our understanding of a TXN (and esp its outputs) matches
+        # the same values as what bitcoind generates
+
+        try:
+            return bitcoind.decoderawtransaction(B2A(raw_txn))
+        except ConnectionResetError:
+            # bitcoind sleeps on us sometimes, give it another chance.
+            return bitcoind.decoderawtransaction(B2A(raw_txn))
+
+    return doit
+
+
+@pytest.fixture()
+def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
+
+    def doit(hex_txn, fee, num_warn=0, change_outs=None):
+        # verify our understanding of a TXN (and esp its outputs) matches
+        # the same values as what bitcoind generates
+
+        try:
+            decode = bitcoind.decoderawtransaction(hex_txn)
+        except ConnectionResetError:
+            # bitcoind sleeps on us sometimes, give it another chance.
+            decode = bitcoind.decoderawtransaction(hex_txn)
+
+        #print("Bitcoin code says:", end=''); pprint(decode)
+
+        # leverage bitcoind's transaction decoding
+        ex = dict(  lock_time = decode['locktime'],
+                    had_witness = False,        # input txn doesn't have them, typical?
+                    num_inputs = len(decode['vin']),
+                    num_outputs = len(decode['vout']),
+                    miner_fee = U2SAT(fee),
+                    warnings_expected = num_warn,
+                    total_value_out = sum(U2SAT(i['value']) for i in decode['vout']),
+                    destinations = [(U2SAT(i['value']), i['scriptPubKey']['addresses'][0])
+                                         for i in decode['vout']],
+            )
+
+        if change_outs is not None:
+            ex['change_outs'] = set(change_outs)
+
+        # need this for reliability
+        time.sleep(0.01)
+
+        # check we understood it right
+        rv= sim_exec('import main; main.EXPECT = %r; ' % ex)
+        if rv: pytest.fail(rv)
+        rv = sim_execfile('devtest/check_decode.py')
+        if rv: pytest.fail(rv)
+
+        print(" [checks out against bitcoind] ")
+
+        return decode
+
+
+    return doit
 
 #EOF

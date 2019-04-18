@@ -6,15 +6,12 @@
 import time, pytest, os
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
-from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
+from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from io import BytesIO
-from pprint import pprint
+from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
-
-    
-def U2SAT(v):
-    return int(v * Decimal('1E8'))
+from helpers import B2A, U2SAT
 
 @pytest.mark.parametrize('finalize', [ False, True ])
 def test_sign1(dev, need_keypress, finalize):
@@ -238,6 +235,26 @@ def simple_fake_txn():
 
     return doit
 
+ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh']
+
+def fake_dest_addr(style='p2pkh'):
+
+    # See CTxOut.get_address() in ../shared/serializations
+
+    if style == 'p2wpkh':
+        return bytes([0, 20]) + os.urandom(20)
+
+    if style == 'p2wsh':
+        return bytes([0, 32]) + os.urandom(32)
+
+    if style == 'p2sh':
+        return bytes([0xa9, 0x14]) + os.urandom(20) + bytes([0x87])
+
+    if style == 'p2pkh':
+        return bytes([0x76, 0xa9, 0x14]) + os.urandom(20) + bytes([0x88, 0xac])
+
+    # missing: if style == 'p2pk' =>  pay to pubkey
+    assert False, 'not supported: ' + style
 
 @pytest.fixture()
 def fake_txn():
@@ -249,7 +266,8 @@ def fake_txn():
     from pycoin.serialize import h2b_rev
     from struct import pack
 
-    def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000, outvals=None):
+    def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000,
+                outvals=None, segwit_in=False, outstyles=['p2pkh']):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         
@@ -280,12 +298,11 @@ def fake_txn():
             supply.txs_out.append(TxOut(1E8, scr))
 
             with BytesIO() as fd:
-                supply.stream(fd)
-                psbt.inputs[i].utxo = fd.getvalue()
-
-            if 0:
-                with BytesIO() as fd:
-                    supply.stream(fd, include_witness_data=True)
+                if not segwit_in:
+                    supply.stream(fd)
+                    psbt.inputs[i].utxo = fd.getvalue()
+                else:
+                    supply.txs_out[-1].stream(fd)
                     psbt.inputs[i].witness_utxo = fd.getvalue()
 
             spendable = TxIn(supply.hash(), 0)
@@ -294,7 +311,17 @@ def fake_txn():
 
         for i in range(num_outs):
             # random P2PKH
-            scr = bytes([0x76, 0xa9, 0x14]) + pack('I', i+1) + bytes(16) + bytes([0x88, 0xac])
+            if not outstyles:
+                style = ADDR_STYLES[i % len(ADDR_STYLES)]
+            else:
+                style = outstyles[i % len(outstyles)]
+                scr = fake_dest_addr(style)
+                assert scr
+                if 'w' in style:
+                    psbt.outputs[i].witness_script = scr
+                elif style.endswith('sh'):
+                    psbt.outputs[i].redeem_script = scr
+
             if not outvals:
                 h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
             else:
@@ -314,29 +341,74 @@ def fake_txn():
 
     return doit
 
+@pytest.mark.parametrize('num_out', [1, 10,11, 250])
+@pytest.mark.parametrize('num_in', [1, 10,11, 20])     # 28 XXX
+@pytest.mark.parametrize('segwit', [True, False])
+@pytest.mark.parametrize('out_style', ADDR_STYLES)
+def test_io_size(request, num_in, decode_with_bitcoind, fake_txn,
+                    start_sign, end_sign, dev, num_out, segwit, out_style, accept=True):
 
-@pytest.mark.parametrize('num_out', [1, 10, 250])
-@pytest.mark.parametrize('num_in', [28, 1, 10, 20])
-@pytest.mark.parametrize('accept', [True, False])
-def test_io_size(num_in,fake_txn, try_sign, dev, accept, num_out):
     # try a bunch of different bigger sized txns
     # - important to test on real device, due to it's limited memory
     # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s --durations=50"
     # - simulator can do 400/400 but takes long time
     # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub)
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=[out_style])
 
     open('debug/last.psbt', 'wb').write(psbt)
 
-    _, txn = try_sign(psbt, accept=accept)
+    start_sign(psbt, finalize=True)
+
+    # on simulator, read screen
+    try:
+        cap_story = request.getfixturevalue('cap_story')
+        time.sleep(.01)
+        title, story = cap_story()
+        assert 'OK TO SEND' in title
+    except:
+        cap_story = None
+
+    signed = end_sign(accept, finalize=True)
+
+    decoded = decode_with_bitcoind(signed)
+
+    #print("Bitcoin code says:", end=''); pprint(decoded)
+
+    if cap_story:
+        # check we are showing right addresses
+        shown = set()
+        hidden = set()
+        for i in decoded['vout']:
+            dest = i['scriptPubKey']['addresses'][0]
+            val = i['value']
+            if dest in story:
+                shown.add((val, dest))
+                assert str(val) in story
+            else:
+                hidden.add((val, dest))
+
+        # UI only shows 10 largest outputs if there are too many
+        # - assuming no change outputs here
+        MAX_VIZ = 10
+        if num_out <= MAX_VIZ:
+            assert len(shown) == num_out
+            assert not hidden
+        else:
+            assert 'which total' in story
+            assert len(shown) == MAX_VIZ
+            assert len(hidden) >= 1
+            assert len(shown) + len(hidden) == len(decoded['vout'])
+            assert max(v for v,d in hidden) >= min(v for v,d in shown)
+    
     
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
-def test_real_signing(fake_txn, try_sign, dev, num_ins):
+@pytest.mark.parametrize('segwit', [True, False])
+def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit):
     # create a TXN using actual addresses that are correct for DUT
     xp = dev.master_xpub
 
-    psbt = fake_txn(num_ins, 1, xp)
+    psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
     open('debug/real-%d.psbt' % num_ins, 'wb').write(psbt)
 
     _, txn = try_sign(psbt, accept=True, finalize=True)
@@ -345,47 +417,6 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins):
 
     # too slow / connection breaks during process
     #decode = bitcoind.decoderawtransaction(B2A(txn))
-    
-
-@pytest.fixture()
-def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
-
-    def doit(hex_txn, fee, num_warn=0, change_outs=None):
-        # verify our understanding of a TXN (and esp its outputs) matches
-        # the same values as what bitcoind generates
-
-        decode = bitcoind.decoderawtransaction(hex_txn)
-        #pprint(decode)
-
-        # leverage bitcoind's transaction decoding
-        ex = dict(  lock_time = decode['locktime'],
-                    had_witness = False,        # input txn doesn't have them, typical?
-                    num_inputs = len(decode['vin']),
-                    num_outputs = len(decode['vout']),
-                    miner_fee = U2SAT(fee),
-                    warnings_expected = num_warn,
-                    total_value_out = sum(U2SAT(i['value']) for i in decode['vout']),
-                    destinations = [(U2SAT(i['value']), i['scriptPubKey']['addresses'][0])
-                                         for i in decode['vout']],
-            )
-
-        if change_outs is not None:
-            ex['change_outs'] = set(change_outs)
-
-        # need this for reliability
-        time.sleep(0.01)
-
-        # check we understood it right
-        rv= sim_exec('import main; main.EXPECT = %r; ' % ex)
-        if rv: pytest.fail(rv)
-        rv = sim_execfile('devtest/check_decode.py')
-        if rv: pytest.fail(rv)
-
-
-    return doit
-
-def B2A(s):
-    return str(b2a_hex(s), 'ascii')
 
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
@@ -529,7 +560,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
     # as the examples.
 
     # PROBLEM: revised BIP174 has p2sh multisig cases which we don't support yet.
-    raise pytest.skip('not ready for multisig')
+    raise pytest.xfail('not ready for multisig')
     
     # expect xfp=0x4f6a0cd9
     exk = 'tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF'
@@ -755,12 +786,12 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
 
         assert 'Network fee:\n0.00000500 XTN' in story
 
+        # check we understood it right
         ex = dict(  had_witness=False, num_inputs=1, num_outputs=1, sw_inputs=[True], 
                     miner_fee=500, warnings_expected=0,
                     lock_time=1442308, total_value_out=99500,
                     total_value_in=100000)
 
-        # check we understood it right
         rv= sim_exec('import main; main.EXPECT = %r; ' % ex)
         if rv: pytest.fail(rv)
         rv = sim_execfile('devtest/check_decode.py')

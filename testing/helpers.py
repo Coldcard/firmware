@@ -4,7 +4,13 @@
 # stuff I need sometimes
 from io import BytesIO
 from binascii import b2a_hex
+from decimal import Decimal
 
+def B2A(s):
+    return str(b2a_hex(s), 'ascii')
+    
+def U2SAT(v):
+    return int(v * Decimal('1E8'))
 
 # use like this:
 #
