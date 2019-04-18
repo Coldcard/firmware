@@ -85,10 +85,16 @@ async def usb_keypad_emu():
                 # enter DFU
                 import callgate
                 callgate.enter_dfu()
+                # not reached
 
             if k == 't':
                 ckcc.vcp_enabled(True)
                 print("Repl enabled")
+                continue
+
+            if k == 'm':
+                import gc
+                print("Memory: %d" % gc.mem_free())
                 continue
 
             if k in '0123456789xy':
