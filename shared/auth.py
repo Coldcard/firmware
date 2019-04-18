@@ -4,7 +4,7 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, tcc, ux, chains, sys, gc
+import stash, ure, tcc, ux, chains, sys, gc, uio
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT
 from sffile import SFFile
@@ -261,41 +261,39 @@ class ApproveTransaction(UserAuthorizedAction):
         #       - fee too big
         #       - inputs we can't sign (no key)
         #
-        msg = ''
         try:
-            outs_msg = self.output_summary_text()
-            gc.collect()
+            msg = uio.StringIO()
 
             # mention warning at top
             wl= len(self.psbt.warnings)
             if wl == 1:
-                msg += '(1 warning below)\n\n'
+                msg.write('(1 warning below)\n\n')
             elif wl >= 2:
-                msg += '(%d warnings below)\n\n' % wl
+                msg.write('(%d warnings below)\n\n' % wl)
 
-            msg += outs_msg
+            self.output_summary_text(msg)
+            gc.collect()
 
             fee = self.psbt.calculate_fee()
             if fee is not None:
-                msg += "\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee)
+                msg.write("\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee))
 
             if self.psbt.warnings:
-                warn = '\n---WARNING---\n\n'
+                msg.write('\n---WARNING---\n\n')
 
                 for label,m in self.psbt.warnings:
-                    warn += '- %s: %s\n\n' % (label, m)
+                    msg.write('- %s: %s\n\n' % (label, m))
 
-                print(warn)
-                msg += warn
+            msg.write("\nPress OK to approve and sign transaction. X to abort.")
 
-            msg += "\nPress OK to approve and sign transaction. X to abort."
-
+            msg.seek(0)
             ch = await ux_show_story(msg, title="OK TO SEND?")
         except MemoryError as exc:
             # recovery? maybe.
-            del self.psbt
-            del msg
-            del outs_msg
+            try:
+                del self.psbt
+                del msg
+            except: pass        # might be NameError since we don't know how far we got
             gc.collect()
 
             msg = "Transaction is too complex."
@@ -313,6 +311,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # do the actual signing.
         try:
+            gc.collect()
             self.psbt.sign_it()
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
@@ -351,54 +350,66 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
             return
 
-    def output_summary_text(self):
+    def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
         # they use to decide if correct transaction is being signed.
         MAX_VISIBLE_OUTPUTS = const(10)
-        msg = ''
 
-        if self.psbt.num_outputs <= MAX_VISIBLE_OUTPUTS+1:
+        num_change = sum(1 for o in self.psbt.outputs if o.is_change)
+
+        if self.psbt.num_outputs - num_change <= MAX_VISIBLE_OUTPUTS:
             # simple, common case: don't sort outputs, and do show all of them
+            first = True
             for idx, tx_out in self.psbt.output_iter():
                 outp = self.psbt.outputs[idx]
-                if outp and outp.is_change:
+                if outp.is_change:
                     continue
-                if msg:
-                    msg += '\n'
-                msg += self.render_output(tx_out)
+                if first:
+                    msg.write('\n')
+                    first = False
 
-            return msg
+                msg.write(self.render_output(tx_out))
+
+            return
 
         # Too many to show them all, so
         # find largest N outputs, and track total amount
         largest = []
         for idx, tx_out in self.psbt.output_iter():
             outp = self.psbt.outputs[idx]
-            if outp and outp.is_change:
+            if outp.is_change:
                 continue
 
-            largest.append(tx_out)
             if len(largest) < MAX_VISIBLE_OUTPUTS:
+                largest.append( (tx_out.nValue, self.render_output(tx_out)) )
                 continue
 
-            largest.sort(key=lambda x: -x.nValue)
-            if len(largest) > MAX_VISIBLE_OUTPUTS:
-                largest.pop(-1)
+            # insertion sort
+            here = tx_out.nValue
+            for li, (nv, txt) in enumerate(largest):
+                if here > nv:
+                    keep = li
+                    break
+            else:
+                continue        # too small 
 
-        for idx, tx_out in enumerate(largest):
-            if idx:
-                msg += '\n'
-            msg += self.render_output(tx_out)
+            largest.pop(-1)
+            largest.insert(keep, (here, self.render_output(tx_out)))
 
-        left = self.psbt.num_outputs - len(largest)
+        for val, txt in largest:
+            msg.write(txt)
+            msg.write('\n')
+
+        left = self.psbt.num_outputs - len(largest) - num_change
         if left > 0:
-            # typically, left >= 2, but with change outputs, not so clear.
-            msg += '\n.. plus %d more smaller outputs, not shown here, which total: ' % left
+            msg.write('.. plus %d more smaller output(s), not shown here, which total: ' % left)
 
-            mtot = self.psbt.total_value_out - sum(t.nValue for t in largest)
-            msg += ' '.join(self.chain.render_value(mtot))
+            # calculate left over value
+            mtot = self.psbt.total_value_out - sum(v for v,t in largest)
+            mtot -= sum(o.nValue for i, o in self.psbt.output_iter() 
+                                        if self.psbt.outputs[i].is_change)
 
-        return msg
+            msg.write('%s %s\n' % self.chain.render_value(mtot))
 
 
 def sign_transaction(psbt_len, do_finalize=False):
