@@ -248,6 +248,7 @@ async def ux_show_story(msg, title=None, escape=None):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
+    # - accepts a stream or string
     from main import dis, numpad
     from display import FontLarge
 
@@ -257,14 +258,29 @@ async def ux_show_story(msg, title=None, escape=None):
     if title:
         # kinda weak rendering but it works.
         lines.append('\x01' + title)
-        #lines.append('')
 
-    for ln in msg.split('\n'):
-        if len(ln) > CH_PER_W:
-            lines.extend(word_wrap(ln, CH_PER_W))
-        else:
-            # ok if empty string, just a blank line
-            lines.append(ln)
+    if hasattr(msg, 'readline'):
+        for ln in msg:
+            if ln[-1] == '\n': 
+                ln = ln[:-1]
+
+            if len(ln) > CH_PER_W:
+                lines.extend(word_wrap(ln, CH_PER_W))
+            else:
+                # ok if empty string, just a blank line
+                lines.append(ln)
+
+        # no longer needed & rude to our caller, but let's save the memory
+        msg.close()
+        del msg
+        gc.collect()
+    else:
+        for ln in msg.split('\n'):
+            if len(ln) > CH_PER_W:
+                lines.extend(word_wrap(ln, CH_PER_W))
+            else:
+                # ok if empty string, just a blank line
+                lines.append(ln)
 
     # trim blank lines at end, add our own marker
     while not lines[-1]:
