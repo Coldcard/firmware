@@ -105,7 +105,7 @@ def pass_word_quiz(need_keypress, cap_story):
 
     return doit
 
-def test_make_backup(goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz):
+def test_make_backup(goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words):
     # Make an encrypted 7z backup, verify it, and even restore it!
 
     goto_home()
@@ -190,6 +190,7 @@ def test_make_backup(goto_home, pick_menu_item, cap_story, need_keypress, open_m
 
     # avoid simulator reboot; restore normal state
     unit_test('devtest/abort_ux.py')
+    reset_seed_words()
 
 
 @pytest.mark.parametrize('seed_words, xfp', [
@@ -198,7 +199,7 @@ def test_make_backup(goto_home, pick_menu_item, cap_story, need_keypress, open_m
     ( 'abandon ' * 23 + 'art', 0x24d73654 ),
     ( "wife shiver author away frog air rough vanish fantasy frozen noodle athlete pioneer citizen symptom firm much faith extend rare axis garment kiwi clarify", 0x4369050f),
     ])
-def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, seed_words, xfp, get_secrets):
+def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, seed_words, xfp, get_secrets, reset_seed_words):
     
     unit_test('devtest/clear_seed.py')
 
@@ -225,9 +226,10 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
     v = get_secrets()
 
     assert v['mnemonic'] == seed_words
+    reset_seed_words()
 
 @pytest.mark.parametrize('multiple_runs', range(3))
-def test_new_wallet(goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs):
+def test_new_wallet(goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs, reset_seed_words):
     # generate a random wallet, and check seeds are what's shown to user, etc
     
     unit_test('devtest/clear_seed.py')
@@ -255,9 +257,11 @@ def test_new_wallet(goto_home, pick_menu_item, cap_story, need_keypress, cap_men
     v = get_secrets()
     assert v['mnemonic'].split(' ') == words
 
+    reset_seed_words()
+
 
 @pytest.mark.parametrize('multiple_runs', range(3))
-def test_import_prv(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, microsd_path, multiple_runs):
+def test_import_prv(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, microsd_path, multiple_runs, reset_seed_words):
     
     unit_test('devtest/clear_seed.py')
 
@@ -286,12 +290,15 @@ def test_import_prv(goto_home, pick_menu_item, cap_story, need_keypress, unit_te
     assert v['xpub'] == node.hwif()
     assert v['xprv'] == node.hwif(as_private=True)
 
+    reset_seed_words()
+
 
 @pytest.mark.parametrize('target', ['baby', 'struggle', 'youth'])
 @pytest.mark.parametrize('version', range(8))
 def test_bip39_pick_words(target, version, goto_home, pick_menu_item, cap_story, need_keypress,
-                                cap_menu, word_menu_entry, get_pp_sofar):
+                                cap_menu, word_menu_entry, get_pp_sofar, reset_seed_words):
     # Check we can pick words
+    reset_seed_words()
 
     goto_home()
     pick_menu_item('Passphrase')
