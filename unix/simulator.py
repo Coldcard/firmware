@@ -259,35 +259,36 @@ def start():
         for r in rs:
 
             # Cheating: 1024 is size of OLED update, don't change.
-            c = r.read(1024*1000)
-            if not c:
+            buf = r.read(1024*1000)
+            if not buf:
                 break
         
             if r is oled_rx:
-                c = c[-1024:]
-                oled.render(window, c)
+                buf = buf[-1024:]
+                oled.render(window, buf)
                 spriterenderer.render(oled.sprite)
                 window.refresh()
             elif r is led_rx:
-                assert len(c) == 1, repr(c)
-                #print("LED change: 0x%02x" % c[0])
 
-                mask = (c[0] >> 4) & 0xf
-                lset = c[0] & 0xf
-                GEN_LED = 0x1
-                SD_LED = 0x2
+                for c in buf:
+                    #print("LED change: 0x%02x" % c[0])
 
-                if mask & GEN_LED:
-                    genuine_state = ((mask & lset) == GEN_LED)
-                if mask & SD_LED:
-                    sd_active = ((mask & lset) == SD_LED)
+                    mask = (c >> 4) & 0xf
+                    lset = c & 0xf
+                    GEN_LED = 0x1
+                    SD_LED = 0x2
 
-                #print("Genuine LED: %r" % genuine_state)
-                spriterenderer.render(bg)
-                spriterenderer.render(oled.sprite)
-                spriterenderer.render(led_green if genuine_state else led_red)
-                if sd_active:
-                    spriterenderer.render(led_sdcard)
+                    if mask & GEN_LED:
+                        genuine_state = ((mask & lset) == GEN_LED)
+                    if mask & SD_LED:
+                        sd_active = ((mask & lset) == SD_LED)
+
+                    #print("Genuine LED: %r" % genuine_state)
+                    spriterenderer.render(bg)
+                    spriterenderer.render(oled.sprite)
+                    spriterenderer.render(led_green if genuine_state else led_red)
+                    if sd_active:
+                        spriterenderer.render(led_sdcard)
 
                 window.refresh()
             else:
