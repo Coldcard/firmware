@@ -47,7 +47,7 @@ class HashNDump:
     def digest(self):
         print(' END')
         return self.rv.digest()
-    
+
 def read_varint(v):
     # read "compact sized" int from a few bytes.
     assert not isinstance(v, tuple), v
@@ -61,7 +61,7 @@ def read_varint(v):
     return nit
 
 def path_to_str(bin_path):
-    return 'm/' + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "") 
+    return 'm/' + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
                             for i in bin_path[1:])
 
 def _skip_n_objs(fd, n, cls):
@@ -95,9 +95,17 @@ class psbtProxy:
     short_values = ()
     no_keys = ()
 
+    # these fields will return None but are not stored unless a value is set
+    blank_flds = ('unknown', )
+
     def __init__(self):
         self.fd = None
-        self.unknown = {}
+        #self.unknown = {}
+
+    def __getattr__(self, nm):
+        if nm in self.blank_flds:
+            return None
+        raise AttributeError
 
     def parse(self, fd):
         self.fd = fd
@@ -185,7 +193,7 @@ class psbtProxy:
         # - just return first result if used for outputs
         our_keys = 0
 
-        for idx, pk in enumerate(self.subpaths):
+        for pk in self.subpaths:
             assert len(pk) in {33, 65}, "hdpath pubkey len"
             if len(pk) == 33:
                 assert pk[0] in {0x02, 0x03}, "uncompressed pubkey"
@@ -214,53 +222,61 @@ class psbtProxy:
 
             else:
                 # Address that isn't based on this seed; might be another leg in a p2sh
-                #print('here[0]=0x%x != 0x%x  ... %r' % (here[0], self.my_xfp, 
+                #print('here[0]=0x%x != 0x%x  ... %r' % (here[0], self.my_xfp,
                 #       [i& 0xfff for i in here[1:]]))
                 pass
 
         return None if first_known else our_keys
-        
+
 
 # Track details of each output of PSBT
 #
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
+    blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script', 'is_change')
 
     def __init__(self, fd, idx):
         super().__init__()
 
         # things we track
-        self.subpaths = {}
-        self.redeem_script = None
-        self.witness_script = None
+        #self.subpaths = None        # a dictionary if non-empty
+        #self.redeem_script = None
+        #self.witness_script = None
 
         # this becomes a tuple: (pubkey, subkey path) iff we are a change output
-        self.is_change = False
+        #self.is_change = False
 
         self.parse(fd)
 
+
     def store(self, kt, key, val):
         if kt == PSBT_OUT_BIP32_DERIVATION:
+            if not self.subpaths:
+                self.subpaths = {}
             self.subpaths[key[1:]] = val
         elif kt == PSBT_OUT_REDEEM_SCRIPT:
             self.redeem_script = val
         elif kt == PSBT_OUT_WITNESS_SCRIPT:
             self.witness_script = val
         else:
+            if not self.unknown:
+                self.unknown = {}
             self.unknown[key] = val
 
     def serialize(self, out_fd, my_idx):
 
         wr = lambda *a: self.write(out_fd, *a)
 
-        for k in self.subpaths:
-            wr(PSBT_OUT_BIP32_DERIVATION, self.subpaths[k], k)
+        if self.subpaths:
+            for k in self.subpaths:
+                wr(PSBT_OUT_BIP32_DERIVATION, self.subpaths[k], k)
 
         if self.redeem_script:
             wr(PSBT_OUT_REDEEM_SCRIPT, self.redeem_script)
 
-        for k in self.unknown:
-            wr(k[0], self.unknown[k], k[1:])
+        if self.unknown:
+            for k in self.unknown:
+                wr(k[0], self.unknown[k], k[1:])
 
     def validate(self, out_idx, txo, my_xfp):
         # Do things make sense for this output?
@@ -272,8 +288,6 @@ class psbtOutputProxy(psbtProxy):
         # - full key derivation and validation elsewhere, but critical.
         # - we raise a fraud alarm, since these are not innocent errors
         #
-        self.is_change = False
-
         if not self.subpaths:
             return
 
@@ -296,7 +310,9 @@ class psbtOutputProxy(psbtProxy):
             if addr_or_pubkey != expect_pubkey:
                 raise FraudulentChangeOutput("Output#%d: P2PK change output is fraudulent" % out_idx)
 
-            self.is_change = ours
+            if ours:
+                self.is_change = ours
+
             return
 
         expect_pkh = hash160(expect_pubkey)
@@ -332,7 +348,10 @@ class psbtOutputProxy(psbtProxy):
 
         if pkh != expect_pkh:
             raise FraudulentChangeOutput("Output#%d: P2PKH change output is fraudulent" % out_idx)
-        self.is_change = ours
+
+        # store value, but only if set
+        if ours:
+            self.is_change = ours
 
 
 # Track details of each input of PSBT
@@ -347,34 +366,40 @@ class psbtInputProxy(psbtProxy):
                      PSBT_IN_REDEEM_SCRIPT, PSBT_IN_WITNESS_SCRIPT, PSBT_IN_FINAL_SCRIPTSIG,
                      PSBT_IN_FINAL_SCRIPTWITNESS }
 
+    blank_flds = ('unknown',
+                    'utxo', 'witness_utxo', 'sighash',
+                    'redeem_script', 'witness_script', 'our_keys', 'already_signed',
+                    'is_segwit', 'is_multisig', 'is_p2sh',
+                    'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig')
+
     def __init__(self, fd, idx):
         super().__init__()
 
-        self.utxo = None
-        self.witness_utxo = None
+        #self.utxo = None
+        #self.witness_utxo = None
         self.part_sig = {}
-        self.sighash = None
-        self.subpaths = {}
-        self.redeem_script = None
-        self.witness_script = None
+        #self.sighash = None
+        self.subpaths = {}          # will typically be non-empty for all inputs
+        #self.redeem_script = None
+        #self.witness_script = None
 
-        self.our_keys = None
+        #self.our_keys = None
 
         # things we've learned
-        self.already_signed = None
+        #self.already_signed = None
 
         # we can't really learn this until we take apart the UTXO's scriptPubKey
-        self.is_segwit = None
-        self.is_multisig = None
-        self.is_p2sh = False
+        #self.is_segwit = None
+        #self.is_multisig = None
+        #self.is_p2sh = False
 
-        self.required_key = None
-        self.scriptSig = None       # maybe only need for non-segwit?
-        self.amount = None
-        self.scriptCode = None      # only expected for segwit inputs
+        #self.required_key = None
+        #self.scriptSig = None       # maybe only need for non-segwit?
+        #self.amount = None
+        #self.scriptCode = None      # only expected for segwit inputs
 
         # after signing, we'll have a signature to add to output PSBT
-        self.added_sig = None
+        #self.added_sig = None
 
         self.parse(fd)
 
@@ -399,7 +424,7 @@ class psbtInputProxy(psbtProxy):
             # no need for other parts
             # TODO multisig here.
             self.already_signed = True
-        else: 
+        else:
             self.already_signed = False
 
             if not self.subpaths:
@@ -551,7 +576,7 @@ class psbtInputProxy(psbtProxy):
                 ws = self.get(self.witness_script) if self.witness_script else redeem_script
                 for pubkey in self.subpaths:
                     if pubkey in ws:
-                        # limitations: 
+                        # limitations:
                         # - we could be holding multiple legs of the P2SH
                         # - text match like this could be fooled w/ crafting
                         which_key = pubkey
@@ -604,9 +629,9 @@ class psbtInputProxy(psbtProxy):
                 #   Please note that for a P2SH-P2WPKH, the scriptCode is always 26
                 #   bytes including the leading size byte, as 0x1976a914{20-byte keyhash}88ac,
                 #   NOT the redeemScript nor scriptPubKey
-                # 
+                #
                 # Also need this scriptCode for native segwit p2pkh
-                # 
+                #
                 assert not self.is_multisig
                 self.scriptCode = b'\x19\x76\xa9\x14' + addr + b'\x88\xac'
             elif not self.scriptCode:
@@ -638,6 +663,8 @@ class psbtInputProxy(psbtProxy):
             self.sighash = unpack('<I', val)[0]
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
+            if not self.unknown:
+                self.unknown = {}
             self.unknown[key] = val
 
     def serialize(self, out_fd, my_idx):
@@ -670,8 +697,9 @@ class psbtInputProxy(psbtProxy):
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
 
-        for k in self.unknown:
-            wr(k[0], self.unknown[k], k[1:])
+        if self.unknown:
+            for k in self.unknown:
+                wr(k[0], self.unknown[k], k[1:])
 
 
 
@@ -749,7 +777,7 @@ class psbtObject(psbtProxy):
     def parse_txn(self):
         # Need to semi-parse in unsigned transaction.
         # - learn number of ins/outs so rest of PSBT can be understood
-        # - also captures lots of position details 
+        # - also captures lots of position details
         # - called right after globals section is read
         fd = self.fd
         old_pos = fd.tell()
@@ -786,7 +814,7 @@ class psbtObject(psbtProxy):
         # remainder is the witness data, and then the lock time
 
         if self.had_witness:
-            # we'll need to come back to this pos if we 
+            # we'll need to come back to this pos if we
             # want to read the witness data later.
             self.wit_start = _skip_n_objs(fd, num_in, 'CTxInWitness')
 
@@ -859,12 +887,12 @@ class psbtObject(psbtProxy):
 
         our_keys = sum(i.our_keys for i in self.inputs)
 
-        print("PSBT: %d inputs, %d output, %d signed, %d ours" % (self.num_inputs, self.num_outputs,
-                sum(1 for i in self.inputs if i and i.already_signed), our_keys))
-    
+        #print("PSBT: %d inputs, %d output, %d signed, %d ours" % (
+        #           self.num_inputs, self.num_outputs,
+        #           sum(1 for i in self.inputs if i and i.already_signed), our_keys))
 
     def consider_outputs(self):
-        # scan ouputs: 
+        # scan ouputs:
         # - is it a change address, defined by redeem script (p2sh) or key we know is ours
         # - mark change outputs, so perhaps we don't show them to users
 
@@ -929,7 +957,7 @@ class psbtObject(psbtProxy):
             # - maybe we aren't expected to sign that input? (coinjoin)
             # - assume for now, probably funny business so we should stop
             raise FatalPSBTIssue('Missing UTXO(s). Cannot determine value being signed')
-            # self.warnings.append(('Missing UTXOs', 
+            # self.warnings.append(('Missing UTXOs',
             #        "We don't know enough about the inputs to this transaction to be sure "
             #        "of their value. This means the network fee could be huge, or resulting "
             #        "transaction's signatures invalid."))
@@ -947,13 +975,13 @@ class psbtObject(psbtProxy):
         no_keys = set(n for n,inp in enumerate(self.inputs)
                             if inp and inp.required_key == None)
         if self.presigned_inputs - no_keys:
-            self.warnings.append(('Missing Keys', 
+            self.warnings.append(('Missing Keys',
                 'We do not know the keypair for some inputs: %r' % list(no_keys)))
 
         if self.presigned_inputs:
             # this isn't really even an issue for some complex usage cases
-            self.warnings.append(('Partly Signed Already', 
-                'Some input(s) provided were already signed by another party: %r' 
+            self.warnings.append(('Partly Signed Already',
+                'Some input(s) provided were already signed by another party: %r'
                                 % list(self.presigned_inputs)))
 
     def calculate_fee(self):
@@ -961,7 +989,6 @@ class psbtObject(psbtProxy):
         if self.total_value_in is None:
             return None
         return self.total_value_in - self.total_value_out
-        
 
     def consider_keys(self):
         # check we process the right keys for the inputs
@@ -992,7 +1019,6 @@ class psbtObject(psbtProxy):
         rv.outputs = [psbtOutputProxy(fd, idx) for idx in range(rv.num_outputs)]
 
         return rv
-            
 
     def serialize(self, out_fd, upgrade_txn=False):
         # Ouput into a file.
@@ -1018,8 +1044,9 @@ class psbtObject(psbtProxy):
             # provide original txn (unchanged)
             wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
-        for k in self.unknown:
-            wr(k[0], self.unknown[k], k[1:])
+        if self.unknown:
+            for k in self.unknown:
+                wr(k[0], self.unknown[k], k[1:])
 
         # sep between globals in inputs
         out_fd.write(b'\0')
@@ -1042,11 +1069,11 @@ class psbtObject(psbtProxy):
         from main import dis
         dis.fullscreen('Signing...')
 
-        # Double check the change outputs are right. This is slow, but critical because
-        # it detects bad actors, not bugs or mistakes.
-        change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o and o.is_change]
-        if change_paths:
-            with stash.SensitiveValues() as sv:
+        with stash.SensitiveValues() as sv:
+            # Double check the change outputs are right. This is slow, but critical because
+            # it detects bad actors, not bugs or mistakes.
+            change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o and o.is_change]
+            if change_paths:
                 for out_idx, (pubkey, subpath) in change_paths:
                     skp = path_to_str(subpath)
                     node = sv.derive_path(skp)
@@ -1058,9 +1085,9 @@ class psbtObject(psbtProxy):
                                   "Deception regarding change output #%d. "
                                   "BIP32 path doesn't match actual address." % out_idx)
 
-        sigs = 0
-        success = set()
-        with stash.SensitiveValues() as sv:
+            # Sign individual inputs
+            sigs = 0
+            success = set()
             for in_idx, txi in self.input_iter():
                 dis.progress_bar_show(in_idx / self.num_inputs)
 
@@ -1129,7 +1156,7 @@ class psbtObject(psbtProxy):
                 success.add(in_idx)
 
         if len(success) != self.num_inputs:
-            print("Wasn't able to sign input(s): %s" % 
+            print("Wasn't able to sign input(s): %s" %
                             ', '.join('#'+str(i) for i in set(range(self.num_inputs)) - success))
 
         # done.
@@ -1195,7 +1222,7 @@ class psbtObject(psbtProxy):
 
             po = tcc.sha256()
             sq = tcc.sha256()
-            
+
             # input side
             for in_idx, txi in self.input_iter():
                 po.update(txi.prevout.serialize())
@@ -1204,7 +1231,7 @@ class psbtObject(psbtProxy):
             self.hashPrevouts = tcc.sha256(po.digest()).digest()
             self.hashSequence = tcc.sha256(sq.digest()).digest()
 
-            del po, sq
+            del po, sq, txi
 
             # output side
             ho = tcc.sha256()
@@ -1213,12 +1240,12 @@ class psbtObject(psbtProxy):
 
             self.hashOutputs = tcc.sha256(ho.digest()).digest()
 
-            del ho
+            del ho, txo
+            gc.collect()
 
             #print('hPrev: %s' % str(b2a_hex(self.hashPrevouts), 'ascii'))
             #print('hSeq : %s' % str(b2a_hex(self.hashSequence), 'ascii'))
             #print('hOuts: %s' % str(b2a_hex(self.hashOutputs), 'ascii'))
-
 
         rv = tcc.sha256()
 
@@ -1246,7 +1273,6 @@ class psbtObject(psbtProxy):
         # double SHA256
         return tcc.sha256(rv.digest()).digest()
 
-
     def is_complete(self):
         # Are all the inputs (now) signed?
 
@@ -1259,12 +1285,11 @@ class psbtObject(psbtProxy):
                 signed.add(i)
 
         return len(signed) == self.num_inputs
-        
 
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
         # - assumption is it's complete already.
-        
+
         fd.write(pack('<i', self.txn_version))           # nVersion
 
         # does this txn require witness data to be included?
@@ -1276,7 +1301,7 @@ class psbtObject(psbtProxy):
             # zero marker, and flags=0x01
             fd.write(b'\x00\x01')
 
-        # inputs    
+        # inputs
         fd.write(ser_compact_size(self.num_inputs))
         for in_idx, txi in self.input_iter():
             inp = self.inputs[in_idx]
@@ -1326,10 +1351,10 @@ class psbtObject(psbtProxy):
                     pubkey, der_sig = inp.added_sig
                     if not inp.is_multisig:
                         assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
-                        wit.scriptWitness.stack = [ der_sig, pubkey  ] 
+                        wit.scriptWitness.stack = [ der_sig, pubkey  ]
                     else:
                         assert False, 'p2sh combining not supported'
-                    
+
                 fd.write(wit.serialize())
 
         # locktime
