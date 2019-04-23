@@ -62,7 +62,11 @@ def hack_story(*a, **kw):
     title = kw.get('title', 'NO-TITLE')
 
     global story
-    story = (title, msg)
+
+    if hasattr(msg, 'readline'):
+        story = (title, msg.getvalue())
+    else:
+        story = (title, msg)
 
     #print("Story: %s: %s" % (title, msg))
 
