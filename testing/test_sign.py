@@ -11,7 +11,7 @@ from io import BytesIO
 from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
-from helpers import B2A, U2SAT
+from helpers import B2A, U2SAT, prandom
 
 @pytest.mark.parametrize('finalize', [ False, True ])
 def test_sign1(dev, need_keypress, finalize):
@@ -237,21 +237,43 @@ def simple_fake_txn():
 
 ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh']
 
+def make_change_addr(wallet, style):
+    import struct, random
+
+    deriv = [12, 34, random.randint(0, 1000)]
+
+    xfp, = struct.unpack('I', wallet.fingerprint())
+
+    dest = wallet.subkey_for_path('/'.join(str(i) for i in deriv))
+
+    target = dest.hash160()
+    assert len(target) == 20
+
+    if style == 'p2pkh':
+        raw = bytes([0x76, 0xa9, 0x14]) + target + bytes([0x88, 0xac])
+    elif style == 'p2wpkh':
+        raw = bytes([0, 20]) + prandom(20)
+    else:
+        raise pytest.skip('cant do type: ' + style)
+
+    return raw, dest.sec(), struct.pack('4I', xfp, *deriv)
+        
+
 def fake_dest_addr(style='p2pkh'):
 
     # See CTxOut.get_address() in ../shared/serializations
 
     if style == 'p2wpkh':
-        return bytes([0, 20]) + os.urandom(20)
+        return bytes([0, 20]) + prandom(20)
 
     if style == 'p2wsh':
-        return bytes([0, 32]) + os.urandom(32)
+        return bytes([0, 32]) + prandom(32)
 
     if style == 'p2sh':
-        return bytes([0xa9, 0x14]) + os.urandom(20) + bytes([0x87])
+        return bytes([0xa9, 0x14]) + prandom(20) + bytes([0x87])
 
     if style == 'p2pkh':
-        return bytes([0x76, 0xa9, 0x14]) + os.urandom(20) + bytes([0x88, 0xac])
+        return bytes([0x76, 0xa9, 0x14]) + prandom(20) + bytes([0x88, 0xac])
 
     # missing: if style == 'p2pk' =>  pay to pubkey
     assert False, 'not supported: ' + style
@@ -267,7 +289,7 @@ def fake_txn():
     from struct import pack
 
     def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000,
-                outvals=None, segwit_in=False, outstyles=['p2pkh']):
+                outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[]):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         
@@ -315,12 +337,20 @@ def fake_txn():
                 style = ADDR_STYLES[i % len(ADDR_STYLES)]
             else:
                 style = outstyles[i % len(outstyles)]
+
+            if i in change_outputs:
+                scr, pubkey, subpath = make_change_addr(mk, style)
+                psbt.outputs[i].bip32_paths[pubkey] = subpath
+            else:
                 scr = fake_dest_addr(style)
-                assert scr
-                if 'w' in style:
-                    psbt.outputs[i].witness_script = scr
-                elif style.endswith('sh'):
-                    psbt.outputs[i].redeem_script = scr
+                subpath = None
+
+            assert scr
+
+            if 'w' in style:
+                psbt.outputs[i].witness_script = scr
+            elif style.endswith('sh'):
+                psbt.outputs[i].redeem_script = scr
 
             if not outvals:
                 h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
@@ -888,5 +918,34 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
     assert 'more than 5% of total' in story
 
     settings_set('fee_limit', 10)
+
+@pytest.mark.parametrize('num_outs', [ 2, 7, 15 ])
+@pytest.mark.parametrize('act_outs', [ 2, 1, -1])
+@pytest.mark.parametrize('segwit', [True, False])
+def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, act_outs, segwit, num_ins=3):
+    # create a TXN which has change outputs, which shouldn't be shown to user, and also
+    xp = dev.master_xpub
+
+    couts = num_outs if act_outs == -1 else num_ins-act_outs
+    psbt = fake_txn(num_ins, num_outs, xp, segwit_in=segwit, change_outputs=range(couts))
+
+    open('debug/change.psbt', 'wb').write(psbt)
+
+    # should be able to sign, but get warning
+    start_sign(psbt, False)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    print(repr(story))
+
+    assert title == "OK TO SEND?"
+    assert 'Network fee' in story
+
+    if couts < num_outs:
+        assert '- to address -' in story
+    else:
+        assert 'Consolidating' in story
+
+    #signed = end_sign(True, finalize=True)
 
 # EOF

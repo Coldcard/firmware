@@ -5,6 +5,7 @@
 from io import BytesIO
 from binascii import b2a_hex
 from decimal import Decimal
+import random
 
 def B2A(s):
     return str(b2a_hex(s), 'ascii')
@@ -45,5 +46,9 @@ def dump_txos(hx, out_num=0):
     print('hash160: %s' % b2a_hex(t.txs_out[out_num].hash160()))
 
     return t
+
+def prandom(count):
+    # make some bytes, randomly, but not: deterministic
+    return bytes(random.randint(0, 255) for i in range(count))
 
 # EOF
