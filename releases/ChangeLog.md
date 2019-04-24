@@ -2,6 +2,8 @@
 - Transaction signing speed improved by about 3x.
 - Will only warn if miner's fee is over 5% of txn amount (was 1% before). Hard limit remains 10% (configable, can be disabled completely).
 - Robustness: Tighten stack-depth checking, increase heap size, shuffle some memory.
+- Bugfix: Better recovery from too-complex transaction errors.
+- Bugfix: Transactions with more than 10 outputs were not sumarized correctly.
 
 ## 2.0.2 - Apr 9, 2019
 - Page up/down on long text displays with 7/9 keys
