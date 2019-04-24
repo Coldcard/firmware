@@ -1,13 +1,15 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-import pytest, glob, time, sys
+import pytest, glob, time, sys, random
 from pprint import pprint
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT
 
 from api import bitcoind, match_key
 
+# lock down randomness
+random.seed(42)
 
 SIM_PATH = '/tmp/ckcc-simulator.sock'
 
