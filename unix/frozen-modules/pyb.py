@@ -1,3 +1,4 @@
+import utime as time
 import uerrno as errno
 
 class USB_VCP:
@@ -89,10 +90,15 @@ class SDCard:
     @staticmethod
     def present():
         #return False
+        SDCard.power(1)
         return True
 
     @staticmethod
     def power(st=0):
+        from ckcc import led_pipe
+        led_pipe.write(bytes([0x20 | (0x2 if st else 0x0)]))
+        if st:
+            time.sleep(0.100)       # drama
         return False
 
 class Pin:
