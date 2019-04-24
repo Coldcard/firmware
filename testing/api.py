@@ -31,27 +31,34 @@ def bitcoind():
 
     return conn
 
-@pytest.fixture()
-def match_key(bitcoind, set_master_key):
+@pytest.fixture
+def match_key(bitcoind, set_master_key, reset_seed_words):
     # load simulator w/ existing bip32 master key of testnet instance
 
     # bummer: dumpmasterprivkey RPC call was removed!
     #prv = bitcoind.dumpmasterprivkey()
 
-    from tempfile import mktemp
-    fn = mktemp()
-    bitcoind.dumpwallet(fn)
+    def doit():
+        print("match_key: doit()")
+        from tempfile import mktemp
+        fn = mktemp()
+        bitcoind.dumpwallet(fn)
+        prv = None
 
-    for ln in open(fn, 'rt').readlines():
-        if 'extended private masterkey' in ln:
-            prv = ln.split(": ", 1)[1].strip()
-            break
+        for ln in open(fn, 'rt').readlines():
+            if 'extended private masterkey' in ln:
+                assert not prv
+                prv = ln.split(": ", 1)[1].strip()
 
-    os.unlink(fn)
+        os.unlink(fn)
 
-    assert prv.startswith('tprv')
-    set_master_key(prv)
+        assert prv.startswith('tprv')
 
-    return prv
+        xfp = set_master_key(prv)
+
+        return xfp
+
+    # NOTE: set_master_key does teardown/reset
+    return doit
 
 # EOF

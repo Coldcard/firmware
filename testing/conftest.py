@@ -299,13 +299,12 @@ def open_microsd(simulator, microsd_path):
 
     return doit
 
-@pytest.fixture()
-def set_master_key(sim_exec, sim_execfile, simulator):
+@pytest.fixture(scope="function")
+def set_master_key(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific bip32 master key
 
     def doit(prv):
         assert prv[1:4] == 'prv'
-
 
         sim_exec('import main; main.TPRV = %r; ' % prv)
         rv = sim_execfile('devtest/set_tprv.py')
@@ -316,14 +315,16 @@ def set_master_key(sim_exec, sim_execfile, simulator):
 
         print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
+        return simulator.master_fingerprint
+
     yield doit
 
     # Important cleanup: restore normal key, because other tests assume that
+    # - actually need seed words for all tests
+    reset_seed_words()
 
-    doit(simulator_fixed_xprv)
-
-@pytest.fixture()
-def set_seed_words(sim_exec, sim_execfile, simulator):
+@pytest.fixture(scope="function")
+def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific bip32 master key
 
     def doit(words):
@@ -341,7 +342,7 @@ def set_seed_words(sim_exec, sim_execfile, simulator):
 
     # Important cleanup: restore normal key, because other tests assume that
 
-    doit(simulator_fixed_words)
+    reset_seed_words()
 
 @pytest.fixture()
 def reset_seed_words(sim_exec, sim_execfile, simulator):
@@ -362,7 +363,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 
         return words
 
-    yield doit
+    return doit
 
 
 

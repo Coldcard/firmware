@@ -342,7 +342,7 @@ def fake_txn():
     return doit
 
 @pytest.mark.parametrize('num_out', [1, 10,11, 250])
-@pytest.mark.parametrize('num_in', [1, 10,11, 20])     # 28 XXX
+@pytest.mark.parametrize('num_in', [1, 10, 20])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES)
 def test_io_size(request, num_in, decode_with_bitcoind, fake_txn,
@@ -404,7 +404,7 @@ def test_io_size(request, num_in, decode_with_bitcoind, fake_txn,
     
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('segwit', [True, False])
-def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit):
+def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitcoind):
     # create a TXN using actual addresses that are correct for DUT
     xp = dev.master_xpub
 
@@ -413,15 +413,22 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit):
 
     _, txn = try_sign(psbt, accept=True, finalize=True)
 
-    print('Signed; ' + B2A(txn))
+    #print('Signed; ' + B2A(txn))
 
-    # too slow / connection breaks during process
-    #decode = bitcoind.decoderawtransaction(B2A(txn))
+    decoded = decode_with_bitcoind(txn)
+
+    #pprint(decoded)
+
+    assert len(decoded['vin']) == num_ins
+    if segwit:
+        assert all(x['txinwitness'] for x in decoded['vin'])
 
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
 def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, we_finalize, num_dests):
+
+    wallet_xfp = match_key()
 
     bal = bitcoind.getbalance()
     assert bal > 0, "need some play money; drink from a faucet"
@@ -453,19 +460,41 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         print("Sending %.8f XTN to %s (Change back in position: %d)" % (amt, dest, chg_pos))
 
         psbt = b64decode(bitcoind.converttopsbt(txn2, True))
-    else:
-        # use walletcreatefundedpsbt
-        # - updated/validated against 0.17.1
-        resp = bitcoind.walletcreatefundedpsbt([], args, 0, {}, True)
 
-        psbt = b64decode(resp['psbt'])
-        fee = resp['fee']
-        chg_pos = resp['changepos']
+    # use walletcreatefundedpsbt
+    # - updated/validated against 0.17.1
+    resp = bitcoind.walletcreatefundedpsbt([], args, 0, {}, True)
 
-        # pull out included txn
-        txn2 = B2A(BasicPSBT().parse(psbt).txn)
+    if 0:
+        # OMFG all this to reconstruct the rpc command!
+        import json, decimal
+        def EncodeDecimal(o):
+            if isinstance(o, decimal.Decimal):
+                return float(round(o, 8))
+            raise TypeError
+
+        print('walletcreatefundedpsbt "[]" "[%s]" 0 {} true' % json.dumps(args,
+                    default=EncodeDecimal).replace('"', '\\"'))
+
+    psbt = b64decode(resp['psbt'])
+    fee = resp['fee']
+    chg_pos = resp['changepos']
 
     open('debug/vs.psbt', 'wb').write(psbt)
+
+    # check some basics
+    mine = BasicPSBT().parse(psbt)
+    from struct import unpack_from
+    for i in mine.inputs:
+        got_xfp, = unpack_from('I', list(i.bip32_paths.values())[0])
+        #assert hex(got_xfp) == hex(wallet_xfp), "wrong HD master key fingerprint"
+
+        # see <https://github.com/bitcoin/bitcoin/issues/15884>
+        if hex(got_xfp) != hex(wallet_xfp):
+            raise pytest.xfail("wrong HD master key fingerprint")
+
+    # pull out included txn
+    txn2 = B2A(mine.txn)
 
     start_sign(psbt, finalize=we_finalize)
 
@@ -473,7 +502,6 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
     check_against_bitcoind(txn2, fee)
 
     signed = end_sign(accept=True)
-    #signed = end_sign(None)
     open('debug/vs-signed.psbt', 'wb').write(signed)
 
     if not we_finalize:
@@ -529,6 +557,10 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
 def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     # Check we can finalize p2sh_p2wpkh inputs right.
+
+    raise pytest.skip('not ready/junk test')
+
+    wallet_xfp = match_key()
 
     fn = 'data/p2sh_p2wpkh.psbt'
 
