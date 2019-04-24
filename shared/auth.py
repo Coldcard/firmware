@@ -357,6 +357,15 @@ class ApproveTransaction(UserAuthorizedAction):
 
         num_change = sum(1 for o in self.psbt.outputs if o.is_change)
 
+        if num_change == self.psbt.num_outputs:
+            # consolidating txn that doesn't change balance of account.
+            msg.write("Consolidating\n%s %s\nwithin wallet.\n\n" %
+                            self.chain.render_value(self.psbt.total_value_out))
+            msg.write("%d ins - fee\n = %d outs\n" % (
+                        self.psbt.num_inputs, self.psbt.num_outputs))
+
+            return
+
         if self.psbt.num_outputs - num_change <= MAX_VISIBLE_OUTPUTS:
             # simple, common case: don't sort outputs, and do show all of them
             first = True
