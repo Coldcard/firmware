@@ -92,7 +92,7 @@ def gate(method, buf_io, arg2):
         if arg2 == 1:
             # clear it
             genuine_led = False
-            led_pipe.write(b'\x00')
+            led_pipe.write(bytes([0x10]))
         return 1 if genuine_led else 0
 
     if method == 5:
