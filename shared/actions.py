@@ -289,6 +289,8 @@ see each time you login.
 Your new PIN protects access to \
 this Coldcard device and is not a factor in the wallet's \
 seed words or private keys.
+
+THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
 ''')
     del lll
 
@@ -967,9 +969,9 @@ async def pin_changer(_1, _2, item):
 
     # standard threats for all PIN's
     msg += '''\n\n\
-We strongly recommend all PIN codes used be unique between each other.
+THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
 
-There is absolutely no means to recover a lost or forgotten PIN, so please write them down!
+We strongly recommend all PIN codes used be unique between each other.
 '''
     if not is_login_pin:
         msg += '''\nUse 999999-999999 to clear existing PIN.'''
