@@ -10,45 +10,28 @@
 #   'assets/4x6.bdf' => FontTiny
 #
 __all__ = ["FontSmall", "FontLarge", "FontTiny"]
-
-try:
-    from ucollections import namedtuple
-except ImportError:
-    from collections import namedtuple
+from ucollections import namedtuple
 
 GlyphInfo = namedtuple('GlyphInfo', 'x y w h bits')
 
 class FontBase:
+    pass
 
-    @classmethod
-    def lookup(cls, cp):
-        # lookup glyph data for a single codepoint, or return None
-        for r,d in cls.code_points:
-            if cp not in r: continue
-            ptr = d[cp-r.start]
-            if not ptr: return None
-
-            x,y, w,h, dlen = cls.bboxes[cls.bitmaps[ptr]]
-            bits = cls.bitmaps[ptr+1:ptr+1+dlen]
-
-            return GlyphInfo(x,y, w,h, bits)
-
-        return None
-
-
-
-# Auto-generated. Dont edit
 
 class FontSmall(FontBase):
     height = 14
     code_range = range(32, 215)
 
-    bboxes = [None, (0, -3, 7, 14, 0), (0, -3, 7, 14, 4), (0, -3, 7,
-  14, 5), (0, -3, 7, 14, 7), (0, -3, 7, 14, 9), (0, -3, 7, 14, 10),
+    @staticmethod
+    def lookup(cp):
+        # lookup glyph data for a single codepoint, or return None
+
+        bboxes = [None, (0, -3, 7, 14, 0), (0, -3, 7, 14, 4), (0, -3,
+  7, 14, 5), (0, -3, 7, 14, 7), (0, -3, 7, 14, 9), (0, -3, 7, 14, 10),
   (0, -3, 7, 14, 11), (0, -3, 7, 14, 12), (0, -3, 7, 14, 13), (0, -3,
   7, 14, 14)]
 
-    code_points = [
+        code_points = [
 (range(32, 127), [1, 2, 14, 20, 31, 43, 55, 67, 73, 87, 101, 111, 122,
   136, 144, 157, 170, 182, 194, 206, 218, 230, 242, 254, 266, 278,
   290, 303, 317, 329, 339, 351, 363, 375, 387, 399, 411, 423, 435,
@@ -59,9 +42,9 @@ class FontSmall(FontBase):
   1066, 1078, 1092, 1105, 1119]),
 (range(177, 182), [1125, 0, 0, 0, 1138]),  # ± µ
 (range(215, 216), [1151]),  # ×
-    ]
+         ]
 
-    bitmaps = b"""\
+        bitmaps = b"""\
 \xaa\x01\x07\x00\x10\x10\x10\x10\x10\x10\x10\x00\x10\x10\x03\x00\x28\x28\
 \x28\x28\x06\x00\x00\x24\x24\x7e\x24\x24\x7e\x24\x24\x07\x00\x00\x10\x3c\
 \x50\x50\x38\x14\x14\x78\x10\x07\x00\x22\x52\x54\x28\x08\x10\x14\x2a\x4a\
@@ -128,18 +111,32 @@ class FontSmall(FontBase):
 \x08\x08\x00\x7e\x08\x00\x00\x00\x00\x44\x44\x44\x44\x4c\x7a\x40\x40\x06\
 \x00\x00\x00\x00\x42\x24\x18\x18\x24\x42\
 """
-# Auto-generated. Dont edit
+        for r,d in code_points:
+            if cp not in r: continue
+            ptr = d[cp-r.start]
+            if not ptr: return None
+
+            x,y, w,h, dlen = bboxes[bitmaps[ptr]]
+            bits = bitmaps[ptr+1:ptr+1+dlen]
+
+            return GlyphInfo(x,y, w,h, bits)
+
+        return None
 
 class FontLarge(FontBase):
     height = 21
     code_range = range(32, 215)
 
-    bboxes = [None, (0, -5, 10, 21, 0), (0, -5, 10, 21, 14), (0, -5,
-  10, 21, 16), (0, -5, 10, 21, 22), (0, -5, 10, 21, 26), (0, -5, 10,
-  21, 30), (0, -5, 10, 21, 32), (0, -5, 10, 21, 34), (0, -5, 10, 21,
-  36), (0, -5, 10, 21, 38), (0, -5, 10, 21, 40)]
+    @staticmethod
+    def lookup(cp):
+        # lookup glyph data for a single codepoint, or return None
 
-    code_points = [
+        bboxes = [None, (0, -5, 10, 21, 0), (0, -5, 10, 21, 14), (0,
+  -5, 10, 21, 16), (0, -5, 10, 21, 22), (0, -5, 10, 21, 26), (0, -5,
+  10, 21, 30), (0, -5, 10, 21, 32), (0, -5, 10, 21, 34), (0, -5, 10,
+  21, 36), (0, -5, 10, 21, 38), (0, -5, 10, 21, 40)]
+
+        code_points = [
 (range(32, 127), [1, 2, 35, 50, 81, 118, 151, 184, 199, 238, 277, 304,
   335, 372, 395, 428, 463, 496, 529, 562, 595, 628, 661, 694, 727,
   760, 793, 826, 863, 896, 923, 956, 989, 1022, 1055, 1088, 1121,
@@ -151,9 +148,9 @@ class FontLarge(FontBase):
   2991, 3026, 3063]),
 (range(177, 182), [3080, 0, 0, 0, 3115]),  # ± µ
 (range(215, 216), [3150]),  # ×
-    ]
+         ]
 
-    bitmaps = b"""\
+        bitmaps = b"""\
 \xaa\x01\x07\x00\x00\x00\x00\x00\x00\x08\x00\x08\x00\x08\x00\x08\x00\x08\
 \x00\x08\x00\x08\x00\x08\x00\x08\x00\x00\x00\x00\x00\x08\x00\x08\x00\x02\
 \x00\x00\x00\x00\x00\x00\x11\x00\x11\x00\x11\x00\x11\x00\x06\x00\x00\x00\
@@ -332,16 +329,30 @@ class FontLarge(FontBase):
 \x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x40\x80\x21\
 \x00\x12\x00\x0c\x00\x0c\x00\x12\x00\x21\x00\x40\x80\
 """
-# Auto-generated. Dont edit
+        for r,d in code_points:
+            if cp not in r: continue
+            ptr = d[cp-r.start]
+            if not ptr: return None
+
+            x,y, w,h, dlen = bboxes[bitmaps[ptr]]
+            bits = bitmaps[ptr+1:ptr+1+dlen]
+
+            return GlyphInfo(x,y, w,h, bits)
+
+        return None
 
 class FontTiny(FontBase):
     height = 6
     code_range = range(32, 8730)
 
-    bboxes = [None, (0, -1, 4, 6, 0), (0, -1, 4, 6, 2), (0, -1, 4, 6,
-  3), (0, -1, 4, 6, 4), (0, -1, 4, 6, 5), (0, -1, 4, 6, 6)]
+    @staticmethod
+    def lookup(cp):
+        # lookup glyph data for a single codepoint, or return None
 
-    code_points = [
+        bboxes = [None, (0, -1, 4, 6, 0), (0, -1, 4, 6, 2), (0, -1, 4,
+  6, 3), (0, -1, 4, 6, 4), (0, -1, 4, 6, 5), (0, -1, 4, 6, 6)]
+
+        code_points = [
 (range(32, 127), [1, 2, 8, 11, 17, 24, 30, 36, 39, 46, 53, 59, 65, 72,
   76, 82, 88, 94, 100, 106, 112, 118, 124, 130, 136, 142, 148, 154,
   161, 167, 172, 178, 184, 190, 196, 202, 208, 214, 220, 226, 232,
@@ -353,9 +364,9 @@ class FontTiny(FontBase):
 (range(177, 182), [562, 0, 0, 0, 568]),  # ± µ
 (range(215, 216), [575]),  # ×
 (range(8730, 8731), [580]),  # √
-    ]
+         ]
 
-    bitmaps = b"""\
+        bitmaps = b"""\
 \xaa\x01\x05\x40\x40\x40\x00\x40\x02\xa0\xa0\x05\xa0\xf0\xa0\xf0\xa0\x06\
 \x40\xe0\xc0\x20\xe0\x40\x05\x80\x20\x40\x80\x20\x05\x40\xa0\x40\xa0\x50\
 \x02\x40\x40\x06\x20\x40\x40\x40\x40\x20\x06\x80\x40\x40\x40\x40\x80\x05\
@@ -390,3 +401,15 @@ class FontTiny(FontBase):
 \x80\x02\x50\xa0\x05\x40\xe0\x40\x00\xe0\x06\x00\xa0\xa0\xa0\xc0\x80\x04\
 \x00\xa0\x40\xa0\x05\x30\x20\x20\xa0\x60\
 """
+        for r,d in code_points:
+            if cp not in r: continue
+            ptr = d[cp-r.start]
+            if not ptr: return None
+
+            x,y, w,h, dlen = bboxes[bitmaps[ptr]]
+            bits = bitmaps[ptr+1:ptr+1+dlen]
+
+            return GlyphInfo(x,y, w,h, bits)
+
+        return None
+
