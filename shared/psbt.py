@@ -1127,10 +1127,9 @@ class psbtObject(psbtProxy):
 
                 # Do the ACTUAL signature ... finally!!!
                 skp = path_to_str(inp.subpaths[which_key])
-                node = sv.derive_path(skp)
+                node = sv.derive_path(skp, register=False)
 
                 pk = node.private_key()
-                sv.register(pk)
 
                 # expensive test, but works... and important
                 pu = node.public_key()
@@ -1142,18 +1141,26 @@ class psbtObject(psbtProxy):
 
                 result = tcc.secp256k1.sign(pk, digest)
 
+                # private key no longer required
+                stash.blank_object(pk)
+                stash.blank_object(node)
+                del pk, node, pu, skp
+
                 #print("result %s" % b2a_hex(result).decode('ascii'))
 
-                # convert to DER format
+                # convert signature to DER format
                 assert len(result) == 65
                 r = result[1:33]
                 s = result[33:65]
-                assert len(r) == 32
-                assert len(s) == 32
 
                 inp.added_sig = (which_key, ser_sig_der(r, s, inp.sighash))
 
                 success.add(in_idx)
+
+                # memory cleanup
+                del result, r, s
+
+                gc.collect()
 
         if len(success) != self.num_inputs:
             print("Wasn't able to sign input(s): %s" %

@@ -197,10 +197,12 @@ class SensitiveValues:
         # supports bip32 nodes
         self.spots.append(item)
 
-    def derive_path(self, path, master=None):
-        # given a string path, derive the related subkey
+    def derive_path(self, path, master=None, register=True):
+        # Given a string path, derive the related subkey
         rv = (master or self.node).clone()
-        self.register(rv)
+
+        if register:
+            self.register(rv)
 
         for i in path.split('/'):
             if i == 'm': continue
