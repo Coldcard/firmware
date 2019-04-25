@@ -761,7 +761,7 @@ async def spinner_edit(pw):
         if scroll_x > 0:
             dis.text(2, y-14, str(pw, 'ascii')[0:scroll_x].replace(' ', '_'), FontTiny)
         if scroll_x + n_visible < len(pw):
-            dis.text(-1, 1, "MORE >", FontTiny)
+            dis.text(-1, 1, "MORE>", FontTiny)
 
         if 0:
             wy = 6
