@@ -383,6 +383,7 @@ def test_io_size(request, num_in, decode_with_bitcoind, fake_txn,
     # - cmdline: "pytest test_sign.py -k test_io_size --dev --manual -s --durations=50"
     # - simulator can do 400/400 but takes long time
     # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
+    # - complete run on real hardware takes 1800.94 seconds = 30 minutes
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=[out_style])
 
