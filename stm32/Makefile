@@ -81,11 +81,14 @@ code-committed:
 .PHONY: sign-release
 sign-release: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
 sign-release:
-	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | gpg --clearsign -u A3A31BAD5A2A5B10 --output signatures.txt --yes - )
+	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
+		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
 	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
 
 # Tag source code associate with built release version.
-# - use when a new release is built
+# - use when a new release is built (make release)
+# - but "git add" the new binary in ../release/*dfu first
+# - also edit/commit ChangeLog text too
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
 tag-source: sign-release code-committed
 	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
