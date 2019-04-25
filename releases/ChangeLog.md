@@ -1,11 +1,15 @@
-## 2.0.3 - Apr X, 2019
-- Transaction signing speed improved by about 3x.
-- Will only warn if miner's fee is over 5% of txn amount (was 1% before). Hard limit remains 10% (configurable, can be disabled completely).
+## 2.0.3 - Apr 25, 2019
+
+- Transaction signing speed improved by about 3X.
+- Will warn if miner's fee is over 5% of txn amount (was 1% before). Hard limit remains 10% (configurable, can be disabled completely).
 - Robustness: Tighten stack-depth checking, increase heap size, shuffle some memory.
-- Bugfix: Better recovery from too-complex transaction errors.
 - Bugfix: Transactions with more than 10 outputs were not summarized correctly.
+- Bugfix: Consolidating transactions that move UTXO within same wallet are shown better.
+- Bugfix: Better recovery from too-complex transaction errors.
+- "Don't forget your PIN" warning message is more bold now.
 
 ## 2.0.2 - Apr 9, 2019
+
 - Page up/down on long text displays with 7/9 keys
 - Public summary file now includes extended master key fingerprint near top of file.
 - Bugfix: signing larger transactions could fail due to lack of memory
