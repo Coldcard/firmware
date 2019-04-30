@@ -356,15 +356,6 @@ class USBHandler:
 
             return b'asci' + start_show_address(subpath, addr_fmt, witdeem_script)
 
-        if cmd == 'p2sh':
-            # show address on screen for a P2SH destination (also provides it back)
-            addr_fmt, = unpack_from('<I', args)
-            subpath = args[4:]
-            from auth import start_show_address
-
-            return b'asci' + start_show_address(subpath, addr_fmt)
-
-
         if cmd == 'stxn':
             # sign transaction
             txn_len, finalize, txn_sha = unpack_from('<II32s', args)
