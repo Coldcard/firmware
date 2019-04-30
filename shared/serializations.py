@@ -21,6 +21,7 @@ from ubinascii import unhexlify as a2b_hex
 from ucollections import OrderedDict
 import ustruct as struct
 import tcc
+from opcodes import *
 
 def sha256(s):
     return tcc.sha256(s).digest()
@@ -182,6 +183,44 @@ def ser_push_data(dd):
         return bytes([ll]) + dd           # OP_PUSHDATAn + data
     else:
         return bytes([76, ll]) + dd       # 0x4c = 76 => OP_PUSHDATA1 + size + data
+
+def disassemble(script):
+    # Very limited script disassembly
+    # yeilds (int / bytes, opcode) for each part of the script
+    # see <https://en.bitcoin.it/wiki/Script>
+
+    try:
+        offset = 0
+        while 1:
+            c = script[offset]
+            offset += 1
+
+            if 1 <= c <= 75:
+                yield (script[offset:offset+c], None)
+                offset += c
+            elif OP_1 <= c <= OP_16:
+                # OP_1 thru OP_16
+                yield (c - OP_1 + 1, None)
+            elif c == OP_PUSHDATA1:
+                cnt = script[offset]; offset += 1
+                yield (script[offset:offset+cnt], None)
+                offset += cnt
+            elif c == OP_PUSHDATA2:
+                cnt = struct.unpack_from("H", script, offset)
+                offset += 2
+                yield (script[offset:offset+cnt], None)
+                offset += cnt
+            elif c == OP_PUSHDATA4:
+                # no where to put so much data
+                raise NotImplementedError
+            elif c == OP_1NEGATE:
+                yield (-1, None)
+            else:
+                # OP_0 included here
+                yield (None, c)
+    except:
+        raise ValueError("bad script")
+        
 
 # Deserialize from a hex string representation (eg from RPC)
 def FromHex(obj, hex_string):
