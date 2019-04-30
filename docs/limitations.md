@@ -47,12 +47,14 @@
 
 # P2SH / Multisig
 
-- each Coldcard can only be a single "leg" of the multisig
+- only one signature will be added per input. However, if needed the partly-signed 
+  PSBT can be given again, and the "next" leg will be signed.
 - we do not support PSBT combining of transactions involving
   P2SH signatures (but you can do your own combine step off-device)
-  [This might be handled in future versions, but low priority for now.]
 - Electrum plugin does not support multisig at this time
-- IMPORTANT: no support for multisig signing yet, but we will in a future version.
+- we can sign for P2SH and P2WSH addresses that represent multisig (M of N)
+- we cannot sign for more complex scripts because we don't know how to present that
+    to the user for approval.
 
 # SIGHASH types
 
