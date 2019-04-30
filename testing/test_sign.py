@@ -618,12 +618,9 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     assert network == signed
 
-def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
+def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign, decode_with_bitcoind):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
-
-    # PROBLEM: revised BIP174 has p2sh multisig cases which we don't support yet.
-    raise pytest.xfail('not ready for multisig')
     
     # expect xfp=0x4f6a0cd9
     exk = 'tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF'
@@ -631,16 +628,28 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     psbt = a2b_hex(open('data/worked-unsigned.psbt', 'rb').read())
 
-    start_sign(psbt)
-    signed = end_sign(True)
+    # PROBLEM: revised BIP174 has p2sh multisig cases which we don't support yet.
+    # - it has two signatures from same key on same input
+    # - that's a rare case and not worth supporting in the firmware
+    # - but we can do it in two passes
 
-    open('debug/ex-signed.psbt', 'wb').write(signed)
+    start_sign(psbt)
+    part_signed = end_sign(True)
+
+    open('debug/ex-signed-part.psbt', 'wb').write(part_signed)
+
+    start_sign(part_signed)
+    signed = end_sign(True)
 
     b4 = BasicPSBT().parse(psbt)
     aft = BasicPSBT().parse(signed)
     assert b4 != aft, "signing didn't change anything?"
 
-    open('debug/example-signed.psbt', 'wb').write(signed)
+    open('debug/ex-signed.psbt', 'wb').write(signed)
+
+    decode = decode_with_bitcoind(signed)
+    pprint(decode)
+
     expect = BasicPSBT().parse(a2b_hex(open('data/worked-combined.psbt', 'rb').read()))
 
     assert aft == expect
