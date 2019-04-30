@@ -647,26 +647,46 @@ SHOW_ADDR_TEMPLATE = '''\
 Compare this payment address to the one shown on your other, less-trusted, software.'''
 
 class ShowAddress(UserAuthorizedAction):
-    def __init__(self, subpath, addr_fmt):
+    def __init__(self, subpath, addr_fmt, witdeem_script):
         super().__init__()
         self.subpath = subpath
+        self.witdeem_script = witdeem_script
+        self.m_of_n = None
+        self.unknown_scr = None
 
         from main import dis
         dis.fullscreen('Wait...')
 
         with stash.SensitiveValues() as sv:
             node = sv.derive_path(subpath)
-            self.address = sv.chain.address(node, addr_fmt)
+
+            if addr_fmt & AFC_SCRIPT:
+                self.address, self.m_of_n, my_key_number \
+                    = sv.chain.p2sh_address(addr_fmt, witdeem_script, node=node)
+
+                if my_key_number < 0:
+                    # Important: do not show this bogus address to user
+                    raise AsserionError("My pubkey not in script")
+            else:
+                self.address = sv.chain.address(node, addr_fmt)
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        ch = await ux_show_story(SHOW_ADDR_TEMPLATE.format(
-                            addr=self.address, subpath=self.subpath), title='Address:')
+        title = 'Address:'
+        msg = ''
+        if self.m_of_n:
+            m,n = self.m_of_n
+            msg = '(%d of %d needed)\n' % (m, n)
+            title = 'Multisig:'
+
+        msg += SHOW_ADDR_TEMPLATE.format(addr=self.address, subpath=self.subpath)
+
+        ch = await ux_show_story(msg, title=title)
 
         self.done()
         UserAuthorizedAction.cleanup()      # because no results to store
 
-def start_show_address(subpath, addr_format):
+def start_show_address(subpath, addr_format, witdeem_script=None):
     # Show address to user, also returns it.
 
     try:
@@ -679,9 +699,12 @@ def start_show_address(subpath, addr_format):
     except:
         raise AssertionError('Unknown/unsupported addr format')
 
+    if (addr_format & AFC_SCRIPT) and not witdeem_script:
+        raise AssertionError('Redeem/witness script is required')
+
     global active_request
     UserAuthorizedAction.check_busy(ShowAddress)
-    active_request = ShowAddress(subpath, addr_format)
+    active_request = ShowAddress(subpath, addr_format, witdeem_script)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
