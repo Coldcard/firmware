@@ -219,7 +219,6 @@ class psbtProxy:
 
             if here[0] == my_xfp:
                 our_keys += 1
-
             else:
                 # Address that isn't based on this seed; might be another leg in a p2sh
                 #print('here[0]=0x%x != 0x%x  ... %r' % (here[0], self.my_xfp,
@@ -280,12 +279,12 @@ class psbtOutputProxy(psbtProxy):
 
     def validate(self, out_idx, txo, my_xfp):
         # Do things make sense for this output?
-        # NOTE: We might be a change output, because the PSBT
+        # NOTE: We might think it's a change output, because the PSBT
         # creator has given us a key path. However, we must be
         # **very** careful and validate this fully.
         # - no output info is needed, in general, so
         #   any output info provided better be right, or fail
-        # - full key derivation and validation elsewhere, but critical.
+        # - full key derivation and validation is elsewhere, and critical.
         # - we raise a fraud alarm, since these are not innocent errors
         #
         if not self.subpaths:
@@ -295,6 +294,7 @@ class psbtOutputProxy(psbtProxy):
 
         # - must be exactly one of our keys here (extras ignored, not-ours ignored)
         # - not considered fraud because other signers looking at PSBT may have them
+        # - user will see them as normal outputs, which they are.
         if ours == None:
             return
 
@@ -308,19 +308,18 @@ class psbtOutputProxy(psbtProxy):
             assert len(addr_or_pubkey) == 33
 
             if addr_or_pubkey != expect_pubkey:
-                raise FraudulentChangeOutput("Output#%d: P2PK change output is fraudulent" % out_idx)
+                raise FraudulentChangeOutput("Output#%d: P2PK change output is fraudulent" 
+                                                            % out_idx)
 
-            if ours:
-                self.is_change = ours
-
+            self.is_change = ours
             return
 
-        expect_pkh = hash160(expect_pubkey)
+        # Figure out what the hashed addr should be
         pkh = None
 
         if addr_type == 'p2sh':
-            # multisig output
-            # we must have the redeem script already (else fail)
+            # P2SH or Multisig output
+            # We must have the witness & redeem script already (else fail)
             if not self.redeem_script:
                 # perhaps an omission, so let's not call fraud on it
                 raise AssertionError("Missing redeem script for output #%d" % out_idx)
@@ -334,9 +333,29 @@ class psbtOutputProxy(psbtProxy):
                 # it's actually segwit p2pkh inside p2sh
                 pkh = redeem_script[2:22]
             else:
-                # multiple keys involved, not supported
-                # TODO multisig support
-                raise AssertionError("Not ready for multisig/p2wsh change outputs")
+                # Multisig change output, we're supposed to be a part of.
+                # - our key must be part of it
+                # - must look like input side redeem script
+                # - assert M/N structure of output to match any inputs we have signed in PSBT!
+                # - assert all provided pubkeys are in redeem script, not just ours
+                # - XXX redo this
+                if expect_pubkey not in redeem_script:
+                    raise FraudulentChangeOutput("Output#%d: P2WSH/P2SH change output missing my pubkey" % out_idx)
+
+            if is_segwit:
+                # p2wsh case
+                # - need witness script and check it's hash against proposed p2wsh value
+                assert len(addr_or_pubkey) == 32
+                expect_wsh = tcc.sha256(self.witness_script).digest()
+                if expect_wsh != addr_or_pubkey:
+                    raise FraudulentChangeOutput("Output#%d: P2WSH witness script has wrong hash" % out_idx)
+
+                self.is_change = ours
+                return
+
+            else:
+                # old BIP16 style; looks like payment addr
+                pkh = hash160(redeem_script)
 
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
@@ -346,12 +365,12 @@ class psbtOutputProxy(psbtProxy):
             # we don't know how to "solve" this type of input
             return
 
+        expect_pkh = hash160(expect_pubkey)
         if pkh != expect_pkh:
             raise FraudulentChangeOutput("Output#%d: P2PKH change output is fraudulent" % out_idx)
 
-        # store value, but only if set
-        if ours:
-            self.is_change = ours
+        # store pubkey value for later validation
+        self.is_change = ours
 
 
 # Track details of each input of PSBT
@@ -368,7 +387,7 @@ class psbtInputProxy(psbtProxy):
 
     blank_flds = ('unknown',
                     'utxo', 'witness_utxo', 'sighash',
-                    'redeem_script', 'witness_script', 'our_keys', 'already_signed',
+                    'redeem_script', 'witness_script', 'our_keys', 'fully_signed',
                     'is_segwit', 'is_multisig', 'is_p2sh',
                     'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig')
 
@@ -386,7 +405,7 @@ class psbtInputProxy(psbtProxy):
         #self.our_keys = None
 
         # things we've learned
-        #self.already_signed = None
+        #self.fully_signed = False
 
         # we can't really learn this until we take apart the UTXO's scriptPubKey
         #self.is_segwit = None
@@ -394,7 +413,7 @@ class psbtInputProxy(psbtProxy):
         #self.is_p2sh = False
 
         #self.required_key = None
-        #self.scriptSig = None       # maybe only need for non-segwit?
+        #self.scriptSig = None
         #self.amount = None
         #self.scriptCode = None      # only expected for segwit inputs
 
@@ -420,15 +439,21 @@ class psbtInputProxy(psbtProxy):
         # sighash, but we're probably going to ignore anyway.
         self.sighash = SIGHASH_ALL if self.sighash is None else self.sighash
 
-        if self.part_sig or txin.scriptSig:
-            # no need for other parts
-            # TODO multisig here.
-            self.already_signed = True
+        if self.part_sig:
+            # How complete is the set of signatures so far?
+            # - assuming PSBT creator doesn't give us extra data not required
+            # - seem harmless if they fool us into thinking already signed; we do nothing
+            # - could also look at pubkey needed vs. sig provided
+            # - could consider structure of MofN in p2sh cases
+            self.fully_signed = (len(self.part_sig) >= len(self.subpaths))
         else:
-            self.already_signed = False
+            # No signatures at all yet for this input (typical non multisig)
+            self.fully_signed = False
 
+        if not self.fully_signed:
             if not self.subpaths:
                 raise FatalPSBTIssue('We require subpaths to be specified in the PSBT')
+
             if self.sighash != SIGHASH_ALL:
                 raise FatalPSBTIssue('Can only do SIGHASH_ALL')
 
@@ -541,11 +566,12 @@ class psbtInputProxy(psbtProxy):
         return utxo
 
 
-    def determine_my_signing_key(self, my_idx, utxo):
+    def determine_my_signing_key(self, my_idx, utxo, my_xfp):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
         # - scriptSig value
+        # - also validates redeem_script when present
         addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
 
         which_key = None
@@ -572,13 +598,15 @@ class psbtInputProxy(psbtProxy):
             if len(self.subpaths) == 1:
                 which_key, = self.subpaths.keys()
             else:
-                # messy P2SH multisig guessing?
-                ws = self.get(self.witness_script) if self.witness_script else redeem_script
-                for pubkey in self.subpaths:
-                    if pubkey in ws:
-                        # limitations:
-                        # - we could be holding multiple legs of the P2SH
-                        # - text match like this could be fooled w/ crafting
+                # Assume we'll be signing with any key we know
+                # - limitation: we cannot be two legs of a multisig
+                # - but if partial sig already in place, ignore that one
+                for pubkey, path in self.subpaths.items():
+                    if self.part_sig and (pubkey in self.part_sig):
+                        # already signed, so ignore
+                        continue
+
+                    if path[0] == my_xfp:
                         which_key = pubkey
                         break
 
@@ -887,9 +915,9 @@ class psbtObject(psbtProxy):
 
         our_keys = sum(i.our_keys for i in self.inputs)
 
-        #print("PSBT: %d inputs, %d output, %d signed, %d ours" % (
-        #           self.num_inputs, self.num_outputs,
-        #           sum(1 for i in self.inputs if i and i.already_signed), our_keys))
+        print("PSBT: %d inputs, %d output, %d fully-signed, %d ours" % (
+                   self.num_inputs, self.num_outputs,
+                   sum(1 for i in self.inputs if i and i.fully_signed), our_keys))
 
     def consider_outputs(self):
         # scan ouputs:
@@ -925,12 +953,8 @@ class psbtObject(psbtProxy):
         total_in = 0
 
         for i, txi in self.input_iter():
-            if txi.scriptSig:
-                # consider anything in scriptsig of the input to be a complete signature
-                self.presigned_inputs.add(i)
-
             inp = self.inputs[i]
-            if inp.already_signed:
+            if inp.fully_signed:
                 self.presigned_inputs.add(i)
 
             if not inp.has_utxo():
@@ -946,7 +970,8 @@ class psbtObject(psbtProxy):
 
             # Look at what kind of input this will be, and therefore what
             # type of signing will be required, and which key we need.
-            inp.determine_my_signing_key(i, utxo)
+            # - also validates redeem_script when present
+            inp.determine_my_signing_key(i, utxo, self.my_xfp)
 
             del utxo
 
@@ -967,14 +992,16 @@ class psbtObject(psbtProxy):
             self.total_value_in = total_in
 
         if len(self.presigned_inputs) == self.num_inputs:
-            # TODO: maybe wrong for multisig cases?
+            # Maybe wrong for multisig cases? Maybe they want to add their
+            # own signature, even tho N of M is satisfied?!
             raise FatalPSBTIssue('Transaction looks completely signed already?')
 
         # We should know pubkey required for each input now.
         # - but we may not be the signer for those inputs, which is fine.
+        # - TODO: but what if not SIGHASH_ALL
         no_keys = set(n for n,inp in enumerate(self.inputs)
-                            if inp and inp.required_key == None)
-        if self.presigned_inputs - no_keys:
+                            if inp.required_key == None and not inp.fully_signed)
+        if no_keys:
             self.warnings.append(('Missing Keys',
                 'We do not know the keypair for some inputs: %r' % list(no_keys)))
 
@@ -1067,14 +1094,17 @@ class psbtObject(psbtProxy):
         # - save partial inputs somewhere (append?)
         # - update our state with new partial sigs
         from main import dis
-        dis.fullscreen('Signing...')
 
         with stash.SensitiveValues() as sv:
             # Double check the change outputs are right. This is slow, but critical because
             # it detects bad actors, not bugs or mistakes.
-            change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o and o.is_change]
+            change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o.is_change]
             if change_paths:
+                dis.fullscreen('Change Check...')
+
                 for out_idx, (pubkey, subpath) in change_paths:
+                    dis.progress_bar_show(out_idx / len(change_paths))
+
                     skp = path_to_str(subpath)
                     node = sv.derive_path(skp)
 
@@ -1084,6 +1114,9 @@ class psbtObject(psbtProxy):
                         raise FraudulentChangeOutput(
                                   "Deception regarding change output #%d. "
                                   "BIP32 path doesn't match actual address." % out_idx)
+
+            # progress
+            dis.fullscreen('Signing...')
 
             # Sign individual inputs
             sigs = 0
@@ -1101,7 +1134,7 @@ class psbtObject(psbtProxy):
                     # we don't know the key for this input
                     continue
 
-                if inp.already_signed and not inp.is_multisig:
+                if inp.fully_signed:
                     # for multisig, it's possible I need to add another sig
                     # but in other cases, no more signatures are possible
                     continue
@@ -1334,7 +1367,7 @@ class psbtObject(psbtProxy):
                     s += ser_push_data(der_sig)
                     s += ser_push_data(pubkey)
                 else:
-                    assert False, 'p2sh combining not supported'
+                    assert False, 'Multisig PSBT combine not supported'
 
                 txi.scriptSig = s
 
@@ -1358,9 +1391,9 @@ class psbtObject(psbtProxy):
                     pubkey, der_sig = inp.added_sig
                     if not inp.is_multisig:
                         assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
-                        wit.scriptWitness.stack = [ der_sig, pubkey  ]
+                        wit.scriptWitness.stack = [der_sig, pubkey]
                     else:
-                        assert False, 'p2sh combining not supported'
+                        assert False, 'Multisig PSBT combine not supported'
 
                 fd.write(wit.serialize())
 
