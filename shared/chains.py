@@ -8,6 +8,7 @@ from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
 from serializations import hash160
 from ucollections import namedtuple
+from opcodes import OP_CHECKMULTISIG
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md> 
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
@@ -49,8 +50,44 @@ class ChainsBase:
         return node.serialize_public(cls.slip132[addr_fmt].pub)
 
     @classmethod
+    def p2sh_address(cls, addr_fmt, witdeem_script, node=None):
+        # Multisig and general P2SH support
+        # - witdeem => witness script for segwit, or redeem script otherwise
+        # - redeem script can be generated from witness script if needed.
+        # - need witdeem script, and must also verify indicated
+        #   node is a factor in the script
+        # - more verification needed to prove it's change/included address
+        # - understands a few redeem-script templates, or just multisig
+        # - returns: str(address), tuple(M,N), my_key_offset (or -1)
+
+        assert addr_fmt & AFC_SCRIPT, 'for p2sh only'
+        assert witdeem_script, "need witness/redeem script"
+
+        if addr_fmt & AFC_SEGWIT:
+            digest = tcc.sha256(witdeem_script).digest()
+        else:
+            digest = hash160(witdeem_script)
+
+        # we need to verify we are in there!
+        pubkey = node.public_key() if node else None
+
+        if witdeem_script[-1] == OP_CHECKMULTISIG:
+            # assume it is a multisig, and pull out/test what we need
+            M, N, pk_offset = disassemble_multisig(witdeem_script, pubkey)
+        else:
+            raise NotImplementedError('unknown script')
+
+        if addr_fmt & AFC_BECH32:
+            # bech32 encoded segwit p2pkh
+            addr = tcc.codecs.bech32_encode(cls.bech32_hrp, 0, digest)
+        else:
+            addr = tcc.codecs.b58_encode(cls.b58_script + digest)
+
+        return addr, (M,N), pk_offset
+
+    @classmethod
     def address(cls, node, addr_fmt):
-        # return a spending address
+        # return a human-readable, properly formatted address
 
         if addr_fmt == AF_CLASSIC:
             # olde fashioned P2PKH
@@ -58,8 +95,7 @@ class ChainsBase:
             return node.address(cls.b58_addr[0])
 
         if addr_fmt & AFC_SCRIPT:
-            # TODO: no multisig support yet (wrapped segwit doesn't count)
-            # - we'd need more info than we have here anyway
+            # use p2sh_address() instead.
             raise ValueError(hex(addr_fmt))
 
         # so must be P2PKH, fetch it.
@@ -251,6 +287,34 @@ def current_chain():
 
     return get_chain(chain)
 
+def disassemble_multisig(witdeem_script, expect_pubkey=None):
+    # take apart a standard multisig's redeem/witness script, and return M/N and offset of
+    # one pubkey (if provided) involved
+    # - can only for multisig
+    # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
+    from serializations import disassemble
+
+    M, N = -1, -1
+    found_offset = -1
+
+    # generator
+    dis = disassemble(witdeem_script)
+
+    # expect M value first
+    M, opcode =  next(dis)
+    assert opcode == None and isinstance(M, int), 'garbage at start'
+
+    for offset, (data, opcode) in enumerate(dis):
+        if opcode == OP_CHECKMULTISIG:
+            break
+        if isinstance(data, int):
+            N = data
+        elif data == expect_pubkey:
+            found_offset = offset
+
+    assert 1 <= M <= N <= 20, 'M/N range'      # will also happen if N not encoded.
+
+    return M, N, found_offset
 
 # Some common/useful derivation paths and where they may be used.
 # see bip49 for meaning of the meta vars
