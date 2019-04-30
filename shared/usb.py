@@ -5,7 +5,7 @@
 #
 import ckcc, pyb, callgate, sys, ux, tcc, stash
 from uasyncio import sleep_ms, IORead
-from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN
+from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN, AFC_SCRIPT
 from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
 from ckcc import rng_bytes, watchpoint, is_simulator
@@ -341,11 +341,29 @@ class USBHandler:
 
         if cmd == 'show':
             # show address on screen (also provides it back)
+            from auth import start_show_address
+
+            addr_fmt, = unpack_from('<I', args)
+            if addr_fmt & AFC_SCRIPT:
+                # new multsig goodness, needs a witness/redeem script
+                addr_fmt, sp_len, rs_len = unpack_from('<III', args)
+                subpath = args[12:12+sp_len]
+                witdeem_script = args[12+sp_len:12+sp_len+rs_len]
+            else:
+                # simple cases, older code
+                subpath = args[4:]
+                witdeem_script = None
+
+            return b'asci' + start_show_address(subpath, addr_fmt, witdeem_script)
+
+        if cmd == 'p2sh':
+            # show address on screen for a P2SH destination (also provides it back)
             addr_fmt, = unpack_from('<I', args)
             subpath = args[4:]
             from auth import start_show_address
 
             return b'asci' + start_show_address(subpath, addr_fmt)
+
 
         if cmd == 'stxn':
             # sign transaction
