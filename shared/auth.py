@@ -286,7 +286,6 @@ class ApproveTransaction(UserAuthorizedAction):
 
             msg.write("\nPress OK to approve and sign transaction. X to abort.")
 
-            msg.seek(0)
             ch = await ux_show_story(msg, title="OK TO SEND?")
         except MemoryError as exc:
             # recovery? maybe.
@@ -711,5 +710,172 @@ def start_show_address(subpath, addr_format, witdeem_script=None):
 
     # provide the value back to attached desktop too!
     return active_request.address
+
+
+class NewEnrollRequest(UserAuthorizedAction):
+    def __init__(self, name, M, N, xpubs, addr_fmt):
+        super().__init__()
+        self.name = name
+        self.xpubs = xpubs
+        self.addr_fmt = addr_fmt
+        self.M = M
+        self.N = N
+
+        # self.result ... will be re-serialized xpub
+
+    async def interact(self):
+        # prompt them
+
+        if self.M == self.N:
+            exp = 'All %d co-signers must approve spends.' % self.N
+        elif self.M == 1:
+            exp = 'Any signature from %d co-signers will approve spends.' % self.N
+        else:
+            exp = '{M} signatures from {N} possible co-signers, will be required to approve spends.'.format(M=self.M, N=self.N)
+
+        story = '''Create new multisig wallet?
+
+Wallet Name:
+  {name}
+
+Policy: {M} of {N}
+
+{exp}
+
+Press 2 to see extended public keys, \
+OK to approve, X to cancel.'''.format(M=self.M, N=self.N, name=self.name, exp=exp)
+
+        try:
+            chain = chains.current_chain()
+            while 1:
+                ch = await ux_show_story(story, escape='2')
+
+                if ch == '2':
+                    # just the xpubs; might be 2k or more rendered.
+                    msg = uio.StringIO()
+
+                    for idx, xfp in enumerate(self.xpubs):
+                        if idx:
+                            msg.write('\n\n')
+                        msg.write('#%d: 0x%08x =\n' % (idx+1, xfp))
+                        node = self.xpubs[xfp]
+                        msg.write(chain.serialize_public(node, self.addr_fmt))
+
+                    await ux_show_story(msg, title='%d of %d' % (self.M, self.N))
+
+                    continue
+
+                if ch == 'y':
+                    #from actions import enroll_xpub
+
+                    # full screen message shown: "Saving..."
+                    #err = enroll_xpub(self.memo, self.chain, self.node, self.addr_fmt)
+                    err = 'not yet'
+
+                    if err:
+                        await self.failure(err)
+                else:
+                    # they don't want to!
+                    self.refused = True
+                    await ux_dramatic_pause("Refused.", 1)
+
+                break
+
+        except BaseException as exc:
+            self.failed = "Exception"
+            sys.print_exception(exc)
+        finally:
+            UserAuthorizedAction.cleanup()      # because no results to store
+            self.done()
+
+
+def maybe_enroll_xpub(sf_len=None, config=None, name=None):
+    # offer to accept an xpub for cosigning over USB. Allow reject.
+    global active_request
+    from actions import import_xpub
+    from main import settings
+
+    UserAuthorizedAction.cleanup()
+
+    if sf_len:
+        with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
+            config = fd.read(sf_len)
+
+    # quick checks:
+    # - name: 1-20 ascii chars
+    # - M of N line (required)
+    # - xpub: any bip32 serialization we understand, but be consistent
+    xpubs = {}
+    M, N = -1, -1
+    addr_fmt = None
+    expect_chain = chains.current_chain().ctype
+
+    lines = config.decode().split('\n')
+
+    for ln in lines:
+        ln = ln.strip()
+        if ':' in ln:
+            label, value = ln.split(':')
+            label = label.lower()
+            value = value.strip()
+
+            if label == 'name':
+                name = value
+            elif label == 'policy':
+                try:
+                    a,b = value.split('of')
+                    M = int(a.strip())
+                    N = int(b.strip())
+                except:
+                    raise AssertionError('bad M of N line')
+            else:
+                print("Ignore: " + ln)
+
+        elif ln[1:4] == 'pub':
+            xpub = ln
+            try:
+                node, chain, addr_fmt_here = import_xpub(xpub)
+            except:
+                raise AssertionError('unable to parse xpub')
+
+            if not addr_fmt:
+                addr_fmt = addr_fmt_here
+            else:
+                # want consistent address formats
+                assert addr_fmt == addr_fmt_here, 'addr fmt'
+
+            assert chain.ctype == expect_chain, 'wrong chain'
+
+            # de-dup and organize at once
+            xfp = node.my_fingerprint()
+            xpubs[xfp] = node
+        else:
+            print("Ignore: " + ln)
+
+    if M == N == -1:
+        # default policy: all keys
+        N = M = len(xpubs)
+
+    if not name:
+        # provide a default name
+        name = '%d-of-%d' % (M, N)
+
+    try:
+        name = str(name, 'ascii')
+        assert 1 <= len(name) <= 20
+    except:
+        raise AssertionError('name must be ascii, 1..20 long')
+
+    assert 1 <= M <= N <= 20, 'M/N range'
+    assert len(xpubs), 'need xpubs'
+    assert N == len(xpubs), 'wrong # of xpubs: %d' % len(xpubs)
+
+    my_xfp = settings.get('xfp')
+    assert my_xfp in xpubs, 'my xpub not included'
+
+    active_request = NewEnrollRequest(name, M, N, xpubs, addr_fmt)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(active_request)
 
 # EOF

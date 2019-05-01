@@ -356,6 +356,18 @@ class USBHandler:
 
             return b'asci' + start_show_address(subpath, addr_fmt, witdeem_script)
 
+        if cmd == 'enrl':
+            # Enroll new xpubkey to be involved in multisigs.
+
+            file_len, file_sha = unpack_from('<I32s', args)
+            if file_sha != self.file_checksum.digest():
+                return b'err_Checksum'
+            assert 100 < file_len <= (20*200), "badlen"
+
+            # Start an interaction, return immediately tho
+            from auth import maybe_enroll_xpub
+            return maybe_enroll_xpub(sf_len=file_len)
+
         if cmd == 'stxn':
             # sign transaction
             txn_len, finalize, txn_sha = unpack_from('<II32s', args)
@@ -368,7 +380,7 @@ class USBHandler:
             sign_transaction(txn_len, bool(finalize))
             return None
 
-        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
+        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok' or cmd == 'enok':
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
             from auth import active_request, UserAuthorizedAction
@@ -389,7 +401,7 @@ class USBHandler:
                 # STILL waiting on user
                 return None
 
-            if cmd == 'pwok':
+            if cmd == 'pwok' or cmd == 'enok':
                 # return new root xpub
                 xpub = active_request.result
                 UserAuthorizedAction.cleanup()

@@ -608,6 +608,46 @@ async def verify_backup(*A):
     if fn:
         with imported('backups') as bk:
             await bk.verify_backup_file(fn)
+
+def enroll_xpub(memo, node, addr_fmt):
+    from main import dis, settings
+
+    dis.fullscreen("Saving...")
+
+    m = setings.get('cosign', {})
+
+    # Always serialize as bitcoinMain chain; can change if we need to for presentation
+    # purposes.
+
+    #m[node.fingerprint()] = (
+
+def import_xpub(ln):
+    # read and xpub/ypub and return BIP32 node and what chain it's on.
+    # - can handle any garbage line
+    # - returns (node, chain, addr_fmt)
+    import tcc, chains, ure
+
+    pat = ure.compile(r'.pub[A-Za-z0-9]+')
+
+    found = pat.search(ln)
+    if not found:
+        return None
+
+    found = found.group(0)
+
+    for ch in chains.AllChains:
+        for kk in ch.slip132:
+            if found[0] == ch.slip132[kk].hint:
+                try:
+                    node = tcc.bip32.deserialize(found, ch.slip132[kk].pub, ch.slip132[kk].priv)
+                    chain = ch
+                    addr_fmt = kk
+                    return (node, ch, kk)
+                except ValueError:
+                    pass
+
+    # looked like one, but fail.
+    return None
         
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
