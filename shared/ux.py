@@ -260,6 +260,7 @@ async def ux_show_story(msg, title=None, escape=None):
         lines.append('\x01' + title)
 
     if hasattr(msg, 'readline'):
+        msg.seek(0)
         for ln in msg:
             if ln[-1] == '\n': 
                 ln = ln[:-1]
