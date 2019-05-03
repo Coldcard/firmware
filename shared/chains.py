@@ -47,6 +47,7 @@ class ChainsBase:
     @classmethod
     def serialize_public(cls, node, addr_fmt=AF_CLASSIC):
         # output a xpub
+        addr_fmt = AF_CLASSIC if addr_fmt == AF_P2SH else addr_fmt
         return node.serialize_public(cls.slip132[addr_fmt].pub)
 
     @classmethod
@@ -178,6 +179,8 @@ class BitcoinMain(ChainsBase):
         AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
         AF_P2WPKH_P2SH: Slip132Version(0x049d7cb2, 0x049d7878, 'y'),
         AF_P2WPKH:      Slip132Version(0x04b24746, 0x04b2430c, 'z'),
+        AF_P2WSH_P2SH:  Slip132Version(0x0295b43f, 0x0295b005, 'Y'),
+        AF_P2WSH:       Slip132Version(0x02aa7ed3, 0x02aa7a99, 'Z'),
     }
 
     bech32_hrp = 'bc'
@@ -197,6 +200,8 @@ class BitcoinTestnet(BitcoinMain):
         AF_CLASSIC:     Slip132Version(0x043587cf, 0x04358394, 't'),
         AF_P2WPKH_P2SH: Slip132Version(0x044a5262, 0x044a4e28, 'u'),
         AF_P2WPKH:      Slip132Version(0x045f1cf6, 0x045f18bc, 'v'),
+        AF_P2WSH_P2SH:  Slip132Version(0x024289ef, 0x024285b5, 'U'),
+        AF_P2WSH:       Slip132Version(0x02575483, 0x02575048, 'V'),
     }
 
     bech32_hrp = 'tb'
