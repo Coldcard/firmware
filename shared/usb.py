@@ -366,7 +366,8 @@ class USBHandler:
 
             # Start an interaction, return immediately tho
             from auth import maybe_enroll_xpub
-            return maybe_enroll_xpub(sf_len=file_len)
+            maybe_enroll_xpub(sf_len=file_len)
+            return None
 
         if cmd == 'stxn':
             # sign transaction
