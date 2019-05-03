@@ -93,4 +93,17 @@ class HexWriter:
             self.fd.write('%02x' % ch)
 
 
+def swab32(n):
+    # endian swap: 32 bits
+    import ustruct
+    return ustruct.unpack('>I', ustruct.pack('<I', n))[0]
+
+def xfp2str(xfp):
+    # Standardized way to show an xpub's fingerprint... it's a 4-byte string
+    # and not really an integer. Used to show as '0x%08x' but that's wrong endian.
+    import ustruct
+    from ubinascii import hexlify as b2a_hex
+
+    return b2a_hex(ustruct.pack('>I', xfp)).decode().upper()
+
 # EOF
