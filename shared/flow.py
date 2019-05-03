@@ -9,6 +9,7 @@ from main import settings
 
 from actions import *
 from choosers import *
+from multisig import make_multisig_menu
 
 #
 # NOTE: "Always In Title Case"
@@ -38,11 +39,12 @@ async def which_pin_menu(_1,_2, item):
 SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
-    MenuItem("Touch Setting", chooser=sensitivity_chooser,
+    MenuItem('Touch Setting', chooser=sensitivity_chooser,
                                 predicate=lambda: not version.is_mark2()),
-    MenuItem("Max Network Fee", chooser=max_fee_chooser),
+    MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Blockchain', chooser=chain_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
+    MenuItem('Multisig Wallets', menu=make_multisig_menu),
 ]
 
 SDCardMenu = [
