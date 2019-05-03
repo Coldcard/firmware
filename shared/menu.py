@@ -68,10 +68,7 @@ class MenuSystem:
 
     def __init__(self, menu_items, chosen=None, should_cont=None, space_indicators=False):
         self.should_continue = should_cont or (lambda: True)
-        self.cursor = 0
-        self.ypos = 0
-        self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
-        self.count = len(self.items)
+        self.replace_items(menu_items)
         self.space_indicators = space_indicators
         self.chosen = chosen
         if chosen is not None:
@@ -83,6 +80,12 @@ class MenuSystem:
         pass
     def early_draw(self, dis):
         pass
+
+    def replace_items(self, menu_items):
+        self.cursor = 0
+        self.ypos = 0
+        self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
+        self.count = len(self.items)
 
     def show(self):
         #
