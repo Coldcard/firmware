@@ -11,7 +11,6 @@ from utils import imported
 from main import settings
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
-from utils import xfp2str
 
 async def start_selftest(*args):
     import version
@@ -369,6 +368,7 @@ More on our website:
            .com
 """)
 
+
 async def start_seed_import(menu, label, item):
     import seed
     return seed.WordNestMenu(item.arg)
@@ -608,6 +608,46 @@ async def verify_backup(*A):
     if fn:
         with imported('backups') as bk:
             await bk.verify_backup_file(fn)
+
+def enroll_xpub(memo, node, addr_fmt):
+    from main import dis, settings
+
+    dis.fullscreen("Saving...")
+
+    m = setings.get('cosign', {})
+
+    # Always serialize as bitcoinMain chain; can change if we need to for presentation
+    # purposes.
+
+    #m[node.fingerprint()] = (
+
+def import_xpub(ln):
+    # read and xpub/ypub and return BIP32 node and what chain it's on.
+    # - can handle any garbage line
+    # - returns (node, chain, addr_fmt)
+    import tcc, chains, ure
+
+    pat = ure.compile(r'.pub[A-Za-z0-9]+')
+
+    found = pat.search(ln)
+    if not found:
+        return None
+
+    found = found.group(0)
+
+    for ch in chains.AllChains:
+        for kk in ch.slip132:
+            if found[0] == ch.slip132[kk].hint:
+                try:
+                    node = tcc.bip32.deserialize(found, ch.slip132[kk].pub, ch.slip132[kk].priv)
+                    chain = ch
+                    addr_fmt = kk
+                    return (node, ch, kk)
+                except ValueError:
+                    pass
+
+    # looked like one, but fail.
+    return None
         
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
@@ -1158,35 +1198,5 @@ Rarely needed as critical security updates will set this automatically.''' % hav
     # add error display here? meh.
 
     assert rv == 0, "Failed: %r" % rv
-
-
-async def import_multisig(*a):
-    # pick text file from SD card, import as multisig setup file
-
-    def possible(filename):
-        with open(filename, 'rt') as fd:
-            for ln in fd:
-                if 'pub' in ln:
-                    return True
-
-    fn = await file_picker('Pick file to import (.txt)', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible)
-
-    if not fn: return
-
-    try:
-        with CardSlot() as card:
-            with open(fn, 'rt') as fp:
-                data = fp.read()
-    except CardMissingError:
-        await needs_microsd()
-        return
-
-    from auth import maybe_enroll_xpub
-    try:
-        possible_name = fn.split('.')[0].split('/')[0]
-        maybe_enroll_xpub(config=data, name=possible_name)
-    except Exception as e:
-        await ux_show_story('Failed to import.\n\n\n'+str(e))
 
 # EOF

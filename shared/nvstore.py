@@ -34,7 +34,7 @@ from sffile import SFFile
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   terms_ok = customer has signed-off on the terms of sale
 #   tested = selftest has been completed successfully
-#   multisig = list of defined multisig wallets (complex)
+#   ms = list of defined multisig wallets (TBD)
 #
 
 
