@@ -6,7 +6,7 @@
 import compat7z, stash, tcc, ckcc, chains, gc
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from utils import imported
+from utils import imported, xfp2str
 from ux import ux_show_story, ux_confirm
 import version, ujson
 from uio import StringIO
@@ -415,7 +415,7 @@ def generate_public_contents():
 
         yield ('''\
 # Coldcard Wallet Summary File
-## For wallet with master key fingerprint: 0x{xfp:08x}
+## For wallet with master key fingerprint: {xfp}
 
 ### Wallet operates on blockchain: {nb}
 
@@ -430,7 +430,7 @@ Derived public keys, as may be needed for different systems:
 
 
 '''.format(nb=chain.name, xpub=chain.serialize_public(sv.node), 
-            sym=chain.ctype, ct=chain.b44_cointype, xfp=sv.node.my_fingerprint()))
+            sym=chain.ctype, ct=chain.b44_cointype, xfp=xfp2str(sv.node.my_fingerprint())))
 
         for name, path, addr_fmt in chains.CommonDerivations:
 
@@ -530,7 +530,7 @@ def generate_electrum_wallet(addr_type):
     rv['keystore'] = dict(  ckcc_xfp=xfp,
                             ckcc_xpub=settings.get('xpub'),
                             hw_type='coldcard',
-                            label='Coldcard Import 0x%08x' % xfp,
+                            label='Coldcard Import %s' % xfp2str(xfp),
                             type='hardware',
                             derivation=derive, xpub=top)
         
