@@ -51,15 +51,19 @@ class ChainsBase:
         return node.serialize_public(cls.slip132[addr_fmt].pub)
 
     @classmethod
-    def p2sh_address(cls, addr_fmt, witdeem_script, node=None):
+    def deserialize_node(cls, text, addr_fmt):
+        # xpub/xprv to object
+        addr_fmt = AF_CLASSIC if addr_fmt == AF_P2SH else addr_fmt
+        return tcc.bip32.deserialize(text, cls.slip132[addr_fmt].pub, cls.slip132[addr_fmt].priv)
+
+    @classmethod
+    def p2sh_address(cls, addr_fmt, witdeem_script):
         # Multisig and general P2SH support
         # - witdeem => witness script for segwit, or redeem script otherwise
         # - redeem script can be generated from witness script if needed.
-        # - need witdeem script, and must also verify indicated
-        #   node is a factor in the script
-        # - more verification needed to prove it's change/included address
-        # - understands a few redeem-script templates, or just multisig
-        # - returns: str(address), tuple(M,N), my_key_offset (or -1)
+        # - this needs a witdeem script to be provided
+        # - more verification needed to prove it's change/included address (NOT HERE)
+        # - returns: str(address)
 
         assert addr_fmt & AFC_SCRIPT, 'for p2sh only'
         assert witdeem_script, "need witness/redeem script"
@@ -69,22 +73,13 @@ class ChainsBase:
         else:
             digest = hash160(witdeem_script)
 
-        # we need to verify we are in there!
-        pubkey = node.public_key() if node else None
-
-        if witdeem_script[-1] == OP_CHECKMULTISIG:
-            # assume it is a multisig, and pull out/test what we need
-            M, N, pk_offset = disassemble_multisig(witdeem_script, pubkey)
-        else:
-            raise NotImplementedError('unknown script')
-
         if addr_fmt & AFC_BECH32:
             # bech32 encoded segwit p2pkh
             addr = tcc.codecs.bech32_encode(cls.bech32_hrp, 0, digest)
         else:
             addr = tcc.codecs.b58_encode(cls.b58_script + digest)
 
-        return addr, (M,N), pk_offset
+        return addr
 
     @classmethod
     def address(cls, node, addr_fmt):

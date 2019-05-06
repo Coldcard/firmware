@@ -184,6 +184,19 @@ def ser_push_data(dd):
     else:
         return bytes([76, ll]) + dd       # 0x4c = 76 => OP_PUSHDATA1 + size + data
 
+def ser_push_int(n):
+    # push a small integer onto the stack
+    from opcodes import OP_0, OP_1, OP_16, OP_PUSHDATA1
+
+    if n == 0:
+        return bytes([OP_0])
+    elif 1 <= n <= 16:
+        return bytes([OP_1 + n - 1])
+    elif n <= 255:
+        return bytes([OP_PUSHDATA1, n])
+
+    raise ValueError(n)
+
 def disassemble(script):
     # Very limited script disassembly
     # yeilds (int / bytes, opcode) for each part of the script
