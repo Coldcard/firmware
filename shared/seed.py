@@ -12,7 +12,7 @@
 #    - 'abandon' * 11 + 'about'
 #
 from menu import MenuItem, MenuSystem
-from utils import pop_count
+from utils import pop_count, xfp2str
 import tcc, uctypes
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease
@@ -641,7 +641,7 @@ class PassphraseMenu(MenuSystem):
         ch = await ux_show_story('''Above is the master key fingerprint of the new wallet.
 
 Press X to abort and keep editing passphrase. OK to use the new wallet.''',
-                                title="[%08x]" % xfp)
+                                title="[%s]" % xfp2str(xfp))
         if ch == 'x':
             # go back!
             set_bip39_passphrase(old_pw)
