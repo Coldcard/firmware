@@ -345,16 +345,29 @@ class USBHandler:
 
             addr_fmt, = unpack_from('<I', args)
             if addr_fmt & AFC_SCRIPT:
-                # new multsig goodness, needs a witness/redeem script
-                addr_fmt, sp_len, rs_len = unpack_from('<III', args)
-                subpath = args[12:12+sp_len]
-                witdeem_script = args[12+sp_len:12+sp_len+rs_len]
+                # new multsig goodness, needs mapping from xfp->path and M values
+                addr_fmt, M, N = unpack_from('<IBB', args)
+                assert 1 <= M <= N <= 20
+                offset = 6
+                subpaths = []
+                for i in range(N):
+                    ln = args[offset]; offset += 1
+                    assert ln % 4 == 0
+                    subpaths.append(args[offset:offset+ln])
+                    offset += ln
+
+                witdeem_script = args[offset:]      # optional?
+
+                return b'asci' + start_show_address(addr_fmt, subpaths=subpaths, 
+                                                        witdeem_script=witdeem_script,
+                                                        m_of_n=(M,N))
             else:
-                # simple cases, older code
+                # simple cases, older code: text subpath
                 subpath = args[4:]
                 witdeem_script = None
 
-            return b'asci' + start_show_address(subpath, addr_fmt, witdeem_script)
+                return b'asci' + start_show_address(addr_fmt, subpath=subpath)
+
 
         if cmd == 'enrl':
             # Enroll new xpubkey to be involved in multisigs.

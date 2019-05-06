@@ -3,7 +3,8 @@
 #
 import pytest, glob, time, sys, random
 from pprint import pprint
-from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
+#from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
+from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT
 
 from api import bitcoind, match_key

@@ -10,6 +10,9 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 
+# Bitcoin limitation: max number of signatures in CHECK_MULTISIG
+MAX_SIGNERS = const(20)
+
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
@@ -47,6 +50,10 @@ class MultisigWallet:
         # NOTE: xpubs must be strings already here.
 
         return (self.name, (self.M, self.N), self.xpubs, opts)
+
+    @property
+    def chain(self):
+        return chains.get_chain(self.chain_type)
 
     @classmethod
     def deserialize(cls, vals, idx=-1):
@@ -106,7 +113,8 @@ class MultisigWallet:
     @classmethod
     def find_match(cls, M, N, fingerprints):
         # Find index of matching wallet. Don't de-serialize everything.
-        # - return index, or -1 if not found
+        # - returns index, or -1 if not found
+        # - fingerprints are uint32's
         from main import settings
         lst = settings.get('multisig', [])
 
@@ -138,6 +146,61 @@ class MultisigWallet:
         settings.save()
 
         self.storage_idx = -1
+
+    def generate_script(self, subpaths, expected_witdeem=None):
+        # (re)construct the witness/redeem script
+        # - also output a list of the subkey paths (text)
+        # - applies BIP45 to establish ordering: lexi-sort over pubkeys
+        # - subpaths is a dictionary of xfp to subpath binary
+        # - do checking here, raise assertions.
+        from psbt import path_to_str
+        from main import settings
+
+        assert len(subpaths) == self.N
+        assert set(subpaths.keys()) == set(self.xpubs.keys())
+        my_xfp = settings.get('xfp')
+        assert my_xfp in subpaths
+
+        pubkeys = []
+        ch = self.chain
+        subpath_help = []
+
+        for k, path in subpaths.items():
+            xpub = self.xpubs[k]
+            node = ch.deserialize_node(xpub, self.addr_fmt)
+            assert node, 'unable deserialize'
+            dp = node.depth()
+            print("n.d=%d  l(p)=%d" % (dp, len(path)))
+            assert 1 <= dp <= len(path), 'path vs depth'
+
+            # document path(s) used. Not sure this is useful info to user tho.
+            # - do not show what we can't verify: we don't really know the hardeneded
+            #   part of the path from fingerprint to here.
+            here = '(m=%s)' % xfp2str(k)
+            if dp != len(path):
+                here += ('/?'*(len(path)-dp)) + path_to_str(path[dp:], '/')
+            subpath_help.append(here)
+
+            for sp in path[dp:]:
+                node.derive(sp)
+
+            pubkeys.append(node.public_key())
+
+        # lexigraphic sort
+        pubkeys.sort()
+
+        # construct a standard multisig script
+        from serializations import ser_push_int, ser_push_data
+        from opcodes import OP_CHECKMULTISIG
+
+        scr = ser_push_int(self.M) + b''.join(ser_push_data(pk) for pk in pubkeys) \
+                + ser_push_int(self.N) + bytes([OP_CHECKMULTISIG])
+
+        if expected_witdeem:
+            assert expected_witdeem == scr, "didn't get expected redeem script"
+
+        return scr, subpath_help
+            
 
     @classmethod
     def from_file(cls, config, name=None):
@@ -173,7 +236,7 @@ class MultisigWallet:
 
             if ':' not in ln:
                 # complain?
-                print("no colon: " + ln)
+                if ln: print("no colon: " + ln)
                 continue
 
             label, value = ln.split(':')
@@ -184,12 +247,14 @@ class MultisigWallet:
                 name = value
             elif label == 'policy':
                 try:
-                    mat = ure.search(r'(\d+).*(\d+)', value)
+                    # accepts: 2 of 3    2/3    2,3    2 3   etc
+                    mat = ure.search(r'(\d+)\D*(\d+)', value)
                     assert mat
                     M = int(mat.group(1))
                     N = int(mat.group(2))
+                    assert 1 <= M <= N <= MAX_SIGNERS
                 except:
-                    raise AssertionError('bad M of N line')
+                    raise AssertionError('bad policy line')
 
             elif len(label) == 8:
                 try:
@@ -217,6 +282,10 @@ class MultisigWallet:
 
                 assert chain.ctype == expect_chain, 'wrong chain, expect: ' + expect_chain
 
+                # NOTE: could enforce all same depth, and/or all depth >= 1, but
+                # seems like more restrictive than needed.
+                #assert node.depth() >= 1, 'need proper depth value'
+
                 # de-dup and organize at same time
                 xpubs[xfp] = node
                 xpub_count += 1
@@ -238,10 +307,10 @@ class MultisigWallet:
         except:
             raise AssertionError('name must be ascii, 1..20 long')
 
-        assert 1 <= M <= N <= 20, 'M/N range'
+        assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
         assert len(xpubs), 'need xpubs'
         assert N == xpub_count, 'wrong # of xpubs, expect %d' % N
-        assert N == len(xpubs), 'duplicate master fingerprints found'
+        assert N == len(xpubs), 'duplicate master fingerprints'
         assert addr_fmt & AFC_SCRIPT, 'not a script style addr fmt'
 
         my_xfp = settings.get('xfp')
@@ -387,9 +456,10 @@ def export_multisig(*a):
     await ux_show_story(msg)
 
 def import_xpub(ln):
-    # read and xpub/ypub and return BIP32 node and what chain it's on.
+    # read an xpub/ypub/etc and return BIP32 node and what chain it's on.
     # - can handle any garbage line
     # - returns (node, chain, addr_fmt)
+    # - people are using SLIP132 so we need this
     import tcc, chains, ure
 
     pat = ure.compile(r'.pub[A-Za-z0-9]+')

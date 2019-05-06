@@ -638,72 +638,110 @@ def start_bip39_passphrase(pw):
     abort_and_goto(active_request)
 
     
-SHOW_ADDR_TEMPLATE = '''\
-{addr}
-
-= {subpath}
-
-Compare this payment address to the one shown on your other, less-trusted, software.'''
 
 class ShowAddress(UserAuthorizedAction):
-    def __init__(self, subpath, addr_fmt, witdeem_script):
+    def __init__(self, addr_fmt, subpath, ms, subpaths, witdeem_script):
         super().__init__()
         self.subpath = subpath
         self.witdeem_script = witdeem_script
-        self.m_of_n = None
+        self.ms = ms
         self.unknown_scr = None
 
         from main import dis
         dis.fullscreen('Wait...')
 
-        with stash.SensitiveValues() as sv:
-            node = sv.derive_path(subpath)
-
-            if addr_fmt & AFC_SCRIPT:
-                self.address, self.m_of_n, my_key_number \
-                    = sv.chain.p2sh_address(addr_fmt, witdeem_script, node=node)
-
-                if my_key_number < 0:
-                    # Important: do not show this bogus address to user
-                    raise AsserionError("My pubkey not in script")
-            else:
+        if addr_fmt & AFC_SCRIPT:
+            actual_scr, self.subpath = ms.generate_script(subpaths, witdeem_script)
+            self.address = ms.chain.p2sh_address(addr_fmt, actual_scr)
+        else:
+            with stash.SensitiveValues() as sv:
+                node = sv.derive_path(subpath)
                 self.address = sv.chain.address(node, addr_fmt)
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
         title = 'Address:'
-        msg = ''
-        if self.m_of_n:
-            m,n = self.m_of_n
-            msg = '(%d of %d needed)\n' % (m, n)
+        if self.ms:
+            msg = '(%d of %d needed)\n' % (self.ms.M, self.ms.N)
             title = 'Multisig:'
 
-        msg += SHOW_ADDR_TEMPLATE.format(addr=self.address, subpath=self.subpath)
+            msg = '''\
+{addr}
+
+Wallet Name:
+
+  {name}
+
+Policy: {M} of {N}
+
+Paths:
+
+{sp}
+
+Compare this payment address to the one shown on your other, less-trusted, software.'''\
+            .format(addr=self.address, name=self.ms.name,
+                        M=self.ms.M, N=self.ms.N, sp='\n'.join(self.subpath))
+
+        else:
+            msg = '''\
+{addr}
+
+= {sp}
+
+Compare this payment address to the one shown on your other, less-trusted, software.\
+''' .format(addr=self.address, sp=self.subpath)
 
         ch = await ux_show_story(msg, title=title)
 
         self.done()
         UserAuthorizedAction.cleanup()      # because no results to store
 
-def start_show_address(subpath, addr_format, witdeem_script=None):
+def start_show_address(addr_format, subpath=None, subpaths=None, witdeem_script=None, m_of_n=None):
     # Show address to user, also returns it.
-
-    try:
-        subpath = str(subpath, 'ascii')
-    except UnicodeError:
-        raise AssertionError('must be ascii')
 
     try:
         assert addr_format in SUPPORTED_ADDR_FORMATS
     except:
         raise AssertionError('Unknown/unsupported addr format')
 
-    if (addr_format & AFC_SCRIPT) and not witdeem_script:
-        raise AssertionError('Redeem/witness script is required')
+    if (addr_format & AFC_SCRIPT):
+        import ustruct
+        from multisig import MultisigWallet
+        
+        # script is optional/not needed.
+        #if not witdeem_script
+        #    raise AssertionError('Redeem/witness script is required')
+
+        # Search for matching multisig wallet that we must already know about
+        xfps = {}
+        for p in subpaths:
+            k, *v = ustruct.unpack_from('>%dI' % (len(p)//4), p) 
+            xfps[k] = v
+
+        del subpaths
+        M, N = m_of_n
+
+        assert len(xfps) == N, 'dup xfp'
+
+        idx = MultisigWallet.find_match(M, N, xfps.keys())
+        if idx < 0:
+            raise AssertionError('Multisig wallet with those fingerprints not found')
+
+        ms = MultisigWallet.get_by_idx(idx)
+        assert ms, "load wallet fail"
+
+    else:
+        # text path expected
+        try:
+            subpath = str(subpath, 'ascii')
+            ms = None
+            xfps = None
+        except UnicodeError:
+            raise AssertionError('must be ascii')
 
     global active_request
     UserAuthorizedAction.check_busy(ShowAddress)
-    active_request = ShowAddress(subpath, addr_format, witdeem_script)
+    active_request = ShowAddress(addr_format, subpath, ms, xfps, witdeem_script)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
