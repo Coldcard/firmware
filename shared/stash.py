@@ -26,7 +26,6 @@ def blank_object(item):
             buf[i] = 0
     elif isinstance(item, tcc.bip32.HDNode):
         item.blank()
-        assert item.private_key() == bytes(32)
     else:
         raise TypeError(item)
 
