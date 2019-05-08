@@ -3,7 +3,7 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
-import pincodes
+import pincodes, version
 from main import dis
 from display import FontLarge, FontTiny
 from uasyncio import sleep_ms
@@ -19,6 +19,7 @@ class LoginUX:
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
+        self.show_hint = not version.is_mark2()
         self.reset()
 
     def reset(self):
@@ -31,7 +32,7 @@ class LoginUX:
         filled = len(self.pin)
         if show_hint:
             filled -= 1
-            hint = self.pin[-1]
+            hint = self.pin[-1] if self.show_hint else '\xd7'
         else:
             hint = '' if len(self.pin) == MAX_PIN_PART_LEN else ' '
 
