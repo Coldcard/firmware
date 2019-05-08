@@ -49,12 +49,14 @@
 
 - only one signature will be added per input. However, if needed the partly-signed 
   PSBT can be given again, and the "next" leg will be signed.
-- we do not support PSBT combining of transactions involving
-  P2SH signatures (but you can do your own combine step off-device)
+- we do not support PSBT combining or finalizing of transactions involving
+  P2SH signatures (so the combine step must be off-device)
 - Electrum plugin does not support multisig at this time
-- we can sign for P2SH and P2WSH addresses that represent multisig (M of N)
-- we cannot sign for more complex scripts because we don't know how to present that
-    to the user for approval.
+- we can sign for P2SH and P2WSH addresses that represent multisig (M of N) but
+  we cannot sign for non-standard scripts because we don't know how to present
+  that to the user for approval.
+- during USB "show address" for multisig, we limit subkey paths to
+  16 levels deep (including master fingerprint)
 
 # SIGHASH types
 
