@@ -57,6 +57,7 @@
   that to the user for approval.
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
+- max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
 
 # SIGHASH types
 
