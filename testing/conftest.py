@@ -188,7 +188,7 @@ def addr_vs_path(master_xpub):
             elif addr_fmt == AF_P2WSH_P2SH:
                 assert given_addr[0] in '23'
                 expect = a2b_hashed_base58(given_addr)[1:]
-                assert hash160(script) == expect
+                assert hash160(b'\x00\x20' + sha256(script).digest()) == expect
 
             else:
                 raise pytest.fail(f'not ready for {addr_fmt:x} yet')
