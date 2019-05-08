@@ -74,9 +74,13 @@ class ChainsBase:
             digest = hash160(witdeem_script)
 
         if addr_fmt & AFC_BECH32:
-            # bech32 encoded segwit p2pkh
+            # bech32 encoded segwit p2sh
             addr = tcc.codecs.bech32_encode(cls.bech32_hrp, 0, digest)
+        elif addr_fmt == AF_P2WSH_P2SH:
+            # segwit p2wsh encoded as classic P2SH
+            addr = tcc.codecs.b58_encode(cls.b58_script + hash160(digest))
         else:
+            # P2SH classic
             addr = tcc.codecs.b58_encode(cls.b58_script + digest)
 
         return addr
