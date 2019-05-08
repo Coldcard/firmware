@@ -1,3 +1,17 @@
+## 2.1.0 - May, 2019
+
+- Major release with Multisig support!
+- Broad change: extended public key finger (XFP) values used to be shown in the
+  wrong endian (byte swapped), and prefixed with `0x0` to indicate they were a number.
+  In fact, they are a byte string and should be shown in that order. Everywhere you might
+  be used to seeing your XFP value has been switched, so `0x0f056943` becomes `4369050F`
+  (all caps, no `0x` prefix). Affected areas include:
+    - BIP39 confirmation screen
+    - electrum skeleton wallet export (label of wallet)
+    - ckcc CLI helper (`xfp` command, which shows both values)
+    - dump public data file (text in header)
+    - Advanced > View Identity screen
+
 ## 2.0.3 - Apr 25, 2019
 
 - Transaction signing speed improved by about 3X.
