@@ -193,7 +193,7 @@ def ser_push_int(n):
     elif 1 <= n <= 16:
         return bytes([OP_1 + n - 1])
     elif n <= 255:
-        return bytes([OP_PUSHDATA1, n])
+        return bytes([1, n])
 
     raise ValueError(n)
 

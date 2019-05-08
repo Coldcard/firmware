@@ -5,7 +5,7 @@
 #
 import stash, chains, ustruct, ure
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str
+from utils import xfp2str, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
@@ -150,7 +150,7 @@ class MultisigWallet:
     def generate_script(self, subpaths, expected_witdeem=None):
         # (re)construct the witness/redeem script
         # - also output a list of the subkey paths (text)
-        # - applies BIP45 to establish ordering: lexi-sort over pubkeys
+        # - applies BIP67 to establish ordering: lexi-sort over pubkeys
         # - subpaths is a dictionary of xfp to subpath binary
         # - do checking here, raise assertions.
         from psbt import path_to_str
@@ -167,22 +167,21 @@ class MultisigWallet:
 
         for k, path in subpaths.items():
             xpub = self.xpubs[k]
-            node = ch.deserialize_node(xpub, self.addr_fmt)
+            node = ch.deserialize_node(xpub, AF_P2SH)
             assert node, 'unable deserialize'
             dp = node.depth()
-            print("n.d=%d  l(p)=%d" % (dp, len(path)))
             assert 1 <= dp <= len(path), 'path vs depth'
 
-            # document path(s) used. Not sure this is useful info to user tho.
-            # - do not show what we can't verify: we don't really know the hardeneded
+            # Document path(s) used. Not sure this is useful info to user tho.
+            # - Do not show what we can't verify: we don't really know the hardeneded
             #   part of the path from fingerprint to here.
             here = '(m=%s)' % xfp2str(k)
             if dp != len(path):
-                here += ('/?'*(len(path)-dp)) + path_to_str(path[dp:], '/')
+                here += ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
             subpath_help.append(here)
 
             for sp in path[dp:]:
-                node.derive(sp)
+                node.derive(sp)     # works in-place
 
             pubkeys.append(node.public_key())
 
@@ -195,6 +194,8 @@ class MultisigWallet:
 
         scr = ser_push_int(self.M) + b''.join(ser_push_data(pk) for pk in pubkeys) \
                 + ser_push_int(self.N) + bytes([OP_CHECKMULTISIG])
+
+        print("redeem: " + b2a_hex(scr).decode('ascii'))
 
         if expected_witdeem:
             assert expected_witdeem == scr, "didn't get expected redeem script"
@@ -220,7 +221,7 @@ class MultisigWallet:
 
         xpubs = {}
         M, N = -1, -1
-        addr_fmt = None
+        addr_fmt = AF_P2SH
         expect_chain = chains.current_chain().ctype
         xpub_count = 0
 
@@ -235,12 +236,18 @@ class MultisigWallet:
             ln = ln.strip()
 
             if ':' not in ln:
-                # complain?
-                if ln: print("no colon: " + ln)
-                continue
+                if 'pub' in ln:
+                    # optimization: allow bare xpub if we can calc xfp
+                    label = '0'*8
+                    value = ln
+                else:
+                    # complain?
+                    if ln: print("no colon: " + ln)
+                    continue
+            else:
+                label, value = ln.split(':')
+                label = label.lower()
 
-            label, value = ln.split(':')
-            label = label.lower()
             value = value.strip()
 
             if label == 'name':
@@ -256,42 +263,53 @@ class MultisigWallet:
                 except:
                     raise AssertionError('bad policy line')
 
+            elif label == 'format':
+                # pick segwit vs. classic vs. wrapped version
+                value = value.lower()
+                if value == 'p2sh':
+                    addr_fmt = AF_P2SH
+                elif value == 'p2wsh':
+                    addr_fmt = AF_P2WSH
+                elif value == 'p2wsh-p2sh':
+                    addr_fmt = AF_P2WSH_P2SH
+                else:
+                    raise AssertionError('bad format line')
             elif len(label) == 8:
                 try:
                     xfp = int(label, 16)
                 except:
                     # complain?
-                    print("Bad xfp: " + ln)
+                    #print("Bad xfp: " + ln)
                     continue
 
                 xpub = value
                 try:
-                    node, chain, addr_fmt_here = import_xpub(xpub)
-
-                    # Note: addr_fmt_here isn't so useful unless SLIP-132 is used.
-                    if not (addr_fmt_here & AFC_SCRIPT):
-                        addr_fmt_here = AF_P2SH
+                    # Note: addr_fmt_here detected here via SLIP-132 isn't useful
+                    node, chain, _ = import_xpub(xpub)
                 except:
                     raise AssertionError('unable to parse xpub')
 
-                if not addr_fmt:
-                    addr_fmt = addr_fmt_here
-                else:
-                    # want consistent address formats
-                    assert addr_fmt == addr_fmt_here, 'addr fmt'
-
+                assert node.private_key() == None, 'no private keys plz'
                 assert chain.ctype == expect_chain, 'wrong chain, expect: ' + expect_chain
 
                 # NOTE: could enforce all same depth, and/or all depth >= 1, but
                 # seems like more restrictive than needed.
-                #assert node.depth() >= 1, 'need proper depth value'
+
+                if node.depth() == 1:
+                    if not xfp:
+                        # allow a shortcut: zero/omit xfp => use observed parent value
+                        xfp = swab32(node.fingerprint())
+                    else:
+                        # generally cannot check fingerprint values, but if we can, do.
+                        assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
+
+                assert xfp, 'need fingerprint'
 
                 # de-dup and organize at same time
                 xpubs[xfp] = node
                 xpub_count += 1
-            else:
-                pass
-                print("Ignore: " + ln)
+
+        assert len(xpubs), 'need xpubs'
 
         if M == N == -1:
             # default policy: all keys
@@ -308,18 +326,20 @@ class MultisigWallet:
             raise AssertionError('name must be ascii, 1..20 long')
 
         assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
-        assert len(xpubs), 'need xpubs'
         assert N == xpub_count, 'wrong # of xpubs, expect %d' % N
         assert N == len(xpubs), 'duplicate master fingerprints'
-        assert addr_fmt & AFC_SCRIPT, 'not a script style addr fmt'
+        assert addr_fmt & AFC_SCRIPT, 'script style addr fmt'
 
+        # check we're included... do not insert ourselves, even tho we
+        # have enough info, simply because other signers need to know my xpubkey anyway
         my_xfp = settings.get('xfp')
         assert my_xfp in xpubs, 'my key not included: ' + ', '.join(xfp2str(k) for k in xpubs)
 
         # nodes are not strings, serialize them w/ BIP32 standard now.
+        # - this has effect of stripping SLIP-132 confusion away
         xxpubs = {}
         for xfp, node in xpubs.items():
-            xxpubs[xfp] = chain.serialize_public(node, addr_fmt)
+            xxpubs[xfp] = chain.serialize_public(node, AF_P2SH)
 
         # done. have all the parts
         return cls(name, (M, N), xxpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
@@ -338,7 +358,7 @@ async def make_multisig_menu(*a):
                         f=open_ms_wallet, arg=ms.storage_idx))
 
     rv.append(MenuItem('Import from SD', f=import_multisig))
-    rv.append(MenuItem('Export to SD', f=export_multisig))
+    rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
 
     return MenuSystem(rv)
 
@@ -386,31 +406,35 @@ Press (6) to delete this wallet, OK or X to close.''')
         tmp = await make_multisig_menu()
         menu.replace_items(tmp.items)
 
-def export_multisig(*a):
-    # Simply create a single file with docs, and all possible useful xpub values.
+async def export_bip45_multisig(*a):
+    # WAS: Create a single file with lots of docs, and all possible useful xpub values.
     #
     # - might be nice to offer some additional alternative values, for when you want
     #   to create multiple wallets using same coldcard but we should recommend
     #   BIP39 pw for that.
+    # - bad idea: confusion and interop fails exposed
     #
-
-    variants = [( "m/45'/0", 'BIP45 standard'),
-                ( "m/48'/0'/0'/1'", 'Electrum (p2wsh-p2sh)'), 
-                ( "m/48'/0'/0'/2'", 'Electrum (p2wsh)'),
-                #( "m/48'", 'Copay (untested)'),        # pointless unless tested
-               ]
-
-    slip132 = [
-        (AF_P2SH, 'Classic P2SH'),
-        (AF_P2WSH, 'Segwit P2WSH'),
-        (AF_P2WSH_P2SH, 'Segwit P2WSH wrapped with P2SH'),
-    ]
+    # NOW: Just create the one-liner xpub export value they need/want to support BIP45
 
     from main import settings
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
     
-    fname_pattern = 'ms-%s.txt' % xfp
+    fname_pattern = 'bip45-%s.txt' % xfp
+
+    msg = '''\
+This feature creates a one-line text file containing \
+the xpub (extended public key) you would need to join \
+a multisig wallet based on BIP45 best practises.
+
+The public key exported is:
+
+   m/45'
+
+OK to continue. X to abort.
+'''
+    resp = await ux_show_story(msg, title='BIP45 Export')
+    if resp != 'y': return
 
     try:
         with CardSlot() as card:
@@ -418,32 +442,11 @@ def export_multisig(*a):
 
             # do actual write
             with open(fname, 'wt') as fp:
-
-                fp.write('''\
-# xpub for use in multisig wallets
-#
-# IMPORTANT: 
-# - Pick only one line from this file!
-# - Key path needs to match the shared multisig wallet's expectations
-# - PSBT used for signing will need to encode these same paths & fingerprints
-#
-# Master key fingerprint is the same for for all paths: %s
-#
-''' % xfp)
-
                 with stash.SensitiveValues() as sv:
-                    for path, label in variants:
-                        node = sv.derive_path(path, register=False)
+                    node = sv.derive_path("m/45'")
 
-                        for addr_fmt, alabel in slip132:
-                            xp = chain.serialize_public(node, addr_fmt)
-                            fp.write('''
-# {label} ({alabel})   {path} = 
-{xfp}: {xp}
-
-'''.format(label=label, path=path, alabel=alabel, xfp=xfp, xp=xp))
-
-                        stash.blank_object(node)
+                    xp = chain.serialize_public(node, AF_P2SH)
+                    fp.write(xp + '\n')
 
     except CardMissingError:
         await needs_microsd()
@@ -452,7 +455,7 @@ def export_multisig(*a):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''Multisig export file written:\n\n%s''' % nice
+    msg = '''BIP45 multisig xpub file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
 def import_xpub(ln):

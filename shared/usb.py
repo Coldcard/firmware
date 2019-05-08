@@ -353,6 +353,7 @@ class USBHandler:
                 for i in range(N):
                     ln = args[offset]; offset += 1
                     assert ln % 4 == 0
+                    assert ln / 4 <= 16, 'max depth'
                     subpaths.append(args[offset:offset+ln])
                     offset += ln
 
