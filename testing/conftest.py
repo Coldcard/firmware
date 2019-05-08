@@ -142,13 +142,15 @@ def unit_test(sim_execfile):
 def addr_vs_path(master_xpub):
     from pycoin.key.BIP32Node import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
-    from ckcc_protocol.constants import AF_P2WPKH_P2SH
+    from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
     from bech32 import bech32_decode, convertbits
     from pycoin.encoding import a2b_hashed_base58, hash160
+    from hashlib import sha256
 
-    def doit(given_addr, path, addr_fmt):
-        mk = BIP32Node.from_wallet_key(master_xpub)
-        sk = mk.subkey_for_path(path[2:])
+    def doit(given_addr, path=None, addr_fmt=None, script=None):
+        if not script:
+            mk = BIP32Node.from_wallet_key(master_xpub)
+            sk = mk.subkey_for_path(path[2:])
 
         if addr_fmt == AF_CLASSIC:
             # easy
@@ -171,7 +173,25 @@ def addr_vs_path(master_xpub):
                 assert hash160(b'\x00\x14' + pkh) == expect
 
         elif addr_fmt & AFC_SCRIPT:
-            raise pytest.fail('multisig/p2sh addr not handled')
+            assert script, 'need a redeem/witness script'
+            if addr_fmt == AF_P2SH:
+                assert given_addr[0] in '23'
+                expect = a2b_hashed_base58(given_addr)[1:]
+                assert hash160(script) == expect
+
+            elif addr_fmt == AF_P2WSH:
+                hrp, data = bech32_decode(given_addr)
+                assert hrp in {'tb', 'bc' }
+                decoded = convertbits(data[1:], 5, 8, False)
+                assert bytes(decoded[-32:]) == sha256(script).digest()
+
+            elif addr_fmt == AF_P2WSH_P2SH:
+                assert given_addr[0] in '23'
+                expect = a2b_hashed_base58(given_addr)[1:]
+                assert hash160(script) == expect
+
+            else:
+                raise pytest.fail(f'not ready for {addr_fmt:x} yet')
         else:
             raise ValueError(addr_fmt)
 
