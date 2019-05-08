@@ -81,7 +81,7 @@ async def view_ident(*a):
     tpl = '''\
 Master Key Fingerprint:
 
-  {xfp:08x}
+  {xfp}
 
 USB Serial Number:
 
@@ -92,7 +92,7 @@ Extended Master Key:
 {xpub}
 '''
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
-                            xfp=settings.get('xfp', 0),
+                            xfp=xfp2str(settings.get('xfp', 0)),
                             serial=serial_number())
 
     if pa.is_secondary:
