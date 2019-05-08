@@ -11,7 +11,8 @@ from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
-MAX_SIGNERS = const(20)
+# - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
+MAX_SIGNERS = const(15)
 
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a

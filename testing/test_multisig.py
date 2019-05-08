@@ -28,6 +28,28 @@ unmap_addr_fmt = {
     'p2wsh-p2sh': AF_P2WSH_P2SH,
 }
 
+@pytest.fixture()
+def bitcoind_p2sh(bitcoind):
+    # Use bitcoind to generate a p2sh addres based on public keys.
+
+    def doit(M, pubkeys, fmt):
+
+        fmt = {
+            AF_P2SH: 'legacy',
+            AF_P2WSH: 'bech32',
+            AF_P2WSH_P2SH: 'p2sh-segwit'
+        }[fmt]
+
+        try:
+            rv = bitcoind.createmultisig(M, [B2A(i) for i in pubkeys], fmt)
+        except ConnectionResetError:
+            # bitcoind sleeps on us sometimes, give it another chance.
+            rv = bitcoind.createmultisig(M, [B2A(i) for i in pubkeys], fmt)
+
+        return rv['address'], rv['redeemScript']
+
+    return doit
+
 @pytest.fixture
 def clear_ms(unit_test):
     def doit():
@@ -90,7 +112,7 @@ def import_ms_wallet(dev, make_multisig, offer_import):
 
         config += '\n'.join('%s: %s' % (xfp2str(k), dd.hwif(as_private=False)) 
                                             for k, (m, dd) in keys.items())
-        print(config)
+        #print(config)
 
         title, story = offer_import(config)
 
@@ -103,7 +125,7 @@ def import_ms_wallet(dev, make_multisig, offer_import):
     return doit
 
 
-@pytest.mark.parametrize('N', [ 3, 20])
+@pytest.mark.parametrize('N', [ 3, 15])
 def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_keypress):
     # all the different ways...
     keys = make_multisig(N, N)
@@ -192,12 +214,12 @@ def make_redeem(M, keys, paths):
 
     print("redeem script: " + B2A(rv))
 
-    return rv
+    return rv, pubkeys
         
     
 
 @pytest.fixture
-def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path):
+def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh):
     def doit(M, keys, subpath=[1,2,3], addr_fmt=AF_P2SH):
         # test we are showing addresses correctly
         addr_fmt = unmap_addr_fmt.get(addr_fmt, addr_fmt)
@@ -210,7 +232,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path):
 
         title, story = cap_story()
 
-        print(story)
+        #print(story)
 
         assert got_addr in story
         assert all((xfp2str(i) in story) for i in keys)
@@ -220,24 +242,29 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path):
 
         # re-calc redeem script
         print(repr(paths))
-        scr = make_redeem(M, keys, dict((a,b) for a,*b in paths))
+        scr, pubkeys = make_redeem(M, keys, dict((a,b) for a,*b in paths))
+        assert len(scr) <= 520, "script too long for standard!"
 
-        # check expected addr was generated
+        # check expected addr was generated based on my math
         addr_vs_path(got_addr, addr_fmt=addr_fmt, script=scr)
+
+        # also check against bitcoind
+        core_addr, core_scr = bitcoind_p2sh(M, pubkeys, addr_fmt)
+        assert B2A(scr) == core_scr
+        assert core_addr == got_addr
 
 
     return doit
     
 
-@pytest.mark.parametrize('m_of_n', [ (1,3), (2,3), (3,3), (10, 15), (16,16),
-                                        (1, 20), (17, 20), (20,20) ])
-@pytest.mark.parametrize('addr_fmt', [None, 'p2wsh', 'p2wsh-p2sh' ])
+@pytest.mark.parametrize('m_of_n', [(1,3), (2,3), (3,3), (3,6), (10, 15), (15,15)])
+@pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
 def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
 
     M, N = m_of_n
 
-    if addr_fmt == 'p2wsh-p2sh':
-        raise pytest.xfail('not done')
+    #if addr_fmt == 'p2wsh-p2sh':
+        #raise pytest.xfail('not done')
 
     keys = import_ms_wallet(M, N, addr_fmt)
 
@@ -246,7 +273,7 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 
     # test an address that should be in that wallet.
     time.sleep(.1)
-    test_ms_show_addr(M, keys, addr_fmt=addr_fmt or AF_P2SH)
+    test_ms_show_addr(M, keys, addr_fmt=addr_fmt)
 
     # cleanup
     clear_ms()
@@ -254,7 +281,7 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     # check all details are shown right
 
-    M,N = 19, 20
+    M,N = 14, 15
 
     keys = import_ms_wallet(M, N)
 
@@ -309,6 +336,7 @@ def test_export_bip45_multisig(goto_home, cap_story, pick_menu_item, cap_menu, n
     e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
     expect = e.subkey_for_path("45'.pub") 
     assert expect.hwif() == n.hwif()
+
 
 
 # TODO
