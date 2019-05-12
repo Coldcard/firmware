@@ -227,7 +227,7 @@ individual words if you wish.''')
 
         # begin again, empty but same settings
         self.words = []
-        the_ux.push(self.__class__(items=None))
+        the_ux.push(self.__class__(num_words=WordNestMenu.target_words))
 
     def late_draw(self, dis):
         # add an overlay with "word N" in small text, top right.
