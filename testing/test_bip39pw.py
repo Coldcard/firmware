@@ -3,7 +3,7 @@
 #
 # BIP39 seed word encryption
 #
-import pytest, time
+import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.msg_signing import verify_message
 from base64 import b64encode
@@ -12,6 +12,7 @@ from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 import json
 from mnemonic import Mnemonic
+from conftest import simulator_fixed_xfp
 
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
@@ -46,41 +47,54 @@ def test_b9p_vectors(dev, set_seed_words, need_keypress, vector, pw='RoZert'[::-
                                 'a'*99,
                                 ''      # keep last, resets state
                 ])
-def test_b9p_basic(dev, need_keypress, pw, reset_seed_words, cap_story):
+def test_b9p_basic(pw, set_bip39_pw):
 
-    # reset from previous runs
-    words = reset_seed_words()
+    set_bip39_pw(pw)
 
-    dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)
+@pytest.fixture()
+def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
 
-    if pw:
-        time.sleep(0.050)
-        title, body = cap_story()
+    def doit(pw):
+        # reset from previous runs
+        words = reset_seed_words()
 
-        assert pw not in body
+        dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)
 
-        # verify display of passphrase
-        need_keypress('2')
-        time.sleep(0.050)
-        title, body = cap_story()
-        assert pw in body
+        if pw:
+            time.sleep(0.050)
+            title, body = cap_story()
 
-    need_keypress('y')
+            assert pw not in body
 
-    done = None
-    while done == None:
-        time.sleep(0.050)
-        done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
+            # verify display of passphrase
+            need_keypress('2')
+            time.sleep(0.050)
+            title, body = cap_story()
+            assert pw in body
 
-    xpub = done
-    assert xpub[1:4] == 'pub'
-    got = BIP32Node.from_wallet_key(xpub)
+        need_keypress('y')
 
-    # what it should be
-    seed = Mnemonic.to_seed(words, passphrase=pw)
-    expect = BIP32Node.from_master_secret(seed)
+        done = None
+        while done == None:
+            time.sleep(0.050)
+            done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
-    assert got.public_pair() == expect.public_pair()
+        xpub = done
+        assert xpub[1:4] == 'pub'
+        got = BIP32Node.from_wallet_key(xpub)
+
+        # what it should be
+        seed = Mnemonic.to_seed(words, passphrase=pw)
+        expect = BIP32Node.from_master_secret(seed)
+
+        assert got.public_pair() == expect.public_pair()
+
+        xfp, = struct.unpack('I', expect.fingerprint())
+
+        return xfp
+
+    return doit
+
 
 @pytest.mark.parametrize('pw', [ 
     'a'*1000,   # way too big
@@ -105,5 +119,58 @@ def test_b39p_refused(dev, need_keypress, pw='testing 123'):
             done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
 
+@pytest.mark.parametrize('haz', [ False, True ])
+def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, cap_story, need_keypress, sim_exec, sim_eval, get_settings, reset_seed_words, get_setting):
+    # test UX and operation of the 'seed lockdown' option
+    
+    if haz:
+        xfp = set_bip39_pw('test')
+        assert xfp != simulator_fixed_xfp
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Danger Zone')
+    pick_menu_item('Lock Down Seed')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Are you SURE' in story
+    assert 'computes' in story
+
+    if not haz:
+        need_keypress('y')
+
+        time.sleep(0.1)
+        title, story = cap_story()
+        assert 'Are you SURE' in story
+        assert 'do not have a BIP39 passphrase' in story
+        
+        need_keypress('x')
+        return
+
+    # before saving, xfp should be in-memory only
+    nv = get_settings()
+    mem_xfp = get_setting('xfp')
+    assert hex(mem_xfp) == hex(xfp), "XFP or key correct b4 save"
+    assert nv['xfp'] != mem_xfp, "in-memory xfp not different from saved value"
+
+    # real code does reboot, which is poorly simulated; avoid that
+    sim_exec('import callgate; callgate.show_logout = lambda x:0')
+
+    # commit change
+    need_keypress('y')
+
+    time.sleep(0.25)
+
+    # verify effect
+    nv = get_settings()
+    mem_xfp = get_setting('xfp')
+    assert hex(mem_xfp) == hex(xfp), "XFP or key correct after save"
+    assert nv['xfp'] == mem_xfp, "in-memory xfp different from saved value"
+
+    # not 100% sure this reset is complete enough
+    goto_home()
+    reset_seed_words()
 
 # EOF
