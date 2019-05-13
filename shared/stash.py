@@ -26,7 +26,6 @@ def blank_object(item):
             buf[i] = 0
     elif isinstance(item, tcc.bip32.HDNode):
         item.blank()
-        assert item.private_key() == bytes(32)
     else:
         raise TypeError(item)
 
@@ -58,7 +57,7 @@ class SecretStash:
 
         elif xprv:
             # master xprivkey, which could be a subkey of something we don't know
-            # - we record only the minimum from 
+            # - we record only the minimum
             assert isinstance(xprv, tcc.bip32.HDNode)
             nv[0] = 0x01
             nv[1:33] = xprv.chain_code()
@@ -77,6 +76,7 @@ class SecretStash:
         if marker == 0x01:
             # xprv => BIP32 private key values
             ch, pk = secret[1:33], secret[33:65]
+            assert not _bip39pw
 
             return 'xprv', ch+pk, tcc.bip32.HDNode(chain_code=ch, private_key=pk,
                                                 child_num=0, depth=0, fingerprint=0)
@@ -102,6 +102,7 @@ class SecretStash:
             # variable-length master secret for BIP32
             vlen = secret[0]
             assert 16 <= vlen <= 64
+            assert not _bip39pw
 
             ms = secret[1:1+vlen]
             hd = tcc.bip32.from_seed(ms, 'secp256k1')
