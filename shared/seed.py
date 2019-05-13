@@ -389,10 +389,6 @@ async def remember_bip39_passphrase():
     import stash
     from main import dis, pa
 
-    if not stash.bip39_passphrase:
-        if not await ux_confirm('''You do not have a BIP39 passphrase set right now, so this command does little except forget the seed words. It does not enhance security.'''):
-            return
-
     dis.fullscreen('Check...')
 
     with stash.SensitiveValues() as sv:
@@ -402,7 +398,10 @@ async def remember_bip39_passphrase():
             return
 
         nv = SecretStash.encode(xprv=sv.node)
-    
+
+    # Important: won't write new XFP to nvram if pw still set
+    stash.bip39_passphrase = ''
+
     dis.fullscreen('Saving...')
     pa.change(new_secret=nv)
 
