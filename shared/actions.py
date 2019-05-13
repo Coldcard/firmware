@@ -965,6 +965,7 @@ async def pin_changer(_1, _2, item):
     is_login_pin = (mode == 'main') or (mode == 'secondary' and pa.is_secondary)
 
     lll = LoginUX()
+    lll.offer_second = False
     title, msg = warn[mode]
 
     async def incorrect_pin():
@@ -1015,7 +1016,6 @@ We strongly recommend all PIN codes used be unique between each other.
 
     if need_old_pin:
         # We need the existing pin, so prompt for that.
-        #lll.subtitle = ("Existing " if len(title) < 10) else 'Old ') + title
         lll.subtitle = 'Old ' + title
 
         old_pin = await lll.prompt_pin()
@@ -1031,7 +1031,7 @@ We strongly recommend all PIN codes used be unique between each other.
     while 1:
         lll.reset()
         lll.subtitle = "New " + title
-        pin = await lll.get_new_pin(title)
+        pin = await lll.get_new_pin(title, allow_clear=True)
 
         if pin is None:
             return await ux_aborted()
@@ -1076,19 +1076,20 @@ We strongly recommend all PIN codes used be unique between each other.
     if mode == 'duress':
         # program the duress secret now... it's derived from real wallet
         from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
-        with SensitiveValues() as sv:
-            if is_clear:
-                d_secret = b'\0' * AE_SECRET_LEN
-                op = b''
-            else:
+
+        if is_clear:
+            # clear secret, using the new pin, which is empty string
+            pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN,
+                            old_pin=b'', new_pin=b'')
+        else:
+            with SensitiveValues() as sv:
                 # derive required key
                 node = sv.duress_root()
                 d_secret = SecretStash.encode(xprv=node)
                 sv.register(d_secret)
-                op = args['new_pin']
     
-            # write it out.
-            pa.change(is_duress=True, new_secret=d_secret, old_pin=op)
+                # write it out.
+                pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
 
 async def show_version(*a):
     # show firmware, bootload versions.
