@@ -51,6 +51,7 @@ SDCardMenu = [
     MenuItem("Dump Summary", f=dump_summary),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
+    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem('List Files', f=list_files),
     #MenuItem('Reformat Card', f=wipe_microsd),      # removed: not reliable enuf
 ]
