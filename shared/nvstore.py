@@ -288,14 +288,15 @@ class SettingsObject:
 
             # first the json data
             d = ujson.dumps(self.current)
-            fd.write(aes.update(d))
-            chk.update(d)
 
             # pad w/ zeros
             pad_len = (4096-32) - len(d)
+            assert pad_len >= 0, 'too big'
+
+            fd.write(aes.update(d))
+            chk.update(d)
             del d
 
-            assert pad_len >= 0, 'too big'
             while pad_len > 0:
                 here = min(32, pad_len)
 

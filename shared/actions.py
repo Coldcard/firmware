@@ -1171,7 +1171,6 @@ async def import_multisig(*a):
 
     fn = await file_picker('Pick file to import (.txt)', suffix='.txt',
                                     min_size=100, max_size=20*200, taster=possible)
-
     if not fn: return
 
     try:
@@ -1184,7 +1183,7 @@ async def import_multisig(*a):
 
     from auth import maybe_enroll_xpub
     try:
-        possible_name = fn.split('.')[0].split('/')[0]
+        possible_name = (fn.split('/')[-1].split('.'))[0]
         maybe_enroll_xpub(config=data, name=possible_name)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n\n'+str(e))
