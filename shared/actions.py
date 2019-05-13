@@ -596,7 +596,28 @@ Choose an address type for the wallet on the next screen.
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
-        await bk.make_electrum_wallet(addr_type=item.arg)
+        await bk.make_json_wallet(lambda: bk.generate_electrum_wallet(item.arg))
+
+async def wasabi_skeleton(*A):
+    # save xpub, and some other public details into a file
+    # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
+    import chains
+
+    ch = chains.current_chain()
+
+    if not await ux_show_story('''\
+This saves a skeleton Wasabi wallet file onto the MicroSD card. \
+You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
+''' + SENSITIVE_NOT_SECRET):
+        return
+
+    # pick segwit or classic derivation+such
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    from menu import MenuSystem, MenuItem
+
+    # no choices to be made, just do it.
+    with imported('backups') as bk:
+        await bk.make_json_wallet(lambda: bk.generate_wasabi_wallet())
 
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
