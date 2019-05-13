@@ -3,7 +3,7 @@
 #
 # Multisig-related tests.
 #
-import time, pytest, os
+import time, pytest, os, random
 #from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
@@ -12,6 +12,7 @@ from helpers import B2A, U2SAT, prandom
 from ckcc_protocol.constants import AF_P2WSH, AFC_SCRIPT, AF_P2SH, AF_P2WSH_P2SH
 from struct import unpack, pack
 from conftest import simulator_fixed_xprv, simulator_fixed_xfp
+from pycoin.key.BIP32Node import BIP32Node
 
 def xfp2str(xfp):
     # Standardized way to show an xpub's fingerprint... it's a 4-byte string
@@ -59,7 +60,6 @@ def clear_ms(unit_test):
 @pytest.fixture()
 def make_multisig():
     # make a multsig wallet, always with simulator as an element
-    from pycoin.key.BIP32Node import BIP32Node
 
     # always BIP45:   m/45'/...
 
@@ -100,11 +100,11 @@ def offer_import(cap_story, dev):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_import):
 
-    def doit(M, N, addr_fmt=None):
+    def doit(M, N, addr_fmt=None, name=None):
         keys = make_multisig(M, N)
 
         # render as a file for import
-        name = f'test-{M}-{N}'
+        name = name or f'test-{M}-{N}'
         config = f"name: {name}\npolicy: {M} / {N}\n\n"
 
         if addr_fmt:
@@ -189,7 +189,7 @@ def make_redeem(M, keys, paths):
         node = keys[xfp][0]     # master root key
         path = paths[xfp]
 
-        print(xfp2str(xfp),end=': ')
+        #print(xfp2str(xfp),end=': ')
 
         for p in path:
             node = node.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000))
@@ -220,15 +220,21 @@ def make_redeem(M, keys, paths):
 
 @pytest.fixture
 def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh):
-    def doit(M, keys, subpath=[1,2,3], addr_fmt=AF_P2SH):
+    def doit(M, keys, subpath=[1,2,3], addr_fmt=AF_P2SH, give_scr=True):
         # test we are showing addresses correctly
         addr_fmt = unmap_addr_fmt.get(addr_fmt, addr_fmt)
 
         # limitation: assume BIP45 here, but don't do cosigner index
         paths = [[xfp, HARD(45)] + subpath for xfp in keys]
 
+        # pre-calc redeem script
+        #print(repr(paths))
+        scr, pubkeys = make_redeem(M, keys, dict((a,b) for a,*b in paths))
+        assert len(scr) <= 520, "script too long for standard!"
+
         got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                        M, paths, addr_fmt), timeout=None)
+                                    M, paths, addr_fmt, scr if give_scr else b''),
+                                    timeout=None)
 
         title, story = cap_story()
 
@@ -239,12 +245,6 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
         assert '/?/'+'/'.join(str(i) for i in subpath) in story
 
         need_keypress('y')
-
-        # re-calc redeem script
-        print(repr(paths))
-        scr, pubkeys = make_redeem(M, keys, dict((a,b) for a,*b in paths))
-        assert len(scr) <= 520, "script too long for standard!"
-
         # check expected addr was generated based on my math
         addr_vs_path(got_addr, addr_fmt=addr_fmt, script=scr)
 
@@ -259,7 +259,8 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
 
 @pytest.mark.parametrize('m_of_n', [(1,3), (2,3), (3,3), (3,6), (10, 15), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
-def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+@pytest.mark.parametrize('give_scr', [False, True])
+def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, give_scr):
 
     M, N = m_of_n
 
@@ -273,7 +274,7 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 
     # test an address that should be in that wallet.
     time.sleep(.1)
-    test_ms_show_addr(M, keys, addr_fmt=addr_fmt)
+    test_ms_show_addr(M, keys, addr_fmt=addr_fmt, give_scr=give_scr)
 
     # cleanup
     clear_ms()
@@ -285,8 +286,8 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
 
     keys = import_ms_wallet(M, N)
 
-    time.sleep(.1)
-    need_keypress('2')
+    time.sleep(.2)
+    need_keypress('1')
 
     time.sleep(.1)
     title, story = cap_story()
@@ -304,7 +305,6 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
 
 def test_export_bip45_multisig(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path):
     # test UX and math for bip45 export
-    from pycoin.key.BIP32Node import BIP32Node
 
     goto_home()
     pick_menu_item('Settings')
@@ -337,10 +337,183 @@ def test_export_bip45_multisig(goto_home, cap_story, pick_menu_item, cap_menu, n
     expect = e.subkey_for_path("45'.pub") 
     assert expect.hwif() == n.hwif()
 
+@pytest.mark.parametrize('N', [ 3, 15])
+def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, make_multisig):
+    # test menu-based UX for importing wallet file from SD
+    M = N-1
+
+    keys = make_multisig(M, N)
+    name = 'named-%d' % random.randint(10000,99999)
+    config = f'policy: {M} of {N}\n'
+    config += '\n'.join(sk.hwif(as_private=False) for m,sk in keys.values())
+
+    fname = microsd_path(f'ms-{name}.txt')
+    with open(fname, 'wt') as fp:
+        fp.write(config)
+
+    try:
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Import from SD')
+
+        time.sleep(.1)
+        _, story = cap_story()
+        assert "Pick file" in story
+        need_keypress('y')
+
+        time.sleep(.1)
+        pick_menu_item(fname.rsplit('/', 1)[1])
+
+        time.sleep(.1)
+        _, story = cap_story()
+
+        assert 'Create new multisig' in story
+        assert name in story, 'didnt infer wallet name from filename'
+        assert f'Policy: {M} of {N}\n' in story
+
+        # abort install
+        need_keypress('x')
+
+    finally:
+        # cleanup
+        try: os.unlink(fname)
+        except: pass
+    
+@pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
+def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, import_ms_wallet, addr_fmt, clear_ms):
+
+    # create a wallet, export to SD card, check file created.
+
+    clear_ms()
+
+    name = 'ex-test-%d' % random.randint(10000,99999)
+    M,N = 3, 15
+    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt)
+    time.sleep(.1)
+    need_keypress('y')
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+
+    menu = cap_menu()
+    item = [i for i in menu if name in i][0]
+    pick_menu_item(item)
+
+    time.sleep(.1)
+    need_keypress('1')
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split('\n')[-1]
+
+    try:
+        got = set()
+        with open(microsd_path(fname), 'rt') as fp:
+            for ln in fp.readlines():
+                ln = ln.strip()
+                if '#' in ln:
+                    assert ln[0] == '#'
+                    continue
+                if not ln:
+                    continue
+
+                assert ':' in ln
+                label, value = ln.split(': ')
+
+                if label == 'name':
+                    assert value == name
+                    got.add(label)
+                elif label == 'policy':
+                    assert value == f'{M} of {N}'
+                    got.add(label)
+                elif label == 'format':
+                    assert value == addr_fmt
+                    assert addr_fmt != 'p2sh'
+                    got.add(label)
+                else:
+                    assert len(label) == 8
+                    xfp = int(label, 16)
+                    got.add(xfp)
+                    assert xfp in keys
+                    n = BIP32Node.from_wallet_key(value)
+
+        if 'format' not in got:
+            assert addr_fmt == 'p2sh'
+            got.add('format')
+
+        assert len(got) == 3 + N
+
+        time.sleep(.1)
+        need_keypress('y')
+    finally:
+        try: os.unlink(fname)
+        except: pass
+
+    # test delete while we're here
+    time.sleep(.1)
+    pick_menu_item(item)
+
+    time.sleep(.1)
+    need_keypress('6')
+
+    time.sleep(.2)
+    _, story = cap_story()
+    assert 'you SURE' in story
+    assert name in story
+
+    need_keypress('y')
+    time.sleep(.1)
+    menu = cap_menu()
+    assert not [i for i in menu if name in i]
+    assert '(none yet)' in menu
 
 
-# TODO
-# - test nvram overflow during import
-# - duplicate imports
+@pytest.mark.parametrize('N', [ 3, 15])
+def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
+    clear_ms()
+    M = N
+    name = 'a'*20       # longest possible
+    for count in range(1, 10):
+        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh')
+        time.sleep(.1)
+        need_keypress('y')
+
+        time.sleep(.2)
+        title, story = cap_story()
+        if title or story:
+            print(f'Failed with {count} @ {N} keys each')
+            assert 'No space left' in story
+            break
+
+    if N == 3:
+        assert count == 9, "Expect fail at 9"
+    if N == 15:
+        assert count == 2, "Expect fail at 2"
+
+    need_keypress('y')
+    clear_ms()
+
+@pytest.mark.parametrize('N', [ 3, 15])
+def test_make_example_file(N, microsd_path, make_multisig, addr_fmt=None):
+    M=3
+    keys = make_multisig(M, N)
+
+    # render as a file for import
+    name = f'sample-{M}-{N}'
+    config = f"name: {name}\npolicy: {M} / {N}\n\n"
+
+    if addr_fmt:
+        config += f'format: {addr_fmt.upper()}\n'
+
+    config += '\n'.join('%s: %s' % (xfp2str(k), dd.hwif(as_private=False)) 
+                                        for k, (m, dd) in keys.items())
+
+    fname = microsd_path(f'{name}.txt')
+    with open(fname, 'wt') as fp:
+        fp.write(config+'\n')
+
+    print(f"Created: {fname}")
 
 # EOF

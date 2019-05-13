@@ -276,15 +276,13 @@ async def make_new_wallet():
     seed = bytearray(32)
     rng_bytes(seed)
 
-    assert len(set(seed)) > 4, "impossible luck?"
+    assert len(set(seed)) > 4       # TRNG failure
 
     # hash to mitigate bias in TRNG
     seed = tcc.sha256(seed).digest()
 
     words = tcc.bip39.from_data(seed).split(' ')
     assert len(words) == 24
-    
-    #print('words: ' + ' '.join(words))
 
     while 1:
         # show the seed words

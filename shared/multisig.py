@@ -25,6 +25,11 @@ class MultisigWallet:
     # Challenges:
     # - can be big, taking big % of 4k storage in nvram
     # - complex object, want to have flexibility going forward
+    FORMAT_NAMES = [
+        (AF_P2SH, 'p2sh'),
+        (AF_P2WSH, 'p2wsh'),
+        (AF_P2WSH_P2SH, 'p2wsh-p2sh'),
+    ]
 
     def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, path_prefix=None, chain_type='BTC'):
         self.storage_idx = -1
@@ -95,11 +100,13 @@ class MultisigWallet:
 
     def commit(self):
         # data to save
+        # - important that this fails immediately when nvram overflows
         from main import settings
 
         obj = self.serialize()
 
         v = settings.get('multisig', [])
+        orig = v.copy()
         if not v or self.storage_idx == -1:
             # create
             self.storage_idx = len(v)
@@ -110,6 +117,20 @@ class MultisigWallet:
             v[self.storage_idx] = obj
 
         settings.set('multisig', v)
+
+        # save now, rather than in background, so we can recover
+        # from out-of-space situation
+        try:
+            settings.save()
+        except:
+            # back out change; no longer sure of NVRAM state
+            try:
+                settings.set('multisig', orig)
+                settings.save()
+            except: pass        # give up on recovery
+
+            raise RuntimeError
+
 
     @classmethod
     def find_match(cls, M, N, fingerprints):
@@ -267,12 +288,10 @@ class MultisigWallet:
             elif label == 'format':
                 # pick segwit vs. classic vs. wrapped version
                 value = value.lower()
-                if value == 'p2sh':
-                    addr_fmt = AF_P2SH
-                elif value == 'p2wsh':
-                    addr_fmt = AF_P2WSH
-                elif value == 'p2wsh-p2sh':
-                    addr_fmt = AF_P2WSH_P2SH
+                for fmt_code, fmt_label in cls.FORMAT_NAMES:
+                    if value == fmt_label:
+                        addr_fmt = fmt_code
+                        break
                 else:
                     raise AssertionError('bad format line')
             elif len(label) == 8:
@@ -345,25 +364,62 @@ class MultisigWallet:
         # done. have all the parts
         return cls(name, (M, N), xxpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
 
+    async def export_wallet_file(self):
+        # create a text file with the details; ready for import to next Coldcard
+        from main import settings
+        my_xfp = xfp2str(settings.get('xfp'))
+
+        fname_pattern = 'export-%s.txt' % self.name
+
+        try:
+            with CardSlot() as card:
+                fname, nice = card.pick_filename(fname_pattern)
+
+                # do actual write
+                with open(fname, 'wt') as fp:
+                    print("# Coldcard Multisig setup file (exported from %s)\n#" % my_xfp, file=fp)
+                    print("name: %s\npolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
+
+                    if self.addr_fmt != AF_P2SH:
+                        print("format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
+
+                    print("", file=fp)
+
+                    for k, v in self.xpubs.items():
+                        print('%s: %s' % (xfp2str(k), v), file=fp)
+
+            msg = '''Multisig config file written:\n\n%s''' % nice
+            await ux_show_story(msg)
+
+        except CardMissingError:
+            await needs_microsd()
+            return
+        except Exception as e:
+            await ux_show_story('Failed to write!\n\n\n'+str(e))
+            return
+
 async def make_multisig_menu(*a):
     # Dynamic menu with user-defined names of wallets shown
     from menu import MenuSystem, MenuItem
     from actions import import_multisig
 
     if not MultisigWallet.exists():
-        rv = [MenuItem('(none yet)')]
+        rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
     else:
         rv = []
         for ms in MultisigWallet.get_all():
             rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
-                        f=open_ms_wallet, arg=ms.storage_idx))
+                        f=ms_wallet_detail, arg=ms.storage_idx))
 
     rv.append(MenuItem('Import from SD', f=import_multisig))
     rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
 
     return MenuSystem(rv)
 
-async def open_ms_wallet(menu, label, item):
+async def no_ms_yet(*a):
+    await ux_show_story("You don't have any multisig wallets setup yet.")
+
+async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet, offer to delete
     import chains, uio
     from menu import MenuItem
@@ -378,19 +434,20 @@ async def open_ms_wallet(menu, label, item):
 policy: {M} of {N}
 blockchain: {ctype}
 
+Press (1) to export this wallet to SD card, (6) to delete the wallet, OK or X to close. \
+All keys listed below.
+
 '''.format(name=ms.name, M=ms.M, N=ms.N, ctype=ms.chain_type))
 
     # concern: the order of keys here is non-deterministic
     for idx, (xfp, xpub) in enumerate(ms.xpubs.items()):
         if idx:
             msg.write('\n')
-        msg.write('#%d: %s =\n%s\n' % (idx+1, xfp2str(xfp), xpub))
+        msg.write('%s:\n%s\n' % (xfp2str(xfp), xpub))
 
-    msg.write('''
+    # XXX TODO: add export as text file on (1) or something
 
-Press (6) to delete this wallet, OK or X to close.''')
-
-    ch = await ux_show_story(msg, title=ms.name, escape='6')
+    ch = await ux_show_story(msg, title=ms.name, escape='61')
 
     if ch == '6':
         # delete
@@ -406,6 +463,10 @@ Press (6) to delete this wallet, OK or X to close.''')
         # update/hide from menu
         tmp = await make_multisig_menu()
         menu.replace_items(tmp.items)
+
+    if ch == '1':
+        # create a text file with the details; ready for import to next Coldcard
+        await ms.export_wallet_file()
 
 async def export_bip45_multisig(*a):
     # WAS: Create a single file with lots of docs, and all possible useful xpub values.

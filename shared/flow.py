@@ -42,9 +42,9 @@ SettingsMenu = [
     MenuItem('Touch Setting', chooser=sensitivity_chooser,
                                 predicate=lambda: not version.is_mark2()),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
-    MenuItem('Blockchain', chooser=chain_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
+    MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
 SDCardMenu = [

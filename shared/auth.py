@@ -766,7 +766,7 @@ class NewEnrollRequest(UserAuthorizedAction):
         elif ms.M == 1:
             exp = 'Any signature from %d co-signers will approve spends.' % ms.N
         else:
-            exp = '{M} signatures from {N} possible co-signers, will be required to approve spends.'.format(M=ms.M, N=ms.N)
+            exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=ms.M, N=ms.N)
 
         story = '''Create new multisig wallet?
 
@@ -777,15 +777,15 @@ Policy: {M} of {N}
 
 {exp}
 
-Press 2 to see extended public keys, \
+Press (1) to see extended public keys, \
 OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
 
         try:
             chain = chains.current_chain()
             while 1:
-                ch = await ux_show_story(story, escape='2')
+                ch = await ux_show_story(story, escape='1')
 
-                if ch == '2':
+                if ch == '1':
                     # Show the xpubs; might be 2k or more rendered.
                     msg = uio.StringIO()
 
@@ -793,7 +793,9 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
                         if idx:
                             msg.write('\n\n')
 
-                        msg.write('#%d: %s =\n' % (idx+1, xfp2str(xfp)))
+                        # Not showing index numbers here because order
+                        # is non-deterministic both here, our storage, and in usage.
+                        msg.write('%s:\n' % xfp2str(xfp))
                         msg.write(ms.xpubs[xfp])
 
                     await ux_show_story(msg, title='%d of %d' % (ms.M, ms.N))
@@ -802,7 +804,10 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
 
                 if ch == 'y':
                     # save to nvram
-                    ms.commit()
+                    try:
+                        ms.commit()
+                    except RuntimeError:
+                        return await self.failure('No space left')
 
                     await ux_dramatic_pause("Saved.", 2)
                 else:
@@ -837,8 +842,13 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None):
 
     active_request = NewEnrollRequest(ms)
 
-    # kill any menu stack, and put our thing at the top
     if sf_len:
+        # for USB case:
+        # kill any menu stack, and put our thing at the top
         abort_and_goto(active_request)
+    else:
+        # menu item case: add to stack
+        from ux import the_ux
+        the_ux.push(active_request)
 
 # EOF

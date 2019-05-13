@@ -58,6 +58,7 @@
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
 - max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
+- we have space for up to 8 M-of-3 wallets, or a single M-of-20 wallet. YMMV
 
 # SIGHASH types
 
