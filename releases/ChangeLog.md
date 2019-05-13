@@ -1,3 +1,7 @@
+## 2.0.4 - May 13, 2019
+
+- Bugfix: importing seed words manually didn't work on second try (thanks @duck1123)
+
 ## 2.0.3 - Apr 25, 2019
 
 - Transaction signing speed improved by about 3X.
