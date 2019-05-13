@@ -19,6 +19,7 @@ class LoginUX:
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
+        self.offer_second = True
         self.reset()
 
     def reset(self):
@@ -82,7 +83,7 @@ class LoginUX:
         dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
                             else "Write these down:")
 
-        if not self.is_setting:
+        if self.offer_second:
             dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
 
         dis.show()
@@ -220,9 +221,10 @@ Your next attempt will take even longer, so please keep that in mind.
         return await self.interact()
             
 
-    async def get_new_pin(self, title, story=None):
+    async def get_new_pin(self, title, story=None, allow_clear=False):
         # Do UX flow to get new (or change) PIN. Always does the double-entry thing
         self.is_setting = True
+        self.offer_second = False
 
         if story:
             # give them background
@@ -233,6 +235,10 @@ Your next attempt will take even longer, so please keep that in mind.
         # first first one
         first_pin = await self.interact()
         if first_pin is None: return None
+
+        if allow_clear and first_pin == '999999-999999':
+            # don't make them repeat the 'clear pin' value
+            return first_pin
 
         self.is_repeat = True
 
