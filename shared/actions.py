@@ -766,11 +766,12 @@ async def list_files(*A):
     fn = await file_picker('List files on MicroSD')
     return
 
-async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None):
+async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
     # - if choices is provided; skip search process
+    # - escape: allow these chars to skip picking process
     from menu import MenuSystem, MenuItem
     import uos
     from utils import get_filesize
@@ -848,7 +849,8 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     else:
         msg += '\n\nThere is only one file to pick from.'
 
-    ch = await ux_show_story(msg)
+    ch = await ux_show_story(msg, escape=escape)
+    if escape and ch in escape: return ch
     if ch == 'x': return
 
     picked = []
@@ -1196,8 +1198,13 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker('Pick file to import (.txt)', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible)
+    fn = await file_picker('Pick file to multisig wallet to import (.txt) or press (1) build multisig wallet on-device.', suffix='.txt',
+                                    min_size=100, max_size=20*200, taster=possible, escape='1')
+
+    from multisig import ondevice_multisig_create
+    if fn == '1':
+        return await ondevice_multisig_create()
+
     if not fn: return
 
     try:
