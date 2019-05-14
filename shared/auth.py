@@ -49,6 +49,20 @@ class UserAuthorizedAction:
         m = goto_top_menu()
         m.show()
 
+    def pop_menu(self):
+        # drop them back into menu system, but try not to affect
+        # menu position.
+        self.ux_done = True
+
+        from actions import goto_top_menu
+        from ux import the_ux, restore_menu
+        if the_ux.top_of_stack() == self:
+            empty = the_ux.pop()
+            if empty:
+                goto_top_menu()
+
+        restore_menu()
+
     @classmethod
     def cleanup(cls):
         # user has collected the results/errors and no need for objs
@@ -822,7 +836,7 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
             sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()      # because no results to store
-            self.done()
+            self.pop_menu()
 
 
 def maybe_enroll_xpub(sf_len=None, config=None, name=None):

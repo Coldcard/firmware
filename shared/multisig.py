@@ -9,6 +9,7 @@ from utils import xfp2str, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
+from menu import MenuSystem, MenuItem
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -398,26 +399,42 @@ class MultisigWallet:
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
 
-async def make_multisig_menu(*a):
-    # Dynamic menu with user-defined names of wallets shown
-    from menu import MenuSystem, MenuItem
-    from actions import import_multisig
-
-    if not MultisigWallet.exists():
-        rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
-    else:
-        rv = []
-        for ms in MultisigWallet.get_all():
-            rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
-                        f=ms_wallet_detail, arg=ms.storage_idx))
-
-    rv.append(MenuItem('Import from SD', f=import_multisig))
-    rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
-
-    return MenuSystem(rv)
-
 async def no_ms_yet(*a):
+    # action for 'no wallets yet' menu item
     await ux_show_story("You don't have any multisig wallets setup yet.")
+
+class MultisigMenu(MenuSystem):
+
+    @classmethod
+    def construct(cls):
+        # Dynamic menu with user-defined names of wallets shown
+        #from menu import MenuSystem, MenuItem
+        from actions import import_multisig
+
+        if not MultisigWallet.exists():
+            rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
+        else:
+            rv = []
+            for ms in MultisigWallet.get_all():
+                rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
+                            f=ms_wallet_detail, arg=ms.storage_idx))
+
+        rv.append(MenuItem('Import from SD', f=import_multisig))
+        rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
+
+        return rv
+
+    def update_contents(self):
+        # reconstruct the list of wallets on this dynamic menu, because
+        # we added or changed them and are showing that same emenu
+        tmp = self.construct()
+        self.replace_items(tmp)
+
+
+async def make_multisig_menu(*a):
+    rv = MultisigMenu.construct()
+    return MultisigMenu(rv)
+
 
 async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet, offer to delete
@@ -461,8 +478,7 @@ All keys listed below.
         await ux_dramatic_pause('Deleted.', 3)
 
         # update/hide from menu
-        tmp = await make_multisig_menu()
-        menu.replace_items(tmp.items)
+        menu.update_contents()
 
     if ch == '1':
         # create a text file with the details; ready for import to next Coldcard
