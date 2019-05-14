@@ -1,5 +1,6 @@
 # quickly clear all multisig wallets installed
 from main import settings
+from ux import restore_menu
 
 if settings.get('multisig'):
     del settings.current['multisig']
@@ -7,3 +8,4 @@ if settings.get('multisig'):
 
     print("cleared multisigs")
 
+restore_menu()

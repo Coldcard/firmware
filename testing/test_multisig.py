@@ -516,4 +516,58 @@ def test_make_example_file(N, microsd_path, make_multisig, addr_fmt=None):
 
     print(f"Created: {fname}")
 
+@pytest.mark.parametrize('num_diff', [ 1, 5])
+def test_import_dup_safe(clear_ms, make_multisig, offer_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu, num_diff):
+    M,N = 2, 5
+
+    clear_ms()
+
+    keys = make_multisig(M, N)
+
+    # render as a file for import
+    def make_named(name):
+        config = f"name: {name}\npolicy: {M} / {N}\n\n"
+        config += '\n'.join('%s: %s' % (xfp2str(k), dd.hwif(as_private=False)) 
+                                        for k, (m, dd) in keys.items())
+        return config
+
+    def check_named(name):
+        # check worked: look in menu for name
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+
+        menu = cap_menu()
+        assert menu[0] == f'{M}/{N}: {name}'
+        assert len(menu) == 3
+
+    title, story = offer_import(make_named('xxx-orig'))
+    assert 'xxx-orig' in story
+    need_keypress('y')
+    check_named('xxx-orig')
+
+    # just simple rename
+    title, story = offer_import(make_named('xxx-new'))
+    assert 'Update' in story
+    assert 'xxx-new' in story
+
+    need_keypress('y')
+    check_named('xxx-new')
+
+    # hack up a bogus import
+    for count, xfp in enumerate(keys):
+        if count == num_diff: break
+        keys[xfp][1]._chain_code = bytes(i^0xa5 for i in keys[xfp][1]._chain_code)
+
+    title, story = offer_import(make_named('xxx-hacked'))
+    assert f'{num_diff} different' in story
+    assert 'caution' in story.lower()
+    assert 'danger' in story.lower()
+    assert 'xxx-hacked' in story
+
+    need_keypress('y')
+    check_named('xxx-hacked')
+
+    clear_ms()
+
 # EOF
