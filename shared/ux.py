@@ -437,6 +437,9 @@ def restore_menu():
     # redraw screen contents after distrupting it w/ non-ux things (usb upload)
     m = the_ux.top_of_stack()
 
+    if hasattr(m, 'update_contents'):
+        m.update_contents()
+
     if hasattr(m, 'show'):
         m.show()
 

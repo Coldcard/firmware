@@ -81,6 +81,10 @@ class MenuSystem:
     def early_draw(self, dis):
         pass
 
+    def update_contents(self):
+        # something changed in system state; maybe re-construct menu contents
+        pass
+
     def replace_items(self, menu_items):
         self.cursor = 0
         self.ypos = 0
