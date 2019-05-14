@@ -6,18 +6,11 @@ from pprint import pprint
 #from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT
-
 from api import bitcoind, match_key
+from constants import *
 
 # lock down randomness
 random.seed(42)
-
-SIM_PATH = '/tmp/ckcc-simulator.sock'
-
-# Simulator normally powers up with this 'wallet'
-simulator_fixed_xprv = "tprv8ZgxMBicQKsPeXJHL3vPPgTAEqQ5P2FD9qDeCQT4Cp1EMY5QkwMPWFxHdxHrxZhhcVRJ2m7BNWTz9Xre68y7mX5vCdMJ5qXMUfnrZ2si2X4"
-simulator_fixed_words = "wife shiver author away frog air rough vanish fantasy frozen noodle athlete pioneer citizen symptom firm much faith extend rare axis garment kiwi clarify"
-simulator_fixed_xfp = 0x4369050f
 
 def pytest_addoption(parser):
     parser.addoption("--dev", action="store_true",
@@ -574,5 +567,8 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
 
 
     return doit
+
+# useful fixtures related to multisig
+from test_multisig import import_ms_wallet, make_multisig, offer_import
 
 #EOF
