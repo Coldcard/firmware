@@ -152,6 +152,25 @@ class MultisigWallet:
 
         return -1
 
+    def has_dup(self):
+        # check if we already have a saved duplicate to this proposed wallet
+        # - also, flag if it's a dangerous/fraudulent attempt to replace it.
+
+        idx = MultisigWallet.find_match(self.M, self.N, list(self.xpubs.keys()))
+        if idx == -1:
+            # no matches
+            return False, 0
+
+        # see if the xpubs are changing, which is risky... other differences like
+        # name are okay.
+        o = self.get_by_idx(idx)
+        diffs = 0
+        for k in self.xpubs:
+            if o.xpubs[k] != self.xpubs[k]:
+                diffs += 1
+
+        return o, diffs
+
     def delete(self):
         # remove saved entry
         # - important: not expecting more than one instance of this class in memory
@@ -228,7 +247,7 @@ class MultisigWallet:
 
     @classmethod
     def from_file(cls, config, name=None):
-        # Return a simple text file, and parse contents.
+        # Given a simple text file, parse contents and create instance (unsaved).
         # format is:         label: value
         # where label is:
         #       name: nameforwallet

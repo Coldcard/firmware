@@ -782,7 +782,20 @@ class NewEnrollRequest(UserAuthorizedAction):
         else:
             exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=ms.M, N=ms.N)
 
-        story = '''Create new multisig wallet?
+        # Look for duplicate case.
+        is_dup, diff_count = ms.has_dup()
+
+        if not is_dup:
+            story = 'Create new multisig wallet?'
+        elif diff_count:
+            story = '''\
+CAUTION: This updated wallet has %d different xpub values, but matching fingerprints \
+and same M of N. Perhaps the derivation path has changed legitimately, otherwise, \
+DANGER!''' % diff_count
+        else:
+            story = 'Update existing multisig wallet?'
+
+        story += '''
 
 Wallet Name:
   {name}
@@ -819,6 +832,8 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
                 if ch == 'y':
                     # save to nvram
                     try:
+                        if is_dup:
+                            is_dup.delete()
                         ms.commit()
                     except RuntimeError:
                         return await self.failure('No space left')
