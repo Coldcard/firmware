@@ -385,6 +385,8 @@ class MultisigWallet:
         for xfp, node in xpubs.items():
             xxpubs[xfp] = chain.serialize_public(node, AF_P2SH)
 
+        del xpubs
+
         # done. have all the parts
         return cls(name, (M, N), xxpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
 
@@ -590,5 +592,122 @@ def import_xpub(ln):
 
     # looked like one, but fail.
     return None
+
+async def ondevice_multisig_create():
+    # collect all BIP45- exports on current SD card (must be > 1)
+    # - ask for M value 
+    # - create wallet, save and also export 
+    # - maybe also create electrum skel to go with
+    # - only expected to work with our BIP45 export files.
+    from actions import file_picker
+    import uos
+    from utils import get_filesize
+    from main import settings
+
+    chain = chains.current_chain()
+    my_xfp = settings.get('xfp')
+
+    xpubs = {}
+    files = []
+    try:
+        with CardSlot() as card:
+            for path in card.get_paths():
+                for fn, ftype, *var in uos.ilistdir(path):
+                    if ftype == 0x4000:
+                        # ignore subdirs
+                        continue
+
+                    if not fn.startswith('bip45-') or not fn.endswith('.txt'):
+                        # wrong prefix/suffix
+                        #print('fn ' + fn)
+                        continue
+
+                    full_fname = path + '/' + fn
+
+                    # Conside file size
+                    # sigh, OS/filesystem variations
+                    file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
+
+                    if not (0 <= file_size <= 200):
+                        # out of range size
+                        #print('sz ' + fn)
+                        continue
+
+                    with open(full_fname, 'rt') as fp:
+                        ln = fp.readline().strip()
+
+                        if ln[1:4] != 'pub':
+                            #print('contents ' + fn)
+                            continue
+
+                    try:
+                        node, _, _ = import_xpub(ln)
+                        xfp = swab32(node.fingerprint())
+
+                        # keep it
+                        xpubs[xfp] = chain.serialize_public(node, AF_P2SH)
+                        files.append(fn)
+                    except:
+                        #print('parse ' + fn)
+                        continue
+
+    except CardMissingError:
+        await needs_microsd()
+        return
+
+    if not xpubs or len(xpubs) == 1 and xpubs.get(my_xfp):
+        await ux_show_story("Unable to find any BIP45-style exported keys on this card. Must have filename: bip45-....txt and contain a single line.")
+        return
+    
+    # add myself if not included already
+    if my_xfp not in xpubs:
+        with stash.SensitiveValues() as sv:
+            node = sv.derive_path("m/45'")
+            xpubs[my_xfp] = chain.serialize_public(node, AF_P2SH)
+
+    N = len(xpubs)
+
+    if N > MAX_SIGNERS:
+        await ux_show_story("Too many signers, max is %d." % MAX_SIGNERS)
+        return
+
+    # pick useful M value to start
+    assert N >= 2
+    M = (N - 1) if N < 4 else ((N//2)+1)
+
+    while 1:
+        msg = '''How many need to sign?\n  %d of %d
+
+Press (7 or 9) to change M value, or OK \
+to continue. If you expected more or less keys (N=%d #files=%d), \
+then check card and file contents.''' % (M, N, N, len(files))
+
+        ch = await ux_show_story(msg, escape='123479')
+
+        if ch in '1234':
+            M = min(N, int(ch))     # undocumented shortcut
+        elif ch == '9':
+            M = min(N, M+1)
+        elif ch == '7':
+            M = max(1, M-1)
+        elif ch == 'x':
+            await ux_dramatic_pause('Aborted.', 2)
+            return
+        elif ch == 'y':
+            break
+        
+    # create appropriate object
+    assert 1 <= M <= N <= MAX_SIGNERS
+
+    name = 'CC-%d-of-%d' % (M, N)
+    ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype)
+
+    from auth import NewEnrollRequest, active_request
+
+    active_request = NewEnrollRequest(ms)
+
+    # menu item case: add to stack
+    from ux import the_ux
+    the_ux.push(active_request)
 
 # EOF
