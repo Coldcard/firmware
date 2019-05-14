@@ -105,8 +105,15 @@ def pass_word_quiz(need_keypress, cap_story):
 
     return doit
 
-def test_make_backup(goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words):
+@pytest.mark.parametrize('multisig', ['multisig', False])
+def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting):
     # Make an encrypted 7z backup, verify it, and even restore it!
+
+    if multisig:
+        import_ms_wallet(15, 15)
+        need_keypress('y')
+        time.sleep(.1)
+        assert len(get_setting('multisig')) == 1
 
     goto_home()
     pick_menu_item('Advanced')
@@ -187,6 +194,9 @@ def test_make_backup(goto_home, pick_menu_item, cap_story, need_keypress, open_m
     title, body = cap_story()
     assert title == 'Success!'
     assert 'has been successfully restored' in body
+
+    if multisig:
+        assert len(get_setting('multisig')) == 1
 
     # avoid simulator reboot; restore normal state
     unit_test('devtest/abort_ux.py')

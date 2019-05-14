@@ -9,9 +9,8 @@ from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRef
 from pprint import pprint, pformat
 from base64 import b64encode, b64decode
 from helpers import B2A, U2SAT, prandom
-from ckcc_protocol.constants import AF_P2WSH, AFC_SCRIPT, AF_P2SH, AF_P2WSH_P2SH
 from struct import unpack, pack
-from conftest import simulator_fixed_xprv, simulator_fixed_xfp
+from constants import *
 from pycoin.key.BIP32Node import BIP32Node
 
 def xfp2str(xfp):
@@ -22,12 +21,6 @@ def xfp2str(xfp):
 
 def HARD(n=0):
     return 0x80000000 | n
-
-unmap_addr_fmt = {
-    'p2sh': AF_P2SH,
-    'p2wsh': AF_P2WSH,
-    'p2wsh-p2sh': AF_P2WSH_P2SH,
-}
 
 @pytest.fixture()
 def bitcoind_p2sh(bitcoind):
@@ -63,11 +56,11 @@ def make_multisig():
 
     # always BIP45:   m/45'/...
 
-    def doit(M, N):
+    def doit(M, N, unique=0):
         keys = {}
 
         for i in range(N-1):
-            pk = BIP32Node.from_master_secret(b'CSW is a fraud %d' % i, 'XTN')
+            pk = BIP32Node.from_master_secret(b'CSW is a fraud %d - %d' % (i, unique), 'XTN')
 
             xfp = unpack("<I", pk.fingerprint())[0]
 
@@ -100,8 +93,8 @@ def offer_import(cap_story, dev):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_import):
 
-    def doit(M, N, addr_fmt=None, name=None):
-        keys = make_multisig(M, N)
+    def doit(M, N, addr_fmt=None, name=None, unique=0):
+        keys = make_multisig(M, N, unique=unique)
 
         # render as a file for import
         name = name or f'test-{M}-{N}'
@@ -406,11 +399,11 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
 
     time.sleep(.1)
     title, story = cap_story()
-    fname = story.split('\n')[-1]
+    fname = microsd_path(story.split('\n')[-1])
 
     try:
         got = set()
-        with open(microsd_path(fname), 'rt') as fp:
+        with open(fname, 'rt') as fp:
             for ln in fp.readlines():
                 ln = ln.strip()
                 if '#' in ln:
@@ -448,8 +441,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
         time.sleep(.1)
         need_keypress('y')
     finally:
-        try: os.unlink(fname)
-        except: pass
+        os.unlink(fname)
 
     # test delete while we're here
     time.sleep(.1)
@@ -476,7 +468,7 @@ def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
     M = N
     name = 'a'*20       # longest possible
     for count in range(1, 10):
-        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh')
+        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count)
         time.sleep(.1)
         need_keypress('y')
 
@@ -517,8 +509,9 @@ def test_make_example_file(N, microsd_path, make_multisig, addr_fmt=None):
     print(f"Created: {fname}")
 
 @pytest.mark.parametrize('num_diff', [ 1, 5])
-def test_import_dup_safe(clear_ms, make_multisig, offer_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu, num_diff):
-    M,N = 2, 5
+@pytest.mark.parametrize('N', [ 5, 15])
+def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu, num_diff):
+    M = N
 
     clear_ms()
 
