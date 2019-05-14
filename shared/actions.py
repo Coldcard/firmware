@@ -410,6 +410,8 @@ def pick_new_wallet(*a):
     return seed.make_new_wallet()
 
 async def convert_bip39_to_bip32(*a):
+    import seed, stash
+
     if not await ux_confirm('''This operation computes the extended master private key using your BIP39 seed words and passphrase, and then saves the resulting value (xprv) as the wallet secret.
 
 The seed words themselves are erased forever, but effectively there is no other change. If a BIP39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with any other passphrase.
@@ -418,7 +420,10 @@ A reboot is part of this process. PIN code, and funds are not affected.
 '''):
         return await ux_aborted()
 
-    import seed
+    if not stash.bip39_passphrase:
+        if not await ux_confirm('''You do not have a BIP39 passphrase set right now, so this command does little except forget the seed words. It does not enhance security.'''):
+            return
+
     await seed.remember_bip39_passphrase()
 
     settings.save()
@@ -591,7 +596,28 @@ Choose an address type for the wallet on the next screen.
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
-        await bk.make_electrum_wallet(addr_type=item.arg)
+        await bk.make_json_wallet(lambda: bk.generate_electrum_wallet(item.arg))
+
+async def wasabi_skeleton(*A):
+    # save xpub, and some other public details into a file
+    # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
+    import chains
+
+    ch = chains.current_chain()
+
+    if not await ux_show_story('''\
+This saves a skeleton Wasabi wallet file onto the MicroSD card. \
+You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
+''' + SENSITIVE_NOT_SECRET):
+        return
+
+    # pick segwit or classic derivation+such
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    from menu import MenuSystem, MenuItem
+
+    # no choices to be made, just do it.
+    with imported('backups') as bk:
+        await bk.make_json_wallet(lambda: bk.generate_wasabi_wallet())
 
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
@@ -960,6 +986,7 @@ async def pin_changer(_1, _2, item):
     is_login_pin = (mode == 'main') or (mode == 'secondary' and pa.is_secondary)
 
     lll = LoginUX()
+    lll.offer_second = False
     title, msg = warn[mode]
 
     async def incorrect_pin():
@@ -1010,7 +1037,6 @@ We strongly recommend all PIN codes used be unique between each other.
 
     if need_old_pin:
         # We need the existing pin, so prompt for that.
-        #lll.subtitle = ("Existing " if len(title) < 10) else 'Old ') + title
         lll.subtitle = 'Old ' + title
 
         old_pin = await lll.prompt_pin()
@@ -1026,7 +1052,7 @@ We strongly recommend all PIN codes used be unique between each other.
     while 1:
         lll.reset()
         lll.subtitle = "New " + title
-        pin = await lll.get_new_pin(title)
+        pin = await lll.get_new_pin(title, allow_clear=True)
 
         if pin is None:
             return await ux_aborted()
@@ -1071,19 +1097,20 @@ We strongly recommend all PIN codes used be unique between each other.
     if mode == 'duress':
         # program the duress secret now... it's derived from real wallet
         from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
-        with SensitiveValues() as sv:
-            if is_clear:
-                d_secret = b'\0' * AE_SECRET_LEN
-                op = b''
-            else:
+
+        if is_clear:
+            # clear secret, using the new pin, which is empty string
+            pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN,
+                            old_pin=b'', new_pin=b'')
+        else:
+            with SensitiveValues() as sv:
                 # derive required key
                 node = sv.duress_root()
                 d_secret = SecretStash.encode(xprv=node)
                 sv.register(d_secret)
-                op = args['new_pin']
     
-            # write it out.
-            pa.change(is_duress=True, new_secret=d_secret, old_pin=op)
+                # write it out.
+                pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
 
 async def show_version(*a):
     # show firmware, bootload versions.

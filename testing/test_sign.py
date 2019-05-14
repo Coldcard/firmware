@@ -149,7 +149,7 @@ def test_psbt_parse_good(try_sign, fn, accept):
                 or ('None of the keys' in msg) \
                 or ('completely signed already' in msg) \
                 or ('require subpaths' in msg), msg
-    
+
 
 # works, but annoying output
 def xxx_test_sign_truncated(dev):
@@ -957,5 +957,29 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, a
         assert 'Consolidating' in story
 
     #signed = end_sign(True, finalize=True)
+
+def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
+    # allow almost any PSBT to run on simulator, at least up until wrong pubkeys detected
+    # - detects expected XFP and changes to match
+    # - good for debug of random psbt
+    oo = BasicPSBT().parse(open(fname, 'rb').read())
+    paths = []
+    for i in oo.inputs:
+         paths.extend(i.bip32_paths.values())
+
+    used = set(i[0:4] for i in paths)
+    assert len(used) == 1, "multiple key fingerprints in inputs, can only handle 1"
+    import struct
+    need_xfp, = struct.unpack("<I", used.pop())
+
+    sim_exec('from main import settings; settings.set("xfp", 0x%x);' % need_xfp)
+
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign('data/tick11088.psbt', accept=True)
+
+    msg = ee.value.args[0]
+    assert 'Signing failed late' in msg
+    assert 'led to wrong pubkey for input' in msg
 
 # EOF
