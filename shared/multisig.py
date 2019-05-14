@@ -54,9 +54,11 @@ class MultisigWallet:
         if self.path_prefix:
             opts['pp'] = self.path_prefix
 
-        # NOTE: xpubs must be strings already here.
+        # - xpubs must be strings already by here.
+        # - but JSON doesn't allow numeric keys, so convert into a list
+        xp = list(self.xpubs.items())
 
-        return (self.name, (self.M, self.N), self.xpubs, opts)
+        return (self.name, (self.M, self.N), xp, opts)
 
     @property
     def chain(self):
@@ -67,12 +69,33 @@ class MultisigWallet:
         # take json object, make instance.
         name, m_of_n, xpubs, opts = vals
 
+        xpubs = dict(xpubs)
+
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
                                     path_prefix=opts.get('pp', None),
                                     chain_type=opts.get('ch', 'BTC'))
         rv.storage_idx = idx
 
         return rv
+
+    @classmethod
+    def find_match(cls, M, N, fingerprints):
+        # Find index of matching wallet. Don't de-serialize everything.
+        # - returns index, or -1 if not found
+        # - fingerprints are iterable of uint32's
+        from main import settings
+        lst = settings.get('multisig', [])
+
+        fingerprints = frozenset(fingerprints)
+        
+        for idx, rec in enumerate(lst):
+            name, m_of_n, xpubs, opts = rec
+            if tuple(m_of_n) != (M, N): continue
+            if len(xpubs) != len(fingerprints): continue
+            if set(f for f,_ in xpubs) == fingerprints:
+                return idx
+
+        return -1
 
     @classmethod
     def get_all(cls):
@@ -132,25 +155,6 @@ class MultisigWallet:
 
             raise RuntimeError
 
-
-    @classmethod
-    def find_match(cls, M, N, fingerprints):
-        # Find index of matching wallet. Don't de-serialize everything.
-        # - returns index, or -1 if not found
-        # - fingerprints are uint32's
-        from main import settings
-        lst = settings.get('multisig', [])
-
-        fingerprints = set(fingerprints)
-        
-        for idx, rec in enumerate(lst):
-            name, m_of_n, xpubs, opts = rec
-            if tuple(m_of_n) != (M, N): continue
-            if len(xpubs) != len(fingerprints): continue
-            if set(xpubs.keys()) == fingerprints:
-                return idx
-
-        return -1
 
     def has_dup(self):
         # check if we already have a saved duplicate to this proposed wallet
@@ -398,15 +402,7 @@ class MultisigWallet:
                 # do actual write
                 with open(fname, 'wt') as fp:
                     print("# Coldcard Multisig setup file (exported from %s)\n#" % my_xfp, file=fp)
-                    print("name: %s\npolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
-
-                    if self.addr_fmt != AF_P2SH:
-                        print("format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
-
-                    print("", file=fp)
-
-                    for k, v in self.xpubs.items():
-                        print('%s: %s' % (xfp2str(k), v), file=fp)
+                    self.render_export(fp)
 
             msg = '''Multisig config file written:\n\n%s''' % nice
             await ux_show_story(msg)
@@ -417,6 +413,17 @@ class MultisigWallet:
         except Exception as e:
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
+
+    def render_export(self, fp):
+        print("name: %s\npolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
+
+        if self.addr_fmt != AF_P2SH:
+            print("format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
+
+        print("", file=fp)
+
+        for k, v in self.xpubs.items():
+            print('%s: %s' % (xfp2str(k), v), file=fp)
 
 async def no_ms_yet(*a):
     # action for 'no wallets yet' menu item
