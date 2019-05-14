@@ -461,6 +461,20 @@ Derived public keys, as may be needed for different systems:
 
             yield ('\n\n')
 
+    from multisig import MultisigWallet
+    if MultisigWallet.exists():
+        yield '\n# Your Multisig Wallets\n\n'
+        from uio import StringIO
+
+        for ms in MultisigWallet.get_all():
+            fp = StringIO()
+
+            ms.render_export(fp)
+            print("\n---\n", file=fp)
+
+            yield fp.getvalue()
+            del fp
+
 async def make_summary_file(fname_pattern='public.txt'):
     # record **public** values and helpful data into a text file
     from main import dis, pa, settings
