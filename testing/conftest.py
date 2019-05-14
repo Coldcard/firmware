@@ -137,6 +137,28 @@ def unit_test(sim_execfile):
         if rv: pytest.fail(rv)
     return doit
 
+@pytest.fixture(scope='module')
+def get_settings(sim_execfile):
+    # get all settings
+    def doit():
+        from json import loads
+        resp = sim_execfile('devtest/get-settings.py')
+        assert 'Traceback' not in resp
+        return loads(resp)
+
+    return doit
+
+@pytest.fixture(scope='module')
+def get_setting(sim_execfile, sim_exec):
+    # get an indivudal setting
+    def doit(name):
+        from json import loads
+        sim_exec('import main; main.SKEY = %r; ' % name)
+        resp = sim_execfile('devtest/get-setting.py')
+        assert 'Traceback' not in resp
+        return loads(resp)
+
+    return doit
 
 @pytest.fixture(scope='module')
 def addr_vs_path(master_xpub):
@@ -232,8 +254,6 @@ def cap_story(sim_execfile):
 def get_pp_sofar(sim_execfile):
     # get entry value for bip39 passphrase
     def doit():
-        from json import loads
-        rv = dict()
         resp = sim_execfile('devtest/get_pp_sofar.py')
         assert 'Error' not in resp
         return resp

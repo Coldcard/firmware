@@ -467,7 +467,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
     time.sleep(.1)
     menu = cap_menu()
     assert not [i for i in menu if name in i]
-    assert '(none yet)' in menu
+    assert '(none setup yet)' in menu
 
 
 @pytest.mark.parametrize('N', [ 3, 15])

@@ -2,15 +2,22 @@
 
 - Major release with Multisig support!
 - Broad change: extended public key finger (XFP) values used to be shown in the
-  wrong endian (byte swapped), and prefixed with `0x0` to indicate they were a number.
-  In fact, they are a byte string and should be shown in that order. Everywhere you might
-  be used to seeing your XFP value has been switched, so `0x0f056943` becomes `4369050F`
-  (all caps, no `0x` prefix). Affected areas include:
+  wrong endian (byte swapped), and prefixed with `0x` to indicate they were a number.
+  In fact, they are a byte string and should be shown in that network order. Everywhere
+  you might be used to seeing your XFP value has been switched, so `0x0f056943`
+  becomes `4369050F` (all caps, no `0x` prefix). Affected areas include:
     - BIP39 confirmation screen
-    - electrum skeleton wallet export (label of wallet)
-    - ckcc CLI helper (`xfp` command, which shows both values)
-    - dump public data file (text in header)
     - Advanced > View Identity screen
+    - electrum skeleton wallet export (label of wallet)
+    - dump public data file (text in file header)
+    - ckcc CLI helper (`xfp` command, which now shows both values)
+- Export skeleton wallets for Wasabi Wallet <https://wasabiwallet.io/> to support air-gapped use.
+
+## 2.0.4 - May 13, 2019
+
+- Bugfix: Clearing duress PIN would lead to a error screen.
+- Bugfix: Advanced > "Lock Down Seed" command didn't work correctly.
+- Bugfix: Importing seed words manually didn't work on second try (thanks @duck1123)
 
 ## 2.0.3 - Apr 25, 2019
 

@@ -493,6 +493,32 @@ async def make_summary_file(fname_pattern='public.txt'):
     msg = '''Summary file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
+
+def generate_wasabi_wallet():
+    # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
+    from main import settings
+    import ustruct
+    from ubinascii import hexlify as b2a_hex
+
+    # bitcoin (xpub) is used, even for testnet case (ie. no tpub)
+    # - altho, doesn't matter; the wallet operates based on it's own settings for test/mainnet
+    #   regardless of the contents of the wallet file
+    btc = chains.BitcoinMain
+
+    with stash.SensitiveValues() as sv:
+        xpub = btc.serialize_public(sv.derive_path("84'/0'/0'"))
+
+    xfp = settings.get('xfp')
+    txt_xfp = b2a_hex(ustruct.pack('>I', xfp)).decode().upper()
+
+    chain = chains.current_chain()
+    assert chain.ctype in {'BTC', 'XTN'}, "Only Bitcoin supported"
+
+    return dict(MasterFingerprint=txt_xfp,
+                ExtPubKey=xpub,
+                BlockchainState=dict(Network='Main' if chain.ctype == 'BTC' else 'TestNet'))
+
+
 def generate_electrum_wallet(addr_type):
     # Generate line-by-line JSON details about wallet.
     #
@@ -536,7 +562,7 @@ def generate_electrum_wallet(addr_type):
         
     return rv
 
-async def make_electrum_wallet(addr_type, fname_pattern='new-wallet.json'):
+async def make_json_wallet(generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
     from main import dis, pa, settings
@@ -545,7 +571,7 @@ async def make_electrum_wallet(addr_type, fname_pattern='new-wallet.json'):
 
     dis.fullscreen('Generating...')
 
-    body = generate_electrum_wallet(addr_type)
+    body = generator()
 
     # choose a filename
         
@@ -564,7 +590,7 @@ async def make_electrum_wallet(addr_type, fname_pattern='new-wallet.json'):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''Electrum wallet file written:\n\n%s''' % nice
+    msg = '''New wallet file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
 # EOF

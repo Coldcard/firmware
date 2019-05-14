@@ -106,7 +106,7 @@ for i in range(10, 100):
 sf.write(settings.my_pos, b)
 
 # will load older data here, since we just destroyed newer version
-# but 1/32 times, will get have destroyed older version
+# but 1/32 times, we will have destroyed older version
 settings.load()
 found = settings.get('wrecked', None)
 if found == 768:
