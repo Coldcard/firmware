@@ -16,7 +16,7 @@ from sffile import SizerFile
 from sram2 import psbt_tmp256
 
 from public_constants import (
-    PSBT_GLOBAL_UNSIGNED_TX, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
+    PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
     PSBT_IN_PARTIAL_SIG, PSBT_IN_SIGHASH_TYPE, PSBT_IN_REDEEM_SCRIPT,
     PSBT_IN_WITNESS_SCRIPT, PSBT_IN_BIP32_DERIVATION, PSBT_IN_FINAL_SCRIPTSIG,
     PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT,
@@ -333,30 +333,31 @@ class psbtOutputProxy(psbtProxy):
 
                 # it's actually segwit p2pkh inside p2sh
                 pkh = redeem_script[2:22]
+
             else:
-                # Multisig change output, we're supposed to be a part of.
+                # Multisig change output, for wallet we're supposed to be a part of.
                 # - our key must be part of it
-                # - must look like input side redeem script
+                # - must look like input side redeem script (same fingerprints)
                 # - assert M/N structure of output to match any inputs we have signed in PSBT!
                 # - assert all provided pubkeys are in redeem script, not just ours
                 # - XXX redo this
                 if expect_pubkey not in redeem_script:
                     raise FraudulentChangeOutput("Output#%d: P2WSH/P2SH change output missing my pubkey" % out_idx)
 
-            if is_segwit:
-                # p2wsh case
-                # - need witness script and check it's hash against proposed p2wsh value
-                assert len(addr_or_pubkey) == 32
-                expect_wsh = tcc.sha256(self.witness_script).digest()
-                if expect_wsh != addr_or_pubkey:
-                    raise FraudulentChangeOutput("Output#%d: P2WSH witness script has wrong hash" % out_idx)
+                if is_segwit:
+                    # p2wsh case
+                    # - need witness script and check it's hash against proposed p2wsh value
+                    assert len(addr_or_pubkey) == 32
+                    expect_wsh = tcc.sha256(self.witness_script).digest()
+                    if expect_wsh != addr_or_pubkey:
+                        raise FraudulentChangeOutput("Output#%d: P2WSH witness script has wrong hash" % out_idx)
 
-                self.is_change = ours
-                return
+                    self.is_change = ours
+                    return
 
-            else:
-                # old BIP16 style; looks like payment addr
-                pkh = hash160(redeem_script)
+                else:
+                    # old BIP16 style; looks like payment addr
+                    pkh = hash160(redeem_script)
 
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
@@ -646,7 +647,7 @@ class psbtInputProxy(psbtProxy):
 
         if not which_key:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
-                    my_idx, addr_type, self.is_segwit,
+                    my_idx, addr_type, self.is_segwit or 0,
                     b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
 
         self.required_key = which_key
@@ -740,10 +741,10 @@ class psbtObject(psbtProxy):
     def __init__(self):
         super().__init__()
 
+        # global objects
         self.txn = None
-
-
-        # some don't need/want key (just a single value)
+        self.multisig = None
+        self.xpubs = {}
 
         from main import settings, dis
         self.my_xfp = settings.get('xfp', 0)
@@ -775,6 +776,8 @@ class psbtObject(psbtProxy):
 
         if kt == PSBT_GLOBAL_UNSIGNED_TX:
             self.txn = val
+        elif kt == PSBT_GLOBAL_XPUB:
+            self.xpubs[key[1:]] = val
         else:
             self.unknowns[key] = val
 
@@ -1057,7 +1060,7 @@ class psbtObject(psbtProxy):
 
         if upgrade_txn and self.is_complete():
             # write out the ready-to-transmit txn
-            # - means we are also a combiner in this case
+            # - means we are also a PSBT combiner in this case
             # - hard tho, due to variable length data.
             # - XXX probably a bad idea, so disabled for now
             out_fd.write(b'\x01\x00')       # keylength=1, key=b'', PSBT_GLOBAL_UNSIGNED_TX
@@ -1072,11 +1075,15 @@ class psbtObject(psbtProxy):
             # provide original txn (unchanged)
             wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
+        if self.xpubs:
+            for k in self.xpubs:
+                wr(PSBT_GLOBAL_XPUB, self.xpubs[k], k)
+
         if self.unknown:
             for k in self.unknown:
                 wr(k[0], self.unknown[k], k[1:])
 
-        # sep between globals in inputs
+        # sep between globals and inputs
         out_fd.write(b'\0')
 
         for idx, inp in enumerate(self.inputs):
