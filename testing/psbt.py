@@ -10,6 +10,7 @@ from collections import namedtuple
 from base64 import b64encode
 from pycoin.tx.Tx import Tx
 from pycoin.tx.TxOut import TxOut
+from pycoin.encoding import b2a_hashed_base58, a2b_hashed_base58
 from binascii import b2a_hex, a2b_hex
 
 b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
@@ -17,6 +18,7 @@ b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 # BIP-174 aka PSBT defined values
 #
 PSBT_GLOBAL_UNSIGNED_TX 	= (0)
+PSBT_GLOBAL_XPUB         	= (1)
 
 PSBT_IN_NON_WITNESS_UTXO 	= (0)
 PSBT_IN_WITNESS_UTXO 	    = (1)
@@ -189,6 +191,7 @@ class BasicPSBT:
     def __init__(self):
 
         self.txn = None
+        self.xpubs = {}
 
         self.inputs = []
         self.outputs = []
@@ -225,6 +228,8 @@ class BasicPSBT:
                     t = Tx.parse(io.BytesIO(val))
                     num_ins = len(t.txs_in)
                     num_outs = len(t.txs_out)
+                elif kt == PSBT_GLOBAL_XPUB:
+                    self.xpubs[key[1:]] = b2a_hashed_base58(val)
                 else:
                     raise ValueError('unknown global key type: 0x%02x' % kt)
 
@@ -250,6 +255,9 @@ class BasicPSBT:
 
         wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
+        for k in self.xpubs:
+            wr(PSBT_GLOBAL_XPUB, a2b_hashed_base58(self.xpubs[k]), key=k)
+
         # sep
         fd.write(b'\0')
 
@@ -262,15 +270,23 @@ class BasicPSBT:
 
 def test_my_psbt():
     import glob, io
+    from base64 import b64decode
+    from binascii import a2b_hex as _a2b_hex
+
 
     for fn in glob.glob('data/*.psbt'):
         if 'missing_txn.psbt' in fn: continue
         if 'unknowns-ins.psbt' in fn: continue
 
-        ip = open(fn, 'rb').read()
+        raw = open(fn, 'rb').read()
         print("\n\nFILE: %s" % fn)
 
-        p = BasicPSBT().parse(ip)
+        if raw[0:10] == b'70736274ff':
+            raw = _a2b_hex(raw.strip())
+        if raw[0:6] == b'cHNidP':
+            raw = b64decode(raw)
+
+        p = BasicPSBT().parse(raw)
 
         fd = io.BytesIO()
         p.serialize(fd)
