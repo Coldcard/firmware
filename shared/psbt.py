@@ -9,6 +9,7 @@ from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256
 from serializations import ser_string
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
+from utils import xfp2str
 import tcc, stash, gc
 from uio import BytesIO
 from sffile import SizerFile
@@ -1023,7 +1024,7 @@ class psbtObject(psbtProxy):
         cnt = sum(i.our_keys for i in self.inputs)
         if not cnt:
             raise FatalPSBTIssue('None of the keys involved in this transaction '
-                                        'belong to this Coldcard (expect 0x%08x).' % self.my_xfp)
+                                 'belong to this Coldcard (expect %s).' % xfp2str(self.my_xfp))
 
     @classmethod
     def read_psbt(cls, fd):
