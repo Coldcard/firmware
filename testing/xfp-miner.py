@@ -2,6 +2,8 @@
 #
 # Search for an XFP collision.
 #
+# LATER: trivial to make XFP collisions: just modulate the chain-code, keep same secret exponent.
+#
 import os, hmac, hashlib
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.encoding import from_bytes_32, to_bytes_32
