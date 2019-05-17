@@ -172,61 +172,55 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
         need_keypress('x')
         assert f'Policy: {N} of {N}\n' in story
 
-def make_redeem(M, keys, paths):
+def make_redeem(M, keys, path_mapper):
     N = len(keys)
 
     # see BIP 67: <https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki>
 
-    pubkeys = []
-    for xfp in keys:
-        node = keys[xfp][0]     # master root key
-        path = paths[xfp]
+    data = []
+    for cosigner_idx, (xfp, node, _) in enumerate(keys):
+        #xfp, = unpack("<I", node.parent_fingerprint())
+
+        path = path_mapper(cosigner_idx)
 
         #print(xfp2str(xfp),end=': ')
 
         for p in path:
             node = node.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000))
-            if p == 2147483693:
-                assert node == keys[xfp][1]
 
         pk = node.sec(use_uncompressed=False)
-        pubkeys.append(pk)
-        #print(f"{xfp2str(xfp)} {path} => {B2A(pk)}")
+        data.append( (pk, [xfp, *path]))
 
-    pubkeys.sort()
+    data.sort(key=lambda i:i[0])
 
     mm = [80 + M] if M <= 16 else [1, M]
     nn = [80 + N] if N <= 16 else [1, N]
 
     rv = bytes(mm)
 
-    for pk in pubkeys:
+    for pk,_ in data:
         rv += bytes([len(pk)]) + pk
 
     rv += bytes(nn + [0xAE])
 
     print("redeem script: " + B2A(rv))
 
-    return rv, pubkeys
+    return rv, [pk for pk, _ in data], [xfp_path for _,xfp_path in data]
         
     
 
 @pytest.fixture
 def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh):
-    def doit(M, keys, subpath=[1,2,3], addr_fmt=AF_P2SH, give_scr=True):
+    def doit(M, keys, subpath=[1,2,3], addr_fmt=AF_P2SH):
         # test we are showing addresses correctly
         addr_fmt = unmap_addr_fmt.get(addr_fmt, addr_fmt)
 
-        # limitation: assume BIP45 here, but don't do cosigner index
-        paths = [[xfp, HARD(45)] + subpath for xfp in keys]
-
-        # pre-calc redeem script
-        #print(repr(paths))
-        scr, pubkeys = make_redeem(M, keys, dict((a,b) for a,*b in paths))
+        # make a redeem script, using provided keys/pubkeys
+        scr, pubkeys, xfp_paths = make_redeem(M, keys.items(), lambda i: [HARD(45), i, 0,0])
         assert len(scr) <= 520, "script too long for standard!"
 
         got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                    M, paths, addr_fmt, scr if give_scr else b''),
+                                    M, xfp_paths, scr, addr_fmt=addr_fmt),
                                     timeout=None)
 
         title, story = cap_story()
@@ -252,8 +246,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
 
 @pytest.mark.parametrize('m_of_n', [(1,3), (2,3), (3,3), (3,6), (10, 15), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
-@pytest.mark.parametrize('give_scr', [False, True])
-def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, give_scr):
+def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
 
     M, N = m_of_n
 
@@ -267,7 +260,7 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 
     # test an address that should be in that wallet.
     time.sleep(.1)
-    test_ms_show_addr(M, keys, addr_fmt=addr_fmt, give_scr=give_scr)
+    test_ms_show_addr(M, keys, addr_fmt=addr_fmt)
 
     # cleanup
     clear_ms()
@@ -562,5 +555,32 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
     check_named('xxx-hacked')
 
     clear_ms()
+
+@pytest.mark.parametrize('N', [ 3, 15])
+def test_duplicate_xfp(N, make_multisig, offer_import, need_keypress, M=1):
+    # It's legit to have duplicate XFP values! Not hard to make either!
+
+    keys = make_multisig(N, N)
+
+    # make them all have same XFP, but different xpubs
+    pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+
+    lst = [pk.subkey(45, is_hardened=True, as_private=False)]
+    for idx in range(N-1):
+        h = BIP32Node.from_hwif(pk.hwif(as_private=True))        # deepcopy
+        h._chain_code = b'chain code is 32 bytes: %08d' % idx
+        subkey = h.subkey(45, is_hardened=True, as_private=False)
+        lst.append(subkey)
+
+    print(lst)
+
+    # bare, no fingerprints
+    # - no xfps
+    # - no meta data
+    config = '\n'.join(sk.hwif(as_private=False) for sk in lst)
+    title, story = offer_import(config)
+    assert f'Policy: {N} of {N}\n' in story
+    need_keypress('x')
+
 
 # EOF
