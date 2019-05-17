@@ -651,35 +651,58 @@ def start_bip39_passphrase(pw):
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
 
-    
 
-class ShowAddress(UserAuthorizedAction):
-    def __init__(self, addr_fmt, subpath, ms, subpaths, witdeem_script):
+class ShowAddressBase(UserAuthorizedAction):
+    def __init__(self, *args):
         super().__init__()
-        self.subpath = subpath
-        self.witdeem_script = witdeem_script
-        self.ms = ms
-        self.unknown_scr = None
 
         from main import dis
         dis.fullscreen('Wait...')
 
-        if addr_fmt & AFC_SCRIPT:
-            actual_scr, self.subpath = ms.generate_script(subpaths, witdeem_script)
-            self.address = ms.chain.p2sh_address(addr_fmt, actual_scr)
-        else:
-            with stash.SensitiveValues() as sv:
-                node = sv.derive_path(subpath)
-                self.address = sv.chain.address(node, addr_fmt)
+        # this must set self.address and do other slow setup
+        self.setup(*args)
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        title = 'Address:'
-        if self.ms:
-            msg = '(%d of %d needed)\n' % (self.ms.M, self.ms.N)
-            title = 'Multisig:'
+        msg = self.get_msg()
 
-            msg = '''\
+        msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
+
+        ch = await ux_show_story(msg, title=self.title)
+
+        self.done()
+        UserAuthorizedAction.cleanup()      # because no results to store
+
+    
+class ShowPKHAddress(ShowAddressBase):
+    title = 'Address:'
+
+    def setup(self, addr_fmt, subpath):
+        self.subpath = subpath
+
+        with stash.SensitiveValues() as sv:
+            node = sv.derive_path(subpath)
+            self.address = sv.chain.address(node, addr_fmt)
+
+    def get_msg(self):
+        return '''{addr}\n\n= {sp}''' .format(addr=self.address, sp=self.subpath)
+
+
+class ShowP2SHAddress(ShowAddressBase):
+    title = 'Multisig:'
+
+    def setup(self, ms, addr_fmt, xfp_paths, witdeem_script):
+
+        self.witdeem_script = witdeem_script
+        self.ms = ms
+
+        # calculate all the pubkeys involved.
+        self.subpath_help = ms.validate_script(witdeem_script, xfp_paths=xfp_paths)
+
+        self.address = ms.chain.p2sh_address(addr_fmt, witdeem_script)
+
+    def get_msg(self):
+        return '''\
 {addr}
 
 Wallet Name:
@@ -690,84 +713,76 @@ Policy: {M} of {N}
 
 Paths:
 
-{sp}
+{sp}'''.format(addr=self.address, name=self.ms.name,
+                        M=self.ms.M, N=self.ms.N, sp='\n'.join(self.subpath_help))
 
-Compare this payment address to the one shown on your other, less-trusted, software.'''\
-            .format(addr=self.address, name=self.ms.name,
-                        M=self.ms.M, N=self.ms.N, sp='\n'.join(self.subpath))
+def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
+    # Show P2SH address to user, also returns it.
+    # - first need to find appropriate multisig wallet associated
+    # - they must provide full redeem script, and we will re-verify it and check pubkeys inside it
 
-        else:
-            msg = '''\
-{addr}
-
-= {sp}
-
-Compare this payment address to the one shown on your other, less-trusted, software.\
-''' .format(addr=self.address, sp=self.subpath)
-
-        ch = await ux_show_story(msg, title=title)
-
-        self.done()
-        UserAuthorizedAction.cleanup()      # because no results to store
-
-def start_show_address(addr_format, subpath=None, subpaths=None, witdeem_script=None, m_of_n=None):
-    # Show address to user, also returns it.
+    import ustruct
+    from multisig import MultisigWallet
 
     try:
         assert addr_format in SUPPORTED_ADDR_FORMATS
+        assert addr_format & AFC_SCRIPT
     except:
         raise AssertionError('Unknown/unsupported addr format')
 
-    if (addr_format & AFC_SCRIPT):
-        import ustruct
-        from multisig import MultisigWallet
-        
-        # script is optional/not needed.
-        #if not witdeem_script
-        #    raise AssertionError('Redeem/witness script is required')
+    # Search for matching multisig wallet that we must already know about
+    xfps = [i[0] for i in xfp_paths]
 
-        # Search for matching multisig wallet that we must already know about
-        xfps = {}
-        for p in subpaths:
-            k, *v = ustruct.unpack_from('>%dI' % (len(p)//4), p) 
-            xfps[k] = v
+    idx = MultisigWallet.find_match(M, N, xfps)
+    assert idx >= 0, 'Multisig wallet with those fingerprints not found'
 
-        del subpaths
-        M, N = m_of_n
-
-        assert len(xfps) == N, 'dup xfp'
-
-        idx = MultisigWallet.find_match(M, N, xfps.keys())
-        if idx < 0:
-            raise AssertionError('Multisig wallet with those fingerprints not found')
-
-        ms = MultisigWallet.get_by_idx(idx)
-        assert ms, "load wallet fail"
-
-    else:
-        # text path expected
-        try:
-            subpath = str(subpath, 'ascii')
-            ms = None
-            xfps = None
-        except UnicodeError:
-            raise AssertionError('must be ascii')
+    ms = MultisigWallet.get_by_idx(idx)
+    assert ms
+    assert ms.M == M
+    assert ms.N == N
 
     global active_request
-    UserAuthorizedAction.check_busy(ShowAddress)
-    active_request = ShowAddress(addr_format, subpath, ms, xfps, witdeem_script)
+    UserAuthorizedAction.check_busy(ShowAddressBase)
+
+    active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
 
-    # provide the value back to attached desktop too!
+    # provide the value back to attached desktop
+    return active_request.address
+
+def start_show_address(addr_format, subpath):
+    try:
+        assert addr_format in SUPPORTED_ADDR_FORMATS
+        assert not (addr_format & AFC_SCRIPT)
+    except:
+        raise AssertionError('Unknown/unsupported addr format')
+
+    # text path expected
+    try:
+        subpath = str(subpath, 'ascii')
+        ms = None
+        subpaths = None
+    except UnicodeError:
+        raise AssertionError('must be ascii')
+
+    global active_request
+    UserAuthorizedAction.check_busy(ShowAddressBase)
+    active_request = ShowPKHAddress(addr_format, subpath)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(active_request)
+
+    # provide the value back to attached desktop
     return active_request.address
 
 
 class NewEnrollRequest(UserAuthorizedAction):
-    def __init__(self, ms):
+    def __init__(self, ms, auto_export=False):
         super().__init__()
         self.wallet = ms
+        self.auto_export = auto_export
 
         # self.result ... will be re-serialized xpub
 
@@ -789,8 +804,8 @@ class NewEnrollRequest(UserAuthorizedAction):
             story = 'Create new multisig wallet?'
         elif diff_count:
             story = '''\
-CAUTION: This updated wallet has %d different xpub values, but matching fingerprints \
-and same M of N. Perhaps the derivation path has changed legitimately, otherwise, \
+CAUTION: This updated wallet has %d different XPUB values, but matching fingerprints \
+and same M of N. Perhaps the derivation path has changed legitimately, otherwise, much \
 DANGER!''' % diff_count
         else:
             story = 'Update existing multisig wallet?'
@@ -816,14 +831,13 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
                     # Show the xpubs; might be 2k or more rendered.
                     msg = uio.StringIO()
 
-                    for idx, xfp in enumerate(ms.xpubs):
+                    for idx, (xfp, xpub) in enumerate(ms.xpubs):
                         if idx:
                             msg.write('\n\n')
 
                         # Not showing index numbers here because order
                         # is non-deterministic both here, our storage, and in usage.
-                        msg.write('%s:\n' % xfp2str(xfp))
-                        msg.write(ms.xpubs[xfp])
+                        msg.write('%s:\n%s' % (xfp2str(xfp), xpub))
 
                     await ux_show_story(msg, title='%d of %d' % (ms.M, ms.N))
 
@@ -839,6 +853,12 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
                         return await self.failure('No space left')
 
                     await ux_dramatic_pause("Saved.", 2)
+
+                    if self.auto_export:
+                        # save cosigner details now too 
+                        await ms.export_wallet_file('created on', 
+        "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
+
                 else:
                     # they don't want to!
                     self.refused = True

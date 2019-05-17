@@ -339,46 +339,55 @@ class USBHandler:
             sign_msg(msg, subpath, addr_fmt)
             return None
 
+        if cmd == 'p2sh':
+            # show P2SH (probably multisig) address on screen (also provides it back)
+            # - must provide redeem script, and list of [xfp+path]
+            from auth import start_show_p2sh_address
+
+            # new multsig goodness, needs mapping from xfp->path and M values
+            addr_fmt, M, N, script_len = unpack_from('<IBBH', args)
+
+            assert addr_fmt & AFC_SCRIPT
+            assert 1 <= M <= N <= 20
+            assert 30 <= script_len <= 520
+
+            offset = 8
+            witdeem_script = args[offset:offset+script_len]
+            offset += script_len
+
+            assert len(witdeem_script) == script_len
+
+            xfp_paths = []
+            for i in range(N):
+                ln = args[offset]
+                assert 2 <= ln <= 16, 'badlen'
+                xfp_paths.append(unpack_from('<%dI' % ln, args, offset+1))
+                offset += (ln*4) + 1
+
+            assert offset == len(args)
+
+            return b'asci' + start_show_p2sh_address(M, N, addr_fmt, xfp_paths,
+                                                        witdeem_script)
+
         if cmd == 'show':
-            # show address on screen (also provides it back)
+            # simple cases, older code: text subpath
             from auth import start_show_address
 
             addr_fmt, = unpack_from('<I', args)
-            if addr_fmt & AFC_SCRIPT:
-                # new multsig goodness, needs mapping from xfp->path and M values
-                addr_fmt, M, N = unpack_from('<IBB', args)
-                assert 1 <= M <= N <= 20
-                offset = 6
-                subpaths = []
-                for i in range(N):
-                    ln = args[offset]; offset += 1
-                    assert ln % 4 == 0
-                    assert ln / 4 <= 16, 'max depth'
-                    subpaths.append(args[offset:offset+ln])
-                    offset += ln
+            assert not (addr_fmt & AFC_SCRIPT)
 
-                witdeem_script = args[offset:]      # optional?
-
-                return b'asci' + start_show_address(addr_fmt, subpaths=subpaths, 
-                                                        witdeem_script=witdeem_script,
-                                                        m_of_n=(M,N))
-            else:
-                # simple cases, older code: text subpath
-                subpath = args[4:]
-                witdeem_script = None
-
-                return b'asci' + start_show_address(addr_fmt, subpath=subpath)
-
+            return b'asci' + start_show_address(addr_fmt, subpath=args[4:])
 
         if cmd == 'enrl':
             # Enroll new xpubkey to be involved in multisigs.
+            # - text config file must already be uploaded
 
             file_len, file_sha = unpack_from('<I32s', args)
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
             assert 100 < file_len <= (20*200), "badlen"
 
-            # Start an interaction, return immediately tho
+            # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
             maybe_enroll_xpub(sf_len=file_len)
             return None
