@@ -14,6 +14,7 @@ import tcc, stash, gc
 from uio import BytesIO
 from sffile import SizerFile
 from sram2 import psbt_tmp256
+from multisig import MultisigWallet, MAX_SIGNERS, disassemble_multisig
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -29,10 +30,18 @@ DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
+# print some things 
+DEBUG = const(1)
+
+# this points to a wallet, during operation
+# - we're only supporting a single multisig during a signing
+active_multisig = None
+
 class FatalPSBTIssue(RuntimeError):
     pass
 class FraudulentChangeOutput(FatalPSBTIssue):
-    pass
+    def __init__(self, out_idx, msg):
+        super().__init__('Output#%d: %s' % (out_idx, msg))
 
 class HashNDump:
     def __init__(self, d=None):
@@ -187,13 +196,21 @@ class psbtProxy:
 
         return tcc.sha256(rv.digest()).digest()
 
-    def parse_subpaths(self, my_xfp, first_known=False):
-        # reformat self.subpaths into a more useful form for us; return # of them
-        # that are ours.
+    def parse_subpaths(self, my_xfp):
+        # Reformat self.subpaths into a more useful form for us; return # of them
+        # that are ours (and track that as self.num_our_keys)
         # - works in-place, on self.subpaths
-        # - just return first result if used for outputs
-        our_keys = 0
+        # - creates dictionary: pubkey => [xfp, *path]
+        # - will be single entry for non-p2sh ins and outs
 
+        if not self.subpaths:
+            return 0
+
+        if self.num_our_keys != None:
+            # already been here once
+            return self.num_our_keys
+
+        num_ours = 0
         for pk in self.subpaths:
             assert len(pk) in {33, 65}, "hdpath pubkey len"
             if len(pk) == 33:
@@ -210,30 +227,27 @@ class psbtProxy:
             here = list(unpack_from('<I', v, off)[0] for off in range(0, vl, 4))
             assert len(here) == vl // 4
 
-            if first_known:
-                if here[0] == my_xfp:
-                    return (pk, here)
-                continue
-
             # update in place
             self.subpaths[pk] = here
 
             if here[0] == my_xfp:
-                our_keys += 1
+                num_ours += 1
             else:
-                # Address that isn't based on this seed; might be another leg in a p2sh
-                #print('here[0]=0x%x != 0x%x  ... %r' % (here[0], self.my_xfp,
-                #       [i& 0xfff for i in here[1:]]))
+                # Address that isn't based on my seed; might be another leg in a p2sh
+                # and that's okay, or an input we're not supposed to be able to sign
                 pass
 
-        return None if first_known else our_keys
+        self.num_our_keys = num_ours
+        return num_ours
+
 
 
 # Track details of each output of PSBT
 #
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
-    blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script', 'is_change')
+    blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
+                    'is_change', 'is_p2sh_change', 'num_our_keys')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -243,8 +257,11 @@ class psbtOutputProxy(psbtProxy):
         #self.redeem_script = None
         #self.witness_script = None
 
-        # this becomes a tuple: (pubkey, subkey path) iff we are a change output
+        # this flag is set when we are assuming output will be change (same wallet)
         #self.is_change = False
+
+        # output is change into same multisig wallet
+        #self.is_p2sh_change = False
 
         self.parse(fd)
 
@@ -280,39 +297,41 @@ class psbtOutputProxy(psbtProxy):
 
     def validate(self, out_idx, txo, my_xfp):
         # Do things make sense for this output?
+    
         # NOTE: We might think it's a change output, because the PSBT
         # creator has given us a key path. However, we must be
         # **very** careful and validate this fully.
         # - no output info is needed, in general, so
-        #   any output info provided better be right, or fail
-        # - full key derivation and validation is elsewhere, and critical.
-        # - we raise a fraud alarm, since these are not innocent errors
+        #   any output info provided better be right, or fail as "fraud"
+        # - full key derivation and validation is done during signing, and critical.
+        # - we raise a fraud alarms, since these are not innocent errors
         #
-        if not self.subpaths:
+
+        num_ours = self.parse_subpaths(my_xfp)
+
+        if num_ours == 0:
+            # - not considered fraud because other signers looking at PSBT may have them
+            # - user will see them as normal outputs, which they are.
             return
-
-        ours = self.parse_subpaths(my_xfp, first_known=True)
-
-        # - must be exactly one of our keys here (extras ignored, not-ours ignored)
-        # - not considered fraud because other signers looking at PSBT may have them
-        # - user will see them as normal outputs, which they are.
-        if ours == None:
-            return
-
-        expect_pubkey = ours[0]
 
         # - must match expected address for this output, coming from unsigned txn
         addr_type, addr_or_pubkey, is_segwit = txo.get_address()
+
+        if num_ours == 1:
+            # p2pk, p2pkh, p2wpkh cases
+            expect_pubkey, = self.subpaths.keys()
+        else:
+            # p2wsh/p2sh cases need full set of pubkeys
+            expect_pubkey = None
 
         if addr_type == 'p2pk':
             # output is public key (not a hash, much less common)
             assert len(addr_or_pubkey) == 33
 
             if addr_or_pubkey != expect_pubkey:
-                raise FraudulentChangeOutput("Output#%d: P2PK change output is fraudulent" 
-                                                            % out_idx)
+                raise FraudulentChangeOutput(out_idx, "P2PK change output is fraudulent")
 
-            self.is_change = ours
+            self.is_change = True
             return
 
         # Figure out what the hashed addr should be
@@ -323,6 +342,7 @@ class psbtOutputProxy(psbtProxy):
             # We must have the witness & redeem script already (else fail)
             if not self.redeem_script:
                 # perhaps an omission, so let's not call fraud on it
+                # but definately required, else we don't know what script we're sending to.
                 raise AssertionError("Missing redeem script for output #%d" % out_idx)
 
             redeem_script = self.get(self.redeem_script)
@@ -340,9 +360,28 @@ class psbtOutputProxy(psbtProxy):
                 # - must look like input side redeem script (same fingerprints)
                 # - assert M/N structure of output to match any inputs we have signed in PSBT!
                 # - assert all provided pubkeys are in redeem script, not just ours
-                # - XXX redo this
-                if expect_pubkey not in redeem_script:
-                    raise FraudulentChangeOutput("Output#%d: P2WSH/P2SH change output missing my pubkey" % out_idx)
+                # - we get all of that by re-constructing the script from our wallet details
+
+                # it cannot be change if it doesn't precisely match our multisig setup
+                global active_multisig
+
+                if not active_multisig:
+                    # might be a p2sh output for another wallet that isn't us
+                    # not fraud, just an output with more details than we need.
+                    self.is_change = False
+                    return
+
+                # redeem script must be exactly what we expect
+                # - pubkeys will be reconstructed from derived paths here
+                # - BIP67 rules applied
+                try:
+                    active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+                except BaseException as exc:
+                    raise FraudulentChangeOutput(out_idx, 
+                                "P2WSH/P2SH change output redeem script: %s" % exc)
+
+                # mark pubkeys as already checked.
+                self.is_p2sh_change = True
 
                 if is_segwit:
                     # p2wsh case
@@ -350,9 +389,9 @@ class psbtOutputProxy(psbtProxy):
                     assert len(addr_or_pubkey) == 32
                     expect_wsh = tcc.sha256(self.witness_script).digest()
                     if expect_wsh != addr_or_pubkey:
-                        raise FraudulentChangeOutput("Output#%d: P2WSH witness script has wrong hash" % out_idx)
+                        raise FraudulentChangeOutput(out_idx, "P2WSH witness script has wrong hash")
 
-                    self.is_change = ours
+                    self.is_change = True
                     return
 
                 else:
@@ -369,10 +408,10 @@ class psbtOutputProxy(psbtProxy):
 
         expect_pkh = hash160(expect_pubkey)
         if pkh != expect_pkh:
-            raise FraudulentChangeOutput("Output#%d: P2PKH change output is fraudulent" % out_idx)
+            raise FraudulentChangeOutput(out_idx, "Change output is fraudulent")
 
-        # store pubkey value for later validation
-        self.is_change = ours
+        # We will check pubkey value at the last second, during signing.
+        self.is_change = True
 
 
 # Track details of each input of PSBT
@@ -389,8 +428,8 @@ class psbtInputProxy(psbtProxy):
 
     blank_flds = ('unknown',
                     'utxo', 'witness_utxo', 'sighash',
-                    'redeem_script', 'witness_script', 'our_keys', 'fully_signed',
-                    'is_segwit', 'is_multisig', 'is_p2sh',
+                    'redeem_script', 'witness_script', 'fully_signed',
+                    'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
                     'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig')
 
     def __init__(self, fd, idx):
@@ -404,7 +443,8 @@ class psbtInputProxy(psbtProxy):
         #self.redeem_script = None
         #self.witness_script = None
 
-        #self.our_keys = None
+        # Non-zero if one or more of our signing keys involved in input
+        #self.num_our_keys = None
 
         # things we've learned
         #self.fully_signed = False
@@ -435,8 +475,8 @@ class psbtInputProxy(psbtProxy):
 
         # require path for each addr, check some are ours
 
-        if self.our_keys is None:        # can only do once
-            self.our_keys = self.parse_subpaths(my_xfp)
+        # rework the pubkey => subpath mapping
+        self.parse_subpaths(my_xfp)
 
         # sighash, but we're probably going to ignore anyway.
         self.sighash = SIGHASH_ALL if self.sighash is None else self.sighash
@@ -444,7 +484,7 @@ class psbtInputProxy(psbtProxy):
         if self.part_sig:
             # How complete is the set of signatures so far?
             # - assuming PSBT creator doesn't give us extra data not required
-            # - seem harmless if they fool us into thinking already signed; we do nothing
+            # - seems harmless if they fool us into thinking already signed; we do nothing
             # - could also look at pubkey needed vs. sig provided
             # - could consider structure of MofN in p2sh cases
             self.fully_signed = (len(self.part_sig) >= len(self.subpaths))
@@ -623,6 +663,7 @@ class psbtInputProxy(psbtProxy):
                 # multiple keys involved, we probably can't do the finalize step
                 self.is_multisig = True
 
+
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
             self.scriptSig = utxo.scriptPubKey
@@ -645,7 +686,35 @@ class psbtInputProxy(psbtProxy):
             # we don't know how to "solve" this type of input
             pass
 
-        if not which_key:
+        if self.is_multisig and which_key:
+            # We will be signing this input, so 
+            # - find which wallet it is or
+            # - check it's the right M/N to match
+            global active_multisig
+
+            M, N, my_offset = disassemble_multisig(redeem_script, which_key)
+            assert my_offset >=0, 'pubkey not in redeem script'
+            xfps = [lst[0] for lst in self.subpaths.values()]
+
+            if not active_multisig:
+                # search for multisig wallet
+                print(repr(xfps))
+                print(repr(N))
+                wal = MultisigWallet.find_match(M, N, xfps)
+                assert wal >= 0, 'unknown multisig wallet'
+
+                active_multisig = MultisigWallet.get_by_idx(wal)
+            else:
+                # check consistent w/ already selected wallet
+                active_multisig.assert_matching(M, N, xfps)
+
+            # validate redeem script, by disassembling it and checking all pubkeys
+            try:
+                active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+            except BaseException as exc:
+                raise AssertionError('Input #%d: %s' % (my_idx, exc))
+
+        if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
                     my_idx, addr_type, self.is_segwit or 0,
                     b2a_hex(addr_or_pubkey), b2a_hex(utxo.scriptPubKey)))
@@ -671,7 +740,7 @@ class psbtInputProxy(psbtProxy):
 
                 self.scriptCode = self.get(self.witness_script)
 
-        # Could probably free self.subpaths and self.redeem_script now, but only if we don't
+        # Could probably free self.subpaths and self.redeem_script now, but only if we didn't
         # need to re-serialize as a PSBT.
 
     def store(self, kt, key, val):
@@ -743,8 +812,10 @@ class psbtObject(psbtProxy):
 
         # global objects
         self.txn = None
-        self.multisig = None
         self.xpubs = {}
+
+        global active_multisig
+        active_multisig = None
 
         from main import settings, dis
         self.my_xfp = settings.get('xfp', 0)
@@ -899,6 +970,60 @@ class psbtObject(psbtProxy):
 
             fd.seek(cont)
 
+    def guess_M_of_N(self):
+        # Peek at the inputs to see if we can guess M/N value. Just takes
+        # first one if finds.
+        #
+        for i in self.inputs:
+            if not i.redeem_script: continue
+
+            rs = i.get(i.redeem_script)
+            if rs[-1] != OP_CHECKMULTISIG: continue
+
+            M, N, _ = disassemble_multisig(rs)
+            assert 1 <= M <= N < MAX_SIGNERS
+
+            return (M, N)
+
+        raise AssertionError("unclear M")
+
+    def handle_xpubs(self):
+        # Lookup correct wallet based on xpubs in globals
+        # - only happens if they volunteered this 'extra' data
+        global active_multisig
+        assert not active_multisig
+
+        xfps = [unpack_from('<I', k, 0)[0] for k in self.xpubs.keys()]
+        assert self.my_xfp in xfps, 'my xfp not involved'
+
+        candidates = MultisigWallet.find_candidates(xfps)
+
+        match_idx = -1
+        if len(candidates) == 1:
+            # exact match (by xfp set) .. normal case
+            active_multisig = Multisig.get_by_idx(candidates[0])
+        else:
+            # don't want to guess M if not needed, but we need it
+            M, N = self.guess_M_of_N()
+            assert N == len(xfps) 
+
+            if candidates:
+                # maybe narrowed down to single match now
+                match_idx = MultisigWallet.find_match(M, N, xfps)
+                if match_idx != -1:
+                    active_multisig = Multisig.get_by_idx(match_idx)
+
+        if not active_multisig:
+            # Maybe create wallet, for today, forever, or fail, etc.
+            active_multisig = Multisig.import_from_psbt(M, N, self.xpubs)
+
+        if not active_multisig:
+            # not clear if an error... might be part-way to importing, and
+            # the data is optional anyway, etc. If they refuse to import, 
+            # we should not reach this point (ie. raise something to abort signing)
+            return
+
+        # TODO validate good match: xpubs must be exactly right
 
     def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
@@ -912,14 +1037,19 @@ class psbtObject(psbtProxy):
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
 
+        # if multisig xpub details provided, they better be right and/or offer import
+        if self.xpubs:
+            self.handle_xpubs()
+
         assert self.num_outputs >= 1, 'need outs'
 
         for idx, txo in self.output_iter():
             self.outputs[idx].validate(idx, txo, self.my_xfp)
 
-        our_keys = sum(i.our_keys for i in self.inputs)
+        if DEBUG:
+            our_keys = sum(1 for i in self.inputs if i.num_our_keys)
 
-        print("PSBT: %d inputs, %d output, %d fully-signed, %d ours" % (
+            print("PSBT: %d inputs, %d output, %d fully-signed, %d ours" % (
                    self.num_inputs, self.num_outputs,
                    sum(1 for i in self.inputs if i and i.fully_signed), our_keys))
 
@@ -1023,11 +1153,10 @@ class psbtObject(psbtProxy):
 
     def consider_keys(self):
         # check we process the right keys for the inputs
-        # - check our derivation leads to same pubkey?
-        cnt = sum(i.our_keys for i in self.inputs)
+        cnt = sum(1 for i in self.inputs if i.num_our_keys)
         if not cnt:
             raise FatalPSBTIssue('None of the keys involved in this transaction '
-                                 'belong to this Coldcard (expect %s).' % xfp2str(self.my_xfp))
+                                 'belong to this Coldcard (need %s).' % xfp2str(self.my_xfp))
 
     @classmethod
     def read_psbt(cls, fd):
@@ -1106,22 +1235,27 @@ class psbtObject(psbtProxy):
         with stash.SensitiveValues() as sv:
             # Double check the change outputs are right. This is slow, but critical because
             # it detects bad actors, not bugs or mistakes.
-            change_paths = [(n, o.is_change) for n,o in enumerate(self.outputs) if o.is_change]
-            if change_paths:
+            # - equivilent check already done for p2sh outputs when we re-built the redeem script
+            change_outs = [n for n,o in enumerate(self.outputs) 
+                                if o.is_change and not o.is_p2sh_change]
+            if change_outs:
                 dis.fullscreen('Change Check...')
 
-                for out_idx, (pubkey, subpath) in change_paths:
-                    dis.progress_bar_show(out_idx / len(change_paths))
+                for count, out_idx in enumerate(change_outs):
+                    # only expecting single case, but be general
+                    dis.progress_bar_show(count / len(change_outs))
 
-                    skp = path_to_str(subpath)
-                    node = sv.derive_path(skp)
+                    for pubkey, subpath in self.outputs[out_idx].subpaths.items():
+                        # derive it
+                        skp = path_to_str(subpath)
+                        node = sv.derive_path(skp)
 
-                    # check the pubkey of this BIP32 node
-                    pu = node.public_key()
-                    if pu != pubkey:
-                        raise FraudulentChangeOutput(
-                                  "Deception regarding change output #%d. "
-                                  "BIP32 path doesn't match actual address." % out_idx)
+                        # check the pubkey of this BIP32 node
+                        pu = node.public_key()
+                        if pu != pubkey:
+                            raise FraudulentChangeOutput(out_idx, 
+                                      "Deception regarding change output. "
+                                      "BIP32 path doesn't match actual address.")
 
             # progress
             dis.fullscreen('Signing...')
@@ -1202,10 +1336,6 @@ class psbtObject(psbtProxy):
                 del result, r, s
 
                 gc.collect()
-
-        if len(success) != self.num_inputs:
-            print("Wasn't able to sign input(s): %s" %
-                            ', '.join('#'+str(i) for i in set(range(self.num_inputs)) - success))
 
         # done.
         dis.progress_bar_show(1)

@@ -59,6 +59,8 @@
   16 levels deep (including master fingerprint)
 - max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
 - we have space for up to 8 M-of-3 wallets, or a single M-of-20 wallet. YMMV
+- only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
+    multisig wallets at the same time.
 
 # SIGHASH types
 
@@ -74,7 +76,7 @@
 
 - Coldcard will, by default, reject any txn that pays a fee of more than 10% of its total
   value to miners. This limit is a setting: 10% (default), 25%, 50% or 'no limit'.
-- Fees over 5% (was 1%) are warnings only.
+- Fees over 5% (was 1%) are shown as warnings.
 
 # Developer / Source Code
 

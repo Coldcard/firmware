@@ -292,35 +292,6 @@ def current_chain():
 
     return get_chain(chain)
 
-def disassemble_multisig(witdeem_script, expect_pubkey=None):
-    # take apart a standard multisig's redeem/witness script, and return M/N and offset of
-    # one pubkey (if provided) involved
-    # - can only for multisig
-    # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
-    from serializations import disassemble
-
-    M, N = -1, -1
-    found_offset = -1
-
-    # generator
-    dis = disassemble(witdeem_script)
-
-    # expect M value first
-    M, opcode =  next(dis)
-    assert opcode == None and isinstance(M, int), 'garbage at start'
-
-    for offset, (data, opcode) in enumerate(dis):
-        if opcode == OP_CHECKMULTISIG:
-            break
-        if isinstance(data, int):
-            N = data
-        elif data == expect_pubkey:
-            found_offset = offset
-
-    assert 1 <= M <= N <= 20, 'M/N range'      # will also happen if N not encoded.
-
-    return M, N, found_offset
-
 # Some common/useful derivation paths and where they may be used.
 # see bip49 for meaning of the meta vars
 CommonDerivations = [

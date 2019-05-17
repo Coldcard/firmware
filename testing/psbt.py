@@ -11,7 +11,9 @@ from base64 import b64encode
 from pycoin.tx.Tx import Tx
 from pycoin.tx.TxOut import TxOut
 from pycoin.encoding import b2a_hashed_base58, a2b_hashed_base58
+from pycoin.tx.script.check_signature import parse_signature_blob
 from binascii import b2a_hex, a2b_hex
+from base64 import b64decode
 
 b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 
@@ -108,11 +110,18 @@ class BasicPSBTInput(PSBTSection):
         if a.sighash != b.sighash:
             if a.sighash is not None and b.sighash is not None:
                 return False
-        return  a.utxo == b.utxo and \
+
+        rv =  a.utxo == b.utxo and \
                 a.witness_utxo == b.witness_utxo and \
                 a.my_index == b.my_index and \
                 a.bip32_paths == b.bip32_paths and \
-                sorted(a.part_sigs.items()) == sorted(b.part_sigs.items())
+                sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys())
+        if rv:
+            # NOTE: equality test on signatures requires parsing DER stupidness
+            #       and some maybe understanding of R/S values on curve that I don't have.
+            assert all(parse_signature_blob(a.part_sigs[k]) 
+                            == parse_signature_blob(b.part_sigs[k]) for k in a.part_sigs)
+        return rv
 
     def parse_kv(self, kt, key, val):
         if kt == PSBT_IN_NON_WITNESS_UTXO:
@@ -201,11 +210,15 @@ class BasicPSBT:
             len(a.inputs) == len(b.inputs) and \
             len(a.outputs) == len(b.outputs) and \
             all(a.inputs[i] == b.inputs[i] for i in range(len(a.inputs))) and \
-            all(a.outputs[i] == b.outputs[i] for i in range(len(a.outputs)))
+            all(a.outputs[i] == b.outputs[i] for i in range(len(a.outputs))) and \
+            sorted(a.xpubs.items()) == sorted(b.xpubs.items())
 
     def parse(self, raw):
-        if raw[0:10] == b'70736274ff':
+        # auto-detect and decode Base64 and Hex.
+        if raw[0:10].lower() == b'70736274ff':
             raw = a2b_hex(raw.strip())
+        if raw[0:6] == b'cHNidP':
+            raw = b64decode(raw)
         assert raw[0:5] == b'psbt\xff', "bad magic"
 
         with io.BytesIO(raw[5:]) as fd:
@@ -270,9 +283,6 @@ class BasicPSBT:
 
 def test_my_psbt():
     import glob, io
-    from base64 import b64decode
-    from binascii import a2b_hex as _a2b_hex
-
 
     for fn in glob.glob('data/*.psbt'):
         if 'missing_txn.psbt' in fn: continue
@@ -280,11 +290,6 @@ def test_my_psbt():
 
         raw = open(fn, 'rb').read()
         print("\n\nFILE: %s" % fn)
-
-        if raw[0:10] == b'70736274ff':
-            raw = _a2b_hex(raw.strip())
-        if raw[0:6] == b'cHNidP':
-            raw = b64decode(raw)
 
         p = BasicPSBT().parse(raw)
 

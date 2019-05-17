@@ -521,6 +521,20 @@ def decode_with_bitcoind(bitcoind):
 
     return doit
 
+@pytest.fixture()
+def decode_psbt_with_bitcoind(bitcoind):
+
+    def doit(raw_psbt):
+        # verify our understanding of a PSBT against bitcoind
+        from base64 import b64encode
+
+        try:
+            return bitcoind.decodepsbt(b64encode(raw_psbt).decode('ascii'))
+        except ConnectionResetError:
+            # bitcoind sleeps on us sometimes, give it another chance.
+            return bitcoind.decodepsbt(b64encode(raw_psbt).decode('ascii'))
+
+    return doit
 
 @pytest.fixture()
 def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):

@@ -15,6 +15,41 @@ from menu import MenuSystem, MenuItem
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
 MAX_SIGNERS = const(15)
 
+def disassemble_multisig(redeem_script):
+    # take apart a standard multisig's redeem/witness script, and return M/N and offset of
+    # one pubkey (if provided) involved
+    # - can only for multisig
+    # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
+    # - returns M, N, (list of pubkeys)
+    from serializations import disassemble
+    from opcodes import OP_CHECKMULTISIG
+
+    M, N = -1, -1
+
+    # generator
+    dis = disassemble(redeem_script)
+
+    # expect M value first
+    M, opcode =  next(dis)
+    assert opcode == None and isinstance(M, int), 'garbage at start'
+
+    pubkeys = []
+    for offset, (data, opcode) in enumerate(dis):
+        if opcode == OP_CHECKMULTISIG:
+            # should be last byte
+            break
+        if isinstance(data, int):
+            N = data
+        else:
+            pubkeys.append(data)
+    else:
+        raise AssertionError("end fall")
+
+    assert len(pubkeys) == N
+    assert 1 <= M <= N <= 20, 'M/N range'      # will also happen if N not encoded.
+
+    return M, N, pubkeys
+
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
@@ -39,9 +74,12 @@ class MultisigWallet:
         assert len(m_of_n) == 2
         self.M, self.N = m_of_n
         self.chain_type = chain_type or 'BTC'
-        self.xpubs = xpubs
-        self.path_prefix = path_prefix
-        self.addr_fmt = addr_fmt        # not clear how useful that is.
+        self.xpubs = xpubs                  # list of (xfp(int), xpub(str))
+        self.path_prefix = path_prefix      # half implemented? XXX kill me
+        self.addr_fmt = addr_fmt            # not clear how useful that is.
+
+        # useful cache value
+        self.xfps = sorted(k for k,v in self.xpubs)
 
     def serialize(self):
         # return a JSON-able object
@@ -54,11 +92,7 @@ class MultisigWallet:
         if self.path_prefix:
             opts['pp'] = self.path_prefix
 
-        # - xpubs must be strings already by here.
-        # - but JSON doesn't allow numeric keys, so convert into a list
-        xp = list(self.xpubs.items())
-
-        return (self.name, (self.M, self.N), xp, opts)
+        return (self.name, (self.M, self.N), self.xpubs, opts)
 
     @property
     def chain(self):
@@ -68,8 +102,6 @@ class MultisigWallet:
     def deserialize(cls, vals, idx=-1):
         # take json object, make instance.
         name, m_of_n, xpubs, opts = vals
-
-        xpubs = dict(xpubs)
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
                                     path_prefix=opts.get('pp', None),
@@ -82,20 +114,47 @@ class MultisigWallet:
     def find_match(cls, M, N, fingerprints):
         # Find index of matching wallet. Don't de-serialize everything.
         # - returns index, or -1 if not found
-        # - fingerprints are iterable of uint32's
+        # - fingerprints are iterable of uint32's: may not be unique!
+        # - M, N must be known.
         from main import settings
         lst = settings.get('multisig', [])
 
-        fingerprints = frozenset(fingerprints)
+        fingerprints = sorted(fingerprints)
+        assert N == len(fingerprints)
         
         for idx, rec in enumerate(lst):
             name, m_of_n, xpubs, opts = rec
             if tuple(m_of_n) != (M, N): continue
-            if len(xpubs) != len(fingerprints): continue
-            if set(f for f,_ in xpubs) == fingerprints:
-                return idx
+            if sorted(f for f,_ in xpubs) != fingerprints: continue
+            return idx
 
         return -1
+
+    @classmethod
+    def find_candidates(cls, fingerprints):
+        # Find index of matching wallet and M value. Don't de-serialize everything.
+        # - returns set of matches, each with M value
+        # - fingerprints are iterable of uint32's
+        from main import settings
+        lst = settings.get('multisig', [])
+
+        fingerprints = sorted(fingerprints)
+        N = len(fingerprints)
+        rv = {}
+        
+        for idx, rec in enumerate(lst):
+            name, m_of_n, xpubs, opts = rec
+            if m_of_n[1] != N: continue
+            if sorted(f for f,_ in xpubs) != fingerprints: continue
+
+            rv.add(idx)
+
+        return rv
+
+    def assert_matching(self, M, N, fingerprints):
+        # compare in-memory wallet with details recovered from PSBT
+        assert (active_multisig.M, active_multisig.N) == (M, N), "M/N mismatch"
+        assert sorted(fingerprints) == self.xfps
 
     @classmethod
     def get_all(cls):
@@ -136,8 +195,8 @@ class MultisigWallet:
             self.storage_idx = len(v)
             v.append(obj)
         else:
-            # update
-            assert v[self.storage_idx][2].keys() == self.xpubs.keys()
+            # update: no provision for changing fingerprints
+            assert sorted(k for k,v in v[self.storage_idx][2]) == self.xfps
             v[self.storage_idx] = obj
 
         settings.set('multisig', v)
@@ -160,17 +219,22 @@ class MultisigWallet:
         # check if we already have a saved duplicate to this proposed wallet
         # - also, flag if it's a dangerous/fraudulent attempt to replace it.
 
-        idx = MultisigWallet.find_match(self.M, self.N, list(self.xpubs.keys()))
+        idx = MultisigWallet.find_match(self.M, self.N, self.xfps)
         if idx == -1:
             # no matches
             return False, 0
 
-        # see if the xpubs are changing, which is risky... other differences like
+        # See if the xpubs are changing, which is risky... other differences like
         # name are okay.
         o = self.get_by_idx(idx)
+
+        # Calc apx. number of xpub changes.
         diffs = 0
-        for k in self.xpubs:
-            if o.xpubs[k] != self.xpubs[k]:
+        a = sorted(self.xpubs)
+        b = sorted(o.xpubs)
+        assert len(a) == len(b)         # because same N
+        for idx in range(self.N):
+            if a[idx] != b[idx]:
                 diffs += 1
 
         return o, diffs
@@ -183,7 +247,7 @@ class MultisigWallet:
         assert self.storage_idx >= 0
 
         # safety check
-        expect_idx = self.find_match(self.M, self.N, self.xpubs.keys())
+        expect_idx = self.find_match(self.M, self.N, self.xfps)
         assert expect_idx == self.storage_idx
 
         lst = settings.get('multisig', [])
@@ -193,61 +257,97 @@ class MultisigWallet:
 
         self.storage_idx = -1
 
-    def generate_script(self, subpaths, expected_witdeem=None):
-        # (re)construct the witness/redeem script
-        # - also output a list of the subkey paths (text)
-        # - applies BIP67 to establish ordering: lexi-sort over pubkeys
-        # - subpaths is a dictionary of xfp to subpath binary
-        # - do checking here, raise assertions.
+    def xpubs_with_xfp(self, xfp):
+        # return set of indexes of xpubs with indicated xfp
+        return set(xp_idx for xp_idx, (wxfp, _) in enumerate(self.xpubs)
+                        if wxfp == xfp)
+
+    def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
+        # Check we can generate all pubkeys in the redeem script, raise on errors.
+        # - working from pubkeys in the script, because duplicate XFP can happen
+        #
+        # redeem_script: what we expect and we were given
+        # subpaths: pubkey => (xfp, *path)
+        # xfp_paths: (xfp, *path) in same order as pubkeys in redeem script
         from psbt import path_to_str
-        from main import settings
 
-        assert len(subpaths) == self.N
-        assert set(subpaths.keys()) == set(self.xpubs.keys())
-        my_xfp = settings.get('xfp')
-        assert my_xfp in subpaths
-
-        pubkeys = []
-        ch = self.chain
         subpath_help = []
+        used = set()
+        ch = self.chain
 
-        for k, path in subpaths.items():
-            xpub = self.xpubs[k]
-            node = ch.deserialize_node(xpub, AF_P2SH)
-            assert node, 'unable deserialize'
-            dp = node.depth()
-            assert 1 <= dp <= len(path), 'path vs depth'
+        M, N, pubkeys = disassemble_multisig(redeem_script)
+        assert M==self.M and N == self.N, 'wrong M/N in script'
 
-            # Document path(s) used. Not sure this is useful info to user tho.
-            # - Do not show what we can't verify: we don't really know the hardeneded
-            #   part of the path from fingerprint to here.
-            here = '(m=%s)' % xfp2str(k)
-            if dp != len(path):
-                here += ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
-            subpath_help.append(here)
+        for pk_order, pubkey in enumerate(pubkeys):
+            check_these = []
 
-            for sp in path[dp:]:
-                node.derive(sp)     # works in-place
+            if subpaths:
+                # in PSBT, we are given a map from pubkey to xfp/path, use it
+                # while remembering not unique mapping.
+                assert pubkey in subpaths, "Unexpected pubkey"
+                xfp, *path = subpaths[pubkey]
 
-            pubkeys.append(node.public_key())
+                for xp_idx, (wxfp, xpub) in enumerate(self.xpubs):
+                    if wxfp != xfp: continue
+                    if xp_idx in used: continue      # only allow once
+                    check_these.append((xp_idx, path))
+            else:
+                # Added requirement: caller (over USB) must provide them in 
+                # same order as they occur inside redeem script.
+                # Working solely from the redeem script's pubkeys, we
+                # wouldn't know which xpub to use, nor correct path for it.
+                xfp, *path = xfp_paths[pk_order]
 
-        # lexigraphic sort
-        pubkeys.sort()
+                for xp_idx in self.xpubs_with_xfp(xfp):
+                    if xp_idx in used: continue      # only allow once
+                    check_these.append((xp_idx, path))
 
-        # construct a standard multisig script
-        from serializations import ser_push_int, ser_push_data
-        from opcodes import OP_CHECKMULTISIG
+            assert check_these, 'no map'
 
-        scr = ser_push_int(self.M) + b''.join(ser_push_data(pk) for pk in pubkeys) \
-                + ser_push_int(self.N) + bytes([OP_CHECKMULTISIG])
+            for xp_idx, path in check_these:
+                # matched fingerprint, try to make pubkey that needs to match
+                xpub = self.xpubs[xp_idx][1]
 
-        print("redeem: " + b2a_hex(scr).decode('ascii'))
+                node = ch.deserialize_node(xpub, AF_P2SH); assert node
+                dp = node.depth()
+                if not (1 <= dp <= len(path)):
+                    # obscure case: xpub isn't deep enough to represent
+                    # indicated path... not wrong really.
+                    print('path depth')
+                    continue
 
-        if expected_witdeem:
-            assert expected_witdeem == scr, "didn't get expected redeem script"
+                for sp in path[dp:]:
+                    node.derive(sp)     # works in-place
 
-        return scr, subpath_help
-            
+                found_pk = node.public_key()
+
+                # Document path(s) used. Not sure this is useful info to user tho.
+                # - Do not show what we can't verify: we don't really know the hardeneded
+                #   part of the path from fingerprint to here.
+                here = '(m=%s)' % xfp2str(xfp)
+                if dp != len(path):
+                    here += ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
+
+                if found_pk != pubkey:
+                    # not a match: not an error by itself, since might be 
+                    # another dup xfp to look at.
+                    print('pk mismatch: %s => %s != %s' % (
+                                    here, b2a_hex(found_pk), b2a_hex(pubkey)))
+                    continue
+
+                subpath_help.append(here)
+
+                used.add(xp_idx)
+                break
+            else:
+                raise AssertionError('pubkey#%d wrong' % pk_order)
+
+            if pk_order:
+                assert bytes(pubkey) > bytes(pubkeys[pk_order-1]), 'BIP67 violation'
+
+        assert len(used) == self.N, 'not all keys used: %d of %d' % (len(used), self.N)
+
+        return subpath_help
 
     @classmethod
     def from_file(cls, config, name=None):
@@ -265,11 +365,12 @@ class MultisigWallet:
         #
         from main import settings
 
-        xpubs = {}
+        my_xfp = settings.get('xfp')
+        xpubs = []
         M, N = -1, -1
+        has_mine = False
         addr_fmt = AF_P2SH
         expect_chain = chains.current_chain().ctype
-        xpub_count = 0
 
         lines = config.split('\n')
 
@@ -349,9 +450,13 @@ class MultisigWallet:
 
                 assert xfp, 'need fingerprint'
 
-                # de-dup and organize at same time
-                xpubs[xfp] = node
-                xpub_count += 1
+                if xfp == my_xfp:
+                    # not conclusive, but enough for error catching.
+                    has_mine = True
+
+                # serialize xpub w/ BIP32 standard now.
+                # - this has effect of stripping SLIP-132 confusion away
+                xpubs.append((xfp, chain.serialize_public(node, AF_P2SH)))
 
         assert len(xpubs), 'need xpubs'
 
@@ -370,27 +475,17 @@ class MultisigWallet:
             raise AssertionError('name must be ascii, 1..20 long')
 
         assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
-        assert N == xpub_count, 'wrong # of xpubs, expect %d' % N
-        assert N == len(xpubs), 'duplicate master fingerprints'
+        assert N == len(xpubs), 'wrong # of xpubs, expect %d' % N
         assert addr_fmt & AFC_SCRIPT, 'script style addr fmt'
 
         # check we're included... do not insert ourselves, even tho we
         # have enough info, simply because other signers need to know my xpubkey anyway
-        my_xfp = settings.get('xfp')
-        assert my_xfp in xpubs, 'my key not included: ' + ', '.join(xfp2str(k) for k in xpubs)
-
-        # nodes are not strings, serialize them w/ BIP32 standard now.
-        # - this has effect of stripping SLIP-132 confusion away
-        xxpubs = {}
-        for xfp, node in xpubs.items():
-            xxpubs[xfp] = chain.serialize_public(node, AF_P2SH)
-
-        del xpubs
+        assert has_mine, 'my key not included'
 
         # done. have all the parts
-        return cls(name, (M, N), xxpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
 
-    async def export_wallet_file(self):
+    async def export_wallet_file(self, mode="exported from", extra_msg=None):
         # create a text file with the details; ready for import to next Coldcard
         from main import settings
         my_xfp = xfp2str(settings.get('xfp'))
@@ -403,10 +498,13 @@ class MultisigWallet:
 
                 # do actual write
                 with open(fname, 'wt') as fp:
-                    print("# Coldcard Multisig setup file (exported from %s)\n#" % my_xfp, file=fp)
+                    print("# Coldcard Multisig setup file (%s %s)\n#" % (mode, my_xfp), file=fp)
                     self.render_export(fp)
 
             msg = '''Multisig config file written:\n\n%s''' % nice
+            if extra_msg:
+                msg += extra_msg
+
             await ux_show_story(msg)
 
         except CardMissingError:
@@ -424,8 +522,17 @@ class MultisigWallet:
 
         print("", file=fp)
 
-        for k, v in self.xpubs.items():
-            print('%s: %s' % (xfp2str(k), v), file=fp)
+        for xfp, val in self.xpubs:
+            print('%s: %s' % (xfp2str(xfp), val), file=fp)
+
+    @classmethod
+    def import_from_psbt(cls, M, N, xpubs_dict):
+        # given the raw data fro PSBT global header, offer the user
+        # the details, and/or bypass that all and just trust the data.
+        # - dict is a map from (xfp+path) => binary BIP32 xpub
+        N = len(xpubs_dict)
+
+        pass
 
 async def no_ms_yet(*a):
     # action for 'no wallets yet' menu item
@@ -485,7 +592,7 @@ All keys listed below.
 '''.format(name=ms.name, M=ms.M, N=ms.N, ctype=ms.chain_type))
 
     # concern: the order of keys here is non-deterministic
-    for idx, (xfp, xpub) in enumerate(ms.xpubs.items()):
+    for idx, (xfp, xpub) in enumerate(ms.xpubs):
         if idx:
             msg.write('\n')
         msg.write('%s:\n%s\n' % (xfp2str(xfp), xpub))
@@ -676,7 +783,7 @@ async def ondevice_multisig_create():
     M = (N - 1) if N < 4 else ((N//2)+1)
 
     while 1:
-        msg = '''How many need to sign?\n  %d of %d
+        msg = '''How many need to sign?\n       %d of %d
 
 Press (7 or 9) to change M value, or OK \
 to continue. If you expected more or less keys (N=%d #files=%d), \
@@ -704,7 +811,7 @@ then check card and file contents.''' % (M, N, N, len(files))
 
     from auth import NewEnrollRequest, active_request
 
-    active_request = NewEnrollRequest(ms)
+    active_request = NewEnrollRequest(ms, auto_export=True)
 
     # menu item case: add to stack
     from ux import the_ux

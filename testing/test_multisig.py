@@ -57,7 +57,7 @@ def make_multisig():
     # always BIP45:   m/45'/...
 
     def doit(M, N, unique=0):
-        keys = {}
+        keys = []
 
         for i in range(N-1):
             pk = BIP32Node.from_master_secret(b'CSW is a fraud %d - %d' % (i, unique), 'XTN')
@@ -65,10 +65,10 @@ def make_multisig():
             xfp = unpack("<I", pk.fingerprint())[0]
 
             sub = pk.subkey(45, is_hardened=True, as_private=True)
-            keys[xfp] = pk, sub
+            keys.append((xfp, pk, sub))
 
         pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
-        keys[simulator_fixed_xfp] = pk, pk.subkey(45, is_hardened=True, as_private=True)
+        keys.append((simulator_fixed_xfp, pk, pk.subkey(45, is_hardened=True, as_private=True)))
 
         return keys
 
@@ -103,8 +103,8 @@ def import_ms_wallet(dev, make_multisig, offer_import):
         if addr_fmt:
             config += f'format: {addr_fmt.upper()}\n'
 
-        config += '\n'.join('%s: %s' % (xfp2str(k), dd.hwif(as_private=False)) 
-                                            for k, (m, dd) in keys.items())
+        config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False)) 
+                                            for xfp, m, dd in keys)
         #print(config)
 
         title, story = offer_import(config)
@@ -126,14 +126,14 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     # bare, no fingerprints
     # - no xfps
     # - no meta data
-    config = '\n'.join(sk.hwif(as_private=False) for m,sk in keys.values())
+    config = '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
     title, story = offer_import(config)
     assert f'Policy: {N} of {N}\n' in story
     need_keypress('x')
 
     # exclude myself (expect fail)
     config = '\n'.join(sk.hwif(as_private=False) 
-                            for xfp,(m,sk) in keys.items() if xfp != simulator_fixed_xfp)
+                            for xfp,m,sk in keys if xfp != simulator_fixed_xfp)
 
     with pytest.raises(BaseException) as ee:
         title, story = offer_import(config)
@@ -143,20 +143,20 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     # normal names
     for name in [ 'Zy', 'Z'*20 ]:
         config = f'name: {name}\n'
-        config += '\n'.join(sk.hwif(as_private=False) for m,sk in keys.values())
+        config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
         title, story = offer_import(config)
         need_keypress('x')
         assert name in story
 
     # too long name
     config = 'name: ' + ('A'*21) + '\n'
-    config += '\n'.join(sk.hwif(as_private=False) for m,sk in keys.values())
+    config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
     with pytest.raises(BaseException) as ee:
         title, story = offer_import(config)
     assert '20 long' in str(ee.value)
 
     # comments, blank lines
-    config = [sk.hwif(as_private=False) for m,sk in keys.values()]
+    config = [sk.hwif(as_private=False) for xfp,m,sk in keys]
     for i in range(len(config)):
         config.insert(i, '# comment')
         config.insert(i, '')
@@ -167,29 +167,26 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     # the different addr formats
     for af in unmap_addr_fmt.keys():
         config = f'format: {af}\n'
-        config += '\n'.join(sk.hwif(as_private=False) for m,sk in keys.values())
+        config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
         title, story = offer_import(config)
         need_keypress('x')
         assert f'Policy: {N} of {N}\n' in story
 
 def make_redeem(M, keys, path_mapper):
+    # Construct a redeem script, and ordered list of xfp+path to match.
     N = len(keys)
 
     # see BIP 67: <https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki>
 
     data = []
-    for cosigner_idx, (xfp, node, _) in enumerate(keys):
-        #xfp, = unpack("<I", node.parent_fingerprint())
-
+    for cosigner_idx, (xfp, node, sk) in enumerate(keys):
         path = path_mapper(cosigner_idx)
-
-        #print(xfp2str(xfp),end=': ')
 
         for p in path:
             node = node.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000))
 
         pk = node.sec(use_uncompressed=False)
-        data.append( (pk, [xfp, *path]))
+        data.append( (pk, xfp, path))
 
     data.sort(key=lambda i:i[0])
 
@@ -198,25 +195,29 @@ def make_redeem(M, keys, path_mapper):
 
     rv = bytes(mm)
 
-    for pk,_ in data:
+    for pk,_,_ in data:
         rv += bytes([len(pk)]) + pk
 
     rv += bytes(nn + [0xAE])
 
     print("redeem script: " + B2A(rv))
+    xfp_paths = [[xfp]+xpath for _,xfp,xpath in data]
+    print("xfp_paths: " + repr(xfp_paths))
 
-    return rv, [pk for pk, _ in data], [xfp_path for _,xfp_path in data]
+    return rv, [pk for pk,_,_ in data], xfp_paths
         
     
 
 @pytest.fixture
 def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh):
-    def doit(M, keys, subpath=[1,2,3], addr_fmt=AF_P2SH):
+    def doit(M, keys, addr_fmt=AF_P2SH, bip45=True):
         # test we are showing addresses correctly
         addr_fmt = unmap_addr_fmt.get(addr_fmt, addr_fmt)
 
         # make a redeem script, using provided keys/pubkeys
-        scr, pubkeys, xfp_paths = make_redeem(M, keys.items(), lambda i: [HARD(45), i, 0,0])
+        if bip45:
+            pmapper = lambda i: [HARD(45), i, 0,0]
+        scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper)
         assert len(scr) <= 520, "script too long for standard!"
 
         got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
@@ -228,8 +229,10 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
         #print(story)
 
         assert got_addr in story
-        assert all((xfp2str(i) in story) for i in keys)
-        assert '/?/'+'/'.join(str(i) for i in subpath) in story
+        assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
+        if bip45:
+            for i in range(len(keys)):
+                assert ('/?/%d/0/0' % i) in story
 
         need_keypress('y')
         # check expected addr was generated based on my math
@@ -250,20 +253,20 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 
     M, N = m_of_n
 
-    #if addr_fmt == 'p2wsh-p2sh':
-        #raise pytest.xfail('not done')
-
     keys = import_ms_wallet(M, N, addr_fmt)
 
     time.sleep(.1)
     need_keypress('y')
 
-    # test an address that should be in that wallet.
-    time.sleep(.1)
-    test_ms_show_addr(M, keys, addr_fmt=addr_fmt)
+    print("imported: %r" % [x for x,_,_ in keys])
 
-    # cleanup
-    clear_ms()
+    try:
+        # test an address that should be in that wallet.
+        time.sleep(.1)
+        test_ms_show_addr(M, keys, addr_fmt=addr_fmt)
+
+    finally:
+        clear_ms()
 
 def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     # check all details are shown right
@@ -279,7 +282,7 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     title, story = cap_story()
 
     assert title == f'{M} of {N}'
-    xpubs = [b.hwif() for a,b in keys.values()]
+    xpubs = [sk.hwif() for _,_,sk in keys]
     for xp in xpubs:
         assert xp in story
 
@@ -331,7 +334,7 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
     keys = make_multisig(M, N)
     name = 'named-%d' % random.randint(10000,99999)
     config = f'policy: {M} of {N}\n'
-    config += '\n'.join(sk.hwif(as_private=False) for m,sk in keys.values())
+    config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
 
     fname = microsd_path(f'ms-{name}.txt')
     with open(fname, 'wt') as fp:
@@ -422,7 +425,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
                     assert len(label) == 8
                     xfp = int(label, 16)
                     got.add(xfp)
-                    assert xfp in keys
+                    assert xfp in [x for x,_,_ in keys]
                     n = BIP32Node.from_wallet_key(value)
 
         if 'format' not in got:
@@ -492,8 +495,8 @@ def test_make_example_file(N, microsd_path, make_multisig, addr_fmt=None):
     if addr_fmt:
         config += f'format: {addr_fmt.upper()}\n'
 
-    config += '\n'.join('%s: %s' % (xfp2str(k), dd.hwif(as_private=False)) 
-                                        for k, (m, dd) in keys.items())
+    config += '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif(as_private=False)) 
+                                        for xfp,m,sk in keys)
 
     fname = microsd_path(f'{name}.txt')
     with open(fname, 'wt') as fp:
@@ -513,8 +516,8 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
     # render as a file for import
     def make_named(name):
         config = f"name: {name}\npolicy: {M} / {N}\n\n"
-        config += '\n'.join('%s: %s' % (xfp2str(k), dd.hwif(as_private=False)) 
-                                        for k, (m, dd) in keys.items())
+        config += '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif(as_private=False)) 
+                                        for xfp,m,sk in keys)
         return config
 
     def check_named(name):
@@ -541,9 +544,9 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
     check_named('xxx-new')
 
     # hack up a bogus import
-    for count, xfp in enumerate(keys):
+    for count, (xfp,_,_) in enumerate(keys):
         if count == num_diff: break
-        keys[xfp][1]._chain_code = bytes(i^0xa5 for i in keys[xfp][1]._chain_code)
+        keys[count][2]._chain_code = bytes(i^0xa5 for i in keys[count][2]._chain_code)
 
     title, story = offer_import(make_named('xxx-hacked'))
     assert f'{num_diff} different' in story
@@ -557,10 +560,8 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
     clear_ms()
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_duplicate_xfp(N, make_multisig, offer_import, need_keypress, M=1):
-    # It's legit to have duplicate XFP values! Not hard to make either!
-
-    keys = make_multisig(N, N)
+def test_duplicate_xfp(N, offer_import, need_keypress, M=1):
+    # it's legit to have duplicate XFP values! Not hard to make either!
 
     # make them all have same XFP, but different xpubs
     pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)

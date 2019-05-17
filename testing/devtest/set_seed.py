@@ -6,6 +6,7 @@ from h import b2a_hex
 from main import settings, pa
 import stash
 from seed import set_seed_value
+from utils import xfp2str
 
 tn = chains.BitcoinTestnet
 
@@ -18,5 +19,5 @@ if 1:
     set_seed_value(main.WORDS)
 
     print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
-    print("Fingerprint: 0x%08x" % settings.get('xfp', 0))
+    print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
 

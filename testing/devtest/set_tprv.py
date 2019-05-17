@@ -5,6 +5,7 @@ import stash, chains
 from h import b2a_hex
 from main import settings, pa
 from stash import SecretStash, SensitiveValues
+from utils import xfp2str
 
 tn = chains.BitcoinTestnet
 
@@ -27,7 +28,7 @@ else:
     pa.new_main_secret(raw)
 
     print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
-    print("Fingerprint: 0x%08x" % settings.get('xfp', 0))
+    print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
 
     assert settings.get('xfp', 0) == node.my_fingerprint()
 

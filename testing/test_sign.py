@@ -95,7 +95,7 @@ def end_sign(dev, need_keypress):
             from pycoin.tx.Tx import Tx
             # parse it
             res = psbt_out
-            assert res[0:4] != b'psbt'
+            assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
             t = Tx.from_bin(res)
             assert t.version in [1, 2]
 
@@ -569,27 +569,28 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
     # use the private key given in BIP 174 and do similar signing
     # as the examples.
     
-    exk = 'tprv8ZgxMBicQKsPdHrvvmuEXXZ7f5EheFqshqVmtPjeLLMjqwrWbSeuGDcgJU1icTHtLjYiGewa5zcMScbGSRR8AqB8A5wvB3XRdNYBDMhXpBS'
+    exk = 'tprv8ZgxMBicQKsPd9TeAdPADNnSyH9SSUUbTVeFszDE23Ki6TBB5nCefAdHkK8Fm3qMQR6sHwA56zqRmKmxnHk37JkiFzvncDqoKmPWubu7hDF'
     set_master_key(exk)
 
     from pycoin.key.BIP32Node import BIP32Node
     mk = BIP32Node.from_wallet_key(exk)
 
-    # add the subpaths implied by two private keys given in text
-
-    psbt = open('data/worked-unsigned.psbt', 'rb').read()
+    psbt = a2b_hex(open('data/worked-unsigned.psbt', 'rb').read())
 
     start_sign(psbt)
+    signed = end_sign(True)
 
-    with pytest.raises(CCProtoError) as ee:
-        signed = end_sign(True)
+    aft = BasicPSBT().parse(signed)
+    expect = BasicPSBT().parse(open('data/worked-combined.psbt', 'rb').read())
 
-    assert 'require subpaths to be spec' in str(ee)
+    assert aft == expect
+
+    #assert 'require subpaths to be spec' in str(ee)
 
 def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     # Check we can finalize p2sh_p2wpkh inputs right.
 
-    raise pytest.skip('not ready/junk test')
+    #raise pytest.skip('not ready/junk test')
 
     wallet_xfp = match_key()
 
@@ -618,7 +619,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     assert network == signed
 
-def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign, decode_with_bitcoind):
+def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
     
@@ -638,21 +639,39 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign, decode
 
     open('debug/ex-signed-part.psbt', 'wb').write(part_signed)
 
-    start_sign(part_signed)
-    signed = end_sign(True)
-
     b4 = BasicPSBT().parse(psbt)
-    aft = BasicPSBT().parse(signed)
-    assert b4 != aft, "signing didn't change anything?"
+    aft = BasicPSBT().parse(part_signed)
+    assert b4 != aft, "(partial) signing didn't change anything?"
+
+    # NOTE: cannot handle combining multisig txn yet, so cannot finalize on-device
+    start_sign(part_signed, finalize=False)
+    signed = end_sign(True, finalize=False)
 
     open('debug/ex-signed.psbt', 'wb').write(signed)
+    aft2 = BasicPSBT().parse(signed)
 
-    decode = decode_with_bitcoind(signed)
+    decode = decode_psbt_with_bitcoind(signed)
     pprint(decode)
 
-    expect = BasicPSBT().parse(a2b_hex(open('data/worked-combined.psbt', 'rb').read()))
+    mx_expect = BasicPSBT().parse(a2b_hex(open('data/worked-combined.psbt', 'rb').read()))
+    assert aft2 == mx_expect
 
-    assert aft == expect
+    expect = a2b_hex(open('data/worked-combined.psbt', 'rb').read())
+    decode_ex = decode_psbt_with_bitcoind(expect)
+
+    # NOTE: because we are using RFC6979, the exact bytes of the signatures should match
+
+    for i in range(2):
+        assert decode['inputs'][i]['partial_signatures'] == \
+                    decode_ex['inputs'][i]['partial_signatures']
+
+    if 0:
+        import json, decimal
+        def EncodeDecimal(o):
+            if isinstance(o, decimal.Decimal):
+                return float(round(o, 8))
+            raise TypeError
+        json.dump(decode, open('debug/core-decode.json', 'wt'), indent=2, default=EncodeDecimal)
 
 @pytest.mark.bitcoind
 def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
@@ -769,7 +788,7 @@ def test_change_fraud_addr(start_sign, end_sign, check_against_bitcoind, cap_sto
     start_sign(mod_psbt)
     with pytest.raises(CCProtoError) as ee:
         signed = end_sign(True)
-    assert 'change output is fraud' in str(ee)
+    assert 'Change output is fraud' in str(ee)
 
 
 @pytest.mark.parametrize('case', [ 'p2wpkh', 'p2sh'])
@@ -834,7 +853,8 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
     with pytest.raises(CCProtoError) as ee:
         start_sign(psbt, finalize=True)
         signed = end_sign(accept=True)
-    assert 'looks completely signed' in str(ee)
+
+    assert 'None of the keys involved' in str(ee)
 
 def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile):
 
