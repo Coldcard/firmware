@@ -10,6 +10,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 from menu import MenuSystem, MenuItem
+from opcodes import OP_CHECKMULTISIG
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -22,7 +23,6 @@ def disassemble_multisig(redeem_script):
     # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
     # - returns M, N, (list of pubkeys)
     from serializations import disassemble
-    from opcodes import OP_CHECKMULTISIG
 
     M, N = -1, -1
 
@@ -49,6 +49,15 @@ def disassemble_multisig(redeem_script):
     assert 1 <= M <= N <= 20, 'M/N range'      # will also happen if N not encoded.
 
     return M, N, pubkeys
+
+def disassemble_multisig_mn(redeem_script):
+    # pull out just M and N from script. Simple, faster, no memory.
+
+    assert redeem_script[-1] == OP_CHECKMULTISIG
+    M = redeem_script[0] - 80
+    N = redeem_script[-2] - 80
+
+    return M, N
 
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a
@@ -153,7 +162,7 @@ class MultisigWallet:
 
     def assert_matching(self, M, N, fingerprints):
         # compare in-memory wallet with details recovered from PSBT
-        assert (active_multisig.M, active_multisig.N) == (M, N), "M/N mismatch"
+        assert (self.M, self.N) == (M, N), "M/N mismatch"
         assert sorted(fingerprints) == self.xfps
 
     @classmethod
@@ -283,7 +292,7 @@ class MultisigWallet:
 
             if subpaths:
                 # in PSBT, we are given a map from pubkey to xfp/path, use it
-                # while remembering not unique mapping.
+                # while remembering it's potentially one-2-many
                 assert pubkey in subpaths, "Unexpected pubkey"
                 xfp, *path = subpaths[pubkey]
 
@@ -292,8 +301,8 @@ class MultisigWallet:
                     if xp_idx in used: continue      # only allow once
                     check_these.append((xp_idx, path))
             else:
-                # Added requirement: caller (over USB) must provide them in 
-                # same order as they occur inside redeem script.
+                # Without PSBT, USB caller must provide xfp+path
+                # in same order as they occur inside redeem script.
                 # Working solely from the redeem script's pubkeys, we
                 # wouldn't know which xpub to use, nor correct path for it.
                 xfp, *path = xfp_paths[pk_order]
@@ -302,8 +311,7 @@ class MultisigWallet:
                     if xp_idx in used: continue      # only allow once
                     check_these.append((xp_idx, path))
 
-            assert check_these, 'no map'
-
+            here = None
             for xp_idx, path in check_these:
                 # matched fingerprint, try to make pubkey that needs to match
                 xpub = self.xpubs[xp_idx][1]
@@ -329,10 +337,11 @@ class MultisigWallet:
                     here += ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
 
                 if found_pk != pubkey:
-                    # not a match: not an error by itself, since might be 
-                    # another dup xfp to look at.
-                    print('pk mismatch: %s => %s != %s' % (
-                                    here, b2a_hex(found_pk), b2a_hex(pubkey)))
+                    # Not a match but not an error by itself, since might be 
+                    # another dup xfp to look at still.
+
+                    #print('pk mismatch: %s => %s != %s' % (
+                    #                here, b2a_hex(found_pk), b2a_hex(pubkey)))
                     continue
 
                 subpath_help.append(here)
@@ -340,9 +349,13 @@ class MultisigWallet:
                 used.add(xp_idx)
                 break
             else:
-                raise AssertionError('pubkey#%d wrong' % pk_order)
+                msg = 'pk#%d wrong' % (pk_order+1)
+                if here:
+                    msg += ', tried: ' + here
+                raise AssertionError(msg)
 
             if pk_order:
+                # verify sorted order
                 assert bytes(pubkey) > bytes(pubkeys[pk_order-1]), 'BIP67 violation'
 
         assert len(used) == self.N, 'not all keys used: %d of %d' % (len(used), self.N)
@@ -526,11 +539,18 @@ class MultisigWallet:
             print('%s: %s' % (xfp2str(xfp), val), file=fp)
 
     @classmethod
-    def import_from_psbt(cls, M, N, xpubs_dict):
+    def import_from_psbt(cls, M, N, xpubs_dict, fetcher):
         # given the raw data fro PSBT global header, offer the user
         # the details, and/or bypass that all and just trust the data.
         # - dict is a map from (xfp+path) => binary BIP32 xpub
+        # - called fetcher to get bytes of xpub
+        # - already know not in our records.
         N = len(xpubs_dict)
+
+        # TODO: 
+        # - add settings
+        # - generate in-memory instance
+        # - maybe save, maybe show to user, etc
 
         pass
 

@@ -14,7 +14,7 @@ import tcc, stash, gc
 from uio import BytesIO
 from sffile import SizerFile
 from sram2 import psbt_tmp256
-from multisig import MultisigWallet, MAX_SIGNERS, disassemble_multisig
+from multisig import MultisigWallet, MAX_SIGNERS, disassemble_multisig, disassemble_multisig_mn
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -373,7 +373,7 @@ class psbtOutputProxy(psbtProxy):
 
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
-                # - BIP67 rules applied
+                # - BIP45, BIP67 rules applied
                 try:
                     active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
                 except BaseException as exc:
@@ -645,12 +645,15 @@ class psbtInputProxy(psbtProxy):
                 # - but if partial sig already in place, ignore that one
                 for pubkey, path in self.subpaths.items():
                     if self.part_sig and (pubkey in self.part_sig):
-                        # already signed, so ignore
+                        # pubkey has already signed, so ignore
                         continue
 
                     if path[0] == my_xfp:
-                        which_key = pubkey
-                        break
+                        # slight chance of dup xfps, so handle
+                        if not which_key:
+                            which_key = set()
+
+                        which_key.add(pubkey)
 
             if not addr_is_segwit and \
                     len(redeem_script) == 22 and \
@@ -689,17 +692,14 @@ class psbtInputProxy(psbtProxy):
         if self.is_multisig and which_key:
             # We will be signing this input, so 
             # - find which wallet it is or
-            # - check it's the right M/N to match
+            # - check it's the right M/N to match redeem script
             global active_multisig
 
-            M, N, my_offset = disassemble_multisig(redeem_script, which_key)
-            assert my_offset >=0, 'pubkey not in redeem script'
+            M, N = disassemble_multisig_mn(redeem_script)
             xfps = [lst[0] for lst in self.subpaths.values()]
 
             if not active_multisig:
                 # search for multisig wallet
-                print(repr(xfps))
-                print(repr(N))
                 wal = MultisigWallet.find_match(M, N, xfps)
                 assert wal >= 0, 'unknown multisig wallet'
 
@@ -972,7 +972,7 @@ class psbtObject(psbtProxy):
 
     def guess_M_of_N(self):
         # Peek at the inputs to see if we can guess M/N value. Just takes
-        # first one if finds.
+        # first one it finds.
         #
         for i in self.inputs:
             if not i.redeem_script: continue
@@ -980,7 +980,7 @@ class psbtObject(psbtProxy):
             rs = i.get(i.redeem_script)
             if rs[-1] != OP_CHECKMULTISIG: continue
 
-            M, N, _ = disassemble_multisig(rs)
+            M, N = disassemble_multisig_mn(rs)
             assert 1 <= M <= N < MAX_SIGNERS
 
             return (M, N)
@@ -993,7 +993,7 @@ class psbtObject(psbtProxy):
         global active_multisig
         assert not active_multisig
 
-        xfps = [unpack_from('<I', k, 0)[0] for k in self.xpubs.keys()]
+        xfps = [unpack_from('<I', k, 4)[0] for k in self.xpubs.keys()]
         assert self.my_xfp in xfps, 'my xfp not involved'
 
         candidates = MultisigWallet.find_candidates(xfps)
@@ -1015,7 +1015,7 @@ class psbtObject(psbtProxy):
 
         if not active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            active_multisig = Multisig.import_from_psbt(M, N, self.xpubs)
+            active_multisig = Multisig.import_from_psbt(M, N, self.xpubs, self.get)
 
         if not active_multisig:
             # not clear if an error... might be part-way to importing, and
@@ -1281,14 +1281,6 @@ class psbtObject(psbtProxy):
                     # but in other cases, no more signatures are possible
                     continue
 
-                which_key = inp.required_key
-                assert not inp.added_sig, "already done??"
-                assert which_key in inp.subpaths, 'unk key'
-
-                if inp.subpaths[which_key][0] != self.my_xfp:
-                    # we don't have the key for this subkey
-                    continue
-
                 txi.scriptSig = inp.scriptSig
                 assert txi.scriptSig, "no scriptsig?"
 
@@ -1300,20 +1292,48 @@ class psbtObject(psbtProxy):
                     digest = self.make_txn_segwit_sighash(in_idx, txi,
                                     inp.amount, inp.scriptCode, inp.sighash)
 
-                # Do the ACTUAL signature ... finally!!!
-                skp = path_to_str(inp.subpaths[which_key])
-                node = sv.derive_path(skp, register=False)
+                if inp.is_multisig:
+                    # need to consider a set of possible keys, since xfp may not be unique
+                    for which_key in inp.required_key:
+                        # get node required
+                        skp = path_to_str(inp.subpaths[which_key])
+                        node = sv.derive_path(skp, register=False)
 
+                        # expensive test, but works... and important
+                        pu = node.public_key()
+                        if pu == which_key:
+                            break
+                    else:
+                        raise AssertionError("Input #%d needs pubkey I dont have" % in_idx)
+
+                else:
+                    # single pubkey <=> single key
+                    which_key = inp.required_key
+    
+                    assert not inp.added_sig, "already done??"
+                    assert which_key in inp.subpaths, 'unk key'
+
+                    if inp.subpaths[which_key][0] != self.my_xfp:
+                        # we don't have the key for this subkey
+                        # (redundant, required_key wouldn't be set)
+                        continue
+
+                    # get node required
+                    skp = path_to_str(inp.subpaths[which_key])
+                    node = sv.derive_path(skp, register=False)
+
+                    # expensive test, but works... and important
+                    pu = node.public_key()
+                    assert pu == which_key, "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+
+                # The precious private key we need
                 pk = node.private_key()
-
-                # expensive test, but works... and important
-                pu = node.public_key()
-                assert pu == which_key, "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
 
                 #print("privkey %s" % b2a_hex(pk).decode('ascii'))
                 #print(" pubkey %s" % b2a_hex(which_key).decode('ascii'))
                 #print(" digest %s" % b2a_hex(digest).decode('ascii'))
 
+                # Do the ACTUAL signature ... finally!!!
                 result = tcc.secp256k1.sign(pk, digest)
 
                 # private key no longer required
