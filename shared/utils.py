@@ -106,4 +106,31 @@ def xfp2str(xfp):
 
     return b2a_hex(ustruct.pack('>I', xfp)).decode().upper()
 
+def problem_file_line(exc):
+    # return a string of just the filename.py and line number where
+    # an exception occured. Best used on AssertionError.
+    import uio, sys, ure
+
+    tmp = uio.StringIO()
+    sys.print_exception(exc, tmp)
+    lines = tmp.getvalue().split('\n')[-3:]
+    del tmp
+
+    # convert: 
+    #   File "main.py", line 63, in interact
+    #    into just:
+    #   main.py:63
+    #
+    # on simulator, huge path is included, remove that too
+
+    rv = None
+    for ln in lines:
+        mat = ure.match(r'.*"(/.*/)(.*)", line (.*), ', ln)
+        if mat:
+            try:
+                rv = mat.group(2) + ':' + mat.group(3)
+            except: pass
+
+    return rv or str(exc) or 'Exception'
+
 # EOF
