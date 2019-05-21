@@ -91,9 +91,9 @@ def offer_import(cap_story, dev):
     return doit
 
 @pytest.fixture
-def import_ms_wallet(dev, make_multisig, offer_import):
+def import_ms_wallet(dev, make_multisig, offer_import, need_keypress):
 
-    def doit(M, N, addr_fmt=None, name=None, unique=0):
+    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False):
         keys = make_multisig(M, N, unique=unique)
 
         # render as a file for import
@@ -112,6 +112,10 @@ def import_ms_wallet(dev, make_multisig, offer_import):
         assert 'Create new multisig' in story
         assert name in story
         assert f'Policy: {M} of {N}\n' in story
+
+        if accept:
+            time.sleep(.1)
+            need_keypress('y')
 
         return keys
 
@@ -172,7 +176,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
         need_keypress('x')
         assert f'Policy: {N} of {N}\n' in story
 
-def make_redeem(M, keys, path_mapper):
+def make_redeem(M, keys, path_mapper, violate_bip67=False, tweak_redeem=None):
     # Construct a redeem script, and ordered list of xfp+path to match.
     N = len(keys)
 
@@ -190,6 +194,11 @@ def make_redeem(M, keys, path_mapper):
 
     data.sort(key=lambda i:i[0])
 
+    if violate_bip67:
+        # move them out of order
+        data[0], data[1] = data[1], data[0]
+    
+
     mm = [80 + M] if M <= 16 else [1, M]
     nn = [80 + N] if N <= 16 else [1, N]
 
@@ -200,24 +209,29 @@ def make_redeem(M, keys, path_mapper):
 
     rv += bytes(nn + [0xAE])
 
-    print("redeem script: " + B2A(rv))
+    if tweak_redeem:
+        rv = tweak_redeem(rv)
+
+    #print("redeem script: " + B2A(rv))
+
     xfp_paths = [[xfp]+xpath for _,xfp,xpath in data]
-    print("xfp_paths: " + repr(xfp_paths))
+    #print("xfp_paths: " + repr(xfp_paths))
 
     return rv, [pk for pk,_,_ in data], xfp_paths
-        
     
 
 @pytest.fixture
 def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh):
-    def doit(M, keys, addr_fmt=AF_P2SH, bip45=True):
+    def doit(M, keys, addr_fmt=AF_P2SH, bip45=True, **make_redeem_args):
         # test we are showing addresses correctly
+        # - verifies against bitcoind as well
         addr_fmt = unmap_addr_fmt.get(addr_fmt, addr_fmt)
 
         # make a redeem script, using provided keys/pubkeys
         if bip45:
             pmapper = lambda i: [HARD(45), i, 0,0]
-        scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper)
+
+        scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper, **make_redeem_args)
         assert len(scr) <= 520, "script too long for standard!"
 
         got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
@@ -253,18 +267,50 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 
     M, N = m_of_n
 
-    keys = import_ms_wallet(M, N, addr_fmt)
+    keys = import_ms_wallet(M, N, addr_fmt, accept=1)
 
-    time.sleep(.1)
-    need_keypress('y')
-
-    print("imported: %r" % [x for x,_,_ in keys])
+    #print("imported: %r" % [x for x,_,_ in keys])
 
     try:
         # test an address that should be in that wallet.
         time.sleep(.1)
         test_ms_show_addr(M, keys, addr_fmt=addr_fmt)
 
+    finally:
+        clear_ms()
+
+def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+    # detect when pubkeys are not in order in the redeem script
+    M, N = 1, 15
+
+    keys = import_ms_wallet(M, N, accept=1)
+
+    try:
+        # test an address that should be in that wallet.
+        time.sleep(.1)
+        with pytest.raises(BaseException) as ee:
+            test_ms_show_addr(M, keys, violate_bip67=1)
+        assert 'BIP67' in str(ee.value)
+    finally:
+        clear_ms()
+
+
+@pytest.mark.parametrize('which_pubkey', [0, 1, 14])
+def test_bad_pubkey(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
+    # give incorrect pubkey inside redeem script
+    M, N = 1, 15
+
+    keys = import_ms_wallet(M, N, accept=1)
+
+    try:
+        # test an address that should be in that wallet.
+        time.sleep(.1)
+        def tweaker(scr):
+            return bytes((s if i != (5 + (34*which_pubkey)) else s^0x1) for i,s in enumerate(scr))
+
+        with pytest.raises(BaseException) as ee:
+            test_ms_show_addr(M, keys, tweak_redeem=tweaker)
+        assert ('pk#%d wrong' % (which_pubkey+1)) in str(ee.value)
     finally:
         clear_ms()
 
@@ -378,9 +424,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
 
     name = 'ex-test-%d' % random.randint(10000,99999)
     M,N = 3, 15
-    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt)
-    time.sleep(.1)
-    need_keypress('y')
+    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1)
 
     goto_home()
     pick_menu_item('Settings')
@@ -464,9 +508,7 @@ def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
     M = N
     name = 'a'*20       # longest possible
     for count in range(1, 10):
-        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count)
-        time.sleep(.1)
-        need_keypress('y')
+        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=1)
 
         time.sleep(.2)
         title, story = cap_story()
@@ -560,20 +602,24 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
     clear_ms()
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_duplicate_xfp(N, offer_import, need_keypress, M=1):
+def test_duplicate_xfp(N, offer_import, need_keypress, test_ms_show_addr):
     # it's legit to have duplicate XFP values! Not hard to make either!
 
-    # make them all have same XFP, but different xpubs
+    # new wallet will all having same XFP, but different xpubs
     pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
 
-    lst = [pk.subkey(45, is_hardened=True, as_private=False)]
+    keys = [(simulator_fixed_xfp, pk, pk.subkey(45, is_hardened=True, as_private=False))]
+    lst = [keys[0][-1]]
     for idx in range(N-1):
         h = BIP32Node.from_hwif(pk.hwif(as_private=True))        # deepcopy
         h._chain_code = b'chain code is 32 bytes: %08d' % idx
         subkey = h.subkey(45, is_hardened=True, as_private=False)
         lst.append(subkey)
 
-    print(lst)
+        xfp = unpack("<I", pk.fingerprint())[0]
+        keys.append( (xfp, h, subkey) )
+
+    #print(lst)
 
     # bare, no fingerprints
     # - no xfps
@@ -581,7 +627,56 @@ def test_duplicate_xfp(N, offer_import, need_keypress, M=1):
     config = '\n'.join(sk.hwif(as_private=False) for sk in lst)
     title, story = offer_import(config)
     assert f'Policy: {N} of {N}\n' in story
-    need_keypress('x')
+    need_keypress('y')
+
+    test_ms_show_addr(N, keys)
+
+@pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
+def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=3):
+    # exercise the p2sh command of ckcc:cli ... hard to do manually.
+
+    from subprocess import check_output
+
+    clear_ms()
+    keys = import_ms_wallet(M, N, name='cli-test', accept=1)
+
+    pmapper = lambda i: [HARD(45), i, 0,0]
+
+    scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper)
+
+    def decode_path(p):
+        return '/'.join(str(i) if i < 0x80000000 else "%d'"%(i& 0x7fffffff) for i in p)
+
+    for mode in [ 'full', 'prefix']:
+        args = ['ckcc']
+        if dev.is_simulator:
+            args += ['-x']
+
+        args += ['p2sh', '-q']
+
+        if addr_fmt == AF_P2WSH:
+            args += ['-s']
+        elif addr_fmt == AF_P2WSH_P2SH:
+            args += ['-s', '-w']
+
+        if mode == 'full':
+            args += ['-p', "", B2A(scr)]
+            args += [xfp2str(x)+'/'+decode_path(path) for x,*path in xfp_paths]
+        else:
+            args += [B2A(scr)]
+            args += [xfp2str(x)+'/'+decode_path(path[1:]) for x,*path in xfp_paths]
+
+        print('CMD: ' + (' '.join(args)))
+        addr = check_output(args, encoding='ascii').strip()
+
+        print(addr)
+        addr_vs_path(addr, addr_fmt=addr_fmt, script=scr)
+
+    # need to re-start our connection once ckcc has talked to simulator
+    dev.start_encryption()
+    dev.check_mitm()
+
+    clear_ms()
 
 
 # EOF
