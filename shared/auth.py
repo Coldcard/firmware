@@ -8,9 +8,9 @@ import stash, ure, tcc, ux, chains, sys, gc, uio
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, problem_file_line
+from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause
 from usb import CCBusyError
-from utils import HexWriter, xfp2str
+from utils import HexWriter, xfp2str, problem_file_line
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 
 global active_request
