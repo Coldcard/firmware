@@ -4,14 +4,15 @@
 # Multisig-related tests.
 #
 import time, pytest, os, random
-#from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
+from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
 from base64 import b64encode, b64decode
-from helpers import B2A, U2SAT, prandom
+from helpers import B2A, U2SAT, prandom, fake_dest_addr
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
+from io import BytesIO
 
 def xfp2str(xfp):
     # Standardized way to show an xpub's fingerprint... it's a 4-byte string
@@ -176,9 +177,11 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
         need_keypress('x')
         assert f'Policy: {N} of {N}\n' in story
 
-def make_redeem(M, keys, path_mapper, violate_bip67=False, tweak_redeem=None):
+def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=None):
     # Construct a redeem script, and ordered list of xfp+path to match.
     N = len(keys)
+
+    assert path_mapper
 
     # see BIP 67: <https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki>
 
@@ -218,6 +221,35 @@ def make_redeem(M, keys, path_mapper, violate_bip67=False, tweak_redeem=None):
     #print("xfp_paths: " + repr(xfp_paths))
 
     return rv, [pk for pk,_,_ in data], xfp_paths
+
+@pytest.fixture
+def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **make_redeem_args):
+    # Construct addr and script need to represent a p2sh address
+    import bech32
+    from pycoin.encoding import b2a_hashed_base58, hash160
+    from hashlib import sha256
+
+    if 'path_mapper' not in make_redeem_args:
+        make_redeem_args['path_mapper'] = lambda cosigner: [HARD(45), cosigner, is_change, idx]
+
+    script, pubkeys, xfp_paths = make_redeem(M, keys, **make_redeem_args)
+
+    if addr_fmt == AF_P2WSH:
+        hrp = ['bc', 'tb'][testnet]
+        data = sha256(script).digest()
+        addr = bech32.encode(hrp, 0, data)
+    else:
+        if addr_fmt == AF_P2SH:
+            digest = hash160(script)
+        elif addr_fmt == AF_P2WSH_P2SH:
+            digest = hash160(b'\x00\x20' + sha256(script).digest())
+        else:
+            assert 0
+
+        prefix = bytes([196]) if testnet else bytes([5])
+        addr = b2a_hashed_base58(prefix + digest)
+
+    return addr, script, zip(pubkeys, xfp_paths)
     
 
 @pytest.fixture
@@ -229,9 +261,9 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
 
         # make a redeem script, using provided keys/pubkeys
         if bip45:
-            pmapper = lambda i: [HARD(45), i, 0,0]
+            make_redeem_args['path_mapper'] = lambda i: [HARD(45), i, 0,0]
 
-        scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper, **make_redeem_args)
+        scr, pubkeys, xfp_paths = make_redeem(M, keys, **make_redeem_args)
         assert len(scr) <= 520, "script too long for standard!"
 
         got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
@@ -672,11 +704,134 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
         print(addr)
         addr_vs_path(addr, addr_fmt=addr_fmt, script=scr)
 
+        # test case for make_ms_address really.
+        expect_addr, scr2, _ = make_ms_address(M, keys, path_mapper=pmapper, addr_fmt=addr_fmt)
+        assert expect_addr == addr
+        assert scr2 == scr
+        
+
     # need to re-start our connection once ckcc has talked to simulator
     dev.start_encryption()
     dev.check_mitm()
 
     clear_ms()
+
+@pytest.fixture()
+def fake_ms_txn():
+    # make various size txn's ... completely fake and pointless values
+    # - but has UTXO's to match needs
+    # - MULTISIG version
+    from pycoin.tx.Tx import Tx
+    from pycoin.tx.TxIn import TxIn
+    from pycoin.tx.TxOut import TxOut
+    from pycoin.serialize import h2b_rev
+    from pycoin.encoding import hash160
+    from struct import pack
+
+    def doit(num_ins, num_outs, M, keys, fee=10000,
+                outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[],
+                incl_xpubs=False):
+        psbt = BasicPSBT()
+        txn = Tx(2,[],[])
+
+        if incl_xpubs:
+            # add global header for XPUB
+            # - assumes BIP45
+            for nonce_idx, (xfp, m, sk) in enumerate(keys):
+                kk = pack('<III', nonce_idx, xfp, 45|0x80000000)
+                psbt.xpubs[kk] = a2b_hashed_base58(sk.hwif())
+
+        psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
+        psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
+
+        for i in range(num_ins):
+            # make a fake txn to supply each of the inputs
+            # - each input is 1BTC
+
+            # addr where the fake money will be stored.
+            addr, script, details = make_ms_address(M, keys, idx=i)
+
+            # lots of detail needed for p2sh inputs
+            psbt.inputs[i].redeem_script = script
+            for pubkey, xfp_path in details:
+                psbt.inputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
+
+            # UTXO that provides the funding for to-be-signed txn
+            supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
+
+            # sciptPubKey for input's output
+            pks = bytes([0xa9, 0x14]) + hash160(script) + bytes([0x87])
+
+            supply.txs_out.append(TxOut(1E8, pks))
+
+            with BytesIO() as fd:
+                if not segwit_in:
+                    supply.stream(fd)
+                    psbt.inputs[i].utxo = fd.getvalue()
+                else:
+                    supply.txs_out[-1].stream(fd)
+                    psbt.inputs[i].witness_utxo = fd.getvalue()
+
+            spendable = TxIn(supply.hash(), 0)
+            txn.txs_in.append(spendable)
+
+
+        for i in range(num_outs):
+            # random P2PKH
+            if not outstyles:
+                style = ADDR_STYLES[i % len(ADDR_STYLES)]
+            else:
+                style = outstyles[i % len(outstyles)]
+
+            if i in change_outputs:
+                addr, scr, details = make_ms_address(M, keys, idx=i)
+
+                for pubkey, xfp_path in details:
+                    psbt.outputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
+            else:
+                scr = fake_dest_addr(style)
+
+            assert scr
+
+            if 'w' in style:
+                psbt.outputs[i].witness_script = scr
+            elif style.endswith('sh'):
+                psbt.outputs[i].redeem_script = scr
+
+            if not outvals:
+                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
+            else:
+                h = TxOut(outvals[i], scr)
+
+            txn.txs_out.append(h)
+
+        with BytesIO() as b:
+            txn.stream(b)
+            psbt.txn = b.getvalue()
+
+        rv = BytesIO()
+        psbt.serialize(rv)
+        assert rv.tell() <= MAX_TXN_LEN, 'too fat'
+
+        return rv.getvalue()
+
+    return doit
+
+@pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
+@pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, M=1, N=3):
+    
+    num_outs = num_ins-1
+
+    clear_ms()
+    keys = import_ms_wallet(M, N, name='cli-test', accept=1)
+
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys)
+
+    open('debug/last.psbt', 'wb').write(psbt)
+
+    try_sign(psbt)
+
 
 
 # EOF

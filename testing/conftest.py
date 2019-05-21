@@ -5,8 +5,9 @@ import pytest, glob, time, sys, random
 from pprint import pprint
 #from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from ckcc.protocol import CCProtocolPacker, CCProtoError
-from helpers import B2A, U2SAT
+from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key
+from binascii import b2a_hex, a2b_hex
 from constants import *
 
 # lock down randomness
@@ -582,7 +583,80 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
 
     return doit
 
+@pytest.fixture
+def try_sign(start_sign, end_sign):
+
+    def doit(filename_or_data, accept=True, finalize=False):
+        ip = start_sign(filename_or_data, finalize=finalize)
+        return ip, end_sign(accept, finalize=finalize)
+
+    return doit
+
+@pytest.fixture
+def start_sign(dev):
+
+    def doit(filename, finalize=False):
+        if filename[0:5] == b'psbt\xff':
+            ip = filename
+            filename = 'memory'
+        else:
+            ip = open(filename, 'rb').read()
+            if ip[0:10] == b'70736274ff':
+                ip = a2b_hex(ip.strip())
+            assert ip[0:5] == b'psbt\xff'
+
+        ll, sha = dev.upload_file(ip)
+
+        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize))
+
+        return ip
+
+    return doit
+
+@pytest.fixture
+def end_sign(dev, need_keypress):
+    from ckcc_protocol.protocol import CCUserRefused
+
+    def doit(accept=True, in_psbt=None, finalize=False):
+
+        if accept != None:
+            need_keypress('y' if accept else 'x')
+
+        if accept == False:
+            with pytest.raises(CCUserRefused):
+                done = None
+                while done == None:
+                    time.sleep(0.050)
+                    done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+            return
+        else:
+            done = None
+            while done == None:
+                time.sleep(0.050)
+                done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+
+        assert len(done) == 2
+
+        resp_len, chk = done
+        psbt_out = dev.download_file(resp_len, chk)
+
+        if not finalize:
+            if in_psbt:
+                assert BasicPSBT().parse(in_psbt) == BasicPSBT().parse(psbt_out)
+        else:
+            from pycoin.tx.Tx import Tx
+            # parse it
+            res = psbt_out
+            assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
+            t = Tx.from_bin(res)
+            assert t.version in [1, 2]
+
+        return psbt_out
+
+    return doit
+
+
 # useful fixtures related to multisig
-from test_multisig import import_ms_wallet, make_multisig, offer_import
+from test_multisig import import_ms_wallet, make_multisig, offer_import, make_ms_address
 
 #EOF

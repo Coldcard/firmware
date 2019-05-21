@@ -51,4 +51,23 @@ def prandom(count):
     # make some bytes, randomly, but not: deterministic
     return bytes(random.randint(0, 255) for i in range(count))
 
+def fake_dest_addr(style='p2pkh'):
+
+    # See CTxOut.get_address() in ../shared/serializations
+
+    if style == 'p2wpkh':
+        return bytes([0, 20]) + prandom(20)
+
+    if style == 'p2wsh':
+        return bytes([0, 32]) + prandom(32)
+
+    if style == 'p2sh':
+        return bytes([0xa9, 0x14]) + prandom(20) + bytes([0x87])
+
+    if style == 'p2pkh':
+        return bytes([0x76, 0xa9, 0x14]) + prandom(20) + bytes([0x88, 0xac])
+
+    # missing: if style == 'p2pk' =>  pay to pubkey
+    assert False, 'not supported: ' + style
+
 # EOF

@@ -11,7 +11,7 @@ from io import BytesIO
 from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
-from helpers import B2A, U2SAT, prandom
+from helpers import B2A, U2SAT, prandom, fake_dest_addr
 
 @pytest.mark.parametrize('finalize', [ False, True ])
 def test_sign1(dev, need_keypress, finalize):
@@ -30,78 +30,6 @@ def test_sign1(dev, need_keypress, finalize):
 
     #assert 'None of the keys' in str(ee)
     assert 'require subpaths' in str(ee)
-
-
-@pytest.fixture
-def try_sign(start_sign, end_sign):
-
-    def doit(filename_or_data, accept=True, finalize=False):
-        ip = start_sign(filename_or_data, finalize=finalize)
-        return ip, end_sign(accept, finalize=finalize)
-
-    return doit
-
-@pytest.fixture
-def start_sign(dev):
-
-    def doit(filename, finalize=False):
-        if filename[0:5] == b'psbt\xff':
-            ip = filename
-            filename = 'memory'
-        else:
-            ip = open(filename, 'rb').read()
-            if ip[0:10] == b'70736274ff':
-                ip = a2b_hex(ip.strip())
-            assert ip[0:5] == b'psbt\xff'
-
-        ll, sha = dev.upload_file(ip)
-
-        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize))
-
-        return ip
-
-    return doit
-
-@pytest.fixture
-def end_sign(dev, need_keypress):
-
-    def doit(accept=True, in_psbt=None, finalize=False):
-
-        if accept != None:
-            need_keypress('y' if accept else 'x')
-
-        if accept == False:
-            with pytest.raises(CCUserRefused):
-                done = None
-                while done == None:
-                    time.sleep(0.050)
-                    done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-            return
-        else:
-            done = None
-            while done == None:
-                time.sleep(0.050)
-                done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-
-        assert len(done) == 2
-
-        resp_len, chk = done
-        psbt_out = dev.download_file(resp_len, chk)
-
-        if not finalize:
-            if in_psbt:
-                assert BasicPSBT().parse(in_psbt) == BasicPSBT().parse(psbt_out)
-        else:
-            from pycoin.tx.Tx import Tx
-            # parse it
-            res = psbt_out
-            assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
-            t = Tx.from_bin(res)
-            assert t.version in [1, 2]
-
-        return psbt_out
-
-    return doit
 
 
 @pytest.mark.parametrize('fn', [
@@ -257,26 +185,6 @@ def make_change_addr(wallet, style):
         raise pytest.skip('cant do type: ' + style)
 
     return raw, dest.sec(), struct.pack('4I', xfp, *deriv)
-        
-
-def fake_dest_addr(style='p2pkh'):
-
-    # See CTxOut.get_address() in ../shared/serializations
-
-    if style == 'p2wpkh':
-        return bytes([0, 20]) + prandom(20)
-
-    if style == 'p2wsh':
-        return bytes([0, 32]) + prandom(32)
-
-    if style == 'p2sh':
-        return bytes([0xa9, 0x14]) + prandom(20) + bytes([0x87])
-
-    if style == 'p2pkh':
-        return bytes([0x76, 0xa9, 0x14]) + prandom(20) + bytes([0x88, 0xac])
-
-    # missing: if style == 'p2pk' =>  pay to pubkey
-    assert False, 'not supported: ' + style
 
 @pytest.fixture()
 def fake_txn():
@@ -317,6 +225,7 @@ def fake_txn():
             supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
 
             scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
+
             supply.txs_out.append(TxOut(1E8, scr))
 
             with BytesIO() as fd:
@@ -339,11 +248,10 @@ def fake_txn():
                 style = outstyles[i % len(outstyles)]
 
             if i in change_outputs:
-                scr, pubkey, subpath = make_change_addr(mk, style)
-                psbt.outputs[i].bip32_paths[pubkey] = subpath
+                scr, pubkey, sp = make_change_addr(mk, style)
+                psbt.outputs[i].bip32_paths[pubkey] = sp
             else:
                 scr = fake_dest_addr(style)
-                subpath = None
 
             assert scr
 
@@ -1001,5 +909,100 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
     msg = ee.value.args[0]
     assert 'Signing failed late' in msg
     assert 'led to wrong pubkey for input' in msg
+
+
+@pytest.fixture()
+def fake_multisig_txn(make_redeem):
+    # make various size txn's ... completely fake and pointless values
+    # - but has UTXO's to match needs
+    from pycoin.tx.Tx import Tx
+    from pycoin.tx.TxIn import TxIn
+    from pycoin.tx.TxOut import TxOut
+    from pycoin.serialize import h2b_rev
+    from struct import pack
+
+    def doit(num_ins, num_outs, keys, subpath="{cosigner}/%d", fee=10000,
+                outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[]):
+        psbt = BasicPSBT()
+        txn = Tx(2,[],[])
+        
+        # we have a key; use it to provide "plausible" value inputs
+        from pycoin.key.BIP32Node import BIP32Node
+        mk = BIP32Node.from_wallet_key(master_xpub)
+        xfp = mk.fingerprint()
+
+        psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
+        psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
+
+        for i in range(num_ins):
+            # make a fake txn to supply each of the inputs
+            # - each input is 1BTC
+
+            # addr where the fake money will be stored.
+            subkey = mk.subkey_for_path(subpath % i)
+            sec = subkey.sec()
+            assert len(sec) == 33, "expect compressed"
+            assert subpath[0:2] == '0/'
+
+            psbt.inputs[i].bip32_paths[sec] = xfp + pack('<II', 0, i)
+
+            # UTXO that provides the funding for to-be-signed txn
+            supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
+
+            scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
+            supply.txs_out.append(TxOut(1E8, scr))
+
+            with BytesIO() as fd:
+                if not segwit_in:
+                    supply.stream(fd)
+                    psbt.inputs[i].utxo = fd.getvalue()
+                else:
+                    supply.txs_out[-1].stream(fd)
+                    psbt.inputs[i].witness_utxo = fd.getvalue()
+
+            spendable = TxIn(supply.hash(), 0)
+            txn.txs_in.append(spendable)
+
+
+        for i in range(num_outs):
+            # random P2PKH
+            if not outstyles:
+                style = ADDR_STYLES[i % len(ADDR_STYLES)]
+            else:
+                style = outstyles[i % len(outstyles)]
+
+            if i in change_outputs:
+                scr, pubkey, sp = make_change_addr(mk, style)
+                psbt.outputs[i].bip32_paths[pubkey] = sp
+            else:
+                scr = fake_dest_addr(style)
+
+            assert scr
+
+            if 'w' in style:
+                psbt.outputs[i].witness_script = scr
+            elif style.endswith('sh'):
+                psbt.outputs[i].redeem_script = scr
+
+            if not outvals:
+                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
+            else:
+                h = TxOut(outvals[i], scr)
+
+            txn.txs_out.append(h)
+
+        with BytesIO() as b:
+            txn.stream(b)
+            psbt.txn = b.getvalue()
+
+        rv = BytesIO()
+        psbt.serialize(rv)
+        assert rv.tell() <= MAX_TXN_LEN, 'too fat'
+
+        return rv.getvalue()
+
+    return doit
+
+
 
 # EOF
