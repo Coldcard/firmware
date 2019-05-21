@@ -19,6 +19,6 @@ clean:
 	rm /Volumes/COLDCARD/lib/*.py
 
 tags:
-	ctags -f .tags *.py */*.py
+	ctags --python-kinds=-i -f .tags *.py */*.py
 
 .PHONY: up clean tags
