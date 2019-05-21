@@ -10,6 +10,7 @@ from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
 from ckcc import rng_bytes, watchpoint, is_simulator
 import uselect as select
+from utils import problem_file_line
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -178,13 +179,16 @@ class USBHandler:
                     # some limited invalid args feedback
                     print("USB request caused assert: ", end='')
                     sys.print_exception(exc)
-                    resp = b'err_' + str(exc).encode()[0:80]
+                    msg = str(exc)
+                    if not msg:
+                        msg = 'Assertion ' + problem_file_line(exc)
+                    resp = b'err_' + msg.encode()[0:80]
                     msg_len = 0
                 except Exception as exc:
                     # catch bugs and fuzzing too
                     print("USB request caused this: ", end='')
                     sys.print_exception(exc)
-                    resp = b'err_Confused'
+                    resp = b'err_Confused ' + problem_file_line(exc)
                     msg_len = 0
 
                 # aways send a reply if they get this far
@@ -275,7 +279,10 @@ class USBHandler:
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
 
-        cmd = bytes(cmd).decode()
+        try:
+            cmd = bytes(cmd).decode()
+        except:
+            raise FramingError('decode')
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.
