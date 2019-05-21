@@ -104,6 +104,8 @@ class BasicPSBTInput(PSBTSection):
         self.part_sigs = {}
         self.sighash = None
         self.bip32_paths = {}
+        self.redeem_script = None
+        self.witness_script = None
         self.others = {}
 
     def __eq__(a, b):
@@ -113,6 +115,8 @@ class BasicPSBTInput(PSBTSection):
 
         rv =  a.utxo == b.utxo and \
                 a.witness_utxo == b.witness_utxo and \
+                a.redeem_script == b.redeem_script and \
+                a.witness_script == b.witness_script and \
                 a.my_index == b.my_index and \
                 a.bip32_paths == b.bip32_paths and \
                 sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys())
@@ -138,6 +142,12 @@ class BasicPSBTInput(PSBTSection):
             assert not key
         elif kt == PSBT_IN_BIP32_DERIVATION:
             self.bip32_paths[key] = val
+        elif kt == PSBT_IN_REDEEM_SCRIPT:
+            self.redeem_script = val
+            assert not key
+        elif kt == PSBT_IN_WITNESS_SCRIPT:
+            self.witness_script = val
+            assert not key
         elif kt in ( PSBT_IN_REDEEM_SCRIPT,
                      PSBT_IN_WITNESS_SCRIPT, 
                      PSBT_IN_FINAL_SCRIPTSIG, 
@@ -152,6 +162,10 @@ class BasicPSBTInput(PSBTSection):
             wr(PSBT_IN_NON_WITNESS_UTXO, self.utxo)
         if self.witness_utxo:
             wr(PSBT_IN_WITNESS_UTXO, self.witness_utxo)
+        if self.redeem_script:
+            wr(PSBT_IN_REDEEM_SCRIPT, self.redeem_script)
+        if self.witness_script:
+            wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
         for pk, val in sorted(self.part_sigs.items()):
             wr(PSBT_IN_PARTIAL_SIG, val, pk)
         if self.sighash is not None:
