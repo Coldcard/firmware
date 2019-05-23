@@ -629,10 +629,11 @@ class psbtInputProxy(psbtProxy):
             self.is_p2sh = True
 
             # we must have the redeem script already (else fail)
-            if not self.redeem_script:
-                raise AssertionError("missing redeem script for in #%d" % my_idx)
+            ks = self.witness_script or self.redeem_script
+            if not ks:
+                raise AssertionError("missing redeem/witness script for in #%d" % my_idx)
 
-            redeem_script = self.get(self.redeem_script)
+            redeem_script = self.get(ks)
             self.scriptSig = ser_string(redeem_script)
 
             # new cheat: psbt creator probably telling us exactly what key
@@ -695,6 +696,7 @@ class psbtInputProxy(psbtProxy):
             # - check it's the right M/N to match redeem script
             global active_multisig
 
+            #print("redeem: %s" % b2a_hex(redeem_script))
             M, N = disassemble_multisig_mn(redeem_script)
             xfps = [lst[0] for lst in self.subpaths.values()]
 
@@ -734,11 +736,13 @@ class psbtInputProxy(psbtProxy):
                 assert not self.is_multisig
                 self.scriptCode = b'\x19\x76\xa9\x14' + addr + b'\x88\xac'
             elif not self.scriptCode:
-                # Segwit P2SH segwit. We need the script!
+                # Segwit P2SH. We need the witness script to be provided.
                 if not self.witness_script:
                     raise AssertionError('Need witness script for input #%d' % my_idx)
 
-                self.scriptCode = self.get(self.witness_script)
+                # "scriptCode is witnessScript preceeded by a
+                #  compactSize integer for the size of witnessScript"
+                self.scriptCode = ser_string(self.get(self.witness_script))
 
         # Could probably free self.subpaths and self.redeem_script now, but only if we didn't
         # need to re-serialize as a PSBT.
@@ -1001,7 +1005,7 @@ class psbtObject(psbtProxy):
         match_idx = -1
         if len(candidates) == 1:
             # exact match (by xfp set) .. normal case
-            active_multisig = Multisig.get_by_idx(candidates[0])
+            active_multisig = MultisigWallet.get_by_idx(candidates[0])
         else:
             # don't want to guess M if not needed, but we need it
             M, N = self.guess_M_of_N()
@@ -1011,11 +1015,11 @@ class psbtObject(psbtProxy):
                 # maybe narrowed down to single match now
                 match_idx = MultisigWallet.find_match(M, N, xfps)
                 if match_idx != -1:
-                    active_multisig = Multisig.get_by_idx(match_idx)
+                    active_multisig = MultisigWallet.get_by_idx(match_idx)
 
         if not active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            active_multisig = Multisig.import_from_psbt(M, N, self.xpubs, self.get)
+            active_multisig = MultisigWallet.import_from_psbt(M, N, self.xpubs, self.get)
 
         if not active_multisig:
             # not clear if an error... might be part-way to importing, and
@@ -1023,7 +1027,9 @@ class psbtObject(psbtProxy):
             # we should not reach this point (ie. raise something to abort signing)
             return
 
-        # TODO validate good match: xpubs must be exactly right
+        # Maybe: Validate good match? xpubs must be exactly right, but
+        # we're going to use our own values from setup time anyway and not trusting
+        # provided values without user interaction.
 
     def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
@@ -1517,15 +1523,13 @@ class psbtObject(psbtProxy):
 
             elif inp.added_sig:
                 # insert the new signature(s)
+                assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
                 pubkey, der_sig = inp.added_sig
 
                 s = b''
-                if not inp.is_multisig:
-                    s += ser_push_data(der_sig)
-                    s += ser_push_data(pubkey)
-                else:
-                    assert False, 'Multisig PSBT combine not supported'
+                s += ser_push_data(der_sig)
+                s += ser_push_data(pubkey)
 
                 txi.scriptSig = s
 
@@ -1545,13 +1549,11 @@ class psbtObject(psbtProxy):
                 if inp.is_segwit and inp.added_sig:
                     # put in new sig: wit is a CTxInWitness
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
+                    assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
                     pubkey, der_sig = inp.added_sig
-                    if not inp.is_multisig:
-                        assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
-                        wit.scriptWitness.stack = [der_sig, pubkey]
-                    else:
-                        assert False, 'Multisig PSBT combine not supported'
+                    assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
+                    wit.scriptWitness.stack = [der_sig, pubkey]
 
                 fd.write(wit.serialize())
 
