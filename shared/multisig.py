@@ -53,7 +53,9 @@ def disassemble_multisig(redeem_script):
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
+    assert MAX_SIGNERS == 15
     assert redeem_script[-1] == OP_CHECKMULTISIG
+
     M = redeem_script[0] - 80
     N = redeem_script[-2] - 80
 
@@ -149,14 +151,14 @@ class MultisigWallet:
 
         fingerprints = sorted(fingerprints)
         N = len(fingerprints)
-        rv = {}
+        rv = []
         
         for idx, rec in enumerate(lst):
             name, m_of_n, xpubs, opts = rec
             if m_of_n[1] != N: continue
             if sorted(f for f,_ in xpubs) != fingerprints: continue
 
-            rv.add(idx)
+            rv.append(idx)
 
         return rv
 
@@ -340,8 +342,8 @@ class MultisigWallet:
                     # Not a match but not an error by itself, since might be 
                     # another dup xfp to look at still.
 
-                    #print('pk mismatch: %s => %s != %s' % (
-                    #                here, b2a_hex(found_pk), b2a_hex(pubkey)))
+                    print('pk mismatch: %s => %s != %s' % (
+                                    here, b2a_hex(found_pk), b2a_hex(pubkey)))
                     continue
 
                 subpath_help.append(here)
