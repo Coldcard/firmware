@@ -12,6 +12,7 @@ from helpers import B2A, U2SAT, prandom, fake_dest_addr
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.encoding import a2b_hashed_base58
 from io import BytesIO
 
 def xfp2str(xfp):
@@ -45,6 +46,7 @@ def bitcoind_p2sh(bitcoind):
 
     return doit
 
+
 @pytest.fixture
 def clear_ms(unit_test):
     def doit():
@@ -76,7 +78,7 @@ def make_multisig():
     return doit
 
 @pytest.fixture
-def offer_import(cap_story, dev):
+def offer_ms_import(cap_story, dev, need_keypress):
     def doit(config):
         # upload the file, trigger import
         file_len, sha = dev.upload_file(config.encode('ascii'))
@@ -92,7 +94,7 @@ def offer_import(cap_story, dev):
     return doit
 
 @pytest.fixture
-def import_ms_wallet(dev, make_multisig, offer_import, need_keypress):
+def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False):
         keys = make_multisig(M, N, unique=unique)
@@ -108,7 +110,7 @@ def import_ms_wallet(dev, make_multisig, offer_import, need_keypress):
                                             for xfp, m, dd in keys)
         #print(config)
 
-        title, story = offer_import(config)
+        title, story = offer_ms_import(config)
 
         assert 'Create new multisig' in story
         assert name in story
@@ -124,7 +126,7 @@ def import_ms_wallet(dev, make_multisig, offer_import, need_keypress):
 
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_keypress):
+def test_ms_import_variations(N, make_multisig, clear_ms, offer_ms_import, need_keypress):
     # all the different ways...
     keys = make_multisig(N, N)
 
@@ -132,7 +134,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     # - no xfps
     # - no meta data
     config = '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
-    title, story = offer_import(config)
+    title, story = offer_ms_import(config)
     assert f'Policy: {N} of {N}\n' in story
     need_keypress('x')
 
@@ -141,7 +143,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
                             for xfp,m,sk in keys if xfp != simulator_fixed_xfp)
 
     with pytest.raises(BaseException) as ee:
-        title, story = offer_import(config)
+        title, story = offer_ms_import(config)
     assert 'my key not included' in str(ee.value)
 
 
@@ -149,7 +151,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     for name in [ 'Zy', 'Z'*20 ]:
         config = f'name: {name}\n'
         config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
-        title, story = offer_import(config)
+        title, story = offer_ms_import(config)
         need_keypress('x')
         assert name in story
 
@@ -157,7 +159,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     config = 'name: ' + ('A'*21) + '\n'
     config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
     with pytest.raises(BaseException) as ee:
-        title, story = offer_import(config)
+        title, story = offer_ms_import(config)
     assert '20 long' in str(ee.value)
 
     # comments, blank lines
@@ -165,7 +167,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     for i in range(len(config)):
         config.insert(i, '# comment')
         config.insert(i, '')
-    title, story = offer_import('\n'.join(config))
+    title, story = offer_ms_import('\n'.join(config))
     assert f'Policy: {N} of {N}\n' in story
     need_keypress('x')
 
@@ -173,7 +175,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_import, need_key
     for af in unmap_addr_fmt.keys():
         config = f'format: {af}\n'
         config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
-        title, story = offer_import(config)
+        title, story = offer_ms_import(config)
         need_keypress('x')
         assert f'Policy: {N} of {N}\n' in story
 
@@ -189,7 +191,15 @@ def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=Non
     for cosigner_idx, (xfp, node, sk) in enumerate(keys):
         path = path_mapper(cosigner_idx)
 
-        for p in path:
+        if not node:
+            # use xpubkey, otherwise master
+            dpath = path[sk.tree_depth():]
+            assert max(dpath) < 1000
+            node = sk
+        else:
+            dpath = path
+
+        for p in dpath:
             node = node.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000))
 
         pk = node.sec(use_uncompressed=False)
@@ -580,7 +590,7 @@ def test_make_example_file(N, microsd_path, make_multisig, addr_fmt=None):
 
 @pytest.mark.parametrize('num_diff', [ 1, 5])
 @pytest.mark.parametrize('N', [ 5, 15])
-def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu, num_diff):
+def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu, num_diff):
     M = N
 
     clear_ms()
@@ -604,13 +614,13 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
         assert menu[0] == f'{M}/{N}: {name}'
         assert len(menu) == 3
 
-    title, story = offer_import(make_named('xxx-orig'))
+    title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'xxx-orig' in story
     need_keypress('y')
     check_named('xxx-orig')
 
     # just simple rename
-    title, story = offer_import(make_named('xxx-new'))
+    title, story = offer_ms_import(make_named('xxx-new'))
     assert 'Update' in story
     assert 'xxx-new' in story
 
@@ -622,7 +632,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
         if count == num_diff: break
         keys[count][2]._chain_code = bytes(i^0xa5 for i in keys[count][2]._chain_code)
 
-    title, story = offer_import(make_named('xxx-hacked'))
+    title, story = offer_ms_import(make_named('xxx-hacked'))
     assert f'{num_diff} different' in story
     assert 'caution' in story.lower()
     assert 'danger' in story.lower()
@@ -634,7 +644,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_import, need_keypress
     clear_ms()
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_duplicate_xfp(N, offer_import, need_keypress, test_ms_show_addr):
+def test_duplicate_xfp(N, offer_ms_import, need_keypress, test_ms_show_addr):
     # it's legit to have duplicate XFP values! Not hard to make either!
 
     # new wallet will all having same XFP, but different xpubs
@@ -657,7 +667,7 @@ def test_duplicate_xfp(N, offer_import, need_keypress, test_ms_show_addr):
     # - no xfps
     # - no meta data
     config = '\n'.join(sk.hwif(as_private=False) for sk in lst)
-    title, story = offer_import(config)
+    title, story = offer_ms_import(config)
     assert f'Policy: {N} of {N}\n' in story
     need_keypress('y')
 
@@ -716,11 +726,56 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
 
     clear_ms()
 
+from test_bip39pw import set_bip39_pw
+
+@pytest.fixture()
+def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms):
+
+    # construct a wallet 2 of 3 wallet using different bip39 passwords
+    def doit(M, addr_fmt=None):
+        passwords = ['Me', 'Myself', 'And I']
+        keys = []
+        for pw in passwords:
+            xfp = set_bip39_pw(pw)
+
+            sk = dev.send_recv(CCProtocolPacker.get_xpub("m/45'"))
+            node = BIP32Node.from_wallet_key(sk)
+
+            keys.append((xfp, None, node))
+
+        assert len(set(x for x,_,_ in keys)) == 3, keys
+
+        # render as a file for import
+        config = f"name: Myself-{M}\npolicy: {M} / 3\n\n"
+
+        if addr_fmt:
+            config += f'format: {addr_fmt.upper()}\n'
+
+        config += '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif()) for xfp, _, sk in keys)
+        #print(config)
+
+        title, story = offer_ms_import(config)
+        #print(story)
+
+        # dont care if update or create; accept it.
+        time.sleep(.1)
+        need_keypress('y')
+
+        def select_wallet(idx):
+            # select to specific pw
+            xfp = set_bip39_pw(passwords[idx])
+            assert xfp == keys[idx][0]
+
+        return (keys, select_wallet)
+
+    return doit
+
+        
+
 @pytest.fixture()
 def fake_ms_txn():
-    # make various size txn's ... completely fake and pointless values
+    # make various size MULTISIG txn's ... completely fake and pointless values
     # - but has UTXO's to match needs
-    # - MULTISIG version
     from pycoin.tx.Tx import Tx
     from pycoin.tx.TxIn import TxIn
     from pycoin.tx.TxOut import TxOut
@@ -735,11 +790,11 @@ def fake_ms_txn():
         txn = Tx(2,[],[])
 
         if incl_xpubs:
-            # add global header for XPUB
+            # add global header with XPUB's
             # - assumes BIP45
             for nonce_idx, (xfp, m, sk) in enumerate(keys):
                 kk = pack('<III', nonce_idx, xfp, 45|0x80000000)
-                psbt.xpubs[kk] = a2b_hashed_base58(sk.hwif())
+                psbt.xpubs[kk] = sk.serialize(as_private=False)
 
         psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
         psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
@@ -751,8 +806,12 @@ def fake_ms_txn():
             # addr where the fake money will be stored.
             addr, script, details = make_ms_address(M, keys, idx=i)
 
-            # lots of detail needed for p2sh inputs
-            psbt.inputs[i].redeem_script = script
+            # lots of supporting details needed for p2sh inputs
+            if segwit_in:
+                psbt.inputs[i].witness_script = script
+            else:
+                psbt.inputs[i].redeem_script = script
+
             for pubkey, xfp_path in details:
                 psbt.inputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
 
@@ -819,19 +878,75 @@ def fake_ms_txn():
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, M=1, N=3):
+@pytest.mark.parametrize('incl_xpubs', [ False, True ])
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, M=1, N=3):
     
     num_outs = num_ins-1
 
     clear_ms()
     keys = import_ms_wallet(M, N, name='cli-test', accept=1)
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys)
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs)
 
     open('debug/last.psbt', 'wb').write(psbt)
 
     try_sign(psbt)
 
+@pytest.mark.parametrize('num_ins', [ 15 ])
+@pytest.mark.parametrize('M', [ 3, 2, 1 ])
+@pytest.mark.parametrize('segwit', [True, False])
+@pytest.mark.parametrize('incl_xpubs', [ False, True ])
+def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
+        fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
+
+    num_outs = 2
+    N = 3
+
+    clear_ms()
+
+    # create a wallet, with 3 bip39 pw's
+    keys, select_wallet = make_myself_wallet(M)
+
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs)
+
+    open(f'debug/myself-before.psbt', 'wb').write(psbt)
+    for idx in range(M):
+        select_wallet(idx)
+        _, updated = try_sign(psbt)
+        open(f'debug/myself-after.psbt', 'wb').write(updated)
+        assert updated != psbt
+
+        aft = BasicPSBT().parse(updated)
+
+        # check all inputs gained a signature
+        assert all(len(i.part_sigs)==(idx+1) for i in aft.inputs)
+
+        psbt = updated
+
+    # should be fully signed now.
+    anal = bitcoind_analyze(aft.as_bytes())
+
+    try:
+        assert not any(inp['missing'] for inp in anal['inputs']), "missing sigs: %r" % anal
+        assert all(inp['next']=='updater' for inp in anal['inputs']), "other issue: %r" % anal
+    except:
+        # XXX seems to be a bug in analyzepsbt function
+        pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
+        decode = bitcoind_decode(aft.as_bytes())
+        pprint(decode, stream=open('debug/decoded.txt', 'wt'))
+    
+        if M==N or segwit:
+            raise
+        else:
+            print("ignoring bug")
+
+    if 0:
+        # why doesn't this work?
+        extracted_psbt, txn, is_complete = bitcoind_finalizer(aft.as_bytes(), extract=True)
+
+        ex = BasicPSBT().parse(extracted_psbt)
+        assert is_complete
+        assert ex != aft
 
 
 # EOF

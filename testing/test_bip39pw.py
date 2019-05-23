@@ -58,6 +58,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
         # reset from previous runs
         words = reset_seed_words()
 
+        print(f"Setting BIP39 pw: {pw}")
         dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)
 
         if pw:

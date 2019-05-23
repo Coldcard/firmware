@@ -256,7 +256,7 @@ class BasicPSBT:
                     num_ins = len(t.txs_in)
                     num_outs = len(t.txs_out)
                 elif kt == PSBT_GLOBAL_XPUB:
-                    self.xpubs[key[1:]] = b2a_hashed_base58(val)
+                    self.xpubs[key[1:]] = val
                 else:
                     raise ValueError('unknown global key type: 0x%02x' % kt)
 
@@ -283,7 +283,7 @@ class BasicPSBT:
         wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
         for k in self.xpubs:
-            wr(PSBT_GLOBAL_XPUB, a2b_hashed_base58(self.xpubs[k]), key=k)
+            wr(PSBT_GLOBAL_XPUB, self.xpubs[k], key=k)
 
         # sep
         fd.write(b'\0')
@@ -293,6 +293,11 @@ class BasicPSBT:
 
         for idx, outp in enumerate(self.outputs):
             outp.serialize(fd, idx)
+
+    def as_bytes(self):
+        with io.BytesIO() as fd:
+            self.serialize(fd)
+            return fd.getvalue()
 
 
 def test_my_psbt():
