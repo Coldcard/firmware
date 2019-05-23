@@ -6,7 +6,7 @@ from pprint import pprint
 #from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
-from api import bitcoind, match_key
+from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode
 from binascii import b2a_hex, a2b_hex
 from constants import *
 
@@ -657,6 +657,7 @@ def end_sign(dev, need_keypress):
 
 
 # useful fixtures related to multisig
-from test_multisig import import_ms_wallet, make_multisig, offer_import, make_ms_address
+from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import,
+                                make_ms_address, clear_ms)
 
 #EOF
