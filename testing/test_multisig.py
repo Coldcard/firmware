@@ -612,7 +612,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
 
         menu = cap_menu()
         assert menu[0] == f'{M}/{N}: {name}'
-        assert len(menu) == 3
+        assert len(menu) == 4
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'xxx-orig' in story
@@ -731,35 +731,52 @@ from test_bip39pw import set_bip39_pw
 @pytest.fixture()
 def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms):
 
-    # construct a wallet 2 of 3 wallet using different bip39 passwords
-    def doit(M, addr_fmt=None):
-        passwords = ['Me', 'Myself', 'And I']
-        keys = []
-        for pw in passwords:
-            xfp = set_bip39_pw(pw)
+    # construct a wallet (M of 4) using different bip39 passwords, and default sim
+    def doit(M, addr_fmt=None, do_import=True):
+        passwords = ['Me', 'Myself', 'And I', '']
 
-            sk = dev.send_recv(CCProtocolPacker.get_xpub("m/45'"))
-            node = BIP32Node.from_wallet_key(sk)
+        if 0:
+            # WORKING, but slow .. and it's constant data
+            keys = []
+            for pw in passwords:
+                xfp = set_bip39_pw(pw)
 
-            keys.append((xfp, None, node))
+                sk = dev.send_recv(CCProtocolPacker.get_xpub("m/45'"))
+                node = BIP32Node.from_wallet_key(sk)
 
-        assert len(set(x for x,_,_ in keys)) == 3, keys
+                keys.append((xfp, None, node))
 
-        # render as a file for import
-        config = f"name: Myself-{M}\npolicy: {M} / 3\n\n"
+            assert len(set(x for x,_,_ in keys)) == 4, keys
+            pprint(keys)
+        else:
+            # Much, FASTER!
+            assert dev.is_simulator
+            keys = [(3503269483, None,
+                        BIP32Node.from_hwif('tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9')),
+                     (2389277556, None,
+                        BIP32Node.from_hwif('tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc')),
+                 (3190206587, None,
+                        BIP32Node.from_hwif('tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa')),
+                (1130956047, None,
+                        BIP32Node.from_hwif('tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')),
+            ]
 
-        if addr_fmt:
-            config += f'format: {addr_fmt.upper()}\n'
+        if do_import:
+            # render as a file for import
+            config = f"name: Myself-{M}\npolicy: {M} / 4\n\n"
 
-        config += '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif()) for xfp, _, sk in keys)
-        #print(config)
+            if addr_fmt:
+                config += f'format: {addr_fmt.upper()}\n'
 
-        title, story = offer_ms_import(config)
-        #print(story)
+            config += '\n'.join('%s: %s' % (xfp2str(xfp), sk.hwif()) for xfp, _, sk in keys)
+            #print(config)
 
-        # dont care if update or create; accept it.
-        time.sleep(.1)
-        need_keypress('y')
+            title, story = offer_ms_import(config)
+            #print(story)
+
+            # dont care if update or create; accept it.
+            time.sleep(.1)
+            need_keypress('y')
 
         def select_wallet(idx):
             # select to specific pw
@@ -768,7 +785,9 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
 
         return (keys, select_wallet)
 
-    return doit
+    yield  doit
+
+    set_bip39_pw('')
 
         
 
@@ -893,26 +912,26 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
     try_sign(psbt)
 
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [ 3, 2, 1 ])
+@pytest.mark.parametrize('M', [ 4, 3, 2, 1 ])
 @pytest.mark.parametrize('segwit', [True, False])
-@pytest.mark.parametrize('incl_xpubs', [ False, True ])
-def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
+@pytest.mark.parametrize('incl_xpubs', [ True, False ])
+def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms, 
         fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
 
     num_outs = 2
-    N = 3
 
     clear_ms()
 
     # create a wallet, with 3 bip39 pw's
-    keys, select_wallet = make_myself_wallet(M)
+    keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
+    N = len(keys)
 
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs)
 
     open(f'debug/myself-before.psbt', 'wb').write(psbt)
     for idx in range(M):
         select_wallet(idx)
-        _, updated = try_sign(psbt)
+        _, updated = try_sign(psbt, accept_ms_import=(incl_xpubs and (idx==0)))
         open(f'debug/myself-after.psbt', 'wb').write(updated)
         assert updated != psbt
 
@@ -930,15 +949,16 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         assert not any(inp['missing'] for inp in anal['inputs']), "missing sigs: %r" % anal
         assert all(inp['next']=='updater' for inp in anal['inputs']), "other issue: %r" % anal
     except:
-        # XXX seems to be a bug in analyzepsbt function
+        # XXX seems to be a bug in analyzepsbt function ... not fully studied
         pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
         decode = bitcoind_decode(aft.as_bytes())
         pprint(decode, stream=open('debug/decoded.txt', 'wt'))
     
         if M==N or segwit:
+            # as observed, bug not trigged, so raise if it *does* happen
             raise
         else:
-            print("ignoring bug")
+            print("ignoring bug in bitcoind")
 
     if 0:
         # why doesn't this work?
