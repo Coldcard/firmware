@@ -12,6 +12,22 @@ from uasyncio import sleep_ms
 # number of (full) lines per screen full
 PER_M = 4
 
+def start_chooser(chooser):
+    # get which one to show as selected, list of choices, and fcn to call after
+    selected, choices, setter = chooser()
+
+    def picked(menu, picked, xx_self):
+        menu.chosen = picked
+        menu.show()
+        await sleep_ms(100)     # visual feedback that we changed it
+        setter(picked, choices[picked])
+
+        the_ux.pop()
+
+    # make a new menu, just for the choices
+    m = MenuSystem([MenuItem(c, f=picked) for c in choices], chosen=selected)
+    the_ux.push(m)
+
 class MenuItem:
     def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None):
         self.label = label
@@ -28,20 +44,7 @@ class MenuItem:
     async def activate(self, menu, idx):
 
         if getattr(self, 'chooser', None):
-            # get which one to show as selected, list of choices, and fcn to call after
-            selected, choices, setter = self.chooser()
-
-            def picked(menu, picked, xx_self):
-                menu.chosen = picked
-                menu.show()
-                await sleep_ms(100)     # visual feedback that we changed it
-                setter(picked, choices[picked])
-
-                the_ux.pop()
-
-            # make a new menu, just for the choices
-            m = MenuSystem([MenuItem(c, f=picked) for c in choices], chosen=selected)
-            the_ux.push(m)
+            start_chooser(self.chooser)
 
         else:
             # nesting menus, and functions and so on.
