@@ -123,7 +123,10 @@ class MembraneNumpad(NumpadBase):
         from main import dis
         from display import FontTiny
 
-        assert self.scan_count == 0
+        if self.scan_count != 0:
+            # This happened like once, some kind of race/timing window. Recover.
+            self._start_scan()
+            return
 
         if sum(self.history) == 0:
             # all keys are 100% up.
@@ -131,7 +134,6 @@ class MembraneNumpad(NumpadBase):
 
             # stop scanning for now
             self._wait_any()
-            #print('=> all up')
             return
 
         #print(' '.join(str(i) for i in self.history), end='')
@@ -144,11 +146,9 @@ class MembraneNumpad(NumpadBase):
             if count == 0 and key == self.key_pressed:
                 # key up
                 self._key_event('')
-                #print(' => %s UP' % key)
                 break
             elif count == NUM_SAMPLES:
                 self._key_event(key)
-                #print(' => %s down' % key)
                 break
 
         # do another scan
