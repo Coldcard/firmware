@@ -3,7 +3,7 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure
+import stash, chains, ustruct, ure, uio
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
@@ -15,6 +15,14 @@ from opcodes import OP_CHECKMULTISIG
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
 MAX_SIGNERS = const(15)
+
+# PSBT Xpub trust policies
+TRUST_VERIFY = const(0)
+TRUST_OFFER = const(1)
+TRUST_PSBT = const(2)
+
+class MultisigOutOfSpace(RuntimeError):
+    pass
 
 def disassemble_multisig(redeem_script):
     # take apart a standard multisig's redeem/witness script, and return M/N and offset of
@@ -108,6 +116,17 @@ class MultisigWallet:
     @property
     def chain(self):
         return chains.get_chain(self.chain_type)
+
+    @classmethod
+    def get_trust_policy(cls):
+        from main import settings
+
+        which = settings.get('pms', None)
+
+        if which is None:
+            which = TRUST_VERIFY if cls.exists() else TRUST_OFFER
+
+        return which
 
     @classmethod
     def deserialize(cls, vals, idx=-1):
@@ -223,7 +242,7 @@ class MultisigWallet:
                 settings.save()
             except: pass        # give up on recovery
 
-            raise RuntimeError
+            raise MultisigOutOfSpace
 
 
     def has_dup(self):
@@ -442,36 +461,12 @@ class MultisigWallet:
                     #print("Bad xfp: " + ln)
                     continue
 
-                xpub = value
-                try:
-                    # Note: addr_fmt_here detected here via SLIP-132 isn't useful
-                    node, chain, _ = import_xpub(xpub)
-                except:
-                    raise AssertionError('unable to parse xpub')
-
-                assert node.private_key() == None, 'no private keys plz'
-                assert chain.ctype == expect_chain, 'wrong chain, expect: ' + expect_chain
-
-                # NOTE: could enforce all same depth, and/or all depth >= 1, but
-                # seems like more restrictive than needed.
-
-                if node.depth() == 1:
-                    if not xfp:
-                        # allow a shortcut: zero/omit xfp => use observed parent value
-                        xfp = swab32(node.fingerprint())
-                    else:
-                        # generally cannot check fingerprint values, but if we can, do.
-                        assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
-
-                assert xfp, 'need fingerprint'
+                # deserialize, update list and lots of checks
+                xfp = cls.check_xpub(xfp, value, expect_chain, xpubs)
 
                 if xfp == my_xfp:
                     # not conclusive, but enough for error catching.
                     has_mine = True
-
-                # serialize xpub w/ BIP32 standard now.
-                # - this has effect of stripping SLIP-132 confusion away
-                xpubs.append((xfp, chain.serialize_public(node, AF_P2SH)))
 
         assert len(xpubs), 'need xpubs'
 
@@ -499,6 +494,39 @@ class MultisigWallet:
 
         # done. have all the parts
         return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
+
+    @classmethod
+    def check_xpub(cls, xfp, xpub, expect_chain, xpubs):
+        # Shared code: consider an xpub for inclusion into a wallet, if ok, append
+        # to list: xpubs.
+
+        try:
+            # Note: addr_fmt_here detected here via SLIP-132 isn't useful
+            node, chain, _ = import_xpub(xpub)
+        except:
+            print(xpub)
+            raise AssertionError('unable to parse xpub')
+
+        assert node.private_key() == None, 'no private keys plz'
+        assert chain.ctype == expect_chain, 'wrong chain, expect: ' + expect_chain
+
+        # NOTE: could enforce all same depth, and/or all depth >= 1, but
+        # seems like more restrictive than needed.
+        if node.depth() == 1:
+            if not xfp:
+                # allow a shortcut: zero/omit xfp => use observed parent value
+                xfp = swab32(node.fingerprint())
+            else:
+                # generally cannot check fingerprint values, but if we can, do.
+                assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
+
+        assert xfp, 'need fingerprint'
+
+        # serialize xpub w/ BIP32 standard now.
+        # - this has effect of stripping SLIP-132 confusion away
+        xpubs.append((xfp, chain.serialize_public(node, AF_P2SH)))
+
+        return xfp
 
     async def export_wallet_file(self, mode="exported from", extra_msg=None):
         # create a text file with the details; ready for import to next Coldcard
@@ -547,18 +575,154 @@ class MultisigWallet:
         # - dict is a map from (xfp+path) => binary BIP32 xpub
         # - called fetcher to get bytes of xpub
         # - already know not in our records.
-        N = len(xpubs_dict)
+        from ustruct import unpack_from
+        from main import settings
+        import tcc
 
-        # TODO: 
-        # - add settings
-        # - generate in-memory instance
-        # - maybe save, maybe show to user, etc
+        trust_mode = cls.get_trust_policy()
 
-        pass
+        if trust_mode == TRUST_VERIFY:
+            # already checked for existing import and wasn't found, so fail
+            raise AssertionError("XPUBs in PSBT do not match any existing wallet")
+
+        # build up an in-memory version of the wallet.
+
+        assert N == len(xpubs_dict)
+        assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
+        my_xfp = settings.get('xfp')
+
+        expect_chain = chains.current_chain().ctype
+        xpubs = []
+        has_mine = False
+
+        for k, v in xpubs_dict.items():
+            nonce, xfp, *path = unpack_from('<%dI' % (len(k)/4), k, 0)
+            xpub = tcc.codecs.b58_encode(fetcher(v))
+            xfp = cls.check_xpub(xfp, xpub, expect_chain, xpubs)
+            if xfp == my_xfp:
+                has_mine = True
+
+        assert has_mine, 'my key not included'
+
+        name = 'PSBT-%d-of-%d' % (M, N)
+
+        ms = cls(name, (M, N), xpubs, chain_type=expect_chain)
+
+        if trust_mode == TRUST_PSBT:
+            # keep just in-memory version, no approval required
+            return ms, False
+
+        assert trust_mode == TRUST_OFFER
+
+        # caller need to handle interact w.r.t new wallet
+        print("Offering import")
+        return ms, True
+
+    async def confirm_import(self):
+        # prompt them about a new wallet, let them see details and then commit change.
+        M, N = self.M, self.N
+
+        if M == N == 1:
+            exp = 'The one signer must approve spends.'
+        if M == N:
+            exp = 'All %d co-signers must approve spends.' % N
+        elif M == 1:
+            exp = 'Any signature from %d co-signers will approve spends.' % N
+        else:
+            exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=M, N=N)
+
+        # Look for duplicate case.
+        is_dup, diff_count = self.has_dup()
+
+        if not is_dup:
+            story = 'Create new multisig wallet?'
+        elif diff_count:
+            story = '''\
+CAUTION: This updated wallet has %d different XPUB values, but matching fingerprints \
+and same M of N. Perhaps the derivation path has changed legitimately, otherwise, much \
+DANGER!''' % diff_count
+        else:
+            story = 'Update existing multisig wallet?'
+        story += '''\n
+Wallet Name:
+  {name}
+
+Policy: {M} of {N}
+
+{exp}
+
+Press (1) to see extended public keys, \
+OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp)
+
+        while 1:
+            ch = await ux_show_story(story, escape='1')
+
+            if ch == '1':
+                # Show the xpubs; might be 2k or more rendered.
+                msg = uio.StringIO()
+
+                for idx, (xfp, xpub) in enumerate(self.xpubs):
+                    if idx:
+                        msg.write('\n\n')
+
+                    # Not showing index numbers here because order
+                    # is non-deterministic both here, our storage, and in usage.
+                    msg.write('%s:\n%s' % (xfp2str(xfp), xpub))
+
+                await ux_show_story(msg, title='%d of %d' % (self.M, self.N))
+
+                continue
+
+            if ch == 'y':
+                # save to nvram, may raise MultisigOutOfSpace
+                if is_dup:
+                    is_dup.delete()
+                self.commit()
+                await ux_dramatic_pause("Saved.", 2)
+            break
+
+        return ch
 
 async def no_ms_yet(*a):
     # action for 'no wallets yet' menu item
-    await ux_show_story("You don't have any multisig wallets setup yet.")
+    await ux_show_story("You don't have any multisig wallets yet.")
+
+def psbt_xpubs_policy_chooser():
+    # Chooser for trust policy
+    ch = [ 'Verify Only', 'Offer Import', 'Trust PSBT']
+
+    def xset(idx, text):
+        from main import settings
+        settings.set('pms', idx)
+
+    return MultisigWallet.get_trust_policy(), ch, xset
+
+async def trust_psbt_menu(*a):
+    # show a story then go into chooser
+    from menu import start_chooser
+
+    ch = await ux_show_story('''\
+This setting controls what the Coldcard does \
+with the co-signer public keys (XPUBs) that may \
+be provided inside a PSBT file. Three choices:
+
+- Verify Only. Do not import the xpubs found, but do \
+verify the correct wallet already exists on the Coldcard.
+
+- Offer Import. If it's a new multisig wallet, offer to import \
+the details and store them as a new wallet in the Coldcard.
+
+- Trust PSBT. Use the wallet data in the PSBT as a temporary,
+multisig wallet, and do not import it. This permits some \
+deniability and additional privacy.
+
+When the XPUB data is not provided in the PSBT, regardless of the above, \
+we require the appropriate multisig wallet to already be imported \
+on the Coldcard. Default is to 'Offer' unless a multisig wallet already \
+exists, otherwise 'Verify'.''')
+
+    if ch == 'x': return
+    start_chooser(psbt_xpubs_policy_chooser)
 
 class MultisigMenu(MenuSystem):
 
@@ -578,12 +742,13 @@ class MultisigMenu(MenuSystem):
 
         rv.append(MenuItem('Import from SD', f=import_multisig))
         rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
+        rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
 
         return rv
 
     def update_contents(self):
-        # reconstruct the list of wallets on this dynamic menu, because
-        # we added or changed them and are showing that same emenu
+        # Reconstruct the list of wallets on this dynamic menu, because
+        # we added or changed them and are showing that same menu again.
         tmp = self.construct()
         self.replace_items(tmp)
 
@@ -592,10 +757,9 @@ async def make_multisig_menu(*a):
     rv = MultisigMenu.construct()
     return MultisigMenu(rv)
 
-
 async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet, offer to delete
-    import chains, uio
+    import chains
     from menu import MenuItem
 
     ms = MultisigWallet.get_by_idx(item.arg)
@@ -625,7 +789,7 @@ All keys listed below.
 
     if ch == '6':
         # delete
-        if not await ux_confirm("Delete this multisig wallet (%s)? Funds may be impacted."
+        if not await ux_confirm("Delete this multisig wallet (%s)?\n\nFunds may be impacted."
                                                      % ms.name):
             await ux_dramatic_pause('Aborted.', 3)
             return
