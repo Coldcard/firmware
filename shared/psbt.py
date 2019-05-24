@@ -978,10 +978,12 @@ class psbtObject(psbtProxy):
         # Peek at the inputs to see if we can guess M/N value. Just takes
         # first one it finds.
         #
+        from opcodes import OP_CHECKMULTISIG
         for i in self.inputs:
-            if not i.redeem_script: continue
+            ks = i.witness_script or i.redeem_script
+            if not ks: continue
 
-            rs = i.get(i.redeem_script)
+            rs = i.get(ks)
             if rs[-1] != OP_CHECKMULTISIG: continue
 
             M, N = disassemble_multisig_mn(rs)
@@ -991,14 +993,14 @@ class psbtObject(psbtProxy):
 
         raise AssertionError("unclear M")
 
-    def handle_xpubs(self):
+    async def handle_xpubs(self):
         # Lookup correct wallet based on xpubs in globals
         # - only happens if they volunteered this 'extra' data
         global active_multisig
         assert not active_multisig
 
         xfps = [unpack_from('<I', k, 4)[0] for k in self.xpubs.keys()]
-        assert self.my_xfp in xfps, 'my xfp not involved'
+        assert self.my_xfp in xfps, 'My XFP not involved'
 
         candidates = MultisigWallet.find_candidates(xfps)
 
@@ -1019,7 +1021,12 @@ class psbtObject(psbtProxy):
 
         if not active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            active_multisig = MultisigWallet.import_from_psbt(M, N, self.xpubs, self.get)
+            active_multisig, need_approval = MultisigWallet.import_from_psbt(
+                                                    M, N, self.xpubs, self.get)
+            if need_approval:
+                # do a complex UX sequence, which lets them save wallet
+                ch = await active_multisig.confirm_import()
+                assert ch == 'y', 'Refused to import new wallet'
 
         if not active_multisig:
             # not clear if an error... might be part-way to importing, and
@@ -1027,11 +1034,11 @@ class psbtObject(psbtProxy):
             # we should not reach this point (ie. raise something to abort signing)
             return
 
-        # Maybe: Validate good match? xpubs must be exactly right, but
+        # Could validate good match here? The xpubs must be exactly right, but
         # we're going to use our own values from setup time anyway and not trusting
-        # provided values without user interaction.
+        # these values without user interaction.
 
-    def validate(self):
+    async def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
         # these messages are rarely seen. These are syntax/fatal errors.
         #
@@ -1045,7 +1052,7 @@ class psbtObject(psbtProxy):
 
         # if multisig xpub details provided, they better be right and/or offer import
         if self.xpubs:
-            self.handle_xpubs()
+            await self.handle_xpubs()
 
         assert self.num_outputs >= 1, 'need outs'
 

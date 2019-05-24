@@ -35,6 +35,7 @@ from sffile import SFFile
 #   terms_ok = customer has signed-off on the terms of sale
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
+#   pms = trust/import/distrust xpubs found in PSBT files
 #
 
 

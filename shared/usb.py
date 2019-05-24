@@ -396,7 +396,7 @@ class USBHandler:
 
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
-            maybe_enroll_xpub(sf_len=file_len)
+            maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
             return None
 
         if cmd == 'stxn':

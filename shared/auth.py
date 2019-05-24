@@ -242,7 +242,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # Do some analysis/ validation
         try:
-            self.psbt.validate()
+            await self.psbt.validate()      # might do UX: accept multisig import
             self.psbt.consider_inputs()
             self.psbt.consider_keys()
             self.psbt.consider_outputs()
@@ -722,7 +722,7 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # - they must provide full redeem script, and we will re-verify it and check pubkeys inside it
 
     import ustruct
-    from multisig import MultisigWallet
+    from multisig import MultisigWallet, MultisigOutOfSpace
 
     try:
         assert addr_format in SUPPORTED_ADDR_FORMATS
@@ -787,85 +787,25 @@ class NewEnrollRequest(UserAuthorizedAction):
         # self.result ... will be re-serialized xpub
 
     async def interact(self):
-        # prompt them
+        from multisig import MultisigOutOfSpace
+
         ms = self.wallet
-
-        if ms.M == ms.N:
-            exp = 'All %d co-signers must approve spends.' % ms.N
-        elif ms.M == 1:
-            exp = 'Any signature from %d co-signers will approve spends.' % ms.N
-        else:
-            exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=ms.M, N=ms.N)
-
-        # Look for duplicate case.
-        is_dup, diff_count = ms.has_dup()
-
-        if not is_dup:
-            story = 'Create new multisig wallet?'
-        elif diff_count:
-            story = '''\
-CAUTION: This updated wallet has %d different XPUB values, but matching fingerprints \
-and same M of N. Perhaps the derivation path has changed legitimately, otherwise, much \
-DANGER!''' % diff_count
-        else:
-            story = 'Update existing multisig wallet?'
-
-        story += '''
-
-Wallet Name:
-  {name}
-
-Policy: {M} of {N}
-
-{exp}
-
-Press (1) to see extended public keys, \
-OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
-
         try:
-            chain = chains.current_chain()
-            while 1:
-                ch = await ux_show_story(story, escape='1')
+            ch = await ms.confirm_import()
 
-                if ch == '1':
-                    # Show the xpubs; might be 2k or more rendered.
-                    msg = uio.StringIO()
+            if ch == 'y':
+                if self.auto_export:
+                    # save cosigner details now too 
+                    await ms.export_wallet_file('created on', 
+    "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
 
-                    for idx, (xfp, xpub) in enumerate(ms.xpubs):
-                        if idx:
-                            msg.write('\n\n')
+            else:
+                # they don't want to!
+                self.refused = True
+                await ux_dramatic_pause("Refused.", 2)
 
-                        # Not showing index numbers here because order
-                        # is non-deterministic both here, our storage, and in usage.
-                        msg.write('%s:\n%s' % (xfp2str(xfp), xpub))
-
-                    await ux_show_story(msg, title='%d of %d' % (ms.M, ms.N))
-
-                    continue
-
-                if ch == 'y':
-                    # save to nvram
-                    try:
-                        if is_dup:
-                            is_dup.delete()
-                        ms.commit()
-                    except RuntimeError:
-                        return await self.failure('No space left')
-
-                    await ux_dramatic_pause("Saved.", 2)
-
-                    if self.auto_export:
-                        # save cosigner details now too 
-                        await ms.export_wallet_file('created on', 
-        "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
-
-                else:
-                    # they don't want to!
-                    self.refused = True
-                    await ux_dramatic_pause("Refused.", 2)
-
-                break
-
+        except MultisigOutOfSpace:
+            return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
             sys.print_exception(exc)
@@ -873,9 +813,8 @@ OK to approve, X to cancel.'''.format(M=ms.M, N=ms.N, name=ms.name, exp=exp)
             UserAuthorizedAction.cleanup()      # because no results to store
             self.pop_menu()
 
-
-def maybe_enroll_xpub(sf_len=None, config=None, name=None):
-    # offer to accept an xpub for cosigning over USB. Allow reject.
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
+    # Offer to import (enroll) a new multisig wallet. Allow reject by user.
     global active_request
     from multisig import MultisigWallet
 
@@ -891,8 +830,8 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None):
 
     active_request = NewEnrollRequest(ms)
 
-    if sf_len:
-        # for USB case:
+    if ux_reset:
+        # for USB case, and import from PSBT
         # kill any menu stack, and put our thing at the top
         abort_and_goto(active_request)
     else:
