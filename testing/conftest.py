@@ -586,9 +586,9 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
 @pytest.fixture
 def try_sign(start_sign, end_sign):
 
-    def doit(filename_or_data, accept=True, finalize=False):
+    def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False):
         ip = start_sign(filename_or_data, finalize=finalize)
-        return ip, end_sign(accept, finalize=finalize)
+        return ip, end_sign(accept, finalize=finalize, accept_ms_import=accept_ms_import)
 
     return doit
 
@@ -617,7 +617,12 @@ def start_sign(dev):
 def end_sign(dev, need_keypress):
     from ckcc_protocol.protocol import CCUserRefused
 
-    def doit(accept=True, in_psbt=None, finalize=False):
+    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False):
+
+        if accept_ms_import:
+            # XXX would be better to do cap_story here, but that would limit test to simulator
+            need_keypress('y')
+            time.sleep(0.050)
 
         if accept != None:
             need_keypress('y' if accept else 'x')

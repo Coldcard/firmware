@@ -15,7 +15,7 @@ from base64 import b64encode, b64decode
 URL = '127.0.0.1:18332'
 AUTHFILE = '~/Library/Application Support/Bitcoin/testnet3/.cookie'
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def bitcoind():
     # JSON-RPC connection to a bitcoind instance
 
