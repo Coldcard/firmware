@@ -611,10 +611,6 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
 ''' + SENSITIVE_NOT_SECRET):
         return
 
-    # pick segwit or classic derivation+such
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-    from menu import MenuSystem, MenuItem
-
     # no choices to be made, just do it.
     with imported('backups') as bk:
         await bk.make_json_wallet(lambda: bk.generate_wasabi_wallet())
