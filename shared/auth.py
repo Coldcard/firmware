@@ -653,6 +653,8 @@ def start_bip39_passphrase(pw):
 
 
 class ShowAddressBase(UserAuthorizedAction):
+    title = 'Address:'
+
     def __init__(self, *args):
         super().__init__()
 
@@ -675,7 +677,6 @@ class ShowAddressBase(UserAuthorizedAction):
 
     
 class ShowPKHAddress(ShowAddressBase):
-    title = 'Address:'
 
     def setup(self, addr_fmt, subpath):
         self.subpath = subpath
@@ -689,7 +690,6 @@ class ShowPKHAddress(ShowAddressBase):
 
 
 class ShowP2SHAddress(ShowAddressBase):
-    title = 'Multisig:'
 
     def setup(self, ms, addr_fmt, xfp_paths, witdeem_script):
 
@@ -705,16 +705,15 @@ class ShowP2SHAddress(ShowAddressBase):
         return '''\
 {addr}
 
-Wallet Name:
+Wallet:
 
   {name}
-
-Policy: {M} of {N}
+  {M} of {N}
 
 Paths:
 
 {sp}'''.format(addr=self.address, name=self.ms.name,
-                        M=self.ms.M, N=self.ms.N, sp='\n'.join(self.subpath_help))
+                        M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
 
 def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # Show P2SH address to user, also returns it.
