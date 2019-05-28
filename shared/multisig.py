@@ -353,16 +353,16 @@ class MultisigWallet:
                 # Document path(s) used. Not sure this is useful info to user tho.
                 # - Do not show what we can't verify: we don't really know the hardeneded
                 #   part of the path from fingerprint to here.
-                here = '(m=%s)' % xfp2str(xfp)
+                here = '(m=%s)\n' % xfp2str(xfp)
                 if dp != len(path):
-                    here += ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
+                    here += 'm' + ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
 
                 if found_pk != pubkey:
                     # Not a match but not an error by itself, since might be 
                     # another dup xfp to look at still.
 
-                    print('pk mismatch: %s => %s != %s' % (
-                                    here, b2a_hex(found_pk), b2a_hex(pubkey)))
+                    #print('pk mismatch: %s => %s != %s' % (
+                    #                here, b2a_hex(found_pk), b2a_hex(pubkey)))
                     continue
 
                 subpath_help.append(here)
