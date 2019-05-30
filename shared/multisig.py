@@ -86,7 +86,7 @@ class MultisigWallet:
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),
     ]
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, path_prefix=None, chain_type='BTC'):
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, common_prefix=None, chain_type='BTC'):
         self.storage_idx = -1
 
         self.name = name
@@ -94,7 +94,7 @@ class MultisigWallet:
         self.M, self.N = m_of_n
         self.chain_type = chain_type or 'BTC'
         self.xpubs = xpubs                  # list of (xfp(int), xpub(str))
-        self.path_prefix = path_prefix      # half implemented? XXX kill me
+        self.common_prefix = common_prefix  # example: "45'" for BIP45
         self.addr_fmt = addr_fmt            # not clear how useful that is.
 
         # useful cache value
@@ -108,8 +108,8 @@ class MultisigWallet:
             opts['ft'] = self.addr_fmt
         if self.chain_type != 'BTC':
             opts['ch'] = self.chain_type
-        if self.path_prefix:
-            opts['pp'] = self.path_prefix
+        if self.common_prefix:
+            opts['pp'] = self.common_prefix
 
         return (self.name, (self.M, self.N), self.xpubs, opts)
 
@@ -134,7 +134,7 @@ class MultisigWallet:
         name, m_of_n, xpubs, opts = vals
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                                    path_prefix=opts.get('pp', None),
+                                    common_prefix=opts.get('pp', None),
                                     chain_type=opts.get('ch', 'BTC'))
         rv.storage_idx = idx
 
@@ -187,7 +187,29 @@ class MultisigWallet:
         assert sorted(fingerprints) == self.xfps
 
     @classmethod
+    def quick_check(cls, M, N, xfp_xor):
+        # quicker USB method.
+        from main import settings
+        lst = settings.get('multisig', [])
+
+        rv = []
+        for rec in lst:
+            name, m_of_n, xpubs, opts = rec
+            if m_of_n[0] != M: continue
+            if m_of_n[1] != N: continue
+
+            x = 0
+            for xfp, _ in xpubs:
+                x ^= xfp
+            if x != xfp_xor: continue
+
+            return True
+
+        return False
+
+    @classmethod
     def get_all(cls):
+        # return them all, as a generator
         from main import settings
 
         lst = settings.get('multisig', [])
@@ -197,11 +219,13 @@ class MultisigWallet:
 
     @classmethod
     def exists(cls):
+        # are there any wallets defined?
         from main import settings
         return bool(settings.get('multisig', False))
 
     @classmethod
     def get_by_idx(cls, nth):
+        # instance from index number
         from main import settings
         lst = settings.get('multisig', [])
         try:
@@ -400,7 +424,9 @@ class MultisigWallet:
         from main import settings
 
         my_xfp = settings.get('xfp')
+        common_prefix = None
         xpubs = []
+        path_tops = set()
         M, N = -1, -1
         has_mine = False
         addr_fmt = AF_P2SH
@@ -444,6 +470,17 @@ class MultisigWallet:
                 except:
                     raise AssertionError('bad policy line')
 
+            elif label == 'derivation':
+                # reveal the **common** path derivation for all keys
+                try:
+                    mat = ure.search(r"(m/)([0123456789/']+)", value)
+                    assert mat
+                    common_prefix = mat.group(2)
+                    assert common_prefix
+                    assert 1 <= len(common_prefix) < 30
+                except:
+                    raise AssertionError('bad derivation line')
+
             elif label == 'format':
                 # pick segwit vs. classic vs. wrapped version
                 value = value.lower()
@@ -462,7 +499,7 @@ class MultisigWallet:
                     continue
 
                 # deserialize, update list and lots of checks
-                xfp = cls.check_xpub(xfp, value, expect_chain, xpubs)
+                xfp = cls.check_xpub(xfp, value, expect_chain, xpubs, path_tops)
 
                 if xfp == my_xfp:
                     # not conclusive, but enough for error catching.
@@ -492,16 +529,21 @@ class MultisigWallet:
         # have enough info, simply because other signers need to know my xpubkey anyway
         assert has_mine, 'my key not included'
 
+        if not common_prefix and len(path_tops) == 1:
+            # fill in the common prefix iff we can deduce it from xpubs
+            common_prefix = path_tops.pop()
+
         # done. have all the parts
-        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt,
+                        chain_type=expect_chain, common_prefix=common_prefix)
 
     @classmethod
-    def check_xpub(cls, xfp, xpub, expect_chain, xpubs):
+    def check_xpub(cls, xfp, xpub, expect_chain, xpubs, path_tops):
         # Shared code: consider an xpub for inclusion into a wallet, if ok, append
         # to list: xpubs.
 
         try:
-            # Note: addr_fmt_here detected here via SLIP-132 isn't useful
+            # Note: addr fmt detected here via SLIP-132 isn't useful
             node, chain, _ = import_xpub(xpub)
         except:
             print(xpub)
@@ -522,18 +564,53 @@ class MultisigWallet:
 
         assert xfp, 'need fingerprint'
 
+        # detect, when possible, if follows BIP45 ... find the path
+        path_top = None
+        if node.depth() == 1:
+            cn = node.child_num()
+            path_top = str(cn & 0x7fffffff)
+            if cn & 0x80000000:
+                path_top += "'"
+
+        path_tops.add(path_top)
+
         # serialize xpub w/ BIP32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
         xpubs.append((xfp, chain.serialize_public(node, AF_P2SH)))
 
         return xfp
 
+    def make_fname(self, prefix, suffix='txt'):
+        rv = '%s-%s.%s' % (prefix, self.name, suffix)
+        return rv.replace(' ', '_')
+
+    async def export_electrum(self):
+        # Generate and save an Electrum JSON file.
+        from backups import make_json_wallet
+
+        def doit():
+            rv = dict(seed_version=17, use_encryption=False,
+                        wallet_type='%dof%d' % (self.M, self.N))
+
+            # the important stuff.
+            for idx, (xfp, xpub) in enumerate(self.xpubs): 
+                rv['x%d/' % (idx+1)] = dict(
+                                ckcc_xfp=xfp,
+                                hw_type='coldcard',
+                                label='Coldcard %s' % xfp2str(xfp),
+                                type='hardware',
+                                derivation='m/'+self.common_prefix, xpub=xpub)
+
+            return rv
+            
+        await make_json_wallet(doit, fname_pattern=self.make_fname('el', 'json'))
+
     async def export_wallet_file(self, mode="exported from", extra_msg=None):
         # create a text file with the details; ready for import to next Coldcard
         from main import settings
         my_xfp = xfp2str(settings.get('xfp'))
 
-        fname_pattern = 'export-%s.txt' % self.name
+        fname_pattern = self.make_fname('export')
 
         try:
             with CardSlot() as card:
@@ -559,6 +636,9 @@ class MultisigWallet:
 
     def render_export(self, fp):
         print("name: %s\npolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
+
+        if self.common_prefix:
+            print("derivation: %s" % self.common_prefix, file=fp)
 
         if self.addr_fmt != AF_P2SH:
             print("format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
@@ -594,11 +674,12 @@ class MultisigWallet:
         expect_chain = chains.current_chain().ctype
         xpubs = []
         has_mine = False
+        path_tops = set()
 
         for k, v in xpubs_dict.items():
             nonce, xfp, *path = unpack_from('<%dI' % (len(k)/4), k, 0)
             xpub = tcc.codecs.b58_encode(fetcher(v))
-            xfp = cls.check_xpub(xfp, xpub, expect_chain, xpubs)
+            xfp = cls.check_xpub(xfp, xpub, expect_chain, xpubs, path_tops)
             if xfp == my_xfp:
                 has_mine = True
 
@@ -606,7 +687,9 @@ class MultisigWallet:
 
         name = 'PSBT-%d-of-%d' % (M, N)
 
-        ms = cls(name, (M, N), xpubs, chain_type=expect_chain)
+        prefix = path_tops.pop() if len(path_tops) == 1 else None
+
+        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, common_prefix=prefix)
 
         if trust_mode == TRUST_PSBT:
             # keep just in-memory version, no approval required
@@ -738,7 +821,7 @@ class MultisigMenu(MenuSystem):
             rv = []
             for ms in MultisigWallet.get_all():
                 rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
-                            f=ms_wallet_detail, arg=ms.storage_idx))
+                            menu=make_ms_wallet_menu, arg=ms.storage_idx))
 
         rv.append(MenuItem('Import from SD', f=import_multisig))
         rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
@@ -754,28 +837,93 @@ class MultisigMenu(MenuSystem):
 
 
 async def make_multisig_menu(*a):
+    # list of all multisig wallets, and high-level settings/actions
     rv = MultisigMenu.construct()
     return MultisigMenu(rv)
+
+async def make_ms_wallet_menu(menu, label, item):
+    # details, actions on single multisig wallet
+    ms = MultisigWallet.get_by_idx(item.arg)
+    if not ms: return
+
+    rv = [
+            MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
+            MenuItem('View Details', f=ms_wallet_detail, arg=ms),
+
+            MenuItem('Delete', f=ms_wallet_delete, arg=ms),
+            MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=ms),
+            MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
+    ]
+
+    return rv
+
+async def ms_wallet_delete(menu, label, item):
+    ms = item.arg
+
+    # delete
+    if not await ux_confirm("Delete this multisig wallet (%s)?\n\nFunds may be impacted."
+                                                 % ms.name):
+        await ux_dramatic_pause('Aborted.', 3)
+        return
+
+    ms.delete()
+    await ux_dramatic_pause('Deleted.', 3)
+
+    # update/hide from menu
+    #menu.update_contents()
+
+    from ux import the_ux
+    # pop stack
+    the_ux.pop()
+
+    m = the_ux.top_of_stack()
+    m.update_contents()
+
+async def ms_wallet_ckcc_export(menu, label, item):
+    # create a text file with the details; ready for import to next Coldcard
+    ms = item.arg
+    await ms.export_wallet_file()
+
+async def ms_wallet_electrum_export(menu, label, item):
+    # create a JSON file that Electrum can use. Challenges:
+    # - file contains a derivation path that we don't really know.
+    # - electrum is using BIP43 with purpose=48 (purpose48_derivation) to make paths like:
+    #       m/48'/1'/0'/2'
+    # - other signers might not be coldcards (we don't know)
+    # - solution: only try to support BIP45 here
+    ms = item.arg
+    from actions import electrum_export_story
+
+    if not ms.common_prefix:
+        return await ux_show_story("We don't know the common derivation path for "
+                                        "these keys, so cannot create Electrum wallet.")
+
+    if await ux_show_story(electrum_export_story()) != 'y':
+        return
+
+    if ms.common_prefix != "45'":
+        if not await ux_confirm("Derivation:\n  m/%s\n ... is not BIP45 style. Not sure how well this will work." % ms.common_prefix):
+            return
+
+    await ms.export_electrum()
 
 async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet, offer to delete
     import chains
-    from menu import MenuItem
 
-    ms = MultisigWallet.get_by_idx(item.arg)
-    if not ms:
-        return
+    ms = item.arg
+    #ms = MultisigWallet.get_by_idx(item.arg)
+    #if not ms: return
 
     msg = uio.StringIO()
 
     msg.write('''
-policy: {M} of {N}
-blockchain: {ctype}
+Policy: {M} of {N}
+Blockchain: {ctype}
+Derivation:
+  m/{der}
 
-Press (1) to export this wallet to SD card, (6) to delete the wallet, OK or X to close. \
-All keys listed below.
-
-'''.format(name=ms.name, M=ms.M, N=ms.N, ctype=ms.chain_type))
+'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type, der=ms.common_prefix or "?'"))
 
     # concern: the order of keys here is non-deterministic
     for idx, (xfp, xpub) in enumerate(ms.xpubs):
@@ -785,36 +933,16 @@ All keys listed below.
 
     # XXX TODO: add export as text file on (1) or something
 
-    ch = await ux_show_story(msg, title=ms.name, escape='61')
+    await ux_show_story(msg, title=ms.name)
 
-    if ch == '6':
-        # delete
-        if not await ux_confirm("Delete this multisig wallet (%s)?\n\nFunds may be impacted."
-                                                     % ms.name):
-            await ux_dramatic_pause('Aborted.', 3)
-            return
-
-        ms.delete()
-
-        await ux_dramatic_pause('Deleted.', 3)
-
-        # update/hide from menu
-        menu.update_contents()
-
-    if ch == '1':
-        # create a text file with the details; ready for import to next Coldcard
-        await ms.export_wallet_file()
 
 async def export_bip45_multisig(*a):
     # WAS: Create a single file with lots of docs, and all possible useful xpub values.
+    # NOW: Just create the one-liner xpub export value they need/want to support BIP45
     #
     # - might be nice to offer some additional alternative values, for when you want
-    #   to create multiple wallets using same coldcard but we should recommend
-    #   BIP39 pw for that.
-    # - bad idea: confusion and interop fails exposed
+    #   to create multiple wallets using same coldcard but we recommend BIP39 pw for that.
     #
-    # NOW: Just create the one-liner xpub export value they need/want to support BIP45
-
     from main import settings
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
@@ -900,8 +1028,9 @@ async def ondevice_multisig_create():
     chain = chains.current_chain()
     my_xfp = settings.get('xfp')
 
-    xpubs = {}
+    xpubs = []
     files = []
+    has_mine = False
     try:
         with CardSlot() as card:
             for path in card.get_paths():
@@ -937,10 +1066,17 @@ async def ondevice_multisig_create():
                         node, _, _ = import_xpub(ln)
                         xfp = swab32(node.fingerprint())
 
+                        assert node.child_num() == (45 | 0x80000000), "not BIP45: m/45'"
+                        assert node.depth() == 1, "not BIP45: too deep"
+
                         # keep it
-                        xpubs[xfp] = chain.serialize_public(node, AF_P2SH)
+                        if xfp == my_xfp:
+                            has_mine = True
+
+                        xpubs.append( (xfp, chain.serialize_public(node, AF_P2SH)) )
                         files.append(fn)
                     except:
+                        # TODO: some error reporting would be nice here.
                         #print('parse ' + fn)
                         continue
 
@@ -948,15 +1084,15 @@ async def ondevice_multisig_create():
         await needs_microsd()
         return
 
-    if not xpubs or len(xpubs) == 1 and xpubs.get(my_xfp):
-        await ux_show_story("Unable to find any BIP45-style exported keys on this card. Must have filename: bip45-....txt and contain a single line.")
+    if not xpubs or len(xpubs) == 1 and has_mine:
+        await ux_show_story("Unable to find any BIP45-style exported keys on this card. Must have filename: bip45-....txt and contain a single line. XPUB must indicate BIP45 derivation.")
         return
     
     # add myself if not included already
-    if my_xfp not in xpubs:
+    if not has_mine:
         with stash.SensitiveValues() as sv:
             node = sv.derive_path("m/45'")
-            xpubs[my_xfp] = chain.serialize_public(node, AF_P2SH)
+            xpubs.append( (my_xfp, chain.serialize_public(node, AF_P2SH)) )
 
     N = len(xpubs)
 
@@ -993,7 +1129,7 @@ then check card and file contents.''' % (M, N, N, len(files))
     assert 1 <= M <= N <= MAX_SIGNERS
 
     name = 'CC-%d-of-%d' % (M, N)
-    ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype)
+    ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, common_prefix="45'")
 
     from auth import NewEnrollRequest, active_request
 

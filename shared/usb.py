@@ -399,6 +399,13 @@ class USBHandler:
             maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
             return None
 
+        if cmd == 'msck':
+            # Quick check to test if we have a wallet already installed.
+            from multisig import MultisigWallet
+            M, N, xfp_xor = unpack_from('<3I', args)
+
+            return int(MultisigWallet.quick_check(M, N, xfp_xor))
+
         if cmd == 'stxn':
             # sign transaction
             txn_len, finalize, txn_sha = unpack_from('<II32s', args)
