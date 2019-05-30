@@ -15,6 +15,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `-2` => enable a secondary wallet, with pin 33-33 and no secret
 - `-q` => boot and drop into REPL; does nothing else, no setup
 - `-f -w` => boot like a unit that hasn't left factory yet
+- `-m` => include a 3of15 multisig wallet, and start off in multisig wallet menu
 
 See `frozen-modules/sim-settings.py` for the details.
 
