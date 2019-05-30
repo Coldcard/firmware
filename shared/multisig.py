@@ -3,7 +3,7 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio
+import stash, chains, ustruct, ure, uio, sys
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
@@ -94,7 +94,7 @@ class MultisigWallet:
         self.M, self.N = m_of_n
         self.chain_type = chain_type or 'BTC'
         self.xpubs = xpubs                  # list of (xfp(int), xpub(str))
-        self.common_prefix = common_prefix  # example: "45'" for BIP45
+        self.common_prefix = common_prefix  # example: "45'" for BIP45 .. no m/ prefix
         self.addr_fmt = addr_fmt            # not clear how useful that is.
 
         # useful cache value
@@ -592,18 +592,28 @@ class MultisigWallet:
             rv = dict(seed_version=17, use_encryption=False,
                         wallet_type='%dof%d' % (self.M, self.N))
 
+            ch = self.chain
+
             # the important stuff.
             for idx, (xfp, xpub) in enumerate(self.xpubs): 
+
+                if self.addr_fmt != AF_P2SH:
+                    # CHALLENGE: we must do slip-132 format ?pubs here when not p2sh mode.
+                    node = ch.deserialize_node(xpub, AF_P2SH); assert node
+                    xp = ch.serialize_public(node, self.addr_fmt)
+                else:
+                    xp = xpub
+
                 rv['x%d/' % (idx+1)] = dict(
+                                hw_type='coldcard', type='hardware',
                                 ckcc_xfp=xfp,
-                                hw_type='coldcard',
                                 label='Coldcard %s' % xfp2str(xfp),
-                                type='hardware',
-                                derivation='m/'+self.common_prefix, xpub=xpub)
+                                derivation='m/'+self.common_prefix, xpub=xp)
 
             return rv
             
-        await make_json_wallet(doit, fname_pattern=self.make_fname('el', 'json'))
+        await make_json_wallet('Electrum multisig wallet', doit,
+                                    fname_pattern=self.make_fname('el', 'json'))
 
     async def export_wallet_file(self, mode="exported from", extra_msg=None):
         # create a text file with the details; ready for import to next Coldcard
@@ -621,7 +631,7 @@ class MultisigWallet:
                     print("# Coldcard Multisig setup file (%s %s)\n#" % (mode, my_xfp), file=fp)
                     self.render_export(fp)
 
-            msg = '''Multisig config file written:\n\n%s''' % nice
+            msg = '''Coldcard multisig setup file written:\n\n%s''' % nice
             if extra_msg:
                 msg += extra_msg
 
@@ -635,13 +645,13 @@ class MultisigWallet:
             return
 
     def render_export(self, fp):
-        print("name: %s\npolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
+        print("Name: %s\nPolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
 
         if self.common_prefix:
-            print("derivation: %s" % self.common_prefix, file=fp)
+            print("Derivation: %s" % self.common_prefix, file=fp)
 
         if self.addr_fmt != AF_P2SH:
-            print("format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
+            print("Format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
 
         print("", file=fp)
 
@@ -734,8 +744,12 @@ Policy: {M} of {N}
 
 {exp}
 
+Derivation:
+  {deriv}
+
 Press (1) to see extended public keys, \
-OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp)
+OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp,
+                                        deriv=self.common_prefix or 'unknown')
 
         while 1:
             ch = await ux_show_story(story, escape='1')
@@ -786,7 +800,7 @@ async def trust_psbt_menu(*a):
 
     ch = await ux_show_story('''\
 This setting controls what the Coldcard does \
-with the co-signer public keys (XPUBs) that may \
+with the co-signer public keys (XPUB) that may \
 be provided inside a PSBT file. Three choices:
 
 - Verify Only. Do not import the xpubs found, but do \
@@ -800,7 +814,7 @@ multisig wallet, and do not import it. This permits some \
 deniability and additional privacy.
 
 When the XPUB data is not provided in the PSBT, regardless of the above, \
-we require the appropriate multisig wallet to already be imported \
+we require the appropriate multisig wallet to already exist \
 on the Coldcard. Default is to 'Offer' unless a multisig wallet already \
 exists, otherwise 'Verify'.''')
 
@@ -824,7 +838,8 @@ class MultisigMenu(MenuSystem):
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
 
         rv.append(MenuItem('Import from SD', f=import_multisig))
-        rv.append(MenuItem('BIP45 Export', f=export_bip45_multisig))
+        rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
+        rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
 
         return rv
@@ -847,12 +862,12 @@ async def make_ms_wallet_menu(menu, label, item):
     if not ms: return
 
     rv = [
-            MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
-            MenuItem('View Details', f=ms_wallet_detail, arg=ms),
+        MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
+        MenuItem('View Details', f=ms_wallet_detail, arg=ms),
 
-            MenuItem('Delete', f=ms_wallet_delete, arg=ms),
-            MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=ms),
-            MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
+        MenuItem('Delete', f=ms_wallet_delete, arg=ms),
+        MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=ms),
+        MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
     ]
 
     return rv
@@ -901,10 +916,6 @@ async def ms_wallet_electrum_export(menu, label, item):
     if await ux_show_story(electrum_export_story()) != 'y':
         return
 
-    if ms.common_prefix != "45'":
-        if not await ux_confirm("Derivation:\n  m/%s\n ... is not BIP45 style. Not sure how well this will work." % ms.common_prefix):
-            return
-
     await ms.export_electrum()
 
 async def ms_wallet_detail(menu, label, item):
@@ -931,49 +942,62 @@ Derivation:
             msg.write('\n')
         msg.write('%s:\n%s\n' % (xfp2str(xfp), xpub))
 
-    # XXX TODO: add export as text file on (1) or something
-
     await ux_show_story(msg, title=ms.name)
 
 
-async def export_bip45_multisig(*a):
-    # WAS: Create a single file with lots of docs, and all possible useful xpub values.
-    # NOW: Just create the one-liner xpub export value they need/want to support BIP45
+async def export_multisig_xpubs(*a):
+    # WAS: Create a single text file with lots of docs, and all possible useful xpub values.
+    # THEN: Just create the one-liner xpub export value they need/want to support BIP45
+    # NOW: Export JSON with one xpub per useful address type and semi-standard derivation path
     #
-    # - might be nice to offer some additional alternative values, for when you want
-    #   to create multiple wallets using same coldcard but we recommend BIP39 pw for that.
+    # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
     #
     from main import settings
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
     
-    fname_pattern = 'bip45-%s.txt' % xfp
+    fname_pattern = 'ccxp-%s.json' % xfp
 
     msg = '''\
-This feature creates a one-line text file containing \
-the xpub (extended public key) you would need to join \
-a multisig wallet based on BIP45 best practises.
+This feature creates a small file containing \
+the extended public keys (XPUB) you would need to join \
+a multisig wallet using the 'Create Airgapped' feature.
 
-The public key exported is:
+The public keys exported are:
 
+BIP45:
    m/45'
+P2WSH-P2SH:
+   m/48'/{coin}'/0'/1'
+P2WSH:
+   m/48'/{coin}'/0'/2'
 
 OK to continue. X to abort.
-'''
-    resp = await ux_show_story(msg, title='BIP45 Export')
+'''.format(coin = chain.b44_cointype)
+
+    resp = await ux_show_story(msg)
     if resp != 'y': return
 
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)
-
-            # do actual write
+            # do actual write: manual JSON here so more human-readable.
             with open(fname, 'wt') as fp:
+                fp.write('{\n')
                 with stash.SensitiveValues() as sv:
-                    node = sv.derive_path("m/45'")
+                    for deriv, name, fmt in [
+                        ( "m/45'", 'p2sh', AF_P2SH), 
+                        ( "m/48'/{coin}'/0'/1'", 'p2wsh_p2sh', AF_P2WSH_P2SH),
+                        ( "m/48'/{coin}'/0'/2'", 'p2wsh', AF_P2WSH)
+                    ]:
 
-                    xp = chain.serialize_public(node, AF_P2SH)
-                    fp.write(xp + '\n')
+                        dd = deriv.format(coin = chain.b44_cointype)
+                        node = sv.derive_path(dd)
+                        xp = chain.serialize_public(node, fmt)
+                        fp.write('  "%s_deriv": "%s",\n' % (name, dd))
+                        fp.write('  "%s": "%s",\n' % (name, xp))
+
+                fp.write('  "xfp": "%s"\n}\n' % xfp)
 
     except CardMissingError:
         await needs_microsd()
@@ -1014,14 +1038,14 @@ def import_xpub(ln):
     # looked like one, but fail.
     return None
 
-async def ondevice_multisig_create():
-    # collect all BIP45- exports on current SD card (must be > 1)
+async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
+    # collect all xpub- exports on current SD card (must be > 1)
     # - ask for M value 
     # - create wallet, save and also export 
-    # - maybe also create electrum skel to go with
-    # - only expected to work with our BIP45 export files.
+    # - also create electrum skel to go with that
+    # - only expected to work with our ccxp-foo.json export files.
     from actions import file_picker
-    import uos
+    import uos, ujson
     from utils import get_filesize
     from main import settings
 
@@ -1031,6 +1055,7 @@ async def ondevice_multisig_create():
     xpubs = []
     files = []
     has_mine = False
+    deriv = None
     try:
         with CardSlot() as card:
             for path in card.get_paths():
@@ -1039,9 +1064,8 @@ async def ondevice_multisig_create():
                         # ignore subdirs
                         continue
 
-                    if not fn.startswith('bip45-') or not fn.endswith('.txt'):
-                        # wrong prefix/suffix
-                        #print('fn ' + fn)
+                    if not fn.startswith('ccxp-') or not fn.endswith('.json'):
+                        # wrong prefix/suffix: ignore
                         continue
 
                     full_fname = path + '/' + fn
@@ -1050,48 +1074,60 @@ async def ondevice_multisig_create():
                     # sigh, OS/filesystem variations
                     file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
 
-                    if not (0 <= file_size <= 200):
+                    if not (0 <= file_size <= 1000):
                         # out of range size
-                        #print('sz ' + fn)
                         continue
 
-                    with open(full_fname, 'rt') as fp:
-                        ln = fp.readline().strip()
-
-                        if ln[1:4] != 'pub':
-                            #print('contents ' + fn)
-                            continue
-
                     try:
+                        with open(full_fname, 'rt') as fp:
+                            vals = ujson.load(fp)
+
+                        ln = vals.get(mode)
+                        xfp = int(vals['xfp'], 16)
+                        if not deriv:
+                            deriv = vals[mode+'_deriv']
+                        else:
+                            assert deriv == vals[mode+'_deriv'], "wrong derivation"
+
                         node, _, _ = import_xpub(ln)
-                        xfp = swab32(node.fingerprint())
 
-                        assert node.child_num() == (45 | 0x80000000), "not BIP45: m/45'"
-                        assert node.depth() == 1, "not BIP45: too deep"
-
-                        # keep it
                         if xfp == my_xfp:
                             has_mine = True
 
                         xpubs.append( (xfp, chain.serialize_public(node, AF_P2SH)) )
                         files.append(fn)
-                    except:
-                        # TODO: some error reporting would be nice here.
-                        #print('parse ' + fn)
+
+                    except CardMissingError:
+                        raise
+
+                    except Exception as exc:
+                        # show something for coders, but no user feedback
+                        sys.print_exception(exc)
                         continue
 
     except CardMissingError:
         await needs_microsd()
         return
 
+    # remove dups; easy to happen if you double-tap the export
+    delme = set()
+    for i in range(len(xpubs)):
+        for j in range(len(xpubs)):
+            if j in delme: continue
+            if i == j: continue
+            if xpubs[i] == xpubs[j]:
+                delme.add(j)
+    if delme:
+        xpubs = [x for idx,x in enumerate(xpubs) if idx not in delme]
+
     if not xpubs or len(xpubs) == 1 and has_mine:
-        await ux_show_story("Unable to find any BIP45-style exported keys on this card. Must have filename: bip45-....txt and contain a single line. XPUB must indicate BIP45 derivation.")
+        await ux_show_story("Unable to find any Coldcard exported keys on this card. Must have filename: ccxp-....json")
         return
     
     # add myself if not included already
     if not has_mine:
         with stash.SensitiveValues() as sv:
-            node = sv.derive_path("m/45'")
+            node = sv.derive_path(deriv)
             xpubs.append( (my_xfp, chain.serialize_public(node, AF_P2SH)) )
 
     N = len(xpubs)
@@ -1105,11 +1141,16 @@ async def ondevice_multisig_create():
     M = (N - 1) if N < 4 else ((N//2)+1)
 
     while 1:
-        msg = '''How many need to sign?\n       %d of %d
+        msg = '''How many need to sign?\n      %d of %d
 
 Press (7 or 9) to change M value, or OK \
-to continue. If you expected more or less keys (N=%d #files=%d), \
-then check card and file contents.''' % (M, N, N, len(files))
+to continue.
+
+If you expected more or less keys (N=%d #files=%d), \
+then check card and file contents.
+
+Coldcard multisig setup file and an Electrum wallet file will be created automatically.\
+''' % (M, N, N, len(files))
 
         ch = await ux_show_story(msg, escape='123479')
 
@@ -1129,7 +1170,8 @@ then check card and file contents.''' % (M, N, N, len(files))
     assert 1 <= M <= N <= MAX_SIGNERS
 
     name = 'CC-%d-of-%d' % (M, N)
-    ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, common_prefix="45'")
+    ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype,
+                            common_prefix=deriv[2:], addr_fmt=addr_fmt)
 
     from auth import NewEnrollRequest, active_request
 
@@ -1138,5 +1180,28 @@ then check card and file contents.''' % (M, N, N, len(files))
     # menu item case: add to stack
     from ux import the_ux
     the_ux.push(active_request)
+
+async def create_ms_step1(*a):
+    # Show story, have them pick address format.
+
+    ch = await ux_show_story('''\
+Insert SD card with exported XPUB files from at least one other \
+Coldcard. A multisig wallet will be constructed using those keys and \
+this device.
+
+Default is P2WSH addresses (segwit), but press (1) for P2WSH-P2SH or (2) for P2SH (legacy) instead.
+''', escape='12')
+
+    if ch == 'y':
+        n, f = 'p2wsh', AF_P2WSH
+    elif ch == '1':
+        n, f = 'p2wsh_p2sh', AF_P2WSH_P2SH
+    elif ch == '2':
+        n, f = 'p2sh', AF_P2SH
+    else:
+        return
+
+    return await ondevice_multisig_create(n, f)
+
 
 # EOF
