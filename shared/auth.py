@@ -797,7 +797,6 @@ class NewEnrollRequest(UserAuthorizedAction):
                     # save cosigner details now too 
                     await ms.export_wallet_file('created on', 
     "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
-
                     await ms.export_electrum()
 
             else:

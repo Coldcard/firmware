@@ -576,7 +576,7 @@ def generate_electrum_wallet(addr_type):
         
     return rv
 
-async def make_json_wallet(generator, fname_pattern='new-wallet.json'):
+async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
     from main import dis, pa, settings
@@ -604,7 +604,7 @@ async def make_json_wallet(generator, fname_pattern='new-wallet.json'):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''New wallet file written:\n\n%s''' % nice
+    msg = '''%s file written:\n\n%s''' % (label, nice)
     await ux_show_story(msg)
 
 # EOF

@@ -600,7 +600,7 @@ async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
         addr_fmt = item.arg
-        await bk.make_json_wallet(lambda: bk.generate_electrum_wallet(addr_fmt))
+        await bk.make_json_wallet('Electrum wallet', lambda: bk.generate_electrum_wallet(addr_fmt))
 
 async def wasabi_skeleton(*A):
     # save xpub, and some other public details into a file
@@ -617,7 +617,7 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
 
     # no choices to be made, just do it.
     with imported('backups') as bk:
-        await bk.make_json_wallet(lambda: bk.generate_wasabi_wallet(), 'new-wasabi.json')
+        await bk.make_json_wallet('Wasabi wallet', lambda: bk.generate_wasabi_wallet(), 'new-wasabi.json')
 
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
@@ -1188,7 +1188,6 @@ Rarely needed as critical security updates will set this automatically.''' % hav
 
     assert rv == 0, "Failed: %r" % rv
 
-
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file
 
@@ -1198,12 +1197,8 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker('Pick file to multisig wallet to import (.txt) or press (1) build multisig wallet on-device.', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible, escape='1')
-
-    from multisig import ondevice_multisig_create
-    if fn == '1':
-        return await ondevice_multisig_create()
+    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
+                                    min_size=100, max_size=20*200, taster=possible)
 
     if not fn: return
 

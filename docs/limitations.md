@@ -61,6 +61,7 @@
 - we have space for up to 8 M-of-3 wallets, or a single M-of-20 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
+- we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
 
 # SIGHASH types
 

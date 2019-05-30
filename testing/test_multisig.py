@@ -96,7 +96,7 @@ def offer_ms_import(cap_story, dev, need_keypress):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
-    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False):
+    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None):
         keys = make_multisig(M, N, unique=unique)
 
         # render as a file for import
@@ -105,6 +105,9 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
         if addr_fmt:
             config += f'format: {addr_fmt.upper()}\n'
+
+        if common:
+            config += f'derivation: {common}\n'
 
         config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False)) 
                                             for xfp, m, dd in keys)
@@ -119,6 +122,13 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
         if accept:
             time.sleep(.1)
             need_keypress('y')
+
+            # Test it worked.
+            time.sleep(.1)      # required
+            xor = 0
+            for xfp, _, _ in keys:
+                xor ^= xfp
+            assert dev.send_recv(CCProtocolPacker.multisig_check(M, N, xor)) == 1
 
         return keys
 
@@ -380,19 +390,20 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     need_keypress('x')
 
 
-def test_export_bip45_multisig(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path):
+def test_export_airgap(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path):
     # test UX and math for bip45 export
+    import json
 
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
-    pick_menu_item('BIP45 Export')
+    pick_menu_item('Export XPUB')
 
     time.sleep(.1)
     title, story = cap_story()
-    assert 'BIP45' in title
     assert 'BIP45' in story
     assert "m/45'" in story
+    assert "m/48'/" in story
     
     need_keypress('y')
 
@@ -400,10 +411,16 @@ def test_export_bip45_multisig(goto_home, cap_story, pick_menu_item, cap_menu, n
     title, story = cap_story()
     fname = story.split('\n')[-1]
 
-    with open(microsd_path(fname), 'rt') as fp:
-        xpub = fp.read().strip()
+    assert fname.startswith('ccxp-')
+    assert fname.endswith('.json')
 
-        n = BIP32Node.from_wallet_key(xpub)
+    with open(microsd_path(fname), 'rt') as fp:
+        rv = json.load(fp)
+
+    assert 'xfp' in rv
+    assert len(rv) >= 7
+
+    n = BIP32Node.from_wallet_key(rv['p2sh'])
 
     assert n.tree_depth() == 1
     assert n.child_index() == 45 | (1<<31)
@@ -436,7 +453,7 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
 
         time.sleep(.1)
         _, story = cap_story()
-        assert "Pick file" in story
+        assert "Pick multisig wallet" in story
         need_keypress('y')
 
         time.sleep(.1)
@@ -476,12 +493,13 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
     item = [i for i in menu if name in i][0]
     pick_menu_item(item)
 
-    time.sleep(.1)
-    need_keypress('1')
+    pick_menu_item('Coldcard Export')
 
     time.sleep(.1)
     title, story = cap_story()
-    fname = microsd_path(story.split('\n')[-1])
+    fname = story.split('\n')[-1]
+    assert fname, story
+    fname = microsd_path(fname)
 
     try:
         got = set()
@@ -497,28 +515,31 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
                 assert ':' in ln
                 label, value = ln.split(': ')
 
-                if label == 'name':
+                if label == 'Name':
                     assert value == name
                     got.add(label)
-                elif label == 'policy':
+                elif label == 'Policy':
                     assert value == f'{M} of {N}'
                     got.add(label)
-                elif label == 'format':
+                elif label == 'Derivation':
+                    assert value == "45'"
+                    got.add(label)
+                elif label == 'Format':
                     assert value == addr_fmt
                     assert addr_fmt != 'p2sh'
                     got.add(label)
                 else:
-                    assert len(label) == 8
+                    assert len(label) == 8, label
                     xfp = int(label, 16)
                     got.add(xfp)
                     assert xfp in [x for x,_,_ in keys]
                     n = BIP32Node.from_wallet_key(value)
 
-        if 'format' not in got:
+        if 'Format' not in got:
             assert addr_fmt == 'p2sh'
-            got.add('format')
+            got.add('Format')
 
-        assert len(got) == 3 + N
+        assert len(got) == 4 + N
 
         time.sleep(.1)
         need_keypress('y')
@@ -526,11 +547,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
         os.unlink(fname)
 
     # test delete while we're here
-    time.sleep(.1)
-    pick_menu_item(item)
-
-    time.sleep(.1)
-    need_keypress('6')
+    pick_menu_item('Delete')
 
     time.sleep(.2)
     _, story = cap_story()
@@ -550,7 +567,10 @@ def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
     M = N
     name = 'a'*20       # longest possible
     for count in range(1, 10):
-        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=1)
+        keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=0)
+
+        time.sleep(.1)
+        need_keypress('y')
 
         time.sleep(.2)
         title, story = cap_story()
@@ -612,7 +632,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
 
         menu = cap_menu()
         assert menu[0] == f'{M}/{N}: {name}'
-        assert len(menu) == 4
+        assert len(menu) == 5
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'xxx-orig' in story
@@ -789,7 +809,6 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
 
     set_bip39_pw('')
 
-        
 
 @pytest.fixture()
 def fake_ms_txn():
@@ -968,5 +987,99 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         assert is_complete
         assert ex != aft
 
+@pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
+#@pytest.mark.parametrize('N', [3, 14])
+def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, N=3):
+    # test UX and math for bip45 export
+
+    # cleanup
+    from glob import glob
+    for fn in glob(microsd_path('ccxp-*.json')):
+        assert fn
+        os.unlink(fn)
+    clear_ms()
+
+    for idx in range(N):
+        set_bip39_pw(f'test {idx}' if idx else '')
+
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Export XPUB')
+        time.sleep(.05)
+        need_keypress('y')
+        need_keypress('y')
+
+    set_bip39_pw('')
+
+    assert len(glob(microsd_path('ccxp-*.json'))) == N
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Create Airgapped')
+    time.sleep(.05)
+    title, story = cap_story()
+    assert 'XPUB' in story
+
+    if addr_fmt == 'p2wsh':
+        need_keypress('y')
+    elif addr_fmt == 'p2wsh-p2sh':
+        need_keypress('1')
+    elif addr_fmt == 'p2sh':
+        need_keypress('2')
+    else:
+        assert 0, addr_fmt
+
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert ('(N=%d #files=%d' % (N, N)) in story
+
+    if N == 3:
+        assert '2 of 3' in story
+        M = 2
+    elif N == 14:
+        assert '8 of 14' in story
+        M = 8
+    else:
+        assert 0, N
+
+    need_keypress('y')
+
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert "Create new multisig" in story
+    need_keypress('y')
+
+    # writes out ckcc config file, then electrum wallet
+    time.sleep(.1)
+    title, story = cap_story()
+    print(repr(story))
+    assert 'Coldcard' in story
+    assert 'that file onto the other Coldcards involved' in story
+    fname = story.split('\n')[2]
+    cc_fname = microsd_path(fname)
+
+    impf = open(cc_fname, 'rt').read()
+    assert f'Policy: {M} of {N}' in impf
+
+    need_keypress('y')
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split('\n')[-1]
+    assert fname.startswith('el-')
+    assert fname.endswith('.json')
+    el_fname = microsd_path(fname)
+
+    import json
+    wal = json.load(open(el_fname, 'rt'))
+    assert f'{M}of{N}' in wal['wallet_type']
+
+    need_keypress('y')
+    need_keypress('y')
+    
+    clear_ms()
 
 # EOF
