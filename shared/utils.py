@@ -92,7 +92,6 @@ class HexWriter:
         for ch in b:
             self.fd.write('%02x' % ch)
 
-
 def swab32(n):
     # endian swap: 32 bits
     import ustruct
