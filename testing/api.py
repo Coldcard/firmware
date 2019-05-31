@@ -92,4 +92,17 @@ def bitcoind_decode(bitcoind):
 
     return doit
 
+@pytest.fixture()
+def explora():
+    def doit(*parts):
+        import urllib.request
+        import json
+        url = 'https://blockstream.info/testnet/api/' + '/'.join(parts)
+        with urllib.request.urlopen(url) as response:
+           return json.load(response)
+
+    return doit
+
+
+
 # EOF

@@ -8,7 +8,7 @@ from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRI
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
 from base64 import b64encode, b64decode
-from helpers import B2A, U2SAT, prandom, fake_dest_addr
+from helpers import B2A, U2SAT, prandom, fake_dest_addr, swab32
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
@@ -23,6 +23,22 @@ def xfp2str(xfp):
 
 def HARD(n=0):
     return 0x80000000 | n
+
+def str2ipath(s):
+    # convert text to numeric path for BIP174
+    for i in s.split('/'):
+        if i == 'm': continue
+        if not i: continue      # trailing or duplicated slashes
+
+        if i[-1] in "'ph":
+            assert len(i) >= 2, i
+            here = int(i[:-1]) | 0x80000000
+        else:
+            here = int(i)
+            assert 0 <= here < 0x80000000, here
+
+        yield here
+
 
 @pytest.fixture()
 def bitcoind_p2sh(bitcoind):
@@ -96,8 +112,8 @@ def offer_ms_import(cap_story, dev, need_keypress):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
-    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None):
-        keys = make_multisig(M, N, unique=unique)
+    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None):
+        keys = keys or make_multisig(M, N, unique=unique)
 
         # render as a file for import
         name = name or f'test-{M}-{N}'
@@ -204,7 +220,7 @@ def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=Non
         if not node:
             # use xpubkey, otherwise master
             dpath = path[sk.tree_depth():]
-            assert max(dpath) < 1000
+            assert not dpath or max(dpath) < 1000
             node = sk
         else:
             dpath = path
@@ -1081,5 +1097,169 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     need_keypress('y')
     
     clear_ms()
+
+
+@pytest.mark.bitcoind
+def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_wallet, clear_ms, explora, try_sign, need_keypress):
+    # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
+    # - send an receive various
+    # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
+    # - the constructed multisig walelt will only work for a single pubkey on core side
+    from pycoin.encoding import sec_to_public_pair
+    from binascii import a2b_hex
+    import re
+    
+    try:
+        addr, = bitcoind.getaddressesbylabel("sim-cosign").keys()
+    except:
+        raise
+        addr = bitcoind.getnewaddress("sim-cosign")
+
+    info = bitcoind.getaddressinfo(addr)
+    #pprint(info)
+
+    assert info['address'] == addr
+    bc_xfp = swab32(int(info['hdmasterfingerprint'], 16))
+    bc_deriv = info['hdkeypath']        # example: "m/0'/0'/3'"
+    bc_pubkey = info['pubkey']          # 02f75ae81199559c4aa...
+
+    if 0:
+        # got confused, looked at p2sh generated addr; not what we want.
+        # addr used to send-from previously look very different:
+        # bitcoin-cli getdescriptorinfo "pkh([edd08053/0'/0'/38']02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd)"
+        # found it with: bitcoin-cli deriveaddresses "combo([edd08053/0'/0'/38']02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd)#n4dl832x"
+
+        '''
+{'address': '2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4',
+ 'desc': "sh(wsh(multi(2,[cb336aef]02f9c33362e7c4d9d21e9145e1478a36f341f2f0cfe7055abe92380bb806d9ce78,[edd08053/0'/0'/38']02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd)))#fm8wdgdw",
+ 'embedded': {'address': 'tb1qpcv2rkc003p5v8lrglrr6lhz2jg8g4qa9vgtrgkt0p5rteae5xtqn6njw9',
+              'hex': '522102f9c33362e7c4d9d21e9145e1478a36f341f2f0cfe7055abe92380bb806d9ce782102fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd52ae',
+              'isscript': True,
+              'iswitness': True,
+              'pubkeys': ['02f9c33362e7c4d9d21e9145e1478a36f341f2f0cfe7055abe92380bb806d9ce78',
+                          '02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd'],
+              'script': 'multisig',
+              'scriptPubKey': '00200e18a1db0f7c43461fe347c63d7ee2549074541d2b10b1a2cb786835e7b9a196',
+              'sigsrequired': 2,
+              'witness_program': '0e18a1db0f7c43461fe347c63d7ee2549074541d2b10b1a2cb786835e7b9a196',
+              'witness_version': 0},
+ 'hex': '00200e18a1db0f7c43461fe347c63d7ee2549074541d2b10b1a2cb786835e7b9a196',
+ 'ischange': False,
+ 'ismine': False,
+ 'isscript': True,
+ 'iswatchonly': False,
+ 'iswitness': False,
+ 'label': 'sim-cosign',
+ 'labels': [{'name': 'sim-cosign', 'purpose': 'send'}],
+ 'script': 'witness_v0_scripthash',
+ 'scriptPubKey': 'a914dd9f26f478171e1509048c06d3d1e601de59fd6887',
+ 'solvable': True}
+'''
+        match = re.search(r"\[([0-9a-f]{8})/([0-9'/]+)\]([0-9a-f]{64,68})", info['desc'])
+        bc_xfp = match.group(1)
+        bc_deriv = 'm/' + match.group(2)
+        bc_pubkey = match.group(3)
+
+    pp = sec_to_public_pair(a2b_hex(bc_pubkey))
+
+    # No means to export XPUB from bitcoind! Still. In 2019.
+    # - this fake will only work for for one pubkey value, the first/topmost
+    node = BIP32Node('XTN', b'\x23'*32, depth=len(bc_deriv.split('/'))-1,
+                        parent_fingerprint=a2b_hex(xfp2str(bc_xfp)), public_pair=pp)
+
+    keys = [
+        (bc_xfp, None, node),
+        (1130956047, None, BIP32Node.from_hwif('tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')),     # simulator: m/45'
+    ]
+
+    M,N=2,2
+
+    clear_ms()
+    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign")
+
+    cc_deriv = "m/45'/55"
+    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(cc_deriv[2:]).sec())
+
+    # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
+    resp = bitcoind.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])))
+    ms_addr = resp['address']
+    bc_redeem = a2b_hex(resp['redeemScript'])
+
+    assert bc_redeem[0] == 0x52
+
+    def mapper(cosigner_idx):
+        return list(str2ipath(cc_deriv if cosigner_idx else bc_deriv))
+
+    scr, pubkeys, xfp_paths = make_redeem(M, keys, mapper)
+
+    assert scr == bc_redeem
+
+    got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
+                                M, xfp_paths, scr, addr_fmt=AF_P2WSH_P2SH), timeout=None)
+    assert got_addr == ms_addr
+    time.sleep(.1)
+    need_keypress('x')      # clear screen
+
+    assert ms_addr == '2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4'
+
+    # Need some UTXO to sign
+    #
+    # - but bitcoind can't give me that (using listunspent) because it's only a watched addr??
+
+    rr = explora('address', ms_addr, 'txs')
+    pprint(rr)
+
+    avail = []
+    amt = 0
+    for i in rr:
+        txn = i['txid']
+        for n, o in enumerate(i['vout']):
+            if o['scriptpubkey_address'] != ms_addr: continue
+            amt += o['value']
+            avail.append( (txn, n) )
+
+    if not amt:
+        raise pytest.fail(f"Please send some XTN to {ms_addr}")
+
+    ret_addr = bitcoind.getrawchangeaddress()
+
+    resp = bitcoind.walletcreatefundedpsbt([dict(txid=t, vout=o) for t,o in avail],
+               [{ret_addr: amt/1E8}], 0, {'subtractFeeFromOutputs': [0]}, True)
+
+    assert resp['changepos'] == -1
+    psbt = b64decode(resp['psbt'])
+
+    open('debug/funded.psbt', 'wb').write(psbt)
+
+    # patch up the PSBT a little ... bitcoind doesn't know the path for the CC's key
+    ex = BasicPSBT().parse(psbt)
+    cxpk = a2b_hex(cc_pubkey)
+    for i in ex.inputs:
+        assert cxpk in i.bip32_paths, 'input not to be signed by CC?'
+        i.bip32_paths[cxpk] = pack('<3I', keys[1][0], *str2ipath(cc_deriv))
+
+    psbt = ex.as_bytes()
+
+    open('debug/patched.psbt', 'wb').write(psbt)
+
+    _, updated = try_sign(psbt, finalize=False)
+
+    open('debug/cc-updated.psbt', 'wb').write(updated)
+
+    # have bitcoind do the rest of the signing
+    rr = bitcoind.walletprocesspsbt(b64encode(updated).decode('ascii'))
+    pprint(rr)
+
+    open('debug/bc-processed.psbt', 'wt').write(rr['psbt'])
+    assert rr['complete']
+
+    # finalize and send
+    rr = bitcoind.finalizepsbt(rr['psbt'], True)
+    open('debug/bc-final-txn.txn', 'wt').write(rr['hex'])
+    assert rr['complete']
+
+    txn_id = bitcoind.sendrawtransaction(rr['hex'])
+    print(txn_id)
+
 
 # EOF
