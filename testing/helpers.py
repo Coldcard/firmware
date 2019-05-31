@@ -70,4 +70,9 @@ def fake_dest_addr(style='p2pkh'):
     # missing: if style == 'p2pk' =>  pay to pubkey
     assert False, 'not supported: ' + style
 
+def swab32(n):
+    # endian swap: 32 bits
+    import struct
+    return struct.unpack('>I', struct.pack('<I', n))[0]
+
 # EOF

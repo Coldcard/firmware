@@ -6,7 +6,7 @@ from pprint import pprint
 #from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
-from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode
+from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode, explora
 from binascii import b2a_hex, a2b_hex
 from constants import *
 
