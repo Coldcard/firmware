@@ -1206,17 +1206,17 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     #
     # - but bitcoind can't give me that (using listunspent) because it's only a watched addr??
 
-    rr = explora('address', ms_addr, 'txs')
+    rr = explora('address', ms_addr, 'utxo')
     pprint(rr)
 
     avail = []
     amt = 0
     for i in rr:
         txn = i['txid']
-        for n, o in enumerate(i['vout']):
-            if o['scriptpubkey_address'] != ms_addr: continue
-            amt += o['value']
-            avail.append( (txn, n) )
+        vout = i['vout']
+        avail.append( (txn, vout) )
+        amt += i['value']
+        break
 
     if not amt:
         raise pytest.fail(f"Please send some XTN to {ms_addr}")
