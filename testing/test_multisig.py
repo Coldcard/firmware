@@ -1099,15 +1099,25 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     clear_ms()
 
 
+@pytest.mark.parametrize('addr_style', ["p2sh-segwit", "legacy", "bech32"])
 @pytest.mark.bitcoind
-def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_wallet, clear_ms, explora, try_sign, need_keypress):
+def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
     # - the constructed multisig walelt will only work for a single pubkey on core side
+    # - before starting this test, have some funds already deposited to bitcoind testnet wallet
     from pycoin.encoding import sec_to_public_pair
     from binascii import a2b_hex
     import re
+
+    if addr_style == 'legacy':
+        addr_fmt = AF_P2SH
+        #raise pytest.xfail("no good")
+    elif addr_style == 'p2sh-segwit':
+        addr_fmt = AF_P2WSH_P2SH
+    elif addr_style == 'bech32':
+        addr_fmt = AF_P2WSH
     
     try:
         addr, = bitcoind.getaddressesbylabel("sim-cosign").keys()
@@ -1122,43 +1132,6 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     bc_xfp = swab32(int(info['hdmasterfingerprint'], 16))
     bc_deriv = info['hdkeypath']        # example: "m/0'/0'/3'"
     bc_pubkey = info['pubkey']          # 02f75ae81199559c4aa...
-
-    if 0:
-        # got confused, looked at p2sh generated addr; not what we want.
-        # addr used to send-from previously look very different:
-        # bitcoin-cli getdescriptorinfo "pkh([edd08053/0'/0'/38']02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd)"
-        # found it with: bitcoin-cli deriveaddresses "combo([edd08053/0'/0'/38']02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd)#n4dl832x"
-
-        '''
-{'address': '2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4',
- 'desc': "sh(wsh(multi(2,[cb336aef]02f9c33362e7c4d9d21e9145e1478a36f341f2f0cfe7055abe92380bb806d9ce78,[edd08053/0'/0'/38']02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd)))#fm8wdgdw",
- 'embedded': {'address': 'tb1qpcv2rkc003p5v8lrglrr6lhz2jg8g4qa9vgtrgkt0p5rteae5xtqn6njw9',
-              'hex': '522102f9c33362e7c4d9d21e9145e1478a36f341f2f0cfe7055abe92380bb806d9ce782102fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd52ae',
-              'isscript': True,
-              'iswitness': True,
-              'pubkeys': ['02f9c33362e7c4d9d21e9145e1478a36f341f2f0cfe7055abe92380bb806d9ce78',
-                          '02fe422967a84e5612975d16d7b7ad3ec6a34c691aa643d6d50b8440589bcad4cd'],
-              'script': 'multisig',
-              'scriptPubKey': '00200e18a1db0f7c43461fe347c63d7ee2549074541d2b10b1a2cb786835e7b9a196',
-              'sigsrequired': 2,
-              'witness_program': '0e18a1db0f7c43461fe347c63d7ee2549074541d2b10b1a2cb786835e7b9a196',
-              'witness_version': 0},
- 'hex': '00200e18a1db0f7c43461fe347c63d7ee2549074541d2b10b1a2cb786835e7b9a196',
- 'ischange': False,
- 'ismine': False,
- 'isscript': True,
- 'iswatchonly': False,
- 'iswitness': False,
- 'label': 'sim-cosign',
- 'labels': [{'name': 'sim-cosign', 'purpose': 'send'}],
- 'script': 'witness_v0_scripthash',
- 'scriptPubKey': 'a914dd9f26f478171e1509048c06d3d1e601de59fd6887',
- 'solvable': True}
-'''
-        match = re.search(r"\[([0-9a-f]{8})/([0-9'/]+)\]([0-9a-f]{64,68})", info['desc'])
-        bc_xfp = match.group(1)
-        bc_deriv = 'm/' + match.group(2)
-        bc_pubkey = match.group(3)
 
     pp = sec_to_public_pair(a2b_hex(bc_pubkey))
 
@@ -1180,8 +1153,11 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     cc_deriv = "m/45'/55"
     cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(cc_deriv[2:]).sec())
 
+    
+
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
-    resp = bitcoind.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])))
+    resp = bitcoind.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
+                                                'shared-addr-'+addr_style, addr_style)
     ms_addr = resp['address']
     bc_redeem = a2b_hex(resp['redeemScript'])
 
@@ -1194,37 +1170,68 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
 
     assert scr == bc_redeem
 
+    # check Coldcard calcs right address to match
     got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
-                                M, xfp_paths, scr, addr_fmt=AF_P2WSH_P2SH), timeout=None)
+                                M, xfp_paths, scr, addr_fmt=addr_fmt), timeout=None)
     assert got_addr == ms_addr
     time.sleep(.1)
     need_keypress('x')      # clear screen
 
-    assert ms_addr == '2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4'
+    print(f"Will be signing an input from {ms_addr}")
+
+    if xfp2str(bc_xfp) == '5380D0ED':
+        # my own expected values
+        assert ms_addr in ( '2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4',
+                            '2N1hZJ5mazTX524GQTPKkCT4UFZn5Fqwdz6',
+                            'tb1qpcv2rkc003p5v8lrglrr6lhz2jg8g4qa9vgtrgkt0p5rteae5xtqn6njw9')
 
     # Need some UTXO to sign
     #
     # - but bitcoind can't give me that (using listunspent) because it's only a watched addr??
+    did_fund = False
+    while 1:
+        rr = explora('address', ms_addr, 'utxo')
+        pprint(rr)
 
-    rr = explora('address', ms_addr, 'utxo')
-    pprint(rr)
+        avail = []
+        amt = 0
+        for i in rr:
+            txn = i['txid']
+            vout = i['vout']
+            avail.append( (txn, vout) )
+            amt += i['value']
 
-    avail = []
-    amt = 0
-    for i in rr:
-        txn = i['txid']
-        vout = i['vout']
-        avail.append( (txn, vout) )
-        amt += i['value']
-        break
+            # just use first UTXO available; save other for later tests
+            break
 
-    if not amt:
-        raise pytest.fail(f"Please send some XTN to {ms_addr}")
+        else:
+            # doesn't need to confirm, but does need to reach public testnet/blockstream
+            assert not amt and not avail
+
+            if not did_fund:
+                print(f"Sending some XTN to {ms_addr}  (wait)")
+                bitcoind.sendtoaddress(ms_addr, 0.0001, 'fund testing')
+                did_fund = True
+            else:
+                print(f"Still waiting ...")
+
+            time.sleep(2)
+
+        if amt: break
 
     ret_addr = bitcoind.getrawchangeaddress()
 
+    ''' If you get insufficent funds, even tho we provide the UTXO (!!), do this:
+
+            bitcoin-cli importaddress "2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4" true true
+
+        Better method: always fund addresses for testing here from same wallet (ie.
+        got from non-multisig to multisig on same bitcoin-qt instance). Now doing that
+        automated above.
+    '''
     resp = bitcoind.walletcreatefundedpsbt([dict(txid=t, vout=o) for t,o in avail],
-               [{ret_addr: amt/1E8}], 0, {'subtractFeeFromOutputs': [0]}, True)
+               [{ret_addr: amt/1E8}], 0,
+                {'subtractFeeFromOutputs': [0], 'includeWatching': True}, True)
 
     assert resp['changepos'] == -1
     psbt = b64decode(resp['psbt'])
