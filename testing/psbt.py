@@ -3,7 +3,7 @@
 #
 # psbt.py - yet another PSBT parser/serializer but used only for test cases.
 #
-import pytest, io, struct
+import io, struct
 from binascii import b2a_hex as _b2a_hex
 from binascii import a2b_hex as _a2b_hex
 from collections import namedtuple
