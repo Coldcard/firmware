@@ -853,6 +853,10 @@ class MultisigMenu(MenuSystem):
 
 async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
+    if chains.current_chain().ctype != 'XTN':
+        if not await ux_confirm("Multisig is to be used on Testnet coins only at this time."):
+            return
+
     rv = MultisigMenu.construct()
     return MultisigMenu(rv)
 
