@@ -75,4 +75,11 @@ def swab32(n):
     import struct
     return struct.unpack('>I', struct.pack('<I', n))[0]
 
+def xfp2str(xfp):
+    # Standardized way to show an xpub's fingerprint... it's a 4-byte string
+    # and not really an integer. Used to show as '0x%08x' but that's wrong endian.
+    from binascii import b2a_hex
+    from struct import pack
+    return b2a_hex(pack('>I', xfp)).decode('ascii').upper()
+
 # EOF

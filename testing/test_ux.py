@@ -2,6 +2,7 @@
 # and is covered by GPLv3 license found in COPYING.
 #
 import pytest, time, os
+from helpers import xfp2str
 
 def test_get_secrets(get_secrets, master_xpub):
     v = get_secrets()
@@ -230,8 +231,7 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
 
     title, body = cap_story()
 
-    ex = '%08x' % xfp
-    assert '  '+ex in body
+    assert '  '+xfp2str(xfp) in body
 
     v = get_secrets()
 
