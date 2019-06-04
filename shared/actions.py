@@ -609,10 +609,10 @@ async def wasabi_skeleton(*A):
 
     ch = chains.current_chain()
 
-    if not await ux_show_story('''\
+    if await ux_show_story('''\
 This saves a skeleton Wasabi wallet file onto the MicroSD card. \
 You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
-''' + SENSITIVE_NOT_SECRET):
+''' + SENSITIVE_NOT_SECRET) != 'y':
         return
 
     # no choices to be made, just do it.
