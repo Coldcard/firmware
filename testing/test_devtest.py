@@ -48,7 +48,15 @@ def test_public(sim_execfile):
 
             sk = node_prv.subkey_for_path(subpath[2:])
 
-            if result[1:4] == 'pub':
+            if result[1:4] == 'pub' and result[0] not in 'xt':
+                # SLIP-132 garbage
+                assert 'SLIP-132' in result
+                result = result.split('#', 1)[0].strip()
+
+                # just base58/checksum check
+                assert a2b_hashed_base58(result)
+
+            elif result[1:4] == 'pub':
                 try:
                     expect = BIP32Node.from_wallet_key(result)
                 except Exception as e:
