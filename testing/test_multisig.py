@@ -8,18 +8,12 @@ from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRI
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
 from base64 import b64encode, b64decode
-from helpers import B2A, U2SAT, prandom, fake_dest_addr, swab32
+from helpers import B2A, U2SAT, prandom, fake_dest_addr, swab32, xfp2str
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.encoding import a2b_hashed_base58
 from io import BytesIO
-
-def xfp2str(xfp):
-    # Standardized way to show an xpub's fingerprint... it's a 4-byte string
-    # and not really an integer. Used to show as '0x%08x' but that's wrong endian.
-    from binascii import b2a_hex
-    return b2a_hex(pack('>I', xfp)).decode('ascii').upper()
 
 def HARD(n=0):
     return 0x80000000 | n
