@@ -12,6 +12,8 @@
     - dump public data file (text in file header)
     - ckcc CLI helper (`xfp` command, which now shows both values)
 - Export skeleton wallets for Wasabi Wallet <https://wasabiwallet.io/> to support air-gapped use.
+- Summary file (public.txt) has been reworked to include more XPUB values and a warning about
+  using addresses your wallet might not be ready for.
 
 ## 2.0.4 - May 13, 2019
 

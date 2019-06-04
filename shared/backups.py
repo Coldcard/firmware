@@ -417,16 +417,22 @@ def generate_public_contents():
 # Coldcard Wallet Summary File
 ## For wallet with master key fingerprint: {xfp}
 
-### Wallet operates on blockchain: {nb}
+Wallet operates on blockchain: {nb}
 
-For BIP44, this is coin_type '{ct}', and internally we use symbol {sym} for this blockchain.
+For BIP44, this is coin_type '{ct}', and internally we use
+symbol {sym} for this blockchain.
+
+## IMPORTANT WARNING
+
+Do **not** deposit to any address in this file unless you have a working
+wallet system that is ready to handle the funds at that address!
 
 ## Top-level, 'master' extended public key ('m/'):
 
 {xpub}
 
-
-Derived public keys, as may be needed for different systems:
+What follows are derived public keys and payment addresses, as may
+be needed for different systems.
 
 
 '''.format(nb=chain.name, xpub=chain.serialize_public(sv.node), 
@@ -440,24 +446,43 @@ Derived public keys, as may be needed for different systems:
             if '{' in name:
                 name = name.format(core_name=chain.core_name)
 
+            show_slip132 = ('Core' not in name)
+
             yield ('''## For {name}: {path}\n\n'''.format(name=name, path=path))
+            yield ('''First %d receive addresses (account=0, change=0):\n\n''' % num_rx)
 
-            submaster, kids = path.split('/{', 1)
-            kids = '{'+kids
-
-            node = sv.derive_path(submaster)
-
-            yield ("%s => %s\n" % (submaster, chain.serialize_public(node)))
-            if addr_fmt != AF_CLASSIC and (addr_fmt in chain.slip132):
-                yield ("# SLIP-132 style\n%s => %s\n" % (
-                            submaster, chain.serialize_public(node, addr_fmt)))
-
-            yield ('''\n... first %d receive addresses (account=0, change=0):\n\n''' % num_rx)
-
+            submaster = None
             for i in range(num_rx):
-                subpath = kids.format(account=0, change=0, idx=i)
-                kid = sv.derive_path(subpath, node)
-                yield ('%s/%s => %s\n' % (submaster, subpath, chain.address(kid, addr_fmt)))
+                subpath = path.format(account=0, change=0, idx=i)
+
+                # find the prefix of the path that is hardneded
+                if "'" in subpath:
+                    hard_sub = subpath.rsplit("'", 1)[0] + "'"
+                else:
+                    hard_sub = 'm'
+
+                if hard_sub != submaster:
+                    # dump the xpub needed
+
+                    if submaster:
+                        yield "\n"
+
+                    node = sv.derive_path(hard_sub, register=False)
+                    yield ("%s => %s\n" % (hard_sub, chain.serialize_public(node)))
+                    if show_slip132 and addr_fmt != AF_CLASSIC and (addr_fmt in chain.slip132):
+                        yield ("%s => %s   ##SLIP-132##\n" % (
+                                    hard_sub, chain.serialize_public(node, addr_fmt)))
+
+                    submaster = hard_sub
+                    node.blank()
+                    del node
+
+                # show the payment address
+                node = sv.derive_path(subpath, register=False)
+                yield ('%s => %s\n' % (subpath, chain.address(node, addr_fmt)))
+
+                node.blank()
+                del node
 
             yield ('\n\n')
 
@@ -486,6 +511,8 @@ async def make_summary_file(fname_pattern='public.txt'):
     # generator function:
     body = generate_public_contents()
 
+    total_parts = 72        # need not be precise
+
     # choose a filename
         
     try:
@@ -494,7 +521,8 @@ async def make_summary_file(fname_pattern='public.txt'):
 
             # do actual write
             with open(fname, 'wb') as fd:
-                for part in body:
+                for idx, part in enumerate(body):
+                    dis.progress_bar_show(idx / total_parts)
                     fd.write(part.encode())
 
     except CardMissingError:

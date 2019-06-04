@@ -63,5 +63,13 @@ if '-m' in sys.argv:
     numpad.inject('5')
     numpad.inject('y')
 
+if '-s' in sys.argv:
+    # MicroSD menu
+    from main import numpad
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('y')
+
 
 # EOF
