@@ -1,4 +1,6 @@
-## 2.1.0 - May, 2019
+## 2.1.RC0 - June 5, 2019
+
+*2.1.RC0 is for testing purposes only. Please use multisig features only on testnet.*
 
 - Major release with Multisig support!
 - Broad change: extended public key finger (XFP) values used to be shown in the
@@ -6,14 +8,15 @@
   In fact, they are a byte string and should be shown in that network order. Everywhere
   you might be used to seeing your XFP value has been switched, so `0x0f056943`
   becomes `4369050F` (all caps, no `0x` prefix). Affected areas include:
-    - BIP39 confirmation screen
+    - BIP39 password confirmation screen
     - Advanced > View Identity screen
-    - electrum skeleton wallet export (label of wallet)
-    - dump public data file (text in file header)
-    - ckcc CLI helper (`xfp` command, which now shows both values)
+    - Electrum skeleton wallet export (label of wallet)
+    - Dump public data file (text in file header)
+    - `xfp` command in ckcc CLI helper (now shows both values)
 - Export skeleton wallets for Wasabi Wallet <https://wasabiwallet.io/> to support air-gapped use.
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
   using addresses your wallet might not be ready for.
+- Further documentation and Electrum support are in the works.
 
 ## 2.0.4 - May 13, 2019
 
