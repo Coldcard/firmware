@@ -252,7 +252,6 @@ def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=Non
 
     return rv, [pk for pk,_,_ in data], xfp_paths
 
-@pytest.fixture
 def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **make_redeem_args):
     # Construct addr and script need to represent a p2sh address
     import bech32
