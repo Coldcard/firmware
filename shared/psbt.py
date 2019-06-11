@@ -816,7 +816,7 @@ class psbtObject(psbtProxy):
 
         # global objects
         self.txn = None
-        self.xpubs = {}
+        self.xpubs = []         # tuples(xfp_path, xpub)
 
         global active_multisig
         active_multisig = None
@@ -852,7 +852,9 @@ class psbtObject(psbtProxy):
         if kt == PSBT_GLOBAL_UNSIGNED_TX:
             self.txn = val
         elif kt == PSBT_GLOBAL_XPUB:
-            self.xpubs[key[1:]] = val
+            # list of tuples(xfp_path, xpub)
+            self.xpubs.append( (self.get(val), key[1:]) )
+            assert len(self.xpubs) <= MAX_SIGNERS
         else:
             self.unknowns[key] = val
 
@@ -999,7 +1001,7 @@ class psbtObject(psbtProxy):
         global active_multisig
         assert not active_multisig
 
-        xfps = [unpack_from('<I', k, 4)[0] for k in self.xpubs.keys()]
+        xfps = [unpack_from('<I', k)[0] for k,_ in self.xpubs]
         assert self.my_xfp in xfps, 'My XFP not involved'
 
         candidates = MultisigWallet.find_candidates(xfps)
@@ -1021,8 +1023,7 @@ class psbtObject(psbtProxy):
 
         if not active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            active_multisig, need_approval = MultisigWallet.import_from_psbt(
-                                                    M, N, self.xpubs, self.get)
+            active_multisig, need_approval = MultisigWallet.import_from_psbt(M, N, self.xpubs)
             if need_approval:
                 # do a complex UX sequence, which lets them save wallet
                 ch = await active_multisig.confirm_import()
@@ -1218,8 +1219,8 @@ class psbtObject(psbtProxy):
             wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
         if self.xpubs:
-            for k in self.xpubs:
-                wr(PSBT_GLOBAL_XPUB, self.xpubs[k], k)
+            for v, k in self.xpubs:
+                wr(PSBT_GLOBAL_XPUB, v, k)
 
         if self.unknown:
             for k in self.unknown:

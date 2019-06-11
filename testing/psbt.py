@@ -214,7 +214,7 @@ class BasicPSBT:
     def __init__(self):
 
         self.txn = None
-        self.xpubs = {}
+        self.xpubs = []
 
         self.inputs = []
         self.outputs = []
@@ -225,7 +225,7 @@ class BasicPSBT:
             len(a.outputs) == len(b.outputs) and \
             all(a.inputs[i] == b.inputs[i] for i in range(len(a.inputs))) and \
             all(a.outputs[i] == b.outputs[i] for i in range(len(a.outputs))) and \
-            sorted(a.xpubs.items()) == sorted(b.xpubs.items())
+            sorted(a.xpubs) == sorted(b.xpubs)
 
     def parse(self, raw):
         # auto-detect and decode Base64 and Hex.
@@ -256,7 +256,8 @@ class BasicPSBT:
                     num_ins = len(t.txs_in)
                     num_outs = len(t.txs_out)
                 elif kt == PSBT_GLOBAL_XPUB:
-                    self.xpubs[key[1:]] = val
+                    # key=(xpub) => val=(path)
+                    self.xpubs.append( (key, val) )
                 else:
                     raise ValueError('unknown global key type: 0x%02x' % kt)
 
@@ -282,8 +283,8 @@ class BasicPSBT:
 
         wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
-        for k in self.xpubs:
-            wr(PSBT_GLOBAL_XPUB, self.xpubs[k], key=k)
+        for k,v in self.xpubs:
+            wr(PSBT_GLOBAL_XPUB, v, key=k)
 
         # sep
         fd.write(b'\0')

@@ -839,9 +839,9 @@ def fake_ms_txn():
         if incl_xpubs:
             # add global header with XPUB's
             # - assumes BIP45
-            for nonce_idx, (xfp, m, sk) in enumerate(keys):
-                kk = pack('<III', nonce_idx, xfp, 45|0x80000000)
-                psbt.xpubs[kk] = sk.serialize(as_private=False)
+            for xfp, m, sk in keys:
+                kk = pack('<II', xfp, 45|0x80000000)
+                psbt.xpubs.append( (sk.serialize(as_private=False), kk) )
 
         psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
         psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
@@ -945,6 +945,8 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
 def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms, 
         fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
+
+    # IMPORTANT: wont work if you start simulator with -m flag. Use no args
 
     num_outs = 2
 
