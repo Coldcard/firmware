@@ -540,7 +540,7 @@ class MultisigWallet:
     @classmethod
     def check_xpub(cls, xfp, xpub, expect_chain, xpubs, path_tops):
         # Shared code: consider an xpub for inclusion into a wallet, if ok, append
-        # to list: xpubs.
+        # to list: xpubs, and path_tops
 
         try:
             # Note: addr fmt detected here via SLIP-132 isn't useful
@@ -564,7 +564,7 @@ class MultisigWallet:
 
         assert xfp, 'need fingerprint'
 
-        # detect, when possible, if follows BIP45 ... find the path
+        # detect, when possible, if it follows BIP45 ... find the path
         path_top = None
         if node.depth() == 1:
             cn = node.child_num()
@@ -659,11 +659,10 @@ class MultisigWallet:
             print('%s: %s' % (xfp2str(xfp), val), file=fp)
 
     @classmethod
-    def import_from_psbt(cls, M, N, xpubs_dict, fetcher):
+    def import_from_psbt(cls, M, N, xpubs_list):
         # given the raw data fro PSBT global header, offer the user
         # the details, and/or bypass that all and just trust the data.
-        # - dict is a map from (xfp+path) => binary BIP32 xpub
-        # - called fetcher to get bytes of xpub
+        # - xpubs_list is a list of (xfp+path, binary BIP32 xpub)
         # - already know not in our records.
         from ustruct import unpack_from
         from main import settings
@@ -677,7 +676,7 @@ class MultisigWallet:
 
         # build up an in-memory version of the wallet.
 
-        assert N == len(xpubs_dict)
+        assert N == len(xpubs_list)
         assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
         my_xfp = settings.get('xfp')
 
@@ -686,9 +685,9 @@ class MultisigWallet:
         has_mine = False
         path_tops = set()
 
-        for k, v in xpubs_dict.items():
-            nonce, xfp, *path = unpack_from('<%dI' % (len(k)/4), k, 0)
-            xpub = tcc.codecs.b58_encode(fetcher(v))
+        for k, v in xpubs_list:
+            xfp, *path = unpack_from('<%dI' % (len(k)/4), k, 0)
+            xpub = tcc.codecs.b58_encode(v)
             xfp = cls.check_xpub(xfp, xpub, expect_chain, xpubs, path_tops)
             if xfp == my_xfp:
                 has_mine = True
