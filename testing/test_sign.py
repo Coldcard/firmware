@@ -372,7 +372,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
     bal = bitcoind.getbalance()
     assert bal > 0, "need some play money; drink from a faucet"
 
-    amt = round((bal/8)/num_dests, 6)
+    amt = round((bal/4)/num_dests, 6)
 
     args = {}
 
@@ -402,7 +402,9 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
 
     # use walletcreatefundedpsbt
     # - updated/validated against 0.17.1
-    resp = bitcoind.walletcreatefundedpsbt([], args, 0, {}, True)
+    resp = bitcoind.walletcreatefundedpsbt([], args, 0, {
+                'subtractFeeFromOutputs': list(range(num_dests)),
+                'feeRate': 0.00001500}, True)
 
     if 0:
         # OMFG all this to reconstruct the rpc command!
@@ -460,6 +462,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
 
         # assert resp['complete']
         #print("Final txn: %r" % network)
+        open('debug/finalized-by-btcd.txn', 'wb').write(network)
 
         # try to send it
         txed = bitcoind.sendrawtransaction(B2A(network))
@@ -468,7 +471,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
     else:
         assert signed[0:4] != b'psbt', "expecting raw bitcoin txn"
         #print("Final txn: %s" % B2A(signed))
-        open('debug/finalized.psbt', 'wb').write(signed)
+        open('debug/finalized-by-cc.txn', 'wb').write(signed)
 
         txed = bitcoind.sendrawtransaction(B2A(signed))
         print("Final txn hash: %r" % txed)
@@ -1497,6 +1500,82 @@ def fake_multisig_txn(make_redeem):
 
     return doit
 
+@pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
+@pytest.mark.bitcoind
+def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
+    # Compare how we finalize vs bitcoind ... should be exactly the same txn
+
+    wallet_xfp = match_key()
+
+    bal = bitcoind.getbalance()
+    assert bal > 0, "need some play money; drink from a faucet"
+
+    amt = round((bal/4)/num_dests, 6)
+
+    args = {}
+
+    for no in range(num_dests):
+        dest = bitcoind.getrawchangeaddress()
+        assert dest[0] in '2mn' or dest.startswith('tb1'), dest
+
+        args[dest] = amt
+
+    # use walletcreatefundedpsbt
+    # - updated/validated against 0.17.1
+    resp = bitcoind.walletcreatefundedpsbt([], args, 0, {
+                'subtractFeeFromOutputs': list(range(num_dests)),
+                'feeRate': 0.00001500}, True)
+
+    psbt = b64decode(resp['psbt'])
+    fee = resp['fee']
+    chg_pos = resp['changepos']
+
+    open('debug/vs.psbt', 'wb').write(psbt)
+
+    # check some basics
+    mine = BasicPSBT().parse(psbt)
+    from struct import unpack_from
+    for i in mine.inputs:
+        got_xfp, = unpack_from('I', list(i.bip32_paths.values())[0])
+        #assert hex(got_xfp) == hex(wallet_xfp), "wrong HD master key fingerprint"
+
+        # see <https://github.com/bitcoin/bitcoin/issues/15884>
+        if hex(got_xfp) != hex(wallet_xfp):
+            raise pytest.xfail("wrong HD master key fingerprint")
+
+    # pull out included txn
+    txn2 = B2A(mine.txn)
+
+    start_sign(psbt, finalize=True)
+
+    # verify against how bitcoind reads it
+    check_against_bitcoind(txn2, fee)
+
+    signed_final = end_sign(accept=True)
+    assert signed_final[0:4] != b'psbt', "expecting raw bitcoin txn"
+    open('debug/finalized-by-ckcc.txn', 'wt').write(B2A(signed_final))
+
+    # Sign again, but don't finalize it.
+    start_sign(psbt, finalize=False)
+    signed = end_sign(accept=True)
+
+    open('debug/vs-signed-unfin.psbt', 'wb').write(signed)
+
+    # Use bitcoind to finalize it this time.
+    resp = bitcoind.finalizepsbt(str(b64encode(signed), 'ascii'), True)
+    assert resp['complete'] == True, "bitcoind wasn't able to finalize it"
+
+    network = a2b_hex(resp['hex'])
+
+    # assert resp['complete']
+    #print("Final txn: %r" % network)
+    open('debug/finalized-by-btcd.txn', 'wt').write(B2A(network))
+
+    assert network == signed_final, "Finalized differently"
+
+    # try to send it
+    txed = bitcoind.sendrawtransaction(B2A(network))
+    print("Final txn hash: %r" % txed)
 
 
 # EOF
