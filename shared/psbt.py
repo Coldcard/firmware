@@ -1521,7 +1521,7 @@ class psbtObject(psbtProxy):
 
                 if inp.is_p2sh:
                     # multisig (p2sh) segwit still requires the script here.
-                    txi.scriptSig = inp.scriptSig
+                    txi.scriptSig = ser_string(inp.scriptSig)
                 else:
                     # major win for segwit (p2pkh): no redeem script bloat anymore
                     txi.scriptSig = b''
