@@ -634,7 +634,7 @@ class psbtInputProxy(psbtProxy):
                 raise AssertionError("missing redeem/witness script for in #%d" % my_idx)
 
             redeem_script = self.get(ks)
-            self.scriptSig = ser_string(redeem_script)
+            self.scriptSig = redeem_script
 
             # new cheat: psbt creator probably telling us exactly what key
             # to use, by providing exactly one. This is ideal for p2sh wrapped p2pkh
@@ -666,7 +666,6 @@ class psbtInputProxy(psbtProxy):
             else:
                 # multiple keys involved, we probably can't do the finalize step
                 self.is_multisig = True
-
 
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
