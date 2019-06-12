@@ -1094,7 +1094,7 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     clear_ms()
 
 
-@pytest.mark.parametrize('addr_style', ["p2sh-segwit", "legacy", "bech32"])
+@pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.bitcoind
 def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
@@ -1108,7 +1108,6 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
 
     if addr_style == 'legacy':
         addr_fmt = AF_P2SH
-        #raise pytest.xfail("no good")
     elif addr_style == 'p2sh-segwit':
         addr_fmt = AF_P2WSH_P2SH
     elif addr_style == 'bech32':
@@ -1170,7 +1169,7 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
                                 M, xfp_paths, scr, addr_fmt=addr_fmt), timeout=None)
     assert got_addr == ms_addr
     time.sleep(.1)
-    need_keypress('x')      # clear screen
+    need_keypress('x')      # clear screen / start over
 
     print(f"Will be signing an input from {ms_addr}")
 
@@ -1183,6 +1182,7 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     # Need some UTXO to sign
     #
     # - but bitcoind can't give me that (using listunspent) because it's only a watched addr??
+    #
     did_fund = False
     while 1:
         rr = explora('address', ms_addr, 'utxo')
@@ -1221,8 +1221,8 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
             bitcoin-cli importaddress "2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4" true true
 
         Better method: always fund addresses for testing here from same wallet (ie.
-        got from non-multisig to multisig on same bitcoin-qt instance). Now doing that
-        automated above.
+        got from non-multisig to multisig on same bitcoin-qt instance).
+        -> Now doing that, automated, above.
     '''
     resp = bitcoind.walletcreatefundedpsbt([dict(txid=t, vout=o) for t,o in avail],
                [{ret_addr: amt/1E8}], 0,
