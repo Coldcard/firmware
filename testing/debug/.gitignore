@@ -1,3 +1,4 @@
 *.psbt
 *.txn
-
+*.txt
+*.json
