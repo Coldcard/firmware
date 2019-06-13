@@ -132,7 +132,7 @@ class psbtProxy:
             kt = key[0]
 
             if kt in self.no_keys:
-                assert len(key) == 1, "no expecto key"
+                assert len(key) == 1        # not expectiing key
 
             # storing offset and length only! Mostly.
             if kt in self.short_values:
@@ -298,30 +298,30 @@ class psbtOutputProxy(psbtProxy):
     def validate(self, out_idx, txo, my_xfp):
         # Do things make sense for this output?
     
-        # NOTE: We might think it's a change output, because the PSBT
-        # creator has given us a key path. However, we must be
-        # **very** careful and validate this fully.
+        # NOTE: We might think it's a change output just because the PSBT
+        # creator has given us a key path. However, we must be **very** 
+        # careful and fully validate all the details.
         # - no output info is needed, in general, so
         #   any output info provided better be right, or fail as "fraud"
         # - full key derivation and validation is done during signing, and critical.
-        # - we raise a fraud alarms, since these are not innocent errors
+        # - we raise fraud alarms, since these are not innocent errors
         #
 
         num_ours = self.parse_subpaths(my_xfp)
 
         if num_ours == 0:
             # - not considered fraud because other signers looking at PSBT may have them
-            # - user will see them as normal outputs, which they are.
+            # - user will see them as normal outputs, which they are from our PoV.
             return
 
         # - must match expected address for this output, coming from unsigned txn
         addr_type, addr_or_pubkey, is_segwit = txo.get_address()
 
-        if num_ours == 1:
+        if len(self.subpaths) == 1:
             # p2pk, p2pkh, p2wpkh cases
             expect_pubkey, = self.subpaths.keys()
         else:
-            # p2wsh/p2sh cases need full set of pubkeys
+            # p2wsh/p2sh cases need full set of pubkeys, and therefore redeem script
             expect_pubkey = None
 
         if addr_type == 'p2pk':
@@ -335,7 +335,7 @@ class psbtOutputProxy(psbtProxy):
             return
 
         # Figure out what the hashed addr should be
-        pkh = None
+        pkh = addr_or_pubkey
 
         if addr_type == 'p2sh':
             # P2SH or Multisig output
@@ -352,7 +352,7 @@ class psbtOutputProxy(psbtProxy):
                     redeem_script[0] == 0 and redeem_script[1] == 20:
 
                 # it's actually segwit p2pkh inside p2sh
-                pkh = redeem_script[2:22]
+                expect_pkh = redeem_script[2:22]
 
             else:
                 # Multisig change output, for wallet we're supposed to be a part of.
@@ -394,19 +394,17 @@ class psbtOutputProxy(psbtProxy):
                     self.is_change = True
                     return
 
-                else:
-                    # old BIP16 style; looks like payment addr
-                    pkh = hash160(redeem_script)
+                # old BIP16 style; looks like payment addr
+                expect_pkh = hash160(redeem_script)
 
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
             assert len(addr_or_pubkey) == 20
-            pkh = addr_or_pubkey
+            expect_pkh = hash160(expect_pubkey)
         else:
             # we don't know how to "solve" this type of input
             return
 
-        expect_pkh = hash160(expect_pubkey)
         if pkh != expect_pkh:
             raise FraudulentChangeOutput(out_idx, "Change output is fraudulent")
 
