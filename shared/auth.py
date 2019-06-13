@@ -260,7 +260,7 @@ class ApproveTransaction(UserAuthorizedAction):
             if isinstance(exc, MemoryError):
                 msg = "Transaction is too complex."
             else:
-                msg = "Invalid PSBT: " + (str(exc) or problem_file_line(exc))
+                msg = "Invalid PSBT: %s (%s)" % (exc, problem_file_line(exc))
 
             return await self.failure(msg, exc)
 
