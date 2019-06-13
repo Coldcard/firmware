@@ -940,7 +940,7 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
     try_sign(psbt)
 
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [ 4, 3, 2, 1 ])
+@pytest.mark.parametrize('M', [ 2, 4, 1 ])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
 def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms, 
