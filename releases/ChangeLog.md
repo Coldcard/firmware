@@ -3,19 +3,23 @@
 *2.1.RC0 is for testing purposes only. Please use multisig features only on testnet.*
 
 - Major release with Multisig support!
+    - New menu under: Settings > Multisig Wallets
+    - Lists all imported M-of-N wallets already setup
+    - Export, import for air-gapped creation
+    - Related settings and more
 - Broad change: extended public key finger (XFP) values used to be shown in the
   wrong endian (byte swapped), and prefixed with `0x` to indicate they were a number.
-  In fact, they are a byte string and should be shown in that network order. Everywhere
+  In fact, they are a byte string and should be shown in network order. Everywhere
   you might be used to seeing your XFP value has been switched, so `0x0f056943`
   becomes `4369050F` (all caps, no `0x` prefix). Affected areas include:
     - BIP39 password confirmation screen
     - Advanced > View Identity screen
     - Electrum skeleton wallet export (label of wallet)
     - Dump public data file (text in file header)
-    - `xfp` command in ckcc CLI helper (now shows both values)
+    - `xfp` command in ckcc CLI helper (can show opposite endian, if needed)
 - Export skeleton wallets for Wasabi Wallet <https://wasabiwallet.io/> to support air-gapped use.
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
-  using addresses your wallet might not be ready for.
+  using addresses your blockchain-monitoring wallet might not be ready for.
 - Further documentation and Electrum support are in the works.
 
 ## 2.0.4 - May 13, 2019
