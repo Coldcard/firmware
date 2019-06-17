@@ -51,14 +51,13 @@
   PSBT can be given again, and the "next" leg will be signed.
 - we do not support PSBT combining or finalizing of transactions involving
   P2SH signatures (so the combine step must be off-device)
-- Electrum plugin does not support multisig at this time
 - we can sign for P2SH and P2WSH addresses that represent multisig (M of N) but
   we cannot sign for non-standard scripts because we don't know how to present
   that to the user for approval.
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
 - max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
-- we have space for up to 8 M-of-3 wallets, or a single M-of-20 wallet. YMMV
+- we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
 - we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
