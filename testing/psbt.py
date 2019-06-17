@@ -9,8 +9,6 @@ from binascii import a2b_hex as _a2b_hex
 from collections import namedtuple
 from base64 import b64encode
 from pycoin.tx.Tx import Tx
-from pycoin.tx.TxOut import TxOut
-from pycoin.encoding import b2a_hashed_base58, a2b_hashed_base58
 from pycoin.tx.script.check_signature import parse_signature_blob
 from binascii import b2a_hex, a2b_hex
 from base64 import b64decode
