@@ -30,7 +30,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 2.1.RC0
+VERSION_STRING = 2.1.RC1
 
 #
 # Sign and merge various parts
