@@ -184,7 +184,8 @@ class MultisigWallet:
     def assert_matching(self, M, N, fingerprints):
         # compare in-memory wallet with details recovered from PSBT
         assert (self.M, self.N) == (M, N), "M/N mismatch"
-        assert sorted(fingerprints) == self.xfps
+        assert len(fingerprints) == N, "XFP count"
+        assert sorted(fingerprints) == self.xfps, "wrong XFPs"
 
     @classmethod
     def quick_check(cls, M, N, xfp_xor):
