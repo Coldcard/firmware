@@ -1,6 +1,6 @@
-## 2.1.RC0 - June 5, 2019
+## 2.1.RC1 - June 20, 2019
 
-*2.1.RC0 is for testing purposes only. Please use multisig features only on testnet.*
+*2.1.RC1 is for testing purposes only. Please use multisig features only on testnet.*
 
 - Major release with Multisig support!
     - New menu under: Settings > Multisig Wallets
