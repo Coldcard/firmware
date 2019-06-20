@@ -57,6 +57,7 @@ if '-m' in sys.argv:
 
     # 2of4 using BIP39 passwords: "Me", "Myself", "and I", and (empty string) on simulator
     sim_defaults['multisig'] = [['MeMyself', [2, 4], [[3503269483, 'tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9'], [2389277556, 'tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc'], [3190206587, 'tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa'], [1130956047, 'tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n']], {'ch': 'XTN', 'pp': "45'"}]]
+    sim_defaults['fee_limit'] = -1
 
 
     # start in multisig wallet
