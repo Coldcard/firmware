@@ -599,6 +599,7 @@ class NewPassphrase(UserAuthorizedAction):
 
     async def interact(self):
         # prompt them
+        from main import settings
 
         showit = False
         while 1:
@@ -623,7 +624,6 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
                 await ux_dramatic_pause("Refused.", 1)
             else:
                 from seed import set_bip39_passphrase
-                from main import settings
 
                 # full screen message shown: "Working..."
                 err = set_bip39_passphrase(self._pw)
@@ -632,11 +632,18 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
                     await self.failure(err)
                 else:
                     self.result = settings.get('xpub')
+
+
         except BaseException as exc:
             self.failed = "Exception"
             sys.print_exception(exc)
         finally:
             self.done()
+
+        if self.result:
+            new_xfp = settings.get('xfp')
+            await ux_show_story('''Above is the master key fingerprint of the current wallet.''',
+                            title="[%s]" % xfp2str(new_xfp))
 
 
 def start_bip39_passphrase(pw):
