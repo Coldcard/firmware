@@ -20,6 +20,7 @@
 - Export skeleton wallets for Wasabi Wallet <https://wasabiwallet.io/> to support air-gapped use.
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
   using addresses your blockchain-monitoring wallet might not be ready for.
+- When BIP39 passphrase is given over USB, and approved, the new XFP is shown on-screen for reference.
 - Further documentation and Electrum support are in the works.
 
 ## 2.0.4 - May 13, 2019
