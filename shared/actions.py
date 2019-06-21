@@ -562,13 +562,14 @@ that you will need to import other wallet software to track balance.''' + SENSIT
     with imported('backups') as bk:
         await bk.make_summary_file()
 
-def electrum_export_story():
+def electrum_export_story(background=False):
     # saves memory being in a function
-    return '''\
+    return ('''\
 This saves a skeleton Electrum wallet file onto the MicroSD card. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
-Choose an address type for the wallet on the next screen.
-''' + SENSITIVE_NOT_SECRET
+''' 
+        + (background or 'Choose an address type for the wallet on the next screen.\n')
+        + SENSITIVE_NOT_SECRET)
 
 async def electrum_skeleton(*a):
     # save xpub, and some other public details into a file: NOT MULTISIG
