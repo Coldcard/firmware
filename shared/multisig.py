@@ -371,13 +371,14 @@ class MultisigWallet:
 
                 node = ch.deserialize_node(xpub, AF_P2SH); assert node
                 dp = node.depth()
+
                 if not (1 <= dp <= len(path)):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
-                    print('path depth')
                     continue
 
                 for sp in path[dp:]:
+                    assert not (sp & 0x80000000), 'hard deriv'
                     node.derive(sp)     # works in-place
 
                 found_pk = node.public_key()
@@ -387,7 +388,7 @@ class MultisigWallet:
                 #   part of the path from fingerprint to here.
                 here = '(m=%s)\n' % xfp2str(xfp)
                 if dp != len(path):
-                    here += 'm' + ('/?'*dp) + path_to_str(path[-(len(path)-dp+1):], '/')
+                    here += 'm' + ('/?'*dp) + path_to_str(path[dp:], '/', 0)
 
                 if found_pk != pubkey:
                     # Not a match but not an error by itself, since might be 
