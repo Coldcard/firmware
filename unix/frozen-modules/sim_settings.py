@@ -48,9 +48,8 @@ if '-2' in sys.argv:
     })
 
 if '-p' in sys.argv:
-    sim_defaults['b39pw'] = 'test'
-    #del sim_defaults['xpub']
-    #del sim_defaults['xfp']
+    # pretend BIP39 password is active (just for menus)
+    sim_defaults['words'] = False
 
 if '-m' in sys.argv:
     # Include useful multisig wallet, and shortcut to MS menu
