@@ -15,7 +15,11 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `-2` => enable a secondary wallet, with pin 33-33 and no secret
 - `-q` => boot and drop into REPL; does nothing else, no setup
 - `-f -w` => boot like a unit that hasn't left factory yet
-- `-m` => include a 3of15 multisig wallet, and start off in multisig wallet menu
+- `-p` => pretend we don't know the seed words (xprv import) and so menus are different
+- `-m` => define a 2-of-4 multisig wallet, and start off in multisig wallet menu; cosigners are
+            "Me", "Myself", "And I" and empty string. BIP45 path.
+- `-s` => go to the MicroSD menu at startup
+- `--xfp F0012345` => pretend like the XFP of secret is F0012345: useful for debug of PSBT files
 
 See `frozen-modules/sim-settings.py` for the details.
 
