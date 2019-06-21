@@ -70,9 +70,9 @@ def read_varint(v):
         return unpack_from("<Q", v, 1)[0]
     return nit
 
-def path_to_str(bin_path, prefix='m/'):
+def path_to_str(bin_path, prefix='m/', skip=1):
     return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
-                            for i in bin_path[1:])
+                            for i in bin_path[skip:])
 
 def _skip_n_objs(fd, n, cls):
     # skip N sized objects in the stream, for example a vectors of CTxIns
