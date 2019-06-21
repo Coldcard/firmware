@@ -100,6 +100,13 @@ class MultisigWallet:
         # useful cache value
         self.xfps = sorted(k for k,v in self.xpubs)
 
+    @classmethod
+    def render_addr_fmt(cls, addr_fmt):
+        for k, v in cls.FORMAT_NAMES:
+            if k == addr_fmt:
+                return v.upper()
+        return '?'
+
     def serialize(self):
         # return a JSON-able object
 
@@ -599,7 +606,7 @@ class MultisigWallet:
             for idx, (xfp, xpub) in enumerate(self.xpubs): 
 
                 if self.addr_fmt != AF_P2SH:
-                    # CHALLENGE: we must do slip-132 format ?pubs here when not p2sh mode.
+                    # CHALLENGE: we must do slip-132 format [yz]pubs here when not p2sh mode.
                     node = ch.deserialize_node(xpub, AF_P2SH); assert node
                     xp = ch.serialize_public(node, self.addr_fmt)
                 else:
@@ -649,10 +656,10 @@ class MultisigWallet:
         print("Name: %s\nPolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
 
         if self.common_prefix:
-            print("Derivation: %s" % self.common_prefix, file=fp)
+            print("Derivation: m/%s" % self.common_prefix, file=fp)
 
         if self.addr_fmt != AF_P2SH:
-            print("Format: " + dict(self.FORMAT_NAMES)[self.addr_fmt], file=fp)
+            print("Format: " + self.render_addr_fmt(self.addr_fmt), file=fp)
 
         print("", file=fp)
 
@@ -745,7 +752,7 @@ Policy: {M} of {N}
 {exp}
 
 Derivation:
-  {deriv}
+  m/{deriv}
 
 Press (1) to see extended public keys, \
 OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp,
@@ -909,36 +916,45 @@ async def ms_wallet_electrum_export(menu, label, item):
     # - electrum is using BIP43 with purpose=48 (purpose48_derivation) to make paths like:
     #       m/48'/1'/0'/2'
     # - other signers might not be coldcards (we don't know)
-    # - solution: only try to support BIP45 here
+    # solution: 
+    # - (much earlier) when exporting, include all the paths needed.
+    # - when building air-gap, pick address type at that point, and matching path to suit
+    # - require a common prefix path here
+    # - could check path prefix and addr_fmt make sense together, but meh.
     ms = item.arg
     from actions import electrum_export_story
 
-    if not ms.common_prefix:
+    prefix = ms.common_prefix 
+    if not prefix :
         return await ux_show_story("We don't know the common derivation path for "
                                         "these keys, so cannot create Electrum wallet.")
 
-    if await ux_show_story(electrum_export_story()) != 'y':
+    msg = 'The new wallet will have derivation path:\n  %s\n and use %s addresses.\n' % (
+            prefix, MultisigWallet.render_addr_fmt(ms.addr_fmt) )
+
+    if await ux_show_story(electrum_export_story(msg)) != 'y':
         return
 
     await ms.export_electrum()
+
 
 async def ms_wallet_detail(menu, label, item):
     # show details of single multisig wallet, offer to delete
     import chains
 
     ms = item.arg
-    #ms = MultisigWallet.get_by_idx(item.arg)
-    #if not ms: return
-
     msg = uio.StringIO()
 
     msg.write('''
 Policy: {M} of {N}
 Blockchain: {ctype}
+Addresses:
+  {at}
 Derivation:
   m/{der}
 
-'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type, der=ms.common_prefix or "?'"))
+'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type, der=ms.common_prefix or "?'",
+            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
 
     # concern: the order of keys here is non-deterministic
     for idx, (xfp, xpub) in enumerate(ms.xpubs):
