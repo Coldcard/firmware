@@ -67,7 +67,7 @@ def clear_ms(unit_test):
 def make_multisig():
     # make a multsig wallet, always with simulator as an element
 
-    # always BIP45:   m/45'/...
+    # always BIP45:   m/45'/... (but no co-signer idx)
 
     def doit(M, N, unique=0):
         keys = []
@@ -114,14 +114,14 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
         config = f"name: {name}\npolicy: {M} / {N}\n\n"
 
         if addr_fmt:
-            config += f'format: {addr_fmt.upper()}\n'
+            config += f'format: {addr_fmt.title()}\n'
 
         if common:
             config += f'derivation: {common}\n'
 
         config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False)) 
                                             for xfp, m, dd in keys)
-        #print(config)
+        print(config)
 
         title, story = offer_ms_import(config)
 
@@ -210,6 +210,7 @@ def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=Non
     data = []
     for cosigner_idx, (xfp, node, sk) in enumerate(keys):
         path = path_mapper(cosigner_idx)
+        print("path: " + ' / '.join(hex(i) for i in path))
 
         if not node:
             # use xpubkey, otherwise master
@@ -531,10 +532,10 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
                     assert value == f'{M} of {N}'
                     got.add(label)
                 elif label == 'Derivation':
-                    assert value == "45'"
+                    assert value == "m/45'"
                     got.add(label)
                 elif label == 'Format':
-                    assert value == addr_fmt
+                    assert value == addr_fmt.upper()
                     assert addr_fmt != 'p2sh'
                     got.add(label)
                 else:
@@ -976,8 +977,8 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
     anal = bitcoind_analyze(aft.as_bytes())
 
     try:
-        assert not any(inp['missing'] for inp in anal['inputs']), "missing sigs: %r" % anal
-        assert all(inp['next']=='updater' for inp in anal['inputs']), "other issue: %r" % anal
+        assert not any(inp.get('missing') for inp in anal['inputs']), "missing sigs: %r" % anal
+        assert all(inp['next'] in {'finalizer','updater'} for inp in anal['inputs']), "other issue: %r" % anal
     except:
         # XXX seems to be a bug in analyzepsbt function ... not fully studied
         pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
@@ -999,7 +1000,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         assert ex != aft
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
-#@pytest.mark.parametrize('N', [3, 14])
+#@pytest.mark.parametrize('N', [3, 4, 14])
 def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, N=4):
     # test UX and math for bip45 export
 
@@ -1161,7 +1162,6 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     try:
         addr, = bitcoind.getaddressesbylabel("sim-cosign").keys()
     except:
-        raise
         addr = bitcoind.getnewaddress("sim-cosign")
 
     info = bitcoind.getaddressinfo(addr)
