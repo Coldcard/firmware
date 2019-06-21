@@ -1,9 +1,9 @@
 {
   "p2sh_deriv": "m/45'",
-  "p2sh": "tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9",
+  "p2sh": "tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n",
   "p2wsh_p2sh_deriv": "m/48'/1'/0'/1'",
-  "p2wsh_p2sh": "Upub5TeXciynXKx4VP1282QDUZ1NvxnBjEuTFVEcB8bRXxESQRqRKuJDqseZzj6bTeFZkMbYi4qo9rsQij79EJZUGywajDod8etFscpgaTSShLd",
+  "p2wsh_p2sh": "Upub5T4XUooQzDXL58NCHk8ZCw9BsRSLCtnyHeZEExAq1XdnBFXiXVrHFuvvmh3TnCR7XmKHxkwqdACv68z7QKT1vwru9L1SZSsw8B2fuBvtSa6",
   "p2wsh_deriv": "m/48'/1'/0'/2'",
-  "p2wsh": "Vpub5nUnvPehg1VYQh13dGznx1P9moac3SNUrn3qhU9r85RhXabYbSSBNsNNwyR7akozAZJw1SZmRRjry1zY8PWMuw8Ga1vQZ5qzPjKyTDQwtzs",
+  "p2wsh": "Vpub5mtnnUUL8u4oyRf5d2NZJqDypgmpx8FontedpqxNyjXTi6fLp8fmpp2wedS6UyuNpDgLDoVH23c6rYpFSEfB9jhdbD8gek2stjxhwJeE1Eq",
   "xfp": "D0CFA66B"
 }
