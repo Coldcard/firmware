@@ -459,7 +459,9 @@ class USBHandler:
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
             from auth import start_bip39_passphrase
+            from main import settings
 
+            assert settings.get('words', True), 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
             assert len(pw) < 100, 'too long'
