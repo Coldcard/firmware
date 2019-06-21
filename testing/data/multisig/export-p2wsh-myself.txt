@@ -1,9 +1,9 @@
-# Coldcard Multisig setup file (created on BE26B07B)
+# Coldcard Multisig setup file (created on 4369050F)
 #
 Name: CC-2-of-4
 Policy: 2 of 4
-Derivation: 48'/1'/0'/2'
-Format: p2wsh
+Derivation: m/48'/1'/0'/2'
+Format: P2WSH
 
 4369050F: tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP
 BE26B07B: tpubDFiuHYSJhNbHcbLJoxWdbjtUcbKR6PvLq53qC1Xq6t93CrRx78W3wcng8vJyQnY3giMJZEgNCRVzTojLb8RqPFpW5Ms2dYpjcJYofN1joyu
