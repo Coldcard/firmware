@@ -1000,7 +1000,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
 #@pytest.mark.parametrize('N', [3, 14])
-def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, N=3):
+def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, N=4):
     # test UX and math for bip45 export
 
     # cleanup
@@ -1011,7 +1011,10 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     clear_ms()
 
     for idx in range(N):
-        set_bip39_pw(f'test {idx}' if idx else '')
+        if N == 4:
+            set_bip39_pw(['Me', 'Myself', 'And I', ''][idx])
+        else:
+            set_bip39_pw(f'test {idx}' if idx else '')
 
         goto_home()
         pick_menu_item('Settings')
@@ -1053,6 +1056,13 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     elif N == 14:
         assert '8 of 14' in story
         M = 8
+    elif N == 4:
+        assert '3 of 4' in story
+        need_keypress('7')
+        time.sleep(.05)
+        title, story = cap_story()
+        assert '2 of 4' in story
+        M = 2
     else:
         assert 0, N
 
@@ -1075,6 +1085,8 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
 
     impf = open(cc_fname, 'rt').read()
     assert f'Policy: {M} of {N}' in impf
+    if addr_fmt != 'p2sh':
+        assert f'Format: {addr_fmt.upper()}' in impf
 
     need_keypress('y')
     time.sleep(.1)
@@ -1092,6 +1104,39 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     need_keypress('y')
     
     clear_ms()
+
+    if N == 4:
+        import shutil
+
+        # capture useful test data for testing Electrum plugin, etc
+        for fn in glob(microsd_path('ccxp-*.json')):
+            shutil.copy(fn, 'data/multisig/'+fn.rsplit('/', 1)[1])
+        shutil.copy(el_fname, f'data/multisig/el-{addr_fmt}-myself.json')
+        shutil.copy(cc_fname, f'data/multisig/export-{addr_fmt}-myself.txt')
+
+    # test re-importing the wallet from export file
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Import from SD')
+    time.sleep(.05)
+    need_keypress('y')
+    time.sleep(.05)
+    pick_menu_item(cc_fname.rsplit('/', 1)[1])
+
+    time.sleep(.05)
+    title, story = cap_story()
+    assert "Create new multisig" in story
+    assert f"Policy: {M} of {N}" in story
+
+    need_keypress('1')
+    time.sleep(.05)
+    title, story = cap_story()
+    # test code ehre
+
+    # abort import, good enough
+    need_keypress('x')
+    need_keypress('x')
 
 
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
