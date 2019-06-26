@@ -253,7 +253,7 @@ async def show_words(words, prompt=None, escape=None):
     msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
     msg += '\n\nPlease check and double check your notes. There will be a test! ' 
 
-    return await ux_show_story(msg, escape=escape)
+    return await ux_show_story(msg, escape=escape, sensitive=True)
 
 async def make_new_wallet():
     # pick a new random seed, and force them to 
@@ -474,7 +474,7 @@ async def word_quiz(words, limited=None):
             msg = '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
             msg += '\n\nWhich word is right?\n\nX to give up, OK to see all the words again.'
 
-            ch = await ux_show_story(msg, title='Word %d is?' % (o+1), escape='123')
+            ch = await ux_show_story(msg, title='Word %d is?' % (o+1), escape='123', sensitive=True)
             if ch == 'x':
                 # user abort
                 return 'x'
@@ -585,9 +585,6 @@ class PassphraseMenu(MenuSystem):
         global pp_sofar
         if pp_sofar:
             pp_sofar = pp_sofar[0:-1]
-
-    async def view_phrase(self, *a):
-        await ux_show_story('\n%s\n\n' % (pp_sofar or '-> EMPTY <-'), title='Passphrase')
 
     async def view_edit_phrase(self, *a):
         # let them control each character
