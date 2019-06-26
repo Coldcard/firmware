@@ -244,7 +244,7 @@ def word_wrap(ln, w):
 
         yield left
 
-async def ux_show_story(msg, title=None, escape=None):
+async def ux_show_story(msg, title=None, escape=None, sensitive=False):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
@@ -309,6 +309,10 @@ async def ux_show_story(msg, title=None, escape=None):
                 y += 21
             else:
                 dis.text(0, y, ln)
+
+                if sensitive and len(ln) > 3 and ln[2] == ':':
+                    dis.mark_sensitive(y, y+13)
+
                 y += 13
 
         dis.scroll_bar(top / len(lines))

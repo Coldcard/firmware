@@ -178,4 +178,10 @@ class Display:
         # do a bootup delay and some work along the way
         loop.create_task(self.animate_splash(loop, done_fcn, func50))
 
+    def mark_sensitive(self, from_y, to_y):
+        wx = self.WIDTH-4       # avoid scroll bar
+        for y in range(from_y, to_y):
+            ln = max(2, ckcc.rng() % 32)
+            self.dis.line(wx-ln, y, wx, y, 1)
+
 # EOF
