@@ -51,6 +51,8 @@ production.bin: firmware-signed.bin Makefile
 # This is release of the bootloader that will be built into the release firmware.
 BOOTLOADER_VERSION = 1.2.1
 
+# This target just combines latest version of production firmware with bootrom into a DFU
+# file, stored in ../releases with appropriately dated file name.
 .PHONY: release
 release: NEW_VERSION = $(shell $(SIGNIT) version production.bin)
 release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
