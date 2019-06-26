@@ -1,12 +1,11 @@
-## 2.1.RC1 - June 20, 2019
-
-*2.1.RC1 is for testing purposes only. Please use multisig features only on testnet.*
+## 2.1.0 - June 26, 2019
 
 - Major release with Multisig support!
     - New menu under: Settings > Multisig Wallets
     - Lists all imported M-of-N wallets already setup
     - Export, import for air-gapped creation
     - Related settings and more
+    - Electrum support is in the works.
 - Broad change: extended public key finger (XFP) values used to be shown in the
   wrong endian (byte swapped), and prefixed with `0x` to indicate they were a number.
   In fact, they are a byte string and should be shown in network order. Everywhere
@@ -21,7 +20,6 @@
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
   using addresses your blockchain-monitoring wallet might not be ready for.
 - When BIP39 passphrase is given over USB, and approved, the new XFP is shown on-screen for reference.
-- Further documentation and Electrum support are in the works.
 
 ## 2.0.4 - May 13, 2019
 
