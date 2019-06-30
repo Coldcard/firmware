@@ -1,4 +1,4 @@
-## 2.1.0 - June 26, 2019
+## 2.1.1 - June 26, 2019
 
 - Major release with Multisig support!
     - New menu under: Settings > Multisig Wallets
@@ -20,6 +20,8 @@
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
   using addresses your blockchain-monitoring wallet might not be ready for.
 - When BIP39 passphrase is given over USB, and approved, the new XFP is shown on-screen for reference.
+- 2.1.1: remove extra info from Wasabi skeleton file
+
 
 ## 2.0.4 - May 13, 2019
 
