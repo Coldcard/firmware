@@ -557,8 +557,7 @@ def generate_wasabi_wallet():
     assert chain.ctype in {'BTC', 'XTN'}, "Only Bitcoin supported"
 
     return dict(MasterFingerprint=txt_xfp,
-                ExtPubKey=xpub,
-                BlockchainState=dict(Network='Main' if chain.ctype == 'BTC' else 'TestNet'))
+                ExtPubKey=xpub)
 
 
 def generate_electrum_wallet(addr_type):
