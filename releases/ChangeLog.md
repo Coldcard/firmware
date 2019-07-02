@@ -20,7 +20,7 @@
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
   using addresses your blockchain-monitoring wallet might not be ready for.
 - When BIP39 passphrase is given over USB, and approved, the new XFP is shown on-screen for reference.
-- 2.1.1: remove extra info from Wasabi skeleton file
+- 2.1.1: remove extra info from Wasabi skeleton file, change XFP endian.
 
 
 ## 2.0.4 - May 13, 2019
