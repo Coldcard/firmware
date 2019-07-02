@@ -551,7 +551,7 @@ def generate_wasabi_wallet():
         xpub = btc.serialize_public(sv.derive_path("84'/0'/0'"))
 
     xfp = settings.get('xfp')
-    txt_xfp = b2a_hex(ustruct.pack('>I', xfp)).decode().upper()
+    txt_xfp = b2a_hex(ustruct.pack('<I', xfp)).decode().upper()
 
     chain = chains.current_chain()
     assert chain.ctype in {'BTC', 'XTN'}, "Only Bitcoin supported"
