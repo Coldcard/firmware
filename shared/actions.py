@@ -635,6 +635,10 @@ async def verify_backup(*A):
     if fn:
         with imported('backups') as bk:
             await bk.verify_backup_file(fn)
+
+def import_from_dice(*a):
+    import seed
+    return seed.import_from_dice()
         
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.

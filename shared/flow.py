@@ -136,7 +136,8 @@ ImportWallet = [
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("Restore Backup", f=restore_everything),
-    MenuItem("Import XPRV", f=import_xprv ), 
+    MenuItem("Import XPRV", f=import_xprv),
+    MenuItem("Dice Rolls", f=import_from_dice),
 ]
 
 # has PIN, but no secret seed yet

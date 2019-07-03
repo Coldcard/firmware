@@ -238,6 +238,62 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
     assert v['mnemonic'] == seed_words
     reset_seed_words()
 
+@pytest.mark.parametrize('count', [20, 51, 99, 104])
+def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen):
+    import random
+    from hashlib import sha256
+    
+    unit_test('devtest/clear_seed.py')
+
+    m = cap_menu()
+    assert m[0] == 'New Wallet'    
+    pick_menu_item('Import Existing')
+    pick_menu_item('Dice Rolls')
+
+    gave = ''
+    for i in range(count):
+        if count == 104:
+            ch = chr(random.randint(0x30+1, 0x30+6))
+        else:
+            ch = chr(0x31 + (i % 6))
+        time.sleep(0.01)
+        need_keypress(ch)
+        gave += ch
+
+    title, body = cap_story()
+        
+    time.sleep(0.1)
+    need_keypress('y')
+
+    time.sleep(0.1)
+    title, body = cap_story()
+    if count < 99:
+        assert 'Are you SURE' in body
+        assert str(len(gave)) in body
+
+        time.sleep(0.1)
+        need_keypress('y')
+
+        time.sleep(0.1)
+        title, body = cap_story()
+
+    assert 'Record these 24' in body
+
+    need_keypress('6')
+    time.sleep(0.1)
+    title, body = cap_story()
+    assert 'Are you SURE' in body
+    need_keypress('y')
+    time.sleep(0.1)
+
+    v = get_secrets()
+
+    rs = v['raw_secret']
+    if len(rs) == 65:
+        rs += '0'
+
+    assert rs == '82' + sha256(gave.encode('ascii')).hexdigest()
+
 @pytest.mark.parametrize('multiple_runs', range(3))
 def test_new_wallet(goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs, reset_seed_words):
     # generate a random wallet, and check seeds are what's shown to user, etc
