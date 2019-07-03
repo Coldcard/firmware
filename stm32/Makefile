@@ -88,9 +88,11 @@ sign-release:
 	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
 
 # Tag source code associate with built release version.
-# - use when a new release is built (make release)
-# - but "git add" the new binary in ../release/*dfu first
+# - do "make release" before this step!
 # - also edit/commit ChangeLog text too
+# - this target will "git add" the new binary in ../release/*dfu 
+# - update & sign signatures file
+# - and tag everything
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
 tag-source: sign-release code-committed
 	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
