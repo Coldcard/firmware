@@ -539,7 +539,7 @@ async def make_summary_file(fname_pattern='public.txt'):
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
     from main import settings
-    import ustruct
+    import ustruct, version
     from ubinascii import hexlify as b2a_hex
 
     # bitcoin (xpub) is used, even for testnet case (ie. no tpub)
@@ -556,7 +556,10 @@ def generate_wasabi_wallet():
     chain = chains.current_chain()
     assert chain.ctype in {'BTC', 'XTN'}, "Only Bitcoin supported"
 
+    _,vers,_ = version.get_mpy_version()
+
     return dict(MasterFingerprint=txt_xfp,
+                ColdCardFirmwareVersion=vers,
                 ExtPubKey=xpub)
 
 
