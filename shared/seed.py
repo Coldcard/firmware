@@ -21,6 +21,7 @@ from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ckcc import rng_bytes
 from random import rng, shuffle
+from ubinascii import hexlify as b2a_hex
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
@@ -248,28 +249,86 @@ individual words if you wish.''')
         dis.text(-18-(6 if count >= 10 else 0), y, "Word", FontTiny, invert=invert)
 
 
-async def show_words(words, prompt=None, escape=None):
+async def show_words(words, prompt=None, escape=None, extra=''):
     msg = (prompt or 'Record these %d secret words!\n') % len(words)
     msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
     msg += '\n\nPlease check and double check your notes. There will be a test! ' 
+    msg += extra
 
     return await ux_show_story(msg, escape=escape, sensitive=True)
 
-async def make_new_wallet():
-    # pick a new random seed, and force them to 
-    # write it down, then save it.
-
+async def add_dice_rolls(count, seed, judge_them):
     from main import dis
-    from uasyncio import sleep_ms
+    from display import FontTiny, FontLarge
+    from ux import PressRelease, ux_press_release
 
-    # CONCERN: memory is really contaminated with secrets in this process, much more so
-    # than during normal operation. Maybe we should block USB and force a reboot as well?
+    md = tcc.sha256(seed)
 
-    # LESSON LEARNED: if the user is writting down the words, as we have
-    # vividly instructed, then it's a big deal to lose those words and have to start
-    # over. So confirm that action, and don't volunteer it.
+    while 1:
+        # Note: cannot scroll this msg because 5=up arrow
+        dis.clear()
+        dis.text(None, 0, '%d rolls' % count, FontLarge)
 
-    # dramatic pause
+        hx = str(b2a_hex(md.digest()), 'ascii')
+        dis.text(0, 20, hx[0:32], FontTiny)
+        dis.text(0, 20+7, hx[32:], FontTiny)
+
+        y = 38
+        dis.text(0, y, "Press 1-6 for each dice"); y += 13
+        dis.text(0, y, "roll to mix in.")
+
+        dis.show()
+
+        ch = await ux_press_release('123456xy')
+
+        if ch in '123456':
+            count += 1
+
+            dis.clear()
+            dis.text(None, 0, '%d rolls' % count, FontLarge)
+            dis.show()
+
+            # this is slow enough to see
+            md.update(ch)
+
+        elif ch == 'x':
+            # Because the change (roll) has already been applied,
+            # only let them abort if it's early still
+            if count < 10 and judge_them:
+                return 0, seed
+        elif ch == 'y':
+            if count < 99 and judge_them:
+                if not count:
+                    return 0, seed
+                ok = await ux_confirm('''\
+You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy. \
+For 128-bit security, which is considered the minimum, you need 50 rolls, and \
+for 256-bits of security, 99 rolls.''' % count)
+                if not ok: continue
+            break
+
+    if count:
+        seed = md.digest()
+
+    return count, seed
+
+async def import_from_dice():
+    # Use lots of (D6) dice rolls to create seed entropy.
+    # Note: only 2.585 bits of entropy per roll, so need lots!
+    # 50 => 128bits, 99 => 256bits
+
+    seed = b''
+    count = 0
+
+    count, seed = await add_dice_rolls(count, seed, True)
+
+    if count == 0: return
+
+    await approve_word_list(seed)
+
+async def make_new_wallet():
+    # Pick a new random seed, and 
+
     await ux_dramatic_pause('Generating...', 4)
 
     # always full 24-word (256 bit) entropy
@@ -281,19 +340,38 @@ async def make_new_wallet():
     # hash to mitigate bias in TRNG
     seed = tcc.sha256(seed).digest()
 
+    await approve_word_list(seed)
+
+async def approve_word_list(seed):
+    # Force the user to write the seeds words down, give a quiz, then save them.
+
+    # LESSON LEARNED: if the user is writting down the words, as we have
+    # vividly instructed, then it's a big deal to lose those words and have to start
+    # over. So confirm that action, and don't volunteer it.
+
     words = tcc.bip39.from_data(seed).split(' ')
     assert len(words) == 24
 
     while 1:
         # show the seed words
-        ch = await show_words(words, escape='6')
+        ch = await show_words(words, escape='46',
+                        extra='\n\nPress 4 to add some dice rolls into the mix.')
 
         if ch == 'x': 
-            # user abort
+            # user abort, but confirm it!
             if await ux_confirm("Throw away those words and stop this process?"):
                 return
             else:
                 continue
+
+        if ch == '4':
+            # dice roll mode
+            count, new_seed = await add_dice_rolls(0, seed, False)
+            if count:
+                seed = new_seed
+                words = tcc.bip39.from_data(seed).split(' ')
+
+            continue
 
         if ch == '6':
             # wants to skip the quiz (undocumented)

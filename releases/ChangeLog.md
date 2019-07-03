@@ -1,4 +1,16 @@
-## 2.1.1 - June 26, 2019
+## 2.1.1 - July 3, 2019
+
+- New feature: Create seed words from D6 dice rolls:
+    - under "Import Existing > Dice Rolls"
+    - just keep pressing 1 - 6 as you roll. At least 99 rolls are required for 256-bit security
+    - seed is sha256(over all rolls, as ascii string)
+    - normal seed words are shown so you can write those down instead of the rolls
+    - can also "mix in" dice rolls: after Coldcard picks the seed words and shows them,
+      press 4 and you can then do some dice rolls (as many or as few as desired) and get a
+      new set of words, which adds those rolls as additional entropy.
+- Wasabi wallet support: remove extra info from skeleton file, change XFP endian, add version field.
+
+## 2.1.0 - June 26, 2019
 
 - Major release with Multisig support!
     - New menu under: Settings > Multisig Wallets
@@ -20,7 +32,6 @@
 - Summary file (public.txt) has been reworked to include more XPUB values and a warning about
   using addresses your blockchain-monitoring wallet might not be ready for.
 - When BIP39 passphrase is given over USB, and approved, the new XFP is shown on-screen for reference.
-- 2.1.1: remove extra info from Wasabi skeleton file, change XFP endian.
 
 
 ## 2.0.4 - May 13, 2019
