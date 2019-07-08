@@ -6,7 +6,7 @@
 #define MICROPY_HW_BOARD_NAME       "Coldcard"
 #define MICROPY_PY_SYS_PLATFORM     "coldcard"
 
-#define MICROPY_HW_MCU_NAME         "STM32L475RG"
+#define MICROPY_HW_MCU_NAME         "STM32L4xxRG"
 
 #define MICROPY_HW_HAS_SWITCH       (0)
 #define MICROPY_HW_HAS_FLASH        (1)
@@ -106,3 +106,10 @@ extern void ckcc_early_init(void);
 #define USBD_INTERFACE_HS_STRING      "HS Interface"
 #define USBD_CONFIGURATION_FS_STRING  "FS Config"
 #define USBD_INTERFACE_FS_STRING      "FS Interface"
+
+// Where the heap should end up.
+extern void *ckcc_heap_start(void);
+extern void *ckcc_heap_end(void);
+#define MICROPY_HEAP_START      ckcc_heap_start()
+#define MICROPY_HEAP_END        ckcc_heap_end()
+

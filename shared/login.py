@@ -19,7 +19,6 @@ class LoginUX:
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
-        self.mk2 = version.is_mark2()
         self.offer_second = True
         self.reset()
 
@@ -33,7 +32,7 @@ class LoginUX:
         filled = len(self.pin)
         if show_hint:
             filled -= 1
-            hint = self.pin[-1] if not self.mk2 else '\xd7'
+            hint = self.pin[-1] if not version.has_membrane else '\xd7'
         else:
             hint = '' if len(self.pin) == MAX_PIN_PART_LEN else ' '
 

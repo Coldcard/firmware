@@ -1143,9 +1143,12 @@ Bootloader:
 Serial:
   {ser}
 
+Hardware:
+  {hw}
 '''
 
-    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, ser=version.serial_number()))
+    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk,
+                            ser=version.serial_number(), hw=version.hw_label))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.

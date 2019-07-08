@@ -177,6 +177,14 @@ STATIC mp_obj_t is_simulator(void)
 }
 MP_DEFINE_CONST_FUN_OBJ_0(is_simulator_obj, is_simulator);
 
+STATIC mp_obj_t is_stm32l496(void)
+{
+    // Are we running on a STM32L496RG6?
+    return ((DBGMCU->IDCODE & 0xfff) == 0x461) ? mp_const_true : mp_const_false;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(is_stm32l496_obj, is_stm32l496);
+
+
 
 STATIC mp_obj_t vcp_enabled(mp_obj_t new_val)
 {
@@ -251,6 +259,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_gate),                MP_ROM_PTR(&sec_gate_obj) },
     { MP_ROM_QSTR(MP_QSTR_oneway),              MP_ROM_PTR(&sec_oneway_gate_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_simulator),        MP_ROM_PTR(&is_simulator_obj) },
+    { MP_ROM_QSTR(MP_QSTR_is_stm32l496),        MP_ROM_PTR(&is_stm32l496_obj) },
     { MP_ROM_QSTR(MP_QSTR_vcp_enabled),         MP_ROM_PTR(&vcp_enabled_obj) },
     { MP_ROM_QSTR(MP_QSTR_wipe_fs),             MP_ROM_PTR(&wipe_fs_obj) },
     { MP_ROM_QSTR(MP_QSTR_presume_green),       MP_ROM_PTR(&presume_green_obj) },
@@ -273,6 +282,33 @@ void ckcc_early_init(void)
     // Disable ^C to interrupt code.
     // cannot find where this might be set by other code to ^C.
     mp_interrupt_char = -1;
+}
+
+// ckcc_heap_start()
+//
+    void *
+ckcc_heap_start(void)
+{
+    // see layout.ld (linker script)
+    extern uint32_t _heap_start;
+
+    return &_heap_start;
+}
+
+// ckcc_heap_start()
+//
+    void *
+ckcc_heap_end(void)
+{
+    extern uint32_t _ram_end;
+    uint8_t *rv = (uint8_t *)&_ram_end;
+
+    if((DBGMCU->IDCODE & 0xfff) == 0x461) {
+        rv += 160*1024;
+    }
+
+    // Mark 1 and 2 
+    return rv;
 }
 
 #if 0
