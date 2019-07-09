@@ -1,3 +1,8 @@
+## 2.1.2 - July XXX, 2019
+
+- indicate Multisig ready for prime time
+
+
 ## 2.1.1 - July 3, 2019
 
 - New feature: Create seed words from D6 dice rolls:
