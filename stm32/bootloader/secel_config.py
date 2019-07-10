@@ -1,13 +1,13 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# Secure Element Config Area
+# Secure Element Config Area -- 608A version -- note the 6!
 #
-# Bitwise details about the the ATECC508A "config" area, which determines what
+# Bitwise details about the the ATECC608A "config" area, which determines what
 # you can and (mostly) cannot do with each private key in device.
 #
-# - use must contemplate the full datasheet at length
-# - but very simmilar to ATSHA204 and family chips
+# - you must contemplate the full datasheet at length
+# - as of Jul/2019 datasheet is under NDA, sorry... similar to 508a but new, useful, features
 # - this file can be useful both in Micropython and CPython3
 #
 try:
@@ -29,7 +29,17 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
     def hexdump(label, x):
         print(label + ASC(b2a_hex(x)) + ('  len=%d'%len(x)))
 
+    hexdump('SN: ', blk[0:4]+blk[8:13])
     hexdump('RevNum: ', blk[4:8])
+
+    # guessing this nibble in RevNum corresponds to chip 508a vs 608a
+    print("Chip type: atecc%x08a" % ((blk[6]>>4)&0xf))
+    partno = ((blk[6]>>4)&0xf)
+    assert partno in [5, 6]
+
+    if partno == 6:
+        print('AES_Enable = 0x%x' % (blk[13] & 0x1))
+
     print('I2C_Enable = 0x%x' % (blk[14] & 0x1))
     if blk[14] & 0x01 == 0x01:
         print('I2C_Address = 0x%x' % (blk[16] >> 1))
@@ -39,7 +49,13 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
         print('GPIO Detect (vs authout) = 0x%x' % ((blk[16]>>3) & 0x1))
         print('GPIO SignalKey/KeyId = 0x%x' % ((blk[16]>>4) & 0xf))
         print('I2C_Address(sic) = 0x%x' % blk[16])
-    print('OTPmode = 0x%x' % blk[18])
+
+    if partno == 5:
+        print('OTPmode = 0x%x' % blk[18])
+    if partno == 6:
+        print('CountMatchKey = 0x%x' % ((blk[18] >> 4)&0xf))
+        print('CounterMatch enable = %d' % (blk[18] &0x1))
+
     print('ChipMode = 0x%x' % blk[19])
 
     print()
@@ -51,21 +67,40 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
 
         key_conf = blk[96+(2*i):2+96+(2*i)]
 
+        cls = KeyConfig_508 if partno == 5 else KeyConfig_608
+
         print('KeyConfig[%d] = 0x%s = %r' % (i, ASC(b2a_hex(key_conf)),
-                                                    KeyConfig.unpack(key_conf)))
+                                                    cls.unpack(key_conf)))
 
         print()
 
     hexdump('Counter[0]: ', blk[52:60])
     hexdump('Counter[1]: ', blk[60:68])
-    hexdump('LastKeyUse: ', blk[68:84])
+    if partno == 5:
+        hexdump('LastKeyUse: ', blk[68:84])
+    if partno == 6:
+        print('UseLock = 0x%x' % blk[68])
+        print('VolatileKeyPermission = 0x%x' % blk[69])
+        hexdump('SecureBoot: ', blk[70:72])
 
+        print('KldfvLoc = 0x%x' % blk[72])
+        hexdump('KdflvStr: ', blk[73:75])
+
+    # 75->83 reserved
     print('UserExtra = 0x%x' % blk[84])
-    print('Selector = 0x%x' % blk[85])
+    if partno == 5:
+        print('Selector = 0x%x' % blk[85])
+    if partno == 6:
+        print('UserExtraAdd = 0x%x' % blk[85])
 
     print('LockValue = 0x%x' % blk[86])
     print('LockConfig = 0x%x' % blk[87])
     hexdump('SlotLocked: ', blk[88:90])
+
+    if partno == 6:
+        hexdump('ChipOptions: ', blk[90:92])
+        print('ChipOptions = %r' % ChipOptions.unpack(blk[90:92]))
+
     hexdump('X509format: ', blk[92:96])
 
     if rnd is not None:
@@ -95,7 +130,7 @@ if MPY:
 
             @classmethod
             def unpack(cls, ss):
-                v = ustruct.unpack("<H", ss)[0]
+                v = ustruct.unpack('<H', ss)[0]
                 pos = 0 
                 rv = []
                 for w,n in defs:
@@ -139,7 +174,7 @@ else:
 
         @classmethod
         def unpack(cls, ss):
-            v = struct.unpack("<H", ss)[0]
+            v = struct.unpack('<H', ss)[0]
             pos = 0 
             rv = {}
             for w,n in defs:
@@ -170,7 +205,7 @@ else:
         return rv
 
 # Section 2.2.5, Table 2-11: KeyConfig (Bytes 96 thru 127)
-KeyConfig = make_bitmask('KeyConfig', [
+KeyConfig_508 = make_bitmask('KeyConfig', [
                     (1, 'Private'),
                     (1, 'PubInfo'),
                     (3, 'KeyType'),
@@ -182,7 +217,20 @@ KeyConfig = make_bitmask('KeyConfig', [
                     (1, 'RFU'),
                     (2, 'X509id')])
 
-# Section 2.2.1, Table 2-5: SlotConfig (Bytes 20 to 51)
+# 608a: Section 2.2.13, Table 2-11: KeyConfig (Bytes 96 thru 127)
+KeyConfig_608 = make_bitmask('KeyConfig', [
+                    (1, 'Private'),
+                    (1, 'PubInfo'),
+                    (3, 'KeyType'),
+                    (1, 'Lockable'),
+                    (1, 'ReqRandom'),
+                    (1, 'ReqAuth'),
+                    (4, 'AuthKey'),
+                    (1, 'PersistentDisable'),
+                    (1, 'RFU'),
+                    (2, 'X509id')])
+
+# Section 2.2.12, Table 2-5: SlotConfig (Bytes 20 to 51)
 SlotConfig = make_bitmask('SlotConfig', [
                     (4, 'ReadKey'),
                     (1, 'NoMac'),
@@ -192,8 +240,8 @@ SlotConfig = make_bitmask('SlotConfig', [
                     (4, 'WriteKey'),
                     (4, 'WriteConfig')])
 
-# Section 9.9, for the Info command (mode=State)
-InfoState = make_bitmask('InfoState', [
+# 508a: Section 9.9, for the Info command (mode=State)
+InfoState_508 = make_bitmask('InfoState', [
 				(4, 'TK_KeyId'),
 				(1, 'TK_SourceFlag'),
 				(1, 'TK_GenDigData'),
@@ -205,11 +253,38 @@ InfoState = make_bitmask('InfoState', [
 				(1, 'AuthValid'),
                 (4, 'AuthKey'),
                 (1, 'TK_Valid') ])
+
+# 608a: Section 11.8, for the Info command (mode=State)
+InfoState_608 = make_bitmask('InfoState', [
+				(4, 'TK_KeyId'),
+				(1, 'TK_SourceFlag'),
+				(1, 'TK_GenDigData'),
+				(1, 'TK_GenKeyData'),
+				(1, 'TK_NoMacFlag'),
+
+				(2, 'zeros'),
+				(1, 'AuthValid'),
+                (4, 'AuthKey'),
+                (1, 'TK_Valid') ])
+
+# 608a: ChipOptions, offset 90 in EEPROM data
+# - the datasheet, in this one spot, lists the bits in MSB->LSB order, but elsewhere LSB->MSB
+# - bit numbers are right, and register isn't other endian, just the text backwards
+ChipOptions = make_bitmask('ChipOptions', [
+                    (1, 'POSTEnable'),
+                    (1, 'IOProtKeyEnable'),
+                    (1, 'KDFAESEnable'),
+                    (5, 'mustbezero'),
+                    (2, 'ECDHProt'),
+                    (2, 'KDFProt'),
+                    (4, 'IOProtKey'), ])
         
 class ComboConfig(object):
-    __slots__ = ['kc', 'sc']        # block spelling mistakes
-    def __init__(self):
-        self.kc = KeyConfig()
+    __slots__ = ['kc', 'sc', 'partno']        # block spelling mistakes
+
+    def __init__(self, partno=5):
+        self.partno = partno
+        self.kc = KeyConfig_508() if partno == 5 else KeyConfig_608()
         self.sc = SlotConfig(WriteConfig=0x8)       # most restrictive
 
     @property
@@ -312,6 +387,48 @@ class ComboConfig(object):
         self.kc.ReadKey = kn
         self.kc.IsSecret = 1
         return self
-        
-    
 
+    def persistent_disable(self):
+        assert self.partno == 6, '608a only'
+        self.kc.PersistentDisable = 1
+        return self
+    
+    def is_aes_key(self):
+        assert self.partno == 6, '608a only'
+        self.kc.KeyType = 6     # for use with AES
+        return self
+        
+if not MPY and __name__ == '__main__':
+    d = bytes([ 0x01, 0x23, 0x68, 0xee, 0x00, 0x00, 0x60, 0x02, 0x8a, 0x1d, 0xde,
+                0x66, 0xee, 0x01, 0x01, 0x00, 0xc0, 0x00, 0x00, 0x00, 0x80, 0x80,
+                0x80, 0x80, 0x80, 0x80, 0xa0, 0x20, 0x80, 0x42, 0x83, 0x20, 0x83,
+                0x62, 0x83, 0x20, 0xc2, 0x42, 0xc2, 0x42, 0xc2, 0x42, 0xc2, 0x42,
+                0xc2, 0x42, 0xc2, 0x42, 0xc2, 0x42, 0xc2, 0x42, 0x01, 0xff, 0xff,
+                0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0xff, 0xff, 0x02, 0x04, 0x00, 0x00, 0x00, 0x00, 0x7c, 0x00, 0x7c,
+                0x00, 0xfc, 0x01, 0xdc, 0x01, 0xdc, 0x01, 0xf3, 0x01, 0xd3, 0x01,
+                0xd3, 0x01, 0xdc, 0x01, 0xdc, 0x01, 0xdc, 0x01, 0xdc, 0x01, 0xdc,
+                0x01, 0xdc, 0x01, 0xdc, 0x01, 0xdc, 0x01 ])
+
+    g = bytes([ 0x01, 0x23, 0x52, 0xaa, 0x00, 0x00, 0x50, 0x00, 0xd1, 0xbb, 0xf3,
+                0x78, 0xee, 0xc0, 0x01, 0x00, 0xc0, 0x00, 0x55, 0x00, 0x87, 0x64,
+                0x87, 0x64, 0x87, 0x64, 0x87, 0x64, 0x80, 0x0f, 0x8f, 0x8f, 0x9f,
+                0x8f, 0x82, 0x20, 0xc4, 0x44, 0xc4, 0x44, 0x0f, 0x0f, 0x0f, 0x0f,
+                0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0x0f, 0xff, 0xff, 0xff,
+                0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,
+                0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00,
+                0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x33, 0x00, 0x33,
+                0x00, 0x33, 0x00, 0x33, 0x00, 0x3c, 0x00, 0x1c, 0x00, 0x1c, 0x00,
+                0x33, 0x00, 0x1c, 0x00, 0x1c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c,
+                0x00, 0x3c, 0x00, 0x1c, 0x00, 0x3c, 0x00 ])
+
+    # observed values from unprogrammed device
+    ex_608 = a2b_hex('01236c4100006002bbe66928ee015400c0000000832087208f20c48f8f8f8f8f9f8faf8f0000000000000000000000000000af8fffffffff00000000ffffffff000000000000000000000000000000000000000000005555ffff0000000000003300330033001c001c001c001c001c003c003c003c003c003c003c003c001c00')
+    ex_508 = a2b_hex('01233b7e00005000e9f5342beec05400c0005500832087208f20c48f8f8f8f8f9f8faf8f0000000000000000000000000000af8fffffffff00000000ffffffff00000000ffffffffffffffffffffffffffffffff00005555ffff0000000000003300330033001c001c001c001c001c003c003c003c003c003c003c003c001c00')
+
+    secel_dump(d)
+
+# EOF
