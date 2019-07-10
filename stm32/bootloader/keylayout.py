@@ -76,6 +76,23 @@ class AEConfig:
         assert c[86] in (0x00, 0x55)    # LockValue
         assert set(c[90:96]) == set([0])  # RFU, X509Format
 
+
+class AEConfig508(AEConfig):
+    def __init__(self):
+        # typical data from a specific virgin chip; serial number and hardware rev will vary!
+        self.data = bytearray(a2b_hex('01233b7e00005000e9f5342beec05400c0005500832087208f20c48f8f8f8f8f9f8faf8f0000000000000000000000000000af8fffffffff00000000ffffffff00000000ffffffffffffffffffffffffffffffff00005555ffff0000000000003300330033001c001c001c001c001c003c003c003c003c003c003c003c001c00'))
+        assert len(self.data) == 4*32 == 128
+        self.d_slot = [None]*16
+
+class AEConfig608(AEConfig):
+    def __init__(self):
+        # typical data from a specific virgin chip; serial number and hardware rev will vary!
+        self.data = bytearray(a2b_hex('01236c4100006002bbe66928ee015400c0000000832087208f20c48f8f8f8f8f9f8faf8f0000000000000000000000000000af8fffffffff00000000ffffffff000000000000000000000000000000000000000000005555ffff0000000000003300330033001c001c001c001c001c003c003c003c003c003c003c003c001c00'))
+        assert len(self.data) == 4*32 == 128
+        self.d_slot = [None]*16
+
+
+
 def cpp_dump_hex(buf):
     # format for CPP macro
     txt = ', '.join('0x%02x' %i for i in buf)
@@ -85,7 +102,7 @@ def cpp_dump_hex(buf):
 
 def main():
 
-    ae = AEConfig()
+    ae = AEConfig508()
 
     # default all slots to storage
     cc = [ComboConfig() for i in range(16)]
