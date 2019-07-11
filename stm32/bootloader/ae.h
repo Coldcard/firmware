@@ -7,14 +7,26 @@
 // Atmel ATECC508A related code.
 //
 
+//#define FOR_508     1
+#define FOR_608     1
+
 // Opcodes from table 9-4, page 51
 //
 typedef enum {
 	OP_CheckMac = 0x28, OP_Counter = 0x24, OP_DeriveKey = 0x1C, OP_ECDH = 0x43,
-	OP_GenDig = 0x15, OP_GenKey = 0x40, OP_HMAC = 0x11, OP_Info = 0x30,
-	OP_Lock = 0x17, OP_MAC = 0x08, OP_Nonce = 0x16, OP_Pause = 0x01,
+	OP_GenDig = 0x15, OP_GenKey = 0x40, OP_Info = 0x30,
+	OP_Lock = 0x17, OP_MAC = 0x08, OP_Nonce = 0x16,
 	OP_PrivWrite = 0x46, OP_Random = 0x1B, OP_Read = 0x02, OP_Sign = 0x41,
 	OP_SHA = 0x47, OP_UpdateExtra = 0x20, OP_Verify = 0x45, OP_Write = 0x12,
+#if FOR_508
+    OP_HMAC = 0x11,
+    OP_Pause = 0x01,
+#elif FOR_608
+    OP_AES = 0x51,
+    OP_KDF = 0x56,
+    OP_SecureBoot = 0x80,
+    OP_SelftTest = 0x77,
+#endif
 } aeopcode_t;
 
 // Status/Error Codes that occur in 4-byte groups. See page 50, table 9-3.
@@ -22,6 +34,7 @@ typedef enum {
 #define AE_CHECKMAC_FAIL		0x01
 #define AE_PARSE_ERROR			0x03
 #define AE_ECC_FAULT			0x05
+#define AE_SELFTEST_ERROR		0x07
 #define AE_EXEC_ERROR			0x0f
 #define AE_AFTER_WAKE			0x11
 #define AE_WATCHDOG_EXPIRE		0xEE
@@ -117,7 +130,7 @@ int ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32]);
 int ae_get_counter(uint32_t *result, int counter_number, bool incr);
 
 // Perform HMAC on the chip, using a particular key.
-int ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]);
+//int ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]);
 int ae_hmac32(uint8_t keynum, const uint8_t *msg, uint8_t digest[32]);
 
 // Load TempKey with indicated value, exactly.
@@ -148,5 +161,12 @@ int ae_read_config_word(int offset, uint8_t *dest);
 
 // Call this if possible mitm is detected.
 extern void fatal_mitm(void) __attribute__((noreturn));
+
+#if FOR_608
+// Update the match-counter with a new number.
+int ae_write_match_count(uint32_t count, const uint8_t *write_key);
+
+
+#endif
 
 // EOF

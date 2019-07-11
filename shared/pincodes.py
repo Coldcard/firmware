@@ -15,7 +15,8 @@ MAX_PIN_LEN = const(32)
 AE_SECRET_LEN = const(72)
 
 # magic number for struct
-PA_MAGIC    = const(0x2eaf6311)
+PA_MAGIC_V1    = const(0x2eaf6311)
+PA_MAGIC_V2    = const(0x2eaf6312)
 
 # For state_flags field: report only covers current wallet (primary vs. secondary)
 PA_SUCCESSFUL         = const(0x01)
@@ -23,6 +24,7 @@ PA_IS_BLANK           = const(0x02)
 PA_HAS_DURESS         = const(0x04)
 PA_HAS_BRICKME        = const(0x08)
 PA_ZERO_SECRET        = const(0x10)
+PA_HAS_608A           = const(0x20)
 
 # For change_flags field:
 CHANGE_WALLET_PIN           = const(0x01)
@@ -63,14 +65,14 @@ EPIN_OLD_AUTH_FAIL  = const(-113)
 
 # We are round-tripping this big structure, partially signed by bootloader.
 '''
-    uint32_t    magic_value;            // = PA_MAGIC
+    uint32_t    magic_value;            // = PA_MAGIC_V2 or V1 for older bootroms
     int         is_secondary;           // (bool) primary or secondary
     char        pin[MAX_PIN_LEN];       // value being attempted
     int         pin_len;                // valid length of pin
-    uint32_t    delay_achieved;         // so far, how much time wasted?
-    uint32_t    delay_required;         // how much will be needed?
+    uint32_t    delay_achieved;         // so far, how much time wasted? [508a only]
+    uint32_t    delay_required;         // how much will be needed? [508a only]
     uint32_t    num_fails;              // for UI: number of fails PINs
-    uint32_t    attempt_target;         // counter number from chip
+    uint32_t    attempts_left;          // trys left until bricking [608a only]
     uint32_t    state_flags;            // what things have been setup/enabled already
     uint32_t    private_state;          // some internal (encrypted) state
     uint8_t     hmac[32];               // bootloader's hmac over above, or zeros
@@ -82,9 +84,10 @@ EPIN_OLD_AUTH_FAIL  = const(-113)
     int         new_pin_len;            // (optional) valid length of new_pin, can be zero
     uint8_t     secret[72];             // secret to be changed OR return value
     // may grow from here in future versions.
+    uint8_t     cached_main_pin[32];    // iff they provided right pin already (V2)
 '''
-PIN_ATTEMPT_FMT = 'Ii32si6I32si32si32si72s'
-PIN_ATTEMPT_SIZE  = const(248)
+PIN_ATTEMPT_FMT = 'Ii32si6I32si32si32si72s32s'
+PIN_ATTEMPT_SIZE  = const(248+32)
 
 class BootloaderError(RuntimeError):
     pass
@@ -97,12 +100,14 @@ class PinAttempt:
         self.pin = None
         self.secret = None
         self.is_empty = None
+        self.magic_value = None
         self.delay_achieved = 0         # so far, how much time wasted?
         self.delay_required = 0         # how much will be needed?
         self.num_fails = 0              # for UI: number of fails PINs
-        self.attempt_target = 0         # counter number from chip
+        self.attempts_left = 0          # ignore in mk1/2 case, only valid for mk3
         self.state_flags = 0            # useful readback
         self.private_state = 0          # opaque data, but preserve
+        self.cached_main_pin = None
 
         assert MAX_PIN_LEN == 32        # update FMT otherwise
         assert ustruct.calcsize(PIN_ATTEMPT_FMT) == PIN_ATTEMPT_SIZE, ustruct.calcsize(PIN_ATTEMPT_FMT)
@@ -157,23 +162,25 @@ class PinAttempt:
 
 
         ustruct.pack_into(PIN_ATTEMPT_FMT, msg, 0,
-                PA_MAGIC,
+                PA_MAGIC_V2,
                 (1 if self.is_secondary else 0),
                 self.pin, len(self.pin),
                 self.delay_achieved,
                 self.delay_required,
                 self.num_fails,
-                self.attempt_target,
+                self.attempts_left,
                 self.state_flags,
                 self.private_state,
                 self.hmac,
                 change_flags,
                 old_pin, len(old_pin),
                 new_pin, len(new_pin),
-                new_secret)
+                new_secret,
+                self.cached_main_pin)
 
     def unmarshal(self, msg):
         # unpack it and update our state, return other state
+        magic, = ustruct.unpack_from(PIN_ATTEMPT_FMT, 
         x = ustruct.unpack_from(PIN_ATTEMPT_FMT, msg)
         
         (magic, was_secondary,
@@ -181,16 +188,17 @@ class PinAttempt:
                 self.delay_achieved,
                 self.delay_required,
                 self.num_fails,
-                self.attempt_target,
+                self.attempts_left,
                 self.state_flags,
                 self.private_state,
                 self.hmac,
                 change_flags,
                 old_pin, old_pin_len,
                 new_pin, new_pin_len,
-                secret) = x
+                secret,
+                self.cached_main_pin) = x
 
-        assert magic == PA_MAGIC, magic
+        assert magic == PA_MAGIC_v2, magic
 
         self.pin = self.pin[0:pin_len]
 

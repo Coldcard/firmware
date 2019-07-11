@@ -186,7 +186,7 @@ def doit(partno, ae, KEYNUM, fp):
         cc[KEYNUM.pin_kdf].hash_key().require_auth(KEYNUM.pairing).limited_use()
         cc[KEYNUM.pin_stretch].hash_key().require_auth(KEYNUM.pin_kdf)
 
-        # new logic for chip-enforced pin attempts
+        # chip-enforced pin attempts: link keynum and enable "match count" feature
         cc[KEYNUM.match_count].writeable_storage(main_pin).require_auth(KEYNUM.pairing)
         ae.counter_match(KEYNUM.match_count)
 

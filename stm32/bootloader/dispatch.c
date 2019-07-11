@@ -524,6 +524,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             rv = (ae_pair_unlock() != 0);
             break;
 
+        case 6:
+            // Do we have a ATECC608a and all that implies?
+            #ifdef HAS_608
+                rv = 0;
+            #else
+                rv = ENOENT;
+            #endif
+
+            break;
+
         case 12:
             // read the DFU button (used for selftest at least)
             REQUIRE_OUT(1);
@@ -572,8 +582,12 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 18: {
             // Try login w/ PIN.
-            REQUIRE_OUT(sizeof(pinAttempt_t));
+            REQUIRE_OUT(PIN_ATTEMPT_SIZE_V1);
             pinAttempt_t *args = (pinAttempt_t *)buf_io;
+
+            if(args->magic_value == PA_MAGIC_V2) {
+                REQUIRE_OUT(PIN_ATTEMPT_SIZE_V2);
+            }
 
             switch(arg2) {
                 case 0:

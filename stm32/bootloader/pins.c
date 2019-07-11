@@ -25,6 +25,11 @@ typedef enum {
 } whichPin_t;
 #define PIN__max    5
 
+#if FOR_508
+// better names going forward!
+#define KEYNUM_main_pin   KEYNUM_pin_1
+#endif
+
 // Pretty sure it doesn't matter, but adding some salt into our PIN->bytes[32] code
 // based on the purpose of the PIN code.
 //
@@ -44,25 +49,17 @@ pin_is_blank(whichPin_t which)
     int keynum = -1;
 
     switch(which) {
-        case PIN_primary:
-            keynum = KEYNUM_pin_1;
-            break;
-
-        case PIN_secondary:
-            keynum = KEYNUM_pin_2;
-            break;
-
-        case PIN_primary_duress:
-            keynum = KEYNUM_pin_3;
-            break;
-
-        case PIN_secondary_duress:
-            keynum = KEYNUM_pin_4;
-            break;
-
-        case PIN_brickme:
-            keynum = KEYNUM_brickme;
-            break;
+#if HAS_508
+        case PIN_primary:           keynum = KEYNUM_pin_1; break;
+        case PIN_secondary:         keynum = KEYNUM_pin_2; break; 
+        case PIN_primary_duress:    keynum = KEYNUM_pin_3; break; 
+        case PIN_secondary_duress:  keynum = KEYNUM_pin_4; break; 
+        case PIN_brickme:           keynum = KEYNUM_brickme; break;
+#else
+        case PIN_primary:           keynum = KEYNUM_main_pin; break;
+        case PIN_primary_duress:    keynum = KEYNUM_duress_pin; break; 
+        case PIN_brickme:           keynum = KEYNUM_brickme; break;
+#endif
 
         default:
             INCONSISTENT("kn");
@@ -83,6 +80,7 @@ pin_is_blank(whichPin_t which)
     return is_blank;
 }
 
+#if HAS_508
 // lookup_secret_lastgood()
 //
 // Map from PIN keynum to corresponding secret key number, and last good counter (if any).
@@ -115,6 +113,7 @@ lookup_secret_lastgood(int kn, int *secret_kn, int *lastgood_kn)
             INCONSISTENT("kn");
     }
 }
+#endif
 
 // is_duress_pin()
 //
@@ -364,12 +363,16 @@ warmup_ae(void)
     return 0;
 }
 
-// _calc_delay_required()
+// calc_delay_required()
 //
     uint32_t
-_calc_delay_required(int num_fails)
+calc_delay_required(int num_fails)
 {
-#ifndef RELEASE
+#if HAS_608
+    // with the 608a, we let the slow KDF and the auto counter incr
+    // protect against rate limiting... no need to do our own.
+    return 0;
+#elif defined(RELEASE)
     // DEBUG/dev only!
     return num_fails;
 #else
@@ -433,7 +436,7 @@ maybe_brick_myself(const char *pin, int pin_len)
     int
 pin_setup_attempt(pinAttempt_t *args)
 {
-    STATIC_ASSERT(sizeof(pinAttempt_t) == PIN_ATTEMPT_SIZE);
+    STATIC_ASSERT(sizeof(pinAttempt_t) == PIN_ATTEMPT_SIZE_V2);
 
     int rv = _validate_attempt(args, true);
     if(rv) return rv;
@@ -449,6 +452,15 @@ pin_setup_attempt(pinAttempt_t *args)
     memcpy(pin_copy, args->pin, pin_len);
 
     memset(args, 0, sizeof(pinAttempt_t));
+
+#if HAS_608
+    // indicate our policies will be different from Mark 1/2
+    args->state_flags = PA_HAS_608A;
+    if(is_secondary) {
+        // secondary PIN feature removed in mark3
+        return EPIN_PRIMARY_ONLY;
+    }
+#endif
 
     args->magic_value = PA_MAGIC;
     args->is_secondary = is_secondary;
@@ -494,13 +506,14 @@ pin_setup_attempt(pinAttempt_t *args)
         args->num_fails = 0;
     }
 
-    args->delay_required = _calc_delay_required(args->num_fails);
+    args->delay_required = calc_delay_required(args->num_fails);
     args->delay_achieved = 0;
 
     // need to know if we are blank/unused device
     if(pin_is_blank(args->is_secondary ? PIN_secondary : PIN_primary)) {
         args->state_flags = PA_SUCCESSFUL | PA_IS_BLANK;
     }
+
 
     _sign_attempt(args);
 
@@ -750,8 +763,12 @@ pin_change(pinAttempt_t *args)
     } else {
         // no real need to re-prove PIN knowledge.
         // if they tricked us, doesn't matter as below the 580a validates it all again
+#if HAS_508
         pin_kn = (args->is_secondary || (cf & CHANGE_SECONDARY_WALLET_PIN))
                         ? KEYNUM_pin_2 : KEYNUM_pin_1;
+#else
+        pin_kn = KEYNUM_main_pin;
+#endif
     }
 
     // what key number are updating?
@@ -887,7 +904,11 @@ pin_fetch_secret(pinAttempt_t *args)
     } else {
         // no real need to re-prove PIN knowledge.
         // if they tricked us, doesn't matter as below the 580a validates it all again
+#if HAS_508
         pin_kn = args->is_secondary ? KEYNUM_pin_2 : KEYNUM_pin_1;
+#else
+        pin_kn = KEYNUM_main_pin;
+#endif
     }
 
     if(args->change_flags & CHANGE_DURESS_SECRET) {
@@ -975,7 +996,7 @@ pin_firmware_greenlight(pinAttempt_t *args)
     // write it out to chip.
     if(warmup_ae()) return EPIN_I_AM_BRICK;
 
-    rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_pin_1, digest, world_check, 32);
+    rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
     if(rv) {
         ae_reset_chip();
 

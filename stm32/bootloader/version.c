@@ -16,4 +16,7 @@ const char version_string[] = RELEASE_VERSION
 #ifndef RELEASE
     " DEV=1" 
 #endif
+#ifndef FOR_608
+    " SE=6"
+#endif
 ;

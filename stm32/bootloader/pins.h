@@ -37,7 +37,8 @@
 #define CHANGE__MASK                0x3f
 
 // Magic value and/or version number.
-#define PA_MAGIC            0x2eaf6311
+#define PA_MAGIC_V1         0x2eaf6311          // before v3.0.0 of main firmware (508a, mk1/2)
+#define PA_MAGIC_V2         0x2eaf6312
 
 // For state_flags field: report only covers current wallet (primary vs. secondary)
 #define PA_SUCCESSFUL         0x01
@@ -45,18 +46,19 @@
 #define PA_HAS_DURESS         0x04
 #define PA_HAS_BRICKME        0x08
 #define PA_ZERO_SECRET        0x10
+#define PA_HAS_608A           0x20
 
 typedef struct {
     uint32_t    magic_value;            // = PA_MAGIC
-    int         is_secondary;           // (bool) primary or secondary
+    int         is_secondary;           // (bool) primary or secondary [obsolete]
     char        pin[MAX_PIN_LEN];       // value being attempted
     int         pin_len;                // valid length of pin
-    uint32_t    delay_achieved;         // so far, how much time wasted?
-    uint32_t    delay_required;         // how much will be needed?
+    uint32_t    delay_achieved;         // so far, how much time wasted? [obsolete]
+    uint32_t    delay_required;         // how much will be needed? [obsolete]
     uint32_t    num_fails;              // for UI: number of fails PINs
-    uint32_t    attempt_target;         // counter number from chip
+    uint32_t    attempts_left;          // trys left until bricking
     uint32_t    state_flags;            // what things have been setup/enabled already
-    uint32_t    private_state;          // some internal (encrypted) state
+    uint32_t    private_state;          // some internal (encrypted) state [actually a nonce]
     uint8_t     hmac[32];               // my hmac over above, or zeros
     // remaining fields are return values, or optional args;
     int         change_flags;           // bitmask of what to do
@@ -66,9 +68,12 @@ typedef struct {
     int         new_pin_len;            // (optional) valid length of new_pin, can be zero
     uint8_t     secret[AE_SECRET_LEN];  // secret to be changed / return value
     // may grow from here in future versions.
+    uint8_t     cached_main_pin[32];    // iff they provided right pin already
 } pinAttempt_t;
 
-#define PIN_ATTEMPT_SIZE        (176+AE_SECRET_LEN)
+// For binary compatibility with Mark1/2 bootroms, the cached_main_pin is optional
+#define PIN_ATTEMPT_SIZE_V1        (176+AE_SECRET_LEN)
+#define PIN_ATTEMPT_SIZE_V2        (176+AE_SECRET_LEN+32)
 
 // Errors codes
 enum {
