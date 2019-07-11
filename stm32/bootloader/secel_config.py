@@ -1,13 +1,13 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# Secure Element Config Area -- 608A version -- note the 6!
+# Secure Element Config Area.
 #
-# Bitwise details about the the ATECC608A "config" area, which determines what
+# Bitwise details about the the ATECC608a and 508a "config" area, which determines what
 # you can and (mostly) cannot do with each private key in device.
 #
 # - you must contemplate the full datasheet at length
-# - as of Jul/2019 datasheet is under NDA, sorry... similar to 508a but new, useful, features
+# - as of Jul/2019 the 608a datasheet is under NDA, sorry.
 # - this file can be useful both in Micropython and CPython3
 #
 try:
@@ -29,7 +29,7 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
     def hexdump(label, x):
         print(label + ASC(b2a_hex(x)) + ('  len=%d'%len(x)))
 
-    hexdump('SN: ', blk[0:4]+blk[8:13])
+    #hexdump('SN: ', blk[0:4]+blk[8:13])
     hexdump('RevNum: ', blk[4:8])
 
     # guessing this nibble in RevNum corresponds to chip 508a vs 608a
@@ -270,6 +270,7 @@ InfoState_608 = make_bitmask('InfoState', [
 # 608a: ChipOptions, offset 90 in EEPROM data
 # - the datasheet, in this one spot, lists the bits in MSB->LSB order, but elsewhere LSB->MSB
 # - bit numbers are right, and register isn't other endian, just the text backwards
+# - section 2.2.10 has in right order, but skips various bits in the register
 ChipOptions = make_bitmask('ChipOptions', [
                     (1, 'POSTEnable'),
                     (1, 'IOProtKeyEnable'),
@@ -376,6 +377,10 @@ class ComboConfig(object):
 
     def lockable(self, lockable):
         self.kc.Lockable = int(lockable)    # can delay slot locking
+        return self
+
+    def limited_use(self):
+        self.sc.LimitedUse = 1          # counter0 will inc by one each use
         return self
 
     def read_encrypted(self, kn):
