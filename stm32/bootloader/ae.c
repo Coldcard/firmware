@@ -704,8 +704,12 @@ ae_delay_time(aeopcode_t opcode)
 			return 11;
 		case OP_GenKey:			// 0x40
 			return 115;
+#if FOR_508
 		case OP_HMAC:			// 0x11
 			return 23;
+		case OP_Pause:			// 0x01
+			return 3;
+#endif
 		case OP_Info:			// 0x30
 			return 2;					// officially 1, but marginal
 		case OP_Lock:			// 0x17
@@ -714,8 +718,6 @@ ae_delay_time(aeopcode_t opcode)
 			return 14;
 		case OP_Nonce:			// 0x16
 			return 30;					// officially 7, but need 30 for real
-		case OP_Pause:			// 0x01
-			return 3;
 		case OP_PrivWrite:		// 0x46
 			return 48;
 		case OP_Random:			// 0x1B
@@ -732,6 +734,17 @@ ae_delay_time(aeopcode_t opcode)
 			return 58;
 		case OP_Write:			// 0x12
 			return 26;
+
+#if FOR_608
+        case OP_AES:            // 0x51
+            return 3;
+        case OP_KDF:            // 0x56
+            return 115;
+        case OP_SecureBoot:     // 0x80
+            return 35;
+        case OP_SelftTest:      // 0x77
+            return 200;
+#endif
 	}
 
 	return 100;
@@ -1044,6 +1057,7 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
 }
 
 #if 0
+// unused code, and not supported directly on 608a
 // ae_hmac()
 //
 // Perform HMAC on the chip, using a particular key.
@@ -1089,11 +1103,13 @@ ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]
 
 // ae_hmac32()
 //
-// Different opcode, OP_HMAC does exactly 32 bytes w/ less steps.
+// 508a: Different opcode, OP_HMAC does exactly 32 bytes w/ less steps.
+// 608a: Use old SHA256 command, but with new flags.
 //
     int
 ae_hmac32(uint8_t keynum, const uint8_t msg[32], uint8_t digest[32])
 {
+#if FOR_508
     // Load tempkey w/ message to be HMAC'ed
 	int rv = ae_load_nonce(msg);
 	RET_IF_BAD(rv);
@@ -1106,6 +1122,28 @@ ae_hmac32(uint8_t keynum, const uint8_t msg[32], uint8_t digest[32])
 
 	rv = ae_read_n(32, digest);
 	RET_IF_BAD(rv);
+#endif
+
+#if FOR_508
+    // Start SHA w/ HMAC setup
+	rv = ae_send(OP_SHA, 4, keynum);        // 4 = HAMC_Init
+	RET_IF_BAD(rv);
+
+    // expect zero, meaning "ready"
+	ae_delay(OP_SHA);
+    rv = ae_read1()
+    RET_IF_BAD(rv);
+
+    // send the contents to be hashed
+	rv = ae_send_n(OP_SHA, (3<<6) | 2, 32, msg, 32); // 2 = Finalize, 3=Place output
+	RET_IF_BAD(rv);
+
+	ae_delay(OP_SHA);
+    
+    // read result
+	rv = ae_read_n(32, digest);
+	RET_IF_BAD(rv);
+#endif
 
 	return 0;
 }
@@ -1171,9 +1209,9 @@ ae_slot_locks(void)
     int
 ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 {
-    ASSERT(len == 32 || len == 72);      // limitation for this project.
+    ASSERT(len % 32 == 0);          // limitation for this project.
 
-    for(int blk=0; blk<3; blk++) {
+    for(int blk=0, xlen=len; xlen; blk++, xlen-=32) {
         // have to write each "block" of 32-bytes, separately
         // zone => data
         int rv = ae_send_n(OP_Write, 0x80|2, (blk<<8) | (slot_num<<3), data+(blk*32), 32);
@@ -1183,8 +1221,6 @@ ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 
         rv = ae_read1();
         RET_IF_BAD(rv);
-
-        if(len == 32) break;
     }
 
     if(lock_it) {
@@ -1771,6 +1807,14 @@ ae_setup_config(void)
     ASSERT(config[1] == 0x23);
     ASSERT(config[12] == 0xee);
 
+    // guess part number
+    int8_t partno = ((config[6]>>4)&0xf);
+#ifdef FOR_508
+    ASSERT(partno == 5);
+#elif FOR_608
+    ASSERT(partno == 6);
+#endif
+
     uint8_t serial[9];
 	memcpy(serial, &config[0], 4);
 	memcpy(&serial[4], &config[8], 5);
@@ -1845,7 +1889,10 @@ ae_setup_config(void)
                 }
                 break;
 
-
+#if FOR_608
+            case KEYNUM_pin_stretch:
+            case KEYNUM_pin_kdf:
+#endif
             case KEYNUM_words: {
                     // - hmac key for phishing words (and then we forget it)
                     uint8_t     tmp[32];
@@ -1857,12 +1904,18 @@ ae_setup_config(void)
                 }
                 break;
 
+#if FOR_508
             case KEYNUM_pin_1:
             case KEYNUM_pin_2:
             case KEYNUM_pin_3:
             case KEYNUM_pin_4:
             case KEYNUM_lastgood_1:
             case KEYNUM_lastgood_2:
+#else
+            case KEYNUM_main_pin:
+            case KEYNUM_lastgood:
+            case KEYNUM_duress_pin:
+#endif
             case KEYNUM_brickme:
             case KEYNUM_firmware:
                 if(ae_write_data_slot(kn, zeros, 32, false)) {
@@ -1870,14 +1923,26 @@ ae_setup_config(void)
                 }
                 break;
 
+#if FOR_508
             case KEYNUM_secret_1:
             case KEYNUM_secret_2:
             case KEYNUM_secret_3:
             case KEYNUM_secret_4:
+#else
+            case KEYNUM_secret:
+            case KEYNUM_duress_secret:
+            case KEYNUM_long_secret:            // only partially clearing
+#endif
                 if(ae_write_data_slot(kn, zeros, 72, false)) {
                     INCONSISTENT("wr blk 72");
                 }
                 break;
+
+#if FOR_608
+            case KEYNUM_match_count:
+                ae_write_match_count(1024, NULL);
+                break;
+#endif
 
             case 0:
                 if(ae_write_data_slot(kn, (const uint8_t *)copyright_msg, 32, true)) {
@@ -1895,4 +1960,28 @@ ae_setup_config(void)
 
     return 0;
 }
+
+
+#if FOR_608
+// ae_write_matchcount()
+//
+    int
+ae_write_match_count(uint32_t count, const uint8_t *write_key)
+{
+    uint32_t     buf[8] = { 0 };
+
+    STATIC_ASSERT(sizeof(buf) == 32);           // limitation of ae_write_data_slot
+
+    buf[0] = count;         // XXX endian?
+    buf[1] = count;
+
+    if(!write_key) {
+        return ae_write_data_slot(KEYNUM_match_count, (const uint8_t *)buf, sizeof(buf), false);
+    } else {
+        return ae_encrypted_write32(KEYNUM_match_count, 0, KEYNUM_main_pin,
+                                        write_key, (const uint8_t *)buf);
+    }
+}
+#endif
+
 // EOF
