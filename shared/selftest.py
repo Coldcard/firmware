@@ -257,7 +257,7 @@ async def start_selftest():
         await test_sflash()
         await test_ae508a()
 
-        if version.is_mark2():
+        if version.has_membrane:
             await test_sd_active()
 
         # add more tests here

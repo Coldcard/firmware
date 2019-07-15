@@ -148,4 +148,8 @@ def watchpoint():
 def vcp_enabled(_):
     return True
 
+def is_stm32l496():
+    return True
+
+
 # EOF
