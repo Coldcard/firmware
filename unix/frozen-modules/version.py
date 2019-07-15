@@ -21,7 +21,5 @@ def get_header_value(fld_name):
         return b'\x18\x07\x11\x19S\x08\x00\x00'
     return 0
 
-def is_mark2():
-    return True
-    #return False
-
+has_membrane = True
+hw_label = 'mk2'

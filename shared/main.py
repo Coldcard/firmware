@@ -45,8 +45,8 @@ from display import Display
 dis = Display()
 dis.splash()
 
-if version.is_mark2():
-    # Setup membrane numpad (mark 2)
+if version.has_membrane:
+    # Setup membrane numpad (mark 2+)
     from mempad import MembraneNumpad
     numpad = MembraneNumpad(loop)
 else:

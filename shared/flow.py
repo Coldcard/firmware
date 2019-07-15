@@ -40,7 +40,7 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Touch Setting', chooser=sensitivity_chooser,
-                                predicate=lambda: not version.is_mark2()),
+                                predicate=lambda: not version.has_membrane),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
