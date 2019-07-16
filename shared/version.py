@@ -91,9 +91,9 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global has_membrane, hw_label
+    global has_membrane, hw_label, has_608
 
-    import ckcc
+    import ckcc, callgate
     from machine import Pin
 
     # PA10 is pulled-down in Mark2, open in previous revs
@@ -108,6 +108,8 @@ def probe_system():
 
     if ckcc.is_stm32l496():
         hw_label = 'mk3'
+
+    has_608 = callgate.has_608()
 
 probe_system()
 
