@@ -1,10 +1,10 @@
+import sys
 
 def get_mpy_version():
-    return '2019-07-03', '2.1.1', '180711195308'
+    return '2019-07-03', '3.x.x', '180711195308'
 
 def is_factory_mode():
     # pretend signed w/ dev key and allow debug
-    import sys
     return bool('-f' in sys.argv)
 
 def is_devmode():
@@ -23,3 +23,9 @@ def get_header_value(fld_name):
 
 has_membrane = True
 hw_label = 'mk2'
+has_608 = False
+
+if  '-3' in sys.argv:
+    hw_label = 'mk3'
+    has_608 = True
+
