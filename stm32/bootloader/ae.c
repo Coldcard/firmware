@@ -17,6 +17,7 @@
 
 // Selectable debug level; keep them as comments regardless
 #if 0
+// break on any error: not helpful since some are normal
 # define ERR(msg)            BREAKPOINT;
 # define ERRV(val, msg)       BREAKPOINT;
 #else
@@ -58,6 +59,7 @@ static struct {
     uint16_t last_p2;
     uint8_t     last_n_data[32];
     uint8_t     last_n_len;
+    uint16_t    was_locked;
 } stats;
 #define STATS(x)         stats. x;
 #else
@@ -265,6 +267,23 @@ ae_read_response(uint8_t *buf, int max_len)
     return actual / 8;
 }
 
+// ae_wake()
+//
+// Do not call this causually: it may cause next read to return 0x11 (After Wake,
+// Prior to First Command) as an error to any on-going/attempted operation.
+//
+//
+    static void
+ae_wake(void)
+{
+    // send zero (all low), delay 2.5ms
+    _send_byte(0x00);
+
+    delay_us(2500);     // measured: ~2.9ms
+
+    _flush_rx();
+}
+
 // ae_send_sleep()
 //
 	static void
@@ -290,19 +309,6 @@ ae_send_idle(void)
     ae_wake();
 
     _send_bits(IOFLAG_IDLE);
-}
-
-// ae_wake()
-//
-    static void
-ae_wake(void)
-{
-    // send zero (all low), delay 2.5ms
-    _send_byte(0x00);
-
-    delay_us(2500);
-
-    _flush_rx();
 }
 
 // ae_reset_chip()
@@ -484,8 +490,6 @@ ae_read1(void)
 	uint8_t msg[4];
 
 	for(int retry=7; retry >= 0; retry--) {
-        ae_wake();
-
         // tell it we want to read a response, read it, and deserialize
         int rv = ae_read_response(msg, 4);
 
@@ -510,7 +514,6 @@ ae_read1(void)
 
 	try_again:
         STATS(l1_retry++);
-		ae_wake();
 	}
 
 	// fail.
@@ -541,12 +544,12 @@ ae_read_n(uint8_t len, uint8_t *body)
             if(resp_len == 4) {
 				// Probably an unexpected error. But no way to return a short read, so
 				// just print out debug info.
-                ERRV(msg[1], "ae errcode");
+                ERRV(tmp[1], "ae errcode");
                 STATS(last_resp1 = tmp[1]);
 
                 return -1;
             }
-			ERRV(msg[0], "wr len");		 // wrong length
+			ERRV(tmp[0], "wr len");		 // wrong length
 			goto try_again;
 		}
 
@@ -568,7 +571,7 @@ ae_read_n(uint8_t len, uint8_t *body)
 
 	try_again:
         STATS(ln_retry++);
-		ae_wake();
+        ae_wake();
 	}
 
 	return -1;
@@ -610,6 +613,7 @@ ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8
     STATS(last_p1 = p1);
     STATS(last_p2 = p2);
 
+    // important to wake chip at this point.
     ae_wake();
 
     _send_serialized((const uint8_t *)&known, sizeof(known));
@@ -759,7 +763,7 @@ ae_delay_time(aeopcode_t opcode)
 ae_load_nonce(const uint8_t nonce[32])
 {
     // p1=3
-	int rv = ae_send_n(OP_Nonce, 3, 0, nonce, 32);
+	int rv = ae_send_n(OP_Nonce, 3, 0, nonce, 32);          // 608a ok
     RET_IF_BAD(rv);
 
 	ae_delay(OP_Nonce);
@@ -1209,9 +1213,10 @@ ae_slot_locks(void)
     int
 ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 {
-    ASSERT(len % 32 == 0);          // limitation for this project.
+    ASSERT(len >= 32);
+    ASSERT(len <= 416);
 
-    for(int blk=0, xlen=len; xlen; blk++, xlen-=32) {
+    for(int blk=0, xlen=len; xlen>0; blk++, xlen-=32) {
         // have to write each "block" of 32-bytes, separately
         // zone => data
         int rv = ae_send_n(OP_Write, 0x80|2, (blk<<8) | (slot_num<<3), data+(blk*32), 32);
@@ -1225,14 +1230,14 @@ ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 
     if(lock_it) {
         ASSERT(slot_num != 8);          // no support for mega slot 8
-        ASSERT(len == 32);
+        ASSERT(len == 32);              // probably not a limitation here
 
         // Assume 36/72-byte long slot, which will be partially written, and rest
         // should be ones.
         const int slot_len = (slot_num <= 7) ? 36 : 72;
         uint8_t copy[slot_len];
-        memset(copy, 0xff, slot_len);
 
+        memset(copy, 0xff, slot_len);
         memcpy(copy, data, len);
 
         // calc expected CRC
@@ -1531,15 +1536,13 @@ ae_config_write(const uint8_t config[128])
 {
     // send all 128 bytes, less some that can't be written.
     for(int n=16; n<128; n+= 4) {
-        if((n >= 84) && (n < 90)) {
-            continue;
-        }
+        if(n == 84) continue;       // that word not writable
 
         // Must work on words, since can't write to most of the complete blocks.
         //  args = write_params(block=n//32, offset=n//4, is_config=True)
         //  p2 = (block << 3) | offset
         int rv = ae_send_n(OP_Write, 0, n/4, &config[n], 4);
-        RET_IF_BAD(rv);
+        if(rv) return rv;
 
         ae_delay(OP_Write);
     
@@ -1696,7 +1699,7 @@ ae_get_gpio(void)
 	return tmp[0];
 }
 
-// ae_read_config()
+// ae_read_config_byte()
 //
 // Read a byte from config area.
 //
@@ -1761,6 +1764,25 @@ ae_destroy_key(int keynum)
     return ae_read1();
 }
 
+// ae_config_read()
+//
+    int 
+ae_config_read(uint8_t config[128])
+{
+    for(int blk=0; blk<4; blk++) {
+        // read 32 bytes (aligned) from config "zone"
+        int rv = ae_send(OP_Read, 0x80, blk<<3);
+        if(rv) return EIO;
+
+        ae_delay(OP_Read);
+
+        rv = ae_read_n(32, &config[32*blk]);
+        if(rv) return EIO;
+    }
+
+    return 0;
+}
+
 // ae_setup_config()
 //
 // One-time config and lockdown of the chip
@@ -1789,18 +1811,9 @@ ae_setup_config(void)
     // To lock, we need a CRC over whole thing, but we
     // only set a few values... plus the serial number is
     // in there, so start with some readout.
-    uint8_t config[4 * 32];
-
-    for(int blk=0; blk<4; blk++) {
-        // read 32 bytes (aligned) from config "zone"
-        int rv = ae_send(OP_Read, 0x80, blk<<3);
-        if(rv) return EIO;
-
-        ae_delay(OP_Read);
-
-        rv = ae_read_n(32, &config[32*blk]);
-        if(rv) return EIO;
-    }
+    uint8_t config[128];
+    int rv = ae_config_read(config);
+    if(rv) return rv;
 
     // verify some fixed values
     ASSERT(config[0] == 0x01);
@@ -1870,14 +1883,22 @@ ae_setup_config(void)
 
     // Load data zone with some known values.
     // The datazone still unlocked, so no encryption needed (nor possible).
-
     
-    // will use zeros for all PIN codes, and secret starting values
+    // will use zeros for all PIN codes, and customer-defined-secret starting values
     uint8_t     zeros[72];
     memset(zeros, 0, sizeof(zeros));
 
+    // slots can already locked, if we re-run any of this code... can't overwrite in
+    // that case.
+    uint16_t unlocked = config[88] | (((uint8_t)config[89])<<8);
+
     for(int kn=0; kn<16; kn++) {
         ae_keep_alive();
+
+        if(!(unlocked & (1<<kn))) {
+            STATS(was_locked |= (1<<kn));
+            continue;
+        }
 
         switch(kn) {
             default:
@@ -1963,7 +1984,7 @@ ae_setup_config(void)
 
 
 #if FOR_608
-// ae_write_matchcount()
+// ae_write_match_count()
 //
     int
 ae_write_match_count(uint32_t count, const uint8_t *write_key)

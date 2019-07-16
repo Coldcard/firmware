@@ -190,9 +190,10 @@ def doit(partno, ae, KEYNUM, fp):
         cc[KEYNUM.match_count].writeable_storage(main_pin).require_auth(KEYNUM.pairing)
         ae.counter_match(KEYNUM.match_count)
 
-        # turn on selftest feature, and enforce encryption (io protection) for verify, etc.
+        # turn off selftest feature (performance problem), and enforce encryption
+        # (io protection) for verify, etc.
         with ae.chip_options() as opt:
-            opt.POSTEnable = 1
+            opt.POSTEnable = 0
             opt.IOProtKeyEnable = 1
             opt.ECDHProt = 0x1      # allow encrypted output
             opt.KDFProt = 0x1       # allow encrypted output
@@ -227,9 +228,12 @@ def doit(partno, ae, KEYNUM, fp):
 
     assert len(cc) == 16
     for idx, x in enumerate(cc):
-        if idx == KEYNUM.pairing: continue
+        # no EC keys on this project
+        assert cc[idx].kc.KeyType in [6,7], idx
 
-        if idx in unused_slots:
+        if idx == KEYNUM.pairing:
+            assert cc[idx].kc.KeyType == 7
+        elif idx in unused_slots:
             # check not used
             assert cc[idx].sc.as_int() == 0x0000, (partno, idx)
             assert cc[idx].kc.as_int() == 0x003c, (partno, idx)

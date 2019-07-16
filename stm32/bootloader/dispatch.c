@@ -526,12 +526,12 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 6:
             // Do we have a ATECC608a and all that implies?
-            #ifdef HAS_608
+            // NOTE: this number was unused in V1 bootroms
+            #if FOR_608
                 rv = 0;
             #else
                 rv = ENOENT;
             #endif
-
             break;
 
         case 12:
@@ -656,17 +656,14 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
         }
             
-
         case 20:
-            // Read a single byte of config dataspace
-            REQUIRE_OUT(1);
+            // Read out entire config dataspace
+            REQUIRE_OUT(128);
 
-            rv = ae_read_config_byte(arg2 & 0x7f);
-            if(rv == -1) {
+            ae_setup();
+            rv = ae_config_read(buf_io);
+            if(rv) {
                 rv = EIO;
-            } else {
-                buf_io[0] = rv;
-                rv = 0;
             } 
             break;
 
@@ -713,6 +710,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     break;
             }
             break;
+
 
         case -1:
             // System startup code. Cannot be reached by any code (that hopes to run

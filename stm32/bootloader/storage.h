@@ -15,13 +15,15 @@
 // fields must be 64-bit aligned so they can be written independently
 typedef struct {
     // Pairing secret: picked once at factory when turned on
-    // for the first time. Tied into all the secrets of the ATECC508A
+    // for the first time. Tied into all the secrets of the SE
     // on the same board.
     //
-    uint8_t pairing_secret[32];
-    uint8_t pairing_secret_xor[32];
-    uint64_t ae_serial_number[2];      // 9 bytes active
-    uint8_t  bag_number[32];           // 32 bytes max, zero padded string
+    uint8_t  pairing_secret[32];
+    uint8_t  pairing_secret_xor[32];
+    uint64_t ae_serial_number[2];       // 9 bytes active
+    uint8_t  bag_number[32];            // 32 bytes max, zero padded string
+    uint8_t  otp_key[72];               // pad for secret encryption (seed storage)
+    uint8_t  otp_key_long[416];         // same, but for longer secret area
 } rom_secrets_t;
 
 // This area is defined in linker script as last page of boot loader flash.

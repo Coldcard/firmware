@@ -38,6 +38,7 @@ typedef enum {
 
 // Hash up a PIN for indicated purpose.
 static void pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose);
+bool do_pin_attempt(uint8_t digest[32], bool is_blank);
 
 // pin_is_blank()
 //
@@ -123,7 +124,11 @@ is_duress_pin(bool is_secondary, const uint8_t digest[32], bool is_blank, int *p
     // duress PIN can never be blank; that means it wasn't set yet
     if(is_blank) return false;
 
+#if HAS_508
     int kn = is_secondary ? KEYNUM_pin_4 : KEYNUM_pin_3;
+#else
+    const int kn = KEYNUM_duress_pin;
+#endif
 
     // LIMITATION: an active MitM could change what we write
     // to something else (wrong) and thus we'd never see that
@@ -140,11 +145,38 @@ is_duress_pin(bool is_secondary, const uint8_t digest[32], bool is_blank, int *p
     return false;
 }
 
+#if HAS_608
+// do_pin_attempt()
+//
+// Do the complex new 608a pin stuff. This is always going to be very slow, so cache
+// the ultimate result (when possible). 608a now does counter updates for us, so handy!
+// Update "digest" with real, final value, if it worked
+//
+    bool
+do_pin_attempt(uint8_t digest[32], bool is_blank)
+{
+    const int kn = KEYNUM_main_pin;
+
+    // keep a copy of PIN hashed after all that
+
+    // if right: update the match counter, if it's getting low
+    // XXX
+
+    // recalc attempts_left
+
+    return false;       // no good, wrong pin
+}
+#endif
+
+
+#if HAS_508
 // is_real_pin()
 //
 // Do the checkmac thing using a PIN, and if it works, great.
 //
 // Important that every code path leading here is rate-limited, and also incr the counter.
+//
+// OBSOLETE
 //
     static bool
 is_real_pin(bool is_secondary, const uint8_t digest[32], bool is_blank, int *pin_kn)
@@ -162,6 +194,7 @@ is_real_pin(bool is_secondary, const uint8_t digest[32], bool is_blank, int *pin
 
     return false;
 }
+#endif
 
 
 // pin_hash()
@@ -279,12 +312,14 @@ _validate_attempt(pinAttempt_t *args, bool first_time)
     }
 
     // check fields.
-    if(args->magic_value != PA_MAGIC) {
-        if(first_time && args->magic_value == 0) {
-            // allow it if first time
-        } else {
-            return EPIN_BAD_MAGIC;
-        }
+    if(args->magic_value == PA_MAGIC_V1) {
+        // ok
+    } else if(args->magic_value == PA_MAGIC_V2) {
+        // ok
+    } if(first_time && args->magic_value == 0) {
+        // allow it if first time
+    } else {
+        return EPIN_BAD_MAGIC;
     }
 
     // check fields
@@ -305,8 +340,6 @@ _validate_attempt(pinAttempt_t *args, bool first_time)
     static void
 _sign_attempt(pinAttempt_t *args)
 {
-    args->magic_value = PA_MAGIC;
-
     _hmac_attempt(args, args->hmac);
 }
 
@@ -317,7 +350,11 @@ _sign_attempt(pinAttempt_t *args)
     static int __attribute__ ((noinline))
 get_last_success(bool is_secondary, uint32_t *counter, uint32_t *lastgood)
 {
-    int slot = is_secondary ? KEYNUM_lastgood_2 : KEYNUM_lastgood_1;
+#if HAS_508
+    const int slot = is_secondary ? KEYNUM_lastgood_2 : KEYNUM_lastgood_1;
+#else
+    const int slot = KEYNUM_lastgood;
+#endif
 
     ae_pair_unlock();
 
@@ -447,22 +484,24 @@ pin_setup_attempt(pinAttempt_t *args)
 
     // wipe most of struct, keep only what we expect and want!
     int is_secondary = args->is_secondary;
+    uint32_t given_magic = args->magic_value;
+    bool    old_firmware = (given_magic != PA_MAGIC_V2);
     char    pin_copy[MAX_PIN_LEN];
     int     pin_len = args->pin_len;
     memcpy(pin_copy, args->pin, pin_len);
 
-    memset(args, 0, sizeof(pinAttempt_t));
+    memset(args, 0, old_firmware ? PIN_ATTEMPT_SIZE_V1 : PIN_ATTEMPT_SIZE_V2);
 
 #if HAS_608
     // indicate our policies will be different from Mark 1/2
     args->state_flags = PA_HAS_608A;
     if(is_secondary) {
-        // secondary PIN feature removed in mark3
+        // secondary PIN feature has been removed, might be old main firmware tho
         return EPIN_PRIMARY_ONLY;
     }
 #endif
 
-    args->magic_value = PA_MAGIC;
+    args->magic_value = given_magic?:PA_MAGIC_V1;
     args->is_secondary = is_secondary;
     args->pin_len = pin_len;
     memcpy(args->pin, pin_copy, pin_len);
@@ -489,7 +528,9 @@ pin_setup_attempt(pinAttempt_t *args)
 
     ae_reset_chip();
 
+#if FOR_508
     args->attempt_target = count+1;
+#endif
 
     if(last_good > count) {
         // huh? monkey business
@@ -572,10 +613,12 @@ pin_login_attempt(pinAttempt_t *args)
 
     int pin_kn = -1;
     bool is_duress = false;
+    int secret_kn = -1, lastgood_kn = -1;
 
     // hash up the pin now.
     uint32_t new_count = ~0;
     uint8_t     digest[32];
+
     pin_hash(args->pin, args->pin_len, digest, PIN_PURPOSE_NORMAL);
 
     if(is_duress_pin(args->is_secondary, digest, (args->pin_len == 0), &pin_kn)) {
@@ -583,13 +626,17 @@ pin_login_attempt(pinAttempt_t *args)
         is_duress = true;
 
         // record this!
+#if HAS_508
         backup_data_set(args->is_secondary ? IDX_DURESS_LASTGOOD_2 : IDX_DURESS_LASTGOOD_1,
                                 args->attempt_target+1);
+#else
+        // XXX
+#endif
     } else {
         // Assume it's the real PIN, and register as an attempt on that.
 
+#if HAS_508
         // Is this attempt for the right count? Also, increament it.
-
         rv = ae_get_counter(&new_count, args->is_secondary ? 1 : 0, true);
         if(rv) return EPIN_AE_FAIL;
 
@@ -603,9 +650,24 @@ pin_login_attempt(pinAttempt_t *args)
             // code is just wrong.
             return EPIN_AUTH_FAIL;
         }
+#else
+        secret_kn = KEYNUM_main_pin;
+        lastgood_kn = KEYNUM_lastgood;
+
+        if(!do_pin_attempt(digest, (args->pin_len == 0))) {
+            // PIN code is just wrong.
+            return EPIN_AUTH_FAIL;
+        }
+
+        rv = ae_get_counter(&new_count, 0, true);
+        if(rv) return EPIN_AE_FAIL;
+#endif
     }
 
     // SUCCESS! "digest" holds a working value.
+    if(args->magic_value == PA_MAGIC_V2) {
+        memcpy(args->cached_main_pin, digest, 32);
+    }
 
     // reset rate-limiting on word lookups
     backup_data_set(IDX_WORD_LOOKUPS_USED, 0);
@@ -613,8 +675,9 @@ pin_login_attempt(pinAttempt_t *args)
     // ASIDE: even if the above was bypassed, the following code will
     // fail when it tries to read/update the corresponding slots in the 508a.
 
-    int secret_kn = -1, lastgood_kn = -1;
+#if HAS_508
     lookup_secret_lastgood(pin_kn, &secret_kn, &lastgood_kn);
+#endif
 
     if(lastgood_kn != -1) {
 
@@ -655,8 +718,7 @@ pin_login_attempt(pinAttempt_t *args)
         }
     }
 
-
-    // indicate what featurs already enabled/non-blank
+    // indicate what features already enabled/non-blank
     if(is_duress) {
         // provide false answers to status of duress and brickme
         args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
@@ -689,6 +751,7 @@ pin_login_attempt(pinAttempt_t *args)
     int
 pin_change(pinAttempt_t *args)
 {
+#if HAS_508
     // Validate args and signature
     int rv = _validate_attempt(args, false);
     if(rv) return rv;
@@ -867,6 +930,7 @@ pin_change(pinAttempt_t *args)
 ae_fail:
     ae_reset_chip();
 
+#endif
     return EPIN_AE_FAIL;
 }
 
@@ -878,6 +942,7 @@ ae_fail:
     int
 pin_fetch_secret(pinAttempt_t *args)
 {
+#if HAS_508
     // Validate args and signature
     int rv = _validate_attempt(args, false);
     if(rv) return rv;
@@ -956,6 +1021,7 @@ pin_fetch_secret(pinAttempt_t *args)
 
     ae_reset_chip();
 
+#endif
     return 0;
 }
 

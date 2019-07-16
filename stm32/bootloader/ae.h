@@ -133,6 +133,9 @@ int ae_get_counter(uint32_t *result, int counter_number, bool incr);
 //int ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]);
 int ae_hmac32(uint8_t keynum, const uint8_t *msg, uint8_t digest[32]);
 
+// Read config area (not confidential)
+int ae_config_read(uint8_t config[128]);
+
 // Load TempKey with indicated value, exactly.
 int ae_load_nonce(const uint8_t nonce[32]);
 
