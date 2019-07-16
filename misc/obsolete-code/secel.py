@@ -1,13 +1,14 @@
 #
 # Secure Element
 #
-# Talk to the ATECC508A, which drives the Genuine/Caution LED's and holds secrets.
+# Talk to the ATECC[56]08A, which drives the Genuine/Caution LED's and holds secrets.
 #
 # - connected to "onewire" on PA0
 # - not a standard "onewire" interface at all
 # - full datasheet is under NDA (unfortunately, bad policy)
 # - but very simmilar to ATSHA204 and family chips
 # - bootloader can also read/write to this chip
+# - XXX presently broken.
 #
 from machine import Pin, UART
 from time import sleep_us, sleep_ms
@@ -46,12 +47,12 @@ class OP:
     ECDH = 0x43
     GenDig = 0x15
     GenKey = 0x40
-    HMAC = 0x11
+    HMAC = 0x11         # 508a only
     Info = 0x30
     Lock = 0x17
     MAC = 0x08
     Nonce = 0x16
-    Pause = 0x01
+    Pause = 0x01        # 508a only
     PrivWrite = 0x46
     Random = 0x1B
     Read = 0x02
@@ -60,6 +61,10 @@ class OP:
     UpdateExtra = 0x20
     Verify = 0x45
     Write = 0x12
+    OP_AES = 0x51           # 608a only
+    OP_KDF = 0x56           # 608a only
+    OP_SecureBoot = 0x80    # 608a only
+    OP_SelftTest = 0x77     # 608a only
 
 # most errors are really communications failures
 ERROR_CODES = {
@@ -329,9 +334,13 @@ class SecureElement:
         pkt = self.serialize(pkt)
 
         ow = self.ow
+
+        # must start with wakeup sequence
         ow.write(b'\x00')   # WAKEUP token
         ow.read()           # thow out old garbage
         sleep_us(2500)      # tWHI: 2.5ms min
+
+        # send cmd packet
         ow.write(pkt)
         sleep_us(40)      # tTURNAROUND (80)
 
@@ -349,11 +358,12 @@ class SecureElement:
 
         while 1:
             # read back response
-            ow.write(b'\x00')   # WAKEUP token
-            while ow.any():
-                ow.read(1)           # thow out old garbage
-            sleep_us(2500)      # tWHI: 2.5ms min
-            ow.write(self.x88)
+            if 0:
+                ow.write(b'\x00')   # WAKEUP token
+                while ow.any():
+                    ow.read(1)           # thow out old garbage
+                sleep_us(2500)      # tWHI: 2.5ms min
+                ow.write(self.x88)
 
             # expect back
             # - the TX token (echo)
@@ -379,7 +389,7 @@ class SecureElement:
                     # probably an error response
                     raise ChipErrorResponse(hex(resp[1]))
 
-                #print("wr len: %r" % resp)
+                print("wrong len: %s" % b2a_hex(resp))
                 raise WrongResponseLength(len(resp))
 
             # check CRC, over all but last two bytes.
