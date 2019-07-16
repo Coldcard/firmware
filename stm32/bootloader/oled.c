@@ -14,14 +14,30 @@
 //
 // As measured! No attempt to understand them here.
 static const uint8_t reset_commands[] = {
-    0xae, 0x20, 0x00, 0x40, 0xa1, 0xa8, 0x3f, 0xc8,
-    0xd3, 0x00, 0xda, 0x12, 0xd5, 0x80, 0xd9, 0xf1,
-    0xdb, 0x30, 0x81, 0xff, 0xa4, 0xa6, 0x8d, 0x14, 0xaf
+    0xae,               // display off
+    0x20, 0x00,         // horz addr-ing mode
+    0x40,               // ram display start line: 0
+    0xa1,               // cold addr 127 mapped to seg0
+    0xa8, 0x3f,         // set multiplex ratio: 64
+    0xc8,               // remapped mode: scan from COMn to COM0
+    0xd3, 0x00,         // display offset (vertical shift): 0
+    0xda, 0x12,         // seq com pin conf: alt com pin
+    0xd5, 0x80,         // set display clock divide ratio
+    0xd9, 0xf1,         // set pre-change period
+    0xdb, 0x30,         // Cvomh deselect level
+    0x81, 0xff,         // Contrast: max
+    0xa4,               // display ram contents (not all on)
+    0xa6,               // normal not inverted
+    0x8d, 0x14,         // enable charge pump
+    0xaf                // display on
 };
 
 // Bytes to send before sending the 1024 bytes of pixel data.
 //
-static const uint8_t before_show[] = { 0x21, 0x00, 0x7f, 0x22, 0x00, 0x07 };
+static const uint8_t before_show[] = { 
+    0x21, 0x00, 0x7f,       // setup column address range (start, end): 9-127
+    0x22, 0x00, 0x07        // setup page start/end address: 0 - 7
+};
 
 // OLED connections: 
 // - all on port A
