@@ -19,6 +19,8 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `-m` => define a 2-of-4 multisig wallet, and start off in multisig wallet menu; cosigners are
             "Me", "Myself", "And I" and empty string. BIP45 path.
 - `-s` => go to the MicroSD menu at startup
+- `-3` => emulate mark3 hardware (different pin setup)
+- `-g` => don't skip login sequence
 - `--xfp F0012345` => pretend like the XFP of secret is F0012345: useful for debug of PSBT files
 
 See `frozen-modules/sim-settings.py` for the details.

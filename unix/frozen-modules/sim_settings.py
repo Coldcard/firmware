@@ -85,5 +85,8 @@ if '--xfp' in sys.argv:
     sim_defaults['xfp'] = unpack(">I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
+if '-g' in sys.argv:
+    # do login
+    sim_defaults.pop('_skip_pin', 0)
 
 # EOF
