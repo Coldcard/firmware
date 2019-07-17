@@ -25,4 +25,7 @@ void sleep_ms(int n);
 // show animated busy bar
 void oled_busy_bar(bool en);
 
+// show just a progress bar in bottom 8 rows (destructive)
+void oled_draw_bar(int percent);
+
 // EOF

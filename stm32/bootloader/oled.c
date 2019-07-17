@@ -317,8 +317,10 @@ oled_show_progress(const uint8_t *pixels, int progress)
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
 }
 
+#if 0
+// works great, looks nice, but we can do a defininate time bar instead
 
-// oled_line_draw()
+// oled_busy_bar()
 //
     void
 oled_busy_bar(bool en)
@@ -377,6 +379,33 @@ oled_busy_bar(bool en)
     oled_write_cmd_sequence(sizeof(setup), setup);
     oled_write_data(sizeof(data), data);
     oled_write_cmd_sequence(sizeof(animate), animate);
+}
+#endif
+
+// oled_draw_bar()
+//
+    void
+oled_draw_bar(int percent)
+{
+    // Render a continuous activity (progress) bar in lower 8 lines of display
+    // - cannot preserve bottom 8 lines, since we have to destructively write there
+    // - requires OLED and GPIO's already setup by other code.
+    oled_spi_setup();
+
+    static const uint8_t setup[] = { 
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+
+    uint8_t data[128];
+    int cut = percent * 128 / 100;
+
+    // each byte here is a vertical column, 8 pixels tall, MSB at bottom
+    memset(data, 0x80, cut);
+    memset(data+cut, 0x0, 128-cut);
+
+    oled_write_cmd_sequence(sizeof(setup), setup);
+    oled_write_data(sizeof(data), data);
 }
 
 // EOF
