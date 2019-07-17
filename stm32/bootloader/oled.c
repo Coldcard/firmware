@@ -35,7 +35,7 @@ static const uint8_t reset_commands[] = {
 // Bytes to send before sending the 1024 bytes of pixel data.
 //
 static const uint8_t before_show[] = { 
-    0x21, 0x00, 0x7f,       // setup column address range (start, end): 9-127
+    0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
     0x22, 0x00, 0x07        // setup page start/end address: 0 - 7
 };
 
@@ -100,6 +100,35 @@ oled_write_data(int len, const uint8_t *pixels)
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
 }
 
+// oled_spi_setup()
+//
+// Just setup SPI, do not reset display, etc.
+//
+    void
+oled_spi_setup(void)
+{
+    // might already be setup
+    if(spi_port.Instance == SPI1) return;
+
+    memset(&spi_port, 0, sizeof(spi_port));
+
+    spi_port.Instance = SPI1;
+
+    // see SPI_InitTypeDef
+    spi_port.Init.Mode = SPI_MODE_MASTER;
+    spi_port.Init.Direction = SPI_DIRECTION_2LINES;
+    spi_port.Init.DataSize = SPI_DATASIZE_8BIT;
+    spi_port.Init.CLKPolarity = SPI_POLARITY_LOW;
+    spi_port.Init.CLKPhase = SPI_PHASE_1EDGE;
+    spi_port.Init.NSS = SPI_NSS_SOFT;
+    spi_port.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;    // conservative
+    spi_port.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    spi_port.Init.TIMode = SPI_TIMODE_DISABLED;
+    spi_port.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
+
+    HAL_SPI_Init(&spi_port);
+}
+
 // oled_setup()
 //
 // Ok to call this lots.
@@ -147,23 +176,7 @@ oled_setup(void)
     delay_ms(10);
     HAL_GPIO_WritePin(GPIOA, RESET_PIN, 1);
 
-    memset(&spi_port, 0, sizeof(spi_port));
-
-    spi_port.Instance = SPI1;
-
-    // see SPI_InitTypeDef
-    spi_port.Init.Mode = SPI_MODE_MASTER;
-    spi_port.Init.Direction = SPI_DIRECTION_2LINES;
-    spi_port.Init.DataSize = SPI_DATASIZE_8BIT;
-    spi_port.Init.CLKPolarity = SPI_POLARITY_LOW;
-    spi_port.Init.CLKPhase = SPI_PHASE_1EDGE;
-    spi_port.Init.NSS = SPI_NSS_SOFT;
-    spi_port.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;    // conservative
-    spi_port.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    spi_port.Init.TIMode = SPI_TIMODE_DISABLED;
-    spi_port.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
-
-    HAL_SPI_Init(&spi_port);
+    oled_spi_setup();
 
     // where: SPI1->CR1, CR2, SR
     // mpy settings:
@@ -304,5 +317,66 @@ oled_show_progress(const uint8_t *pixels, int progress)
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
 }
 
+
+// oled_line_draw()
+//
+    void
+oled_busy_bar(bool en)
+{
+    // Render a continuous activity (not progress) bar in lower 8 lines of display
+    // - using OLED itself to do the animation, so smooth and CPU free
+    // - cannot preserve bottom 8 lines, since we have to destructively write there
+    oled_spi_setup();
+
+    static const uint8_t setup[] = { 
+        //0x20, 0x00,             // horz addr-ing mode (normal)
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+    static const uint8_t animate[] = { 
+        0x2e,               // stop animations in progress
+        0x26,               // scroll leftwards (stock ticker mode)
+            0,              // placeholder
+            7,              // start 'page' (vertical)
+            7,              // scroll speed: 7=fastest, 
+            7,              // end 'page'
+            0, 0xff,        // placeholders
+        0x2f                // start
+    };
+    static const uint8_t cleanup[] = { 
+        0x2e,               // stop animation
+        0x20, 0x00,         // horz addr-ing mode
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+
+    uint8_t data[128];
+
+    if(!en) {
+        // clear it, stop animation
+        memset(data, 0, sizeof(data));
+        oled_write_cmd_sequence(sizeof(cleanup), cleanup);
+        oled_write_data(sizeof(data), data);
+
+        return;
+    }
+
+    // some diagonal lines
+    for(int x=0; x<128; x++) {
+        // each byte here is a vertical column, 8 pixels tall, MSB at bottom
+        switch(x % 4) {
+            default:
+                data[x] = 0x0;
+                break;
+            case 0:
+                data[x] = 0x80;
+                break;
+        }
+    }
+
+    oled_write_cmd_sequence(sizeof(setup), setup);
+    oled_write_data(sizeof(data), data);
+    oled_write_cmd_sequence(sizeof(animate), animate);
+}
 
 // EOF
