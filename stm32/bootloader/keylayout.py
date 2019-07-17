@@ -34,7 +34,7 @@ class KEYNUM_608:       # mark 3+
     pairing = 1     # pairing hash key (picked by bootloader)
     words = 2       # secret used just for generated 2-phase protection words (random, forgotten)
     main_pin = 3    # user-defined PIN to protect the cryptocoins (primary)
-    pin_kdf = 4     # secret mixed into KDF for pin generation (rate limited, random, forgotten)
+    pin_attempt = 4 # secret mixed into pin generation (rate limited, random, forgotten)
     lastgood = 5    # publically readable, PIN required to update: last successful PIN entry (1)
     match_count = 6 # match counter, updated if they get the PIN right
     duress_pin = 7  # duress wallet (no PIN failure counts)
@@ -85,6 +85,10 @@ class AEConfig:
         assert 0 <= kn <= 15
         assert self.data[14] & 1 == 0, "can only work on chip w/ SWI not I2C"
         self.data[16] = 0x1 | (kn << 4)     # "Auth0" mode in table 7-1
+
+    def disable_KdfIvLoc(self):
+        # prevent use of weird AES KDF init vector junk
+        self.data[72] = 0xf0
 
     def checks(self):
         # reserved areas / known values
@@ -179,12 +183,15 @@ def doit(partno, ae, KEYNUM, fp):
         main_pin = KEYNUM.main_pin
         unused_slots = [0, 12, 15]
 
-        # new slots related to KDF usage
+        # new slots related to pin attempt- and rate-limiting
         # - both hold random, unknown contents, can't be changed
         # - use of the first one will cost a counter incr
         # - actual PIN to be used is rv=HMAC(pin_stretch, rv) many times
-        cc[KEYNUM.pin_kdf].hash_key().require_auth(KEYNUM.pairing).limited_use()
-        cc[KEYNUM.pin_stretch].hash_key().require_auth(KEYNUM.pin_kdf)
+        cc[KEYNUM.pin_attempt].hash_key().require_auth(KEYNUM.pairing).limited_use()
+
+        # to rate-limit PIN attempts (also used for prefix words) we require
+        # many HMAC cycles using this random+unknown value.
+        cc[KEYNUM.pin_stretch].hash_key().require_auth(KEYNUM.pairing).kc.ReqRandom = 0
 
         # chip-enforced pin attempts: link keynum and enable "match count" feature
         cc[KEYNUM.match_count].writeable_storage(main_pin).require_auth(KEYNUM.pairing)
@@ -198,6 +205,9 @@ def doit(partno, ae, KEYNUM, fp):
             opt.ECDHProt = 0x1      # allow encrypted output
             opt.KDFProt = 0x1       # allow encrypted output
             opt.IOProtKey = KEYNUM.pairing
+
+        # don't want
+        ae.disable_KdfIvLoc()
 
     # PIN and corresponding protected secrets
     # - if you know old value of PIN, you can write it (to change to new PIN)
