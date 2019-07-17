@@ -25,6 +25,10 @@ typedef enum {
 } whichPin_t;
 #define PIN__max    5
 
+// Number of iterations for KDF
+#define KDF_ITER_WORDS      32
+#define KDF_ITER_PIN        500
+
 #if FOR_508
 // better names going forward!
 #define KEYNUM_main_pin   KEYNUM_pin_1
@@ -233,8 +237,8 @@ pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose)
 // Look up some bits... do HMAC(words secret) and return some LSB's
 //
 // CAUTIONS: 
-// - should be rate-limited (or liked to PIN code rate-limiting somehow)
-// - hash generated here is shown plaintext on bus (for HMAC operation).
+// - rate-limited by the chip, since it takes this many iterations
+// - hash generated is not shown on bus (thanks to IO protection)
 //
     int
 pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result)
@@ -245,6 +249,8 @@ pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result)
     // hash it up real good
     pin_hash(pin_prefix, prefix_len, tmp, PIN_PURPOSE_WORDS);
 
+
+#if FOR_508
     // some very weak rate limiting...
     uint32_t count = backup_data_get(IDX_WORD_LOOKUPS_USED);
     backup_data_set(IDX_WORD_LOOKUPS_USED, count+1);
@@ -263,6 +269,16 @@ pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result)
     ae_reset_chip();
 
 	if(rv) return -1;
+
+#else
+    // With 608a, we can do same KDF stretching to get good built-in delays
+    ae_setup();
+
+    int rv = ae_kdf_iter(KEYNUM_words, tmp, digest, KDF_ITER_WORDS);
+
+    ae_reset_chip();
+	if(rv) return -1;
+#endif
 
     memcpy(result, digest, 4);
 

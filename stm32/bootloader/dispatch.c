@@ -711,7 +711,6 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
             break;
 
-
         case -1:
             // System startup code. Cannot be reached by any code (that hopes to run
             // again) except our reset stub.
