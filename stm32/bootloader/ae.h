@@ -80,9 +80,9 @@ int ae_checkmac(uint8_t keynum, const uint8_t secret[32]);
 int ae_checkmac_hard(uint8_t keynum, const uint8_t secret[32]);
 
 // Send a one-byte command, maybe with args.
-int ae_send(aeopcode_t opcode, uint8_t p1, uint16_t p2);
+void ae_send(aeopcode_t opcode, uint8_t p1, uint16_t p2);
 // .. same but with body data as well.
-int ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8_t data_len);
+void ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8_t data_len);
 
 // Return the waiting time (max) for specific opcode.
 int ae_delay_time(aeopcode_t opcode);
@@ -169,6 +169,8 @@ extern void fatal_mitm(void) __attribute__((noreturn));
 // Update the match-counter with a new number.
 int ae_write_match_count(uint32_t count, const uint8_t *write_key);
 
+// Perform many key iterations and read out the result. Designed to be slow.
+int ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterations);
 
 #endif
 
