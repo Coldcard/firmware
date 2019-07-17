@@ -168,7 +168,7 @@ check_factory_key(uint32_t pubkey_num)
 #if RELEASE
     const int wait = 100;
 #else
-    const int wait = 10;
+    const int wait = 1;
 #endif
     
     for(int i=0; i < wait; i++) {

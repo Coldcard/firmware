@@ -62,6 +62,7 @@ your key storage per-system unique.
 - You must always wipe flash when you change the 508/608 because no code to erase the
   pairing secret and can't rewrite flash.
 
+    halt
     stm32l4x unlock 0
     stm32l4x mass_erase 0
 

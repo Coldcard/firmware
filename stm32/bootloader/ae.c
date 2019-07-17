@@ -12,6 +12,7 @@
 #include "storage.h"
 #include "stm32l4xx_hal.h"
 #include "ae_config.h"
+#include "oled.h"
 #include <errno.h>
 #include <string.h>
 
@@ -1926,18 +1927,13 @@ ae_setup_config(void)
 }
 
 
-#if FOR_608
 // ae_write_match_count()
 //
     int
 ae_write_match_count(uint32_t count, const uint8_t *write_key)
 {
-    uint32_t     buf[8] = { 0 };
-
+    uint32_t     buf[8] = { count, count };
     STATIC_ASSERT(sizeof(buf) == 32);           // limitation of ae_write_data_slot
-
-    buf[0] = count;         // XXX endian?
-    buf[1] = count;
 
     if(!write_key) {
         return ae_write_data_slot(KEYNUM_match_count, (const uint8_t *)buf, sizeof(buf), false);
@@ -1947,98 +1943,6 @@ ae_write_match_count(uint32_t count, const uint8_t *write_key)
     }
 }
 
-#if 0
-// ae_kdf_iter()
-//
-// Do on-chip KDF, with lots of iterations. 
-//
-// - always HKDF (based on TLS 1.3): hmac.new(privkey, msg, hashlib.sha256).digest()
-// - results written to tmpkey if not last iter
-// - output always encrypted
-// - pairing dance must already be done.
-//
-    int
-ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterations)
-{
-    struct {
-        uint32_t    detail;
-        uint8_t     msg[32];
-    } startup;
-    STATIC_ASSERT(sizeof(startup) == 32+4);
-
-    // from Table 11-24. Detail Parameter Encoding for HKDF
-    startup.detail =    (2<<0)       // use provided input for message
-                      | (32 << 24);  // msg length is 32 bytes
-    memcpy(startup.msg, start, 32);
-    
-    const uint8_t p1a =   (2<<0)        // source for KDF key: key slot
-                        | (0<<2)        // target for result: Tmpkey
-                        | (2<<5);       // algo to use: HKDF
-
-    ae_send_n(OP_KDF, p1a, keynum, (uint8_t *)&startup, sizeof(startup));
-
-	ae_delay(OP_KDF);
-
-	int rv = ae_read1();
-	RET_IF_BAD(rv);
-
-    const uint32_t    iter_detail =   (1<<0)       // TempKey for message
-                                    | (32 << 24);  // msg length is 32 bytes
-
-#if 0
-    // Perform iterations with AltKeyBuf as in and out.
-    const uint8_t p1b =   (2<<0)        // source for KDF key: dataslot
-                        | (0<<2)        // target for result: TmpKey
-                        | (2<<5);       // algo to use: HKDF
-
-    uint8_t weird[6] = {0};
-
-    while(iterations--) {
-
-        ae_send_n(OP_KDF, p1b, KEYNUM_pin_stretch, (uint8_t *)&iter_detail, 4);
-        ae_delay(OP_KDF);
-
-        rv = ae_read_n(6, weird);
-        RET_IF_BAD(rv);
-    }
-#endif
-
-    // Readout step (one last iteration as well)
-    // - output via io protection encryption
-    const uint8_t p1c =   (2<<0)        // source for KDF key: dataslot
-                        | (5<<2)        // target for result: encrypted output
-                        | (2<<5);       // algo to use: HKDF
-
-    ae_send_n(OP_KDF, p1c, keynum, (uint8_t *)&iter_detail, 4);
-
-    ae_delay(OP_KDF);
-
-    struct {
-        uint8_t encrypted[32];
-        uint8_t nonce[32];
-    } result;
-    STATIC_ASSERT(sizeof(result) == 64);
-
-    rv = ae_read_n(64, (uint8_t *)&result);
-    RET_IF_BAD(rv);
-
-    // do some crazy decryption using the "io protection" secret == pairing secret for us
-	SHA256_CTX ctx;
-
-    sha256_init(&ctx);
-    sha256_update(&ctx, rom_secrets->pairing_secret, 32);
-    sha256_update(&ctx, result.nonce, 16);
-
-    uint8_t key[32];
-    sha256_final(&ctx, key);
-
-    xor_mixin(result.encrypted, key, 32);
-    
-    memcpy(end, result.encrypted, 32);
-
-    return 0;
-}
-#endif
 
 // ae_kdf_iter()
 //
@@ -2057,7 +1961,12 @@ ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterat
     int rv = ae_hmac32(keynum, start, end);
     RET_IF_BAD(rv);
 
-    while(iterations--) {
+    for(int i=0; i<iterations; i++) {
+        // this is quick and shouldn't impact performance, compared to all
+        // the crypto happening here
+        oled_draw_bar(i*100/iterations);
+
+        // must unlock again, because pin_stretch is an auth'd key
         if(ae_pair_unlock()) return -2;
 
         rv = ae_hmac32(KEYNUM_pin_stretch, end, end);
@@ -2067,19 +1976,24 @@ ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterat
     // Final value was just read over bus w/o any protection, but
     // we won't be using that, instead, mix in the pairing secret.
     //
-    // PROBLEM: what if mitm gave us some zeros or other known pattern here.
-    // solution: yet another SHA256... altho maybe HMAC would be better here?
+    // Concern: what if mitm gave us some zeros or other known pattern here. We will
+    // use the value provided in cleartext[sic--it's not] write back shortly (to test it).
+    // Solution: one more SHA256, and to be safe, mixin lots of values!
+
+    oled_draw_bar(99);
 
 	SHA256_CTX ctx;
 
     sha256_init(&ctx);
     sha256_update(&ctx, rom_secrets->pairing_secret, 32);
     sha256_update(&ctx, end, 32);
+    sha256_update(&ctx, start, 32);
+    sha256_update(&ctx, &keynum, 1);
     sha256_final(&ctx, end);
+
+    oled_draw_bar(100);
 
     return 0;
 }
-
-#endif
 
 // EOF
