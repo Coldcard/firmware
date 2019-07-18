@@ -216,9 +216,6 @@ class Display:
 
         if not enable:
             # stop animation, and redraw old (new) screen
-            if ckcc.is_simulator():
-                self.dis.buffer[1024-128:] = bytes(128)
-
             self.write_cmds(cleanup)
             self.show()
         else:
@@ -229,8 +226,8 @@ class Display:
 
             if ckcc.is_simulator():
                 # just show as static pattern
-                self.dis.buffer[1024-128:] = data
-                self.dis.show()
+                t = self.dis.buffer[:-128] + data
+                self.dis.write_data(t)
             else:
                 self.write_cmds(setup)
                 self.dis.write_data(data)
