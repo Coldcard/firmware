@@ -3,6 +3,8 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
+# NOTE: Mark3 hardware does not support secondary wallet concept.
+#
 import pincodes, version
 from main import dis
 from display import FontLarge, FontTiny
@@ -19,7 +21,7 @@ class LoginUX:
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
-        self.offer_second = True
+        self.offer_second = not version.has_608
         self.reset()
 
     def reset(self):
@@ -69,9 +71,9 @@ class LoginUX:
         if self.is_repeat:
             footer = "CONFIRM PIN VALUE"
         elif not self.pin_prefix:
-            footer = "X to CANCEL, or OK when DONE."
+            footer = "X to CANCEL, or OK when DONE"
         else:
-            footer = "X to CANCEL, or OK to CONTINUE."
+            footer = "X to CANCEL, or OK to CONTINUE"
 
         dis.text(None, -1, footer, FontTiny)
 
@@ -83,10 +85,8 @@ class LoginUX:
         dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
                             else "Write these down:")
 
-        if self.offer_second:
-            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
-
         dis.show()
+        dis.busy_bar(True)
         words = pincodes.PinAttempt.prefix_words(self.pin.encode())
 
         y = 15
@@ -94,7 +94,13 @@ class LoginUX:
         dis.text(x, y,    words[0], FontLarge)
         dis.text(x, y+18, words[1], FontLarge)
 
-        dis.show()
+        if self.offer_second:
+            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
+        else:
+            dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
+
+        dis.busy_bar(False)     # includes a dis.show()
+        #dis.show()
 
     def cancel(self):
         self.reset()
@@ -135,7 +141,7 @@ class LoginUX:
 
                 self._show_words()
 
-                nxt = await ux_wait_keyup('xy2')
+                nxt = await ux_wait_keyup('xy2' if self.offer_second else 'xy')
                 if nxt == 'y' or nxt == '2':
                     self.pin_prefix = self.pin
                     self.pin = ''
@@ -211,8 +217,7 @@ class LoginUX:
 
             await ux_show_story('''\
 That's not the right PIN!\n
-Please check all digits carefully, and that prefix verus suffix break point is correct.
-Your next attempt will take even longer, so please keep that in mind.
+Please check all digits carefully, and that prefix verus suffix break point is correct.\
 ''', title='Wrong PIN')
 
     async def prompt_pin(self):
