@@ -19,20 +19,24 @@ from multisig import make_multisig_menu
 PinChangesMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=pin_changer, arg='main'),
-    MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
+    MenuItem('Second Wallet', f=pin_changer, arg='secondary',
+                                predicate=lambda: not version.has_608),
     MenuItem('Duress PIN', f=pin_changer, arg='duress'),
     MenuItem('Brick Me PIN', f=pin_changer, arg='brickme'),
     MenuItem('Login Now', f=login_now, arg=1),
 ]
 
-SecondaryPinChangesMenu = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
-    MenuItem('Duress PIN', f=pin_changer, arg='duress'),
-    MenuItem('Login Now', f=login_now, arg=1),
-]
+# Not reachable on Mark3 hardware
+if not version.has_608:
+    SecondaryPinChangesMenu = [
+        #         xxxxxxxxxxxxxxxx
+        MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
+        MenuItem('Duress PIN', f=pin_changer, arg='duress'),
+        MenuItem('Login Now', f=login_now, arg=1),
+    ]
 
 async def which_pin_menu(_1,_2, item):
+    if version.has_608: return PinChangesMenu
     from main import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
