@@ -52,6 +52,7 @@ static struct {
     int len_error;
     int crc_len_error;
     int short_error;
+    int not_ready;
     int l1_retry;
     int ln_retry;
     int extra_bits;
@@ -493,6 +494,15 @@ ae_read1(void)
 	for(int retry=7; retry >= 0; retry--) {
         // tell it we want to read a response, read it, and deserialize
         int rv = ae_read_response(msg, 4);
+
+        if(rv == 0) {
+            // nothing heard, it's probably still processing
+            ERR("not rdy");
+            STATS(not_ready++);
+
+            delay_ms(5);
+            goto try_again;
+        }
 
         if(rv != 4) {
             ERR("rx len");
@@ -1436,7 +1446,11 @@ ae_encrypted_write32(int data_slot, int blk, int write_kn,
 
     ae_delay(OP_Write);
 
-    return ae_read1();
+    rv = ae_read1();
+
+    if(rv) BREAKPOINT;
+
+    return rv;
 }
 
 // ae_encrypted_write()
@@ -1445,6 +1459,9 @@ ae_encrypted_write32(int data_slot, int blk, int write_kn,
 ae_encrypted_write(int data_slot, int write_kn, const uint8_t write_key[32],
                         const uint8_t *data, int len)
 {
+    ASSERT(data_slot >= 0);
+    ASSERT(data_slot <= 15);
+
     for(int blk=0; blk<3 && len>0; blk++, len-=32) {
         int here = MIN(32, len);
 
@@ -1871,7 +1888,7 @@ ae_setup_config(void)
                     rng_buffer(tmp, sizeof(tmp));
 #else
 #warning "fixed secrets"
-                    memset(tmp, 0x41, 32);
+                    memset(tmp, 0x41+kn, 32);
 #endif
 
                     if(ae_write_data_slot(kn, tmp, 32, true)) {
@@ -1956,16 +1973,14 @@ ae_write_match_count(uint32_t count, const uint8_t *write_key)
     int
 ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterations)
 {
+    ASSERT(start != end);           // we can't work inplace
+
     if(ae_pair_unlock()) return -1;
 
     int rv = ae_hmac32(keynum, start, end);
     RET_IF_BAD(rv);
 
     for(int i=0; i<iterations; i++) {
-        // this is quick and shouldn't impact performance, compared to all
-        // the crypto happening here
-        oled_draw_bar(i*100/iterations);
-
         // must unlock again, because pin_stretch is an auth'd key
         if(ae_pair_unlock()) return -2;
 
@@ -1980,8 +1995,6 @@ ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterat
     // use the value provided in cleartext[sic--it's not] write back shortly (to test it).
     // Solution: one more SHA256, and to be safe, mixin lots of values!
 
-    oled_draw_bar(99);
-
 	SHA256_CTX ctx;
 
     sha256_init(&ctx);
@@ -1990,8 +2003,6 @@ ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterat
     sha256_update(&ctx, start, 32);
     sha256_update(&ctx, &keynum, 1);
     sha256_final(&ctx, end);
-
-    oled_draw_bar(100);
 
     return 0;
 }

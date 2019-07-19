@@ -24,8 +24,11 @@
 #define MAX_PIN_LEN             32
 
 // Number of bytes (per pin) we are keeping secret.
-// ATECC508A limitation/feature caps this at weird 72 byte value.
+// ATECC[56]08A limitation/feature caps this at weird 72 byte value.
 #define AE_SECRET_LEN           72
+
+// .. but on 608a, we can use this one weird data slot with more space
+#define AE_LONG_SECRET_LEN      416
 
 // For change_flags field: choose one secret and/or one PIN only.
 #define CHANGE_WALLET_PIN           0x01
@@ -33,8 +36,9 @@
 #define CHANGE_BRICKME_PIN          0x04
 #define CHANGE_SECRET               0x08
 #define CHANGE_DURESS_SECRET        0x10
-#define CHANGE_SECONDARY_WALLET_PIN 0x20     // when used from main wallet only
-#define CHANGE__MASK                0x3f
+#define CHANGE_SECONDARY_WALLET_PIN 0x20     // when used from main wallet only (obsolete)
+#define CHANGE_LONG_SECRET          0x40     // new for v2
+#define CHANGE__MASK                0x5f
 
 // Magic value and/or version number.
 #define PA_MAGIC_V1         0x2eaf6311          // before v3.0.0 of main firmware (508a, mk1/2)
