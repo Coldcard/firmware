@@ -318,8 +318,6 @@ oled_show_progress(const uint8_t *pixels, int progress)
 }
 
 #if 0
-// works great, looks nice, but we can do a defininate time bar instead
-
 // oled_busy_bar()
 //
     void
@@ -370,7 +368,7 @@ oled_busy_bar(bool en)
             default:
                 data[x] = 0x0;
                 break;
-            case 0:
+            case 0 ... 1:
                 data[x] = 0x80;
                 break;
         }
@@ -380,7 +378,6 @@ oled_busy_bar(bool en)
     oled_write_data(sizeof(data), data);
     oled_write_cmd_sequence(sizeof(animate), animate);
 }
-#endif
 
 // oled_draw_bar()
 //
@@ -407,5 +404,6 @@ oled_draw_bar(int percent)
     oled_write_cmd_sequence(sizeof(setup), setup);
     oled_write_data(sizeof(data), data);
 }
+#endif
 
 // EOF
