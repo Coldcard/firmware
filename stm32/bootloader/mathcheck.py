@@ -16,19 +16,19 @@ from hmac import HMAC
 keys = {}
 
 # mdb 0x08007800 32
-keys[KEYNUM.pairing] = a2b_hex('1292f3a9d0a1b952d5ef71daf0283032ea4b059873d2194b6eda18082227cde4')
+keys[KEYNUM.pairing] = a2b_hex('7bb13c12ea88b8ce495ab12144ca8b5784099d7b2f2e0388fd7b866815431a8a')
 
 # fixed values from instrumented version of code
 for kn in [KEYNUM.pin_stretch, KEYNUM.pin_attempt, KEYNUM.words]:
-    keys[kn] = bytes(0x41 for i in range(32))
+    keys[kn] = bytes((0x41+kn) for i in range(32))
 
 assert all(len(i) == 32 for i in keys.values()), repr(keys)
 
 PURPOSE_NORMAL = a2b_hex('58184d33')
 PURPOSE_WORDS  = a2b_hex('73676d2e')
 
-KDF_ITER_WORDS      = 32
-KDF_ITER_PIN        = 500
+KDF_ITER_WORDS      = 16
+KDF_ITER_PIN        = 32
 
 def show(lab, val):
     print('%s => \n    %s' % (lab, b2a_hex(val).decode('ascii')))
@@ -80,8 +80,9 @@ end = ae_kdf_iter(KEYNUM.words, start, KDF_ITER_WORDS)
 
 show('ae_kdf_iter()', end)
 
+show('words value', end[0:4])
+
 # on target, do this:
 #    import ckcc; b = bytearray(32); b[0:2] = b'12'; ckcc.gate(16, b, 2)
 #    from ubinascii import hexlify as b2a_hex; b2a_hex(b[:4])
-show('words value', end[0:4])
 
