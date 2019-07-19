@@ -14,6 +14,9 @@ MAX_PIN_LEN = const(32)
 # how many bytes per secret (you don't have to use them all)
 AE_SECRET_LEN = const(72)
 
+# on mark3 (608a) we can also store a longer secret
+AE_LONG_SECRET_LEN = const(416)
+
 # magic number for struct
 PA_MAGIC_V1    = const(0x2eaf6311)
 PA_MAGIC_V2    = const(0x2eaf6312)
@@ -33,6 +36,7 @@ CHANGE_BRICKME_PIN          = const(0x04)
 CHANGE_SECRET               = const(0x08)
 CHANGE_DURESS_SECRET        = const(0x10)
 CHANGE_SECONDARY_WALLET_PIN = const(0x20)
+CHANGE_LONG_SECRET          = const(0x40)
 
 # See below for other direction as well.
 PA_ERROR_CODES = {
@@ -83,10 +87,14 @@ EPIN_OLD_AUTH_FAIL  = const(-113)
     char        new_pin[MAX_PIN_LEN];   // (optional) new PIN value
     int         new_pin_len;            // (optional) valid length of new_pin, can be zero
     uint8_t     secret[72];             // secret to be changed OR return value
-    // may grow from here in future versions.
+    // may grow from here in future versions (V1 bootroms don't expect more)
+    // NOTE: following not included in fmt 
     uint8_t     cached_main_pin[32];    // iff they provided right pin already (V2)
 '''
-PIN_ATTEMPT_FMT = 'Ii32si6I32si32si32si72s32s'
+PIN_ATTEMPT_FMT_V1 = 'Ii32si6I32si32si32si72s'
+PIN_ATTEMPT_FMT_V2_ADDITIONS = '32s'
+
+PIN_ATTEMPT_SIZE_V1  = const(248)
 PIN_ATTEMPT_SIZE  = const(248+32)
 
 class BootloaderError(RuntimeError):
@@ -96,21 +104,26 @@ class PinAttempt:
     seconds_per_tick = 0.5
 
     def __init__(self):
+        from version import has_608
+
         self.is_secondary = False
         self.pin = None
         self.secret = None
         self.is_empty = None
-        self.magic_value = None
+        self.magic_value = PA_MAGIC_V2 if has_608 else PA_MAGIC_V1
         self.delay_achieved = 0         # so far, how much time wasted?
         self.delay_required = 0         # how much will be needed?
         self.num_fails = 0              # for UI: number of fails PINs
         self.attempts_left = 0          # ignore in mk1/2 case, only valid for mk3
         self.state_flags = 0            # useful readback
         self.private_state = 0          # opaque data, but preserve
-        self.cached_main_pin = None
+        self.cached_main_pin = bytearray(32)
 
         assert MAX_PIN_LEN == 32        # update FMT otherwise
-        assert ustruct.calcsize(PIN_ATTEMPT_FMT) == PIN_ATTEMPT_SIZE, ustruct.calcsize(PIN_ATTEMPT_FMT)
+        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1, \
+                            ustruct.calcsize(PIN_ATTEMPT_FMT)
+        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
+
         self.buf = bytearray(PIN_ATTEMPT_SIZE)
 
         # check for bricked system early
@@ -125,7 +138,8 @@ class PinAttempt:
                         self.delay_achieved, self.delay_required, self.state_flags)
 
     def marshal(self, msg, is_duress=False, is_brickme=False, new_secret=None, 
-                    new_pin=None, old_pin=None, get_duress_secret=False, is_secondary=False):
+                    new_pin=None, old_pin=None, get_duress_secret=False, is_secondary=False,
+            ):
         # serialize our state, and maybe some arguments
         change_flags = 0
 
@@ -160,9 +174,9 @@ class PinAttempt:
             new_pin = b''
             old_pin = old_pin or self.pin
 
-
-        ustruct.pack_into(PIN_ATTEMPT_FMT, msg, 0,
-                PA_MAGIC_V2,
+        # always send the extra stuff, V1 won't care (ignored) and V2 needs it.
+        ustruct.pack_into(PIN_ATTEMPT_FMT_V1 + PIN_ATTEMPT_FMT_V2_ADDITIONS, msg, 0,
+                self.magic_value,
                 (1 if self.is_secondary else 0),
                 self.pin, len(self.pin),
                 self.delay_achieved,
@@ -180,10 +194,9 @@ class PinAttempt:
 
     def unmarshal(self, msg):
         # unpack it and update our state, return other state
-        magic, = ustruct.unpack_from(PIN_ATTEMPT_FMT, 
-        x = ustruct.unpack_from(PIN_ATTEMPT_FMT, msg)
+        x = ustruct.unpack_from(PIN_ATTEMPT_FMT_V1, msg)
         
-        (magic, was_secondary,
+        (self.magic_value, was_secondary,
                 self.pin, pin_len,
                 self.delay_achieved,
                 self.delay_required,
@@ -195,21 +208,21 @@ class PinAttempt:
                 change_flags,
                 old_pin, old_pin_len,
                 new_pin, new_pin_len,
-                secret,
-                self.cached_main_pin) = x
+                secret) = x
 
-        assert magic == PA_MAGIC_v2, magic
-
-        self.pin = self.pin[0:pin_len]
-
-        # not useful to readback values we sent and it never updates
+        # NOTE: not useful to readback values we sent and it never updates
         #new_pin = new_pin[0:new_pin_len]
         #old_pin = old_pin[0:old_pin_len]
+        self.pin = self.pin[0:pin_len]
+
+        if self.magic_value == PA_MAGIC_V2:
+            # pull out V2 extra values 
+            self.cached_main_pin, = ustruct.unpack_from(PIN_ATTEMPT_FMT_V2_ADDITIONS,
+                                                            msg, PIN_ATTEMPT_SIZE_V1)
 
         return secret
 
     def roundtrip(self, method_num, **kws):
-                
 
         self.marshal(self.buf, **kws)
 
@@ -304,12 +317,12 @@ class PinAttempt:
         if duress_pin is None:
             secret = self.roundtrip(4)
         else:
-            secret = self.roundtrip(4, get_duress_secret=True, old_pin=duress_pin)
+            secret = self.roundtrip(4, old_pin=duress_pin)
 
         return secret
 
     def greenlight_firmware(self):
-        # hash all of flash and commit value to 508a
+        # hash all of flash and commit value to 508a/608a
         self.roundtrip(5)
         ckcc.presume_green()
 
