@@ -368,6 +368,12 @@ class ComboConfig(object):
         self.sc.WriteConfig = 0x4   # encrypted write, no DeriveKey support
         return self
 
+    def deterministic(self):
+        # most keyslots should have ReqRandom=1 but if we're using it to hash up
+        # a known value, like a PIN, then it can't be based on a nonce.
+        self.kc.ReqRandom = 0
+        return self
+
     def require_auth(self, kn):
         # knowledge of another key will be required
         assert 0 <= kn <= 15
