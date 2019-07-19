@@ -366,7 +366,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
     // - mpy may provide a pointer to flash if we give it a qstr or small value, and if
     //   we're reading only, that's fine.
 
-    if(len_in > 255) {
+    if(len_in > 1024) {     // arbitrary max, increase as needed
         rv = ERANGE;
         goto fail;
     }
