@@ -53,10 +53,8 @@ static inline bool flash_is_security_level2(void) {
 // - mpy code could still change, so not secure.
 // - kinda pointless, but I have no SRAM that isn't wiped at boot
 // - XXX not working! no clock maybe? Reads as zero.
-
 #define IDX_WORD_LOOKUPS_USED               0x0
-#define IDX_DURESS_LASTGOOD_1               0x1
-#define IDX_DURESS_LASTGOOD_2               0x2
+#define IDX_DURESS_USED                     0x1
 
 uint32_t backup_data_get(int idx);
 void backup_data_set(int idx, uint32_t new_value);

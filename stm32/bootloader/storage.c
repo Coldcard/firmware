@@ -516,6 +516,7 @@ flash_lockdown_hard(uint8_t rdp_level_code)
     flash_ob_lock(true);
 }
 
+
 // backup_data_get()
 //
     uint32_t
@@ -543,7 +544,6 @@ backup_data_set(int idx, uint32_t new_value)
     // doesn't seem to work tho? stays unlocked
     RTC->WPR = 0xff;
 }
-
 
 // record_highwater_version()
 //
