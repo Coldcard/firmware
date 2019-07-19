@@ -160,7 +160,7 @@ def doit(partno, ae, KEYNUM, fp):
     cc[KEYNUM.pairing].hash_key(roll_kn=KEYNUM.brickme).lockable(False)
 
     # - "words" HMAC-key used for for 2-phase PIN words (only)
-    cc[KEYNUM.words].hash_key().require_auth(KEYNUM.pairing).kc.ReqRandom = 0
+    cc[KEYNUM.words].hash_key().require_auth(KEYNUM.pairing).deterministic()
 
     if partno == 5:
         # mark 1/2: most keyslots require knowledge of a PIN
@@ -187,11 +187,11 @@ def doit(partno, ae, KEYNUM, fp):
         # - both hold random, unknown contents, can't be changed
         # - use of the first one will cost a counter incr
         # - actual PIN to be used is rv=HMAC(pin_stretch, rv) many times
-        cc[KEYNUM.pin_attempt].hash_key().require_auth(KEYNUM.pairing).limited_use()
+        cc[KEYNUM.pin_attempt].hash_key().require_auth(KEYNUM.pairing).deterministic().limited_use()
 
         # to rate-limit PIN attempts (also used for prefix words) we require
         # many HMAC cycles using this random+unknown value.
-        cc[KEYNUM.pin_stretch].hash_key().require_auth(KEYNUM.pairing).kc.ReqRandom = 0
+        cc[KEYNUM.pin_stretch].hash_key().require_auth(KEYNUM.pairing).deterministic()
 
         # chip-enforced pin attempts: link keynum and enable "match count" feature
         cc[KEYNUM.match_count].writeable_storage(main_pin).require_auth(KEYNUM.pairing)
