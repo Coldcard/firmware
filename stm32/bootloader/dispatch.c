@@ -615,10 +615,6 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     break;
             }
 
-#ifndef RELEASE
-            if(rv == EPIN_AE_FAIL) BREAKPOINT;
-#endif
-
             break;
         }
 

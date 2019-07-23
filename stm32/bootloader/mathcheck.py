@@ -16,7 +16,8 @@ from hmac import HMAC
 keys = {}
 
 # mdb 0x08007800 32
-keys[KEYNUM.pairing] = a2b_hex('7bb13c12ea88b8ce495ab12144ca8b5784099d7b2f2e0388fd7b866815431a8a')
+keys[KEYNUM.pairing] = a2b_hex(
+'480d071589163dc9d6016c8af718ff0d7d4be8fa0a397745605151b423df4675')
 
 # fixed values from instrumented version of code
 for kn in [KEYNUM.pin_stretch, KEYNUM.pin_attempt, KEYNUM.words]:
@@ -71,18 +72,41 @@ def ae_kdf_iter(keynum, start, iterations):
     return md.digest()
 
 
-prefix = b'12'
+if 1:
+    # for "WORDS"
+    print("-- for words --")
 
-start = pin_hash(prefix, PURPOSE_WORDS)
-show('pin_hash(%r, WORDS)' % prefix, start)
+    # on target, do this:
+    #    import ckcc; b = bytearray(32); b[0:2] = b'12'; ckcc.gate(16, b, 2)
+    #    from ubinascii import hexlify as b2a_hex; b2a_hex(b[:4])
+    prefix = b'12'
 
-end = ae_kdf_iter(KEYNUM.words, start, KDF_ITER_WORDS)
+    start = pin_hash(prefix, PURPOSE_WORDS)
+    show('pin_hash(%r, WORDS)' % prefix, start)
 
-show('ae_kdf_iter()', end)
+    end = ae_kdf_iter(KEYNUM.words, start, KDF_ITER_WORDS)
 
-show('words value', end[0:4])
+    show('ae_kdf_iter()', end)
 
-# on target, do this:
-#    import ckcc; b = bytearray(32); b[0:2] = b'12'; ckcc.gate(16, b, 2)
-#    from ubinascii import hexlify as b2a_hex; b2a_hex(b[:4])
+    show('words value', end[0:4])
+
+if 1:
+    # for PIN codes
+    print("\n-- for PIN code --")
+    # on target, do this:
+    # 
+    #     >>> from pincodes import PinAttempt; pa = PinAttempt(); pa.setup(b'12-12')
+    #     32
+    #     >>> pa.login()
+    #     True
+    #     >>> from ubinascii import hexlify as b2a_hex
+    #     >>> b2a_hex(pa.cached_main_pin)
+    #     b'75feafe5b8bfc8c255d816c6d6919f3f1b59769fcdee57174ab78044a839911f'
+    # 
+
+    pin = b'12-12'
+    start = pin_hash(pin, PURPOSE_NORMAL)
+    result = ae_kdf_iter(KEYNUM.pin_attempt, start, KDF_ITER_PIN);
+    show('main pin', result)
+
 

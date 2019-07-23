@@ -44,7 +44,7 @@ static void ae_delay(aeopcode_t opcode);
 static void ae_wake(void);
 
 // Enable some powerful debug features.
-#if 1
+#if 0
 #define DEV_STATS
 
 static struct {
@@ -52,7 +52,7 @@ static struct {
     int len_error;
     int crc_len_error;
     int short_error;
-    int not_ready;
+    int not_ready, not_ready_n;
     int l1_retry;
     int ln_retry;
     int extra_bits;
@@ -544,8 +544,17 @@ ae_read_n(uint8_t len, uint8_t *body)
 
         int actual = ae_read_response(tmp, len+3);
         if(actual < 4) {
-            ERR("too short");
-            STATS(short_error++);
+
+            if(actual == 0) {
+                // nothing heard, it's probably still processing
+                delay_ms(5);
+                ERR("not ready2");
+                STATS(not_ready_n++);
+            } else {
+                // a weird short-read? probably fatal, but retry
+                ERR("too short");
+                STATS(short_error++);
+            }
             goto try_again;
         }
 
@@ -646,13 +655,14 @@ ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8
 
 // ae_delay()
 //
-// Delay for worse-case time. Don't use in real code, since blocks
-// whole system, and some commands are really long!
+// Delay for worse-case time. Except new data sheets says it's
+// not worst-case or even typical time! Useless.
 //
 	void
 ae_delay(aeopcode_t opcode)
 {
-	delay_ms(ae_delay_time(opcode));
+	// no longer required -- instead we just want for chip
+    // to give us a response (by polling it)
 }
 
 #if 0
@@ -697,6 +707,7 @@ ae_get_info(void)
 	return (tmp[0] << 8) | tmp[1];
 }
 
+#if 0
 // ae_delay_time()
 //
 // Returns time in MS for max exec time of each command.
@@ -763,6 +774,7 @@ ae_delay_time(aeopcode_t opcode)
 
 	return 100;
 }
+#endif
 
 // ae_load_nonce()
 //
@@ -1446,11 +1458,7 @@ ae_encrypted_write32(int data_slot, int blk, int write_kn,
 
     ae_delay(OP_Write);
 
-    rv = ae_read1();
-
-    if(rv) BREAKPOINT;
-
-    return rv;
+    return ae_read1();
 }
 
 // ae_encrypted_write()

@@ -18,7 +18,7 @@
 
 // Number of iterations for KDF
 #define KDF_ITER_WORDS      16
-#define KDF_ITER_PIN        32
+#define KDF_ITER_PIN        32          // about 8 seconds (measured in-system)
 
 // We try to keep at least this many PIN attempts available to legit users
 // - challenge: comparitor resolution is only 32 units (5 LSB not implemented)
@@ -573,10 +573,10 @@ updates_for_good_login(pinAttempt_t *args, uint8_t digest[32])
     args->num_fails = 0;
     args->attempts_left = mc - new_count;
 
-    // NOTE: Some of the above writes could be blocked (trashed) by an
+    // NOTE: Some or all of the above writes could be blocked (trashed) by an
     // active MitM attacker, but that would be pointless since these are authenticated
-    // writes, which have a MAC. They can't change the written value nor the MAC, so
-    // all they can do is block the write, and not control it's value. So, they will
+    // writes, which have a MAC. They can't change the written value, due to the MAC, so
+    // all they can do is block the write, and not control it's value. Therefore, they will
     // just be reducing tries. Also, rate limiting not affected but anything here.
 
     return 0;
@@ -676,7 +676,7 @@ pin_login_attempt(pinAttempt_t *args)
     // fail when it tries to read/update the corresponding slots in the SE
 
     // mark as success
-    args->state_flags = PA_SUCCESSFUL;
+    args->state_flags = PA_SUCCESSFUL | PA_HAS_608A;
 
     // I used to always read the secret, since it's so hard to get to this point,
     // but now just indicating if zero or non-zero so that we don't contaminate the
