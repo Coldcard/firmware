@@ -503,7 +503,11 @@ class psbtInputProxy(psbtProxy):
             # (but if it's segwit, the ploy wouldn't work, Segwit FtW)
             # - challenge: it's a straight dsha256() for old serializations, but not for newer
             #   segwit txn's... plus I don't want to deserialize it here.
-            observed = uint256_from_str(self.calc_txid(self.utxo))
+            try:
+                observed = uint256_from_str(self.calc_txid(self.utxo))
+            except:
+                raise AssertionError("Trouble parsing UTXO given for input #%d" % idx)
+
             assert txin.prevout.hash == observed, "utxo hash mismatch for input #%d" % idx
 
     def calc_txid(self, poslen):
