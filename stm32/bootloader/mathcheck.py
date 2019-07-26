@@ -16,11 +16,10 @@ from hmac import HMAC
 keys = {}
 
 # mdb 0x08007800 32
-keys[KEYNUM.pairing] = a2b_hex(
-'480d071589163dc9d6016c8af718ff0d7d4be8fa0a397745605151b423df4675')
+keys[KEYNUM.pairing] = a2b_hex('2744eaab79b539cc72fc032b7516875ae0a63e8ab22f4cbf529d21f5ea665aa7')
 
 # fixed values from instrumented version of code
-for kn in [KEYNUM.pin_stretch, KEYNUM.pin_attempt, KEYNUM.words]:
+for kn in [KEYNUM.pin_stretch, KEYNUM.pin_attempt]:
     keys[kn] = bytes((0x41+kn) for i in range(32))
 
 assert all(len(i) == 32 for i in keys.values()), repr(keys)
@@ -28,8 +27,8 @@ assert all(len(i) == 32 for i in keys.values()), repr(keys)
 PURPOSE_NORMAL = a2b_hex('58184d33')
 PURPOSE_WORDS  = a2b_hex('73676d2e')
 
-KDF_ITER_WORDS      = 16
-KDF_ITER_PIN        = 32
+KDF_ITER_WORDS      = 12
+KDF_ITER_PIN        = 8
 
 def show(lab, val):
     print('%s => \n    %s' % (lab, b2a_hex(val).decode('ascii')))
@@ -48,26 +47,30 @@ def pin_hash(pin, purpose):
 
     return sha256(md.digest()).digest()
 
-# see ae_kdf_iter in ae.c
-def ae_kdf_iter(keynum, start, iterations):
-
-    hm = HMAC(keys[keynum], msg=start, digestmod=sha256)
-
-    end = hm.digest()
-
-    show('mixin(%d)' % keynum, end)
+# see ae_stretch_iter in ae.c
+def ae_stretch_iter(start, iterations):
+    end = bytes(start)
 
     for i in range(iterations):
         hs = HMAC(keys[KEYNUM.pin_stretch], msg=end, digestmod=sha256)
         end = hs.digest()
 
-    show('2nd last', end)
+    return end
+
+# see ae.c
+def ae_mixin_key(keynum, start):
+
+    if keynum:
+        hm = HMAC(keys[keynum], msg=start, digestmod=sha256)
+        end = hm.digest()
+    else:
+        end = bytes(32)
 
     md = sha256()
     md.update(keys[KEYNUM.pairing])
-    md.update(end)
     md.update(start)
     md.update(bytes([keynum]))
+    md.update(end)
 
     return md.digest()
 
@@ -84,9 +87,9 @@ if 1:
     start = pin_hash(prefix, PURPOSE_WORDS)
     show('pin_hash(%r, WORDS)' % prefix, start)
 
-    end = ae_kdf_iter(KEYNUM.words, start, KDF_ITER_WORDS)
+    end = ae_stretch_iter(start, KDF_ITER_WORDS)
 
-    show('ae_kdf_iter()', end)
+    show('full hash', end)
 
     show('words value', end[0:4])
 
@@ -106,7 +109,10 @@ if 1:
 
     pin = b'12-12'
     start = pin_hash(pin, PURPOSE_NORMAL)
-    result = ae_kdf_iter(KEYNUM.pin_attempt, start, KDF_ITER_PIN);
+    mid_result = ae_stretch_iter(start, KDF_ITER_PIN);
+    show('mid-result', mid_result)
+    duress = ae_mixin_key(0, mid_result)
+    show('duress pin', duress)
+    result = ae_mixin_key(KEYNUM.pin_attempt, mid_result)
     show('main pin', result)
-
 

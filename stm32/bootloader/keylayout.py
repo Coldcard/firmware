@@ -32,7 +32,7 @@ class KEYNUM_508:       # mark 1, 2
 class KEYNUM_608:       # mark 3+
     # reserve 0: it's weird
     pairing = 1     # pairing hash key (picked by bootloader)
-    words = 2       # secret used just for generated 2-phase protection words (random, forgotten)
+    pin_stretch = 2 # secret used to stretch pin (random, forgotten)
     main_pin = 3    # user-defined PIN to protect the cryptocoins (primary)
     pin_attempt = 4 # secret mixed into pin generation (rate limited, random, forgotten)
     lastgood = 5    # publically readable, PIN required to update: last successful PIN entry (1)
@@ -41,10 +41,11 @@ class KEYNUM_608:       # mark 3+
     long_secret = 8 # 416 bytes protected by main pin (must be #8 - special longer slot) 
     secret = 9          # 72 arbitrary bytes protected by main pin (normal case)
     duress_secret = 10  # 72 arbitrary bytes protected by duress pin
-    pin_stretch = 11    # secret used to stretch pin (random, forgotten)
+    duress_lastgood = 11 # counter value when duress last worked (so we can fake num_fails)
+    # available: 12
     brickme = 13    # "Brick Me" PIN holder (no associated secret, but can roll the pairing secret)
     firmware = 14   # hash of flash areas, stored as an unreadable secret, controls GPIO+light
-    # reserve 15: special limited use key
+    # reserve 15: non-special, but some fields have all ones and so point to it.
 
 
 class AEConfig:
@@ -159,8 +160,6 @@ def doit(partno, ae, KEYNUM, fp):
     # - critical!
     cc[KEYNUM.pairing].hash_key(roll_kn=KEYNUM.brickme).lockable(False)
 
-    # - "words" HMAC-key used for for 2-phase PIN words (only)
-    cc[KEYNUM.words].hash_key().require_auth(KEYNUM.pairing).deterministic()
 
     if partno == 5:
         # mark 1/2: most keyslots require knowledge of a PIN
@@ -170,6 +169,9 @@ def doit(partno, ae, KEYNUM, fp):
             (KEYNUM.pin_3, KEYNUM.secret_3, None), 
             (KEYNUM.pin_4, KEYNUM.secret_4, None) ]
 
+        # - "words" HMAC-key used for for 2-phase PIN words (only)
+        cc[KEYNUM.words].hash_key().require_auth(KEYNUM.pairing).deterministic()
+
         main_pin = KEYNUM.pin_1
         unused_slots = [0, 15]
 
@@ -178,7 +180,7 @@ def doit(partno, ae, KEYNUM, fp):
         secure_map = [
             (KEYNUM.main_pin, KEYNUM.secret, KEYNUM.lastgood), 
             (KEYNUM.main_pin, KEYNUM.long_secret, None), 
-            (KEYNUM.duress_pin, KEYNUM.duress_secret, None), 
+            (KEYNUM.duress_pin, KEYNUM.duress_secret, KEYNUM.duress_lastgood), 
         ]
         main_pin = KEYNUM.main_pin
         unused_slots = [0, 12, 15]
@@ -215,7 +217,7 @@ def doit(partno, ae, KEYNUM, fp):
         cc[kn].hash_key(write_kn=kn).require_auth(KEYNUM.pairing)
         cc[sec_num].secret_storage(kn).require_auth(kn)
         if lg_num is not None:
-            # used to hold counter[0/1] value when we last successfully got the PIN
+            # used to hold counter0] value when we last successfully got that PIN
             cc[lg_num].writeable_storage(kn).require_auth(KEYNUM.pairing)
 
     # "Brick Me" PIN holder: enables Roll of pairing secret + device destruction

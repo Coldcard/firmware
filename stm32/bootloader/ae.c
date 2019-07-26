@@ -1045,22 +1045,20 @@ ae_sign(uint8_t keynum, uint8_t msg_hash[32], uint8_t signature[64])
 
 // ae_get_counter()
 //
-// Inc and return the one-way counter.
+// Just read a one-way counter.
 //
 	int
-ae_get_counter(uint32_t *result, int counter_number, bool incr)
+ae_get_counter(uint32_t *result, uint8_t counter_number)
 {
-	ae_send(OP_Counter, incr ? 0x1 : 0x0, counter_number);
+    ae_send(OP_Counter, 0x0, counter_number);
+    ae_delay(OP_Counter);
 
-	ae_delay(OP_Counter);
-
-	// already in correct endian
-	int rv = ae_read_n(4, (uint8_t *)result);
-	RET_IF_BAD(rv);
+    int rv = ae_read_n(4, (uint8_t *)result);
+    RET_IF_BAD(rv);
 
     // IMPORTANT: Always verify the counter's value because otherwise
     // nothing prevents an active MitM changing the value that we think
-    // we just read. They could also stop us increamenting the counter.
+    // we just read.
 
     uint8_t     digest[32];
     rv = ae_gendig_counter(counter_number, *result, digest);
@@ -1071,7 +1069,37 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
         fatal_mitm();
     }
 
-    // worked.
+    return 0;
+}
+
+// ae_add_counter()
+//
+// Add-to and return a one-way counter's value. Have to go up in
+// single-unit steps, but can we loop.
+//
+	int
+ae_add_counter(uint32_t *result, uint8_t counter_number, int incr)
+{
+    for(int i=0; i<incr; i++) {
+        ae_send(OP_Counter, 0x1, counter_number);
+        ae_delay(OP_Counter);
+        int rv = ae_read_n(4, (uint8_t *)result);
+        RET_IF_BAD(rv);
+    }
+
+    // IMPORTANT: Always verify the counter's value because otherwise
+    // nothing prevents an active MitM changing the value that we think
+    // we just read. They could also stop us increamenting the counter.
+
+    uint8_t     digest[32];
+    int rv = ae_gendig_counter(counter_number, *result, digest);
+	RET_IF_BAD(rv);
+
+    if(!ae_is_correct_tempkey(digest)) {
+        // no legit way for this to happen, so just die.
+        fatal_mitm();
+    }
+
     return 0;
 }
 
@@ -1879,6 +1907,7 @@ ae_setup_config(void)
 
         switch(kn) {
             default:
+            case 12: break;
             case 15: break;
 
             case KEYNUM_pairing:
@@ -1888,14 +1917,17 @@ ae_setup_config(void)
                 break;
 
             case KEYNUM_pin_stretch:
-            case KEYNUM_pin_attempt:
-            case KEYNUM_words: {
-                    // - hmac key for phishing words (and then we forget it)
+            case KEYNUM_pin_attempt: {
+                    // HMAC-SHA256 key (forgotten immediately), for:
+                    // - phishing words
+                    // - each pin attempt (limited by counter0)
+                    // - stretching pin/words attempts (iterated may times)
+                    // See mathcheck.py for details.
                     uint8_t     tmp[32];
 #if 0
                     rng_buffer(tmp, sizeof(tmp));
 #else
-#warning "fixed secrets"
+#                   warning "fixed secrets"
                     memset(tmp, 0x41+kn, 32);
 #endif
 
@@ -1908,6 +1940,7 @@ ae_setup_config(void)
             case KEYNUM_main_pin:
             case KEYNUM_lastgood:
             case KEYNUM_duress_pin:
+            case KEYNUM_duress_lastgood:
             case KEYNUM_brickme:
             case KEYNUM_firmware:
                 if(ae_write_data_slot(kn, zeros, 32, false)) {
@@ -1930,9 +1963,13 @@ ae_setup_config(void)
                 break;
             }
 
-            case KEYNUM_match_count:
-                ae_write_match_count(1024, NULL);
+            case KEYNUM_match_count: {
+                uint32_t     buf[32/4] = { 1024, 1024 };
+                if(ae_write_data_slot(KEYNUM_match_count, (const uint8_t *)buf,sizeof(buf),false)) {
+                    INCONSISTENT("wr mc");
+                }
                 break;
+            }
 
             case 0:
                 if(ae_write_data_slot(kn, (const uint8_t *)copyright_msg, 32, true)) {
@@ -1952,12 +1989,15 @@ ae_setup_config(void)
 }
 
 
+#if 0
 // ae_write_match_count()
 //
     int
 ae_write_match_count(uint32_t count, const uint8_t *write_key)
 {
     uint32_t     buf[8] = { count, count };
+
+    // ASSERT(count & 31 == 0);                 // not clear, but probably should have 5LSB=0
     STATIC_ASSERT(sizeof(buf) == 32);           // limitation of ae_write_data_slot
 
     if(!write_key) {
@@ -1967,33 +2007,52 @@ ae_write_match_count(uint32_t count, const uint8_t *write_key)
                                         write_key, (const uint8_t *)buf);
     }
 }
+#endif
 
 
-// ae_kdf_iter()
+// ae_stretch_iter()
 //
-// Do on-chip KDF, with lots of iterations. 
+// Do on-chip hashing, with lots of iterations.
 //
-// - always HKDF (based on TLS 1.3): hmac.new(privkey, msg, hashlib.sha256).digest()
-// - results written to tmpkey if not last iter
-// - output always encrypted
-// - pairing dance must already be done.
+// - using HMAC-SHA256 with keys that are known only to the 608a.
+// - first round is with indicated keyslot, which may have a usage counter linked
+// - rate limiting factor here is communication time w/ 608a, not algos.
+// - caution: result here is not confidential
 //
     int
-ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterations)
+ae_stretch_iter(const uint8_t start[32], uint8_t end[32], int iterations)
 {
     ASSERT(start != end);           // we can't work inplace
-
-    if(ae_pair_unlock()) return -1;
-
-    int rv = ae_hmac32(keynum, start, end);
-    RET_IF_BAD(rv);
+    memcpy(end, start, 32);
 
     for(int i=0; i<iterations; i++) {
         // must unlock again, because pin_stretch is an auth'd key
         if(ae_pair_unlock()) return -2;
 
-        rv = ae_hmac32(KEYNUM_pin_stretch, end, end);
+        int rv = ae_hmac32(KEYNUM_pin_stretch, end, end);
         RET_IF_BAD(rv);
+    }
+
+    return 0;
+}
+
+// ae_mixin_key()
+//
+// Apply HMAC using secret in chip as a HMAC key, then encrypt
+// the result a little because read in clear over bus.
+//
+    int
+ae_mixin_key(uint8_t keynum, const uint8_t start[32], uint8_t end[32])
+{
+    ASSERT(start != end);           // we can't work inplace
+
+    if(ae_pair_unlock()) return -1;
+
+    if(keynum != 0) {
+        int rv = ae_hmac32(keynum, start, end);
+        RET_IF_BAD(rv);
+    } else {
+        memset(end, 0, 32);
     }
 
     // Final value was just read over bus w/o any protection, but
@@ -2007,9 +2066,9 @@ ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterat
 
     sha256_init(&ctx);
     sha256_update(&ctx, rom_secrets->pairing_secret, 32);
-    sha256_update(&ctx, end, 32);
     sha256_update(&ctx, start, 32);
     sha256_update(&ctx, &keynum, 1);
+    sha256_update(&ctx, end, 32);
     sha256_final(&ctx, end);
 
     return 0;

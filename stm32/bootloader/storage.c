@@ -273,6 +273,8 @@ pick_pairing_secret(void)
         oled_show_raw(sizeof(tmp), (void *)tmp);
     }
 
+    oled_factory_busy();
+
     // .. but don't use those numbers, because those are semi-public now.
     uint32_t secret[8];
     for(int i=0; i<8; i++) {
@@ -306,13 +308,15 @@ pick_pairing_secret(void)
     }
 
     // Also at this point, pick RNG noise to use as our one-time-pad
-    // for encrypting the secrets held in the 608a
+    // for encrypting the secrets held in the 608a.
     {
         uint32_t dest = (uint32_t)&rom_secrets->otp_key;
-        const uint32_t blen = sizeof(rom_secrets->otp_key) + sizeof(rom_secrets->otp_key_long);
+        const uint32_t blen = sizeof(rom_secrets->otp_key) 
+                                + sizeof(rom_secrets->otp_key_long)
+                                + sizeof(rom_secrets->hash_cache_secret);
 
         STATIC_ASSERT(blen % 8 == 0);
-        STATIC_ASSERT(blen == (72+416));
+        STATIC_ASSERT(blen == (72+416+32));
 
         flash_unlock();
         for(int i=0; i<blen; i+=8, dest += 8) {
@@ -517,6 +521,7 @@ flash_lockdown_hard(uint8_t rdp_level_code)
 }
 
 
+#if 0
 // backup_data_get()
 //
     uint32_t
@@ -544,6 +549,7 @@ backup_data_set(int idx, uint32_t new_value)
     // doesn't seem to work tho? stays unlocked
     RTC->WPR = 0xff;
 }
+#endif
 
 // record_highwater_version()
 //

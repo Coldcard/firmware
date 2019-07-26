@@ -4,7 +4,7 @@
  */
 #pragma once
 //
-// Atmel ATECC508A related code.
+// Atmel ATECC508A and 608A related code. Trying to keep this able to handle both devices.
 //
 
 //#define FOR_508     1
@@ -126,8 +126,11 @@ int ae_unlock_ip(uint8_t keynum, const uint8_t secret[32]);
 // is random and we both know is random too!
 int ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32]);
 
-// Increment and return a one-way counter.
-int ae_get_counter(uint32_t *result, int counter_number, bool incr);
+// Read a one-way counter (there are 2 of these)
+int ae_get_counter(uint32_t *result, uint8_t counter_number);
+
+// Add onto a counter. Slow; has to go by one.
+int ae_add_counter(uint32_t *result, uint8_t counter_number, int incr);
 
 // Perform HMAC on the chip, using a particular key.
 //int ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]);
@@ -170,7 +173,10 @@ extern void fatal_mitm(void) __attribute__((noreturn));
 int ae_write_match_count(uint32_t count, const uint8_t *write_key);
 
 // Perform many key iterations and read out the result. Designed to be slow.
-int ae_kdf_iter(uint8_t keynum, const uint8_t start[32], uint8_t end[32], int iterations);
+int ae_stretch_iter(const uint8_t start[32], uint8_t end[32], int iterations);
+
+// Mix in (via HMAC) the contents of a specific key on the device.
+int ae_mixin_key(uint8_t keynum, const uint8_t start[32], uint8_t end[32]);
 
 #endif
 

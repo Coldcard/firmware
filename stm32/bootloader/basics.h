@@ -31,7 +31,7 @@ extern void fatal_error(const char *) __attribute__((noreturn));
 #define BREAKPOINT          #error
 #endif
 
-// An assertion that we will check at *compile* time. GCC feature.
+// An assertion that we will be checked at *compile* time. Useful GCC feature.
 #define STATIC_ASSERT(cond)		_Static_assert(cond, #cond)
 
 // Similarly: for those times when you want to write ASSERT(False), 

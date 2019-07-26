@@ -6,7 +6,7 @@
 #define AE_CHIP_CONFIG_1 { \
 	0xe1, 0x00, 0x61, 0x00, 0x00, 0x00, 0x8f, 0x2d, 0x8f, 0x80,   \
 	0x8f, 0x43, 0xaf, 0x80, 0x00, 0x43, 0x00, 0x43, 0x8f, 0x47,   \
-	0xc3, 0x43, 0xc3, 0x43, 0xc7, 0x47, 0x8f, 0x80, 0x00, 0x00,   \
+	0xc3, 0x43, 0xc3, 0x43, 0xc7, 0x47, 0x00, 0x47, 0x00, 0x00,   \
 	0x8f, 0x4d, 0x8f, 0x43, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,   \
 	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,   \
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00, 0x00,   \
@@ -18,14 +18,14 @@
 #define AE_CHIP_CONFIG_2 { \
 	0x02, 0x15, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x5c, 0x00,   \
 	0xbc, 0x01, 0xfc, 0x01, 0xbc, 0x01, 0x9c, 0x01, 0x9c, 0x01,   \
-	0xfc, 0x01, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x07, 0xbc, 0x01,   \
+	0xfc, 0x01, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x07, 0x9c, 0x01,   \
 	0x3c, 0x00, 0xfc, 0x01, 0xdc, 0x01, 0x3c, 0x00   \
 }
 
 
 // key/slot usage and names
 #define KEYNUM_pairing             	1
-#define KEYNUM_words               	2
+#define KEYNUM_pin_stretch         	2
 #define KEYNUM_main_pin            	3
 #define KEYNUM_pin_attempt         	4
 #define KEYNUM_lastgood            	5
@@ -34,7 +34,7 @@
 #define KEYNUM_long_secret         	8
 #define KEYNUM_secret              	9
 #define KEYNUM_duress_secret       	10
-#define KEYNUM_pin_stretch         	11
+#define KEYNUM_duress_lastgood     	11
 #define KEYNUM_brickme             	13
 #define KEYNUM_firmware            	14
 
@@ -86,8 +86,8 @@ KeyConfig[9] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, R
      Slot[10] = 0xc747 = SlotConfig(ReadKey=7, NoMac=0, LimitedUse=0, EncryptRead=1, IsSecret=1, WriteKey=7, WriteConfig=4)=0x47c7
 KeyConfig[10] = 0xdc07 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=7, PersistentDisable=0, RFU=0, X509id=0)=0x07dc
 
-     Slot[11] = 0x8f80 = SlotConfig(ReadKey=15, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=0, WriteConfig=8)=0x808f
-KeyConfig[11] = 0xbc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=0, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x01bc
+     Slot[11] = 0x0047 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=7, WriteConfig=4)=0x4700
+KeyConfig[11] = 0x9c01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=0, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x019c
 
      Slot[12] = 0x0000 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=0, WriteConfig=0)=0x0000
 KeyConfig[12] = 0x3c00 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=0, ReqAuth=0, AuthKey=0, PersistentDisable=0, RFU=0, X509id=0)=0x003c

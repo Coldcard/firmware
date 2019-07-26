@@ -28,4 +28,7 @@ void oled_busy_bar(bool en);
 // show just a progress bar in bottom 8 rows (destructive)
 void oled_draw_bar(int percent);
 
+// just fun display in factory case
+void oled_factory_busy(void);
+
 // EOF
