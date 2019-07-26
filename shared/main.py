@@ -13,14 +13,16 @@ import pyb, sys, version, gc
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
+if 0:
+    # useful for debug: keep this stub!
+    import ckcc
+    ckcc.vcp_enabled(True)
+    #pyb.usb_mode('VCP+MSC')            # handy but annoying disk issues
+    pyb.usb_mode('VCP')
+    raise SystemExit
+
 # what firmware signing key did we boot with? are we in dev mode?
 is_devmode = version.is_devmode()
-
-if 0:
-    # useful for debug: keep this stub
-    from usb import enable_usb
-    enable_usb(None, True)
-    raise SystemExit
 
 if is_devmode:
     # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!

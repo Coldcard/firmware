@@ -11,6 +11,7 @@ from display import FontLarge, FontTiny
 from uasyncio import sleep_ms
 from ux import ux_press_release, ux_wait_keyup, ux_all_up, ux_poll_once, ux_show_story
 from utils import pretty_delay
+from callgate import show_logout
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
@@ -29,6 +30,7 @@ class LoginUX:
         self.pin_prefix = None
         self.words_ok = False
         self.is_secondary = False
+        self.footer = None
 
     def show_pin(self, show_hint=False):
         filled = len(self.pin)
@@ -68,7 +70,9 @@ class LoginUX:
             dis.icon(x, y, 'box')
 
         # BTW: √ also works here, but looks like square root, not a checkmark
-        if self.is_repeat:
+        if self.footer:
+            footer = self.footer
+        elif self.is_repeat:
             footer = "CONFIRM PIN VALUE"
         elif not self.pin_prefix:
             footer = "X to CANCEL, or OK when DONE"
@@ -188,11 +192,46 @@ class LoginUX:
 
         numpad.start()
 
+    async def we_are_ewaste(self, num_fails):
+        msg = '''After %d failed PIN attempts this Coldcard is locked forever. \
+By design, there is no way to reset or recover the secure element, and its contents \
+are now forever inaccessible.
+
+Restore your seed words onto a new Coldcard.''' % num_fails
+
+        while 1:
+            ch = await ux_show_story(msg, title='I Am Brick!', escape='6')
+            if ch == '6': break
+
+    async def confirm_attempt(self, attempts_left, num_fails, value):
+
+        ch = await ux_show_story('''You have %d attempts left before this Coldcard BRICKS \
+ITSELF FOREVER.
+
+Check and double-check your entry:\n\n  %s\n
+Maybe even take a break and come back later.\n
+Press OK to continue, X to stop for now.
+''' % (attempts_left, value), title="WARNING")
+
+        if ch == 'x':
+            show_logout()
+            # no return
+        
+
     async def try_login(self, retry=True):
         from main import pa, numpad
 
         while retry:
+            if version.has_608 and not pa.attempts_left:
+                # tell them it's futile
+                await self.we_are_ewaste(pa.num_fails)
+
             self.reset()
+
+            if pa.num_fails:
+                self.footer = '%d failures' % pa.num_fails
+                if version.has_608:
+                    self.footer += ', %d tries left' % pa.attempts_left
 
             pin = await self.interact()
 
@@ -203,22 +242,49 @@ class LoginUX:
             
             pa.setup(pin, self.is_secondary)
 
-            if pa.is_delay_needed() or pa.num_fails:
+            if version.has_608 and pa.num_fails > 3:
+                # they are approaching brickage, so warn them each attempt
+                await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
+            elif pa.is_delay_needed():
+                # mark 1/2 might come here, never mark3
                 await self.do_delay(pa)
 
             # do the actual login attempt now
             dis.fullscreen("Wait...")
             try:
+                dis.busy_bar(True)
                 ok = pa.login()
-                if ok: break
-            except RuntimeError as e:
+                if ok: break        # success, leave
+            except RuntimeError as exc:
                 # I'm a brick and other stuff can happen here
-                print("pa.login: %r" % e)
+                ok = False
+                if exc.args[0] == pincodes.EPIN_I_AM_BRICK:
+                    await self.we_are_ewaste(pa.num_fails)
+                    continue
+                else:
+                    print("pa.login: %r" % exc)
+            finally:
+                dis.busy_bar(False)
 
-            await ux_show_story('''\
-That's not the right PIN!\n
-Please check all digits carefully, and that prefix verus suffix break point is correct.\
-''', title='Wrong PIN')
+            pa.num_fails += 1
+            if version.has_608:
+                pa.attempts_left -= 1
+
+            msg = "That's not the right PIN!\n"
+            nf = '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
+            if version.has_608:
+                if not pa.attempts_left:
+                    await self.we_are_ewaste(pa.num_fails)
+                    continue
+
+                msg += '(%s, %d attempts left)' % (nf, pa.attempts_left)
+            else:
+                msg += '(%s)' % nf
+
+            msg += '''\n\nPlease check all digits carefully, and that prefix verus \
+suffix break point is correct.'''
+            
+            await ux_show_story(msg, title='Wrong PIN')
 
     async def prompt_pin(self):
         # ask for an existing PIN

@@ -3,7 +3,7 @@
 #
 # pincodes.py - manage PIN code (which map to wallet seeds)
 #
-import ustruct, ckcc, tcc
+import ustruct, ckcc, tcc, version
 from ubinascii import hexlify as b2a_hex
 from callgate import enter_dfu
 
@@ -97,6 +97,9 @@ PIN_ATTEMPT_FMT_V2_ADDITIONS = '32s'
 PIN_ATTEMPT_SIZE_V1  = const(248)
 PIN_ATTEMPT_SIZE  = const(248+32)
 
+# small cache of pin-prefix to words, for 608a based systems
+_word_cache = []
+
 class BootloaderError(RuntimeError):
     pass
 
@@ -104,13 +107,11 @@ class PinAttempt:
     seconds_per_tick = 0.5
 
     def __init__(self):
-        from version import has_608
-
         self.is_secondary = False
         self.pin = None
         self.secret = None
         self.is_empty = None
-        self.magic_value = PA_MAGIC_V2 if has_608 else PA_MAGIC_V1
+        self.magic_value = PA_MAGIC_V2 if version.has_608 else PA_MAGIC_V1
         self.delay_achieved = 0         # so far, how much time wasted?
         self.delay_required = 0         # how much will be needed?
         self.num_fails = 0              # for UI: number of fails PINs
@@ -118,6 +119,7 @@ class PinAttempt:
         self.state_flags = 0            # useful readback
         self.private_state = 0          # opaque data, but preserve
         self.cached_main_pin = bytearray(32)
+
 
         assert MAX_PIN_LEN == 32        # update FMT otherwise
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1, \
@@ -248,6 +250,12 @@ class PinAttempt:
         # take a prefix of the PIN and turn it into a few
         # bip39 words for anti-phishing protection
         assert 1 <= len(pin_prefix) <= MAX_PIN_LEN, len(pin_prefix)
+        global _word_cache
+
+        if version.has_608:
+            for k,v in _word_cache:
+                if pin_prefix == k:
+                    return v
 
         buf = bytearray(pin_prefix + b'\0'*MAX_PIN_LEN)
         err = ckcc.gate(16, buf, len(pin_prefix))
@@ -259,7 +267,15 @@ class PinAttempt:
         w1 = (bits >> 11) & 0x7ff
         w2 = bits & 0x7ff
 
-        return tcc.bip39.lookup_nth(w1), tcc.bip39.lookup_nth(w2)
+        rv = tcc.bip39.lookup_nth(w1), tcc.bip39.lookup_nth(w2)
+
+        if version.has_608:
+            # MRU: keep only a few
+            if len(_word_cache) > 4:
+                _word_cache.pop()
+            _word_cache.insert(0, (pin_prefix, rv))
+
+        return rv
 
     def is_delay_needed(self):
         return self.delay_achieved < self.delay_required
@@ -303,7 +319,14 @@ class PinAttempt:
         self.is_empty = (chk[0] == 0)
 
         # IMPORTANT: You will need to re-read settings since the key for that has changed
-        return self.is_successful()
+        ok = self.is_successful()
+
+        if ok:
+            # it's a bit sensitive, and no longer useful: wipe.
+            global _word_cache
+            _word_cache = []
+
+        return ok
 
     def change(self, **kws):
         # change various values, stored in secure element
