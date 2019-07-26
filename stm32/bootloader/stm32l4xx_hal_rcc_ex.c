@@ -1267,7 +1267,8 @@ uint32_t HAL_RCCEx_GetPeriphCLKFreq(uint32_t PeriphClk)
 #if defined(RCC_HSI48_SUPPORT)
       else if((srcclk == 0U) && (HAL_IS_BIT_SET(RCC->CRRCR, RCC_CRRCR_HSI48RDY))) /* HSI48 ? */
       {
-        frequency = HSI48_VALUE;
+        //PDG//frequency = HSI48_VALUE;
+        frequency = 0;
       }
       else /* No clock source */
       {

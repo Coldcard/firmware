@@ -22,8 +22,9 @@ typedef struct {
     uint8_t  pairing_secret_xor[32];
     uint64_t ae_serial_number[2];       // 9 bytes active
     uint8_t  bag_number[32];            // 32 bytes max, zero padded string
-    uint8_t  otp_key[72];               // pad for secret encryption (seed storage)
+    uint8_t  otp_key[72];               // key for secret encryption (seed storage)
     uint8_t  otp_key_long[416];         // same, but for longer secret area
+    uint8_t  hash_cache_secret[32];     // encryption for cached pin hash value
 } rom_secrets_t;
 
 // This area is defined in linker script as last page of boot loader flash.
@@ -47,6 +48,7 @@ static inline bool flash_is_security_level2(void) {
     return ((FLASH->OPTR & FLASH_OPTR_RDP_Msk) == 0xCC);
 }
 
+#if 0
 // We store some values in the RTC "backup" registers
 // - these are protected against accidental writes
 // - not cleared by system reset, full power cycle required
@@ -58,6 +60,7 @@ static inline bool flash_is_security_level2(void) {
 
 uint32_t backup_data_get(int idx);
 void backup_data_set(int idx, uint32_t new_value);
+#endif
 
 
 // generial purpose flash functions

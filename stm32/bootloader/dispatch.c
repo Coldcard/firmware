@@ -701,6 +701,13 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     }
                     break;
 
+                case 3:
+                    // read raw counter0 value (max is 0x1fffff)
+                    REQUIRE_OUT(4);
+                    ae_setup();
+                    rv = ae_get_counter((uint32_t *)buf_io, 0) ? EIO: 0;
+                    break;
+
                 default:
                     rv = ENOENT;
                     break;

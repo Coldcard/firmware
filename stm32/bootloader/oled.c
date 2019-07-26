@@ -406,4 +406,40 @@ oled_draw_bar(int percent)
 }
 #endif
 
+// oled_factory_busy()
+//
+    void
+oled_factory_busy(void)
+{
+    // Render a continuous activity (not progress) bar in lower 8 lines of display
+    // - using OLED itself to do the animation, so smooth and CPU free
+    // - cannot preserve bottom 8 lines, since we have to destructively write there
+    //oled_spi_setup();
+
+    static const uint8_t setup[] = { 
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+    static const uint8_t animate[] = { 
+        0x2e,               // stop animations in progress
+        0x26,               // scroll leftwards (stock ticker mode)
+            0,              // placeholder
+            7,              // start 'page' (vertical)
+            7,              // scroll speed: 7=fastest, 
+            7,              // end 'page'
+            0, 0xff,        // placeholders
+        0x2f                // start
+    };
+    uint8_t data[128];
+
+    for(int x=0; x<128; x++) {
+        // each byte here is a vertical column, 8 pixels tall, MSB at bottom
+        data[x] = (1<<(7 - (x%8)));
+    }
+
+    oled_write_cmd_sequence(sizeof(setup), setup);
+    oled_write_data(sizeof(data), data);
+    oled_write_cmd_sequence(sizeof(animate), animate);
+}
+
 // EOF
