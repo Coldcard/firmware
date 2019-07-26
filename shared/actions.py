@@ -5,7 +5,7 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb
+import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
 from utils import imported
 from main import settings
@@ -14,7 +14,6 @@ from files import CardSlot, CardMissingError
 from utils import xfp2str
 
 async def start_selftest(*args):
-    import version
 
     if len(args) and not version.is_factory_mode():
         # called from inside menu, not directly
@@ -75,7 +74,6 @@ Press OK to accept terms and continue.""", escape='7')
 async def view_ident(*a):
     # show the XPUB, and other ident on screen
     from main import settings, pa
-    from version import serial_number
     import callgate, stash
 
     tpl = '''\
@@ -93,7 +91,7 @@ Extended Master Key:
 '''
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
                             xfp=xfp2str(settings.get('xfp', 0)),
-                            serial=serial_number())
+                            serial=version.serial_number())
 
     if pa.is_secondary:
         msg += '\n(Secondary wallet)\n'
@@ -302,6 +300,7 @@ THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
     dis.fullscreen("Saving...")
 
     try:
+        dis.busy_bar(True)
         assert pa.is_blank()
 
         pa.change(new_pin=pin)
@@ -317,6 +316,8 @@ THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
         settings.load()
     except Exception as e:
         print("Exception: %s" % e)
+    finally:
+        dis.busy_bar(False)
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
@@ -458,7 +459,6 @@ async def start_login_sequence():
     # Boot up login sequence here.
     #
     from main import pa, settings, dis, loop, numpad
-    import version
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
@@ -524,8 +524,6 @@ async def start_login_sequence():
         
 def goto_top_menu():
     # Start/restart menu system
-    
-    import version
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
     from main import pa
@@ -980,7 +978,7 @@ async def pin_changer(_1, _2, item):
     if pa.is_secondary:
         # secondary wallet user can only change their own password, and the secondary
         # duress pin... 
-        # NOTE: now excluded from menu, but keep
+        # - now excluded from menu, but keep for Mark1/2 hardware!
         if mode == 'main' or mode == 'brickme':
             await needs_primary()
             return
@@ -997,6 +995,7 @@ async def pin_changer(_1, _2, item):
     title, msg = warn[mode]
 
     async def incorrect_pin():
+        dis.busy_bar(False)
         await ux_show_story('You provided an incorrect value for the existing %s.' % title, 
                                 title='Wrong PIN')
         return
@@ -1018,31 +1017,41 @@ We strongly recommend all PIN codes used be unique between each other.
     need_old_pin = True
 
     if is_login_pin:
-        # Challenge them for old password; certainly had it, because
-        # we wouldn't be here otherwise.
+        # Challenge them for old password; they probably have it, and we have it
+        # in memory already, because we wouldn't be here otherwise... but 
+        # challenge them anyway as a policy choice.
         need_old_pin = True
     else:
         # There may be no existing PIN, and we need to learn that
+
         if mode == 'secondary':
             args['is_secondary'] = True
+
         elif mode == 'duress':
+
             args['is_duress'] = True
+
+            need_old_pin = bool(pa.has_duress_pin())
+
         elif mode == 'brickme':
             args['is_brickme'] = True
 
-        old_pin = None
-        try:
-            dis.fullscreen("Check...")
-            pa.change(old_pin=b'', new_pin=b'', **args)
-            need_old_pin = False
-            old_pin = ''            # converts to bytes below
-        except BootloaderError as exc:
-            #print("(not-error) old pin was NOT blank: %s" % exc)
-            need_old_pin = True
+            need_old_pin = bool(pa.has_brickme_pin())
 
-    was_blank = not need_old_pin
+        if need_old_pin and not version.has_608:
+            # Do an expensive check (mostly for secondary pin case?)
+            try:
+                dis.fullscreen("Check...")
+                pa.change(old_pin=b'', new_pin=b'', **args)
+                need_old_pin = False
+            except BootloaderError as exc:
+                # not an error: old pin in non-blank
+                need_old_pin = True
 
-    if need_old_pin:
+    if not need_old_pin:
+        # It is blank
+        old_pin = ''
+    else:
         # We need the existing pin, so prompt for that.
         lll.subtitle = 'Old ' + title
 
@@ -1077,9 +1086,10 @@ We strongly recommend all PIN codes used be unique between each other.
         break
 
     # install it.
-    dis.fullscreen("Saving...")
-
     try:
+        dis.fullscreen("Saving...")
+        dis.busy_bar(True)
+
         pa.change(**args)
     except Exception as exc:
         code = exc.args[1]
@@ -1090,34 +1100,43 @@ We strongly recommend all PIN codes used be unique between each other.
         else:
             return await ux_show_story("Unexpected low-level error: %s" % exc.args[0],
                                             title='Error')
+    finally:
+        dis.busy_bar(False)
 
     # Main pin is changed, and we use it lots, so update pa
     # - also to get pa.has_duress_pin() and has_brickme_pin() to be correct, need this
-    dis.fullscreen("Verify...")
-    pa.setup(args['new_pin'] if is_login_pin else pa.pin, pa.is_secondary)
+    # - can be super slow with 608 on this stuff
+    try:
+        dis.fullscreen("Verify...")
+        dis.busy_bar(True)
 
-    if not pa.is_successful():
-        # typical: do need login, but if we just cleared the main PIN,
-        # we cannot/need not login again
-        pa.login()
+        pa.setup(args['new_pin'] if is_login_pin else pa.pin, pa.is_secondary)
 
-    if mode == 'duress':
-        # program the duress secret now... it's derived from real wallet
-        from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
+        if not pa.is_successful():
+            # typical: do need login, but if we just cleared the main PIN,
+            # we cannot/need not login again
+            pa.login()
 
-        if is_clear:
-            # clear secret, using the new pin, which is empty string
-            pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN,
-                            old_pin=b'', new_pin=b'')
-        else:
-            with SensitiveValues() as sv:
-                # derive required key
-                node = sv.duress_root()
-                d_secret = SecretStash.encode(xprv=node)
-                sv.register(d_secret)
-    
-                # write it out.
-                pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
+        if mode == 'duress':
+            # program the duress secret now... it's derived from real wallet contents
+            from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
+
+            if is_clear:
+                # clear secret, using the new pin, which is empty string
+                pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN,
+                                old_pin=b'', new_pin=b'')
+            else:
+                with SensitiveValues() as sv:
+                    # derive required key
+                    node = sv.duress_root()
+                    d_secret = SecretStash.encode(xprv=node)
+                    sv.register(d_secret)
+        
+                    # write it out.
+                    pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
+
+    finally:
+        dis.busy_bar(False)
 
 async def show_version(*a):
     # show firmware, bootload versions.
@@ -1173,7 +1192,7 @@ async def ship_wo_bag(*a):
 
 async def set_highwater(*a):
     # rarely? used command
-    import version, callgate
+    import callgate
 
     have = version.get_mpy_version()[0]
     ts = version.get_header_value('timestamp')
