@@ -443,6 +443,7 @@ weaker 4-digit PIN prefix, that's only 30k of data. If this type
 of attack is your concern, we suggest using the longest possible
 PIN prefix.
 
+(For mark 2 )
 We are rate-limiting this as follows: 150ms response time for first
 10 values, then 2.5 seconds each for the next 15 (up to 25).  At
 25 tries, we crash the system and a power cycle will be required
@@ -452,6 +453,8 @@ prefixes, it would take between least 10 hours to generate all
 firmware and get it onto the device. Any successful login resets
 the rate limiting, so normal users will never see the impact of
 this limiting.
+
+(mark 3) See section below on new rate-limiting approach.
 
 # How It Works
 
@@ -639,28 +642,129 @@ the PIN-attempts, nor to exceed the maximum number of them.
 
 # Changes for Mark 3
 
-With the Mk3 hardware, introduced in 2019, we upgrade to the ATECC608A chip
+With the Mk3 hardware, introduced in 2019, we upgraded to the ATECC608A chip
 in place of the 508a as the secure element.
 
 Because of changes to that part, we have the opportunity to 
-improve security as follows:
+improve Coldcard security as follows:
 
-- The limited-use counter is now connected to pin attempts inside the chip (not external).
+- The limited-use counter is now connected to pin attempts inside the 608a chip.
+  So, the 608a compares the number of PIN attempts, and if too many failures
+  have occured, the secure element bricks itself.
 
-- The 608a compares the number of PIN attempts, and if too many failures have occured,
-  the secure element bricks itself.
+- Using a HMAC-SHA256 inside the chip, we create a HMAC chain using a secret
+  known only to the secure element (and unique per Coldcard) as the
+  HMAC key. The purpose of this is make each login attempt slow to
+  perform. The previous delay/rate limit policy was removed, in
+  favour of the delay enforced by this process.
 
-- Using a new KDF feature of the chip, we perform multiple HMAC cycles using a secret
-  known only to the secure element (and unique per Coldcard). The purpose of this is
-  make each PIN attempt slow to perform. The previous delay policy was removed,
-  in favour of the delay enforced by the chip itself.
+- Anti-phishing words are calculated with same HMAC-SHA256 chain, but with lower
+  iteration count, and a different starting value.
 
 - An addition 416 bytes of secrets storage is enabled (in addition to 72 bytes of storage
   previously stored).
 
 - The secondary wallet feature had to be removed, because there is only one limited-use
-  counter.
+  counter. Use BIP39 passphrases instead.
 
-- Anti-phishing words are calculated in a slightly different manner but with equivilent
-  security design.
+- The secrets stored in the 608a are encrypted by a one-time pad held in the main micro.
+  This is a defense against any unknown security issues which compromise the secrets in
+  the 608a and not the main micro itself.
+
+- Successfully using the duress PIN will not cost an attempt on the real PIN. If the duress
+  PIN works, we show zero login failures, but the number of PIN attempts has not
+  actually been reset.
+
+## Rate Limiting Method
+
+The user enters a short pin code and we need to convert that into
+a 32-byte value used to unlock the secrets. We want to understand
+the upper bounds on the rate at which those "pin attempts" can be done.
+
+Here are the steps in peusdo code. We've also written it in Python
+to check our work, see `stm32/bootloader/mathcheck.py`, and of
+course the code actually being used is written in 'C' and available in
+`stm32/bootloader/{ae,pins}.[ch]`.
+
+- secret values (all 32-bytes long):
+
+    pairing_secret - value shared between 608a and main micro
+    pin_stretch - known only to the 608a
+    pin_attempt - known only to the 608a: linked to usage counter
+
+- public values
+    
+    PURPOSE_NORMAL = hex('58184d33')
+    PURPOSE_WORDS  = hex('73676d2e')
+    KDF_ITER_WORDS = 12
+    KDF_ITER_PIN   = 8
+
+- steps:
+
+    md = SHA256(SHA256(pairing_secret + PURPOSE_NORMAL + input_pin))
+
+    repeat KDF_ITER_PIN times:
+        md = HMAC_SHA256(pin_stretch, md)
+
+    start = md
+    md = HMAC_SHA256(pin_attempt, md)
+
+    final = SHA256(pairing_secret + start + 0x04 + md)
+    
+- for anti-phishing prefix words, the steps are:
+
+    md = SHA256(SHA256(pairing_secret + PURPOSE_WORDS + pin_prefix))
+
+    repeat KDF_ITER_WORDS times:
+        md = HMAC_SHA256(pin_stretch, md)
+
+    (result is upper 22 bits of md)
+
+Of course we all heat our homes with fast SHA256 hashing chips... but
+the rate limiting factor here is the communication time in and out 
+of the secure element. That can't be avoided since only it knows the HMAC
+key being applied.
+
+The 608a uses a unique single wire protocol: each bit is serialized
+as byte-patterns and sent half-duplex, at 230400 bps. To perform
+an HMAC, we have to unlock the `pin_stretch` keyslot, by performing
+a random challenge/response exchange on the `pairing_secret` slot,
+and then send the data to be HMAC'ed and read back the result. The
+resulting traffic looks like this:
+
+- Send: 1 (`OP_Nonce`) + 3 (p1, p2) + 20 (rand)
+- (8ms calculation time)
+- Receive: 32 bytes (rand from chip)
+- Send: 1 (`OP_CheckMac`) + 3 (p1, p2) + 88 (challenge response)
+- (11ms calculation time)
+- Receive: 1 (status)
+- Send: 1 (`OP_SHA` setup for HMAC) + 3 (p1, p2)
+- (1ms calculation time)
+- Receive: 1 (status)
+- Send: 1 (`OP_SHA` data + finalize) + 3 (p1, p2) + 32
+- (1ms calculation time)
+- Receive: 32 (result)
+
+This is a total of 220 bytes (and there are some other delays and
+overhead, not shown).  To send and/or receive 220 bytes takes 1760
+bits, and at 230400 bps, this takes 8ms.  The secure element isn't
+too fast with it's processing either, so it is adding at least 22ms
+(best case times, as documented). In total, looks like 30ms is
+best-case time to complete a single iteration of the stretching.
+For the main PIN, we are using 8 iterations, so max rate is about
+one second.
+
+Unfortunately, what isn't shown above is all the SHA256 operations
+that are needed to do the above dance. Those are implemented in the
+main micro and are not very fast. As a result, the actual pin-entry
+delay is about 4 seconds as measured.
+
+It's important to understand that all PIN attempts are further
+limited by a monotonically-increasing counter implemented in
+the secure element. Brute forcing PIN codes are also blocked
+by that process, which limits failed PIN attempts to just 13.
+
+The rate-limiting is more important for the "anti-phsishing" prefix
+words, see discussion above.
+
 
