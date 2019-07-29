@@ -31,14 +31,14 @@
 #define AE_LONG_SECRET_LEN      416
 
 // For change_flags field: choose one secret and/or one PIN only.
-#define CHANGE_WALLET_PIN           0x01
-#define CHANGE_DURESS_PIN           0x02
-#define CHANGE_BRICKME_PIN          0x04
-#define CHANGE_SECRET               0x08
-#define CHANGE_DURESS_SECRET        0x10
-#define CHANGE_SECONDARY_WALLET_PIN 0x20     // when used from main wallet only (obsolete)
-#define CHANGE_LONG_SECRET          0x40     // new for v2
-#define CHANGE__MASK                0x5f
+#define CHANGE_WALLET_PIN           0x001
+#define CHANGE_DURESS_PIN           0x002
+#define CHANGE_BRICKME_PIN          0x004
+#define CHANGE_SECRET               0x008
+#define CHANGE_DURESS_SECRET        0x010
+#define CHANGE_SECONDARY_WALLET_PIN 0x020     // when used from main wallet only (obsolete)
+#define CHANGE_LS_OFFSET            0xf00     // v2: which 32-byte part of long-secret to affect
+#define CHANGE__MASK                0xf3f
 
 // Magic value and/or version number.
 #define PA_MAGIC_V1         0x2eaf6311          // before v3.0.0 of main firmware (508a, mk1/2)
@@ -121,5 +121,8 @@ int pin_firmware_greenlight(pinAttempt_t *args);
 
 // Return 32 bits of bits which are presistently mapped from pin code; for anti-phishing feature.
 int pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result);
+
+// Read/write the long secret. 32 bytes at a time.
+int pin_long_secret(pinAttempt_t *args);
 
 // EOF

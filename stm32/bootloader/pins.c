@@ -685,7 +685,7 @@ pin_cache_save(pinAttempt_t *args, const uint8_t digest[32])
     static void
 pin_cache_restore(pinAttempt_t *args, uint8_t digest[32])
 {
-    // TODO: decrypt w/ rom secret + SRAM seed value
+    // decrypt w/ rom secret + SRAM seed value
 
     if(args->magic_value == PA_MAGIC_V2) {
         memcpy(digest, args->cached_main_pin, 32);
@@ -1095,6 +1095,72 @@ pin_fetch_secret(pinAttempt_t *args)
 
     // decrypt the secret, but only if not zeros!
     if(!is_all_zeros) xor_mixin(args->secret, rom_secrets->otp_key, AE_SECRET_LEN);
+
+fail:
+    ae_reset_chip();
+
+    if(rv) return EPIN_AE_FAIL;
+
+    return 0;
+}
+
+// pin_long_secret()
+//
+// Read or write the "long" secret: an additional 416 bytes on 608a only.
+//
+    int
+pin_long_secret(pinAttempt_t *args)
+{
+    // Validate args and signature
+    int rv = _validate_attempt(args, false);
+    if(rv) return rv;
+
+    if((args->state_flags & PA_SUCCESSFUL) != PA_SUCCESSFUL) {
+        // must come here with a successful PIN login (so it's rate limited nicely)
+        return EPIN_WRONG_SUCCESS;
+    }
+
+    // fetch the already-hashed pin
+    // - no real need to re-prove PIN knowledge.
+    // - if they tricked us, doesn't matter as below the SE validates it all again
+    uint8_t     digest[32];
+    pin_cache_restore(args, digest);
+
+    // determine if we should proceed under duress
+    bool is_duress = get_is_duress(args);
+
+    if(is_duress) {
+        // Not supported in duress mode. Pretend it's all zeros. Accept all writes.
+        memset(args->secret, 0, 32);
+
+        return 0;
+    }
+
+    // which 32-byte section?
+    STATIC_ASSERT(CHANGE_LS_OFFSET == 0xf00);
+    int blk = (args->change_flags >> 8) & 0xf;
+    if(blk > 13) return EPIN_RANGE_ERR;
+
+    // read/write exactly 32 bytes
+    if(!(args->change_flags & CHANGE_SECRET)) {
+        rv = ae_encrypted_read32(KEYNUM_long_secret, blk, KEYNUM_main_pin, digest, args->secret);
+        if(rv) goto fail;
+
+        if(!check_all_zeros(args->secret, 32)) {
+            xor_mixin(args->secret, rom_secrets->otp_key_long+(32*blk), 32);
+        }
+    } else {
+        // write case
+        uint8_t tmp[32] = {0};
+
+        if(!check_all_zeros(args->secret, 32)) {
+            xor_mixin(tmp, args->secret, 32);
+            xor_mixin(tmp, rom_secrets->otp_key_long+(32*blk), 32);
+        }
+
+        rv = ae_encrypted_write32(KEYNUM_long_secret, blk, KEYNUM_main_pin, digest, tmp);
+        if(rv) goto fail;
+    }
 
 fail:
     ae_reset_chip();

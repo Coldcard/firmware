@@ -66,9 +66,15 @@ int ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 int ae_read_data_slot(int slot_num, uint8_t *data, int len);
 
 // Read and write to slots that are encrypted (must know that before using)
-// - always 32 bytes
+// - can specific different lenghts
 int ae_encrypted_read(int data_slot, int read_kn, const uint8_t read_key[32], uint8_t *data, int len);
 int ae_encrypted_write(int data_slot, int write_kn, const uint8_t write_key[32], const uint8_t *data, int len);
+
+// read/write exactly 32 bytes
+int ae_encrypted_read32(int data_slot, int blk, int read_kn,
+                    const uint8_t read_key[32], uint8_t data[32]);
+int ae_encrypted_write32(int data_slot, int blk, int write_kn,
+                    const uint8_t write_key[32], const uint8_t data[32]);
 
 // Use the pairing secret to validate ourselves to AE chip.
 int ae_pair_unlock(void);
