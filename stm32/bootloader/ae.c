@@ -307,7 +307,6 @@ ae_send_idle(void)
 	// "The ATECC508A goes into the idle mode and ignores all subsequent
 	// I/O transitions until the next wake flag. The contents of TempKey
 	// and RNG Seed registers are retained."
-
     ae_wake();
 
     _send_bits(IOFLAG_IDLE);
@@ -417,8 +416,8 @@ ae_keep_alive(void)
 	// To reset the watchdog, (1) put it into idle mode, then (2) wake it.
 	ae_send_idle();
 
-    // not clear if delay needed here?
-	ae_wake();
+    // no need to wake: next transaction will do that 
+	//ae_wake();
 }
 
 // Originally from Libraries/ecc108_library/ecc108_helper.c
@@ -800,9 +799,7 @@ ae_load_nonce(const uint8_t nonce[32])
 	int
 ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 {
-	// we provide some 20 bytes of randomness to chip
-	ae_keep_alive();
-
+	// We provide some 20 bytes of randomness to chip
 	// The chip must provide 32-bytes of random-ness,
 	// so no choice in args to OP.Nonce here (due to ReqRandom).
 	ae_send_n(OP_Nonce, 0, 0, num_in, 20);
@@ -923,8 +920,8 @@ ae_pair_unlock()
 // CAUTION: The result from this function could be modified by an
 // active attacker on the bus because the one-byte response from the chip
 // is easily replaced. This command is useful for us to authorize actions
-// inside the 508a, like use of a specific key, not for us to authenticate
-// the 508a or its contents/state.
+// inside the 508a/608a, like use of a specific key, but not for us to
+// authenticate the 508a/608a or its contents/state.
 //
     int
 ae_checkmac(uint8_t keynum, const uint8_t secret[32])
@@ -1384,13 +1381,12 @@ ae_gendig_counter(int counter_num, const uint32_t expected_value, uint8_t digest
 
 // ae_encrypted_read32()
 //
-    static int
+    int
 ae_encrypted_read32(int data_slot, int blk,
                     int read_kn, const uint8_t read_key[32], uint8_t data[32])
 {
     uint8_t     digest[32];
 
-    ae_keep_alive();
     ae_pair_unlock();
 
     int rv = ae_gendig_slot(read_kn, read_key, digest);
@@ -1436,13 +1432,12 @@ ae_encrypted_read(int data_slot, int read_kn, const uint8_t read_key[32], uint8_
 
 // ae_encrypted_write()
 //
-    static int
+    int
 ae_encrypted_write32(int data_slot, int blk, int write_kn,
                         const uint8_t write_key[32], const uint8_t data[32])
 {
     uint8_t digest[32];
 
-    ae_keep_alive();
     ae_pair_unlock();
 
     // generate a hash over shared secret and rng
@@ -2013,9 +2008,10 @@ ae_write_match_count(uint32_t count, const uint8_t *write_key)
 // Do on-chip hashing, with lots of iterations.
 //
 // - using HMAC-SHA256 with keys that are known only to the 608a.
-// - first round is with indicated keyslot, which may have a usage counter linked
 // - rate limiting factor here is communication time w/ 608a, not algos.
 // - caution: result here is not confidential
+// - cost of each iteration, approximately: 8ms
+// - but our time to do each iteration is limited by software SHA256 in ae_pair_unlock
 //
     int
 ae_stretch_iter(const uint8_t start[32], uint8_t end[32], int iterations)

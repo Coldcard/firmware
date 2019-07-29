@@ -30,13 +30,13 @@ PA_ZERO_SECRET        = const(0x10)
 PA_HAS_608A           = const(0x20)
 
 # For change_flags field:
-CHANGE_WALLET_PIN           = const(0x01)
-CHANGE_DURESS_PIN           = const(0x02)
-CHANGE_BRICKME_PIN          = const(0x04)
-CHANGE_SECRET               = const(0x08)
-CHANGE_DURESS_SECRET        = const(0x10)
-CHANGE_SECONDARY_WALLET_PIN = const(0x20)
-CHANGE_LONG_SECRET          = const(0x40)
+CHANGE_WALLET_PIN           = const(0x001)
+CHANGE_DURESS_PIN           = const(0x002)
+CHANGE_BRICKME_PIN          = const(0x004)
+CHANGE_SECRET               = const(0x008)
+CHANGE_DURESS_SECRET        = const(0x010)
+CHANGE_SECONDARY_WALLET_PIN = const(0x020)
+CHANGE_LS_OFFSET            = const(0xf00)
 
 # See below for other direction as well.
 PA_ERROR_CODES = {
@@ -141,13 +141,14 @@ class PinAttempt:
 
     def marshal(self, msg, is_duress=False, is_brickme=False, new_secret=None, 
                     new_pin=None, old_pin=None, get_duress_secret=False, is_secondary=False,
+                    ls_offset=None
             ):
         # serialize our state, and maybe some arguments
         change_flags = 0
 
         if new_secret is not None:
             change_flags |= CHANGE_SECRET if not is_duress else CHANGE_DURESS_SECRET
-            assert len(new_secret) == AE_SECRET_LEN
+            assert len(new_secret) in (32, AE_SECRET_LEN)
         else:
             new_secret = bytes(AE_SECRET_LEN)
 
@@ -175,6 +176,9 @@ class PinAttempt:
         else:
             new_pin = b''
             old_pin = old_pin or self.pin
+
+        if ls_offset is not None:
+            change_flags |= (ls_offset << 8)        # see CHANGE_LS_OFFSET
 
         # always send the extra stuff, V1 won't care (ignored) and V2 needs it.
         ustruct.pack_into(PIN_ATTEMPT_FMT_V1 + PIN_ATTEMPT_FMT_V2_ADDITIONS, msg, 0,
@@ -340,9 +344,23 @@ class PinAttempt:
         if duress_pin is None:
             secret = self.roundtrip(4)
         else:
-            secret = self.roundtrip(4, old_pin=duress_pin)
+            secret = self.roundtrip(4, old_pin=duress_pin, get_duress_secret=True)
 
         return secret
+
+    def ls_fetch(self):
+        # get the "long secret"
+        secret = b''
+        for n in range(13):
+            secret += self.roundtrip(6, ls_offset=n)[0:32]
+        return secret
+
+    def ls_change(self, new_long_secret):
+        # set the "long secret"
+        assert len(new_long_secret) == 416
+
+        for n in range(13):
+            self.roundtrip(6, ls_offset=n, new_secret=new_long_secret[n*32:(n*32)+32])
 
     def greenlight_firmware(self):
         # hash all of flash and commit value to 508a/608a

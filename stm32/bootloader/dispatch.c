@@ -610,6 +610,10 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     rv = pin_firmware_greenlight(args);
                     break;
 
+                case 6:         // new for v2
+                    rv = pin_long_secret(args);
+                    break;
+
                 default:
                     rv = ENOENT;
                     break;
