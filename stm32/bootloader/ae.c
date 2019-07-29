@@ -1924,12 +1924,10 @@ ae_setup_config(void)
                     // - stretching pin/words attempts (iterated may times)
                     // See mathcheck.py for details.
                     uint8_t     tmp[32];
-#if 0
+
                     rng_buffer(tmp, sizeof(tmp));
-#else
-#                   warning "fixed secrets"
-                    memset(tmp, 0x41+kn, 32);
-#endif
+                    //#warning "fixed secrets"
+                    //memset(tmp, 0x41+kn, 32);
 
                     if(ae_write_data_slot(kn, tmp, 32, true)) {
                         INCONSISTENT("wr word");
