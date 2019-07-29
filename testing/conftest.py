@@ -20,6 +20,8 @@ def pytest_addoption(parser):
                      default=True, help="run on simulator")
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
+    parser.addoption("--mark3", action="store_true",
+                     default=False, help="set hardware 'mark' level")
 
 @pytest.fixture(scope='session')
 def dev(request):

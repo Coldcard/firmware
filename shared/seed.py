@@ -491,7 +491,7 @@ async def remember_bip39_passphrase():
 
 def clear_seed():
     from main import dis, pa, settings
-    import utime
+    import utime, version
 
     dis.fullscreen('Clearing...')
 
@@ -501,6 +501,11 @@ def clear_seed():
     # save a blank secret (all zeros is a special case, detected by bootloader)
     nv = bytes(AE_SECRET_LEN)
     pa.change(new_secret=nv)
+
+    if version.has_608:
+        # wipe the long secret too
+        nv = bytes(AE_LONG_SECRET_LEN)
+        pa.ls_change(nv)
 
     dis.fullscreen('Reboot...')
     utime.sleep(1)

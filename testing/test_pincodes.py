@@ -9,6 +9,7 @@
 # - assumes no PIN set yet
 # - dev mode must be enabled
 # - these tests need to run individually, not working well all together
+# - provide "--mark3" on command line for newer hardware stuff
 #
 import time, pytest, os
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
@@ -37,13 +38,13 @@ def test_pin_set(repl, setup_repl, pin):
     
     assert pin != ''
 
-    assert repl.eval("pa.setup(b'')") == 3, 'pin wasnt blank'
+    assert repl.eval("pa.setup(b'')")&0xf == 3, 'pin wasnt blank'
     #assert repl.eval("pa.login() if not pa.is_blank() else True") == True
 
     print("Attempt pin set to: %s" % pin)
     assert repl.eval("pa.change(new_pin=b'%s')" % pin) == None
 
-    assert repl.eval("pa.setup(b'%s')" % pin) == 0
+    assert repl.eval("pa.setup(b'%s')" % pin)&0xf == 0
     assert repl.eval("pa.login()") == True
     assert repl.eval("pa.change(new_pin=b'')") == None
 
@@ -98,8 +99,12 @@ def test_greenlight(repl, setup_repl):
     assert repl.eval("dis.clear(); dis.text(0,0, 'done'); dis.show()") == 28
 
 @pytest.mark.parametrize('is_sec', [ False, True])
-def test_duress(repl, setup_repl, is_sec):
-    assert repl.eval("pa.setup(b'', secondary=%r)" % is_sec) == 3
+def test_duress(request, repl, setup_repl, is_sec):
+    if is_sec and request.config.getoption('mark3'):
+        raise pytest.xfail('mark3')
+
+    ss = repl.eval("pa.setup(b'', secondary=%r)" % is_sec)
+    assert ss&0xf == 3
 
     assert repl.eval('pa.has_duress_pin()') == False
     assert repl.eval('pa.is_successful()') == True
@@ -115,19 +120,25 @@ def test_duress(repl, setup_repl, is_sec):
 
 @pytest.mark.parametrize('is_sec', [ False, True])
 @pytest.mark.parametrize('nfails', [1, 3])
-def test_bad_logins(repl, setup_repl, is_sec, nfails):
-    if repl.eval("pa.setup(b'', secondary=%r)" % is_sec) != 3:
+def test_bad_logins_mark2(request, repl, setup_repl, is_sec, nfails):
+    if request.config.getoption('mark3'):
+        raise pytest.skip('mark3')
+
+    ss = repl.eval("pa.setup(b'', secondary=%r)" % is_sec)
+    if (ss & 32) and is_sec: raise pytest.xfail('mark3')
+
+    if ss&0xf  != 3:
         # robustness
         repl.eval("pa.setup(b'12-12', secondary=%r)" % is_sec)
         repl.eval("[pa.delay() for i in range(pa.delay_required)]")
         assert repl.eval("pa.login()") == True
 
     assert repl.eval("pa.change(new_pin=b'12-12')") == None
-    assert repl.eval("pa.setup(b'12-12', secondary=%r)" % is_sec) == 0
+    assert repl.eval("pa.setup(b'12-12', secondary=%r)" % is_sec)&0xf == 0
     assert repl.eval("pa.login()") == True
 
     def prepare_attempt(pin):
-        assert repl.eval("pa.setup(%r, secondary=%r)" % (pin, is_sec)) == 0
+        assert repl.eval("pa.setup(%r, secondary=%r)" % (pin, is_sec))&0xf == 0
         nf = repl.eval('pa.num_fails')
         nd = repl.eval('pa.delay_required')
         if nf: assert nd >= 1
@@ -152,8 +163,78 @@ def test_bad_logins(repl, setup_repl, is_sec, nfails):
 
     # reset state
     assert repl.eval("pa.change(new_pin=b'')") == None
-    assert repl.eval("pa.setup(b'', secondary=%r)" % is_sec) == 3
+    assert repl.eval("pa.setup(b'', secondary=%r)" % is_sec)&0xf == 3
     assert repl.eval("pa.delay_required") == 0
     assert repl.eval("pa.num_fails") == 0
+
+
+MAX_ATT = 13
+
+@pytest.mark.parametrize('nfails', [MAX_ATT-1, 1, 3, 5])
+def test_bad_logins_mark3(request, repl, setup_repl, nfails):
+    if not request.config.getoption('mark3'):
+        raise pytest.skip('mark3 only')
+
+
+    ss = repl.eval("pa.setup(b'')")
+
+    if ss&0xf != 3:
+        # robustness: recover w/ probably pin
+        repl.eval("pa.setup(b'12-12')")
+        assert repl.eval("pa.login()") == True
+
+    assert repl.eval("pa.change(new_pin=b'12-12')") == None
+    assert repl.eval("pa.setup(b'12-12')")&0xf == 0
+    assert repl.eval("pa.login()") == True
+
+    def prepare_attempt(pin):
+        assert repl.eval("pa.setup(%r)" % pin)&0xf == 0
+
+        nd, nf, al = repl.eval('pa.delay_required, pa.num_fails, pa.attempts_left')
+        assert nd == 0                  # must be zero, obsolete
+        assert al <= MAX_ATT
+        assert nf + al == MAX_ATT
+
+        return nf
+
+    # try wrong pin a few times
+    for n in range(nfails):
+        nf = prepare_attempt(b'xx')
+
+        assert nf == n
+
+        with pytest.raises(RuntimeError) as ee:
+            repl.eval("pa.login()")
+        assert 'AUTH_FAIL' in ee.value.args[0]
+        
+    # should be successful now
+    prepare_attempt(b'12-12')
+    assert repl.eval("pa.login()") == True
+
+    nf, al = repl.eval('pa.num_fails, pa.attempts_left')
+    assert nf == 0
+    assert al == MAX_ATT
+
+    # reset state
+    assert repl.eval("pa.change(new_pin=b'')") == None
+    assert repl.eval("pa.setup(b'')")&0xf == 3
+    nf, al = repl.eval('pa.num_fails, pa.attempts_left')
+    assert nf == 0
+    assert al == MAX_ATT
+
+@pytest.mark.parametrize('test_secret', [b'a'*416, b'\0'*32+b'm'*(416-32),
+                                            bytearray(0x41+(i%57) for i in range(416))])
+def test_long_secret(request, repl, setup_repl, test_secret):
+    if not request.config.getoption('mark3'):
+        raise pytest.skip('mark3 only')
+
+    assert repl.eval('pa.is_successful()'), 'not logged in?'
+
+    assert repl.eval("pa.ls_change(%r)" % test_secret) == None
+    assert repl.eval("pa.ls_fetch()") == test_secret
+
+    # recovery time, so USB port can service traffic?
+    time.sleep(1)
+
 
 # EOF

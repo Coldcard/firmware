@@ -195,6 +195,77 @@ pin_hash_attempt(uint8_t target_kn, const char *pin, int pin_len, uint8_t result
     return 0;
 }
 
+// pin_cache_get_key()
+//
+    void
+pin_cache_get_key(uint8_t key[32])
+{
+    // per-boot unique key.
+	SHA256_CTX ctx;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, reboot_seed_base, 32);
+    sha256_update(&ctx, rom_secrets->hash_cache_secret, 32);
+
+    sha256_final(&ctx, key);
+}
+
+// pin_cache_save()
+//
+    static void
+pin_cache_save(pinAttempt_t *args, const uint8_t digest[32])
+{
+    // encrypt w/ rom secret + SRAM seed value
+    uint8_t     value[32];
+
+    if(!check_all_zeros(digest, 32)) {
+        pin_cache_get_key(value);
+        xor_mixin(value, digest, 32);
+    } else {
+        memset(value, 0, 32);
+    }
+
+    if(args->magic_value == PA_MAGIC_V2) {
+        memcpy(args->cached_main_pin, value, 32);
+    } else {
+        // short-term hack .. only applies if old firmware (not v3+) is used on
+        // mark3 hardware.
+        memcpy(transitional_pinhash_cache, value, 32);
+    }
+}
+
+// pin_cache_restore()
+//
+    static void
+pin_cache_restore(pinAttempt_t *args, uint8_t digest[32])
+{
+    // decrypt w/ rom secret + SRAM seed value
+
+    if(args->magic_value == PA_MAGIC_V2) {
+        memcpy(digest, args->cached_main_pin, 32);
+    } else {
+        // short-term hack .. only applies if old firmware (not v3+) is used on
+        // mark3 hardware.
+        memcpy(digest, transitional_pinhash_cache, 32);
+    }
+
+    if(!check_all_zeros(digest, 32)) {
+        uint8_t     key[32];
+        pin_cache_get_key(key);
+
+        xor_mixin(digest, key, 32);
+    }
+}
+
+// get_is_duress()
+//
+    static bool
+get_is_duress(pinAttempt_t *args)
+{
+    // read and "decrypt" our one flag bit
+    return ((args->private_state ^ rom_secrets->hash_cache_secret[0]) & 0x1);
+}
+
 // pin_prefix_words()
 //
 // Look up some bits... do HMAC(words secret) and return some LSB's
@@ -525,6 +596,11 @@ pin_setup_attempt(pinAttempt_t *args)
     // need to know if we are blank/unused device
     if(pin_is_blank(KEYNUM_main_pin)) {
         args->state_flags |= PA_SUCCESSFUL | PA_IS_BLANK;
+
+        // We need to save this 'zero' value because it's encrypted, and/or might be 
+        // un-initialized memory. 
+        const uint8_t zeros[32] = {0};
+        pin_cache_save(args, zeros);
     }
 
     _sign_attempt(args);
@@ -606,7 +682,7 @@ updates_for_good_login(uint8_t digest[32])
 
     int bump = (mc - MAX_TARGET_ATTEMPTS) - count;
     ASSERT(bump >= 1);
-    ASSERT(bump < 32);
+    ASSERT(bump <= 32);     // assuming MAX_TARGET_ATTEMPTS < 30
 
     // Would rather update the counter first, so that a hostile interruption can't increase
     // attempts (altho the attacker knows the pin at that point?!) .. but chip won't
@@ -643,71 +719,6 @@ updates_for_good_login(uint8_t digest[32])
 fail:
     ae_reset_chip();
     return EPIN_AE_FAIL;
-}
-
-// pin_cache_get_key()
-//
-    void
-pin_cache_get_key(uint8_t key[32])
-{
-    // per-boot unique key.
-	SHA256_CTX ctx;
-
-    sha256_init(&ctx);
-    sha256_update(&ctx, reboot_seed_base, 32);
-    sha256_update(&ctx, rom_secrets->hash_cache_secret, 32);
-
-    sha256_final(&ctx, key);
-}
-
-// pin_cache_save()
-//
-    static void
-pin_cache_save(pinAttempt_t *args, const uint8_t digest[32])
-{
-    // encrypt w/ rom secret + SRAM seed value
-    uint8_t     value[32];
-    pin_cache_get_key(value);
-
-    xor_mixin(value, digest, 32);
-
-    if(args->magic_value == PA_MAGIC_V2) {
-        memcpy(args->cached_main_pin, value, 32);
-    } else {
-        // short-term hack .. only applies if old firmware (not v3+) is used on
-        // mark3 hardware.
-        memcpy(transitional_pinhash_cache, value, 32);
-    }
-}
-
-// pin_cache_restore()
-//
-    static void
-pin_cache_restore(pinAttempt_t *args, uint8_t digest[32])
-{
-    // decrypt w/ rom secret + SRAM seed value
-
-    if(args->magic_value == PA_MAGIC_V2) {
-        memcpy(digest, args->cached_main_pin, 32);
-    } else {
-        // short-term hack .. only applies if old firmware (not v3+) is used on
-        // mark3 hardware.
-        memcpy(digest, transitional_pinhash_cache, 32);
-    }
-
-    uint8_t     key[32];
-    pin_cache_get_key(key);
-
-    xor_mixin(digest, key, 32);
-}
-
-// get_is_duress()
-//
-    static bool
-get_is_duress(pinAttempt_t *args)
-{
-    // read and "decrypt" our one flag bit
-    return ((args->private_state ^ rom_secrets->hash_cache_secret[0]) & 0x1);
 }
 
 
