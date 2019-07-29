@@ -350,14 +350,17 @@ class PinAttempt:
 
     def ls_fetch(self):
         # get the "long secret"
+        #assert (13 * 32) == 416 == AE_LONG_SECRET_LEN
+
         secret = b''
         for n in range(13):
             secret += self.roundtrip(6, ls_offset=n)[0:32]
+
         return secret
 
     def ls_change(self, new_long_secret):
         # set the "long secret"
-        assert len(new_long_secret) == 416
+        assert len(new_long_secret) == AE_LONG_SECRET_LEN
 
         for n in range(13):
             self.roundtrip(6, ls_offset=n, new_secret=new_long_secret[n*32:(n*32)+32])
