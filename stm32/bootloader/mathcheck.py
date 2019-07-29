@@ -106,6 +106,7 @@ if 1:
     #     >>> b2a_hex(pa.cached_main_pin)
     #     b'75feafe5b8bfc8c255d816c6d6919f3f1b59769fcdee57174ab78044a839911f'
     # 
+    # - have to xor with key from pin_cache_get_key() as well (debugger)
 
     pin = b'12-12'
     start = pin_hash(pin, PURPOSE_NORMAL)

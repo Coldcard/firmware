@@ -38,6 +38,9 @@
 // Temporary hack only!
 extern uint8_t      transitional_pinhash_cache[32];        // see linker-script
 
+// See linker script; special read-only RAM memory (not secret)
+extern uint8_t      reboot_seed_base[32];        // constant per-boot
+
 // Hash up a PIN for indicated purpose.
 static void pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose);
 
@@ -230,7 +233,6 @@ pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result)
     static void
 _hmac_attempt(const pinAttempt_t *args, uint8_t result[32])
 {
-    extern uint8_t      reboot_seed_base[32];        // constant per-boot
 
 	SHA256_CTX ctx;
 
@@ -643,19 +645,38 @@ fail:
     return EPIN_AE_FAIL;
 }
 
+// pin_cache_get_key()
+//
+    void
+pin_cache_get_key(uint8_t key[32])
+{
+    // per-boot unique key.
+	SHA256_CTX ctx;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, reboot_seed_base, 32);
+    sha256_update(&ctx, rom_secrets->hash_cache_secret, 32);
+
+    sha256_final(&ctx, key);
+}
+
 // pin_cache_save()
 //
     static void
 pin_cache_save(pinAttempt_t *args, const uint8_t digest[32])
 {
-    // TODO: encrypt w/ rom secret + SRAM seed value
+    // encrypt w/ rom secret + SRAM seed value
+    uint8_t     value[32];
+    pin_cache_get_key(value);
+
+    xor_mixin(value, digest, 32);
 
     if(args->magic_value == PA_MAGIC_V2) {
-        memcpy(args->cached_main_pin, digest, 32);
+        memcpy(args->cached_main_pin, value, 32);
     } else {
         // short-term hack .. only applies if old firmware (not v3+) is used on
         // mark3 hardware.
-        memcpy(transitional_pinhash_cache, digest, 32);
+        memcpy(transitional_pinhash_cache, value, 32);
     }
 }
 
@@ -673,6 +694,20 @@ pin_cache_restore(pinAttempt_t *args, uint8_t digest[32])
         // mark3 hardware.
         memcpy(digest, transitional_pinhash_cache, 32);
     }
+
+    uint8_t     key[32];
+    pin_cache_get_key(key);
+
+    xor_mixin(digest, key, 32);
+}
+
+// get_is_duress()
+//
+    static bool
+get_is_duress(pinAttempt_t *args)
+{
+    // read and "decrypt" our one flag bit
+    return ((args->private_state ^ rom_secrets->hash_cache_secret[0]) & 0x1);
 }
 
 
@@ -788,8 +823,8 @@ pin_login_attempt(pinAttempt_t *args)
 
     // In mark1/2, was thinking of maybe storing duress flag into private state,
     // but no real need, but testing for it is expensive in mark3, so going to use
-    // LSB here for that.
-    args->private_state = (rng_sample() & ~1) | is_duress;
+    // LSB here for that. Xor's with a secret only we have.
+    args->private_state = ((rng_sample() & ~1) | is_duress) ^ rom_secrets->hash_cache_secret[0];
 
     _sign_attempt(args);
 
@@ -860,7 +895,7 @@ pin_change(pinAttempt_t *args)
     // Same for brickme PIN.
 
     // SO ... we need to know if they started w/ a duress wallet.
-    bool is_duress = (args->private_state & 0x1);
+    bool is_duress = get_is_duress(args);
 
     if(is_duress) {
         // user is a thug.. limit what they can do
@@ -961,14 +996,23 @@ pin_change(pinAttempt_t *args)
     if(cf & (CHANGE_SECRET | CHANGE_DURESS_SECRET)) {
         int secret_kn = (required_kn == KEYNUM_main_pin) ? KEYNUM_secret : KEYNUM_duress_secret;
 
+        bool is_all_zeros = check_all_zeros(args->secret, AE_SECRET_LEN);
+
+        // encrypt new secret, but only if not zeros!
+        uint8_t     tmp[AE_SECRET_LEN] = {0};
+        if(!is_all_zeros) {
+            xor_mixin(tmp, rom_secrets->otp_key, AE_SECRET_LEN);
+            xor_mixin(tmp, args->secret, AE_SECRET_LEN);
+        }
+
         if(ae_encrypted_write(secret_kn, required_kn,
-                                        required_digest, args->secret, AE_SECRET_LEN)){
+                                        required_digest, tmp, AE_SECRET_LEN)){
             goto ae_fail;
         }
 
         // update the zero-secret flag to be correct.
         if(cf & CHANGE_SECRET) {
-            if(check_all_zeros(args->secret, AE_SECRET_LEN)) {
+            if(is_all_zeros) {
                 args->state_flags |= PA_ZERO_SECRET;
             } else {
                 args->state_flags &= ~PA_ZERO_SECRET;
@@ -1012,8 +1056,8 @@ pin_fetch_secret(pinAttempt_t *args)
     uint8_t     digest[32];
     pin_cache_restore(args, digest);
 
-    // try it out / and determine if we should proceed under duress
-    bool is_duress = (args->private_state & 0x1);
+    // determine if we should proceed under duress
+    bool is_duress = get_is_duress(args);
 
     int pin_kn = is_duress ? KEYNUM_duress_pin : KEYNUM_main_pin;
     int secret_slot = is_duress ? KEYNUM_duress_secret : KEYNUM_secret;
@@ -1046,6 +1090,11 @@ pin_fetch_secret(pinAttempt_t *args)
 
     // read out the secret that corresponds to that pin
     rv = ae_encrypted_read(secret_slot, pin_kn, digest, args->secret, AE_SECRET_LEN);
+
+    bool is_all_zeros = check_all_zeros(args->secret, AE_SECRET_LEN);
+
+    // decrypt the secret, but only if not zeros!
+    if(!is_all_zeros) xor_mixin(args->secret, rom_secrets->otp_key, AE_SECRET_LEN);
 
 fail:
     ae_reset_chip();
@@ -1088,7 +1137,7 @@ pin_firmware_greenlight(pinAttempt_t *args)
     if(warmup_ae()) return EPIN_I_AM_BRICK;
 
     // under duress, we can't fake this, but we go through the motions,
-    bool is_duress = (args->private_state & 0x1);
+    bool is_duress = get_is_duress(args);
     if(!is_duress) {
         rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
 
