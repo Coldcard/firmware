@@ -8,7 +8,7 @@ import stash, ure, tcc, ux, chains, sys, gc, uio
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause
+from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
@@ -100,6 +100,10 @@ class UserAuthorizedAction:
         if exc:
             print("%s:" % msg)
             sys.print_exception(exc)
+            msg += "\n\n(%s)" % problem_file_line(exc)
+
+        # may be a user-abort waiting, but we want to see error msg; so clear it
+        ux_clear_keys(True)
 
         return await ux_show_story(msg, title)
 
@@ -232,13 +236,13 @@ class ApproveTransaction(UserAuthorizedAction):
             with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len) as fd:
                 self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
-            sys.print_exception(exc)
             if isinstance(exc, MemoryError):
-                msg = "Transaction is too complex."
+                msg = "Transaction is too complex"
+                exc = None
             else:
                 msg = "PSBT parse failed"
 
-            return await self.failure(msg)
+            return await self.failure(msg, exc)
 
         # Do some analysis/ validation
         try:
@@ -253,14 +257,14 @@ class ApproveTransaction(UserAuthorizedAction):
             print('FatalPSBTIssue: ' + exc.args[0])
             return await self.failure(exc.args[0])
         except BaseException as exc:
-            sys.print_exception(exc)
             del self.psbt
             gc.collect()
 
             if isinstance(exc, MemoryError):
-                msg = "Transaction is too complex."
+                msg = "Transaction is too complex"
+                exc = None
             else:
-                msg = "Invalid PSBT: %s (%s)" % (exc, problem_file_line(exc))
+                msg = "Invalid PSBT"
 
             return await self.failure(msg, exc)
 
@@ -301,7 +305,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write("\nPress OK to approve and sign transaction. X to abort.")
 
             ch = await ux_show_story(msg, title="OK TO SEND?")
-        except MemoryError as exc:
+        except MemoryError:
             # recovery? maybe.
             try:
                 del self.psbt
@@ -309,8 +313,8 @@ class ApproveTransaction(UserAuthorizedAction):
             except: pass        # might be NameError since we don't know how far we got
             gc.collect()
 
-            msg = "Transaction is too complex."
-            return await self.failure(msg, exc)
+            msg = "Transaction is too complex"
+            return await self.failure(msg)
 
         if ch != 'y':
             # they don't want to!
@@ -327,14 +331,12 @@ class ApproveTransaction(UserAuthorizedAction):
             gc.collect()
             self.psbt.sign_it()
         except FraudulentChangeOutput as exc:
-            print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
-        except MemoryError as exc:
-            msg = "Transaction is too complex."
-            return await self.failure(msg, exc)
+        except MemoryError:
+            msg = "Transaction is too complex"
+            return await self.failure(msg)
         except BaseException as exc:
-            sys.print_exception(exc)
-            return await self.failure("Signing failed late: %s" % exc)
+            return await self.failure("Signing failed late", exc)
 
         if self.approved_cb:
             # for micro sd case
@@ -357,11 +359,7 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
 
         except BaseException as exc:
-            self.failed = "PSBT output failed"
-            print("PSBT output failure: ")
-            sys.print_exception(exc)
-            self.done()
-            return
+            return await self.failure("PSBT output failed", exc)
 
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
