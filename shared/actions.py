@@ -83,6 +83,9 @@ Master Key Fingerprint:
 
   {xfp}
 
+as LE32:
+  0x{xfp_le:08x}
+
 USB Serial Number:
 
   {serial}
@@ -91,8 +94,9 @@ Extended Master Key:
 
 {xpub}
 '''
+    my_xfp = settings.get('xfp', 0)
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
-                            xfp=xfp2str(settings.get('xfp', 0)),
+                            xfp=xfp2str(my_xfp), xfp_le=my_xfp,
                             serial=serial_number())
 
     if pa.is_secondary:
