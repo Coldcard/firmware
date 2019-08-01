@@ -1495,7 +1495,7 @@ class psbtObject(psbtProxy):
         # plus we added some signatures
         for inp in self.inputs:
             if inp.is_multisig:
-                # but we can't combine/finalize multisig stuff, so won't be final
+                # but we can't combine/finalize multisig stuff, so will never't be 'final'
                 return False
 
             if inp.added_sig:
