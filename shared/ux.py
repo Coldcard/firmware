@@ -57,7 +57,7 @@ class UserInteraction:
 # Singleton. User interacts with this "menu" stack.
 the_ux = UserInteraction()
 
-def ux_clear_keys():
+def ux_clear_keys(no_aborts=False):
     # flush any pending keypresses
     from main import numpad
 
@@ -65,7 +65,7 @@ def ux_clear_keys():
         while 1:
             ch = numpad.get_nowait()
 
-            if ch == numpad.ABORT_KEY:
+            if not no_aborts and ch == numpad.ABORT_KEY:
                 raise AbortInteraction
 
     except QueueEmpty:

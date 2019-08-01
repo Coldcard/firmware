@@ -1,10 +1,13 @@
 
-## 2.1.2 - Aug XXX, 2019
+## 2.1.2 - Aug 1, 2019
 
+- Bugfix: Error messages would sometimes flash off the screen quickly. Now they stay up
+  until OK pressed. Text of certain messages also improved.
+- Bugfix: show a nicer message when given a PSBT with corrupted UTXO values.
 - Bugfix: block access to multisig menu when no seed phrase yet defined.
 - Bugfix: any command on multisig menu that used the MicroSD card would crash
   if no card was present.
-- Multisig ready for prime time, remove warning about Testnet
+- Remove comment about Testnet, because multisig now considered ready for prime time.
 
 
 ## 2.1.1 - July 3, 2019
