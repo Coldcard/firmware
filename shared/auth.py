@@ -490,10 +490,18 @@ def sign_psbt_file(filename):
 
         while 1:
             # try to put back into same spot, but also do top-of-card
+            is_comp = psbt.is_complete()
+            if not is_comp:
+                # keep the filename under control during multiple passes
+                target_fname = base.replace('-part', '')+'-part.psbt'
+            else:
+                # add -signed to end. We won't offer to sign again.
+                target_fname = base+'-signed.psbt'
+
             for path in [orig_path, None]:
                 try:
                     with CardSlot() as card:
-                        out_full, out_fn = card.pick_filename(base+'-signed.psbt', path)
+                        out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
                 except CardMissingError:
@@ -511,7 +519,7 @@ def sign_psbt_file(filename):
                             # save as updated PSBT
                             psbt.serialize(fd)
 
-                        if psbt.is_complete():
+                        if is_comp:
                             # write out as hex too, if it's final
                             out2_full, out2_fn = card.pick_filename(base+'-final.txn', out_path)
                             if out2_full:
