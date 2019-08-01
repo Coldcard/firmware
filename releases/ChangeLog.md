@@ -1,14 +1,21 @@
 
-## 2.1.2 - Aug 1, 2019
+## 2.1.2 - Aug 2, 2019
 
-- Extra warning added about forgetting your PIN.
+- Bugfix: Change for XFP endian display introduced in 2.0.0 didn't actually correct
+  endian display and it was still showing values in LE32. Correctly corrected now.
+    - showing both values in "Advanced > View Identity screen".
+    - some matching changes to ckcc-protocol (CLI tool)
+    - when making multisig wallets in airgap mode, you must use latest firmware on all units
 - Bugfix: Error messages would sometimes flash off the screen quickly. Now they stay up
   until OK pressed. Text of certain messages also improved.
-- Bugfix: show a nicer message when given a PSBT with corrupted UTXO values.
-- Bugfix: block access to multisig menu when no seed phrase yet defined.
-- Bugfix: any command on multisig menu that used the MicroSD card would crash
+- Bugfix: Show a nicer message when given a PSBT with corrupted UTXO values.
+- Bugfix: Block access to multisig menu when no seed phrase yet defined.
+- Bugfix: Any command on multisig menu that used the MicroSD card would crash
   if no card was present.
+- Bugfix: When offline multisig signing, tried to finalize PSBT, but we can't.
+- Bugfix: For multi-pass-multisig signing, handle filenames better (end in -part, not -signed).
 - Remove comment about Testnet, because multisig now considered ready for prime time.
+- Extra warning added about forgetting your PIN.
 
 
 ## 2.1.1 - July 3, 2019
