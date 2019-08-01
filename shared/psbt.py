@@ -1490,14 +1490,18 @@ class psbtObject(psbtProxy):
         # Are all the inputs (now) signed?
 
         # some might have been given as signed
-        signed = set(self.presigned_inputs)
+        signed = len(self.presigned_inputs)
 
         # plus we added some signatures
-        for i in range(self.num_inputs):
-            if self.inputs[i] and self.inputs[i].added_sig:
-                signed.add(i)
+        for inp in self.inputs:
+            if inp.is_multisig:
+                # but we can't combine/finalize multisig stuff, so won't be final
+                return False
 
-        return len(signed) == self.num_inputs
+            if inp.added_sig:
+                signed += 1
+
+        return signed == self.num_inputs
 
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
