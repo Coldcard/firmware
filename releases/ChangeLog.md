@@ -1,6 +1,7 @@
 
 ## 2.1.2 - Aug 1, 2019
 
+- Extra warning added about forgetting your PIN.
 - Bugfix: Error messages would sometimes flash off the screen quickly. Now they stay up
   until OK pressed. Text of certain messages also improved.
 - Bugfix: show a nicer message when given a PSBT with corrupted UTXO values.
