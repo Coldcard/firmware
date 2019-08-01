@@ -507,7 +507,6 @@ def sign_psbt_file(filename):
                 # attempt write-out
                 try:
                     with CardSlot() as card:
-                        print("out: %s" % out_full)
                         with open(out_full, 'wb') as fd:
                             # save as updated PSBT
                             psbt.serialize(fd)
@@ -516,7 +515,6 @@ def sign_psbt_file(filename):
                             # write out as hex too, if it's final
                             out2_full, out2_fn = card.pick_filename(base+'-final.txn', out_path)
                             if out2_full:
-                                print("out2: %s" % out2_full)
                                 with HexWriter(open(out2_full, 'wt')) as fd:
                                     # save transaction, in hex
                                     psbt.finalize(fd)
