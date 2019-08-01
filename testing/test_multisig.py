@@ -999,7 +999,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2wsh-p2sh', 'p2sh'])
 #@pytest.mark.parametrize('N', [3, 4, 14])
-def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, N=4):
+def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, get_settings, N=4):
     # test UX and math for bip45 export
 
     # cleanup
@@ -1101,8 +1101,6 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
 
     need_keypress('y')
     need_keypress('y')
-    
-    clear_ms()
 
     if N == 4:
         import shutil
@@ -1112,6 +1110,11 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
             shutil.copy(fn, 'data/multisig/'+fn.rsplit('/', 1)[1])
         shutil.copy(el_fname, f'data/multisig/el-{addr_fmt}-myself.json')
         shutil.copy(cc_fname, f'data/multisig/export-{addr_fmt}-myself.txt')
+
+        json.dump(get_settings()['multisig'][0], 
+                    open(f'data/multisig/setting-{addr_fmt}-myself.json', 'w'))
+    
+    clear_ms()
 
     # test re-importing the wallet from export file
     goto_home()
