@@ -5,6 +5,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys
 from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
 from utils import xfp2str, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
@@ -502,7 +503,7 @@ class MultisigWallet:
                     raise AssertionError('bad format line')
             elif len(label) == 8:
                 try:
-                    xfp = int(label, 16)
+                    xfp, = ustruct.unpack('<I', a2b_hex(label))
                 except:
                     # complain?
                     #print("Bad xfp: " + ln)
@@ -674,7 +675,6 @@ class MultisigWallet:
         # the details, and/or bypass that all and just trust the data.
         # - xpubs_list is a list of (xfp+path, binary BIP32 xpub)
         # - already know not in our records.
-        from ustruct import unpack_from
         from main import settings
         import tcc
 
@@ -696,7 +696,7 @@ class MultisigWallet:
         path_tops = set()
 
         for k, v in xpubs_list:
-            xfp, *path = unpack_from('<%dI' % (len(k)/4), k, 0)
+            xfp, *path = ustruct.unpack_from('<%dI' % (len(k)/4), k, 0)
             xpub = tcc.codecs.b58_encode(v)
             xfp = cls.check_xpub(xfp, xpub, expect_chain, xpubs, path_tops)
             if xfp == my_xfp:
@@ -1107,7 +1107,9 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
                             vals = ujson.load(fp)
 
                         ln = vals.get(mode)
-                        xfp = int(vals['xfp'], 16)
+
+                        # value in file is BE32, but we want LE32 internally
+                        xfp, = ustruct.unpack('<I', a2b_hex(vals['xfp']))
                         if not deriv:
                             deriv = vals[mode+'_deriv']
                         else:

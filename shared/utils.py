@@ -103,7 +103,7 @@ def xfp2str(xfp):
     import ustruct
     from ubinascii import hexlify as b2a_hex
 
-    return b2a_hex(ustruct.pack('>I', xfp)).decode().upper()
+    return b2a_hex(ustruct.pack('<I', xfp)).decode().upper()
 
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
