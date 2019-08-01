@@ -1,6 +1,10 @@
-## 2.1.2 - July XXX, 2019
 
-- indicate Multisig ready for prime time
+## 2.1.2 - Aug XXX, 2019
+
+- Bugfix: block access to multisig menu when no seed phrase yet defined.
+- Bugfix: any command on multisig menu that used the MicroSD card would crash
+  if no card was present.
+- Multisig ready for prime time, remove warning about Testnet
 
 
 ## 2.1.1 - July 3, 2019

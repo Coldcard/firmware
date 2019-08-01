@@ -11,6 +11,7 @@ from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
+from actions import needs_microsd
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -861,6 +862,12 @@ class MultisigMenu(MenuSystem):
 
 async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
+    from main import pa
+
+    if pa.is_secret_blank():
+        await ux_show_story("You must have wallet seed before creating multisig wallets.")
+        return
+
     rv = MultisigMenu.construct()
     return MultisigMenu(rv)
 
