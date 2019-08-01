@@ -126,7 +126,7 @@ class PinAttempt:
                             ustruct.calcsize(PIN_ATTEMPT_FMT)
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
 
-        self.buf = bytearray(PIN_ATTEMPT_SIZE)
+        self.buf = bytearray(PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1)
 
         # check for bricked system early
         import callgate
@@ -180,23 +180,29 @@ class PinAttempt:
         if ls_offset is not None:
             change_flags |= (ls_offset << 8)        # see CHANGE_LS_OFFSET
 
-        # always send the extra stuff, V1 won't care (ignored) and V2 needs it.
-        ustruct.pack_into(PIN_ATTEMPT_FMT_V1 + PIN_ATTEMPT_FMT_V2_ADDITIONS, msg, 0,
-                self.magic_value,
-                (1 if self.is_secondary else 0),
-                self.pin, len(self.pin),
-                self.delay_achieved,
-                self.delay_required,
-                self.num_fails,
-                self.attempts_left,
-                self.state_flags,
-                self.private_state,
-                self.hmac,
-                change_flags,
-                old_pin, len(old_pin),
-                new_pin, len(new_pin),
-                new_secret,
-                self.cached_main_pin)
+        # can't send the V2 extra stuff if the bootrom isn't expecting it
+        fields = [self.magic_value,
+                    (1 if self.is_secondary else 0),
+                    self.pin, len(self.pin),
+                    self.delay_achieved,
+                    self.delay_required,
+                    self.num_fails,
+                    self.attempts_left,
+                    self.state_flags,
+                    self.private_state,
+                    self.hmac,
+                    change_flags,
+                    old_pin, len(old_pin),
+                    new_pin, len(new_pin),
+                    new_secret]
+
+        if version.has_608:
+            fmt = PIN_ATTEMPT_FMT_V1 + PIN_ATTEMPT_FMT_V2_ADDITIONS
+            fields.append(self.cached_main_pin)
+        else:
+            fmt = PIN_ATTEMPT_FMT_V1
+
+        ustruct.pack_into(fmt, msg, 0, *fields)
 
     def unmarshal(self, msg):
         # unpack it and update our state, return other state
