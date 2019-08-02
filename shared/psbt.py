@@ -631,9 +631,9 @@ class psbtInputProxy(psbtProxy):
             self.is_p2sh = True
 
             # we must have the redeem script already (else fail)
-            ks = self.witness_script or self.redeem_script
+            ks = self.witness_script if addr_is_segwit else self.redeem_script
             if not ks:
-                raise AssertionError("missing redeem/witness script for in #%d" % my_idx)
+                raise AssertionError("Missing redeem/witness script for input #%d" % my_idx)
 
             redeem_script = self.get(ks)
             self.scriptSig = redeem_script
