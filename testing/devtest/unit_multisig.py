@@ -39,3 +39,10 @@ if 1:
     assert len(addr) >= 62
     assert addr == 'tb1qnjw7wy4e9tf4kkqaf43n2cyjwug0ystugum08c5j5hwhfncc4mkq7r26gv'
 
+
+if 1:
+    from utils import xfp2str, str2xfp
+
+    assert xfp2str(0x10203040) == '40302010'
+    for i in 0, 1, 0x12345678:
+        assert str2xfp(xfp2str(i)) == i

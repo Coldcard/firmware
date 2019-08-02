@@ -105,6 +105,12 @@ def xfp2str(xfp):
 
     return b2a_hex(ustruct.pack('<I', xfp)).decode().upper()
 
+def str2xfp(txt):
+    # Inverse of xfp2str
+    import ustruct
+    from ubinascii import unhexlify as a2b_hex
+    return ustruct.unpack('<I', a2b_hex(txt))[0]
+
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.

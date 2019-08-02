@@ -4,9 +4,8 @@
 # multisig.py - support code for multisig signing and p2sh in general.
 #
 import stash, chains, ustruct, ure, uio, sys
-from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
-from utils import xfp2str, swab32
+#from ubinascii import hexlify as b2a_hex
+from utils import xfp2str, str2xfp, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
@@ -503,7 +502,7 @@ class MultisigWallet:
                     raise AssertionError('bad format line')
             elif len(label) == 8:
                 try:
-                    xfp, = ustruct.unpack('<I', a2b_hex(label))
+                    xfp = str2xfp(label)
                 except:
                     # complain?
                     #print("Bad xfp: " + ln)
@@ -1109,7 +1108,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
                         ln = vals.get(mode)
 
                         # value in file is BE32, but we want LE32 internally
-                        xfp, = ustruct.unpack('<I', a2b_hex(vals['xfp']))
+                        xfp = str2xfp(vals['xfp'])
                         if not deriv:
                             deriv = vals[mode+'_deriv']
                         else:
