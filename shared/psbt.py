@@ -31,7 +31,7 @@ DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
 # print some things 
-DEBUG = const(1)
+DEBUG = const(0)
 
 # this points to a wallet, during operation
 # - we're only supporting a single multisig during a signing
@@ -631,9 +631,9 @@ class psbtInputProxy(psbtProxy):
             self.is_p2sh = True
 
             # we must have the redeem script already (else fail)
-            ks = self.witness_script if addr_is_segwit else self.redeem_script
+            ks = self.witness_script or self.redeem_script
             if not ks:
-                raise AssertionError("Missing redeem/witness script for input #%d" % my_idx)
+                raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
 
             redeem_script = self.get(ks)
             self.scriptSig = redeem_script
@@ -715,7 +715,7 @@ class psbtInputProxy(psbtProxy):
             try:
                 active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
             except BaseException as exc:
-                raise AssertionError('Input #%d: %s' % (my_idx, exc))
+                raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
@@ -739,7 +739,7 @@ class psbtInputProxy(psbtProxy):
             elif not self.scriptCode:
                 # Segwit P2SH. We need the witness script to be provided.
                 if not self.witness_script:
-                    raise AssertionError('Need witness script for input #%d' % my_idx)
+                    raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
 
                 # "scriptCode is witnessScript preceeded by a
                 #  compactSize integer for the size of witnessScript"
