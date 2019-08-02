@@ -1,6 +1,8 @@
 
 ## 2.1.2 - Aug 2, 2019
 
+- Add extra warning screen added about forgetting your PIN.
+- Remove warning screen about Testnet vs Mainnet.
 - Bugfix: Change for XFP endian display introduced in 2.0.0 didn't actually correct
   endian display and it was still showing values in LE32. Correctly corrected now.
     - now showing both values in "Advanced > View Identity screen".
@@ -14,8 +16,6 @@
   no card was present.
 - Bugfix: When offline multisig signing sometimes tried to finalize PSBT, but we can't.
 - Bugfix: For multi-pass-multisig signing, handle filenames better (end in -part, not -signed).
-- Remove comment about Testnet, because multisig now considered ready for prime time.
-- Extra warning screen added about forgetting your PIN.
 
 
 ## 2.1.1 - July 3, 2019
