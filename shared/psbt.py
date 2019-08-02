@@ -1151,13 +1151,14 @@ class psbtObject(psbtProxy):
         no_keys = set(n for n,inp in enumerate(self.inputs)
                             if inp.required_key == None and not inp.fully_signed)
         if no_keys:
-            self.warnings.append(('Missing Keys',
-                'We do not know the keypair for some inputs: %r' % list(no_keys)))
+            # This is seen when you re-sign same signed file by accident (multisig)
+            self.warnings.append(('Not Signing',
+                'Some inputs are signed already, or we do not know the key: %r' % list(no_keys)))
 
         if self.presigned_inputs:
             # this isn't really even an issue for some complex usage cases
             self.warnings.append(('Partly Signed Already',
-                'Some input(s) provided were already signed by another party: %r'
+                'Some input(s) provided were already completely signed by other parties: %r'
                                 % list(self.presigned_inputs)))
 
     def calculate_fee(self):
