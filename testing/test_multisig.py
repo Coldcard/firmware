@@ -925,7 +925,8 @@ def fake_ms_txn():
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, M=1, N=3):
+@pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, M=1, N=3):
     
     num_outs = num_ins-1
 
@@ -936,7 +937,10 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 
     open('debug/last.psbt', 'wb').write(psbt)
 
-    try_sign(psbt)
+    if transport == 'sd':
+        try_sign_microsd(psbt)
+    else:
+        try_sign(psbt)
 
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [ 2, 4, 1 ])
