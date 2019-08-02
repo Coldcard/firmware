@@ -49,7 +49,7 @@ production.bin: firmware-signed.bin Makefile
 	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o production.bin
 
 # This is release of the bootloader that will be built into the release firmware.
-BOOTLOADER_VERSION = 1.2.2
+BOOTLOADER_VERSION = 1.2.1
 
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
