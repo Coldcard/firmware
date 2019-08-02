@@ -130,7 +130,7 @@ def problem_file_line(exc):
 
     rv = None
     for ln in lines:
-        mat = ure.match(r'.*"(/.*/)(.*)", line (.*), ', ln)
+        mat = ure.match(r'.*"(/.*/|)(.*)", line (.*), ', ln)
         if mat:
             try:
                 rv = mat.group(2) + ':' + mat.group(3)
