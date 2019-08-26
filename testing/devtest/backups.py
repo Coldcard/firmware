@@ -18,7 +18,7 @@ if 1:
     blanks = 0
     checklist = set('mnemonic chain xprv xpub raw_secret fw_date fw_version fw_timestamp serial '
                 'setting.terms_ok setting.idle_to setting.chain'.split(' '))
-    optional = set('setting.words'.split(' '))
+    optional = set('setting.words multisig setting.multisig setting.fee_limit'.split(' '))
 
     for ln in render_backup_contents().split('\n'):
         ln = ln.strip()
@@ -53,7 +53,7 @@ async def test_7z():
     import machine
     machine.reset = lambda: None
 
-    for chain in ['BTC', 'LTC']:
+    for chain in ['BTC', 'XTN']:
         for words in ( [], ['abc', 'def'] ):
             settings.set('check', today)
             settings.set('chain', chain)

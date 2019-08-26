@@ -266,9 +266,9 @@ class LitecoinTestnet(LitecoinMain):
 #
 AllChains = [
     BitcoinMain,
-    LitecoinMain,
+    #LitecoinMain,
     BitcoinTestnet,
-    LitecoinTestnet,
+    #LitecoinTestnet,
 ]
 
 
