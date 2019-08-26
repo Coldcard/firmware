@@ -308,7 +308,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
         assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
         if bip45:
             for i in range(len(keys)):
-                assert ('/?/%d/0/0' % i) in story
+                assert ('/_/%d/0/0' % i) in story
 
         need_keypress('y')
         # check expected addr was generated based on my math

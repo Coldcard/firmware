@@ -1,5 +1,8 @@
 ## 2.1.3 - Sep, 2019
 
+- Visual change: unknown components of multsig co-signer derivation paths used to be
+  shown as `m/?/?/0/1` but will now be shown as `m/_/_/0/1`. The blank indicates better
+  that we can't prove what is in that spot, not that we don't know what value is claimed.
 - Bugfix: Some backup files would hit an error during restore (random, less than 6%). Those
   existing files will be read correctly by this new version of firmware.
 
