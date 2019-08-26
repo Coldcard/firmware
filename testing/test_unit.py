@@ -89,9 +89,17 @@ def test_nvram(unit_test):
     # exercise nvram simulation
     unit_test('devtest/nvram.py')
 
-def test_backups(unit_test):
+@pytest.mark.parametrize('mode', ['simple', 'blankish'])
+def test_backups(unit_test, mode, set_seed_words):
     # exercise dump of pub data
-    # NOTE: previous tests might have wiped default mnemonic-based seed; so it fails.
+    if mode == 'blankish':
+        # want a zero in last byte of hex representation of raw secret...
+        '''
+        >>> tcc.bip39.from_data(bytes([0x10]*32))
+        'avoid letter advice cage ... absurd amount doctor blanket'
+        '''
+        set_seed_words('avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor blanket')
+
     unit_test('devtest/backups.py')
 
 def test_bip143(unit_test):

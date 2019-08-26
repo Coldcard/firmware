@@ -1,3 +1,7 @@
+## 2.1.3 - Sep, 2019
+
+- Bugfix: Some backup files would hit an error during restore (random, less than 6%). Those
+  existing files will be read correctly by this new version of firmware.
 
 ## 2.1.2 - Aug 2, 2019
 
@@ -13,7 +17,7 @@
 - Bugfix: Show a nicer message when given a PSBT with corrupted UTXO values.
 - Bugfix: Block access to multisig menu when no seed phrase yet defined.
 - Bugfix: Any command on multisig menu that used the MicroSD card would crash, if
-  no card was present.
+  card was not present.
 - Bugfix: When offline multisig signing sometimes tried to finalize PSBT, but we can't.
 - Bugfix: For multi-pass-multisig signing, handle filenames better (end in -part, not -signed).
 
