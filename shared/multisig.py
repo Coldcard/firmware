@@ -389,7 +389,7 @@ class MultisigWallet:
                 #   part of the path from fingerprint to here.
                 here = '(m=%s)\n' % xfp2str(xfp)
                 if dp != len(path):
-                    here += 'm' + ('/?'*dp) + path_to_str(path[dp:], '/', 0)
+                    here += 'm' + ('/_'*dp) + path_to_str(path[dp:], '/', 0)
 
                 if found_pk != pubkey:
                     # Not a match but not an error by itself, since might be 
