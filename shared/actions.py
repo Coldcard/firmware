@@ -81,6 +81,9 @@ Master Key Fingerprint:
 
   {xfp}
 
+as LE32:
+  0x{xfp_le:08x}
+
 USB Serial Number:
 
   {serial}
@@ -89,8 +92,9 @@ Extended Master Key:
 
 {xpub}
 '''
+    my_xfp = settings.get('xfp', 0)
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
-                            xfp=xfp2str(settings.get('xfp', 0)),
+                            xfp=xfp2str(my_xfp), xfp_le=my_xfp,
                             serial=version.serial_number())
 
     if pa.is_secondary:
@@ -273,7 +277,9 @@ async def initial_pin_setup(*a):
     # First time they select a PIN of any type.
     from login import LoginUX
     lll = LoginUX()
-    pin = await lll.get_new_pin('Choose PIN', '''\
+    title = 'Choose PIN'
+
+    ch = await ux_show_story('''\
 Pick the main wallet's PIN code now. Be more clever, but an example:
 
 123-4567
@@ -290,7 +296,22 @@ this Coldcard device and is not a factor in the wallet's \
 seed words or private keys.
 
 THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
-''')
+''', title=title)
+    if ch != 'y': return
+
+    while 1:
+        ch = await ux_show_story('''\
+There is ABSOLUTELY NO WAY to 'reset the PIN' or 'factory reset' the Coldcard if you forget the PIN.
+
+DO NOT FORGET THE PIN CODE.
+ 
+Press 6 to prove you read to the end of this message.''', title='WARNING', escape='6')
+
+        if ch == 'x': return
+        if ch == '6': break
+
+    # do the actual picking
+    pin = await lll.get_new_pin(title)
     del lll
 
     if pin is None: return

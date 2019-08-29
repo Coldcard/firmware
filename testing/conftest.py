@@ -586,6 +586,96 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
     return doit
 
 @pytest.fixture
+def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress):
+
+    # like "try_sign" but use "air gapped" file transfer via microSD
+
+    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False):
+
+        if f_or_data[0:5] == b'psbt\xff':
+            ip = f_or_data
+            filename = 'memory'
+        else:
+            filename = f_or_data
+            ip = open(f_or_data, 'rb').read()
+            if ip[0:10] == b'70736274ff':
+                ip = a2b_hex(ip.strip())
+            assert ip[0:5] == b'psbt\xff'
+
+        psbtname = 'ftrysign'
+
+        with open_microsd(psbtname+'.psbt', 'wb') as sd:
+            sd.write(ip)
+
+        goto_home()
+        pick_menu_item('Ready To Sign')
+
+        time.sleep(.1)
+        _, story = cap_story()
+        if 'Choose PSBT file' in story:
+            need_keypress('y')
+            time.sleep(.1)
+            
+        pick_menu_item(psbtname+'.psbt')
+
+        time.sleep(.1)
+        
+        if accept_ms_import:
+            # XXX would be better to do cap_story here, but that would limit test to simulator
+            need_keypress('y')
+            time.sleep(0.050)
+
+        title, story = cap_story()
+        assert title == 'OK TO SEND?'
+
+        if accept != None:
+            need_keypress('y' if accept else 'x')
+
+        if accept == False:
+            time.sleep(0.050)
+
+            # look for "Aborting..." ??
+            return ip, None
+
+        # wait for it to finish
+        for r in range(10):
+            time.sleep(0.1)
+            title, story = cap_story()
+            if title == 'PSBT Signed': break
+        else:
+            assert False, 'timed out'
+
+        result_fname = story.split('\n')[-1]
+
+        result = open_microsd(result_fname, 'rb').read()
+
+        # read back final product
+        if finalize:
+            assert 'final' in result_fname
+
+            from pycoin.tx.Tx import Tx
+            # parse it a little
+            assert result[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
+            t = Tx.from_bin(result)
+            assert t.version in [1, 2]
+
+        else:
+            if complete:
+                assert '-signed' in result_fname
+            else:
+                assert '-part' in result_fname
+
+            from psbt import BasicPSBT
+            was = BasicPSBT().parse(ip) 
+            now = BasicPSBT().parse(result)
+            assert was.txn == now.txn
+            assert was != now
+
+        return ip, result
+
+    return doit
+
+@pytest.fixture
 def try_sign(start_sign, end_sign):
 
     def doit(filename_or_data, accept=True, finalize=False, accept_ms_import=False):
@@ -649,7 +739,8 @@ def end_sign(dev, need_keypress):
 
         if not finalize:
             if in_psbt:
-                assert BasicPSBT().parse(in_psbt) == BasicPSBT().parse(psbt_out)
+                from psbt import BasicPSBT
+                assert BasicPSBT().parse(in_psbt) != None
         else:
             from pycoin.tx.Tx import Tx
             # parse it

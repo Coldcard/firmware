@@ -52,7 +52,7 @@ def render_backup_contents():
         ADD('xpub', chain.serialize_public(sv.node))
 
         # BTW: everything is really a duplicate of this value
-        ADD('raw_secret', b2a_hex(sv.secret).rstrip(b'00'))
+        ADD('raw_secret', b2a_hex(sv.secret).rstrip(b'0'))
 
         if pa.has_duress_pin():
             COMMENT('Duress Wallet (informational)')
@@ -96,7 +96,10 @@ async def restore_from_dict(vals):
 
         assert 'raw_secret' in vals
         raw = bytearray(AE_SECRET_LEN)
-        x = a2b_hex(vals.pop('raw_secret'))
+        rs = vals.pop('raw_secret')
+        if len(rs) % 2:
+            rs += '0'
+        x = a2b_hex(rs)
         raw[0:len(x)] = x
 
         # check we can decode this right (might be different firmare)
@@ -540,7 +543,6 @@ def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
     from main import settings
     import ustruct, version
-    from ubinascii import hexlify as b2a_hex
 
     # bitcoin (xpub) is used, even for testnet case (ie. no tpub)
     # - altho, doesn't matter; the wallet operates based on it's own settings for test/mainnet

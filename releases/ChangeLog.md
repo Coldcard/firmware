@@ -1,3 +1,30 @@
+## 2.1.3 - Sep, 2019
+
+- Visual change: unknown components of multsig co-signer derivation paths used to be
+  shown as `m/?/?/0/1` but will now be shown as `m/_/_/0/1`. The blank indicates better
+  that we can't prove what is in that spot, not that we don't know what value is claimed.
+- Bugfix: Some backup files would hit an error during restore (random, less than 6%). Those
+  existing files will be read correctly by this new version of firmware.
+
+## 2.1.2 - Aug 2, 2019
+
+- Add extra warning screen added about forgetting your PIN.
+- Remove warning screen about Testnet vs Mainnet.
+- Bugfix: Change for XFP endian display introduced in 2.0.0 didn't actually correct
+  endian display and it was still showing values in LE32. Correctly corrected now.
+    - now showing both values in "Advanced > View Identity screen".
+    - some matching changes to ckcc-protocol (CLI tool)
+    - when making multisig wallets in airgap mode, you must use latest firmware on all the units
+- Bugfix: Error messages would sometimes disappear off the screen quickly. Now they stay up
+  until OK pressed. Text of certain messages also improved.
+- Bugfix: Show a nicer message when given a PSBT with corrupted UTXO values.
+- Bugfix: Block access to multisig menu when no seed phrase yet defined.
+- Bugfix: Any command on multisig menu that used the MicroSD card would crash, if
+  card was not present.
+- Bugfix: When offline multisig signing sometimes tried to finalize PSBT, but we can't.
+- Bugfix: For multi-pass-multisig signing, handle filenames better (end in -part, not -signed).
+
+
 ## 2.1.1 - July 3, 2019
 
 - New feature: Create seed words from D6 dice rolls:

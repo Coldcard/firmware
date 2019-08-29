@@ -80,6 +80,6 @@ def xfp2str(xfp):
     # and not really an integer. Used to show as '0x%08x' but that's wrong endian.
     from binascii import b2a_hex
     from struct import pack
-    return b2a_hex(pack('>I', xfp)).decode('ascii').upper()
+    return b2a_hex(pack('<I', xfp)).decode('ascii').upper()
 
 # EOF

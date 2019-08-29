@@ -103,7 +103,13 @@ def xfp2str(xfp):
     import ustruct
     from ubinascii import hexlify as b2a_hex
 
-    return b2a_hex(ustruct.pack('>I', xfp)).decode().upper()
+    return b2a_hex(ustruct.pack('<I', xfp)).decode().upper()
+
+def str2xfp(txt):
+    # Inverse of xfp2str
+    import ustruct
+    from ubinascii import unhexlify as a2b_hex
+    return ustruct.unpack('<I', a2b_hex(txt))[0]
 
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
@@ -124,7 +130,7 @@ def problem_file_line(exc):
 
     rv = None
     for ln in lines:
-        mat = ure.match(r'.*"(/.*/)(.*)", line (.*), ', ln)
+        mat = ure.match(r'.*"(/.*/|)(.*)", line (.*), ', ln)
         if mat:
             try:
                 rv = mat.group(2) + ':' + mat.group(3)

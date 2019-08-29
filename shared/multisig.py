@@ -4,13 +4,14 @@
 # multisig.py - support code for multisig signing and p2sh in general.
 #
 import stash, chains, ustruct, ure, uio, sys
-from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, swab32
+#from ubinascii import hexlify as b2a_hex
+from utils import xfp2str, str2xfp, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
+from actions import needs_microsd
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -388,7 +389,7 @@ class MultisigWallet:
                 #   part of the path from fingerprint to here.
                 here = '(m=%s)\n' % xfp2str(xfp)
                 if dp != len(path):
-                    here += 'm' + ('/?'*dp) + path_to_str(path[dp:], '/', 0)
+                    here += 'm' + ('/_'*dp) + path_to_str(path[dp:], '/', 0)
 
                 if found_pk != pubkey:
                     # Not a match but not an error by itself, since might be 
@@ -501,7 +502,7 @@ class MultisigWallet:
                     raise AssertionError('bad format line')
             elif len(label) == 8:
                 try:
-                    xfp = int(label, 16)
+                    xfp = str2xfp(label)
                 except:
                     # complain?
                     #print("Bad xfp: " + ln)
@@ -673,7 +674,6 @@ class MultisigWallet:
         # the details, and/or bypass that all and just trust the data.
         # - xpubs_list is a list of (xfp+path, binary BIP32 xpub)
         # - already know not in our records.
-        from ustruct import unpack_from
         from main import settings
         import tcc
 
@@ -695,7 +695,7 @@ class MultisigWallet:
         path_tops = set()
 
         for k, v in xpubs_list:
-            xfp, *path = unpack_from('<%dI' % (len(k)/4), k, 0)
+            xfp, *path = ustruct.unpack_from('<%dI' % (len(k)/4), k, 0)
             xpub = tcc.codecs.b58_encode(v)
             xfp = cls.check_xpub(xfp, xpub, expect_chain, xpubs, path_tops)
             if xfp == my_xfp:
@@ -861,9 +861,11 @@ class MultisigMenu(MenuSystem):
 
 async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
-    if chains.current_chain().ctype != 'XTN':
-        if not await ux_confirm("Multisig is to be used on Testnet coins only at this time."):
-            return
+    from main import pa
+
+    if pa.is_secret_blank():
+        await ux_show_story("You must have wallet seed before creating multisig wallets.")
+        return
 
     rv = MultisigMenu.construct()
     return MultisigMenu(rv)
@@ -1104,7 +1106,9 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
                             vals = ujson.load(fp)
 
                         ln = vals.get(mode)
-                        xfp = int(vals['xfp'], 16)
+
+                        # value in file is BE32, but we want LE32 internally
+                        xfp = str2xfp(vals['xfp'])
                         if not deriv:
                             deriv = vals[mode+'_deriv']
                         else:
