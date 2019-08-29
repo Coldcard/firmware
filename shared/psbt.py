@@ -31,7 +31,7 @@ DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
 # print some things 
-DEBUG = const(1)
+DEBUG = const(0)
 
 # this points to a wallet, during operation
 # - we're only supporting a single multisig during a signing
@@ -633,7 +633,7 @@ class psbtInputProxy(psbtProxy):
             # we must have the redeem script already (else fail)
             ks = self.witness_script or self.redeem_script
             if not ks:
-                raise AssertionError("missing redeem/witness script for in #%d" % my_idx)
+                raise FatalPSBTIssue("Missing redeem/witness script for input #%d" % my_idx)
 
             redeem_script = self.get(ks)
             self.scriptSig = redeem_script
@@ -715,7 +715,7 @@ class psbtInputProxy(psbtProxy):
             try:
                 active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
             except BaseException as exc:
-                raise AssertionError('Input #%d: %s' % (my_idx, exc))
+                raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
@@ -739,7 +739,7 @@ class psbtInputProxy(psbtProxy):
             elif not self.scriptCode:
                 # Segwit P2SH. We need the witness script to be provided.
                 if not self.witness_script:
-                    raise AssertionError('Need witness script for input #%d' % my_idx)
+                    raise FatalPSBTIssue('Need witness script for input #%d' % my_idx)
 
                 # "scriptCode is witnessScript preceeded by a
                 #  compactSize integer for the size of witnessScript"
@@ -1151,13 +1151,14 @@ class psbtObject(psbtProxy):
         no_keys = set(n for n,inp in enumerate(self.inputs)
                             if inp.required_key == None and not inp.fully_signed)
         if no_keys:
-            self.warnings.append(('Missing Keys',
-                'We do not know the keypair for some inputs: %r' % list(no_keys)))
+            # This is seen when you re-sign same signed file by accident (multisig)
+            self.warnings.append(('Not Signing',
+                'Some inputs are signed already, or we do not know the key: %r' % list(no_keys)))
 
         if self.presigned_inputs:
             # this isn't really even an issue for some complex usage cases
             self.warnings.append(('Partly Signed Already',
-                'Some input(s) provided were already signed by another party: %r'
+                'Some input(s) provided were already completely signed by other parties: %r'
                                 % list(self.presigned_inputs)))
 
     def calculate_fee(self):
@@ -1490,14 +1491,18 @@ class psbtObject(psbtProxy):
         # Are all the inputs (now) signed?
 
         # some might have been given as signed
-        signed = set(self.presigned_inputs)
+        signed = len(self.presigned_inputs)
 
         # plus we added some signatures
-        for i in range(self.num_inputs):
-            if self.inputs[i] and self.inputs[i].added_sig:
-                signed.add(i)
+        for inp in self.inputs:
+            if inp.is_multisig:
+                # but we can't combine/finalize multisig stuff, so will never't be 'final'
+                return False
 
-        return len(signed) == self.num_inputs
+            if inp.added_sig:
+                signed += 1
+
+        return signed == self.num_inputs
 
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied

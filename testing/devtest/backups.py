@@ -18,6 +18,7 @@ if 1:
     blanks = 0
     checklist = set('mnemonic chain xprv xpub raw_secret fw_date fw_version fw_timestamp serial '
                 'setting.terms_ok setting.idle_to setting.chain'.split(' '))
+    optional = set('setting.words multisig setting.multisig setting.fee_limit'.split(' '))
 
     for ln in render_backup_contents().split('\n'):
         ln = ln.strip()
@@ -32,7 +33,7 @@ if 1:
         assert '=' in ln, ln
         k, v = ln.split(' = ', 1)
         assert v and k
-        assert k in checklist, "Unknown key: "+k
+        assert (k in checklist) or (k in optional), "Unknown key: "+k
         checklist.discard(k)
 
     assert not checklist, "Missing: %r" % checklist
@@ -52,8 +53,8 @@ async def test_7z():
     import machine
     machine.reset = lambda: None
 
-    for chain in ['BTC', 'LTC']:
-        for words in ( ['abc', 'def'], []):
+    for chain in ['BTC', 'XTN']:
+        for words in ( [], ['abc', 'def'] ):
             settings.set('check', today)
             settings.set('chain', chain)
 
@@ -70,6 +71,7 @@ async def test_7z():
                 assert len(set(result)) >= 240      # encrypted
             else:
                 sr = str(result, 'ascii')
+                print("Backup contents:\n" + sr)
                 assert sr[0] == '#', result
                 assert 'Coldcard' in sr
                 assert len(set(sr)) < 100       # cleartext, english
@@ -85,8 +87,10 @@ async def test_7z():
                 numpad.inject('y')      # for 'success' message
                 await restore_complete_doit(fd, words)
 
-                assert settings.get('check') == today
-                assert settings.get('chain') == chain
+                assert settings.get('check') == today, \
+                            (settings.get('check'), '!=',  today)
+                assert settings.get('chain') == chain, \
+                            (settings.get('chain'), '!=',  chain)
 
             today += 3
 

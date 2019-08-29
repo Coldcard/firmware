@@ -308,7 +308,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
         assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
         if bip45:
             for i in range(len(keys)):
-                assert ('/?/%d/0/0' % i) in story
+                assert ('/_/%d/0/0' % i) in story
 
         need_keypress('y')
         # check expected addr was generated based on my math
@@ -540,7 +540,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
                     got.add(label)
                 else:
                     assert len(label) == 8, label
-                    xfp = int(label, 16)
+                    xfp = swab32(int(label, 16))
                     got.add(xfp)
                     assert xfp in [x for x,_,_ in keys]
                     n = BIP32Node.from_wallet_key(value)
@@ -719,7 +719,7 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
     def decode_path(p):
         return '/'.join(str(i) if i < 0x80000000 else "%d'"%(i& 0x7fffffff) for i in p)
 
-    for mode in [ 'full', 'prefix']:
+    if 1:
         args = ['ckcc']
         if dev.is_simulator:
             args += ['-x']
@@ -731,14 +731,12 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
         elif addr_fmt == AF_P2WSH_P2SH:
             args += ['-s', '-w']
 
-        if mode == 'full':
-            args += ['-p', "", B2A(scr)]
-            args += [xfp2str(x)+'/'+decode_path(path) for x,*path in xfp_paths]
-        else:
-            args += [B2A(scr)]
-            args += [xfp2str(x)+'/'+decode_path(path[1:]) for x,*path in xfp_paths]
+        args += [B2A(scr)]
+        args += [xfp2str(x)+'/'+decode_path(path) for x,*path in xfp_paths]
 
-        print('CMD: ' + (' '.join(args)))
+        import shlex
+        print('CMD: ' + (' '.join(shlex.quote(i) for i in args)))
+
         addr = check_output(args, encoding='ascii').strip()
 
         print(addr)
@@ -927,7 +925,8 @@ def fake_ms_txn():
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, M=1, N=3):
+@pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, M=1, N=3):
     
     num_outs = num_ins-1
 
@@ -938,7 +937,10 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 
     open('debug/last.psbt', 'wb').write(psbt)
 
-    try_sign(psbt)
+    if transport == 'sd':
+        try_sign_microsd(psbt)
+    else:
+        try_sign(psbt)
 
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [ 2, 4, 1 ])
@@ -999,9 +1001,9 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         assert is_complete
         assert ex != aft
 
-@pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
+@pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2wsh-p2sh', 'p2sh'])
 #@pytest.mark.parametrize('N', [3, 4, 14])
-def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, N=4):
+def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, get_settings, N=4):
     # test UX and math for bip45 export
 
     # cleanup
@@ -1103,8 +1105,6 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
 
     need_keypress('y')
     need_keypress('y')
-    
-    clear_ms()
 
     if N == 4:
         import shutil
@@ -1114,6 +1114,11 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
             shutil.copy(fn, 'data/multisig/'+fn.rsplit('/', 1)[1])
         shutil.copy(el_fname, f'data/multisig/el-{addr_fmt}-myself.json')
         shutil.copy(cc_fname, f'data/multisig/export-{addr_fmt}-myself.txt')
+
+        json.dump(get_settings()['multisig'][0], 
+                    open(f'data/multisig/setting-{addr_fmt}-myself.json', 'w'))
+    
+    clear_ms()
 
     # test re-importing the wallet from export file
     goto_home()
@@ -1177,7 +1182,7 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     # No means to export XPUB from bitcoind! Still. In 2019.
     # - this fake will only work for for one pubkey value, the first/topmost
     node = BIP32Node('XTN', b'\x23'*32, depth=len(bc_deriv.split('/'))-1,
-                        parent_fingerprint=a2b_hex(xfp2str(bc_xfp)), public_pair=pp)
+                        parent_fingerprint=a2b_hex('%08x' % bc_xfp), public_pair=pp)
 
     keys = [
         (bc_xfp, None, node),
@@ -1218,7 +1223,7 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
 
     print(f"Will be signing an input from {ms_addr}")
 
-    if xfp2str(bc_xfp) == '5380D0ED':
+    if xfp2str(bc_xfp) in ('5380D0ED', 'EDD08053'):
         # my own expected values
         assert ms_addr in ( '2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4',
                             '2N1hZJ5mazTX524GQTPKkCT4UFZn5Fqwdz6',
