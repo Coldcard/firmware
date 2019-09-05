@@ -352,7 +352,8 @@ class psbtOutputProxy(psbtProxy):
                     redeem_script[0] == 0 and redeem_script[1] == 20:
 
                 # it's actually segwit p2pkh inside p2sh
-                expect_pkh = redeem_script[2:22]
+                pkh = redeem_script[2:22]
+                expect_pkh = hash160(expect_pubkey)
 
             else:
                 # Multisig change output, for wallet we're supposed to be a part of.
