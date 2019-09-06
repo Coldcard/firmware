@@ -340,12 +340,12 @@ class psbtOutputProxy(psbtProxy):
         if addr_type == 'p2sh':
             # P2SH or Multisig output
             # We must have the witness & redeem script already (else fail)
-            if not self.redeem_script:
+            if not self.redeem_script and not self.witness_script:
                 # perhaps an omission, so let's not call fraud on it
                 # but definately required, else we don't know what script we're sending to.
-                raise AssertionError("Missing redeem script for output #%d" % out_idx)
+                raise AssertionError("Missing redeem/witness script for output #%d" % out_idx)
 
-            redeem_script = self.get(self.redeem_script)
+            redeem_script = self.get(self.redeem_script or self.witness_script)
 
             if not is_segwit and \
                     len(redeem_script) == 22 and \
@@ -705,7 +705,8 @@ class psbtInputProxy(psbtProxy):
             if not active_multisig:
                 # search for multisig wallet
                 wal = MultisigWallet.find_match(M, N, xfps)
-                assert wal >= 0, 'unknown multisig wallet'
+                if wal < 0:
+                    raise FatalPSBTIssue('Unknown multisig wallet')
 
                 active_multisig = MultisigWallet.get_by_idx(wal)
             else:
