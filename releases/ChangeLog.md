@@ -1,4 +1,4 @@
-## 2.1.3 - Sep, 2019
+## 2.1.3 - Sep 6, 2019
 
 - Visual change: unknown components of multsig co-signer derivation paths used to be
   shown as `m/?/?/0/1` but will now be shown as `m/_/_/0/1`. The blank indicates better
