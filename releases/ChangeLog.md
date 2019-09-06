@@ -6,6 +6,7 @@
 - Bugfix: Some backup files would hit an error during restore (random, less than 6%). Those
   existing backup files will be read correctly by this new version of firmware.
 - Bugfix: P2SH-P2WPKH change outputs incorrectly flagged as fraudulent (regression from v1.1.0)
+- Bugfix: Wanted redeem script, but should be witness script for P2WSH change outputs.
 
 ## 2.1.2 - Aug 2, 2019
 
