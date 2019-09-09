@@ -1,6 +1,6 @@
 
 def get_mpy_version():
-    return '2019-07-03', '2.1.1', '180711195308'
+    return '2019-09-06', '2.1.3', '180711195308'
 
 def is_factory_mode():
     # pretend signed w/ dev key and allow debug
