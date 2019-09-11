@@ -1,3 +1,7 @@
+## 2.1.4 - Sep 11, 2019
+
+- Bugfix: For multisig change outputs, many cases where incorrected flagged as fraudulent.
+
 ## 2.1.3 - Sep 6, 2019
 
 - Visual change: unknown components of multsig co-signer derivation paths used to be
