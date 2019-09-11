@@ -24,3 +24,6 @@ ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']
 
 # single-signer
 ADDR_STYLES_SINGLE = ['p2wpkh', 'p2pkh', 'p2wpkh-p2sh']
+
+# multi signer
+ADDR_STYLES_MS = ['p2sh', 'p2wsh', 'p2wsh-p2sh']
