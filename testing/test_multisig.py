@@ -268,18 +268,21 @@ def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **
         hrp = ['bc', 'tb'][testnet]
         data = sha256(script).digest()
         addr = bech32.encode(hrp, 0, data)
+        scriptPubKey = bytes([0x0, 0x20]) + data
     else:
         if addr_fmt == AF_P2SH:
             digest = hash160(script)
         elif addr_fmt == AF_P2WSH_P2SH:
             digest = hash160(b'\x00\x20' + sha256(script).digest())
         else:
-            assert 0
+            raise ValueError(addr_fmt)
 
         prefix = bytes([196]) if testnet else bytes([5])
         addr = b2a_hashed_base58(prefix + digest)
 
-    return addr, script, zip(pubkeys, xfp_paths)
+        scriptPubKey = bytes([0xa9, 0x14]) + digest + bytes([0x87])
+
+    return addr, scriptPubKey, script, zip(pubkeys, xfp_paths)
     
 
 @pytest.fixture
@@ -743,7 +746,7 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
         addr_vs_path(addr, addr_fmt=addr_fmt, script=scr)
 
         # test case for make_ms_address really.
-        expect_addr, scr2, _ = make_ms_address(M, keys, path_mapper=pmapper, addr_fmt=addr_fmt)
+        expect_addr, _, scr2, _ = make_ms_address(M, keys, path_mapper=pmapper, addr_fmt=addr_fmt)
         assert expect_addr == addr
         assert scr2 == scr
         
@@ -850,7 +853,7 @@ def fake_ms_txn():
             # - each input is 1BTC
 
             # addr where the fake money will be stored.
-            addr, script, details = make_ms_address(M, keys, idx=i)
+            addr, scriptPubKey, script, details = make_ms_address(M, keys, idx=i)
 
             # lots of supporting details needed for p2sh inputs
             if segwit_in:
@@ -864,10 +867,7 @@ def fake_ms_txn():
             # UTXO that provides the funding for to-be-signed txn
             supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
 
-            # sciptPubKey for input's output
-            pks = bytes([0xa9, 0x14]) + hash160(script) + bytes([0x87])
-
-            supply.txs_out.append(TxOut(1E8, pks))
+            supply.txs_out.append(TxOut(1E8, scriptPubKey))
 
             with BytesIO() as fd:
                 if not segwit_in:
@@ -889,7 +889,8 @@ def fake_ms_txn():
                 style = outstyles[i % len(outstyles)]
 
             if i in change_outputs:
-                addr, scr, details = make_ms_address(M, keys, idx=i)
+                addr, scriptPubKey, scr, details = \
+                    make_ms_address(M, keys, idx=i, addr_fmt=unmap_addr_fmt[style])
 
                 for pubkey, xfp_path in details:
                     psbt.outputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
@@ -904,9 +905,9 @@ def fake_ms_txn():
                 psbt.outputs[i].redeem_script = scr
 
             if not outvals:
-                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scr)
+                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scriptPubKey)
             else:
-                h = TxOut(outvals[i], scr)
+                h = TxOut(outvals[i], scriptPubKey)
 
             txn.txs_out.append(h)
 
@@ -926,14 +927,17 @@ def fake_ms_txn():
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
 @pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, M=1, N=3):
+@pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
+@pytest.mark.parametrize('has_change', [ True, False])
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, M=1, N=3):
     
     num_outs = num_ins-1
 
     clear_ms()
     keys = import_ms_wallet(M, N, name='cli-test', accept=1)
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs)
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs,
+                outstyles=[out_style], change_outputs=[1] if has_change else [])
 
     open('debug/last.psbt', 'wb').write(psbt)
 
