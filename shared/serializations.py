@@ -364,7 +364,7 @@ class CTxOut(object):
         return r
 
     def get_address(self):
-        # detect type of script, and return 3-tuple:
+        # Detect type of output from scriptPubKey, and return 3-tuple:
         #    (addr_type_code, addr, is_segwit)
         # 'addr' is byte string, either 20 or 32 long
 
@@ -388,7 +388,9 @@ class CTxOut(object):
             # rare, pay to full pubkey
             return 'p2pk', self.scriptPubKey[2:2+33], False
 
-        raise ValueError('scriptPubKey template')
+        # If this is reached, we do not understand the output well
+        # enough to allow the user to authorize the spend, so fail hard.
+        raise ValueError('scriptPubKey template fail: ' + b2a_hex(self.scriptPubKey))
 
     def is_p2sh(self):
         return len(self.scriptPubKey) == 23 and self.scriptPubKey[0] == 0xa9 \
@@ -403,7 +405,6 @@ class CTxOut(object):
         return (len(self.scriptPubKey) == 35 or len(self.scriptPubKey) == 67) \
                 and (self.scriptPubKey[0] == 0x21 or self.scriptPubKey[0] == 0x41) \
                 and self.scriptPubKey[-1] == 0xac
-
 
     def __repr__(self):
         return "CTxOut(nValue=%d.%08d scriptPubKey=%s)" \
