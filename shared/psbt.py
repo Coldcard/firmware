@@ -339,6 +339,7 @@ class psbtOutputProxy(psbtProxy):
 
         if addr_type == 'p2sh':
             # P2SH or Multisig output
+
             # We must have the witness & redeem script already (else fail)
             if not self.redeem_script and not self.witness_script:
                 # perhaps an omission, so let's not call fraud on it
@@ -388,15 +389,19 @@ class psbtOutputProxy(psbtProxy):
                     # p2wsh case
                     # - need witness script and check it's hash against proposed p2wsh value
                     assert len(addr_or_pubkey) == 32
-                    expect_wsh = tcc.sha256(self.witness_script).digest()
+                    expect_wsh = tcc.sha256(redeem_script).digest()
                     if expect_wsh != addr_or_pubkey:
                         raise FraudulentChangeOutput(out_idx, "P2WSH witness script has wrong hash")
 
                     self.is_change = True
                     return
 
-                # old BIP16 style; looks like payment addr
-                expect_pkh = hash160(redeem_script)
+                if self.witness_script:
+                    # assume p2wsh-p2sh case
+                    expect_pkh = hash160(b'\x00\x20' + tcc.sha256(redeem_script).digest())
+                else:
+                    # old BIP16 style; looks like payment addr
+                    expect_pkh = hash160(redeem_script)
 
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
