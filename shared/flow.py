@@ -10,6 +10,7 @@ from main import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu
+from paper import make_paper_wallet
 
 #
 # NOTE: "Always In Title Case"
@@ -79,6 +80,7 @@ AdvancedVirginMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem('Upgrade firmware', menu=UpgradeMenu),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),           # security risk?
     MenuItem('Secure Logout', f=logout_now),
@@ -119,6 +121,7 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
