@@ -79,6 +79,14 @@ if '-s' in sys.argv:
     numpad.inject('4')
     numpad.inject('y')
     numpad.inject('4')
+
+if '-p' in sys.argv:
+    # Paper wallet menu
+    from main import numpad
+    numpad.inject('3')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('8')
     numpad.inject('y')
 
 if '--xfp' in sys.argv:

@@ -792,7 +792,7 @@ async def list_files(*A):
     fn = await file_picker('List files on MicroSD')
     return
 
-async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None):
+async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None, none_msg=None):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
@@ -859,12 +859,13 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
         return choices
 
     if not choices:
-        msg = 'Unable to find any suitable files for this operation. '
+        msg = none_msg or 'Unable to find any suitable files for this operation. '
 
-        if suffix:
-            msg += 'The filename must end in "%s". ' % suffix
+        if not none_msg:
+            if suffix:
+                msg += 'The filename must end in "%s". ' % suffix
 
-        msg += '\n\nMaybe insert (another) SD card and try again?'
+            msg += '\n\nMaybe insert (another) SD card and try again?'
 
         await ux_show_story(msg)
         return

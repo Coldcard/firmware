@@ -88,9 +88,11 @@ class MenuSystem:
         # something changed in system state; maybe re-construct menu contents
         pass
 
-    def replace_items(self, menu_items):
-        self.cursor = 0
-        self.ypos = 0
+    def replace_items(self, menu_items, keep_position=False):
+        # only safe to keep position if you know number of items isn't changing
+        if not keep_position:
+            self.cursor = 0
+            self.ypos = 0
         self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
         self.count = len(self.items)
 
