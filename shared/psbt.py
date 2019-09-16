@@ -1035,7 +1035,8 @@ class psbtObject(psbtProxy):
             if need_approval:
                 # do a complex UX sequence, which lets them save wallet
                 ch = await active_multisig.confirm_import()
-                assert ch == 'y', 'Refused to import new wallet'
+                if ch != 'y':
+                    raise FatalPSBTIssue("Refused to import new wallet")
 
         if not active_multisig:
             # not clear if an error... might be part-way to importing, and
