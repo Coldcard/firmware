@@ -94,16 +94,17 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 - any incorrect values here are assumed to be fraud attempts, and are highlighted to user
 - the _redeemScript_ for `p2wsh-p2sh` is optional, but if provided must be
   correct, ie: 0x00 + 0x20 + sha256(_witnessScript_)
+- the _witnessScript_ in a `p2wsh-p2sh` is not optional.
 - depending on the address type of the output, different values are required in the
   corresponding output section, as follows
     
     - `p2pkh`: no _redeemScript_, no _witnessScript_
-    - `p2wpkh-p2sh`: only _redeemScript_ (which will be: 0x0014{20-byte-key-hash})
+    - `p2wpkh-p2sh`: only _redeemScript_ (which will be: `0x00 + 0x14 + HASH160(key)`)
     - `p2wpkh`: no _redeemScript_, no _witnessScript_
-    - `p2sh` (multisig): _redeemScript_ that contains the a multisig script, ending in 0xAE
-    - `p2wsh-p2sh` (multisig): _redeemScript_ (which is: 0x0020{32-byte-hash}) and
+    - `p2sh`: _redeemScript_ that contains the a multisig script, ending in 0xAE
+    - `p2wsh-p2sh`: _redeemScript_ (which is: `0x00 + 0x20 + sha256(witnessScript)`), and
       _witnessScript_ (which contains the multisig script)
-    - `p2wsh` (multisig): only _witnessScript_ (which contains the actual multisig script)
+    - `p2wsh`: only _witnessScript_ (which contains the actual multisig script)
 
 
 
