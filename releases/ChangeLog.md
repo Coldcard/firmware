@@ -1,5 +1,7 @@
-## 2.1.5 - Sep 19, 2019
+## 2.1.5 - Sep 17, 2019
 
+- Bugfix: Changes to redeem vs. witness script content in PSBTs. Affects multisig change outputs,
+  primarily.
 - Bugfix: Import of multisig wallet from xpubs in PSBT could fail if attempted from SD Card.
 - Bugfix: Improved message shown if import of multsig wallet was refused during PSBT signing.
 
