@@ -87,8 +87,24 @@
 
 # Change Outputs
 
-- we will hide transaction outputs if they are "change" back into same wallet, however:
+We will hide transaction outputs if they are "change" back into same wallet, however:
+
 - PSBT must specify BIP32 path in corresponding output section for us to treat as change
 - for p2sh-wrapped segwit outputs, redeem script must be provided when needed
 - any incorrect values here are assumed to be fraud attempts, and are highlighted to user
+- the _redeemScript_ for `p2wsh-p2sh` is optional, but if provided must be
+  correct, ie: 0x00 + 0x20 + sha256(_witnessScript_)
+- depending on the address type of the output, different values are required in the
+  corresponding output section, as follows
+    
+    - `p2pkh`: no _redeemScript_, no _witnessScript_
+    - `p2wpkh-p2sh`: only _redeemScript_ (which will be: 0x0014{20-byte-key-hash})
+    - `p2wpkh`: no _redeemScript_, no _witnessScript_
+    - `p2sh` (multisig): _redeemScript_ that contains the a multisig script, ending in 0xAE
+    - `p2wsh-p2sh` (multisig): _redeemScript_ (which is: 0x0020{32-byte-hash}) and
+      _witnessScript_ (which contains the multisig script)
+    - `p2wsh` (multisig): only _witnessScript_ (which contains the actual multisig script)
+
+
+
 
