@@ -14,6 +14,7 @@ from constants import *
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.encoding import a2b_hashed_base58
 from io import BytesIO
+from hashlib import sha256
 
 def HARD(n=0):
     return 0x80000000 | n
@@ -257,7 +258,6 @@ def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **
     # Construct addr and script need to represent a p2sh address
     import bech32
     from pycoin.encoding import b2a_hashed_base58, hash160
-    from hashlib import sha256
 
     if 'path_mapper' not in make_redeem_args:
         make_redeem_args['path_mapper'] = lambda cosigner: [HARD(45), cosigner, is_change, idx]
@@ -894,15 +894,17 @@ def fake_ms_txn():
 
                 for pubkey, xfp_path in details:
                     psbt.outputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
+
+                if 'w' in style:
+                    psbt.outputs[i].witness_script = scr
+                    if style.endswith('p2sh'):
+                        psbt.outputs[i].redeem_script = b'\0\x20' + sha256(scr).digest()
+                elif style.endswith('sh'):
+                    psbt.outputs[i].redeem_script = scr
             else:
                 scr = fake_dest_addr(style)
 
             assert scr
-
-            if 'w' in style:
-                psbt.outputs[i].witness_script = scr
-            elif style.endswith('sh'):
-                psbt.outputs[i].redeem_script = scr
 
             if not outvals:
                 h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), scriptPubKey)
