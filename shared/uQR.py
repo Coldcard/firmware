@@ -896,14 +896,15 @@ class QRData:
                 bit_length = NUMBER_LENGTH[len(chars)]
                 buffer.put(int(chars), bit_length)
         elif self.mode == MODE_ALPHA_NUM:
+            xx = lambda ch: ch.to_bytes(1, 'big')
             for i in range(0, len(self.data), 2):
                 chars = self.data[i:i + 2]
                 if len(chars) > 1:
                     buffer.put(
-                        ALPHA_NUM.find(chars[0]) * 45 +
-                        ALPHA_NUM.find(chars[1]), 11)
+                        ALPHA_NUM.find(xx(chars[0])) * 45 +
+                        ALPHA_NUM.find(xx(chars[1])), 11)
                 else:
-                    buffer.put(ALPHA_NUM.find(chars), 6)
+                    buffer.put(ALPHA_NUM.find(xx(chars)), 6)
         else:
             data = self.data
             for c in data:
