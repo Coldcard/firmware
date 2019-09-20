@@ -6,7 +6,7 @@
 import stash, chains, ustruct, ure, uio, sys
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 from menu import MenuSystem, MenuItem
@@ -759,6 +759,7 @@ Press (1) to see extended public keys, \
 OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp,
                                         deriv=self.common_prefix or 'unknown')
 
+        ux_clear_keys(True)
         while 1:
             ch = await ux_show_story(story, escape='1')
 

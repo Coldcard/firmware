@@ -1,10 +1,23 @@
-## 2.1.3 - Sep, 2019
+## 2.1.5 - Sep 17, 2019
+
+- Bugfix: Changes to redeem vs. witness script content in PSBTs. Affects multisig change outputs,
+  primarily.
+- Bugfix: Import of multisig wallet from xpubs in PSBT could fail if attempted from SD Card.
+- Bugfix: Improved message shown if import of multsig wallet was refused during PSBT signing.
+
+## 2.1.4 - Sep 11, 2019
+
+- Bugfix: For multisig change outputs, many cases were incorrected flagged as fraudulent.
+
+## 2.1.3 - Sep 6, 2019
 
 - Visual change: unknown components of multsig co-signer derivation paths used to be
   shown as `m/?/?/0/1` but will now be shown as `m/_/_/0/1`. The blank indicates better
   that we can't prove what is in that spot, not that we don't know what value is claimed.
 - Bugfix: Some backup files would hit an error during restore (random, less than 6%). Those
-  existing files will be read correctly by this new version of firmware.
+  existing backup files will be read correctly by this new version of firmware.
+- Bugfix: P2SH-P2WPKH change outputs incorrectly flagged as fraudulent (regression from v1.1.0)
+- Bugfix: Wanted redeem script, but should be witness script for P2WSH change outputs.
 
 ## 2.1.2 - Aug 2, 2019
 
