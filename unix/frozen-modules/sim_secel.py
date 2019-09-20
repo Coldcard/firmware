@@ -35,11 +35,13 @@ EPIN_PRIMARY_ONLY    = const(-114)
 
 def pin_stuff(submethod, buf_io):
     from pincodes import (PIN_ATTEMPT_SIZE, PIN_ATTEMPT_FMT_V1, PA_ZERO_SECRET,
+                        PIN_ATTEMPT_SIZE_V1,
                         PA_SUCCESSFUL, PA_IS_BLANK, PA_HAS_DURESS, PA_HAS_BRICKME,
                         CHANGE_WALLET_PIN, CHANGE_DURESS_PIN, CHANGE_BRICKME_PIN,
                         CHANGE_SECRET, CHANGE_DURESS_SECRET, CHANGE_SECONDARY_WALLET_PIN )
 
-    if len(buf_io) != PIN_ATTEMPT_SIZE: return ERANGE
+    if len(buf_io) not in (PIN_ATTEMPT_SIZE_V1, PIN_ATTEMPT_SIZE):
+        return ERANGE
 
     global SECRETS
 
