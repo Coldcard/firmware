@@ -237,7 +237,7 @@ required to do the opt-in, and it would probably be a one-way trip.
 your team---a walled garden. (Considered a hopeless approach, but
 in our list regardless.)
 
-Regardless of the code signing policies, we want the the genuine/caution
+Regardless of the code signing policies, we want the genuine/caution
 feature to work and be a useful defense against maids.
 
 We want everyone to be able to experiment on our platform, and
@@ -272,7 +272,7 @@ Here's what the warning screen looks like:
 - Hire and pay a dev to write the changes
 - Dev signs binary release with private zero key published in our Github
 - Give firmware binary file to users (via web download probably)
-- They upgrade via normal process (copy to microsd, or USB upgrade)
+- They upgrade via normal process (copy to MicroSD, or USB upgrade)
 - On first reboot, big "unauthorized firmware" warning is shown, with delay
 - If they know the main PIN (since they are the owner), they follow process to set green light
 - Next reboot and following, as long as "genuine" mode is maintained, they boot without warnings
@@ -280,7 +280,7 @@ Here's what the warning screen looks like:
 ### Benefits
 
 - no warnings, but still trustable thanks to ATECC508a
-- random devs can replace 99% of firmware at micropython layer
+- random devs can replace 99% of firmware at Micropython layer
 - but they need to retain our code for talking to bootloader and 508a,
   so that PIN can be entered and verified
 - all PIN related policy is enforced by unchangeable bootloader code, per this document
@@ -305,7 +305,7 @@ Idea: Find or steal a Coldcard. Load your trojan firmware onto it. Profit.
   with key zero, when the victim gets back,
   they will see the big "unauthorized firmware" warning, plus the red light and probably
   some scratches on the case, etc.
-- weak solution: "helpfully" power up the coldcard for them, and say... "Here it
+- weak solution: "helpfully" power up the Coldcard for them, and say... "Here it
   is ready for your pin, sir. No idea why the light is red today."
 - so we need to warn users to power up the Coldcard themselves every time they enter the PIN.
 
@@ -672,7 +672,7 @@ _(before Mk3)_
 
 The main PIN holder can brute-force the secondary wallet's PIN
 because they can use the API for pin-change without rate limiting.
-(Some micropython code would need to be written.) Similarly, the
+(Some Micropython code would need to be written.) Similarly, the
 brickme and duress change-pin commands are not rate-limited, so if
 you have the main PIN (or secondary) you could brute-force the
 corresponding PIN codes.

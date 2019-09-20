@@ -339,20 +339,23 @@ class psbtOutputProxy(psbtProxy):
 
         if addr_type == 'p2sh':
             # P2SH or Multisig output
-            # We must have the witness & redeem script already (else fail)
-            if not self.redeem_script:
-                # perhaps an omission, so let's not call fraud on it
-                # but definately required, else we don't know what script we're sending to.
-                raise AssertionError("Missing redeem script for output #%d" % out_idx)
 
-            redeem_script = self.get(self.redeem_script)
+            # Can be both, or either one depending on address type
+            redeem_script = self.get(self.redeem_script) if self.redeem_script else None
+            witness_script = self.get(self.witness_script) if self.witness_script else None
+
+            if not redeem_script and not witness_script:
+                # Perhaps an omission, so let's not call fraud on it
+                # But definately required, else we don't know what script we're sending to.
+                raise AssertionError("Missing redeem/witness script for output #%d" % out_idx)
 
             if not is_segwit and \
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
 
                 # it's actually segwit p2pkh inside p2sh
-                expect_pkh = redeem_script[2:22]
+                pkh = redeem_script[2:22]
+                expect_pkh = hash160(expect_pubkey)
 
             else:
                 # Multisig change output, for wallet we're supposed to be a part of.
@@ -374,11 +377,13 @@ class psbtOutputProxy(psbtProxy):
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
                 # - BIP45, BIP67 rules applied
+                # - p2wsh-p2sh needs witness script here, not redeem script value
                 try:
-                    active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+                    active_multisig.validate_script(witness_script or redeem_script,
+                                                            subpaths=self.subpaths)
                 except BaseException as exc:
                     raise FraudulentChangeOutput(out_idx, 
-                                "P2WSH/P2SH change output redeem script: %s" % exc)
+                                "P2WSH or P2SH change output script: %s" % exc)
 
                 # mark pubkeys as already checked.
                 self.is_p2sh_change = True
@@ -387,15 +392,27 @@ class psbtOutputProxy(psbtProxy):
                     # p2wsh case
                     # - need witness script and check it's hash against proposed p2wsh value
                     assert len(addr_or_pubkey) == 32
-                    expect_wsh = tcc.sha256(self.witness_script).digest()
+                    expect_wsh = tcc.sha256(witness_script).digest()
                     if expect_wsh != addr_or_pubkey:
                         raise FraudulentChangeOutput(out_idx, "P2WSH witness script has wrong hash")
 
                     self.is_change = True
                     return
 
-                # old BIP16 style; looks like payment addr
-                expect_pkh = hash160(redeem_script)
+                if witness_script:
+                    # p2wsh-p2sh case (because it had witness script)
+                    expect_rs = b'\x00\x20' + tcc.sha256(witness_script).digest()
+                    
+                    if redeem_script and expect_rs != redeem_script:
+                        # iff they provide a redeeem script, then it needs to match
+                        # what we expect it to be
+                        raise FraudulentChangeOutput(out_idx,
+                                        "P2WSH-P2SH redeem script provided, and doesn't match")
+
+                    expect_pkh = hash160(expect_rs)
+                else:
+                    # old BIP16 style; looks like payment addr
+                    expect_pkh = hash160(redeem_script)
 
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
@@ -704,7 +721,8 @@ class psbtInputProxy(psbtProxy):
             if not active_multisig:
                 # search for multisig wallet
                 wal = MultisigWallet.find_match(M, N, xfps)
-                assert wal >= 0, 'unknown multisig wallet'
+                if wal < 0:
+                    raise FatalPSBTIssue('Unknown multisig wallet')
 
                 active_multisig = MultisigWallet.get_by_idx(wal)
             else:
@@ -1028,7 +1046,8 @@ class psbtObject(psbtProxy):
             if need_approval:
                 # do a complex UX sequence, which lets them save wallet
                 ch = await active_multisig.confirm_import()
-                assert ch == 'y', 'Refused to import new wallet'
+                if ch != 'y':
+                    raise FatalPSBTIssue("Refused to import new wallet")
 
         if not active_multisig:
             # not clear if an error... might be part-way to importing, and

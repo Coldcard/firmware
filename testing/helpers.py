@@ -52,6 +52,7 @@ def prandom(count):
     return bytes(random.randint(0, 255) for i in range(count))
 
 def fake_dest_addr(style='p2pkh'):
+    # Make a plausible output address, but it's random garbage. Cant use for change outs
 
     # See CTxOut.get_address() in ../shared/serializations
 
@@ -61,14 +62,45 @@ def fake_dest_addr(style='p2pkh'):
     if style == 'p2wsh':
         return bytes([0, 32]) + prandom(32)
 
-    if style == 'p2sh':
+    if style in ['p2sh', 'p2wsh-p2sh', 'p2wpkh-p2sh']:
+        # all equally bogus P2SH outputs
         return bytes([0xa9, 0x14]) + prandom(20) + bytes([0x87])
 
     if style == 'p2pkh':
         return bytes([0x76, 0xa9, 0x14]) + prandom(20) + bytes([0x88, 0xac])
 
-    # missing: if style == 'p2pk' =>  pay to pubkey
-    assert False, 'not supported: ' + style
+    # missing: if style == 'p2pk' =>  pay to pubkey, considered obsolete
+
+    raise ValueError('not supported: ' + style)
+
+def make_change_addr(wallet, style):
+    # provide script, pubkey and xpath for a legit-looking change output
+    import struct, random
+    from pycoin.encoding import hash160
+
+    redeem_scr, actual_scr = None, None
+    deriv = [12, 34, random.randint(0, 1000)]
+
+    xfp, = struct.unpack('I', wallet.fingerprint())
+
+    dest = wallet.subkey_for_path('/'.join(str(i) for i in deriv))
+
+    target = dest.hash160()
+    assert len(target) == 20
+
+    is_segwit = False
+    if style == 'p2pkh':
+        redeem_scr = bytes([0x76, 0xa9, 0x14]) + target + bytes([0x88, 0xac])
+    elif style == 'p2wpkh':
+        redeem_scr = bytes([0, 20]) + target
+        is_segwit = True
+    elif style == 'p2wpkh-p2sh':
+        redeem_scr = bytes([0, 20]) + target
+        actual_scr = bytes([0xa9, 0x14]) + hash160(redeem_scr) + bytes([0x87])
+    else:
+        raise ValueError('cant make fake change output of type: ' + style)
+
+    return redeem_scr, actual_scr, is_segwit, dest.sec(), struct.pack('4I', xfp, *deriv)
 
 def swab32(n):
     # endian swap: 32 bits
