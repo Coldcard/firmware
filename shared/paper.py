@@ -10,21 +10,23 @@ from files import CardSlot, CardMissingError
 from actions import file_picker
 from menu import MenuSystem, MenuItem
 
-
 background_msg = '''\
 Paper Wallets
 
 Coldcard will pick a completely random private key (which has no relation to your seed words), \
 and record the corresponding payment address and private key (WIF) into a text file. If you have a \
-special PDF template, it can also make a pretty version of the same data.
+special PDF template file, it can also make a pretty version of the same data.
 
-CAUTION: Paper wallets carry many risks and should only be used for small amounts.'''
+Another option is to roll a D6 die many times to generate the key.
+
+CAUTION: Paper wallets carry MANY RISKS and should only be used for SMALL AMOUNTS.'''
 
 no_templates_msg = '''\
 You don't have any PDF templates to choose from, but plain text wallet files \
-
 can still be made. Visit the Coldcard website to get some interesting templates.\
 '''
+
+SECP256K1_ORDER = b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xba\xae\xdc\xe6\xaf\x48\xa0\x3b\xbf\xd2\x5e\x8c\xd0\x36\x41\x41"
 
 # These very-specific text values are matched on the Coldcard; cannot be changed.
 class placeholders:
@@ -64,15 +66,15 @@ class PaperWalletMaker:
     def update_menu(self):
         # Reconstruct the menu contents based on our state.
         self.my_menu.replace_items([
-            MenuItem('No PDF Template' if not self.template_fn else 'Will Make PDF',
+            MenuItem("Don't make PDF" if not self.template_fn else 'Making PDF',
                         f=self.pick_template),
             MenuItem('Classic Address' if not self.is_segwit else 'Segwit Address',
                         chooser=self.addr_format_chooser),
-
+            MenuItem('Use Dice', f=self.use_dice),
             MenuItem('GENERATE WALLET', f=self.doit),
         ], keep_position=True)
 
-    async def doit(self, *a):
+    async def doit(self, *a, have_key=None):
         # make the wallet.
         from main import dis
 
@@ -80,46 +82,53 @@ class PaperWalletMaker:
             from chains import current_chain
             import tcc
             from serializations import hash160
-            from uQR import QRCode
+            from stash import blank_object
 
-            await ux_dramatic_pause("Picking key...", 4)
+            if not have_key:
+                # get some random bytes
+                await ux_dramatic_pause("Picking key...", 2)
+                privkey = tcc.secp256k1.generate_secret()
+            else:
+                # caller must range check this already: 0 < privkey < order
+                privkey = have_key
 
-            # get some random bytes
-            privkey = tcc.secp256k1.generate_secret()
-            pubkey = tcc.secp256k1.publickey(privkey)       # compressed
-            ch = current_chain()
+            # calculate corresponding public key value
+            pubkey = tcc.secp256k1.publickey(privkey, True)       # compressed style
 
-            dis.fullscreen("Saving...")
+            dis.fullscreen("Rendering...")
 
+            # make payment address
             digest = hash160(pubkey)
-
+            ch = current_chain()
             if self.is_segwit:
-                addr = tcc.codecs.bech32_encode(ch.bech32_hrp, 0, digest).upper()
+                addr = tcc.codecs.bech32_encode(ch.bech32_hrp, 0, digest)
             else:
                 addr = tcc.codecs.b58_encode(ch.b58_addr + digest)
 
             wif = tcc.codecs.b58_encode(ch.b58_privkey + privkey)
 
-            # make the QR's now, since it's slow
-            q = QRCode(version=4, box_size=1, border=0)
-            q.add_data(addr, optimize=0)
-            q.make(fit=False)
-            qr_addr = q.get_matrix()
-            del q
+            with imported('uQR') as uqr:
+                # make the QR's now, since it's slow
+                q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
+                q.add_data(addr if not self.is_segwit else addr.upper(), optimize=0)
+                q.make(fit=False)
+                qr_addr = q.get_matrix()
+                del q
 
-            q = QRCode(version=4, box_size=1, border=0)
-            q.add_data(wif, optimize=0)
-            q.make(fit=False)
-            qr_wif = q.get_matrix()
-            del q
+                q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
+                q.add_data(wif, optimize=0)
+                q.make(fit=False)
+                qr_wif = q.get_matrix()
+                del q
 
-            basename = 'paper-%s' % addr[:8]
+            basename = 'paper-%s' % addr[:12]
 
+            dis.fullscreen("Saving...")
             with CardSlot() as card:
                 fname, nice_txt = card.pick_filename(basename + '-note.txt')
 
                 with open(fname, 'wt') as fp:
-                    self.make_txt(fp, addr, wif, qr_addr, qr_wif)
+                    self.make_txt(fp, addr, wif, qr_addr, qr_wif, privkey)
 
                 if self.template_fn:
                     fname, nice_pdf = card.pick_filename(basename + '.pdf')
@@ -129,21 +138,47 @@ class PaperWalletMaker:
                 else:
                     nice_pdf = ''
 
+            # Half-hearted attempt to cleanup secrets-contaminated memory
+            # - better would be force user to reboot
+            blank_object(privkey)
+            blank_object(wif)
+            for x in range(33):
+                for y in range(33):
+                    qr_wif[y][x] = 0
+
         except CardMissingError:
             await needs_microsd()
             return
         except Exception as e:
-            raise       #XXX
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
 
         await ux_show_story('Done! Created file(s):\n\n%s\n%s' % (nice_txt, nice_pdf))
 
-    def make_txt(self, fp, addr, wif, qr_addr, qr_wif):
+    async def use_dice(self, *a):
+        # Use lots of (D6) dice rolls to create privkey entropy.
+        privkey = b''
+
+        with imported('seed') as seed:
+            count, privkey = await seed.add_dice_rolls(0, privkey, True)
+            if count == 0: return
+
+        if privkey >= SECP256K1_ORDER or privkey == bytes(32):
+            # lottery won! but not going to waste bytes here preparing to celebrate
+            return
+
+        return await self.doit(have_key=privkey)
+
+
+    def make_txt(self, fp, addr, wif, qr_addr, qr_wif, privkey):
+        # Generate the "simple" text file version, includes private key.
+        from ubinascii import hexlify as b2a_hex
+
         fp.write('Coldcard Generated Paper Wallet\n\n')
 
         fp.write('Deposit address:\n\n  %s\n\n' % addr)
-        fp.write('Private key:\n\n  %s\n\n' % wif)
+        fp.write('Private key (WIF=Wallet Import Format):\n\n  %s\n\n' % wif)
+        fp.write('Private key (Hex, 32 bytes):\n\n  %s\n\n' % b2a_hex(privkey).decode('ascii'))
         fp.write('Bitcoin Core command:\n\n  bitcoin-cli importprivkey "%s"\n\n' % wif)
 
         fp.write('\n\n--- QR Codes ---   (requires UTF-8, unicode, white background)\n\n\n\n')
