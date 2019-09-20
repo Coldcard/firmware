@@ -20,7 +20,7 @@ wallet (on testnet, always with the same seed). But there are other options:
             "Me", "Myself", "And I" and empty string. BIP45 path.
         - add `--p2wsh` or `--wrap` for other two address types
 - `-s` => go to the MicroSD menu at startup
-- `-3` => emulate mark3 hardware (different pin setup)
+- `--mk2` => emulate mark2 hardware (older micro, etc), default is current-gen
 - `-g` => don't skip login sequence
 - `--xfp F0012345` => pretend like the XFP of secret is F0012345: useful for debug of PSBT files
 
