@@ -130,6 +130,11 @@ get_min_version(uint8_t min_version[8])
 
     memset(min_version, 0, 8);
 
+    // Mark3 requires firmware after this date: Oct 2019
+    min_version[0] = 0x19;      // 2019
+    min_version[1] = 0x10;      // Oct
+    min_version[2] = 0x01;      // 1st
+
     for(int i=0; i<NUM_OPT_SLOTS; i++, otp+=8) {
         // is it programmed?
         if(otp[0] == 0xff) continue;
