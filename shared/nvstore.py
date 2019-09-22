@@ -36,7 +36,7 @@ from sffile import SFFile
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
-#
+#   address_explorer_idx = index of last selected address in explorer
 
 
 # where in SPI Flash we work (last 128k)
