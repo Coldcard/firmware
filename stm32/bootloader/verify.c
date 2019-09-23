@@ -130,11 +130,6 @@ get_min_version(uint8_t min_version[8])
 
     memset(min_version, 0, 8);
 
-    // Mark3 requires firmware after this date: Oct 2019
-    min_version[0] = 0x19;      // 2019
-    min_version[1] = 0x10;      // Oct
-    min_version[2] = 0x01;      // 1st
-
     for(int i=0; i<NUM_OPT_SLOTS; i++, otp+=8) {
         // is it programmed?
         if(otp[0] == 0xff) continue;
@@ -152,11 +147,16 @@ get_min_version(uint8_t min_version[8])
 // check_is_downgrade()
 //
     bool
-check_is_downgrade(const uint8_t timestamp[8])
+check_is_downgrade(const uint8_t timestamp[8], const char *version)
 {
+    int major = (version[1] == '.') ? (version[0]-'0') : 10;
+    if(major < 3) {
+        // we require major version 3.0.0 or later (for mark3 hardware)
+        return true;
+    }
+
     // look at FW_HDR->timestamp and compare to a growing list in main flash OTP
     uint8_t min[8];
-
     get_min_version(min);
 
     return (memcmp(timestamp, min, 8) < 0);
