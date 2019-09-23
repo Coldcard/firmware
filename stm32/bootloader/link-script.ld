@@ -93,9 +93,6 @@ SECTIONS
 
     reboot_seed_base = BL_SRAM_BASE + BL_SRAM_SIZE;
 
-    /* assumes mark3 larger SRAM1 area: @32k, which will be unused with obsolete firmware */
-    transitional_pinhash_cache = 0x10008000;
-
 	/* if you initialize a global var to some non-zero value, then that data ends up
 		in .relocate as read-only data and used briefly at startup (when copied to RAM).
 		We don't want to support that, so we're checking here that hasn't happened. */

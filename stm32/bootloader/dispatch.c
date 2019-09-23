@@ -526,7 +526,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 6:
             // Do we have a ATECC608a and all that implies?
-            // NOTE: this number was unused in V1 bootroms
+            // NOTE: this number was unused in V1 bootroms, so return ENOENT
             #if FOR_608
                 rv = 0;
             #else
@@ -582,12 +582,8 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 18: {
             // Try login w/ PIN.
-            REQUIRE_OUT(PIN_ATTEMPT_SIZE_V1);
+            REQUIRE_OUT(PIN_ATTEMPT_SIZE_V2);
             pinAttempt_t *args = (pinAttempt_t *)buf_io;
-
-            if(args->magic_value == PA_MAGIC_V2) {
-                REQUIRE_OUT(PIN_ATTEMPT_SIZE_V2);
-            }
 
             switch(arg2) {
                 case 0:
@@ -677,7 +673,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
                 case 1:
                     REQUIRE_IN_ONLY(8);
-                    rv = check_is_downgrade(buf_io);
+                    rv = check_is_downgrade(buf_io, NULL);
                     break;
 
                 case 2:
@@ -686,7 +682,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     if(buf_io[0] < 0x10 || buf_io[0] >= 0x40) {
                         // bad data
                         rv = ERANGE;
-                    } if(check_is_downgrade(buf_io)) {
+                    } if(check_is_downgrade(buf_io, NULL)) {
                         // already at a higher version?
                         rv = EAGAIN;
                     } else {
