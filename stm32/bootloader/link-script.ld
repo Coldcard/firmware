@@ -102,10 +102,9 @@ SECTIONS
 	ASSERT(_pdg_hack == _erelocate, 
 				"Sorry, no initialized data support! Set to zero or remove.")
 
-    /* ensure binary fits *
+    /* ensure binary fits */
     ASSERT(_erelocate - BL_SRAM_BASE + _etext <= BL_FLASH_BASE + BL_FLASH_SIZE,
                 "Binary is too big to fit!!!")
-*/
 
     /* .bss section which is used for uninitialized data */
     .bss (NOLOAD) :
