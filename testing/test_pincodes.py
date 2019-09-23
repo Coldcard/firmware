@@ -175,7 +175,6 @@ def test_bad_logins_mark3(request, repl, setup_repl, nfails):
     if not request.config.getoption('mark3'):
         raise pytest.skip('mark3 only')
 
-
     ss = repl.eval("pa.setup(b'')")
 
     if ss&0xf != 3:

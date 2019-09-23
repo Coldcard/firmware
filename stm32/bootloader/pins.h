@@ -9,16 +9,8 @@
 #include "basics.h"
 #include "ae.h"
 
-/* Todo Someday... 
-- return a 2x32-byte "ticket" on successful login
-- it's encrypted w/ XOR SHA256(pairing secret + powerup seed + salt + index)
-- contains successful keynum, actual pin hash, is_duress flag, attempt counter.
-- exchange anytime for the secret; checks only counter hasn't changed (and does round-trip to AE)
-- pin and secret changes should incr attempt counter
-*/
-
 // We hash it like we don't care, but PIN code is expected to be
-// just digits, no punctuation, and up to this many char long.
+// just digits, no punctuation, and up to this many chars long.
 // Using pin+len rather than c-strings. Use zero-length for "blank" or "undefined" pins.
 //
 #define MAX_PIN_LEN             32
@@ -50,7 +42,6 @@
 #define PA_HAS_DURESS         0x04
 #define PA_HAS_BRICKME        0x08
 #define PA_ZERO_SECRET        0x10
-#define PA_HAS_608A           0x20
 
 typedef struct {
     uint32_t    magic_value;            // = PA_MAGIC

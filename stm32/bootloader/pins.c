@@ -562,8 +562,7 @@ pin_setup_attempt(pinAttempt_t *args)
 
     memset(args, 0, old_firmware ? PIN_ATTEMPT_SIZE_V1 : PIN_ATTEMPT_SIZE_V2);
 
-    // indicate our policies will be different from Mark 1/2
-    args->state_flags = PA_HAS_608A;
+    args->state_flags = 0;
 
     args->magic_value = given_magic?:PA_MAGIC_V1;
     args->pin_len = pin_len;
@@ -792,7 +791,7 @@ pin_login_attempt(pinAttempt_t *args)
     // fail when it tries to read/update the corresponding slots in the SE
 
     // mark as success
-    args->state_flags = PA_SUCCESSFUL | PA_HAS_608A;
+    args->state_flags = PA_SUCCESSFUL;
 
     // these are constants, and user doesn't care because they got in... but consistency.
     args->num_fails = 0;

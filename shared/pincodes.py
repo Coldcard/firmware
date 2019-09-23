@@ -27,7 +27,6 @@ PA_IS_BLANK           = const(0x02)
 PA_HAS_DURESS         = const(0x04)
 PA_HAS_BRICKME        = const(0x08)
 PA_ZERO_SECRET        = const(0x10)
-PA_HAS_608A           = const(0x20)
 
 # For change_flags field:
 CHANGE_WALLET_PIN           = const(0x001)
