@@ -35,9 +35,6 @@
 #define PIN_PURPOSE_NORMAL          0x334d1858
 #define PIN_PURPOSE_WORDS           0x2e6d6773
 
-// Temporary hack only!
-extern uint8_t      transitional_pinhash_cache[32];        // see linker-script
-
 // See linker script; special read-only RAM memory (not secret)
 extern uint8_t      reboot_seed_base[32];        // constant per-boot
 
@@ -225,13 +222,8 @@ pin_cache_save(pinAttempt_t *args, const uint8_t digest[32])
         memset(value, 0, 32);
     }
 
-    if(args->magic_value == PA_MAGIC_V2) {
-        memcpy(args->cached_main_pin, value, 32);
-    } else {
-        // short-term hack .. only applies if old firmware (not v3+) is used on
-        // mark3 hardware.
-        memcpy(transitional_pinhash_cache, value, 32);
-    }
+    ASSERT(args->magic_value == PA_MAGIC_V2);
+    memcpy(args->cached_main_pin, value, 32);
 }
 
 // pin_cache_restore()
@@ -241,13 +233,8 @@ pin_cache_restore(pinAttempt_t *args, uint8_t digest[32])
 {
     // decrypt w/ rom secret + SRAM seed value
 
-    if(args->magic_value == PA_MAGIC_V2) {
-        memcpy(digest, args->cached_main_pin, 32);
-    } else {
-        // short-term hack .. only applies if old firmware (not v3+) is used on
-        // mark3 hardware.
-        memcpy(digest, transitional_pinhash_cache, 32);
-    }
+    ASSERT(args->magic_value == PA_MAGIC_V2);
+    memcpy(digest, args->cached_main_pin, 32);
 
     if(!check_all_zeros(digest, 32)) {
         uint8_t     key[32];
@@ -345,12 +332,8 @@ _validate_attempt(pinAttempt_t *args, bool first_time)
     }
 
     // check fields.
-    if(args->magic_value == PA_MAGIC_V1) {
+    if(args->magic_value == PA_MAGIC_V2) {
         // ok
-    } else if(args->magic_value == PA_MAGIC_V2) {
-        // ok
-    } else if(first_time && args->magic_value == 0) {
-        // allow it if first time: implies V1 api
     } else {
         return EPIN_BAD_MAGIC;
     }
@@ -542,29 +525,26 @@ pin_setup_attempt(pinAttempt_t *args)
     int rv = _validate_attempt(args, true);
     if(rv) return rv;
 
-    // NOTE: Can only attempt primary and secondary pins. If it happens to
+    // NOTE: Can only attempt primary pin. If it happens to
     // match duress or brickme pins, then perhaps something happens,
     // but not allowed to test for those cases even existing.
 
     if(args->is_secondary) {
-        // secondary PIN feature has been removed, might be old main firmware tho
+        // secondary PIN feature has been removed
         return EPIN_PRIMARY_ONLY;
     }
 
     // wipe most of struct, keep only what we expect and want!
     // - old firmware wrote zero to magic before this point, and so we set it here
-    uint32_t given_magic = args->magic_value;
-    bool    old_firmware = (given_magic != PA_MAGIC_V2);
 
     char    pin_copy[MAX_PIN_LEN];
     int     pin_len = args->pin_len;
     memcpy(pin_copy, args->pin, pin_len);
 
-    memset(args, 0, old_firmware ? PIN_ATTEMPT_SIZE_V1 : PIN_ATTEMPT_SIZE_V2);
+    memset(args, 0, PIN_ATTEMPT_SIZE_V2);
 
     args->state_flags = 0;
-
-    args->magic_value = given_magic?:PA_MAGIC_V1;
+    args->magic_value = PA_MAGIC_V2;
     args->pin_len = pin_len;
     memcpy(args->pin, pin_copy, pin_len);
 

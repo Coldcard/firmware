@@ -98,12 +98,12 @@ def test_greenlight(repl, setup_repl):
 
     assert repl.eval("dis.clear(); dis.text(0,0, 'done'); dis.show()") == 28
 
-@pytest.mark.parametrize('is_sec', [ False, True])
-def test_duress(request, repl, setup_repl, is_sec):
-    if is_sec and request.config.getoption('mark3'):
-        raise pytest.xfail('mark3')
+@pytest.mark.parametrize('secondary', [ False, True])
+def test_duress(request, repl, setup_repl, secondary):
+    if secondary and request.config.getoption('mark3'):
+        raise pytest.skip('mark3')
 
-    ss = repl.eval("pa.setup(b'', secondary=%r)" % is_sec)
+    ss = repl.eval("pa.setup(b'', secondary=%r)" % secondary)
     assert ss&0xf == 3
 
     assert repl.eval('pa.has_duress_pin()') == False
@@ -115,30 +115,29 @@ def test_duress(request, repl, setup_repl, is_sec):
     assert repl.eval('pa.has_duress_pin()') == False
 
     # cleanup
-    if is_sec:
+    if secondary:
         repl.eval("pa.setup(b'')")
 
-@pytest.mark.parametrize('is_sec', [ False, True])
+@pytest.mark.parametrize('secondary', [ False, True])
 @pytest.mark.parametrize('nfails', [1, 3])
-def test_bad_logins_mark2(request, repl, setup_repl, is_sec, nfails):
+def test_bad_logins_mark2(request, repl, setup_repl, secondary, nfails):
     if request.config.getoption('mark3'):
         raise pytest.skip('mark3')
 
-    ss = repl.eval("pa.setup(b'', secondary=%r)" % is_sec)
-    if (ss & 32) and is_sec: raise pytest.xfail('mark3')
+    ss = repl.eval("pa.setup(b'', secondary=%r)" % secondary)
 
     if ss&0xf  != 3:
         # robustness
-        repl.eval("pa.setup(b'12-12', secondary=%r)" % is_sec)
+        repl.eval("pa.setup(b'12-12', secondary=%r)" % secondary)
         repl.eval("[pa.delay() for i in range(pa.delay_required)]")
         assert repl.eval("pa.login()") == True
 
     assert repl.eval("pa.change(new_pin=b'12-12')") == None
-    assert repl.eval("pa.setup(b'12-12', secondary=%r)" % is_sec)&0xf == 0
+    assert repl.eval("pa.setup(b'12-12', secondary=%r)" % secondary)&0xf == 0
     assert repl.eval("pa.login()") == True
 
     def prepare_attempt(pin):
-        assert repl.eval("pa.setup(%r, secondary=%r)" % (pin, is_sec))&0xf == 0
+        assert repl.eval("pa.setup(%r, secondary=%r)" % (pin, secondary))&0xf == 0
         nf = repl.eval('pa.num_fails')
         nd = repl.eval('pa.delay_required')
         if nf: assert nd >= 1
@@ -163,7 +162,7 @@ def test_bad_logins_mark2(request, repl, setup_repl, is_sec, nfails):
 
     # reset state
     assert repl.eval("pa.change(new_pin=b'')") == None
-    assert repl.eval("pa.setup(b'', secondary=%r)" % is_sec)&0xf == 3
+    assert repl.eval("pa.setup(b'', secondary=%r)" % secondary)&0xf == 3
     assert repl.eval("pa.delay_required") == 0
     assert repl.eval("pa.num_fails") == 0
 

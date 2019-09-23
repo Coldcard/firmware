@@ -149,10 +149,12 @@ get_min_version(uint8_t min_version[8])
     bool
 check_is_downgrade(const uint8_t timestamp[8], const char *version)
 {
-    int major = (version[1] == '.') ? (version[0]-'0') : 10;
-    if(major < 3) {
-        // we require major version 3.0.0 or later (for mark3 hardware)
-        return true;
+    if(version) {
+        int major = (version[1] == '.') ? (version[0]-'0') : 10;
+        if(major < 3) {
+            // we require major version 3.0.0 or later (for mark3 hardware)
+            return true;
+        }
     }
 
     // look at FW_HDR->timestamp and compare to a growing list in main flash OTP
