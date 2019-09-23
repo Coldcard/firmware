@@ -197,7 +197,7 @@ if __name__ == '__main__':
     total = 0
     for label, txt, icon, args in results:
         if 0:
-            icon = None     # XXX saves a lot of memory!
+            icon = None     # XXX saves some memory: 283 bytes
         elif 1:
             icon = None if label not in ('verify', 'devmode', 'logout', 'brick') else icon
 
