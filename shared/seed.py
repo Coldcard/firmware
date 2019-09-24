@@ -16,7 +16,7 @@ from utils import pop_count, xfp2str
 import tcc, uctypes
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease
-from pincodes import AE_SECRET_LEN
+from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ckcc import rng_bytes

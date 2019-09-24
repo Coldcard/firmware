@@ -3,7 +3,7 @@
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, tcc, ckcc, chains, gc
+import compat7z, stash, tcc, ckcc, chains, gc, sys
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import imported, xfp2str
@@ -120,12 +120,11 @@ async def restore_from_dict(vals):
         return ('Unable to decode raw_secret and '
                                 'restore the seed value!\n\n\n'+str(e))
 
+    ls = None
     if ('long_secret' in vals) and version.has_608:
         try:
-            ls = a2b_hex(vals['long_secret'])
-            pa.ls_change(ls)
+            ls = a2b_hex(vals.pop('long_secret'))
         except Exception as exc:
-            print("Unable to restore long secret")
             sys.print_exception(exc)
             # but keep going.
 
@@ -139,7 +138,15 @@ async def restore_from_dict(vals):
     # force the right chain
     pa.new_main_secret(raw, chain)         # updates xfp/xpub
 
+
     # NOTE: don't fail after this point... they can muddle thru w/ just right seed
+
+    if ls is not None:
+        try:
+            pa.ls_change(ls)
+        except Exception as exc:
+            sys.print_exception(exc)
+            # but keep going
 
     # restore settings from backup file
 
