@@ -87,7 +87,6 @@ EPIN_OLD_AUTH_FAIL  = const(-113)
     int         new_pin_len;            // (optional) valid length of new_pin, can be zero
     uint8_t     secret[72];             // secret to be changed OR return value
     // may grow from here in future versions (V1 bootroms don't expect more)
-    // NOTE: following not included in fmt 
     uint8_t     cached_main_pin[32];    // iff they provided right pin already (V2)
 '''
 PIN_ATTEMPT_FMT_V1 = 'Ii32si6I32si32si32si72s'

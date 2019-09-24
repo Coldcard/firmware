@@ -59,6 +59,10 @@ def render_backup_contents():
             dpk = sv.duress_root()
             ADD('duress_xprv', chain.serialize_private(dpk))
             ADD('duress_xpub', chain.serialize_public(dpk))
+
+        if version.has_608:
+            # save the so-called long-secret
+            ADD('long_secret', b2a_hex(pa.ls_fetch()))
     
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
@@ -111,9 +115,19 @@ async def restore_from_dict(vals):
             check_xprv = chain.serialize_private(node)
             assert check_xprv == vals['xprv'], 'xprv mismatch'
 
+
     except Exception as e:
         return ('Unable to decode raw_secret and '
                                 'restore the seed value!\n\n\n'+str(e))
+
+    if ('long_secret' in vals) and version.has_608:
+        try:
+            ls = a2b_hex(vals['long_secret'])
+            pa.ls_change(ls)
+        except Exception as exc:
+            print("Unable to restore long secret")
+            sys.print_exception(exc)
+            # but keep going.
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.25)

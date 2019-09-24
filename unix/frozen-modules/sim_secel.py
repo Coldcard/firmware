@@ -35,12 +35,12 @@ EPIN_PRIMARY_ONLY    = const(-114)
 
 def pin_stuff(submethod, buf_io):
     from pincodes import (PIN_ATTEMPT_SIZE, PIN_ATTEMPT_FMT_V1, PA_ZERO_SECRET,
-                        PIN_ATTEMPT_SIZE_V1,
+                        PIN_ATTEMPT_SIZE_V1, CHANGE_LS_OFFSET,
                         PA_SUCCESSFUL, PA_IS_BLANK, PA_HAS_DURESS, PA_HAS_BRICKME,
                         CHANGE_WALLET_PIN, CHANGE_DURESS_PIN, CHANGE_BRICKME_PIN,
                         CHANGE_SECRET, CHANGE_DURESS_SECRET, CHANGE_SECONDARY_WALLET_PIN )
 
-    if len(buf_io) not in (PIN_ATTEMPT_SIZE_V1, PIN_ATTEMPT_SIZE):
+    if len(buf_io) != (PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1):
         return ERANGE
 
     global SECRETS
@@ -58,6 +58,8 @@ def pin_stuff(submethod, buf_io):
             old_pin, old_pin_len,
             new_pin, new_pin_len,
             secret) = ustruct.unpack_from(PIN_ATTEMPT_FMT_V1, buf_io)
+
+    # NOTE: ignoring mk2 additions for now, we have no need for it.
 
     # NOTE: using strings here, not bytes; real bootrom uses bytes
     pin = pin[0:pin_len].decode()
@@ -122,7 +124,7 @@ def pin_stuff(submethod, buf_io):
     elif submethod == 3:
         # CHANGE pin and/or wallet secrets
 
-        cf = change_flags;
+        cf = change_flags
 
         # NOTE: this logic copied from real deal
 
@@ -204,6 +206,29 @@ def pin_stuff(submethod, buf_io):
         from ckcc import genuine_led, led_pipe
         genuine_led = True
         led_pipe.write(b'\x01')
+
+    elif submethod == 6:
+        if not version.has_608:
+            return ENOENT
+
+        # long secret read/change.
+        cf = change_flags
+        assert CHANGE_LS_OFFSET == 0xf00
+        blk = (cf >> 8) & 0xf
+        if blk > 13: return EPIN_RANGE_ERR
+        off = blk * 32
+
+        if 'ls' not in SECRETS:
+            SECRETS['ls'] = bytearray(416)
+
+        if (cf & CHANGE_SECRET):
+            SECRETS['ls'][off:off+32] = secret
+        else:
+            secret = SECRETS['ls'][off:off+32]
+
+    else:
+        # bogus submethod
+        return ENOENT
 
 
     hmac = b'69'*16
