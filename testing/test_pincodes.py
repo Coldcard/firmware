@@ -48,6 +48,9 @@ def test_pin_set(repl, setup_repl, pin):
     assert repl.eval("pa.login()") == True
     assert repl.eval("pa.change(new_pin=b'')") == None
 
+    # this line is a bugfix: mk1/2 bootroms need login after pin change
+    assert repl.eval("pa.setup(b'')") == 3
+
     time.sleep(1)
 
 @pytest.mark.parametrize('test_secret', [b'a'*72, b'X'*72, b'\0'*72])
@@ -86,6 +89,7 @@ def test_greenlight(repl, setup_repl):
 
     # this changes flash.
     assert repl.eval("open('/flash/test', 'wb').write(b'hi %06d')" % randint(1,1e6)) >= 3
+    time.sleep(1)
 
     # 'set_genuine' really means "test if genuine" here
     assert repl.eval("callgate.set_genuine()", max_time=5) == -1
