@@ -580,6 +580,9 @@ pin_setup_attempt(pinAttempt_t *args)
         // un-initialized memory. 
         const uint8_t zeros[32] = {0};
         pin_cache_save(args, zeros);
+
+        // need legit value in here, saying not duress
+        args->private_state = (rng_sample() & ~1) ^ rom_secrets->hash_cache_secret[0];
     }
 
     _sign_attempt(args);
@@ -813,7 +816,7 @@ pin_login_attempt(pinAttempt_t *args)
 
     // In mark1/2, was thinking of maybe storing duress flag into private state,
     // but no real need, but testing for it is expensive in mark3, so going to use
-    // LSB here for that. Xor's with a secret only we have.
+    // LSB here for that. Xor'ed with a secret only we have.
     args->private_state = ((rng_sample() & ~1) | is_duress) ^ rom_secrets->hash_cache_secret[0];
 
     _sign_attempt(args);
