@@ -26,37 +26,37 @@ async def choose_first_address(*a):
             start = addr[0:(leftover+1) // 2]
             end = addr[len(addr) - (leftover // 2):]
             return start + middle + end
-                
-        # Create list of choices (address_index_0, path, addr_fmt) 
-        choices = []        
+
+        # Create list of choices (address_index_0, path, addr_fmt)
+        choices = []
         for i, item in enumerate(chains.CommonDerivations, start=0):
             name, path, addr_fmt = item
             if '{coin_type}' in path:
                 path = path.replace('{coin_type}', str(chain.b44_cointype))
             subpath = path.format(account=0, change=0, idx=0)
             node = sv.derive_path(subpath, register=False)
-            address = chain.address(node, addr_fmt)            
+            address = chain.address(node, addr_fmt)
             choices.append( (truncate_address(address), path, addr_fmt) )
 
         picked = []
-	async def clicked(_1,_2,item):
-	    picked.append(item.arg)
-	    the_ux.pop()
+    async def clicked(_1,_2,item):
+        picked.append(item.arg)
+        the_ux.pop()
 
-	items = [
+    items = [
             MenuItem(address, f=clicked, arg=i)
             for i, (address, path, addr_fmt)
             in enumerate(choices)
-        ]	
-	menu = MenuSystem(items, chosen = settings.get('address_explorer_idx', 0))
-	the_ux.push(menu)	
-	await menu.interact()
-    
+        ]
+    menu = MenuSystem(items, chosen = settings.get('address_explorer_idx', 0))
+    the_ux.push(menu)
+    await menu.interact()
+
         if picked:
             settings.put('address_explorer_idx', picked[0]) # update last clicked address
             address, path, addr_fmt = choices[picked[0]]
             return (path, addr_fmt)
-	return None
+    return None
 
 async def show_n_addresses(path, addr_fmt, start, n):
     # Displays n addresses from start
@@ -79,7 +79,7 @@ async def show_n_addresses(path, addr_fmt, start, n):
             # go backwards in explorer
             return await show_n_addresses(path, addr_fmt, start - n, n)
         # go forwards
-        return await show_n_addresses(path, addr_fmt, start + n, n)    
+        return await show_n_addresses(path, addr_fmt, start + n, n)
 
 def generate_address_csv(path, addr_fmt, n):
     rows = []
@@ -87,7 +87,7 @@ def generate_address_csv(path, addr_fmt, n):
         for idx in range(n):
             subpath = path.format(account=0, change=0, idx=idx)
             node = sv.derive_path(subpath, register=False)
-            rows.append("%s,%s" % (subpath, chains.current_chain().address(node, addr_fmt)))    
+            rows.append("%s,%s" % (subpath, chains.current_chain().address(node, addr_fmt)))
     return '\n'.join(rows)
 
 async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt'):
@@ -103,21 +103,21 @@ to save to the text file.
 
 Press OK to continue'''):
         return
-    
+
     picked = []
     async def clicked(_1,_2,item):
-	picked.append(item.arg)
-	the_ux.pop()
-	    
-    items = [MenuItem(str(x), f=clicked, arg=x) for x in [50, 100, 250, 500, 1000]]	
+    picked.append(item.arg)
+    the_ux.pop()
+
+    items = [MenuItem(str(x), f=clicked, arg=x) for x in [50, 100, 250, 500, 1000]]
     menu = MenuSystem(items)
-    the_ux.push(menu)	
+    the_ux.push(menu)
     await menu.interact()
     if not picked:
         return
-    
+
     dis.fullscreen('Generating...')
-    
+
     # generator function
     body = generate_address_csv(path, addr_fmt, picked[0])
 
@@ -141,24 +141,24 @@ Press OK to continue'''):
 
     msg = '''Address summary file written:\n\n%s''' % nice
     await ux_show_story(msg)
-    
+
 async def address_explore(*a):
     # explore addresses based on derivation path chosen
     # by proxy external index=0 address
     if 'x' == await ux_show_story('''\
 The following menu shows a stub of the first address \
-in common wallets you control. 
+in common wallets you control.
 
 Choose the address that corresponds \
 to the wallet you want to explore.
 
 Press OK to continue'''):
         return
-    
+
     picked = await choose_first_address()
     if picked is None:
         return
-    
+
     path, addr_fmt = picked
     ch = await show_n_addresses(path, addr_fmt, 0, 10)
     if ch == '1':
