@@ -120,8 +120,8 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
+    MenuItem("Address Explorer", f=address_explore),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
-    MenuItem("Address Explorer", f=address_explore)
 ]
 
 # needs to create main wallet PIN
