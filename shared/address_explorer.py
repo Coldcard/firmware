@@ -15,8 +15,10 @@ SCREEN_CHAR_WIDTH = const(16)
 async def choose_first_address(*a):
     # Choose from a truncated list of index 0 common addresses, remember
     # the last address the user selected and use it as the default
-    from main import settings
+    from main import settings, dis
     chain = chains.current_chain()
+
+    dis.fullscreen('Wait...')
 
     with stash.SensitiveValues() as sv:
 
@@ -37,6 +39,8 @@ async def choose_first_address(*a):
             node = sv.derive_path(subpath, register=False)
             address = chain.address(node, addr_fmt)
             choices.append( (truncate_address(address), path, addr_fmt) )
+
+            dis.progress_bar_show(len(choices) / len(chains.CommonDerivations))
 
     picked = None
 
@@ -64,24 +68,38 @@ async def choose_first_address(*a):
 
 async def show_n_addresses(path, addr_fmt, start, n):
     # Displays n addresses from start
-    while 1:
+    from main import dis
+
+    def make_msg(start):
         msg = "Press 1 to save to MicroSD.\n\n"
         msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
 
         chain = chains.current_chain()
 
+        dis.fullscreen('Wait...')
+
         with stash.SensitiveValues() as sv:
+
             for idx in range(start, start + n):
                 subpath = path.format(account=0, change=0, idx=idx)
                 node = sv.derive_path(subpath, register=False)
                 msg += "%s =>\n%s\n\n" % (subpath, chain.address(node, addr_fmt))
 
-            msg += "Press 9 to see next group, 7 to go back, X to quit."
+                dis.progress_bar_show(idx/n)
+
+        msg += "Press 9 to see next group, 7 to go back, X to quit."
+
+        return msg
+
+    msg = make_msg(start)
+
+    while 1:
             ch = await ux_show_story(msg, escape='179')
 
             if ch == '1':
                 # save addresses to MicroSD signal
                 await make_address_summary_file(path, addr_fmt)
+                # .. continue on same screen in case they want to write to multiple cards
 
             if ch == 'x':
                 return
@@ -89,10 +107,12 @@ async def show_n_addresses(path, addr_fmt, start, n):
             if ch == '7' and start>0:
                 # go backwards in explorer
                 start -= n
+                msg = make_msg(start)
 
             if ch == '9':
                 # go forwards
                 start += n
+                msg = make_msg(start)
 
 def generate_address_csv(path, addr_fmt, n):
     rows = []
@@ -111,6 +131,7 @@ async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt
     from actions import needs_microsd
 
     # simple: always set number of addresses.
+    # - takes 60 seconds, to write 250 addresses on actual hardware
     count = 250
 
     dis.fullscreen('Saving 0-%d' % count)
@@ -127,7 +148,8 @@ async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt
             with open(fname, 'wb') as fd:
                 for idx, part in enumerate(body):
                     fd.write(part.encode())
-                    if idx % 25 == 0:
+
+                    if idx % 5 == 0:
                         dis.progress_bar_show(idx / count)
 
     except CardMissingError:
