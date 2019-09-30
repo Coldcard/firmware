@@ -49,6 +49,11 @@ Which looks like this:
 You'll probably need to install at least these packages:
 
     brew install sdl2
+    brew cask install gcc-arm-none-eabi
+
+Used to be these were needed as well:
+
+    brew install sdl2
     brew tap PX4/px4
     brew search px4
     brew cask install gcc-arm-embedded
