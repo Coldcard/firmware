@@ -270,21 +270,23 @@ Press OK to continue, X to stop for now.
             if version.has_608:
                 pa.attempts_left -= 1
 
-            msg = "That's not the right PIN!\n"
+            msg = ""
             nf = '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
             if version.has_608:
                 if not pa.attempts_left:
                     await self.we_are_ewaste(pa.num_fails)
                     continue
 
-                msg += '(%s, %d attempts left)' % (nf, pa.attempts_left)
+                msg += '%d attempts left' % (pa.attempts_left)
             else:
-                msg += '(%s)' % nf
+                msg += '%s' % nf
 
-            msg += '''\n\nPlease check all digits carefully, and that prefix verus \
+            msg += '''\n\nPlease check all digits carefully, and that prefix versus \
 suffix break point is correct.'''
-            
-            await ux_show_story(msg, title='Wrong PIN')
+            if version.has_608:
+                msg += '\n\n' + nf
+
+            await ux_show_story(msg, title='WRONG PIN')
 
     async def prompt_pin(self):
         # ask for an existing PIN
