@@ -30,3 +30,8 @@ if  '--mk2' in sys.argv:
     hw_label = 'mk2'
     has_608 = False
 
+if  '--mk1' in sys.argv:
+    hw_label = 'mk1'
+    has_608 = False
+    has_membrane = False
+
