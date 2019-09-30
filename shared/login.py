@@ -36,9 +36,7 @@ class LoginUX:
         filled = len(self.pin)
         if show_hint:
             filled -= 1
-            hint = self.pin[-1] if not version.has_membrane else '\xd7'
-        else:
-            hint = '' if len(self.pin) == MAX_PIN_PART_LEN else ' '
+            hint = self.pin[-1] if not version.has_membrane else None
 
         dis.clear()
 
@@ -56,18 +54,21 @@ class LoginUX:
 
         y = 26
         w = 18
-        if 0:
-            x = 64 - ((w * (filled+(1 if hint else 0))) // 2)
-            x += w//2
-        else:
-            x = 12
+        x = 12
 
         for idx in range(filled):
             dis.icon(x, y, 'xbox')
             x += w
-        if hint:
-            dis.text(x+1, y+1, hint, FontLarge)
-            dis.icon(x, y, 'box')
+
+        if show_hint:
+            if not version.has_membrane:
+                dis.text(x+1, y+1, hint, FontLarge)
+                dis.icon(x, y, 'box')
+            else:
+                dis.icon(x, y, 'tbox')
+        else:
+            if len(self.pin) != MAX_PIN_PART_LEN:
+                dis.icon(x, y, 'box')
 
         # BTW: √ also works here, but looks like square root, not a checkmark
         if self.footer:
