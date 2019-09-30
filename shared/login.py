@@ -52,7 +52,7 @@ class LoginUX:
         else:
             dis.text(None, 4, prompt)
 
-        y = 26
+        y = 27
         w = 18
         x = 12
 
