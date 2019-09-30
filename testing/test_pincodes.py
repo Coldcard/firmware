@@ -10,6 +10,7 @@
 # - dev mode must be enabled
 # - these tests need to run individually, not working well all together
 # - provide "--mark3" on command line for newer hardware stuff
+# - always run with "-s" so you have something to watch: very slow.
 #
 import time, pytest, os
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
@@ -30,7 +31,7 @@ def test_eval(repl):
     assert repl.eval("'a'+'b'") == "ab"
 
 @pytest.mark.parametrize('pin', [ '12-12', '123456-123456'])
-def test_pin_set(repl, setup_repl, pin):
+def test_pin_set(repl, setup_repl, is_mark3, pin):
     # always clear it after!
     # might need for recovery:
     #       pa.setup(b'12-12'); pa.login(); pa.change(new_pin=b'')
@@ -45,7 +46,14 @@ def test_pin_set(repl, setup_repl, pin):
     assert repl.eval("pa.change(new_pin=b'%s')" % pin) == None
 
     assert repl.eval("pa.setup(b'%s')" % pin)&0xf == 0
+
+    assert repl.eval('pa.private_state == 0') == True
+
     assert repl.eval("pa.login()") == True
+
+    if is_mark3:
+        assert repl.eval('pa.private_state != 0') == True
+
     assert repl.eval("pa.change(new_pin=b'')") == None
 
     # this line is a bugfix: mk1/2 bootroms need login after pin change
@@ -103,12 +111,17 @@ def test_greenlight(repl, setup_repl):
     assert repl.eval("dis.clear(); dis.text(0,0, 'done'); dis.show()") == 28
 
 @pytest.mark.parametrize('secondary', [ False, True])
-def test_duress(request, repl, setup_repl, secondary):
-    if secondary and request.config.getoption('mark3'):
+def test_duress(is_mark3, repl, setup_repl, secondary):
+    if secondary and is_mark3:
         raise pytest.skip('mark3')
 
     ss = repl.eval("pa.setup(b'', secondary=%r)" % secondary)
     assert ss&0xf == 3
+
+    if is_mark3:
+        assert repl.eval('pa.private_state == 0') == False
+    else:
+        assert repl.eval('pa.private_state == 0') == True
 
     assert repl.eval('pa.has_duress_pin()') == False
     assert repl.eval('pa.is_successful()') == True
@@ -124,8 +137,8 @@ def test_duress(request, repl, setup_repl, secondary):
 
 @pytest.mark.parametrize('secondary', [ False, True])
 @pytest.mark.parametrize('nfails', [1, 3])
-def test_bad_logins_mark2(request, repl, setup_repl, secondary, nfails):
-    if request.config.getoption('mark3'):
+def test_bad_logins_mark2(is_mark3, repl, setup_repl, secondary, nfails):
+    if is_mark3:
         raise pytest.skip('mark3')
 
     ss = repl.eval("pa.setup(b'', secondary=%r)" % secondary)
@@ -174,8 +187,8 @@ def test_bad_logins_mark2(request, repl, setup_repl, secondary, nfails):
 MAX_ATT = 13
 
 @pytest.mark.parametrize('nfails', [MAX_ATT-1, 1, 3, 5])
-def test_bad_logins_mark3(request, repl, setup_repl, nfails):
-    if not request.config.getoption('mark3'):
+def test_bad_logins_mark3(is_mark3, repl, setup_repl, nfails):
+    if not is_mark3:
         raise pytest.skip('mark3 only')
 
     ss = repl.eval("pa.setup(b'')")
@@ -226,8 +239,8 @@ def test_bad_logins_mark3(request, repl, setup_repl, nfails):
 
 @pytest.mark.parametrize('test_secret', [b'a'*416, b'\0'*32+b'm'*(416-32),
                                             bytearray(0x41+(i%57) for i in range(416))])
-def test_long_secret(request, repl, setup_repl, test_secret):
-    if not request.config.getoption('mark3'):
+def test_long_secret(is_mark3, repl, setup_repl, test_secret):
+    if not is_mark3:
         raise pytest.skip('mark3 only')
 
     assert repl.eval('pa.is_successful()'), 'not logged in?'

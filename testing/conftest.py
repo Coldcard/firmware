@@ -753,6 +753,10 @@ def end_sign(dev, need_keypress):
 
     return doit
 
+@pytest.fixture(scope='session')
+def is_mark3(request):
+    return bool(request.config.getoption('mark3'))
+
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import,
