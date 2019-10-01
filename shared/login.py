@@ -258,12 +258,11 @@ Press OK to continue, X to stop for now.
                 if ok: break        # success, leave
             except RuntimeError as exc:
                 # I'm a brick and other stuff can happen here
+                # - especially AUTH_FAIL when pin is just wrong.
                 ok = False
                 if exc.args[0] == pincodes.EPIN_I_AM_BRICK:
                     await self.we_are_ewaste(pa.num_fails)
                     continue
-                else:
-                    print("pa.login: %r" % exc)
             finally:
                 dis.busy_bar(False)
 
