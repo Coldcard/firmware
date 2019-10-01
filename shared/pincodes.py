@@ -332,7 +332,7 @@ class PinAttempt:
         if ok:
             # it's a bit sensitive, and no longer useful: wipe.
             global _word_cache
-            _word_cache = []
+            _word_cache.clear()
 
         return ok
 
