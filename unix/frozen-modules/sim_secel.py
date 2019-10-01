@@ -119,6 +119,11 @@ def pin_stuff(submethod, buf_io):
         if ts == b'\0'*72:
             state_flags |= PA_ZERO_SECRET
 
+        if kk+'_duress' in SECRETS:
+            state_flags |= PA_HAS_DURESS
+        if kk+'_brickme' in SECRETS:
+            state_flags |= PA_HAS_BRICKME
+
         del ts
 
     elif submethod == 3:
@@ -179,6 +184,9 @@ def pin_stuff(submethod, buf_io):
 
             # make change
             SECRETS[pk] = new_pin
+
+            if not new_pin and pk != kk:
+                del SECRETS[pk]
 
         if change_flags & CHANGE_SECRET:
             SECRETS[kk+'_secret'] = str(b2a_hex(secret), 'ascii')
