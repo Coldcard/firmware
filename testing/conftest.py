@@ -20,8 +20,8 @@ def pytest_addoption(parser):
                      default=True, help="run on simulator")
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
-    parser.addoption("--mark3", action="store_true",
-                     default=False, help="set hardware 'mark' level")
+
+    parser.addoption("--mk", default=3, help="Assume mark N hardware")
 
 @pytest.fixture(scope='session')
 def dev(request):
@@ -753,9 +753,18 @@ def end_sign(dev, need_keypress):
 
     return doit
 
+# use these for hardware version support
+@pytest.fixture(scope='session')
+def is_mark1(request):
+    return request.config.getoption('mk') == 1
+
+@pytest.fixture(scope='session')
+def is_mark2(request):
+    return request.config.getoption('mk') == 2
+
 @pytest.fixture(scope='session')
 def is_mark3(request):
-    return bool(request.config.getoption('mark3'))
+    return request.config.getoption('mk') == 3
 
 
 # useful fixtures related to multisig

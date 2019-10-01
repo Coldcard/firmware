@@ -9,7 +9,7 @@
 # - assumes no PIN set yet
 # - dev mode must be enabled
 # - these tests need to run individually, not working well all together
-# - provide "--mark3" on command line for newer hardware stuff
+# - provide "--mk 3" on command line for newer hardware stuff
 # - always run with "-s" so you have something to watch: very slow.
 #
 import time, pytest, os
