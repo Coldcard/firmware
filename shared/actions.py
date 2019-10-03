@@ -1016,7 +1016,6 @@ async def pin_changer(_1, _2, item):
     title, msg = warn[mode]
 
     async def incorrect_pin():
-        dis.busy_bar(False)
         await ux_show_story('You provided an incorrect value for the existing %s.' % title, 
                                 title='Wrong PIN')
         return
@@ -1108,11 +1107,14 @@ We strongly recommend all PIN codes used be unique between each other.
 
     # install it.
     try:
-        dis.fullscreen("Saving...")
+        dis.fullscreen("Clearing..." if is_clear else "Saving...")
         dis.busy_bar(True)
 
         pa.change(**args)
+        dis.busy_bar(False)
     except Exception as exc:
+        dis.busy_bar(False)
+
         code = exc.args[1]
 
         if code == EPIN_OLD_AUTH_FAIL:
@@ -1121,12 +1123,10 @@ We strongly recommend all PIN codes used be unique between each other.
         else:
             return await ux_show_story("Unexpected low-level error: %s" % exc.args[0],
                                             title='Error')
-    finally:
-        dis.busy_bar(False)
 
     # Main pin is changed, and we use it lots, so update pa
-    # - also to get pa.has_duress_pin() and has_brickme_pin() to be correct, need this
-    # - can be super slow with 608 on this stuff
+    # - also we need pa.has_duress_pin() and has_brickme_pin() to be correct
+    # - this step can be super slow with 608, unfortunately
     try:
         dis.fullscreen("Verify...")
         dis.busy_bar(True)
