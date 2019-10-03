@@ -343,11 +343,6 @@ class SettingsObject:
     def default_values():
         # Please try to avoid defaults here... It's better to put into code
         # where value is used, and treat undefined as the default state.
-
-        if ckcc.is_simulator():
-            from sim_settings import sim_defaults
-            return dict(sim_defaults)
-        
         return dict(_age=0)
 
 # EOF

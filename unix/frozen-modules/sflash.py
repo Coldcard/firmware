@@ -9,12 +9,7 @@ class SPIFlash:
     SECTOR_SIZE = 4096
     BLOCK_SIZE = 65536
 
-    def __init__(self):
-        self.array = bytearray(_SIZE)
-
-        # simulate partially-written previous contents?
-        for i in range(_SIZE):
-            self.array[i] = 0xa5
+    array = bytearray(_SIZE)
 
     def read(self, address, buf, **kw):
         # random read

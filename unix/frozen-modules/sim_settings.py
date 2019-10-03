@@ -1,5 +1,6 @@
-import os, sys
+# do NOT import main from this file.
 
+import os, sys
 from sim_secel import SECRETS
 
 if '-w' in sys.argv:
@@ -64,22 +65,6 @@ if '-m' in sys.argv:
         sim_defaults['multisig'] = [['MeMyself', [2, 4], [[3503269483, 'tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9'], [2389277556, 'tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc'], [3190206587, 'tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa'], [1130956047, 'tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n']], {'ch': 'XTN', 'pp': "45'"}]]
     sim_defaults['fee_limit'] = -1
 
-
-    # start in multisig wallet
-    from main import numpad
-    numpad.inject('9')
-    numpad.inject('y')
-    numpad.inject('9')
-    numpad.inject('5')
-    numpad.inject('y')
-
-if '-s' in sys.argv:
-    # MicroSD menu
-    from main import numpad
-    numpad.inject('4')
-    numpad.inject('y')
-    numpad.inject('4')
-    numpad.inject('y')
 
 if '--xfp' in sys.argv:
     # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
