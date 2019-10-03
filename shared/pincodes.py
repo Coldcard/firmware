@@ -173,7 +173,7 @@ class PinAttempt:
             assert len(old_pin) <= MAX_PIN_LEN
         else:
             new_pin = b''
-            old_pin = old_pin or self.pin
+            old_pin = old_pin or self.pin       # XXX seems wrong, if old_pin == b'' != self.pin
 
         if ls_offset is not None:
             change_flags |= (ls_offset << 8)        # see CHANGE_LS_OFFSET
