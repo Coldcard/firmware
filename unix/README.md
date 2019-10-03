@@ -21,10 +21,13 @@ wallet (on testnet, always with the same seed). But there are other options:
         - add `--p2wsh` or `--wrap` for other two address types
 - `-s` => go to the MicroSD menu at startup
 - `--mk2` => emulate mark2 hardware (older micro, etc), default is current-gen
+- `--mk1` => emulate mark1 hardware
 - `-g` => don't skip login sequence
 - `--xfp F0012345` => pretend like the XFP of secret is F0012345: useful for debug of PSBT files
+- `--metal` => use USB attached Coldcard for bootrom and SE features
+- `--metal --sflash` => copy SPI flash contents at boot time from real device (no writeback)
 
-See `frozen-modules/sim-settings.py` for the details.
+See `frozen-modules/sim-settings.py` for the details, of settings-related options.
 
 ## Requirements
 
