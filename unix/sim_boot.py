@@ -13,8 +13,14 @@ if '--metal' in sys.argv:
     bare_metal.start(*(int(sys.argv[a]) for a in [_n, _n+1]))
     del _n, bare_metal
 
+if '--sflash' not in sys.argv:
+    import nvstore
+    from sim_settings import sim_defaults
+    nvstore.SettingsObject.default_values = lambda _: dict(sim_defaults)
+
 if sys.argv[-1] != '-q':
     from main import go
+    import sim_quickstart
     go()
 
 # EOF

@@ -166,33 +166,45 @@ except:
         #print(f"setup: {lns}")
 
 
+    def read_sflash(self):
+        # capture contents of SPI flash (settings area only: last 128k)
+        # XXX not working
+        self.sio.write(b'''\x05\
+busy(1)
+from main import sf
+dis.fullscreen("SPI Flash")
+buf = bytearray(256)
+addr = 0xe0000
+for i in range(0, 0x20000, 256):
+    sf.read(addr+i, buf)
+    print(b2a_hex(buf).decode())
+busy(0)
+dis.fullscreen("BareMetal")
+\x04\r'''.replace(b'\n', b'\r'))
+
+        count = 0
+        self.sio.timeout = 0.5
+        for ln in self.sio.readlines():
+            ln = ln.decode('ascii')
+            if len(ln) == 512 + 2:
+                self.response.write(ln[:-2].encode('ascii') + b'\n')
+                count += 1
+            elif ln.startswith('>>> '):
+                break
+            elif not ln or not ln.strip() or ln.startswith('=== ') or 'paste mode' in ln:
+                pass
+            else:
+                print(f'junk: {ln}')
+
+        assert count == (128*1024)//256, count
+
+        print("Sent real SPI Flash contents to simulated Coldcard.")
+
     def wait_done(self, timeout=1):
         sio = self.sio
         sio.timeout = timeout
         rv = sio.read_until(terminator='>>> ')
         return [str(i, 'ascii') for i in rv.split(b'\r\n')]
-
-    def xxwait_done(self):
-        # read lines until 
-        rv = []
-        sio = self.sio
-        sio.timeout = 0
-        while 1:
-            ln = sio.readline()
-
-            if not ln:
-                continue
-
-            print("Rx: " + ln.decode('utf-8'))
-
-            #if not ln:
-                #raise RuntimeError("Didn't get prompt")
-
-            if ln.strip() == b'>>>':
-                return rv
-
-            if ln:
-                rv.append(ln)
 
     def readable(self):
         # expects   (method, hex, arg2) as string on one line
@@ -203,6 +215,15 @@ except:
         method = int(arg1)
         arg2 = int(arg2)
         buf_io = a2b_hex(bb) if bb != 'None' else None
+
+        if method == -99:
+            # internal to us: read SPI flash contents
+            return self.read_sflash()
+        elif method in {2, 3}:
+            # these methods always die; not helpful for testing
+            print(f"FATAL Callgate(method={method}, arg2={arg2}) => execution would stop")
+            self.response.write(b'0,\n')
+            return
 
         sio = self.sio
 
@@ -228,7 +249,7 @@ except:
         lines = []
         for retries in range(10):
             lines.extend(self.wait_done())
-            print('back: \n' + '\n'.join( f'[{n}] {l}' for n,l in enumerate(lines)))
+            #print('back: \n' + '\n'.join( f'[{n}] {l}' for n,l in enumerate(lines)))
             if len(lines) >= 2 and lines[-1] == lines[-2] == '>>> ':
                 break
         else:
@@ -240,7 +261,8 @@ except:
         assert ',' in rv
         assert not rv.startswith('===')
 
-        print(f"Callgate(method={method}, {len(buf_io) if buf_io else 0} bytes, arg2={arg2}) => rv={rv}")
+        if 1:
+            print(f"Callgate(method={method}, {len(buf_io) if buf_io else 0} bytes, arg2={arg2}) => rv={rv}")
 
         self.response.write(rv.encode('ascii') + b'\n')
     
