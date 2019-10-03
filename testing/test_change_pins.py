@@ -52,7 +52,7 @@ def enter_pin(cap_screen, need_keypress):
     return doit
 
 @pytest.fixture
-def change_pin(cap_screen, cap_story, need_keypress, enter_pin):
+def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
     def doit(old_pin, new_pin, hdr_text):
         title, story = cap_story()
         assert title == hdr_text
@@ -74,7 +74,14 @@ def change_pin(cap_screen, cap_story, need_keypress, enter_pin):
             assert title == 'New '+hdr_text
             assert words2 == words3
 
-        time.sleep(4)      # required
+        # saving/verifying can take tens of seconds.
+        time.sleep(3) 
+        for retries in range(10):
+            if 'Change Main PIN' in cap_menu():
+                break
+            time.sleep(2)
+        else:
+            raise pytest.fail("Menu didn't come back")
 
         return words2
 
