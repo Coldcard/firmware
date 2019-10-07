@@ -4,13 +4,16 @@
 # Replace the lower-level parts of the simulator with actual hardware.
 #
 # - bootrom's callgate is the common interface point (ckcc.gate function)
-# - requires hardware to be controled over USB serial emulation
+# - requires hardware to be controlled over USB serial emulation
 # - see simulator.py which adds '--metal' argument to setup and support this
 # - called early in startup by sim_boot.py
 # - quick test:    
 #       make && ./simulator --metal -q
 #       (in xterm)
 #       import callgate; callgate.get_bl_version()
+# - you may need to get the (real) Coldcard into the REPL before starting this
+# - required exclusive use of USB emulated serial port, so quit other programs
+#   before starting simulator
 #
 
 def start(req_fd, resp_fd):
