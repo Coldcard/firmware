@@ -1144,8 +1144,7 @@ We strongly recommend all PIN codes used be unique between each other.
 
             if is_clear:
                 # clear secret, using the new pin, which is empty string
-                pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN,
-                                old_pin=b'', new_pin=b'')
+                pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN, old_pin=b'')
             else:
                 with SensitiveValues() as sv:
                     # derive required key
