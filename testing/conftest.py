@@ -23,6 +23,9 @@ def pytest_addoption(parser):
 
     parser.addoption("--mk", default=3, help="Assume mark N hardware")
 
+    parser.addoption("--duress", action="store_true",
+                     default=False, help="assume logged-in with duress PIN")
+
 @pytest.fixture(scope='session')
 def dev(request):
     # a connected Coldcard (via USB) .. or the simulator
@@ -757,15 +760,15 @@ def end_sign(dev, need_keypress):
 # use these for hardware version support
 @pytest.fixture(scope='session')
 def is_mark1(request):
-    return request.config.getoption('mk') == 1
+    return int(request.config.getoption('--mk')) == 1
 
 @pytest.fixture(scope='session')
 def is_mark2(request):
-    return request.config.getoption('mk') == 2
+    return int(request.config.getoption('--mk')) == 2
 
 @pytest.fixture(scope='session')
 def is_mark3(request):
-    return request.config.getoption('mk') == 3
+    return int(request.config.getoption('--mk')) == 3
 
 
 # useful fixtures related to multisig
