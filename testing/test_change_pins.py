@@ -44,6 +44,12 @@ def verify_pin_set(sim_eval):
     return doit
 
 @pytest.fixture
+def get_secondary_login(sim_eval):
+    def doit():
+        return sim_eval('main.pa.is_secondary') == 'True'
+    return doit
+
+@pytest.fixture
 def goto_pin_options(pick_menu_item, goto_home):
     def doit():
         goto_home()
@@ -93,7 +99,7 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
         # use standard menus and UX to change a PIN 
         title, story = cap_story()
         assert title == hdr_text
-        assert ('will be changing the' in story) or (CLR_PIN in story)
+        assert ('We strongly recommend' in story) or (CLR_PIN in story)
         need_keypress('y')
         time.sleep(0.01)      # required
 
@@ -117,7 +123,7 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
         # saving/verifying can take tens of seconds.
         time.sleep(3) 
         for retries in range(10):
-            if 'Change Main PIN' in cap_menu():
+            if 'Login Now' in cap_menu():
                 break
             time.sleep(2)
         else:
@@ -128,10 +134,16 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
     return doit
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_main_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set):
+def test_main_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login):
     goto_pin_options()
 
-    pick_menu_item('Change Main PIN')
+    try:
+        pick_menu_item('Change Main PIN')
+    except KeyError:
+        # secondary login, for example
+        assert get_secondary_login()
+        raise pytest.skip('cant change main from secondary')
+
     change_pin(DEF_PIN, new_pin, 'Main PIN')
     verify_pin_set(new_pin)
 
@@ -165,7 +177,10 @@ def test_duress_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, nee
     assert zz == b'\0'*72
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set):
+def test_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login):
+
+    if get_secondary_login():
+        raise pytest.skip('not intended for use under secondary login')
 
     goto_pin_options()
 
@@ -181,11 +196,38 @@ def test_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, ca
     verify_pin_set('', secondary=1)
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_brickme_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set):
+def test_secondary_from_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login):
+
+    # when logged into secondary wallet, you can't clear PIN, and we use a 23-23 as value
+    if not get_secondary_login():
+        raise pytest.skip('intended for use under secondary login')
+    if is_mark3:
+        raise pytest.skip('mark3 doesnt support secondary wallet')
 
     goto_pin_options()
 
-    pick_menu_item('Brick Me PIN')
+    ASSUME_PIN = '23-23'
+
+    pick_menu_item('Second Wallet')
+    change_pin(ASSUME_PIN, new_pin, 'Second PIN')
+    verify_pin_set(new_pin)
+
+    pick_menu_item('Second Wallet')
+    change_pin(new_pin, ASSUME_PIN, 'Second PIN')
+    verify_pin_set(ASSUME_PIN)
+
+@pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
+def test_brickme_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login):
+
+    goto_pin_options()
+
+    try:
+        pick_menu_item('Brick Me PIN')
+    except KeyError:
+        # secondary login, for example
+        assert get_secondary_login()
+        raise pytest.skip('cant do brickme in this mode')
+
     change_pin(None, new_pin, 'Brickme PIN')
     verify_pin_set(new_pin, brickme=1)
 

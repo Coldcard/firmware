@@ -305,7 +305,8 @@ def pick_menu_item(cap_menu, need_keypress):
     def doit(text):
         need_keypress('0')
         m = cap_menu()
-        assert text in m, "%r not in menu: %r" % (text, m)
+        if text not in m:
+            raise KeyError(text, "%r not in menu: %r" % (text, m))
 
         for label in m:
             if label == text:
