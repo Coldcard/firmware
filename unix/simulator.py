@@ -255,7 +255,12 @@ dis.fullscreen("BareMetal")
         else:
             raise RuntimeError("timed out")
 
-        rv = lines[-3].strip()
+        # result is in lines between final === and first >>> ... typically a single
+        # line, but might overflow into next 'line'
+        assert '=== ' in lines and '>>> ' in lines
+        a = -list(reversed(lines)).index('=== ')
+        b = lines[a:].index('>>> ')
+        rv = ''.join(lines[a:a+b]).strip()
 
         assert rv
         assert ',' in rv
