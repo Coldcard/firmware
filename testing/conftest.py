@@ -68,8 +68,8 @@ def sim_exec(simulator):
 def sim_eval(simulator):
     # eval an expression in the simulator's interpretor
 
-    def doit(cmd):
-        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8')).decode('utf-8')
+    def doit(cmd, timeout=None):
+        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
 
     return doit
 
