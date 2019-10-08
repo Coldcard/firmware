@@ -33,7 +33,7 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress):
         pick_menu_item('Address Explorer')
 
         if click_idx is not None:
-            need_keypress('y') # click into stub menu
+            need_keypress('4') # click into stub menu
             time.sleep(0.01)
 
             for _ in range(2): # top of menu (requires two left clicks)
@@ -119,7 +119,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
 
     # capture menu address stubs
     goto_address_explorer()
-    need_keypress('y')
+    need_keypress('4')
     time.sleep(.01)
     m = cap_menu()
 
