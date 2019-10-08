@@ -10,6 +10,7 @@ from main import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu
+from address_explorer import address_explore
 
 #
 # NOTE: "Always In Title Case"
@@ -119,6 +120,7 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
+    MenuItem("Address Explorer", f=address_explore),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 

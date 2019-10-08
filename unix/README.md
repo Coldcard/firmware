@@ -20,6 +20,7 @@ wallet (on testnet, always with the same seed). But there are other options:
             "Me", "Myself", "And I" and empty string. BIP45 path.
         - add `--p2wsh` or `--wrap` for other two address types
 - `-s` => go to the MicroSD menu at startup
+- `-a` => go to the address explorer at startup
 - `--xfp F0012345` => pretend like the XFP of secret is F0012345: useful for debug of PSBT files
 
 See `frozen-modules/sim-settings.py` for the details.
