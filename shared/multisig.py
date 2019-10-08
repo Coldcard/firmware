@@ -960,11 +960,16 @@ Policy: {M} of {N}
 Blockchain: {ctype}
 Addresses:
   {at}
+'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type,
+            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
+
+    if ms.common_prefix:
+        msg.write('''\
 Derivation:
   m/{der}
+'''.format(der=ms.common_prefix))
 
-'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type, der=ms.common_prefix or "?'",
-            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
+    msg.write('\n')
 
     # concern: the order of keys here is non-deterministic
     for idx, (xfp, xpub) in enumerate(ms.xpubs):
