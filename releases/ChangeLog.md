@@ -1,9 +1,14 @@
-## 2.1.6 - Sep 27, 2019
 
+## 2.1.6 - Oct 9, 2019
 - NEW: "Address Explorer": view receive addresses on the screen of the Coldcard, so you can
   be certain your funds are going to the right place. Can also write first 250 addresses onto
   the SDCard in a simple text/CSV format. Special thanks go to
   [@hodlwave](https://github.com/hodlwave) for creating this feature.
+
+- Improve error message shown when depth of XPUB of multisig cosigner conflicts with path
+  details provided in PSBT or USB 'show address' command.
+- When we don't know derivation paths for a multisig wallet, or when all do not share
+  a common path-prefix, don't show anything.
 
 ## 2.1.5 - Sep 17, 2019
 
