@@ -366,6 +366,7 @@ class MultisigWallet:
                     check_these.append((xp_idx, path))
 
             here = None
+            too_shallow = False
             for xp_idx, path in check_these:
                 # matched fingerprint, try to make pubkey that needs to match
                 xpub = self.xpubs[xp_idx][1]
@@ -373,9 +374,10 @@ class MultisigWallet:
                 node = ch.deserialize_node(xpub, AF_P2SH); assert node
                 dp = node.depth()
 
-                if not (1 <= dp <= len(path)):
+                if not (0 <= dp <= len(path)):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
+                    too_shallow = True
                     continue
 
                 for sp in path[dp:]:
@@ -405,8 +407,12 @@ class MultisigWallet:
                 break
             else:
                 msg = 'pk#%d wrong' % (pk_order+1)
-                if here:
+                if not check_these:
+                    msg += ', unknown XFP'
+                elif here:
                     msg += ', tried: ' + here
+                if too_shallow:
+                    msg += ', too shallow'
                 raise AssertionError(msg)
 
             if pk_order:
