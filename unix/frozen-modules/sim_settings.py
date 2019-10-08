@@ -76,6 +76,21 @@ if '--xfp' in sys.argv:
     sim_defaults['xfp'] = unpack(">I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
+if '--seed' in sys.argv:
+    # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
+    from ustruct import unpack
+    from utils import xfp2str
+    from seed import set_seed_value
+    from main import pa, settings
+
+    words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
+    assert len(words) == 24, "Expected 24 space-separated words: add some quotes"
+    pa.pin = b'12-12'
+    set_seed_value(words)
+    settings.set('terms_ok', 1)
+    settings.set('_skip_pin', '12-12')
+    print("Seed phrase set, resulting XFP: " + xfp2str(settings.get('xfp')))
+
 if '-g' in sys.argv:
     # do login
     sim_defaults.pop('_skip_pin', 0)
