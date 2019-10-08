@@ -86,22 +86,28 @@ def validate_address():
 def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, open_microsd):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
-    def doit(click_idx):
+    def doit(click_idx, expected_qty=250):
         goto_address_explorer(click_idx=click_idx)
         need_keypress('1')
-        time.sleep(2) # always long enough to write the file?
+        time.sleep(.5) # always long enough to write the file?
         title, body = cap_story()
         header, fn = body.split("\n\n")
         assert header == "Address summary file written:"
-        addr_dump = open_microsd(fn.strip()).read().decode().split('\n')
-        assert addr_dump[0] == '''"Derivation","Payment Address"'''
-        assert addr_dump[-1] == ''
-        raw_addresses = addr_dump[1:-1]
-        assert len(raw_addresses) == 250 # current constant of addresses dumped
-        for term in raw_addresses:
-            yield tuple(
-                map(lambda x: x.strip('"'), term.split(','))
-            )
+
+        addr_dump = open_microsd(fn.strip(), 'rt')
+
+        import csv
+        cc = csv.reader(addr_dump)
+        hdr = next(cc)
+        assert hdr == ['Index', 'Payment Address', 'Derivation']
+        for n, (idx, addr, deriv) in enumerate(cc):
+            assert int(idx) == n
+            assert ('/%s' % idx) in deriv
+
+            yield deriv, addr
+
+        assert (n+1) == expected_qty
+
     return doit
 
 def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations, parse_display_screen, validate_address):
@@ -169,9 +175,13 @@ def test_dump_addresses(generate_addresses_file, mk_common_derivations, sim_exec
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
+
     common_derivs = mk_common_derivations(node_prv.netcode())
+
     # Generate the addresses file and get each line in a list
     for subpath, addr in generate_addresses_file(click_idx):
         # derive the subkey and validate the corresponding address
         sk = node_prv.subkey_for_path(subpath[2:])
         validate_address(addr, sk)
+
+# EOF

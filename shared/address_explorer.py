@@ -116,13 +116,13 @@ async def show_n_addresses(path, addr_fmt, start, n):
 
 def generate_address_csv(path, addr_fmt, n):
     rows = []
-    yield '"Derivation","Payment Address"\n'
+    yield '"Index","Payment Address","Derivation"\n'
     with stash.SensitiveValues() as sv:
         for idx in range(n):
             subpath = path.format(account=0, change=0, idx=idx)
             node = sv.derive_path(subpath, register=False)
 
-            yield '"%s","%s"\n' % (subpath, chains.current_chain().address(node, addr_fmt))
+            yield '%d,"%s","%s"\n' % (idx, chains.current_chain().address(node, addr_fmt), subpath)
 
 async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt'):
     # write addresses into a text file on the MicroSD
