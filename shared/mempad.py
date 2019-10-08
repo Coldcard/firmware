@@ -74,7 +74,7 @@ class MembraneNumpad(NumpadBase):
 
         self.waiting_for_any = False
 
-        assert self.scan_count == 0
+        #assert self.scan_count == 0         # can happen when CPU busy?
         self.scan_count = NUM_SAMPLES-1
         self.history = bytearray(NUM_ROWS * NUM_COLS)
         self.timer.init(freq=1000//SAMPLE_RATE, callback=self._measure_irq)
