@@ -89,6 +89,7 @@ if '--seed' in sys.argv:
     set_seed_value(words)
     settings.set('terms_ok', 1)
     settings.set('_skip_pin', '12-12')
+    settings.set('chain', 'XTN')
     print("Seed phrase set, resulting XFP: " + xfp2str(settings.get('xfp')))
 
 if '-g' in sys.argv:
