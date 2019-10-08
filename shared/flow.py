@@ -79,9 +79,7 @@ DevelopersMenu = [
 AdvancedVirginMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
-    MenuItem('Upgrade firmware', menu=UpgradeMenu),
     MenuItem('Perform Selftest', f=start_selftest),
-    MenuItem("I Am Developer.", menu=maybe_dev_menu),           # security risk?
     MenuItem('Secure Logout', f=logout_now),
 ]
 
