@@ -1,3 +1,8 @@
+## 2.1.6 - Oct, 2019
+
+- Improve error message shown when depth of XPUB of multisig cosigner conflicts with path
+  details provided in PSBT or USB 'show address' command.
+
 ## 2.1.5 - Sep 17, 2019
 
 - Bugfix: Changes to redeem vs. witness script content in PSBTs. Affects multisig change outputs,
