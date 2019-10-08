@@ -42,6 +42,8 @@ async def choose_first_address(*a):
 
             dis.progress_bar_show(len(choices) / len(chains.CommonDerivations))
 
+        stash.blank_object(node)
+
     picked = None
 
     async def clicked(_1,_2,item):
@@ -87,7 +89,9 @@ async def show_n_addresses(path, addr_fmt, start, n):
 
                 dis.progress_bar_show(idx/n)
 
-        msg += "Press 9 to see next group, 7 to go back, X to quit."
+            stash.blank_object(node)
+
+        msg += "Press 9 to see next group, 7 to go back. X to quit."
 
         return msg
 
@@ -115,14 +119,20 @@ async def show_n_addresses(path, addr_fmt, start, n):
                 msg = make_msg(start)
 
 def generate_address_csv(path, addr_fmt, n):
-    rows = []
+    # Produce CSV file contents as a generator
+
     yield '"Index","Payment Address","Derivation"\n'
+
+    ch = chains.current_chain()
+
     with stash.SensitiveValues() as sv:
         for idx in range(n):
             subpath = path.format(account=0, change=0, idx=idx)
             node = sv.derive_path(subpath, register=False)
 
-            yield '%d,"%s","%s"\n' % (idx, chains.current_chain().address(node, addr_fmt), subpath)
+            yield '%d,"%s","%s"\n' % (idx, ch.address(node, addr_fmt), subpath)
+
+        stash.blank_object(node)
 
 async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt'):
     # write addresses into a text file on the MicroSD
@@ -165,13 +175,22 @@ async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt
 async def address_explore(*a):
     # explore addresses based on derivation path chosen
     # by proxy external index=0 address
-    if 'x' == await ux_show_story('''\
+    while 1:
+        ch = await ux_show_story('''\
 The following menu lists the first payment address \
 produced by various common wallet systems.
 
 Choose the address that your desktop or mobile wallet \
-has shown you as the first receive address.'''):
-        return
+has shown you as the first receive address.
+
+WARNING: Please understand that exceeding the gap limit \
+of your wallet, or choosing the wrong address on the next screen \
+may make it very difficult to recover your funds.
+
+Press 4 to start.''', escape='4')
+
+        if ch == '4': break
+        if ch == 'x': return
 
     picked = await choose_first_address()
     if picked is None:
