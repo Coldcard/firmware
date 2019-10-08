@@ -2,6 +2,8 @@
 
 - Improve error message shown when depth of XPUB of multisig cosigner conflicts with path
   details provided in PSBT or USB 'show address' command.
+- When we don't know derivation paths for a multisig wallet, or when all do not share
+  a common path-prefix, don't show anything.
 
 ## 2.1.5 - Sep 17, 2019
 
