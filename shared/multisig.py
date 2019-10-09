@@ -366,6 +366,7 @@ class MultisigWallet:
                     check_these.append((xp_idx, path))
 
             here = None
+            too_shallow = False
             for xp_idx, path in check_these:
                 # matched fingerprint, try to make pubkey that needs to match
                 xpub = self.xpubs[xp_idx][1]
@@ -373,9 +374,10 @@ class MultisigWallet:
                 node = ch.deserialize_node(xpub, AF_P2SH); assert node
                 dp = node.depth()
 
-                if not (1 <= dp <= len(path)):
+                if not (0 <= dp <= len(path)):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
+                    too_shallow = True
                     continue
 
                 for sp in path[dp:]:
@@ -405,8 +407,12 @@ class MultisigWallet:
                 break
             else:
                 msg = 'pk#%d wrong' % (pk_order+1)
-                if here:
+                if not check_these:
+                    msg += ', unknown XFP'
+                elif here:
                     msg += ', tried: ' + here
+                if too_shallow:
+                    msg += ', too shallow'
                 raise AssertionError(msg)
 
             if pk_order:
@@ -954,11 +960,16 @@ Policy: {M} of {N}
 Blockchain: {ctype}
 Addresses:
   {at}
+'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type,
+            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
+
+    if ms.common_prefix:
+        msg.write('''\
 Derivation:
   m/{der}
+'''.format(der=ms.common_prefix))
 
-'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type, der=ms.common_prefix or "?'",
-            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
+    msg.write('\n')
 
     # concern: the order of keys here is non-deterministic
     for idx, (xfp, xpub) in enumerate(ms.xpubs):
