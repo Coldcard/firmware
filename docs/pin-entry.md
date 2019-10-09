@@ -270,7 +270,7 @@ Here's what the warning screen looks like:
 ## How To Develop Professional Code on Coldcard
 
 - Hire and pay a dev to write the changes
-- Dev signs binary release with private zero key published in our Github
+- Dev signs binary release with private "zero key" published in our Github
 - Give firmware binary file to users (via web download probably)
 - They upgrade via normal process (copy to MicroSD, or USB upgrade)
 - On first reboot, big "unauthorized firmware" warning is shown, with delay
@@ -279,19 +279,17 @@ Here's what the warning screen looks like:
 
 ### Benefits
 
-- no warnings, but still trustable thanks to ATECC508a
-- random devs can replace 99% of firmware at Micropython layer
-- but they need to retain our code for talking to bootloader and 508a,
-  so that PIN can be entered and verified
+- no warnings, but still trustable thanks to ATECC608A
+- random devs can replace 99% of firmware at Micropython layer (everything but bootloader)
+- but they need to retain our code for talking to bootloader and secure element,
+  so that PIN can be entered and verified.
 - all PIN related policy is enforced by unchangeable bootloader code, per this document
 
 ### Limitation
 
 - if new device is intercepted from our factory (ie. without a main pin set),
-  anyone could put any code onto it, and it would boot exactly like a real factory-direct unit
-- that's why we need the serialized, tamper-evident bag
-- flip side of this limitation: altcoiners can ship a modified version of our
-  product that boots and runs normally when their customer first gets it.
+  new code cannot be loaded until the PIN is set, and there is no way to clear main PIN.
+- the serialized, tamper-evident bag also indicates it's been touched
 
 ### Obvious Hack-Attack
 
