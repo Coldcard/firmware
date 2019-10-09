@@ -368,7 +368,7 @@ class USBHandler:
             xfp_paths = []
             for i in range(N):
                 ln = args[offset]
-                assert 2 <= ln <= 16, 'badlen'
+                assert 1 <= ln <= 16, 'badlen'
                 xfp_paths.append(unpack_from('<%dI' % ln, args, offset+1))
                 offset += (ln*4) + 1
 

@@ -18,3 +18,13 @@ if '-s' in sys.argv:
     numpad.inject('4')
     numpad.inject('y')
 
+if '-a' in sys.argv:
+    # Address Explorer
+    from main import numpad
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('8')
+    numpad.inject('y')
+    numpad.inject('y')
+
