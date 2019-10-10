@@ -474,6 +474,11 @@ class USBHandler:
             from auth import start_remote_backup
             return start_remote_backup()
 
+        if cmd == 'blkc':
+            # report which blockchain we are configured for
+            from chains import current_chain
+            chain = current_chain()
+            return b'asci' + chain.ctype
 
         if cmd == 'bagi':
             return self.handle_bag_number(args)
