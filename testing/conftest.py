@@ -21,6 +21,11 @@ def pytest_addoption(parser):
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
 
+    parser.addoption("--mk", default=3, help="Assume mark N hardware")
+
+    parser.addoption("--duress", action="store_true",
+                     default=False, help="assume logged-in with duress PIN")
+
 @pytest.fixture(scope='session')
 def dev(request):
     # a connected Coldcard (via USB) .. or the simulator
@@ -66,8 +71,8 @@ def sim_exec(simulator):
 def sim_eval(simulator):
     # eval an expression in the simulator's interpretor
 
-    def doit(cmd):
-        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8')).decode('utf-8')
+    def doit(cmd, timeout=None):
+        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
 
     return doit
 
@@ -303,7 +308,8 @@ def pick_menu_item(cap_menu, need_keypress):
     def doit(text):
         need_keypress('0')
         m = cap_menu()
-        assert text in m, "%r not in menu: %r" % (text, m)
+        if text not in m:
+            raise KeyError(text, "%r not in menu: %r" % (text, m))
 
         for label in m:
             if label == text:
@@ -750,6 +756,19 @@ def end_sign(dev, need_keypress):
         return psbt_out
 
     return doit
+
+# use these for hardware version support
+@pytest.fixture(scope='session')
+def is_mark1(request):
+    return int(request.config.getoption('--mk')) == 1
+
+@pytest.fixture(scope='session')
+def is_mark2(request):
+    return int(request.config.getoption('--mk')) == 2
+
+@pytest.fixture(scope='session')
+def is_mark3(request):
+    return int(request.config.getoption('--mk')) == 3
 
 
 # useful fixtures related to multisig

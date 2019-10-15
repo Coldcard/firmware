@@ -147,11 +147,18 @@ get_min_version(uint8_t min_version[8])
 // check_is_downgrade()
 //
     bool
-check_is_downgrade(const uint8_t timestamp[8])
+check_is_downgrade(const uint8_t timestamp[8], const char *version)
 {
+    if(version) {
+        int major = (version[1] == '.') ? (version[0]-'0') : 10;
+        if(major < 3) {
+            // we require major version 3.0.0 or later (for mark3 hardware)
+            return true;
+        }
+    }
+
     // look at FW_HDR->timestamp and compare to a growing list in main flash OTP
     uint8_t min[8];
-
     get_min_version(min);
 
     return (memcmp(timestamp, min, 8) < 0);
@@ -168,7 +175,7 @@ check_factory_key(uint32_t pubkey_num)
 #if RELEASE
     const int wait = 100;
 #else
-    const int wait = 10;
+    const int wait = 1;
 #endif
     
     for(int i=0; i < wait; i++) {

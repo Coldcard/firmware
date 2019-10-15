@@ -35,7 +35,18 @@ async def usb_keypad_emu():
     # - code is **not** used in real product, but left here for devs to use
     # - this code isn't even called; unless you add code to do so, see ../stm32/my_lib_boot2.py
     #
+    from ux import the_ux
+    from menu import MenuSystem
+    from seed import WordNestMenu
+
     u = pyb.USB_VCP()
+
+    remap = {  '\r': 'y',
+             '\x1b': 'x', 
+           '\x1b[A': '5', 
+           '\x1b[B': '8', 
+           '\x1b[C': '9', 
+           '\x1b[D': '7' }
 
     while 1:
         await sleep_ms(100)
@@ -45,41 +56,24 @@ async def usb_keypad_emu():
 
             k = u.read(3).decode()
 
-            remap = {  '\r': 'y',
-                     '\x1b': 'x', 
-                        'q': 'x', 
-                   '\x1b[A': '5', 
-                   '\x1b[B': '8', 
-                   '\x1b[C': '9', 
-                   '\x1b[D': '7' }
-
-            if k in remap: k = remap[k]
-
             if k in '\x04':     # ^D
                 # warm reset
                 from machine import soft_reset
                 soft_reset()
 
-            if k == 'd':
-                numpad.debug = (numpad.debug + 1) % 3
-                continue
+            if 0:
+                if k == 'd':
+                    numpad.debug = (numpad.debug + 1) % 3
+                    continue
 
-            if k == 'n':
-                if numpad.disabled:
-                    numpad.start()
-                else:
-                    numpad.stop()
+                if k == 'n':
+                    if numpad.disabled:
+                        numpad.start()
+                    else:
+                        numpad.stop()
 
-                print("npdis = %d" % numpad.disabled)
-                continue
-
-            if k == 'r':
-                numpad.trigger_baseline = True
-                continue
-            if k == 's':
-                numpad.sensitivity = (numpad.sensitivity + 1) % 5
-                print("sensi = %d" % numpad.sensitivity)
-                continue
+                    print("npdis = %d" % numpad.disabled)
+                    continue
 
             if k == 'U':
                 # enter DFU
@@ -87,19 +81,37 @@ async def usb_keypad_emu():
                 callgate.enter_dfu()
                 # not reached
 
-            if k == 't':
+            if k == 'T':
                 ckcc.vcp_enabled(True)
                 print("Repl enabled")
                 continue
 
-            if k == 'm':
+            if k == 'M':
                 import gc
                 print("Memory: %d" % gc.mem_free())
                 continue
 
+            # word menus: shortcut for first letter
+            top = the_ux.top_of_stack()
+            if top and isinstance(top, WordNestMenu) and len(top.items) > 6:
+                pos = min(len(i.label) for i in top.items)
+                if pos >= 2:
+                    for n, it in enumerate(top.items):
+                        if it.label[pos-2] == k:
+                            top.goto_idx(n)
+                            top.show()
+                            k = None
+                            break
+
+                    if k is None: continue
+
+            if k in remap:
+                k = remap[k]
+
             if k in '0123456789xy':
                 numpad.inject(k)
-            else:
-                print('? %r' % k)
+                continue
+            
+            print('? %r' % k)
 
 # EOF

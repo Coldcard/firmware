@@ -89,11 +89,28 @@ def serial_number():
     i = machine.unique_id()
     return "%02X%02X%02X%02X%02X%02X" % (i[11], i[10] + i[2], i[9], i[8] + i[0], i[7], i[6])
 
-def is_mark2():
+def probe_system():
+    # run-once code to determine what hardware we are running on
+    global has_membrane, hw_label, has_608
+
+    import ckcc, callgate
     from machine import Pin
 
     # PA10 is pulled-down in Mark2, open in previous revs
+    mark2 = (Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0)
 
-    return Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0
+    if not mark2:
+        has_membrane = False
+        hw_label = 'mk1'
+    else:
+        has_membrane = True
+        hw_label = 'mk2'
+
+    if ckcc.is_stm32l496():
+        hw_label = 'mk3'
+
+    has_608 = callgate.has_608()
+
+probe_system()
 
 # EOF

@@ -58,7 +58,7 @@ class SPIFlash:
             self.cs.high()
 
     def read(self, address, buf, cmd=CMD_FAST_READ):
-        # random read (fast mode, because why wouldn't we?!
+        # random read (fast mode, because why wouldn't we?!)
         self.cmd(cmd, address, complete=False, pad=True)
         self.spi.readinto(buf)
         self.cs.high()

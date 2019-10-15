@@ -216,59 +216,12 @@ class BitcoinTestnet(BitcoinMain):
     def msg_signing_prefix(cls):
         return 'Bitcoin Signed Message:\n'
 
-class LitecoinMain(ChainsBase):
-    # see <https://github.com/litecoin-project/litecoin/blob/master/src/chainparams.cpp#L134>
-    # but SLIP32 values taken from the SLIP, not their source ... all this is UNTESTED
-    ctype = 'LTC'
-    name = 'Litecoin'
-    core_name = 'Litecoin Core'
-
-    # See <https://github.com/bitcoinjs/bitcoinjs-lib/pull/819>
-    # where Litecoin (coblee) says they'll support both xprv/xpub and Ltpv/Ltub values.
-    slip132 = {
-        AF_CLASSIC:     Slip132Version(0x019da462, 0x019d9cfe, 'L'),
-        AF_P2WPKH_P2SH: Slip132Version(0x01b26ef6, 0x01b26792, 'M')
-    }
-
-    bech32_hrp = 'ltc'
-
-    b58_addr    = bytes([48])
-    b58_script  = bytes([5])
-   #b58_script2 = bytes([50])           # ??
-    b58_privkey = bytes([176])
-
-    b44_cointype = 2
-
-class LitecoinTestnet(LitecoinMain):
-    ctype = 'LTC'
-    name = 'Litecoin Testnet'
-    menu_name = 'Testnet: LTC'
-
-    # See <https://github.com/bitcoinjs/bitcoinjs-lib/pull/819>
-    # where Litecoin (coblee) says they'll support both xprv/xpub and Ltpv/Ltub values.
-    slip132 = {
-        AF_CLASSIC:     Slip132Version(0x0436f6e1, 0x0436ef7d, 't'),
-        #AF_P2WPKH_P2SH: Slip132Version(, , '')      # not listed in SLIP132?
-    }
-
-    b58_addr    = bytes([111])
-    b58_script  = bytes([196])
-    #b58_script2  = bytes([58])
-    b58_privkey = bytes([239])
-
-    bech32_hrp = 'tltc'
-
-    # ?? unknown ??
-    b44_cointype = 2
-
 # Add to this list of all choices; keep testnet stuff near bottom
 # because this order matches UI as presented to users.
 #
 AllChains = [
     BitcoinMain,
-    #LitecoinMain,
     BitcoinTestnet,
-    #LitecoinTestnet,
 ]
 
 

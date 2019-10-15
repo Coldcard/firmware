@@ -366,7 +366,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
     // - mpy may provide a pointer to flash if we give it a qstr or small value, and if
     //   we're reading only, that's fine.
 
-    if(len_in > 255) {
+    if(len_in > 1024) {     // arbitrary max, increase as needed
         rv = ERANGE;
         goto fail;
     }
@@ -524,6 +524,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             rv = (ae_pair_unlock() != 0);
             break;
 
+        case 6:
+            // Do we have a ATECC608a and all that implies?
+            // NOTE: this number was unused in V1 bootroms, so return ENOENT
+            #if FOR_608
+                rv = 0;
+            #else
+                rv = ENOENT;
+            #endif
+            break;
+
         case 12:
             // read the DFU button (used for selftest at least)
             REQUIRE_OUT(1);
@@ -572,7 +582,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 18: {
             // Try login w/ PIN.
-            REQUIRE_OUT(sizeof(pinAttempt_t));
+            REQUIRE_OUT(PIN_ATTEMPT_SIZE_V2);
             pinAttempt_t *args = (pinAttempt_t *)buf_io;
 
             switch(arg2) {
@@ -596,14 +606,14 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     rv = pin_firmware_greenlight(args);
                     break;
 
+                case 6:         // new for v2
+                    rv = pin_long_secret(args);
+                    break;
+
                 default:
                     rv = ENOENT;
                     break;
             }
-
-#ifndef RELEASE
-            if(rv == EPIN_AE_FAIL) BREAKPOINT;
-#endif
 
             break;
         }
@@ -642,17 +652,14 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
         }
             
-
         case 20:
-            // Read a single byte of config dataspace
-            REQUIRE_OUT(1);
+            // Read out entire config dataspace
+            REQUIRE_OUT(128);
 
-            rv = ae_read_config_byte(arg2 & 0x7f);
-            if(rv == -1) {
+            ae_setup();
+            rv = ae_config_read(buf_io);
+            if(rv) {
                 rv = EIO;
-            } else {
-                buf_io[0] = rv;
-                rv = 0;
             } 
             break;
 
@@ -666,7 +673,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
                 case 1:
                     REQUIRE_IN_ONLY(8);
-                    rv = check_is_downgrade(buf_io);
+                    rv = check_is_downgrade(buf_io, NULL);
                     break;
 
                 case 2:
@@ -675,7 +682,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     if(buf_io[0] < 0x10 || buf_io[0] >= 0x40) {
                         // bad data
                         rv = ERANGE;
-                    } if(check_is_downgrade(buf_io)) {
+                    } if(check_is_downgrade(buf_io, NULL)) {
                         // already at a higher version?
                         rv = EAGAIN;
                     } else {
@@ -692,6 +699,13 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                             }
                         }
                     }
+                    break;
+
+                case 3:
+                    // read raw counter0 value (max is 0x1fffff)
+                    REQUIRE_OUT(4);
+                    ae_setup();
+                    rv = ae_get_counter((uint32_t *)buf_io, 0) ? EIO: 0;
                     break;
 
                 default:

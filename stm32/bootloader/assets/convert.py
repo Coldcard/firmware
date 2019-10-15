@@ -174,7 +174,8 @@ results = [
     ( 'blankish', '. . .', None, dict(text_pos=36) ), # shown while we boot micropython (momentary)
     ( 'fatal', '#fwf', None, dict(text_pos=38) ),    # don't waste space on rarely-seen screens
     ( 'mitm', '-/-', None, {} ),                # don't waste space on rarely-seen screens
-    ( 'brick', '', 'ticket', dict(icon_pos=12) ),           # was: icon=Trash / I am brick.
+    #( 'brick', '', 'ticket', dict(icon_pos=12) ),           # was: icon=Trash / I am brick.
+    ( 'brick', 'Bricked', None, dict() ),           # was: icon=ticket
     #( 'dfu', 'Send Upgrade', 'download', {} ), # was beautiful, but won't be seen with RDP=2
     ( 'dfu', 'DFU', None, dict(text_pos=37) ),
     ( 'downgrade', 'Downgrade?', 'history', {} ),
@@ -197,7 +198,7 @@ if __name__ == '__main__':
     total = 0
     for label, txt, icon, args in results:
         if 0:
-            icon = None     # XXX saves a lot of memory!
+            icon = None     # XXX saves some memory: 283 bytes
         elif 1:
             icon = None if label not in ('verify', 'devmode', 'logout', 'brick') else icon
 

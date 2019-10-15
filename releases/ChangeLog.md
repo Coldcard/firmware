@@ -1,3 +1,12 @@
+## 3.0.1 - Oct 10, 2019
+
+- MARK3 SUPPORT!
+    - Adds support for Mark 3 hardware: larger CPU and better secure element (608)
+    - Many invisible changes inside the secure element (ATECC608A).
+    - Mark3 will brick itself after 13 incorrect PIN codes, so lots of warning are shown.
+- Contains all the features of 2.1.6 and still works on Mk1 and Mk2 hardware
+- Visual changes to login process (rounded boxes, different prompts, more warnings)
+- New USB command to report if Bitcoin versus Testnet setting is in effect.
 
 ## 2.1.6 - Oct 8, 2019
 

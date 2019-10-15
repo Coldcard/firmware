@@ -314,13 +314,14 @@ class USBHandler:
             return self.handle_crypto_setup(version, his_pubkey)
 
         if cmd == 'vers':
-            from version import get_mpy_version
+            from version import get_mpy_version, hw_label
             from callgate import get_bl_version
 
             # Returning: date, version(human), bootloader version, full date version
             # BUT: be ready for additions!
             rv = list(get_mpy_version())
             rv.insert(2, get_bl_version()[0])
+            rv.append(hw_label)
 
             return b'asci' + ('\n'.join(rv)).encode()
 
@@ -473,6 +474,11 @@ class USBHandler:
             from auth import start_remote_backup
             return start_remote_backup()
 
+        if cmd == 'blkc':
+            # report which blockchain we are configured for
+            from chains import current_chain
+            chain = current_chain()
+            return b'asci' + chain.ctype
 
         if cmd == 'bagi':
             return self.handle_bag_number(args)

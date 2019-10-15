@@ -27,7 +27,7 @@ bool verify_header(const coldcardFirmwareHeader_t *hdr);
 bool verify_signature(const coldcardFirmwareHeader_t *hdr, const uint8_t fw_check[32]);
 
 // check if proposed version is new enough (based on OTP values)
-bool check_is_downgrade(const uint8_t timestamp[8]);
+bool check_is_downgrade(const uint8_t timestamp[8], const char *version);
 
 // read what the watermark is, might be all zeros
 void get_min_version(uint8_t min_version[8]);

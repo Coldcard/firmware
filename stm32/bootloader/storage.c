@@ -29,6 +29,10 @@ const uint32_t num_pages_locked = ((BL_FLASH_SIZE + BL_NVROM_SIZE) / 0x800)-1;  
     void
 flash_setup0(void)
 {
+    // PROBLEM: we are running in bank 1 (of 2) and want to program
+    // bits in the same bank. Cannot read bank while programming it.
+    // Therefore, must have our programming code running in RAM.
+
     // put the ram-callable functions into place
     extern uint8_t _srelocate, _etext, _erelocate;
     memcpy(&_srelocate, &_etext, ((uint32_t)&_erelocate)-(uint32_t)&_srelocate);
@@ -177,6 +181,7 @@ flash_burn(uint32_t address, uint64_t val)
     // see FLASH_Program_DoubleWord(Address, Data);
 
     // Set PG bit
+    CLEAR_BIT(FLASH->CR, (FLASH_CR_PG | FLASH_CR_MER1 | FLASH_CR_PER | FLASH_CR_PNB));      // added
     SET_BIT(FLASH->CR, FLASH_CR_PG);
 
     // Program a double word
@@ -260,13 +265,15 @@ pick_pairing_secret(void)
     rng_setup();
 
     // Demo to anyone watching that the RNG is working, but likely only
-    // to be seen by production team during self-test/initial powerup.
+    // to be seen by production team during initial powerup.
     uint8_t    tmp[1024];
     for(int i=0; i<1000; i++) {
         rng_buffer(tmp, sizeof(tmp));
 
         oled_show_raw(sizeof(tmp), (void *)tmp);
     }
+
+    oled_factory_busy();
 
     // .. but don't use those numbers, because those are semi-public now.
     uint32_t secret[8];
@@ -280,23 +287,48 @@ pick_pairing_secret(void)
         secret[0] = rng_sample();
     }
 
-    // PROBLEM: we are running in bank 1 (of 2) and want to program
-    // bits in the same bank. Cannot read bank while programming it.
-    // Therefore, must have our programming code running in RAM.
 
+    // NOTE: if any of these 64-bit words have been programmed already once, this will
+    // fail because we are not pre-erasing them. However, this area is expected
+    // to be written exactly once in product's lifecycle so that should be okay.
 
-    // write into flash here
-    uint32_t dest = (uint32_t)&rom_secrets->pairing_secret;
+    // Write pairing secret into flash
+    {
+        uint32_t dest = (uint32_t)&rom_secrets->pairing_secret;
 
-    flash_unlock();
-    for(int i=0; i<8; i+=2, dest += 8) {
-        uint64_t    val = (((uint64_t)secret[i]) << 32) | secret[i+1];
+        flash_unlock();
+        for(int i=0; i<8; i+=2, dest += 8) {
+            uint64_t    val = (((uint64_t)secret[i]) << 32) | secret[i+1];
 
-        if(flash_burn(dest, val)) {
-            INCONSISTENT("flash fail");
+            if(flash_burn(dest, val)) {
+                INCONSISTENT("flash fail");
+            }
         }
+        flash_lock();
     }
-    flash_lock();
+
+    // Also at this point, pick RNG noise to use as our one-time-pad
+    // for encrypting the secrets held in the 608a.
+    {
+        uint32_t dest = (uint32_t)&rom_secrets->otp_key;
+        const uint32_t blen = sizeof(rom_secrets->otp_key) 
+                                + sizeof(rom_secrets->otp_key_long)
+                                + sizeof(rom_secrets->hash_cache_secret);
+
+        STATIC_ASSERT(blen % 8 == 0);
+        STATIC_ASSERT(blen == (72+416+32));
+
+        flash_unlock();
+        for(int i=0; i<blen; i+=8, dest += 8) {
+            uint64_t    val = ((uint64_t)rng_sample() << 32) | rng_sample();
+
+            if(flash_burn(dest, val)) {
+                INCONSISTENT("flash fail");
+            }
+        }
+        flash_lock();
+    }
+    
 }
 
 // confirm_pairing_secret()
@@ -383,6 +415,8 @@ flash_setup(void)
 {
     flash_setup0();
 
+    STATIC_ASSERT(sizeof(rom_secrets_t) <= 2048);
+
     // see if we have picked a pairing secret yet.
     bool blank_ps = check_all_ones(rom_secrets->pairing_secret, 32);
     bool blank_xor = check_all_ones(rom_secrets->pairing_secret_xor, 32);
@@ -401,7 +435,7 @@ flash_setup(void)
         int rv = ae_setup_config();
 
         if(rv) {
-            // hardware fail speaking to AE chip ... be careful not to brick,
+            // Hardware fail speaking to AE chip ... be careful not to brick here.
             // Do not continue!! We might fix the board, or add missing pullup, etc.
             oled_show(screen_brick);
             LOCKUP_FOREVER();
@@ -486,6 +520,8 @@ flash_lockdown_hard(uint8_t rdp_level_code)
     flash_ob_lock(true);
 }
 
+
+#if 0
 // backup_data_get()
 //
     uint32_t
@@ -513,7 +549,7 @@ backup_data_set(int idx, uint32_t new_value)
     // doesn't seem to work tho? stays unlocked
     RTC->WPR = 0xff;
 }
-
+#endif
 
 // record_highwater_version()
 //
