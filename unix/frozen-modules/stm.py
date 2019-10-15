@@ -1,6 +1,6 @@
 # STM
 
-class MocMemory:
+class MockMemory:
     def __init__(self, mapping, default):
         self.mapping = mapping
         self.default = default

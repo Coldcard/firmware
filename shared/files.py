@@ -183,7 +183,7 @@ class CardSlot:
         import version
         from machine import Pin
 
-        if version.is_mark2():
+        if version.has_membrane:
             cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
     def __init__(self):

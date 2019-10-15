@@ -104,6 +104,172 @@ class OLEDSimulator:
             img = Image.open(tmp.file)
             img = img.convert('P')
             self.movie.append((dt, img))
+
+class BareMetal:
+    #
+    # Use a real Coldcard device's bootrom and SE
+    #
+    def __init__(self, req_r, resp_w):
+        self.open()
+        self.request = open(req_r, 'rt', closefd=0)
+        self.response = open(resp_w, 'wb', closefd=0, buffering=0)
+
+    def open(self):
+        # return a file-descriptor ready to be used for access to a real Coldcard's console I/O.
+        # - assume only one coldcard
+        import sys, serial
+        from serial.tools.list_ports import comports
+
+        for d in comports():
+            if d.pid != 0xcc10: continue
+            sio = serial.Serial(d.device, write_timeout=1)
+
+            print("Connecting to: %s" % d.device)
+            break
+        else:
+            raise RuntimeError("Can't find usb serial port for real Coldcard")
+
+        self.sio = sio
+        sio.timeout = 0.250
+        greet = sio.readlines()
+        if greet and b'Welcome to Coldcard!' in greet[1]:
+            sio.write(b'\x03')     # ctrl-C
+            while 1:
+                sio.timeout = 1
+                lns = sio.readlines()
+                if not lns: break
+
+        # hit enter, expect prompt
+        sio.timeout = 0.100
+        sio.write(b'\r')
+        ln = sio.readlines()
+        #assert ln[-1] == b'>>> ', ln
+        #assert ln[-1] == b'=== ', ln
+        assert ln[-1] in {b'>>> ',  b'=== '}, ln         #ok if in paste mode
+
+        print(" Connected to: %s" % d.device)
+
+        sio.write(b'''\x05\
+from main import dis
+from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
+import ckcc
+dis.fullscreen("BareMetal")
+try:
+ busy = dis.busy_bar
+except:
+ busy = lambda x: None
+\x04'''.replace(b'\n', b'\r'))
+
+        # above is quick but will be echoed, so clear it out
+        lns = self.wait_done()
+        #print(f"setup: {lns}")
+
+
+    def read_sflash(self):
+        # capture contents of SPI flash (settings area only: last 128k)
+        # XXX not working
+        self.sio.write(b'''\x05\
+busy(1)
+from main import sf
+dis.fullscreen("SPI Flash")
+buf = bytearray(256)
+addr = 0xe0000
+for i in range(0, 0x20000, 256):
+    sf.read(addr+i, buf)
+    print(b2a_hex(buf).decode())
+busy(0)
+dis.fullscreen("BareMetal")
+\x04\r'''.replace(b'\n', b'\r'))
+
+        count = 0
+        self.sio.timeout = 0.5
+        for ln in self.sio.readlines():
+            ln = ln.decode('ascii')
+            if len(ln) == 512 + 2:
+                self.response.write(ln[:-2].encode('ascii') + b'\n')
+                count += 1
+            elif ln.startswith('>>> '):
+                break
+            elif not ln or not ln.strip() or ln.startswith('=== ') or 'paste mode' in ln:
+                pass
+            else:
+                print(f'junk: {ln}')
+
+        assert count == (128*1024)//256, count
+
+        print("Sent real SPI Flash contents to simulated Coldcard.")
+
+    def wait_done(self, timeout=1):
+        sio = self.sio
+        sio.timeout = timeout
+        rv = sio.read_until(terminator='>>> ')
+        return [str(i, 'ascii') for i in rv.split(b'\r\n')]
+
+    def readable(self):
+        # expects   (method, hex, arg2) as string on one line
+        ln = self.request.readline()
+
+        arg1, bb, arg2 = ln.split(', ')
+
+        method = int(arg1)
+        arg2 = int(arg2)
+        buf_io = a2b_hex(bb) if bb != 'None' else None
+
+        if method == -99:
+            # internal to us: read SPI flash contents
+            return self.read_sflash()
+        elif method in {2, 3}:
+            # these methods always die; not helpful for testing
+            print(f"FATAL Callgate(method={method}, arg2={arg2}) => execution would stop")
+            self.response.write(b'0,\n')
+            return
+
+        sio = self.sio
+
+        sio.timeout = 0.1
+        sio.read_all()
+
+        sio.write(b'\r\x05')      # CTRL-E => paste mode
+
+        if buf_io is None:
+            sio.write(b'bb = None\r')
+        else:
+            sio.write(b'bb = bytearray(a2b_hex("%s"))\r' % b2a_hex(buf_io))
+
+        sio.write(b'busy(1)\r')
+        sio.write(b'rv = ckcc.gate(%d, bb, %d)\r' % (method, arg2))
+        sio.write(b'busy(0)\r')
+        if buf_io is None:
+            sio.write(b'print("%d," % rv)\r')
+        else:
+            sio.write(b'print("%d, %s" % (rv, b2a_hex(bb).decode()))\r')
+        sio.write(b'\x04\r')        # CTRL-D, end paste; start exec
+
+        lines = []
+        for retries in range(10):
+            lines.extend(self.wait_done())
+            #print('back: \n' + '\n'.join( f'[{n}] {l}' for n,l in enumerate(lines)))
+            if len(lines) >= 2 and lines[-1] == lines[-2] == '>>> ':
+                break
+        else:
+            raise RuntimeError("timed out")
+
+        # result is in lines between final === and first >>> ... typically a single
+        # line, but might overflow into next 'line'
+        assert '=== ' in lines and '>>> ' in lines
+        a = -list(reversed(lines)).index('=== ')
+        b = lines[a:].index('>>> ')
+        rv = ''.join(lines[a:a+b]).strip()
+
+        assert rv
+        assert ',' in rv
+        assert not rv.startswith('===')
+
+        if 1:
+            print(f"Callgate(method={method}, {len(buf_io) if buf_io else 0} bytes, arg2={arg2}) => rv={rv}")
+
+        self.response.write(rv.encode('ascii') + b'\n')
     
 
 def start():
@@ -142,27 +308,49 @@ def start():
     env = os.environ.copy()
     env['MICROPYPATH'] = ':' + os.path.realpath('../shared')
 
-
     oled_r, oled_w = os.pipe()      # fancy OLED display
     led_r, led_w = os.pipe()        # genuine LED
     numpad_r, numpad_w = os.pipe()  # keys
 
     # manage unix socket cleanup for client
-    try:
-        os.unlink('/tmp/ckcc-simulator.sock')
-    except: pass
+    def sock_cleanup():
+        import os
+        fp = '/tmp/ckcc-simulator.sock'
+        if os.path.exists(fp):
+            os.unlink(fp)
+    sock_cleanup()
     import atexit
-    atexit.register(os.unlink, '/tmp/ckcc-simulator.sock')
+    atexit.register(sock_cleanup)
+
+    # handle connection to real hardware, on command line
+    # - open the serial device
+    # - get buffering/non-blocking right
+    # - pass in open fd numbers
+    pass_fds = [oled_w, numpad_r, led_w]
+
+    if '--metal' in sys.argv:
+        # bare-metal access: use a real Coldcard's bootrom+SE.
+        metal_req_r, metal_req_w = os.pipe()
+        metal_resp_r, metal_resp_w = os.pipe()
+
+        bare_metal = BareMetal(metal_req_r, metal_resp_w)
+        pass_fds.append(metal_req_w)
+        pass_fds.append(metal_resp_r)
+        metal_args = [ '--metal', str(metal_req_w), str(metal_resp_r) ]
+        sys.argv.remove('--metal')
+    else:
+        metal_args = []
+        bare_metal = None
 
     os.chdir('./work')
     cc_cmd = ['../coldcard-mpy', '-i', '../sim_boot.py',
                         str(oled_w), str(numpad_r), str(led_w)] \
-                        + sys.argv[1:]
+                        + metal_args + sys.argv[1:]
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',
                                 '-geom', '132x40+450+40', '-e'] + cc_cmd,
                                 env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                pass_fds=[oled_w, numpad_r, led_w], shell=False)
+                                pass_fds=pass_fds, shell=False)
 
 
     # reopen as binary streams
@@ -174,6 +362,10 @@ def start():
     for r in [oled_rx, led_rx]:
         fl = fcntl.fcntl(r, fcntl.F_GETFL)
         fcntl.fcntl(r, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+    readables = [oled_rx, led_rx]
+    if bare_metal:
+        readables.append(bare_metal.request)
 
     running = True
     pressed = set()
@@ -255,8 +447,12 @@ def start():
                 for ch in list(pressed):
                     send_event(ch, False)
 
-        rs, ws, es = select([oled_rx, led_rx], [], [], .001)
+        rs, ws, es = select(readables, [], [], .001)
         for r in rs:
+
+            if bare_metal and r == bare_metal.request:
+                bare_metal.readable()
+                continue
 
             # Cheating: 1024 is size of OLED update, don't change.
             buf = r.read(1024*1000)

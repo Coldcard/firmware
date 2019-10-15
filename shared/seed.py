@@ -16,7 +16,7 @@ from utils import pop_count, xfp2str
 import tcc, uctypes
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease
-from pincodes import AE_SECRET_LEN
+from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ckcc import rng_bytes
@@ -491,7 +491,7 @@ async def remember_bip39_passphrase():
 
 def clear_seed():
     from main import dis, pa, settings
-    import utime
+    import utime, version
 
     dis.fullscreen('Clearing...')
 
@@ -501,6 +501,11 @@ def clear_seed():
     # save a blank secret (all zeros is a special case, detected by bootloader)
     nv = bytes(AE_SECRET_LEN)
     pa.change(new_secret=nv)
+
+    if version.has_608:
+        # wipe the long secret too
+        nv = bytes(AE_LONG_SECRET_LEN)
+        pa.ls_change(nv)
 
     dis.fullscreen('Reboot...')
     utime.sleep(1)

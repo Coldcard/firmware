@@ -57,46 +57,18 @@ your key storage per-system unique.
 
 - "stm32l4x.cpu mdb" is nice hexdump, much better than regular mdb
 
+- If you're having trouble getting the debugger to started / link up right, try in DFU mode.
+
+- You must always wipe flash when you change the 508/608 because no code to erase the
+  pairing secret and can't rewrite flash.
+
+    halt
+    stm32l4x unlock 0
+    stm32l4x mass_erase 0
+
 # Credits
 
 - <https://github.com/B-Con/crypto-algorithms> for sha256 code.
-
-# Reset Vector + Callgate Hacking
-
-- using OpenOCD monitor talking to real chip
-- using OpenOCD disassembler
-- working in RAM @ 0x10000000
-- need to encode the reset vector (into boot loader) and also be a valid sequence of thumb insts
-- best if it doesn't mangle R1-R4,LR so they can be used for callgate API
-- I require: 08000 xxxx where
-        - LSB of x is one (thumb mode),
-        - and (x) is less than 0x7800
-        - preferably x is small
-
-    mwh 0x10000000 0x00b1
-    mwh 0x10000002 0x0800
-    stm32l4x.cpu arm disassemble 0x10000000 2 thumb
-
-    0x10000000  0x00b1      LSLS    r1, r6, #0x02
-    0x10000002  0x0800      LSRS    r0, r0, #0x20
-
-- "LSRS    r0, r0, #0x20" will be unavoidable
-
-- here's a nice sequence:
-    0x10000000  0x007f      LSLS    r7, r7, #0x01
-    0x10000002  0x0800      LSRS    r0, r0, #0x20
-
-- however, it's a no-go because once the firewall is activated, the
-    reset vector can't work: it doesn't do the callgate right. It may
-    be fetching the reset vector and/or the stack ptr before dying but
-    it's hard to tell. Also tried jumping to the callgate (0x05) as the
-    reset vector but that didn't work either.
-
-- lesson learned: we must keep the bootloader readonly and block flash writes
-  because other wise the DFU can/will (partially) erase the 0x100 or so non-firewalled
-  bytes. Of course the datasheet says that too, and states level 2 write protection
-  is needed.
-
 
 # Reading 'pairing secret'
 
@@ -115,9 +87,4 @@ This is a useful command, but only works on non-production units:
 - HAL code for SPI should be removed and replaced with a few one-liners
 - GPIO code maybe removed as well?
 
-
-# NOTES
-
-- for 0123783355b2ab9dee:
-- 2dcc34b2c3531a5d60153647413318502499448aa365d8424178a3c3133e638c
 

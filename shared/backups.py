@@ -3,7 +3,7 @@
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, tcc, ckcc, chains, gc
+import compat7z, stash, tcc, ckcc, chains, gc, sys
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import imported, xfp2str
@@ -59,6 +59,10 @@ def render_backup_contents():
             dpk = sv.duress_root()
             ADD('duress_xprv', chain.serialize_private(dpk))
             ADD('duress_xpub', chain.serialize_public(dpk))
+
+        if version.has_608:
+            # save the so-called long-secret
+            ADD('long_secret', b2a_hex(pa.ls_fetch()))
     
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
@@ -111,9 +115,18 @@ async def restore_from_dict(vals):
             check_xprv = chain.serialize_private(node)
             assert check_xprv == vals['xprv'], 'xprv mismatch'
 
+
     except Exception as e:
         return ('Unable to decode raw_secret and '
                                 'restore the seed value!\n\n\n'+str(e))
+
+    ls = None
+    if ('long_secret' in vals) and version.has_608:
+        try:
+            ls = a2b_hex(vals.pop('long_secret'))
+        except Exception as exc:
+            sys.print_exception(exc)
+            # but keep going.
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.25)
@@ -125,7 +138,15 @@ async def restore_from_dict(vals):
     # force the right chain
     pa.new_main_secret(raw, chain)         # updates xfp/xpub
 
+
     # NOTE: don't fail after this point... they can muddle thru w/ just right seed
+
+    if ls is not None:
+        try:
+            pa.ls_change(ls)
+        except Exception as exc:
+            sys.print_exception(exc)
+            # but keep going
 
     # restore settings from backup file
 

@@ -74,7 +74,7 @@ def gate(method, buf_io, arg2):
 
     if method == 0:
         # version string
-        hc = b'1.0.0 time=20180220.092345 git=master@f8d1758'
+        hc = b'2.0.0 time=20180220.092345 git=master@f8d1758'
         buf_io[0:len(hc)] = hc
         return len(hc)
 
@@ -98,6 +98,10 @@ def gate(method, buf_io, arg2):
     if method == 5:
         # are we a brick? No.
         return 0
+
+    if method == 6:
+        # do we have 608?
+        return ENOENT if not version.has_608 else 0
 
     if method == 19:
         # bag number
@@ -147,5 +151,9 @@ def watchpoint():
 
 def vcp_enabled(_):
     return True
+
+def is_stm32l496():
+    return ('--mk2' not in sys.argv)
+
 
 # EOF

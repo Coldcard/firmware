@@ -47,7 +47,7 @@ rng_sample(void)
     static uint32_t last_rng_result;
 
     while(1) {
-        /* Check if data register contains valid random data */
+        // Check if data register contains valid random data
         while(!(RNG->SR & RNG_FLAG_DRDY)) {
             // busy wait; okay to get stuck here... better than failing.
         }

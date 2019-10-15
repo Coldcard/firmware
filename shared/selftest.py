@@ -11,6 +11,7 @@ from ux import ux_wait_keyup, ux_clear_keys, ux_poll_once
 from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
 from utils import imported
+import version
 
 async def test_numpad():
     # do an interactive self test
@@ -50,10 +51,20 @@ def set_genuine():
 
     dis.show()
 
-async def test_ae508a():
-    if ckcc.is_simulator(): return
+async def test_secure_element():
 
-    assert not get_is_bricked(), "AE508a is bricked"
+    assert not get_is_bricked(), "SE is bricked"
+
+    # test right chips installed
+    is_fat = ckcc.is_stm32l496()
+    if is_fat:
+        assert version.has_608, "expect 608a"
+        assert version.hw_label == 'mk3'
+    else:
+        assert not version.has_608, "expect 508a"
+        assert version.hw_label != 'mk3'
+
+    if ckcc.is_simulator(): return
 
     for ph in range(5):
         gg = get_genuine()
@@ -248,16 +259,15 @@ async def test_microsd():
 
 
 async def start_selftest():
-    import version
 
     try:
         await test_oled()
         await test_microsd()
         await test_numpad()
         await test_sflash()
-        await test_ae508a()
+        await test_secure_element()
 
-        if version.is_mark2():
+        if version.has_membrane:
             await test_sd_active()
 
         # add more tests here

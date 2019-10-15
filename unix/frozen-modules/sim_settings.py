@@ -1,5 +1,6 @@
-import os, sys
+# do NOT import main from this file.
 
+import os, sys
 from sim_secel import SECRETS
 
 if '-w' in sys.argv:
@@ -65,32 +66,6 @@ if '-m' in sys.argv:
     sim_defaults['fee_limit'] = -1
 
 
-    # start in multisig wallet
-    from main import numpad
-    numpad.inject('9')
-    numpad.inject('y')
-    numpad.inject('9')
-    numpad.inject('5')
-    numpad.inject('y')
-
-if '-s' in sys.argv:
-    # MicroSD menu
-    from main import numpad
-    numpad.inject('4')
-    numpad.inject('y')
-    numpad.inject('4')
-    numpad.inject('y')
-
-if '-a' in sys.argv:
-    # Address Explorer
-    from main import numpad
-    numpad.inject('4')
-    numpad.inject('y')
-    numpad.inject('4')
-    numpad.inject('8')
-    numpad.inject('y')
-    numpad.inject('y')
-
 if '--xfp' in sys.argv:
     # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
     from ustruct import unpack
@@ -101,5 +76,24 @@ if '--xfp' in sys.argv:
     sim_defaults['xfp'] = unpack(">I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
+if '--seed' in sys.argv:
+    # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
+    from ustruct import unpack
+    from utils import xfp2str
+    from seed import set_seed_value
+    from main import pa, settings
+
+    words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
+    assert len(words) == 24, "Expected 24 space-separated words: add some quotes"
+    pa.pin = b'12-12'
+    set_seed_value(words)
+    settings.set('terms_ok', 1)
+    settings.set('_skip_pin', '12-12')
+    settings.set('chain', 'XTN')
+    print("Seed phrase set, resulting XFP: " + xfp2str(settings.get('xfp')))
+
+if '-g' in sys.argv:
+    # do login
+    sim_defaults.pop('_skip_pin', 0)
 
 # EOF

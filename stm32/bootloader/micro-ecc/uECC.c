@@ -282,6 +282,7 @@ uECC_VLI_API uECC_word_t uECC_vli_sub(uECC_word_t *result,
                                       const uECC_word_t *right,
                                       wordcount_t num_words);
 
+#ifndef NO_SIGNING
 /* Returns sign of left - right, in constant time. */
 uECC_VLI_API cmpresult_t uECC_vli_cmp(const uECC_word_t *left,
                                       const uECC_word_t *right,
@@ -291,6 +292,7 @@ uECC_VLI_API cmpresult_t uECC_vli_cmp(const uECC_word_t *left,
     uECC_word_t equal = uECC_vli_isZero(tmp, num_words);
     return (!equal - 2 * neg);
 }
+#endif
 
 /* Computes vli = vli >> 1. */
 #if !asm_rshift1
@@ -739,6 +741,7 @@ static void apply_z(uECC_word_t * X1,
     uECC_vli_modMult_fast(Y1, Y1, t1, curve); /* y1 * z^3 */
 }
 
+#ifndef NO_SIGNING
 /* P = (x1, y1) => 2P, (x2, y2) => P' */
 static void XYcZ_initial_double(uECC_word_t * X1,
                                 uECC_word_t * Y1,
@@ -762,6 +765,7 @@ static void XYcZ_initial_double(uECC_word_t * X1,
     curve->double_jacobian(X1, Y1, z, curve);
     apply_z(X2, Y2, z, curve);
 }
+#endif
 
 /* Input P = (x1, y1, Z), Q = (x2, y2, Z)
    Output P' = (x1', y1', Z3), P + Q = (x3, y3, Z3)
@@ -794,6 +798,7 @@ static void XYcZ_add(uECC_word_t * X1,
     uECC_vli_set(X2, t5, num_words);
 }
 
+#ifndef NO_SIGNING
 /* Input P = (x1, y1, Z), Q = (x2, y2, Z)
    Output P + Q = (x3, y3, Z3), P - Q = (x3', y3', Z3)
    or P => P - Q, Q => P + Q
@@ -913,6 +918,7 @@ static uECC_word_t EccPoint_compute_public_key(uECC_word_t *result,
     }
     return 1;
 }
+#endif
 
 #if uECC_WORD_SIZE == 1
 
@@ -957,6 +963,7 @@ uECC_VLI_API void uECC_vli_bytesToNative(uECC_word_t *native,
 
 #endif /* uECC_WORD_SIZE */
 
+#ifndef NO_SIGNING
 /* Generates a random integer in the range 0 < random < top.
    Both random and top have num_words words. */
 uECC_VLI_API int uECC_generate_random_int(uECC_word_t *random,
@@ -1040,6 +1047,7 @@ int uECC_shared_secret(const uint8_t *public_key,
     uECC_vli_nativeToBytes(secret, num_bytes, public);
     return !EccPoint_isZero(public, curve);
 }
+#endif
 
 #if uECC_SUPPORT_COMPRESSED_POINT
 void uECC_compress(const uint8_t *public_key, uint8_t *compressed, uECC_Curve curve) {
@@ -1066,6 +1074,7 @@ void uECC_decompress(const uint8_t *compressed, uint8_t *public_key, uECC_Curve 
 }
 #endif /* uECC_SUPPORT_COMPRESSED_POINT */
 
+#ifndef NO_SIGNING
 int uECC_valid_point(const uECC_word_t *point, uECC_Curve curve) {
     uECC_word_t tmp1[uECC_MAX_WORDS];
     uECC_word_t tmp2[uECC_MAX_WORDS];
@@ -1123,6 +1132,7 @@ int uECC_compute_public_key(const uint8_t *private_key, uint8_t *public_key, uEC
         public_key + curve->num_bytes, curve->num_bytes, public + curve->num_words);
     return 1;
 }
+#endif      // NO_SIGNING
 
 
 /* -------- ECDSA code -------- */

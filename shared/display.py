@@ -184,4 +184,57 @@ class Display:
             ln = max(2, ckcc.rng() % 32)
             self.dis.line(wx-ln, y, wx, y, 1)
 
+    def busy_bar(self, enable, speed_code=5):
+        # Render a continuous activity (not progress) bar in lower 8 lines of display
+        # - using OLED itself to do the animation, so smooth and CPU free
+        # - cannot preserve bottom 8 lines, since we have to destructively write there
+        # - assumes normal horz addr mode: 0x20, 0x00
+        # - speed_code=>framedelay: 0=5fr, 1=64fr, 2=128, 3=256, 4=3, 5=4, 6=25, 7=2frames
+        assert 0 <= speed_code <= 7
+
+        setup = bytes([
+            0x21, 0x00, 0x7f,       # setup column address range (start, end): 0-127
+            0x22, 7, 7,             # setup page start/end address: page 7=last 8 lines
+        ])
+        animate = bytes([ 
+            0x2e,               # stop animations in progress
+            0x26,               # scroll leftwards (stock ticker mode)
+                0,              # placeholder
+                7,              # start 'page' (vertical)
+                speed_code,     # scroll speed: 7=fastest, but no order to it
+                7,              # end 'page'
+                0, 0xff,        # placeholders
+            0x2f                # start
+        ])
+
+        cleanup = bytes([
+            0x2e,               # stop animation
+            0x20, 0x00,         # horz addr-ing mode
+            0x21, 0x00, 0x7f,   # setup column address range (start, end): 0-127
+            0x22, 7, 7,         # setup page start/end address: page 7=last 8 lines
+        ])
+
+        if not enable:
+            # stop animation, and redraw old (new) screen
+            self.write_cmds(cleanup)
+            self.show()
+        else:
+
+            # a pattern that repeats nices mod 128
+            # - each byte here is a vertical column, 8 pixels tall, MSB at bottom
+            data = bytes(0x80 if (x%4)<2 else 0x0 for x in range(128))
+
+            if ckcc.is_simulator():
+                # just show as static pattern
+                t = self.dis.buffer[:-128] + data
+                self.dis.write_data(t)
+            else:
+                self.write_cmds(setup)
+                self.dis.write_data(data)
+                self.write_cmds(animate)
+
+    def write_cmds(self, cmds):
+        for c in cmds:
+            self.dis.write_cmd(c)
+
 # EOF
