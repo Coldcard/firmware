@@ -476,6 +476,28 @@ consequences.''', escape='4')
     seed.clear_seed()
     # NOT REACHED -- reset happens
 
+async def view_seed_words(*a):
+    import stash, tcc
+
+    if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
+        return
+
+    with stash.SensitiveValues() as sv:
+        assert sv.mode == 'words'       # protected by menu item predicate
+
+        words = tcc.bip39.from_data(sv.raw).split(' ')
+
+        msg = 'Seed words (%d):\n' % len(words)
+        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+
+        pw = stash.bip39_passphrase
+        if pw:
+            msg += '\n\nBIP39 Passphrase:\n%s' % stash.bip39_passphrase
+
+        await ux_show_story(msg, sensitive=True)
+
+        stash.blank_object(msg)
+
 async def start_login_sequence():
     # Boot up login sequence here.
     #
