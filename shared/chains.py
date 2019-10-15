@@ -261,6 +261,28 @@ class LitecoinTestnet(LitecoinMain):
     # ?? unknown ??
     b44_cointype = 2
 
+class SyscoinMain(ChainsBase):
+    # see <https://github.com/syscoin/syscoin/blob/master/src/chainparams.cpp#L91>
+    ctype = 'SYS'
+    name = 'Syscoin'
+    core_name = 'Syscoin Core'
+
+    slip132 = {
+        AF_CLASSIC:     Slip132Version(0x0488B21E, 0x0488ADE4, 'x'),
+        AF_P2WPKH_P2SH: Slip132Version(0x049d7cb2, 0x049d7878, 'y'),
+        AF_P2WPKH:      Slip132Version(0x04b24746, 0x04b2430c, 'z'),
+        AF_P2WSH_P2SH:  Slip132Version(0x0295b43f, 0x0295b005, 'Y'),
+        AF_P2WSH:       Slip132Version(0x02aa7ed3, 0x02aa7a99, 'Z'),
+    }
+
+    bech32_hrp = 'sys'
+
+    b58_addr    = bytes([63])
+    b58_script  = bytes([5])
+    b58_privkey = bytes([128])
+
+    b44_cointype = 57
+
 # Add to this list of all choices; keep testnet stuff near bottom
 # because this order matches UI as presented to users.
 #
@@ -269,6 +291,7 @@ AllChains = [
     #LitecoinMain,
     BitcoinTestnet,
     #LitecoinTestnet,
+    SyscoinMain
 ]
 
 
