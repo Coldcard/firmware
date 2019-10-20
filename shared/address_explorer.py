@@ -68,7 +68,7 @@ async def choose_first_address(*a):
 
     return (path, addr_fmt)
 
-async def show_n_addresses(path, addr_fmt, start, n):
+async def show_n_addresses(start, n, get_address_at_idx):
     # Displays n addresses from start
     from main import dis
 
@@ -80,16 +80,11 @@ async def show_n_addresses(path, addr_fmt, start, n):
 
         dis.fullscreen('Wait...')
 
-        with stash.SensitiveValues() as sv:
+        for idx in range(start, start + n):
+            subpath, address = get_address_at_idx(idx)
+            msg += "%s =>\n%s\n\n" % (subpath, address)
 
-            for idx in range(start, start + n):
-                subpath = path.format(account=0, change=0, idx=idx)
-                node = sv.derive_path(subpath, register=False)
-                msg += "%s =>\n%s\n\n" % (subpath, chain.address(node, addr_fmt))
-
-                dis.progress_bar_show(idx/n)
-
-            stash.blank_object(node)
+            dis.progress_bar_show(idx/n)
 
         msg += "Press 9 to see next group, 7 to go back. X to quit."
 
@@ -102,7 +97,7 @@ async def show_n_addresses(path, addr_fmt, start, n):
 
             if ch == '1':
                 # save addresses to MicroSD signal
-                await make_address_summary_file(path, addr_fmt)
+                await make_address_summary_file(get_address_at_idx)
                 # .. continue on same screen in case they want to write to multiple cards
 
             if ch == 'x':
@@ -118,23 +113,18 @@ async def show_n_addresses(path, addr_fmt, start, n):
                 start += n
                 msg = make_msg(start)
 
-def generate_address_csv(path, addr_fmt, n):
+def generate_address_csv(get_address_at_idx, n):
     # Produce CSV file contents as a generator
 
     yield '"Index","Payment Address","Derivation"\n'
 
     ch = chains.current_chain()
 
-    with stash.SensitiveValues() as sv:
-        for idx in range(n):
-            subpath = path.format(account=0, change=0, idx=idx)
-            node = sv.derive_path(subpath, register=False)
+    for idx in range(n):
+        subpath, address = get_address_at_idx(idx)
+        yield '%d,"%s","%s"\n' % (idx, address, subpath)
 
-            yield '%d,"%s","%s"\n' % (idx, ch.address(node, addr_fmt), subpath)
-
-        stash.blank_object(node)
-
-async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt'):
+async def make_address_summary_file(get_address_at_idx, fname_pattern='addresses.txt'):
     # write addresses into a text file on the MicroSD
     from main import dis
     from files import CardSlot, CardMissingError
@@ -147,7 +137,7 @@ async def make_address_summary_file(path, addr_fmt, fname_pattern='addresses.txt
     dis.fullscreen('Saving 0-%d' % count)
 
     # generator function
-    body = generate_address_csv(path, addr_fmt, count)
+    body = generate_address_csv(get_address_at_idx, count)
 
     # pick filename and write
     try:
@@ -197,7 +187,15 @@ Press 4 to start.''', escape='4')
         return
 
     path, addr_fmt = picked
+    chain = chains.current_chain()
+    def get_address_at_idx(idx):
+        with stash.SensitiveValues() as sv:
+            subpath = path.format(account=0, change=0, idx=idx)
+            node = sv.derive_path(subpath, register=False)
+            res = (subpath, chain.address(node, addr_fmt))
+            stash.blank_object(node)
+            return res
 
-    await show_n_addresses(path, addr_fmt, 0, 10)
+    await show_n_addresses(0, 10, get_address_at_idx)
 
 # EOF

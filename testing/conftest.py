@@ -783,4 +783,14 @@ def is_mark3(request):
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import,
                                 make_ms_address, clear_ms)
 
+@pytest.fixture
+def select_blockchain(goto_home, pick_menu_item):
+    def doit(coin=0):
+        assert coin in {0, 1}, 'Invalid coin'
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Blockchain')
+        pick_menu_item('Bitcoin' if coin == 0 else 'Testnet: BTC')
+        time.sleep(0.01)
+    return doit
 #EOF

@@ -15,6 +15,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.encoding import a2b_hashed_base58
 from io import BytesIO
 from hashlib import sha256
+from test_address_explorer import parse_display_screen
 
 def HARD(n=0):
     return 0x80000000 | n
@@ -65,24 +66,42 @@ def clear_ms(unit_test):
     return doit
 
 @pytest.fixture()
-def make_multisig():
+def make_multisig(sim_execfile):
     # make a multsig wallet, always with simulator as an element
 
-    # always BIP45:   m/45'/... (but no co-signer idx)
+    # supports m/45', m/48'/{coin}'/0'/1', and m/48'/{coin}'/0'/2' derivations
 
-    def doit(M, N, unique=0):
+    def doit(M, N, unique=0, coin_type = 'XTN', addr_fmt=AF_P2SH):
         keys = []
 
+        def get_multisig_subkey(pk, addr_fmt=AF_P2SH, coin=0):
+            if addr_fmt == AF_P2SH: # m/45'
+                return pk.subkey(45, is_hardened=True, as_private=True)
+            elif addr_fmt == AF_P2WSH_P2SH: # m/48'/{coin}'/0'/1'
+                sub = pk.subkey(48, is_hardened=True, as_private=True)
+                sub = sub.subkey(coin, is_hardened=True, as_private=True)
+                sub = sub.subkey(0, is_hardened=True, as_private=True)
+                return sub.subkey(1, is_hardened=True, as_private=True)
+            elif addr_fmt == AF_P2WSH: # m/48'/{coin}'/0'/2'
+                sub = pk.subkey(48, is_hardened=True, as_private=True)
+                sub = sub.subkey(coin, is_hardened=True, as_private=True)
+                sub = sub.subkey(0, is_hardened=True, as_private=True)
+                return sub.subkey(2, is_hardened=True, as_private=True)
+            else:
+                raise ValueError("Unsupported multisig address format")
+
+        coin = 1 if coin_type == 'XTN' else 0
         for i in range(N-1):
-            pk = BIP32Node.from_master_secret(b'CSW is a fraud %d - %d' % (i, unique), 'XTN')
+            pk = BIP32Node.from_master_secret(b'CSW is a fraud %d - %d' % (i, unique), coin_type)
 
             xfp = unpack("<I", pk.fingerprint())[0]
-
-            sub = pk.subkey(45, is_hardened=True, as_private=True)
+            sub = get_multisig_subkey(pk, addr_fmt, coin)
             keys.append((xfp, pk, sub))
 
-        pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
-        keys.append((simulator_fixed_xfp, pk, pk.subkey(45, is_hardened=True, as_private=True)))
+        sim_pk = BIP32Node.from_wallet_key(sim_execfile('devtest/dump_private.py').strip())
+        sim_xfp = unpack("<I", sim_pk.fingerprint())[0]
+        sim_sub = get_multisig_subkey(sim_pk, addr_fmt, coin)
+        keys.append((sim_xfp, sim_pk, sim_sub))
 
         return keys
 
@@ -1401,5 +1420,64 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     txn_id = bitcoind.sendrawtransaction(rr['hex'])
     print(txn_id)
 
+@pytest.mark.parametrize('policy', [(2, 3), (3, 5), (7, 15)]) # test various policies
+@pytest.mark.parametrize('coin', [0, 1])
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
+def test_multisig_address_explorer(make_multisig, import_ms_wallet, goto_home, pick_menu_item, select_blockchain, need_keypress, parse_display_screen, policy, coin, addr_fmt):
+    from binascii import hexlify
+    select_blockchain(coin = coin)
+    M, N = policy
+    coin_type = 'XTN' if coin == 1 else 'BTC'
+    name = 'test-multisig'
+    idx = int(hexlify(os.urandom(1)).decode(), 16) % 100 # random index in [0, 100)
+    addr_fmt_str, common, path_mapper= {
+        AF_P2SH: ('p2sh', "m/45'", lambda _: [HARD(45), 0, idx]),
+        AF_P2WSH_P2SH: ('p2wsh-p2sh', "m/48'/{coin}'/0'/1'".format(coin=coin), lambda _: [HARD(48), HARD(coin), HARD(0), HARD(1), 0, idx]),
+        AF_P2WSH: ('p2wsh', "m/48'/{coin}'/0'/2'".format(coin=coin), lambda _: [HARD(48), HARD(coin), HARD(0), HARD(2), 0, idx])
+    }[addr_fmt]
+    keys = import_ms_wallet(
+        M=M,
+        N=N,
+        name=name,
+        accept=True,
+        keys=make_multisig(M, N, 0, coin_type, addr_fmt),
+        addr_fmt=addr_fmt_str,
+        common=common
+    )
 
+    # Get expected address
+    make_redeem_args = {'path_mapper': path_mapper}
+    addr_expected, _, _, _ = make_ms_address(M, keys, idx, 0, addr_fmt, coin, **make_redeem_args)
+
+    # Fetch Address Explorer address map on idx screen
+    ADDRESSES_SHOWN = 10
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item("%d/%d: %s" % (M, N, name))
+    pick_menu_item("Address Explorer")
+    for _ in range(idx // ADDRESSES_SHOWN): # scroll to idx screen
+        need_keypress('9')
+        time.sleep(0.01)
+    d = parse_display_screen(idx - idx % ADDRESSES_SHOWN, ADDRESSES_SHOWN)
+
+    # Get address at index
+    path_to_idx = lambda path: int(path.split('/')[-1])
+    indices = set(map(path_to_idx, d.keys()))
+    assert idx in indices
+
+    # Assert the address is as expected
+    for p, addr in d.items():
+        idx_at_p = path_to_idx(p)
+        if idx == idx_at_p:
+            assert addr_expected == addr
+
+    # Cleanup (delete multisig wallet)
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item("%d/%d: %s" % (M, N, name))
+    pick_menu_item("Delete")
+    need_keypress('y')
+    time.sleep(0.01)
 # EOF

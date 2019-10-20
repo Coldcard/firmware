@@ -887,9 +887,93 @@ async def make_ms_wallet_menu(menu, label, item):
         MenuItem('Delete', f=ms_wallet_delete, arg=ms),
         MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=ms),
         MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
+        MenuItem('Address Explorer', f=multisig_address_explorer, arg=ms)
     ]
 
     return rv
+
+def make_redeem(M, keys, path):
+    # Construct a redeem script, and ordered list of pubkeys
+    N = len(keys)
+
+    # derive pubkeys (see BIP 67: <https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki>)
+    pubkeys = []
+    for xfp, node in keys:
+        depth = node.depth()
+        for p in path[depth:]: # derive entire path (in-place)
+            node.derive(p)
+        pubkeys.append(node.public_key())
+    pubkeys.sort()
+
+    # construct redeem script
+    mm = [80 + M] if M <= 16 else [1, M]
+    nn = [80 + N] if N <= 16 else [1, N]
+    rv = bytes(mm)
+    for pk in pubkeys:
+        rv += bytes([len(pk)]) + pk
+    rv += bytes(nn + [0xAE])
+
+    return rv, pubkeys
+
+def ms_path_mapper(idx, is_change, coin, addr_fmt):
+    def HARD(n=0):
+        return 0x80000000 | n
+    # currently supported address format derivations
+    d = {
+        AF_P2SH: ([HARD(45), is_change, idx], "m/45'/{change}/{idx}".format(change=is_change, idx=idx)),
+        AF_P2WSH_P2SH: (
+            [HARD(48), HARD(coin), HARD(0), HARD(1), is_change, idx],
+            "m/48'/{coin}'/0'/1'/{change}/{idx}".format(coin=coin, change=is_change, idx=idx)
+        ),
+        AF_P2WSH: (
+            [HARD(48), HARD(coin), HARD(0), HARD(2), is_change, idx],
+            "m/48'/{coin}'/0'/2'/{change}/{idx}".format(coin=coin, change=is_change, idx=idx)
+        )
+    }
+    if addr_fmt not in d.keys():
+        raise ValueError("Unsupported address format: %s " % addr_fmt)
+    return d[addr_fmt]
+
+def make_ms_address(M, keys, idx, is_change, coin, addr_fmt):
+    from chains import BitcoinMain, BitcoinTestnet
+    # Validations
+    assert M <= len(keys), 'M > N'
+    assert idx >= 0, 'Invalid idx'
+    assert is_change in {0,1}, 'Invalid change value'
+    assert coin in {0, 1}, 'Invalid coin type'
+    assert addr_fmt in {AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH}, 'Invalid address format'
+
+    # Construct addr and script need to represent a p2sh address
+    path, _ = ms_path_mapper(idx, is_change, coin, addr_fmt)
+    script, pubkeys = make_redeem(M, keys, path)
+    p2sh_address = BitcoinMain.p2sh_address if coin == 0 else BitcoinTestnet.p2sh_address
+    addr = p2sh_address(addr_fmt, script)
+    return addr, script, pubkeys
+
+async def multisig_address_explorer(menu, label, item):
+    from address_explorer import show_n_addresses
+    ms = item.arg
+    chain = ms.chain()
+    if ms.common_prefix == None:
+        return await ux_show_story("We don't know the common derivation path for "
+                                   "these keys, so cannot show its addresses.")
+    def get_address_at_idx(idx):
+        keys = []
+        for xfp, xpub in ms.xpubs:
+            node = chain.deserialize_node(xpub, AF_P2SH)
+            keys.append( (xfp, node) )
+        _, subpath = ms_path_mapper(idx=idx, is_change=0, coin=chain.b44_cointype, addr_fmt=ms.addr_fmt)
+        addr, _, _ = make_ms_address(
+            M=ms.M,
+            keys=keys,
+            idx=idx,
+            is_change=0,
+            coin=chain.b44_cointype,
+            addr_fmt=ms.addr_fmt
+        )
+        return (subpath, addr)
+
+    await show_n_addresses(0, 10, get_address_at_idx)
 
 async def ms_wallet_delete(menu, label, item):
     ms = item.arg
