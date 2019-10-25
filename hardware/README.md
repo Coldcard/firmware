@@ -20,10 +20,9 @@ This is the Mark3 rev B schematic. It's just one page and pretty simple.
 
 `bom-mark3b.xlsx`
 
-All the parts used in the Coldcard are detailed in this spreadsheet file. 
-
-All the parts could be bought on Digikey, and where we know it,
-we've included the Digikey SKU.
+The parts used in the Coldcard are detailed in this spreadsheet file.
+All of them could be bought on Digikey, and where we know
+it, we've included the Digikey SKU.
 
 Not included are these minor bits:
 
