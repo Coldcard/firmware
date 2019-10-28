@@ -211,7 +211,9 @@ class SensitiveValues:
 
             if i[-1] == "'":
                 assert len(i) >= 2, i
-                here = int(i[:-1]) | 0x80000000
+                here = int(i[:-1])
+                assert 0 <= here < 0x80000000, here
+                here |= 0x80000000
             else:
                 here = int(i)
                 assert 0 <= here < 0x80000000, here
