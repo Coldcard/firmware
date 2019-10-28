@@ -138,4 +138,44 @@ def problem_file_line(exc):
 
     return rv or str(exc) or 'Exception'
 
+def cleanup_deriv_path(bin_path):
+    # Clean-up path notation as string.
+    # - raise exceptions on junk
+    # - standardize on 'prime' notation (34' not 34p, or 34h)
+    # - assume 'm' prefix, so '34' becomes 'm/34', etc
+    # - do not assume /// is m/0/0/0
+    import ure
+    from public_constants import MAX_PATH_DEPTH
+    try:
+        s = str(bin_path, 'ascii').lower()
+    except UnicodeError:
+        raise AssertionError('must be ascii')
+
+    # empty string is valid
+    if s == '': return 'm'
+
+    s = s.replace('p', "'").replace('h', "'")
+    mat = ure.match(r"(m|m/|)[0-9/']*", s)
+    assert mat.group(0) == s, "invalid characters"
+
+    parts = s.split('/')
+
+    # the m/ prefix is optional
+    if parts and parts[0] == 'm':
+        parts = parts[1:]
+
+    assert len(parts) <= MAX_PATH_DEPTH, "too deep"
+
+    for p in parts:
+        assert p != '' and p != "'", "empty path component"
+        if p[-1] == "'":
+            p = p[0:-1]
+        try:
+            ip = int(p, 10)
+        except:
+            ip = -1 
+        assert 0 <= ip < 0x80000000 and p == str(ip), "bad component: "+p
+            
+    return 'm/' + '/'.join(parts)
+
 # EOF

@@ -330,7 +330,7 @@ class USBHandler:
 
         if cmd == 'xpub':
             assert self.encrypted_req, 'must encrypt'
-            return self.handle_xpub(str(args, 'ascii'))
+            return self.handle_xpub(args)
 
         if cmd == 'mitm':
             assert self.encrypted_req, 'must encrypt'
@@ -623,21 +623,21 @@ class USBHandler:
         return offset
 
     def handle_xpub(self, subpath):
-        # Publish the xpub for the indicated subpath. Must be a sequence
-        # of ints, where private derivation is marked w/ 0x80000000 bit set.
+        # Share the xpub for the indicated subpath. Expects
+        # a text string which is the path derivation.
 
         # TODO: might not have a privkey yet
 
         from chains import current_chain
+        from utils import cleanup_deriv_path
 
+        subpath = cleanup_deriv_path(subpath)
         assert subpath[0:1] == 'm', 'must start at root'
-        assert subpath.count('/') <= 32, 'too deep'
+        assert subpath.count('/') <= 16, 'too deep'
 
         chain = current_chain()
 
         with stash.SensitiveValues() as sv:
-            #print("subpath: %s" % repr(subpath))
-
             node = sv.derive_path(subpath)
 
             xpub = chain.serialize_public(node)
