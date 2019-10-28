@@ -632,8 +632,6 @@ class USBHandler:
         from utils import cleanup_deriv_path
 
         subpath = cleanup_deriv_path(subpath)
-        assert subpath[0:1] == 'm', 'must start at root'
-        assert subpath.count('/') <= 16, 'too deep'
 
         chain = current_chain()
 
