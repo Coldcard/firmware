@@ -49,7 +49,7 @@ if '-2' in sys.argv:
     })
 
 if '-p' in sys.argv:
-    # pretend BIP39 password is active (just for menus)
+    # pretend BIP39 words don't exist (affects menus mostly)
     sim_defaults['words'] = False
 
 if '-m' in sys.argv:

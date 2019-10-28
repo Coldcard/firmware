@@ -1,4 +1,4 @@
-# imported late, for simulator only ... go to specific menus (dev aid)
+# imported late, for simulator only ... go to specific sub-sub-menus (dev aid)
 import sys
 
 if '-m' in sys.argv:
@@ -26,5 +26,15 @@ if '-a' in sys.argv:
     numpad.inject('4')
     numpad.inject('8')
     numpad.inject('y')
+    numpad.inject('y')
+
+if '--dz' in sys.argv:
+    # Enter the "Danger Zone"
+    from main import numpad
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('8')
+    numpad.inject('8')
     numpad.inject('y')
 
