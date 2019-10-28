@@ -1,5 +1,12 @@
 ## 3.0.1 - Oct 10, 2019
 
+
+Not sure why you don't have issues enabled. Just thought I'd ask if 3.0.1. is considered important to apply if I don't have the MK3. Iv'e got the MK2. Should I bother to apply this update?
+
+
+Thanks.
+
+
 - MARK3 SUPPORT!
     - Adds support for Mark 3 hardware: larger CPU and better secure element (608)
     - Many invisible changes inside the secure element (ATECC608A).
