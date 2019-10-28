@@ -397,7 +397,6 @@ async def approve_word_list(seed):
 
     # send them to home menu, now with a wallet enabled
     goto_top_menu()
-                
 
 def set_seed_value(words):
     # Save the seed words into secure element, and reboot. BIP39 password

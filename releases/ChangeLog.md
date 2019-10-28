@@ -7,6 +7,7 @@
 - Contains all the features of 2.1.6 and still works on Mk1 and Mk2 hardware
 - Visual changes to login process (rounded boxes, different prompts, more warnings)
 - New USB command to report if Bitcoin versus Testnet setting is in effect.
+- (3.0.2) New command in Danger Zone menu to view the seed words on-screen.
 
 ## 2.1.6 - Oct 8, 2019
 
