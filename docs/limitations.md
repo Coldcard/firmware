@@ -107,5 +107,9 @@ We will hide transaction outputs if they are "change" back into same wallet, how
     - `p2wsh`: only _witnessScript_ (which contains the actual multisig script)
 
 
+# Derivation Paths
+
+- key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
+
 
 

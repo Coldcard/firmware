@@ -21,7 +21,7 @@ from public_constants import (
     PSBT_IN_PARTIAL_SIG, PSBT_IN_SIGHASH_TYPE, PSBT_IN_REDEEM_SCRIPT,
     PSBT_IN_WITNESS_SCRIPT, PSBT_IN_BIP32_DERIVATION, PSBT_IN_FINAL_SCRIPTSIG,
     PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT,
-    PSBT_OUT_BIP32_DERIVATION
+    PSBT_OUT_BIP32_DERIVATION, MAX_PATH_DEPTH
 )
 
 # Max miner's fee, as percentage of output value, that we will allow to be signed.
@@ -221,6 +221,7 @@ class psbtProxy:
             # force them to use a derived key, never the master
             assert vl >= 8, 'too short key path'
             assert (vl % 4) == 0, 'corrupt key path'
+            assert (vl//4) <= MAX_PATH_DEPTH, 'too deep'
 
             # promote to a list of ints
             v = self.get(self.subpaths[pk])
