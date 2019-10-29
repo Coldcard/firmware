@@ -1162,14 +1162,14 @@ class psbtObject(psbtProxy):
         for nout, out in enumerate(self.outputs):
             if not out.is_change: continue
             # it's a change output, okay if a p2sh change; we're looking at paths
-            for path in inp.subpaths.values():
+            for path in out.subpaths.values():
                 if path[0] != my_xfp: continue          # possible in p2sh case
 
                 path = path[1:]
                 if len(path) != path_len:
                     iss = "has wrong path length (%d not %d)" % (len(path), path_len)
                 elif hard_bits(path) != hard_pattern:
-                    iss = "has different hard/not hardened pattern"
+                    iss = "has different hardening pattern"
                 elif path[0:len(path_prefix)] != path_prefix:
                     iss = "goes to diff path prefix"
                 elif (path[-2]&0x7fffffff) not in {0, 1}:
