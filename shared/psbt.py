@@ -1114,6 +1114,83 @@ class psbtObject(psbtProxy):
             self.warnings.append(('Big Fee', 'Network fee is more than '
                                     '5%% of total value (%.1f%%).' % per_fee))
 
+        # Enforce policy related to change outputs
+        self.consider_dangerous_change(self.my_xfp)
+
+    def consider_dangerous_change(self, my_xfp):
+        # Enforce some policy on change outputs:
+        # - need to "look like" they are going to same wallet as inputs came from
+        # - range limit last two path components (numerically)
+        # - same pattern of hard/not hardened components
+        # - MAX_PATH_DEPTH already enforced before this point
+        #
+        in_paths = []
+        for inp in self.inputs:
+            if inp.fully_signed: continue
+            if not inp.required_key: continue
+            if not inp.subpaths: continue        # not expected if we're signing it
+            for path in inp.subpaths.values():
+                if path[0] == my_xfp:
+                    in_paths.append(path[1:])
+
+        if not in_paths:
+            # We aren't adding any signatures? Can happen but we're going to be 
+            # showing a warning about that elsewhere.
+            return
+
+        shortest = min(len(i) for i in in_paths)
+        longest = max(len(i) for i in in_paths)
+        if shortest != longest or shortest <= 2:
+            # We aren't seeing common input path lengths.
+            # They are probbably doing weird stuff, so leave them alone.
+            # (Remember: we are trusting the input side of things here)
+            return
+
+        # Assumption: hard/not hardened depths will match for all address in wallet
+        def hard_bits(p):
+            return [bool(i & 0x80000000) for i in p]
+
+        # Assumption: common wallets modulate the last two components only
+        # of the path. Typically m/.../change/index where change is {0, 1}
+        # and index changes slowly over lifetime of wallet (increasing)
+        path_len = shortest
+        path_prefix = in_paths[0][0:-2]
+        idx_max = max(i[-1]&0x7fffffff for i in in_paths) + 200
+        hard_pattern = hard_bits(in_paths[0])
+
+        probs = []
+        for nout, out in enumerate(self.outputs):
+            if not out.is_change: continue
+            # it's a change output, okay if a p2sh change; we're looking at paths
+            for path in inp.subpaths.values():
+                if path[0] != my_xfp: continue          # possible in p2sh case
+
+                path = path[1:]
+                if len(path) != path_len:
+                    iss = "has wrong path length (%d not %d)" % (len(path), path_len)
+                elif hard_bits(path) != hard_pattern:
+                    iss = "has different hard/not hardened pattern"
+                elif path[0:len(path_prefix)] != path_prefix:
+                    iss = "goes to diff path prefix"
+                elif (path[-2]&0x7fffffff) not in {0, 1}:
+                    iss = "2nd last component not 0 or 1"
+                elif (path[-1]&0x7fffffff) > idx_max:
+                    iss = "last component beyond idx+200 of inputs"
+                else:
+                    # looks ok
+                    continue
+
+                probs.append("Output#%d: %s: %s not %s/{0~1}%s/{0~%d}%s expected" 
+                        % (nout, iss, path_to_str(path, skip=0),
+                            path_to_str(path_prefix, skip=0),
+                            "'" if hard_pattern[-2] else "",
+                            idx_max, "'" if hard_pattern[-1] else "",
+                          ))
+                break
+
+        for p in probs:
+            self.warnings.append(('Troublesome Change Outs', p))
+
     def consider_inputs(self):
         # Look an the UTXO's that we are spending. Do we have them? Do the
         # hashes match, and what values are we getting?
