@@ -992,7 +992,7 @@ def fake_ms_txn():
     return doit
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
-@pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
+@pytest.mark.parametrize('num_ins', [ 2, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
 @pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)

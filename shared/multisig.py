@@ -8,7 +8,7 @@ import stash, chains, ustruct, ure, uio, sys
 from utils import xfp2str, str2xfp, swab32
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from files import CardSlot, CardMissingError
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from actions import needs_microsd
@@ -493,7 +493,7 @@ class MultisigWallet:
                     assert mat
                     common_prefix = mat.group(2)
                     assert common_prefix
-                    assert 1 <= len(common_prefix) < 30
+                    assert 1 <= len(common_prefix) <= MAX_PATH_DEPTH-1
                 except:
                     raise AssertionError('bad derivation line')
 

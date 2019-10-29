@@ -1,7 +1,18 @@
 ## 3.0.2 - Oct ??, 2019
 
-- Robustness: Improve checking on key path derivations. Define a max depth (12).
 - New command in Danger Zone menu to view the seed words on-screen.
+- Robustness: Analyse path used for change outputs. Produce a warning if it
+  is not similar in structure to the inputs of that same transaction:
+    - shared pattern of hardened/not path components
+    - 2nd-last position is one or zero (change/not change convention)
+    - last position within 200 units of last position of observed inputs
+    - same path length
+  These are imperfect heuristics and if you receive a false positive or are doing
+  weird stuff that doessn't suit the above rules, please send an example PSBT to
+  support@ck and we'll see if we can handle it better. It is a warning message only.
+- Robustness: Improve checking on key path derivations when we encounter them as text:
+    - accept 10h and 10p as if they are 10' (alternative syntax)
+    - define a max depth (12) for all derivations
 
 ## 3.0.1 - Oct 10, 2019
 

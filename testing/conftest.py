@@ -590,7 +590,7 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
     return doit
 
 @pytest.fixture
-def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress):
+def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress, microsd_path):
 
     # like "try_sign" but use "air gapped" file transfer via microSD
 
@@ -606,7 +606,15 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
                 ip = a2b_hex(ip.strip())
             assert ip[0:5] == b'psbt\xff'
 
+
         psbtname = 'ftrysign'
+
+        # population control
+        from glob import glob; import os
+        pat = microsd_path(psbtname+'*.psbt')
+        for f in glob(pat):
+            assert 'psbt' in f
+            os.unlink(f)
 
         with open_microsd(psbtname+'.psbt', 'wb') as sd:
             sd.write(ip)

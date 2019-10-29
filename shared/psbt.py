@@ -1141,9 +1141,8 @@ class psbtObject(psbtProxy):
         shortest = min(len(i) for i in in_paths)
         longest = max(len(i) for i in in_paths)
         if shortest != longest or shortest <= 2:
-            # We aren't seeing common input path lengths.
+            # We aren't seeing shared input path lengths.
             # They are probbably doing weird stuff, so leave them alone.
-            # (Remember: we are trusting the input side of things here)
             return
 
         # Assumption: hard/not hardened depths will match for all address in wallet
@@ -1175,7 +1174,7 @@ class psbtObject(psbtProxy):
                 elif (path[-2]&0x7fffffff) not in {0, 1}:
                     iss = "2nd last component not 0 or 1"
                 elif (path[-1]&0x7fffffff) > idx_max:
-                    iss = "last component beyond idx+200 of inputs"
+                    iss = "last component beyond reasonable gap"
                 else:
                     # looks ok
                     continue
