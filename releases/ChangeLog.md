@@ -13,8 +13,8 @@
 - Robustness: Improve checking on key path derivations when we encounter them as text:
     - accept 10h and 10p as if they are 10' (alternative syntax)
     - define a max depth (12) for all derivations
-- Security: during secure logout, wipe entire contents of serial flash, which might
-  contain PSBT, signed or unsigned (for more privacy, deniability)
+- Security Improvement: during secure logout, wipe entire contents of serial flash,
+  which might contain PSBT, signed or unsigned (for more privacy, deniability)
 
 ## 3.0.1 - Oct 10, 2019
 
