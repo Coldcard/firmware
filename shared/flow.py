@@ -80,10 +80,19 @@ DevelopersMenu = [
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
 ]
 
-AdvancedVirginMenu = [
+AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem('Perform Selftest', f=start_selftest),
+    MenuItem('Secure Logout', f=logout_now),
+]
+
+AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("View Identity", f=view_ident),
+    MenuItem("Upgrade", menu=UpgradeMenu),
+    MenuItem('Perform Selftest', f=start_selftest),
+    MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem('Secure Logout', f=logout_now),
 ]
 
@@ -152,7 +161,7 @@ EmptyWallet = [
     MenuItem('New Wallet', f=pick_new_wallet),
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem('Help', f=virgin_help),
-    MenuItem('Advanced', menu=AdvancedVirginMenu),
+    MenuItem('Advanced', menu=AdvancedPinnedVirginMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
 
