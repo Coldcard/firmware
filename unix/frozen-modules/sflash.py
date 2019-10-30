@@ -47,4 +47,9 @@ class SPIFlash:
         for i in range(self.BLOCK_SIZE):
             self.array[address+i] = 0xff
 
+    def wipe_most(self):
+        from nvstore import SLOTS
+        for addr in range(0, SLOTS[0]):
+            self.array[addr] = 0xff
+
 # EOF
