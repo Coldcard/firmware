@@ -101,3 +101,8 @@ Top-level dirs:
 
 - 32k of factory-set code that you cannot change
 - however, you can inspect what code is on your coldcard and compare to this.
+
+`hardware`
+
+- schematic and bill of materials for the Coldcard
+
