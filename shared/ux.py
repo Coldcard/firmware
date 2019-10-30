@@ -358,10 +358,9 @@ async def idle_logout():
             # do a logout now.
             print("Idle timeout now!")
 
-            import callgate
-            callgate.show_logout()
-
-            return
+            from actions import logout_now
+            await logout_now()
+            return              # not reached
             
 async def ux_confirm(msg):
     # confirmation screen, with stock title and Y=of course.

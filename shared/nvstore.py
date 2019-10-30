@@ -46,7 +46,6 @@ SLOTS = range((1024-128)*1024, 1024*1024, 4096)
 # concerns with heap fragmentation, and saving settings is clearly
 # core to our mission!
 # 4k, but last 32 bytes are a SHA (itself encrypted)
-#_tmp = bytearray(4096-32)
 from sram2 import nvstore_buf
 _tmp = nvstore_buf
 
