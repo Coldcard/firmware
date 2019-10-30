@@ -35,5 +35,6 @@ Not included are these minor bits:
 
 - No promises that these files are 100% current because we do make quality improvements.
 - Copyright of these files, and all design elements of the Coldcard remain with Coinkite Inc.
-- This information is for research and testing purposes only, **we do not liscense it for comercial use.**
+- This information is for research and testing purposes only no warranties. 
+- **Coinkite does not grant license of this information for comercial use.**
 
