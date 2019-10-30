@@ -369,11 +369,15 @@ async def block_until_login(*a):
 async def logout_now(*a):
     # wipe memory and lock up
     from callgate import show_logout
+    from main import sf
+    sf.wipe_most()
     show_logout()
 
 async def login_now(*a):
     # wipe memory and reboot
     from callgate import show_logout
+    from main import sf
+    sf.wipe_most()
     show_logout(2)
     
 
