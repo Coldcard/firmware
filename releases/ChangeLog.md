@@ -1,16 +1,16 @@
 ## 3.0.2 - Oct ??, 2019
 
 - New command in Danger Zone menu to view the seed words on-screen.
-- Robustness: Analyse path used for change outputs. Produce a warning if it
-  is not similar in structure to the inputs of that same transaction:
+- Robustness: Analyse paths used for change outputs and show a warning if they
+  are not similar in structure to the inputs of that same transaction.
+  These are imperfect heuristics and if you receive a false positive, or are doing
+  weird things that don't suit the rules below, please send an example PSBT to
+  support and we'll see if we can handle it better:
     - shared pattern of hardened/not path components
     - 2nd-last position is one or zero (change/not change convention)
-    - last position within 200 units of last position of observed inputs
+    - last position within 200 units of highest value observed on inputs
     - same path length
-  These are imperfect heuristics and if you receive a false positive or are doing
-  weird stuff that doessn't suit the above rules, please send an example PSBT to
-  support@ck and we'll see if we can handle it better. It is a warning message only.
-- Robustness: Improve checking on key path derivations when we encounter them as text:
+- Robustness: Improve checking on key path derivations when we encounter them as text.
     - accept 10h and 10p as if they are 10' (alternative syntax)
     - define a max depth (12) for all derivations
 - Security Improvement: during secure logout, wipe entire contents of serial flash,
