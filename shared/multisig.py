@@ -493,7 +493,7 @@ class MultisigWallet:
                     assert mat
                     common_prefix = mat.group(2)
                     assert common_prefix
-                    assert 1 <= len(common_prefix) <= MAX_PATH_DEPTH-1
+                    assert 1 <= len(common_prefix.split('/')) <= MAX_PATH_DEPTH+1
                 except:
                     raise AssertionError('bad derivation line')
 
