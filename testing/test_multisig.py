@@ -122,7 +122,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
         config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False)) 
                                             for xfp, m, dd in keys)
-        print(config)
+        #print(config)
 
         title, story = offer_ms_import(config)
 
@@ -445,6 +445,20 @@ def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
     finally:
         clear_ms()
 
+@pytest.mark.parametrize('cpp', [
+    "m///",
+    "m/",
+    "m/1/2/3/4/5/6/7/8/9/10/11/12/13",          # assuming MAX_PATH_DEPTH==12
+])
+def test_bad_common_prefix(cpp, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+    # give some incorrect path values as the common prefix derivation
+
+    M, N = 1, 15
+    with pytest.raises(BaseException) as ee:
+        keys = import_ms_wallet(M, N, accept=1, common=cpp)
+    assert 'bad derivation line' in str(ee)
+
+
 def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     # check all details are shown right
 
@@ -554,15 +568,17 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
         except: pass
     
 @pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
-def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, import_ms_wallet, addr_fmt, clear_ms):
+@pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45'"])
+def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, import_ms_wallet, addr_fmt, clear_ms):
 
     # create a wallet, export to SD card, check file created.
+    # - checks some values for derivation path, assuming MAX_PATH_DEPTH==12
 
     clear_ms()
 
     name = 'ex-test-%d' % random.randint(10000,99999)
     M,N = 3, 15
-    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1)
+    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1, common=comm_prefix)
 
     goto_home()
     pick_menu_item('Settings')
@@ -601,7 +617,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
                     assert value == f'{M} of {N}'
                     got.add(label)
                 elif label == 'Derivation':
-                    assert value == "m/45'"
+                    assert value == (comm_prefix or "m/45'")
                     got.add(label)
                 elif label == 'Format':
                     assert value == addr_fmt.upper()

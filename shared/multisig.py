@@ -5,7 +5,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys
 #from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, str2xfp, swab32
+from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
@@ -489,13 +489,11 @@ class MultisigWallet:
             elif label == 'derivation':
                 # reveal the **common** path derivation for all keys
                 try:
-                    mat = ure.search(r"(m/)([0123456789/']+)", value)
-                    assert mat
-                    common_prefix = mat.group(2)
-                    assert common_prefix
-                    assert 1 <= len(common_prefix.split('/')) <= MAX_PATH_DEPTH+1
-                except:
-                    raise AssertionError('bad derivation line')
+                    cp = cleanup_deriv_path(value)
+                    # - not storing "m/" prefix, nor 'm' case which doesn't add any info
+                    common_prefix = None if cp == 'm' else cp[2:]
+                except BaseException as exc:
+                    raise AssertionError('bad derivation line: ' + str(exc))
 
             elif label == 'format':
                 # pick segwit vs. classic vs. wrapped version
