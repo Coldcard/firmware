@@ -1,18 +1,20 @@
-## 3.0.2 - Oct ??, 2019
+## 3.0.2 - Nov 1, 2019
 
-- New command in Danger Zone menu to view the seed words on-screen.
+- New command in Danger Zone menu to view the seed words on-screen, so you can make
+  another on-paper backup as needed.
 - Robustness: Analyse paths used for change outputs and show a warning if they
   are not similar in structure to the inputs of that same transaction.
   These are imperfect heuristics and if you receive a false positive, or are doing
   weird things that don't suit the rules below, please send an example PSBT to
   support and we'll see if we can handle it better:
+    - same derivation path length
     - shared pattern of hardened/not path components
     - 2nd-last position is one or zero (change/not change convention)
     - last position within 200 units of highest value observed on inputs
-    - same path length
 - Robustness: Improve checking on key path derivations when we encounter them as text.
     - accept 10h and 10p as if they are 10' (alternative syntax)
     - define a max depth (12) for all derivations
+    - thanks to [@TheCharlatan](https://twitter.com/the_charlatan_)
 - Security Improvement: during secure logout, wipe entire contents of serial flash,
   which might contain PSBT, signed or unsigned (for more privacy, deniability)
 
