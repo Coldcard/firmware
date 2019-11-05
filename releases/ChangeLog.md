@@ -1,3 +1,9 @@
+## 3.0.3 - Nov 6, 2019
+
+- Add "Login Countdown" feature: once enabled, you must enter you PIN correctly,
+  and then wait out a forced delay of minutes (or hours/days) while a count down
+  is shown on-screen. Then enter your PIN correctly, a second time, to get in.
+  See to Settings > "Login Countdown" for the time intervals to pick from.
 - Nickname feature: Enter a short text name for your personal Coldcard. It's displayed
   at startup time before PIN is entered. Try it out in Settings > "Set Nickname"
 

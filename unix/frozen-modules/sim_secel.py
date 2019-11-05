@@ -82,7 +82,7 @@ def pin_stuff(submethod, buf_io):
         if version.has_608:
             attempts_left = 13
             num_fails = 0
-            if 1:       # XXX  test
+            if 0:       # XXX  test
                 num_fails = 10
                 attempts_left = 3
 

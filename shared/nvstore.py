@@ -38,6 +38,7 @@ from sffile import SFFile
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   axi = index of last selected address in explorer
 #   nick = optional nickname for this coldcard (personalization)
+#   lgto = (minutes) how long to wait for Login Countdown feature
 
 
 # where in SPI Flash we work (last 128k)

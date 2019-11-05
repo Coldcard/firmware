@@ -47,6 +47,39 @@ def idle_timeout_chooser():
 
     return which, ch, set_idle_timeout
 
+def countdown_chooser():
+    # Login countdown length, stored in minutes
+    #
+    ch = [  'Disabled',
+            ' 5 minutes',
+            '15 minutes',
+            '30 minutes',
+            ' 1 hour',
+            ' 2 hours',
+            ' 4 hours',
+            ' 8 hours',
+            '12 hours',
+            '24 hours',
+            '48 hours',
+            ' 3 days',
+            ' 1 week',
+            '28 days later',
+          ]
+    va = [ 0, 5, 15, 30, 60, 2*60, 4*60, 8*60, 12*60, 24*60, 48*60, 72*60, 7*24*60, 28*24*60]
+    assert len(ch) == len(va)
+
+    timeout = settings.get('lgto', 0)        # in minutes
+    try:
+        which = va.index(timeout)
+    except ValueError:
+        which = 0
+
+    def set_login_countdown(idx, text):
+        settings.set('lgto', va[idx])
+
+    return which, ch, set_login_countdown
+
+
 def chain_chooser():
     from chains import AllChains
 
