@@ -348,6 +348,34 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
     from flow import EmptyWallet
     return MenuSystem(EmptyWallet)
 
+async def login_countdown(minutes):
+    # show a countdown, which may need to
+    # run for multiple **days**
+    from main import dis
+    from display import FontSmall, FontLarge
+
+    sec = minutes * 60
+    while sec:
+        dis.clear()
+        y = 0
+        dis.text(None, y, 'Login countdown in', font=FontSmall); y += 14
+        dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
+        y += 5
+
+        if sec >= 3600:
+            msg = '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
+        else:
+            msg = '%2dm %2ds' % ((sec//60) % 60, sec % 60)
+
+        dis.text(None, y, msg, font=FontLarge)
+
+        dis.show()
+        dis.busy_bar(1)
+        await sleep_ms(1000)
+
+        sec -= 1
+
+    dis.busy_bar(0)
 
 async def block_until_login(*a):
     #
@@ -585,6 +613,13 @@ async def start_login_sequence():
     # Must re-read settings after login
     settings.set_key()
     settings.load()
+
+    # implement "login countdown" feature
+    delay = settings.get('lgto', 0)
+    if delay:
+        pa.reset()
+        await login_countdown(delay)
+        await block_until_login()
 
     # Restore a login preference or two
     numpad.sensitivity = settings.get('sens', numpad.sensitivity)

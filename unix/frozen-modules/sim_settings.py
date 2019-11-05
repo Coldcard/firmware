@@ -102,4 +102,13 @@ if '--nick' in sys.argv:
     sim_defaults['terms_ok'] = 1
     sim_defaults.pop('_skip_pin', 0)
 
+if '--delay' in sys.argv:
+    delay = int(sys.argv[sys.argv.index('--delay') + 1])
+    sim_defaults['lgto'] = delay
+
+    SECRETS.update({
+        '_pin1': '12-12',
+        '_pin1_secret': '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    })
+
 # EOF
