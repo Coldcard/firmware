@@ -1,3 +1,8 @@
+- Add "Login Countdown" feature: once enabled, you must enter you PIN correctly,
+  and then wait out a forced delay of minutes (or hours/days) while a count down
+  is shown on-screen. Then enter your PIN correctly, a second time, to get in.
+  See to Settings > "Login Countdown" for the time intervals to pick from.
+
 ## 3.0.2 - Nov 1, 2019
 
 - New command in Danger Zone menu to view the seed words on-screen, so you can make
