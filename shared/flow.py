@@ -44,6 +44,7 @@ async def which_pin_menu(_1,_2, item):
 SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+    MenuItem('Login Countdown', chooser=countdown_chooser),
     MenuItem('Touch Setting', chooser=sensitivity_chooser,
                                 predicate=lambda: not version.has_membrane),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),

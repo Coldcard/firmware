@@ -37,6 +37,7 @@ from sffile import SFFile
 #   multisig = list of defined multisig wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   axi = index of last selected address in explorer
+#   lgto = (minutes) how long to wait for Login Countdown feature
 
 
 # where in SPI Flash we work (last 128k)
