@@ -750,7 +750,7 @@ class SingleWordMenu(WordNestMenu):
         #PassphraseMenu.late_draw(self, dis)
         pass
 
-async def spinner_edit(pw):
+async def spinner_edit(pw, confirm_exit=True):
     # Allow them to pick each digit using "D-pad"
     from main import dis
     from display import FontTiny, FontSmall
@@ -859,8 +859,10 @@ async def spinner_edit(pw):
                 if pos >= len(pw):
                     pos = len(pw)-1
             else:
-                pp = await ux_show_story("OK to leave without any changes? Or X to cancel leaving.")
-                if pp == 'x': continue
+                if confirm_exit:
+                    pp = await ux_show_story(
+                        "OK to leave without any changes? Or X to cancel leaving.")
+                    if pp == 'x': continue
                 return None
 
         elif ch == '7':      # left
@@ -888,7 +890,7 @@ async def spinner_edit(pw):
         elif ch == '3':     # symbols (all of them)
             cycle_set(symbols)
         elif ch == '0':     # help
-            await ux_show_story('''\
+            help_msg = '''\
 Use arrow keys (5789) to select letter and move around. 
 
 1=Letters (Aa..)
@@ -897,8 +899,10 @@ Use arrow keys (5789) to select letter and move around.
 4=Swap Case (q/Q)
 X=Delete char
 
-To quit without changes, delete everything. \
-Add more characters by moving past end (right side).
-''')
+Add more characters by moving past end (right side).'''
+
+            if confirm_exit:
+                help_msg += '\nTo quit without changes, delete everything.'
+            await ux_show_story(help_msg)
 
 # EOF

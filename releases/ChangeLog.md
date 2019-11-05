@@ -1,3 +1,6 @@
+- Nickname feature: Enter a short text name for your personal Coldcard. It's displayed
+  at startup time before PIN is entered. Try it out in Settings > "Set Nickname"
+
 ## 3.0.2 - Nov 1, 2019
 
 - New command in Danger Zone menu to view the seed words on-screen, so you can make

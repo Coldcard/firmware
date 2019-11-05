@@ -49,6 +49,7 @@ SettingsMenu = [
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
+    MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
