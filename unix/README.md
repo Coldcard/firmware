@@ -28,6 +28,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--seed "art art ... food"` => set the seed phrase to 24 words provided
 - `--metal` => use USB attached Coldcard for bootrom and SE features
 - `--metal --sflash` => copy SPI flash contents at boot time from real device (no writeback)
+- `--nick Name` => set the pre-login nickname for the Coldcard so it will be shown
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 

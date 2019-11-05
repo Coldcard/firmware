@@ -366,6 +366,48 @@ async def block_until_login(*a):
             # not allowed!
             pass
 
+async def show_nickname(nick):
+    # Show a nickname for this coldcard (as a personalization)
+    # - no keys here, just show it until they press anything
+    from main import dis
+    from display import FontLarge, FontTiny, FontSmall
+    from ux import ux_wait_keyup
+
+    dis.clear()
+
+    if dis.width(nick, FontLarge) <= dis.WIDTH:
+        dis.text(None, 21, nick, font=FontLarge)
+    else:
+        dis.text(None, 27, nick, font=FontSmall)
+
+    #dis.text(None, -1, "ANY KEY to CONTINUE", FontTiny)
+    dis.show()
+
+    await ux_wait_keyup()
+
+async def pick_nickname(*a):
+    # from settings menu, enter a nickname
+    from nvstore import SettingsObject
+
+    # Value is not stored with normal settings, it's part of "prelogin" settings
+    # which are encrypted with zero-key.
+    s = SettingsObject()
+    nick = s.get('nick', '')
+
+    if not nick:
+        ch = await ux_show_story('''\
+You can give this Coldcard a nickname and it will be shown before login.''')
+        if ch != 'y': return
+
+    from seed import spinner_edit
+    nn = await spinner_edit(nick, confirm_exit=False)
+
+    nn = nn.strip() if nn else None
+    s.set('nick', nn)
+    s.save()
+    del s
+
+
 async def logout_now(*a):
     # wipe memory and lock up
     from callgate import show_logout
@@ -518,6 +560,13 @@ async def start_login_sequence():
         goto_top_menu()
         return
 
+    # maybe show a nickname before we do anything
+    nickname = settings.get('nick', None)
+    if nickname:
+        try:
+            await show_nickname(nickname)
+        except: pass
+
     # Allow impatient devs and crazy people to skip the PIN
     guess = settings.get('_skip_pin', None)
     if guess is not None:
@@ -533,7 +582,7 @@ async def start_login_sequence():
         # always get a PIN and login first
         await block_until_login()
 
-    # Must read settings after login
+    # Must re-read settings after login
     settings.set_key()
     settings.load()
 

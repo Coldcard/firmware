@@ -96,4 +96,10 @@ if '-g' in sys.argv:
     # do login
     sim_defaults.pop('_skip_pin', 0)
 
+if '--nick' in sys.argv:
+    nick = sys.argv[sys.argv.index('--nick') + 1]
+    sim_defaults['nick'] = nick
+    sim_defaults['terms_ok'] = 1
+    sim_defaults.pop('_skip_pin', 0)
+
 # EOF
