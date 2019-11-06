@@ -212,7 +212,7 @@ def make_redeem(M, keys, path_mapper=None,
     data = []
     for cosigner_idx, (xfp, node, sk) in enumerate(keys):
         path = path_mapper(cosigner_idx)
-        print("path: " + ' / '.join(hex(i) for i in path))
+        #print("path: " + ' / '.join(hex(i) for i in path))
 
         if not node:
             # use xpubkey, otherwise master
@@ -1034,12 +1034,13 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 @pytest.mark.parametrize('M', [ 2, 4, 1 ])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms, 
+def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
 
     # IMPORTANT: wont work if you start simulator with -m flag. Use no args
 
-    num_outs = 2
+    all_out_styles = list(unmap_addr_fmt.keys())
+    num_outs = len(all_out_styles)
 
     clear_ms()
 
@@ -1047,7 +1048,8 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
     N = len(keys)
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs)
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
+                        outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
     open(f'debug/myself-before.psbt', 'wb').write(psbt)
     for idx in range(M):

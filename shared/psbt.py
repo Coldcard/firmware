@@ -292,6 +292,9 @@ class psbtOutputProxy(psbtProxy):
         if self.redeem_script:
             wr(PSBT_OUT_REDEEM_SCRIPT, self.redeem_script)
 
+        if self.witness_script:
+            wr(PSBT_OUT_WITNESS_SCRIPT, self.witness_script)
+
         if self.unknown:
             for k in self.unknown:
                 wr(k[0], self.unknown[k], k[1:])

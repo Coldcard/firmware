@@ -1,12 +1,15 @@
 ## 3.0.3 - Nov 6, 2019
 
 - Add "Login Countdown" feature: once enabled, you must enter you PIN correctly,
-  and then wait out a forced delay of minutes (or hours/days) while a count down
-  is shown on-screen. Then enter your PIN correctly, a second time, to get in.
-  See to Settings > "Login Countdown" for the time intervals to pick from. Thanks
-  to [@JurrienSaelens](https://twitter.com/jurriensaelens) for this suggestion.
+  and then wait out a forced delay (of minutes/hours/days) while a count down
+  is shown on-screen. Then enter your PIN correctly, a second time, to get in. You must
+  provide continuous power to the Coldcard during this entire period!
+  Go to Settings > "Login Countdown" for the time intervals to pick from. Thanks
+  to [@JurrienSaelens](https://twitter.com/jurriensaelens) for this feature suggestion.
 - Nickname feature: Enter a short text name for your personal Coldcard. It's displayed
   at startup time before PIN is entered. Try it out in Settings > "Set Nickname"
+- Bugfix: Adding a second signature (multisig) onto a PSBT already signed by
+  a different Coldcard could fail with "psbt.py:351" error.
 
 ## 3.0.2 - Nov 1, 2019
 
