@@ -83,6 +83,7 @@ def write_var64(n):
     else:
         return b'\xff' + pack('<Q', n)
 
+''' test code only
 def test_var64():
     # test possible edges only
     for i in range(0,10) + range(125,130) + range(250, 260) \
@@ -93,6 +94,7 @@ def test_var64():
         :
         f = StringIO(write_var64(i))
         assert read_var64(f) == i, '%d != %s' % (i, b2a_hex(f.getvalue()))
+'''
     
 def check_file_headers(f):
     # read the file-header and the "first" other header
