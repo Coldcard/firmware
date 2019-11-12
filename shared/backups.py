@@ -230,7 +230,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
 
         hdr, footer = zz.save('ckcc-backup.txt')
 
-        filesize = len(body)+2000
+        filesize = len(body) + MAX_BACKUP_FILE_SIZE
 
         del body
 
