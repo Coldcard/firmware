@@ -158,11 +158,27 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     assert bk_a == bk_b, "contents mismatch"
 
-    pn = microsd_path(files[0])
 
+    # Check on-device verify UX works.
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Backup')
+    pick_menu_item('Verify Backup')
+    time.sleep(0.1)
+    title, body = cap_story()
+    assert "Select file" in body
+    need_keypress('y')
+    time.sleep(0.1)
+    pick_menu_item(os.path.basename(fn))
+
+    time.sleep(0.1)
+    title, body = cap_story()
+    assert "Backup file CRC checks out okay" in body
+
+
+    # List contents using unix tools
     from subprocess import check_output
-
-    # list contents
+    pn = microsd_path(files[0])
     out = check_output(['7z', 'l', pn], encoding='utf8')
     assert 'ckcc-backup.txt' in out
     assert 'Method = 7zAES' in out
@@ -175,6 +191,8 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     for i in range(10):
         need_keypress('x')
         time.sleep(.01) 
+
+    # test verify on device (CRC check)
     
     # try decrypt on microptyhon
     unit_test('devtest/clear_seed.py')

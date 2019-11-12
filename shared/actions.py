@@ -758,11 +758,12 @@ async def verify_backup(*A):
     # check most recent backup is "good"
     # read 7z header, and measure checksums
 
-    # save everything, using a password, into single encrypted file, typically on SD
-    fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=10000)
+    with imported('backups') as bk:
 
-    if fn:
-        with imported('backups') as bk:
+        fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=10000)     # XXX bk.MAX_BACKUP_FILE_SIZE)
+
+        if fn:
+            # do a limited CRC-check over encrypted file
             await bk.verify_backup_file(fn)
 
 def import_from_dice(*a):
