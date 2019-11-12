@@ -245,7 +245,7 @@ class Builder(object):
 
         return self
 
-    def read_file(self, fd, password, max_size=6000, progress_fcn=None):
+    def read_file(self, fd, password, max_size, progress_fcn=None):
         # read a file we wrote; unlikely to work on anything else.
         # assuming single file contained inside
         fhdr = FileHeader.read(fd)
