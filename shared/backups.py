@@ -318,7 +318,7 @@ async def verify_backup_file(fname_or_fd):
 
             prob = 'Unable to verify backup file contents.'
             zz = compat7z.Builder()
-            files = zz.verify_file_crc(fd, max_size=MAX_BACKUP_FILE_SIZE)
+            files = zz.verify_file_crc(fd, MAX_BACKUP_FILE_SIZE)
 
             assert len(files) == 1
             fname, fsize = files[0]
@@ -388,7 +388,7 @@ async def restore_complete_doit(fname_or_fd, words):
                     dis.fullscreen("Decrypting...")
                     try:
                         zz = compat7z.Builder()
-                        fname, contents = zz.read_file(fd, password,
+                        fname, contents = zz.read_file(fd, password, MAX_BACKUP_FILE_SIZE,
                                                 progress_fcn=dis.progress_bar_show)
 
                         # simple quick sanity checks
