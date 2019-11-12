@@ -1,3 +1,8 @@
+## 3.0.4 - Nov 13, 2019
+
+- Bugfix: encrypted backup files larger than 2000 bytes could fail to verify (but restored okay),
+  and this can happen now with larger multisig setups involving many co-signers.
+
 ## 3.0.3 - Nov 6, 2019
 
 - Add "Login Countdown" feature: once enabled, you must enter you PIN correctly,

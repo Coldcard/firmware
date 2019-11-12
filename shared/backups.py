@@ -15,6 +15,9 @@ import seed
 # we make passwords with this number of words
 num_pw_words = const(12)
 
+# max size we expect for a backup data file (encrypted or cleartext)
+MAX_BACKUP_FILE_SIZE = const(10000)     # bytes
+
 def render_backup_contents():
     # simple text format: 
     #   key = value
@@ -315,12 +318,12 @@ async def verify_backup_file(fname_or_fd):
 
             prob = 'Unable to verify backup file contents.'
             zz = compat7z.Builder()
-            files = zz.verify_file_crc(fd)
+            files = zz.verify_file_crc(fd, max_size=MAX_BACKUP_FILE_SIZE)
 
             assert len(files) == 1
             fname, fsize = files[0]
             assert fname == 'ckcc-backup.txt'
-            assert 400 < fsize < 2000
+            assert 400 < fsize < MAX_BACKUP_FILE_SIZE, 'size'
 
     except CardMissingError:
         await needs_microsd()
