@@ -760,7 +760,7 @@ async def verify_backup(*A):
 
     with imported('backups') as bk:
 
-        fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=10000)     # XXX bk.MAX_BACKUP_FILE_SIZE)
+        fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=bk.MAX_BACKUP_FILE_SIZE)
 
         if fn:
             # do a limited CRC-check over encrypted file
