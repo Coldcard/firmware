@@ -15,19 +15,6 @@ from ustruct import unpack, pack, calcsize
 from ucollections import namedtuple
 from tcc import sha256          # uhashlib also works
 from uio import BytesIO
-
-'''
-  Size of encoding sequence depends from first byte:
-  First_Byte  Extra_Bytes        Value
-  (binary)   
-  0xxxxxxx               : ( xxxxxxx           )
-  10xxxxxx    BYTE y[1]  : (  xxxxxx << (8 * 1)) + y
-  110xxxxx    BYTE y[2]  : (   xxxxx << (8 * 2)) + y
-  ...
-  1111110x    BYTE y[6]  : (       x << (8 * 6)) + y
-  11111110    BYTE y[7]  :                         y
-  11111111    BYTE y[8]  :                         y
-'''
         
 def masked_crc(bits):
     return crc32(bits) & 0xffffffff
@@ -50,6 +37,19 @@ def decode_utf_16_le(s):
     if isinstance(s, str):
         s = s.encode()
     return bytes(s[i] for i in range(0, len(s), 2)).decode()
+
+'''
+  Size of encoding sequence depends from first byte:
+  First_Byte  Extra_Bytes        Value
+  (binary)   
+  0xxxxxxx               : ( xxxxxxx           )
+  10xxxxxx    BYTE y[1]  : (  xxxxxx << (8 * 1)) + y
+  110xxxxx    BYTE y[2]  : (   xxxxx << (8 * 2)) + y
+  ...
+  1111110x    BYTE y[6]  : (       x << (8 * 6)) + y
+  11111110    BYTE y[7]  :                         y
+  11111111    BYTE y[8]  :                         y
+'''
 
 def read_var64(f):
     '''
@@ -275,7 +275,7 @@ class Builder(object):
             # done. return contents
             return fname, out
             
-    def verify_file_crc(self, fd, max_size=2000, expected_sections=3):
+    def verify_file_crc(self, fd, max_size, expected_sections=3):
         # Read each section, and check CRC of headers, return list of files & sizes.
         fhdr = FileHeader.read(fd)
         assert fhdr.has_good_magic()
