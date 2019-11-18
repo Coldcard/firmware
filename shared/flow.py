@@ -59,6 +59,7 @@ SDCardMenu = [
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Dump Summary", f=dump_summary),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
+    MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem('List Files', f=list_files),
