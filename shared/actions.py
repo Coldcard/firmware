@@ -726,6 +726,24 @@ async def electrum_skeleton(*a):
 
     return MenuSystem(rv)
 
+async def bitcoin_core_skeleton(*A):
+    # save output descriptors into a file
+    # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
+    import chains
+
+    ch = chains.current_chain()
+
+    if await ux_show_story('''\
+This saves a command onto the MicroSD card that includes the public keys.\
+You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
+''' + SENSITIVE_NOT_SECRET) != 'y':
+        return
+
+    # no choices to be made, just do it.
+    with imported('backups') as bk:
+        await bk.make_bitcoin_core_wallet()
+
+
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
