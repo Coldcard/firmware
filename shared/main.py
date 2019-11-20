@@ -117,9 +117,6 @@ dis.splash_animate(loop, done_splash2, numpad.capture_baseline)
 from dev_helper import monitor_usb
 loop.create_task(monitor_usb())
 
-from ux import idle_logout
-loop.create_task(idle_logout())
-
 from files import CardSlot
 CardSlot.setup()
 
