@@ -38,3 +38,12 @@ if '--dz' in sys.argv:
     numpad.inject('8')
     numpad.inject('y')
 
+if '--xw' in sys.argv:
+    # Export wallet (all types)
+    from main import numpad
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('y')
