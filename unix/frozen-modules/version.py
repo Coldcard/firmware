@@ -25,13 +25,16 @@ def get_header_value(fld_name):
 hw_label = 'mk3'
 has_608 = True
 has_membrane = True
+has_fatram = True
 
 if  '--mk2' in sys.argv:
     hw_label = 'mk2'
     has_608 = False
+    has_fatram = False
 
 if  '--mk1' in sys.argv:
     hw_label = 'mk1'
     has_608 = False
     has_membrane = False
+    has_fatram = False
 

@@ -51,7 +51,7 @@ if '--xw' in sys.argv:
 if '--paper' in sys.argv:
     # Paper wallet menu
     from main import numpad
-    numpad.inject('3')
+    numpad.inject('4')
     numpad.inject('y')
     numpad.inject('4')
     numpad.inject('8')
