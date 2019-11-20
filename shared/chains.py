@@ -10,7 +10,7 @@ from serializations import hash160
 from ucollections import namedtuple
 from opcodes import OP_CHECKMULTISIG
 
-# See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md> 
+# See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
 Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 
@@ -249,15 +249,12 @@ def current_chain():
 # see bip49 for meaning of the meta vars
 CommonDerivations = [
     # name, path.format(), addr format
-    ( '{core_name}', "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
-    ( '{core_name} (Segregated Witness, P2PKH)',
-                "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
     ( 'Electrum (not BIP44)', "m/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses
 
-    ( 'BIP84 (Native Segwit P2PKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
+    ( 'BIP84 (Native Segwit P2WPKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH ),           # generates bc1 bech32 addresses
 ]
 
