@@ -27,6 +27,10 @@ can still be made. Visit the Coldcard website to get some interesting templates.
 
 SECP256K1_ORDER = b"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xba\xae\xdc\xe6\xaf\x48\xa0\x3b\xbf\xd2\x5e\x8c\xd0\x36\x41\x41"
 
+# Aprox. time of this feature release (Nov 20/2019) so no need to scan
+# blockchain earlier than this during "importmulti"
+FEATURE_RELEASE_TIME = const(1574277000)
+
 # These very-specific text values are matched on the Coldcard; cannot be changed.
 class placeholders:
     addr = b'ADDRESS_XXXXXXXXXXXXXXXXXXXXXXXXXXXXX'                      # 37 long
@@ -96,7 +100,7 @@ class PaperWalletMaker:
                 privkey = have_key
 
             # calculate corresponding public key value
-            pubkey = tcc.secp256k1.publickey(privkey, True)       # compressed style
+            pubkey = tcc.secp256k1.publickey(privkey, True)       # always compressed style
 
             dis.fullscreen("Rendering...")
 
@@ -108,7 +112,7 @@ class PaperWalletMaker:
             else:
                 addr = tcc.codecs.b58_encode(ch.b58_addr + digest)
 
-            wif = tcc.codecs.b58_encode(ch.b58_privkey + privkey)
+            wif = tcc.codecs.b58_encode(ch.b58_privkey + privkey + b'\x01')
 
             if self.can_do_qr():
                 with imported('uQR') as uqr:
@@ -165,7 +169,7 @@ class PaperWalletMaker:
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
 
-        await ux_show_story('Done! Created file(s):\n\n%s\n%s' % (nice_txt, nice_pdf))
+        await ux_show_story('Done! Created file(s):\n\n%s\n\n%s' % (nice_txt, nice_pdf))
 
     async def use_dice(self, *a):
         # Use lots of (D6) dice rolls to create privkey entropy.
@@ -184,13 +188,21 @@ class PaperWalletMaker:
     def make_txt(self, fp, addr, wif, privkey, qr_addr=None, qr_wif=None):
         # Generate the "simple" text file version, includes private key.
         from ubinascii import hexlify as b2a_hex
+        from descriptor import append_checksum
+        import ujson
 
         fp.write('Coldcard Generated Paper Wallet\n\n')
 
         fp.write('Deposit address:\n\n  %s\n\n' % addr)
         fp.write('Private key (WIF=Wallet Import Format):\n\n  %s\n\n' % wif)
         fp.write('Private key (Hex, 32 bytes):\n\n  %s\n\n' % b2a_hex(privkey).decode('ascii'))
-        fp.write('Bitcoin Core command:\n\n  bitcoin-cli importprivkey "%s"\n\n' % wif)
+        fp.write('Bitcoin Core command:\n\n')
+
+        # new hotness: output descriptors
+        desc = ('wpkh(%s)' if self.is_segwit else 'pkh(%s)') % wif
+        multi = ujson.dumps(dict(timestamp=FEATURE_RELEASE_TIME, desc=append_checksum(desc)))
+        fp.write("  bitcoin-cli importmulti '[%s]'\n\n" % multi)
+        fp.write('# OR (more compatible, but slower)\n\n  bitcoin-cli importprivkey "%s"\n\n' % wif)
 
         if qr_addr and qr_wif:
             fp.write('\n\n--- QR Codes ---   (requires UTF-8, unicode, white background)\n\n\n\n')
