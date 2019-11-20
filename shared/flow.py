@@ -11,6 +11,7 @@ from actions import *
 from choosers import *
 from multisig import make_multisig_menu
 from paper import make_paper_wallet
+from address_explorer import address_explore
 
 #
 # NOTE: "Always In Title Case"
@@ -20,43 +21,56 @@ from paper import make_paper_wallet
 PinChangesMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=pin_changer, arg='main'),
-    MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
+    MenuItem('Second Wallet', f=pin_changer, arg='secondary',
+                                predicate=lambda: not version.has_608),
     MenuItem('Duress PIN', f=pin_changer, arg='duress'),
     MenuItem('Brick Me PIN', f=pin_changer, arg='brickme'),
     MenuItem('Login Now', f=login_now, arg=1),
 ]
 
-SecondaryPinChangesMenu = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
-    MenuItem('Duress PIN', f=pin_changer, arg='duress'),
-    MenuItem('Login Now', f=login_now, arg=1),
-]
+# Not reachable on Mark3 hardware
+if not version.has_608:
+    SecondaryPinChangesMenu = [
+        #         xxxxxxxxxxxxxxxx
+        MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
+        MenuItem('Duress PIN', f=pin_changer, arg='duress'),
+        MenuItem('Login Now', f=login_now, arg=1),
+    ]
 
 async def which_pin_menu(_1,_2, item):
+    if version.has_608: return PinChangesMenu
     from main import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
 SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+    MenuItem('Login Countdown', chooser=countdown_chooser),
     MenuItem('Touch Setting', chooser=sensitivity_chooser,
-                                predicate=lambda: not version.is_mark2()),
+                                predicate=lambda: not version.has_membrane),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
+    MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Blockchain', chooser=chain_chooser),
+]
+
+WalletExportMenu = [  
+    #         xxxxxxxxxxxxxxxx (alphabetical ordering)
+    MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
+    MenuItem("Electrum Wallet", f=electrum_skeleton),
+    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
 ]
 
 SDCardMenu = [
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Dump Summary", f=dump_summary),
+    MenuItem('Export Wallet', menu=WalletExportMenu),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
-    MenuItem("Electrum Wallet", f=electrum_skeleton),
-    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem('List Files', f=list_files),
-    #MenuItem('Reformat Card', f=wipe_microsd),      # removed: not reliable enuf
+    MenuItem('Format Card', f=wipe_sd_card,
+                                predicate=lambda: version.has_membrane),
 ]
 
 UpgradeMenu = [
@@ -76,13 +90,22 @@ DevelopersMenu = [
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
 ]
 
-AdvancedVirginMenu = [
+AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem('Upgrade firmware', menu=UpgradeMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
-    MenuItem("I Am Developer.", menu=maybe_dev_menu),           # security risk?
+    MenuItem('Secure Logout', f=logout_now),
+]
+
+AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("View Identity", f=view_ident),
+    MenuItem("Upgrade", menu=UpgradeMenu),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('Perform Selftest', f=start_selftest),
+    MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem('Secure Logout', f=logout_now),
 ]
 
@@ -99,6 +122,8 @@ DangerZoneMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),       # actually harmless
     MenuItem('Lock Down Seed', f=convert_bip39_to_bip32,
+                                predicate=lambda: settings.get('words', True)),
+    MenuItem('View Seed Words', f=view_seed_words,
                                 predicate=lambda: settings.get('words', True)),
     MenuItem("Destroy Seed", f=clear_seed),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
@@ -122,6 +147,7 @@ AdvancedNormalMenu = [
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem("Address Explorer", f=address_explore),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -149,7 +175,7 @@ EmptyWallet = [
     MenuItem('New Wallet', f=pick_new_wallet),
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem('Help', f=virgin_help),
-    MenuItem('Advanced', menu=AdvancedVirginMenu),
+    MenuItem('Advanced', menu=AdvancedPinnedVirginMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
 

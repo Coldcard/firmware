@@ -14,14 +14,30 @@
 //
 // As measured! No attempt to understand them here.
 static const uint8_t reset_commands[] = {
-    174, 32, 0, 64, 161, 168, 63, 200,
-    211, 0, 218, 18, 213, 128, 217, 241,
-    219, 48, 129, 255, 164, 166, 141, 20, 175
+    0xae,               // display off
+    0x20, 0x00,         // horz addr-ing mode
+    0x40,               // ram display start line: 0
+    0xa1,               // cold addr 127 mapped to seg0
+    0xa8, 0x3f,         // set multiplex ratio: 64
+    0xc8,               // remapped mode: scan from COMn to COM0
+    0xd3, 0x00,         // display offset (vertical shift): 0
+    0xda, 0x12,         // seq com pin conf: alt com pin
+    0xd5, 0x80,         // set display clock divide ratio
+    0xd9, 0xf1,         // set pre-change period
+    0xdb, 0x30,         // Cvomh deselect level
+    0x81, 0xff,         // Contrast: max
+    0xa4,               // display ram contents (not all on)
+    0xa6,               // normal not inverted
+    0x8d, 0x14,         // enable charge pump
+    0xaf                // display on
 };
 
 // Bytes to send before sending the 1024 bytes of pixel data.
 //
-static const uint8_t before_show[] = { 33, 0, 127, 34, 0, 7 };
+static const uint8_t before_show[] = { 
+    0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+    0x22, 0x00, 0x07        // setup page start/end address: 0 - 7
+};
 
 // OLED connections: 
 // - all on port A
@@ -84,6 +100,35 @@ oled_write_data(int len, const uint8_t *pixels)
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
 }
 
+// oled_spi_setup()
+//
+// Just setup SPI, do not reset display, etc.
+//
+    void
+oled_spi_setup(void)
+{
+    // might already be setup
+    if(spi_port.Instance == SPI1) return;
+
+    memset(&spi_port, 0, sizeof(spi_port));
+
+    spi_port.Instance = SPI1;
+
+    // see SPI_InitTypeDef
+    spi_port.Init.Mode = SPI_MODE_MASTER;
+    spi_port.Init.Direction = SPI_DIRECTION_2LINES;
+    spi_port.Init.DataSize = SPI_DATASIZE_8BIT;
+    spi_port.Init.CLKPolarity = SPI_POLARITY_LOW;
+    spi_port.Init.CLKPhase = SPI_PHASE_1EDGE;
+    spi_port.Init.NSS = SPI_NSS_SOFT;
+    spi_port.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;    // conservative
+    spi_port.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    spi_port.Init.TIMode = SPI_TIMODE_DISABLED;
+    spi_port.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
+
+    HAL_SPI_Init(&spi_port);
+}
+
 // oled_setup()
 //
 // Ok to call this lots.
@@ -131,23 +176,7 @@ oled_setup(void)
     delay_ms(10);
     HAL_GPIO_WritePin(GPIOA, RESET_PIN, 1);
 
-    memset(&spi_port, 0, sizeof(spi_port));
-
-    spi_port.Instance = SPI1;
-
-    // see SPI_InitTypeDef
-    spi_port.Init.Mode = SPI_MODE_MASTER;
-    spi_port.Init.Direction = SPI_DIRECTION_2LINES;
-    spi_port.Init.DataSize = SPI_DATASIZE_8BIT;
-    spi_port.Init.CLKPolarity = SPI_POLARITY_LOW;
-    spi_port.Init.CLKPhase = SPI_PHASE_1EDGE;
-    spi_port.Init.NSS = SPI_NSS_SOFT;
-    spi_port.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;    // conservative
-    spi_port.Init.FirstBit = SPI_FIRSTBIT_MSB;
-    spi_port.Init.TIMode = SPI_TIMODE_DISABLED;
-    spi_port.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
-
-    HAL_SPI_Init(&spi_port);
+    oled_spi_setup();
 
     // where: SPI1->CR1, CR2, SR
     // mpy settings:
@@ -288,5 +317,129 @@ oled_show_progress(const uint8_t *pixels, int progress)
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
 }
 
+#if 0
+// oled_busy_bar()
+//
+    void
+oled_busy_bar(bool en)
+{
+    // Render a continuous activity (not progress) bar in lower 8 lines of display
+    // - using OLED itself to do the animation, so smooth and CPU free
+    // - cannot preserve bottom 8 lines, since we have to destructively write there
+    oled_spi_setup();
+
+    static const uint8_t setup[] = { 
+        //0x20, 0x00,             // horz addr-ing mode (normal)
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+    static const uint8_t animate[] = { 
+        0x2e,               // stop animations in progress
+        0x26,               // scroll leftwards (stock ticker mode)
+            0,              // placeholder
+            7,              // start 'page' (vertical)
+            7,              // scroll speed: 7=fastest, 
+            7,              // end 'page'
+            0, 0xff,        // placeholders
+        0x2f                // start
+    };
+    static const uint8_t cleanup[] = { 
+        0x2e,               // stop animation
+        0x20, 0x00,         // horz addr-ing mode
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+
+    uint8_t data[128];
+
+    if(!en) {
+        // clear it, stop animation
+        memset(data, 0, sizeof(data));
+        oled_write_cmd_sequence(sizeof(cleanup), cleanup);
+        oled_write_data(sizeof(data), data);
+
+        return;
+    }
+
+    // some diagonal lines
+    for(int x=0; x<128; x++) {
+        // each byte here is a vertical column, 8 pixels tall, MSB at bottom
+        switch(x % 4) {
+            default:
+                data[x] = 0x0;
+                break;
+            case 0 ... 1:
+                data[x] = 0x80;
+                break;
+        }
+    }
+
+    oled_write_cmd_sequence(sizeof(setup), setup);
+    oled_write_data(sizeof(data), data);
+    oled_write_cmd_sequence(sizeof(animate), animate);
+}
+
+// oled_draw_bar()
+//
+    void
+oled_draw_bar(int percent)
+{
+    // Render a continuous activity (progress) bar in lower 8 lines of display
+    // - cannot preserve bottom 8 lines, since we have to destructively write there
+    // - requires OLED and GPIO's already setup by other code.
+    oled_spi_setup();
+
+    static const uint8_t setup[] = { 
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+
+    uint8_t data[128];
+    int cut = percent * 128 / 100;
+
+    // each byte here is a vertical column, 8 pixels tall, MSB at bottom
+    memset(data, 0x80, cut);
+    memset(data+cut, 0x0, 128-cut);
+
+    oled_write_cmd_sequence(sizeof(setup), setup);
+    oled_write_data(sizeof(data), data);
+}
+#endif
+
+// oled_factory_busy()
+//
+    void
+oled_factory_busy(void)
+{
+    // Render a continuous activity (not progress) bar in lower 8 lines of display
+    // - using OLED itself to do the animation, so smooth and CPU free
+    // - cannot preserve bottom 8 lines, since we have to destructively write there
+    //oled_spi_setup();
+
+    static const uint8_t setup[] = { 
+        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
+        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
+    };
+    static const uint8_t animate[] = { 
+        0x2e,               // stop animations in progress
+        0x26,               // scroll leftwards (stock ticker mode)
+            0,              // placeholder
+            7,              // start 'page' (vertical)
+            7,              // scroll speed: 7=fastest, 
+            7,              // end 'page'
+            0, 0xff,        // placeholders
+        0x2f                // start
+    };
+    uint8_t data[128];
+
+    for(int x=0; x<128; x++) {
+        // each byte here is a vertical column, 8 pixels tall, MSB at bottom
+        data[x] = (1<<(7 - (x%8)));
+    }
+
+    oled_write_cmd_sequence(sizeof(setup), setup);
+    oled_write_data(sizeof(data), data);
+    oled_write_cmd_sequence(sizeof(animate), animate);
+}
 
 // EOF

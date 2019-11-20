@@ -5,7 +5,7 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb
+import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
 from utils import imported
 from main import settings
@@ -14,7 +14,6 @@ from files import CardSlot, CardMissingError
 from utils import xfp2str
 
 async def start_selftest(*args):
-    import version
 
     if len(args) and not version.is_factory_mode():
         # called from inside menu, not directly
@@ -75,7 +74,6 @@ Press OK to accept terms and continue.""", escape='7')
 async def view_ident(*a):
     # show the XPUB, and other ident on screen
     from main import settings, pa
-    from version import serial_number
     import callgate, stash
 
     tpl = '''\
@@ -97,7 +95,7 @@ Extended Master Key:
     my_xfp = settings.get('xfp', 0)
     msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
                             xfp=xfp2str(my_xfp), xfp_le=my_xfp,
-                            serial=serial_number())
+                            serial=version.serial_number())
 
     if pa.is_secondary:
         msg += '\n(Secondary wallet)\n'
@@ -323,6 +321,7 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
     dis.fullscreen("Saving...")
 
     try:
+        dis.busy_bar(True)
         assert pa.is_blank()
 
         pa.change(new_pin=pin)
@@ -338,6 +337,8 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
         settings.load()
     except Exception as e:
         print("Exception: %s" % e)
+    finally:
+        dis.busy_bar(False)
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
@@ -347,6 +348,34 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
     from flow import EmptyWallet
     return MenuSystem(EmptyWallet)
 
+async def login_countdown(minutes):
+    # show a countdown, which may need to
+    # run for multiple **days**
+    from main import dis
+    from display import FontSmall, FontLarge
+
+    sec = minutes * 60
+    while sec:
+        dis.clear()
+        y = 0
+        dis.text(None, y, 'Login countdown in', font=FontSmall); y += 14
+        dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
+        y += 5
+
+        if sec >= 3600:
+            msg = '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
+        else:
+            msg = '%2dm %2ds' % ((sec//60) % 60, sec % 60)
+
+        dis.text(None, y, msg, font=FontLarge)
+
+        dis.show()
+        dis.busy_bar(1)
+        await sleep_ms(1000)
+
+        sec -= 1
+
+    dis.busy_bar(0)
 
 async def block_until_login(*a):
     #
@@ -365,14 +394,60 @@ async def block_until_login(*a):
             # not allowed!
             pass
 
+async def show_nickname(nick):
+    # Show a nickname for this coldcard (as a personalization)
+    # - no keys here, just show it until they press anything
+    from main import dis
+    from display import FontLarge, FontTiny, FontSmall
+    from ux import ux_wait_keyup
+
+    dis.clear()
+
+    if dis.width(nick, FontLarge) <= dis.WIDTH:
+        dis.text(None, 21, nick, font=FontLarge)
+    else:
+        dis.text(None, 27, nick, font=FontSmall)
+
+    #dis.text(None, -1, "ANY KEY to CONTINUE", FontTiny)
+    dis.show()
+
+    await ux_wait_keyup()
+
+async def pick_nickname(*a):
+    # from settings menu, enter a nickname
+    from nvstore import SettingsObject
+
+    # Value is not stored with normal settings, it's part of "prelogin" settings
+    # which are encrypted with zero-key.
+    s = SettingsObject()
+    nick = s.get('nick', '')
+
+    if not nick:
+        ch = await ux_show_story('''\
+You can give this Coldcard a nickname and it will be shown before login.''')
+        if ch != 'y': return
+
+    from seed import spinner_edit
+    nn = await spinner_edit(nick, confirm_exit=False)
+
+    nn = nn.strip() if nn else None
+    s.set('nick', nn)
+    s.save()
+    del s
+
+
 async def logout_now(*a):
     # wipe memory and lock up
     from callgate import show_logout
+    from main import sf
+    sf.wipe_most()
     show_logout()
 
 async def login_now(*a):
     # wipe memory and reboot
     from callgate import show_logout
+    from main import sf
+    sf.wipe_most()
     show_logout(2)
     
 
@@ -475,11 +550,33 @@ consequences.''', escape='4')
     seed.clear_seed()
     # NOT REACHED -- reset happens
 
+async def view_seed_words(*a):
+    import stash, tcc
+
+    if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
+        return
+
+    with stash.SensitiveValues() as sv:
+        assert sv.mode == 'words'       # protected by menu item predicate
+
+        words = tcc.bip39.from_data(sv.raw).split(' ')
+
+        msg = 'Seed words (%d):\n' % len(words)
+        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+
+        pw = stash.bip39_passphrase
+        if pw:
+            msg += '\n\nBIP39 Passphrase:\n%s' % stash.bip39_passphrase
+
+        await ux_show_story(msg, sensitive=True)
+
+        stash.blank_object(msg)
+
 async def start_login_sequence():
     # Boot up login sequence here.
     #
     from main import pa, settings, dis, loop, numpad
-    import version
+    from ux import idle_logout
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
@@ -491,6 +588,13 @@ async def start_login_sequence():
 
         goto_top_menu()
         return
+
+    # maybe show a nickname before we do anything
+    nickname = settings.get('nick', None)
+    if nickname:
+        try:
+            await show_nickname(nickname)
+        except: pass
 
     # Allow impatient devs and crazy people to skip the PIN
     guess = settings.get('_skip_pin', None)
@@ -507,9 +611,19 @@ async def start_login_sequence():
         # always get a PIN and login first
         await block_until_login()
 
-    # Must read settings after login
+    # Must re-read settings after login
     settings.set_key()
     settings.load()
+
+    # implement "login countdown" feature
+    delay = settings.get('lgto', 0)
+    if delay:
+        pa.reset()
+        await login_countdown(delay)
+        await block_until_login()
+
+    # implement idle timeout now that we are logged-in
+    loop.create_task(idle_logout())
 
     # Restore a login preference or two
     numpad.sensitivity = settings.get('sens', numpad.sensitivity)
@@ -545,8 +659,6 @@ async def start_login_sequence():
         
 def goto_top_menu():
     # Start/restart menu system
-    
-    import version
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
     from main import pa
@@ -618,6 +730,24 @@ async def electrum_skeleton(*a):
 
     return MenuSystem(rv)
 
+async def bitcoin_core_skeleton(*A):
+    # save output descriptors into a file
+    # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
+    import chains
+
+    ch = chains.current_chain()
+
+    if await ux_show_story('''\
+This saves a command onto the MicroSD card that includes the public keys.\
+You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
+''' + SENSITIVE_NOT_SECRET) != 'y':
+        return
+
+    # no choices to be made, just do it.
+    with imported('backups') as bk:
+        await bk.make_bitcoin_core_wallet()
+
+
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
@@ -650,11 +780,12 @@ async def verify_backup(*A):
     # check most recent backup is "good"
     # read 7z header, and measure checksums
 
-    # save everything, using a password, into single encrypted file, typically on SD
-    fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=10000)
+    with imported('backups') as bk:
 
-    if fn:
-        with imported('backups') as bk:
+        fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=bk.MAX_BACKUP_FILE_SIZE)
+
+        if fn:
+            # do a limited CRC-check over encrypted file
             await bk.verify_backup_file(fn)
 
 def import_from_dice(*a):
@@ -785,6 +916,14 @@ Does not affect SD card, if any.'''):
     from files import wipe_flash_filesystem
 
     wipe_flash_filesystem()
+
+async def wipe_sd_card(*A):
+    if not await ux_confirm('''\
+Erases and reformats MicroSD card. This is not a secure erase but more of a quick format.'''):
+        return
+
+    from files import wipe_microsd_card
+    wipe_microsd_card()
 
 
 async def list_files(*A):
@@ -1002,7 +1141,7 @@ async def pin_changer(_1, _2, item):
     if pa.is_secondary:
         # secondary wallet user can only change their own password, and the secondary
         # duress pin... 
-        # NOTE: now excluded from menu, but keep
+        # - now excluded from menu, but keep for Mark1/2 hardware!
         if mode == 'main' or mode == 'brickme':
             await needs_primary()
             return
@@ -1040,31 +1179,41 @@ We strongly recommend all PIN codes used be unique between each other.
     need_old_pin = True
 
     if is_login_pin:
-        # Challenge them for old password; certainly had it, because
-        # we wouldn't be here otherwise.
+        # Challenge them for old password; they probably have it, and we have it
+        # in memory already, because we wouldn't be here otherwise... but 
+        # challenge them anyway as a policy choice.
         need_old_pin = True
     else:
         # There may be no existing PIN, and we need to learn that
+
         if mode == 'secondary':
             args['is_secondary'] = True
+
         elif mode == 'duress':
+
             args['is_duress'] = True
+
+            need_old_pin = bool(pa.has_duress_pin())
+
         elif mode == 'brickme':
             args['is_brickme'] = True
 
-        old_pin = None
-        try:
-            dis.fullscreen("Check...")
-            pa.change(old_pin=b'', new_pin=b'', **args)
-            need_old_pin = False
-            old_pin = ''            # converts to bytes below
-        except BootloaderError as exc:
-            #print("(not-error) old pin was NOT blank: %s" % exc)
-            need_old_pin = True
+            need_old_pin = bool(pa.has_brickme_pin())
 
-    was_blank = not need_old_pin
+        if need_old_pin and not version.has_608:
+            # Do an expensive check (mostly for secondary pin case?)
+            try:
+                dis.fullscreen("Check...")
+                pa.change(old_pin=b'', new_pin=b'', **args)
+                need_old_pin = False
+            except BootloaderError as exc:
+                # not an error: old pin in non-blank
+                need_old_pin = True
 
-    if need_old_pin:
+    if not need_old_pin:
+        # It is blank
+        old_pin = ''
+    else:
         # We need the existing pin, so prompt for that.
         lll.subtitle = 'Old ' + title
 
@@ -1099,11 +1248,15 @@ We strongly recommend all PIN codes used be unique between each other.
         break
 
     # install it.
-    dis.fullscreen("Saving...")
-
     try:
+        dis.fullscreen("Clearing..." if is_clear else "Saving...")
+        dis.busy_bar(True)
+
         pa.change(**args)
+        dis.busy_bar(False)
     except Exception as exc:
+        dis.busy_bar(False)
+
         code = exc.args[1]
 
         if code == EPIN_OLD_AUTH_FAIL:
@@ -1114,32 +1267,38 @@ We strongly recommend all PIN codes used be unique between each other.
                                             title='Error')
 
     # Main pin is changed, and we use it lots, so update pa
-    # - also to get pa.has_duress_pin() and has_brickme_pin() to be correct, need this
-    dis.fullscreen("Verify...")
-    pa.setup(args['new_pin'] if is_login_pin else pa.pin, pa.is_secondary)
+    # - also we need pa.has_duress_pin() and has_brickme_pin() to be correct
+    # - this step can be super slow with 608, unfortunately
+    try:
+        dis.fullscreen("Verify...")
+        dis.busy_bar(True)
 
-    if not pa.is_successful():
-        # typical: do need login, but if we just cleared the main PIN,
-        # we cannot/need not login again
-        pa.login()
+        pa.setup(args['new_pin'] if is_login_pin else pa.pin, pa.is_secondary)
 
-    if mode == 'duress':
-        # program the duress secret now... it's derived from real wallet
-        from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
+        if not pa.is_successful():
+            # typical: do need login, but if we just cleared the main PIN,
+            # we cannot/need not login again
+            pa.login()
 
-        if is_clear:
-            # clear secret, using the new pin, which is empty string
-            pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN,
-                            old_pin=b'', new_pin=b'')
-        else:
-            with SensitiveValues() as sv:
-                # derive required key
-                node = sv.duress_root()
-                d_secret = SecretStash.encode(xprv=node)
-                sv.register(d_secret)
-    
-                # write it out.
-                pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
+        if mode == 'duress':
+            # program the duress secret now... it's derived from real wallet contents
+            from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
+
+            if is_clear:
+                # clear secret, using the new pin, which is empty string
+                pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN, old_pin=b'')
+            else:
+                with SensitiveValues() as sv:
+                    # derive required key
+                    node = sv.duress_root()
+                    d_secret = SecretStash.encode(xprv=node)
+                    sv.register(d_secret)
+        
+                    # write it out.
+                    pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
+
+    finally:
+        dis.busy_bar(False)
 
 async def show_version(*a):
     # show firmware, bootload versions.
@@ -1165,9 +1324,12 @@ Bootloader:
 Serial:
   {ser}
 
+Hardware:
+  {hw}
 '''
 
-    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, ser=version.serial_number()))
+    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk,
+                            ser=version.serial_number(), hw=version.hw_label))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.
@@ -1192,7 +1354,7 @@ async def ship_wo_bag(*a):
 
 async def set_highwater(*a):
     # rarely? used command
-    import version, callgate
+    import callgate
 
     have = version.get_mpy_version()[0]
     ts = version.get_header_value('timestamp')

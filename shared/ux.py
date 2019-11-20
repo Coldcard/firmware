@@ -71,7 +71,7 @@ def ux_clear_keys(no_aborts=False):
     except QueueEmpty:
         return
 
-async def ux_wait_keyup(expected):
+async def ux_wait_keyup(expected=None):
     # Wait for single keypress in 'expected' set, return it
     # no visual feedback, no escape
     from main import numpad
@@ -87,7 +87,7 @@ async def ux_wait_keyup(expected):
             # multipress
             continue
 
-        if ch not in expected:
+        if expected and (ch not in expected):
             # unwanted
             continue
 
@@ -358,10 +358,9 @@ async def idle_logout():
             # do a logout now.
             print("Idle timeout now!")
 
-            import callgate
-            callgate.show_logout()
-
-            return
+            from actions import logout_now
+            await logout_now()
+            return              # not reached
             
 async def ux_confirm(msg):
     # confirmation screen, with stock title and Y=of course.

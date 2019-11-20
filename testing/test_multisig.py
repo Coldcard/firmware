@@ -122,7 +122,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
         config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False)) 
                                             for xfp, m, dd in keys)
-        print(config)
+        #print(config)
 
         title, story = offer_ms_import(config)
 
@@ -200,7 +200,8 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_ms_import, need_
         need_keypress('x')
         assert f'Policy: {N} of {N}\n' in story
 
-def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=None):
+def make_redeem(M, keys, path_mapper=None,
+                    violate_bip67=False, tweak_redeem=None, tweak_xfps=None):
     # Construct a redeem script, and ordered list of xfp+path to match.
     N = len(keys)
 
@@ -211,7 +212,7 @@ def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=Non
     data = []
     for cosigner_idx, (xfp, node, sk) in enumerate(keys):
         path = path_mapper(cosigner_idx)
-        print("path: " + ' / '.join(hex(i) for i in path))
+        #print("path: " + ' / '.join(hex(i) for i in path))
 
         if not node:
             # use xpubkey, otherwise master
@@ -251,6 +252,9 @@ def make_redeem(M, keys, path_mapper=None, violate_bip67=False, tweak_redeem=Non
 
     xfp_paths = [[xfp]+xpath for _,xfp,xpath in data]
     #print("xfp_paths: " + repr(xfp_paths))
+
+    if tweak_xfps:
+        tweak_xfps(xfp_paths)
 
     return rv, [pk for pk,_,_ in data], xfp_paths
 
@@ -364,13 +368,13 @@ def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
 def test_bad_pubkey(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
     # give incorrect pubkey inside redeem script
     M, N = 1, 15
-
     keys = import_ms_wallet(M, N, accept=1)
 
     try:
         # test an address that should be in that wallet.
         time.sleep(.1)
         def tweaker(scr):
+            # corrupt the pubkey
             return bytes((s if i != (5 + (34*which_pubkey)) else s^0x1) for i,s in enumerate(scr))
 
         with pytest.raises(BaseException) as ee:
@@ -378,6 +382,82 @@ def test_bad_pubkey(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr
         assert ('pk#%d wrong' % (which_pubkey+1)) in str(ee.value)
     finally:
         clear_ms()
+
+@pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
+def test_zero_depth(clear_ms, addr_fmt, import_ms_wallet, need_keypress, test_ms_show_addr, make_multisig):
+    # test having a co-signer with "m" only key ... ie. depth=0
+
+    M, N = 1, 2
+    keys = make_multisig(M, N, unique=99)
+
+    # censor first co-signer to look like a master key
+    kk = keys[0][1].public_copy()
+    kk._depth = 0
+    kk._child_index = 0
+    kk._parent_fingerprint = b'\0\0\0\0'
+    keys[0] = (keys[0][0], keys[0][1], kk)
+
+    try:
+        keys = import_ms_wallet(M, N, accept=1, keys=keys, addr_fmt=addr_fmt)
+        def pm(i):
+            return [] if i == 0 else [HARD(45), i, 0,0]
+
+        test_ms_show_addr(M, keys, bip45=False, path_mapper=pm)
+    finally:
+        clear_ms()
+
+@pytest.mark.parametrize('mode', ['wrong-xfp', 'long-path', 'short-path', 'zero-path'])
+def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+    # give incorrect xfp+path args during show_address
+
+    M, N = 1, 15
+    keys = import_ms_wallet(M, N, accept=1)
+    try:
+        time.sleep(.1)
+
+        def tweaker(xfps):
+            print(f"xfps={xfps}")
+            if mode == 'wrong-xfp':
+                # bad XFP => not right multisig wallet
+                xfps[0][0] ^= 0x55
+            elif mode == 'long-path':
+                # add garbage
+                xfps[0].extend([69, 69, 69, 69, 69])
+            elif mode == 'short-path':
+                # trim last derivation part
+                xfps[0] = xfps[0][0:-1]
+            elif mode == 'zero-path':
+                # just XFP, no path
+                xfps[0] = xfps[0][0:1]
+            else:
+                raise ValueError
+
+        with pytest.raises(BaseException) as ee:
+            test_ms_show_addr(M, keys, tweak_xfps=tweaker)
+
+        if mode == 'wrong-xfp':
+            assert 'with those fingerprints not found' in str(ee.value)
+        else:
+            assert 'pk#1 wrong' in str(ee.value)
+            if ('zero' in mode):
+                assert 'shallow' in str(ee.value)
+
+    finally:
+        clear_ms()
+
+@pytest.mark.parametrize('cpp', [
+    "m///",
+    "m/",
+    "m/1/2/3/4/5/6/7/8/9/10/11/12/13",          # assuming MAX_PATH_DEPTH==12
+])
+def test_bad_common_prefix(cpp, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+    # give some incorrect path values as the common prefix derivation
+
+    M, N = 1, 15
+    with pytest.raises(BaseException) as ee:
+        keys = import_ms_wallet(M, N, accept=1, common=cpp)
+    assert 'bad derivation line' in str(ee)
+
 
 def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     # check all details are shown right
@@ -488,15 +568,17 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
         except: pass
     
 @pytest.mark.parametrize('addr_fmt', ['p2wsh-p2sh', 'p2sh', 'p2wsh' ])
-def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, import_ms_wallet, addr_fmt, clear_ms):
+@pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45'"])
+def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, import_ms_wallet, addr_fmt, clear_ms):
 
     # create a wallet, export to SD card, check file created.
+    # - checks some values for derivation path, assuming MAX_PATH_DEPTH==12
 
     clear_ms()
 
     name = 'ex-test-%d' % random.randint(10000,99999)
     M,N = 3, 15
-    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1)
+    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1, common=comm_prefix)
 
     goto_home()
     pick_menu_item('Settings')
@@ -535,7 +617,7 @@ def test_export_single_ux(goto_home, cap_story, pick_menu_item, cap_menu, need_k
                     assert value == f'{M} of {N}'
                     got.add(label)
                 elif label == 'Derivation':
-                    assert value == "m/45'"
+                    assert value == (comm_prefix or "m/45'")
                     got.add(label)
                 elif label == 'Format':
                     assert value == addr_fmt.upper()
@@ -926,7 +1008,7 @@ def fake_ms_txn():
     return doit
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
-@pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
+@pytest.mark.parametrize('num_ins', [ 2, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
 @pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
@@ -952,12 +1034,13 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 @pytest.mark.parametrize('M', [ 2, 4, 1 ])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms, 
+def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
 
     # IMPORTANT: wont work if you start simulator with -m flag. Use no args
 
-    num_outs = 2
+    all_out_styles = list(unmap_addr_fmt.keys())
+    num_outs = len(all_out_styles)
 
     clear_ms()
 
@@ -965,7 +1048,8 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
     N = len(keys)
 
-    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs)
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
+                        outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
     open(f'debug/myself-before.psbt', 'wb').write(psbt)
     for idx in range(M):

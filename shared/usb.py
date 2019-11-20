@@ -314,13 +314,14 @@ class USBHandler:
             return self.handle_crypto_setup(version, his_pubkey)
 
         if cmd == 'vers':
-            from version import get_mpy_version
+            from version import get_mpy_version, hw_label
             from callgate import get_bl_version
 
             # Returning: date, version(human), bootloader version, full date version
             # BUT: be ready for additions!
             rv = list(get_mpy_version())
             rv.insert(2, get_bl_version()[0])
+            rv.append(hw_label)
 
             return b'asci' + ('\n'.join(rv)).encode()
 
@@ -329,7 +330,7 @@ class USBHandler:
 
         if cmd == 'xpub':
             assert self.encrypted_req, 'must encrypt'
-            return self.handle_xpub(str(args, 'ascii'))
+            return self.handle_xpub(args)
 
         if cmd == 'mitm':
             assert self.encrypted_req, 'must encrypt'
@@ -367,7 +368,7 @@ class USBHandler:
             xfp_paths = []
             for i in range(N):
                 ln = args[offset]
-                assert 2 <= ln <= 16, 'badlen'
+                assert 1 <= ln <= 16, 'badlen'
                 xfp_paths.append(unpack_from('<%dI' % ln, args, offset+1))
                 offset += (ln*4) + 1
 
@@ -473,6 +474,11 @@ class USBHandler:
             from auth import start_remote_backup
             return start_remote_backup()
 
+        if cmd == 'blkc':
+            # report which blockchain we are configured for
+            from chains import current_chain
+            chain = current_chain()
+            return b'asci' + chain.ctype
 
         if cmd == 'bagi':
             return self.handle_bag_number(args)
@@ -617,21 +623,19 @@ class USBHandler:
         return offset
 
     def handle_xpub(self, subpath):
-        # Publish the xpub for the indicated subpath. Must be a sequence
-        # of ints, where private derivation is marked w/ 0x80000000 bit set.
+        # Share the xpub for the indicated subpath. Expects
+        # a text string which is the path derivation.
 
         # TODO: might not have a privkey yet
 
         from chains import current_chain
+        from utils import cleanup_deriv_path
 
-        assert subpath[0:1] == 'm', 'must start at root'
-        assert subpath.count('/') <= 32, 'too deep'
+        subpath = cleanup_deriv_path(subpath)
 
         chain = current_chain()
 
         with stash.SensitiveValues() as sv:
-            #print("subpath: %s" % repr(subpath))
-
             node = sv.derive_path(subpath)
 
             xpub = chain.serialize_public(node)

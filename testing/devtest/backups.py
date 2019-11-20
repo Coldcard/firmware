@@ -18,7 +18,7 @@ if 1:
     blanks = 0
     checklist = set('mnemonic chain xprv xpub raw_secret fw_date fw_version fw_timestamp serial '
                 'setting.terms_ok setting.idle_to setting.chain'.split(' '))
-    optional = set('setting.words multisig setting.multisig setting.fee_limit'.split(' '))
+    optional = set('setting.words long_secret multisig setting.multisig setting.fee_limit'.split(' '))
 
     for ln in render_backup_contents().split('\n'):
         ln = ln.strip()
@@ -45,8 +45,8 @@ async def test_7z():
     # Altho cleartext mode is not for real, if the code is written, I must test it.
     from backups import write_complete_backup, restore_complete_doit
     from sffile import SFFile
-    import tcc
-    from main import settings, sf, numpad
+    import tcc, version
+    from main import settings, sf, numpad, pa
 
     today = tcc.random.uniform(1000000)
 
@@ -57,6 +57,10 @@ async def test_7z():
         for words in ( [], ['abc', 'def'] ):
             settings.set('check', today)
             settings.set('chain', chain)
+
+            if version.has_608:
+                ls = b'%416d' % today
+                pa.ls_change(ls)
 
             ll, sha = await write_complete_backup(words, None, True)
 
@@ -91,6 +95,9 @@ async def test_7z():
                             (settings.get('check'), '!=',  today)
                 assert settings.get('chain') == chain, \
                             (settings.get('chain'), '!=',  chain)
+
+                if version.has_608:
+                    assert pa.ls_fetch() == ls
 
             today += 3
 

@@ -158,11 +158,27 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     assert bk_a == bk_b, "contents mismatch"
 
-    pn = microsd_path(files[0])
 
+    # Check on-device verify UX works.
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Backup')
+    pick_menu_item('Verify Backup')
+    time.sleep(0.1)
+    title, body = cap_story()
+    assert "Select file" in body
+    need_keypress('y')
+    time.sleep(0.1)
+    pick_menu_item(os.path.basename(fn))
+
+    time.sleep(0.1)
+    title, body = cap_story()
+    assert "Backup file CRC checks out okay" in body
+
+
+    # List contents using unix tools
     from subprocess import check_output
-
-    # list contents
+    pn = microsd_path(files[0])
     out = check_output(['7z', 'l', pn], encoding='utf8')
     assert 'ckcc-backup.txt' in out
     assert 'Method = 7zAES' in out
@@ -175,6 +191,8 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     for i in range(10):
         need_keypress('x')
         time.sleep(.01) 
+
+    # test verify on device (CRC check)
     
     # try decrypt on microptyhon
     unit_test('devtest/clear_seed.py')
@@ -495,5 +513,44 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
     assert get_pp_sofar() == target
 
 
+
+@pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
+def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
+                                cap_menu, get_pp_sofar, get_secrets):
+
+    # Check the seed words are displayed correctly: the new "View Seed Words" feature
+    sim_exec("import stash; stash.bip39_passphrase = '%s'" % b39_word)
+
+    v = get_secrets()
+    words = v['mnemonic'].split(' ')
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Danger Zone')
+    pick_menu_item('View Seed Words')
+    time.sleep(.01); 
+    title, body = cap_story()
+    assert 'Are you SURE' in body
+    assert 'can control all funds' in body
+    need_keypress('y');      # skip warning
+    time.sleep(0.01)
+
+    title, body = cap_story()
+    assert title == 'NO-TITLE'
+    assert '24' in body
+
+    lines = body.split('\n')
+    assert lines[1:25] == ['%2d: %s' % (n+1, w) for n,w in enumerate(words)]
+
+    if b39_word:
+        assert lines[-2] == 'BIP39 Passphrase:'
+        assert lines[-1] == b39_word
+        assert len(lines) == 1+24+3
+
+        sim_exec("import stash; stash.bip39_passphrase = ''")
+    else:
+        assert len(lines) == 1+24
+
+    need_keypress('y')      # clear screen
 
 # EOF

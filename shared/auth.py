@@ -10,7 +10,7 @@ from public_constants import AFC_SCRIPT
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 
 global active_request
@@ -182,9 +182,10 @@ def sign_msg(text, subpath, addr_fmt):
     # Convert to strings
     try:
         text = str(text,'ascii')
-        subpath = str(subpath, 'ascii')
     except UnicodeError:
         raise AssertionError('must be ascii')
+
+    subpath = cleanup_deriv_path(subpath)
 
     try:
         assert addr_fmt in SUPPORTED_ADDR_FORMATS
@@ -769,13 +770,8 @@ def start_show_address(addr_format, subpath):
     except:
         raise AssertionError('Unknown/unsupported addr format')
 
-    # text path expected
-    try:
-        subpath = str(subpath, 'ascii')
-        ms = None
-        subpaths = None
-    except UnicodeError:
-        raise AssertionError('must be ascii')
+    # require a path to a key
+    subpath = cleanup_deriv_path(subpath)
 
     global active_request
     UserAuthorizedAction.check_busy(ShowAddressBase)

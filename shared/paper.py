@@ -15,7 +15,7 @@ Paper Wallets
 
 Coldcard will pick a completely random private key (which has no relation to your seed words), \
 and record the corresponding payment address and private key (WIF) into a text file. If you have a \
-special PDF template file, it can also make a pretty version of the same data.
+special PDF template file, it can also make a pretty version of the same data [Mk3 only].
 
 Another option is to roll a D6 die many times to generate the key.
 
@@ -60,14 +60,16 @@ class PaperWalletMaker:
         def set(idx, text):
             self.is_segwit = bool(idx)
             self.update_menu()
-        return int(self.is_segwit), ['Classic', 'Segwit/BECH32'], set
-        
+        return int(self.is_segwit), ['Classic', 'Segwit/Bech32'], set
+
+    def can_do_qr(self):
+        return ckcc.is_stm32l496():
 
     def update_menu(self):
         # Reconstruct the menu contents based on our state.
         self.my_menu.replace_items([
             MenuItem("Don't make PDF" if not self.template_fn else 'Making PDF',
-                        f=self.pick_template),
+                        f=self.pick_template, predicate=self.can_do_qr),
             MenuItem('Classic Address' if not self.is_segwit else 'Segwit Address',
                         chooser=self.addr_format_chooser),
             MenuItem('Use Dice', f=self.use_dice),
@@ -107,19 +109,23 @@ class PaperWalletMaker:
 
             wif = tcc.codecs.b58_encode(ch.b58_privkey + privkey)
 
-            with imported('uQR') as uqr:
-                # make the QR's now, since it's slow
-                q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
-                q.add_data(addr if not self.is_segwit else addr.upper(), optimize=0)
-                q.make(fit=False)
-                qr_addr = q.get_matrix()
-                del q
+            if self.can_do_qr():
+                with imported('uQR') as uqr:
+                    # make the QR's now, since it's slow
+                    q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
+                    q.add_data(addr if not self.is_segwit else addr.upper(), optimize=0)
+                    q.make(fit=False)
+                    qr_addr = q.get_matrix()
+                    del q
 
-                q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
-                q.add_data(wif, optimize=0)
-                q.make(fit=False)
-                qr_wif = q.get_matrix()
-                del q
+                    q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
+                    q.add_data(wif, optimize=0)
+                    q.make(fit=False)
+                    qr_wif = q.get_matrix()
+                    del q
+            else:
+                qr_addr = None
+                qr_wif = None
 
             basename = 'paper-%s' % addr[:12]
 
@@ -128,7 +134,7 @@ class PaperWalletMaker:
                 fname, nice_txt = card.pick_filename(basename + '-note.txt')
 
                 with open(fname, 'wt') as fp:
-                    self.make_txt(fp, addr, wif, qr_addr, qr_wif, privkey)
+                    self.make_txt(fp, addr, wif, privkey, qr_addr, qr_wif)
 
                 if self.template_fn:
                     fname, nice_pdf = card.pick_filename(basename + '.pdf')
@@ -157,8 +163,6 @@ class PaperWalletMaker:
 
     async def use_dice(self, *a):
         # Use lots of (D6) dice rolls to create privkey entropy.
-        privkey = b''
-
         with imported('seed') as seed:
             count, privkey = await seed.add_dice_rolls(0, privkey, True)
             if count == 0: return
@@ -170,7 +174,7 @@ class PaperWalletMaker:
         return await self.doit(have_key=privkey)
 
 
-    def make_txt(self, fp, addr, wif, qr_addr, qr_wif, privkey):
+    def make_txt(self, fp, addr, wif, prevkey, qr_addr=None, qr_wif=None):
         # Generate the "simple" text file version, includes private key.
         from ubinascii import hexlify as b2a_hex
 
@@ -186,10 +190,11 @@ class PaperWalletMaker:
         for idx, (qr, val) in enumerate([(qr_addr, addr), (qr_wif, wif)]):
             fp.write(('Private key' if idx else 'Deposit address') + ':\n\n')
 
-            for ln in qr:
-                fp.write('        ')
-                fp.write(''.join('\u2588\u2588' if n else '  ' for n in ln))
-                fp.write('\n')
+            if qr:
+                for ln in qr:
+                    fp.write('        ')
+                    fp.write(''.join('\u2588\u2588' if n else '  ' for n in ln))
+                    fp.write('\n')
 
             fp.write('\n        %s\n\n\n\n' % val)
 

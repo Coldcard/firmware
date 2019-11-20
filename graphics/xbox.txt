@@ -1,5 +1,5 @@
-xxxxxxxxxxxxx
-x x   x   x x
+  xxxxxxxxx
+ xx   x   xx
 x   x   x   x
 x x   x   x x
 x   x   x   x
@@ -17,5 +17,5 @@ x x   x   x x
 x   x   x   x
 x x   x   x x
 x   x   x   x
-x x   x   x x
-xxxxxxxxxxxxx
+ xx   x   xx
+  xxxxxxxxx

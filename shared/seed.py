@@ -16,7 +16,7 @@ from utils import pop_count, xfp2str
 import tcc, uctypes
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease
-from pincodes import AE_SECRET_LEN
+from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ckcc import rng_bytes
@@ -397,7 +397,6 @@ async def approve_word_list(seed):
 
     # send them to home menu, now with a wallet enabled
     goto_top_menu()
-                
 
 def set_seed_value(words):
     # Save the seed words into secure element, and reboot. BIP39 password
@@ -491,7 +490,7 @@ async def remember_bip39_passphrase():
 
 def clear_seed():
     from main import dis, pa, settings
-    import utime
+    import utime, version
 
     dis.fullscreen('Clearing...')
 
@@ -501,6 +500,11 @@ def clear_seed():
     # save a blank secret (all zeros is a special case, detected by bootloader)
     nv = bytes(AE_SECRET_LEN)
     pa.change(new_secret=nv)
+
+    if version.has_608:
+        # wipe the long secret too
+        nv = bytes(AE_LONG_SECRET_LEN)
+        pa.ls_change(nv)
 
     dis.fullscreen('Reboot...')
     utime.sleep(1)
@@ -746,7 +750,7 @@ class SingleWordMenu(WordNestMenu):
         #PassphraseMenu.late_draw(self, dis)
         pass
 
-async def spinner_edit(pw):
+async def spinner_edit(pw, confirm_exit=True):
     # Allow them to pick each digit using "D-pad"
     from main import dis
     from display import FontTiny, FontSmall
@@ -855,8 +859,10 @@ async def spinner_edit(pw):
                 if pos >= len(pw):
                     pos = len(pw)-1
             else:
-                pp = await ux_show_story("OK to leave without any changes? Or X to cancel leaving.")
-                if pp == 'x': continue
+                if confirm_exit:
+                    pp = await ux_show_story(
+                        "OK to leave without any changes? Or X to cancel leaving.")
+                    if pp == 'x': continue
                 return None
 
         elif ch == '7':      # left
@@ -884,7 +890,7 @@ async def spinner_edit(pw):
         elif ch == '3':     # symbols (all of them)
             cycle_set(symbols)
         elif ch == '0':     # help
-            await ux_show_story('''\
+            help_msg = '''\
 Use arrow keys (5789) to select letter and move around. 
 
 1=Letters (Aa..)
@@ -893,8 +899,10 @@ Use arrow keys (5789) to select letter and move around.
 4=Swap Case (q/Q)
 X=Delete char
 
-To quit without changes, delete everything. \
-Add more characters by moving past end (right side).
-''')
+Add more characters by moving past end (right side).'''
+
+            if confirm_exit:
+                help_msg += '\nTo quit without changes, delete everything.'
+            await ux_show_story(help_msg)
 
 # EOF
