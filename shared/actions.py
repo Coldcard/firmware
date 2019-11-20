@@ -576,6 +576,7 @@ async def start_login_sequence():
     # Boot up login sequence here.
     #
     from main import pa, settings, dis, loop, numpad
+    from ux import idle_logout
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
@@ -620,6 +621,9 @@ async def start_login_sequence():
         pa.reset()
         await login_countdown(delay)
         await block_until_login()
+
+    # implement idle timeout now that we are logged-in
+    loop.create_task(idle_logout())
 
     # Restore a login preference or two
     numpad.sensitivity = settings.get('sens', numpad.sensitivity)

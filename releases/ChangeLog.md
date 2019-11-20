@@ -1,10 +1,12 @@
 
-## 3.0.5 - Nov 20, 2019
+## 3.0.5 - Nov 2?, 2019
 
 - Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
   Requires v0.18 or higher of Bitcoin Core. 
   [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
   Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
+- Bugfix: Idle-timeout setting should only take effect after the login countdown.
+  Thanks to [@aoeui21](https://twitter.com/aoeui21) for reporting this.
 
 ## 3.0.4 - Nov 13, 2019
 
