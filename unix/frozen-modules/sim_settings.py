@@ -73,7 +73,7 @@ if '--xfp' in sys.argv:
     from ubinascii import unhexlify as a2b_hex
 
     xfp = sys.argv[sys.argv.index('--xfp') + 1]
-    sim_defaults['xfp'] = unpack(">I", a2b_hex(xfp))[0]
+    sim_defaults['xfp'] = unpack("<I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
 if '--seed' in sys.argv:
