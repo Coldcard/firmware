@@ -1,6 +1,12 @@
-# From: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
+# (c) Copyright 2019 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
+# and is covered by GPLv3 license found in COPYING.
+#
+# descriptor.py - Bitcoin Core's descriptors and their specialized checksums.
+#
+# Based on: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
+#
 
-def PolyMod(c, val):
+def polymod(c, val):
     c0 = c >> 35
     c = ((c & 0x7ffffffff) << 5) ^ val
     if (c0 & 1):
@@ -13,9 +19,10 @@ def PolyMod(c, val):
         c ^= 0x3706b1677a
     if (c0 & 16):
         c ^= 0x644d626ffd
+
     return c
 
-def DescriptorChecksum(desc):
+def descriptor_checksum(desc):
     INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
     CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
@@ -25,24 +32,29 @@ def DescriptorChecksum(desc):
     for ch in desc:
         pos = INPUT_CHARSET.find(ch)
         if pos == -1:
-            return ""
-        c = PolyMod(c, pos & 31)
+            raise ValueError(ch)
+
+        c = polymod(c, pos & 31)
         cls = cls * 3 + (pos >> 5)
         clscount += 1
         if clscount == 3:
-            c = PolyMod(c, cls)
+            c = polymod(c, cls)
             cls = 0
             clscount = 0
+
     if clscount > 0:
-        c = PolyMod(c, cls)
+        c = polymod(c, cls)
     for j in range(0, 8):
-        c = PolyMod(c, 0)
+        c = polymod(c, 0)
     c ^= 1
 
-    ret = [None] * 8
+    rv = ''
     for j in range(0, 8):
-        ret[j] = CHECKSUM_CHARSET[(c >> (5 * (7 - j))) & 31]
-    return ''.join(ret)
+        rv += CHECKSUM_CHARSET[(c >> (5 * (7 - j))) & 31]
 
-def AddChecksum(desc):
-    return desc + "#" + DescriptorChecksum(desc)
+    return rv
+
+def append_checksum(desc):
+    return desc + "#" + descriptor_checksum(desc)
+
+# EOF
