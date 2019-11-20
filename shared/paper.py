@@ -11,11 +11,10 @@ from actions import file_picker
 from menu import MenuSystem, MenuItem
 
 background_msg = '''\
-Paper Wallets
-
-Coldcard will pick a completely random private key (which has no relation to your seed words), \
-and record the corresponding payment address and private key (WIF) into a text file. If you have a \
-special PDF template file, it can also make a pretty version of the same data [Mk3 only].
+Coldcard will pick a random private key (which has no relation to your seed words), \
+and record the corresponding payment address and private key (WIF) into a text file, \
+creating a so-called "paper wallet".
+{can_qr}
 
 Another option is to roll a D6 die many times to generate the key.
 
@@ -62,8 +61,10 @@ class PaperWalletMaker:
             self.update_menu()
         return int(self.is_segwit), ['Classic', 'Segwit/Bech32'], set
 
-    def can_do_qr(self):
-        return ckcc.is_stm32l496():
+    @staticmethod
+    def can_do_qr():
+        import version
+        return version.has_fatram
 
     def update_menu(self):
         # Reconstruct the menu contents based on our state.
@@ -127,11 +128,14 @@ class PaperWalletMaker:
                 qr_addr = None
                 qr_wif = None
 
-            basename = 'paper-%s' % addr[:12]
+            # Use address as filename. clearly will be unique, but perhaps a bit
+            # awkward to work with.
+            basename = addr
 
             dis.fullscreen("Saving...")
             with CardSlot() as card:
-                fname, nice_txt = card.pick_filename(basename + '-note.txt')
+                fname, nice_txt = card.pick_filename(basename + 
+                                        ('-note.txt' if self.template_fn else '.txt'))
 
                 with open(fname, 'wt') as fp:
                     self.make_txt(fp, addr, wif, privkey, qr_addr, qr_wif)
@@ -146,11 +150,13 @@ class PaperWalletMaker:
 
             # Half-hearted attempt to cleanup secrets-contaminated memory
             # - better would be force user to reboot
+            # - and yet, we just output the WIF to SDCard anyway
             blank_object(privkey)
             blank_object(wif)
-            for x in range(33):
-                for y in range(33):
-                    qr_wif[y][x] = 0
+            if qr_wif:
+                for x in range(33):
+                    for y in range(33):
+                        qr_wif[y][x] = 0
 
         except CardMissingError:
             await needs_microsd()
@@ -163,6 +169,7 @@ class PaperWalletMaker:
 
     async def use_dice(self, *a):
         # Use lots of (D6) dice rolls to create privkey entropy.
+        privkey = b''
         with imported('seed') as seed:
             count, privkey = await seed.add_dice_rolls(0, privkey, True)
             if count == 0: return
@@ -174,7 +181,7 @@ class PaperWalletMaker:
         return await self.doit(have_key=privkey)
 
 
-    def make_txt(self, fp, addr, wif, prevkey, qr_addr=None, qr_wif=None):
+    def make_txt(self, fp, addr, wif, privkey, qr_addr=None, qr_wif=None):
         # Generate the "simple" text file version, includes private key.
         from ubinascii import hexlify as b2a_hex
 
@@ -185,18 +192,18 @@ class PaperWalletMaker:
         fp.write('Private key (Hex, 32 bytes):\n\n  %s\n\n' % b2a_hex(privkey).decode('ascii'))
         fp.write('Bitcoin Core command:\n\n  bitcoin-cli importprivkey "%s"\n\n' % wif)
 
-        fp.write('\n\n--- QR Codes ---   (requires UTF-8, unicode, white background)\n\n\n\n')
+        if qr_addr and qr_wif:
+            fp.write('\n\n--- QR Codes ---   (requires UTF-8, unicode, white background)\n\n\n\n')
 
-        for idx, (qr, val) in enumerate([(qr_addr, addr), (qr_wif, wif)]):
-            fp.write(('Private key' if idx else 'Deposit address') + ':\n\n')
+            for idx, (qr, val) in enumerate([(qr_addr, addr), (qr_wif, wif)]):
+                fp.write(('Private key' if idx else 'Deposit address') + ':\n\n')
 
-            if qr:
                 for ln in qr:
                     fp.write('        ')
                     fp.write(''.join('\u2588\u2588' if n else '  ' for n in ln))
                     fp.write('\n')
 
-            fp.write('\n        %s\n\n\n\n' % val)
+                fp.write('\n        %s\n\n\n\n' % val)
 
         fp.write('\n\n\n')
 
@@ -251,7 +258,9 @@ class PaperWalletMaker:
 
 async def make_paper_wallet(*a):
 
-    if await ux_show_story(background_msg) != 'y':
+    msg = background_msg.format(can_qr=('\nIf you have a special PDF template file, it can also make a pretty version of the same data.' if PaperWalletMaker.can_do_qr() else ''))
+
+    if await ux_show_story(msg) != 'y':
         return
 
     # show a menu with some settings, and a GO button
@@ -259,8 +268,11 @@ async def make_paper_wallet(*a):
     menu = MenuSystem([])
     rv = PaperWalletMaker(menu)
 
+    # annoying?
     # always have them pick the template, because that's mostly required
-    await rv.pick_template()
+    #if rv.can_do_qr():
+    #    await rv.pick_template()
+
     rv.update_menu()
 
     return menu
