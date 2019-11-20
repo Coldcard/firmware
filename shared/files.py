@@ -78,6 +78,7 @@ def wipe_flash_filesystem():
     settings.save()
 
 def wipe_microsd_card():
+    # Erase and re-format SD card. Not secure erase, because that is too slow.
     import ckcc, pyb
     from main import dis
     
@@ -108,6 +109,13 @@ def wipe_microsd_card():
 
     # remount, with newfs option
     os.mount(sd, '/sd', readonly=0, mkfs=1)
+
+    # done, cleanup
+    os.umount('/sd')
+
+    # important: turn off power
+    sd = pyb.SDCard()
+    sd.power(0)
 
 def dfu_parse(fd):
     # do just a little parsing of DFU headers, to find start/length of main binary
