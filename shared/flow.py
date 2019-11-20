@@ -54,13 +54,19 @@ SettingsMenu = [
     MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
+WalletExportMenu = [  
+    #         xxxxxxxxxxxxxxxx (alphabetical ordering)
+    MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
+    MenuItem("Electrum Wallet", f=electrum_skeleton),
+    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
+]
+
 SDCardMenu = [
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Dump Summary", f=dump_summary),
+    MenuItem('Export Wallet', menu=WalletExportMenu),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
-    MenuItem("Electrum Wallet", f=electrum_skeleton),
-    MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem('List Files', f=list_files),
     #MenuItem('Reformat Card', f=wipe_microsd),      # removed: not reliable enuf
 ]
