@@ -5,6 +5,7 @@
   Requires v0.18 or higher of Bitcoin Core. 
   [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
   Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
+- Add a "Format Card" command for erasing MicroSD contents and reformating (FAT32).
 - Bugfix: Idle-timeout setting should only take effect after the login countdown.
   Thanks to [@aoeui21](https://twitter.com/aoeui21) for reporting this.
 

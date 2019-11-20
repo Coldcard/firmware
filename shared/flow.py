@@ -68,7 +68,8 @@ SDCardMenu = [
     MenuItem('Export Wallet', menu=WalletExportMenu),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
     MenuItem('List Files', f=list_files),
-    #MenuItem('Reformat Card', f=wipe_microsd),      # removed: not reliable enuf
+    MenuItem('Format Card', f=wipe_sd_card,
+                                predicate=lambda: version.has_membrane),
 ]
 
 UpgradeMenu = [

@@ -917,6 +917,14 @@ Does not affect SD card, if any.'''):
 
     wipe_flash_filesystem()
 
+async def wipe_sd_card(*A):
+    if not await ux_confirm('''\
+Erases and reformats MicroSD card. This is not a secure erase but more of a quick format.'''):
+        return
+
+    from files import wipe_microsd_card
+    wipe_microsd_card()
+
 
 async def list_files(*A):
     # list files, don't do anything with them?
