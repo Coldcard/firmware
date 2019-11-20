@@ -21,6 +21,11 @@ def pytest_addoption(parser):
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
 
+    parser.addoption("--mk", default=3, help="Assume mark N hardware")
+
+    parser.addoption("--duress", action="store_true",
+                     default=False, help="assume logged-in with duress PIN")
+
 @pytest.fixture(scope='session')
 def dev(request):
     # a connected Coldcard (via USB) .. or the simulator
@@ -66,8 +71,8 @@ def sim_exec(simulator):
 def sim_eval(simulator):
     # eval an expression in the simulator's interpretor
 
-    def doit(cmd):
-        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8')).decode('utf-8')
+    def doit(cmd, timeout=None):
+        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
 
     return doit
 
@@ -303,7 +308,8 @@ def pick_menu_item(cap_menu, need_keypress):
     def doit(text):
         need_keypress('0')
         m = cap_menu()
-        assert text in m, "%r not in menu: %r" % (text, m)
+        if text not in m:
+            raise KeyError(text, "%r not in menu: %r" % (text, m))
 
         for label in m:
             if label == text:
@@ -584,7 +590,7 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
     return doit
 
 @pytest.fixture
-def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress):
+def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress, microsd_path):
 
     # like "try_sign" but use "air gapped" file transfer via microSD
 
@@ -600,7 +606,15 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
                 ip = a2b_hex(ip.strip())
             assert ip[0:5] == b'psbt\xff'
 
+
         psbtname = 'ftrysign'
+
+        # population control
+        from glob import glob; import os
+        pat = microsd_path(psbtname+'*.psbt')
+        for f in glob(pat):
+            assert 'psbt' in f
+            os.unlink(f)
 
         with open_microsd(psbtname+'.psbt', 'wb') as sd:
             sd.write(ip)
@@ -750,6 +764,19 @@ def end_sign(dev, need_keypress):
         return psbt_out
 
     return doit
+
+# use these for hardware version support
+@pytest.fixture(scope='session')
+def is_mark1(request):
+    return int(request.config.getoption('--mk')) == 1
+
+@pytest.fixture(scope='session')
+def is_mark2(request):
+    return int(request.config.getoption('--mk')) == 2
+
+@pytest.fixture(scope='session')
+def is_mark3(request):
+    return int(request.config.getoption('--mk')) == 3
 
 
 # useful fixtures related to multisig

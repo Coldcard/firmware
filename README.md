@@ -48,12 +48,19 @@ Which looks like this:
 
 You'll probably need to install at least these packages:
 
+    brew cask install xquartz
+    brew install sdl2
+    brew cask install gcc-arm-none-eabi
+
+Used to be these were needed as well:
+
     brew install sdl2
     brew tap PX4/px4
     brew search px4
-    brew cask install gcc-arm-embedded
     brew install px4/px4/gcc-arm-none-eabi-80 (latest gcc-arm-none-eabi-XX, currently 80)
-    
+
+You may need to reboot to avoid a `DISPLAY is not set` error.
+
 ### Linux
 
 You'll probably need to install these (Ubuntu 16):
@@ -94,3 +101,8 @@ Top-level dirs:
 
 - 32k of factory-set code that you cannot change
 - however, you can inspect what code is on your coldcard and compare to this.
+
+`hardware`
+
+- schematic and bill of materials for the Coldcard
+

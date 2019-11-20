@@ -389,7 +389,7 @@ sf_firmware_upgrade(void)
     // cannot work (bad signature, etc).
 
     // Check for downgrade attack: show warning and stop.
-    if(check_is_downgrade(hdr.timestamp)) {
+    if(check_is_downgrade(hdr.timestamp, (const char *)hdr.version_string)) {
         oled_show(screen_downgrade);
 
     fail:{

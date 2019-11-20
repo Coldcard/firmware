@@ -1,3 +1,73 @@
+
+## 3.0.5 - Nov 2?, 2019
+
+- Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
+  Requires v0.18 or higher of Bitcoin Core. 
+  [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
+  Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
+- Add a "Format Card" command for erasing MicroSD contents and reformating (FAT32).
+- Bugfix: Idle-timeout setting should only take effect after the login countdown.
+  Thanks to [@aoeui21](https://twitter.com/aoeui21) for reporting this.
+
+## 3.0.4 - Nov 13, 2019
+
+- Bugfix: encrypted backup files larger than 2000 bytes could fail to verify (but restored okay),
+  and this can happen now with larger multisig setups involving many co-signers.
+
+## 3.0.3 - Nov 6, 2019
+
+- Add "Login Countdown" feature: once enabled, you must enter you PIN correctly,
+  and then wait out a forced delay (of minutes/hours/days) while a count down
+  is shown on-screen. Then enter your PIN correctly, a second time, to get in. You must
+  provide continuous power to the Coldcard during this entire period!
+  Go to Settings > "Login Countdown" for the time intervals to pick from. Thanks
+  to [@JurrienSaelens](https://twitter.com/jurriensaelens) for this feature suggestion.
+- Nickname feature: Enter a short text name for your personal Coldcard. It's displayed
+  at startup time before PIN is entered. Try it out in Settings > "Set Nickname"
+- Bugfix: Adding a second signature (multisig) onto a PSBT already signed by
+  a different Coldcard could fail with "psbt.py:351" error.
+
+## 3.0.2 - Nov 1, 2019
+
+- New command in Danger Zone menu to view the seed words on-screen, so you can make
+  another on-paper backup as needed.
+- Robustness: Analyse paths used for change outputs and show a warning if they
+  are not similar in structure to the inputs of that same transaction.
+  These are imperfect heuristics and if you receive a false positive, or are doing
+  weird things that don't suit the rules below, please send an example PSBT to
+  support and we'll see if we can handle it better:
+    - same derivation path length
+    - shared pattern of hardened/not path components
+    - 2nd-last position is one or zero (change/not change convention)
+    - last position within 200 units of highest value observed on inputs
+- Robustness: Improve checking on key path derivations when we encounter them as text.
+    - accept 10h and 10p as if they are 10' (alternative syntax)
+    - define a max depth (12) for all derivations
+    - thanks to [@TheCharlatan](https://twitter.com/the_charlatan_)
+- Security Improvement: during secure logout, wipe entire contents of serial flash,
+  which might contain PSBT, signed or unsigned (for more privacy, deniability)
+
+## 3.0.1 - Oct 10, 2019
+
+- MARK3 SUPPORT!
+    - Adds support for Mark 3 hardware: larger CPU and better secure element (608)
+    - Many invisible changes inside the secure element (ATECC608A).
+    - Mark3 will brick itself after 13 incorrect PIN codes, so lots of warning are shown.
+- Contains all the features of 2.1.6 and still works on Mk1 and Mk2 hardware
+- Visual changes to login process (rounded boxes, different prompts, more warnings)
+- New USB command to report if Bitcoin versus Testnet setting is in effect.
+
+## 2.1.6 - Oct 8, 2019
+
+- NEW: "Address Explorer": view receive addresses on the screen of the Coldcard, so you can
+  be certain your funds are going to the right place. Can also write first 250 addresses onto
+  the SDCard in a simple text (CSV) format. Special thanks go to
+  [@hodlwave](https://github.com/hodlwave) for creating this feature.
+- Bugfix: Improve error message shown when depth of XPUB of multisig cosigner conflicts with path
+  details provided in PSBT or USB 'show address' command.
+- Bugfix: When we don't know derivation paths for a multisig wallet, or when all do not share
+  a common path-prefix, don't show anything.
+
 ## 2.1.5 - Sep 17, 2019
 
 - Bugfix: Changes to redeem vs. witness script content in PSBTs. Affects multisig change outputs,

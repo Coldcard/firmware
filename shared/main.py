@@ -13,14 +13,16 @@ import pyb, sys, version, gc
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
+if 0:
+    # useful for debug: keep this stub!
+    import ckcc
+    ckcc.vcp_enabled(True)
+    #pyb.usb_mode('VCP+MSC')            # handy but annoying disk issues
+    pyb.usb_mode('VCP')
+    raise SystemExit
+
 # what firmware signing key did we boot with? are we in dev mode?
 is_devmode = version.is_devmode()
-
-if 0:
-    # useful for debug: keep this stub
-    from usb import enable_usb
-    enable_usb(None, True)
-    raise SystemExit
 
 if is_devmode:
     # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!
@@ -45,8 +47,8 @@ from display import Display
 dis = Display()
 dis.splash()
 
-if version.is_mark2():
-    # Setup membrane numpad (mark 2)
+if version.has_membrane:
+    # Setup membrane numpad (mark 2+)
     from mempad import MembraneNumpad
     numpad = MembraneNumpad(loop)
 else:
@@ -114,9 +116,6 @@ dis.splash_animate(loop, done_splash2, numpad.capture_baseline)
 #
 from dev_helper import monitor_usb
 loop.create_task(monitor_usb())
-
-from ux import idle_logout
-loop.create_task(idle_logout())
 
 from files import CardSlot
 CardSlot.setup()

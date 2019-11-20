@@ -284,7 +284,7 @@ def test_io_size(request, decode_with_bitcoind, fake_txn,
     # on simulator, read screen
     try:
         cap_story = request.getfixturevalue('cap_story')
-        time.sleep(.01)
+        time.sleep(.1)
         title, story = cap_story()
         assert 'OK TO SEND' in title
     except:
@@ -1004,5 +1004,62 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     txed = bitcoind.sendrawtransaction(B2A(network))
     print("Final txn hash: %r" % txed)
 
+
+# Correct change path is: (m=4369050F)/44'/1'/0'/1/5
+@pytest.mark.parametrize('try_path,expect', [
+    ("44'/1'/0'/1/40000", 'last component beyond'),
+    ("44'/1'/0'/1/405", 'last component beyond'),
+    ("44'/1'/0'/1'/5", 'hardening'),
+    ("44'/1'/0'/1/5'", 'hardening'),
+    ("44'/1/0'/1/5'", 'hardening'),
+    ("45'/1'/0'/1/5", 'diff path prefix'),
+    ("44'/2'/0'/1/5", 'diff path prefix'),
+    ("44'/1'/1'/1/5", 'diff path prefix'),
+    ("44'/1'/0'/3000/5", '2nd last component'),
+    ("44'/1'/0'/3/5", '2nd last component'),
+])
+def test_change_troublesome(start_sign, cap_story, try_path, expect):
+    from struct import pack
+
+    # NOTE: out#1 is change:
+    # addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
+    # path = (m=4369050F)/44'/1'/0'/1/5
+    # pubkey = 03c80814536f8e801859fc7c2e5129895b261153f519d4f3418ffb322884a7d7e1
+
+    psbt = open('data/example-change.psbt', 'rb').read()
+    b4 = BasicPSBT().parse(psbt)
+
+    if 0:
+        #from pycoin.tx.Tx import Tx
+        #from pycoin.tx.TxOut import TxOut
+        # tweak output addr to garbage
+        t = Tx.parse(BytesIO(b4.txn))
+        chg = t.txs_out[1]          # pycoin.tx.TxOut.TxOut
+        b = bytearray(chg.script)
+        b[-5] ^= 0x55
+        chg.script = bytes(b)
+
+        b4.txn = t.as_bin()
+
+    pubkey = a2b_hex('03c80814536f8e801859fc7c2e5129895b261153f519d4f3418ffb322884a7d7e1')
+    path = [int(p) if ("'" not in p) else 0x80000000+int(p[:-1]) 
+                        for p in try_path.split('/')]
+    bin_path = b4.outputs[1].bip32_paths[pubkey][0:4] \
+                + b''.join(pack('<I', i) for i in path)
+    b4.outputs[1].bip32_paths[pubkey] = bin_path
+
+    with BytesIO() as fd:
+        b4.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    open('debug/troublesome.psbt', 'wb').write(mod_psbt)
+
+    start_sign(mod_psbt)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert 'OK TO SEND' in title
+    assert '(1 warning below)' in story, "no warning shown"
+
+    assert expect in story, story
 
 # EOF

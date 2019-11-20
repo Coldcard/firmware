@@ -3,12 +3,15 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
+# NOTE: Mark3 hardware does not support secondary wallet concept.
+#
 import pincodes, version
 from main import dis
 from display import FontLarge, FontTiny
 from uasyncio import sleep_ms
 from ux import ux_press_release, ux_wait_keyup, ux_all_up, ux_poll_once, ux_show_story
 from utils import pretty_delay
+from callgate import show_logout
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
@@ -19,8 +22,7 @@ class LoginUX:
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
-        self.mk2 = version.is_mark2()
-        self.offer_second = True
+        self.offer_second = not version.has_608
         self.reset()
 
     def reset(self):
@@ -28,14 +30,13 @@ class LoginUX:
         self.pin_prefix = None
         self.words_ok = False
         self.is_secondary = False
+        self.footer = None
 
     def show_pin(self, show_hint=False):
         filled = len(self.pin)
         if show_hint:
             filled -= 1
-            hint = self.pin[-1] if not self.mk2 else '\xd7'
-        else:
-            hint = '' if len(self.pin) == MAX_PIN_PART_LEN else ' '
+            hint = self.pin[-1] if not version.has_membrane else None
 
         dis.clear()
 
@@ -51,28 +52,33 @@ class LoginUX:
         else:
             dis.text(None, 4, prompt)
 
-        y = 26
+        y = 27
         w = 18
-        if 0:
-            x = 64 - ((w * (filled+(1 if hint else 0))) // 2)
-            x += w//2
-        else:
-            x = 12
+        x = 12
 
         for idx in range(filled):
             dis.icon(x, y, 'xbox')
             x += w
-        if hint:
-            dis.text(x+1, y+1, hint, FontLarge)
-            dis.icon(x, y, 'box')
+
+        if show_hint:
+            if not version.has_membrane:
+                dis.text(x+1, y+1, hint, FontLarge)
+                dis.icon(x, y, 'box')
+            else:
+                dis.icon(x, y, 'tbox')
+        else:
+            if len(self.pin) != MAX_PIN_PART_LEN:
+                dis.icon(x, y, 'box')
 
         # BTW: √ also works here, but looks like square root, not a checkmark
-        if self.is_repeat:
+        if self.footer:
+            footer = self.footer
+        elif self.is_repeat:
             footer = "CONFIRM PIN VALUE"
         elif not self.pin_prefix:
-            footer = "X to CANCEL, or OK when DONE."
+            footer = "X to CANCEL, or OK when DONE"
         else:
-            footer = "X to CANCEL, or OK to CONTINUE."
+            footer = "X to CANCEL, or OK to CONTINUE"
 
         dis.text(None, -1, footer, FontTiny)
 
@@ -84,10 +90,8 @@ class LoginUX:
         dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
                             else "Write these down:")
 
-        if self.offer_second:
-            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
-
         dis.show()
+        dis.busy_bar(True)
         words = pincodes.PinAttempt.prefix_words(self.pin.encode())
 
         y = 15
@@ -95,7 +99,13 @@ class LoginUX:
         dis.text(x, y,    words[0], FontLarge)
         dis.text(x, y+18, words[1], FontLarge)
 
-        dis.show()
+        if self.offer_second:
+            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
+        else:
+            dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
+
+        dis.busy_bar(False)     # includes a dis.show()
+        #dis.show()
 
     def cancel(self):
         self.reset()
@@ -136,7 +146,7 @@ class LoginUX:
 
                 self._show_words()
 
-                nxt = await ux_wait_keyup('xy2')
+                nxt = await ux_wait_keyup('xy2' if self.offer_second else 'xy')
                 if nxt == 'y' or nxt == '2':
                     self.pin_prefix = self.pin
                     self.pin = ''
@@ -183,11 +193,46 @@ class LoginUX:
 
         numpad.start()
 
+    async def we_are_ewaste(self, num_fails):
+        msg = '''After %d failed PIN attempts this Coldcard is locked forever. \
+By design, there is no way to reset or recover the secure element, and its contents \
+are now forever inaccessible.
+
+Restore your seed words onto a new Coldcard.''' % num_fails
+
+        while 1:
+            ch = await ux_show_story(msg, title='I Am Brick!', escape='6')
+            if ch == '6': break
+
+    async def confirm_attempt(self, attempts_left, num_fails, value):
+
+        ch = await ux_show_story('''You have %d attempts left before this Coldcard BRICKS \
+ITSELF FOREVER.
+
+Check and double-check your entry:\n\n  %s\n
+Maybe even take a break and come back later.\n
+Press OK to continue, X to stop for now.
+''' % (attempts_left, value), title="WARNING")
+
+        if ch == 'x':
+            show_logout()
+            # no return
+        
+
     async def try_login(self, retry=True):
         from main import pa, numpad
 
         while retry:
+            if version.has_608 and not pa.attempts_left:
+                # tell them it's futile
+                await self.we_are_ewaste(pa.num_fails)
+
             self.reset()
+
+            if pa.num_fails:
+                self.footer = '%d failures' % pa.num_fails
+                if version.has_608:
+                    self.footer += ', %d tries left' % pa.attempts_left
 
             pin = await self.interact()
 
@@ -198,23 +243,50 @@ class LoginUX:
             
             pa.setup(pin, self.is_secondary)
 
-            if pa.is_delay_needed() or pa.num_fails:
+            if version.has_608 and pa.num_fails > 3:
+                # they are approaching brickage, so warn them each attempt
+                await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
+            elif pa.is_delay_needed():
+                # mark 1/2 might come here, never mark3
                 await self.do_delay(pa)
 
             # do the actual login attempt now
             dis.fullscreen("Wait...")
             try:
+                dis.busy_bar(True)
                 ok = pa.login()
-                if ok: break
-            except RuntimeError as e:
+                if ok: break        # success, leave
+            except RuntimeError as exc:
                 # I'm a brick and other stuff can happen here
-                print("pa.login: %r" % e)
+                # - especially AUTH_FAIL when pin is just wrong.
+                ok = False
+                if exc.args[0] == pincodes.EPIN_I_AM_BRICK:
+                    await self.we_are_ewaste(pa.num_fails)
+                    continue
+            finally:
+                dis.busy_bar(False)
 
-            await ux_show_story('''\
-That's not the right PIN!\n
-Please check all digits carefully, and that prefix verus suffix break point is correct.
-Your next attempt will take even longer, so please keep that in mind.
-''', title='Wrong PIN')
+            pa.num_fails += 1
+            if version.has_608:
+                pa.attempts_left -= 1
+
+            msg = ""
+            nf = '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
+            if version.has_608:
+                if not pa.attempts_left:
+                    await self.we_are_ewaste(pa.num_fails)
+                    continue
+
+                msg += '%d attempts left' % (pa.attempts_left)
+            else:
+                msg += '%s' % nf
+
+            msg += '''\n\nPlease check all digits carefully, and that prefix versus \
+suffix break point is correct.'''
+            if version.has_608:
+                msg += '\n\n' + nf
+
+            await ux_show_story(msg, title='WRONG PIN')
 
     async def prompt_pin(self):
         # ask for an existing PIN

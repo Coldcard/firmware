@@ -58,7 +58,7 @@ class SPIFlash:
             self.cs.high()
 
     def read(self, address, buf, cmd=CMD_FAST_READ):
-        # random read (fast mode, because why wouldn't we?!
+        # random read (fast mode, because why wouldn't we?!)
         self.cmd(cmd, address, complete=False, pad=True)
         self.spi.readinto(buf)
         self.cs.high()
@@ -111,5 +111,19 @@ class SPIFlash:
         self.cmd(CMD_WREN)
         self.cmd(CMD_BLK_ERASE, address)
 
+    def wipe_most(self):
+        # erase everything except settings: takes 5 seconds at least
+        from nvstore import SLOTS
+        end = SLOTS[0]
+
+        from main import dis
+        dis.fullscreen("Cleanup...")
+
+        for addr in range(0, end, self.BLOCK_SIZE):
+            self.block_erase(addr)
+            dis.progress_bar_show(addr/end)
+
+            while self.is_busy():
+                pass
 
 # EOF

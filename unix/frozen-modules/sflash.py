@@ -9,12 +9,7 @@ class SPIFlash:
     SECTOR_SIZE = 4096
     BLOCK_SIZE = 65536
 
-    def __init__(self):
-        self.array = bytearray(_SIZE)
-
-        # simulate partially-written previous contents?
-        for i in range(_SIZE):
-            self.array[i] = 0xa5
+    array = bytearray(_SIZE)
 
     def read(self, address, buf, **kw):
         # random read
@@ -51,5 +46,10 @@ class SPIFlash:
         assert address % 65536 == 0, "not block start"
         for i in range(self.BLOCK_SIZE):
             self.array[address+i] = 0xff
+
+    def wipe_most(self):
+        from nvstore import SLOTS
+        for addr in range(0, SLOTS[0]):
+            self.array[addr] = 0xff
 
 # EOF

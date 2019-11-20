@@ -36,7 +36,9 @@ from sffile import SFFile
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
-#
+#   axi = index of last selected address in explorer
+#   nick = optional nickname for this coldcard (personalization)
+#   lgto = (minutes) how long to wait for Login Countdown feature
 
 
 # where in SPI Flash we work (last 128k)
@@ -46,7 +48,6 @@ SLOTS = range((1024-128)*1024, 1024*1024, 4096)
 # concerns with heap fragmentation, and saving settings is clearly
 # core to our mission!
 # 4k, but last 32 bytes are a SHA (itself encrypted)
-#_tmp = bytearray(4096-32)
 from sram2 import nvstore_buf
 _tmp = nvstore_buf
 
@@ -343,11 +344,6 @@ class SettingsObject:
     def default_values():
         # Please try to avoid defaults here... It's better to put into code
         # where value is used, and treat undefined as the default state.
-
-        if ckcc.is_simulator():
-            from sim_settings import sim_defaults
-            return dict(sim_defaults)
-        
         return dict(_age=0)
 
 # EOF

@@ -3,7 +3,7 @@
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, tcc, ckcc, chains, gc
+import compat7z, stash, tcc, ckcc, chains, gc, sys
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import imported, xfp2str
@@ -14,6 +14,9 @@ import seed
 
 # we make passwords with this number of words
 num_pw_words = const(12)
+
+# max size we expect for a backup data file (encrypted or cleartext)
+MAX_BACKUP_FILE_SIZE = const(10000)     # bytes
 
 def render_backup_contents():
     # simple text format: 
@@ -59,6 +62,10 @@ def render_backup_contents():
             dpk = sv.duress_root()
             ADD('duress_xprv', chain.serialize_private(dpk))
             ADD('duress_xpub', chain.serialize_public(dpk))
+
+        if version.has_608:
+            # save the so-called long-secret
+            ADD('long_secret', b2a_hex(pa.ls_fetch()))
     
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
@@ -111,9 +118,18 @@ async def restore_from_dict(vals):
             check_xprv = chain.serialize_private(node)
             assert check_xprv == vals['xprv'], 'xprv mismatch'
 
+
     except Exception as e:
         return ('Unable to decode raw_secret and '
                                 'restore the seed value!\n\n\n'+str(e))
+
+    ls = None
+    if ('long_secret' in vals) and version.has_608:
+        try:
+            ls = a2b_hex(vals.pop('long_secret'))
+        except Exception as exc:
+            sys.print_exception(exc)
+            # but keep going.
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.25)
@@ -125,7 +141,15 @@ async def restore_from_dict(vals):
     # force the right chain
     pa.new_main_secret(raw, chain)         # updates xfp/xpub
 
+
     # NOTE: don't fail after this point... they can muddle thru w/ just right seed
+
+    if ls is not None:
+        try:
+            pa.ls_change(ls)
+        except Exception as exc:
+            sys.print_exception(exc)
+            # but keep going
 
     # restore settings from backup file
 
@@ -206,7 +230,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
 
         hdr, footer = zz.save('ckcc-backup.txt')
 
-        filesize = len(body)+2000
+        filesize = len(body) + MAX_BACKUP_FILE_SIZE
 
         del body
 
@@ -294,12 +318,12 @@ async def verify_backup_file(fname_or_fd):
 
             prob = 'Unable to verify backup file contents.'
             zz = compat7z.Builder()
-            files = zz.verify_file_crc(fd)
+            files = zz.verify_file_crc(fd, MAX_BACKUP_FILE_SIZE)
 
             assert len(files) == 1
             fname, fsize = files[0]
             assert fname == 'ckcc-backup.txt'
-            assert 400 < fsize < 2000
+            assert 400 < fsize < MAX_BACKUP_FILE_SIZE, 'size'
 
     except CardMissingError:
         await needs_microsd()
@@ -364,7 +388,7 @@ async def restore_complete_doit(fname_or_fd, words):
                     dis.fullscreen("Decrypting...")
                     try:
                         zz = compat7z.Builder()
-                        fname, contents = zz.read_file(fd, password,
+                        fname, contents = zz.read_file(fd, password, MAX_BACKUP_FILE_SIZE,
                                                 progress_fcn=dis.progress_bar_show)
 
                         # simple quick sanity checks
@@ -503,21 +527,13 @@ be needed for different systems.
             yield fp.getvalue()
             del fp
 
-async def make_summary_file(fname_pattern='public.txt'):
-    # record **public** values and helpful data into a text file
+async def write_text_file(fname_pattern, body, title, total_parts=72):
+    # - total_parts does need not be precise
     from main import dis, pa, settings
     from files import CardSlot, CardMissingError
     from actions import needs_microsd
 
-    dis.fullscreen('Generating...')
-
-    # generator function:
-    body = generate_public_contents()
-
-    total_parts = 72        # need not be precise
-
     # choose a filename
-        
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)
@@ -535,9 +551,90 @@ async def make_summary_file(fname_pattern='public.txt'):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''Summary file written:\n\n%s''' % nice
+    msg = '''%s file written:\n\n%s''' % (title, nice)
     await ux_show_story(msg)
 
+async def make_summary_file(fname_pattern='public.txt'):
+    from main import dis
+
+    # record **public** values and helpful data into a text file
+    dis.fullscreen('Generating...')
+
+    # generator function:
+    body = generate_public_contents()
+
+    await write_text_file(fname_pattern, body, 'Summary')
+
+async def make_bitcoin_core_wallet(fname_pattern='bitcoin-core.txt'):
+    from main import dis, settings
+    import ustruct
+    xfp = xfp2str(settings.get('xfp'))
+
+    dis.fullscreen('Generating...')
+
+    # generator function:
+    payload = ujson.dumps(list(generate_bitcoin_core_wallet()))
+
+    body = '''\
+# Bitcoin Core Wallet Import File
+
+https://github.com/Coldcard/firmware/blob/master/docs/bitcoin-core-usage.md
+
+## For wallet with master key fingerprint: {xfp}
+
+Wallet operates on blockchain: {nb}
+
+## Bitcoin Core RPC
+
+The following command can be entered after opening Window -> Console
+in Bitcoin Core, or using bitcoin-cli:
+
+importmulti '{payload}'
+
+'''.format(payload=payload, xfp=xfp, nb=chains.current_chain().name)
+
+    await write_text_file(fname_pattern, body, 'Bitcoin Core')
+
+def generate_bitcoin_core_wallet():
+    # Generate the data for an RPC command to import keys into Bitcoin Core
+    # - yields dicts for json purposes
+    from descriptor import append_checksum
+    from main import settings
+    import ustruct
+
+    from public_constants import AF_P2WPKH
+
+    chain = chains.current_chain()
+
+    derive = "84'/{coin_type}'/{account}'".format(account=0, coin_type=chain.b44_cointype)
+
+    with stash.SensitiveValues() as sv:
+        xpub = chain.serialize_public(sv.derive_path(derive))
+
+    xfp = settings.get('xfp')
+    txt_xfp = xfp2str(xfp).lower()
+
+    chain = chains.current_chain()
+
+    _,vers,_ = version.get_mpy_version()
+
+    for internal in [False, True]:
+        desc = "wpkh([{fingerprint}/{derive}]{xpub}/{change}/*)".format(
+            derive=derive.replace("'", "h"),
+            fingerprint=txt_xfp,
+            coin_type=chain.b44_cointype,
+            account=0,
+            xpub=xpub,
+            change=(1 if internal else 0))
+
+        yield {
+            'desc': append_checksum(desc),
+            'range': [0, 1000],
+            'timestamp': 'now',
+            'internal': internal,
+            'keypool': True,
+            'watchonly': True
+        }
 
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
@@ -553,7 +650,7 @@ def generate_wasabi_wallet():
         xpub = btc.serialize_public(sv.derive_path("84'/0'/0'"))
 
     xfp = settings.get('xfp')
-    txt_xfp = b2a_hex(ustruct.pack('<I', xfp)).decode().upper()
+    txt_xfp = xfp2str(xfp)
 
     chain = chains.current_chain()
     assert chain.ctype in {'BTC', 'XTN'}, "Only Bitcoin supported"

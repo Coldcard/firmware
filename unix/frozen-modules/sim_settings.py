@@ -1,5 +1,6 @@
-import os, sys
+# do NOT import main from this file.
 
+import os, sys
 from sim_secel import SECRETS
 
 if '-w' in sys.argv:
@@ -48,7 +49,7 @@ if '-2' in sys.argv:
     })
 
 if '-p' in sys.argv:
-    # pretend BIP39 password is active (just for menus)
+    # pretend BIP39 words don't exist (affects menus mostly)
     sim_defaults['words'] = False
 
 if '-m' in sys.argv:
@@ -64,31 +65,6 @@ if '-m' in sys.argv:
         sim_defaults['multisig'] = [['MeMyself', [2, 4], [[3503269483, 'tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9'], [2389277556, 'tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc'], [3190206587, 'tpubD9ArfXowvGHnuECKdGXVKDMfZVGdephVWg8fWGWStH3VKHzT4ph3A4ZcgXWqFu1F5xGTfxncmrnf3sLC86dup2a8Kx7z3xQ3AgeNTQeFxPa'], [1130956047, 'tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n']], {'ch': 'XTN', 'pp': "45'"}]]
     sim_defaults['fee_limit'] = -1
 
-
-    # start in multisig wallet
-    from main import numpad
-    numpad.inject('9')
-    numpad.inject('y')
-    numpad.inject('9')
-    numpad.inject('5')
-    numpad.inject('y')
-
-if '-s' in sys.argv:
-    # MicroSD menu
-    from main import numpad
-    numpad.inject('4')
-    numpad.inject('y')
-    numpad.inject('4')
-
-if '-p' in sys.argv:
-    # Paper wallet menu
-    from main import numpad
-    numpad.inject('3')
-    numpad.inject('y')
-    numpad.inject('4')
-    numpad.inject('8')
-    numpad.inject('y')
-
 if '--xfp' in sys.argv:
     # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
     from ustruct import unpack
@@ -96,8 +72,47 @@ if '--xfp' in sys.argv:
     from ubinascii import unhexlify as a2b_hex
 
     xfp = sys.argv[sys.argv.index('--xfp') + 1]
-    sim_defaults['xfp'] = unpack(">I", a2b_hex(xfp))[0]
+    sim_defaults['xfp'] = unpack("<I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
+if '--seed' in sys.argv:
+    # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
+    from ustruct import unpack
+    from utils import xfp2str
+    from seed import set_seed_value
+    from main import pa, settings
+
+    words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
+    assert len(words) == 24, "Expected 24 space-separated words: add some quotes"
+    pa.pin = b'12-12'
+    set_seed_value(words)
+    settings.set('terms_ok', 1)
+    settings.set('_skip_pin', '12-12')
+    settings.set('chain', 'XTN')
+    print("Seed phrase set, resulting XFP: " + xfp2str(settings.get('xfp')))
+
+if '-g' in sys.argv:
+    # do login
+    sim_defaults.pop('_skip_pin', 0)
+
+if '--nick' in sys.argv:
+    nick = sys.argv[sys.argv.index('--nick') + 1]
+    sim_defaults['nick'] = nick
+    sim_defaults['terms_ok'] = 1
+    sim_defaults.pop('_skip_pin', 0)
+
+if '--delay' in sys.argv:
+    delay = int(sys.argv[sys.argv.index('--delay') + 1])
+    sim_defaults['lgto'] = delay
+
+    SECRETS.update({
+        '_pin1': '12-12',
+        '_pin1_secret': '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
+    })
+
+
+if '--idle' in sys.argv:
+    delay = int(sys.argv[sys.argv.index('--idle') + 1])
+    sim_defaults['idle_to'] = delay
 
 # EOF

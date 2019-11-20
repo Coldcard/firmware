@@ -1,13 +1,13 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# Secure Element Config Area
+# Secure Element Config Area.
 #
-# Bitwise details about the the ATECC508A "config" area, which determines what
+# Bitwise details about the the ATECC608a and 508a "config" area, which determines what
 # you can and (mostly) cannot do with each private key in device.
 #
-# - use must contemplate the full datasheet at length
-# - but very simmilar to ATSHA204 and family chips
+# - you must contemplate the full datasheet at length
+# - as of Jul/2019 the 608a datasheet is under NDA, sorry.
 # - this file can be useful both in Micropython and CPython3
 #
 try:
@@ -29,7 +29,17 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
     def hexdump(label, x):
         print(label + ASC(b2a_hex(x)) + ('  len=%d'%len(x)))
 
+    #hexdump('SN: ', blk[0:4]+blk[8:13])
     hexdump('RevNum: ', blk[4:8])
+
+    # guessing this nibble in RevNum corresponds to chip 508a vs 608a
+    print("Chip type: atecc%x08a" % ((blk[6]>>4)&0xf))
+    partno = ((blk[6]>>4)&0xf)
+    assert partno in [5, 6]
+
+    if partno == 6:
+        print('AES_Enable = 0x%x' % (blk[13] & 0x1))
+
     print('I2C_Enable = 0x%x' % (blk[14] & 0x1))
     if blk[14] & 0x01 == 0x01:
         print('I2C_Address = 0x%x' % (blk[16] >> 1))
@@ -39,7 +49,13 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
         print('GPIO Detect (vs authout) = 0x%x' % ((blk[16]>>3) & 0x1))
         print('GPIO SignalKey/KeyId = 0x%x' % ((blk[16]>>4) & 0xf))
         print('I2C_Address(sic) = 0x%x' % blk[16])
-    print('OTPmode = 0x%x' % blk[18])
+
+    if partno == 5:
+        print('OTPmode = 0x%x' % blk[18])
+    if partno == 6:
+        print('CountMatchKey = 0x%x' % ((blk[18] >> 4)&0xf))
+        print('CounterMatch enable = %d' % (blk[18] &0x1))
+
     print('ChipMode = 0x%x' % blk[19])
 
     print()
@@ -51,21 +67,40 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
 
         key_conf = blk[96+(2*i):2+96+(2*i)]
 
+        cls = KeyConfig_508 if partno == 5 else KeyConfig_608
+
         print('KeyConfig[%d] = 0x%s = %r' % (i, ASC(b2a_hex(key_conf)),
-                                                    KeyConfig.unpack(key_conf)))
+                                                    cls.unpack(key_conf)))
 
         print()
 
     hexdump('Counter[0]: ', blk[52:60])
     hexdump('Counter[1]: ', blk[60:68])
-    hexdump('LastKeyUse: ', blk[68:84])
+    if partno == 5:
+        hexdump('LastKeyUse: ', blk[68:84])
+    if partno == 6:
+        print('UseLock = 0x%x' % blk[68])
+        print('VolatileKeyPermission = 0x%x' % blk[69])
+        hexdump('SecureBoot: ', blk[70:72])
 
+        print('KldfvLoc = 0x%x' % blk[72])
+        hexdump('KdflvStr: ', blk[73:75])
+
+    # 75->83 reserved
     print('UserExtra = 0x%x' % blk[84])
-    print('Selector = 0x%x' % blk[85])
+    if partno == 5:
+        print('Selector = 0x%x' % blk[85])
+    if partno == 6:
+        print('UserExtraAdd = 0x%x' % blk[85])
 
     print('LockValue = 0x%x' % blk[86])
     print('LockConfig = 0x%x' % blk[87])
     hexdump('SlotLocked: ', blk[88:90])
+
+    if partno == 6:
+        hexdump('ChipOptions: ', blk[90:92])
+        print('ChipOptions = %r' % ChipOptions.unpack(blk[90:92]))
+
     hexdump('X509format: ', blk[92:96])
 
     if rnd is not None:
@@ -95,7 +130,7 @@ if MPY:
 
             @classmethod
             def unpack(cls, ss):
-                v = ustruct.unpack("<H", ss)[0]
+                v = ustruct.unpack('<H', ss)[0]
                 pos = 0 
                 rv = []
                 for w,n in defs:
@@ -139,7 +174,7 @@ else:
 
         @classmethod
         def unpack(cls, ss):
-            v = struct.unpack("<H", ss)[0]
+            v = struct.unpack('<H', ss)[0]
             pos = 0 
             rv = {}
             for w,n in defs:
@@ -170,7 +205,7 @@ else:
         return rv
 
 # Section 2.2.5, Table 2-11: KeyConfig (Bytes 96 thru 127)
-KeyConfig = make_bitmask('KeyConfig', [
+KeyConfig_508 = make_bitmask('KeyConfig', [
                     (1, 'Private'),
                     (1, 'PubInfo'),
                     (3, 'KeyType'),
@@ -182,7 +217,20 @@ KeyConfig = make_bitmask('KeyConfig', [
                     (1, 'RFU'),
                     (2, 'X509id')])
 
-# Section 2.2.1, Table 2-5: SlotConfig (Bytes 20 to 51)
+# 608a: Section 2.2.13, Table 2-11: KeyConfig (Bytes 96 thru 127)
+KeyConfig_608 = make_bitmask('KeyConfig', [
+                    (1, 'Private'),
+                    (1, 'PubInfo'),
+                    (3, 'KeyType'),
+                    (1, 'Lockable'),
+                    (1, 'ReqRandom'),
+                    (1, 'ReqAuth'),
+                    (4, 'AuthKey'),
+                    (1, 'PersistentDisable'),
+                    (1, 'RFU'),
+                    (2, 'X509id')])
+
+# Section 2.2.12, Table 2-5: SlotConfig (Bytes 20 to 51)
 SlotConfig = make_bitmask('SlotConfig', [
                     (4, 'ReadKey'),
                     (1, 'NoMac'),
@@ -192,8 +240,8 @@ SlotConfig = make_bitmask('SlotConfig', [
                     (4, 'WriteKey'),
                     (4, 'WriteConfig')])
 
-# Section 9.9, for the Info command (mode=State)
-InfoState = make_bitmask('InfoState', [
+# 508a: Section 9.9, for the Info command (mode=State)
+InfoState_508 = make_bitmask('InfoState', [
 				(4, 'TK_KeyId'),
 				(1, 'TK_SourceFlag'),
 				(1, 'TK_GenDigData'),
@@ -205,11 +253,39 @@ InfoState = make_bitmask('InfoState', [
 				(1, 'AuthValid'),
                 (4, 'AuthKey'),
                 (1, 'TK_Valid') ])
+
+# 608a: Section 11.8, for the Info command (mode=State)
+InfoState_608 = make_bitmask('InfoState', [
+				(4, 'TK_KeyId'),
+				(1, 'TK_SourceFlag'),
+				(1, 'TK_GenDigData'),
+				(1, 'TK_GenKeyData'),
+				(1, 'TK_NoMacFlag'),
+
+				(2, 'zeros'),
+				(1, 'AuthValid'),
+                (4, 'AuthKey'),
+                (1, 'TK_Valid') ])
+
+# 608a: ChipOptions, offset 90 in EEPROM data
+# - the datasheet, in this one spot, lists the bits in MSB->LSB order, but elsewhere LSB->MSB
+# - bit numbers are right, and register isn't other endian, just the text backwards
+# - section 2.2.10 has in right order, but skips various bits in the register
+ChipOptions = make_bitmask('ChipOptions', [
+                    (1, 'POSTEnable'),
+                    (1, 'IOProtKeyEnable'),
+                    (1, 'KDFAESEnable'),
+                    (5, 'mustbezero'),
+                    (2, 'ECDHProt'),
+                    (2, 'KDFProt'),
+                    (4, 'IOProtKey'), ])
         
 class ComboConfig(object):
-    __slots__ = ['kc', 'sc']        # block spelling mistakes
-    def __init__(self):
-        self.kc = KeyConfig()
+    __slots__ = ['kc', 'sc', 'partno']        # block spelling mistakes
+
+    def __init__(self, partno=5):
+        self.partno = partno
+        self.kc = KeyConfig_508() if partno == 5 else KeyConfig_608()
         self.sc = SlotConfig(WriteConfig=0x8)       # most restrictive
 
     @property
@@ -292,6 +368,12 @@ class ComboConfig(object):
         self.sc.WriteConfig = 0x4   # encrypted write, no DeriveKey support
         return self
 
+    def deterministic(self):
+        # most keyslots should have ReqRandom=1 but if we're using it to hash up
+        # a known value, like a PIN, then it can't be based on a nonce.
+        self.kc.ReqRandom = 0
+        return self
+
     def require_auth(self, kn):
         # knowledge of another key will be required
         assert 0 <= kn <= 15
@@ -303,6 +385,10 @@ class ComboConfig(object):
         self.kc.Lockable = int(lockable)    # can delay slot locking
         return self
 
+    def limited_use(self):
+        self.sc.LimitedUse = 1          # counter0 will inc by one each use
+        return self
+
     def read_encrypted(self, kn):
         # readout allowed, but it's encrypted by key kn
         # "Reads from this slot are encrypted using the encryption algorithm
@@ -312,6 +398,15 @@ class ComboConfig(object):
         self.kc.ReadKey = kn
         self.kc.IsSecret = 1
         return self
-        
-    
 
+    def persistent_disable(self):
+        assert self.partno == 6, '608a only'
+        self.kc.PersistentDisable = 1
+        return self
+    
+    def is_aes_key(self):
+        assert self.partno == 6, '608a only'
+        self.kc.KeyType = 6     # for use with AES
+        return self
+
+# EOF

@@ -9,35 +9,32 @@
 #include "basics.h"
 #include "ae.h"
 
-/* Todo Someday... 
-- return a 2x32-byte "ticket" on successful login
-- it's encrypted w/ XOR SHA256(pairing secret + powerup seed + salt + index)
-- contains successful keynum, actual pin hash, is_duress flag, attempt counter.
-- exchange anytime for the secret; checks only counter hasn't changed (and does round-trip to AE)
-- pin and secret changes should incr attempt counter
-*/
-
 // We hash it like we don't care, but PIN code is expected to be
-// just digits, no punctuation, and up to this many char long.
+// just digits, no punctuation, and up to this many chars long.
 // Using pin+len rather than c-strings. Use zero-length for "blank" or "undefined" pins.
 //
 #define MAX_PIN_LEN             32
 
 // Number of bytes (per pin) we are keeping secret.
-// ATECC508A limitation/feature caps this at weird 72 byte value.
+// ATECC[56]08A limitation/feature caps this at weird 72 byte value.
 #define AE_SECRET_LEN           72
 
+// .. but on 608a, we can use this one weird data slot with more space
+#define AE_LONG_SECRET_LEN      416
+
 // For change_flags field: choose one secret and/or one PIN only.
-#define CHANGE_WALLET_PIN           0x01
-#define CHANGE_DURESS_PIN           0x02
-#define CHANGE_BRICKME_PIN          0x04
-#define CHANGE_SECRET               0x08
-#define CHANGE_DURESS_SECRET        0x10
-#define CHANGE_SECONDARY_WALLET_PIN 0x20     // when used from main wallet only
-#define CHANGE__MASK                0x3f
+#define CHANGE_WALLET_PIN           0x001
+#define CHANGE_DURESS_PIN           0x002
+#define CHANGE_BRICKME_PIN          0x004
+#define CHANGE_SECRET               0x008
+#define CHANGE_DURESS_SECRET        0x010
+#define CHANGE_SECONDARY_WALLET_PIN 0x020     // when used from main wallet only (obsolete)
+#define CHANGE_LS_OFFSET            0xf00     // v2: which 32-byte part of long-secret to affect
+#define CHANGE__MASK                0xf3f
 
 // Magic value and/or version number.
-#define PA_MAGIC            0x2eaf6311
+#define PA_MAGIC_V1         0x2eaf6311          // before v3.0.0 of main firmware (508a, mk1/2)
+#define PA_MAGIC_V2         0x2eaf6312
 
 // For state_flags field: report only covers current wallet (primary vs. secondary)
 #define PA_SUCCESSFUL         0x01
@@ -48,15 +45,15 @@
 
 typedef struct {
     uint32_t    magic_value;            // = PA_MAGIC
-    int         is_secondary;           // (bool) primary or secondary
+    int         is_secondary;           // (bool) primary or secondary [obsolete]
     char        pin[MAX_PIN_LEN];       // value being attempted
     int         pin_len;                // valid length of pin
-    uint32_t    delay_achieved;         // so far, how much time wasted?
-    uint32_t    delay_required;         // how much will be needed?
+    uint32_t    delay_achieved;         // so far, how much time wasted? [obsolete]
+    uint32_t    delay_required;         // how much will be needed? [obsolete]
     uint32_t    num_fails;              // for UI: number of fails PINs
-    uint32_t    attempt_target;         // counter number from chip
+    uint32_t    attempts_left;          // trys left until bricking
     uint32_t    state_flags;            // what things have been setup/enabled already
-    uint32_t    private_state;          // some internal (encrypted) state
+    uint32_t    private_state;          // some internal (encrypted) state [actually a nonce]
     uint8_t     hmac[32];               // my hmac over above, or zeros
     // remaining fields are return values, or optional args;
     int         change_flags;           // bitmask of what to do
@@ -66,9 +63,12 @@ typedef struct {
     int         new_pin_len;            // (optional) valid length of new_pin, can be zero
     uint8_t     secret[AE_SECRET_LEN];  // secret to be changed / return value
     // may grow from here in future versions.
+    uint8_t     cached_main_pin[32];    // iff they provided right pin already
 } pinAttempt_t;
 
-#define PIN_ATTEMPT_SIZE        (176+AE_SECRET_LEN)
+// For binary compatibility with Mark1/2 bootroms, the cached_main_pin is optional
+#define PIN_ATTEMPT_SIZE_V1        (176+AE_SECRET_LEN)
+#define PIN_ATTEMPT_SIZE_V2        (176+AE_SECRET_LEN+32)
 
 // Errors codes
 enum {
@@ -112,5 +112,8 @@ int pin_firmware_greenlight(pinAttempt_t *args);
 
 // Return 32 bits of bits which are presistently mapped from pin code; for anti-phishing feature.
 int pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result);
+
+// Read/write the long secret. 32 bytes at a time.
+int pin_long_secret(pinAttempt_t *args);
 
 // EOF

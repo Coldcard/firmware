@@ -12,11 +12,13 @@
 #include "storage.h"
 #include "stm32l4xx_hal.h"
 #include "ae_config.h"
+#include "oled.h"
 #include <errno.h>
 #include <string.h>
 
 // Selectable debug level; keep them as comments regardless
 #if 0
+// break on any error: not helpful since some are normal
 # define ERR(msg)            BREAKPOINT;
 # define ERRV(val, msg)       BREAKPOINT;
 #else
@@ -50,6 +52,7 @@ static struct {
     int len_error;
     int crc_len_error;
     int short_error;
+    int not_ready, not_ready_n;
     int l1_retry;
     int ln_retry;
     int extra_bits;
@@ -58,6 +61,7 @@ static struct {
     uint16_t last_p2;
     uint8_t     last_n_data[32];
     uint8_t     last_n_len;
+    uint16_t    was_locked;
 } stats;
 #define STATS(x)         stats. x;
 #else
@@ -265,6 +269,23 @@ ae_read_response(uint8_t *buf, int max_len)
     return actual / 8;
 }
 
+// ae_wake()
+//
+// Do not call this causually: it may cause next read to return 0x11 (After Wake,
+// Prior to First Command) as an error to any on-going/attempted operation.
+//
+//
+    static void
+ae_wake(void)
+{
+    // send zero (all low), delay 2.5ms
+    _send_byte(0x00);
+
+    delay_us(2500);     // measured: ~2.9ms
+
+    _flush_rx();
+}
+
 // ae_send_sleep()
 //
 	static void
@@ -286,23 +307,9 @@ ae_send_idle(void)
 	// "The ATECC508A goes into the idle mode and ignores all subsequent
 	// I/O transitions until the next wake flag. The contents of TempKey
 	// and RNG Seed registers are retained."
-
     ae_wake();
 
     _send_bits(IOFLAG_IDLE);
-}
-
-// ae_wake()
-//
-    static void
-ae_wake(void)
-{
-    // send zero (all low), delay 2.5ms
-    _send_byte(0x00);
-
-    delay_us(2500);
-
-    _flush_rx();
 }
 
 // ae_reset_chip()
@@ -409,8 +416,8 @@ ae_keep_alive(void)
 	// To reset the watchdog, (1) put it into idle mode, then (2) wake it.
 	ae_send_idle();
 
-    // not clear if delay needed here?
-	ae_wake();
+    // no need to wake: next transaction will do that 
+	//ae_wake();
 }
 
 // Originally from Libraries/ecc108_library/ecc108_helper.c
@@ -484,10 +491,17 @@ ae_read1(void)
 	uint8_t msg[4];
 
 	for(int retry=7; retry >= 0; retry--) {
-        ae_wake();
-
         // tell it we want to read a response, read it, and deserialize
         int rv = ae_read_response(msg, 4);
+
+        if(rv == 0) {
+            // nothing heard, it's probably still processing
+            ERR("not rdy");
+            STATS(not_ready++);
+
+            delay_ms(5);
+            goto try_again;
+        }
 
         if(rv != 4) {
             ERR("rx len");
@@ -510,7 +524,6 @@ ae_read1(void)
 
 	try_again:
         STATS(l1_retry++);
-		ae_wake();
 	}
 
 	// fail.
@@ -530,8 +543,17 @@ ae_read_n(uint8_t len, uint8_t *body)
 
         int actual = ae_read_response(tmp, len+3);
         if(actual < 4) {
-            ERR("too short");
-            STATS(short_error++);
+
+            if(actual == 0) {
+                // nothing heard, it's probably still processing
+                delay_ms(5);
+                ERR("not ready2");
+                STATS(not_ready_n++);
+            } else {
+                // a weird short-read? probably fatal, but retry
+                ERR("too short");
+                STATS(short_error++);
+            }
             goto try_again;
         }
 
@@ -541,12 +563,12 @@ ae_read_n(uint8_t len, uint8_t *body)
             if(resp_len == 4) {
 				// Probably an unexpected error. But no way to return a short read, so
 				// just print out debug info.
-                ERRV(msg[1], "ae errcode");
+                ERRV(tmp[1], "ae errcode");
                 STATS(last_resp1 = tmp[1]);
 
                 return -1;
             }
-			ERRV(msg[0], "wr len");		 // wrong length
+			ERRV(tmp[0], "wr len");		 // wrong length
 			goto try_again;
 		}
 
@@ -568,7 +590,7 @@ ae_read_n(uint8_t len, uint8_t *body)
 
 	try_again:
         STATS(ln_retry++);
-		ae_wake();
+        ae_wake();
 	}
 
 	return -1;
@@ -576,15 +598,15 @@ ae_read_n(uint8_t len, uint8_t *body)
 
 // ae_send()
 //
-	int
+	void
 ae_send(aeopcode_t opcode, uint8_t p1, uint16_t p2) 
 {
-	return ae_send_n(opcode, p1, p2, NULL, 0);
+	ae_send_n(opcode, p1, p2, NULL, 0);
 }
 
 // ae_send_n()
 //
-	int
+	void
 ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8_t data_len) 
 {
 	// all commands will have this fixed header, which includes just one layer of framing
@@ -610,6 +632,7 @@ ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8
     STATS(last_p1 = p1);
     STATS(last_p2 = p2);
 
+    // important to wake chip at this point.
     ae_wake();
 
     _send_serialized((const uint8_t *)&known, sizeof(known));
@@ -627,22 +650,22 @@ ae_send_n(aeopcode_t opcode, uint8_t p1, uint16_t p2, const uint8_t *data, uint8
 
 	// send final CRC bytes
     _send_serialized(crc, 2);
-
-	// done!	
-
-	return 0;
 }
 
 // ae_delay()
 //
-// Delay for worse-case time. Don't use in real code, since blocks
-// whole system, and some commands are really long!
+// Delay for worse-case time. Except new data sheets says it's
+// not worst-case or even typical time! Useless.
 //
 	void
 ae_delay(aeopcode_t opcode)
 {
-	delay_ms(ae_delay_time(opcode));
+	// no longer required -- instead we just want for chip
+    // to give us a response (by polling it)
 }
+
+#if 0
+// RISKY - Easy for Mitm to control value.
 
 // ae_random()
 //
@@ -653,8 +676,7 @@ ae_random(uint8_t randout[32])
 {
 	int rv;
 
-	rv = ae_send(OP_Random, 0, 0);
-	RET_IF_BAD(rv);
+	ae_send(OP_Random, 0, 0);
 
 	ae_delay(OP_Random);
 
@@ -663,6 +685,7 @@ ae_random(uint8_t randout[32])
 
 	return 0;
 }
+#endif
 
 // ae_get_info()
 //
@@ -683,6 +706,7 @@ ae_get_info(void)
 	return (tmp[0] << 8) | tmp[1];
 }
 
+#if 0
 // ae_delay_time()
 //
 // Returns time in MS for max exec time of each command.
@@ -704,8 +728,12 @@ ae_delay_time(aeopcode_t opcode)
 			return 11;
 		case OP_GenKey:			// 0x40
 			return 115;
+#if FOR_508
 		case OP_HMAC:			// 0x11
 			return 23;
+		case OP_Pause:			// 0x01
+			return 3;
+#endif
 		case OP_Info:			// 0x30
 			return 2;					// officially 1, but marginal
 		case OP_Lock:			// 0x17
@@ -714,8 +742,6 @@ ae_delay_time(aeopcode_t opcode)
 			return 14;
 		case OP_Nonce:			// 0x16
 			return 30;					// officially 7, but need 30 for real
-		case OP_Pause:			// 0x01
-			return 3;
 		case OP_PrivWrite:		// 0x46
 			return 48;
 		case OP_Random:			// 0x1B
@@ -732,10 +758,22 @@ ae_delay_time(aeopcode_t opcode)
 			return 58;
 		case OP_Write:			// 0x12
 			return 26;
+
+#if FOR_608
+        case OP_AES:            // 0x51
+            return 3;
+        case OP_KDF:            // 0x56
+            return 115;
+        case OP_SecureBoot:     // 0x80
+            return 35;
+        case OP_SelftTest:      // 0x77
+            return 200;
+#endif
 	}
 
 	return 100;
 }
+#endif
 
 // ae_load_nonce()
 //
@@ -746,8 +784,7 @@ ae_delay_time(aeopcode_t opcode)
 ae_load_nonce(const uint8_t nonce[32])
 {
     // p1=3
-	int rv = ae_send_n(OP_Nonce, 3, 0, nonce, 32);
-    RET_IF_BAD(rv);
+	ae_send_n(OP_Nonce, 3, 0, nonce, 32);          // 608a ok
 
 	ae_delay(OP_Nonce);
 
@@ -762,21 +799,16 @@ ae_load_nonce(const uint8_t nonce[32])
 	int
 ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 {
-	// we provide some 20 bytes of randomness to chip
-	int	rv;
-
-	ae_keep_alive();
-
+	// We provide some 20 bytes of randomness to chip
 	// The chip must provide 32-bytes of random-ness,
 	// so no choice in args to OP.Nonce here (due to ReqRandom).
-	rv = ae_send_n(OP_Nonce, 0, 0, num_in, 20);
-	RET_IF_BAD(rv);
+	ae_send_n(OP_Nonce, 0, 0, num_in, 20);
 
 	ae_delay(OP_Nonce);
 
 	// Nonce command returns the RNG result, but not contents of TempKey
 	uint8_t randout[32];
-	rv = ae_read_n(32, randout);
+	int rv = ae_read_n(32, randout);
 	RET_IF_BAD(rv);
 
 	// Hash stuff appropriately to get same number as chip did.
@@ -811,14 +843,13 @@ ae_is_correct_tempkey(const uint8_t expected_tempkey[32])
                          | (0<<1)     // first 32 bytes are the shared secret
                          | (1<<0);    // second 32 bytes are tempkey
 
-	int rv = ae_send(OP_MAC, mode, KEYNUM_pairing);
-    if(rv) return false;
+	ae_send(OP_MAC, mode, KEYNUM_pairing);
 
 	ae_delay(OP_MAC);
 
     // read chip's answer
 	uint8_t resp[32];
-	rv = ae_read_n(32, resp);
+	int rv = ae_read_n(32, resp);
     if(rv) return false;
 
     ae_keep_alive();
@@ -889,8 +920,8 @@ ae_pair_unlock()
 // CAUTION: The result from this function could be modified by an
 // active attacker on the bus because the one-byte response from the chip
 // is easily replaced. This command is useful for us to authorize actions
-// inside the 508a, like use of a specific key, not for us to authenticate
-// the 508a or its contents/state.
+// inside the 508a/608a, like use of a specific key, but not for us to
+// authenticate the 508a/608a or its contents/state.
 //
     int
 ae_checkmac(uint8_t keynum, const uint8_t secret[32])
@@ -957,7 +988,7 @@ ae_checkmac(uint8_t keynum, const uint8_t secret[32])
 	STATIC_ASSERT(sizeof(req) == 32 + 32 + 13);
 
 	// Give our answer to the chip.
-	rv = ae_send_n(OP_CheckMac, 0x01, keynum, (uint8_t *)&req, sizeof(req));
+	ae_send_n(OP_CheckMac, 0x01, keynum, (uint8_t *)&req, sizeof(req));
 
 	ae_delay(OP_CheckMac);
 
@@ -999,8 +1030,7 @@ ae_sign(uint8_t keynum, uint8_t msg_hash[32], uint8_t signature[64])
 	int rv = ae_load_nonce(msg_hash);
 	RET_IF_BAD(rv);
 
-	rv = ae_send_n(OP_Sign, 0x80, keynum, NULL, 0);
-	RET_IF_BAD(rv);
+	ae_send_n(OP_Sign, 0x80, keynum, NULL, 0);
 
 	ae_delay(OP_Sign);
 
@@ -1012,23 +1042,20 @@ ae_sign(uint8_t keynum, uint8_t msg_hash[32], uint8_t signature[64])
 
 // ae_get_counter()
 //
-// Inc and return the one-way counter.
+// Just read a one-way counter.
 //
 	int
-ae_get_counter(uint32_t *result, int counter_number, bool incr)
+ae_get_counter(uint32_t *result, uint8_t counter_number)
 {
-	int rv = ae_send(OP_Counter, incr ? 0x1 : 0x0, counter_number);
-	RET_IF_BAD(rv);
+    ae_send(OP_Counter, 0x0, counter_number);
+    ae_delay(OP_Counter);
 
-	ae_delay(OP_Counter);
-
-	// already in correct endian
-	rv = ae_read_n(4, (uint8_t *)result);
-	RET_IF_BAD(rv);
+    int rv = ae_read_n(4, (uint8_t *)result);
+    RET_IF_BAD(rv);
 
     // IMPORTANT: Always verify the counter's value because otherwise
     // nothing prevents an active MitM changing the value that we think
-    // we just read. They could also stop us increamenting the counter.
+    // we just read.
 
     uint8_t     digest[32];
     rv = ae_gendig_counter(counter_number, *result, digest);
@@ -1039,11 +1066,42 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
         fatal_mitm();
     }
 
-    // worked.
+    return 0;
+}
+
+// ae_add_counter()
+//
+// Add-to and return a one-way counter's value. Have to go up in
+// single-unit steps, but can we loop.
+//
+	int
+ae_add_counter(uint32_t *result, uint8_t counter_number, int incr)
+{
+    for(int i=0; i<incr; i++) {
+        ae_send(OP_Counter, 0x1, counter_number);
+        ae_delay(OP_Counter);
+        int rv = ae_read_n(4, (uint8_t *)result);
+        RET_IF_BAD(rv);
+    }
+
+    // IMPORTANT: Always verify the counter's value because otherwise
+    // nothing prevents an active MitM changing the value that we think
+    // we just read. They could also stop us increamenting the counter.
+
+    uint8_t     digest[32];
+    int rv = ae_gendig_counter(counter_number, *result, digest);
+	RET_IF_BAD(rv);
+
+    if(!ae_is_correct_tempkey(digest)) {
+        // no legit way for this to happen, so just die.
+        fatal_mitm();
+    }
+
     return 0;
 }
 
 #if 0
+// unused code, and not supported directly on 608a
 // ae_hmac()
 //
 // Perform HMAC on the chip, using a particular key.
@@ -1052,19 +1110,17 @@ ae_get_counter(uint32_t *result, int counter_number, bool incr)
 ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32])
 {
 	// setup SHA in HMAC mode.
-	int rv = ae_send(OP_SHA, 0x04, keynum);
-	RET_IF_BAD(rv);
+	ae_send(OP_SHA, 0x04, keynum);
 
 	ae_delay(OP_SHA);
 
-	rv = ae_read1();
+	int rv = ae_read1();
 	if(rv != AE_COMMAND_OK) return -1;
 
 	// send full blocks, if any.
 
 	while(msg_len >= 64) {
-		rv = ae_send_n(OP_SHA, 0x01, 64, msg, 64);
-		RET_IF_BAD(rv);
+		ae_send_n(OP_SHA, 0x01, 64, msg, 64);
 		ae_delay(OP_SHA);
 
 		rv = ae_read1();
@@ -1075,7 +1131,7 @@ ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]
 	}
 
 	// finalize, with final 0 to 63 bytes
-	rv = ae_send_n(OP_SHA, 0x02, msg_len, msg, msg_len);
+	ae_send_n(OP_SHA, 0x02, msg_len, msg, msg_len);
 	RET_IF_BAD(rv);
 
 	ae_delay(OP_SHA);
@@ -1089,25 +1145,42 @@ ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]
 
 // ae_hmac32()
 //
-// Different opcode, OP_HMAC does exactly 32 bytes w/ less steps.
+// 508a: Different opcode, OP_HMAC does exactly 32 bytes w/ less steps.
+// 608a: Use old SHA256 command, but with new flags.
 //
     int
 ae_hmac32(uint8_t keynum, const uint8_t msg[32], uint8_t digest[32])
 {
+#if FOR_508
     // Load tempkey w/ message to be HMAC'ed
 	int rv = ae_load_nonce(msg);
 	RET_IF_BAD(rv);
 
 	// Ask for HMAC using specific key
-	rv = ae_send(OP_HMAC, (1<<2) | (1<<6), keynum);
-	RET_IF_BAD(rv);
+    ae_send(OP_HMAC, (1<<2) | (1<<6), keynum);
 
 	ae_delay(OP_HMAC);
 
-	rv = ae_read_n(32, digest);
-	RET_IF_BAD(rv);
+    return ae_read_n(32, digest);
+#endif
 
-	return 0;
+#if FOR_608
+    // Start SHA w/ HMAC setup
+	ae_send(OP_SHA, 4, keynum);        // 4 = HMAC_Init
+
+    // expect zero, meaning "ready"
+	ae_delay(OP_SHA);
+    int rv = ae_read1();
+    RET_IF_BAD(rv);
+
+    // send the contents to be hashed
+	ae_send_n(OP_SHA, (3<<6) | 2, 32, msg, 32); // 2 = Finalize, 3=Place output
+
+	ae_delay(OP_SHA);
+    
+    // read result
+    return ae_read_n(32, digest);
+#endif
 }
 
 // ae_get_serial()
@@ -1117,13 +1190,12 @@ ae_hmac32(uint8_t keynum, const uint8_t msg[32], uint8_t digest[32])
 	int
 ae_get_serial(uint8_t serial[6])
 {
-	int rv = ae_send(OP_Read, 0x80, 0x0);
-	RET_IF_BAD(rv);
+	ae_send(OP_Read, 0x80, 0x0);
 
 	ae_delay(OP_Read);
 
 	uint8_t temp[32];
-	rv = ae_read_n(32, temp);
+	int rv = ae_read_n(32, temp);
 	RET_IF_BAD(rv);
 
     // reformat to 9 bytes.
@@ -1150,13 +1222,12 @@ ae_slot_locks(void)
 {
     // Bytes 88, 89 in the Config zone is a bitmap of
     // which slots are locked. Have to read 4 bytes here tho
-	int rv = ae_send(OP_Read, 0x00, 88/4);
-    if(rv) return -1;
+	ae_send(OP_Read, 0x00, 88/4);
 
 	ae_delay(OP_Read);
 
 	uint8_t tmp[4];
-	rv = ae_read_n(4, tmp);
+	int rv = ae_read_n(4, tmp);
     if(rv) return -2;
 
     // returns positive 16-bit number on success
@@ -1171,32 +1242,30 @@ ae_slot_locks(void)
     int
 ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
 {
-    ASSERT(len == 32 || len == 72);      // limitation for this project.
+    ASSERT(len >= 32);
+    ASSERT(len <= 416);
 
-    for(int blk=0; blk<3; blk++) {
+    for(int blk=0, xlen=len; xlen>0; blk++, xlen-=32) {
         // have to write each "block" of 32-bytes, separately
         // zone => data
-        int rv = ae_send_n(OP_Write, 0x80|2, (blk<<8) | (slot_num<<3), data+(blk*32), 32);
-        RET_IF_BAD(rv);
+        ae_send_n(OP_Write, 0x80|2, (blk<<8) | (slot_num<<3), data+(blk*32), 32);
 
         ae_delay(OP_Write);
 
-        rv = ae_read1();
+        int rv = ae_read1();
         RET_IF_BAD(rv);
-
-        if(len == 32) break;
     }
 
     if(lock_it) {
         ASSERT(slot_num != 8);          // no support for mega slot 8
-        ASSERT(len == 32);
+        ASSERT(len == 32);              // probably not a limitation here
 
         // Assume 36/72-byte long slot, which will be partially written, and rest
         // should be ones.
         const int slot_len = (slot_num <= 7) ? 36 : 72;
         uint8_t copy[slot_len];
-        memset(copy, 0xff, slot_len);
 
+        memset(copy, 0xff, slot_len);
         memcpy(copy, data, len);
 
         // calc expected CRC
@@ -1204,12 +1273,11 @@ ae_write_data_slot(int slot_num, const uint8_t *data, int len, bool lock_it)
         crc16_chain(slot_len, copy, crc);
 
         // do the lock
-        int rv = ae_send(OP_Lock, 2 | (slot_num << 2), (crc[1]<<8) | crc[0]);
-        RET_IF_BAD(rv);
+        ae_send(OP_Lock, 2 | (slot_num << 2), (crc[1]<<8) | crc[0]);
 
         ae_delay(OP_Lock);
 
-        rv = ae_read1();
+        int rv = ae_read1();
         RET_IF_BAD(rv);
     }
 
@@ -1230,8 +1298,7 @@ ae_gendig_slot(int slot_num, const uint8_t slot_contents[32], uint8_t digest[32]
     RET_IF_BAD(rv);
 
     //using Zone=2="Data" => "KeyID specifies a slot in the Data zone"
-    rv = ae_send(OP_GenDig, 0x2, slot_num);
-    RET_IF_BAD(rv);
+    ae_send(OP_GenDig, 0x2, slot_num);
 
     ae_delay(OP_GenDig);
 
@@ -1279,8 +1346,7 @@ ae_gendig_counter(int counter_num, const uint32_t expected_value, uint8_t digest
     RET_IF_BAD(rv);
 
     //using Zone=4="Counter" => "KeyID specifies the monotonic counter ID"
-    rv = ae_send(OP_GenDig, 0x4, counter_num);
-    RET_IF_BAD(rv);
+    ae_send(OP_GenDig, 0x4, counter_num);
 
     ae_delay(OP_GenDig);
 
@@ -1315,21 +1381,19 @@ ae_gendig_counter(int counter_num, const uint32_t expected_value, uint8_t digest
 
 // ae_encrypted_read32()
 //
-    static int
+    int
 ae_encrypted_read32(int data_slot, int blk,
                     int read_kn, const uint8_t read_key[32], uint8_t data[32])
 {
     uint8_t     digest[32];
 
-    ae_keep_alive();
     ae_pair_unlock();
 
     int rv = ae_gendig_slot(read_kn, read_key, digest);
     RET_IF_BAD(rv);
 
     // read nth 32-byte "block"
-    rv = ae_send(OP_Read, 0x82, (blk << 8) | (data_slot<<3));
-    RET_IF_BAD(rv);
+    ae_send(OP_Read, 0x82, (blk << 8) | (data_slot<<3));
 
     ae_delay(OP_Read);
 
@@ -1368,13 +1432,12 @@ ae_encrypted_read(int data_slot, int read_kn, const uint8_t read_key[32], uint8_
 
 // ae_encrypted_write()
 //
-    static int
+    int
 ae_encrypted_write32(int data_slot, int blk, int write_kn,
                         const uint8_t write_key[32], const uint8_t data[32])
 {
     uint8_t digest[32];
 
-    ae_keep_alive();
     ae_pair_unlock();
 
     // generate a hash over shared secret and rng
@@ -1414,15 +1477,11 @@ ae_encrypted_write32(int data_slot, int blk, int write_kn,
 
     sha256_final(&ctx, &body[32]);
 
-    rv = ae_send_n(OP_Write, p1, (p2_msb << 8) | p2_lsb, body, sizeof(body));
-    RET_IF_BAD(rv);
+    ae_send_n(OP_Write, p1, (p2_msb << 8) | p2_lsb, body, sizeof(body));
 
     ae_delay(OP_Write);
 
-    rv = ae_read1();
-    RET_IF_BAD(rv);
-
-    return 0;
+    return ae_read1();
 }
 
 // ae_encrypted_write()
@@ -1431,6 +1490,9 @@ ae_encrypted_write32(int data_slot, int blk, int write_kn,
 ae_encrypted_write(int data_slot, int write_kn, const uint8_t write_key[32],
                         const uint8_t *data, int len)
 {
+    ASSERT(data_slot >= 0);
+    ASSERT(data_slot <= 15);
+
     for(int blk=0; blk<3 && len>0; blk++, len-=32) {
         int here = MIN(32, len);
 
@@ -1454,28 +1516,25 @@ ae_read_data_slot(int slot_num, uint8_t *data, int len)
 
     // zone => data
     // only reading first block of 32 bytes. ignore the rest
-    int rv = ae_send(OP_Read, (len == 4 ? 0x00 : 0x80) | 2, (slot_num<<3));
-    RET_IF_BAD(rv);
+    ae_send(OP_Read, (len == 4 ? 0x00 : 0x80) | 2, (slot_num<<3));
 
     ae_delay(OP_Read);
 
-    rv = ae_read_n((len == 4) ? 4 : 32, data);
+    int rv = ae_read_n((len == 4) ? 4 : 32, data);
     RET_IF_BAD(rv);
 
     if(len == 72) {
         // read second block
-        int rv = ae_send(OP_Read, 0x82, (1<<8) | (slot_num<<3));
-        RET_IF_BAD(rv);
+        ae_send(OP_Read, 0x82, (1<<8) | (slot_num<<3));
 
         ae_delay(OP_Read);
 
-        rv = ae_read_n(32, data+32);
+        int rv = ae_read_n(32, data+32);
         RET_IF_BAD(rv);
 
         // read third block, but only using part of it
         uint8_t     tmp[32];
-        rv = ae_send(OP_Read, 0x82, (2<<8) | (slot_num<<3));
-        RET_IF_BAD(rv);
+        ae_send(OP_Read, 0x82, (2<<8) | (slot_num<<3));
 
         ae_delay(OP_Read);
 
@@ -1495,19 +1554,16 @@ ae_config_write(const uint8_t config[128])
 {
     // send all 128 bytes, less some that can't be written.
     for(int n=16; n<128; n+= 4) {
-        if((n >= 84) && (n < 90)) {
-            continue;
-        }
+        if(n == 84) continue;       // that word not writable
 
         // Must work on words, since can't write to most of the complete blocks.
         //  args = write_params(block=n//32, offset=n//4, is_config=True)
         //  p2 = (block << 3) | offset
-        int rv = ae_send_n(OP_Write, 0, n/4, &config[n], 4);
-        RET_IF_BAD(rv);
+        ae_send_n(OP_Write, 0, n/4, &config[n], 4);
 
         ae_delay(OP_Write);
     
-		rv = ae_read1();
+		int rv = ae_read1();
         if(rv) return rv;
     }
 
@@ -1525,8 +1581,7 @@ ae_lock_config_zone(const uint8_t config[128])
     crc16_chain(128, config, crc);
 
     // do the lock: mode=0
-    int rv = ae_send(OP_Lock, 0x0, (crc[1]<<8) | crc[0]);
-    RET_IF_BAD(rv);
+    ae_send(OP_Lock, 0x0, (crc[1]<<8) | crc[0]);
 
     ae_delay(OP_Lock);
 
@@ -1541,8 +1596,7 @@ ae_lock_data_zone(void)
     // NOTE: I haven't been able to calc CRC right, so not using it.
 
     // do the lock: mode=1 (datazone) + 0x80 (no CRC check)
-    int rv = ae_send(OP_Lock, 0x81, 0x0000);
-    RET_IF_BAD(rv);
+    ae_send(OP_Lock, 0x81, 0x0000);
 
     ae_delay(OP_Lock);
 
@@ -1556,17 +1610,15 @@ ae_lock_data_zone(void)
 ae_sha256(const uint8_t *msg, int msg_len, uint8_t digest[32])
 {
 	// setup
-	int rv = ae_send(OP_SHA, 0x00, 0);
-	RET_IF_BAD(rv);
+    ae_send(OP_SHA, 0x00, 0);
 
 	ae_delay(OP_SHA);
 
-	rv = ae_read1();
+	int rv = ae_read1();
 	if(rv != AE_COMMAND_OK) return -1;
 
 	while(msg_len >= 64) {
-		rv = ae_send_n(OP_SHA, 0x01, 64, msg, 64);
-		RET_IF_BAD(rv);
+		ae_send_n(OP_SHA, 0x01, 64, msg, 64);
 		ae_delay(OP_SHA);
 
 		rv = ae_read1();
@@ -1577,15 +1629,11 @@ ae_sha256(const uint8_t *msg, int msg_len, uint8_t digest[32])
 	}
 
 	// finalize, with final 0 to 63 bytes
-	rv = ae_send_n(OP_SHA, 0x02, msg_len, msg, msg_len);
-	RET_IF_BAD(rv);
+    ae_send_n(OP_SHA, 0x02, msg_len, msg, msg_len);
 
 	ae_delay(OP_SHA);
 
-	rv = ae_read_n(32, digest);
-	RET_IF_BAD(rv);
-
-	return 0;
+    return ae_read_n(32, digest);
 }
 #endif
 
@@ -1595,8 +1643,7 @@ ae_sha256(const uint8_t *msg, int msg_len, uint8_t digest[32])
 ae_set_gpio(int state)
 {
     // 1=turn on green, 0=red light (if not yet configured to be secure)
-    int rv = ae_send(OP_Info, 3, 2 | (!!state));
-	RET_IF_BAD(rv);
+    ae_send(OP_Info, 3, 2 | (!!state));
 
 	ae_delay(OP_Info);
 
@@ -1604,7 +1651,7 @@ ae_set_gpio(int state)
     // - simple 1/0, in LSB.
     uint8_t resp[4];
 
-    rv = ae_read_n(4, resp);
+    int rv = ae_read_n(4, resp);
 	RET_IF_BAD(rv);
 
     return (resp[0] != state) ? -1 : 0;
@@ -1660,7 +1707,7 @@ ae_get_gpio(void)
 	return tmp[0];
 }
 
-// ae_read_config()
+// ae_read_config_byte()
 //
 // Read a byte from config area.
 //
@@ -1684,12 +1731,11 @@ ae_read_config_word(int offset, uint8_t *dest)
     offset &= 0x7f;
 
     // read 32 bits (aligned)
-	int rv = ae_send(OP_Read, 0x00, offset/4);
-    if(rv) return -1;
+    ae_send(OP_Read, 0x00, offset/4);
 
 	ae_delay(OP_Read);
 
-	rv = ae_read_n(4, dest);
+	int rv = ae_read_n(4, dest);
     if(rv) return -1;
 
     return 0;
@@ -1705,24 +1751,40 @@ ae_destroy_key(int keynum)
 
 	// Load tempkey with a known (random) nonce value
 	rng_buffer(numin, sizeof(numin));
-	int rv = ae_send_n(OP_Nonce, 0, 0, numin, 20);
-	RET_IF_BAD(rv);
+    ae_send_n(OP_Nonce, 0, 0, numin, 20);
 
 	ae_delay(OP_Nonce);
 
 	// Nonce command returns the RNG result, not contents of TempKey,
     // but since we are destroying, no need to calculate what it is.
 	uint8_t randout[32];
-	rv = ae_read_n(32, randout);
+	int rv = ae_read_n(32, randout);
 	RET_IF_BAD(rv);
 
     // do a "DeriveKey" operation, based on that!
-	rv = ae_send(OP_DeriveKey, 0x00, keynum);
-    if(rv) return -1;
+	ae_send(OP_DeriveKey, 0x00, keynum);
 
 	ae_delay(OP_DeriveKey);
 
     return ae_read1();
+}
+
+// ae_config_read()
+//
+    int 
+ae_config_read(uint8_t config[128])
+{
+    for(int blk=0; blk<4; blk++) {
+        // read 32 bytes (aligned) from config "zone"
+        ae_send(OP_Read, 0x80, blk<<3);
+
+        ae_delay(OP_Read);
+
+        int rv = ae_read_n(32, &config[32*blk]);
+        if(rv) return EIO;
+    }
+
+    return 0;
 }
 
 // ae_setup_config()
@@ -1753,23 +1815,18 @@ ae_setup_config(void)
     // To lock, we need a CRC over whole thing, but we
     // only set a few values... plus the serial number is
     // in there, so start with some readout.
-    uint8_t config[4 * 32];
-
-    for(int blk=0; blk<4; blk++) {
-        // read 32 bytes (aligned) from config "zone"
-        int rv = ae_send(OP_Read, 0x80, blk<<3);
-        if(rv) return EIO;
-
-        ae_delay(OP_Read);
-
-        rv = ae_read_n(32, &config[32*blk]);
-        if(rv) return EIO;
-    }
+    uint8_t config[128];
+    int rv = ae_config_read(config);
+    if(rv) return rv;
 
     // verify some fixed values
     ASSERT(config[0] == 0x01);
     ASSERT(config[1] == 0x23);
     ASSERT(config[12] == 0xee);
+
+    // guess part number
+    int8_t partno = ((config[6]>>4)&0xf);
+    ASSERT(partno == 6);
 
     uint8_t serial[9];
 	memcpy(serial, &config[0], 4);
@@ -1826,17 +1883,26 @@ ae_setup_config(void)
 
     // Load data zone with some known values.
     // The datazone still unlocked, so no encryption needed (nor possible).
-
     
-    // will use zeros for all PIN codes, and secret starting values
+    // will use zeros for all PIN codes, and customer-defined-secret starting values
     uint8_t     zeros[72];
     memset(zeros, 0, sizeof(zeros));
+
+    // slots can already locked, if we re-run any of this code... can't overwrite in
+    // that case.
+    uint16_t unlocked = config[88] | (((uint8_t)config[89])<<8);
 
     for(int kn=0; kn<16; kn++) {
         ae_keep_alive();
 
+        if(!(unlocked & (1<<kn))) {
+            STATS(was_locked |= (1<<kn));
+            continue;
+        }
+
         switch(kn) {
             default:
+            case 12: break;
             case 15: break;
 
             case KEYNUM_pairing:
@@ -1845,11 +1911,18 @@ ae_setup_config(void)
                 }
                 break;
 
-
-            case KEYNUM_words: {
-                    // - hmac key for phishing words (and then we forget it)
+            case KEYNUM_pin_stretch:
+            case KEYNUM_pin_attempt: {
+                    // HMAC-SHA256 key (forgotten immediately), for:
+                    // - phishing words
+                    // - each pin attempt (limited by counter0)
+                    // - stretching pin/words attempts (iterated may times)
+                    // See mathcheck.py for details.
                     uint8_t     tmp[32];
+
                     rng_buffer(tmp, sizeof(tmp));
+                    //#warning "fixed secrets"
+                    //memset(tmp, 0x41+kn, 32);
 
                     if(ae_write_data_slot(kn, tmp, 32, true)) {
                         INCONSISTENT("wr word");
@@ -1857,12 +1930,10 @@ ae_setup_config(void)
                 }
                 break;
 
-            case KEYNUM_pin_1:
-            case KEYNUM_pin_2:
-            case KEYNUM_pin_3:
-            case KEYNUM_pin_4:
-            case KEYNUM_lastgood_1:
-            case KEYNUM_lastgood_2:
+            case KEYNUM_main_pin:
+            case KEYNUM_lastgood:
+            case KEYNUM_duress_pin:
+            case KEYNUM_duress_lastgood:
             case KEYNUM_brickme:
             case KEYNUM_firmware:
                 if(ae_write_data_slot(kn, zeros, 32, false)) {
@@ -1870,14 +1941,28 @@ ae_setup_config(void)
                 }
                 break;
 
-            case KEYNUM_secret_1:
-            case KEYNUM_secret_2:
-            case KEYNUM_secret_3:
-            case KEYNUM_secret_4:
+            case KEYNUM_secret:
+            case KEYNUM_duress_secret:
                 if(ae_write_data_slot(kn, zeros, 72, false)) {
                     INCONSISTENT("wr blk 72");
                 }
                 break;
+
+            case KEYNUM_long_secret: {            // 416 bytes
+                uint8_t long_zeros[416] = {0};
+                if(ae_write_data_slot(kn, long_zeros, 416, false)) {
+                    INCONSISTENT("wr blk 416");
+                }
+                break;
+            }
+
+            case KEYNUM_match_count: {
+                uint32_t     buf[32/4] = { 1024, 1024 };
+                if(ae_write_data_slot(KEYNUM_match_count, (const uint8_t *)buf,sizeof(buf),false)) {
+                    INCONSISTENT("wr mc");
+                }
+                break;
+            }
 
             case 0:
                 if(ae_write_data_slot(kn, (const uint8_t *)copyright_msg, 32, true)) {
@@ -1895,4 +1980,92 @@ ae_setup_config(void)
 
     return 0;
 }
+
+
+#if 0
+// ae_write_match_count()
+//
+    int
+ae_write_match_count(uint32_t count, const uint8_t *write_key)
+{
+    uint32_t     buf[8] = { count, count };
+
+    // ASSERT(count & 31 == 0);                 // not clear, but probably should have 5LSB=0
+    STATIC_ASSERT(sizeof(buf) == 32);           // limitation of ae_write_data_slot
+
+    if(!write_key) {
+        return ae_write_data_slot(KEYNUM_match_count, (const uint8_t *)buf, sizeof(buf), false);
+    } else {
+        return ae_encrypted_write32(KEYNUM_match_count, 0, KEYNUM_main_pin,
+                                        write_key, (const uint8_t *)buf);
+    }
+}
+#endif
+
+
+// ae_stretch_iter()
+//
+// Do on-chip hashing, with lots of iterations.
+//
+// - using HMAC-SHA256 with keys that are known only to the 608a.
+// - rate limiting factor here is communication time w/ 608a, not algos.
+// - caution: result here is not confidential
+// - cost of each iteration, approximately: 8ms
+// - but our time to do each iteration is limited by software SHA256 in ae_pair_unlock
+//
+    int
+ae_stretch_iter(const uint8_t start[32], uint8_t end[32], int iterations)
+{
+    ASSERT(start != end);           // we can't work inplace
+    memcpy(end, start, 32);
+
+    for(int i=0; i<iterations; i++) {
+        // must unlock again, because pin_stretch is an auth'd key
+        if(ae_pair_unlock()) return -2;
+
+        int rv = ae_hmac32(KEYNUM_pin_stretch, end, end);
+        RET_IF_BAD(rv);
+    }
+
+    return 0;
+}
+
+// ae_mixin_key()
+//
+// Apply HMAC using secret in chip as a HMAC key, then encrypt
+// the result a little because read in clear over bus.
+//
+    int
+ae_mixin_key(uint8_t keynum, const uint8_t start[32], uint8_t end[32])
+{
+    ASSERT(start != end);           // we can't work inplace
+
+    if(ae_pair_unlock()) return -1;
+
+    if(keynum != 0) {
+        int rv = ae_hmac32(keynum, start, end);
+        RET_IF_BAD(rv);
+    } else {
+        memset(end, 0, 32);
+    }
+
+    // Final value was just read over bus w/o any protection, but
+    // we won't be using that, instead, mix in the pairing secret.
+    //
+    // Concern: what if mitm gave us some zeros or other known pattern here. We will
+    // use the value provided in cleartext[sic--it's not] write back shortly (to test it).
+    // Solution: one more SHA256, and to be safe, mixin lots of values!
+
+	SHA256_CTX ctx;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, rom_secrets->pairing_secret, 32);
+    sha256_update(&ctx, start, 32);
+    sha256_update(&ctx, &keynum, 1);
+    sha256_update(&ctx, end, 32);
+    sha256_final(&ctx, end);
+
+    return 0;
+}
+
 // EOF

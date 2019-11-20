@@ -10,7 +10,7 @@ from serializations import hash160
 from ucollections import namedtuple
 from opcodes import OP_CHECKMULTISIG
 
-# See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md> 
+# See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
 Slip132Version = namedtuple('Slip132Version', ('pub', 'priv', 'hint'))
 
@@ -216,59 +216,12 @@ class BitcoinTestnet(BitcoinMain):
     def msg_signing_prefix(cls):
         return 'Bitcoin Signed Message:\n'
 
-class LitecoinMain(ChainsBase):
-    # see <https://github.com/litecoin-project/litecoin/blob/master/src/chainparams.cpp#L134>
-    # but SLIP32 values taken from the SLIP, not their source ... all this is UNTESTED
-    ctype = 'LTC'
-    name = 'Litecoin'
-    core_name = 'Litecoin Core'
-
-    # See <https://github.com/bitcoinjs/bitcoinjs-lib/pull/819>
-    # where Litecoin (coblee) says they'll support both xprv/xpub and Ltpv/Ltub values.
-    slip132 = {
-        AF_CLASSIC:     Slip132Version(0x019da462, 0x019d9cfe, 'L'),
-        AF_P2WPKH_P2SH: Slip132Version(0x01b26ef6, 0x01b26792, 'M')
-    }
-
-    bech32_hrp = 'ltc'
-
-    b58_addr    = bytes([48])
-    b58_script  = bytes([5])
-   #b58_script2 = bytes([50])           # ??
-    b58_privkey = bytes([176])
-
-    b44_cointype = 2
-
-class LitecoinTestnet(LitecoinMain):
-    ctype = 'LTC'
-    name = 'Litecoin Testnet'
-    menu_name = 'Testnet: LTC'
-
-    # See <https://github.com/bitcoinjs/bitcoinjs-lib/pull/819>
-    # where Litecoin (coblee) says they'll support both xprv/xpub and Ltpv/Ltub values.
-    slip132 = {
-        AF_CLASSIC:     Slip132Version(0x0436f6e1, 0x0436ef7d, 't'),
-        #AF_P2WPKH_P2SH: Slip132Version(, , '')      # not listed in SLIP132?
-    }
-
-    b58_addr    = bytes([111])
-    b58_script  = bytes([196])
-    #b58_script2  = bytes([58])
-    b58_privkey = bytes([239])
-
-    bech32_hrp = 'tltc'
-
-    # ?? unknown ??
-    b44_cointype = 2
-
 # Add to this list of all choices; keep testnet stuff near bottom
 # because this order matches UI as presented to users.
 #
 AllChains = [
     BitcoinMain,
-    #LitecoinMain,
     BitcoinTestnet,
-    #LitecoinTestnet,
 ]
 
 
@@ -296,15 +249,12 @@ def current_chain():
 # see bip49 for meaning of the meta vars
 CommonDerivations = [
     # name, path.format(), addr format
-    ( '{core_name}', "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
-    ( '{core_name} (Segregated Witness, P2PKH)',
-                "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
     ( 'Electrum (not BIP44)', "m/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses
 
-    ( 'BIP84 (Native Segwit P2PKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
+    ( 'BIP84 (Native Segwit P2WPKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH ),           # generates bc1 bech32 addresses
 ]
 

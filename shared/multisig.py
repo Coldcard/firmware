@@ -5,10 +5,10 @@
 #
 import stash, chains, ustruct, ure, uio, sys
 #from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, str2xfp, swab32
+from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
 from files import CardSlot, CardMissingError
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from actions import needs_microsd
@@ -366,6 +366,7 @@ class MultisigWallet:
                     check_these.append((xp_idx, path))
 
             here = None
+            too_shallow = False
             for xp_idx, path in check_these:
                 # matched fingerprint, try to make pubkey that needs to match
                 xpub = self.xpubs[xp_idx][1]
@@ -373,9 +374,10 @@ class MultisigWallet:
                 node = ch.deserialize_node(xpub, AF_P2SH); assert node
                 dp = node.depth()
 
-                if not (1 <= dp <= len(path)):
+                if not (0 <= dp <= len(path)):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
+                    too_shallow = True
                     continue
 
                 for sp in path[dp:]:
@@ -405,8 +407,12 @@ class MultisigWallet:
                 break
             else:
                 msg = 'pk#%d wrong' % (pk_order+1)
-                if here:
+                if not check_these:
+                    msg += ', unknown XFP'
+                elif here:
                     msg += ', tried: ' + here
+                if too_shallow:
+                    msg += ', too shallow'
                 raise AssertionError(msg)
 
             if pk_order:
@@ -483,13 +489,11 @@ class MultisigWallet:
             elif label == 'derivation':
                 # reveal the **common** path derivation for all keys
                 try:
-                    mat = ure.search(r"(m/)([0123456789/']+)", value)
-                    assert mat
-                    common_prefix = mat.group(2)
-                    assert common_prefix
-                    assert 1 <= len(common_prefix) < 30
-                except:
-                    raise AssertionError('bad derivation line')
+                    cp = cleanup_deriv_path(value)
+                    # - not storing "m/" prefix, nor 'm' case which doesn't add any info
+                    common_prefix = None if cp == 'm' else cp[2:]
+                except BaseException as exc:
+                    raise AssertionError('bad derivation line: ' + str(exc))
 
             elif label == 'format':
                 # pick segwit vs. classic vs. wrapped version
@@ -954,11 +958,16 @@ Policy: {M} of {N}
 Blockchain: {ctype}
 Addresses:
   {at}
+'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type,
+            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
+
+    if ms.common_prefix:
+        msg.write('''\
 Derivation:
   m/{der}
+'''.format(der=ms.common_prefix))
 
-'''.format(M=ms.M, N=ms.N, ctype=ms.chain_type, der=ms.common_prefix or "?'",
-            at=MultisigWallet.render_addr_fmt(ms.addr_fmt)))
+    msg.write('\n')
 
     # concern: the order of keys here is non-deterministic
     for idx, (xfp, xpub) in enumerate(ms.xpubs):
