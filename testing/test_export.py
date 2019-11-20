@@ -9,16 +9,76 @@ from base64 import b64encode
 from binascii import b2a_hex, a2b_hex
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
+from helpers import xfp2str
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 
+def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+    # test UX and operation of the 'bitcoin core' wallet export
 
-def test_export_wasbi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('MicroSD Card')
+    pick_menu_item('Export Wallet')
+    pick_menu_item('Bitcoin Core')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'This saves' in story
+    assert 'run that command' in story
+
+
+    need_keypress('y')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Bitcoin Core file written' in story
+    fname = story.split('\n')[-1]
+
+    need_keypress('y')
+
+    path = microsd_path(fname)
+    js = None
+    with open(path, 'rt') as fp:
+        for ln in fp:
+            if 'importmulti' in ln:
+                assert ln.startswith("importmulti '")
+                assert ln.endswith("'\n")
+                assert not js, "dup importmulti lines"
+                js = ln[13:-2]
+
+    obj = json.loads(js)
+
+    xfp = xfp2str(simulator_fixed_xfp).lower()
+
+    for n, here in enumerate(obj):
+        assert here['range'] == [0, 1000]
+        assert here['timestamp'] == 'now'
+        assert here['internal'] == bool(n)
+        assert here['keypool'] == True
+        assert here['watchonly'] == True
+
+        d = here['desc']
+        desc, chk = d.split('#', 1)
+        assert len(chk) == 8
+        assert desc.startswith(f'wpkh([{xfp}/84h/1h/0h]')
+
+        expect = BIP32Node.from_wallet_key(simulator_fixed_xprv)\
+                    .subkey_for_path("84'/1'/0'.pub").hwif()
+
+        assert expect in desc
+        assert expect+f'/{n}/*' in desc
+
+
+def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
     # test UX and operation of the 'wasabi wallet export'
 
     goto_home()
     pick_menu_item('Advanced')
     pick_menu_item('MicroSD Card')
+    pick_menu_item('Export Wallet')
     pick_menu_item('Wasabi Wallet')
 
     time.sleep(0.1)
@@ -42,13 +102,12 @@ def test_export_wasbi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_
 
         assert 'MasterFingerprint' in obj
         assert 'ExtPubKey' in obj
-        assert 'BlockchainState' in obj
-        assert obj['BlockchainState']['Network']
+        assert 'ColdCardFirmwareVersion' in obj
         
         xpub = obj['ExtPubKey']
         assert xpub.startswith('xpub')      # even for testnet
 
-        assert int(obj['MasterFingerprint'], 16) == simulator_fixed_xfp
+        assert obj['MasterFingerprint'] == xfp2str(simulator_fixed_xfp)
 
         got = BIP32Node.from_wallet_key(xpub)
         expect = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path("84'/0'/0'.pub")
@@ -65,6 +124,7 @@ def test_export_electrum(mode, dev, cap_menu, pick_menu_item, goto_home, cap_sto
     goto_home()
     pick_menu_item('Advanced')
     pick_menu_item('MicroSD Card')
+    pick_menu_item('Export Wallet')
     pick_menu_item('Electrum Wallet')
 
     time.sleep(0.1)
