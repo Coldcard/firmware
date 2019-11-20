@@ -1,3 +1,11 @@
+
+## 3.0.5 - Nov 20, 2019
+
+- Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
+  Requires v0.18 or higher of Bitcoin Core. 
+  [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
+  Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
+
 ## 3.0.4 - Nov 13, 2019
 
 - Bugfix: encrypted backup files larger than 2000 bytes could fail to verify (but restored okay),
