@@ -586,8 +586,8 @@ Wallet operates on blockchain: {nb}
 
 ## Bitcoin Core RPC
 
-The following command can be entered after opening Window -> Console in Bitcoin Core,
-or using bitcoin-cli:
+The following command can be entered after opening Window -> Console
+in Bitcoin Core, or using bitcoin-cli:
 
 importmulti '{payload}'
 
