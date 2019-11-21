@@ -1,4 +1,7 @@
 # from https://github.com/JASchilz/uQR/blob/master/uQR.py @ 0d105634841368ef0b1bb210a63c48e4b50a9a94
+#
+# Please see <https://github.com/JASchilz/uQR/blob/master/LICENSE> for BSD-style license.
+#
 import ure as re
 
 """
@@ -17,10 +20,10 @@ Formerly in constants.py
 """
 
 # QR error correct levels
-ERROR_CORRECT_L = 1
-ERROR_CORRECT_M = 0
-ERROR_CORRECT_Q = 3
-ERROR_CORRECT_H = 2
+ERROR_CORRECT_L = const(1)
+ERROR_CORRECT_M = const(0)
+ERROR_CORRECT_Q = const(3)
+ERROR_CORRECT_H = const(2)
 
 """
 LUT
@@ -1022,7 +1025,7 @@ def create_data(version, error_correction, data_list):
         bit_limit += block.data_count * 8
 
     if len(buffer) > bit_limit:
-        raise exceptions.DataOverflowError(
+        raise DataOverflowError(
             "Code length overflow. Data size (%s) > size available (%s)" %
             (len(buffer), bit_limit))
 
