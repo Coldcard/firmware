@@ -13,7 +13,7 @@ from helpers import xfp2str
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 
-def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
@@ -41,6 +41,7 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
     need_keypress('y')
 
     path = microsd_path(fname)
+    addrs = []
     js = None
     with open(path, 'rt') as fp:
         for ln in fp:
@@ -56,9 +57,11 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
                 sk = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(path[2:])
                 h20 = sk.hash160()
                 assert addr == sw_encode(addr[0:2], 0, h20)
+                addrs.append(addr)
+
+    assert len(addrs) == 3
 
     obj = json.loads(js)
-
     xfp = xfp2str(simulator_fixed_xfp).lower()
 
     for n, here in enumerate(obj):
@@ -78,6 +81,14 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
 
         assert expect in desc
         assert expect+f'/{n}/*' in desc
+
+    for x in obj:
+        x['label'] = 'testcase'
+
+    bitcoind.importmulti(obj)
+    x = bitcoind.getaddressinfo(addrs[-1])
+    from pprint import pprint
+    pprint(x)
 
 
 def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
