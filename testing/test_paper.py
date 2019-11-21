@@ -3,11 +3,12 @@
 #
 # Tests for paper-wallet feature
 #
-import pytest, time, struct, os, shutil
+import pytest, time, struct, os, shutil, re
 from pycoin.key.Key import Key
 from pycoin.encoding import from_bytes_32
 from base64 import b64encode
 from binascii import b2a_hex, a2b_hex
+from hashlib import sha256
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from helpers import xfp2str
@@ -125,5 +126,64 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
         assert txt_addr.encode('ascii') in d
 
         os.unlink(path)
+
+@pytest.mark.parametrize('rolls', [ '123123', '123'*30, '123456'*17] )
+def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+    # verify the math for dice rolling method
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Paper Wallets')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'pick a random' in story
+    assert 'MANY RISKS' in story
+
+    need_keypress('y')
+
+    time.sleep(0.1)
+    pick_menu_item('Use Dice')
+
+    for ch in rolls:
+        time.sleep(0.01)
+        need_keypress(ch)
+
+    need_keypress('y')
+    time.sleep(0.1)
+    if len(rolls) < 99:
+        title, story = cap_story()
+        assert 'need 50' in story
+        need_keypress('y')
+
+    time.sleep(0.4)
+
+    title, story = cap_story()
+    assert 'Created file' in story
+
+    story = [i for i in story.split('\n') if i]
+    fname = story[-1]
+
+    assert fname.endswith('.txt')
+
+    addr,_ = fname.split('.')
+    if '-' in addr:
+        # junk in working dir
+        addr,_ = addr.split('-')
+    
+    path = microsd_path(fname)
+    with open(path, 'rt') as fp:
+        hx = re.findall(r'[0-9a-f]{64}', fp.read())
+        assert len(hx) == 1
+        val, = hx
+
+        k2 = Key(secret_exponent=from_bytes_32(a2b_hex(val)), is_compressed=True, netcode='XTN')
+        assert addr == k2.address()
+
+        assert val == sha256(rolls.encode('ascii')).hexdigest()
+
+        os.unlink(path)
+
 
 # EOF
