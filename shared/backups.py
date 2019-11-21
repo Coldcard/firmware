@@ -572,8 +572,9 @@ async def make_bitcoin_core_wallet(fname_pattern='bitcoin-core.txt'):
 
     dis.fullscreen('Generating...')
 
-    # generator function:
-    payload = ujson.dumps(list(generate_bitcoin_core_wallet()))
+    # make the data
+    examples = []
+    payload = ujson.dumps(list(generate_bitcoin_core_wallet(examples)))
 
     body = '''\
 # Bitcoin Core Wallet Import File
@@ -591,11 +592,17 @@ in Bitcoin Core, or using bitcoin-cli:
 
 importmulti '{payload}'
 
+## Resulting Addresses (first 3)
+
 '''.format(payload=payload, xfp=xfp, nb=chains.current_chain().name)
+
+    body += '\n'.join('%s => %s' % t for t in examples)
+
+    body += '\n'
 
     await write_text_file(fname_pattern, body, 'Bitcoin Core')
 
-def generate_bitcoin_core_wallet():
+def generate_bitcoin_core_wallet(example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
     from descriptor import append_checksum
@@ -609,7 +616,14 @@ def generate_bitcoin_core_wallet():
     derive = "84'/{coin_type}'/{account}'".format(account=0, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
-        xpub = chain.serialize_public(sv.derive_path(derive))
+        prefix = sv.derive_path(derive)
+        xpub = chain.serialize_public(prefix)
+
+        for i in range(3):
+            sp = '0/%d' % i
+            node = sv.derive_path(sp, master=prefix)
+            a = chain.address(node, AF_P2WPKH)
+            example_addrs.append( ('m/%s/%s' % (derive, sp), a) )
 
     xfp = settings.get('xfp')
     txt_xfp = xfp2str(xfp).lower()
