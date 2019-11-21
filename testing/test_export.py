@@ -15,6 +15,7 @@ from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 
 def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
     # test UX and operation of the 'bitcoin core' wallet export
+    from pycoin.contrib.segwit_addr import encode as sw_encode
 
     goto_home()
     pick_menu_item('Advanced')
@@ -48,6 +49,13 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
                 assert ln.endswith("'\n")
                 assert not js, "dup importmulti lines"
                 js = ln[13:-2]
+            elif '=>' in ln:
+                path, addr = ln.strip().split(' => ', 1)
+                assert path.startswith("m/84'/1'/0'/0")
+                assert addr.startswith('tb1q')
+                sk = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(path[2:])
+                h20 = sk.hash160()
+                assert addr == sw_encode(addr[0:2], 0, h20)
 
     obj = json.loads(js)
 
