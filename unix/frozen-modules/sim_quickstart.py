@@ -18,15 +18,17 @@ if '-s' in sys.argv:
     numpad.inject('4')
     numpad.inject('y')
 
-if '-a' in sys.argv:
+if '--addr' in sys.argv:
     # Address Explorer
     from main import numpad
     numpad.inject('4')
     numpad.inject('y')
     numpad.inject('4')
     numpad.inject('8')
+    numpad.inject('8')
     numpad.inject('y')
     numpad.inject('y')
+    numpad.inject('4')      # skips warning!
 
 if '--dz' in sys.argv:
     # Enter the "Danger Zone"
@@ -34,6 +36,7 @@ if '--dz' in sys.argv:
     numpad.inject('4')
     numpad.inject('y')
     numpad.inject('4')
+    numpad.inject('8')
     numpad.inject('8')
     numpad.inject('8')
     numpad.inject('y')
