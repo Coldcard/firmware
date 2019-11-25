@@ -10,4 +10,4 @@ wants to understand why it's safe to put your moneys into Coldcard.
 - [`electrum-usage.md`](electrum-usage.md) Importing seed words into Electrum for funds usage (and other tips).
 - [`bitcoin-core-usage.md`](bitcoin-core-usage.md) How to use with Bitcoin Core.
 - [`limitations.md`](limitations.md) Documented limitations, policy choices, and TODO items.
-
+- [`paperwallet.pdf`](paperwallet.pdf) Example paper wallet template file.

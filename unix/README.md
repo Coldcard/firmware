@@ -25,6 +25,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `-g` => don't skip login sequence
 - `-a` => go to the address explorer at startup
 - `--xw` => go to the wallet export submenu
+- `--paper` => go to the Paper Wallet menu at startup
 - `--xfp F0012345` => pretend like the XFP of secret is F0012345: useful for debug of PSBT files
 - `--seed "art art ... food"` => set the seed phrase to 24 words provided
 - `--metal` => use USB attached Coldcard for bootrom and SE features
