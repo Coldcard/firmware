@@ -7,13 +7,13 @@
 - Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
   Requires v0.18 or higher of Bitcoin Core.
   [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
+  Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
 - Paper Wallets! Creates random private key, unrelated to your seed words, and
   saves deposit address and private key (WIF format) into a text file on MicroSD. If you
   have a Mk3, it will also add a QR code inside the text file, and if you provide a 
   special PDF-like template file (example in ../docs/paperwallet.pdf) then it will superimpose
   the QR codes into the template, and save the resulting ready-to-print PDF to MicroSD.
   CAUTION: Paper wallets carry MANY RISKS and should only be used for SMALL AMOUNTS.
-  Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
 - Adds a "Format Card" command for erasing MicroSD contents and reformating (FAT32).
 - Bugfix: Idle-timeout setting should only take effect after the login countdown.
   Thanks to [@aoeui21](https://twitter.com/aoeui21) for reporting this.
