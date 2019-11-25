@@ -1,14 +1,14 @@
 
-## 3.0.5 - Nov 21, 2019
+## 3.0.5 - Nov 25, 2019
 
 - Paper Wallets! Creates random private key, unrelated to your seed words, and
   saves deposit address and private key (WIF format) into a text file on MicroSD. If you
   have a Mk3, it will also add a QR code inside the text file, and if you provide a 
-  special PDF-like template file (see ../docs/paperwallet.pdf) then it will superimpose
+  special PDF-like template file (example in ../docs/paperwallet.pdf) then it will superimpose
   the QR codes into the template, and save the resulting ready-to-print PDF to MicroSD.
   CAUTION: Paper wallets carry MANY RISKS and should only be used for SMALL AMOUNTS.
 - Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
-  Requires v0.18 or higher of Bitcoin Core. 
+  Requires v0.18 or higher of Bitcoin Core.
   [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
   Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
 - Adds a "Format Card" command for erasing MicroSD contents and reformating (FAT32).
