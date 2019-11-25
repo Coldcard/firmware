@@ -13,7 +13,7 @@ from helpers import xfp2str
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 
-def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind):
+def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
@@ -82,13 +82,18 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
+    # test against bitcoind
     for x in obj:
         x['label'] = 'testcase'
-
-    bitcoind.importmulti(obj)
-    x = bitcoind.getaddressinfo(addrs[-1])
+    bitcoind_wallet.importmulti(obj)
+    x = bitcoind_wallet.getaddressinfo(addrs[-1])
     from pprint import pprint
     pprint(x)
+    assert x['address'] == addrs[-1]
+    assert x['label'] == 'testcase'
+    assert x['iswatchonly'] == True
+    assert x['iswitness'] == True
+    assert x['hdkeypath'] == "m/84'/1'/0'/0/%d" % (len(addrs)-1)
 
 
 def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):

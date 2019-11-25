@@ -13,18 +13,24 @@ from bitcoinrpc.authproxy import AuthServiceProxy
 from base64 import b64encode, b64decode
 
 URL = '127.0.0.1:18332'
-AUTHFILE = '~/Library/Application Support/Bitcoin/testnet3/.cookie'
 
-@pytest.fixture(scope='function')
-def bitcoind():
-    # JSON-RPC connection to a bitcoind instance
+def get_cookie():
+    # read local bitcoind cookie .. highly mac-only
+    AUTHFILE = '~/Library/Application Support/Bitcoin/testnet3/.cookie'
 
     try:
         cookie = open(os.path.expanduser(AUTHFILE), 'rt').read().strip()
     except FileNotFoundError:
         raise pytest.skip('no local bitcoind')
 
+    return cookie
+
+@pytest.fixture(scope='function')
+def bitcoind():
+    # JSON-RPC connection to a bitcoind instance
+
     # see <https://github.com/jgarzik/python-bitcoinrpc>
+    cookie = get_cookie()
 
     conn = AuthServiceProxy('http://' + cookie + '@' + URL)
 
@@ -103,6 +109,34 @@ def explora():
 
     return doit
 
+
+@pytest.fixture(scope='function')
+def bitcoind_wallet(bitcoind):
+    # Use bitcoind to create a temporary wallet file, and then do cleanup after
+    # - wallet will not have any keys, and is watch only
+    import os, shutil
+
+    fname = '/tmp/ckcc-test-wallet-%d' % os.getpid()
+
+    disable_private_keys = True
+    blank = True
+    w = bitcoind.createwallet(fname, disable_private_keys, blank)
+
+    assert w['name'] == fname
+
+    # give them an object they can do API calls w/ rpcwallet filled-in
+    cookie = get_cookie()
+    url = 'http://' + cookie + '@' + URL + '/wallet/' + fname.replace('/', '%2f')
+    #print(url)
+    conn = AuthServiceProxy(url)
+    assert conn.getblockchaininfo()['chain'] == 'test'
+
+    yield conn
+
+    # cleanup
+    bitcoind.unloadwallet(fname)
+    assert fname.startswith('/tmp/ckcc-test-wallet')
+    shutil.rmtree(fname)
 
 
 # EOF
