@@ -1,15 +1,18 @@
 
 ## 3.0.5 - Nov 25, 2019
 
+- Address explorer can show QR code for any address (Mk3 only). Press 4 to view. Once
+  shown, press 1 to invert image, and 5/8 for next address. Succesfull scanning requires
+  the best phone camera, and some patience, due to limited screen size.
+- Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
+  Requires v0.18 or higher of Bitcoin Core.
+  [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
 - Paper Wallets! Creates random private key, unrelated to your seed words, and
   saves deposit address and private key (WIF format) into a text file on MicroSD. If you
   have a Mk3, it will also add a QR code inside the text file, and if you provide a 
   special PDF-like template file (example in ../docs/paperwallet.pdf) then it will superimpose
   the QR codes into the template, and save the resulting ready-to-print PDF to MicroSD.
   CAUTION: Paper wallets carry MANY RISKS and should only be used for SMALL AMOUNTS.
-- Export a command file for Bitcoin Core to create an air-gapped, watch-only wallet.
-  Requires v0.18 or higher of Bitcoin Core.
-  [docs/bitcoin-core-usage.md](./docs/bitcoin-core-usage.md) has been updated.
   Thanks to [@Sjors](https://github.com/Sjors) for creating this new feature!
 - Adds a "Format Card" command for erasing MicroSD contents and reformating (FAT32).
 - Bugfix: Idle-timeout setting should only take effect after the login countdown.
