@@ -10,6 +10,7 @@ from main import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu
+from paper import make_paper_wallet
 from address_explorer import address_explore
 
 #
@@ -92,6 +93,8 @@ DevelopersMenu = [
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
+    MenuItem('Upgrade firmware', menu=UpgradeMenu),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem('Secure Logout', f=logout_now),
 ]
@@ -100,6 +103,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem("Upgrade", menu=UpgradeMenu),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem('Secure Logout', f=logout_now),
@@ -142,6 +146,7 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]

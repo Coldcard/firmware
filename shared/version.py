@@ -91,7 +91,7 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global has_membrane, hw_label, has_608
+    global has_membrane, hw_label, has_608, has_fatram
 
     import ckcc, callgate
     from machine import Pin
@@ -106,7 +106,9 @@ def probe_system():
         has_membrane = True
         hw_label = 'mk2'
 
-    if ckcc.is_stm32l496():
+    has_fatram = ckcc.is_stm32l496()
+
+    if has_fatram:
         hw_label = 'mk3'
 
     has_608 = callgate.has_608()
