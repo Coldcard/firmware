@@ -205,14 +205,19 @@ def disassemble(script):
     try:
         offset = 0
         while 1:
+            if offset >= len(script):
+                #print('dis %d done' % offset)
+                return
             c = script[offset]
             offset += 1
 
             if 1 <= c <= 75:
+                #print('dis %d: bytes=%s' % (offset, b2a_hex(script[offset:offset+c])))
                 yield (script[offset:offset+c], None)
                 offset += c
             elif OP_1 <= c <= OP_16:
                 # OP_1 thru OP_16
+                #print('dis %d: number=%d' % (offset, (c - OP_1 + 1)))
                 yield (c - OP_1 + 1, None)
             elif c == OP_PUSHDATA1:
                 cnt = script[offset]; offset += 1
@@ -230,6 +235,7 @@ def disassemble(script):
                 yield (-1, None)
             else:
                 # OP_0 included here
+                #print('dis %d: opcode=%d' % (offset, c))
                 yield (None, c)
     except:
         raise ValueError("bad script")
