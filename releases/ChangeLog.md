@@ -1,3 +1,4 @@
+- Bugfix: need blank line between addresses shown if sending to multiple destinations.
 
 ## 3.0.5 - Nov 25, 2019
 
