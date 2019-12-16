@@ -385,9 +385,11 @@ class ApproveTransaction(UserAuthorizedAction):
                 outp = self.psbt.outputs[idx]
                 if outp.is_change:
                     continue
+
                 if first:
-                    msg.write('\n')
                     first = False
+                else:
+                    msg.write('\n')
 
                 msg.write(self.render_output(tx_out))
 
