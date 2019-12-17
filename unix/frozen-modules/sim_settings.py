@@ -110,9 +110,18 @@ if '--delay' in sys.argv:
         '_pin1_secret': '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
     })
 
-
 if '--idle' in sys.argv:
     delay = int(sys.argv[sys.argv.index('--idle') + 1])
     sim_defaults['idle_to'] = delay
+
+if '--set' in sys.argv:
+    # use: --set foo=23
+    # overrides/predefines anything
+    val = sys.argv[sys.argv.index('--set') + 1]
+    k,v = val.split('=', 1)
+    try:
+        v = int(v)
+    except: pass
+    sim_defaults[k] = v
 
 # EOF

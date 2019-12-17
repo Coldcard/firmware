@@ -10,7 +10,7 @@
 The default is to boot up, skip the tedious PIN entry step, and start as a functional
 wallet (on testnet, always with the same seed). But there are other options:
 
-- `-w` => like a factory-fresh unit; no PIN no secrets
+- `-w` => like a factory-fresh unit; no PIN, no secrets
 - `-l` => PIN is set (12-12) but no secret yet
 - `-2` => enable a secondary wallet, with pin 33-33 and no secret
 - `-q` => boot and drop into REPL; does nothing else, no setup
@@ -32,6 +32,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--metal --sflash` => copy SPI flash contents at boot time from real device (no writeback)
 - `--nick Name` => set the pre-login nickname for the Coldcard so it will be shown
 - `--delay X` => set the "login countdown" value to X minutes, also force login
+- `--set key=val` => preset the setting 'key' to be 'val' 
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 
