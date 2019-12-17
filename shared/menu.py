@@ -161,6 +161,8 @@ class MenuSystem:
 
     def goto_idx(self, n):
         # skip to any item, force cusor near middle of screen
+        n = self.count-1 if n >= self.count else n
+        n = 0 if n < 0 else n
         self.cursor = n
         if n < PER_M-1:
             self.ypos = 0
