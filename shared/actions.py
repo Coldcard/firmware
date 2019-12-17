@@ -478,7 +478,7 @@ This creates an entirely new wallet, for every possible passphrase.
 By default, the Coldcard uses an empty string as the passphrase.
 
 On the next menu, you can enter a passphrase by selecting \
-individual lettters, choosing from the word list (recommended), \
+individual letters, choosing from the word list (recommended), \
 or by typing numbers.
 
 Please write down the fingerprint of all your wallets, so you can \
