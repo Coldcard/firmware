@@ -3,7 +3,10 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys
+import gc, sys, ustruct
+from ubinascii import unhexlify as a2b_hex
+from ubinascii import hexlify as b2a_hex
+from ubinascii import a2b_base64, b2a_base64
 
 class imported:
     # Context manager that temporarily imports
@@ -85,30 +88,51 @@ class HexWriter:
         return self
 
     def __exit__(self, *a, **k):
-        self.fd.write('\r\n')
+        self.fd.write(b'\r\n')
         return self.fd.__exit__(*a, **k)
 
     def write(self, b):
-        for ch in b:
-            self.fd.write('%02x' % ch)
+        self.fd.write(b2a_hex(b))
+
+class Base64Writer:
+    # Emulate a file/stream but convert binary to Base64 as they write
+    def __init__(self, fd):
+        self.fd = fd
+        self.runt = b''
+
+    def __enter__(self):
+        self.fd.__enter__()
+        return self
+
+    def __exit__(self, *a, **k):
+        if self.runt:
+            self.fd.write(b2a_base64(self.runt))
+        self.fd.write(b'\r\n')
+        return self.fd.__exit__(*a, **k)
+
+    def write(self, buf):
+        if self.runt:
+            buf = self.runt + buf
+        rl = len(buf) % 3
+        self.runt = buf[-rl:] if rl else b''
+        if rl < len(buf):
+            tmp = b2a_base64(buf[:(-rl if rl else None)])
+            # library puts in newlines!?
+            assert tmp[-1:] == b'\n', tmp
+            assert tmp[-2:-1] != b'=', tmp
+            self.fd.write(tmp[:-1])
 
 def swab32(n):
     # endian swap: 32 bits
-    import ustruct
     return ustruct.unpack('>I', ustruct.pack('<I', n))[0]
 
 def xfp2str(xfp):
     # Standardized way to show an xpub's fingerprint... it's a 4-byte string
     # and not really an integer. Used to show as '0x%08x' but that's wrong endian.
-    import ustruct
-    from ubinascii import hexlify as b2a_hex
-
     return b2a_hex(ustruct.pack('<I', xfp)).decode().upper()
 
 def str2xfp(txt):
     # Inverse of xfp2str
-    import ustruct
-    from ubinascii import unhexlify as a2b_hex
     return ustruct.unpack('<I', a2b_hex(txt))[0]
 
 def problem_file_line(exc):
@@ -177,5 +201,39 @@ def cleanup_deriv_path(bin_path):
         assert 0 <= ip < 0x80000000 and p == str(ip), "bad component: "+p
             
     return 'm/' + '/'.join(parts)
+
+
+class DecodeStreamer:
+    def __init__(self):
+        self.runt = bytearray()
+
+    def more(self, buf):
+        # Generator:
+        # - accumulate into mod-N groups
+        # - strip whitespace
+        for ch in buf:
+            if chr(ch).isspace(): continue
+            self.runt.append(ch)
+            if len(self.runt) == 128*self.mod:
+                yield self.a2b(self.runt)
+                self.runt = bytearray()
+
+        here = len(self.runt) - (len(self.runt) % self.mod)
+        if here:
+            yield self.a2b(self.runt[0:here])
+            self.runt = self.runt[here:]
+
+class HexStreamer(DecodeStreamer):
+    # be a generator that converts hex digits into binary
+    # NOTE: mpy a2b_hex doesn't care about unicode vs bytes
+    mod = 2
+    def a2b(self, x):
+        return a2b_hex(x)
+
+class Base64Streamer(DecodeStreamer):
+    # be a generator that converts Base64 into binary
+    mod = 4
+    def a2b(self, x):
+        return a2b_base64(x)
 
 # EOF
