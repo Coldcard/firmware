@@ -42,6 +42,10 @@ async def which_pin_menu(_1,_2, item):
     from main import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
+def has_secrets():
+    from main import pa
+    return not pa.is_secret_blank()
+
 SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
@@ -67,6 +71,7 @@ SDCardMenu = [
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Dump Summary", f=dump_summary),
     MenuItem('Export Wallet', menu=WalletExportMenu),
+    MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
     MenuItem('List Files', f=list_files),
     MenuItem('Format Card', f=wipe_sd_card,

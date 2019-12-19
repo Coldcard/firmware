@@ -11,7 +11,7 @@ from io import BytesIO
 from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
-from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr
+from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE
 
@@ -607,7 +607,7 @@ def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
 
     time.sleep(.1)
     _, story = cap_story()
-    assert chg_addr not in story
+    assert chg_addr in story
 
     b4 = BasicPSBT().parse(psbt)
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,])
@@ -625,7 +625,9 @@ def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
 
     time.sleep(.1)
     _, story = cap_story()
-    assert chg_addr in story
+
+    # no change expected (they are outputs)
+    assert 'Change back' not in story
 
     check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[])
 
@@ -676,6 +678,7 @@ def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, c
         time.sleep(.1)
         _, story = cap_story()
         assert chg_addr in story
+        assert 'Change back:' not in story
 
         signed = end_sign(True)
 
@@ -733,16 +736,16 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_st
         t.txs_out[1].script = bytes([0, 20]) + bytes(pkh)
 
         from bech32 import encode
-        expect_addr = encode('tb', 1, pkh)
+        expect_addr = encode('tb', 0, pkh)
 
     elif case == 'p2sh':
-        b4.outputs[1].redeem_script = bytes([0, 20]) + bytes(pkh)
 
         spk = bytes([0xa9, 0x14]) + pkh + bytes([0x87])
 
+        b4.outputs[1].redeem_script = bytes([0, 20]) + bytes(pkh)
         t.txs_out[1].script = spk
 
-        expect_addr = t.txs_out[1].address()
+        expect_addr = t.txs_out[1].address('XTN')
 
     b4.txn = t.as_bin()
 
@@ -754,11 +757,15 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_st
 
     start_sign(mod_psbt)
 
+    time.sleep(.1)
     _, story = cap_story()
 
-    check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,])
+    check_against_bitcoind(B2A(b4.txn), Decimal('0.00000294'), change_outs=[1,],
+            dests=[(1, expect_addr)])
 
     #print(story)
+    assert expect_addr in story
+    assert parse_change_back(story) == (Decimal('1.09997082'), [expect_addr])
 
     signed = end_sign(True)
 
@@ -900,6 +907,22 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
     else:
         assert 'Consolidating' in story
 
+    if couts == 1:
+        assert "- to address -" in story
+    else:
+        assert "- to addresses -" in story
+
+    val, addrs = parse_change_back(story)
+    assert val > 0          # hard to calc here
+    assert len(addrs) == couts
+    if out_style == 'p2pkh':
+        assert all((i[0] in 'mn') for i in addrs)
+    elif out_style == 'p2wpkh':
+        assert set(i[0:4] for i in addrs) == {'tb1q'}
+    elif out_style == 'p2wpkh-p2sh':
+        assert set(i[0] for i in addrs) == {'2'}
+
+    # no need
     #signed = end_sign(True, finalize=True)
 
 def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
@@ -920,7 +943,7 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
 
 
     with pytest.raises(CCProtoError) as ee:
-        orig, result = try_sign('data/tick11088.psbt', accept=True)
+        orig, result = try_sign(fname, accept=True)
 
     msg = ee.value.args[0]
     assert 'Signing failed late' in msg
@@ -1061,5 +1084,7 @@ def test_change_troublesome(start_sign, cap_story, try_path, expect):
     assert '(1 warning below)' in story, "no warning shown"
 
     assert expect in story, story
+
+    assert parse_change_back(story) == (Decimal('1.09997082'), ['mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'])
 
 # EOF

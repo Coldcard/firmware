@@ -114,4 +114,22 @@ def xfp2str(xfp):
     from struct import pack
     return b2a_hex(pack('<I', xfp)).decode('ascii').upper()
 
+def parse_change_back(story):
+
+    lines = story.split('\n')
+    s = lines.index('Change back:')
+    assert s > 3
+    assert 'XTN' in lines[s+1]
+    val = Decimal(lines[s+1].split()[0])
+    assert 'address' in lines[s+2]
+    addrs = []
+    for y in range(s+3, len(lines)):
+        if not lines[y]: break
+        addrs.append(lines[y])
+
+    if len(addrs) >= 2:
+        assert 'to addresses' in lines[s+2]
+
+    return val, addrs
+
 # EOF

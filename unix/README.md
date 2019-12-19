@@ -33,6 +33,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--nick Name` => set the pre-login nickname for the Coldcard so it will be shown
 - `--delay X` => set the "login countdown" value to X minutes, also force login
 - `--set key=val` => preset the setting 'key' to be 'val' 
+- `--msg` => jump to message signing from SD card menu item
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 

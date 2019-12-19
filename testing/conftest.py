@@ -547,7 +547,7 @@ def decode_psbt_with_bitcoind(bitcoind):
 @pytest.fixture()
 def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
 
-    def doit(hex_txn, fee, num_warn=0, change_outs=None):
+    def doit(hex_txn, fee, num_warn=0, change_outs=None, dests=[]):
         # verify our understanding of a TXN (and esp its outputs) matches
         # the same values as what bitcoind generates
 
@@ -558,6 +558,11 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
             decode = bitcoind.decoderawtransaction(hex_txn)
 
         #print("Bitcoin code says:", end=''); pprint(decode)
+
+        if dests:
+            # check we got right destination address(es)
+            for outn, expect_addr in dests:
+                assert decode['vout'][outn]['scriptPubKey']['addresses'][0] == expect_addr
 
         # leverage bitcoind's transaction decoding
         ex = dict(  lock_time = decode['locktime'],
@@ -595,7 +600,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
 
     # like "try_sign" but use "air gapped" file transfer via microSD
 
-    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False):
+    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False, encoding='binary'):
 
         if f_or_data[0:5] == b'psbt\xff':
             ip = f_or_data
@@ -607,7 +612,6 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
                 ip = a2b_hex(ip.strip())
             assert ip[0:5] == b'psbt\xff'
 
-
         psbtname = 'ftrysign'
 
         # population control
@@ -616,6 +620,15 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         for f in glob(pat):
             assert 'psbt' in f
             os.unlink(f)
+
+        if encoding == 'hex':
+            from binascii import b2a_hex, a2b_hex
+            ip = b2a_hex(ip)
+        elif encoding == 'base64':
+            from base64 import b64encode, b64decode
+            ip = b64encode(ip)
+        else:
+            assert encoding == 'binary'
 
         with open_microsd(psbtname+'.psbt', 'wb') as sd:
             sd.write(ip)
@@ -661,6 +674,14 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         result_fname = story.split('\n')[-1]
 
         result = open_microsd(result_fname, 'rb').read()
+
+        if encoding == 'hex':
+            result = a2b_hex(result.strip())
+        elif encoding == 'base64':
+            result = b64decode(result)
+        else:
+            assert encoding == 'binary'
+        assert result[0:5] == b'psbt\xff'
 
         # read back final product
         if finalize:

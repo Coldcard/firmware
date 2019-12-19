@@ -122,4 +122,7 @@ def test_multisig(unit_test):
     # scripts/multisig unit tests
     unit_test('devtest/unit_multisig.py')
 
+def test_decoding(unit_test):
+    # utils.py Hex/Base64 streaming decoders
+    unit_test('devtest/unit_decoding.py')
 # EOF
