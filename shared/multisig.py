@@ -25,50 +25,63 @@ TRUST_PSBT = const(2)
 class MultisigOutOfSpace(RuntimeError):
     pass
 
-def disassemble_multisig(redeem_script):
-    # take apart a standard multisig's redeem/witness script, and return M/N and offset of
-    # one pubkey (if provided) involved
-    # - can only for multisig
-    # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
-    # - returns M, N, (list of pubkeys)
-    from serializations import disassemble
-
-    M, N = -1, -1
-
-    # generator
-    dis = disassemble(redeem_script)
-
-    # expect M value first
-    M, opcode =  next(dis)
-    assert opcode == None and isinstance(M, int), 'garbage at start'
-
-    pubkeys = []
-    for offset, (data, opcode) in enumerate(dis):
-        if opcode == OP_CHECKMULTISIG:
-            # should be last byte
-            break
-        if isinstance(data, int):
-            N = data
-        else:
-            pubkeys.append(data)
-    else:
-        raise AssertionError("end fall")
-
-    assert len(pubkeys) == N
-    assert 1 <= M <= N <= 20, 'M/N range'      # will also happen if N not encoded.
-
-    return M, N, pubkeys
-
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
     assert MAX_SIGNERS == 15
-    assert redeem_script[-1] == OP_CHECKMULTISIG
+    assert redeem_script[-1] == OP_CHECKMULTISIG, 'need CHECKMULTISIG'
 
     M = redeem_script[0] - 80
     N = redeem_script[-2] - 80
 
     return M, N
+
+def disassemble_multisig(redeem_script):
+    # Take apart a standard multisig's redeem/witness script, and return M/N and public keys
+    # - only for multisig scripts, not general purpose
+    # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
+    # - returns M, N, (list of pubkeys)
+    # - for very unlikely/impossible asserts, dont document reason; otherwise do.
+    from serializations import disassemble
+
+    M, N = disassemble_multisig_mn(redeem_script)
+    assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
+    assert len(redeem_script) == 1 + (N * 34) + 1 + 1, 'bad len'
+
+    # generator function
+    dis = disassemble(redeem_script)
+
+    # expect M value first
+    ex_M, opcode =  next(dis)
+    assert ex_M == M and opcode == None, 'bad M'
+
+    # need N pubkeys
+    pubkeys = []
+    for idx in range(N):
+        data, opcode = next(dis)
+        assert opcode == None and len(data) == 33, 'data'
+        assert data[0] == 0x02 or data[0] == 0x03, 'Y val'
+        pubkeys.append(data)
+
+    assert len(pubkeys) == N
+
+    # next is N value
+    ex_N, opcode = next(dis)
+    assert ex_N == N and opcode == None
+
+    # finally, the opcode: CHECKMULTISIG
+    data, opcode = next(dis)
+    assert opcode == OP_CHECKMULTISIG
+
+    # must have reached end of script at this point
+    try:
+        next(dis)
+        raise AssertionError("too long")
+    except StopIteration:
+        # expected, since we're reading past end
+        pass
+
+    return M, N, pubkeys
 
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a
@@ -347,7 +360,7 @@ class MultisigWallet:
             if subpaths:
                 # in PSBT, we are given a map from pubkey to xfp/path, use it
                 # while remembering it's potentially one-2-many
-                assert pubkey in subpaths, "Unexpected pubkey"
+                assert pubkey in subpaths, "unexpected pubkey"
                 xfp, *path = subpaths[pubkey]
 
                 for xp_idx, (wxfp, xpub) in enumerate(self.xpubs):

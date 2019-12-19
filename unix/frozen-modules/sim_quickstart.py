@@ -59,3 +59,14 @@ if '--paper' in sys.argv:
     numpad.inject('4')
     numpad.inject('8')
     numpad.inject('y')
+
+if '--msg' in sys.argv:
+    # Sign from MicoSD card
+    from main import numpad
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('y')
+    numpad.inject('4')
+    numpad.inject('8')
+    numpad.inject('y')

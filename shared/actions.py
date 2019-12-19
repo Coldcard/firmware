@@ -1076,7 +1076,14 @@ async def ready2sign(*a):
             return False
 
         with open(filename, 'rb') as fd:
-            return fd.read(5) == b'psbt\xff'
+            taste = fd.read(10)
+            if taste[0:5] == b'psbt\xff':
+                return True
+            if taste[0:10] == b'70736274ff':        # hex-encoded
+                return True
+            if taste[0:6] == b'cHNidP':             # base64-encoded
+                return True
+            return False
 
     choices = await file_picker(None, suffix='psbt', min_size=50,
                             max_size=MAX_TXN_LEN, taster=is_psbt)
@@ -1107,6 +1114,29 @@ You will always be prompted to confirm the details before any signature is perfo
     from auth import sign_psbt_file
 
     await sign_psbt_file(input_psbt)
+
+
+async def sign_message_on_sd(*a):
+    # Menu item: choose a file to be signed (as a short text message)
+    #
+    def is_signable(filename):
+        if '-signed' in filename.lower():
+            return False
+        with open(filename, 'rt') as fd:
+            lines = fd.readlines()
+            return (1 <= len(lines) <= 5)
+
+    fn = await file_picker('Choose text file to be signed.',
+                            suffix='txt', min_size=2,
+                            max_size=500, taster=is_signable,
+            none_msg='No suitable files found. Must be one line of text, in a .TXT file, optionally followed by a subkey derivation path on a second line.')
+
+    if not fn:
+        return
+
+    # start the process
+    from auth import sign_txt_file
+    await sign_txt_file(fn)
 
 
 async def pin_changer(_1, _2, item):

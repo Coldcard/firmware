@@ -3,10 +3,10 @@
 #
 # Message signing.
 #
-import pytest, time
+import pytest, time, os
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.msg_signing import verify_message
-from base64 import b64encode
+from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 
@@ -54,22 +54,6 @@ def test_sign_msg_good(dev, need_keypress, master_xpub, msg, path, addr_fmt, add
         assert verify_message(addr, sig, message=msg.decode('ascii')) == True
 
 
-@pytest.mark.parametrize('msg', [ 
-    '',         # zero length not supported
-    'a'*1000,   # too big
-    'a'*300,    # too big
-    'a'*241,    # too big
-    'hello%20sworld'%'',        # spaces
-    'hello%10sworld'%'',        # spaces
-    'hello%5sworld'%'',        # spaces
-    ])
-def test_sign_msg_fails(dev, msg, path='m'):
-
-    msg = msg.encode('ascii')
-
-    with pytest.raises(CCProtoError):
-        dev.send_recv(CCProtocolPacker.sign_message(msg, path), timeout=None)
-
 def test_sign_msg_refused(dev, need_keypress, msg=b'testing 123', path='m'):
     # user can refuse to sign (cancel)
 
@@ -105,5 +89,141 @@ def test_bad_paths(dev, path, expect):
     with pytest.raises(CCProtoError) as ee:
         dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
     assert expect in str(ee)
+
+@pytest.fixture
+def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress, microsd_path):
+
+    # sign a file on the microSD card
+
+    def doit(msg, subpath=None, expect_fail=False):
+
+        fname = 't-msgsign.txt'
+        result_fname = 't-msgsign-signed.txt'
+
+        # cleanup
+        try: os.unlink(microsd_path(result_fname))
+        except OSError: pass
+
+        with open_microsd(fname, 'wt') as sd:
+            sd.write(msg + '\n')
+            if subpath is not None:
+                sd.write(subpath + '\n')
+
+        goto_home()
+        pick_menu_item('Advanced')
+        pick_menu_item('MicroSD Card')
+        pick_menu_item('Sign Text File')
+
+        time.sleep(.1)
+        _, story = cap_story()
+        assert 'Choose text file to be signed' in story
+        need_keypress('y')
+        time.sleep(.1)
+            
+        try:
+            pick_menu_item(fname)
+        except KeyError:
+            if expect_fail:
+                return 'NO-FILE'
+            raise
+
+        title, story = cap_story()
+        if expect_fail:
+            assert not story.startswith('Ok to sign this?')
+            return story
+
+        assert story.startswith('Ok to sign this?')
+
+        assert msg in story
+        assert 'Using the key associated' in story
+        if not subpath:
+            assert 'm =>' in story
+        else:
+            x_subpath = subpath.lower().replace('p', "'").replace('h', "'")
+            assert ('%s =>' % x_subpath) in story
+
+        need_keypress('y')
+
+        # wait for it to finish
+        for r in range(10):
+            time.sleep(0.1)
+            title, story = cap_story()
+            if title == 'File Signed': break
+        else:
+            assert False, 'timed out'
+
+        lines = [i.strip() for i in open_microsd(result_fname, 'rt').readlines()]
+
+        assert lines[0] == '-----BEGIN BITCOIN SIGNED MESSAGE-----'
+        assert lines[1:-4] == [msg]
+        assert lines[-4] == '-----BEGIN SIGNATURE-----'
+        addr = lines[-3]
+        sig = lines[-2]
+        assert lines[-1] == '-----END BITCOIN SIGNED MESSAGE-----'
+
+        return sig, addr
+
+    return doit
+
+@pytest.mark.parametrize('msg', [ 'ab', 'hello', 'abc def eght', "x"*140, 'a'*240])
+@pytest.mark.parametrize('path', [ None, 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
+def test_sign_msg_microsd_good(sign_on_microsd, master_xpub, msg, path, addr_vs_path, addr_fmt=AF_CLASSIC):
+
+    # cases we expect to work
+    sig, addr = sign_on_microsd(msg, path)
+
+    raw = b64decode(sig)
+    assert 40 <= len(raw) <= 65
+
+    if addr_fmt != AF_CLASSIC:
+        # TODO
+        # - need bech32 decoder here
+        # - pycoin can't do signature decode
+        if addr_fmt & AFC_BECH32:
+            assert '1' in addr
+        return
+
+    if path is None:
+        path = 'm'
+
+    if "'" not in path and 'p' not in path:
+        # check expected addr was used
+        mk = BIP32Node.from_wallet_key(master_xpub)
+        sk = mk.subkey_for_path(path[2:])
+
+        addr_vs_path(addr, path, addr_fmt)
+    
+        # verify signature
+        assert verify_message(sk, sig, message=msg) == True
+    else:
+        # just verify signature
+        assert verify_message(addr, sig, message=msg) == True
+
+@pytest.mark.parametrize('msg,concern,no_file', [ 
+    ('', 'too short', 0),         # zero length not supported
+    ('a'*1000, 'too long', 1),   # too big, won't even be offered as a file
+    ('a'*300, 'too long', 0),    # too big
+    ('a'*241, 'too long', 0),    # too big
+    ('hello%20sworld'%'', 'many spaces', 0),        # spaces
+    ('hello%10sworld'%'', 'many spaces', 0),        # spaces
+    ('hello%5sworld'%'', 'many spaces', 0),        # spaces
+    ('test\ttest', "bad char: 0x09", 0),
+    ])
+@pytest.mark.parametrize('transport', ['sd', 'usb'])
+def test_sign_msg_microsd_fails(dev, sign_on_microsd, msg, concern, no_file, transport, path='m/12/34'):
+
+    if transport == 'usb':
+        with pytest.raises(CCProtoError) as ee:
+            dev.send_recv(CCProtocolPacker.sign_message(msg.encode('ascii'), path), timeout=None)
+        story = ee.value.args[0]
+    else:
+        story = sign_on_microsd(msg, path, expect_fail=True)
+
+        if no_file:
+            assert story == 'NO-FILE'
+            return
+        assert story.startswith('Problem: ')
+
+    assert concern in story
 
 # EOF

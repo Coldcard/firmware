@@ -188,6 +188,10 @@ def cleanup_deriv_path(bin_path):
     if parts and parts[0] == 'm':
         parts = parts[1:]
 
+    if not parts:
+        # rather than: m/
+        return 'm'
+
     assert len(parts) <= MAX_PATH_DEPTH, "too deep"
 
     for p in parts:

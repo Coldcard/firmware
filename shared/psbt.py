@@ -34,7 +34,7 @@ B2A = lambda x: str(b2a_hex(x), 'ascii')
 DEBUG = const(0)
 
 # this points to a wallet, during operation
-# - we're only supporting a single multisig during a signing
+# - we're only supporting a single multisig wallet during signing
 active_multisig = None
 
 class FatalPSBTIssue(RuntimeError):
@@ -351,7 +351,7 @@ class psbtOutputProxy(psbtProxy):
             if not redeem_script and not witness_script:
                 # Perhaps an omission, so let's not call fraud on it
                 # But definately required, else we don't know what script we're sending to.
-                raise AssertionError("Missing redeem/witness script for output #%d" % out_idx)
+                raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
 
             if not is_segwit and \
                     len(redeem_script) == 22 and \
@@ -382,6 +382,7 @@ class psbtOutputProxy(psbtProxy):
                 # - pubkeys will be reconstructed from derived paths here
                 # - BIP45, BIP67 rules applied
                 # - p2wsh-p2sh needs witness script here, not redeem script value
+                # - if details provided in output section, must our match multisig wallet
                 try:
                     active_multisig.validate_script(witness_script or redeem_script,
                                                             subpaths=self.subpaths)
@@ -1081,9 +1082,6 @@ class psbtObject(psbtProxy):
 
         assert self.num_outputs >= 1, 'need outs'
 
-        for idx, txo in self.output_iter():
-            self.outputs[idx].validate(idx, txo, self.my_xfp)
-
         if DEBUG:
             our_keys = sum(1 for i in self.inputs if i.num_our_keys)
 
@@ -1095,6 +1093,9 @@ class psbtObject(psbtProxy):
         # scan ouputs:
         # - is it a change address, defined by redeem script (p2sh) or key we know is ours
         # - mark change outputs, so perhaps we don't show them to users
+
+        for idx, txo in self.output_iter():
+            self.outputs[idx].validate(idx, txo, self.my_xfp)
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?
@@ -1219,6 +1220,7 @@ class psbtObject(psbtProxy):
             # Look at what kind of input this will be, and therefore what
             # type of signing will be required, and which key we need.
             # - also validates redeem_script when present
+            # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp)
 
             del utxo

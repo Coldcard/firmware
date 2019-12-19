@@ -220,5 +220,4 @@ class SizerFile(SFFile):
     def close(self):
         pass
 
-
 # EOF

@@ -6,7 +6,7 @@
 #
 import stash, ure, tcc, ux, chains, sys, gc, uio
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT
+from public_constants import AFC_SCRIPT, AF_CLASSIC
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
@@ -15,21 +15,6 @@ from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 
 global active_request
 active_request = None
-
-MSG_SIG_TEMPLATE = '''\
-Ok to sign this?
-      --=--
-{msg}
-      --=--
-
-Using the key associated with address:
-
-{subpath}
-
-= {addr}
-
-
-Press Y if OK, otherwise X to cancel.'''
 
 # Where in SPI flash the two transactions are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -107,11 +92,39 @@ class UserAuthorizedAction:
 
         return await ux_show_story(msg, title)
 
+# Confirmation text for user when signing text messages.
+#
+MSG_SIG_TEMPLATE = '''\
+Ok to sign this?
+      --=--
+{msg}
+      --=--
+
+Using the key associated with address:
+
+{subpath} =>
+{addr}
+
+Press Y if OK, otherwise X to cancel.'''
+
+# RFC2440 <https://www.ietf.org/rfc/rfc2440.txt> style signatures, popular
+# since the genesis block, but not really part of any BIP as far as I know.
+#
+RFC_SIGNATURE_TEMPLATE = '''\
+-----BEGIN {blockchain} SIGNED MESSAGE-----
+{msg}
+-----BEGIN SIGNATURE-----
+{addr}
+{sig}
+-----END {blockchain} SIGNED MESSAGE-----
+'''
+
 class ApproveMessageSign(UserAuthorizedAction):
-    def __init__(self, text, subpath, addr_fmt):
+    def __init__(self, text, subpath, addr_fmt, approved_cb=None):
         super().__init__()
         self.text = text
         self.subpath = subpath
+        self.approved_cb = approved_cb
 
         from main import dis
         dis.fullscreen('Wait...')
@@ -148,21 +161,30 @@ class ApproveMessageSign(UserAuthorizedAction):
 
             dis.progress_bar_show(1.0)
 
-        self.done()
+            if self.approved_cb:
+                # for micro sd case
+                await self.approved_cb(self.result, self.address)
+
+        if self.approved_cb:
+            # don't kill menu depth for file case
+            UserAuthorizedAction.cleanup()
+            self.pop_menu()
+        else:
+            self.done()
 
     @staticmethod
     def validate(text):
         # check for some UX/UI traps in the message itself.
 
         # Messages must be short and ascii only. Our charset is limited
-        MSG_MAX_LENGTH = MSG_SIGNING_MAX_LENGTH
         MSG_CHARSET = range(32, 127)
         MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
 
-        assert 1 <= len(text) <= MSG_MAX_LENGTH, "too long"
+        assert len(text) >= 2, "too short"
+        assert len(text) <= MSG_SIGNING_MAX_LENGTH, "too long"
         run = 0
         for ch in text:
-            assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x=%c" % (ch, ch)
+            assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x" % ord(ch)
 
             if ch == ' ':
                 run += 1
@@ -203,6 +225,108 @@ def sign_msg(text, subpath, addr_fmt):
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
 
+def sign_txt_file(filename):
+    # sign a one-line text file found on a MicroSD card
+    # - not yet clear how to do address types other than 'classic'
+    from files import CardSlot, CardMissingError
+    from sram2 import tmp_buf
+
+    global active_request
+
+    UserAuthorizedAction.cleanup()
+
+    # copy message into memory
+    with CardSlot() as card:
+        with open(filename, 'rt') as fd:
+            text = fd.readline().strip()
+            subpath = fd.readline().strip()
+
+    if subpath:
+        try:
+            assert subpath[0:1] == 'm'
+            subpath = cleanup_deriv_path(subpath)
+        except:
+            await ux_show_story("Second line of file, if included, must specify a subkey path, like: m/44'/0/0")
+            return
+            
+    else:
+        # default: top of wallet.
+        subpath = 'm'
+
+    try:
+        try:
+            text = str(text, 'ascii')
+        except UnicodeError:
+            raise AssertionError('non-ascii characters')
+
+        ApproveMessageSign.validate(text)
+    except AssertionError as exc:
+        await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
+        return
+
+    def done(signature, address):
+        # complete. write out result
+        from ubinascii import b2a_base64
+        orig_path, basename = filename.rsplit('/', 1)
+        orig_path += '/'
+        base = basename.rsplit('.', 1)[0]
+        out_fn = None
+
+        sig = b2a_base64(signature).decode('ascii').strip()
+
+        while 1:
+            # try to put back into same spot
+            # add -signed to end.
+            target_fname = base+'-signed.txt'
+
+            for path in [orig_path, None]:
+                try:
+                    with CardSlot() as card:
+                        out_full, out_fn = card.pick_filename(target_fname, path)
+                        out_path = path
+                        if out_full: break
+                except CardMissingError:
+                    prob = 'Missing card.\n\n'
+                    out_fn = None
+
+            if not out_fn: 
+                # need them to insert a card
+                prob = ''
+            else:
+                # attempt write-out
+                try:
+                    with CardSlot() as card:
+                        with open(out_full, 'wt') as fd:
+                            # save in full RFC style
+                            fd.write(RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
+                                                blockchain='BITCOIN', sig=sig))
+
+                    # success and done!
+                    break
+
+                except OSError as exc:
+                    prob = 'Failed to write!\n\n%s\n\n' % exc
+                    sys.print_exception(exc)
+                    # fall thru to try again
+
+            # prompt them to input another card?
+            ch = await ux_show_story(prob+"Please insert an SDCard to receive signed message, "
+                                        "and press OK.", title="Need Card")
+            if ch == 'x':
+                await ux_aborted()
+                return
+
+        # done.
+        msg = "Created new file:\n\n%s" % out_fn
+        await ux_show_story(msg, title='File Signed')
+
+    global active_request
+    UserAuthorizedAction.check_busy()
+    active_request = ApproveMessageSign(text, subpath, AF_CLASSIC, approved_cb=done)
+
+    # do not kill the menu stack!
+    from ux import the_ux
+    the_ux.push(active_request)
 
 
 class ApproveTransaction(UserAuthorizedAction):
@@ -297,6 +421,10 @@ class ApproveTransaction(UserAuthorizedAction):
             if fee is not None:
                 msg.write("\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee))
 
+            # NEW: show where all the change outputs are going
+            self.output_change_text(msg)
+            gc.collect()
+
             if self.psbt.warnings:
                 msg.write('\n---WARNING---\n\n')
 
@@ -362,9 +490,38 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
+    def output_change_text(self, msg):
+        # Produce text report of what the "change" outputs are (based on our opinion).
+        # - we don't really expect all users to verify these outputs, but just in case.
+        # - show the total amount, and list addresses
+
+        total = 0
+        addrs = []
+        for idx, tx_out in self.psbt.output_iter():
+            outp = self.psbt.outputs[idx]
+            if not outp.is_change:
+                continue
+            total += tx_out.nValue
+            addrs.append(self.chain.render_address(tx_out.scriptPubKey))
+
+        if not addrs:
+            return
+
+        total_val = ' '.join(self.chain.render_value(total))
+
+        msg.write("\nChange back:\n%s\n" % total_val)
+
+        if len(addrs) == 1:
+            msg.write(' - to address -\n%s\n' % addrs[0])
+        else:
+            msg.write(' - to addresses -\n')
+            for a in addrs:
+                msg.write('%s\n' % a)
+
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
         # they use to decide if correct transaction is being signed.
+        # - does not show change outputs, by design.
         MAX_VISIBLE_OUTPUTS = const(10)
 
         num_change = sum(1 for o in self.psbt.outputs if o.is_change)
@@ -443,20 +600,24 @@ def sign_transaction(psbt_len, do_finalize=False):
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(active_request)
+
     
 def sign_psbt_file(filename):
     # sign a PSBT file found on a MicroSD card
     from files import CardSlot, CardMissingError
     from main import dis
     from sram2 import tmp_buf
+    from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
     global active_request
 
     UserAuthorizedAction.cleanup()
 
     #print("sign: %s" % filename)
 
+
     # copy file into our spiflash
     # - can't work in-place on the card because we want to support writing out to different card
+    # - accepts hex or base64 encoding, but binary prefered
     with CardSlot() as card:
         with open(filename, 'rb') as fd:
             dis.fullscreen('Reading...')
@@ -464,6 +625,22 @@ def sign_psbt_file(filename):
             # see how long it is
             psbt_len = fd.seek(0, 2)
             fd.seek(0)
+
+            # determine encoding used, altho we prefer binary
+            taste = fd.read(10)
+            fd.seek(0)
+
+            if taste[0:5] == b'psbt\xff':
+                decoder = None
+                output_encoder = lambda x: x
+            elif taste[0:10] == b'70736274ff':
+                decoder = HexStreamer()
+                output_encoder = HexWriter
+                psbt_len //= 2
+            elif taste[0:6] == b'cHNidP':
+                decoder = Base64Streamer()
+                output_encoder = Base64Writer
+                psbt_len = (psbt_len * 3 // 4) + 10
 
             total = 0
             with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
@@ -475,14 +652,23 @@ def sign_psbt_file(filename):
                     if not n: break
 
                     if n == len(tmp_buf):
-                        out.write(tmp_buf)
+                        abuf = tmp_buf
                     else:
-                        out.write(memoryview(tmp_buf)[0:n])
+                        abuf = memoryview(tmp_buf)[0:n]
 
-                    total += n
+                    if not decoder:
+                        out.write(abuf)
+                        total += n
+                    else:
+                        for here in decoder.more(abuf):
+                            out.write(here)
+                            total += len(here)
+
                     dis.progress_bar_show(total / psbt_len)
 
-            assert total == psbt_len, repr([total, psbt_len])
+            # might have been whitespace inflating initial estimate of PSBT size
+            assert total <= psbt_len
+            psbt_len = total
 
     async def done(psbt):
         orig_path, basename = filename.rsplit('/', 1)
@@ -518,7 +704,7 @@ def sign_psbt_file(filename):
                 # attempt write-out
                 try:
                     with CardSlot() as card:
-                        with open(out_full, 'wb') as fd:
+                        with output_encoder(open(out_full, 'wb')) as fd:
                             # save as updated PSBT
                             psbt.serialize(fd)
 
