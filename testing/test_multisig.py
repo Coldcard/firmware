@@ -318,6 +318,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
                 assert ('/_/%d/0/0' % i) in story
 
         need_keypress('y')
+
         # check expected addr was generated based on my math
         addr_vs_path(got_addr, addr_fmt=addr_fmt, script=scr)
 
@@ -1014,7 +1015,7 @@ def fake_ms_txn():
 @pytest.mark.parametrize('transport', [ 'sd' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
 @pytest.mark.parametrize('has_change', [ True, False])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, M=1, N=3):
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, M=1, N=3):
     
     num_outs = num_ins-1
 

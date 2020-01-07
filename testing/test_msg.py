@@ -9,11 +9,12 @@ from pycoin.contrib.msg_signing import verify_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
+from constants import simulator_fixed_xprv
 
-@pytest.mark.parametrize('msg', [ 'a', 'hello', 'abc def eght', "x"*140, 'a'*240])
+@pytest.mark.parametrize('msg', [ 'aB', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_sign_msg_good(dev, need_keypress, master_xpub, msg, path, addr_fmt, addr_vs_path):
+def test_sign_msg_good(dev, need_keypress, msg, path, addr_fmt, addr_vs_path):
 
     msg = msg.encode('ascii')
     dev.send_recv(CCProtocolPacker.sign_message(msg, path, addr_fmt=addr_fmt), timeout=None)
@@ -40,18 +41,12 @@ def test_sign_msg_good(dev, need_keypress, master_xpub, msg, path, addr_fmt, add
             assert '1' in addr
         return
 
-    if "'" not in path and 'p' not in path:
-        # check expected addr was used
-        mk = BIP32Node.from_wallet_key(master_xpub)
-        sk = mk.subkey_for_path(path[2:])
-
-        addr_vs_path(addr, path, addr_fmt)
+    # check expected addr was used
+    sk = addr_vs_path(addr, path, addr_fmt)
     
-        # verify signature
-        assert verify_message(sk, sig, message=msg.decode('ascii')) == True
-    else:
-        # just verify signature
-        assert verify_message(addr, sig, message=msg.decode('ascii')) == True
+    # verify signature
+    assert verify_message(sk, sig, message=msg.decode('ascii')) == True
+    assert verify_message(addr, sig, message=msg.decode('ascii')) == True
 
 
 def test_sign_msg_refused(dev, need_keypress, msg=b'testing 123', path='m'):
@@ -166,8 +161,15 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
     return doit
 
 @pytest.mark.parametrize('msg', [ 'ab', 'hello', 'abc def eght', "x"*140, 'a'*240])
-@pytest.mark.parametrize('path', [ None, 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
-def test_sign_msg_microsd_good(sign_on_microsd, master_xpub, msg, path, addr_vs_path, addr_fmt=AF_CLASSIC):
+@pytest.mark.parametrize('path,addr_fmt', [
+        ( "m/84p/0'/22p", AF_P2WPKH),
+        (None, AF_CLASSIC),
+        ( 'm', AF_CLASSIC),
+        ( "m/1/2", AF_CLASSIC),
+        ( "m/1'/100'", AF_CLASSIC),
+        ( 'm/23H/22p', AF_CLASSIC),
+    ])
+def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path, addr_fmt):
 
     # cases we expect to work
     sig, addr = sign_on_microsd(msg, path)
@@ -186,18 +188,14 @@ def test_sign_msg_microsd_good(sign_on_microsd, master_xpub, msg, path, addr_vs_
     if path is None:
         path = 'm'
 
-    if "'" not in path and 'p' not in path:
-        # check expected addr was used
-        mk = BIP32Node.from_wallet_key(master_xpub)
-        sk = mk.subkey_for_path(path[2:])
+    # check expected addr was used
+    sk = addr_vs_path(addr, path, addr_fmt)
 
-        addr_vs_path(addr, path, addr_fmt)
-    
-        # verify signature
-        assert verify_message(sk, sig, message=msg) == True
-    else:
-        # just verify signature
-        assert verify_message(addr, sig, message=msg) == True
+    if addr_fmt == AF_P2WPKH:
+        assert addr.startswith('tb1q')
+
+    # verify signature
+    assert verify_message(sk, sig, message=msg) == True
 
 @pytest.mark.parametrize('msg,concern,no_file', [ 
     ('', 'too short', 0),         # zero length not supported

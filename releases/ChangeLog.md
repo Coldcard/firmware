@@ -1,3 +1,8 @@
+## 3.0.7 - Jan TBD, 2020
+- Enhancement: when signing a text file from MicroSD card, if you specify a derivation
+  path that starts with `m/84'/...` indicating that you are following BIP84 for
+  segwit addresses, the resulting signature will be formated as P2WPKH in Bech32.
+
 ## 3.0.6 - Dec 19, 2019
 
 - Security Bugfix: Fixed a multisig PSBT-tampering issue, that could allow a MitM to
