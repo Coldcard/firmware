@@ -7,7 +7,7 @@
 #
 import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
-from utils import imported
+from utils import imported, pretty_short_delay
 from main import settings
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
@@ -362,12 +362,7 @@ async def login_countdown(minutes):
         dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
         y += 5
 
-        if sec >= 3600:
-            msg = '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
-        else:
-            msg = '%2dm %2ds' % ((sec//60) % 60, sec % 60)
-
-        dis.text(None, y, msg, font=FontLarge)
+        dis.text(None, y, pretty_short_delay(sec), font=FontLarge)
 
         dis.show()
         dis.busy_bar(1)
@@ -662,12 +657,15 @@ def goto_top_menu():
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
     from main import pa
+    from hsm import hsm_active, hsm_ux_obj
 
     if version.is_factory_mode():
         m = MenuSystem(FactoryMenu)
     elif pa.is_blank():
         # let them play a little before picking a PIN first time
         m = MenuSystem(VirginSystem, should_cont=lambda: pa.is_blank())
+    elif hsm_active:
+        m = hsm_ux_obj
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 
@@ -1435,5 +1433,9 @@ async def import_multisig(*a):
         maybe_enroll_xpub(config=data, name=possible_name)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n\n'+str(e))
+
+async def start_hsm_menu_item(*a):
+    from hsm import maybe_start_hsm 
+    maybe_start_hsm(sf_len=0, ux_reset=False)
 
 # EOF

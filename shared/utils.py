@@ -65,6 +65,13 @@ def pretty_delay(n):
     n /= 24
     return 'about %d days' % n
 
+def pretty_short_delay(sec):
+    # precise, shorter on screen display
+    if sec >= 3600:
+        return '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
+    else:
+        return '%2dm %2ds' % ((sec//60) % 60, sec % 60)
+
 def pop_count(i):
     # 32-bit population count for integers
     # from <https://stackoverflow.com/questions/9829578>
