@@ -125,4 +125,21 @@ def test_multisig(unit_test):
 def test_decoding(unit_test):
     # utils.py Hex/Base64 streaming decoders
     unit_test('devtest/unit_decoding.py')
+
+@pytest.mark.parametrize('hasher', ['sha256', 'sha1'])
+@pytest.mark.parametrize('msg', [b'123', b'b'*78])
+@pytest.mark.parametrize('key', [b'3245', b'b'*78])
+def test_hmac(sim_exec, msg, key, hasher):
+    from helpers import B2A
+    import hashlib, hmac
+
+    cmd = "import hmac, tcc; from h import b2a_hex; " + \
+                    f"RV.write(b2a_hex(hmac.new({key}, {msg}, tcc.{hasher}).digest()))"
+
+    got = sim_exec(cmd)
+    expect = hmac.new(key, msg, hasher).hexdigest()
+
+    assert got == expect
+    print(expect)
+
 # EOF
