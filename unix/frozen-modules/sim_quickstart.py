@@ -70,3 +70,16 @@ if '--msg' in sys.argv:
     numpad.inject('4')
     numpad.inject('8')
     numpad.inject('y')
+
+if '--hsm' in sys.argv:
+    # Sign from MicoSD card
+    from main import numpad
+    numpad.inject('3')
+    numpad.inject('y')
+    for ch in '123460':
+        numpad.inject(ch)
+
+# not best place for this
+import hsm
+hsm.POLICY_FNAME = hsm.POLICY_FNAME.replace('/flash/', '')
+
