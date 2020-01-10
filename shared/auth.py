@@ -13,14 +13,13 @@ from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 
-global active_request
-active_request = None
-
 # Where in SPI flash the two transactions are (in and out)
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
 
 class UserAuthorizedAction:
+    active_request = None
+
     def __init__(self):
         self.refused = False
         self.failed = None
@@ -51,26 +50,23 @@ class UserAuthorizedAction:
     @classmethod
     def cleanup(cls):
         # user has collected the results/errors and no need for objs
-        global active_request
-        active_request = None
+        cls.active_request = None
         gc.collect()
 
     @classmethod
     def check_busy(cls, allowed_cls=None):
         # see if we're busy. don't interrupt that... unless it's of allowed_cls
         # - also handle cleanup of stale actions
-        global active_request
-
-        if not active_request:
+        if not cls.active_request:
             return
-        if allowed_cls and isinstance(active_request, allowed_cls):
+        if allowed_cls and isinstance(cls.active_request, allowed_cls):
             return
 
         # check if UX actally was cleared, and we're not really doing that anymore; recover
         # - happens if USB caller never comes back for their final results
         from ux import the_ux
         top_ux = the_ux.top_of_stack()
-        if not isinstance(top_ux, cls) and active_request.ux_done:
+        if not isinstance(top_ux, cls) and cls.active_request.ux_done:
             # do cleaup
             print('recovery cleanup')
             cls.cleanup()
@@ -136,9 +132,13 @@ class ApproveMessageSign(UserAuthorizedAction):
     async def interact(self):
         # Prompt user w/ details and get approval
         from main import dis
+        from hsm import hsm_active
 
-        ch = await ux_show_story(MSG_SIG_TEMPLATE.format(msg=self.text, 
-                            addr=self.address, subpath=self.subpath))
+        story = MSG_SIG_TEMPLATE.format(msg=self.text, addr=self.address, subpath=self.subpath)
+        if hsm_active:
+            ch = await hsm_active.approve_msg_sign(story, self.text, self.subpath)
+        else:
+            ch = await ux_show_story(story)
 
         if ch != 'y':
             # they don't want to!
@@ -218,20 +218,17 @@ def sign_msg(text, subpath, addr_fmt):
     # Do some verification before we even show to the local user
     ApproveMessageSign.validate(text)
 
-    global active_request
     UserAuthorizedAction.check_busy()
-    active_request = ApproveMessageSign(text, subpath, addr_fmt)
+    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from files import CardSlot, CardMissingError
     from sram2 import tmp_buf
-
-    global active_request
 
     UserAuthorizedAction.cleanup()
 
@@ -320,13 +317,12 @@ def sign_txt_file(filename):
         msg = "Created new file:\n\n%s" % out_fn
         await ux_show_story(msg, title='File Signed')
 
-    global active_request
     UserAuthorizedAction.check_busy()
-    active_request = ApproveMessageSign(text, subpath, AF_CLASSIC, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, AF_CLASSIC, approved_cb=done)
 
     # do not kill the menu stack!
     from ux import the_ux
-    the_ux.push(active_request)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 
 class ApproveTransaction(UserAuthorizedAction):
@@ -594,12 +590,11 @@ class ApproveTransaction(UserAuthorizedAction):
 
 def sign_transaction(psbt_len, do_finalize=False):
     # transaction (binary) loaded into sflash already, checksum checked
-    global active_request
     UserAuthorizedAction.check_busy(ApproveTransaction)
-    active_request = ApproveTransaction(psbt_len, do_finalize)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, do_finalize)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
     
 def sign_psbt_file(filename):
@@ -608,7 +603,6 @@ def sign_psbt_file(filename):
     from main import dis
     from sram2 import tmp_buf
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
-    global active_request
 
     UserAuthorizedAction.cleanup()
 
@@ -740,10 +734,10 @@ def sign_psbt_file(filename):
 
         UserAuthorizedAction.cleanup()
 
-    active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
     def __init__(self):
@@ -774,14 +768,12 @@ class RemoteBackup(UserAuthorizedAction):
 def start_remote_backup():
     # tell the local user the secret words, and then save to SPI flash
     # USB caller has to come back and download encrypted contents.
-    global active_request
 
     UserAuthorizedAction.cleanup()
-
-    active_request = RemoteBackup()
+    UserAuthorizedAction.active_request = RemoteBackup()
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 
 class NewPassphrase(UserAuthorizedAction):
@@ -842,14 +834,12 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
 def start_bip39_passphrase(pw):
     # tell the local user the secret words, and then save to SPI flash
     # USB caller has to come back and download encrypted contents.
-    global active_request
 
     UserAuthorizedAction.cleanup()
-
-    active_request = NewPassphrase(pw)
+    UserAuthorizedAction.active_request = NewPassphrase(pw)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 
 class ShowAddressBase(UserAuthorizedAction):
@@ -940,16 +930,14 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     assert ms.M == M
     assert ms.N == N
 
-    global active_request
     UserAuthorizedAction.check_busy(ShowAddressBase)
-
-    active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
+    UserAuthorizedAction.active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
     # provide the value back to attached desktop
-    return active_request.address
+    return UserAuthorizedAction.active_request.address
 
 def start_show_address(addr_format, subpath):
     try:
@@ -961,15 +949,14 @@ def start_show_address(addr_format, subpath):
     # require a path to a key
     subpath = cleanup_deriv_path(subpath)
 
-    global active_request
     UserAuthorizedAction.check_busy(ShowAddressBase)
-    active_request = ShowPKHAddress(addr_format, subpath)
+    UserAuthorizedAction.active_request = ShowPKHAddress(addr_format, subpath)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
     # provide the value back to attached desktop
-    return active_request.address
+    return UserAuthorizedAction.active_request.address
 
 
 class NewEnrollRequest(UserAuthorizedAction):
@@ -1010,7 +997,6 @@ class NewEnrollRequest(UserAuthorizedAction):
 
 def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
     # Offer to import (enroll) a new multisig wallet. Allow reject by user.
-    global active_request
     from multisig import MultisigWallet
 
     UserAuthorizedAction.cleanup()
@@ -1023,15 +1009,15 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
     # and be shown on screen/over usb
     ms = MultisigWallet.from_file(config, name=name)
 
-    active_request = NewEnrollRequest(ms)
+    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
 
     if ux_reset:
         # for USB case, and import from PSBT
         # kill any menu stack, and put our thing at the top
-        abort_and_goto(active_request)
+        abort_and_goto(UserAuthorizedAction.active_request)
     else:
         # menu item case: add to stack
         from ux import the_ux
-        the_ux.push(active_request)
+        the_ux.push(UserAuthorizedAction.active_request)
 
 # EOF

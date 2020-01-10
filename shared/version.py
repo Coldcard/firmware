@@ -83,7 +83,7 @@ def serial_number():
     # Our USB serial number, both in DFU mode (system boot ROM), and later thanks to code in
     #   USBD_StrDescriptor()
     #
-    # - this is **completely** public info, since we can be booted into DFU mode by any anybody
+    # - this is **probably** public info, since shared freely over USB during enumeration
     #
     import machine
     i = machine.unique_id()

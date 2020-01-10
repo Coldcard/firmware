@@ -4,6 +4,7 @@
 # Run tests on the simulator itself, not here... these are basically "unit tests"
 #
 import pytest, glob
+from helpers import B2A
 
 def test_remote_exec(sim_exec):
     assert sim_exec("RV.write('testing123')") == 'testing123'
@@ -130,7 +131,6 @@ def test_decoding(unit_test):
 @pytest.mark.parametrize('msg', [b'123', b'b'*78])
 @pytest.mark.parametrize('key', [b'3245', b'b'*78])
 def test_hmac(sim_exec, msg, key, hasher):
-    from helpers import B2A
     import hashlib, hmac
 
     cmd = "import hmac, tcc; from h import b2a_hex; " + \
@@ -140,6 +140,46 @@ def test_hmac(sim_exec, msg, key, hasher):
     expect = hmac.new(key, msg, hasher).hexdigest()
 
     assert got == expect
-    print(expect)
+    #print(expect)
+
+@pytest.mark.parametrize('secret,counter,expect', [
+        ( b'abcdefghij', 1, '765705'),
+        ( b'abcdefghij', 2, '816065'),
+		( b'12345678901234567890', 0, '755224'),    # test vectors from RFC4226
+		( b'12345678901234567890', 1, '287082'),
+		( b'12345678901234567890', 2, '359152'),
+		( b'12345678901234567890', 3, '969429'),
+		( b'12345678901234567890', 4, '338314'),
+		( b'12345678901234567890', 5, '254676'),
+		( b'12345678901234567890', 6, '287922'),
+		( b'12345678901234567890', 7, '162583'),
+		( b'12345678901234567890', 8, '399871'),
+		( b'12345678901234567890', 9, '520489'),
+])
+def test_hotp(sim_exec, secret, counter, expect):
+    cmd = "from users import calc_hotp; " + \
+                    f"RV.write(calc_hotp({secret}, {counter}))"
+    got = sim_exec(cmd)
+    assert got == expect
+
+def test_hmac_key(sim_exec, count=50):
+    from hashlib import pbkdf2_hmac, sha256
+    from constants import simulator_serial_number
+    from ckcc_protocol.constants import PBKDF2_ITER_COUNT
+
+    salt = sha256(b'pepper'+simulator_serial_number.encode('ascii')).digest()
+
+    for i in range(count):
+        pw = ('test%09d' % i).encode('ascii')
+        pw = pw[1:i] if i > 2 else pw
+        cmd = "from users import calc_hmac_key; from h import b2a_hex; " + \
+                    f"RV.write(b2a_hex(calc_hmac_key({pw})))"
+
+        got = sim_exec(cmd)
+
+        expect = B2A(pbkdf2_hmac('sha256', pw, salt, PBKDF2_ITER_COUNT))
+
+        assert got == expect
+        print(got)
 
 # EOF

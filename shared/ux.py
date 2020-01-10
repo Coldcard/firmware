@@ -244,7 +244,7 @@ def word_wrap(ln, w):
 
         yield left
 
-async def ux_show_story(msg, title=None, escape=None, sensitive=False):
+async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
@@ -324,7 +324,8 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False):
             # allow another way out for some usages
             return ch
         elif ch in 'xy':
-            return ch
+            if not strict_escape:
+                return ch
         elif ch == '0':
             top = 0
         elif ch == '7':     # page up
@@ -340,8 +341,9 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False):
 
 async def idle_logout():
     from main import numpad, settings
+    from hsm import hsm_active
 
-    while 1:
+    while not hsm_active:
         await sleep_ms(250)
 
         # they may have changed setting recently
@@ -356,11 +358,13 @@ async def idle_logout():
 
         if now > numpad.last_event_time + timeout:
             # do a logout now.
-            print("Idle timeout now!")
+            print("Idle!")
 
             from actions import logout_now
             await logout_now()
             return              # not reached
+
+    print("Idle TO undone")
             
 async def ux_confirm(msg):
     # confirmation screen, with stock title and Y=of course.
