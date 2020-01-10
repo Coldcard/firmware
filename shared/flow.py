@@ -12,6 +12,7 @@ from choosers import *
 from multisig import make_multisig_menu
 from paper import make_paper_wallet
 from address_explorer import address_explore
+from hsm import hsm_policy_available 
 
 #
 # NOTE: "Always In Title Case"
@@ -190,6 +191,7 @@ NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
     MenuItem('Passphrase', f=start_b39_pw, predicate=lambda: settings.get('words', True)),
+    MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),

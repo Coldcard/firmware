@@ -1,8 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# Operations that require user authorization, like our core features: signing messages
-# and signing bitcoin transactions.
+# hsm.py
+#
+# Unattended signing of transactions and messages, subject to a set of rules.
 #
 import stash, ure, tcc, ux, chains, sys, gc, uio, ujson, uos, utime
 from sffile import SFFile
@@ -11,12 +12,13 @@ from utils import problem_file_line, cleanup_deriv_path
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from auth import UserAuthorizedAction
 from utils import pretty_short_delay, pretty_delay
+from uasyncio.queues import QueueEmpty
 
-# this is None or points to HSMPolicy object
+# this is None or points to the active HSMPolicy object
 global hsm_active
 hsm_active = None
 
-# where we save policy
+# where we save policy/config
 POLICY_FNAME = '/flash/hsm-policy.json'
 
 def get_list(j, fld_name, cleanup_fcn=None):
@@ -29,7 +31,8 @@ def get_list(j, fld_name, cleanup_fcn=None):
             return [cleanup_fcn(i) for i in v]
     return v
 
-def int_range(v, fld_name, mn=0, mx=1000):
+def get_int(j, fld_name, mn=0, mx=1000):
+    v = j.pop(fld_name, None) or None
     if v is None: return v
     assert int(v) == v, "%s: must be integer" % fld_name
     v = int(v)
@@ -53,7 +56,7 @@ class HSMPolicy:
         self.notes = j.pop('notes', None)
 
         # time period, in minutes
-        self.period = int_range(j.pop('period', None), 'period', 1, 72*60)
+        self.period = get_int(j, 'period', 1, 3*24*60)
 
         # error checking
         extra = set(j.keys())
@@ -317,10 +320,13 @@ class hsmUxInteraction:
     update_contents = show
 
     async def interact(self):
-        from main import numpad
+        import main
         from actions import login_now
-        from uasyncio.queues import QueueEmpty
         from uasyncio import sleep_ms
+
+        # Prevent any other component from reading numpad
+        real_numpad = main.numpad
+        main.numpad = NeuterPad
 
         # Kill time, waiting for user input
         while 1:
@@ -329,7 +335,7 @@ class hsmUxInteraction:
 
             try:
                 # Poll for an event, no block
-                ch = numpad.get_nowait()
+                ch = real_numpad.get_nowait()
 
                 if ch == 'x':
                     await login_now()       # immediate reboots
@@ -344,7 +350,6 @@ class hsmUxInteraction:
             req = UserAuthorizedAction.active_request
             if req and not req.ux_done:
                 try:
-                    print('do more')
                     await req.interact()
                 except AbortInteraction:
                     pass
@@ -352,5 +357,33 @@ class hsmUxInteraction:
 
 # singleton
 hsm_ux_obj = hsmUxInteraction()
+
+# Mock version of NumpadBase from numpad.py
+class NeuterPad:
+    disabled = True
+
+    @classmethod
+    async def get(cls):
+        return 
+
+    @classmethod
+    def get_nowait(cls):
+        raise QueueEmpty
+
+    @classmethod
+    def empty(cls):
+        return True
+
+    @classmethod
+    def stop(cls):
+        return
+
+    @classmethod
+    def abort_ux(cls):
+        return
+
+    @classmethod
+    def inject(cls, key):
+        return
 
 # EOF
