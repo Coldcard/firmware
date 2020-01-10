@@ -124,4 +124,21 @@ if '--set' in sys.argv:
     except: pass
     sim_defaults[k] = v
 
+if '--users' in sys.argv:
+    sim_defaults['usr'] = { 
+            # time based OTP
+            # otpauth://totp/totp?secret=UR4LAZMTSJOF52FE&issuer=Coldcard%20simulator
+            'totp': [1, 'UR4LAZMTSJOF52FE', 0],
+
+            # OBSCURE: counter-based, not time
+            # - no way to get your counter in sync w/ simulator
+            # otpauth://hotp/hotp?secret=DBDCOKLQKM6BAKXD&issuer=Coldcard%20simulator
+            'hotp': [2, 'DBDCOKLQKM6BAKXD', 0],
+
+            # password
+            # pw / 1234abcd
+            'pw': [3, 'THNUHHFTG44NLI4EC7H7D6MU5AYMC3B3ER2ZFIBHQVUBOLGADA7Q', 0],
+        }
+
+
 # EOF
