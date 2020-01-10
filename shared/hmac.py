@@ -1,13 +1,14 @@
+# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
+# and is covered by GPLv3 license found in COPYING.
+#
+# See also: <https://github.com/micropython/micropython-lib/blob/master/LICENSE>
+#
 """HMAC (Keyed-Hashing for Message Authentication) Python module.
 
 Implements the HMAC algorithm as described by RFC 2104.
 
 from: https://github.com/micropython/micropython-lib/blob/master/hmac/hmac.py @ 96c981b
 """
-
-
-def translate(d, t):
-    return bytes(t[x] for x in d)
 
 class HMAC:
     """RFC 2104 HMAC class.  Also complies with RFC 4231.
@@ -57,6 +58,9 @@ class HMAC:
 
         if len(key) > blocksize:
             key = self.digest_cons(key).digest()
+
+        def translate(d, t):
+            return bytes(t[x] for x in d)
 
         trans_5C = bytes((x ^ 0x5C) for x in range(256))
         trans_36 = bytes((x ^ 0x36) for x in range(256))
