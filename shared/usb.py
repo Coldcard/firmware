@@ -42,6 +42,21 @@ hid_descp = bytes([
             0xc0,              # END_COLLECTION
         ])
 
+# Only these whitelisted USB commands are allowed once we enter HSM mode.
+HSM_WHITELIST = frozenset({
+    'rebo', 'logo', 'ping', 'vers',     # harmless/boring
+    'upld', 'sha2', 'dwld', 'stxn',     # up/download/sign PSBT needed
+    'mitm','ncry',              # limited by policy tho
+    'smsg',                     # limited by policy
+    'blkc', 'hsts',             # status values
+    'stok', 'bkok', 'smok', 'pwok', 'enok',     # ux status queries
+    'xpub', 'msck',             # quick status checks
+    'p2sh', 'show',             # limited value, no-one to see screen
+    'user',                     # auth HSM user, other user cmds not allowed
+})
+
+
+
 # singleton instance of USBHandler()
 handler = None
 
@@ -233,7 +248,7 @@ class USBHandler:
         elif isinstance(resp, int):
             resp = pack('<4sI', 'int1', resp)
         else:
-            print("Unkown resp: %r" % resp)
+            print("Unknown resp: %r" % resp)
             raise NotImplementedError()
 
         assert len(resp) >= 4
@@ -283,6 +298,12 @@ class USBHandler:
             cmd = bytes(cmd).decode()
         except:
             raise FramingError('decode')
+
+        from hsm import maybe_start_hsm, hsm_active
+        if hsm_active:
+            # only a few commands are allowed during HSM mode
+            if cmd not in HSM_WHITELIST:
+                return b'err_Not allowed in HSM mode'
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.
@@ -422,37 +443,38 @@ class USBHandler:
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok' or cmd == 'enok':
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
-            from auth import active_request, UserAuthorizedAction
+            from auth import UserAuthorizedAction
 
-            if not active_request:
+            req = UserAuthorizedAction.active_request
+            if not req:
                 return b'err_No active request'
 
-            if active_request.refused:
+            if req.refused:
                 UserAuthorizedAction.cleanup()
                 return b'refu'
 
-            if active_request.failed:
-                rv = b'err_' + active_request.failed.encode()
+            if req.failed:
+                rv = b'err_' + req.failed.encode()
                 UserAuthorizedAction.cleanup()
                 return rv
 
-            if not active_request.result:
+            if not req.result:
                 # STILL waiting on user
                 return None
 
             if cmd == 'pwok' or cmd == 'enok':
                 # return new root xpub
-                xpub = active_request.result
+                xpub = req.result
                 UserAuthorizedAction.cleanup()
                 return b'asci' + bytes(xpub, 'ascii')
             elif cmd == 'smok':
                 # signed message done: just give them the signature
-                addr, sig = active_request.address, active_request.result
+                addr, sig = req.address, req.result
                 UserAuthorizedAction.cleanup()
                 return pack('<4sI', 'smrx', len(addr)) + addr.encode() + sig
             else:
                 # generic file response
-                resp_len, sha = active_request.result
+                resp_len, sha = req.result
                 UserAuthorizedAction.cleanup()
                 return pack('<4sI32s', 'strx', resp_len, sha)
 
@@ -482,6 +504,58 @@ class USBHandler:
 
         if cmd == 'bagi':
             return self.handle_bag_number(args)
+
+        if cmd == 'hsms':
+            # HSM mode "start" -- requires user approval
+            if args:
+                file_len, file_sha = unpack_from('<I32s', args)
+                if file_sha != self.file_checksum.digest():
+                    return b'err_Checksum'
+                assert 2 <= file_len <= (200*1000), "badlen"
+            else:
+                file_len = 0
+
+            # Start an UX interaction but return immediately here
+            maybe_start_hsm(sf_len=file_len, ux_reset=True)
+
+            return None
+
+        if cmd == 'hsts':
+            # can always query HSM mode
+            from hsm import hsm_status_report
+            import ujson
+            return b'asci' + ujson.dumps(hsm_status_report())
+
+
+        # User Mgmt
+        if cmd == 'nwur':     # new user
+            from users import Users
+            auth_mode, ul, sl = unpack_from('<BBB', args)
+            username = bytes(args[3:3+ul]).decode('ascii')
+            secret = bytes(args[3+ul:3+ul+sl])
+
+            return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
+
+        if cmd == 'rmur':     # delete user
+            from users import Users
+            ul, = unpack_from('<B', args)
+            username = bytes(args[1:1+ul]).decode('ascii')
+
+            return Users.delete(username)
+
+        if cmd == 'user':       # auth user (HSM mode)
+            from users import Users
+            totp_time, ul, tl = unpack_from('<IBB', args)
+            username = bytes(args[6:6+ul]).decode('ascii')
+            token = bytes(args[6+ul:6+ul+tl])
+
+            if hsm_active:
+                # probably just queues these details, can't be checked until PSBT on-hand
+                return hsm_active.auth_user(username, token, totp_time)
+            else:
+                # dryrun/testing purposes: validate only, doesn't unlock nothing
+                return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
+
 
         if is_simulator() and cmd[0].isupper():
             # special hacky commands to support testing w/ the simulator
