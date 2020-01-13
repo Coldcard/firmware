@@ -11,6 +11,7 @@ from ubinascii import hexlify as b2a_hex
 from ckcc import rng_bytes, watchpoint, is_simulator
 import uselect as select
 from utils import problem_file_line
+from version import has_fatram
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -299,11 +300,13 @@ class USBHandler:
         except:
             raise FramingError('decode')
 
-        from hsm import maybe_start_hsm, hsm_active
-        if hsm_active:
-            # only a few commands are allowed during HSM mode
-            if cmd not in HSM_WHITELIST:
-                return b'err_Not allowed in HSM mode'
+        if has_fatram:
+            # Mk3 only
+            from hsm import maybe_start_hsm, hsm_active
+            if hsm_active:
+                # only a few commands are allowed during HSM mode
+                if cmd not in HSM_WHITELIST:
+                    return b'err_Not allowed in HSM mode'
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.
@@ -505,57 +508,59 @@ class USBHandler:
         if cmd == 'bagi':
             return self.handle_bag_number(args)
 
-        if cmd == 'hsms':
-            # HSM mode "start" -- requires user approval
-            if args:
-                file_len, file_sha = unpack_from('<I32s', args)
-                if file_sha != self.file_checksum.digest():
-                    return b'err_Checksum'
-                assert 2 <= file_len <= (200*1000), "badlen"
-            else:
-                file_len = 0
+        if has_fatram:
+            # HSM and user-related  features only larger-memory Mk3
 
-            # Start an UX interaction but return immediately here
-            maybe_start_hsm(sf_len=file_len, ux_reset=True)
+            if cmd == 'hsms':
+                # HSM mode "start" -- requires user approval
+                if args:
+                    file_len, file_sha = unpack_from('<I32s', args)
+                    if file_sha != self.file_checksum.digest():
+                        return b'err_Checksum'
+                    assert 2 <= file_len <= (200*1000), "badlen"
+                else:
+                    file_len = 0
 
-            return None
+                # Start an UX interaction but return immediately here
+                maybe_start_hsm(sf_len=file_len, ux_reset=True)
 
-        if cmd == 'hsts':
-            # can always query HSM mode
-            from hsm import hsm_status_report
-            import ujson
-            return b'asci' + ujson.dumps(hsm_status_report())
+                return None
+
+            if cmd == 'hsts':
+                # can always query HSM mode
+                from hsm import hsm_status_report
+                import ujson
+                return b'asci' + ujson.dumps(hsm_status_report())
 
 
-        # User Mgmt
-        if cmd == 'nwur':     # new user
-            from users import Users
-            auth_mode, ul, sl = unpack_from('<BBB', args)
-            username = bytes(args[3:3+ul]).decode('ascii')
-            secret = bytes(args[3+ul:3+ul+sl])
+            # User Mgmt
+            if cmd == 'nwur':     # new user
+                from users import Users
+                auth_mode, ul, sl = unpack_from('<BBB', args)
+                username = bytes(args[3:3+ul]).decode('ascii')
+                secret = bytes(args[3+ul:3+ul+sl])
 
-            return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
+                return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
 
-        if cmd == 'rmur':     # delete user
-            from users import Users
-            ul, = unpack_from('<B', args)
-            username = bytes(args[1:1+ul]).decode('ascii')
+            if cmd == 'rmur':     # delete user
+                from users import Users
+                ul, = unpack_from('<B', args)
+                username = bytes(args[1:1+ul]).decode('ascii')
 
-            return Users.delete(username)
+                return Users.delete(username)
 
-        if cmd == 'user':       # auth user (HSM mode)
-            from users import Users
-            totp_time, ul, tl = unpack_from('<IBB', args)
-            username = bytes(args[6:6+ul]).decode('ascii')
-            token = bytes(args[6+ul:6+ul+tl])
+            if cmd == 'user':       # auth user (HSM mode)
+                from users import Users
+                totp_time, ul, tl = unpack_from('<IBB', args)
+                username = bytes(args[6:6+ul]).decode('ascii')
+                token = bytes(args[6+ul:6+ul+tl])
 
-            if hsm_active:
-                # probably just queues these details, can't be checked until PSBT on-hand
-                return hsm_active.auth_user(username, token, totp_time)
-            else:
-                # dryrun/testing purposes: validate only, doesn't unlock nothing
-                return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
-
+                if hsm_active:
+                    # probably just queues these details, can't be checked until PSBT on-hand
+                    return hsm_active.auth_user(username, token, totp_time)
+                else:
+                    # dryrun/testing purposes: validate only, doesn't unlock nothing
+                    return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
 
         if is_simulator() and cmd[0].isupper():
             # special hacky commands to support testing w/ the simulator
