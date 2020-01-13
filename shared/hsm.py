@@ -172,7 +172,8 @@ class ApproveHSMPolicy(UserAuthorizedAction):
             else:
                 # they don't want to!
                 self.refused = True
-                await ux_dramatic_pause("Refused.", 2)
+                # no need to be dramatic, IMHO
+                #await ux_dramatic_pause("Refused.", 2)
 
         except BaseException as exc:
             self.failed = "Exception"
@@ -247,7 +248,8 @@ def maybe_start_hsm(sf_len=0, ux_reset=False):
         print(err)
         return
 
-    UserAuthorizedAction.active_request = ApproveHSMPolicy(policy, is_new)
+    ar = ApproveHSMPolicy(policy, is_new)
+    UserAuthorizedAction.active_request = ar
 
     if ux_reset:
         # for USB case, kill any menu stack, and put our thing at the top
@@ -256,6 +258,8 @@ def maybe_start_hsm(sf_len=0, ux_reset=False):
         # menu item case: add to stack, so we can still back out
         from ux import the_ux
         the_ux.push(UserAuthorizedAction.active_request)
+
+    return ar
 
 def hsm_status_report():
     # return a JSON-able object. Documented and external programs

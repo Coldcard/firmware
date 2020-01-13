@@ -9,6 +9,9 @@
 import ustruct, hmac, tcc
 from public_constants import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC
 from public_constants import MAX_USERNAME_LEN, PBKDF2_ITER_COUNT
+from menu import MenuSystem, MenuItem
+from ucollections import namedtuple
+from ux import ux_dramatic_pause, ux_show_story, ux_confirm
 
 # accepting strings and strings, returning bytes when decoding, str when encoding (ie. correct)
 b32encode = tcc.codecs.b32_encode
@@ -53,6 +56,7 @@ def calc_hmac_key(text_password):
 # settings key
 KEY = 'usr'
 
+UserInfo = namedtuple('UserInfo', 'auth_mode secret last_counter')
 
 class Users:
     '''Track users and thier TOTP secrets or hashed passwords'''    
@@ -66,7 +70,8 @@ class Users:
 
     @classmethod
     def lookup(cls, username):
-        return cls.get().get(username, None)
+
+        return UserInfo(*cls.get().get(username, None))
 
     @classmethod
     def list(cls):
@@ -169,6 +174,7 @@ class Users:
             if expect == token:
                 # success, need to update last counter level seen (especially for HOTP,
                 # but also to resist replay for TOTP)
+                u = list(u)
                 u[2] = c
                 settings.changed()
                 return ''
@@ -176,6 +182,83 @@ class Users:
             print('expect=%r got=%r cnt=%d' % (expect, token, c))
 
         return 'mismatch'
-        
+
+##
+## Menu Stuff
+##
+
+class UsersMenu(MenuSystem):
+
+    @classmethod
+    def construct(cls):
+        # Dynamic menu with user-defined user names
+        from actions import import_multisig
+
+        async def no_users_yet(*a):
+            # action for 'no wallets yet' menu item
+            await ux_show_story("You don't have any user accounts defined yet. USB is used to define new users, and their associated secrets.")
+
+        users = Users.list()
+        if not users:
+            rv = [MenuItem('(no users yet)', f=no_users_yet)]
+        else:
+            rv = [MenuItem('%d user%s:' % (len(users), 's' if len(users) != 1 else ''))]
+            for u in users:
+                rv.append(MenuItem('"%s"' % u, menu=make_user_sub_menu, arg=u))
+
+        # other static items?
+        #rv.append(MenuItem('', f=import_multisig))
+
+        return rv
+
+    def update_contents(self):
+        # Reconstruct the list of users on this dynamic menu, because
+        # we added or changed them and are showing that same menu again.
+        tmp = self.construct()
+        self.replace_items(tmp)
+
+
+async def make_users_menu(*a):
+    # list of all users, and maybe high-level settings/actions
+    rv = UsersMenu.construct()
+    return UsersMenu(rv)
+
+async def make_user_sub_menu(menu, label, item):
+    # details, actions on single multisig wallet
+    user = item.arg
+
+    async def delete_user(menu, label, item):
+        if not await ux_confirm('Delete user:\n %s\n' % item.arg):
+            return
+
+        Users.delete(item.arg)
+        await ux_dramatic_pause('Deleted.', 3)
+
+        from ux import the_ux
+        the_ux.pop()
+        m = the_ux.top_of_stack()
+        m.update_contents()
+
+    # get details: not much
+    info = Users.lookup(user)
+    if not info:
+        return
+
+    print(info)
+
+    if info.auth_mode == USER_AUTH_TOTP:
+        dets = "TOTP: " + ('unused' if not info.last_counter else 'active')
+    elif info.auth_mode == USER_AUTH_HOTP:
+        dets = "HOTP: count=%d" % info.last_counter
+    elif info.auth_mode == USER_AUTH_HMAC:
+        dets = "HMAC mode"
+
+    rv = [
+        MenuItem('"%s"' % user),        # does nothing, it's a title
+        MenuItem(dets),
+        MenuItem('Delete User', f=delete_user, arg=user),
+    ]
+
+    return rv
 
 # EOF

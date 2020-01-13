@@ -79,6 +79,17 @@ if '--hsm' in sys.argv:
     for ch in '123460':
         numpad.inject(ch)
 
+if '--user-mgmt' in sys.argv:
+    from main import numpad
+    numpad.inject('x')  # no HSM, thanks
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('y')  # settings
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')
+    numpad.inject('y')  # User management
+
 # not best place for this
 import hsm
 hsm.POLICY_FNAME = hsm.POLICY_FNAME.replace('/flash/', '')

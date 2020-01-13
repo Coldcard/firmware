@@ -12,7 +12,12 @@ from choosers import *
 from multisig import make_multisig_menu
 from paper import make_paper_wallet
 from address_explorer import address_explore
-from hsm import hsm_policy_available 
+from users import make_users_menu
+
+if version.has_fatram:
+    from hsm import hsm_policy_available 
+else:
+    hsm_policy_available = lambda: False
 
 #
 # NOTE: "Always In Title Case"
@@ -57,6 +62,7 @@ SettingsMenu = [
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
+    MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
