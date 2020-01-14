@@ -54,6 +54,7 @@ HSM_WHITELIST = frozenset({
     'xpub', 'msck',             # quick status checks
     'p2sh', 'show',             # limited value, no-one to see screen
     'user',                     # auth HSM user, other user cmds not allowed
+    'getl',                     # read long-secret; hsm mode only, limited usage
 })
 
 
@@ -532,6 +533,11 @@ class USBHandler:
                 import ujson
                 return b'asci' + ujson.dumps(hsm_status_report())
 
+            if cmd == 'getl':
+                # get the "long secret"
+                assert hsm_active, 'need hsm'
+                return b'biny' + hsm_active.fetch_ls()
+
 
             # User Mgmt
             if cmd == 'nwur':     # new user
@@ -556,8 +562,10 @@ class USBHandler:
                 token = bytes(args[6+ul:6+ul+tl])
 
                 if hsm_active:
-                    # probably just queues these details, can't be checked until PSBT on-hand
-                    return hsm_active.auth_user(username, token, totp_time)
+                    # just queues these details, can't be checked until PSBT on-hand
+                    # - do not share success/failure at this point
+                    hsm_active.usb_auth_user(username, token, totp_time)
+                    return None
                 else:
                     # dryrun/testing purposes: validate only, doesn't unlock nothing
                     return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')

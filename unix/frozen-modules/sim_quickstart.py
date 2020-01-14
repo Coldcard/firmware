@@ -72,10 +72,17 @@ if '--msg' in sys.argv:
     numpad.inject('y')
 
 if '--hsm' in sys.argv:
-    # Sign from MicoSD card
+    # Enable existing HSM file
+    # - also prelaod a long-secret for an onion server
+    # - must already be a .../unix/work/hsm-policy.json file in place
     from main import numpad
-    numpad.inject('3')
-    numpad.inject('y')
+    from sim_secel import SECRETS
+    m = 'ED25519-V3 OGlICrIPZE6DEtsGfcWH2pO6Uz6ZI+w05BYOERMN0XahGicvBhSR4HcgcX3mzk/qM3dWFZ8QAOEIvPFujlhULg=='
+    SECRETS['ls'] = bytes([len(m), 0]) + m.encode('ascii') + (b'\0' * (416 - 2 - len(m)))
+    
+    #numpad.inject('3')
+    #numpad.inject('y')      
+    # accept boot-up HSM offer
     for ch in '123460':
         numpad.inject(ch)
 

@@ -17,6 +17,9 @@ from ux import ux_dramatic_pause, ux_show_story, ux_confirm
 b32encode = tcc.codecs.b32_encode
 b32decode = tcc.codecs.b32_decode
 
+# to keep menus and such to a reasonable size
+MAX_NUMBER_USERS = const(30)
+
 def calc_hotp(secret, counter):
     '''
     Get HMAC-based one-time password on the basis of given secret and
@@ -56,11 +59,11 @@ def calc_hmac_key(text_password):
 # settings key
 KEY = 'usr'
 
+# - storing: [authmode, base32(secret), last_counter] in a map keyed by username
 UserInfo = namedtuple('UserInfo', 'auth_mode secret last_counter')
 
 class Users:
     '''Track users and thier TOTP secrets or hashed passwords'''    
-    # - storing: [authmode, base32(secret), last_counter] in map from username
 
     @classmethod
     def get(cls):
@@ -70,8 +73,9 @@ class Users:
 
     @classmethod
     def lookup(cls, username):
-
-        return UserInfo(*cls.get().get(username, None))
+        # find by username, and return details.
+        rv = cls.get().get(username, None)
+        return UserInfo(*rv) if rv else None
 
     @classmethod
     def list(cls):
@@ -134,6 +138,7 @@ class Users:
         # check a password/totp
         # - where a hash of a PSBT is needed, we use zero; if unknown
         # - return empty string if ok, else problem string
+        # - SIDE-EFFECT: updates last-counter/totp timestamp if successful
         from main import settings
 
         u = cls.lookup(username)
@@ -152,7 +157,7 @@ class Users:
 
         if auth_mode == USER_AUTH_HOTP:
             # totp_time provided is ignored; use own counter; but perhaps
-            # they fumbled a bit and wasted a few codes
+            # they fumbled a bit and wasted a few codes, so give forward leeway
             candidates = [last_counter+i for i in range(1, 10)]
 
             if not last_counter:

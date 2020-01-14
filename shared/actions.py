@@ -646,12 +646,15 @@ async def start_login_sequence():
             print("XFP save failed: %s" % exc)
 
     # If HSM policy file is available, offer to start that,
-    # before the USB is even enabled.
+    # **before** the USB is even enabled.
     if version.has_fatram:
         import hsm
-        if hsm.hsm_policy_available():
-            ar = hsm.maybe_start_hsm(ux_reset=False)
-            await ar.interact()
+        try:
+            if hsm.hsm_policy_available():
+                ar = hsm.maybe_start_hsm(ux_reset=False)
+                if ar:
+                    await ar.interact()
+        except: pass
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb

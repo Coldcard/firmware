@@ -5,7 +5,7 @@
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ure, tcc, ux, chains, sys, gc, uio, ujson, uos, utime
+import stash, ustruct, tcc, ux, chains, sys, gc, uio, ujson, uos, utime
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, the_ux
 from utils import problem_file_line, cleanup_deriv_path
@@ -13,6 +13,11 @@ from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from auth import UserAuthorizedAction
 from utils import pretty_short_delay, pretty_delay
 from uasyncio.queues import QueueEmpty
+from ubinascii import a2b_base64
+from pincodes import AE_LONG_SECRET_LEN
+from stash import blank_object
+from users import Users, MAX_NUMBER_USERS
+from public_constants import MAX_USERNAME_LEN
 
 # this is None or points to the active HSMPolicy object
 global hsm_active
@@ -21,7 +26,7 @@ hsm_active = None
 # where we save policy/config
 POLICY_FNAME = '/flash/hsm-policy.json'
 
-def get_list(j, fld_name, cleanup_fcn=None):
+def pop_list(j, fld_name, cleanup_fcn=None):
     # returns either None or a list of items; raises if not a list (ie. single item)
     v = j.pop(fld_name, None) or None
     if v:
@@ -31,12 +36,24 @@ def get_list(j, fld_name, cleanup_fcn=None):
             return [cleanup_fcn(i) for i in v]
     return v
 
-def get_int(j, fld_name, mn=0, mx=1000):
-    v = j.pop(fld_name, None) or None
+def pop_int(j, fld_name, mn=0, mx=1000):
+    # returns an int or None. Also range check.
+    v = j.pop(fld_name, None)
     if v is None: return v
     assert int(v) == v, "%s: must be integer" % fld_name
     v = int(v)
     assert mn <= v < mx, "%s: must in range: %d..%d" % (fld_name, mn, mx)
+    return v
+
+def pop_bool(j, fld_name, default=False):
+    # return a bool, but accept 1/0 and True/False
+    return bool(j.pop(fld_name, default))
+
+def pop_string(j, fld_name, mn_len=0, mx_len=80):
+    v = j.pop(fld_name, None)
+    if v is None: return v
+    assert isinstance(v, str), '%s: must be string' % fld_name
+    assert mn_len <= len(v) <= mx_len, '%s: length must be %d..%d' % (fld_name, mn_len, mx_len)
     return v
 
 class HSMPolicy:
@@ -47,25 +64,35 @@ class HSMPolicy:
         # NOTES:
         # - attr name == json name if possible
         # - always add to self.save()!
-        self.must_log = bool(j.pop('must_log', False))
+        # - raise errors and they will be shown to user
+        self.must_log = pop_bool(j, 'must_log')
 
         # a list of paths we can accept for signing
-        self.msg_paths = get_list(j, 'msg_paths', cleanup_deriv_path)
+        self.msg_paths = pop_list(j, 'msg_paths', cleanup_deriv_path)
 
         # free text shown at top
         self.notes = j.pop('notes', None)
 
         # time period, in minutes
-        self.period = get_int(j, 'period', 1, 3*24*60)
+        self.period = pop_int(j, 'period', 1, 3*24*60)
 
-        # error checking
+        # how many times they may view the long-secret
+        self.allow_ls = pop_int(j, 'allow_ls', 1, 10)
+
+        self.set_ls = pop_string(j, 'set_ls', 16, AE_LONG_SECRET_LEN-2)
+        if self.set_ls:
+            assert self.allow_ls, 'need allow_ls>=1'        # because pointless otherwise
+
+        # error checking, must be last!
         extra = set(j.keys())
         if extra:
             raise ValueError("Unknown item: " + ', '.join(extra))
 
-        # statistics
+        # statistics / state
         self.refusals = 0
         self.approvals = 0
+        self.ls_fetches = 0
+        self.pending_auth = {}
 
         # velocity limits
         self.current_period = utime.time() # starts now
@@ -80,10 +107,13 @@ class HSMPolicy:
         
     def save(self):
         # create JSON document for next time.
-        simple = ['must_log', 'msg_paths', 'notes', 'period']
+        simple = ['must_log', 'msg_paths', 'notes', 'period', 'allow_ls']
         rv = dict()
         for fn in simple:
             rv[fn] = getattr(self, fn, None)
+
+        # never write this secret into JSON
+        assert 'set_ls' not in rv
 
         return rv
 
@@ -107,26 +137,91 @@ class HSMPolicy:
     def explain(self, fd):
 
         if self.notes:
-            fd.write(self.notes)
-            fd.write('\n')
+            fd.write('=-=\n%s\n=-=\n' % self.notes)
 
         fd.write('Transactions:\n')
 
-        fd.write('\nMessage signing:\n')
+        if self.period:
+            fd.write('\nVelocity Period:\n %d minutes' % self.period)
+            if self.period >= 60:
+                fd.write('\n = %.3g hrs' % (self.period / 60))
+
+        fd.write('\n\nMessage signing:\n')
         if self.msg_paths:
             fd.write("- Allowed if path is: %s\n" % ' OR '.join(self.msg_paths))
         else:
-            fd.write("- Not allowed\n")
+            fd.write("- Not allowed.\n")
 
         fd.write('\nOther policy:\n\n')
         fd.write('- MicroSD card %s receive log entries.\n' % ('MUST' if self.must_log else 'will'))
+        if self.set_ls:
+            fd.write('- Long secret will be updated (once).\n')
+        if self.allow_ls:
+            fd.write('- Long secret can be read only %s.\n' 
+                        % ('once' if self.allow_ls == 1 else ('%d times'%self.allow_ls)))
 
         self.summary = fd.getvalue()
 
     def status(self, rv):
-        for fn in ['summary', 'last_refusal', 'approvals', 'refusals']:
+        # add some values we will share over USB during HSM operation
+        for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'ls_fetches']:
             rv[fn] = getattr(self, fn, None)
-                    
+
+        # sensitive values, summarize only!
+        rv['pending_auth'] = len(self.pending_auth)
+
+    def activate(self):
+        # user approved activation, so apply it.
+        global hsm_active
+        assert not hsm_active
+        hsm_active = self
+
+        # save the "long secret" ... probably only happens first time HSM policy
+        # is activated, because we don't store that original value except here 
+        # and in SE.
+        if self.set_ls:
+            from main import pa
+
+            # add length half-word to start, and pad to max size
+            tmp = bytearray(AE_LONG_SECRET_LEN)
+            val = self.set_ls.encode('utf8')
+            ustruct.pack_into('H', tmp, 0, len(val))
+            tmp[2:2+len(self.set_ls)] = val
+
+            pa.ls_change(tmp)
+
+            # memory cleanup
+            blank_object(tmp)
+            blank_object(val)
+            blank_object(self.set_ls)
+            self.set_ls = None
+
+    def fetch_ls(self):
+        # USB request to read the long secret
+        # - limited by counter, because typically only needed at startup
+        # - please keep in mind the desktop needs this secret, and probably blabs it
+        # - our memory also is contaiminated with this secret, and no easy way to clean
+        assert self.allow_ls, 'not allowed'
+        assert self.ls_fetches < self.allow_ls, 'consumed'
+        self.ls_fetches += 1
+
+        from main import pa
+        raw = pa.ls_fetch()
+        ll, = ustruct.unpack_from('H', raw)
+        assert 0 <= ll <= AE_LONG_SECRET_LEN-2
+
+        return raw[2:2+ll]
+
+    def usb_auth_user(self, username, token, totp_time):
+        # User via USB has proposed a totp/user/password for auth purposes
+        # - but just capture data at this point, we can't use until PSBT arrives
+        # - reject bogus users at this point?
+        # - to avoid timing attacks, keep this linear
+        assert 1 < len(username) <= MAX_USERNAME_LEN, 'badlen'
+        assert len(self.pending_auth)+1 <= MAX_NUMBER_USERS, 'toomany'
+
+        self.pending_auth[username] = (token, totp_time)
+        
 
     async def approve_msg_sign(self, story, msg_text, subpath):
         # Maybe approve indicated message to be signed.
@@ -193,8 +288,7 @@ class ApproveHSMPolicy(UserAuthorizedAction):
                 ujson.dump(self.policy.save(), f)
 
         # go into special HSM mode .. one-way trip
-        global hsm_active
-        hsm_active = self.policy
+        self.policy.activate()
         the_ux.reset(hsm_ux_obj)
 
         return
