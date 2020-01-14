@@ -651,7 +651,7 @@ async def start_login_sequence():
         import hsm
         try:
             if hsm.hsm_policy_available():
-                ar = hsm.maybe_start_hsm(ux_reset=False)
+                ar = await hsm.start_hsm_approval(usb_mode=False)
                 if ar:
                     await ar.interact()
         except: pass
@@ -1446,7 +1446,7 @@ async def import_multisig(*a):
         await ux_show_story('Failed to import.\n\n\n'+str(e))
 
 async def start_hsm_menu_item(*a):
-    from hsm import maybe_start_hsm 
-    maybe_start_hsm(sf_len=0, ux_reset=False)
+    from hsm import start_hsm_approval 
+    await start_hsm_approval(sf_len=0, usb_mode=False)
 
 # EOF

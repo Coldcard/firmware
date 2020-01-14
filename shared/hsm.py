@@ -65,7 +65,12 @@ class HSMPolicy:
         # - attr name == json name if possible
         # - always add to self.save()!
         # - raise errors and they will be shown to user
+
+        # fail if we can't log it
         self.must_log = pop_bool(j, 'must_log')
+
+        # require a 4-digit PIN by local user (no UX feedback)
+        self.local_conf = pop_bool(j, 'local_conf')
 
         # a list of paths we can accept for signing
         self.msg_paths = pop_list(j, 'msg_paths', cleanup_deriv_path)
@@ -77,11 +82,11 @@ class HSMPolicy:
         self.period = pop_int(j, 'period', 1, 3*24*60)
 
         # how many times they may view the long-secret
-        self.allow_ls = pop_int(j, 'allow_ls', 1, 10)
+        self.allow_sl = pop_int(j, 'allow_sl', 1, 10)
 
-        self.set_ls = pop_string(j, 'set_ls', 16, AE_LONG_SECRET_LEN-2)
-        if self.set_ls:
-            assert self.allow_ls, 'need allow_ls>=1'        # because pointless otherwise
+        self.set_sl = pop_string(j, 'set_sl', 16, AE_LONG_SECRET_LEN-2)
+        if self.set_sl:
+            assert self.allow_sl, 'need allow_sl>=1'        # because pointless otherwise
 
         # error checking, must be last!
         extra = set(j.keys())
@@ -91,8 +96,9 @@ class HSMPolicy:
         # statistics / state
         self.refusals = 0
         self.approvals = 0
-        self.ls_fetches = 0
+        self.sl_reads = 0
         self.pending_auth = {}
+        self.need_pin = None
 
         # velocity limits
         self.current_period = utime.time() # starts now
@@ -107,13 +113,13 @@ class HSMPolicy:
         
     def save(self):
         # create JSON document for next time.
-        simple = ['must_log', 'msg_paths', 'notes', 'period', 'allow_ls']
+        simple = ['must_log', 'msg_paths', 'notes', 'period', 'allow_sl', 'local_conf']
         rv = dict()
         for fn in simple:
             rv[fn] = getattr(self, fn, None)
 
         # never write this secret into JSON
-        assert 'set_ls' not in rv
+        assert 'set_sl' not in rv
 
         return rv
 
@@ -154,18 +160,21 @@ class HSMPolicy:
 
         fd.write('\nOther policy:\n\n')
         fd.write('- MicroSD card %s receive log entries.\n' % ('MUST' if self.must_log else 'will'))
-        if self.set_ls:
-            fd.write('- Long secret will be updated (once).\n')
-        if self.allow_ls:
-            fd.write('- Long secret can be read only %s.\n' 
-                        % ('once' if self.allow_ls == 1 else ('%d times'%self.allow_ls)))
+        if self.set_sl:
+            fd.write('- Storage Locker will be updated (once).\n')
+        if self.allow_sl:
+            fd.write('- Storage Locker can be read only %s.\n' 
+                        % ('once' if self.allow_sl == 1 else ('%d times'%self.allow_sl)))
 
         self.summary = fd.getvalue()
 
     def status(self, rv):
         # add some values we will share over USB during HSM operation
-        for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'ls_fetches']:
+        for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'sl_reads']:
             rv[fn] = getattr(self, fn, None)
+
+        if self.need_pin and self.local_conf:
+            rv['need_pin'] = self.need_pin
 
         # sensitive values, summarize only!
         rv['pending_auth'] = len(self.pending_auth)
@@ -179,31 +188,31 @@ class HSMPolicy:
         # save the "long secret" ... probably only happens first time HSM policy
         # is activated, because we don't store that original value except here 
         # and in SE.
-        if self.set_ls:
+        if self.set_sl:
             from main import pa
 
             # add length half-word to start, and pad to max size
             tmp = bytearray(AE_LONG_SECRET_LEN)
-            val = self.set_ls.encode('utf8')
+            val = self.set_sl.encode('utf8')
             ustruct.pack_into('H', tmp, 0, len(val))
-            tmp[2:2+len(self.set_ls)] = val
+            tmp[2:2+len(self.set_sl)] = val
 
             pa.ls_change(tmp)
 
             # memory cleanup
             blank_object(tmp)
             blank_object(val)
-            blank_object(self.set_ls)
-            self.set_ls = None
+            blank_object(self.set_sl)
+            self.set_sl = None
 
-    def fetch_ls(self):
-        # USB request to read the long secret
+    def fetch_storage_locker(self):
+        # USB request to read the storage locker (aka. long secret from 608a)
         # - limited by counter, because typically only needed at startup
         # - please keep in mind the desktop needs this secret, and probably blabs it
         # - our memory also is contaiminated with this secret, and no easy way to clean
-        assert self.allow_ls, 'not allowed'
-        assert self.ls_fetches < self.allow_ls, 'consumed'
-        self.ls_fetches += 1
+        assert self.allow_sl, 'not allowed'
+        assert self.sl_reads < self.allow_sl, 'consumed'
+        self.sl_reads += 1
 
         from main import pa
         raw = pa.ls_fetch()
@@ -249,26 +258,27 @@ class ApproveHSMPolicy(UserAuthorizedAction):
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        approved = False
 
         try:
-            confirm_char = '12346'[tcc.random.uniform(5)]
 
             msg = uio.StringIO()
             self.policy.explain(msg)
-            msg.write('\n\nPress %s to enable HSM mode.' % confirm_char)
+            msg.write('\n\nPress OK to enable HSM mode.')
 
-            ch = await ux_show_story(msg, title=self.title,
-                                        escape='x'+confirm_char, strict_escape=True)
+            ch = await ux_show_story(msg, title=self.title)
             del msg
 
-            if ch == confirm_char:
-                approved = True
-            else:
-                # they don't want to!
-                self.refused = True
-                # no need to be dramatic, IMHO
-                #await ux_dramatic_pause("Refused.", 2)
+            self.refused = (ch != 'y')
+
+            if not self.refused and self.new_file:
+                confirm_char = '12346'[tcc.random.uniform(5)]
+                msg = '''Last chance. You are defining a new policy which \
+allows the Coldcard to sign specific transactions without any further user approval.\n\n\
+Press %s to save policy and enable HSM mode.''' % confirm_char
+
+                ch = await ux_show_story(msg, title=self.title,
+                                escape='x'+confirm_char, strict_escape=True)
+                self.refused = (ch != confirm_char)
 
         except BaseException as exc:
             self.failed = "Exception"
@@ -277,9 +287,8 @@ class ApproveHSMPolicy(UserAuthorizedAction):
             self.done()
             UserAuthorizedAction.cleanup()      # because no results to store
 
-        UserAuthorizedAction.cleanup()
-
-        if not approved:
+        # cleanup already done, and nothing more here ... return
+        if self.refused:
             return
 
         if self.new_file:
@@ -301,7 +310,7 @@ def hsm_policy_available():
     except:
         return False
 
-def maybe_start_hsm(sf_len=0, ux_reset=False):
+async def start_hsm_approval(sf_len=0, usb_mode=False):
     # Show details of the proposed HSM policy (or saved one)
     # If approved, go into HSM mode and never come back to normal.
 
@@ -332,20 +341,21 @@ def maybe_start_hsm(sf_len=0, ux_reset=False):
         policy.load(js_policy)
     except BaseException as exc:
         err = "HSM Policy invalid: %s: %s" % (problem_file_line(exc), str(exc))
-        if ux_reset:
+        if usb_mode:
             raise ValueError(err)
 
         # What to do in a menu case? Shouldn't happen anyway, but
         # maybe they downgraded the CC firmware, and so old policy file
-        # isn't suitable anymore. Don't crash, but no means to show msg
-        # since this is sync code.
+        # isn't suitable anymore.
         print(err)
+
+        await ux_show_story("Cannot start HSM.\n\n%s" % err)
         return
 
     ar = ApproveHSMPolicy(policy, is_new)
     UserAuthorizedAction.active_request = ar
 
-    if ux_reset:
+    if usb_mode:
         # for USB case, kill any menu stack, and put our thing at the top
         abort_and_goto(UserAuthorizedAction.active_request)
     else:
@@ -406,11 +416,16 @@ class hsmUxInteraction:
             dis.text(x+xoff, y+1, val)
             x = nx + 8
 
-        # heartbeat
-        y = 63
-        w = 8
-        phase = (utime.ticks_ms() // 100) % (128-w)
-        x = phase
+        # heartbeat display
+        # >>> from main import *; from display import FontTiny
+        # >>> dis.width('interaction', FontTiny)
+        line_ws = ( (32, 48, 16, 8),
+                    (24, 28, 12, 44 ) )
+        phase = (utime.ticks_ms() // 1000) % 8
+        line = phase // 4
+        y = 63 if line else 54
+        x = 4 + sum((line_ws[line][i]+4) for i in range(phase%4))
+        w = line_ws[line][phase%4]
         dis.dis.line(x, y, x+w, y, True)
 
         dis.show()

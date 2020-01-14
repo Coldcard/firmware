@@ -79,12 +79,13 @@ if '--hsm' in sys.argv:
     from sim_secel import SECRETS
     m = 'ED25519-V3 OGlICrIPZE6DEtsGfcWH2pO6Uz6ZI+w05BYOERMN0XahGicvBhSR4HcgcX3mzk/qM3dWFZ8QAOEIvPFujlhULg=='
     SECRETS['ls'] = bytes([len(m), 0]) + m.encode('ascii') + (b'\0' * (416 - 2 - len(m)))
+
+    numpad.inject('y')      
     
     #numpad.inject('3')
-    #numpad.inject('y')      
-    # accept boot-up HSM offer
-    for ch in '123460':
-        numpad.inject(ch)
+    # accept HSM policy, but already installed
+    #for ch in '123460':
+        #numpad.inject(ch)
 
 if '--user-mgmt' in sys.argv:
     from main import numpad
