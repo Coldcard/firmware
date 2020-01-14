@@ -303,7 +303,7 @@ class USBHandler:
 
         if has_fatram:
             # Mk3 only
-            from hsm import maybe_start_hsm, hsm_active
+            from hsm import start_hsm_approval, hsm_active
             if hsm_active:
                 # only a few commands are allowed during HSM mode
                 if cmd not in HSM_WHITELIST:
@@ -423,6 +423,7 @@ class USBHandler:
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
             maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
+
             return None
 
         if cmd == 'msck':
@@ -522,8 +523,8 @@ class USBHandler:
                 else:
                     file_len = 0
 
-                # Start an UX interaction but return immediately here
-                maybe_start_hsm(sf_len=file_len, ux_reset=True)
+                # Start an UX interaction but return (mostly) immediately here
+                await start_hsm_approval(sf_len=file_len, usb_mode=True)
 
                 return None
 
@@ -533,10 +534,10 @@ class USBHandler:
                 import ujson
                 return b'asci' + ujson.dumps(hsm_status_report())
 
-            if cmd == 'getl':
-                # get the "long secret"
+            if cmd == 'gslr':
+                # get the value held in the Storage Locker
                 assert hsm_active, 'need hsm'
-                return b'biny' + hsm_active.fetch_ls()
+                return b'biny' + hsm_active.fetch_storage_locker()
 
 
             # User Mgmt
