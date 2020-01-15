@@ -626,7 +626,7 @@ class psbtInputProxy(psbtProxy):
         return utxo
 
 
-    def determine_my_signing_key(self, my_idx, utxo, my_xfp, active_multisig):
+    def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
@@ -716,20 +716,20 @@ class psbtInputProxy(psbtProxy):
             M, N = disassemble_multisig_mn(redeem_script)
             xfps = [lst[0] for lst in self.subpaths.values()]
 
-            if not active_multisig:
+            if not psbt.active_multisig:
                 # search for multisig wallet
                 wal = MultisigWallet.find_match(M, N, xfps)
                 if wal < 0:
                     raise FatalPSBTIssue('Unknown multisig wallet')
 
-                active_multisig = MultisigWallet.get_by_idx(wal)
+                psbt.active_multisig = MultisigWallet.get_by_idx(wal)
             else:
                 # check consistent w/ already selected wallet
-                active_multisig.assert_matching(M, N, xfps)
+                psbt.active_multisig.assert_matching(M, N, xfps)
 
             # validate redeem script, by disassembling it and checking all pubkeys
             try:
-                active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+                psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
             except BaseException as exc:
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
@@ -1220,7 +1220,7 @@ class psbtObject(psbtProxy):
             # type of signing will be required, and which key we need.
             # - also validates redeem_script when present
             # - also finds appropriate multisig wallet to be used
-            inp.determine_my_signing_key(i, utxo, self.my_xfp, self.active_multisig)
+            inp.determine_my_signing_key(i, utxo, self.my_xfp, self)
 
             del utxo
 
