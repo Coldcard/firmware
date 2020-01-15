@@ -3,7 +3,6 @@
 #
 import pytest, glob, time, sys, random
 from pprint import pprint
-#from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode, explora
@@ -357,7 +356,7 @@ def set_master_key(sim_exec, sim_execfile, simulator, reset_seed_words):
         simulator.start_encryption()
         simulator.check_mitm()
 
-        print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+        #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
         return simulator.master_fingerprint
 
@@ -380,7 +379,7 @@ def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
         simulator.start_encryption()
         simulator.check_mitm()
 
-        print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+        #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
     yield doit
 
@@ -402,7 +401,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
         simulator.start_encryption()
         simulator.check_mitm()
 
-        print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
+        #print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
         assert simulator.master_fingerprint == simulator_fixed_xfp
 
         return words
@@ -802,7 +801,8 @@ def is_mark3(request):
 
 
 # useful fixtures related to multisig
-from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import,
-                                make_ms_address, clear_ms)
+from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,
+                                make_ms_address, clear_ms, make_myself_wallet)
+from test_bip39pw import set_bip39_pw, clear_bip39_pw
 
 #EOF

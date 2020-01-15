@@ -2,7 +2,9 @@
 import main
 expect = main.EXPECT
 
-from auth import active_request, ApproveTransaction
+from auth import ApproveTransaction, UserAuthorizedAction
+
+active_request = UserAuthorizedAction.active_request
 assert isinstance(active_request, ApproveTransaction)
 
 assert not active_request.failed, active_request.failed
