@@ -340,10 +340,10 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         
 
 async def idle_logout():
+    import main
     from main import numpad, settings
-    from hsm import hsm_active
 
-    while not hsm_active:
+    while not main.hsm_active:
         await sleep_ms(250)
 
         # they may have changed setting recently
@@ -363,8 +363,6 @@ async def idle_logout():
             from actions import logout_now
             await logout_now()
             return              # not reached
-
-    print("Idle TO undone")
             
 async def ux_confirm(msg):
     # confirmation screen, with stock title and Y=of course.

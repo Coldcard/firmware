@@ -78,6 +78,10 @@ class Users:
         return UserInfo(*rv) if rv else None
 
     @classmethod
+    def valid_username(cls, username):
+        return bool(cls.get().get(username, False))
+
+    @classmethod
     def list(cls):
         return list(sorted(cls.get().keys()))
         
@@ -90,9 +94,16 @@ class Users:
 
         assert auth_mode in {USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC}
 
-        # validate username; don't care if it exists, because then it's an update?
+        # validate username; 
         assert 1 < len(username) <= MAX_USERNAME_LEN, 'badlen'
-        # ... but don't let them reset the counter/totp level
+        assert username[0] != '_', 'reserved'
+
+        # We don't care if it exists, because then it's an update?
+        # - but can safely let them reset the counter/totp level??
+        # - not sure, so force them to delete on-device first
+        # - this check does not allow brute-force search for names (because 
+        existing = cls.lookup(username)
+        assert not existing, "exists"
 
         if not secret:
             secret, picked = cls.pick_secret(auth_mode)
@@ -105,6 +116,7 @@ class Users:
 
         # save
         u = cls.get()
+        assert len(u) < MAX_NUMBER_USERS, 'too many'
         u[username] = [auth_mode, b32encode(secret), 0]
         settings.put(KEY, u)
 

@@ -1221,13 +1221,13 @@ Coldcard multisig setup file and an Electrum wallet file will be created automat
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype,
                             common_prefix=deriv[2:], addr_fmt=addr_fmt)
 
-    from auth import NewEnrollRequest, active_request
+    from auth import NewEnrollRequest, UserAuthorizedAction
 
-    active_request = NewEnrollRequest(ms, auto_export=True)
+    UserAuthorizedAction.active_request = NewEnrollRequest(ms, auto_export=True)
 
     # menu item case: add to stack
     from ux import the_ux
-    the_ux.push(active_request)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 async def create_ms_step1(*a):
     # Show story, have them pick address format.

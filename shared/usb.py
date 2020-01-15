@@ -54,7 +54,7 @@ HSM_WHITELIST = frozenset({
     'xpub', 'msck',             # quick status checks
     'p2sh', 'show',             # limited value, no-one to see screen
     'user',                     # auth HSM user, other user cmds not allowed
-    'getl',                     # read long-secret; hsm mode only, limited usage
+    'gslr',                     # read storage locker; hsm mode only, limited usage
 })
 
 
@@ -65,7 +65,6 @@ handler = None
 class FramingError(RuntimeError): pass
 #class CCUserRefused(RuntimeError): pass
 class CCBusyError(RuntimeError): pass
-
 
 def enable_usb(loop, repl_enable=False):
     # start it.
@@ -295,19 +294,22 @@ class USBHandler:
 
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
+        from main import hsm_active
 
         try:
             cmd = bytes(cmd).decode()
         except:
             raise FramingError('decode')
 
-        if has_fatram:
-            # Mk3 only
-            from hsm import start_hsm_approval, hsm_active
-            if hsm_active:
-                # only a few commands are allowed during HSM mode
-                if cmd not in HSM_WHITELIST:
-                    return b'err_Not allowed in HSM mode'
+        if is_simulator() and cmd[0].isupper():
+            # special hacky commands to support testing w/ the simulator
+            from sim_usb import do_usb_command
+            return do_usb_command(cmd, args)
+
+        if hsm_active:
+            # only a few commands are allowed during HSM mode
+            if cmd not in HSM_WHITELIST:
+                return b'err_Not allowed in HSM mode'
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.
@@ -442,7 +444,7 @@ class USBHandler:
             assert 50 < txn_len <= MAX_TXN_LEN, "bad txn len"
 
             from auth import sign_transaction
-            sign_transaction(txn_len, bool(finalize))
+            sign_transaction(txn_len, bool(finalize), txn_sha)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok' or cmd == 'enok':
@@ -524,6 +526,7 @@ class USBHandler:
                     file_len = 0
 
                 # Start an UX interaction but return (mostly) immediately here
+                from hsm_ux import start_hsm_approval
                 await start_hsm_approval(sf_len=file_len, usb_mode=True)
 
                 return None
@@ -564,18 +567,11 @@ class USBHandler:
 
                 if hsm_active:
                     # just queues these details, can't be checked until PSBT on-hand
-                    # - do not share success/failure at this point
                     hsm_active.usb_auth_user(username, token, totp_time)
                     return None
                 else:
                     # dryrun/testing purposes: validate only, doesn't unlock nothing
                     return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
-
-        if is_simulator() and cmd[0].isupper():
-            # special hacky commands to support testing w/ the simulator
-            from sim_usb import do_usb_command
-            return do_usb_command(cmd, args)
-
 
         print("USB garbage: %s +[%d]" % (cmd, len(args)))
 

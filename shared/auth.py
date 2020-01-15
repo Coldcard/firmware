@@ -4,7 +4,7 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, tcc, ux, chains, sys, gc, uio
+import stash, ure, tcc, ux, chains, sys, gc, uio, version
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC
 from sffile import SFFile
@@ -131,13 +131,12 @@ class ApproveMessageSign(UserAuthorizedAction):
 
     async def interact(self):
         # Prompt user w/ details and get approval
-        from main import dis
-        from hsm import hsm_active
+        from main import dis, hsm_active
 
-        story = MSG_SIG_TEMPLATE.format(msg=self.text, addr=self.address, subpath=self.subpath)
         if hsm_active:
-            ch = await hsm_active.approve_msg_sign(story, self.text, self.subpath)
+            ch = await hsm_active.approve_msg_sign(self.text, self.address, self.subpath)
         else:
+            story = MSG_SIG_TEMPLATE.format(msg=self.text, addr=self.address, subpath=self.subpath)
             ch = await ux_show_story(story)
 
         if ch != 'y':
@@ -326,11 +325,12 @@ def sign_txt_file(filename):
 
 
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, do_finalize=False, approved_cb=None):
+    def __init__(self, psbt_len, do_finalize=False, approved_cb=None, psbt_sha=None):
         super().__init__()
         self.psbt_len = psbt_len
         self.do_finalize = do_finalize
         self.psbt = None
+        self.psbt_sha = psbt_sha
         self.approved_cb = approved_cb
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
@@ -348,7 +348,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
     async def interact(self):
         # Prompt user w/ details and get approval
-        from main import dis
+        from main import dis, hsm_active
 
         # step 1: parse PSBT from sflash into in-memory objects.
         dis.fullscreen("Validating...")
@@ -424,12 +424,15 @@ class ApproveTransaction(UserAuthorizedAction):
             if self.psbt.warnings:
                 msg.write('\n---WARNING---\n\n')
 
-                for label,m in self.psbt.warnings:
+                for label, m in self.psbt.warnings:
                     msg.write('- %s: %s\n\n' % (label, m))
 
-            msg.write("\nPress OK to approve and sign transaction. X to abort.")
+            if not hsm_active:
+                msg.write("\nPress OK to approve and sign transaction. X to abort.")
+                ch = await ux_show_story(msg, title="OK TO SEND?")
+            else:
+                ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
 
-            ch = await ux_show_story(msg, title="OK TO SEND?")
         except MemoryError:
             # recovery? maybe.
             try:
@@ -444,7 +447,9 @@ class ApproveTransaction(UserAuthorizedAction):
         if ch != 'y':
             # they don't want to!
             self.refused = True
-            await ux_dramatic_pause("Refused.", 1)
+
+            if not hsm_active:
+                await ux_dramatic_pause("Refused.", 1)
 
             del self.psbt
 
@@ -588,10 +593,11 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write('%s %s\n' % self.chain.render_value(mtot))
 
 
-def sign_transaction(psbt_len, do_finalize=False):
+def sign_transaction(psbt_len, do_finalize=False, psbt_sha=None):
     # transaction (binary) loaded into sflash already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, do_finalize)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, do_finalize,
+                                                                        psbt_sha=psbt_sha)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
