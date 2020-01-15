@@ -48,8 +48,13 @@ def test_b9p_vectors(dev, set_seed_words, need_keypress, vector, pw='RoZert'[::-
                                 ''      # keep last, resets state
                 ])
 def test_b9p_basic(pw, set_bip39_pw):
-
     set_bip39_pw(pw)
+
+
+@pytest.fixture()
+def clear_bip39_pw(sim_exec, reset_seed_words):
+    # faster?
+    reset_seed_words()
 
 @pytest.fixture()
 def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
@@ -57,6 +62,10 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
     def doit(pw):
         # reset from previous runs
         words = reset_seed_words()
+    
+        # optimization
+        if pw == '':
+            return simulator_fixed_xfp
 
         print(f"Setting BIP39 pw: {pw}")
         dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)

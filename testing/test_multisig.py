@@ -15,6 +15,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.encoding import a2b_hashed_base58
 from io import BytesIO
 from hashlib import sha256
+from test_bip39pw import set_bip39_pw
 
 def HARD(n=0):
     return 0x80000000 | n
@@ -839,7 +840,6 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
 
     clear_ms()
 
-from test_bip39pw import set_bip39_pw
 
 @pytest.fixture()
 def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms):
@@ -1011,7 +1011,7 @@ def fake_ms_txn():
 @pytest.mark.parametrize('num_ins', [ 2, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True ])
 #@pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
-@pytest.mark.parametrize('transport', [ 'sd' ])
+@pytest.mark.parametrize('transport', [ 'usb' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
 @pytest.mark.parametrize('has_change', [ True, False])
 def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, M=1, N=3):
