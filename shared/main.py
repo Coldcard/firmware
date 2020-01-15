@@ -64,6 +64,9 @@ sf = SPIFlash()
 from nvstore import SettingsObject
 settings = SettingsObject(loop)
 
+# global ptr to HSM policy, if any (supported on Mk3 only)
+hsm_active = None
+
 # important default/restore preference
 numpad.sensitivity = settings.get('sens', numpad.sensitivity)
 

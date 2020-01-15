@@ -7,34 +7,42 @@
 #
 import stash, ustruct, tcc, ux, chains, sys, gc, uio, ujson, uos, utime
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, the_ux
 from utils import problem_file_line, cleanup_deriv_path
-from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
-from auth import UserAuthorizedAction
-from utils import pretty_short_delay, pretty_delay
-from uasyncio.queues import QueueEmpty
-from ubinascii import a2b_base64
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS
 from public_constants import MAX_USERNAME_LEN
-
-# this is None or points to the active HSMPolicy object
-global hsm_active
-hsm_active = None
+from multisig import MultisigWallet
 
 # where we save policy/config
 POLICY_FNAME = '/flash/hsm-policy.json'
 
+# number of digits in our "local confirmation" pin
+LOCAL_PIN_LENGTH = 4
+
+# max number of sats in the world: 21E6 * 1E8
+MAX_SATS = const(2100000000000000)
+
+def hsm_policy_available():
+    # Is there an HSM policy ready to go? Offer the menu item then.
+    try:
+        uos.stat(POLICY_FNAME)
+        return True
+    except:
+        return False
+
 def pop_list(j, fld_name, cleanup_fcn=None):
     # returns either None or a list of items; raises if not a list (ie. single item)
-    v = j.pop(fld_name, None) or None
+    # return [] if not defined.
+    v = j.pop(fld_name, None)
     if v:
         if not isinstance(v, list):
             raise ValueError("need a list for: " + fld_name)
         if cleanup_fcn:
             return [cleanup_fcn(i) for i in v]
-    return v
+        return v
+    else:
+        return []
 
 def pop_int(j, fld_name, mn=0, mx=1000):
     # returns an int or None. Also range check.
@@ -42,7 +50,7 @@ def pop_int(j, fld_name, mn=0, mx=1000):
     if v is None: return v
     assert int(v) == v, "%s: must be integer" % fld_name
     v = int(v)
-    assert mn <= v < mx, "%s: must in range: %d..%d" % (fld_name, mn, mx)
+    assert mn <= v <= mx, "%s: must in range: [%d..%d]" % (fld_name, mn, mx)
     return v
 
 def pop_bool(j, fld_name, default=False):
@@ -56,21 +64,136 @@ def pop_string(j, fld_name, mn_len=0, mx_len=80):
     assert mn_len <= len(v) <= mx_len, '%s: length must be %d..%d' % (fld_name, mn_len, mx_len)
     return v
 
+def assert_empty_dict(j):
+    extra = set(j.keys())
+    if extra:
+        raise ValueError("Unknown item: " + ', '.join(extra))
+
+def cleanup_whitelist_value(s):
+    # one element in a list of addresses or paths or descriptors?
+    # TODO
+    return str(s)
+
+class ApprovalRule:
+    # A rule which describes transactions we are okay with approving. It documents:
+    # - whitelist: list/pattern of destination addresses allowed (or any)
+    # - per_period: velocity limit in satoshis
+    # - users: list of authorized users
+    # - min_users: how many of those are needed to approve
+    # - local_conf: local user must also confirm w/ code
+
+    def __init__(self, j, idx):
+        # read json dict provided
+
+        def check_user(u):
+            if not Users.valid_username(u):
+                raise ValueError("Unknown user: %s" % u)
+            return u
+
+        self.index = idx+1
+        self.per_period = pop_int(j, 'per_period', 0, MAX_SATS)
+        self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
+        self.users = pop_list(j, 'users', check_user)
+        self.whitelist = pop_list(j, 'whitelist', cleanup_whitelist_value)
+        self.min_users = pop_int(j, 'min_users', 0, len(self.users))
+        self.local_conf = pop_bool(j, 'local_conf')
+        self.wallet = pop_string(j, 'wallet', 1, 20)
+
+        # usernames need to be correct and already known
+        if self.min_users is None:
+            self.min_users = len(self.users)
+        assert self.min_users <= len(self.users), "need more users"
+
+        # if specified, 'wallet' must be an existing multisig wallet's name
+        if self.wallet and self.wallet != '1':
+            names = [ms.name for ms in MultisigWallet.get_all()]
+            assert self.wallet in names, "unknown MS wallet: "+self.wallet
+
+        assert_empty_dict(j)
+
+    @property
+    def has_velocity(self):
+        return self.per_period is not None
+
+    def to_json(self):
+        # remote users need to know what's happening, and we save this
+        # cleaned up data
+        flds = [ 'per_period', 'max_amount', 'users', 'min_users',
+                    'local_conf', 'whitelist', 'wallet' ]
+        return dict((f, getattr(self, f, None)) for f in flds)
+
+
+    def to_text(self):
+        # Text for human's to read and approve.
+        chain = chains.current_chain()
+
+        def render(n):
+            return ' '.join(chain.render_value(n))
+
+        if self.per_period:
+            rv = 'Up to %s per period' % render(self.per_period)
+            if self.max_amount:
+                rv += ', and up to %s per txn' % render(self.max_amount)
+        elif self.max_amount:
+            rv = 'Up to %s per txn' % render(self.max_amount)
+        else:
+            rv = 'Any amount'
+
+        if self.wallet == '1':
+            rv += ' (non multisig)'
+        elif self.wallet:
+            rv += ' from multisig wallet "%s"' % self.wallet
+
+        if self.users:
+            rv += ' may be authorized by '
+            if self.min_users == len(self.users):
+                rv += 'all users'
+            elif self.min_users == 1:
+                rv += 'any one user'
+            elif self.min_users:
+                rv += 'at least %d users' % self.min_users
+            rv += ' (%s)' % ', '.join(self.users)
+        else:
+            rv += ' will be approved'
+
+        if self.whitelist:
+            rv += ' provided it goes to: ' + ' OR '.join(self.whitelist)
+
+        if self.local_conf:
+            rv += ' if local user confirms'
+
+        return rv + '.'
+
+    def matches_transaction(self, psbt, users, total_out, dests):
+        # Does this rule apply to this PSBT file? 
+        if self.wallet:
+            # rule limited to one wallet
+            if psbt.active_multisig:
+                # if multisig signing, might need to match specific wallet name
+                assert self.wallet == psbt.active_multisig.name, 'wrong wallet'
+            else:
+                # non multisig, but does this rule apply to all wallets or single-singers
+                assert self.wallet == '1', 'not multisig'
+
+        if self.max_amount is not None:
+            assert total_out <= self.max_amount, 'too much out'
+
+        return True
+
 class HSMPolicy:
     # implements and enforces the HSM signing/activity/logging policy
 
     def load(self, j):
         # Decode json object provided: destructive
-        # NOTES:
         # - attr name == json name if possible
-        # - always add to self.save()!
+        # - NOTE: always add to self.save()!
         # - raise errors and they will be shown to user
 
         # fail if we can't log it
         self.must_log = pop_bool(j, 'must_log')
 
-        # require a 4-digit PIN by local user (no UX feedback)
-        self.local_conf = pop_bool(j, 'local_conf')
+        # don't fail on PSBT warnings
+        self.warnings_ok = pop_bool(j, 'warnings_ok')
 
         # a list of paths we can accept for signing
         self.msg_paths = pop_list(j, 'msg_paths', cleanup_deriv_path)
@@ -88,10 +211,15 @@ class HSMPolicy:
         if self.set_sl:
             assert self.allow_sl, 'need allow_sl>=1'        # because pointless otherwise
 
+        # complex txn approval rules
+        lst = pop_list(j, 'rules') or []
+        self.rules = [ApprovalRule(i, idx) for idx, i in enumerate(lst)]
+
+        if not self.period and any(i.has_velocity for i in self.rules):
+            raise ValueError("Needs period to be specified")
+
         # error checking, must be last!
-        extra = set(j.keys())
-        if extra:
-            raise ValueError("Unknown item: " + ', '.join(extra))
+        assert_empty_dict(j)
 
         # statistics / state
         self.refusals = 0
@@ -113,10 +241,12 @@ class HSMPolicy:
         
     def save(self):
         # create JSON document for next time.
-        simple = ['must_log', 'msg_paths', 'notes', 'period', 'allow_sl', 'local_conf']
+        simple = ['must_log', 'msg_paths', 'notes', 'period', 'allow_sl', 'warnings_ok']
         rv = dict()
         for fn in simple:
             rv[fn] = getattr(self, fn, None)
+
+        rv['rules'] = [i.to_json() for i in self.rules]
 
         # never write this secret into JSON
         assert 'set_sl' not in rv
@@ -145,45 +275,56 @@ class HSMPolicy:
         if self.notes:
             fd.write('=-=\n%s\n=-=\n' % self.notes)
 
-        fd.write('Transactions:\n')
+        fd.write('\nTransactions:\n')
+        if not self.rules:
+            fd.write("- No transaction will be signed.\n")
+        else:
+            for r in self.rules:
+                fd.write('- Rule #%d: %s\n' % (r.index+1, r.to_text()))
 
         if self.period:
             fd.write('\nVelocity Period:\n %d minutes' % self.period)
             if self.period >= 60:
                 fd.write('\n = %.3g hrs' % (self.period / 60))
+            fd.write('\n')
 
-        fd.write('\n\nMessage signing:\n')
+        fd.write('\nMessage signing:\n')
         if self.msg_paths:
             fd.write("- Allowed if path is: %s\n" % ' OR '.join(self.msg_paths))
         else:
             fd.write("- Not allowed.\n")
 
-        fd.write('\nOther policy:\n\n')
+        fd.write('\nOther policy:\n')
         fd.write('- MicroSD card %s receive log entries.\n' % ('MUST' if self.must_log else 'will'))
         if self.set_sl:
             fd.write('- Storage Locker will be updated (once).\n')
         if self.allow_sl:
             fd.write('- Storage Locker can be read only %s.\n' 
                         % ('once' if self.allow_sl == 1 else ('%d times'%self.allow_sl)))
+        if self.warnings_ok:
+            fd.write('- PSBT warnings will be ignored.\n')
 
         self.summary = fd.getvalue()
 
-    def status(self, rv):
-        # add some values we will share over USB during HSM operation
-        for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'sl_reads']:
+    def status_report(self, rv):
+        # Add some values we will share over USB during HSM operation
+        for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'sl_reads', 'period']:
             rv[fn] = getattr(self, fn, None)
 
-        if self.need_pin and self.local_conf:
+        if self.need_pin:
             rv['need_pin'] = self.need_pin
+
+        # UX on web browser will need to know the local PIN code might be needed
+        rv['uses_local_conf'] = any(r.local_conf for r in self.rules)
 
         # sensitive values, summarize only!
         rv['pending_auth'] = len(self.pending_auth)
 
     def activate(self):
         # user approved activation, so apply it.
-        global hsm_active
-        assert not hsm_active
-        hsm_active = self
+        import main
+        assert not main.hsm_active
+        main.hsm_active = self
 
         # save the "long secret" ... probably only happens first time HSM policy
         # is activated, because we don't store that original value except here 
@@ -197,6 +338,7 @@ class HSMPolicy:
             ustruct.pack_into('H', tmp, 0, len(val))
             tmp[2:2+len(self.set_sl)] = val
 
+            # write it
             pa.ls_change(tmp)
 
             # memory cleanup
@@ -230,12 +372,12 @@ class HSMPolicy:
         assert len(self.pending_auth)+1 <= MAX_NUMBER_USERS, 'toomany'
 
         self.pending_auth[username] = (token, totp_time)
-        
 
-    async def approve_msg_sign(self, story, msg_text, subpath):
+    async def approve_msg_sign(self, msg_text, address, subpath):
         # Maybe approve indicated message to be signed.
         # return 'y' or 'x'
-        self.log('Message signing requested\n-vvv-%s\n-^^^-' % story)
+        self.log('Message signing requested: %d bytes to be signed by %s = %s' 
+                            % (len(msg_text), subpath, address))
         if not self.msg_paths: 
             self.log_refuse("Message signing not permitted")
             return 'x'
@@ -246,128 +388,84 @@ class HSMPolicy:
 
         self.log_approved('Message signing')
         return 'y'
-        
 
-class ApproveHSMPolicy(UserAuthorizedAction):
-    title = 'Start HSM?'
+    async def approve_transaction(self, psbt, psbt_sha, story):
+        # Approve or don't a transaction. Catch assertions and other
+        # reasons for failing/rejecting into the log.
+        # - return 'y' or 'x'
+        chain = chains.current_chain()
 
-    def __init__(self, policy, new_file=False):
-        self.policy = policy
-        self.new_file = new_file
-        super().__init__()
+        self.log('Transaction signing requested\n-vvv-\n%s\n-^^^-' % story)
 
-    async def interact(self):
-        # Just show the address... no real confirmation needed.
+        # reset pending auth list and "consume" it now
+        auth = self.pending_auth
+        self.pending_auth = {}
+
+        from hsm_ux import hsm_ux_obj
+        auth['_local'] = (hsm_ux_obj.pop_digits(), 0)
 
         try:
+            assert psbt_sha and len(psbt_sha) == 32
 
-            msg = uio.StringIO()
-            self.policy.explain(msg)
-            msg.write('\n\nPress OK to enable HSM mode.')
+            if not self.rules:
+                raise ValueError("no txn signing allowed")
 
-            ch = await ux_show_story(msg, title=self.title)
-            del msg
+            # reject anything with warning, probably
+            if psbt.warnings:
+                if self.warnings_ok:
+                    self.log("Txn has warnings, but policy is to accept anyway.")
+                else:
+                    raise ValueError("has %d warning(s)" % len(psbt.warnings))
 
-            self.refused = (ch != 'y')
+            # See who has entered creditials already (may not be valid, but enuf
+            # for rule matching at this point).
+            users = list(auth.keys())
 
-            if not self.refused and self.new_file:
-                confirm_char = '12346'[tcc.random.uniform(5)]
-                msg = '''Last chance. You are defining a new policy which \
-allows the Coldcard to sign specific transactions without any further user approval.\n\n\
-Press %s to save policy and enable HSM mode.''' % confirm_char
+            # Where is it going?
+            total_out = 0
+            dests = []
+            for idx, tx_out in psbt.output_iter():
+                if not psbt.outputs[idx].is_change:
+                    total_out += tx_out.nValue
+                    dests.append(chain.render_address(tx_out.scriptPubKey))
 
-                ch = await ux_show_story(msg, title=self.title,
-                                escape='x'+confirm_char, strict_escape=True)
-                self.refused = (ch != confirm_char)
+            # Pick a rule to apply to this specific txn
+            reasons = []
+            for rule in self.rules:
+                try:
+                    if rule.matches_transaction(psbt, users, total_out, dests):
+                        break
+                except BaseException as exc:
+                    # let's not share these details, except for debug; since
+                    # they are not errors, just picking best rule in priority order
+                    r = "rule #%d: %s: %s" % (rule.index+1, problem_file_line(exc), str(exc))
+                    reasons.append(r)
+                    print(r)
+            else:
+                err = "HSM rejected: " + ', '.join(reasons)
+                self.log_refuse(err)
+                return 'x'
 
+            # check those users gave good passwords
+
+            # looks good, do it
+            self.log_approved("Acceptable by rule #%d" % (rule.index+1))
+
+            return 'y'
         except BaseException as exc:
-            self.failed = "Exception"
             sys.print_exception(exc)
-        finally:
-            self.done()
-            UserAuthorizedAction.cleanup()      # because no results to store
+            err = "HSM rejected: %s: %s" % (problem_file_line(exc), str(exc))
+            self.log_refuse(err)
 
-        # cleanup already done, and nothing more here ... return
-        if self.refused:
-            return
-
-        if self.new_file:
-            # save it for next run
-            with open(POLICY_FNAME, 'w+t') as f:
-                ujson.dump(self.policy.save(), f)
-
-        # go into special HSM mode .. one-way trip
-        self.policy.activate()
-        the_ux.reset(hsm_ux_obj)
-
-        return
-
-def hsm_policy_available():
-    # Is there an HSM policy ready to go? Offer the menu item then.
-    try:
-        uos.stat(POLICY_FNAME)
-        return True
-    except:
-        return False
-
-async def start_hsm_approval(sf_len=0, usb_mode=False):
-    # Show details of the proposed HSM policy (or saved one)
-    # If approved, go into HSM mode and never come back to normal.
-
-    UserAuthorizedAction.cleanup()
-
-    is_new = True
-
-    if sf_len:
-        with SFFile(0, length=sf_len) as fd:
-            json = fd.read(sf_len).decode()
-    else:
-        try:
-            json = open(POLICY_FNAME, 'rt').read()
-        except:
-            raise ValueError("No existing policy")
-
-        is_new = False
-
-    # parse as JSON
-    try:
-        try:
-            js_policy = ujson.loads(json)
-        except:
-            raise ValueError("JSON parse fail")
-
-        # parse the policy
-        policy = HSMPolicy()
-        policy.load(js_policy)
-    except BaseException as exc:
-        err = "HSM Policy invalid: %s: %s" % (problem_file_line(exc), str(exc))
-        if usb_mode:
-            raise ValueError(err)
-
-        # What to do in a menu case? Shouldn't happen anyway, but
-        # maybe they downgraded the CC firmware, and so old policy file
-        # isn't suitable anymore.
-        print(err)
-
-        await ux_show_story("Cannot start HSM.\n\n%s" % err)
-        return
-
-    ar = ApproveHSMPolicy(policy, is_new)
-    UserAuthorizedAction.active_request = ar
-
-    if usb_mode:
-        # for USB case, kill any menu stack, and put our thing at the top
-        abort_and_goto(UserAuthorizedAction.active_request)
-    else:
-        # menu item case: add to stack, so we can still back out
-        from ux import the_ux
-        the_ux.push(UserAuthorizedAction.active_request)
-
-    return ar
-
+            return 'x'
+            
 def hsm_status_report():
-    # return a JSON-able object. Documented and external programs
+    # Return a JSON-able object. Documented and external programs
     # rely on this output... and yet, don't overshare either.
+    from auth import UserAuthorizedAction
+    from main import hsm_active
+    from hsm_ux import ApproveHSMPolicy
+
     rv = dict()
     rv['active'] = bool(hsm_active)
 
@@ -379,124 +477,14 @@ def hsm_status_report():
             # we are waiting for local user to approve entry into HSM mode
             rv['approval_wait'] = True
 
+        # provide some keys they will need when making their policy file!
+        rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()]
+        rv['users'] = Users.list()
+
     if hsm_active:
-        hsm_active.status(rv)
+        hsm_active.status_report(rv)
 
     return rv
-
-class hsmUxInteraction:
-    # Based on Menu() class, but just skeleton: blocks everything
-
-    def show(self):
-        from main import dis
-        from display import FontTiny
-
-        uptime = utime.ticks_ms() // 1000
-
-        # make this screen saver fun
-        x,y = 2,0
-
-        # TODO: show "time til period reset", dont show amounts
-
-        dis.clear()
-        dis.text(None, 2, "HSM Ready")
         
-        fy = -11
-        dis.text(4, fy, "Suitable transactions will be", FontTiny)
-        dis.text(4, fy+8,  "signed without any interaction.", FontTiny)
-        #dis.text(None, -1, "X to REBOOT ", FontTiny)
-
-        x, y = 3, 28
-        for lab, xoff, val in [ 
-            ('APPROVED', 10, str(hsm_active.approvals)),
-            ('REFUSED', 10, str(hsm_active.refusals)),
-            ('PERIOD LEFT', 3, 'n/a'),
-        ]:
-            nx = dis.text(x, y-7, lab, FontTiny)
-            dis.text(x+xoff, y+1, val)
-            x = nx + 8
-
-        # heartbeat display
-        # >>> from main import *; from display import FontTiny
-        # >>> dis.width('interaction', FontTiny)
-        line_ws = ( (32, 48, 16, 8),
-                    (24, 28, 12, 44 ) )
-        phase = (utime.ticks_ms() // 1000) % 8
-        line = phase // 4
-        y = 63 if line else 54
-        x = 4 + sum((line_ws[line][i]+4) for i in range(phase%4))
-        w = line_ws[line][phase%4]
-        dis.dis.line(x, y, x+w, y, True)
-
-        dis.show()
-
-    update_contents = show
-
-    async def interact(self):
-        import main
-        from actions import login_now
-        from uasyncio import sleep_ms
-
-        # Prevent any other component from reading numpad
-        real_numpad = main.numpad
-        main.numpad = NeuterPad
-
-        # Kill time, waiting for user input
-        while 1:
-            self.show()
-            gc.collect()
-
-            try:
-                # Poll for an event, no block
-                ch = real_numpad.get_nowait()
-
-                if ch == 'x':
-                    await login_now()       # immediate reboots
-
-            except QueueEmpty:
-                await sleep_ms(250)
-            except:
-                # just in case
-                continue
-
-            # do the interactions, but don't let user actually press anything
-            req = UserAuthorizedAction.active_request
-            if req and not req.ux_done:
-                try:
-                    await req.interact()
-                except AbortInteraction:
-                    pass
-
-
-# singleton
-hsm_ux_obj = hsmUxInteraction()
-
-# Mock version of NumpadBase from numpad.py
-class NeuterPad:
-    disabled = True
-
-    @classmethod
-    async def get(cls):
-        return 
-
-    @classmethod
-    def get_nowait(cls):
-        raise QueueEmpty
-
-    @classmethod
-    def empty(cls):
-        return True
-
-    @classmethod
-    def stop(cls):
-        return
-
-    @classmethod
-    def abort_ux(cls):
-        return
-
-    @classmethod
-    def inject(cls, key):
-        return
 
 # EOF

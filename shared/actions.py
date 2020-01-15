@@ -648,10 +648,11 @@ async def start_login_sequence():
     # If HSM policy file is available, offer to start that,
     # **before** the USB is even enabled.
     if version.has_fatram:
-        import hsm
         try:
+            import hsm, hsm_ux
+
             if hsm.hsm_policy_available():
-                ar = await hsm.start_hsm_approval(usb_mode=False)
+                ar = await hsm_ux.start_hsm_approval(usb_mode=False)
                 if ar:
                     await ar.interact()
         except: pass
@@ -667,8 +668,7 @@ def goto_top_menu():
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
-    from main import pa
-    from hsm import hsm_active, hsm_ux_obj
+    from main import pa, hsm_active
 
     if version.is_factory_mode():
         m = MenuSystem(FactoryMenu)
@@ -676,6 +676,7 @@ def goto_top_menu():
         # let them play a little before picking a PIN first time
         m = MenuSystem(VirginSystem, should_cont=lambda: pa.is_blank())
     elif hsm_active:
+        from hsm_ux import hsm_ux_obj
         m = hsm_ux_obj
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
@@ -1446,7 +1447,7 @@ async def import_multisig(*a):
         await ux_show_story('Failed to import.\n\n\n'+str(e))
 
 async def start_hsm_menu_item(*a):
-    from hsm import start_hsm_approval 
+    from hsm_ux import start_hsm_approval 
     await start_hsm_approval(sf_len=0, usb_mode=False)
 
 # EOF
