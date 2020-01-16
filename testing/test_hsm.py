@@ -7,7 +7,7 @@ import pytest, time, struct, os
 #from pycoin.key.BIP32Node import BIP32Node
 #from binascii import b2a_hex, a2b_hex
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
-from ckcc_protocol.protocol import CCUserRefused
+from ckcc_protocol.protocol import CCUserRefused, CCProtoError
 import json
 from pprint import pprint
 from objstruct import ObjectStruct as DICT
@@ -153,10 +153,27 @@ def test_policy_parsing(sim_exec, policy, contains, load_hsm_users):
 def tweak_rule(sim_exec):
     # reach under the skirt, and change policy rule ... so much faster
     def doit(idx, new_rule):
-        cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); RV.write(hsm_active.rules[{idx}].to_text())"
+        cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write(hsm_active.rules[{idx}].to_text())"
         txt = sim_exec(cmd)
         print(f"Rule {idx} now: {txt}")
     return doit
+
+@pytest.fixture
+def tweak_hsm_attr(sim_exec):
+    # reach under the skirt, and change and attr on hsm obj
+    def doit(name, value):
+        cmd = f"from main import hsm_active; setattr(hsm_active, '{name}', {value})"
+        sim_exec(cmd)
+    return doit
+
+@pytest.fixture
+def tweak_hsm_method(sim_exec):
+    # reach under the skirt, and change and attr on hsm obj
+    def doit(fcn_name, *args):
+        cmd = f"from main import hsm_active; getattr(hsm_active, '{name}')({', '.join(args)})"
+        sim_exec(cmd)
+    return doit
+
 
 @pytest.fixture
 def load_hsm_users(settings_set):
@@ -190,18 +207,21 @@ def start_hsm(dev, need_keypress, sim_exec, hsm_reset, hsm_status, cap_story):
         dev.send_recv(CCProtocolPacker.hsm_start(ll, sha))
 
         # capture explanation given user
-        time.sleep(.250)
+        time.sleep(.2)
         title, body = cap_story()
         assert title == "Start HSM?"
         need_keypress('y')
 
-        # approve on 
-        time.sleep(.250)
-        for ch in '12346y':
-            need_keypress(ch)
+        # approve it
+        time.sleep(.1)
+        title, body2 = cap_story()
+        assert 'Last chance' in body2
+        ll = body2.split('\n')[-1]
+        assert ll.startswith("Press ")
+        ch = ll[6]
+        need_keypress(ch)
 
         time.sleep(.100)
-
         j = hsm_status()
         assert j.active == True
         assert j.summary in body
@@ -225,18 +245,24 @@ def wait_til_signed(dev):
 @pytest.fixture
 def attempt_psbt(hsm_status, start_sign, dev):
 
-    def doit(psbt, refuse=None):
+    def doit(psbt, refuse=None, remote_error=None):
         open('debug/attempt.psbt', 'wb').write(psbt)
         start_sign(psbt)
 
         try:
             resp_len, chk = wait_til_signed(dev)
             assert refuse == None, "should have been refused: " + refuse
+        except CCProtoError as exc:
+            assert remote_error, "unexpected remote error: %s" % exc
+            if remote_error not in str(exc):
+                raise
         except CCUserRefused:
             msg = hsm_status().last_refusal
             assert refuse != None, "should not have been refused: " + msg
             assert 'HSM rejected' in msg
             assert refuse in msg
+
+            return msg
 
     return doit
 
@@ -298,12 +324,13 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
     attempt_psbt(psbt, 'wrong wallet')
 
 
-def test_whitelisting(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
+def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
     junk = EXAMPLE_ADDRS[0]
     policy = DICT(rules=[dict(whitelist=[junk])])
 
     stat = start_hsm(policy)
 
+    # try all addr types
     for style in ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']:
         dests = []
         psbt = fake_txn(1, 2, dev.master_xpub,
@@ -311,7 +338,7 @@ def test_whitelisting(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount
                             outvals=[amount, 1E8-amount], change_outputs=[1], fee=0,
                             capture_scripts=dests)
 
-        dest = render_address(dests[0][1])
+        dest = render_address(dests[0])
 
         tweak_rule(0, dict(whitelist=[dest]))
         attempt_psbt(psbt)
@@ -321,5 +348,68 @@ def test_whitelisting(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount
 
         tweak_rule(0, dict(whitelist=[dest, junk]))
         attempt_psbt(psbt)
+
+def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
+    # sending to one whitelisted, and one non, etc.
+    junk = EXAMPLE_ADDRS[0]
+    policy = DICT(rules=[dict(whitelist=[junk])])
+
+    stat = start_hsm(policy)
+
+    # make a txn that sends to every type of output
+    styles = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']
+    dests = []
+    psbt = fake_txn(1, len(styles), dev.master_xpub,
+                        outstyles=styles, capture_scripts=dests)
+
+    dests = [render_address(s) for s in dests]
+
+    # simple: sending to all
+    tweak_rule(0, dict(whitelist=dests))
+    attempt_psbt(psbt)
+
+    # whitelist only one of those (expect fail)
+    for dest in dests:
+        tweak_rule(0, dict(whitelist=[dest]))
+        msg = attempt_psbt(psbt, 'non-whitelisted')
+        assert all((a in msg) for a in dests if a != dest)
+
+    # whitelist all but one of them
+    for dest in dests:
+        others = [d for d in dests if d != dest]
+        tweak_rule(0, dict(whitelist=others))
+        msg = attempt_psbt(psbt, 'non-whitelisted')
+        assert dest in msg
+        assert not any((d in msg) for d in others)
+
+@pytest.mark.parametrize('warnings_ok', [ False, True])
+def test_huge_fee(warnings_ok, dev, start_hsm, hsm_status, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
+    # fee over 50% never good idea
+    # - doesn't matter what current policy is
+    policy = {'warnings_ok': warnings_ok, 'rules': [{}]}
+
+    if not hsm_status().active:
+        stat = start_hsm(policy)
+
+    tweak_hsm_attr('warnings_ok', warnings_ok)
+
+    psbt = fake_txn(1, 1, dev.master_xpub, fee=0.5E8)
+    attempt_psbt(psbt, remote_error='Network fee bigger than 10% of total')
+
+    psbt = fake_txn(1, 1, dev.master_xpub, fee=100)
+    attempt_psbt(psbt)
+
+def test_psbt_warnings(dev, start_hsm, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
+    # txn w/ warnings
+    policy = DICT(warnings_ok=True, rules=[{}])
+    stat = start_hsm(policy)
+    assert 'warnings' in stat.summary
+
+    psbt = fake_txn(1, 1, dev.master_xpub, fee=0.05E8)
+    attempt_psbt(psbt)
+
+    tweak_hsm_attr('warnings_ok', False)
+    attempt_psbt(psbt, 'has 1 warning(s)')
+
 
 # EOF

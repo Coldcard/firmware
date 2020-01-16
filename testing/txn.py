@@ -139,7 +139,7 @@ def fake_txn():
                 h = TxOut(outvals[i], act_scr)
 
             if capture_scripts is not None:
-                capture_scripts.append( (style, act_scr) )
+                capture_scripts.append( act_scr )
 
             txn.txs_out.append(h)
 
