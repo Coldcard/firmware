@@ -29,6 +29,15 @@ TEST_USERS = {
         }
 USERS = list(TEST_USERS.keys())
 
+# example dest addrs
+EXAMPLE_ADDRS = [ '1ByzQTr5TCkMW9RH1fkD7QtnMbErffDeUo', '2N4EDPkGYcZa5o6kFou2g9zEyiTjk27Jt5D',
+            '3Cg1L1LX174jbK7i8mQoY3FiW7XaDs9oRX', 'mrVwhWw4GEBcHFttjEiawL77DaqZWNDm75',
+            'tb1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rclglv65',
+            'bc1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc4wylp8',
+            'bc1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puqxn6udr',
+            'tb1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puq3mvnhv',
+]
+
 # filename for the policy file, as stored on simulated CC
 hsm_policy_path = '../unix/work/hsm-policy.json'
 
@@ -100,10 +109,10 @@ def hsm_reset(simulator, need_keypress):
         'Any amount may be authorized by at least 2 users'),
 
     # whitelist
-    (DICT(rules=[dict(whitelist=['1dfshksdfkhjdfhs'])]),
-        'provided it goes to: 1dfshksdfkhjdfhs'),
-    (DICT(rules=[dict(whitelist=['1faker', 'tb1qspam'])]),
-        'provided it goes to: 1faker OR tb1qspam'),
+    (DICT(rules=[dict(whitelist=['131CnJGaDyPaJsb5P4NHFxcRi29zo3ZXw'])]),
+        'provided it goes to: 131CnJGaDyPaJsb5P4NHFxcRi29zo3ZXw'),
+    (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS)]),
+        'provided it goes to: '+ ', '.join(EXAMPLE_ADDRS)),
 
     # if local user confirms
     (DICT(rules=[dict(local_conf=True)]),
@@ -233,7 +242,7 @@ def attempt_psbt(hsm_status, start_sign, dev):
 
 @pytest.mark.parametrize('amount', [ 1E4, 1E6, 1E8 ])
 @pytest.mark.parametrize('over', [ 1, 1000])
-def test_simple_limit(dev, amount, over, start_hsm, sim_exec, start_sign, fake_txn, cap_story, attempt_psbt):
+def test_simple_limit(dev, amount, over, tweak_rule, start_hsm, sim_exec, start_sign, fake_txn, cap_story, attempt_psbt):
     # a policy which sets a hard limit
     policy = DICT(rules=[dict(max_amount=amount)])
 
@@ -249,7 +258,10 @@ def test_simple_limit(dev, amount, over, start_hsm, sim_exec, start_sign, fake_t
                                                     change_outputs=[1], fee=0)
     attempt_psbt(psbt, "too much out")
 
-def test_named_ms(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status, attempt_psbt, fake_txn, fake_ms_txn, amount=5E6, incl_xpubs=False):
+    tweak_rule(0, dict(max_amount=amount+over))
+    attempt_psbt(psbt)
+
+def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status, attempt_psbt, fake_txn, fake_ms_txn, amount=5E6, incl_xpubs=False):
     wname = 'Myself-4'
     M = 4
 
@@ -286,5 +298,28 @@ def test_named_ms(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status, at
     attempt_psbt(psbt, 'wrong wallet')
 
 
+def test_whitelisting(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
+    junk = EXAMPLE_ADDRS[0]
+    policy = DICT(rules=[dict(whitelist=[junk])])
+
+    stat = start_hsm(policy)
+
+    for style in ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']:
+        dests = []
+        psbt = fake_txn(1, 2, dev.master_xpub,
+                            outstyles=[style, 'p2wpkh'],
+                            outvals=[amount, 1E8-amount], change_outputs=[1], fee=0,
+                            capture_scripts=dests)
+
+        dest = render_address(dests[0][1])
+
+        tweak_rule(0, dict(whitelist=[dest]))
+        attempt_psbt(psbt)
+
+        tweak_rule(0, dict(whitelist=[junk]))
+        attempt_psbt(psbt, "non-whitelisted")
+
+        tweak_rule(0, dict(whitelist=[dest, junk]))
+        attempt_psbt(psbt)
 
 # EOF
