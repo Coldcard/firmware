@@ -187,7 +187,7 @@ class CardSlot:
 
         cls.irq = ExtInt(Pin('SD_SW'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
-        # mark 2 boards have a light for SD activity.
+        # mark 2+ boards have a light for SD activity.
         import version
         from machine import Pin
 
@@ -202,7 +202,7 @@ class CardSlot:
         if self.active_led:
             self.active_led.on()
 
-        # turn of touch scanning
+        # turn off touch scanning
         from main import numpad
         numpad.stop()
 
