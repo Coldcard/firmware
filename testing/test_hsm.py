@@ -5,13 +5,17 @@
 #
 import pytest, time, struct, os
 #from pycoin.key.BIP32Node import BIP32Node
-#from binascii import b2a_hex, a2b_hex
+from binascii import b2a_hex, a2b_hex
+from hashlib import sha256
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 from ckcc_protocol.protocol import CCUserRefused, CCProtoError
+from ckcc_protocol.protocol import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC
+
 import json
 from pprint import pprint
 from objstruct import ObjectStruct as DICT
 from txn import *
+from ckcc_protocol.constants import *
 
 TEST_USERS = { 
             # time based OTP
@@ -195,11 +199,20 @@ def hsm_status(dev):
     return doit
 
 @pytest.fixture
-def start_hsm(dev, need_keypress, sim_exec, hsm_reset, hsm_status, cap_story):
+def start_hsm(dev, need_keypress, sim_exec, hsm_reset, hsm_status, cap_story, sim_eval):
     
-    def doit(policy):
+    def doit(policy, quick=False):
         # send policy, start it, approve it
         data = json.dumps(policy).encode('ascii')
+
+        if quick:
+            # if already an HSM in motion; just replace it quickly
+            act = sim_eval('main.hsm_active')
+            if act != 'None':
+                cmd = f"import main; from hsm import HSMPolicy; "\
+                            "p=HSMPolicy(); p.load({data}); main.hsm_active=p"
+                sim_exec(cmd)
+                return hsm_status()
 
         ll, sha = dev.upload_file(data)
         assert ll == len(data)
@@ -259,10 +272,30 @@ def attempt_psbt(hsm_status, start_sign, dev):
         except CCUserRefused:
             msg = hsm_status().last_refusal
             assert refuse != None, "should not have been refused: " + msg
-            assert 'HSM rejected' in msg
+            #assert msg.startswith('Rejected: ')
             assert refuse in msg
 
             return msg
+
+    return doit
+
+@pytest.fixture
+def attempt_msg_sign(dev, hsm_status):
+    def doit(refuse, *args, **kws):
+        dev.send_recv(CCProtocolPacker.sign_message(*args, **kws), timeout=None)
+
+        try:
+            done = None
+            while done == None:
+                time.sleep(0.050)
+                done = dev.send_recv(CCProtocolPacker.get_signed_msg(), timeout=None)
+
+            assert len(done) == 2
+            assert refuse == None, "signing didn't fail, but expected to"
+        except CCUserRefused:
+            msg = hsm_status().last_refusal
+            assert refuse != None, "should not have been refused: " + msg
+            assert refuse in msg
 
     return doit
 
@@ -388,8 +421,7 @@ def test_huge_fee(warnings_ok, dev, start_hsm, hsm_status, tweak_hsm_attr, attem
     # - doesn't matter what current policy is
     policy = {'warnings_ok': warnings_ok, 'rules': [{}]}
 
-    if not hsm_status().active:
-        stat = start_hsm(policy)
+    stat = start_hsm(policy, quick=True)
 
     tweak_hsm_attr('warnings_ok', warnings_ok)
 
@@ -402,7 +434,7 @@ def test_huge_fee(warnings_ok, dev, start_hsm, hsm_status, tweak_hsm_attr, attem
 def test_psbt_warnings(dev, start_hsm, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
     # txn w/ warnings
     policy = DICT(warnings_ok=True, rules=[{}])
-    stat = start_hsm(policy)
+    stat = start_hsm(policy, quick=True)
     assert 'warnings' in stat.summary
 
     psbt = fake_txn(1, 1, dev.master_xpub, fee=0.05E8)
@@ -411,5 +443,154 @@ def test_psbt_warnings(dev, start_hsm, tweak_hsm_attr, attempt_psbt, fake_txn, a
     tweak_hsm_attr('warnings_ok', False)
     attempt_psbt(psbt, 'has 1 warning(s)')
 
+@pytest.mark.parametrize('num_out', [11, 50])
+@pytest.mark.parametrize('num_in', [10, 20])
+def test_big_txn(num_in, num_out, dev, start_hsm, hsm_status,
+                            tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
+    # do something slow
+    policy = DICT(warnings_ok=True, rules=[{}])
+    start_hsm(policy, quick=True)
 
+    for count in range(20):
+        psbt = fake_txn(num_in, num_out, dev.master_xpub)
+        attempt_psbt(psbt)
+
+
+def test_sign_msg_good(start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+    # message signing, but only at certain derivations
+    permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
+
+    policy = DICT(msg_paths=permit)
+    start_hsm(policy, quick=True)
+    msg = b'testing 123'
+
+    for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
+
+        for p in permit: 
+            attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
+
+        for p in ['m', 'm/72', permit[-1][:-2]]:
+            attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
+
+def test_must_log(start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attempt_psbt):
+    # stop everything if can't log
+    policy = DICT(must_log=True, msg_paths=['m'], rules=[{}])
+
+    start_hsm(policy, quick=False)
+
+    psbt = fake_txn(1, 1)
+
+    sim_card_ejected(True)
+    attempt_msg_sign('Could not log details', b'hello', 'm', addr_fmt=AF_CLASSIC)
+    attempt_psbt(psbt, 'Could not log details')
+
+    sim_card_ejected(False)
+    attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
+    attempt_psbt(psbt)
+
+@pytest.fixture
+def auth_user(dev):
+
+
+    from onetimepass import get_hotp
+    
+    class State:
+        def __init__(self):
+            # start time only; don't want to wait 30 seconds between steps
+            self.tt = int(time.time() // 30)
+            # counter for HOTP
+            self.ht = 3
+            self.psbt_hash = None
+
+        def __call__(self, username, garbage=False, do_replay=False):
+            # calc right values!
+            from base64 import b32decode
+
+            mode, secret, _ = TEST_USERS[username]
+
+            if garbage:
+                pw = b'\x12'*32 if mode == USER_AUTH_HMAC else b'123x23'
+                cnt = (self.tt if mode == USER_AUTH_TOTP else 0)
+            elif mode == USER_AUTH_HMAC:
+                assert len(self.psbt_hash) == 32
+                secret = '1234abcd'     # 
+                cnt = 0
+
+                from hashlib import pbkdf2_hmac, sha256
+                from hmac import HMAC
+                from ckcc_protocol.constants import PBKDF2_ITER_COUNT
+
+                salt = sha256(b'pepper'+dev.serial.encode('ascii')).digest()
+                key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+                pw = HMAC(key, self.psbt_hash, sha256).digest()
+                assert not do_replay
+            else:
+                if do_replay:
+                    if mode == USER_AUTH_TOTP:
+                        cnt = self.tt-1
+                    elif mode == USER_AUTH_HOTP:
+                        cnt = self.ht-1
+                else:
+                    if mode == USER_AUTH_TOTP:
+                        cnt = self.tt; self.tt += 1
+                    elif mode == USER_AUTH_HOTP:
+                        cnt = self.ht; self.ht += 1
+
+                pw = b'%06d' % get_hotp(secret, cnt)
+
+            assert len(pw) in {6, 32}
+
+            # no feedback from device at this point.
+            dev.send_recv(CCProtocolPacker. user_auth(username.encode('ascii'), pw, totp_time=cnt))
+
+    return State()
+
+def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
+    psbt = fake_txn(1,1)
+    auth_user.psbt_hash = sha256(psbt).digest()
+
+    policy = DICT(rules=[dict(users=['totp'])])
+    load_hsm_users()
+    start_hsm(policy, quick=False)
+
+    for name in USERS:
+        tweak_rule(0, dict(users=[name]))
+
+        # should fail
+        auth_user(name, garbage=True)
+        msg = attempt_psbt(psbt, ': mismatch')
+        assert name in msg
+        assert 'wrong auth' in msg
+
+        # should work
+        auth_user(name)
+        attempt_psbt(psbt)
+
+        # auth should be cleared
+        attempt_psbt(psbt, 'need user(s) confirmation')
+
+        # fail as "replay"
+        # - except PW thing is linked to PSBT, not the counter
+        # - except HOTP doesn't see it as replay because it doesn't even check old counter value
+        if name != 'pw':
+            auth_user(name, do_replay=True)
+            attempt_psbt(psbt, 'replay' if name == 'totp' else 'mismatch')
+
+def test_invalid_psbt(start_hsm, attempt_psbt):
+    policy = DICT(warnings_ok=True, rules=[{}])
+    start_hsm(policy, quick=True)
+    garb = b'psbt\xff'*20
+    attempt_psbt(garb, remote_error='PSBT parse failed')
+
+    # even w/o any signing rights, invalid is invalid
+    policy = DICT()
+    start_hsm(policy, quick=True)
+    attempt_psbt(garb, remote_error='PSBT parse failed')
+
+# need test
+# - min_users
+# - local_conf cases
+# need code
+# - period stuff
+    
 # EOF

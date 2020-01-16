@@ -70,13 +70,8 @@ Press %s to save policy and enable HSM mode.''' % confirm_char
         if self.refused:
             return
 
-        if self.new_file:
-            # save it for next run
-            with open(POLICY_FNAME, 'w+t') as f:
-                ujson.dump(self.policy.save(), f)
-
         # go into special HSM mode .. one-way trip
-        self.policy.activate()
+        self.policy.activate(self.new_file)
         the_ux.reset(hsm_ux_obj)
 
         return
@@ -139,6 +134,11 @@ async def start_hsm_approval(sf_len=0, usb_mode=False):
 class hsmUxInteraction:
     # Based on Menu() class, but just skeleton: blocks everything
 
+    def __init__(self):
+        self.busy = None
+        self.percent = 0
+        self.digits = ''
+
     def show(self):
         from main import dis, hsm_active
         from display import FontTiny
@@ -151,22 +151,28 @@ class hsmUxInteraction:
         # TODO: show "time til period reset", dont show amounts
 
         dis.clear()
-        dis.text(None, 2, "HSM Ready")
+        #dis.text(None, 2, "HSM Ready")
+        dis.text(0, 0, "HSM Ready")
         
         fy = -11
-        dis.text(4, fy, "Suitable transactions will be", FontTiny)
-        dis.text(4, fy+8,  "signed without any interaction.", FontTiny)
+        dis.text(0, fy, "Suitable transactions will be", FontTiny)
+        dis.text(0, fy+8,  "signed without any interaction.", FontTiny)
         #dis.text(None, -1, "X to REBOOT ", FontTiny)
 
-        x, y = 3, 28
-        for lab, xoff, val in [ 
-            ('APPROVED', 10, str(hsm_active.approvals)),
-            ('REFUSED', 10, str(hsm_active.refusals)),
-            ('PERIOD LEFT', 3, 'n/a'),
+        x, y = 0, 29
+        for lab, ljust, val in [ 
+            ('APPROVED', 0, str(hsm_active.approvals)),
+            ('REFUSED', 0, str(hsm_active.refusals)),
+            ('PERIOD LEFT', 1, 'n/a'),
         ]:
             nx = dis.text(x, y-7, lab, FontTiny)
-            dis.text(x+xoff, y+1, val)
-            x = nx + 8
+            if ljust:
+                dis.text(x, y+1, val)
+            else:
+                hw = nx - x
+                tw = 7*len(val)     # = dis.width(val, FontSmall)
+                dis.text(x+((hw-tw)//2)-1, y+1, val)
+            x = nx + 6
 
         # heartbeat display
         # >>> from main import *; from display import FontTiny
@@ -176,21 +182,61 @@ class hsmUxInteraction:
         phase = (utime.ticks_ms() // 1000) % 8
         line = phase // 4
         y = 63 if line else 54
-        x = 4 + sum((line_ws[line][i]+4) for i in range(phase%4))
+        x = 0 + sum((line_ws[line][i]+4) for i in range(phase%4))
         w = line_ws[line][phase%4]-1
         dis.dis.line(x, y, x+w, y, True)
 
         # UX "feedback" for digits
         if self.digits:
-            x = 128 - (LOCAL_PIN_LENGTH*2) - 1
-            for i in range(len(self.digits)):
-                dis.dis.pixel(x, 0, True)
-                x += 2
+            #x, y = 0, 14                                    # left, under HSM
+            #x, y = 128 - (LOCAL_PIN_LENGTH*2) - 1, 0       # top right
+            #x, y = 128 - (LOCAL_PIN_LENGTH*(4+2)) - 1, 12       # top right, below progress
+            x, y = 75, 11       # right below progress bar
+            for ch in self.digits:
+                x = dis.text(x, y, ch, FontTiny) + 2
+
+        if self.busy:
+            self.draw_busy(False)
 
         dis.show()
-
     update_contents = show
 
+    def draw_busy(self, now=True):
+        from display import FontTiny
+        from main import dis
+
+        self.percent = .5
+
+        x,y = 75, 0
+        if now:
+            # clear under it
+            dis.clear_rect(x,y, 128-x, 9)
+
+        if self.busy:
+            msg = self.busy.rstrip('.')
+            dis.text(x, y, msg, FontTiny)
+
+            if self.percent:
+                w = int((128 - x - 4) * self.percent)
+                dis.dis.line(x, y+8, x+w, y+8, True)
+
+        if now:
+            dis.show()
+
+
+    # replacements for display.py:Display functions
+    def hack_fullscreen(self, msg, percent=None, line2=None):
+        self.busy = msg
+        self.percent = percent or 0
+        self.draw_busy()
+
+    def hack_progress_bar(self, percent):
+        self.percent = int(percent*100)
+        if percent >= 1:
+            self.busy = None
+        self.draw_busy()
+
+    # report digits that are entered
     def pop_digits(self):
         # clear any partial pin entered so far
         rv = self.digits
@@ -205,6 +251,11 @@ class hsmUxInteraction:
         # Prevent any other component from reading numpad
         real_numpad = main.numpad
         main.numpad = NeuterPad()
+
+        # Replace some drawing functions
+        main.dis.fullscreen = self.hack_fullscreen
+        main.dis.progress_bar = self.hack_progress_bar
+        main.dis.progress_bar_show = self.hack_progress_bar
 
         # Kill time, waiting for user input
         self.digits = ''
@@ -271,6 +322,8 @@ class NeuterPad:
         return True
 
     def stop(self):
+        return
+    def start(self):
         return
 
     def abort_ux(self):
