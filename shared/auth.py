@@ -83,6 +83,10 @@ class UserAuthorizedAction:
             sys.print_exception(exc)
             msg += "\n\n(%s)" % problem_file_line(exc)
 
+        # do nothing more for HSM case: msg will be available over USB
+        from main import hsm_active
+        if hsm_active: return
+
         # may be a user-abort waiting, but we want to see error msg; so clear it
         ux_clear_keys(True)
 

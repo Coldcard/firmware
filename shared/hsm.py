@@ -173,7 +173,7 @@ class ApprovalRule:
         if self.local_conf:
             rv += ' if local user confirms'
 
-        return rv + '.'
+        return rv
 
     def matches_transaction(self, psbt, users, total_out, dests):
         # Does this rule apply to this PSBT file? 
