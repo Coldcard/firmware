@@ -71,8 +71,19 @@ def assert_empty_dict(j):
 
 def cleanup_whitelist_value(s):
     # one element in a list of addresses or paths or descriptors?
-    # TODO
-    return str(s)
+    # - later matching is string-based, so just using basic syntax check here
+    # - must be checksumed-base58 or bech32
+    try:
+        tcc.codecs.b58_decode(s)
+        return s
+    except: pass
+
+    try:
+        tcc.codecs.bech32_decode(s)
+        return s
+    except: pass
+
+    raise ValueError('bad whitelist value: ' + s)
 
 class ApprovalRule:
     # A rule which describes transactions we are okay with approving. It documents:
@@ -157,7 +168,7 @@ class ApprovalRule:
             rv += ' will be approved'
 
         if self.whitelist:
-            rv += ' provided it goes to: ' + ' OR '.join(self.whitelist)
+            rv += ' provided it goes to: ' + ', '.join(self.whitelist)
 
         if self.local_conf:
             rv += ' if local user confirms'
@@ -177,6 +188,11 @@ class ApprovalRule:
 
         if self.max_amount is not None:
             assert total_out <= self.max_amount, 'too much out'
+
+        # check all destinations are in the whitelist
+        if self.whitelist:
+            diff = set(dests) - set(self.whitelist)
+            assert not diff, "non-whitelisted dest: " + ', '.join(diff)
 
         return True
 

@@ -68,7 +68,8 @@ def fake_txn():
     from struct import pack
 
     def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000,
-                outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[]):
+                outvals=None, segwit_in=False, outstyles=['p2pkh'],
+                change_outputs=[], capture_scripts=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         
@@ -123,7 +124,6 @@ def fake_txn():
             else:
                 scr = act_scr = fake_dest_addr(style)
                 isw = ('w' in style)
-                #if style.endswith('sh'):
 
             assert scr
             act_scr = act_scr or scr
@@ -138,6 +138,9 @@ def fake_txn():
             else:
                 h = TxOut(outvals[i], act_scr)
 
+            if capture_scripts is not None:
+                capture_scripts.append( (style, act_scr) )
+
             txn.txs_out.append(h)
 
         with BytesIO() as b:
@@ -151,3 +154,42 @@ def fake_txn():
         return rv.getvalue()
 
     return doit
+
+def render_address(script, testnet=True):
+    # take a scriptPubKey (part of the TxOut) and convert into conventional human-readable
+    # string... aka: the "payment address"
+    from pycoin.encoding import b2a_hashed_base58
+    from pycoin.contrib.segwit_addr import encode as bech32_encode
+
+    ll = len(script)
+
+    if not testnet:
+        bech32_hrp = 'bc'
+        b58_addr    = bytes([0])
+        b58_script  = bytes([5])
+        b58_privkey = bytes([128])
+    else:
+        bech32_hrp = 'tb'
+        b58_addr    = bytes([111])
+        b58_script  = bytes([196])
+        b58_privkey = bytes([239])
+
+    # P2PKH
+    if ll == 25 and script[0:3] == b'\x76\xA9\x14' and script[23:26] == b'\x88\xAC':
+        return b2a_hashed_base58(b58_addr + script[3:3+20])
+
+    # P2SH
+    if ll == 23 and script[0:2] == b'\xA9\x14' and script[22] == 0x87:
+        return b2a_hashed_base58(b58_script + script[2:2+20])
+
+    # P2WPKH
+    if ll == 22 and script[0:2] == b'\x00\x14':
+        return bech32_encode(bech32_hrp, 0, script[2:])
+
+    # P2WSH
+    if ll == 34 and script[0:2] == b'\x00\x20':
+        return bech32_encode(bech32_hrp, 0, script[2:])
+
+    raise ValueError('Unknown payment script', repr(script))
+
+# EOF
