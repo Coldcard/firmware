@@ -12,7 +12,7 @@ from pprint import pprint, pformat
 from decimal import Decimal
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
 from pycoin.key.BIP32Node import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, simulator_fixed_xprv
 
 @pytest.fixture()
 def simple_fake_txn():
@@ -67,11 +67,12 @@ def fake_txn():
     from pycoin.serialize import h2b_rev
     from struct import pack
 
-    def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000,
+    def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
                 outvals=None, segwit_in=False, outstyles=['p2pkh'],
                 change_outputs=[], capture_scripts=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
+        master_xpub = master_xpub or simulator_fixed_xprv
         
         # we have a key; use it to provide "plausible" value inputs
         mk = BIP32Node.from_wallet_key(master_xpub)
