@@ -89,6 +89,26 @@ def sim_execfile(simulator):
     return doit
 
 @pytest.fixture(scope='module')
+def sim_card_ejected(sim_exec):
+    def doit(ejected):
+        # see unix/frozen-modules/pyb.py class SDCard
+        cmd = f'import pyb; pyb.SDCard.ejected={ejected}'
+        print(cmd)
+        sim_exec(cmd)
+    yield doit
+    doit(False)
+
+@pytest.fixture(scope='module')
+def send_ux_abort(simulator):
+
+    def doit():
+        # simulator has special USB command
+        # - this is a special "key"
+        simulator.send_recv(CCProtocolPacker.sim_ux_abort())
+
+    return doit
+
+@pytest.fixture(scope='module')
 def need_keypress(dev, request):
 
     def doit(k):
@@ -113,6 +133,10 @@ def need_keypress(dev, request):
     
 @pytest.fixture(scope='module')
 def master_xpub(dev):
+    if hasattr(dev.dev, 'pipe'):
+        # works better again simulator in HSM mode, where the xpub cmd may be disabled
+        return simulator_fixed_xpub
+
     r = dev.send_recv(CCProtocolPacker.get_xpub('m'), timeout=None, encrypt=1)
 
     assert r[1:4] == 'pub', r
