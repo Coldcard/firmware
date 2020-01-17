@@ -261,12 +261,13 @@ class hsmUxInteraction:
 
     async def interact(self):
         import main
+        from main import numpad
         from actions import login_now
         from uasyncio import sleep_ms
 
         # Prevent any other component from reading numpad
-        real_numpad = main.numpad
-        main.numpad = NeuterPad()
+        # XXX this should be NeuterPad
+        numpad.stop()
 
         # Replace some drawing functions
         main.dis.fullscreen = self.hack_fullscreen
@@ -282,7 +283,7 @@ class hsmUxInteraction:
 
             try:
                 # Poll for an event, no block
-                ch = real_numpad.get_nowait()
+                ch = numpad.get_nowait()
 
                 if ch == 'x':
                     self.digits = ''
@@ -290,7 +291,7 @@ class hsmUxInteraction:
                     if len(self.digits) == LOCAL_PIN_LENGTH:
                         main.hsm_active.local_pin_entered(self.digits)
                         self.digits = ''
-                elif ch == main.numpad.ABORT_KEY:
+                elif ch == numpad.ABORT_KEY:
                     # important to eat these and fully suppress them
                     pass
                 else:
@@ -303,7 +304,7 @@ class hsmUxInteraction:
                 continue
 
             except QueueEmpty:
-                await sleep_ms(250)
+                await sleep_ms(100)
             except BaseException as exc:
                 # just in case, keep going
                 sys.print_exception(exc)
@@ -323,7 +324,7 @@ class hsmUxInteraction:
 
         from actions import goto_top_menu
         main.hsm_active = None
-        main.numpad = real_numpad
+        numpad.start()
         goto_top_menu()
 
         return
