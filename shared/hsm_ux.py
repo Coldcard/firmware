@@ -135,8 +135,8 @@ class hsmUxInteraction:
     # Based on Menu() class, but just skeleton: blocks everything
 
     def __init__(self):
-        self.busy = None
-        self.percent = 0
+        self.busy_text = None
+        self.percent = None
         self.digits = ''
 
     def show(self):
@@ -152,18 +152,21 @@ class hsmUxInteraction:
 
         dis.clear()
         #dis.text(None, 2, "HSM Ready")
-        dis.text(0, 0, "HSM Ready")
+        dis.text(4, 0, "HSM MODE")
+        dis.hline(15)
         
-        fy = -11
-        dis.text(0, fy, "Suitable transactions will be", FontTiny)
-        dis.text(0, fy+8,  "signed without any interaction.", FontTiny)
-        #dis.text(None, -1, "X to REBOOT ", FontTiny)
+        if 0:
+            fy = -11
+            dis.text(0, fy, "Suitable transactions will be", FontTiny)
+            dis.text(0, fy+8,  "signed without any interaction.", FontTiny)
+            #dis.text(None, -1, "X to REBOOT ", FontTiny)
 
-        x, y = 0, 29
+        x, y = 0, 28
         for lab, ljust, val in [ 
             ('APPROVED', 0, str(hsm_active.approvals)),
             ('REFUSED', 0, str(hsm_active.refusals)),
-            ('PERIOD LEFT', 1, 'n/a'),
+            #('PERIOD LEFT', 1, 'n/a'),
+            ('PERIOD LEFT', 1, '13h 20m'),
         ]:
             nx = dis.text(x, y-7, lab, FontTiny)
             if ljust:
@@ -171,77 +174,90 @@ class hsmUxInteraction:
             else:
                 hw = nx - x
                 tw = 7*len(val)     # = dis.width(val, FontSmall)
+                if lab == 'REFUSED':
+                    dis.dis.line(nx+2, 0, nx+2, y+16, 1)
+                else:
+                    dis.dis.line(nx+2, y-12, nx+2, y+16, 1)
                 dis.text(x+((hw-tw)//2)-1, y+1, val)
-            x = nx + 6
+            x = nx + 7
 
-        # heartbeat display
-        # >>> from main import *; from display import FontTiny
-        # >>> dis.width('interaction', FontTiny)
-        line_ws = ( (32, 48, 16, 8),
-                    (24, 28, 12, 44 ) )
-        phase = (utime.ticks_ms() // 1000) % 8
-        line = phase // 4
-        y = 63 if line else 54
-        x = 0 + sum((line_ws[line][i]+4) for i in range(phase%4))
-        w = line_ws[line][phase%4]-1
-        dis.dis.line(x, y, x+w, y, True)
+        dis.hline(y+17)
+
+        if 0:
+            # heartbeat display
+            # >>> from main import *; from display import FontTiny
+            # >>> dis.width('interaction', FontTiny)
+            line_ws = ( (32, 48, 16, 8),
+                        (24, 28, 12, 44 ) )
+            phase = (utime.ticks_ms() // 1000) % 8
+            line = phase // 4
+            y = 63 if line else 54
+            x = 0 + sum((line_ws[line][i]+4) for i in range(phase%4))
+            w = line_ws[line][phase%4]-1
+            dis.dis.line(x, y, x+w, y, True)
 
         # UX "feedback" for digits
-        if self.digits:
+        if 0 and self.digits:
             #x, y = 0, 14                                    # left, under HSM
             #x, y = 128 - (LOCAL_PIN_LENGTH*2) - 1, 0       # top right
             #x, y = 128 - (LOCAL_PIN_LENGTH*(4+2)) - 1, 12       # top right, below progress
-            x, y = 75, 11       # right below progress bar
+            #x, y = 75, 11       # right below progress bar
+
+            y = 52
+            x = dis.text(4, y, "Code: ")
             for ch in self.digits:
-                x = dis.text(x, y, ch, FontTiny) + 2
+                x = dis.text(x, y, ch) + 2
 
-        if self.busy:
-            self.draw_busy(False)
+        if len(self.digits) < 6:
+            msg = self.digits + ('#' * (6-len(self.digits)))
+        elif self.digits:
+            msg = self.digits
+        else:
+            msg = '_'*6
+        dis.text(76, 0, msg)
 
-        dis.show()
+        # contains a dis.show()
+        self.draw_busy(None, None)
+
     update_contents = show
 
-    def draw_busy(self, now=True):
+    def draw_busy(self, msg, percent):
         from display import FontTiny
         from main import dis
 
-        self.percent = .5
+        self.last_percent = 0.5
 
-        x,y = 75, 0
-        if now:
-            # clear under it
-            dis.clear_rect(x,y, 128-x, 9)
+        # centered in bottom part of screen.
+        y = 48
 
-        if self.busy:
-            msg = self.busy.rstrip('.')
-            dis.text(x, y, msg, FontTiny)
+        # clear under it
+        dis.clear_rect(0,y, 128, 64-y)
 
-            if self.percent:
-                w = int((128 - x - 4) * self.percent)
-                dis.dis.line(x, y+8, x+w, y+8, True)
+        if percent is not None:
+            self.percent = percent
 
-        if now:
-            dis.show()
+            # reset display once we're at 100%
+            if percent >= 0.995:            # ~ last pixel
+                self.percent = None
+                self.busy_text = msg = None
+
+        if msg is not None:
+            self.busy_text = msg
+
+        if self.busy_text is not None:
+            dis.text(None, y, self.busy_text)
+
+        if self.percent is not None:
+            dis.dis.hline(0, 63, int(128 * self.percent), 1)
+
+        dis.show()
 
 
     # replacements for display.py:Display functions
     def hack_fullscreen(self, msg, percent=None, line2=None):
-        self.busy = msg
-        self.percent = percent or 0
-        self.draw_busy()
-
+        self.draw_busy(msg, percent)
     def hack_progress_bar(self, percent):
-        self.percent = int(percent*100)
-        if percent >= 1:
-            self.busy = None
-        self.draw_busy()
-
-    # report digits that are entered
-    def pop_digits(self):
-        # clear any partial pin entered so far
-        rv = self.digits
-        self.digits = ''
-        return rv
+        self.draw_busy(None, percent)
 
     async def interact(self):
         import main
@@ -259,7 +275,8 @@ class hsmUxInteraction:
 
         # Kill time, waiting for user input
         self.digits = ''
-        while not main.numpad.test_restart:
+        self.test_restart = False
+        while not self.test_restart:
             self.show()
             gc.collect()
 
@@ -268,14 +285,22 @@ class hsmUxInteraction:
                 ch = real_numpad.get_nowait()
 
                 if ch == 'x':
-                    await login_now()       # immediate reboots
-
-                elif ch != 'y':
+                    self.digits = ''
+                elif ch == 'y':
+                    if len(self.digits) == LOCAL_PIN_LENGTH:
+                        main.hsm_active.local_pin_entered(self.digits)
+                        self.digits = ''
+                elif ch == main.numpad.ABORT_KEY:
+                    # important to eat these and fully suppress them
+                    pass
+                else:
                     self.digits += ch
                     if len(self.digits) > LOCAL_PIN_LENGTH:
-                        # keep last x digits
+                        # keep last N digits
                         self.digits = self.digits[-LOCAL_PIN_LENGTH:]
-                    self.show()
+
+                # do immediate screen update
+                continue
 
             except QueueEmpty:
                 await sleep_ms(250)
@@ -292,15 +317,15 @@ class hsmUxInteraction:
                 except AbortInteraction:
                     pass
 
-        assert is_simulator()
-
         # This code only reachable on the simulator!
         # - need to cleanup and reset so we run another test w/o restart
+        assert is_simulator()
+
         from actions import goto_top_menu
-        import main
         main.hsm_active = None
         main.numpad = real_numpad
         goto_top_menu()
+
         return
 
 
@@ -308,9 +333,15 @@ class hsmUxInteraction:
 hsm_ux_obj = hsmUxInteraction()
 
 # Mock version of NumpadBase from numpad.py
-class NeuterPad:
+# - just in case we missed some code that blocks on user input
+# - this will cause it to not to work.
+from numpad import NumpadBase
+class NeuterPad(NumpadBase):
     disabled = True
-    test_restart = False
+    repeat_delay = 0
+
+    def __init__(self, loop=None):
+        pass
 
     async def get(self):
         return 
@@ -328,10 +359,7 @@ class NeuterPad:
 
     def abort_ux(self):
         return
-
     def inject(self, key):
-        if key == 'TEST_RESET':
-            assert is_simulator()
-            self.test_restart = True
         return
 
+# EOF
