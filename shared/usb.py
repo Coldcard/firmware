@@ -12,6 +12,7 @@ from ckcc import rng_bytes, watchpoint, is_simulator
 import uselect as select
 from utils import problem_file_line
 from version import has_fatram
+from exceptions import FramingError, CCBusyError, HSMDenied
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -44,15 +45,16 @@ hid_descp = bytes([
         ])
 
 # Only these whitelisted USB commands are allowed once we enter HSM mode.
+# NOTE: 'robo' here would allow firmware changes during HSM mode!
 HSM_WHITELIST = frozenset({
-    'rebo', 'logo', 'ping', 'vers',     # harmless/boring
+    'logo', 'ping', 'vers',     # harmless/boring
     'upld', 'sha2', 'dwld', 'stxn',     # up/download/sign PSBT needed
-    'mitm','ncry',              # limited by policy tho
+    'mitm','ncry',              # maybe limited by policy tho
     'smsg',                     # limited by policy
-    'blkc', 'hsts',             # status values
-    'stok', 'bkok', 'smok', 'pwok', 'enok',     # ux status queries
+    'blkc', 'hsts',             # report status values
+    'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
-    'p2sh', 'show',             # limited value, no-one to see screen
+    'p2sh', 'show',             # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
@@ -61,10 +63,6 @@ HSM_WHITELIST = frozenset({
 
 # singleton instance of USBHandler()
 handler = None
-
-class FramingError(RuntimeError): pass
-#class CCUserRefused(RuntimeError): pass
-class CCBusyError(RuntimeError): pass
 
 def enable_usb(loop, repl_enable=False):
     # start it.
@@ -96,6 +94,14 @@ def is_vcp_active():
     cur = pyb.usb_mode()
 
     return cur and ('VCP' in cur) and en
+
+def clean_shutdown():
+    # wipe SPI flash and shutdown (wiping main memory)
+    try:
+        from main import sf
+        sf.wipe_most()
+    except: pass
+    callgate.show_logout()
 
 class USBHandler:
     def __init__(self):
@@ -190,6 +196,9 @@ class USBHandler:
                 except CCBusyError:
                     # auth UX is doing something else
                     resp = b'busy'
+                    msg_len = 0
+                except HSMDenied:
+                    resp = b'err_Not allowed in HSM mode'
                     msg_len = 0
                 except (ValueError, AssertionError) as exc:
                     # some limited invalid args feedback
@@ -309,7 +318,7 @@ class USBHandler:
         if hsm_active:
             # only a few commands are allowed during HSM mode
             if cmd not in HSM_WHITELIST:
-                return b'err_Not allowed in HSM mode'
+                raise HSMDenied
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.
@@ -320,7 +329,7 @@ class USBHandler:
             return self.call_after(machine.reset)
 
         if cmd == 'logo':
-            return self.call_after(callgate.show_logout)
+            return self.call_after(clean_shutdown)
 
         if cmd == 'ping':
             return b'biny' + args
@@ -378,6 +387,9 @@ class USBHandler:
             # show P2SH (probably multisig) address on screen (also provides it back)
             # - must provide redeem script, and list of [xfp+path]
             from auth import start_show_p2sh_address
+
+            if hsm_active and not hsm_active.approve_address_share(is_p2sh=True):
+                raise HSMDenied
 
             # new multsig goodness, needs mapping from xfp->path and M values
             addr_fmt, M, N, script_len = unpack_from('<IBBH', args)
@@ -447,7 +459,7 @@ class USBHandler:
             sign_transaction(txn_len, bool(finalize), txn_sha)
             return None
 
-        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok' or cmd == 'enok':
+        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
             from auth import UserAuthorizedAction
@@ -469,7 +481,7 @@ class USBHandler:
                 # STILL waiting on user
                 return None
 
-            if cmd == 'pwok' or cmd == 'enok':
+            if cmd == 'pwok':
                 # return new root xpub
                 xpub = req.result
                 UserAuthorizedAction.cleanup()
@@ -642,7 +654,7 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
-        from main import dis, sf
+        from main import sf
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
@@ -666,7 +678,7 @@ class USBHandler:
         return resp
 
     async def handle_upload(self, offset, total_size, data):
-        from main import dis, sf
+        from main import dis, sf, hsm_active
 
         # maintain a running SHA256 over what's received
         if offset == 0:
@@ -675,14 +687,19 @@ class USBHandler:
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
 
+        if hsm_active:
+            # additional restrictions in HSM mode, so firmware cannot be changed
+            assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'long'
+            if offset == 0:
+                assert data[0:5] == b'psbt\xff', 'psbt'
+
         rb = bytearray(256)
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
                 # erase here
                 sf.sector_erase(pos)
 
-                dis.fullscreen("Receiving...")
-                dis.progress_bar_show(offset/total_size)
+                dis.fullscreen("Receiving...", offset/total_size)
 
                 while sf.is_busy():
                     await sleep_ms(10)
@@ -699,7 +716,7 @@ class USBHandler:
             sf.read(pos, rb)
             self.file_checksum.update(rb[0:len(here)])
 
-        if offset+len(data) >= total_size:
+        if offset+len(data) >= total_size and not hsm_active:
             # probably done
             dis.progress_bar_show(1.0)
             ux.restore_menu()
@@ -716,6 +733,10 @@ class USBHandler:
         from utils import cleanup_deriv_path
 
         subpath = cleanup_deriv_path(subpath)
+
+        from main import hsm_active
+        if hsm_active and not hsm_active.approve_xpub_share(subpath):
+            raise HSMDenied
 
         chain = current_chain()
 

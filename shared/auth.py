@@ -12,6 +12,7 @@ from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
+from exceptions import HSMDenied
 
 # Where in SPI flash the two transactions are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -83,9 +84,13 @@ class UserAuthorizedAction:
             sys.print_exception(exc)
             msg += "\n\n(%s)" % problem_file_line(exc)
 
+        
+        from main import hsm_active, dis
+
         # do nothing more for HSM case: msg will be available over USB
-        from main import hsm_active
-        if hsm_active: return
+        if hsm_active:
+            dis.progress_bar(1)     # finish the Validating... or whatever was up
+            return
 
         # may be a user-abort waiting, but we want to see error msg; so clear it
         ux_clear_keys(True)
@@ -436,6 +441,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 ch = await ux_show_story(msg, title="OK TO SEND?")
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
+                dis.progress_bar(1)     # finish the Validating...
 
         except MemoryError:
             # recovery? maybe.
@@ -452,8 +458,7 @@ class ApproveTransaction(UserAuthorizedAction):
             # they don't want to!
             self.refused = True
 
-            if not hsm_active:
-                await ux_dramatic_pause("Refused.", 1)
+            await ux_dramatic_pause("Refused.", 1)
 
             del self.psbt
 
@@ -866,11 +871,15 @@ class ShowAddressBase(UserAuthorizedAction):
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        msg = self.get_msg()
+        from main import hsm_active, dis
 
-        msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
-
-        ch = await ux_show_story(msg, title=self.title)
+        if not hsm_active:
+            msg = self.get_msg()
+            msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
+            ch = await ux_show_story(msg, title=self.title)
+        else:
+            # finish the Wait...
+            dis.progress_bar(1)     
 
         self.done()
         UserAuthorizedAction.cleanup()      # because no results to store
@@ -940,6 +949,7 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     assert ms.M == M
     assert ms.N == N
 
+
     UserAuthorizedAction.check_busy(ShowAddressBase)
     UserAuthorizedAction.active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
 
@@ -958,6 +968,10 @@ def start_show_address(addr_format, subpath):
 
     # require a path to a key
     subpath = cleanup_deriv_path(subpath)
+
+    from main import hsm_active
+    if hsm_active and not hsm_active.approve_address_share(subpath):
+        raise HSMDenied
 
     UserAuthorizedAction.check_busy(ShowAddressBase)
     UserAuthorizedAction.active_request = ShowPKHAddress(addr_format, subpath)
