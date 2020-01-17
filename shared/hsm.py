@@ -46,6 +46,19 @@ def pop_list(j, fld_name, cleanup_fcn=None):
     else:
         return []
 
+def pop_deriv_list(j, fld_name, extra_val=None):
+    # expect a list of derivation paths, but also 'ANY' meaning accept all
+    # - maybe also 'p2sh' as special value
+    def cu(s):
+        if s.lower() == 'any': return s.lower()
+        if extra_val and s.lower() == extra_val: return s.lower()
+        try:
+            return cleanup_deriv_path(s)
+        except:
+            raise ValueError('%s: invalid path (%s)' % (fld_name, s))
+
+    return pop_list(j, fld_name, cu)
+
 def pop_int(j, fld_name, mn=0, mx=1000):
     # returns an int or None. Also range check.
     v = j.pop(fld_name, None)
@@ -270,6 +283,21 @@ class AuditLogger:
 
 class HSMPolicy:
     # implements and enforces the HSM signing/activity/logging policy
+    def __init__(self):
+        # no config values here.
+
+        # statistics / state
+        self.refusals = 0
+        self.approvals = 0
+        self.sl_reads = 0
+        self.pending_auth = {}
+
+        # velocity limits
+        self.current_period = utime.time() # starts now
+        self.period_spent = 21E6
+
+        self.local_code_pending = ''
+        self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
 
     def load(self, j):
         # Decode json object provided: destructive
@@ -284,7 +312,9 @@ class HSMPolicy:
         self.warnings_ok = pop_bool(j, 'warnings_ok')
 
         # a list of paths we can accept for signing
-        self.msg_paths = pop_list(j, 'msg_paths', cleanup_deriv_path)
+        self.msg_paths = pop_deriv_list(j, 'msg_paths')
+        self.share_xpubs = pop_deriv_list(j, 'share_xpubs')
+        self.share_addrs = pop_deriv_list(j, 'share_addrs', 'p2sh')
 
         # free text shown at top
         self.notes = j.pop('notes', None)
@@ -309,18 +339,6 @@ class HSMPolicy:
         # error checking, must be last!
         assert_empty_dict(j)
 
-        # statistics / state
-        self.refusals = 0
-        self.approvals = 0
-        self.sl_reads = 0
-        self.pending_auth = {}
-
-        # velocity limits
-        self.current_period = utime.time() # starts now
-        self.period_spent = 21E6
-
-        self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
-
     def period_reset_time(self):
         # time from now, in seconds, until the period resets and the velocity
         # total is reset
@@ -330,7 +348,8 @@ class HSMPolicy:
         
     def save(self):
         # create JSON document for next time.
-        simple = ['must_log', 'msg_paths', 'notes', 'period', 'allow_sl', 'warnings_ok']
+        simple = ['must_log', 'msg_paths', 'share_xpubs', 'share_addrs',
+                    'notes', 'period', 'allow_sl', 'warnings_ok']
         rv = dict()
         for fn in simple:
             rv[fn] = getattr(self, fn, None)
@@ -360,9 +379,13 @@ class HSMPolicy:
                 fd.write('\n = %.3g hrs' % (self.period / 60))
             fd.write('\n')
 
+        def plist(pl):
+            remap = {'any': '(any path)', 'p2sh': '(any P2SH)' }
+            return ' OR '.join(remap.get(i, i) for i in pl)
+
         fd.write('\nMessage signing:\n')
         if self.msg_paths:
-            fd.write("- Allowed if path is: %s\n" % ' OR '.join(self.msg_paths))
+            fd.write("- Allowed if path is: %s\n" % plist(self.msg_paths))
         else:
             fd.write("- Not allowed.\n")
 
@@ -372,9 +395,16 @@ class HSMPolicy:
             fd.write('- Storage Locker will be updated (once).\n')
         if self.allow_sl:
             fd.write('- Storage Locker can be read only %s.\n' 
-                        % ('once' if self.allow_sl == 1 else ('%d times'%self.allow_sl)))
+                        % ('once' if self.allow_sl == 1 else ('%d times' % self.allow_sl)))
         if self.warnings_ok:
             fd.write('- PSBT warnings will be ignored.\n')
+
+        if self.share_xpubs:
+            fd.write('- XPUB values will be shared, if path is: %s.\n' 
+                                % plist(self.share_xpubs))
+        if self.share_addrs:
+            fd.write('- Address values values will be shared, if path is: %s.\n' 
+                                % plist(self.share_addrs))
 
         self.summary = fd.getvalue()
 
@@ -399,7 +429,7 @@ class HSMPolicy:
         main.hsm_active = self
 
         if new_file:
-            # save it for next run
+            # save config for next run
             with open(POLICY_FNAME, 'w+t') as f:
                 ujson.dump(self.save(), f)
 
@@ -476,7 +506,7 @@ class HSMPolicy:
                 log.refuse("Message signing not permitted")
                 return 'x'
 
-            if subpath not in self.msg_paths:
+            if 'any' not in self.msg_paths and (subpath not in self.msg_paths):
                 log.refuse('Message signing not enabled for that path')
                 return 'x'
 
@@ -484,23 +514,54 @@ class HSMPolicy:
 
         return 'y'
 
+    def approve_xpub_share(self, subpath):
+        # Are we sharing XPUB read-out requests over USB?
+
+        if not self.share_xpubs:
+            return False
+
+        if 'any' in self.share_xpubs:
+            return True
+
+        return (subpath in self.share_xpubs)
+
+    def approve_address_share(self, subpath=None, is_p2sh=False):
+        # Are we allowing "show address" requests over USB?
+        if not self.share_addrs:
+            return False
+
+        if is_p2sh:
+            return 'p2sh' in self.share_addrs
+
+        elif 'any' in self.share_addrs:
+            return True
+
+        return (subpath in self.share_addrs)
+
+    def local_pin_entered(self, code):
+        # 6 digits have been entered by local user (ie. they pressed Y, with digits in place)
+        self.local_code_pending = code
+        print("Got code: %s" % code)
+
     def consume_local_code(self):
         # Return T if they got the code right, also (regardless) pick 
         # the next code to be provided.
-        from hsm_ux import hsm_ux_obj
 
-        got = hsm_ux_obj.pop_digits()
         expect = self.next_local_code
+        got = self.local_code_pending
+        self.local_code_pending = ''
 
         self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
 
         return got == expect
+
 
     async def approve_transaction(self, psbt, psbt_sha, story):
         # Approve or don't a transaction. Catch assertions and other
         # reasons for failing/rejecting into the log.
         # - return 'y' or 'x'
         chain = chains.current_chain()
+        assert psbt_sha and len(psbt_sha) == 32
 
         with AuditLogger(self, 'psbt', psbt_sha) as log:
 
@@ -516,9 +577,10 @@ class HSMPolicy:
             auth = self.pending_auth
             self.pending_auth = {}
 
-
             try:
-                assert psbt_sha and len(psbt_sha) == 32
+                # do this super early so always cleared even if other issues
+                local_ok = self.consume_local_code()
+
 
                 if not self.rules:
                     raise ValueError("no txn signing allowed")
@@ -540,7 +602,6 @@ class HSMPolicy:
                     users.append(u)
 
                 # was right code provided locally? (also resets for next attempt)
-                local_ok = self.consume_local_code()
                 if local_ok:
                     log.info("Local operator gave correct code.")
                 if users:
