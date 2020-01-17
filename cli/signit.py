@@ -204,7 +204,10 @@ def doit(outfn=None, build_dir='l-port/build-COLDCARD', high_water=False,
                     timestamp=timestamp(backdate) )
 
     assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH, hdr.firmware_length
-    assert hdr.firmware_length <= 786432-128, "too big for our-protocol USB upgrades"
+    assert hdr.firmware_length <= 786432-128, \
+        "too big for our-protocol USB upgrades: %d = %d bytes too big" % (
+            hdr.firmware_length, hdr.firmware_length-(786432-128))
+
 
     binhdr = struct.pack(FWH_PY_FORMAT, *hdr)
     assert len(binhdr) == FW_HEADER_SIZE
