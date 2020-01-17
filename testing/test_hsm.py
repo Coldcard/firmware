@@ -60,7 +60,7 @@ def hsm_reset(simulator, need_keypress):
             if j.get('active') == False:
                 break
 
-            need_keypress('TEST_RESET')
+            simulator.send_recv('HSMR')
             time.sleep(.1)
 
     yield doit
@@ -75,8 +75,20 @@ def hsm_reset(simulator, need_keypress):
     (DICT(must_log=1), 'MicroSD card MUST '),
     (DICT(must_log=0), 'MicroSD card will '),
     (DICT(warnings_ok=1), 'PSBT warnings'),
+
     (DICT(msg_paths=["m/1'/2p/3H"]), "m/1'/2'/3'"),
     (DICT(msg_paths=["m/1", "m/2"]), "m/1 OR m/2"),
+    (DICT(msg_paths=["any"]), "(any path)"),
+
+    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1'/2'/3'"]),
+    (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
+    (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
+    (DICT(share_addrs=["p2sh", "any"]), ['Address values values will be shared', "(any P2SH)", "(any path"]),
+
+    (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1'/2'/3'"]),
+    (DICT(share_xpubs=["m/1", "m/2"]), ['XPUB values will be shared', "m/1 OR m/2"]),
+    (DICT(share_xpubs=["any"]), ['XPUB values will be shared', "(any path)"]),
+
     (DICT(notes='sdfjkljsdfljklsdf'), 'sdfjkljsdfljklsdf'),
 
     (DICT(period=2), '2 minutes'),
@@ -150,7 +162,10 @@ def test_policy_parsing(sim_exec, policy, contains, load_hsm_users):
     if getattr(policy, 'period', None):
         assert '%d minutes\n'%policy.period in got
 
-    assert contains in got
+    if isinstance(contains, str):
+        assert contains in got
+    else:
+        assert all(c in got for c in contains)
 
 
 @pytest.fixture
@@ -199,7 +214,24 @@ def hsm_status(dev):
     return doit
 
 @pytest.fixture
-def start_hsm(dev, need_keypress, sim_exec, hsm_reset, hsm_status, cap_story, sim_eval):
+def change_hsm(sim_eval, sim_exec, hsm_status):
+    # change policy after HSM is running.
+    def doit(policy):
+        # if already an HSM in motion; just replace it quickly
+
+        act = sim_eval('main.hsm_active')
+        assert act != 'None', 'hsm not enabled yet'
+
+        cmd = f"import main; from hsm import HSMPolicy; \
+                    p=HSMPolicy(); p.load({dict(policy)}); main.hsm_active=p; p.explain(RV)"
+        rv = sim_exec(cmd)
+        assert 'Other policy' in rv
+
+        return hsm_status()
+    return doit
+
+@pytest.fixture
+def start_hsm(dev, need_keypress, hsm_reset, hsm_status, cap_story, change_hsm, sim_eval):
     
     def doit(policy, quick=False):
         # send policy, start it, approve it
@@ -209,10 +241,7 @@ def start_hsm(dev, need_keypress, sim_exec, hsm_reset, hsm_status, cap_story, si
             # if already an HSM in motion; just replace it quickly
             act = sim_eval('main.hsm_active')
             if act != 'None':
-                cmd = f"import main; from hsm import HSMPolicy; "\
-                            "p=HSMPolicy(); p.load({data}); main.hsm_active=p"
-                sim_exec(cmd)
-                return hsm_status()
+                return change_hsm(policy)
 
         ll, sha = dev.upload_file(data)
         assert ll == len(data)
@@ -456,21 +485,40 @@ def test_big_txn(num_in, num_out, dev, start_hsm, hsm_status,
         attempt_psbt(psbt)
 
 
-def test_sign_msg_good(start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+def test_sign_msg_good(start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     # message signing, but only at certain derivations
     permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
+    block = ['m', 'm/72', permit[-1][:-2]]
+    msg = b'testing 123'
 
     policy = DICT(msg_paths=permit)
     start_hsm(policy, quick=True)
-    msg = b'testing 123'
 
-    for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
+    if 1:
+        for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
 
-        for p in permit: 
-            attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
+            for p in permit: 
+                attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-        for p in ['m', 'm/72', permit[-1][:-2]]:
-            attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
+            for p in block:
+                attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
+
+    policy = DICT(msg_paths=['any'])
+    change_hsm(policy)
+
+    for p in block+permit: 
+        attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
+
+def test_sign_msg_any(start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+    permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
+    block = ['m', 'm/72', permit[-1][:-2]]
+    msg = b'whatever'
+
+    policy = DICT(msg_paths=['any'])
+    start_hsm(policy, quick=True)
+
+    for p in permit+block: 
+        attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
 def test_must_log(start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attempt_psbt):
     # stop everything if can't log
@@ -487,6 +535,18 @@ def test_must_log(start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attem
     sim_card_ejected(False)
     attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
     attempt_psbt(psbt)
+
+@pytest.fixture
+def enter_local_code(need_keypress):
+    def doit(code):
+        assert len(code) == 6 and code.isdigit()
+        need_keypress('x')
+        for ch in code:
+            need_keypress(ch)
+        need_keypress('y')
+
+    return doit
+        
 
 @pytest.fixture
 def auth_user(dev):
@@ -586,6 +646,131 @@ def test_invalid_psbt(start_hsm, attempt_psbt):
     policy = DICT()
     start_hsm(policy, quick=True)
     attempt_psbt(garb, remote_error='PSBT parse failed')
+
+@pytest.mark.parametrize('package', [
+    "hello world; how's tricks?",
+    'OGlICrIPZE6DEtsGfcWH2pO6Uz6ZI+w05BYOERMN0XahGicvBhSR4HcgcX3mzk/qM3dWFZ8QAOEIvPFujlhULg==',
+    ])
+@pytest.mark.parametrize('count', [1, 5])
+def test_storage_locker(package, count, start_hsm, dev):
+    # read and write, limited; of storage locker.
+    policy = DICT(set_sl=package, allow_sl=count)
+    start_hsm(policy, quick=False)
+
+    for t in range(count+3):
+        if t < count:
+            got = dev.send_recv(CCProtocolPacker.get_storage_locker())
+            assert got == package.encode('ascii')
+        else:
+            with pytest.raises(CCProtoError) as ee:
+                got = dev.send_recv(CCProtocolPacker.get_storage_locker())
+            assert 'consumed' in str(ee)
+
+def test_usb_cmds_block(start_hsm, dev):
+    # check these commands return errors (test whitelist)
+    block_list = [
+        'rebo', 'dfu_', 'enrl', 'enok',
+        'back', 'pass', 'bagi', 'hsms', 'nwur', 'rmur', 'pwok', 'bkok',
+    ]
+
+    start_hsm(dict(), quick=True)
+
+    for cmd in block_list:
+        with pytest.raises(CCProtoError) as ee:
+            got = dev.send_recv(cmd)
+        assert 'HSM' in str(ee)
+
+def test_local_conf_unit(sim_exec, enter_local_code, start_hsm):
+
+    start_hsm({}, quick=True)
+
+    enter_local_code('123456')
+    time.sleep(.05)
+    rb = sim_exec('from main import hsm_active; RV.write(hsm_active.local_code_pending)')
+    assert rb == '123456'
+
+
+def test_show_addr(dev, start_hsm, change_hsm):
+    # test we can do address "showing" with no UX
+    # which can also be disabled, etc.
+    path = 'm/4'
+    addr_fmt = AF_P2WPKH
+    policy = DICT(share_addrs=[path])
+
+    start_hsm(policy, quick=True)
+    addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt))
+
+    change_hsm(DICT(share_addrs=['m']))
+    with pytest.raises(CCProtoError) as ee:
+        addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt))
+    assert 'Not allowed in HSM mode' in str(ee)
+
+    addr = dev.send_recv(CCProtocolPacker.show_address('m', addr_fmt))
+
+    change_hsm(DICT(share_addrs=['any']))
+    addr = dev.send_recv(CCProtocolPacker.show_address('m', addr_fmt))
+    addr = dev.send_recv(CCProtocolPacker.show_address('m/1/2/3', addr_fmt))
+    addr = dev.send_recv(CCProtocolPacker.show_address('m/3', addr_fmt))
+
+    permit = ['m/73', 'm/1p/3h/4/5/6/7', 'm/1/2/3' ]
+    change_hsm(DICT(share_addrs=permit))
+    for path in permit:
+        addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt))
+
+def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_wallet, addr_vs_path):
+    # MULTISIG addrs
+    from test_multisig import HARD, make_redeem
+    M = 4
+    pm = lambda i: [HARD(45), i, 0,0]
+
+    # can't amke ms wallets inside HSM mode
+    hsm_reset()
+    keys, _ = make_myself_wallet(M)       # slow AF
+
+    permit = ['p2sh', 'm/73']
+    start_hsm(DICT(share_addrs=permit))
+
+
+    scr, pubkeys, xfp_paths = make_redeem(M, keys, path_mapper=pm)
+    assert len(scr) <= 520, "script too long for standard!"
+
+    got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
+                                    M, xfp_paths, scr, addr_fmt=AF_P2WSH))
+    addr_vs_path(got_addr, addr_fmt=AF_P2WSH, script=scr)
+
+    # turn it off; p2sh must be explicitly allowed
+    for allow in ['m', 'any']:
+        change_hsm(DICT(share_addrs=[allow]))
+        dev.send_recv(CCProtocolPacker.show_address('m', AF_CLASSIC))
+
+        with pytest.raises(CCProtoError) as ee:
+            got_addr = dev.send_recv(CCProtocolPacker.show_p2sh_address(
+                                    M, xfp_paths, scr, addr_fmt=AF_P2WSH))
+        assert 'Not allowed in HSM mode' in str(ee)
+
+def test_xpub_sharing(dev, start_hsm, change_hsm, addr_fmt=AF_CLASSIC):
+    # message signing, but only at certain derivations
+    permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
+    block = ['m', 'm/72', permit[-1][:-2]]
+
+    policy = DICT(share_xpubs=permit)
+    start_hsm(policy, quick=True)
+
+    for p in permit: 
+        xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
+
+        for p in block:
+            with pytest.raises(CCProtoError) as ee:
+                xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
+            assert 'Not allowed in HSM mode' in str(ee)
+
+    policy = DICT(share_xpubs=['any'])
+    change_hsm(policy)
+
+    for p in block+permit: 
+        xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
+
+
 
 # need test
 # - min_users
