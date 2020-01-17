@@ -78,6 +78,14 @@ class Users:
         return UserInfo(*rv) if rv else None
 
     @classmethod
+    def update_counter(cls, username, cnt):
+        from main import settings
+        t = cls.get()
+        assert username in t
+        t[username][2] = cnt
+        settings.changed()
+
+    @classmethod
     def valid_username(cls, username):
         return bool(cls.get().get(username, False))
 
@@ -150,12 +158,11 @@ class Users:
         # check a password/totp
         # - where a hash of a PSBT is needed, we use zero; if unknown
         # - return empty string if ok, else problem string
-        # - SIDE-EFFECT: updates last-counter/totp timestamp if successful
-        from main import settings
+        # - Important SIDE-EFFECT: updates last-counter/totp timestamp if successful
 
         u = cls.lookup(username)
         if not u:
-            return 'unknown'
+            return 'unknown user'
 
         auth_mode, secret, last_counter = u
         secret = b32decode(secret)
@@ -175,10 +182,13 @@ class Users:
             if not last_counter:
                 candidates.append(0)
         else:
-            # time based: try back a few slots, but only if not already used
+            # time based: try back a few slots, but only if not already used up
             if totp_time < 52622505:
-                # above is time when I wrote the code, so but be after that
+                # above is time when I wrote the code, so must be after that
                 return 'range'
+
+            if totp_time <= last_counter:
+                return 'replay'
 
             candidates = [(totp_time-i) for i in range(0, 3)
                                     if (totp_time-i) > last_counter]
@@ -188,15 +198,13 @@ class Users:
         for c in candidates:
             expect = calc_hotp(secret, c).encode('ascii')
 
+            #print('expect=%r got=%r cnt=%d last=%d' % (expect, token, c, last_counter))
+
             if expect == token:
                 # success, need to update last counter level seen (especially for HOTP,
                 # but also to resist replay for TOTP)
-                u = list(u)
-                u[2] = c
-                settings.changed()
+                cls.update_counter(username, c)
                 return ''
-        
-            print('expect=%r got=%r cnt=%d' % (expect, token, c))
 
         return 'mismatch'
 
