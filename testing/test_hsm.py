@@ -3,7 +3,7 @@
 #
 # Test HSM and its policy file.
 #
-import pytest, time, struct, os
+import pytest, time, struct, os, itertools
 #from pycoin.key.BIP32Node import BIP32Node
 from binascii import b2a_hex, a2b_hex
 from hashlib import sha256
@@ -174,7 +174,20 @@ def tweak_rule(sim_exec):
     def doit(idx, new_rule):
         cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write(hsm_active.rules[{idx}].to_text())"
         txt = sim_exec(cmd)
+        if 'Traceback' in txt:
+            raise RuntimeError(txt)
         print(f"Rule {idx} now: {txt}")
+    return doit
+
+@pytest.fixture
+def readback_rule(sim_exec):
+    # readback the stored config of a rule, after parsing
+    def doit(idx):
+        cmd = f"import ujson; from main import hsm_active; RV.write(ujson.dumps(hsm_active.rules[{idx}].to_json()));"
+        txt = sim_exec(cmd)
+        if 'Traceback' in txt:
+            raise RuntimeError(txt)
+        return json.loads(txt, object_hook=DICT)
     return doit
 
 @pytest.fixture
@@ -545,6 +558,9 @@ def enter_local_code(need_keypress):
             need_keypress(ch)
         need_keypress('y')
 
+        # need this because UX loop for HSM has long sleep in it
+        time.sleep(.250)
+
     return doit
         
 
@@ -605,36 +621,6 @@ def auth_user(dev):
 
     return State()
 
-def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
-    psbt = fake_txn(1,1)
-    auth_user.psbt_hash = sha256(psbt).digest()
-
-    policy = DICT(rules=[dict(users=['totp'])])
-    load_hsm_users()
-    start_hsm(policy, quick=False)
-
-    for name in USERS:
-        tweak_rule(0, dict(users=[name]))
-
-        # should fail
-        auth_user(name, garbage=True)
-        msg = attempt_psbt(psbt, ': mismatch')
-        assert name in msg
-        assert 'wrong auth' in msg
-
-        # should work
-        auth_user(name)
-        attempt_psbt(psbt)
-
-        # auth should be cleared
-        attempt_psbt(psbt, 'need user(s) confirmation')
-
-        # fail as "replay"
-        # - except PW thing is linked to PSBT, not the counter
-        # - except HOTP doesn't see it as replay because it doesn't even check old counter value
-        if name != 'pw':
-            auth_user(name, do_replay=True)
-            attempt_psbt(psbt, 'replay' if name == 'totp' else 'mismatch')
 
 def test_invalid_psbt(start_hsm, attempt_psbt):
     policy = DICT(warnings_ok=True, rules=[{}])
@@ -680,12 +666,11 @@ def test_usb_cmds_block(start_hsm, dev):
             got = dev.send_recv(cmd)
         assert 'HSM' in str(ee)
 
-def test_local_conf_unit(sim_exec, enter_local_code, start_hsm):
+def test_unit_local_conf(sim_exec, enter_local_code, start_hsm):
 
     start_hsm({}, quick=True)
 
     enter_local_code('123456')
-    time.sleep(.05)
     rb = sim_exec('from main import hsm_active; RV.write(hsm_active.local_code_pending)')
     assert rb == '123456'
 
@@ -770,12 +755,170 @@ def test_xpub_sharing(dev, start_hsm, change_hsm, addr_fmt=AF_CLASSIC):
     for p in block+permit: 
         xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
 
+@pytest.fixture
+def fast_forward(sim_exec):
+    def doit(dt):
+        cmd = f'from main import hsm_active; hsm_active.period_started -= {dt}; RV.write("ok")'
+        assert sim_exec(cmd) == 'ok'
+    return doit
+
+def test_velocity(start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_status):
+    # stop everything if can't log
+    level = int(1E8)
+    policy = DICT(period=2, rules=[dict(per_period=level)])
+
+    start_hsm(policy, quick=False)
+
+    psbt = fake_txn(2, 1)
+    attempt_psbt(psbt, 'would exceed period spending')
+
+    psbt = fake_txn(2, 2)
+    attempt_psbt(psbt, 'would exceed period spending')
+
+    psbt = fake_txn(2, 10)
+    attempt_psbt(psbt, 'would exceed period spending')
+
+    psbt = fake_txn(2, 2, outvals=[level, 2E8-level], change_outputs=[1])
+    attempt_psbt(psbt)      # exactly the limit
+
+    s = hsm_status()
+    assert 118 <= s.period_ends <= 120
+    assert s.has_spent == [level]
+
+    attempt_psbt(psbt, 'would exceed period spending')
+
+    psbt = fake_txn(1, 1)
+    attempt_psbt(psbt, 'would exceed period spending')
+
+    # skip ahead
+    fast_forward(120)
+    s = hsm_status()
+    assert 'period_ends' not in s
+    assert 'has_spend' not in s
+
+    amt = 0.30E8
+    psbt = fake_txn(1, 2, outvals=[amt, 1E8-amt], change_outputs=[1])
+    attempt_psbt(psbt)      # 1/3rd of limit
+    attempt_psbt(psbt)      # 1/3rd of limit
+    attempt_psbt(psbt)      # 1/3rd of limit
+    attempt_psbt(psbt, 'would exceed period spending')
+
+    s = hsm_status()
+    assert 118 <= s.period_ends <= 120
+    assert s.has_spent == [int(amt*3)]
 
 
-# need test
-# - min_users
-# - local_conf cases
-# need code
-# - period stuff
+def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
+    psbt = fake_txn(1,1)
+    auth_user.psbt_hash = sha256(psbt).digest()
+
+    policy = DICT(rules=[dict(users=['totp'])])
+    load_hsm_users()
+    start_hsm(policy, quick=False)
+
+    for name in USERS:
+        tweak_rule(0, dict(users=[name]))
+
+        # should fail
+        auth_user(name, garbage=True)
+        msg = attempt_psbt(psbt, ': mismatch')
+        assert name in msg
+        assert 'wrong auth' in msg
+
+        # should work
+        auth_user(name)
+        attempt_psbt(psbt)
+
+        # auth should be cleared
+        attempt_psbt(psbt, 'need user(s) confirmation')
+
+        # fail as "replay"
+        # - except PW thing is linked to PSBT, not the counter
+        # - except HOTP doesn't see it as replay because it doesn't even check old counter value
+        if name != 'pw':
+            auth_user(name, do_replay=True)
+            attempt_psbt(psbt, 'replay' if name == 'totp' else 'mismatch')
+
+def test_min_users_parse(dev, start_hsm, tweak_rule, load_hsm_users, 
+                            auth_user, sim_exec, readback_rule):
+
+    policy = DICT(rules=[dict(users=USERS)])
+    load_hsm_users()
+    start_hsm(policy, quick=False)
+
+    r = readback_rule(0)
+    assert sorted(r.users) == sorted(USERS)
+    assert r.min_users == len(USERS)
+
+    for n in range(1, len(USERS)-1):
+        policy = DICT(rules=[dict(users=USERS, min_users=n)])
+        tweak_rule(0, policy.rules[0])
+        r = readback_rule(0)
+        assert sorted(r.users) == sorted(USERS)
+        assert r.min_users == n if n else r.min_users == len(USERS)
+
+    policy = DICT(rules=[dict(users=USERS, min_users=0)])
+    with pytest.raises(RuntimeError) as ee:
+        tweak_rule(0, policy.rules[0])
+    assert 'must be in range' in str(ee)
+
+    policy = DICT(rules=[dict(users=USERS, min_users=7)])
+    with pytest.raises(RuntimeError) as ee:
+        tweak_rule(0, policy.rules[0])
+    assert 'must be in range' in str(ee)
+
+    policy = DICT(rules=[dict(users=USERS+USERS+USERS, min_users=7)])
+    with pytest.raises(RuntimeError) as ee:
+        tweak_rule(0, policy.rules[0])
+    assert 'dup users' in str(ee)
+
+
+def test_min_users_perms(dev, start_hsm, load_hsm_users, fake_txn,
+                            attempt_psbt, auth_user, sim_exec, readback_rule):
+    psbt = fake_txn(1,1)
+    auth_user.psbt_hash = sha256(psbt).digest()
+
+    load_hsm_users()
+
+    # all subsets of users
+    for n in range(1, len(USERS)):
+        policy = DICT(rules=[dict(users=USERS, min_users=n)])
+        start_hsm(policy, quick=True)
+
+        for au in itertools.permutations(USERS, n):
+            print("Auth with: " + '+'.join(au))
+            for u in au:
+                auth_user(u)
+
+        attempt_psbt(psbt)
+
+        # auth should be cleared
+        attempt_psbt(psbt, 'need user(s) confirmation')
+        
+def test_local_conf(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, enter_local_code,
+                            hsm_status, attempt_psbt, auth_user, sim_exec, readback_rule):
+    
+    psbt = fake_txn(1,1)
+    auth_user.psbt_hash = sha256(psbt).digest()
+
+    load_hsm_users()
+    policy = DICT(rules=[dict(users=USERS, local_conf=True)])
+    start_hsm(policy, quick=True)
+
+    for u in USERS:
+        auth_user(u)
+    enter_local_code(hsm_status().next_local_code)
+    attempt_psbt(psbt)
+
+
+    for u in USERS:
+        auth_user(u)
+    attempt_psbt(psbt, 'local operator didn\'t confirm')
+
+
+    tweak_rule(0, dict(local_conf=True))
+    attempt_psbt(psbt, 'local operator didn\'t confirm')
+    enter_local_code(hsm_status().next_local_code)
+    attempt_psbt(psbt)
     
 # EOF
