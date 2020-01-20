@@ -161,24 +161,31 @@ class hsmUxInteraction:
             dis.text(0, fy+8,  "signed without any interaction.", FontTiny)
             #dis.text(None, -1, "X to REBOOT ", FontTiny)
 
+        left = hsm_active.get_time_left()
+        if left is None:
+            left = ' n/a'
+        elif left == -1:
+            left = ' --'
+        else:
+            left = pretty_short_delay(left)
+
         x, y = 0, 28
-        for lab, ljust, val in [ 
+        for lab, xoff, val in [ 
             ('APPROVED', 0, str(hsm_active.approvals)),
             ('REFUSED', 0, str(hsm_active.refusals)),
-            #('PERIOD LEFT', 1, 'n/a'),
-            ('PERIOD LEFT', 1, '13h 20m'),
+            ('PERIOD LEFT', 5, left),
+            #('PERIOD LEFT', 1, '13h 20m'),
         ]:
-            nx = dis.text(x, y-7, lab, FontTiny)
-            if ljust:
-                dis.text(x, y+1, val)
+            nx = dis.text(x+xoff, y-7, lab, FontTiny)
+            hw = nx - x
+            tw = 7*len(val)     # = dis.width(val, FontSmall)
+            if lab == 'REFUSED':
+                dis.dis.line(nx+2, 0, nx+2, y+16, 1)
             else:
-                hw = nx - x
-                tw = 7*len(val)     # = dis.width(val, FontSmall)
-                if lab == 'REFUSED':
-                    dis.dis.line(nx+2, 0, nx+2, y+16, 1)
-                else:
+                if not xoff:
                     dis.dis.line(nx+2, y-12, nx+2, y+16, 1)
-                dis.text(x+((hw-tw)//2)-1, y+1, val)
+
+            dis.text(x+((hw-tw)//2)-1, y+1, val)
             x = nx + 7
 
         dis.hline(y+17)
@@ -197,24 +204,13 @@ class hsmUxInteraction:
             dis.dis.line(x, y, x+w, y, True)
 
         # UX "feedback" for digits
-        if 0 and self.digits:
-            #x, y = 0, 14                                    # left, under HSM
-            #x, y = 128 - (LOCAL_PIN_LENGTH*2) - 1, 0       # top right
-            #x, y = 128 - (LOCAL_PIN_LENGTH*(4+2)) - 1, 12       # top right, below progress
-            #x, y = 75, 11       # right below progress bar
-
-            y = 52
-            x = dis.text(4, y, "Code: ")
-            for ch in self.digits:
-                x = dis.text(x, y, ch) + 2
-
         if len(self.digits) < 6:
             msg = self.digits + ('#' * (6-len(self.digits)))
         elif self.digits:
             msg = self.digits
         else:
             msg = '_'*6
-        dis.text(76, 0, msg)
+        dis.text(80, 0, msg)
 
         # contains a dis.show()
         self.draw_busy(None, None)
@@ -266,7 +262,7 @@ class hsmUxInteraction:
         from uasyncio import sleep_ms
 
         # Prevent any other component from reading numpad
-        # XXX this should be NeuterPad
+        # XXX this should be NeuterPad?
         numpad.stop()
 
         # Replace some drawing functions

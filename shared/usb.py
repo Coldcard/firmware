@@ -449,14 +449,14 @@ class USBHandler:
 
         if cmd == 'stxn':
             # sign transaction
-            txn_len, finalize, txn_sha = unpack_from('<II32s', args)
+            txn_len, flags, txn_sha = unpack_from('<II32s', args)
             if txn_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
             assert 50 < txn_len <= MAX_TXN_LEN, "bad txn len"
 
             from auth import sign_transaction
-            sign_transaction(txn_len, bool(finalize), txn_sha)
+            sign_transaction(txn_len, bool(flags & 0x01), txn_sha)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
@@ -688,7 +688,7 @@ class USBHandler:
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
 
         if hsm_active:
-            # additional restrictions in HSM mode, so firmware cannot be changed
+            # additional restrictions in HSM mode
             assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'long'
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'

@@ -65,7 +65,7 @@ def pop_int(j, fld_name, mn=0, mx=1000):
     if v is None: return v
     assert int(v) == v, "%s: must be integer" % fld_name
     v = int(v)
-    assert mn <= v <= mx, "%s: must in range: [%d..%d]" % (fld_name, mn, mx)
+    assert mn <= v <= mx, "%s: must be in range: [%d..%d]" % (fld_name, mn, mx)
     return v
 
 def pop_bool(j, fld_name, default=False):
@@ -110,6 +110,7 @@ class ApprovalRule:
 
     def __init__(self, j, idx):
         # read json dict provided
+        self.spent_so_far = 0       # for velocity
 
         def check_user(u):
             if not Users.valid_username(u):
@@ -121,15 +122,18 @@ class ApprovalRule:
         self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
         self.users = pop_list(j, 'users', check_user)
         self.whitelist = pop_list(j, 'whitelist', cleanup_whitelist_value)
-        self.min_users = pop_int(j, 'min_users', 0, len(self.users))
+        self.min_users = pop_int(j, 'min_users', 1, len(self.users))
         self.local_conf = pop_bool(j, 'local_conf')
         self.wallet = pop_string(j, 'wallet', 1, 20)
+
+        assert sorted(set(self.users)) == sorted(self.users), 'dup users'
 
         # usernames need to be correct and already known
         if self.min_users is None:
             self.min_users = len(self.users)
-        assert self.min_users <= len(self.users), "need more users"
-        if self.users: assert self.min_users >= 1
+        else:
+            # redundant w/ code in pop_int() above
+            assert 1 <= self.min_users <= len(self.users), "range"
 
         # if specified, 'wallet' must be an existing multisig wallet's name
         if self.wallet and self.wallet != '1':
@@ -151,7 +155,7 @@ class ApprovalRule:
 
 
     def to_text(self):
-        # Text for human's to read and approve.
+        # Text for humans to read and approve.
         chain = chains.current_chain()
 
         def render(n):
@@ -223,6 +227,10 @@ class ApprovalRule:
             assert len(given) >= self.min_users, 'need more users to confirm (got %d of %d)'%(
                                         len(given), self.min_users)
 
+        if self.per_period is not None:
+            # check this txn would not exceed the velocity limit
+            assert self.spent_so_far + total_out <= self.per_period, 'would exceed period spending'
+
         return True
 
 class AuditLogger:
@@ -293,11 +301,13 @@ class HSMPolicy:
         self.pending_auth = {}
 
         # velocity limits
-        self.current_period = utime.time() # starts now
-        self.period_spent = 21E6
+        self.period_started = 0
+        self.period_spends = {}
 
         self.local_code_pending = ''
         self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
+
+    
 
     def load(self, j):
         # Decode json object provided: destructive
@@ -419,6 +429,12 @@ class HSMPolicy:
         # UX on web browser will need to know the local PIN code might be needed
         rv['uses_local_conf'] = any(r.local_conf for r in self.rules)
 
+        # Velocity hints
+        left = self.get_time_left()
+        if (left is not None) and left >= 0:
+            rv['period_ends'] = int(left+.5)
+            rv['has_spent'] = [r.spent_so_far for r in self.rules]
+
         # sensitive values, summarize only!
         rv['pending_auth'] = len(self.pending_auth)
 
@@ -439,6 +455,43 @@ class HSMPolicy:
 
         if self.set_sl:
             self.save_storage_locker()
+
+        # MAYBE: assume period has already been used up (conservative)?
+        self.reset_period()
+
+    def reset_period(self):
+        # new period has begun
+        for r in self.rules:
+            r.spent_so_far = 0
+        self.period_started = 0
+
+    def record_spend(self, rule, amt):
+        # record they spend some amount in this period
+        rule.spent_so_far += amt
+        if not self.period_started:
+            self.period_started = utime.time() or 1
+
+    def get_time_left(self):
+        # return None if not being used, and time-left in current period if any,
+        # and -1 if nothing spent yet (period hasn't started)
+        # side-effect: reset if period has ended.
+        if self.period is None:
+            # not using feature
+            return None
+
+        if self.period_started == 0:
+            # they haven't spent anything yet (in period)
+            return -1
+
+        so_far = utime.time() - self.period_started
+        left = (self.period*60) - so_far
+        if left <= 0:
+            # period is over, reset totals
+            self.reset_period()
+
+            return -1
+
+        return left
 
     def save_storage_locker(self):
         # save the "long secret" ... probably only happens first time HSM policy
@@ -527,11 +580,12 @@ class HSMPolicy:
 
     def approve_address_share(self, subpath=None, is_p2sh=False):
         # Are we allowing "show address" requests over USB?
+
         if not self.share_addrs:
             return False
 
         if is_p2sh:
-            return 'p2sh' in self.share_addrs
+            return ('p2sh' in self.share_addrs)
 
         elif 'any' in self.share_addrs:
             return True
@@ -553,7 +607,7 @@ class HSMPolicy:
 
         self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
 
-        return got == expect
+        return (got == expect)
 
 
     async def approve_transaction(self, psbt, psbt_sha, story):
@@ -562,6 +616,7 @@ class HSMPolicy:
         # - return 'y' or 'x'
         chain = chains.current_chain()
         assert psbt_sha and len(psbt_sha) == 32
+        self.get_time_left()
 
         with AuditLogger(self, 'psbt', psbt_sha) as log:
 
@@ -580,7 +635,6 @@ class HSMPolicy:
             try:
                 # do this super early so always cleared even if other issues
                 local_ok = self.consume_local_code()
-
 
                 if not self.rules:
                     raise ValueError("no txn signing allowed")
@@ -619,7 +673,8 @@ class HSMPolicy:
                 reasons = []
                 for rule in self.rules:
                     try:
-                        if rule.matches_transaction(psbt, users, total_out, dests, local_ok):
+                        if rule.matches_transaction(psbt, users, total_out,
+                                                        dests, local_ok):
                             break
                     except BaseException as exc:
                         # let's not share these details, except for debug; since
@@ -639,6 +694,9 @@ class HSMPolicy:
 
                 # looks good, do it
                 log.approve("Acceptable by rule #%d" % (rule.index+1))
+
+                if rule.per_period is not None:
+                    self.record_spend(rule, total_out)
 
                 return 'y'
             except BaseException as exc:
