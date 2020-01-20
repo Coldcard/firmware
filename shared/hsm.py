@@ -33,6 +33,24 @@ def hsm_policy_available():
     except:
         return False
 
+def capture_backup():
+    # get a JSON-compat string to store for backup file.
+    return open(POLICY_FNAME, 'rt').read()
+
+def restore_backup(s):
+    # unpack/save a our policy file from JSON-compat string
+    assert s[0] == '{'
+    assert s[-1] == '}'
+    try:
+        ujson.loads(s)
+
+        with open(POLICY_FNAME, 'wt') as f:
+            f.write(s)
+    except BaseException as exc:
+        # keep going, we don't want to brick
+        sys.print_exception(exc)
+        pass
+
 def pop_list(j, fld_name, cleanup_fcn=None):
     # returns either None or a list of items; raises if not a list (ie. single item)
     # return [] if not defined.
@@ -130,7 +148,7 @@ class ApprovalRule:
 
         # usernames need to be correct and already known
         if self.min_users is None:
-            self.min_users = len(self.users)
+            self.min_users = len(self.users) if self.users else None
         else:
             # redundant w/ code in pop_int() above
             assert 1 <= self.min_users <= len(self.users), "range"
