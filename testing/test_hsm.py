@@ -209,8 +209,8 @@ def tweak_hsm_method(sim_exec):
 
 @pytest.fixture
 def load_hsm_users(settings_set):
-    def doit():
-        settings_set('usr', TEST_USERS)
+    def doit(u=None):
+        settings_set('usr', u or TEST_USERS)
     return doit
 
 @pytest.fixture
@@ -920,5 +920,53 @@ def test_local_conf(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, enter_
     attempt_psbt(psbt, 'local operator didn\'t confirm')
     enter_local_code(hsm_status().next_local_code)
     attempt_psbt(psbt)
+
+def worst_case_policy():
+    MAX_NUMBER_USERS = 30       # from shared/users.py
+    from helpers import prandom
+    from base64 import b32encode
+
+    users = {f'user{i:02d}': [1, b32encode(prandom(10)).decode('ascii'), 0]
+                for i in range(MAX_NUMBER_USERS)}
+
+    paths = [f'm/{i}p/{i+3}' for i in range(10)]
+
+    addrs = [render_address(b'\x00\x14' + prandom(20)) for i in range(5)]
+
+    p = DICT(period=30, share_xpubs=paths, share_addrs=paths+['p2sh'], msg_paths=paths,
+                warnings_ok=False, must_log=True)
+    p.rules = [dict(
+                        local_conf=True, 
+                        whitelist = addrs,
+                        users = list(users.keys()),
+                        min_users = rn+3,
+                        max_amount = int(1E10),
+                        per_period = int(1E10),
+                        wallet = '1') 
+                for rn in range(3) ]
+
+    return users, p
+
+def test_worst_policy(start_hsm, load_hsm_users):
+    # biggest possible HSM config?
+    users, policy = worst_case_policy()
+    load_hsm_users(users)
+    start_hsm(policy)
+
+@pytest.mark.parametrize('case', ['simple', 'worst'])
+def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
+    # exercise dump of pub data
+
+    if case == 'simple':
+        policy = DICT(rules=[dict()])
+        load_hsm_users()
+    elif case == 'worst':
+        users, policy = worst_case_policy()
+        load_hsm_users(users)
+
+    start_hsm(policy, quick=False)
+
+    unit_test('devtest/backups.py')
+
     
 # EOF
