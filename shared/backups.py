@@ -83,6 +83,11 @@ def render_backup_contents():
         if k == 'xfp': continue         # redundant, and wrong if bip39pw
         ADD('setting.' + k, v)
 
+    if version.has_fatram:
+        import hsm
+        if hsm.hsm_policy_available():
+            ADD('hsm_policy', hsm.capture_backup())
+
     rv.write('\n# EOF\n')
 
     return rv.getvalue()
@@ -164,6 +169,10 @@ async def restore_from_dict(vals):
 
     # write out
     settings.save()
+
+    if version.has_fatram and ('hsm_policy' in vals):
+        import hsm
+        hsm.restore_backup(vals['hsm_policy'])
 
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '
