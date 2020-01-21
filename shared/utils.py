@@ -247,4 +247,56 @@ class Base64Streamer(DecodeStreamer):
     def a2b(self, x):
         return a2b_base64(x)
 
+
+def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
+    # Check basics of new firmware being loaded. Return text of error msg if any.
+    # - basic checks only: for confused customers, not attackers.
+    # - hdr must be a bytearray(FW_HEADER_SIZE+more)
+    # - hdr will be updated in-place, and caller must get that into flash @ FW_HEADER_OFFSET
+
+    from sigheader import FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
+    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, FWH_HWC_NUM_OFFSET
+    from ustruct import unpack_from
+    from version import hw_label
+
+    try:
+        assert len(hdr) >= FW_HEADER_SIZE
+
+        magic_value, timestamp, version_string, pk, fw_size, install_flags, hw_compat = \
+                        unpack_from(FWH_PY_FORMAT, hdr)[0:7]
+
+        if bad_magic_ok and magic_value != FW_HEADER_MAGIC:
+            # it's just not a firmware file, and that's ok
+            return None
+
+        assert magic_value == FW_HEADER_MAGIC, 'bad magic'
+        if binary_size is not None:
+            assert fw_size == binary_size, 'truncated'
+
+        # TODO: maybe show the version string? Warn them that downgrade doesn't work?
+
+    except Exception as exc:
+        return "That does not look like a firmware " \
+                    "file we would want to use: %s" % exc
+
+    if hw_compat != 0:
+        # check this hardware is compatible
+        ok = False
+        if hw_label == 'mk1':
+            ok = (hw_compat & MK_1_OK)
+        elif hw_label == 'mk2':
+            ok = (hw_compat & MK_2_OK)
+        elif hw_label == 'mk3':
+            ok = (hw_compat & MK_3_OK)
+        
+        if not ok:
+            return "New firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
+
+        # Patch the header, so hw_compat field is zero
+        # - the signature value is based on those bytes being zero
+        hdr[FWH_HWC_NUM_OFFSET:FWH_HWC_NUM_OFFSET+4] = b'\0\0\0\0'
+
+    return None
+
+
 # EOF
