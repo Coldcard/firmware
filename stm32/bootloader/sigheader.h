@@ -30,14 +30,15 @@ typedef struct {
     uint32_t    pubkey_num;             // which pubkey was used to sign binary
     uint32_t    firmware_length;        // must be 512-aligned, and marks start of flash filesystem
     uint32_t    install_flags;          // flags about this release
-    uint32_t    future[8];              // reserved words
+    uint32_t    hw_compat;              // which hardware can run this release
+    uint32_t    future[7];              // reserved words
     uint8_t     signature[64];          // signature over secp256k1
 } coldcardFirmwareHeader_t;
 
 #define FW_HEADER_SIZE       128
 #define FW_HEADER_OFFSET     (0x4000-FW_HEADER_SIZE)
 
-#define FW_HEADER_MAGIC      0xCC001234
+#define FW_HEADER_MAGIC             0xCC001234
 
 // Firmware Image Size
 
@@ -49,13 +50,26 @@ typedef struct {
 #define FW_MAX_LENGTH        (0x100000 - 0x8000)
 
 // Arguments to be used w/ python's struct module.
-#define FWH_PY_FORMAT      "<I8s8sIII32s64s"
-#define FWH_PY_VALUES      "magic_value timestamp version_string pubkey_num firmware_length install_flags future signature"
-#define FWH_NUM_FUTURE      8
+#define FWH_PY_FORMAT      "<I8s8sIIII28s64s"
+#define FWH_PY_VALUES      "magic_value timestamp version_string pubkey_num firmware_length install_flags hw_compat future signature"
+#define FWH_NUM_FUTURE      7
+
+// offset of pubkey number
 #define FWH_PK_NUM_OFFSET   20
+
+// offset of hw_compat field (4 bytes)
+#define FWH_HWC_NUM_OFFSET  (128 - 64 - 32)
 
 // Bits in install_flags
 #define FWHIF_HIGH_WATER        0x01
+
+// Bits in hw_compat
+#define MK_1_OK                 0x01
+#define MK_2_OK                 0x02
+#define MK_3_OK                 0x04
+// RFU:
+#define MK_4_OK                 0x08
+#define MK_5_OK                 0x10
 
 // There is a copy of the header at this location in RAM, copied by bootloader
 // **after** it has been verified. If you write to this memory area, you will be reset!

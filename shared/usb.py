@@ -177,8 +177,8 @@ class USBHandler:
                     msg_len = 0
                 except (ValueError, AssertionError) as exc:
                     # some limited invalid args feedback
-                    print("USB request caused assert: ", end='')
-                    sys.print_exception(exc)
+                    #print("USB request caused assert: ", end='')
+                    #sys.print_exception(exc)
                     msg = str(exc)
                     if not msg:
                         msg = 'Assertion ' + problem_file_line(exc)
@@ -583,6 +583,8 @@ class USBHandler:
 
     async def handle_upload(self, offset, total_size, data):
         from main import dis, sf
+        from utils import check_firmware_hdr
+        from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
 
         # maintain a running SHA256 over what's received
         if offset == 0:
@@ -591,7 +593,6 @@ class USBHandler:
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
 
-        rb = bytearray(256)
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
                 # erase here
@@ -605,15 +606,27 @@ class USBHandler:
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
+
+            self.file_checksum.update(here)
+
+            # Very special case for firmware upgrades: intercept and modify
+            # header contents on the fly, and also fail faster if wouldn't work
+            # on this specific hardware.
+            # - workaround: ckcc-protocol upgrade process understates the file
+            #   length and appends hdr, but that's kinda a bug, so support both
+            if (pos == (FW_HEADER_OFFSET & ~255) 
+                or pos == (total_size - FW_HEADER_SIZE) or pos == total_size):
+
+                prob = check_firmware_hdr(memoryview(here)[-128:], None, bad_magic_ok=True)
+                if prob:
+                    raise ValueError(prob)
+
             sf.write(pos, here)
 
             # full page write: 0.6 to 3ms
             while sf.is_busy():
                 await sleep_ms(1)
 
-            # use actual read back for verify
-            sf.read(pos, rb)
-            self.file_checksum.update(rb[0:len(here)])
 
         if offset+len(data) >= total_size:
             # probably done
