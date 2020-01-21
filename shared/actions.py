@@ -197,32 +197,24 @@ async def microsd_upgrade(*a):
         with open(fn, 'rb') as fp:
             from main import sf, dis
             from files import dfu_parse
-            from ustruct import unpack_from
+            from utils import check_firmware_hdr
 
             offset, size = dfu_parse(fp)
 
-            # get a copy of special signed heaer at the end of the flash as well
-            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
+            # we also put a copy of special signed heaer at the end of the flash
+            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
+
+            # read just the signature header
             hdr = bytearray(FW_HEADER_SIZE)
             fp.seek(offset + FW_HEADER_OFFSET)
+            rv = fp.readinto(hdr)
+            assert rv == FW_HEADER_SIZE
 
-            # basic checks only: for confused customers, not attackers.
-            try:
-                rv = fp.readinto(hdr)
-                assert rv == FW_HEADER_SIZE
-
-                magic_value, timestamp, version_string, pk, fw_size = \
-                                unpack_from(FWH_PY_FORMAT, hdr)[0:5]
-                assert magic_value == FW_HEADER_MAGIC
-                assert fw_size == size
-
-                # TODO: maybe show the version string? Warn them that downgrade doesn't work?
-
-            except Exception as exc:
-                failed = "Sorry! That does not look like a firmware " \
-                            "file we would want to use.\n\n\n%s" % exc
+            # check header values
+            failed = check_firmware_hdr(hdr, size)
 
             if not failed:
+                patched = 0
             
                 # copy binary into serial flash
                 fp.seek(offset)
@@ -236,9 +228,15 @@ async def microsd_upgrade(*a):
                     if pos == size:
                         # save an extra copy of the header (also means we got done)
                         buf = hdr
+                        patched += 1
                     else:
                         here = fp.readinto(buf)
                         if not here: break
+
+                    if pos == (FW_HEADER_OFFSET & ~255):
+                        # update w/ our patched version of hdr
+                        buf[128:FW_HEADER_SIZE+128] = hdr
+                        patched += 1
 
                     if pos % 4096 == 0:
                         # erase here
@@ -254,8 +252,10 @@ async def microsd_upgrade(*a):
 
                     pos += here
 
+                assert patched == 2
+
     if failed:
-        await ux_show_story(failed, title='Corrupt')
+        await ux_show_story(failed, title='Sorry!')
         return
 
     # continue process...
