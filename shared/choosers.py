@@ -109,38 +109,4 @@ def chain_chooser():
 
     return which, [t for _,t in ch], set_chain
 
-def sensitivity_chooser():
-    from main import numpad
-
-    #            xxxxxxxxxxxxxxxx
-    ch = [  (0, '+2 Sensitive'),
-            (4, '+1 '),
-            (1, ' 0 Default'),
-            (3, '-1 '),
-            (2, '-2 Sensitive'),
-        ]
-
-    try:
-        which = [n for n, (k,v) in enumerate(ch) if k == numpad.sensitivity][0]
-    except IndexError:
-        which = 0
-
-    def set_it(idx, text):
-        value = ch[idx][0]
-        settings.set('sens', value)
-        numpad.sensitivity = value
-
-        # save also for next login time.
-        from main import pa
-        from nvstore import SettingsObject
-
-        if not pa.is_secondary:
-            tmp = SettingsObject()
-            tmp.set('sens', value)
-            tmp.save()
-            del tmp
-
-    return which, [n for k,n in ch], set_it
-
-
 # EOF

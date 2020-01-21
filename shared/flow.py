@@ -56,8 +56,6 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('Touch Setting', chooser=sensitivity_chooser,
-                                predicate=lambda: not version.has_membrane),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
@@ -81,8 +79,7 @@ SDCardMenu = [
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
     MenuItem('List Files', f=list_files),
-    MenuItem('Format Card', f=wipe_sd_card,
-                                predicate=lambda: version.has_membrane),
+    MenuItem('Format Card', f=wipe_sd_card),
 ]
 
 UpgradeMenu = [
