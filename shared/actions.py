@@ -620,9 +620,6 @@ async def start_login_sequence():
     # implement idle timeout now that we are logged-in
     loop.create_task(idle_logout())
 
-    # Restore a login preference or two
-    numpad.sensitivity = settings.get('sens', numpad.sensitivity)
-
     # Do green-light set immediately after firmware upgrade
     if not pa.is_secondary:
         if version.is_fresh_version():

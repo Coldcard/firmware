@@ -266,9 +266,7 @@ async def start_selftest():
         await test_numpad()
         await test_sflash()
         await test_secure_element()
-
-        if version.has_membrane:
-            await test_sd_active()
+        await test_sd_active()
 
         # add more tests here
 
