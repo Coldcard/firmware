@@ -1,3 +1,10 @@
+## 3.0.7 - Jan, 2020
+
+- IMPORTANT NOTE: You must upgrade to this version before any subsequent
+  version (regardless of your hardware).
+- Enhancement: Sending large PSBT files, and firmware upgrades over USB should be faster.
+- Final version to support Mk1 hardware.
+
 ## 3.0.6 - Dec 19, 2019
 
 - Security Bugfix: Fixed a multisig PSBT-tampering issue, that could allow a MitM to
