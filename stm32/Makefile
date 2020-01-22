@@ -39,9 +39,24 @@ firmware-signed.bin: l-port/build-COLDCARD/firmware?.bin
 firmware-signed.dfu: firmware-signed.bin Makefile
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
-# This is fast for Coinkite devs, but no DFU support in wild.
-dfu up: firmware-signed.dfu
-	$(PYTHON_DO_DFU) -u firmware-signed.dfu
+# make the DFU file which is shared for upgrades
+dfu: firmware-signed.dfu
+
+# Build a binary, signed w/ production key but w/ hw-compat=0x0 for direct DFU loading
+# - always rebuild binary
+.PHONY: dev.dfu
+dev.dfu: l-port/build-COLDCARD/firmware?.bin
+	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
+	$(SIGNIT) sign $(VERSION_STRING) --force-hw-compat 0x0 -o dev.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
+
+# This is fast for Coinkite devs, but no DFU support in the wild.
+up: dev.dfu
+	$(PYTHON_DO_DFU) -u dev.dfu
+
+# Slow, but works with unmod-ed board: use USB protocol to upgrade (2 minutes)
+dev: dev.dfu
+	ckcc upgrade dev.dfu
 
 # Make a factory release: using key #1
 production.bin: firmware-signed.bin Makefile
@@ -129,14 +144,6 @@ stlink:
 # useless, will be ignored by bootloader
 unsigned-dfu:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) deploy
-
-# make a dev.dfu with production key so it loads faster
-dev:
-	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
-	$(SIGNIT) sign "test123" -k 1 -o dev.bin
-	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
-	rm dev.bin
-	ckcc upgrade dev.dfu
 
 # see COLDCARD/mpconfigboard.mk
 tags: 
