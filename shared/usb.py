@@ -303,17 +303,21 @@ class USBHandler:
 
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
-        from main import hsm_active
+        from main import hsm_active, is_devmode
 
         try:
             cmd = bytes(cmd).decode()
         except:
             raise FramingError('decode')
 
-        if is_simulator() and cmd[0].isupper():
+        if cmd[0].isupper() and (is_simulator() or is_devmode):
             # special hacky commands to support testing w/ the simulator
-            from sim_usb import do_usb_command
-            return do_usb_command(cmd, args)
+            try:
+                from usb_test_commands import do_usb_command
+                return do_usb_command(cmd, args)
+            except: 
+                raise
+                pass
 
         if hsm_active:
             # only a few commands are allowed during HSM mode

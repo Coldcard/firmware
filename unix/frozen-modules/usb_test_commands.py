@@ -2,10 +2,9 @@ import uio, sys, main, version
 
 def do_usb_command(cmd, args):
     # TESTING commands!
-    # - only to be implemented on the simulator!!
     # - please don't freak out, stay calm.
     # - if you can trick us into running this, can run anything worse directly
-    # - and we don't ship this code on the real product, only part of simulator
+    # - we don't ship this code on the real product
     # - commands must be upper case
 
     if cmd == 'XKEY':
@@ -13,11 +12,6 @@ def do_usb_command(cmd, args):
         try:
             numpad.inject(str(args, 'ascii'))
         except: pass
-        return
-
-    if cmd == 'HSMR':
-        from hsm_ux import hsm_ux_obj
-        hsm_ux_obj.test_restart = True
         return
 
     try:

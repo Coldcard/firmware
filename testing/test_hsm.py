@@ -3,6 +3,13 @@
 #
 # Test HSM and its policy file.
 #
+# For testing on a REAL Coldcard Mk3:
+# - enable dev mode on Coldcard, and copy ../unix/frozen-modules/usb_test_commands.py
+#   to /lib on Coldcard internal FS .. might need custom firmware/bootrom
+# - set coldcard for testnet chain
+# - command line: py.test test_hsm.py --dev -s --ff
+# - no microSD card installed
+#
 import pytest, time, struct, os, itertools
 #from pycoin.key.BIP32Node import BIP32Node
 from binascii import b2a_hex, a2b_hex
@@ -42,32 +49,35 @@ EXAMPLE_ADDRS = [ '1ByzQTr5TCkMW9RH1fkD7QtnMbErffDeUo', '2N4EDPkGYcZa5o6kFou2g9z
             'tb1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puq3mvnhv',
 ]
 
-# filename for the policy file, as stored on simulated CC
-hsm_policy_path = '../unix/work/hsm-policy.json'
 
 @pytest.fixture(scope='function')
-def hsm_reset(simulator, need_keypress):
+def hsm_reset(dev, sim_exec):
+    # filename for the policy file, as stored on simulated CC
+
     def doit():
         # make sure we can setup an HSM now; often need to restart simulator tho
-        try:
-            os.unlink(hsm_policy_path)
-        except FileNotFoundError:
-            pass
 
-        # reset simulator (HSM code) to clear previous HSM setup
+        # clear defined config
+        cmd = 'import uos, hsm; uos.unlink(hsm.POLICY_FNAME)'
+        sim_exec(cmd)
+
+        # reset HSM code, to clear previous HSM setup
         while 1:
-            j = json.loads(simulator.send_recv(CCProtocolPacker.hsm_status()))
+            j = json.loads(dev.send_recv(CCProtocolPacker.hsm_status()))
             if j.get('active') == False:
                 break
 
-            simulator.send_recv('HSMR')
+            # reset out of HSM mode
+            cmd = 'from hsm_ux import hsm_ux_obj; hsm_ux_obj.test_restart = True'
+            sim_exec(cmd)
             time.sleep(.1)
 
     yield doit
 
     try:
-        os.unlink(hsm_policy_path)
-    except FileNotFoundError:
+        cmd = 'import uos, hsm; uos.unlink(hsm.POLICY_FNAME)'
+        sim_exec(cmd)
+    except:
         pass
 
 @pytest.mark.parametrize('policy,contains', [
@@ -155,6 +165,9 @@ def test_policy_parsing(sim_exec, policy, contains, load_hsm_users):
 
     if 'rules' not in policy:
         assert 'No transaction will be signed' in got
+    else:
+        for n in range(len(policy['rules'])):
+            assert 'Rule #%d'%(n+1) in got
 
     if getattr(policy, 'msg_paths', None):
         assert '- Allowed if path is: '
@@ -171,12 +184,16 @@ def test_policy_parsing(sim_exec, policy, contains, load_hsm_users):
 @pytest.fixture
 def tweak_rule(sim_exec):
     # reach under the skirt, and change policy rule ... so much faster
+
     def doit(idx, new_rule):
-        cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write(hsm_active.rules[{idx}].to_text())"
+        #cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write(hsm_active.rules[{idx}].to_text())"
+        #print(f"Rule #{idx+1} now: {txt}")
+        cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write('ok')"
         txt = sim_exec(cmd)
         if 'Traceback' in txt:
             raise RuntimeError(txt)
-        print(f"Rule {idx} now: {txt}")
+        assert txt == 'ok'
+
     return doit
 
 @pytest.fixture
@@ -208,16 +225,19 @@ def tweak_hsm_method(sim_exec):
 
 
 @pytest.fixture
-def load_hsm_users(settings_set):
+def load_hsm_users(dev, settings_set):
     def doit(u=None):
+        from base64 import b32encode
+        TEST_USERS['pw'][1] = b32encode(calc_hmac_key(dev.serial)).decode('ascii').rstrip('=')
+
         settings_set('usr', u or TEST_USERS)
     return doit
 
 @pytest.fixture
 def hsm_status(dev):
 
-    def doit():
-        txt = dev.send_recv(CCProtocolPacker.hsm_status())
+    def doit(timeout=1000):
+        txt = dev.send_recv(CCProtocolPacker.hsm_status(), timeout=timeout)
         assert txt[0] == '{'
         assert txt[-1] == '}'
         j = json.loads(txt, object_hook=DICT)
@@ -244,42 +264,76 @@ def change_hsm(sim_eval, sim_exec, hsm_status):
     return doit
 
 @pytest.fixture
-def start_hsm(dev, need_keypress, hsm_reset, hsm_status, cap_story, change_hsm, sim_eval):
+def quick_start_hsm(hsm_reset, start_hsm, hsm_status, change_hsm, sim_eval):
+    # if already an HSM in motion; just replace it quickly
+    def doit(policy):
+        act = sim_eval('main.hsm_active')
+
+        if act != 'None':
+            return change_hsm(policy)
+        else:
+            return start_hsm(policy)
+    return doit
+
+@pytest.fixture
+def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
     
-    def doit(policy, quick=False):
+    def doit(policy):
+        try:
+            # on simulator, can read screen and provide keystrokes
+            cap_story = request.getfixturevalue('cap_story')
+        except:
+            # real hardware
+            cap_story = None
+
         # send policy, start it, approve it
         data = json.dumps(policy).encode('ascii')
-
-        if quick:
-            # if already an HSM in motion; just replace it quickly
-            act = sim_eval('main.hsm_active')
-            if act != 'None':
-                return change_hsm(policy)
 
         ll, sha = dev.upload_file(data)
         assert ll == len(data)
 
         dev.send_recv(CCProtocolPacker.hsm_start(ll, sha))
 
-        # capture explanation given user
-        time.sleep(.2)
-        title, body = cap_story()
-        assert title == "Start HSM?"
-        need_keypress('y')
+        if cap_story:
+            # capture explanation given user
+            time.sleep(.2)
+            title, body = cap_story()
+            assert title == "Start HSM?"
 
-        # approve it
-        time.sleep(.1)
-        title, body2 = cap_story()
-        assert 'Last chance' in body2
-        ll = body2.split('\n')[-1]
-        assert ll.startswith("Press ")
-        ch = ll[6]
-        need_keypress(ch)
+        if cap_story:
+            # approve it
+            need_keypress('y')
+            time.sleep(.1)
 
-        time.sleep(.100)
-        j = hsm_status()
-        assert j.active == True
-        assert j.summary in body
+            title, body2 = cap_story()
+            assert 'Last chance' in body2
+            ll = body2.split('\n')[-1]
+            assert ll.startswith("Press ")
+            ch = ll[6]
+
+            need_keypress(ch)
+            time.sleep(.100)
+
+            j = hsm_status()
+            assert j.active == True
+            assert not body or j.summary in body
+
+        else:
+            # do keypresses blindly
+            need_keypress('y')
+            time.sleep(.1)
+            for ch in '12346':
+                need_keypress(ch, timeout=10000)
+
+            # needs to bless firmware step; can take >10 seconds?
+            j = hsm_status(10000)
+            assert j.active == True
+
+            if 0:
+                for retry in range(30):
+                    time.sleep(1)
+                    #try: except: pass
+                assert j.active == True
 
         return j
 
@@ -343,12 +397,14 @@ def attempt_msg_sign(dev, hsm_status):
 
 @pytest.mark.parametrize('amount', [ 1E4, 1E6, 1E8 ])
 @pytest.mark.parametrize('over', [ 1, 1000])
-def test_simple_limit(dev, amount, over, tweak_rule, start_hsm, sim_exec, start_sign, fake_txn, cap_story, attempt_psbt):
+def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, tweak_rule):
     # a policy which sets a hard limit
     policy = DICT(rules=[dict(max_amount=amount)])
 
     stat = start_hsm(policy)
     assert ('Up to %.8f XTN per txn will be approved' % (amount/1E8)) in stat.summary
+    assert 'Rule #1' in stat.summary
+    assert 'Rule #2' not in stat.summary
 
     # create a transaction
     psbt = fake_txn(2, 2, dev.master_xpub, outvals=[amount, 2E8-amount],
@@ -357,10 +413,11 @@ def test_simple_limit(dev, amount, over, tweak_rule, start_hsm, sim_exec, start_
 
     psbt = fake_txn(2, 2, dev.master_xpub, outvals=[amount+over, 2E8-amount-over],
                                                     change_outputs=[1], fee=0)
-    attempt_psbt(psbt, "too much out")
+    attempt_psbt(psbt, "amount exceeded")
 
-    tweak_rule(0, dict(max_amount=amount+over))
-    attempt_psbt(psbt)
+    if tweak_rule:
+        tweak_rule(0, dict(max_amount=int(amount+over)))
+        attempt_psbt(psbt)
 
 def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_status, attempt_psbt, fake_txn, fake_ms_txn, amount=5E6, incl_xpubs=False):
     wname = 'Myself-4'
@@ -402,8 +459,9 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
 def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
     junk = EXAMPLE_ADDRS[0]
     policy = DICT(rules=[dict(whitelist=[junk])])
+    started = False
 
-    stat = start_hsm(policy)
+    start_hsm(policy)
 
     # try all addr types
     for style in ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']:
@@ -447,23 +505,28 @@ def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amo
     for dest in dests:
         tweak_rule(0, dict(whitelist=[dest]))
         msg = attempt_psbt(psbt, 'non-whitelisted')
-        assert all((a in msg) for a in dests if a != dest)
+        nwl = msg.rsplit(': ', 1)[1]
+        # random addr is put in err msg
+        assert nwl != dest
+        assert nwl in dests
 
     # whitelist all but one of them
     for dest in dests:
         others = [d for d in dests if d != dest]
         tweak_rule(0, dict(whitelist=others))
         msg = attempt_psbt(psbt, 'non-whitelisted')
-        assert dest in msg
-        assert not any((d in msg) for d in others)
+        # sing addr is put in err msg
+        nwl = msg.rsplit(': ', 1)[1]
+        assert nwl == dest
+        assert nwl in dests
 
 @pytest.mark.parametrize('warnings_ok', [ False, True])
-def test_huge_fee(warnings_ok, dev, start_hsm, hsm_status, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
+def test_huge_fee(warnings_ok, dev, quick_start_hsm, hsm_status, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
     # fee over 50% never good idea
     # - doesn't matter what current policy is
     policy = {'warnings_ok': warnings_ok, 'rules': [{}]}
 
-    stat = start_hsm(policy, quick=True)
+    stat = quick_start_hsm(policy)
 
     tweak_hsm_attr('warnings_ok', warnings_ok)
 
@@ -473,10 +536,10 @@ def test_huge_fee(warnings_ok, dev, start_hsm, hsm_status, tweak_hsm_attr, attem
     psbt = fake_txn(1, 1, dev.master_xpub, fee=100)
     attempt_psbt(psbt)
 
-def test_psbt_warnings(dev, start_hsm, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
+def test_psbt_warnings(dev, quick_start_hsm, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
     # txn w/ warnings
     policy = DICT(warnings_ok=True, rules=[{}])
-    stat = start_hsm(policy, quick=True)
+    stat = quick_start_hsm(policy)
     assert 'warnings' in stat.summary
 
     psbt = fake_txn(1, 1, dev.master_xpub, fee=0.05E8)
@@ -487,25 +550,30 @@ def test_psbt_warnings(dev, start_hsm, tweak_hsm_attr, attempt_psbt, fake_txn, a
 
 @pytest.mark.parametrize('num_out', [11, 50])
 @pytest.mark.parametrize('num_in', [10, 20])
-def test_big_txn(num_in, num_out, dev, start_hsm, hsm_status,
+def test_big_txn(num_in, num_out, dev, quick_start_hsm, hsm_status, is_simulator,
                             tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
+
+    if not is_simulator():
+        # It does work, I've done it, but let's never do it again...
+        raise pytest.skip("life is too short")
+
     # do something slow
     policy = DICT(warnings_ok=True, rules=[{}])
-    start_hsm(policy, quick=True)
+    quick_start_hsm(policy)
 
     for count in range(20):
         psbt = fake_txn(num_in, num_out, dev.master_xpub)
         attempt_psbt(psbt)
 
 
-def test_sign_msg_good(start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     # message signing, but only at certain derivations
     permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
     block = ['m', 'm/72', permit[-1][:-2]]
     msg = b'testing 123'
 
     policy = DICT(msg_paths=permit)
-    start_hsm(policy, quick=True)
+    quick_start_hsm(policy)
 
     if 1:
         for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
@@ -522,51 +590,61 @@ def test_sign_msg_good(start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLAS
     for p in block+permit: 
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-def test_sign_msg_any(start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+def test_sign_msg_any(quick_start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
     block = ['m', 'm/72', permit[-1][:-2]]
     msg = b'whatever'
 
     policy = DICT(msg_paths=['any'])
-    start_hsm(policy, quick=True)
+    quick_start_hsm(policy)
 
     for p in permit+block: 
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-def test_must_log(start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attempt_psbt):
+def test_must_log(dev, start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
     # stop everything if can't log
     policy = DICT(must_log=True, msg_paths=['m'], rules=[{}])
 
-    start_hsm(policy, quick=False)
+    start_hsm(policy)
 
-    psbt = fake_txn(1, 1)
+    psbt = fake_txn(1, 1, dev.master_xpub)
 
     sim_card_ejected(True)
     attempt_msg_sign('Could not log details', b'hello', 'm', addr_fmt=AF_CLASSIC)
     attempt_psbt(psbt, 'Could not log details')
 
-    sim_card_ejected(False)
-    attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
-    attempt_psbt(psbt)
+    if is_simulator():
+        sim_card_ejected(False)
+        attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
+        attempt_psbt(psbt)
 
 @pytest.fixture
 def enter_local_code(need_keypress):
     def doit(code):
         assert len(code) == 6 and code.isdigit()
-        need_keypress('x')
+        need_keypress('x', timeout=5000)
         for ch in code:
-            need_keypress(ch)
-        need_keypress('y')
+            need_keypress(ch, timeout=5000)
+        need_keypress('y', timeout=5000)
 
         # need this because UX loop for HSM has long sleep in it
         time.sleep(.250)
 
     return doit
-        
+
+# dev serial number is part of salt, stored PW value, and challenge
+# both need to follow that.
+def calc_hmac_key(serial, secret='abcd1234'):
+    from hashlib import pbkdf2_hmac, sha256
+    from ckcc_protocol.constants import PBKDF2_ITER_COUNT
+
+    salt = sha256(b'pepper'+serial.encode('ascii')).digest()
+    key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+
+    return key
 
 @pytest.fixture
 def auth_user(dev):
-
 
     from onetimepass import get_hotp
     
@@ -589,16 +667,20 @@ def auth_user(dev):
                 cnt = (self.tt if mode == USER_AUTH_TOTP else 0)
             elif mode == USER_AUTH_HMAC:
                 assert len(self.psbt_hash) == 32
-                secret = '1234abcd'     # 
+                assert username == 'pw'
                 cnt = 0
 
-                from hashlib import pbkdf2_hmac, sha256
                 from hmac import HMAC
-                from ckcc_protocol.constants import PBKDF2_ITER_COUNT
 
-                salt = sha256(b'pepper'+dev.serial.encode('ascii')).digest()
-                key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+                key = calc_hmac_key(dev.serial) 
                 pw = HMAC(key, self.psbt_hash, sha256).digest()
+
+                #print("\n  pw=%s\n key=%s\npsbt=%s\nsalt=%s\n" % (
+                #    b2a_hex(pw),
+                #    b2a_hex(key),
+                #    b2a_hex(self.psbt_hash),
+                #    b2a_hex(salt)))
+
                 assert not do_replay
             else:
                 if do_replay:
@@ -622,15 +704,15 @@ def auth_user(dev):
     return State()
 
 
-def test_invalid_psbt(start_hsm, attempt_psbt):
+def test_invalid_psbt(quick_start_hsm, attempt_psbt):
     policy = DICT(warnings_ok=True, rules=[{}])
-    start_hsm(policy, quick=True)
+    quick_start_hsm(policy)
     garb = b'psbt\xff'*20
     attempt_psbt(garb, remote_error='PSBT parse failed')
 
     # even w/o any signing rights, invalid is invalid
     policy = DICT()
-    start_hsm(policy, quick=True)
+    quick_start_hsm(policy)
     attempt_psbt(garb, remote_error='PSBT parse failed')
 
 @pytest.mark.parametrize('package', [
@@ -639,68 +721,73 @@ def test_invalid_psbt(start_hsm, attempt_psbt):
     ])
 @pytest.mark.parametrize('count', [1, 5])
 def test_storage_locker(package, count, start_hsm, dev):
-    # read and write, limited; of storage locker.
+    # read and write (limited) of storage locker.
+
     policy = DICT(set_sl=package, allow_sl=count)
-    start_hsm(policy, quick=False)
+    start_hsm(policy)
+
 
     for t in range(count+3):
         if t < count:
-            got = dev.send_recv(CCProtocolPacker.get_storage_locker())
+            got = dev.send_recv(CCProtocolPacker.get_storage_locker(), timeout=None)
             assert got == package.encode('ascii')
         else:
             with pytest.raises(CCProtoError) as ee:
-                got = dev.send_recv(CCProtocolPacker.get_storage_locker())
+                got = dev.send_recv(CCProtocolPacker.get_storage_locker(), timeout=None)
             assert 'consumed' in str(ee)
 
-def test_usb_cmds_block(start_hsm, dev):
+def test_usb_cmds_block(quick_start_hsm, dev):
     # check these commands return errors (test whitelist)
     block_list = [
         'rebo', 'dfu_', 'enrl', 'enok',
         'back', 'pass', 'bagi', 'hsms', 'nwur', 'rmur', 'pwok', 'bkok',
     ]
 
-    start_hsm(dict(), quick=True)
+    quick_start_hsm(dict())
 
     for cmd in block_list:
         with pytest.raises(CCProtoError) as ee:
             got = dev.send_recv(cmd)
         assert 'HSM' in str(ee)
 
-def test_unit_local_conf(sim_exec, enter_local_code, start_hsm):
+def test_unit_local_conf(sim_exec, enter_local_code, quick_start_hsm):
 
-    start_hsm({}, quick=True)
+    quick_start_hsm({})
 
     enter_local_code('123456')
     rb = sim_exec('from main import hsm_active; RV.write(hsm_active.local_code_pending)')
     assert rb == '123456'
 
 
-def test_show_addr(dev, start_hsm, change_hsm):
+def test_show_addr(dev, quick_start_hsm, change_hsm):
     # test we can do address "showing" with no UX
     # which can also be disabled, etc.
     path = 'm/4'
     addr_fmt = AF_P2WPKH
     policy = DICT(share_addrs=[path])
+    
+    def doit(path, addr_fmt):
+        return dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=5000)
 
-    start_hsm(policy, quick=True)
-    addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt))
+    quick_start_hsm(policy)
+    addr = doit(path, addr_fmt)
 
     change_hsm(DICT(share_addrs=['m']))
     with pytest.raises(CCProtoError) as ee:
-        addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt))
+        addr = doit(path, addr_fmt)
     assert 'Not allowed in HSM mode' in str(ee)
 
-    addr = dev.send_recv(CCProtocolPacker.show_address('m', addr_fmt))
+    addr = doit('m', addr_fmt)
 
     change_hsm(DICT(share_addrs=['any']))
-    addr = dev.send_recv(CCProtocolPacker.show_address('m', addr_fmt))
-    addr = dev.send_recv(CCProtocolPacker.show_address('m/1/2/3', addr_fmt))
-    addr = dev.send_recv(CCProtocolPacker.show_address('m/3', addr_fmt))
+    addr = doit('m', addr_fmt)
+    addr = doit('m/1/2/3', addr_fmt)
+    addr = doit('m/3', addr_fmt)
 
     permit = ['m/73', 'm/1p/3h/4/5/6/7', 'm/1/2/3' ]
     change_hsm(DICT(share_addrs=permit))
     for path in permit:
-        addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt))
+        addr = doit(path, addr_fmt)
 
 def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_wallet, addr_vs_path):
     # MULTISIG addrs
@@ -739,21 +826,21 @@ def test_xpub_sharing(dev, start_hsm, change_hsm, addr_fmt=AF_CLASSIC):
     block = ['m', 'm/72', permit[-1][:-2]]
 
     policy = DICT(share_xpubs=permit)
-    start_hsm(policy, quick=True)
+    start_hsm(policy)
 
     for p in permit: 
-        xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
+        xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
 
         for p in block:
             with pytest.raises(CCProtoError) as ee:
-                xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
+                xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
             assert 'Not allowed in HSM mode' in str(ee)
 
     policy = DICT(share_xpubs=['any'])
     change_hsm(policy)
 
     for p in block+permit: 
-        xpub = dev.send_recv(CCProtocolPacker.get_xpub(p))
+        xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
 
 @pytest.fixture
 def fast_forward(sim_exec):
@@ -762,32 +849,32 @@ def fast_forward(sim_exec):
         assert sim_exec(cmd) == 'ok'
     return doit
 
-def test_velocity(start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_status):
+def test_velocity(dev, start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_status):
     # stop everything if can't log
     level = int(1E8)
     policy = DICT(period=2, rules=[dict(per_period=level)])
 
-    start_hsm(policy, quick=False)
+    start_hsm(policy)
 
-    psbt = fake_txn(2, 1)
+    psbt = fake_txn(2, 1, dev.master_xpub)
     attempt_psbt(psbt, 'would exceed period spending')
 
-    psbt = fake_txn(2, 2)
+    psbt = fake_txn(2, 2, dev.master_xpub)
     attempt_psbt(psbt, 'would exceed period spending')
 
-    psbt = fake_txn(2, 10)
+    psbt = fake_txn(2, 10, dev.master_xpub)
     attempt_psbt(psbt, 'would exceed period spending')
 
-    psbt = fake_txn(2, 2, outvals=[level, 2E8-level], change_outputs=[1])
+    psbt = fake_txn(2, 2, dev.master_xpub, outvals=[level, 2E8-level], change_outputs=[1])
     attempt_psbt(psbt)      # exactly the limit
 
     s = hsm_status()
-    assert 118 <= s.period_ends <= 120
+    assert 90 <= s.period_ends <= 120
     assert s.has_spent == [level]
 
     attempt_psbt(psbt, 'would exceed period spending')
 
-    psbt = fake_txn(1, 1)
+    psbt = fake_txn(1, 1, dev.master_xpub)
     attempt_psbt(psbt, 'would exceed period spending')
 
     # skip ahead
@@ -797,24 +884,24 @@ def test_velocity(start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_status):
     assert 'has_spend' not in s
 
     amt = 0.30E8
-    psbt = fake_txn(1, 2, outvals=[amt, 1E8-amt], change_outputs=[1])
+    psbt = fake_txn(1, 2, dev.master_xpub, outvals=[amt, 1E8-amt], change_outputs=[1])
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt)      # 1/3rd of limit
     attempt_psbt(psbt, 'would exceed period spending')
 
     s = hsm_status()
-    assert 118 <= s.period_ends <= 120
+    assert 90 <= s.period_ends <= 120
     assert s.has_spent == [int(amt*3)]
 
 
 def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
-    psbt = fake_txn(1,1)
+    psbt = fake_txn(1,1, dev.master_xpub)
     auth_user.psbt_hash = sha256(psbt).digest()
 
     policy = DICT(rules=[dict(users=['totp'])])
     load_hsm_users()
-    start_hsm(policy, quick=False)
+    start_hsm(policy)
 
     for name in USERS:
         tweak_rule(0, dict(users=[name]))
@@ -844,7 +931,7 @@ def test_min_users_parse(dev, start_hsm, tweak_rule, load_hsm_users,
 
     policy = DICT(rules=[dict(users=USERS)])
     load_hsm_users()
-    start_hsm(policy, quick=False)
+    start_hsm(policy)
 
     r = readback_rule(0)
     assert sorted(r.users) == sorted(USERS)
@@ -873,9 +960,9 @@ def test_min_users_parse(dev, start_hsm, tweak_rule, load_hsm_users,
     assert 'dup users' in str(ee)
 
 
-def test_min_users_perms(dev, start_hsm, load_hsm_users, fake_txn,
+def test_min_users_perms(dev, quick_start_hsm, load_hsm_users, fake_txn,
                             attempt_psbt, auth_user, sim_exec, readback_rule):
-    psbt = fake_txn(1,1)
+    psbt = fake_txn(1,1, dev.master_xpub)
     auth_user.psbt_hash = sha256(psbt).digest()
 
     load_hsm_users()
@@ -883,10 +970,10 @@ def test_min_users_perms(dev, start_hsm, load_hsm_users, fake_txn,
     # all subsets of users
     for n in range(1, len(USERS)):
         policy = DICT(rules=[dict(users=USERS, min_users=n)])
-        start_hsm(policy, quick=True)
+        quick_start_hsm(policy)
 
         for au in itertools.permutations(USERS, n):
-            print("Auth with: " + '+'.join(au))
+            #print("Auth with: " + '+'.join(au))
             for u in au:
                 auth_user(u)
 
@@ -895,15 +982,15 @@ def test_min_users_perms(dev, start_hsm, load_hsm_users, fake_txn,
         # auth should be cleared
         attempt_psbt(psbt, 'need user(s) confirmation')
         
-def test_local_conf(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, enter_local_code,
+def test_local_conf(dev, quick_start_hsm, tweak_rule, load_hsm_users, fake_txn, enter_local_code,
                             hsm_status, attempt_psbt, auth_user, sim_exec, readback_rule):
     
-    psbt = fake_txn(1,1)
+    psbt = fake_txn(1,1, dev.master_xpub)
     auth_user.psbt_hash = sha256(psbt).digest()
 
     load_hsm_users()
     policy = DICT(rules=[dict(users=USERS, local_conf=True)])
-    start_hsm(policy, quick=True)
+    quick_start_hsm(policy)
 
     for u in USERS:
         auth_user(u)
@@ -955,7 +1042,7 @@ def test_worst_policy(start_hsm, load_hsm_users):
 
 @pytest.mark.parametrize('case', ['simple', 'worst'])
 def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
-    # exercise dump of pub data
+    # exercise dump of backup data
 
     if case == 'simple':
         policy = DICT(rules=[dict()])
@@ -964,7 +1051,7 @@ def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
         users, policy = worst_case_policy()
         load_hsm_users(users)
 
-    start_hsm(policy, quick=False)
+    start_hsm(policy)
 
     unit_test('devtest/backups.py')
 
