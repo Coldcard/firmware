@@ -17,7 +17,6 @@ from uasyncio.queues import QueueEmpty
 from ubinascii import a2b_base64
 from users import Users, MAX_NUMBER_USERS
 from public_constants import MAX_USERNAME_LEN
-from sram2 import screen_buf
 
 import hsm
 from hsm import HSMPolicy, POLICY_FNAME, LOCAL_PIN_LENGTH
@@ -25,6 +24,7 @@ from hsm import HSMPolicy, POLICY_FNAME, LOCAL_PIN_LENGTH
 # see ../graphics/cylon.py
 # storing as a string instead of a tuple saves 80 bytes
 cylon = b':AHNTZ`eimprsttsqnkgb]WQKD=70)#\x1d\x17\x12\r\t\x06\x03\x01\x00\x00\x01\x02\x04\x07\x0b\x0f\x14\x1a &,3'
+
 
 class ApproveHSMPolicy(UserAuthorizedAction):
     title = 'Start HSM?'
@@ -155,11 +155,10 @@ class hsmUxInteraction:
         from display import FontTiny
 
         dis.clear()
-        dis.text(4, 0, "HSM MODE")
-        dis.hline(15)
+        dis.text(6, 0, "HSM MODE")
+        dis.show() # cover the 300ms or so it takes to draw the rest below
 
-        # cover the 300ms or so it takes to draw the rest below
-        dis.show()
+        dis.hline(15)
 
         x, y = 0, 28
         for lab, xoff, val in [ 
@@ -176,7 +175,7 @@ class hsmUxInteraction:
                     dis.dis.line(nx+2, y-12, nx+2, y+16, 1)
 
             # keep this:
-            print('%s @ x=%d' % (lab, x+(hw//2)-2))
+            #print('%s @ x=%d' % (lab, x+(hw//2)-2))
 
             # was:
             #tw = 7*len(val)     # = dis.width(val, FontSmall)
@@ -189,7 +188,7 @@ class hsmUxInteraction:
         dis.text(80, 0, '######')
 
         # save this static background
-        screen_buf[:] = dis.dis.buffer[:]
+        self.screen_buf = dis.dis.buffer[:]
 
 
     def show(self):
@@ -198,7 +197,7 @@ class hsmUxInteraction:
         # Plan: show "time til period reset", and some stats,
         # but never show amounts or private info.
 
-        dis.dis.buffer[:] = screen_buf[:]
+        dis.dis.buffer[:] = self.screen_buf[:]
 
         left = hsm_active.get_time_left()
         if left is None:
@@ -282,7 +281,7 @@ class hsmUxInteraction:
 
     async def interact(self):
         import main
-        from main import numpad
+        from main import numpad, is_devmode
         from actions import login_now
         from uasyncio import sleep_ms
 
@@ -337,9 +336,9 @@ class hsmUxInteraction:
                 except AbortInteraction:
                     pass
 
-        # This code only reachable on the simulator!
-        # - need to cleanup and reset so we run another test w/o restart
-        assert is_simulator()
+        # This code only reachable on the simulator and modified devices under test!
+        # - need to cleanup and reset so we run another test w/o system restart
+        assert is_simulator() or is_devmode
 
         from actions import goto_top_menu
         main.hsm_active = None

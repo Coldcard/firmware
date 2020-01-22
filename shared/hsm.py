@@ -227,12 +227,12 @@ class ApprovalRule:
                 assert self.wallet == '1', 'not multisig'
 
         if self.max_amount is not None:
-            assert total_out <= self.max_amount, 'too much out'
+            assert total_out <= self.max_amount, 'amount exceeded'
 
         # check all destinations are in the whitelist
         if self.whitelist:
             diff = set(dests) - set(self.whitelist)
-            assert not diff, "non-whitelisted dest: " + ', '.join(diff)
+            assert not diff, "non-whitelisted address: " + diff.pop()
 
         if self.local_conf:
             # local user must approve
@@ -327,8 +327,6 @@ class HSMPolicy:
         self.local_code_pending = ''
         self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
 
-    
-
     def load(self, j):
         # Decode json object provided: destructive
         # - attr name == json name if possible
@@ -401,7 +399,7 @@ class HSMPolicy:
             fd.write("- No transaction will be signed.\n")
         else:
             for r in self.rules:
-                fd.write('- Rule #%d: %s\n' % (r.index+1, r.to_text()))
+                fd.write('- Rule #%d: %s\n' % (r.index, r.to_text()))
 
         if self.period:
             fd.write('\nVelocity Period:\n %d minutes' % self.period)
@@ -703,7 +701,7 @@ class HSMPolicy:
                     except BaseException as exc:
                         # let's not share these details, except for debug; since
                         # they are not errors, just picking best rule in priority order
-                        r = "rule #%d: %s: %s" % (rule.index+1, problem_file_line(exc), str(exc))
+                        r = "rule #%d: %s: %s" % (rule.index, problem_file_line(exc), str(exc))
                         reasons.append(r)
                         print(r)
                 else:
@@ -717,7 +715,7 @@ class HSMPolicy:
                         msg += ', and the local operator.' if msg else 'local operator'
 
                 # looks good, do it
-                log.approve("Acceptable by rule #%d" % (rule.index+1))
+                log.approve("Acceptable by rule #%d" % rule.index)
 
                 if rule.per_period is not None:
                     self.record_spend(rule, total_out)

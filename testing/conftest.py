@@ -59,20 +59,21 @@ def simulator(request):
         raise pytest.fail('missing simulator')
 
 @pytest.fixture(scope='module')
-def sim_exec(simulator):
+def sim_exec(dev):
     # run code in the simulator's interpretor
 
     def doit(cmd):
-        return simulator.send_recv(b'EXEC' + cmd.encode('utf-8')).decode('utf-8')
+        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'))
+        return s.decode('utf-8') if not isinstance(s, str) else s
 
     return doit
 
 @pytest.fixture(scope='module')
-def sim_eval(simulator):
+def sim_eval(dev):
     # eval an expression in the simulator's interpretor
 
     def doit(cmd, timeout=None):
-        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
+        return dev.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
 
     return doit
 
@@ -89,12 +90,25 @@ def sim_execfile(simulator):
     return doit
 
 @pytest.fixture(scope='module')
-def sim_card_ejected(sim_exec):
+def is_simulator(dev):
+    def doit():
+        return hasattr(dev.dev, 'pipe')
+    return doit
+
+@pytest.fixture(scope='module')
+def sim_card_ejected(sim_exec, is_simulator):
     def doit(ejected):
+        if not is_simulator():
+            # assuming no card on device
+            if not ejected:
+                raise pytest.fail('only on simulator')
+            else:
+                return
+
         # see unix/frozen-modules/pyb.py class SDCard
-        cmd = f'import pyb; pyb.SDCard.ejected={ejected}'
-        print(cmd)
-        sim_exec(cmd)
+        cmd = f'import pyb; pyb.SDCard.ejected={ejected}; RV.write("ok")'
+        assert sim_exec(cmd) == 'ok'
+
     yield doit
     doit(False)
 
@@ -111,14 +125,16 @@ def send_ux_abort(simulator):
 @pytest.fixture(scope='module')
 def need_keypress(dev, request):
 
-    def doit(k):
-        if hasattr(dev.dev, 'pipe'):
-            # simulator has special USB command
-            dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')))
-        elif request.config.getoption("--manual"):
+    def doit(k, timeout=1000):
+        if request.config.getoption("--manual"):
             # need actual user interaction
-            print("==> NOW, on the Coldcard, press key: %r" % k, file=sys.stderr)
+            print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)
+            input()
         else:
+            # simulator has special USB command, and can be used on real device w/ enuf setup
+            dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
+
+        if 0:
             # try to use debug interface to simulate the press
             # XXX for some reason, picocom must **already** be running for this to work.
             # - otherwise, this locks up

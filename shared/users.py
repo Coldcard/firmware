@@ -51,10 +51,10 @@ def calc_hmac_key(text_password):
     # and device serial number as salt.
     import version
 
-    salt = tcc.sha256(b'pepper'+version.serial_number().encode()).digest()
-    p = tcc.pbkdf2('hmac-sha256', text_password, salt, PBKDF2_ITER_COUNT)
+    salt = tcc.sha256(b'pepper' + version.serial_number().encode()).digest()
+    pw = tcc.pbkdf2('hmac-sha256', text_password, salt, PBKDF2_ITER_COUNT).key()
 
-    return p.key()
+    return pw
 
 # settings key
 KEY = 'usr'
