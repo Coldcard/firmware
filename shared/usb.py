@@ -691,16 +691,16 @@ class USBHandler:
 
         if hsm_active:
             # additional restrictions in HSM mode
-            assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'long'
+            assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'psbt'
             if offset == 0:
                 assert data[0:5] == b'psbt\xff', 'psbt'
 
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
                 # erase here
-                sf.sector_erase(pos)
-
                 dis.fullscreen("Receiving...", offset/total_size)
+
+                sf.sector_erase(pos)
 
                 while sf.is_busy():
                     await sleep_ms(10)
