@@ -268,7 +268,7 @@ class AuditLogger:
             except: uos.mkdir(d)
                 
             self.fname = d + '/' + b2a_hex(self.digest[-8:]).decode('ascii') + '.log'
-            self.fd = open(self.fname, 'w+t')
+            self.fd = open(self.fname, 'a+t')       # append mode
         except (CardMissingError, OSError):
             # may be fatal or not, depending on configuration
             self.fname = self.card = None
@@ -280,6 +280,8 @@ class AuditLogger:
         if exc_value:
             self.fd.write('\n\n---- Coldcard Exception ----\n')
             sys.print_exception(exc_value, self.fd)
+
+        self.fd.write('\n===\n\n')
 
         if self.card:
             assert self.fd != sys.stdout
@@ -368,14 +370,14 @@ class HSMPolicy:
         assert_empty_dict(j)
 
     def period_reset_time(self):
-        # time from now, in seconds, until the period resets and the velocity
-        # total is reset
+        # Time from now, in seconds, until the period resets and the velocity
+        # totals are reset
         if not self.period: return 0
         end = self.current_period + (self.period*60)
-        return utime.time() - end
+        return (utime.ticks_ms() // 1000) - end
         
     def save(self):
-        # create JSON document for next time.
+        # Create JSON document for next time.
         simple = ['must_log', 'msg_paths', 'share_xpubs', 'share_addrs',
                     'notes', 'period', 'allow_sl', 'warnings_ok']
         rv = dict()
@@ -457,19 +459,24 @@ class HSMPolicy:
         rv['pending_auth'] = len(self.pending_auth)
 
     def activate(self, new_file):
-        # user approved activation, so apply it.
+        # user approved the HSM activation, so apply it.
+        from main import pa, dis
+
         import main
         assert not main.hsm_active
         main.hsm_active = self
 
         if new_file:
+            dis.fullscreen("Saving...")
+
             # save config for next run
             with open(POLICY_FNAME, 'w+t') as f:
                 ujson.dump(self.save(), f)
 
-        # XXX not sure if I should log this
-        #with AuditLogger(self, 'policy', sha) as log:
-        #   log.info("Starting HSM with this policy:\n%s" % self.summary)
+            # that changes the flash, so need to update
+            # the hash stored in SE
+            pa.greenlight_firmware()
+            dis.show()
 
         if self.set_sl:
             self.save_storage_locker()
@@ -487,7 +494,7 @@ class HSMPolicy:
         # record they spend some amount in this period
         rule.spent_so_far += amt
         if not self.period_started:
-            self.period_started = utime.time() or 1
+            self.period_started = (utime.ticks_ms() // 1000) or 1
 
     def get_time_left(self):
         # return None if not being used, and time-left in current period if any,
@@ -501,7 +508,7 @@ class HSMPolicy:
             # they haven't spent anything yet (in period)
             return -1
 
-        so_far = utime.time() - self.period_started
+        so_far = (utime.ticks_ms() // 1000) - self.period_started
         left = (self.period*60) - so_far
         if left <= 0:
             # period is over, reset totals
@@ -613,7 +620,6 @@ class HSMPolicy:
     def local_pin_entered(self, code):
         # 6 digits have been entered by local user (ie. they pressed Y, with digits in place)
         self.local_code_pending = code
-        print("Got code: %s" % code)
 
     def consume_local_code(self):
         # Return T if they got the code right, also (regardless) pick 

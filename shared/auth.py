@@ -138,6 +138,8 @@ class ApproveMessageSign(UserAuthorizedAction):
             node = sv.derive_path(subpath)
             self.address = sv.chain.address(node, addr_fmt)
 
+        dis.progress_bar_show(1)
+
     async def interact(self):
         # Prompt user w/ details and get approval
         from main import dis, hsm_active
@@ -167,7 +169,7 @@ class ApproveMessageSign(UserAuthorizedAction):
                 dis.progress_bar_show(.75)
                 self.result = tcc.secp256k1.sign(pk, digest)
 
-            dis.progress_bar_show(1.0)
+            dis.progress_bar_show(1)
 
             if self.approved_cb:
                 # for micro sd case

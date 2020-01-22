@@ -188,9 +188,7 @@ class CardSlot:
         cls.irq = ExtInt(Pin('SD_SW'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
         # mark 2+ boards have a light for SD activity.
-        import version
         from machine import Pin
-
         cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
     def __init__(self):
@@ -198,8 +196,7 @@ class CardSlot:
 
     def __enter__(self):
         # Get ready!
-        if self.active_led:
-            self.active_led.on()
+        self.active_led.on()
 
         # turn off touch scanning
         from main import numpad
@@ -232,8 +229,7 @@ class CardSlot:
         # done using the microSD -- unpower it
         from main import numpad
 
-        if self.active_led:
-            self.active_led.off()
+        self.active_led.off()
 
         self.active = False
 

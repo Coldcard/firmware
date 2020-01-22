@@ -17,9 +17,14 @@ from uasyncio.queues import QueueEmpty
 from ubinascii import a2b_base64
 from users import Users, MAX_NUMBER_USERS
 from public_constants import MAX_USERNAME_LEN
+from sram2 import screen_buf
 
 import hsm
 from hsm import HSMPolicy, POLICY_FNAME, LOCAL_PIN_LENGTH
+
+# see ../graphics/cylon.py
+# storing as a string instead of a tuple saves 80 bytes
+cylon = b':AHNTZ`eimprsttsqnkgb]WQKD=70)#\x1d\x17\x12\r\t\x06\x03\x01\x00\x00\x01\x02\x04\x07\x0b\x0f\x14\x1a &,3'
 
 class ApproveHSMPolicy(UserAuthorizedAction):
     title = 'Start HSM?'
@@ -45,7 +50,6 @@ class ApproveHSMPolicy(UserAuthorizedAction):
                 ch = 'x'
             finally:
                 del msg
-            
 
             self.refused = (ch != 'y')
 
@@ -62,12 +66,14 @@ Press %s to save policy and enable HSM mode.''' % confirm_char
         except BaseException as exc:
             self.failed = "Exception"
             sys.print_exception(exc)
-        finally:
-            self.done()
-            UserAuthorizedAction.cleanup()      # because no results to store
+            self.refused = True
+
+        self.ux_done = True
+        UserAuthorizedAction.cleanup()
 
         # cleanup already done, and nothing more here ... return
         if self.refused:
+            self.done()         # restores/draws menu (might be needed from USB mode)
             return
 
         # go into special HSM mode .. one-way trip
@@ -76,7 +82,7 @@ Press %s to save policy and enable HSM mode.''' % confirm_char
 
         return
 
-async def start_hsm_approval(sf_len=0, usb_mode=False):
+async def start_hsm_approval(sf_len=0, usb_mode=False, startup_mode=False):
     # Show details of the proposed HSM policy (or saved one)
     # If approved, go into HSM mode and never come back to normal.
 
@@ -121,6 +127,9 @@ async def start_hsm_approval(sf_len=0, usb_mode=False):
     ar = ApproveHSMPolicy(policy, is_new)
     UserAuthorizedAction.active_request = ar
 
+    if startup_mode:
+        return ar
+
     if usb_mode:
         # for USB case, kill any menu stack, and put our thing at the top
         abort_and_goto(UserAuthorizedAction.active_request)
@@ -138,28 +147,58 @@ class hsmUxInteraction:
         self.busy_text = None
         self.percent = None
         self.digits = ''
+        self.phase = 0
+
+    def draw_background(self):
+        # Render and capture static parts of screen one-time.
+        from main import dis
+        from display import FontTiny
+
+        dis.clear()
+        dis.text(4, 0, "HSM MODE")
+        dis.hline(15)
+
+        # cover the 300ms or so it takes to draw the rest below
+        dis.show()
+
+        x, y = 0, 28
+        for lab, xoff, val in [ 
+            ('APPROVED', 0, '0'),
+            ('REFUSED', 0, '0'),
+            ('PERIOD LEFT', 5, 'xx'),
+        ]:
+            nx = dis.text(x+xoff, y-7, lab, FontTiny)
+            hw = nx - x
+            if lab == 'REFUSED':
+                dis.dis.line(nx+2, 0, nx+2, y+16, 1)
+            else:
+                if not xoff:
+                    dis.dis.line(nx+2, y-12, nx+2, y+16, 1)
+
+            # keep this:
+            print('%s @ x=%d' % (lab, x+(hw//2)-2))
+
+            # was:
+            #tw = 7*len(val)     # = dis.width(val, FontSmall)
+            #dis.text(x+((hw-tw)//2)-1, y+1, val)
+            x = nx + 7
+
+        dis.hline(y+17)
+
+        # no local confirmation code entered, typically
+        dis.text(80, 0, '######')
+
+        # save this static background
+        screen_buf[:] = dis.dis.buffer[:]
+
 
     def show(self):
         from main import dis, hsm_active
-        from display import FontTiny
 
-        uptime = utime.ticks_ms() // 1000
+        # Plan: show "time til period reset", and some stats,
+        # but never show amounts or private info.
 
-        # make this screen saver fun
-        x,y = 2,0
-
-        # TODO: show "time til period reset", dont show amounts
-
-        dis.clear()
-        #dis.text(None, 2, "HSM Ready")
-        dis.text(4, 0, "HSM MODE")
-        dis.hline(15)
-        
-        if 0:
-            fy = -11
-            dis.text(0, fy, "Suitable transactions will be", FontTiny)
-            dis.text(0, fy+8,  "signed without any interaction.", FontTiny)
-            #dis.text(None, -1, "X to REBOOT ", FontTiny)
+        dis.dis.buffer[:] = screen_buf[:]
 
         left = hsm_active.get_time_left()
         if left is None:
@@ -169,48 +208,33 @@ class hsmUxInteraction:
         else:
             left = pretty_short_delay(left)
 
-        x, y = 0, 28
-        for lab, xoff, val in [ 
-            ('APPROVED', 0, str(hsm_active.approvals)),
-            ('REFUSED', 0, str(hsm_active.refusals)),
-            ('PERIOD LEFT', 5, left),
-            #('PERIOD LEFT', 1, '13h 20m'),
-        ]:
-            nx = dis.text(x+xoff, y-7, lab, FontTiny)
-            hw = nx - x
+        # 3 statistics; see draw_background for X positions
+        y = 28+1
+        for x, val in [ (14, str(hsm_active.approvals)),
+                        (51, str(hsm_active.refusals)),
+                        (96, left)]:
             tw = 7*len(val)     # = dis.width(val, FontSmall)
-            if lab == 'REFUSED':
-                dis.dis.line(nx+2, 0, nx+2, y+16, 1)
-            else:
-                if not xoff:
-                    dis.dis.line(nx+2, y-12, nx+2, y+16, 1)
+            dis.text(x - tw//2, y, val)
 
-            dis.text(x+((hw-tw)//2)-1, y+1, val)
-            x = nx + 7
+        # heartbeat display
+        if 1:
+            #self.phase = (utime.ticks_ms() // 50) % len(cylon)
+            self.phase = (self.phase + 1) % len(cylon)
+            x = cylon[self.phase]
+            w = 12
+            dis.dis.line(x, 63, x+w-1, 63, True)
 
-        dis.hline(y+17)
+        if self.digits:
+            # UX "feedback" for digits
+            if len(self.digits) < 6:
+                msg = self.digits + ('#' * (6-len(self.digits)))
+            elif self.digits:
+                msg = self.digits
 
-        if 0:
-            # heartbeat display
-            # >>> from main import *; from display import FontTiny
-            # >>> dis.width('interaction', FontTiny)
-            line_ws = ( (32, 48, 16, 8),
-                        (24, 28, 12, 44 ) )
-            phase = (utime.ticks_ms() // 1000) % 8
-            line = phase // 4
-            y = 63 if line else 54
-            x = 0 + sum((line_ws[line][i]+4) for i in range(phase%4))
-            w = line_ws[line][phase%4]-1
-            dis.dis.line(x, y, x+w, y, True)
-
-        # UX "feedback" for digits
-        if len(self.digits) < 6:
-            msg = self.digits + ('#' * (6-len(self.digits)))
-        elif self.digits:
-            msg = self.digits
-        else:
-            msg = '_'*6
-        dis.text(80, 0, msg)
+            # dis.width('######', FontSmall) == 42
+            x, y, w, h = 80, 0, 42, 14
+            dis.clear_rect(x,y, x+w, y+h)
+            dis.text(x, y, msg)
 
         # contains a dis.show()
         self.draw_busy(None, None)
@@ -226,9 +250,6 @@ class hsmUxInteraction:
         # centered in bottom part of screen.
         y = 48
 
-        # clear under it
-        dis.clear_rect(0,y, 128, 64-y)
-
         if percent is not None:
             self.percent = percent
 
@@ -241,10 +262,14 @@ class hsmUxInteraction:
             self.busy_text = msg
 
         if self.busy_text is not None:
+            # clear under it
+            dis.clear_rect(0,y, 128, 64-y)
             dis.text(None, y, self.busy_text)
 
         if self.percent is not None:
-            dis.dis.hline(0, 63, int(128 * self.percent), 1)
+            x = int(128 * self.percent)
+            dis.dis.hline(0, 63, x, 1)
+            dis.dis.hline(x+1, 63, 127, 0)
 
         dis.show()
 
@@ -261,14 +286,13 @@ class hsmUxInteraction:
         from actions import login_now
         from uasyncio import sleep_ms
 
-        # Prevent any other component from reading numpad
-        # XXX this should be NeuterPad?
-        numpad.stop()
-
         # Replace some drawing functions
         main.dis.fullscreen = self.hack_fullscreen
         main.dis.progress_bar = self.hack_progress_bar
         main.dis.progress_bar_show = self.hack_progress_bar
+
+        # get ready ourselves
+        self.draw_background()
 
         # Kill time, waiting for user input
         self.digits = ''
@@ -290,11 +314,10 @@ class hsmUxInteraction:
                 elif ch == numpad.ABORT_KEY:
                     # important to eat these and fully suppress them
                     pass
-                else:
-                    self.digits += ch
-                    if len(self.digits) > LOCAL_PIN_LENGTH:
-                        # keep last N digits
-                        self.digits = self.digits[-LOCAL_PIN_LENGTH:]
+                elif ch:
+                    if len(self.digits) < LOCAL_PIN_LENGTH:
+                        # allow only 6 digits
+                        self.digits += ch[0]
 
                 # do immediate screen update
                 continue
@@ -325,38 +348,7 @@ class hsmUxInteraction:
 
         return
 
-
 # singleton
 hsm_ux_obj = hsmUxInteraction()
-
-# Mock version of NumpadBase from numpad.py
-# - just in case we missed some code that blocks on user input
-# - this will cause it to not to work.
-from numpad import NumpadBase
-class NeuterPad(NumpadBase):
-    disabled = True
-    repeat_delay = 0
-
-    def __init__(self, loop=None):
-        pass
-
-    async def get(self):
-        return 
-
-    def get_nowait(self):
-        raise QueueEmpty
-
-    def empty(self):
-        return True
-
-    def stop(self):
-        return
-    def start(self):
-        return
-
-    def abort_ux(self):
-        return
-    def inject(self, key):
-        return
 
 # EOF
