@@ -373,9 +373,10 @@ async def ux_confirm(msg):
 
 
 async def ux_dramatic_pause(msg, seconds):
-    from main import dis, hsm_mode
+    from main import dis, hsm_active
 
-    if hsm_mode: return 
+    if hsm_active:
+        return
 
     # show a full-screen msg, with a dramatic pause + progress bar
     n = seconds * 8
