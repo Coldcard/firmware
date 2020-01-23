@@ -87,10 +87,16 @@ def hsm_reset(dev, sim_exec):
     (DICT(never_log=1), 'No logging'),
     (DICT(warnings_ok=1), 'PSBT warnings'),
 
+    # boot-to-hsm
+    (DICT(boot_to_hsm='any'), 'Boot to HSM enabled'),
+    (DICT(boot_to_hsm='123123'), 'Boot to HSM enabled'),
+
+    # msg signing
     (DICT(msg_paths=["m/1'/2p/3H"]), "m/1'/2'/3'"),
     (DICT(msg_paths=["m/1", "m/2"]), "m/1 OR m/2"),
     (DICT(msg_paths=["any"]), "(any path)"),
 
+    # data sharing
     (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1'/2'/3'"]),
     (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
     (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
@@ -149,7 +155,8 @@ def hsm_reset(dev, sim_exec):
     (DICT(rules=[dict(local_conf=True), dict(max_amount=1E8)]),
         'Rule #2'),
 ])
-def test_policy_parsing(sim_exec, policy, contains, load_hsm_users):
+@pytest.mark.parametrize('converse', [False, True] )
+def test_policy_parsing(converse, sim_exec, policy, contains, load_hsm_users):
     # Unit test on parsing!
 
     load_hsm_users()
@@ -1087,7 +1094,53 @@ def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
 
     unit_test('devtest/backups.py')
 
-# KEEP LAST -- can only be run once, crashes device
+def test_boot_to_hsm_unlock(start_hsm, hsm_status, enter_local_code):
+    # also uptime
+    s = start_hsm(dict(boot_to_hsm='123123'))
+    assert 'Boot to HSM' in s.summary
+    assert s.active
+
+    u = hsm_status().uptime
+    assert 0 <= u < 5
+    time.sleep(3)
+
+    u = hsm_status().uptime
+    assert u < 30
+
+    enter_local_code('123123')
+    time.sleep(.5)
+    assert hsm_status().active == False
+    assert hsm_status().policy_available == False
+
+def test_boot_to_hsm_too_late(start_hsm, hsm_status, enter_local_code):
+    # also uptime
+    s = start_hsm(dict(boot_to_hsm='123123'))
+    assert 'Boot to HSM' in s.summary
+    assert s.active
+
+    u = hsm_status().uptime
+    assert 0 <= u < 5
+    time.sleep(3)
+
+    u = hsm_status().uptime
+    assert 3 <= u < 15
+
+    time.sleep(28)
+
+    u = hsm_status().uptime
+    assert u > 30
+
+    enter_local_code('123123')
+
+    time.sleep(.5)
+    s = hsm_status()
+    assert s.active == True
+    assert 'policy_available' not in s
+
+
+
+
+# KEEP LAST -- can only be run once, will crash device
 @pytest.mark.onetime
 def test_max_refusals(attempt_msg_sign, start_hsm, hsm_status, threshold=100):
     start_hsm({})
@@ -1105,8 +1158,6 @@ def test_max_refusals(attempt_msg_sign, start_hsm, hsm_status, threshold=100):
     with pytest.raises(BaseError) as ee:
         attempt_msg_sign('signing not permitted', b'msg here', 'm/73', timeout=1000)
     assert ('timeout' in str(ee)) or ('read error' in str(ee))
-
-# - never_log
 
 
     

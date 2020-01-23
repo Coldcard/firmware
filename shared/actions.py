@@ -1443,4 +1443,11 @@ async def start_hsm_menu_item(*a):
     from hsm_ux import start_hsm_approval 
     await start_hsm_approval(sf_len=0, usb_mode=False)
 
+async def wipe_hsm_policy(*A):
+    # deep in danger zone menu; no background story, nor confirmation
+    # - sends them back to top menu, so that dynamic contents are fixed
+    from hsm import hsm_delete_policy
+    hsm_delete_policy()
+    goto_top_menu()
+
 # EOF

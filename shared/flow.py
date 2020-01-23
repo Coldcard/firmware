@@ -15,7 +15,7 @@ from address_explorer import address_explore
 from users import make_users_menu
 
 if version.has_fatram:
-    from hsm import hsm_policy_available 
+    from hsm import hsm_policy_available
 else:
     hsm_policy_available = lambda: False
 
@@ -60,7 +60,6 @@ SettingsMenu = [
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
-    MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
@@ -139,6 +138,7 @@ DangerZoneMenu = [
     MenuItem("Wipe Patch Area", f=wipe_filesystem),             # needs better label
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
     MenuItem("Set High-Water", f=set_highwater),
+    MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
 ]
 
 BackupStuffMenu = [
@@ -157,6 +157,7 @@ AdvancedNormalMenu = [
     MenuItem("MicroSD Card", menu=SDCardMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem("Address Explorer", f=address_explore),
+    MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 

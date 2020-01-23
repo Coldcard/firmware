@@ -106,11 +106,17 @@ class Users:
         return list(sorted(cls.get().keys()))
         
     @classmethod
-    def create(cls, username, auth_mode, secret=b''):
+    def create(cls, username, auth_mode, secret):
         # create new user:
         # - username must be unique
         # - if secret is empty, we pick it and return choice
+        # - show QR of secret (for TOTP/HOTP) if 
         from main import settings
+
+        qr_mode = bool(auth_mode & 0x80)
+        if qr_mode:
+            auth_mode &= 0x7f
+            assert not secret
 
         assert auth_mode in {USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC}
 
@@ -140,6 +146,23 @@ class Users:
         u[username] = [auth_mode, b32encode(secret), 0]
         settings.put(KEY, u)
 
+        if qr_mode:
+            # can only show up to 42 chars, and secret is 16, required overhead is 23 => 39 min
+            # - can't fit any meta data, like username or our serial # in there
+            # - HOTP not compliant because 'counter=0' not included (works in FreeOTP)
+            from ux import QRDisplay, abort_and_push, the_ux
+
+            if auth_mode == USER_AUTH_HMAC:
+                qr = picked
+            else:
+                qr = 'otpauth://{m}otp/CC?secret={s}'.format(s=picked,
+                        m=('t' if auth_mode==USER_AUTH_TOTP else 'h'))
+
+            o = QRDisplay([qr], False, sidebar=picked)
+            abort_and_push(o)
+
+            picked = ''
+
         return picked
         
     @classmethod
@@ -154,13 +177,14 @@ class Users:
     @classmethod
     def pick_secret(cls, auth_mode):
         # always 10 bytes for no reason => 80 bits of entropy
-        # return binary secret, and encode value for new user to see
+        # return binary secret, and encoded value for new user to see
         import ckcc
         b = bytearray(10)
         ckcc.rng_bytes(b)
         picked = b32encode(b)
 
         if auth_mode == USER_AUTH_HMAC:
+            picked = picked.lower()
             b = calc_hmac_key(picked.encode('ascii'))
 
         return b, picked
@@ -181,7 +205,14 @@ class Users:
 
         if auth_mode == USER_AUTH_HMAC:
             expect = hmac.new(secret, psbt_hash or bytes(32), tcc.sha256).digest()
-            return 'mismatch' if  expect != token else ''
+            if expect != token:
+                return 'mismatch'
+
+            if last_counter == 0:
+                # using this as marker that they have successfully used the code once
+                cls.update_counter(username, 1)
+
+            return ''
 
         if len(token) != 6:
             return 'expect otp'
@@ -281,14 +312,12 @@ async def make_user_sub_menu(menu, label, item):
     if not info:
         return
 
-    print(info)
-
     if info.auth_mode == USER_AUTH_TOTP:
         dets = "TOTP: " + ('unused' if not info.last_counter else 'active')
     elif info.auth_mode == USER_AUTH_HOTP:
         dets = "HOTP: count=%d" % info.last_counter
     elif info.auth_mode == USER_AUTH_HMAC:
-        dets = "HMAC mode"
+        dets = "Password: " + ('unused' if not info.last_counter else 'active')
 
     rv = [
         MenuItem('"%s"' % user),        # does nothing, it's a title
