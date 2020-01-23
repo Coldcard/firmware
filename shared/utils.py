@@ -299,4 +299,15 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
     return None
 
 
+def clean_shutdown(style=0):
+    # wipe SPI flash and shutdown (wiping main memory)
+    import callgate
+
+    try:
+        from main import sf
+        sf.wipe_most()
+    except: pass
+
+    callgate.show_logout(style)
+
 # EOF

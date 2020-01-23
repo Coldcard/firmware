@@ -433,17 +433,13 @@ You can give this Coldcard a nickname and it will be shown before login.''')
 
 async def logout_now(*a):
     # wipe memory and lock up
-    from callgate import show_logout
-    from main import sf
-    sf.wipe_most()
-    show_logout()
+    from utils import clean_shutdown
+    clean_shutdown()
 
 async def login_now(*a):
     # wipe memory and reboot
-    from callgate import show_logout
-    from main import sf
-    sf.wipe_most()
-    show_logout(2)
+    from utils import clean_shutdown
+    clean_shutdown(2)
     
 
 async def virgin_help(*a):

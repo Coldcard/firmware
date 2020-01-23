@@ -95,14 +95,6 @@ def is_vcp_active():
 
     return cur and ('VCP' in cur) and en
 
-def clean_shutdown():
-    # wipe SPI flash and shutdown (wiping main memory)
-    try:
-        from main import sf
-        sf.wipe_most()
-    except: pass
-    callgate.show_logout()
-
 class USBHandler:
     def __init__(self):
         self.dev = pyb.USB_HID()
@@ -333,6 +325,7 @@ class USBHandler:
             return self.call_after(machine.reset)
 
         if cmd == 'logo':
+            from utils import clean_shutdown
             return self.call_after(clean_shutdown)
 
         if cmd == 'ping':

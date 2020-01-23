@@ -84,6 +84,7 @@ def hsm_reset(dev, sim_exec):
     (DICT(), 'No transaction will be signed'),
     (DICT(must_log=1), 'MicroSD card MUST '),
     (DICT(must_log=0), 'MicroSD card will '),
+    (DICT(never_log=1), 'No logging'),
     (DICT(warnings_ok=1), 'PSBT warnings'),
 
     (DICT(msg_paths=["m/1'/2p/3H"]), "m/1'/2'/3'"),
@@ -378,13 +379,14 @@ def attempt_psbt(hsm_status, start_sign, dev):
 @pytest.fixture
 def attempt_msg_sign(dev, hsm_status):
     def doit(refuse, *args, **kws):
-        dev.send_recv(CCProtocolPacker.sign_message(*args, **kws), timeout=None)
+        tt = kws.pop('timeout', None)
+        dev.send_recv(CCProtocolPacker.sign_message(*args, **kws), timeout=tt)
 
         try:
             done = None
             while done == None:
                 time.sleep(0.050)
-                done = dev.send_recv(CCProtocolPacker.get_signed_msg(), timeout=None)
+                done = dev.send_recv(CCProtocolPacker.get_signed_msg(), timeout=tt)
 
             assert len(done) == 2
             assert refuse == None, "signing didn't fail, but expected to"
@@ -618,6 +620,17 @@ def test_must_log(dev, start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, 
         attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
         attempt_psbt(psbt)
 
+def test_never_log(dev, start_hsm, attempt_msg_sign, fake_txn, attempt_psbt, sim_card_ejected):
+    # never try to log anything
+    policy = DICT(never_log=True, msg_paths=['m'], rules=[{}])
+
+    start_hsm(policy)
+
+    sim_card_ejected(True)
+
+    # WEAK test
+    attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
+
 @pytest.fixture
 def enter_local_code(need_keypress):
     def doit(code):
@@ -751,7 +764,7 @@ def test_usb_cmds_block(quick_start_hsm, dev):
         assert 'HSM' in str(ee)
 
 def test_unit_local_conf(sim_exec, enter_local_code, quick_start_hsm):
-
+    # just testing our fixture really
     quick_start_hsm({})
 
     enter_local_code('123456')
@@ -981,6 +994,18 @@ def test_min_users_perms(dev, quick_start_hsm, load_hsm_users, fake_txn,
 
         # auth should be cleared
         attempt_psbt(psbt, 'need user(s) confirmation')
+
+def calc_local_pincode(psbt_sha, next_local_code):
+    from binascii import a2b_base64
+    import struct, hmac
+
+    key = a2b_base64(next_local_code)
+    assert len(key) >= 15
+    assert len(psbt_sha) == 32
+    digest = hmac.new(key, psbt_sha, sha256).digest()
+
+    num = struct.unpack('>I', digest[-4:])[0] & 0x7fffffff
+    return '%06d' % (num % 1000000)
         
 def test_local_conf(dev, quick_start_hsm, tweak_rule, load_hsm_users, fake_txn, enter_local_code,
                             hsm_status, attempt_psbt, auth_user, sim_exec, readback_rule):
@@ -988,24 +1013,31 @@ def test_local_conf(dev, quick_start_hsm, tweak_rule, load_hsm_users, fake_txn, 
     psbt = fake_txn(1,1, dev.master_xpub)
     auth_user.psbt_hash = sha256(psbt).digest()
 
+    # self test vectors
+    assert calc_local_pincode(b'b'*32, 'YWFhYWFhYWFhYWFhYWFh') == '998170'
+    assert calc_local_pincode(bytes(32), 'YWFhYWFhYWFhYWFaYWFh') == '816912'
+
     load_hsm_users()
     policy = DICT(rules=[dict(users=USERS, local_conf=True)])
-    quick_start_hsm(policy)
+    s = quick_start_hsm(policy)
 
     for u in USERS:
         auth_user(u)
-    enter_local_code(hsm_status().next_local_code)
-    attempt_psbt(psbt)
 
+    lcode = calc_local_pincode(sha256(psbt).digest(), s.next_local_code)
+    enter_local_code(lcode)
+    attempt_psbt(psbt)
 
     for u in USERS:
         auth_user(u)
     attempt_psbt(psbt, 'local operator didn\'t confirm')
-
 
     tweak_rule(0, dict(local_conf=True))
     attempt_psbt(psbt, 'local operator didn\'t confirm')
-    enter_local_code(hsm_status().next_local_code)
+
+    s = hsm_status()
+    lcode = calc_local_pincode(sha256(psbt).digest(), s.next_local_code)
+    enter_local_code(lcode)
     attempt_psbt(psbt)
 
 def worst_case_policy():
@@ -1054,6 +1086,28 @@ def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
     start_hsm(policy)
 
     unit_test('devtest/backups.py')
+
+# KEEP LAST -- can only be run once, crashes device
+@pytest.mark.onetime
+def test_max_refusals(attempt_msg_sign, start_hsm, hsm_status, threshold=100):
+    start_hsm({})
+
+    assert hsm_status().refusals == 0
+
+    for i in range(threshold):
+        attempt_msg_sign('signing not permitted', b'msg here', 'm/73')
+
+    assert hsm_status().refusals == threshold
+
+    # CC will reboot itself
+    time.sleep(.5)
+
+    with pytest.raises(BaseError) as ee:
+        attempt_msg_sign('signing not permitted', b'msg here', 'm/73', timeout=1000)
+    assert ('timeout' in str(ee)) or ('read error' in str(ee))
+
+# - never_log
+
 
     
 # EOF
