@@ -56,6 +56,18 @@ def calc_hmac_key(text_password):
 
     return pw
 
+def calc_local_pincode(psbt_sha, hmac_secret):
+    # Given a b64 encoded secret (shared from CC over USB) and the PSBT
+    # being authorized, cook up 6 digits for local PIN code
+    from ubinascii import a2b_base64
+    key = a2b_base64(hmac_secret)
+    assert len(psbt_sha) == 32
+    digest = hmac.new(key, psbt_sha, tcc.sha256).digest()
+
+    num = ustruct.unpack('>I', digest[-4:])[0] & 0x7fffffff
+    return '%06d' % (num % 1000000)
+    
+
 # settings key
 KEY = 'usr'
 

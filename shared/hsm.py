@@ -10,7 +10,7 @@ from sffile import SFFile
 from utils import problem_file_line, cleanup_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
-from users import Users, MAX_NUMBER_USERS
+from users import Users, MAX_NUMBER_USERS, calc_local_pincode
 from public_constants import MAX_USERNAME_LEN
 from multisig import MultisigWallet
 from ubinascii import hexlify as b2a_hex
@@ -24,6 +24,9 @@ LOCAL_PIN_LENGTH = 6
 
 # max number of sats in the world: 21E6 * 1E8
 MAX_SATS = const(2100000000000000)
+
+# too many refusals will cause reset
+ABSOLUTE_MAX_REFUSALS = const(100)
 
 def hsm_policy_available():
     # Is there an HSM policy ready to go? Offer the menu item then.
@@ -252,13 +255,16 @@ class ApprovalRule:
         return True
 
 class AuditLogger:
-    def __init__(self, hsm, dirname, digest):
+    def __init__(self, dirname, digest, never_log):
         self.dirname = dirname
         self.digest = digest
-        self.hsm = hsm
+        self.never_log = never_log
 
     def __enter__(self):
         try:
+            if self.never_log:
+                raise NotImplementedError
+
             self.card = CardSlot().__enter__()
 
             d  = self.card.get_sd_root() + '/' + self.dirname
@@ -269,7 +275,7 @@ class AuditLogger:
                 
             self.fname = d + '/' + b2a_hex(self.digest[-8:]).decode('ascii') + '.log'
             self.fd = open(self.fname, 'a+t')       # append mode
-        except (CardMissingError, OSError):
+        except (CardMissingError, OSError, NotImplementedError):
             # may be fatal or not, depending on configuration
             self.fname = self.card = None
             self.fd = sys.stdout
@@ -297,18 +303,6 @@ class AuditLogger:
         if self.fd != sys.stdout:
             print(msg)
 
-    def refuse(self, msg):
-        # when things fail
-        self.info("\nREFUSED: " + msg)
-        self.hsm.refusals += 1
-        self.hsm.last_refusal = msg
-
-    def approve(self, msg):
-        # when things fail
-        self.info("\nAPPROVED: " + msg)
-        self.hsm.approvals += 1
-        self.hsm.last_refusal = None
-
 class HSMPolicy:
     # implements and enforces the HSM signing/activity/logging policy
     def __init__(self):
@@ -324,8 +318,9 @@ class HSMPolicy:
         self.period_started = 0
         self.period_spends = {}
 
+        # haven't entered anything yet
         self.local_code_pending = ''
-        self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
+        self._new_local_code()
 
     def load(self, j):
         # Decode json object provided: destructive
@@ -335,6 +330,8 @@ class HSMPolicy:
 
         # fail if we can't log it
         self.must_log = pop_bool(j, 'must_log')
+        self.never_log = pop_bool(j, 'never_log')
+        assert not (self.must_log and self.never_log), 'log conflict'
 
         # don't fail on PSBT warnings
         self.warnings_ok = pop_bool(j, 'warnings_ok')
@@ -376,7 +373,7 @@ class HSMPolicy:
         
     def save(self):
         # Create JSON document for next time.
-        simple = ['must_log', 'msg_paths', 'share_xpubs', 'share_addrs',
+        simple = ['must_log', 'never_log', 'msg_paths', 'share_xpubs', 'share_addrs',
                     'notes', 'period', 'allow_sl', 'warnings_ok']
         rv = dict()
         for fn in simple:
@@ -418,7 +415,11 @@ class HSMPolicy:
             fd.write("- Not allowed.\n")
 
         fd.write('\nOther policy:\n')
-        fd.write('- MicroSD card %s receive log entries.\n' % ('MUST' if self.must_log else 'will'))
+        if not self.never_log:
+            fd.write('- MicroSD card %s receive log entries.\n' 
+                                    % ('MUST' if self.must_log else 'will'))
+        else:
+            fd.write("- No logging.")
         if self.set_sl:
             fd.write('- Storage Locker will be updated (once).\n')
         if self.allow_sl:
@@ -441,7 +442,7 @@ class HSMPolicy:
         for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'sl_reads', 'period']:
             rv[fn] = getattr(self, fn, None)
 
-        # code the local user should enter
+        # Next code the local user should enter, is calculated from this HMAC secret
         rv['next_local_code'] = self.next_local_code
 
         # UX on web browser will need to know the local PIN code might be needed
@@ -567,10 +568,10 @@ class HSMPolicy:
         # Maybe approve indicated message to be signed.
         # return 'y' or 'x'
         sha = tcc.sha256(msg_text).digest()
-        with AuditLogger(self, 'messages', sha) as log:
+        with AuditLogger('messages', sha, self.never_log) as log:
 
             if self.must_log and log.is_unsaved:
-                log.refuse("Could not log details, and must_log is set")
+                self.refuse(log, "Could not log details, and must_log is set")
                 return 'x'
 
             log.info('Message signing requested:')
@@ -579,14 +580,14 @@ class HSMPolicy:
                             % (len(msg_text), subpath, address))
 
             if not self.msg_paths: 
-                log.refuse("Message signing not permitted")
+                self.refuse(log, "Message signing not permitted")
                 return 'x'
 
             if 'any' not in self.msg_paths and (subpath not in self.msg_paths):
-                log.refuse('Message signing not enabled for that path')
+                self.refuse(log, 'Message signing not enabled for that path')
                 return 'x'
 
-            log.approve('Message signing allowed')
+            self.approve(log, 'Message signing allowed')
 
         return 'y'
 
@@ -619,18 +620,24 @@ class HSMPolicy:
         # 6 digits have been entered by local user (ie. they pressed Y, with digits in place)
         self.local_code_pending = code
 
-    def consume_local_code(self):
+    def consume_local_code(self, psbt_sha):
         # Return T if they got the code right, also (regardless) pick 
         # the next code to be provided.
 
-        expect = self.next_local_code
+        expect = calc_local_pincode(psbt_sha, self.next_local_code)
+
         got = self.local_code_pending
         self.local_code_pending = ''
 
-        self.next_local_code = '%06d' % tcc.random.uniform(1000000)  # check vs. LOCAL_PIN_LENGTH
+        self._new_local_code()
 
         return (got == expect)
 
+    def _new_local_code(self):
+        # provide a random key to be used as HMAC key to generate the local code
+        # - want to keep this relatively short, and free of padding chars
+        from ubinascii import b2a_base64
+        self.next_local_code = b2a_base64(tcc.random.bytes(15)).strip().decode('ascii')
 
     async def approve_transaction(self, psbt, psbt_sha, story):
         # Approve or don't a transaction. Catch assertions and other
@@ -640,10 +647,10 @@ class HSMPolicy:
         assert psbt_sha and len(psbt_sha) == 32
         self.get_time_left()
 
-        with AuditLogger(self, 'psbt', psbt_sha) as log:
+        with AuditLogger('psbt', psbt_sha, self.never_log) as log:
 
             if self.must_log and log.is_unsaved:
-                log.refuse("Could not log details, and must_log is set")
+                self.refuse(log, "Could not log details, and must_log is set")
                 return 'x'
 
             log.info('Transaction signing requested:')
@@ -656,7 +663,7 @@ class HSMPolicy:
 
             try:
                 # do this super early so always cleared even if other issues
-                local_ok = self.consume_local_code()
+                local_ok = self.consume_local_code(psbt_sha)
 
                 if not self.rules:
                     raise ValueError("no txn signing allowed")
@@ -673,7 +680,7 @@ class HSMPolicy:
                 for u, (token, counter) in auth.items():
                     problem = Users.auth_okay(u, token, totp_time=counter, psbt_hash=psbt_sha)
                     if problem:
-                        log.refuse("User '%s' gave wrong auth value: %s" % (u, problem))
+                        self.refuse(log, "User '%s' gave wrong auth value: %s" % (u, problem))
                         return 'x'
                     users.append(u)
 
@@ -706,7 +713,7 @@ class HSMPolicy:
                         print(r)
                 else:
                     err = "Rejected: " + ', '.join(reasons)
-                    log.refuse(err)
+                    self.refuse(log, err)
                     return 'x'
 
                 if users:
@@ -715,7 +722,7 @@ class HSMPolicy:
                         msg += ', and the local operator.' if msg else 'local operator'
 
                 # looks good, do it
-                log.approve("Acceptable by rule #%d" % rule.index)
+                self.approve(log, "Acceptable by rule #%d" % rule.index)
 
                 if rule.per_period is not None:
                     self.record_spend(rule, total_out)
@@ -724,10 +731,29 @@ class HSMPolicy:
             except BaseException as exc:
                 sys.print_exception(exc)
                 err = "Rejected: %s: %s" % (problem_file_line(exc), str(exc))
-                log.refuse(err)
+                self.refuse(log, err)
 
                 return 'x'
-            
+
+    def refuse(self, log, msg):
+        # when things fail
+        log.info("\nREFUSED: " + msg)
+        self.refusals += 1
+        self.last_refusal = msg
+        
+        # Crash if too many refusals happen.
+        if self.refusals >= ABSOLUTE_MAX_REFUSALS:
+            from utils import clean_shutdown
+            from main import loop
+            loop.call_later_ms(250, clean_shutdown)
+
+    def approve(self, log, msg):
+        # when things fail
+        log.info("\nAPPROVED: " + msg)
+        self.approvals += 1
+        self.last_refusal = None
+
+
 def hsm_status_report():
     # Return a JSON-able object. Documented and external programs
     # rely on this output... and yet, don't overshare either.
