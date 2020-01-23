@@ -5,7 +5,7 @@
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ustruct, tcc, ux, chains, sys, gc, uio, ujson, uos, utime
+import stash, ustruct, tcc, chains, sys, gc, uio, ujson, uos, utime
 from sffile import SFFile
 from utils import problem_file_line, cleanup_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
@@ -28,6 +28,10 @@ MAX_SATS = const(2100000000000000)
 # too many refusals will cause reset
 ABSOLUTE_MAX_REFUSALS = const(100)
 
+# you have this many seconds after boot to escape HSM
+# mode, if you enable the boot_to_hsm feature
+BOOT_LOCKOUT_TIME = const(30)
+
 def hsm_policy_available():
     # Is there an HSM policy ready to go? Offer the menu item then.
     try:
@@ -35,6 +39,13 @@ def hsm_policy_available():
         return True
     except:
         return False
+
+def hsm_delete_policy():
+    # un-install HSM policy file.
+    try:
+        uos.unlink(POLICY_FNAME)
+    except:
+        pass
 
 def capture_backup():
     # get a JSON-compat string to store for backup file.
@@ -86,6 +97,7 @@ def pop_int(j, fld_name, mn=0, mx=1000):
     if v is None: return v
     assert int(v) == v, "%s: must be integer" % fld_name
     v = int(v)
+    assert mn < mx, '%s: cannot be specified' % fld_name
     assert mn <= v <= mx, "%s: must be in range: [%d..%d]" % (fld_name, mn, mx)
     return v
 
@@ -313,6 +325,7 @@ class HSMPolicy:
         self.approvals = 0
         self.sl_reads = 0
         self.pending_auth = {}
+        self.start_time = 0
 
         # velocity limits
         self.period_started = 0
@@ -354,6 +367,9 @@ class HSMPolicy:
         if self.set_sl:
             assert self.allow_sl, 'need allow_sl>=1'        # because pointless otherwise
 
+        # do we force them into HSM on bootup?
+        self.boot_to_hsm = pop_string(j, 'boot_to_hsm', 1, 6)
+
         # complex txn approval rules
         lst = pop_list(j, 'rules') or []
         self.rules = [ApprovalRule(i, idx) for idx, i in enumerate(lst)]
@@ -374,7 +390,7 @@ class HSMPolicy:
     def save(self):
         # Create JSON document for next time.
         simple = ['must_log', 'never_log', 'msg_paths', 'share_xpubs', 'share_addrs',
-                    'notes', 'period', 'allow_sl', 'warnings_ok']
+                    'notes', 'period', 'allow_sl', 'warnings_ok', 'boot_to_hsm']
         rv = dict()
         for fn in simple:
             rv[fn] = getattr(self, fn, None)
@@ -434,6 +450,8 @@ class HSMPolicy:
         if self.share_addrs:
             fd.write('- Address values values will be shared, if path is: %s.\n' 
                                 % plist(self.share_addrs))
+        if self.boot_to_hsm:
+            fd.write('- Boot to HSM enabled.\n')
 
         self.summary = fd.getvalue()
 
@@ -447,6 +465,8 @@ class HSMPolicy:
 
         # UX on web browser will need to know the local PIN code might be needed
         rv['uses_local_conf'] = any(r.local_conf for r in self.rules)
+
+        rv['uptime'] = self.uptime
 
         # Velocity hints
         left = self.get_time_left()
@@ -464,6 +484,8 @@ class HSMPolicy:
         import main
         assert not main.hsm_active
         main.hsm_active = self
+
+        self.start_time = utime.ticks_ms()
 
         if new_file:
             dis.fullscreen("Saving...")
@@ -616,9 +638,25 @@ class HSMPolicy:
 
         return (subpath in self.share_addrs)
 
+    @property
+    def uptime(self):
+        now = utime.ticks_ms()
+        if self.start_time == -1 or (now < self.start_time):
+            # will roll-over in 24 days or so:
+            self.start_time = -1
+            return 2147484
+        return utime.ticks_diff(now, self.start_time) / 1000
+
     def local_pin_entered(self, code):
         # 6 digits have been entered by local user (ie. they pressed Y, with digits in place)
         self.local_code_pending = code
+
+        if self.boot_to_hsm and self.uptime < BOOT_LOCKOUT_TIME:
+            if code == self.boot_to_hsm:
+                # let them out of jail
+                from hsm_ux import hsm_ux_obj
+                hsm_delete_policy()
+                hsm_ux_obj.test_restart = True
 
     def consume_local_code(self, psbt_sha):
         # Return T if they got the code right, also (regardless) pick 

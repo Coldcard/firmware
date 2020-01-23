@@ -410,7 +410,7 @@ def show_fatal_error(msg):
     dis.show()
 
 async def ux_aborted():
-    # us this when dangerous action is not performed due to confirmations
+    # use this when dangerous action is not performed due to confirmations
     await ux_dramatic_pause('Aborted.', 2)
     return None
 
@@ -425,82 +425,108 @@ def restore_menu():
         m.show()
 
 def abort_and_goto(m):
+    # cancel any menu drill-down and show them some UX
     from main import numpad
-
     the_ux.reset(m)
-
     numpad.abort_ux()
 
-async def show_qr_codes(addrs, is_alnum, start_n=0):
+def abort_and_push(m):
+    # keep menu position, but interrupt it with a new UX
+    from main import numpad
+    the_ux.push(m)
+    numpad.abort_ux()
+
+async def show_qr_codes(addrs, is_alnum, start_n):
+    o = QRDisplay(addrs, is_alnum, start_n, sidebar=None)
+    await o.interact_bare()
+
+class QRDisplay(UserInteraction):
     # Show a QR code for (typically) a list of addresses. Can only work on Mk3
 
-    # Version 2 would be nice, but can't hold what we need, even at min error correction,
-    # so we are forced into version 3 = 29x29 pixels
-    # - see <https://www.qrcode.com/en/about/version.html>
-    # - to display 29x29 pixels, we have to double them up: 58x58
-    # - not really providing enough space around it
-    # - inverted QR (black/white swap) still readable by scanners, altho wrong
+    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None):
+        self.is_alnum = is_alnum
+        self.idx = 0             # start with first address
+        self.invert = False      # looks better, but neither mode is ideal
+        self.addrs = addrs
+        self.sidebar = sidebar
+        self.start_n = start_n
+        self.qr_data = None
 
-    from utils import imported
-    from display import FontSmall, FontTiny
-    import uQR as uqr
-    from main import dis
+    def render_qr(self, msg):
+        # Version 2 would be nice, but can't hold what we need, even at min error correction,
+        # so we are forced into version 3 = 29x29 pixels
+        # - see <https://www.qrcode.com/en/about/version.html>
+        # - to display 29x29 pixels, we have to double them up: 58x58
+        # - not really providing enough space around it
+        # - inverted QR (black/white swap) still readable by scanners, altho wrong
 
-    idx = 0             # start with first address
-    invert = False      # looks better, but neither mode is ideal
+        from utils import imported
 
-    addr = addrs[idx]
-
-    def render(addr):
-        dis.busy_bar(True)
         with imported('uQR') as uqr:
-            if is_alnum:
+            if self.is_alnum:
                 # targeting 'alpha numeric' mode, typical len is 42
                 ec = uqr.ERROR_CORRECT_Q
-                assert len(addr) <= 47
+                assert len(msg) <= 47
             else:
                 # has to be 'binary' mode, altho shorter msg, typical 34-36
                 ec = uqr.ERROR_CORRECT_M
-                assert len(addr) <= 42
+                assert len(msg) <= 42
 
             q = uqr.QRCode(version=3, box_size=1, border=0, mask_pattern=3, error_correction=ec)
-            if is_alnum:
-                here = uqr.QRData(addr.upper().encode('ascii'),
+            if self.is_alnum:
+                here = uqr.QRData(msg.upper().encode('ascii'),
                                         mode=uqr.MODE_ALPHA_NUM, check_data=False)
             else:
-                here = uqr.QRData(addr.encode('ascii'), mode=uqr.MODE_8BIT_BYTE, check_data=False)
+                here = uqr.QRData(msg.encode('ascii'), mode=uqr.MODE_8BIT_BYTE, check_data=False)
             q.add_data(here)
             q.make(fit=False)
 
-            return q.get_matrix()
+            self.qr_data = q.get_matrix()
 
-    data = render(addr)
 
-    def redraw():
+    def redraw(self):
+        # Redraw screen.
+        from main import dis
+        from display import FontSmall, FontTiny
+
+
+        # what we are showing inside the QR
+        msg = self.addrs[self.idx]
+
+        # make the QR, if needed.
+        if not self.qr_data:
+            dis.busy_bar(True)
+
+            self.render_qr(msg)
+
+        # draw display
         dis.clear()
 
         w = 29          # because version=3
         XO,YO = 7, 3    # offsets
 
-        if not invert:
+        if not self.invert:
             dis.dis.fill_rect(XO-YO, 0, 64, 64, 1)
 
+        data = self.qr_data
+        inv = self.invert
         for x in range(w):
             for y in range(w):
                 px = data[x][y]
                 X = (x*2) + XO
                 Y = (y*2) + YO
-                dis.dis.fill_rect(X,Y, 2,2, px if invert else (not px))
+                dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
 
-        x, y = 73, 0 if is_alnum else 2
+        x, y = 73, 0 if self.is_alnum else 2
         ll = 7      # per line
-        for i in range(0, len(addr), ll):
-            dis.text(x, y, addr[i:i+ll], FontSmall)
-            y += 10 if is_alnum else 12
+        sidebar = self.sidebar or msg
+        for i in range(0, len(sidebar), ll):
+            dis.text(x, y, sidebar[i:i+ll], FontSmall)
+            y += 10 if self.is_alnum else 12
 
-        if not invert and len(addrs) > 1:
+        if not inv and len(self.addrs) > 1:
             # show path number, very tiny
-            ai = str(start_n + idx)
+            ai = str(self.start_n + self.idx)
             if len(ai) == 1:
                 dis.text(0, 30, ai[0], FontTiny)
             else:
@@ -509,31 +535,36 @@ async def show_qr_codes(addrs, is_alnum, start_n=0):
 
         dis.busy_bar(False)     # includes show
 
-    redraw()
 
-    from ux import ux_wait_keyup
+    async def interact_bare(self):
+        self.redraw()
 
-    while 1:
-        ch = await ux_wait_keyup()
+        while 1:
+            ch = await ux_wait_keyup()
 
-        if ch == '1':
-            invert = not invert
-            redraw()
-            continue
-        elif ch in 'xy':
-            return ch
-        if ch == '5' or ch == '7':
-            if idx > 0:
-                idx -= 1
-        elif ch == '8' or ch == '9':
-            if idx != len(addrs)-1:
-                idx += 1
-        else:
-            continue
+            if ch == '1':
+                self.invert = not self.invert
+                self.redraw()
+                continue
+            elif ch in 'xy':
+                break
+            elif ch == '5' or ch == '7':
+                if self.idx > 0:
+                    self.idx -= 1
+            elif ch == '8' or ch == '9':
+                if self.idx != len(self.addrs)-1:
+                    self.idx += 1
+            else:
+                continue
 
-        addr = addrs[idx]
-        data = render(addr)
-        redraw()
+            # self.idx has changed, so need full re-render
+            self.qr_data = None
+            self.redraw()
+
+    async def interact(self):
+        await self.interact_bare()
+        the_ux.pop()
+
 
 
 # EOF

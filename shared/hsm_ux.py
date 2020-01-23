@@ -102,11 +102,14 @@ async def start_hsm_approval(sf_len=0, usb_mode=False, startup_mode=False):
         is_new = False
 
     # parse as JSON
+    cant_fail = False
     try:
         try:
             js_policy = ujson.loads(json)
         except:
             raise ValueError("JSON parse fail")
+
+        cant_fail = bool(js_policy.get('boot_to_hsm', False))
 
         # parse the policy
         policy = HSMPolicy()
@@ -117,12 +120,29 @@ async def start_hsm_approval(sf_len=0, usb_mode=False, startup_mode=False):
             raise ValueError(err)
 
         # What to do in a menu case? Shouldn't happen anyway, but
-        # maybe they downgraded the CC firmware, and so old policy file
+        # maybe they upgraded the firmware, and so old policy file
         # isn't suitable anymore.
+        # - or maybe the settings have been f-ed with.
         print(err)
+
+        if startup_mode and cant_fail:
+            # die as a brick here, not safe to proceed w/o HSM active
+            import callgate, ux
+            ux.show_fatal_error(err.replace(': ', ':\n '))
+            callgate.show_logout(1)     # die w/ it visible
+            # not reached
 
         await ux_show_story("Cannot start HSM.\n\n%s" % err)
         return
+
+    # Boot-to-HSM feature: don't ask, just start policy immediately
+    if startup_mode and policy.boot_to_hsm:
+        msg = uio.StringIO()
+        policy.explain(msg)
+        policy.activate(False)
+        the_ux.reset(hsm_ux_obj)
+        return None
+        
 
     ar = ApproveHSMPolicy(policy, is_new)
     UserAuthorizedAction.active_request = ar
@@ -286,6 +306,9 @@ class hsmUxInteraction:
         from uasyncio import sleep_ms
 
         # Replace some drawing functions
+        orig_fullscreen = main.dis.fullscreen
+        orig_progress_bar = main.dis.progress_bar
+        orig_progress_bar_show = main.dis.progress_bar_show
         main.dis.fullscreen = self.hack_fullscreen
         main.dis.progress_bar = self.hack_progress_bar
         main.dis.progress_bar_show = self.hack_progress_bar
@@ -336,14 +359,18 @@ class hsmUxInteraction:
                 except AbortInteraction:
                     pass
 
-        # This code only reachable on the simulator and modified devices under test!
-        # - need to cleanup and reset so we run another test w/o system restart
-        assert is_simulator() or is_devmode
-
+        # This code only reachable on the simulator and modified devices under test,
+        # and when the "boot_to_hsm" feature is used and successfully unlock near
+        # boottime.
         from actions import goto_top_menu
         main.hsm_active = None
-        numpad.start()
         goto_top_menu()
+
+        # restore normal operation of UX
+        from display import Display
+        main.dis.fullscreen = orig_fullscreen
+        main.dis.progress_bar = orig_progress_bar
+        main.dis.progress_bar_show = orig_progress_bar_show
 
         return
 
