@@ -518,8 +518,7 @@ class QRDisplay(UserInteraction):
                 dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
 
         x, y = 73, 0 if self.is_alnum else 2
-        ll = 7      # per line
-        sidebar = self.sidebar or msg
+        sidebar, ll = self.sidebar or (msg, 7)
         for i in range(0, len(sidebar), ll):
             dis.text(x, y, sidebar[i:i+ll], FontSmall)
             y += 10 if self.is_alnum else 12

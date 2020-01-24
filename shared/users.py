@@ -7,7 +7,7 @@
 #
 
 import ustruct, hmac, tcc
-from public_constants import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC
+from public_constants import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC, USER_AUTH_SHOW_QR
 from public_constants import MAX_USERNAME_LEN, PBKDF2_ITER_COUNT
 from menu import MenuSystem, MenuItem
 from ucollections import namedtuple
@@ -113,9 +113,9 @@ class Users:
         # - show QR of secret (for TOTP/HOTP) if 
         from main import settings
 
-        qr_mode = bool(auth_mode & 0x80)
+        qr_mode = bool(auth_mode & USER_AUTH_SHOW_QR)
         if qr_mode:
-            auth_mode &= 0x7f
+            auth_mode &= ~USER_AUTH_SHOW_QR
             assert not secret
 
         assert auth_mode in {USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC}
@@ -158,7 +158,7 @@ class Users:
                 qr = 'otpauth://{m}otp/CC?secret={s}'.format(s=picked,
                         m=('t' if auth_mode==USER_AUTH_TOTP else 'h'))
 
-            o = QRDisplay([qr], False, sidebar=picked)
+            o = QRDisplay([qr], False, sidebar=(picked, 4))
             abort_and_push(o)
 
             picked = ''
