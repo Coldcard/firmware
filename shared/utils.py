@@ -169,12 +169,13 @@ def problem_file_line(exc):
 
     return rv or str(exc) or 'Exception'
 
-def cleanup_deriv_path(bin_path):
+def cleanup_deriv_path(bin_path, allow_star=False):
     # Clean-up path notation as string.
     # - raise exceptions on junk
     # - standardize on 'prime' notation (34' not 34p, or 34h)
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
+    # - if allow_star, then final position can be * or *' (wildcard)
     import ure
     from public_constants import MAX_PATH_DEPTH
     try:
@@ -186,7 +187,7 @@ def cleanup_deriv_path(bin_path):
     if s == '': return 'm'
 
     s = s.replace('p', "'").replace('h', "'")
-    mat = ure.match(r"(m|m/|)[0-9/']*", s)
+    mat = ure.match(r"(m|m/|)[0-9/']*" + ('' if not allow_star else r"(\*'|\*|)"), s)
     assert mat.group(0) == s, "invalid characters"
 
     parts = s.split('/')
@@ -203,6 +204,10 @@ def cleanup_deriv_path(bin_path):
 
     for p in parts:
         assert p != '' and p != "'", "empty path component"
+        if allow_star and '*' in p:
+            # - star or star' can be last only (checked by regex above)
+            assert p == '*' or p == "*'", "bad wildcard"
+            continue
         if p[-1] == "'":
             p = p[0:-1]
         try:
@@ -213,6 +218,26 @@ def cleanup_deriv_path(bin_path):
             
     return 'm/' + '/'.join(parts)
 
+def match_deriv_path(patterns, path):
+    # check for exact string match, or wildcard match (star in last position)
+    # - both args must be cleaned by cleanup_deriv_path() already
+    # - will accept any path, if 'any' in patterns
+    if 'any' in patterns:
+        return True
+
+    for pat in patterns:
+        if pat == path:
+            return True
+
+        if pat.endswith("/*") or pat.endswith("/*'"):
+            if pat[-1] == "'" and path[-1] != "'": continue
+            if pat[-1] == "*" and path[-1] == "'": continue
+
+            # same hardness so check up to last component of path
+            if pat.split('/')[:-1] == path.split('/')[:-1]:
+                return True
+
+    return False
 
 class DecodeStreamer:
     def __init__(self):

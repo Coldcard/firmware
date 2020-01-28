@@ -182,4 +182,59 @@ def test_hmac_key(sim_exec, count=50):
         assert got == expect
         print(got)
 
+@pytest.mark.parametrize('path,ans', [
+    ("m", "m"),
+    ("", "m"),
+    ("55555p/66666", "m/55555'/66666"),
+    ("m/1/2/3", "m/1/2/3"),
+    ("m/1'/2h/3p/4H/5P", "m/1'/2'/3'/4'/5'"),
+    ("m/1'/2h/3p/4H/*'", "m/1'/2'/3'/4'/*'"),
+    ("m/1'/2h/3p/4H/*", "m/1'/2'/3'/4'/*"),
+    ("m/10000000/5'/*", "m/10000000/5'/*"),
+])
+@pytest.mark.parametrize('star', [False, True])
+def test_cleanup_deriv_path_good(path, ans, star, sim_exec):
+
+    cmd = f'from utils import cleanup_deriv_path; RV.write(cleanup_deriv_path({repr(path)}, allow_star={star}))'
+    rv = sim_exec(cmd)
+
+    if not star and '*' in path:
+        assert 'Traceback' in rv
+        assert 'invalid characters' in rv
+    else:
+        assert rv == ans
+
+@pytest.mark.parametrize('path,ans', [
+    ("m/", "empty path component"),
+    ("m//", "empty path component"),
+    ("m/*/*", "invalid characters"),
+    ("m/4/100000000000000", "bad component"),
+    ("m/100000000000000/*", "bad component"),
+    ("m/-34/*", "invalid characters"),
+    ("m/*/5/*", "invalid characters"),
+    ("m/*/*", "invalid characters"),
+    ("m/*/5", "invalid characters"),
+])
+def test_cleanup_deriv_path_fails(path, ans, sim_exec, star=True):
+
+    cmd = f'from utils import cleanup_deriv_path; RV.write(cleanup_deriv_path({repr(path)}, allow_star={star}))'
+    rv = sim_exec(cmd)
+
+    assert 'Traceback' in rv
+    assert ans in rv
+    
+
+@pytest.mark.parametrize('patterns, paths, answers', [
+    (["m"], ("m", "m/2", "*", "any"), [True, False, False, False]),
+    (["any"], ("m", "m/2", "*", "1/2/3/4/5/6'/55'"), [True]*4),
+    (["m/1", "m/2/*'"], ("m", "m/1", "m/3/4", "m/2/4'", "m/2/4"), 
+                        [0,    1,    0,       1,        0]),
+])
+def test_match_deriv_path(patterns, paths, answers, sim_exec):
+    for path, ans in zip(paths, answers):
+        cmd = f'from utils import match_deriv_path; RV.write(str(match_deriv_path({repr(patterns)}, {repr(path)})))'
+        rv = sim_exec(cmd)
+        assert rv == str(bool(ans))
+    
+
 # EOF
