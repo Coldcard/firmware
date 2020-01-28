@@ -229,6 +229,8 @@ def test_cleanup_deriv_path_fails(path, ans, sim_exec, star=True):
     (["any"], ("m", "m/2", "*", "1/2/3/4/5/6'/55'"), [True]*4),
     (["m/1", "m/2/*'"], ("m", "m/1", "m/3/4", "m/2/4'", "m/2/4"), 
                         [0,    1,    0,       1,        0]),
+    (["m/1/*", "m/2/*'"], ("m/1/2", "m/1/2'", "m/2/1", "m/2/1'"), 
+                           [1,       0,       0,       1]),
 ])
 def test_match_deriv_path(patterns, paths, answers, sim_exec):
     for path, ans in zip(paths, answers):

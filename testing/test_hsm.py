@@ -251,6 +251,9 @@ def hsm_status(dev):
         assert txt[-1] == '}'
         j = json.loads(txt, object_hook=DICT)
         assert j.active in {True, False}
+        assert 'users' in j
+        assert j.active or ('wallets' in j)
+        assert 'chain' in j
         return j
 
     return doit
@@ -578,7 +581,7 @@ def test_big_txn(num_in, num_out, dev, quick_start_hsm, hsm_status, is_simulator
 
 def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     # message signing, but only at certain derivations
-    permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
+    permit = ['m/73', "m/*'", 'm/1p/3h/4/5/6/7' ]
     block = ['m', 'm/72', permit[-1][:-2]]
     msg = b'testing 123'
 
@@ -589,6 +592,7 @@ def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=A
         for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
 
             for p in permit: 
+                p = p.replace('*', '75333')
                 attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
             for p in block:
@@ -598,6 +602,7 @@ def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=A
     change_hsm(policy)
 
     for p in block+permit: 
+        p = p.replace('*', '75333')
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
 def test_sign_msg_any(quick_start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
@@ -805,9 +810,10 @@ def test_show_addr(dev, quick_start_hsm, change_hsm):
     addr = doit('m/1/2/3', addr_fmt)
     addr = doit('m/3', addr_fmt)
 
-    permit = ['m/73', 'm/1p/3h/4/5/6/7', 'm/1/2/3' ]
+    permit = ['m/73', 'm/1p/3h/4/5/6/7', 'm/1/2/3', "m/999'/*'" ]
     change_hsm(DICT(share_addrs=permit))
     for path in permit:
+        path = path.replace('*', '73')
         addr = doit(path, addr_fmt)
 
 def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_wallet, addr_vs_path):
@@ -842,26 +848,43 @@ def test_show_p2sh_addr(dev, hsm_reset, start_hsm, change_hsm, make_myself_walle
         assert 'Not allowed in HSM mode' in str(ee)
 
 def test_xpub_sharing(dev, start_hsm, change_hsm, addr_fmt=AF_CLASSIC):
-    # message signing, but only at certain derivations
-    permit = ['m/73', 'm/1p/3h/4/5/6/7' ]
-    block = ['m', 'm/72', permit[-1][:-2]]
+    # xpub sharing, but only at certain derivations
+    # - note 'm' is always shared
+    permit = ['m', 'm/73', "m/43/44/*'" , 'm/1p/3h/4/5/6/7']
+    block = ['m/72', 'm/43/44/99', permit[-1][:-2]]
 
     policy = DICT(share_xpubs=permit)
     start_hsm(policy)
 
     for p in permit: 
+        p = p.replace('*', '99')
         xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
 
-        for p in block:
-            with pytest.raises(CCProtoError) as ee:
-                xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
+    for p in block:
+        with pytest.raises(CCProtoError) as ee:
+            xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
             assert 'Not allowed in HSM mode' in str(ee)
 
     policy = DICT(share_xpubs=['any'])
     change_hsm(policy)
 
     for p in block+permit: 
+        p = p.replace('*', '99')
         xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
+
+    # default is block all but 'm'
+    policy = DICT()
+    change_hsm(policy)
+    for p in block+permit: 
+        if p == 'm': continue
+        p = p.replace('*', '99')
+        with pytest.raises(CCProtoError) as ee:
+            xpub = dev.send_recv(CCProtocolPacker.get_xpub(p), timeout=5000)
+        assert 'Not allowed in HSM mode' in str(ee)
+
+    # 'm' always works
+    xpub = dev.send_recv(CCProtocolPacker.get_xpub('m'), timeout=5000)
+    assert xpub[0:4] == 'tpub'
 
 @pytest.fixture
 def fast_forward(sim_exec):
@@ -1156,7 +1179,7 @@ def test_max_refusals(attempt_msg_sign, start_hsm, hsm_status, threshold=100):
     # CC will reboot itself
     time.sleep(.5)
 
-    with pytest.raises(BaseError) as ee:
+    with pytest.raises(BaseException) as ee:
         attempt_msg_sign('signing not permitted', b'msg here', 'm/73', timeout=1000)
     assert ('timeout' in str(ee)) or ('read error' in str(ee))
 

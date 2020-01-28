@@ -7,7 +7,7 @@
 #
 import stash, ustruct, tcc, chains, sys, gc, uio, ujson, uos, utime
 from sffile import SFFile
-from utils import problem_file_line, cleanup_deriv_path
+from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
 from stash import blank_object
 from users import Users, MAX_NUMBER_USERS, calc_local_pincode
@@ -79,13 +79,14 @@ def pop_list(j, fld_name, cleanup_fcn=None):
         return []
 
 def pop_deriv_list(j, fld_name, extra_val=None):
-    # expect a list of derivation paths, but also 'ANY' meaning accept all
+    # expect a list of derivation paths, but also 'any' meaning accept all
     # - maybe also 'p2sh' as special value
+    # - also, path can have n
     def cu(s):
         if s.lower() == 'any': return s.lower()
         if extra_val and s.lower() == extra_val: return s.lower()
         try:
-            return cleanup_deriv_path(s)
+            return cleanup_deriv_path(s, allow_star=True)
         except:
             raise ValueError('%s: invalid path (%s)' % (fld_name, s))
 
@@ -119,7 +120,7 @@ def assert_empty_dict(j):
 
 def cleanup_whitelist_value(s):
     # one element in a list of addresses or paths or descriptors?
-    # - later matching is string-based, so just using basic syntax check here
+    # - later matching is string-based, so just doing basic syntax check here
     # - must be checksumed-base58 or bech32
     try:
         tcc.codecs.b58_decode(s)
@@ -194,11 +195,11 @@ class ApprovalRule:
         def render(n):
             return ' '.join(chain.render_value(n))
 
-        if self.per_period:
+        if self.per_period is not None:
             rv = 'Up to %s per period' % render(self.per_period)
-            if self.max_amount:
+            if self.max_amount is not None:
                 rv += ', and up to %s per txn' % render(self.max_amount)
-        elif self.max_amount:
+        elif self.max_amount is not None:
             rv = 'Up to %s per txn' % render(self.max_amount)
         else:
             rv = 'Any amount'
@@ -312,8 +313,7 @@ class AuditLogger:
 
     def info(self, msg):
         print(msg, file=self.fd)
-        if self.fd != sys.stdout:
-            print(msg)
+        #if self.fd != sys.stdout: print(msg)
 
 class HSMPolicy:
     # implements and enforces the HSM signing/activity/logging policy
@@ -426,7 +426,7 @@ class HSMPolicy:
 
         fd.write('\nMessage signing:\n')
         if self.msg_paths:
-            fd.write("- Allowed if path is: %s\n" % plist(self.msg_paths))
+            fd.write("- Allowed if path matches: %s\n" % plist(self.msg_paths))
         else:
             fd.write("- Not allowed.\n")
 
@@ -445,10 +445,10 @@ class HSMPolicy:
             fd.write('- PSBT warnings will be ignored.\n')
 
         if self.share_xpubs:
-            fd.write('- XPUB values will be shared, if path is: %s.\n' 
+            fd.write('- XPUB values will be shared, if path matches: m OR %s.\n' 
                                 % plist(self.share_xpubs))
         if self.share_addrs:
-            fd.write('- Address values values will be shared, if path is: %s.\n' 
+            fd.write('- Address values values will be shared, if path matches: %s.\n' 
                                 % plist(self.share_addrs))
         if self.boot_to_hsm:
             fd.write('- Boot to HSM enabled.\n')
@@ -605,7 +605,7 @@ class HSMPolicy:
                 self.refuse(log, "Message signing not permitted")
                 return 'x'
 
-            if 'any' not in self.msg_paths and (subpath not in self.msg_paths):
+            if not match_deriv_path(self.msg_paths, subpath):
                 self.refuse(log, 'Message signing not enabled for that path')
                 return 'x'
 
@@ -616,13 +616,14 @@ class HSMPolicy:
     def approve_xpub_share(self, subpath):
         # Are we sharing XPUB read-out requests over USB?
 
+        # we already share xpub for m over USB, so can share here too
+        if subpath == 'm':
+            return True
+
         if not self.share_xpubs:
             return False
 
-        if 'any' in self.share_xpubs:
-            return True
-
-        return (subpath in self.share_xpubs)
+        return match_deriv_path(self.share_xpubs, subpath)
 
     def approve_address_share(self, subpath=None, is_p2sh=False):
         # Are we allowing "show address" requests over USB?
@@ -633,10 +634,7 @@ class HSMPolicy:
         if is_p2sh:
             return ('p2sh' in self.share_addrs)
 
-        elif 'any' in self.share_addrs:
-            return True
-
-        return (subpath in self.share_addrs)
+        return match_deriv_path(self.share_addrs, subpath)
 
     @property
     def uptime(self):
@@ -756,7 +754,7 @@ class HSMPolicy:
 
                 if users:
                     msg = ', '.join(auth.keys())
-                    if '_LOCAL' in users:
+                    if local_ok:
                         msg += ', and the local operator.' if msg else 'local operator'
 
                 # looks good, do it
@@ -796,7 +794,7 @@ def hsm_status_report():
     # Return a JSON-able object. Documented and external programs
     # rely on this output... and yet, don't overshare either.
     from auth import UserAuthorizedAction
-    from main import hsm_active
+    from main import hsm_active, settings
     from hsm_ux import ApproveHSMPolicy
 
     rv = dict()
@@ -810,9 +808,12 @@ def hsm_status_report():
             # we are waiting for local user to approve entry into HSM mode
             rv['approval_wait'] = True
 
-        # provide some keys they will need when making their policy file!
         rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()]
-        rv['users'] = Users.list()
+
+    # Need these values all the time, for good UX on bunker; yes, it's an
+    # info leakage.
+    rv['users'] = Users.list()
+    rv['chain'] = settings.get('chain', 'BTC')
 
     if hsm_active:
         hsm_active.status_report(rv)
