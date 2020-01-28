@@ -221,7 +221,6 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
     # Just do the writing
     from main import dis, pa, settings
     from files import CardSlot, CardMissingError
-    from actions import needs_microsd
 
     # Show progress:
     dis.fullscreen('Encrypting...' if words else 'Generating...')
@@ -370,6 +369,7 @@ async def restore_complete_doit(fname_or_fd, words):
     # - no return if successful (due to reboot)
     from main import dis
     from files import CardSlot, CardMissingError
+    from actions import needs_microsd
 
     # build password
     password = ' '.join(words)
