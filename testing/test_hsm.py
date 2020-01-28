@@ -17,6 +17,7 @@ from hashlib import sha256
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 from ckcc_protocol.protocol import CCUserRefused, CCProtoError
 from ckcc_protocol.protocol import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC
+from ckcc_protocol.utils import calc_local_pincode
 
 import json
 from pprint import pprint
