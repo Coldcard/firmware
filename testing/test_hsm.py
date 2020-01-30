@@ -87,6 +87,7 @@ def hsm_reset(dev, sim_exec):
     (DICT(must_log=0), 'MicroSD card will '),
     (DICT(never_log=1), 'No logging'),
     (DICT(warnings_ok=1), 'PSBT warnings'),
+    (DICT(priv_over_ux=1), 'optimized for privacy'),
 
     # boot-to-hsm
     (DICT(boot_to_hsm='any'), 'Boot to HSM enabled'),

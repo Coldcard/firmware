@@ -98,7 +98,7 @@ def pop_int(j, fld_name, mn=0, mx=1000):
     if v is None: return v
     assert int(v) == v, "%s: must be integer" % fld_name
     v = int(v)
-    assert mn < mx, '%s: cannot be specified' % fld_name
+    assert mn <= mx, '%s: cannot be specified' % fld_name
     assert mn <= v <= mx, "%s: must be in range: [%d..%d]" % (fld_name, mn, mx)
     return v
 
@@ -136,11 +136,13 @@ def cleanup_whitelist_value(s):
 
 class ApprovalRule:
     # A rule which describes transactions we are okay with approving. It documents:
-    # - whitelist: list/pattern of destination addresses allowed (or any)
+    # - whitelist: list of destination addresses allowed (or None=any)
+    # - max_amount: txn output limit
     # - per_period: velocity limit in satoshis
     # - users: list of authorized users
     # - min_users: how many of those are needed to approve
     # - local_conf: local user must also confirm w/ code
+    # - wallet: which multisig wallet to restrict to, or '1' for single signer only
 
     def __init__(self, j, idx):
         # read json dict provided
@@ -345,6 +347,7 @@ class HSMPolicy:
         self.must_log = pop_bool(j, 'must_log')
         self.never_log = pop_bool(j, 'never_log')
         assert not (self.must_log and self.never_log), 'log conflict'
+        self.priv_over_ux = pop_bool(j, 'priv_over_ux')
 
         # don't fail on PSBT warnings
         self.warnings_ok = pop_bool(j, 'warnings_ok')
@@ -390,7 +393,7 @@ class HSMPolicy:
     def save(self):
         # Create JSON document for next time.
         simple = ['must_log', 'never_log', 'msg_paths', 'share_xpubs', 'share_addrs',
-                    'notes', 'period', 'allow_sl', 'warnings_ok', 'boot_to_hsm']
+                    'notes', 'period', 'allow_sl', 'warnings_ok', 'boot_to_hsm', 'priv_over_ux']
         rv = dict()
         for fn in simple:
             rv[fn] = getattr(self, fn, None)
@@ -435,7 +438,7 @@ class HSMPolicy:
             fd.write('- MicroSD card %s receive log entries.\n' 
                                     % ('MUST' if self.must_log else 'will'))
         else:
-            fd.write("- No logging.")
+            fd.write("- No logging.\n")
         if self.set_sl:
             fd.write('- Storage Locker will be updated (once).\n')
         if self.allow_sl:
@@ -450,32 +453,43 @@ class HSMPolicy:
         if self.share_addrs:
             fd.write('- Address values values will be shared, if path matches: %s.\n' 
                                 % plist(self.share_addrs))
+        if self.priv_over_ux:
+            fd.write('- Status responses optimized for privacy.\n')
         if self.boot_to_hsm:
             fd.write('- Boot to HSM enabled.\n')
 
-        self.summary = fd.getvalue()
+        self.summary = fd.getvalue() if not self.priv_over_ux else None
 
     def status_report(self, rv):
-        # Add some values we will share over USB during HSM operation
-        for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'sl_reads', 'period']:
-            rv[fn] = getattr(self, fn, None)
-
-        # Next code the local user should enter, is calculated from this HMAC secret
-        rv['next_local_code'] = self.next_local_code
+        # Details we share over status report.
 
         # UX on web browser will need to know the local PIN code might be needed
-        rv['uses_local_conf'] = any(r.local_conf for r in self.rules)
+        uses_lc = any(r.local_conf for r in self.rules)
+        if uses_lc:
+            # Next code the local user should enter, is calculated from this HMAC secret
+            rv['next_local_code'] = self.next_local_code
 
-        rv['uptime'] = self.uptime
+        if not self.priv_over_ux:
+            # Add some values we will share over USB during HSM operation
+            for fn in ['summary', 'last_refusal', 'approvals', 'refusals', 'sl_reads', 'period']:
+                rv[fn] = getattr(self, fn, None)
 
-        # Velocity hints
-        left = self.get_time_left()
-        if (left is not None) and left >= 0:
-            rv['period_ends'] = int(left+.5)
-            rv['has_spent'] = [r.spent_so_far for r in self.rules]
+            rv['uptime'] = self.uptime
 
-        # sensitive values, summarize only!
-        rv['pending_auth'] = len(self.pending_auth)
+            # Velocity hints
+            left = self.get_time_left()
+            if (left is not None) and left >= 0:
+                rv['period_ends'] = int(left+.5)
+                rv['has_spent'] = [r.spent_so_far for r in self.rules]
+
+            rv['users'] = Users.list()
+
+            # sensitive values, summary only!
+            rv['pending_auth'] = len(self.pending_auth)
+        else:
+            # share much less... they will need to know the policy in place
+            for fn in ['last_refusal', 'approvals', 'refusals']:
+                rv[fn] = getattr(self, fn, None)
 
     def activate(self, new_file):
         # user approved the HSM activation, so apply it.
@@ -808,11 +822,9 @@ def hsm_status_report():
             # we are waiting for local user to approve entry into HSM mode
             rv['approval_wait'] = True
 
+        rv['users'] = Users.list()
         rv['wallets'] = [ms.name for ms in MultisigWallet.get_all()]
 
-    # Need these values all the time, for good UX on bunker; yes, it's an
-    # info leakage.
-    rv['users'] = Users.list()
     rv['chain'] = settings.get('chain', 'BTC')
 
     if hsm_active:
