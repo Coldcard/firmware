@@ -121,13 +121,13 @@ def hsm_reset(dev, sim_exec):
 
     # period / max amount
     (DICT(period=60, rules=[dict(per_period=1000)]),
-        '0.00001000 XTN per period'),
+        '0.00001 XTN per period'),
     (DICT(period=60, rules=[dict(per_period=1000, max_amount=2000)]),
-        'and up to 0.00002000 XTN per txn'),
+        'and up to 0.00002 XTN per txn'),
     (DICT(period=60, rules=[dict(max_amount=3000)]),
-        'Up to 0.00003000 XTN per txn'),
+        'Up to 0.00003 XTN per txn'),
     (DICT(rules=[dict(max_amount=3000)]),
-        'Up to 0.00003000 XTN per txn'),
+        'Up to 0.00003 XTN per txn'),
     (DICT(rules=[dict()]),
         'Any amount will be approved'),
 
@@ -252,8 +252,9 @@ def hsm_status(dev):
         assert txt[-1] == '}'
         j = json.loads(txt, object_hook=DICT)
         assert j.active in {True, False}
-        assert 'users' in j
-        assert j.active or ('wallets' in j)
+        if 'users' in j or 'wallets' in j:
+            assert 'users' in j
+            assert j.active or ('wallets' in j)
         assert 'chain' in j
         return j
 
@@ -329,7 +330,8 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
 
             j = hsm_status()
             assert j.active == True
-            assert not body or j.summary in body
+            if 'summary' in j:
+                assert not body or j.summary in body
 
         else:
             # do keypresses blindly
@@ -338,7 +340,7 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
             for ch in '12346':
                 need_keypress(ch, timeout=10000)
 
-            # needs to bless firmware step; can take >10 seconds?
+            # needs bless firmware step; can take >10 seconds?
             j = hsm_status(10000)
             assert j.active == True
 
@@ -416,7 +418,7 @@ def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, twea
     policy = DICT(rules=[dict(max_amount=amount)])
 
     stat = start_hsm(policy)
-    assert ('Up to %.8f XTN per txn will be approved' % (amount/1E8)) in stat.summary
+    assert ('Up to %g XTN per txn will be approved' % (amount/1E8)) in stat.summary
     assert 'Rule #1' in stat.summary
     assert 'Rule #2' not in stat.summary
 
@@ -1162,6 +1164,15 @@ def test_boot_to_hsm_too_late(start_hsm, hsm_status, enter_local_code):
     assert s.active == True
     assert 'policy_available' not in s
 
+
+def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
+    flds = ['sl_reads', 'period', 'users', 'summary', 'uptime', 'pending_auth']
+    load_hsm_users()
+    s = quick_start_hsm(dict(priv_over_ux=1))
+    assert all((f not in s) for f in flds)
+
+    s = quick_start_hsm(dict(priv_over_ux=False))
+    assert all((f in s) for f in flds)
 
 
 

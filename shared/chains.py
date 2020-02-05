@@ -138,11 +138,21 @@ class ChainsBase:
 
 
     @classmethod
-    def render_value(cls, val):
+    def render_value(cls, val, unpad=False):
         # convert nValue from a transaction into human form.
         # - always be precise
         # - return (string, units label)
-        return '%d.%08d' % (val // 1E8, val % 1E8), cls.ctype
+        if unpad:
+            if (val % 1E8):
+                # precise but unpadded
+                txt = ('%d.%08d' % (val // 1E8, val % 1E8)).rstrip('0')
+            else:
+                # round BTC amount, show no decimal
+                txt = '%d' % (val // 1E8)
+        else:
+            # all the zeros
+            txt = '%d.%08d' % (val // 1E8, val % 1E8)
+        return txt, cls.ctype
 
     @classmethod
     def render_address(cls, script):

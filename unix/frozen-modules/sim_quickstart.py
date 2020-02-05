@@ -76,14 +76,15 @@ if '--hsm' in sys.argv:
     # - also prelaod a long-secret for an onion server
     # - must already be a .../unix/work/hsm-policy.json file in place
     from main import numpad
-    from sim_secel import SECRETS
-    m = 'ED25519-V3 OGlICrIPZE6DEtsGfcWH2pO6Uz6ZI+w05BYOERMN0XahGicvBhSR4HcgcX3mzk/qM3dWFZ8QAOEIvPFujlhULg=='
-    SECRETS['ls'] = bytearray([len(m), 0]) + m.encode('ascii') + (b'\0' * (416 - 2 - len(m)))
+    if 0:
+        from sim_secel import SECRETS
+        m = 'QnVuawt8phazfnQYVJLzrqrrVScN+7A54QaU+f4OXV3MeR00'
+        SECRETS['ls'] = bytearray([len(m), 0]) + m.encode('ascii') + (b'\0' * (416 - 2 - len(m)))
 
+    # accept HSM policy, already installed
     numpad.inject('y')      
     
     #numpad.inject('3')
-    # accept HSM policy, but already installed
     #for ch in '123460':
         #numpad.inject(ch)
 
