@@ -5,7 +5,7 @@
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ustruct, tcc, chains, sys, gc, uio, ujson, uos, utime
+import stash, ustruct, tcc, chains, sys, gc, uio, ujson, uos, utime, ckcc
 from sffile import SFFile
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
@@ -195,7 +195,7 @@ class ApprovalRule:
         chain = chains.current_chain()
 
         def render(n):
-            return ' '.join(chain.render_value(n))
+            return ' '.join(chain.render_value(n, True))
 
         if self.per_period is not None:
             rv = 'Up to %s per period' % render(self.per_period)
@@ -401,7 +401,11 @@ class HSMPolicy:
         rv['rules'] = [i.to_json() for i in self.rules]
 
         # never write this secret into JSON
-        assert 'set_sl' not in rv
+        if ckcc.is_simulator():
+            # .. except simulator case
+            rv['set_sl'] = self.set_sl
+        else:
+            assert 'set_sl' not in rv
 
         return rv
 
@@ -466,7 +470,7 @@ class HSMPolicy:
         # UX on web browser will need to know the local PIN code might be needed
         uses_lc = any(r.local_conf for r in self.rules)
         if uses_lc:
-            # Next code the local user should enter, is calculated from this HMAC secret
+            # The code the local user should enter, is calculated from this HMAC secret
             rv['next_local_code'] = self.next_local_code
 
         if not self.priv_over_ux:
@@ -758,7 +762,7 @@ class HSMPolicy:
                     except BaseException as exc:
                         # let's not share these details, except for debug; since
                         # they are not errors, just picking best rule in priority order
-                        r = "rule #%d: %s: %s" % (rule.index, problem_file_line(exc), str(exc))
+                        r = "rule #%d: %s" % (rule.index, str(exc) or problem_file_line(exc))
                         reasons.append(r)
                         print(r)
                 else:
