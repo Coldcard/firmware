@@ -150,7 +150,7 @@ def need_keypress(dev, request):
 @pytest.fixture(scope='module')
 def master_xpub(dev):
     if hasattr(dev.dev, 'pipe'):
-        # works better again simulator in HSM mode, where the xpub cmd may be disabled
+        # this works better against simulator in HSM mode, where the xpub cmd may be disabled
         return simulator_fixed_xpub
 
     r = dev.send_recv(CCProtocolPacker.get_xpub('m'), timeout=None, encrypt=1)
@@ -760,7 +760,7 @@ def try_sign(start_sign, end_sign):
 @pytest.fixture
 def start_sign(dev):
 
-    def doit(filename, finalize=False):
+    def doit(filename, finalize=False, stxn_flags=0x0):
         if filename[0:5] == b'psbt\xff':
             ip = filename
             filename = 'memory'
@@ -772,7 +772,7 @@ def start_sign(dev):
 
         ll, sha = dev.upload_file(ip)
 
-        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize))
+        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize, flags=stxn_flags))
 
         return ip
 
@@ -782,7 +782,7 @@ def start_sign(dev):
 def end_sign(dev, need_keypress):
     from ckcc_protocol.protocol import CCUserRefused
 
-    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False):
+    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
@@ -809,6 +809,10 @@ def end_sign(dev, need_keypress):
 
         resp_len, chk = done
         psbt_out = dev.download_file(resp_len, chk)
+
+        if not expect_txn:
+            # skip checks; it's text
+            return psbt_out
 
         if not finalize:
             if in_psbt:
