@@ -6,6 +6,7 @@
 import ckcc, pyb, callgate, sys, ux, tcc, stash
 from uasyncio import sleep_ms, IORead
 from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN, AFC_SCRIPT
+from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
 from ckcc import rng_bytes, watchpoint, is_simulator
@@ -250,7 +251,7 @@ class USBHandler:
         elif isinstance(resp, int):
             resp = pack('<4sI', 'int1', resp)
         else:
-            print("Unknown resp: %r" % resp)
+            print("Unknown resp: " + repr(resp))
             raise NotImplementedError()
 
         assert len(resp) >= 4
@@ -453,7 +454,7 @@ class USBHandler:
             assert 50 < txn_len <= MAX_TXN_LEN, "bad txn len"
 
             from auth import sign_transaction
-            sign_transaction(txn_len, bool(flags & 0x01), txn_sha)
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha)
             return None
 
         if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
@@ -477,6 +478,7 @@ class USBHandler:
             if not req.result:
                 # STILL waiting on user
                 return None
+
 
             if cmd == 'pwok':
                 # return new root xpub

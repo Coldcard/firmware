@@ -7,6 +7,7 @@
 import stash, ure, tcc, ux, chains, sys, gc, uio, version
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC
+from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
@@ -124,6 +125,26 @@ RFC_SIGNATURE_TEMPLATE = '''\
 -----END {blockchain} SIGNED MESSAGE-----
 '''
 
+def sign_message_digest(digest, subpath):
+    # do the signature itself!
+    from main import dis
+
+    dis.fullscreen('Signing...', percent=.25)
+
+    with stash.SensitiveValues() as sv:
+        dis.progress_bar_show(.50)
+
+        node = sv.derive_path(subpath)
+        pk = node.private_key()
+        sv.register(pk)
+
+        dis.progress_bar_show(.75)
+        rv = tcc.secp256k1.sign(pk, digest)
+
+    dis.progress_bar_show(1)
+
+    return rv
+
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None):
         super().__init__()
@@ -154,22 +175,10 @@ class ApproveMessageSign(UserAuthorizedAction):
             # they don't want to!
             self.refused = True
         else:
-            dis.fullscreen('Signing...', percent=.25)
 
-            # do the signature itself!
-            with stash.SensitiveValues() as sv:
-                dis.progress_bar_show(.50)
-
-                node = sv.derive_path(self.subpath)
-                pk = node.private_key()
-                sv.register(pk)
-
-                digest = sv.chain.hash_message(self.text.encode())
-
-                dis.progress_bar_show(.75)
-                self.result = tcc.secp256k1.sign(pk, digest)
-
-            dis.progress_bar_show(1)
+            # perform signing (progress bar shown)
+            digest = chains.current_chain().hash_message(self.text.encode())
+            self.result = sign_message_digest(digest, self.subpath)
 
             if self.approved_cb:
                 # for micro sd case
@@ -213,7 +222,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 def sign_msg(text, subpath, addr_fmt):
     # Convert to strings
     try:
-        text = str(text,'ascii')
+        text = str(text, 'ascii')
     except UnicodeError:
         raise AssertionError('must be ascii')
 
@@ -336,10 +345,12 @@ def sign_txt_file(filename):
 
 
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, do_finalize=False, approved_cb=None, psbt_sha=None):
+    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None):
         super().__init__()
         self.psbt_len = psbt_len
-        self.do_finalize = do_finalize
+        self.do_finalize = bool(flags & STXN_FINALIZE)
+        self.do_visualize = bool(flags & STXN_VISUALIZE)
+        self.stxn_flags = flags
         self.psbt = None
         self.psbt_sha = psbt_sha
         self.approved_cb = approved_cb
@@ -438,6 +449,14 @@ class ApproveTransaction(UserAuthorizedAction):
                 for label, m in self.psbt.warnings:
                     msg.write('- %s: %s\n\n' % (label, m))
 
+            if self.do_visualize:
+                # stop here and just return the text of approval message itself
+                self.result = await self.save_visualization(msg, (self.stxn_flags & STXN_SIGNED))
+                del self.psbt
+                self.done()
+
+                return
+
             if not hsm_active:
                 msg.write("\nPress OK to approve and sign transaction. X to abort.")
                 ch = await ux_show_story(msg, title="OK TO SEND?")
@@ -501,6 +520,34 @@ class ApproveTransaction(UserAuthorizedAction):
 
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
+
+    def save_visualization(self, msg, sign_text=False):
+        # write text into spi flash, maybe signing it as we go
+        # - return length and checksum
+        txt_len = msg.seek(0, 2)
+        msg.seek(0)
+
+        chk = self.chain.hash_message(msg_len=txt_len) if sign_text else None
+
+        with SFFile(TXN_OUTPUT_OFFSET, max_size=txt_len+300, message="Visualizing...") as fd:
+            await fd.erase()
+
+            while 1:
+                blk = msg.read(256).encode('ascii')
+                if not blk: break
+                if chk:
+                    chk.update(blk)
+                fd.write(blk)
+
+            if chk:
+                from ubinascii import b2a_base64
+                # append the signature
+                digest = tcc.sha256(chk.digest()).digest()
+                sig = sign_message_digest(digest, 'm')
+                fd.write(b2a_base64(sig).decode('ascii').strip())
+                fd.write('\n')
+
+            return (fd.tell(), fd.checksum.digest())
 
     def output_change_text(self, msg):
         # Produce text report of what the "change" outputs are (based on our opinion).
@@ -604,11 +651,10 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write('%s %s\n' % self.chain.render_value(mtot))
 
 
-def sign_transaction(psbt_len, do_finalize=False, psbt_sha=None):
+def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
     # transaction (binary) loaded into sflash already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, do_finalize,
-                                                                        psbt_sha=psbt_sha)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, flags, psbt_sha=psbt_sha)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)

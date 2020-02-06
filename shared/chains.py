@@ -6,7 +6,7 @@
 import tcc
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
-from serializations import hash160
+from serializations import hash160, ser_compact_size
 from ucollections import namedtuple
 from opcodes import OP_CHECKMULTISIG
 
@@ -36,8 +36,13 @@ class ChainsBase:
 
     @classmethod
     def msg_signing_prefix(cls):
-        # see strMessageMagic ... but usually just the coin's name
         return cls.name.encode() + b' Signed Message:\n'
+
+    @classmethod
+    def msg_signing_prefix(cls):
+        # see strMessageMagic ... but usually just the coin's name
+        # prefixed w/ a length byte
+        return '\x18Bitcoin Signed Message:\n'
 
     @classmethod
     def serialize_private(cls, node, addr_fmt=AF_CLASSIC):
@@ -121,17 +126,20 @@ class ChainsBase:
         return node.serialize_private(cls.b58_privkey)
 
     @classmethod
-    def hash_message(cls, msg):
+    def hash_message(cls, msg=None, msg_len=0):
         # Perform sha256 for message-signing purposes (only)
+        # - or get setup for that, if msg == None
         s = tcc.sha256()
 
-        prefix = cls.msg_signing_prefix()
-        assert len(prefix) < 253
-        s.update(bytes([len(prefix)]))
-        s.update(prefix)
+        s.update(cls.msg_signing_prefix())
 
-        assert len(msg) < 253
-        s.update(bytes([len(msg)]))
+        msg_len = msg_len or len(msg)
+
+        s.update(ser_compact_size(msg_len))
+
+        if msg is None:
+            return s
+
         s.update(msg)
 
         return tcc.sha256(s.digest()).digest()
@@ -221,10 +229,6 @@ class BitcoinTestnet(BitcoinMain):
     b58_privkey = bytes([239])
 
     b44_cointype = 1
-
-    @classmethod
-    def msg_signing_prefix(cls):
-        return 'Bitcoin Signed Message:\n'
 
 # Add to this list of all choices; keep testnet stuff near bottom
 # because this order matches UI as presented to users.

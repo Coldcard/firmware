@@ -15,6 +15,7 @@ from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE
 from txn import *
+from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 
 @pytest.mark.parametrize('finalize', [ False, True ])
 def test_sign1(dev, need_keypress, finalize):
@@ -746,8 +747,9 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
 @pytest.mark.parametrize('act_outs', [ 2, 1, -1])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
-def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
-                        act_outs, segwit, out_style, num_ins=3):
+@pytest.mark.parametrize('visualized', [0, STXN_VISUALIZE, STXN_VISUALIZE|STXN_SIGNED])
+def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, master_xpub,
+                        act_outs, segwit, out_style, visualized, num_ins=3):
     # create a TXN which has change outputs, which shouldn't be shown to user, and also not fail.
     xp = dev.master_xpub
 
@@ -758,13 +760,35 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
     open('debug/change.psbt', 'wb').write(psbt)
 
     # should be able to sign, but get warning
-    start_sign(psbt, False)
+    if not visualized:
+        start_sign(psbt, False)
 
-    time.sleep(.1)
-    title, story = cap_story()
-    print(repr(story))
+        time.sleep(.1)
+        title, story = cap_story()
+        print(repr(story))
 
-    assert title == "OK TO SEND?"
+        assert title == "OK TO SEND?"
+    else:
+        # use new feature to have Coldcard return the 'visualization' of transaction
+        start_sign(psbt, False, stxn_flags=visualized)
+        story = end_sign(accept=None, expect_txn=False)
+
+        story = story.decode('ascii')
+
+        if (visualized & STXN_SIGNED):
+            # last line should be signature, using 'm' over the rest
+            from pycoin.contrib.msg_signing import verify_message
+            from pycoin.key.BIP32Node import BIP32Node
+
+            #def verify_message(key_or_address, signature, message=None, msg_hash=None, netcode=None):
+
+            assert story[-1] == '\n'
+            last_nl = story[:-1].rindex('\n')
+            msg, sig = story[0:last_nl+1], story[last_nl:]
+            wallet = BIP32Node.from_wallet_key(master_xpub)
+            assert verify_message(wallet, sig, message=msg) == True
+            story = msg
+
     assert 'Network fee' in story
 
     if couts < num_outs:
@@ -786,9 +810,6 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
         assert set(i[0:4] for i in addrs) == {'tb1q'}
     elif out_style == 'p2wpkh-p2sh':
         assert set(i[0] for i in addrs) == {'2'}
-
-    # no need
-    #signed = end_sign(True, finalize=True)
 
 def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
     # allow almost any PSBT to run on simulator, at least up until wrong pubkeys detected
