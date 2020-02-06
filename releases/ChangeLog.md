@@ -1,4 +1,17 @@
-## 3.0.7 - Jan, 2020
+## 3.1.0 - Feb ??, 2020
+
+- HSM (Hardware Security Module) mode: give Coldcard spending rules, including whitelisted
+  addresses, velocity limits, subsets of authorizing users ... and Coldcard can sign with
+  no human present. Requires companion software to setup (ck-bunker or ckcc-protocol) to 
+  enabled and disabled by default, with multi-step on-screen confirmation to enable.
+- Enhancement: New "user management" menu. Advanced > User Management shows a menu
+  with usernames, some details and a 'delete user' command. USB commands must be used to
+  create user accounts and they are only used to authenticate human approvals in HSM mode.
+- Enhancement: PSBT transaction can be "visualized" over USB, meaning you can view what
+  the Coldcard will show on the screen during approval process, as text, downloaded over USB.
+  That text can be signed (always with root key) to prove authenticity.
+
+## 3.0.7 - Feb ??, 2020
 
 - IMPORTANT NOTE: You must upgrade to this version before any subsequent
   version (regardless of your hardware).
