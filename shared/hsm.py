@@ -787,7 +787,7 @@ class HSMPolicy:
                 return 'y'
             except BaseException as exc:
                 sys.print_exception(exc)
-                err = "Rejected: %s: %s" % (problem_file_line(exc), str(exc))
+                err = "Rejected: " + (str(exc) or problem_file_line(exc))
                 self.refuse(log, err)
 
                 return 'x'
