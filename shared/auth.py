@@ -125,11 +125,12 @@ RFC_SIGNATURE_TEMPLATE = '''\
 -----END {blockchain} SIGNED MESSAGE-----
 '''
 
-def sign_message_digest(digest, subpath):
+def sign_message_digest(digest, subpath, prompt):
     # do the signature itself!
     from main import dis
 
-    dis.fullscreen('Signing...', percent=.25)
+    if prompt:
+        dis.fullscreen(prompt, percent=.25)
 
     with stash.SensitiveValues() as sv:
         dis.progress_bar_show(.50)
@@ -178,7 +179,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 
             # perform signing (progress bar shown)
             digest = chains.current_chain().hash_message(self.text.encode())
-            self.result = sign_message_digest(digest, self.subpath)
+            self.result = sign_message_digest(digest, self.subpath, "Signing...")
 
             if self.approved_cb:
                 # for micro sd case
@@ -543,7 +544,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 from ubinascii import b2a_base64
                 # append the signature
                 digest = tcc.sha256(chk.digest()).digest()
-                sig = sign_message_digest(digest, 'm')
+                sig = sign_message_digest(digest, 'm', None)
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
