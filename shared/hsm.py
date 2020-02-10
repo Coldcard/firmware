@@ -364,7 +364,7 @@ class HSMPolicy:
         self.period = pop_int(j, 'period', 1, 3*24*60)
 
         # how many times they may view the long-secret
-        self.allow_sl = pop_int(j, 'allow_sl', 1, 10)
+        self.allow_sl = pop_int(j, 'allow_sl', 1, 100)
 
         self.set_sl = pop_string(j, 'set_sl', 16, AE_LONG_SECRET_LEN-2)
         if self.set_sl:
@@ -443,11 +443,14 @@ class HSMPolicy:
                                     % ('MUST' if self.must_log else 'will'))
         else:
             fd.write("- No logging.\n")
+
         if self.set_sl:
-            fd.write('- Storage Locker will be updated (once).\n')
-        if self.allow_sl:
+            fd.write('- Storage Locker will be updated, and can be read %d times.\n'
+                            % self.allow_sl)
+        elif self.allow_sl:
             fd.write('- Storage Locker can be read only %s.\n' 
                         % ('once' if self.allow_sl == 1 else ('%d times' % self.allow_sl)))
+
         if self.warnings_ok:
             fd.write('- PSBT warnings will be ignored.\n')
 
@@ -582,7 +585,7 @@ class HSMPolicy:
         # USB request to read the storage locker (aka. long secret from 608a)
         # - limited by counter, because typically only needed at startup
         # - please keep in mind the desktop needs this secret, and probably blabs it
-        # - our memory also is contaiminated with this secret, and no easy way to clean
+        # - our memory also is contaminated with this secret, and no easy way to clean
         assert self.allow_sl, 'not allowed'
         assert self.sl_reads < self.allow_sl, 'consumed'
         self.sl_reads += 1
