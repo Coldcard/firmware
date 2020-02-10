@@ -12,7 +12,6 @@ from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_
 from ux import AbortInteraction
 from utils import problem_file_line, cleanup_deriv_path
 from auth import UserAuthorizedAction
-from utils import pretty_short_delay, pretty_delay
 from uasyncio.queues import QueueEmpty
 from ubinascii import a2b_base64
 from users import Users, MAX_NUMBER_USERS
@@ -25,6 +24,13 @@ from hsm import HSMPolicy, POLICY_FNAME, LOCAL_PIN_LENGTH
 # storing as a string instead of a tuple saves 80 bytes
 cylon = b':AHNTZ`eimprsttsqnkgb]WQKD=70)#\x1d\x17\x12\r\t\x06\x03\x01\x00\x00\x01\x02\x04\x07\x0b\x0f\x14\x1a &,3'
 
+
+def period_display(sec):
+    # imprecise, shorter on screen display
+    if sec >= 3600:
+        return '%2dh %2dm' % (sec //3600, (sec//60) % 60)
+    else:
+        return '%2dm %2ds' % ((sec//60) % 60, sec % 60)
 
 class ApproveHSMPolicy(UserAuthorizedAction):
     title = 'Start HSM?'
@@ -225,13 +231,13 @@ class hsmUxInteraction:
         elif left == -1:
             left = ' --'
         else:
-            left = pretty_short_delay(left)
+            left = period_display(left)
 
         # 3 statistics; see draw_background for X positions
         y = 28+1
         for x, val in [ (14, str(hsm_active.approvals)),
                         (51, str(hsm_active.refusals)),
-                        (96, left)]:
+                        (98, left)]:
             tw = 7*len(val)     # = dis.width(val, FontSmall)
             dis.text(x - tw//2, y, val)
 
