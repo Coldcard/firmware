@@ -118,6 +118,7 @@ def hsm_reset(dev, sim_exec):
     (DICT(allow_sl=1), 'once'),
     (DICT(allow_sl=10), '10 times'),
     (DICT(set_sl='abcd'*4, allow_sl=1), 'Locker will be updated'),
+    (DICT(set_sl='abcd'*4, allow_sl=100), 'Locker will be updated'),
 
     # period / max amount
     (DICT(period=60, rules=[dict(per_period=1000)]),
