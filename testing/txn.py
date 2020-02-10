@@ -10,7 +10,7 @@ from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRI
 from io import BytesIO
 from pprint import pprint, pformat
 from decimal import Decimal
-from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
+from helpers import fake_dest_addr, make_change_addr
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, simulator_fixed_xprv
 
