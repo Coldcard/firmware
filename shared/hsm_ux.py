@@ -346,6 +346,9 @@ class hsmUxInteraction:
                     if len(self.digits) < LOCAL_PIN_LENGTH:
                         # allow only 6 digits
                         self.digits += ch[0]
+                    if len(self.digits) == LOCAL_PIN_LENGTH:
+                        # send it, even if they didn't press OK yet
+                        main.hsm_active.local_pin_entered(self.digits)
 
                 # do immediate screen update
                 continue
