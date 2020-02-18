@@ -109,6 +109,7 @@ def hsm_reset(dev, sim_exec):
     (DICT(share_xpubs=["any"]), ['XPUB values will be shared', "(any path)"]),
 
     (DICT(notes='sdfjkljsdfljklsdf'), 'sdfjkljsdfljklsdf'),
+    (DICT(notes='xy'*40), 'xy'*40),
 
     (DICT(period=2), '2 minutes'),
     (DICT(period=60), '1 hrs'),
