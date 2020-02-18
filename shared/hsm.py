@@ -358,7 +358,7 @@ class HSMPolicy:
         self.share_addrs = pop_deriv_list(j, 'share_addrs', 'p2sh')
 
         # free text shown at top
-        self.notes = j.pop('notes', None)
+        self.notes = pop_string(j, 'notes', 1, 80)
 
         # time period, in minutes
         self.period = pop_int(j, 'period', 1, 3*24*60)
