@@ -1,11 +1,11 @@
-import uio, sys, main
+import uio, sys, main, version
 
 def do_usb_command(cmd, args):
     # TESTING commands!
-    # - only to be implemented on the simulator!!
-    # - pleaes don't freak out, stay calm
+    # - please don't freak out, stay calm.
     # - if you can trick us into running this, can run anything worse directly
-    # - and we don't ship this code on the real product, only part of simulator
+    # - we don't ship this code on the real product
+    # - commands must be upper case
 
     if cmd == 'XKEY':
         from main import numpad

@@ -9,3 +9,6 @@ ENV
 
 snapshot-*.png
 movie-*.gif
+
+# this file is created once you import an HSM policy
+unix/work/hsm-policy.json

@@ -245,5 +245,4 @@ class MenuSystem:
                 # abort/nothing selected/back out?
                 return None
 
-
-#demo()
+# EOF

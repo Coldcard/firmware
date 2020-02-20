@@ -83,6 +83,11 @@ def render_backup_contents():
         if k == 'xfp': continue         # redundant, and wrong if bip39pw
         ADD('setting.' + k, v)
 
+    if version.has_fatram:
+        import hsm
+        if hsm.hsm_policy_available():
+            ADD('hsm_policy', hsm.capture_backup())
+
     rv.write('\n# EOF\n')
 
     return rv.getvalue()
@@ -165,6 +170,10 @@ async def restore_from_dict(vals):
     # write out
     settings.save()
 
+    if version.has_fatram and ('hsm_policy' in vals):
+        import hsm
+        hsm.restore_backup(vals['hsm_policy'])
+
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '
             'updated settings and/or seed.', title='Success!')
@@ -212,7 +221,6 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
     # Just do the writing
     from main import dis, pa, settings
     from files import CardSlot, CardMissingError
-    from actions import needs_microsd
 
     # Show progress:
     dis.fullscreen('Encrypting...' if words else 'Generating...')
@@ -361,6 +369,7 @@ async def restore_complete_doit(fname_or_fd, words):
     # - no return if successful (due to reboot)
     from main import dis
     from files import CardSlot, CardMissingError
+    from actions import needs_microsd
 
     # build password
     password = ' '.join(words)

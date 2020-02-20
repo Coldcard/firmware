@@ -3,7 +3,7 @@
 Only the zero key is public, the others are ultra super secret.
 
 But if you had them, they would go in this directory, and be excluded
-by git by the .gitignore file.
+from git by the .gitignore file.
 
 Public keys listed here are also in the bootrom source and binary.
 

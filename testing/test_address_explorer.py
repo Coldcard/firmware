@@ -16,9 +16,9 @@ def mk_common_derivations():
         coin_type = netcode_map[netcode]
         return [
             # path format, address format
-            ( "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
-            ( "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
             ( "m/{change}/{idx}", AF_CLASSIC ),
+            #( "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
+            #( "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
             ( "m/44'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_CLASSIC ),
             ( "m/49'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH_P2SH ),
             ( "m/84'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH )
@@ -56,9 +56,16 @@ def parse_display_screen(cap_story):
     def doit(start, n):
         title, body = cap_story()
         lines = body.split('\n')
-        assert lines[0] == 'Press 1 to save to MicroSD.'
-        assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
-        raw_addrs = lines[4:-1] # Remove header & last line
+        if start == 0:
+            assert 'Press 1 to save to MicroSD.' in lines[0]
+            assert '4 to view QR Codes' in lines[0]
+            assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
+            raw_addrs = lines[4:-2] # Remove header & last line
+        else:
+            # no header after first page
+            assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
+            raw_addrs = lines[2:-2]
+
         d = dict()
         for path_raw, addr, empty in zip(*[iter(raw_addrs)]*3):
             path = path_raw.split(" =>")[0]

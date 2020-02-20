@@ -147,7 +147,7 @@ async def test_sflash():
             await sleep_ms(250)
             if not sf.is_busy(): break
 
-        assert not sf.is_busy(), "sflash erase didn't finish"
+        assert not sf.is_busy(), "didn't finish"
 
         # leave chip blank
         if phase == 1: break
@@ -156,12 +156,12 @@ async def test_sflash():
         buf = bytearray(32)
         for addr in range(0, msize, 1024):
             sf.read(addr, buf)
-            assert set(buf) == {255}, "sflash not blank:"+repr(buf)
+            assert set(buf) == {255}, "not blank"
 
             rnd = tcc.sha256(pack('I', addr)).digest()
             sf.write(addr, rnd)
             sf.read(addr, buf)
-            assert buf == rnd, "sflash write failed"
+            assert buf == rnd, "write failed"
 
             dis.progress_bar_show(addr/msize)
 
@@ -169,7 +169,7 @@ async def test_sflash():
         for addr in range(0, msize, 1024):
             expect = tcc.sha256(pack('I', addr)).digest()
             sf.read(addr, buf)
-            assert buf == expect, "sflash readback failed"
+            assert buf == expect, "readback failed"
 
             dis.progress_bar_show(addr/msize)
 
@@ -235,9 +235,9 @@ async def test_microsd():
 
         try:
             blks, bsize, ctype = sd.info()
-            assert bsize == 512, "wrong block size"
+            assert bsize == 512
         except:
-            assert 0, "unable to get card info"
+            assert 0, "card info"
 
         # just read it a bit, writing would prove little
         buf = bytearray(512)
@@ -266,9 +266,7 @@ async def start_selftest():
         await test_numpad()
         await test_sflash()
         await test_secure_element()
-
-        if version.has_membrane:
-            await test_sd_active()
+        await test_sd_active()
 
         # add more tests here
 

@@ -83,7 +83,7 @@ def serial_number():
     # Our USB serial number, both in DFU mode (system boot ROM), and later thanks to code in
     #   USBD_StrDescriptor()
     #
-    # - this is **completely** public info, since we can be booted into DFU mode by any anybody
+    # - this is **probably** public info, since shared freely over USB during enumeration
     #
     import machine
     i = machine.unique_id()
@@ -91,20 +91,20 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global has_membrane, hw_label, has_608, has_fatram
+    global hw_label, has_608, has_fatram
 
     import ckcc, callgate
     from machine import Pin
 
+    # NOTE: mk1 not supported anymore.
     # PA10 is pulled-down in Mark2, open in previous revs
-    mark2 = (Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0)
+    #mark2 = (Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0)
+    #
+    #if not mark2:
+    #    has_membrane = False
+    #    hw_label = 'mk1'
 
-    if not mark2:
-        has_membrane = False
-        hw_label = 'mk1'
-    else:
-        has_membrane = True
-        hw_label = 'mk2'
+    hw_label = 'mk2'
 
     has_fatram = ckcc.is_stm32l496()
 

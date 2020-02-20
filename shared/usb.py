@@ -6,11 +6,14 @@
 import ckcc, pyb, callgate, sys, ux, tcc, stash
 from uasyncio import sleep_ms, IORead
 from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN, AFC_SCRIPT
+from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
 from ckcc import rng_bytes, watchpoint, is_simulator
 import uselect as select
 from utils import problem_file_line
+from version import has_fatram
+from exceptions import FramingError, CCBusyError, HSMDenied
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -42,13 +45,25 @@ hid_descp = bytes([
             0xc0,              # END_COLLECTION
         ])
 
+# Only these whitelisted USB commands are allowed once we enter HSM mode.
+# NOTE: 'robo' here would allow firmware changes during HSM mode!
+HSM_WHITELIST = frozenset({
+    'logo', 'ping', 'vers',     # harmless/boring
+    'upld', 'sha2', 'dwld', 'stxn',     # up/download/sign PSBT needed
+    'mitm','ncry',              # maybe limited by policy tho
+    'smsg',                     # limited by policy
+    'blkc', 'hsts',             # report status values
+    'stok', 'smok',             # completion check: sign txn or msg
+    'xpub', 'msck',             # quick status checks
+    'p2sh', 'show',             # limited by HSM policy
+    'user',                     # auth HSM user, other user cmds not allowed
+    'gslr',                     # read storage locker; hsm mode only, limited usage
+})
+
+
+
 # singleton instance of USBHandler()
 handler = None
-
-class FramingError(RuntimeError): pass
-#class CCUserRefused(RuntimeError): pass
-class CCBusyError(RuntimeError): pass
-
 
 def enable_usb(loop, repl_enable=False):
     # start it.
@@ -175,10 +190,13 @@ class USBHandler:
                     # auth UX is doing something else
                     resp = b'busy'
                     msg_len = 0
+                except HSMDenied:
+                    resp = b'err_Not allowed in HSM mode'
+                    msg_len = 0
                 except (ValueError, AssertionError) as exc:
                     # some limited invalid args feedback
-                    print("USB request caused assert: ", end='')
-                    sys.print_exception(exc)
+                    #print("USB request caused assert: ", end='')
+                    #sys.print_exception(exc)
                     msg = str(exc)
                     if not msg:
                         msg = 'Assertion ' + problem_file_line(exc)
@@ -233,7 +251,7 @@ class USBHandler:
         elif isinstance(resp, int):
             resp = pack('<4sI', 'int1', resp)
         else:
-            print("Unkown resp: %r" % resp)
+            print("Unknown resp: " + repr(resp))
             raise NotImplementedError()
 
         assert len(resp) >= 4
@@ -278,11 +296,26 @@ class USBHandler:
 
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
+        from main import hsm_active, is_devmode
 
         try:
             cmd = bytes(cmd).decode()
         except:
             raise FramingError('decode')
+
+        if cmd[0].isupper() and (is_simulator() or is_devmode):
+            # special hacky commands to support testing w/ the simulator
+            try:
+                from usb_test_commands import do_usb_command
+                return do_usb_command(cmd, args)
+            except: 
+                raise
+                pass
+
+        if hsm_active:
+            # only a few commands are allowed during HSM mode
+            if cmd not in HSM_WHITELIST:
+                raise HSMDenied
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.
@@ -293,7 +326,8 @@ class USBHandler:
             return self.call_after(machine.reset)
 
         if cmd == 'logo':
-            return self.call_after(callgate.show_logout)
+            from utils import clean_shutdown
+            return self.call_after(clean_shutdown)
 
         if cmd == 'ping':
             return b'biny' + args
@@ -352,6 +386,9 @@ class USBHandler:
             # - must provide redeem script, and list of [xfp+path]
             from auth import start_show_p2sh_address
 
+            if hsm_active and not hsm_active.approve_address_share(is_p2sh=True):
+                raise HSMDenied
+
             # new multsig goodness, needs mapping from xfp->path and M values
             addr_fmt, M, N, script_len = unpack_from('<IBBH', args)
 
@@ -398,6 +435,7 @@ class USBHandler:
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
             maybe_enroll_xpub(sf_len=file_len, ux_reset=True)
+
             return None
 
         if cmd == 'msck':
@@ -409,50 +447,52 @@ class USBHandler:
 
         if cmd == 'stxn':
             # sign transaction
-            txn_len, finalize, txn_sha = unpack_from('<II32s', args)
+            txn_len, flags, txn_sha = unpack_from('<II32s', args)
             if txn_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
             assert 50 < txn_len <= MAX_TXN_LEN, "bad txn len"
 
             from auth import sign_transaction
-            sign_transaction(txn_len, bool(finalize))
+            sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha)
             return None
 
-        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok' or cmd == 'enok':
+        if cmd == 'stok' or cmd == 'bkok' or cmd == 'smok' or cmd == 'pwok':
             # Have we finished (whatever) the transaction,
             # which needed user approval? If so, provide result.
-            from auth import active_request, UserAuthorizedAction
+            from auth import UserAuthorizedAction
 
-            if not active_request:
+            req = UserAuthorizedAction.active_request
+            if not req:
                 return b'err_No active request'
 
-            if active_request.refused:
+            if req.refused:
                 UserAuthorizedAction.cleanup()
                 return b'refu'
 
-            if active_request.failed:
-                rv = b'err_' + active_request.failed.encode()
+            if req.failed:
+                rv = b'err_' + req.failed.encode()
                 UserAuthorizedAction.cleanup()
                 return rv
 
-            if not active_request.result:
+            if not req.result:
                 # STILL waiting on user
                 return None
 
-            if cmd == 'pwok' or cmd == 'enok':
+
+            if cmd == 'pwok':
                 # return new root xpub
-                xpub = active_request.result
+                xpub = req.result
                 UserAuthorizedAction.cleanup()
                 return b'asci' + bytes(xpub, 'ascii')
             elif cmd == 'smok':
                 # signed message done: just give them the signature
-                addr, sig = active_request.address, active_request.result
+                addr, sig = req.address, req.result
                 UserAuthorizedAction.cleanup()
                 return pack('<4sI', 'smrx', len(addr)) + addr.encode() + sig
             else:
                 # generic file response
-                resp_len, sha = active_request.result
+                resp_len, sha = req.result
                 UserAuthorizedAction.cleanup()
                 return pack('<4sI32s', 'strx', resp_len, sha)
 
@@ -483,11 +523,66 @@ class USBHandler:
         if cmd == 'bagi':
             return self.handle_bag_number(args)
 
-        if is_simulator() and cmd[0].isupper():
-            # special hacky commands to support testing w/ the simulator
-            from sim_usb import do_usb_command
-            return do_usb_command(cmd, args)
+        if has_fatram:
+            # HSM and user-related  features only larger-memory Mk3
 
+            if cmd == 'hsms':
+                # HSM mode "start" -- requires user approval
+                if args:
+                    file_len, file_sha = unpack_from('<I32s', args)
+                    if file_sha != self.file_checksum.digest():
+                        return b'err_Checksum'
+                    assert 2 <= file_len <= (200*1000), "badlen"
+                else:
+                    file_len = 0
+
+                # Start an UX interaction but return (mostly) immediately here
+                from hsm_ux import start_hsm_approval
+                await start_hsm_approval(sf_len=file_len, usb_mode=True)
+
+                return None
+
+            if cmd == 'hsts':
+                # can always query HSM mode
+                from hsm import hsm_status_report
+                import ujson
+                return b'asci' + ujson.dumps(hsm_status_report())
+
+            if cmd == 'gslr':
+                # get the value held in the Storage Locker
+                assert hsm_active, 'need hsm'
+                return b'biny' + hsm_active.fetch_storage_locker()
+
+
+            # User Mgmt
+            if cmd == 'nwur':     # new user
+                from users import Users
+                auth_mode, ul, sl = unpack_from('<BBB', args)
+                username = bytes(args[3:3+ul]).decode('ascii')
+                secret = bytes(args[3+ul:3+ul+sl])
+
+                return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
+
+            if cmd == 'rmur':     # delete user
+                from users import Users
+                ul, = unpack_from('<B', args)
+                username = bytes(args[1:1+ul]).decode('ascii')
+
+                return Users.delete(username)
+
+            if cmd == 'user':       # auth user (HSM mode)
+                from users import Users
+                totp_time, ul, tl = unpack_from('<IBB', args)
+                username = bytes(args[6:6+ul]).decode('ascii')
+                token = bytes(args[6+ul:6+ul+tl])
+
+                if hsm_active:
+                    # just queues these details, can't be checked until PSBT on-hand
+                    hsm_active.usb_auth_user(username, token, totp_time)
+                    return None
+                else:
+                    # dryrun/testing purposes: validate only, doesn't unlock nothing
+                    return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
 
         print("USB garbage: %s +[%d]" % (cmd, len(args)))
 
@@ -558,7 +653,7 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
-        from main import dis, sf
+        from main import sf
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
@@ -582,7 +677,9 @@ class USBHandler:
         return resp
 
     async def handle_upload(self, offset, total_size, data):
-        from main import dis, sf
+        from main import dis, sf, hsm_active
+        from utils import check_firmware_hdr
+        from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
 
         # maintain a running SHA256 over what's received
         if offset == 0:
@@ -591,31 +688,47 @@ class USBHandler:
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
 
-        rb = bytearray(256)
+        if hsm_active:
+            # additional restrictions in HSM mode
+            assert offset+len(data) <= total_size <= MAX_TXN_LEN, 'psbt'
+            if offset == 0:
+                assert data[0:5] == b'psbt\xff', 'psbt'
+
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
                 # erase here
-                sf.sector_erase(pos)
+                dis.fullscreen("Receiving...", offset/total_size)
 
-                dis.fullscreen("Receiving...")
-                dis.progress_bar_show(offset/total_size)
+                sf.sector_erase(pos)
 
                 while sf.is_busy():
                     await sleep_ms(10)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
+
+            self.file_checksum.update(here)
+
+            # Very special case for firmware upgrades: intercept and modify
+            # header contents on the fly, and also fail faster if wouldn't work
+            # on this specific hardware.
+            # - workaround: ckcc-protocol upgrade process understates the file
+            #   length and appends hdr, but that's kinda a bug, so support both
+            if (pos == (FW_HEADER_OFFSET & ~255) 
+                or pos == (total_size - FW_HEADER_SIZE) or pos == total_size):
+
+                prob = check_firmware_hdr(memoryview(here)[-128:], None, bad_magic_ok=True)
+                if prob:
+                    raise ValueError(prob)
+
             sf.write(pos, here)
 
             # full page write: 0.6 to 3ms
             while sf.is_busy():
                 await sleep_ms(1)
 
-            # use actual read back for verify
-            sf.read(pos, rb)
-            self.file_checksum.update(rb[0:len(here)])
 
-        if offset+len(data) >= total_size:
+        if offset+len(data) >= total_size and not hsm_active:
             # probably done
             dis.progress_bar_show(1.0)
             ux.restore_menu()
@@ -632,6 +745,10 @@ class USBHandler:
         from utils import cleanup_deriv_path
 
         subpath = cleanup_deriv_path(subpath)
+
+        from main import hsm_active
+        if hsm_active and not hsm_active.approve_xpub_share(subpath):
+            raise HSMDenied
 
         chain = current_chain()
 
