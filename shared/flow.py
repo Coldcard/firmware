@@ -12,6 +12,12 @@ from choosers import *
 from multisig import make_multisig_menu
 from paper import make_paper_wallet
 from address_explorer import address_explore
+from users import make_users_menu
+
+if version.has_fatram:
+    from hsm import hsm_policy_available
+else:
+    hsm_policy_available = lambda: False
 
 #
 # NOTE: "Always In Title Case"
@@ -50,8 +56,6 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('Touch Setting', chooser=sensitivity_chooser,
-                                predicate=lambda: not version.has_membrane),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
@@ -74,8 +78,7 @@ SDCardMenu = [
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
     MenuItem('List Files', f=list_files),
-    MenuItem('Format Card', f=wipe_sd_card,
-                                predicate=lambda: version.has_membrane),
+    MenuItem('Format Card', f=wipe_sd_card),
 ]
 
 UpgradeMenu = [
@@ -135,6 +138,7 @@ DangerZoneMenu = [
     MenuItem("Wipe Patch Area", f=wipe_filesystem),             # needs better label
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
     MenuItem("Set High-Water", f=set_highwater),
+    MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
 ]
 
 BackupStuffMenu = [
@@ -153,6 +157,7 @@ AdvancedNormalMenu = [
     MenuItem("MicroSD Card", menu=SDCardMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem("Address Explorer", f=address_explore),
+    MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -190,6 +195,7 @@ NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
     MenuItem('Passphrase', f=start_b39_pw, predicate=lambda: settings.get('words', True)),
+    MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),

@@ -36,7 +36,7 @@ class LoginUX:
         filled = len(self.pin)
         if show_hint:
             filled -= 1
-            hint = self.pin[-1] if not version.has_membrane else None
+            hint = None     # used to be: self.pin[-1]  (for Mk1)
 
         dis.clear()
 
@@ -61,11 +61,7 @@ class LoginUX:
             x += w
 
         if show_hint:
-            if not version.has_membrane:
-                dis.text(x+1, y+1, hint, FontLarge)
-                dis.icon(x, y, 'box')
-            else:
-                dis.icon(x, y, 'tbox')
+            dis.icon(x, y, 'tbox')
         else:
             if len(self.pin) != MAX_PIN_PART_LEN:
                 dis.icon(x, y, 'box')
@@ -237,8 +233,7 @@ Press OK to continue, X to stop for now.
             pin = await self.interact()
 
             if pin is None:
-                # Perhaps they are having trouble with touch pad?
-                numpad.sensitivity = 2
+                # pressed X on empty screen ... RFU
                 continue
             
             pa.setup(pin, self.is_secondary)

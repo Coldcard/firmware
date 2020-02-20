@@ -20,7 +20,6 @@ class NumpadBase:
         self._disabled = False
 
         self.debug = 0                # 0..2
-        self.sensitivity = 0          # 0..4: random order now, see chooser.py
         self.repeat_delay = 450       # (ms) time to wait before first key-repeat
 
         self.last_event_time = utime.ticks_ms()
@@ -66,7 +65,7 @@ class NumpadBase:
 
             if self._changes.full():
                 # no space, but do a "all up" and the new event
-                print('numpad Q overflow')
+                print('Q overflow')
                 self._changes.get_nowait()
                 self._changes.get_nowait()
                 if key != '':

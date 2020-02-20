@@ -1,4 +1,4 @@
-# Autogen'ed file, don't edit. See bootloader/mk-sigheader.h for original
+# Autogen'ed file, don't edit. See bootloader/sigheader.h for original
 
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
@@ -35,13 +35,23 @@ FW_MIN_LENGTH = (256*1024)
 FW_MAX_LENGTH = (0x100000 - 0x8000)
 
 # Arguments to be used w/ python's struct module.
-FWH_PY_FORMAT = "<I8s8sIII32s64s"
-FWH_PY_VALUES = "magic_value timestamp version_string pubkey_num firmware_length install_flags future signature"
-FWH_NUM_FUTURE = 8
+FWH_PY_FORMAT = "<I8s8sIIII28s64s"
+FWH_PY_VALUES = "magic_value timestamp version_string pubkey_num firmware_length install_flags hw_compat future signature"
+FWH_NUM_FUTURE = 7
+
+# offset of pubkey number
 FWH_PK_NUM_OFFSET = 20
 
 # Bits in install_flags
 FWHIF_HIGH_WATER = 0x01
+
+# Bits in hw_compat
+MK_1_OK = 0x01
+MK_2_OK = 0x02
+MK_3_OK = 0x04
+# RFU:
+MK_4_OK = 0x08
+MK_5_OK = 0x10
 
 # There is a copy of the header at this location in RAM, copied by bootloader
 # **after** it has been verified. If you write to this memory area, you will be reset!

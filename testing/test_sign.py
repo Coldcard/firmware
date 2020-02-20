@@ -14,6 +14,8 @@ from base64 import b64encode, b64decode
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE
+from txn import *
+from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 
 @pytest.mark.parametrize('finalize', [ False, True ])
 def test_sign1(dev, need_keypress, finalize):
@@ -123,142 +125,6 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     rb = BasicPSBT().parse(open(rb, 'rb').read())
     assert oo == rb
 
-@pytest.fixture()
-def simple_fake_txn():
-    # make various size txn's ... completely fake and pointless values
-    from pycoin.tx.Tx import Tx
-    from pycoin.tx.TxIn import TxIn
-    from pycoin.tx.TxOut import TxOut
-    from pycoin.serialize import h2b_rev
-    from struct import pack
-
-    def doit(num_ins, num_outs, fat=0):
-        psbt = BasicPSBT()
-        txn = Tx(2,[],[])
-        
-        for i in range(num_ins):
-            h = TxIn(pack('4Q', 0, 0, 0, i), i)
-            txn.txs_in.append(h)
-
-        for i in range(num_outs):
-            # random P2PKH
-            scr = bytes([0x76, 0xa9, 0x14]) + pack('I', i+1) + bytes(16) + bytes([0x88, 0xac])
-            h = TxOut((1E6*i) if i else 1E8, scr)
-            txn.txs_out.append(h)
-
-        with BytesIO() as b:
-            txn.stream(b)
-            psbt.txn = b.getvalue()
-
-        psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
-        psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
-
-        if fat:
-            for i in range(num_ins):
-                psbt.inputs[i].utxo = os.urandom(fat)
-
-        rv = BytesIO()
-        psbt.serialize(rv)
-        assert rv.tell() <= MAX_TXN_LEN, 'too fat'
-
-        return rv.getvalue()
-
-    return doit
-
-@pytest.fixture()
-def fake_txn():
-    # make various size txn's ... completely fake and pointless values
-    # - but has UTXO's to match needs
-    from pycoin.tx.Tx import Tx
-    from pycoin.tx.TxIn import TxIn
-    from pycoin.tx.TxOut import TxOut
-    from pycoin.serialize import h2b_rev
-    from struct import pack
-
-    def doit(num_ins, num_outs, master_xpub, subpath="0/%d", fee=10000,
-                outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[]):
-        psbt = BasicPSBT()
-        txn = Tx(2,[],[])
-        
-        # we have a key; use it to provide "plausible" value inputs
-        mk = BIP32Node.from_wallet_key(master_xpub)
-        xfp = mk.fingerprint()
-
-        psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
-        psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
-
-        for i in range(num_ins):
-            # make a fake txn to supply each of the inputs
-            # - each input is 1BTC
-
-            # addr where the fake money will be stored.
-            subkey = mk.subkey_for_path(subpath % i)
-            sec = subkey.sec()
-            assert len(sec) == 33, "expect compressed"
-            assert subpath[0:2] == '0/'
-
-            psbt.inputs[i].bip32_paths[sec] = xfp + pack('<II', 0, i)
-
-            # UTXO that provides the funding for to-be-signed txn
-            supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
-
-            scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
-
-            supply.txs_out.append(TxOut(1E8, scr))
-
-            with BytesIO() as fd:
-                if not segwit_in:
-                    supply.stream(fd)
-                    psbt.inputs[i].utxo = fd.getvalue()
-                else:
-                    supply.txs_out[-1].stream(fd)
-                    psbt.inputs[i].witness_utxo = fd.getvalue()
-
-            spendable = TxIn(supply.hash(), 0)
-            txn.txs_in.append(spendable)
-
-
-        for i in range(num_outs):
-            # random P2PKH
-            if not outstyles:
-                style = ADDR_STYLES[i % len(ADDR_STYLES)]
-            else:
-                style = outstyles[i % len(outstyles)]
-
-            if i in change_outputs:
-                scr, act_scr, isw, pubkey, sp = make_change_addr(mk, style)
-                psbt.outputs[i].bip32_paths[pubkey] = sp
-            else:
-                scr = act_scr = fake_dest_addr(style)
-                isw = ('w' in style)
-                #if style.endswith('sh'):
-
-            assert scr
-            act_scr = act_scr or scr
-
-            if isw:
-                psbt.outputs[i].witness_script = scr
-            elif style.endswith('sh'):
-                psbt.outputs[i].redeem_script = scr
-
-            if not outvals:
-                h = TxOut(round(((1E8*num_ins)-fee) / num_outs, 4), act_scr)
-            else:
-                h = TxOut(outvals[i], act_scr)
-
-            txn.txs_out.append(h)
-
-        with BytesIO() as b:
-            txn.stream(b)
-            psbt.txn = b.getvalue()
-
-        rv = BytesIO()
-        psbt.serialize(rv)
-        assert rv.tell() <= MAX_TXN_LEN, 'too fat'
-
-        return rv.getvalue()
-
-    return doit
 
 @pytest.mark.parametrize('num_out', [1, 10,11, 250])
 @pytest.mark.parametrize('num_in', [1, 10, 20])
@@ -881,8 +747,9 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
 @pytest.mark.parametrize('act_outs', [ 2, 1, -1])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
-def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
-                        act_outs, segwit, out_style, num_ins=3):
+@pytest.mark.parametrize('visualized', [0, STXN_VISUALIZE, STXN_VISUALIZE|STXN_SIGNED])
+def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, master_xpub,
+                        act_outs, segwit, out_style, visualized, num_ins=3):
     # create a TXN which has change outputs, which shouldn't be shown to user, and also not fail.
     xp = dev.master_xpub
 
@@ -893,13 +760,35 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
     open('debug/change.psbt', 'wb').write(psbt)
 
     # should be able to sign, but get warning
-    start_sign(psbt, False)
+    if not visualized:
+        start_sign(psbt, False)
 
-    time.sleep(.1)
-    title, story = cap_story()
-    print(repr(story))
+        time.sleep(.1)
+        title, story = cap_story()
+        print(repr(story))
 
-    assert title == "OK TO SEND?"
+        assert title == "OK TO SEND?"
+    else:
+        # use new feature to have Coldcard return the 'visualization' of transaction
+        start_sign(psbt, False, stxn_flags=visualized)
+        story = end_sign(accept=None, expect_txn=False)
+
+        story = story.decode('ascii')
+
+        if (visualized & STXN_SIGNED):
+            # last line should be signature, using 'm' over the rest
+            from pycoin.contrib.msg_signing import verify_message
+            from pycoin.key.BIP32Node import BIP32Node
+
+            #def verify_message(key_or_address, signature, message=None, msg_hash=None, netcode=None):
+
+            assert story[-1] == '\n'
+            last_nl = story[:-1].rindex('\n')
+            msg, sig = story[0:last_nl+1], story[last_nl:]
+            wallet = BIP32Node.from_wallet_key(master_xpub)
+            assert verify_message(wallet, sig, message=msg) == True
+            story = msg
+
     assert 'Network fee' in story
 
     if couts < num_outs:
@@ -921,9 +810,6 @@ def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs,
         assert set(i[0:4] for i in addrs) == {'tb1q'}
     elif out_style == 'p2wpkh-p2sh':
         assert set(i[0] for i in addrs) == {'2'}
-
-    # no need
-    #signed = end_sign(True, finalize=True)
 
 def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
     # allow almost any PSBT to run on simulator, at least up until wrong pubkeys detected

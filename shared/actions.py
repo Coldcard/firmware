@@ -7,7 +7,7 @@
 #
 import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
-from utils import imported
+from utils import imported, pretty_short_delay
 from main import settings
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
@@ -197,32 +197,24 @@ async def microsd_upgrade(*a):
         with open(fn, 'rb') as fp:
             from main import sf, dis
             from files import dfu_parse
-            from ustruct import unpack_from
+            from utils import check_firmware_hdr
 
             offset, size = dfu_parse(fp)
 
-            # get a copy of special signed heaer at the end of the flash as well
-            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
+            # we also put a copy of special signed heaer at the end of the flash
+            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
+
+            # read just the signature header
             hdr = bytearray(FW_HEADER_SIZE)
             fp.seek(offset + FW_HEADER_OFFSET)
+            rv = fp.readinto(hdr)
+            assert rv == FW_HEADER_SIZE
 
-            # basic checks only: for confused customers, not attackers.
-            try:
-                rv = fp.readinto(hdr)
-                assert rv == FW_HEADER_SIZE
-
-                magic_value, timestamp, version_string, pk, fw_size = \
-                                unpack_from(FWH_PY_FORMAT, hdr)[0:5]
-                assert magic_value == FW_HEADER_MAGIC
-                assert fw_size == size
-
-                # TODO: maybe show the version string? Warn them that downgrade doesn't work?
-
-            except Exception as exc:
-                failed = "Sorry! That does not look like a firmware " \
-                            "file we would want to use.\n\n\n%s" % exc
+            # check header values
+            failed = check_firmware_hdr(hdr, size)
 
             if not failed:
+                patched = 0
             
                 # copy binary into serial flash
                 fp.seek(offset)
@@ -236,9 +228,15 @@ async def microsd_upgrade(*a):
                     if pos == size:
                         # save an extra copy of the header (also means we got done)
                         buf = hdr
+                        patched += 1
                     else:
                         here = fp.readinto(buf)
                         if not here: break
+
+                    if pos == (FW_HEADER_OFFSET & ~255):
+                        # update w/ our patched version of hdr
+                        buf[128:FW_HEADER_SIZE+128] = hdr
+                        patched += 1
 
                     if pos % 4096 == 0:
                         # erase here
@@ -254,8 +252,10 @@ async def microsd_upgrade(*a):
 
                     pos += here
 
+                assert patched == 2
+
     if failed:
-        await ux_show_story(failed, title='Corrupt')
+        await ux_show_story(failed, title='Sorry!')
         return
 
     # continue process...
@@ -362,12 +362,7 @@ async def login_countdown(minutes):
         dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
         y += 5
 
-        if sec >= 3600:
-            msg = '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
-        else:
-            msg = '%2dm %2ds' % ((sec//60) % 60, sec % 60)
-
-        dis.text(None, y, msg, font=FontLarge)
+        dis.text(None, y, pretty_short_delay(sec), font=FontLarge)
 
         dis.show()
         dis.busy_bar(1)
@@ -438,17 +433,13 @@ You can give this Coldcard a nickname and it will be shown before login.''')
 
 async def logout_now(*a):
     # wipe memory and lock up
-    from callgate import show_logout
-    from main import sf
-    sf.wipe_most()
-    show_logout()
+    from utils import clean_shutdown
+    clean_shutdown()
 
 async def login_now(*a):
     # wipe memory and reboot
-    from callgate import show_logout
-    from main import sf
-    sf.wipe_most()
-    show_logout(2)
+    from utils import clean_shutdown
+    clean_shutdown(2)
     
 
 async def virgin_help(*a):
@@ -625,9 +616,6 @@ async def start_login_sequence():
     # implement idle timeout now that we are logged-in
     loop.create_task(idle_logout())
 
-    # Restore a login preference or two
-    numpad.sensitivity = settings.get('sens', numpad.sensitivity)
-
     # Do green-light set immediately after firmware upgrade
     if not pa.is_secondary:
         if version.is_fresh_version():
@@ -650,6 +638,18 @@ async def start_login_sequence():
             # is early in boot process
             print("XFP save failed: %s" % exc)
 
+    # If HSM policy file is available, offer to start that,
+    # **before** the USB is even enabled.
+    if version.has_fatram:
+        try:
+            import hsm, hsm_ux
+
+            if hsm.hsm_policy_available():
+                ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
+                if ar:
+                    await ar.interact()
+        except: pass
+
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
     enable_usb(loop, False)
@@ -661,13 +661,16 @@ def goto_top_menu():
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
-    from main import pa
+    from main import pa, hsm_active
 
     if version.is_factory_mode():
         m = MenuSystem(FactoryMenu)
     elif pa.is_blank():
         # let them play a little before picking a PIN first time
         m = MenuSystem(VirginSystem, should_cont=lambda: pa.is_blank())
+    elif hsm_active:
+        from hsm_ux import hsm_ux_obj
+        m = hsm_ux_obj
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 
@@ -1435,5 +1438,16 @@ async def import_multisig(*a):
         maybe_enroll_xpub(config=data, name=possible_name)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n\n'+str(e))
+
+async def start_hsm_menu_item(*a):
+    from hsm_ux import start_hsm_approval 
+    await start_hsm_approval(sf_len=0, usb_mode=False)
+
+async def wipe_hsm_policy(*A):
+    # deep in danger zone menu; no background story, nor confirmation
+    # - sends them back to top menu, so that dynamic contents are fixed
+    from hsm import hsm_delete_policy
+    hsm_delete_policy()
+    goto_top_menu()
 
 # EOF

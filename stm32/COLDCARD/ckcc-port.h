@@ -207,7 +207,6 @@ extern const struct _mp_obj_module_t mp_module_utime;
 extern const struct _mp_obj_module_t mp_module_usocket;
 extern const struct _mp_obj_module_t mp_module_network;
 extern const struct _mp_obj_module_t ckcc_module;
-extern const struct _mp_obj_module_t touch_module;
 extern const struct _mp_obj_module_t mp_module_tcc;
 
 
@@ -233,7 +232,6 @@ extern const struct _mp_obj_module_t mp_module_tcc;
     { MP_ROM_QSTR(MP_QSTR_utime), MP_ROM_PTR(&mp_module_utime) }, \
     SOCKET_BUILTIN_MODULE \
     NETWORK_BUILTIN_MODULE \
-    { MP_ROM_QSTR(MP_QSTR_touch), MP_ROM_PTR(&touch_module) }, \
     { MP_ROM_QSTR(MP_QSTR_ckcc), MP_ROM_PTR(&ckcc_module) }, \
     { MP_ROM_QSTR(MP_QSTR_tcc), MP_ROM_PTR(&mp_module_tcc) }, \
 
@@ -257,7 +255,6 @@ extern const struct _mp_obj_module_t mp_module_tcc;
 #define MICROPY_PORT_CONSTANTS \
     { MP_ROM_QSTR(MP_QSTR_umachine), MP_ROM_PTR(&machine_module) }, \
     { MP_ROM_QSTR(MP_QSTR_machine), MP_ROM_PTR(&machine_module) }, \
-    { MP_ROM_QSTR(MP_QSTR_touch), MP_ROM_PTR(&touch_module) }, \
     { MP_ROM_QSTR(MP_QSTR_ckcc), MP_ROM_PTR(&ckcc_module) }, \
     { MP_ROM_QSTR(MP_QSTR_pyb), MP_ROM_PTR(&pyb_module) }, \
     { MP_ROM_QSTR(MP_QSTR_stm), MP_ROM_PTR(&stm_module) }, \

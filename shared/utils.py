@@ -65,6 +65,13 @@ def pretty_delay(n):
     n /= 24
     return 'about %d days' % n
 
+def pretty_short_delay(sec):
+    # precise, shorter on screen display
+    if sec >= 3600:
+        return '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
+    else:
+        return '%2dm %2ds' % ((sec//60) % 60, sec % 60)
+
 def pop_count(i):
     # 32-bit population count for integers
     # from <https://stackoverflow.com/questions/9829578>
@@ -162,12 +169,13 @@ def problem_file_line(exc):
 
     return rv or str(exc) or 'Exception'
 
-def cleanup_deriv_path(bin_path):
+def cleanup_deriv_path(bin_path, allow_star=False):
     # Clean-up path notation as string.
     # - raise exceptions on junk
     # - standardize on 'prime' notation (34' not 34p, or 34h)
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
+    # - if allow_star, then final position can be * or *' (wildcard)
     import ure
     from public_constants import MAX_PATH_DEPTH
     try:
@@ -179,7 +187,7 @@ def cleanup_deriv_path(bin_path):
     if s == '': return 'm'
 
     s = s.replace('p', "'").replace('h', "'")
-    mat = ure.match(r"(m|m/|)[0-9/']*", s)
+    mat = ure.match(r"(m|m/|)[0-9/']*" + ('' if not allow_star else r"(\*'|\*|)"), s)
     assert mat.group(0) == s, "invalid characters"
 
     parts = s.split('/')
@@ -196,6 +204,10 @@ def cleanup_deriv_path(bin_path):
 
     for p in parts:
         assert p != '' and p != "'", "empty path component"
+        if allow_star and '*' in p:
+            # - star or star' can be last only (checked by regex above)
+            assert p == '*' or p == "*'", "bad wildcard"
+            continue
         if p[-1] == "'":
             p = p[0:-1]
         try:
@@ -206,6 +218,26 @@ def cleanup_deriv_path(bin_path):
             
     return 'm/' + '/'.join(parts)
 
+def match_deriv_path(patterns, path):
+    # check for exact string match, or wildcard match (star in last position)
+    # - both args must be cleaned by cleanup_deriv_path() already
+    # - will accept any path, if 'any' in patterns
+    if 'any' in patterns:
+        return True
+
+    for pat in patterns:
+        if pat == path:
+            return True
+
+        if pat.endswith("/*") or pat.endswith("/*'"):
+            if pat[-1] == "'" and path[-1] != "'": continue
+            if pat[-1] == "*" and path[-1] == "'": continue
+
+            # same hardness so check up to last component of path
+            if pat.split('/')[:-1] == path.split('/')[:-1]:
+                return True
+
+    return False
 
 class DecodeStreamer:
     def __init__(self):
@@ -239,5 +271,63 @@ class Base64Streamer(DecodeStreamer):
     mod = 4
     def a2b(self, x):
         return a2b_base64(x)
+
+
+def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
+    # Check basics of new firmware being loaded. Return text of error msg if any.
+    # - basic checks only: for confused customers, not attackers.
+    # - hdr must be a bytearray(FW_HEADER_SIZE+more)
+
+    from sigheader import FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
+    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK
+    from ustruct import unpack_from
+    from version import hw_label
+
+    try:
+        assert len(hdr) >= FW_HEADER_SIZE
+
+        magic_value, timestamp, version_string, pk, fw_size, install_flags, hw_compat = \
+                        unpack_from(FWH_PY_FORMAT, hdr)[0:7]
+
+        if bad_magic_ok and magic_value != FW_HEADER_MAGIC:
+            # it's just not a firmware file, and that's ok
+            return None
+
+        assert magic_value == FW_HEADER_MAGIC, 'bad magic'
+        if binary_size is not None:
+            assert fw_size == binary_size, 'truncated'
+
+        # TODO: maybe show the version string? Warn them that downgrade doesn't work?
+
+    except Exception as exc:
+        return "That does not look like a firmware " \
+                    "file we would want to use: %s" % exc
+
+    if hw_compat != 0:
+        # check this hardware is compatible
+        ok = False
+        if hw_label == 'mk1':
+            ok = (hw_compat & MK_1_OK)
+        elif hw_label == 'mk2':
+            ok = (hw_compat & MK_2_OK)
+        elif hw_label == 'mk3':
+            ok = (hw_compat & MK_3_OK)
+        
+        if not ok:
+            return "New firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
+
+    return None
+
+
+def clean_shutdown(style=0):
+    # wipe SPI flash and shutdown (wiping main memory)
+    import callgate
+
+    try:
+        from main import sf
+        sf.wipe_most()
+    except: pass
+
+    callgate.show_logout(style)
 
 # EOF

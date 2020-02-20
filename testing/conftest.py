@@ -3,7 +3,6 @@
 #
 import pytest, glob, time, sys, random
 from pprint import pprint
-#from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode, explora
@@ -60,20 +59,21 @@ def simulator(request):
         raise pytest.fail('missing simulator')
 
 @pytest.fixture(scope='module')
-def sim_exec(simulator):
+def sim_exec(dev):
     # run code in the simulator's interpretor
 
     def doit(cmd):
-        return simulator.send_recv(b'EXEC' + cmd.encode('utf-8')).decode('utf-8')
+        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'))
+        return s.decode('utf-8') if not isinstance(s, str) else s
 
     return doit
 
 @pytest.fixture(scope='module')
-def sim_eval(simulator):
+def sim_eval(dev):
     # eval an expression in the simulator's interpretor
 
     def doit(cmd, timeout=None):
-        return simulator.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
+        return dev.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
 
     return doit
 
@@ -90,16 +90,52 @@ def sim_execfile(simulator):
     return doit
 
 @pytest.fixture(scope='module')
+def is_simulator(dev):
+    def doit():
+        return hasattr(dev.dev, 'pipe')
+    return doit
+
+@pytest.fixture(scope='module')
+def sim_card_ejected(sim_exec, is_simulator):
+    def doit(ejected):
+        if not is_simulator():
+            # assuming no card on device
+            if not ejected:
+                raise pytest.fail('cant insert on real dev')
+            else:
+                return
+
+        # see unix/frozen-modules/pyb.py class SDCard
+        cmd = f'import pyb; pyb.SDCard.ejected={ejected}; RV.write("ok")'
+        assert sim_exec(cmd) == 'ok'
+
+    yield doit
+    if is_simulator():
+        doit(False)
+
+@pytest.fixture(scope='module')
+def send_ux_abort(simulator):
+
+    def doit():
+        # simulator has special USB command
+        # - this is a special "key"
+        simulator.send_recv(CCProtocolPacker.sim_ux_abort())
+
+    return doit
+
+@pytest.fixture(scope='module')
 def need_keypress(dev, request):
 
-    def doit(k):
-        if hasattr(dev.dev, 'pipe'):
-            # simulator has special USB command
-            dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')))
-        elif request.config.getoption("--manual"):
+    def doit(k, timeout=1000):
+        if request.config.getoption("--manual"):
             # need actual user interaction
-            print("==> NOW, on the Coldcard, press key: %r" % k, file=sys.stderr)
+            print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)
+            input()
         else:
+            # simulator has special USB command, and can be used on real device w/ enuf setup
+            dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
+
+        if 0:
             # try to use debug interface to simulate the press
             # XXX for some reason, picocom must **already** be running for this to work.
             # - otherwise, this locks up
@@ -114,6 +150,10 @@ def need_keypress(dev, request):
     
 @pytest.fixture(scope='module')
 def master_xpub(dev):
+    if hasattr(dev.dev, 'pipe'):
+        # this works better against simulator in HSM mode, where the xpub cmd may be disabled
+        return simulator_fixed_xpub
+
     r = dev.send_recv(CCProtocolPacker.get_xpub('m'), timeout=None, encrypt=1)
 
     assert r[1:4] == 'pub', r
@@ -357,7 +397,7 @@ def set_master_key(sim_exec, sim_execfile, simulator, reset_seed_words):
         simulator.start_encryption()
         simulator.check_mitm()
 
-        print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+        #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
         return simulator.master_fingerprint
 
@@ -380,7 +420,7 @@ def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
         simulator.start_encryption()
         simulator.check_mitm()
 
-        print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+        #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
 
     yield doit
 
@@ -402,7 +442,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
         simulator.start_encryption()
         simulator.check_mitm()
 
-        print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
+        #print("sim xfp: 0x%08x (reset)" % simulator.master_fingerprint)
         assert simulator.master_fingerprint == simulator_fixed_xfp
 
         return words
@@ -721,7 +761,7 @@ def try_sign(start_sign, end_sign):
 @pytest.fixture
 def start_sign(dev):
 
-    def doit(filename, finalize=False):
+    def doit(filename, finalize=False, stxn_flags=0x0):
         if filename[0:5] == b'psbt\xff':
             ip = filename
             filename = 'memory'
@@ -733,7 +773,7 @@ def start_sign(dev):
 
         ll, sha = dev.upload_file(ip)
 
-        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize))
+        dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize, flags=stxn_flags))
 
         return ip
 
@@ -743,7 +783,7 @@ def start_sign(dev):
 def end_sign(dev, need_keypress):
     from ckcc_protocol.protocol import CCUserRefused
 
-    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False):
+    def doit(accept=True, in_psbt=None, finalize=False, accept_ms_import=False, expect_txn=True):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
@@ -770,6 +810,10 @@ def end_sign(dev, need_keypress):
 
         resp_len, chk = done
         psbt_out = dev.download_file(resp_len, chk)
+
+        if not expect_txn:
+            # skip checks; it's text
+            return psbt_out
 
         if not finalize:
             if in_psbt:
@@ -802,7 +846,8 @@ def is_mark3(request):
 
 
 # useful fixtures related to multisig
-from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import,
-                                make_ms_address, clear_ms)
+from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,
+                                make_ms_address, clear_ms, make_myself_wallet)
+from test_bip39pw import set_bip39_pw, clear_bip39_pw
 
 #EOF

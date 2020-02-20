@@ -1,3 +1,18 @@
+## 3.1.0 - Feb 20, 2020
+
+- HSM (Hardware Security Module) mode: give Coldcard spending rules, including whitelisted
+  addresses, velocity limits, subsets of authorizing users ... and Coldcard can sign with
+  no human present. Requires companion software to setup (ckbunker or ckcc-protocol),
+  and disabled by default, with multi-step on-screen confirmation required to enable. Mk3 only.
+- Enhancement: New "user management" menu. Advanced > User Management shows a menu
+  with usernames, some details and a 'delete user' command. USB commands must be used to
+  create user accounts and they are only used to authenticate txn approvals in HSM mode.
+- Enhancement: PSBT transaction can be "visualized" over USB, meaning you can view what
+  the Coldcard will show on the screen during approval process, as text, downloaded over USB.
+  That text can be signed (always with root key) to prove authenticity.
+- Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
+- IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
+
 ## 3.0.6 - Dec 19, 2019
 
 - Security Bugfix: Fixed a multisig PSBT-tampering issue, that could allow a MitM to
@@ -13,6 +28,7 @@
 - Bugfix: add blank line between addresses shown if sending to multiple destinations.
 - Bugfix: multisig outputs were not checked to see if they are change (would have been
   shown as regular outputs), if the PSBT did not have XPUB data in globals section.
+- NOTE: This is the final version to support Mk1 hardware.
 
 ## 3.0.5 - Nov 25, 2019
 

@@ -39,6 +39,7 @@ from sffile import SFFile
 #   axi = index of last selected address in explorer
 #   nick = optional nickname for this coldcard (personalization)
 #   lgto = (minutes) how long to wait for Login Countdown feature
+#   usr = (dict) map from username to their secret, as base32
 
 
 # where in SPI Flash we work (last 128k)

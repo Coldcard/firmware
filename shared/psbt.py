@@ -33,10 +33,6 @@ B2A = lambda x: str(b2a_hex(x), 'ascii')
 # print some things 
 DEBUG = const(0)
 
-# this points to a wallet, during operation
-# - we're only supporting a single multisig wallet during signing
-active_multisig = None
-
 class FatalPSBTIssue(RuntimeError):
     pass
 class FraudulentChangeOutput(FatalPSBTIssue):
@@ -299,7 +295,7 @@ class psbtOutputProxy(psbtProxy):
             for k in self.unknown:
                 wr(k[0], self.unknown[k], k[1:])
 
-    def validate(self, out_idx, txo, my_xfp):
+    def validate(self, out_idx, txo, my_xfp, active_multisig):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -370,8 +366,6 @@ class psbtOutputProxy(psbtProxy):
                 # - we get all of that by re-constructing the script from our wallet details
 
                 # it cannot be change if it doesn't precisely match our multisig setup
-                global active_multisig
-
                 if not active_multisig:
                     # might be a p2sh output for another wallet that isn't us
                     # not fraud, just an output with more details than we need.
@@ -632,7 +626,7 @@ class psbtInputProxy(psbtProxy):
         return utxo
 
 
-    def determine_my_signing_key(self, my_idx, utxo, my_xfp):
+    def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt):
         # See what it takes to sign this particular input
         # - type of script
         # - which pubkey needed
@@ -717,26 +711,25 @@ class psbtInputProxy(psbtProxy):
             # We will be signing this input, so 
             # - find which wallet it is or
             # - check it's the right M/N to match redeem script
-            global active_multisig
 
             #print("redeem: %s" % b2a_hex(redeem_script))
             M, N = disassemble_multisig_mn(redeem_script)
             xfps = [lst[0] for lst in self.subpaths.values()]
 
-            if not active_multisig:
+            if not psbt.active_multisig:
                 # search for multisig wallet
                 wal = MultisigWallet.find_match(M, N, xfps)
                 if wal < 0:
                     raise FatalPSBTIssue('Unknown multisig wallet')
 
-                active_multisig = MultisigWallet.get_by_idx(wal)
+                psbt.active_multisig = MultisigWallet.get_by_idx(wal)
             else:
                 # check consistent w/ already selected wallet
-                active_multisig.assert_matching(M, N, xfps)
+                psbt.active_multisig.assert_matching(M, N, xfps)
 
             # validate redeem script, by disassembling it and checking all pubkeys
             try:
-                active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
+                psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
             except BaseException as exc:
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
@@ -842,9 +835,6 @@ class psbtObject(psbtProxy):
         self.txn = None
         self.xpubs = []         # tuples(xfp_path, xpub)
 
-        global active_multisig
-        active_multisig = None
-
         from main import settings, dis
         self.my_xfp = settings.get('xfp', 0)
 
@@ -867,6 +857,10 @@ class psbtObject(psbtProxy):
         self.hashPrevouts = None
         self.hashSequence = None
         self.hashOutputs = None
+
+        # this points to a MS wallet, during operation
+        # - we are only supporting a single multisig wallet during signing
+        self.active_multisig = None
 
         self.warnings = []
 
@@ -1022,8 +1016,7 @@ class psbtObject(psbtProxy):
     async def handle_xpubs(self):
         # Lookup correct wallet based on xpubs in globals
         # - only happens if they volunteered this 'extra' data
-        global active_multisig
-        assert not active_multisig
+        assert not self.active_multisig
 
         xfps = [unpack_from('<I', k)[0] for k,_ in self.xpubs]
         assert self.my_xfp in xfps, 'My XFP not involved'
@@ -1033,7 +1026,7 @@ class psbtObject(psbtProxy):
         match_idx = -1
         if len(candidates) == 1:
             # exact match (by xfp set) .. normal case
-            active_multisig = MultisigWallet.get_by_idx(candidates[0])
+            self.active_multisig = MultisigWallet.get_by_idx(candidates[0])
         else:
             # don't want to guess M if not needed, but we need it
             M, N = self.guess_M_of_N()
@@ -1043,18 +1036,24 @@ class psbtObject(psbtProxy):
                 # maybe narrowed down to single match now
                 match_idx = MultisigWallet.find_match(M, N, xfps)
                 if match_idx != -1:
-                    active_multisig = MultisigWallet.get_by_idx(match_idx)
+                    self.active_multisig = MultisigWallet.get_by_idx(match_idx)
 
-        if not active_multisig:
+        if not self.active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
-            active_multisig, need_approval = MultisigWallet.import_from_psbt(M, N, self.xpubs)
+            proposed, need_approval = MultisigWallet.import_from_psbt(M, N, self.xpubs)
             if need_approval:
-                # do a complex UX sequence, which lets them save wallet
-                ch = await active_multisig.confirm_import()
+                # do a complex UX sequence, which lets them save new wallet
+                from main import hsm_active
+                if hsm_active:
+                    raise FatalPSBTIssue("MS enroll not allowed in HSM mode")
+
+                ch = await proposed.confirm_import()
                 if ch != 'y':
                     raise FatalPSBTIssue("Refused to import new wallet")
 
-        if not active_multisig:
+            self.active_multsig = proposed
+
+        if not self.active_multisig:
             # not clear if an error... might be part-way to importing, and
             # the data is optional anyway, etc. If they refuse to import, 
             # we should not reach this point (ie. raise something to abort signing)
@@ -1095,7 +1094,7 @@ class psbtObject(psbtProxy):
         # - mark change outputs, so perhaps we don't show them to users
 
         for idx, txo in self.output_iter():
-            self.outputs[idx].validate(idx, txo, self.my_xfp)
+            self.outputs[idx].validate(idx, txo, self.my_xfp, self.active_multisig)
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?
@@ -1221,7 +1220,7 @@ class psbtObject(psbtProxy):
             # type of signing will be required, and which key we need.
             # - also validates redeem_script when present
             # - also finds appropriate multisig wallet to be used
-            inp.determine_my_signing_key(i, utxo, self.my_xfp)
+            inp.determine_my_signing_key(i, utxo, self.my_xfp, self)
 
             del utxo
 
