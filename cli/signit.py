@@ -108,8 +108,7 @@ def show_version(fname):
 
 @main.command('check')
 @click.argument('fname', default='firmware-signed.bin')
-@click.option('--no-patch', '-x', is_flag=True, help='Dont mask-out hw_compat field')
-def readback(fname, no_patch=False):
+def readback(fname):
     "Verify pubkey and signature used in binary file"
     data = open(fname, 'rb').read()
 
@@ -134,13 +133,6 @@ def readback(fname, no_patch=False):
                 nv += ' HIGH_WATER'
             v = nv
         elif fld == 'hw_compat':
-            if v and not no_patch:
-                # mask it out for signature purposes
-                assert FWH_HWC_NUM_OFFSET == FW_HEADER_SIZE - 64 - 28 - 4
-                xo = FW_HEADER_OFFSET+FWH_HWC_NUM_OFFSET
-                data = bytearray(data)
-                data[xo:xo+4] = b'\0\0\0\0'
-
             nv = '0x%x => ' % v
             d = []
             if v & MK_1_OK: d.append('Mk1')
@@ -149,8 +141,6 @@ def readback(fname, no_patch=False):
             if v & ~(MK_1_OK | MK_2_OK | MK_3_OK):
                 d.append('?other?')
             v = nv + '+'.join(d)
-            if not no_patch:
-                v += "  (masked out of sig)"
         elif fld == 'timestamp':
             v = str(b2a_hex(v), 'ascii')
             nv = '20' + '-'.join(v[i:i+2] for i in range(0, 6, 2)) + ' '
@@ -211,14 +201,11 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     assert len(vectors) <= FW_HEADER_OFFSET, "isr vectors area is too big!"
     assert len(body) >= FW_MIN_LENGTH, "main firmware is too small: %d" % len(body)
 
-    if version == '3.0.7':
-        # transition version: does not specify hw compact but can check it for future
-        hw_compat = 0
-    else:
-        hw_compat = CURRENT_HARDWARE
     if force_hw_compat is not None:
         hw_compat = int(force_hw_compat, 16)
         click.echo("Overriding hw_compat field: 0x%02x" % hw_compat)
+    else:
+        hw_compat = CURRENT_HARDWARE
 
     body_len = align_to(len(body), 512)
     assert body_len % 512 == 0, body_len
@@ -232,17 +219,21 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
                     version_string=version,
                     firmware_length=FW_HEADER_OFFSET+FW_HEADER_SIZE+body_len,
                     install_flags=(FWHIF_HIGH_WATER if high_water else 0x0),
-                    hw_compat=0,        # see below
+                    hw_compat=hw_compat,
                     future=b'\0'*(4*FWH_NUM_FUTURE),
                     signature=b'\xff'*64,
                     pubkey_num=pubkey_num,
                     timestamp=timestamp(backdate) )
 
     assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH, hdr.firmware_length
-    assert hdr.firmware_length <= 786432-128, \
-        "too big for our-protocol USB upgrades: %d = %d bytes too big" % (
-            hdr.firmware_length, hdr.firmware_length-(786432-128))
 
+    # actual file length limited by size of SPI flash area reserved to txn data/uploads
+    USB_MAX_LEN = (786432-128)
+    assert hdr.firmware_length <= USB_MAX_LEN, \
+        "too big for our USB upgrades: %d = %d bytes too big" % (
+            hdr.firmware_length, hdr.firmware_length-USB_MAX_LEN)
+
+    print("Remaining flash space: %d bytes" % (USB_MAX_LEN - hdr.firmware_length))
 
     binhdr = struct.pack(FWH_PY_FORMAT, *hdr)
     assert len(binhdr) == FW_HEADER_SIZE
@@ -264,13 +255,6 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
 
     from ecdsa.util import sigencode_string
     sig = sk.sign_digest(fw_hash, sigencode=sigencode_string)
-
-    # Final header has non-zero hw_compat field which will break
-    # signature, if it is ever seen by older code that did not clear
-    # that field (after checking compatibility)
-    if hw_compat != 0:
-        modhdr = hdr._replace(hw_compat=hw_compat)
-        binhdr = struct.pack(FWH_PY_FORMAT, *modhdr)
 
     assert len(sig) == 64
     final = binhdr[:-64] + sig

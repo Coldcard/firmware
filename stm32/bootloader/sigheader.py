@@ -42,9 +42,6 @@ FWH_NUM_FUTURE = 7
 # offset of pubkey number
 FWH_PK_NUM_OFFSET = 20
 
-# offset of hw_compat field (4 bytes)
-FWH_HWC_NUM_OFFSET = (128 - 64 - 32)
-
 # Bits in install_flags
 FWHIF_HIGH_WATER = 0x01
 

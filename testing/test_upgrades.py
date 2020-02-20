@@ -107,10 +107,6 @@ def test_hacky_upgrade(mode, transport, dev, sim_exec, make_firmware, upload_fil
     assert cooked.magic_value == FW_HEADER_MAGIC
     assert cooked.firmware_length == len(data)
 
-    patched = struct.pack(FWH_PY_FORMAT, *cooked._replace(hw_compat=0))
-    if mode == 'nocheck':
-        assert patched == hdr
-
     if mode == 'incompat':
         if transport == 'usb':
             with pytest.raises(CCProtoError) as ee:
@@ -127,11 +123,11 @@ def test_hacky_upgrade(mode, transport, dev, sim_exec, make_firmware, upload_fil
     else:
         upgrade_by_sd(data)
 
-    # check data was patched as uploading (2 spots)
+    # check data was uploaded verbatim (VERY SLOW)
     for pos in range(0, cooked.firmware_length + 128, 128):
         a = eval(sim_eval(f'main.sf.array[{pos}:{pos+128}]'))
         if pos in [ FW_HEADER_OFFSET, cooked.firmware_length]:
-            assert a == patched, f"wrong @ {pos}"
+            assert a == hdr, f"wrong @ {pos}"
         else:
             assert a == data[pos:pos+128], repr(pos)
     

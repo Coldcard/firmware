@@ -57,9 +57,6 @@ typedef struct {
 // offset of pubkey number
 #define FWH_PK_NUM_OFFSET   20
 
-// offset of hw_compat field (4 bytes)
-#define FWH_HWC_NUM_OFFSET  (128 - 64 - 32)
-
 // Bits in install_flags
 #define FWHIF_HIGH_WATER        0x01
 

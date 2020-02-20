@@ -277,10 +277,9 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
     # Check basics of new firmware being loaded. Return text of error msg if any.
     # - basic checks only: for confused customers, not attackers.
     # - hdr must be a bytearray(FW_HEADER_SIZE+more)
-    # - hdr will be updated in-place, and caller must get that into flash @ FW_HEADER_OFFSET
 
     from sigheader import FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
-    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, FWH_HWC_NUM_OFFSET
+    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK
     from ustruct import unpack_from
     from version import hw_label
 
@@ -316,10 +315,6 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
         
         if not ok:
             return "New firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
-
-        # Patch the header, so hw_compat field is zero
-        # - the signature value is based on those bytes being zero
-        hdr[FWH_HWC_NUM_OFFSET:FWH_HWC_NUM_OFFSET+4] = b'\0\0\0\0'
 
     return None
 

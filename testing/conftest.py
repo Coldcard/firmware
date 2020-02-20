@@ -101,7 +101,7 @@ def sim_card_ejected(sim_exec, is_simulator):
         if not is_simulator():
             # assuming no card on device
             if not ejected:
-                raise pytest.fail('only on simulator')
+                raise pytest.fail('cant insert on real dev')
             else:
                 return
 
@@ -110,7 +110,8 @@ def sim_card_ejected(sim_exec, is_simulator):
         assert sim_exec(cmd) == 'ok'
 
     yield doit
-    doit(False)
+    if is_simulator():
+        doit(False)
 
 @pytest.fixture(scope='module')
 def send_ux_abort(simulator):
