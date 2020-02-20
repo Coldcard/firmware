@@ -42,12 +42,12 @@ firmware-signed.dfu: firmware-signed.bin Makefile
 # make the DFU file which is shared for upgrades
 dfu: firmware-signed.dfu
 
-# Build a binary, signed w/ production key but w/ hw-compat=0x0 for direct DFU loading
+# Build a binary, signed w/ production key
 # - always rebuild binary
 .PHONY: dev.dfu
 dev.dfu: l-port/build-COLDCARD/firmware?.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
-	$(SIGNIT) sign $(VERSION_STRING) --force-hw-compat 0x0 -o dev.bin
+	$(SIGNIT) sign $(VERSION_STRING) -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
 
 # This is fast for Coinkite devs, but no DFU support in the wild.
