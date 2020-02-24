@@ -726,15 +726,9 @@ class MultisigWallet:
 
         ms = cls(name, (M, N), xpubs, chain_type=expect_chain, common_prefix=prefix)
 
-        if trust_mode == TRUST_PSBT:
-            # keep just in-memory version, no approval required
-            return ms, False
-
-        assert trust_mode == TRUST_OFFER
-
-        # caller need to handle interact w.r.t new wallet
-        print("Offering import")
-        return ms, True
+        # may just keep just in-memory version, no approval required, if we are
+        # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
+        return ms, (trust_mode != TRUST_PSBT)
 
     async def confirm_import(self):
         # prompt them about a new wallet, let them see details and then commit change.

@@ -108,8 +108,11 @@ def offer_ms_import(cap_story, dev, need_keypress):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
-    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None):
+    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True):
         keys = keys or make_multisig(M, N, unique=unique)
+
+        if not do_import:
+            return keys
 
         # render as a file for import
         name = name or f'test-{M}-{N}'
@@ -1009,17 +1012,20 @@ def fake_ms_txn():
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 15 ])
-@pytest.mark.parametrize('incl_xpubs', [ False, True ])
+@pytest.mark.parametrize('incl_xpubs', [ False, True, 'no-import' ])
 #@pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
 @pytest.mark.parametrize('transport', [ 'usb' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
 @pytest.mark.parametrize('has_change', [ True, False])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, M=1, N=3):
+def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, settings_set, M=1, N=3):
     
     num_outs = num_ins-1
 
+    # trust PSBT if we're doing "no-import" case
+    settings_set('pms', 2 if (incl_xpubs == 'no-import') else 0)
+
     clear_ms()
-    keys = import_ms_wallet(M, N, name='cli-test', accept=1)
+    keys = import_ms_wallet(M, N, name='cli-test', accept=1, do_import=(incl_xpubs != 'no-import'))
 
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs,
                 outstyles=[out_style], change_outputs=[1] if has_change else [])

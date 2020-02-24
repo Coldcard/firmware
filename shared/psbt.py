@@ -1051,7 +1051,7 @@ class psbtObject(psbtProxy):
                 if ch != 'y':
                     raise FatalPSBTIssue("Refused to import new wallet")
 
-            self.active_multsig = proposed
+            self.active_multisig = proposed
 
         if not self.active_multisig:
             # not clear if an error... might be part-way to importing, and
