@@ -1011,7 +1011,9 @@ class psbtObject(psbtProxy):
 
             return (M, N)
 
-        raise AssertionError("unclear M")
+        # not multisig, probably
+        return None, None
+
 
     async def handle_xpubs(self):
         # Lookup correct wallet based on xpubs in globals
@@ -1030,6 +1032,13 @@ class psbtObject(psbtProxy):
         else:
             # don't want to guess M if not needed, but we need it
             M, N = self.guess_M_of_N()
+
+            if not N:
+                # not multisig, but we can still verify:
+                # - XFP should be one of ours (checked above).
+                # - too slow to re-derive it here, so nothing more to validate at this point
+                return
+
             assert N == len(xfps) 
 
             if candidates:
