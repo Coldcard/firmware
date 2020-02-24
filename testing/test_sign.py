@@ -746,16 +746,17 @@ def test_network_fee_unlimited(fake_txn, start_sign, end_sign, dev, settings_set
 @pytest.mark.parametrize('num_outs', [ 2, 7, 15 ])
 @pytest.mark.parametrize('act_outs', [ 2, 1, -1])
 @pytest.mark.parametrize('segwit', [True, False])
+@pytest.mark.parametrize('add_xpub', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('visualized', [0, STXN_VISUALIZE, STXN_VISUALIZE|STXN_SIGNED])
 def test_change_outs(fake_txn, start_sign, end_sign, cap_story, dev, num_outs, master_xpub,
-                        act_outs, segwit, out_style, visualized, num_ins=3):
+                        act_outs, segwit, out_style, visualized, add_xpub, num_ins=3):
     # create a TXN which has change outputs, which shouldn't be shown to user, and also not fail.
     xp = dev.master_xpub
 
     couts = num_outs if act_outs == -1 else num_ins-act_outs
     psbt = fake_txn(num_ins, num_outs, xp, segwit_in=segwit,
-                        outstyles=[out_style], change_outputs=range(couts))
+                        outstyles=[out_style], change_outputs=range(couts), add_xpub=add_xpub)
 
     open('debug/change.psbt', 'wb').write(psbt)
 
