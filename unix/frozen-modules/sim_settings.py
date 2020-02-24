@@ -52,7 +52,7 @@ if '-p' in sys.argv:
     # pretend BIP39 words don't exist (affects menus mostly)
     sim_defaults['words'] = False
 
-if '-m' in sys.argv:
+if '--ms' in sys.argv:
     # Include useful multisig wallet, and shortcut to MS menu
 
     if '--p2wsh' in sys.argv:
