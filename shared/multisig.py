@@ -576,8 +576,8 @@ class MultisigWallet:
             print(xpub)
             raise AssertionError('unable to parse xpub')
 
-        assert node.private_key() == None, 'no private keys plz'
-        assert chain.ctype == expect_chain, 'wrong chain, expect: ' + expect_chain
+        assert node.private_key() == None, 'no privkeys plz'
+        assert chain.ctype == expect_chain, 'wrong chain'
 
         # NOTE: could enforce all same depth, and/or all depth >= 1, but
         # seems like more restrictive than needed.
