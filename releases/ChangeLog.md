@@ -1,3 +1,8 @@
+## 3.1.1 - Feb 25, 2020
+
+- Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
+  for reporting this.
+
 ## 3.1.0 - Feb 20, 2020
 
 - HSM (Hardware Security Module) mode: give Coldcard spending rules, including whitelisted
