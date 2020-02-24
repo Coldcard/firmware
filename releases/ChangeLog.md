@@ -2,6 +2,8 @@
 
 - Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
   for reporting this.
+- Bugfix: XPUB values volunteered in the global section of a PSBT for signer-signer files would
+  cause errors (but ok in multisig). Coldcard can handle this now.
 
 ## 3.1.0 - Feb 20, 2020
 
