@@ -574,7 +574,7 @@ async def make_summary_file(fname_pattern='public.txt'):
 
     await write_text_file(fname_pattern, body, 'Summary')
 
-async def make_bitcoin_core_wallet(fname_pattern='bitcoin-core.txt'):
+async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
     from main import dis, settings
     import ustruct
     xfp = xfp2str(settings.get('xfp'))
@@ -583,7 +583,7 @@ async def make_bitcoin_core_wallet(fname_pattern='bitcoin-core.txt'):
 
     # make the data
     examples = []
-    payload = ujson.dumps(list(generate_bitcoin_core_wallet(examples)))
+    payload = ujson.dumps(list(generate_bitcoin_core_wallet(examples, account_num)))
 
     body = '''\
 # Bitcoin Core Wallet Import File
@@ -611,7 +611,7 @@ importmulti '{payload}'
 
     await write_text_file(fname_pattern, body, 'Bitcoin Core')
 
-def generate_bitcoin_core_wallet(example_addrs):
+def generate_bitcoin_core_wallet(example_addrs, account_num):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
     from descriptor import append_checksum
@@ -622,7 +622,7 @@ def generate_bitcoin_core_wallet(example_addrs):
 
     chain = chains.current_chain()
 
-    derive = "84'/{coin_type}'/{account}'".format(account=0, coin_type=chain.b44_cointype)
+    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
         prefix = sv.derive_path(derive)
@@ -685,7 +685,7 @@ def generate_wasabi_wallet():
                 ExtPubKey=xpub)
 
 
-def generate_electrum_wallet(addr_type):
+def generate_electrum_wallet(addr_type, account_num=0):
     # Generate line-by-line JSON details about wallet.
     #
     # Much reverse enginerring of Electrum here. It's a complex
@@ -708,7 +708,7 @@ def generate_electrum_wallet(addr_type):
         raise ValueError(addr_type)
 
     derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
-                                    account=0, coin_type=chain.b44_cointype)
+                                    account=account_num, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
         top = chain.serialize_public(sv.derive_path(derive), addr_type)
@@ -718,13 +718,15 @@ def generate_electrum_wallet(addr_type):
 
     rv = dict(seed_version=17, use_encryption=False, wallet_type='standard')
 
+    lab = 'Coldcard Import %s' % xfp2str(xfp)
+    if account_num:
+        lab += ' Acct#%d' % account_num
+
     # the important stuff.
     rv['keystore'] = dict(  ckcc_xfp=xfp,
                             ckcc_xpub=settings.get('xpub'),
-                            hw_type='coldcard',
-                            label='Coldcard Import %s' % xfp2str(xfp),
-                            type='hardware',
-                            derivation=derive, xpub=top)
+                            hw_type='coldcard', type='hardware',
+                            label=lab, derivation=derive, xpub=top)
         
     return rv
 
