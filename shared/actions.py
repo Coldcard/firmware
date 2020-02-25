@@ -7,6 +7,7 @@
 #
 import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
+from ux import ux_enter_number
 from utils import imported, pretty_short_delay
 from main import settings
 from uasyncio import sleep_ms
@@ -685,6 +686,8 @@ SENSITIVE_NOT_SECRET = '''
 The file created is sensitive--in terms of privacy--but should not \
 compromise your funds directly.'''
 
+PICK_ACCOUNT = '''\n\nPress 1 to enter a non-zero account number.'''
+
 
 async def dump_summary(*A):
     # save addresses, and some other public details into a file
@@ -704,17 +707,19 @@ def electrum_export_story(background=False):
 This saves a skeleton Electrum wallet file onto the MicroSD card. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
 ''' 
-        + (background or 'Choose an address type for the wallet on the next screen.\n')
+        + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
         + SENSITIVE_NOT_SECRET)
 
 async def electrum_skeleton(*a):
     # save xpub, and some other public details into a file: NOT MULTISIG
 
-    if not await ux_show_story(electrum_export_story()):
-        return
+    ch = await ux_show_story(electrum_export_story(), escape='1')
 
-    import chains
-    ch = chains.current_chain()
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_number('Account Number:', 9999)
+    elif ch != 'y':
+        return
 
     # pick segwit or classic derivation+such
     from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
@@ -724,45 +729,41 @@ async def electrum_skeleton(*a):
     # 'classic' instead of 'legacy' personallly.
     rv = []
 
-    if AF_CLASSIC in ch.slip132:
-        rv.append(MenuItem("Legacy (P2PKH)", f=electrum_skeleton_step2, arg=AF_CLASSIC))
-    if AF_P2WPKH_P2SH in ch.slip132:
-        rv.append(MenuItem("P2SH-Segwit", f=electrum_skeleton_step2, arg=AF_P2WPKH_P2SH))
-    if AF_P2WPKH in ch.slip132:
-        rv.append(MenuItem("Native Segwit", f=electrum_skeleton_step2, arg=AF_P2WPKH))
+    rv.append(MenuItem("Legacy (P2PKH)", f=electrum_skeleton_step2, arg=(AF_CLASSIC, account_num)))
+    rv.append(MenuItem("P2SH-Segwit", f=electrum_skeleton_step2, arg=(AF_P2WPKH_P2SH, account_num)))
+    rv.append(MenuItem("Native Segwit", f=electrum_skeleton_step2, arg=(AF_P2WPKH, account_num)))
 
     return MenuSystem(rv)
 
 async def bitcoin_core_skeleton(*A):
     # save output descriptors into a file
     # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
-    import chains
 
-    ch = chains.current_chain()
-
-    if await ux_show_story('''\
-This saves a command onto the MicroSD card that includes the public keys.\
+    ch = await ux_show_story('''\
+This saves a command onto the MicroSD card that includes the public keys. \
 You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
-''' + SENSITIVE_NOT_SECRET) != 'y':
+''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
+
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_number('Account Number:', 9999)
+    elif ch != 'y':
         return
 
     # no choices to be made, just do it.
     with imported('backups') as bk:
-        await bk.make_bitcoin_core_wallet()
+        await bk.make_bitcoin_core_wallet(account_num)
 
 
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
     with imported('backups') as bk:
-        addr_fmt = item.arg
-        await bk.make_json_wallet('Electrum wallet', lambda: bk.generate_electrum_wallet(addr_fmt))
+        addr_fmt, account_num = item.arg
+        await bk.make_json_wallet('Electrum wallet', lambda: bk.generate_electrum_wallet(addr_fmt, account_num))
 
 async def wasabi_skeleton(*A):
     # save xpub, and some other public details into a file
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
-    import chains
-
-    ch = chains.current_chain()
 
     if await ux_show_story('''\
 This saves a skeleton Wasabi wallet file onto the MicroSD card. \

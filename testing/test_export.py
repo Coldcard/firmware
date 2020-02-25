@@ -13,7 +13,8 @@ from helpers import xfp2str
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 
-def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet):
+@pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
+def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
@@ -29,6 +30,14 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
     assert 'This saves' in story
     assert 'run that command' in story
 
+    assert 'Press 1 to' in story
+    if acct_num is not None:
+        need_keypress('1')
+        time.sleep(0.1)
+        for n in acct_num:
+            need_keypress(n)
+    else:
+        acct_num = '0'
 
     need_keypress('y')
 
@@ -52,7 +61,7 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
                 js = ln[13:-2]
             elif '=>' in ln:
                 path, addr = ln.strip().split(' => ', 1)
-                assert path.startswith("m/84'/1'/0'/0")
+                assert path.startswith(f"m/84'/1'/{acct_num}'/0")
                 assert addr.startswith('tb1q')
                 sk = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(path[2:])
                 h20 = sk.hash160()
@@ -74,10 +83,10 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
         d = here['desc']
         desc, chk = d.split('#', 1)
         assert len(chk) == 8
-        assert desc.startswith(f'wpkh([{xfp}/84h/1h/0h]')
+        assert desc.startswith(f'wpkh([{xfp}/84h/1h/{acct_num}h]')
 
         expect = BIP32Node.from_wallet_key(simulator_fixed_xprv)\
-                    .subkey_for_path("84'/1'/0'.pub").hwif()
+                    .subkey_for_path(f"84'/1'/{acct_num}'.pub").hwif()
 
         assert expect in desc
         assert expect+f'/{n}/*' in desc
@@ -93,7 +102,7 @@ def test_export_core(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_k
     assert x['label'] == 'testcase'
     assert x['iswatchonly'] == True
     assert x['iswitness'] == True
-    assert x['hdkeypath'] == "m/84'/1'/0'/0/%d" % (len(addrs)-1)
+    assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
 
 def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
@@ -142,7 +151,8 @@ def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need
 
         
 @pytest.mark.parametrize('mode', [ "Legacy (P2PKH)", "P2SH-Segwit", "Native Segwit"])
-def test_export_electrum(mode, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+@pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
+def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
     # lightly test electrum wallet export
 
     goto_home()
@@ -155,6 +165,13 @@ def test_export_electrum(mode, dev, cap_menu, pick_menu_item, goto_home, cap_sto
     title, story = cap_story()
 
     assert 'This saves a skeleton Electrum wallet' in story
+
+    assert 'Press 1 to' in story
+    if acct_num is not None:
+        need_keypress('1')
+        time.sleep(0.1)
+        for n in acct_num:
+            need_keypress(n)
 
     need_keypress('y')
 
@@ -182,6 +199,7 @@ def test_export_electrum(mode, dev, cap_menu, pick_menu_item, goto_home, cap_sto
         deriv = ks['derivation']
         assert deriv.startswith('m/')
         assert int(deriv.split("/")[1][:-1]) in {44, 84, 49}        # weak
+        assert deriv.split("/")[3] == (acct_num or '0')+"'"
 
         xpub = ks['xpub']
         assert xpub[1:4] == 'pub'

@@ -565,5 +565,55 @@ class QRDisplay(UserInteraction):
         the_ux.pop()
 
 
+async def ux_enter_number(prompt, max_value):
+    # return the decimal number which the user has entered
+    # - default/blank value assumed to be zero
+    # - clamps large values to the max
+    from main import dis
+    from display import FontTiny, FontSmall
+    from math import log10
+
+    # allow key repeat on X only
+    press = PressRelease('1234567890y')
+
+    footer = "X to DELETE, or OK when DONE."
+    y = 26
+    value = ''
+    max_w = int(log10(max_value) + 1)
+
+    while 1:
+        dis.clear()
+        dis.text(0, 0, prompt)
+
+        # text centered
+        if value:
+            bx = dis.text(None, y, value)
+            dis.icon(bx+1, y+11, 'space')
+        else:
+            dis.icon(64-7, y+11, 'space')
+
+        dis.text(None, -1, footer, FontTiny)
+        dis.show()
+
+        ch = await press.wait()
+        if ch == 'y':
+
+            if not value: return 0
+            return min(max_value, int(value))
+
+        elif ch == 'x':
+            if value:
+                value = value[0:-1]
+            else:
+                # quit if they press X on empty screen
+                return 0
+        else:
+            if len(value) == max_w:
+                value = value[0:-1] + ch
+            else:
+                value += ch
+
+            # cleanup leading zeros and such
+            value = str(int(value))
 
 # EOF
