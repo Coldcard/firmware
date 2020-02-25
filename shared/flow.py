@@ -60,6 +60,7 @@ SettingsMenu = [
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
+    MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Blockchain', chooser=chain_chooser),
 ]
 

@@ -109,4 +109,24 @@ def chain_chooser():
 
     return which, [t for _,t in ch], set_chain
 
+def scramble_keypad_chooser():
+    #   rngk = randomize keypad for PIN entry
+    from nvstore import SettingsObject
+
+    s = SettingsObject()
+    which = s.get('rngk', 0)
+    del s
+
+    ch = ['Normal', 'Scramble Keys']
+
+    def set(idx, text):
+        # save it, but "outside" of login PIN
+        s = SettingsObject()
+        s.set('rngk', idx)
+        s.save()
+        del s
+
+    return which, ch, set
+
+
 # EOF
