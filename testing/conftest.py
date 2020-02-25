@@ -291,6 +291,63 @@ def cap_story(sim_execfile):
     return doit
 
 @pytest.fixture(scope='module')
+def cap_image(sim_execfile):
+
+    def flip(raw):
+        reorg = bytearray(128*64)
+        j = 0 
+        for y in range(64//8):
+            for by in range(8):
+                for x in range(128):
+                    reorg[j] = 255 if (raw[x+(128*y)] & (1 << by)) else 0
+                    j += 1
+        return bytes(reorg)
+
+    # returns Pillow image  of whatever story is being actively shown on OLED
+    def doit():
+        from PIL import Image
+
+        raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
+        assert len(raw) == (128*64//8)
+        return Image.frombytes('L', (128,64), flip(raw), 'raw')
+
+    return doit
+
+@pytest.fixture(scope='module')
+def cap_screen_qr(cap_image):
+    def doit(x=4, w=64):
+
+        try:
+            import zbar
+        except ImportError:
+            raise pytest.skip('need zbar-py module')
+        import numpy
+        from PIL import ImageOps
+
+        # see <http://qrlogo.kaarposoft.dk/qrdecode.html>
+
+        img = cap_image()
+        img = img.crop( (x, 0, x+w, w) )
+        img = ImageOps.expand(img, 16, 255)
+        img = img.resize( (256, 256))
+        img.save('debug/last-qr.png')
+        #img.show()
+    
+        scanner = zbar.Scanner()
+        np = numpy.array(img.getdata(), 'uint8').reshape(img.width, img.height)
+
+        for sym, value, *_ in scanner.scan(np):
+            assert sym == 'QRCode', 'unexpected symbology: ' + sym
+            value = str(value, 'ascii')
+            return value
+
+        raise pytest.xfail('qr code not found')      # XXX fixme
+
+        return None
+
+    return doit
+
+@pytest.fixture(scope='module')
 def get_pp_sofar(sim_execfile):
     # get entry value for bip39 passphrase
     def doit():
