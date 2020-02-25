@@ -14,4 +14,4 @@ def shuffle(seq):
         j = rng() % (i+1)
         seq[i], seq[j] = seq[j], seq[i]
 
-
+# EOF
