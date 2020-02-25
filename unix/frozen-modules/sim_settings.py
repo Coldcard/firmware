@@ -40,6 +40,11 @@ else:
         '_pin1_secret': '82faf8c43d8835d20aef178a530bb658071a5252b722ba910a4143d9010ebfded9000000000000000000000000000000000000000000000000000000000000000000000000000000',
     })
 
+if '--pin' in sys.argv:
+    pin = sys.argv[sys.argv.index('--pin') + 1]
+    sim_defaults.pop('_skip_pin', 0)
+    SECRETS['_pin1'] = pin
+
 if '-2' in sys.argv:
     # enable second wallet, but no seeds
     sim_defaults.pop('_skip_pin', 0)
