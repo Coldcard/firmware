@@ -1,6 +1,7 @@
 ## 3.1.1 - Feb 25, 2020
 
-- Enhancement: Press 4 when viewing a payment address (triggered over USB) and see QR code.
+- Enhancement: Press 4 when viewing a payment address (triggered by USB command) to
+  see the QR code (Mk3 only).
 - Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
   for reporting this.
 - Bugfix: XPUB values volunteered in the global section of a PSBT for signer-signer files would
