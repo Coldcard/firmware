@@ -7,3 +7,6 @@ python-bitcoinrpc>=1.0
 pyserial
 mnemonic==0.18
 onetimepass==1.0.1
+
+# for QR scanning (pulls in numpy)
+zbar-py==1.0.4

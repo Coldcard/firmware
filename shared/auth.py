@@ -6,7 +6,7 @@
 #
 import stash, ure, tcc, ux, chains, sys, gc, uio, version
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
@@ -925,7 +925,18 @@ class ShowAddressBase(UserAuthorizedAction):
         if not hsm_active:
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
-            ch = await ux_show_story(msg, title=self.title)
+            if version.has_fatram:
+                msg += ' Press 4 to view QR Code.'
+
+            while 1:
+                ch = await ux_show_story(msg, title=self.title, escape='4')
+
+                if ch == '4' and version.has_fatram:
+                    q = ux.QRDisplay([self.address], (self.addr_fmt & AFC_BECH32))
+                    await q.interact_bare()
+                    continue
+
+                break
         else:
             # finish the Wait...
             dis.progress_bar(1)     
@@ -938,6 +949,7 @@ class ShowPKHAddress(ShowAddressBase):
 
     def setup(self, addr_fmt, subpath):
         self.subpath = subpath
+        self.addr_fmt = addr_fmt
 
         with stash.SensitiveValues() as sv:
             node = sv.derive_path(subpath)
@@ -952,6 +964,7 @@ class ShowP2SHAddress(ShowAddressBase):
     def setup(self, ms, addr_fmt, xfp_paths, witdeem_script):
 
         self.witdeem_script = witdeem_script
+        self.addr_fmt = addr_fmt
         self.ms = ms
 
         # calculate all the pubkeys involved.

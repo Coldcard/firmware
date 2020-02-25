@@ -1,9 +1,10 @@
 ## 3.1.1 - Feb 25, 2020
 
+- Enhancement: Press 4 when viewing a payment address (triggered over USB) and see QR code.
 - Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
   for reporting this.
 - Bugfix: XPUB values volunteered in the global section of a PSBT for signer-signer files would
-  cause errors (but ok in multisig). Coldcard can handle this now.
+  cause errors (but ok in multisig). Coldcard will handle this now, although it doesn't need them.
 
 ## 3.1.0 - Feb 20, 2020
 
