@@ -9,7 +9,7 @@ from display import FontLarge, FontTiny
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
 
-# number of (full) lines per screen full
+# number of full lines per screen
 PER_M = 4
 
 def start_chooser(chooser):
