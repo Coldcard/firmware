@@ -382,7 +382,7 @@ async def block_until_login(*a):
     from ux import AbortInteraction
 
     while not pa.is_successful():
-        lll = LoginUX()
+        lll = LoginUX(settings.get('rngk', 0))
 
         try:
             await lll.try_login()
@@ -408,6 +408,18 @@ async def show_nickname(nick):
     dis.show()
 
     await ux_wait_keyup()
+
+
+async def pick_scramble(*a):
+    # Setting: scrambled keypad or normal
+    if await ux_show_story("When entering PIN, randomize the order of the key numbers, "
+            "so that cameras and shoulder-surfers are defeated.") != 'y':
+        return
+
+    from choosers import scramble_keypad_chooser
+    from menu import start_chooser
+    start_chooser(scramble_keypad_chooser)
+
 
 async def pick_nickname(*a):
     # from settings menu, enter a nickname

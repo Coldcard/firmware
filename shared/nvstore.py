@@ -31,15 +31,17 @@ from sffile import SFFile
 #   b39skip = (bool) skip discussion about use of BIP39 passphrase
 #   idle_to = idle timeout period (seconds)
 #   _age = internal verison number for data (see below)
-#   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   terms_ok = customer has signed-off on the terms of sale
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   axi = index of last selected address in explorer
-#   nick = optional nickname for this coldcard (personalization)
 #   lgto = (minutes) how long to wait for Login Countdown feature
 #   usr = (dict) map from username to their secret, as base32
+# Stored w/ key=00 for access before login
+#   _skip_pin = hard code a PIN value (dangerous, only for debug)
+#   nick = optional nickname for this coldcard (personalization)
+#   rngk = randomize keypad for PIN entry
 
 
 # where in SPI Flash we work (last 128k)
