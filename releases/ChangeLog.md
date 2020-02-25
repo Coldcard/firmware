@@ -1,14 +1,15 @@
-## 3.1.1 - Feb 25, 2020
+## 3.1.1 - Feb 26, 2020
 
+- Enhancement: New setting to enable a scrambled numeric keypad during PIN login.
 - Enhancement: Press 4 when viewing a payment address (triggered by USB command) to
-  see the QR code (Mk3 only).
+  see the QR code on-screen (Mk3 only).
 - Enhancement: Can enter non-zero account numbers when exporting wallet files for Electrum
-  and Bitcoin Core. 
-- Enhancement: When entering HSM Mode, dim the display.
+  and Bitcoin Core. This makes imported seeds from other systems easier and safer.
+- Enhancement: Dims the display when entering HSM Mode.
 - Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
   for reporting this.
 - Bugfix: XPUB values volunteered in the global section of a PSBT for signer-signer files would
-  cause errors (but ok in multisig). Coldcard will handle this now, although it doesn't need them.
+  cause errors (but ok in multisig). Coldcard will now handle this, although it doesn't need them.
 
 ## 3.1.0 - Feb 20, 2020
 
