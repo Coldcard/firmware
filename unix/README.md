@@ -37,6 +37,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--hsm` => enable existing HSM policy
 - `--users` => preset a few users: "totp", "hotp" and "pw"
 - `--user-mgmt` => go to the User Management menu inside settings
+- `--pin 123456-123456` => set PIN code to indicated value
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 
