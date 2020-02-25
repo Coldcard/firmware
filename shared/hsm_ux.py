@@ -320,6 +320,7 @@ class hsmUxInteraction:
         main.dis.progress_bar_show = self.hack_progress_bar
 
         # get ready ourselves
+        main.dis.set_brightness(0)        # dimest, but still readable
         self.draw_background()
 
         # Kill time, waiting for user input
