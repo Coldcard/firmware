@@ -4,7 +4,7 @@
 - Enhancement: Press 4 when viewing a payment address (triggered by USB command) to
   see the QR code on-screen (Mk3 only).
 - Enhancement: Can enter non-zero account numbers when exporting wallet files for Electrum
-  and Bitcoin Core. This makes imported seeds from other systems easier and safer.
+  and Bitcoin Core. This makes importing seeds from other systems easier and safer.
 - Enhancement: Dims the display when entering HSM Mode.
 - Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
   for reporting this.
