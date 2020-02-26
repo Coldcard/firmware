@@ -8,7 +8,7 @@
 - Enhancement: Dims the display when entering HSM Mode.
 - Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
   for reporting this.
-- Bugfix: XPUB values volunteered in the global section of a PSBT for signer-signer files would
+- Bugfix: XPUB values volunteered in the global section of a PSBT for single-signer files would
   cause errors (but ok in multisig). Coldcard will now handle this, although it doesn't need them.
 
 ## 3.1.0 - Feb 20, 2020
