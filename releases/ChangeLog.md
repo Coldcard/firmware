@@ -1,3 +1,8 @@
+## 3.1.2 - Feb 27, 2020
+
+- Bugfix: exporting non-zero account numbers didn't work
+
+
 ## 3.1.1 - Feb 26, 2020
 
 - Enhancement: New setting to enable a scrambled numeric keypad during PIN login.
