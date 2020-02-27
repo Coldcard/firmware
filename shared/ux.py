@@ -571,7 +571,7 @@ async def ux_enter_number(prompt, max_value):
     # - clamps large values to the max
     from main import dis
     from display import FontTiny, FontSmall
-    from math import log10
+    from math import log
 
     # allow key repeat on X only
     press = PressRelease('1234567890y')
@@ -579,7 +579,7 @@ async def ux_enter_number(prompt, max_value):
     footer = "X to DELETE, or OK when DONE."
     y = 26
     value = ''
-    max_w = int(log10(max_value) + 1)
+    max_w = int(log(max_value, 10) + 1)
 
     while 1:
         dis.clear()
