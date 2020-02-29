@@ -65,8 +65,8 @@ class SPIFlash:
 
     def write(self, address, buf):
         # 'page program', must already be erased
-        assert 1 <= len(buf) <= 256, "max 256"
-        assert address & ~0xff == (address+len(buf)-1) & ~0xff, "page boundary"
+        assert 1 <= len(buf) <= 256     #  "max 256"
+        assert address & ~0xff == (address+len(buf)-1) & ~0xff      #  "page boundary"
 
         self.cmd(CMD_WREN)
         self.cmd(CMD_WRITE, address, complete=False)
@@ -100,14 +100,14 @@ class SPIFlash:
 
     def sector_erase(self, address):
         # erase 4k. 40-200ms delay; poll is_busy()
-        assert address % 4096 == 0, "not sector start"
+        assert address % 4096 == 0      # "not sector start"
 
         self.cmd(CMD_WREN)
         self.cmd(CMD_SEC_ERASE, address)
 
     def block_erase(self, address):
         # erase 64k at once
-        assert address % 65536 == 0, "not block start"
+        assert address % 65536 == 0     # "not block start"
         self.cmd(CMD_WREN)
         self.cmd(CMD_BLK_ERASE, address)
 
