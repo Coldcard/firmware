@@ -615,7 +615,7 @@ class USBHandler:
         #print('his pubkey = ' + str(b2a_hex(his_pubkey)))
 
         pt = tcc.secp256k1.multiply(my_key, b'\x04' + his_pubkey)
-        assert pt[0] == 4
+        #assert pt[0] == 4
         self.session_key = tcc.sha256(pt[1:]).digest()
 
         #print("session = " + str(b2a_hex(self.session_key)))
@@ -629,7 +629,7 @@ class USBHandler:
         xfp = settings.get('xfp', 0)
         xpub = settings.get('xpub', '')
 
-        assert my_pubkey[0] == 0x04
+        #assert my_pubkey[0] == 0x04
         return b'mypb' + my_pubkey[1:] + pack('<II', xfp, len(xpub)) +  xpub
 
     async def handle_mitm_check(self):
