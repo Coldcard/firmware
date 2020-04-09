@@ -205,7 +205,8 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_ms_import, need_
         assert f'Policy: {N} of {N}\n' in story
 
 def make_redeem(M, keys, path_mapper=None,
-                    violate_bip67=False, tweak_redeem=None, tweak_xfps=None):
+                    violate_bip67=False, tweak_redeem=None, tweak_xfps=None,
+                    finalizer_hack=None):
     # Construct a redeem script, and ordered list of xfp+path to match.
     N = len(keys)
 
@@ -259,6 +260,9 @@ def make_redeem(M, keys, path_mapper=None,
 
     if tweak_xfps:
         tweak_xfps(xfp_paths)
+
+    if finalizer_hack:
+        rv = finalizer_hack(rv)
 
     return rv, [pk for pk,_,_ in data], xfp_paths
 
@@ -919,7 +923,7 @@ def fake_ms_txn():
 
     def doit(num_ins, num_outs, M, keys, fee=10000,
                 outvals=None, segwit_in=False, outstyles=['p2pkh'], change_outputs=[],
-                incl_xpubs=False):
+                incl_xpubs=False, hack_change_out=False):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
 
@@ -974,8 +978,13 @@ def fake_ms_txn():
                 style = outstyles[i % len(outstyles)]
 
             if i in change_outputs:
+                make_redeem_args = dict()
+                if hack_change_out:
+                    make_redeem_args = hack_change_out(i)
+
                 addr, scriptPubKey, scr, details = \
-                    make_ms_address(M, keys, idx=i, addr_fmt=unmap_addr_fmt[style])
+                    make_ms_address(M, keys, idx=i, addr_fmt=unmap_addr_fmt[style],
+                    **make_redeem_args)
 
                 for pubkey, xfp_path in details:
                     psbt.outputs[i].bip32_paths[pubkey] = b''.join(pack('<I', j) for j in xfp_path)
@@ -1244,7 +1253,7 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
 
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.bitcoind
-def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style):
+def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
@@ -1410,5 +1419,55 @@ def test_bitcoind_cosigning(dev, bitcoind, start_sign, end_sign, import_ms_walle
     txn_id = bitcoind.sendrawtransaction(rr['hex'])
     print(txn_id)
 
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH] )
+@pytest.mark.parametrize('num_ins', [ 3])
+@pytest.mark.parametrize('incl_xpubs', [ False])
+@pytest.mark.parametrize('out_style', ['p2wsh'])
+@pytest.mark.parametrize('bitrot', list(range(0,6)) + [98, 99, 100] + list(range(-5, 0)))
+def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story, bitrot):
+    
+    M = 1
+    N = 3
+    num_outs = 2
+
+    clear_ms()
+    keys = import_ms_wallet(M, N, accept=1)
+
+    # given script, corrupt it a little or a lot
+    def rotten(track, bitrot, scr):
+        if bitrot == 98:
+            rv = scr + scr
+        elif bitrot == 98:
+            rv = scr[::-1]
+        elif bitrot == 100:
+            rv = scr*3
+        else:
+            rv = bytearray(scr)
+            rv[bitrot] ^= 0x01
+
+        track.append(rv)
+        return rv
+
+    track = []
+    psbt = fake_ms_txn(num_ins, num_outs, M, keys, incl_xpubs=incl_xpubs,
+                outstyles=[out_style], change_outputs=[0],
+                hack_change_out=lambda idx: dict(finalizer_hack=
+                        lambda scr: rotten(track, bitrot, scr)))
+
+    assert len(track) == 1
+
+    open('debug/last.psbt', 'wb').write(psbt)
+
+    start_sign(psbt)
+    with pytest.raises(Exception) as ee:
+        signed = end_sign(True)
+    assert 'Output#0:' in str(ee)
+    assert 'change output script' in str(ee)
+
+    # Check error details are shown
+    time.sleep(.5)
+    title, story = cap_story()
+    assert story.strip() in str(ee)
+    assert len(story.split(':')[-1].strip()), story
 
 # EOF
