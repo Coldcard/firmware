@@ -21,17 +21,17 @@ def drv_entro_start(*a):
     ch = await ux_show_story('''\
 Create Entropy for Other Wallets
 
-This feature derives "entropy" based mathematically from this wallet's seed value.
-This will be displayed as a 12 or 24 word seed phrase,
-or formatted in other ways to make it easy to import into
+This feature derives "entropy" based mathematically from this wallet's seed value. \
+This will be displayed as a 12 or 24 word seed phrase, \
+or formatted in other ways to make it easy to import into \
 other wallet systems.
 
-You will be able to recreate this value later, based
+You will be able to recreate this value later, based \
 only the seed-phrase or backup of this Coldcard.
 
-There is no way to reverse the process, should the other wallet system be compromised,
-so the other wallet is effectively segregated from the Coldcard and yet
-also backed-up from it.''')
+There is no way to reverse the process, should the other wallet system be compromised, \
+so the other wallet is effectively segregated from the Coldcard and yet \
+still backed-up.''')
     if ch != 'y': return
 
     if stash.bip39_passphrase:
