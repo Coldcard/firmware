@@ -113,3 +113,4 @@ def new(key, msg = None, digestmod = None):
 #import tcc
 #hmac_sha256 = lambda key, msg=None: HMAC(key, msg, tcc.sha256)
 #hmac_sha1 = lambda key, msg=None: HMAC(key, msg, tcc.sha1)
+#hmac_sha512 = lambda key, msg=None: HMAC(key, msg, tcc.sha512)
