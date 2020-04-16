@@ -561,16 +561,24 @@ async def view_seed_words(*a):
         return
 
     with stash.SensitiveValues() as sv:
-        assert sv.mode == 'words'       # protected by menu item predicate
+        if sv.mode == 'words':
+            words = tcc.bip39.from_data(sv.raw).split(' ')
 
-        words = tcc.bip39.from_data(sv.raw).split(' ')
+            msg = 'Seed words (%d):\n' % len(words)
+            msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
 
-        msg = 'Seed words (%d):\n' % len(words)
-        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+            pw = stash.bip39_passphrase
+            if pw:
+                msg += '\n\nBIP39 Passphrase:\n%s' % stash.bip39_passphrase
+        elif sv.mode == 'xprv':
+            import chains
+            msg = chains.current_chain().serialize_private(sv.node)
 
-        pw = stash.bip39_passphrase
-        if pw:
-            msg += '\n\nBIP39 Passphrase:\n%s' % stash.bip39_passphrase
+        elif sv.mode == 'master':
+            msg = '%d bytes:\n\n' % len(sv.raw)
+            msg += str(b2a_hex(sv.raw), 'ascii')
+        else:
+            raise ValueError(sv.mode)
 
         await ux_show_story(msg, sensitive=True)
 
