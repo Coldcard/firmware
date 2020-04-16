@@ -92,12 +92,32 @@ if '--user-mgmt' in sys.argv:
     from main import numpad
     numpad.inject('x')  # no HSM, thanks
     numpad.inject('9')
-    numpad.inject('9')
-    numpad.inject('y')  # settings
+    numpad.inject('5')
+    numpad.inject('y')  # advanced
     numpad.inject('9')
     numpad.inject('9')
     numpad.inject('5')
+    numpad.inject('5')
     numpad.inject('y')  # User management
+
+if '--deriv' in sys.argv:
+    # Advanced > Derive Entropy
+
+    from sim_secel import SECRETS
+    from sim_settings import sim_defaults
+
+    # XPRV from spec: xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb
+    SECRETS['_pin1_secret'] = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a589c3f15e5d852dc2e9ba5e9fe189a8dd2e1547badef5b563bbe6579fc6807d80ed900000000000000'
+    sim_defaults['chain'] = 'BTC'
+
+    from main import numpad
+    numpad.inject('9')
+    numpad.inject('5')
+    numpad.inject('y')  # advanced
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')  # up one from bottom
+    numpad.inject('y')  # Derive Entropy
 
 # not best place for this
 import hsm
