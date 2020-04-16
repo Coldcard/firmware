@@ -575,6 +575,8 @@ async def view_seed_words(*a):
             msg = chains.current_chain().serialize_private(sv.node)
 
         elif sv.mode == 'master':
+            from ubinascii import hexlify as b2a_hex
+
             msg = '%d bytes:\n\n' % len(sv.raw)
             msg += str(b2a_hex(sv.raw), 'ascii')
         else:
