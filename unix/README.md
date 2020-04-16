@@ -38,6 +38,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--users` => preset a few users: "totp", "hotp" and "pw"
 - `--user-mgmt` => go to the User Management menu inside settings
 - `--pin 123456-123456` => set PIN code to indicated value
+- `--deriv` => go to the Derive Entropy menu inside settings, also loads XPRV from BIP
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 
