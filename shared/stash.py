@@ -124,10 +124,12 @@ class SensitiveValues:
                 raise ValueError('no secrets yet')
 
             self.secret = pa.fetch()
+            self.spots = [ self.secret ]
         else:
             # sometimes we already know it
-            assert set(secret) != {0}
+            #assert set(secret) != {0}
             self.secret = secret
+            self.spots = []
 
         # backup during volatile bip39 encryption: do not use passphrase
         self._bip39pw = '' if for_backup else str(bip39_passphrase)
@@ -137,9 +139,10 @@ class SensitiveValues:
 
         self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
 
-        self.chain = chains.current_chain()
+        self.spots.append(self.node)
+        self.spots.append(self.raw)
 
-        self.spots = [ self.secret, self.node, self.raw ]
+        self.chain = chains.current_chain()
 
         return self
 
@@ -151,7 +154,6 @@ class SensitiveValues:
 
         if hasattr(self, 'secret'):
             # will be blanked from above
-            assert self.secret == bytes(AE_SECRET_LEN)
             del self.secret
 
         if hasattr(self, 'node'):
