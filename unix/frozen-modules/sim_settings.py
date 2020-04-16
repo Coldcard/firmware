@@ -81,7 +81,7 @@ if '--xfp' in sys.argv:
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
 if '--seed' in sys.argv:
-    # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
+    # --seed "word1 word2 ... word24" => import that seed phrase at start
     from ustruct import unpack
     from utils import xfp2str
     from seed import set_seed_value
