@@ -69,7 +69,7 @@ def drv_entro_step2(_1, picked, _2):
         s_mode = 'xprv'
         width = 64
     elif picked in (5, 6):
-        width = 32 if picked == 5 else 63
+        width = 32 if picked == 5 else 64
         path = "m/83696968'/128169'/{width}'/{index}'".format(width=width, index=index)
         s_mode = 'hex'
     else:
@@ -81,11 +81,17 @@ def drv_entro_step2(_1, picked, _2):
 
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(path)
-        entropy = hmac_sha512(node.private_key(), b"bip-entropy-from-bip32").digest()
-        sv.register(entropy)
+        if s_mode == 'xprv':
+            # strip parent-node data via encode/decode and skip HMAC512 step
+            encoded = stash.SecretStash.encode(xprv=node)
+            new_secret = None
+        else:
+            entropy = hmac_sha512(node.private_key(), b'bip-entropy-from-k').digest()
+            sv.register(entropy)
 
-        # truncate for this application
-        new_secret = entropy[0:width]
+            # truncate for this application
+            new_secret = entropy[0:width]
+            
 
     # only "new_secret" is interesting past here (node already blanked here)
     del node
@@ -117,27 +123,31 @@ def drv_entro_step2(_1, picked, _2):
 
     elif s_mode == 'xprv':
         # Raw XPRV value.
-        ch, pk = new_secret[0:32], new_secret[32:64]
+        #ch, pk = new_secret[0:32], new_secret[32:64]
+        #master_node = tcc.bip32.HDNode(chain_code=ch, private_key=pk,
+        #                                        child_num=0, depth=0, fingerprint=0)
 
-        master_node = tcc.bip32.HDNode(chain_code=ch, private_key=pk,
-                                                child_num=0, depth=0, fingerprint=0)
+        _, _, master_node = stash.SecretStash.decode(encoded)
         
         msg = 'Derived XPRV:\n' + chain.serialize_private(master_node)
 
-        encoded = stash.SecretStash.encode(xprv=master_node)
-
     elif s_mode == 'hex':
         # Random hex number for whatever purpose
-        msg = ('Hex (%d bytes):\n' % width) + str(b2a_hex(new_secret), 'ascii').upper()
+        msg = ('Hex (%d bytes):\n' % width) + str(b2a_hex(new_secret), 'ascii')
 
         encoded = stash.SecretStash.encode(master_secret=new_secret)
+
+        stash.blank_object(new_secret)
+        new_secret = None       # no need to print it again
     else:
         raise ValueError(s_mode)
 
-    msg += '\n\nPath Used:\n  ' + path
+    msg += '\n\nPath Used (index=%d):\n  %s' % (index, path)
 
-    if s_mode != 'hex':
+    if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
+
+    print(msg)      # XXX debug
 
     prompt = '\n\nPress 1 to save to MicroSD card, 2 to switch to derived seed.'
 
@@ -166,7 +176,8 @@ def drv_entro_step2(_1, picked, _2):
         else:
             break
 
-    stash.blank_object(new_secret)
+    if new_secret is not None:
+        stash.blank_object(new_secret)
     stash.blank_object(msg)
 
     if ch == '2':
