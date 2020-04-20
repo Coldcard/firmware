@@ -21,12 +21,12 @@ def drv_entro_start(*a):
     ch = await ux_show_story('''\
 Create Entropy for Other Wallets
 
-This feature derives "entropy" based mathematically from this wallet's seed value. \
+This feature derives "entropy" based mathematically on this wallet's seed value. \
 This will be displayed as a 12 or 24 word seed phrase, \
 or formatted in other ways to make it easy to import into \
 other wallet systems.
 
-You will be able to recreate this value later, based \
+You can recreate this value later, based \
 only the seed-phrase or backup of this Coldcard.
 
 There is no way to reverse the process, should the other wallet system be compromised, \
@@ -38,8 +38,8 @@ still backed-up.''')
         if not await ux_confirm('''You have a BIP39 passphrase set right now and so that will become wrapped into the new secret.'''):
             return
 
-    choices = [ '12 words', '18 words', '24 words', 'Core HDSEED',
-                'XPRV', '32-bytes Hex', '64-bytes Hex']
+    choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
+                'XPRV', '32-bytes hex', '64-bytes hex']
 
     m = MenuSystem([MenuItem(c, f=drv_entro_step2) for c in choices])
     the_ux.push(m)
@@ -59,8 +59,8 @@ def drv_entro_step2(_1, picked, _2):
         path = "m/83696968'/39'/0'/{num_words}'/{index}'".format(num_words=num_words, index=index)
         s_mode = 'words'
     elif picked == 3:
-        # HDSeed for Bitcoin Core
-        s_mode = 'core'
+        # HDSeed for Bitcoin Core: but really a WIF of a private key, can be used anywhere
+        s_mode = 'wif'
         path = "m/83696968'/2'/{index}'".format(index=index)
         width = 32
     elif picked == 4:
@@ -76,6 +76,7 @@ def drv_entro_step2(_1, picked, _2):
         raise ValueError(picked)
 
     dis.fullscreen("Working...")
+    encoded = None
 
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(path)
@@ -106,18 +107,18 @@ def drv_entro_step2(_1, picked, _2):
 
         encoded = stash.SecretStash.encode(seed_phrase=new_secret)
 
-    elif s_mode == 'core':
-        # for Bitcoin Core: it's 32-bytes of secret exponent, base58 w/ prefix 0x80??
-        # XXX zero confidence this is right
+    elif s_mode == 'wif':
+        # for Bitcoin Core: a 32-byte of secret exponent, base58 w/ prefix 0x80
+        # - always "compressed", so has suffix of 0x01 (inside base58)
+        # - we're not checking it's on curve
+        # - we have no way to represent this internally, since we rely on bip32
 
-        msg = 'HDSeed:\n' + tcc.codecs.b58_encode(chain.b58_privkey + new_secret)
+        # append 0x01 to indicate it's a compressed private key
+        pk = new_secret + b'\x01'
 
-        # "The Hash160 of the HD seed" .. useful as confirmation?
-        msg += '\n\nHDSeedId:\n' + str(b2a_hex(hash160(new_secret)), 'ascii')
+        msg = 'WIF (privkey):\n' + tcc.codecs.b58_encode(chain.b58_privkey + pk)
 
         msg += '\n\nRaw secret:\n' + str(b2a_hex(new_secret), 'ascii')
-
-        encoded = stash.SecretStash.encode(master_secret=new_secret)
 
     elif s_mode == 'xprv':
         # Raw XPRV value.
@@ -133,8 +134,6 @@ def drv_entro_step2(_1, picked, _2):
         # Random hex number for whatever purpose
         msg = ('Hex (%d bytes):\n' % width) + str(b2a_hex(new_secret), 'ascii')
 
-        encoded = stash.SecretStash.encode(master_secret=new_secret)
-
         stash.blank_object(new_secret)
         new_secret = None       # no need to print it again
     else:
@@ -147,7 +146,9 @@ def drv_entro_step2(_1, picked, _2):
 
     print(msg)      # XXX debug
 
-    prompt = '\n\nPress 1 to save to MicroSD card, 2 to switch to derived seed.'
+    prompt = '\n\nPress 1 to save to MicroSD card'
+    if encoded is not None:
+        prompt += ', 2 to switch to derived secret.'
 
     while 1:
         ch = await ux_show_story(msg+prompt, sensitive=True, escape='12')
@@ -156,7 +157,7 @@ def drv_entro_step2(_1, picked, _2):
             # write to SD card: simple text file
             try:
                 with CardSlot() as card:
-                    fname, out_fn = card.pick_filename('derived.txt')
+                    fname, out_fn = card.pick_filename('drv-%s-idx%d.txt' % (s_mode, index))
 
                     with open(fname, 'wt') as fp:
                         fp.write(msg)
@@ -169,8 +170,6 @@ def drv_entro_step2(_1, picked, _2):
                 continue
 
             await ux_show_story("Filename is:\n\n%s" % out_fn, title='Saved')
-
-            pass
         else:
             break
 
@@ -178,7 +177,7 @@ def drv_entro_step2(_1, picked, _2):
         stash.blank_object(new_secret)
     stash.blank_object(msg)
 
-    if ch == '2':
+    if ch == '2' and (encoded is not None):
         from main import pa, settings, dis
         from pincodes import AE_SECRET_LEN
 
@@ -199,6 +198,7 @@ def drv_entro_step2(_1, picked, _2):
 
         await ux_show_story("New master key in effect until next power down.")
 
-    stash.blank_object(encoded)
+    if encoded is not None:
+        stash.blank_object(encoded)
 
 # EOF
