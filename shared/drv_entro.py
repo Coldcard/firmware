@@ -77,8 +77,6 @@ def drv_entro_step2(_1, picked, _2):
 
     dis.fullscreen("Working...")
 
-    hmac_sha512 = lambda key, msg=None: hmac.HMAC(key, msg, tcc.sha512)
-
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(path)
         if s_mode == 'xprv':
@@ -86,7 +84,7 @@ def drv_entro_step2(_1, picked, _2):
             encoded = stash.SecretStash.encode(xprv=node)
             new_secret = None
         else:
-            entropy = hmac_sha512(node.private_key(), b'bip-entropy-from-k').digest()
+            entropy = hmac.HMAC(b'bip-entropy-from-k', node.private_key(), tcc.sha512).digest()
             sv.register(entropy)
 
             # truncate for this application
