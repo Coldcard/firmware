@@ -188,9 +188,10 @@ def drv_entro_step2(_1, picked, _2):
         tmp_secret = encoded + bytes(AE_SECRET_LEN - len(encoded))
 
         # monkey-patch to block SE access, and just use new secret
-        pa.fetch = lambda *a: bytearray(tmp_secret)
-        pa.change = lambda *a: None
+        pa.fetch = lambda *a, **k: bytearray(tmp_secret)
+        pa.change = lambda *a, **k: None
         pa.ls_fetch = pa.change
+        pa.ls_change = pa.change
 
         # copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
