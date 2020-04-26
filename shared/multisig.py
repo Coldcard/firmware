@@ -22,6 +22,18 @@ TRUST_VERIFY = const(0)
 TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
+# Descriptor regexes
+REGEX_SH = r"sh\(sortedmulti\(([1-9][0-6]{0,1}),(\S+)\)\)"
+REGEX_SH_WSH = r"sh\(wsh\(sortedmulti\(([1-9][0-6]{0,1}),(\S+)\)\)\)"
+REGEX_WSH = r"wsh\(sortedmulti\(([1-9][0-6]{0,1}),(\S+)\)\)"
+VALID_DESCRIPTOR_TYPES = [
+    (REGEX_SH, "sorted-p2sh"),
+    (REGEX_SH_WSH, "sorted-p2sh-p2wsh"),
+    (REGEX_WSH, "sorted-p2wsh")
+]
+# check for leading zeros, support "h" in addition to "'"
+REGEX_KEY_ORIGIN = r"\[([0-9a-f]{8})((?:/(?:0|[1-9][0-9]*)['|h]?)*)\]([a-zA-Z0-9]{100,112})"
+
 class MultisigOutOfSpace(RuntimeError):
     pass
 
@@ -437,6 +449,19 @@ class MultisigWallet:
         return subpath_help
 
     @classmethod
+    def from_descriptor(cls, desc_str, expected_chain, name=None):
+        descriptor = cls.parse_descriptor(desc_str, expected_chain)
+        msg = "Descriptor Wallet\n\n"
+        msg += "Type: {}\n".format(descriptor["type"])
+        msg += "M: {}\n".format(descriptor["M"])
+        msg += "N: {}\n\n".format(descriptor["N"])
+        for ko in descriptor["key_origins"]:
+            msg += "{}\n\n".format(ko["string"])
+        print(msg)
+        return None
+                                
+    
+    @classmethod
     def from_file(cls, config, name=None):
         # Given a simple text file, parse contents and create instance (unsaved).
         # format is:         label: value
@@ -460,6 +485,7 @@ class MultisigWallet:
         has_mine = False
         addr_fmt = AF_P2SH
         expect_chain = chains.current_chain().ctype
+        descriptor = None
 
         lines = config.split('\n')
 
@@ -531,6 +557,12 @@ class MultisigWallet:
                 if xfp == my_xfp:
                     # not conclusive, but enough for error catching.
                     has_mine = True
+            elif label == 'descriptor':
+                # pass
+                descriptor = value
+
+        if descriptor:
+            return cls.from_descriptor(descriptor, name)
 
         assert len(xpubs), 'need xpubs'
 
@@ -606,6 +638,66 @@ class MultisigWallet:
         xpubs.append((xfp, chain.serialize_public(node, AF_P2SH)))
 
         return xfp
+
+    @classmethod
+    def parse_descriptor(cls, desc, expected_chain):
+        # try matching each type of descriptor
+        print("Descriptor to parse: " + desc)
+        match = None
+        descriptor_type = None
+        for pat, desc_type in VALID_DESCRIPTOR_TYPES:
+            match = ure.search(pat, desc)
+            print(pat, desc_type)
+            print(match)
+            if match is not None:
+                descriptor_type = desc_type
+                break
+        if match is None:
+            raise Exception("Invalid or unsupported descriptor type.")
+        M = int(match.group(1))
+        key_origins_str = match.group(2)
+        key_origins = []
+        for ko in key_origins_str.split(","):
+            key_origins.append(
+                cls.parse_key_origin(ko, expected_chain)
+            )
+        N = len(key_origins)
+        if N < M:
+            raise Exception("Invalid descriptor: M must be greater than N")
+    
+        return {
+            "type": descriptor_type,
+            "M": M,
+            "N": N,
+            "key_origins": key_origins
+        }
+
+    @classmethod
+    def parse_key_origin(cls, ko, expected_chain):
+        match = ure.search(REGEX_KEY_ORIGIN, ko)
+        if not match:
+            raise Exception("Invalid key origin")
+        # get xfp
+        xfp = match.group(1)
+        # validate derivation path
+        deriv = match.group(2)
+        deriv_parts = deriv.split("/")[1:]
+        global_hardened = True
+        for d in deriv_parts:
+            hardened = d[-1] == "'" or d == "h"
+            if global_hardened == False and hardened == True:
+                raise Exception("Invalid key origin: cannot derive hardened child from non-hardened parent")
+            global_hardened &= hardened            
+        # check xpub
+        xpubs = []
+        cls.check_xpub(xfp, match.group(3), expected_chain, xpubs, {})
+        _, xpub = xpubs.pop()
+        return {
+            "xfp": xfp,
+            "derivation": "m" + deriv,
+            "xpub": key,
+            "string": ko 
+        }
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
