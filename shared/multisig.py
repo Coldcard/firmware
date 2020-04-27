@@ -22,18 +22,6 @@ TRUST_VERIFY = const(0)
 TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
-# Descriptor regexes
-REGEX_SH = r"sh\(sortedmulti\(([1-9][0-6]{0,1}),(\S+)\)\)"
-REGEX_SH_WSH = r"sh\(wsh\(sortedmulti\(([1-9][0-6]{0,1}),(\S+)\)\)\)"
-REGEX_WSH = r"wsh\(sortedmulti\(([1-9][0-6]{0,1}),(\S+)\)\)"
-VALID_DESCRIPTOR_TYPES = [
-    (REGEX_SH, "sorted-p2sh"),
-    (REGEX_SH_WSH, "sorted-p2sh-p2wsh"),
-    (REGEX_WSH, "sorted-p2wsh")
-]
-# check for leading zeros, support "h" in addition to "'"
-REGEX_KEY_ORIGIN = r"\[([0-9a-f]{8})((?:/(?:0|[1-9][0-9]*)['|h]?)*)\]([a-zA-Z0-9]{100,112})"
-
 class MultisigOutOfSpace(RuntimeError):
     pass
 
@@ -110,6 +98,12 @@ class MultisigWallet:
         (AF_P2SH, 'p2sh'),
         (AF_P2WSH, 'p2wsh'),
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),
+    ]
+    # regexes for parsing multisig descriptors
+    DESCRIPTOR_REGEXES = [
+        (AF_P2SH, r"^sh\(sortedmulti\((\d+),(\S+)\)\)$"),
+        (AF_P2WSH_P2SH, r"^sh\(wsh\(sortedmulti\((\d+),(\S+)\)\)\)$"),
+        (AF_P2WSH, r"^wsh\(sortedmulti\((\d+),(\S+)\)\)$")
     ]
 
     def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, common_prefix=None, chain_type='BTC'):
@@ -450,15 +444,25 @@ class MultisigWallet:
 
     @classmethod
     def from_descriptor(cls, desc_str, expected_chain, name=None):
-        descriptor = cls.parse_descriptor(desc_str, expected_chain)
-        msg = "Descriptor Wallet\n\n"
-        msg += "Type: {}\n".format(descriptor["type"])
-        msg += "M: {}\n".format(descriptor["M"])
-        msg += "N: {}\n\n".format(descriptor["N"])
-        for ko in descriptor["key_origins"]:
-            msg += "{}\n\n".format(ko["string"])
-        print(msg)
-        return None
+        from main import settings
+        d = cls.parse_descriptor(desc_str, expected_chain)
+        xpubs = []
+        common_prefix = None
+        has_mine = False
+        my_xfp = settings.get('xfp')
+        for ko in d["key_origins"]:
+            xfp = str2xfp(ko["xfp"])
+            xpubs.append( (xfp, ko["xpub"]) )
+            if xfp == my_xfp:
+                has_mine = True
+                common_prefix = ko["derivation"]
+        if has_mine == False:
+            raise Exception("Descriptor doesn't include our fingerprint.")
+        if name is None:
+            # provide a default name
+            name = '%s Descriptor %d-of-%d' % (d["addr_fmt"], d["M"], d["N"])
+        return cls(name, (d["M"], d["N"]), xpubs, addr_fmt=d["addr_fmt"],
+                   chain_type=expected_chain, common_prefix=common_prefix)
                                 
     
     @classmethod
@@ -562,7 +566,7 @@ class MultisigWallet:
                 descriptor = value
 
         if descriptor:
-            return cls.from_descriptor(descriptor, name)
+            return cls.from_descriptor(descriptor, expect_chain, name)
 
         assert len(xpubs), 'need xpubs'
 
@@ -644,13 +648,11 @@ class MultisigWallet:
         # try matching each type of descriptor
         print("Descriptor to parse: " + desc)
         match = None
-        descriptor_type = None
-        for pat, desc_type in VALID_DESCRIPTOR_TYPES:
+        address_fmt = None
+        for addr_fmt, pat in DESCRIPTOR_REGEXES:
             match = ure.search(pat, desc)
-            print(pat, desc_type)
-            print(match)
             if match is not None:
-                descriptor_type = desc_type
+                address_fmt = addr_fmt
                 break
         if match is None:
             raise Exception("Invalid or unsupported descriptor type.")
@@ -666,7 +668,7 @@ class MultisigWallet:
             raise Exception("Invalid descriptor: M must be greater than N")
     
         return {
-            "type": descriptor_type,
+            "addr_fmt": address_fmt,
             "M": M,
             "N": N,
             "key_origins": key_origins
@@ -674,30 +676,45 @@ class MultisigWallet:
 
     @classmethod
     def parse_key_origin(cls, ko, expected_chain):
-        match = ure.search(REGEX_KEY_ORIGIN, ko)
-        if not match:
+        print("Parsing key origin: " + ko)
+        r = { "derivation": None }
+        arr = ko.strip().split("]")
+        if len(arr) <= 1:
             raise Exception("Invalid key origin")
-        # get xfp
-        xfp = match.group(1)
-        # validate derivation path
-        deriv = match.group(2)
-        deriv_parts = deriv.split("/")[1:]
+        derivation = arr[0].replace("h","'").lower()
+        xpub = arr[1]
+        if derivation[0] != "[":
+            raise Exception("Origin missing leading [")
+        arr = derivation[1:].split("/")
+        pat = r"^[a-fA-F0-9]*$"
+        match = ure.search(pat, arr[0])
+        if match is None:
+            raise Exception("Fingerprint is not hex")
+        if len(arr[0]) != 8:
+            raise Exception("Incorrect fingerprint length")
+        r["xfp"] = arr[0].upper()
         global_hardened = True
-        for d in deriv_parts:
-            hardened = d[-1] == "'" or d == "h"
-            if global_hardened == False and hardened == True:
-                raise Exception("Invalid key origin: cannot derive hardened child from non-hardened parent")
-            global_hardened &= hardened            
+        for der in arr[1:]:
+            if der[-1] == "'":
+                if global_hardened == False:
+                    raise Exception("Invalid key origin: cannot derive hardened child from non-hardened parent")
+                der = der[:-1]
+            else:
+                global_hardened = False
+            try:
+                i = int(der)
+            except:
+                raise Exception("Bad index in key origin derivation.")
+        r["derivation"] = "/".join(arr[1:])
         # check xpub
         xpubs = []
-        cls.check_xpub(xfp, match.group(3), expected_chain, xpubs, {})
+        print(xpub, expected_chain)
+        print(r["xfp"], xpub)
+        cls.check_xpub(r["xfp"], xpub, expected_chain, xpubs, set())
         _, xpub = xpubs.pop()
-        return {
-            "xfp": xfp,
-            "derivation": "m" + deriv,
-            "xpub": key,
-            "string": ko 
-        }
+        r["xpub"] = xpub
+        r["string"] = ko
+        return r
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
