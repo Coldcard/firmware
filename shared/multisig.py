@@ -106,7 +106,7 @@ class MultisigWallet:
         (AF_P2WSH, r"^wsh\(sortedmulti\((\d+),(\S+)\)\)$")
     ]
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, common_prefix=None, chain_type='BTC'):
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, common_prefix=None, chain_type='BTC', allow_explorer=False):
         self.storage_idx = -1
 
         self.name = name
@@ -116,6 +116,7 @@ class MultisigWallet:
         self.xpubs = xpubs                  # list of (xfp(int), xpub(str))
         self.common_prefix = common_prefix  # example: "45'" for BIP45 .. no m/ prefix
         self.addr_fmt = addr_fmt            # not clear how useful that is.
+        self.allow_explorer = allow_explorer # enables the Address Explorer (currently only for wallets imported via descriptor)
 
         # useful cache value
         self.xfps = sorted(k for k,v in self.xpubs)
@@ -137,6 +138,8 @@ class MultisigWallet:
             opts['ch'] = self.chain_type
         if self.common_prefix:
             opts['pp'] = self.common_prefix
+        if self.allow_explorer:
+            opts['ae'] = self.allow_explorer
 
         return (self.name, (self.M, self.N), self.xpubs, opts)
 
@@ -162,7 +165,8 @@ class MultisigWallet:
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
                                     common_prefix=opts.get('pp', None),
-                                    chain_type=opts.get('ch', 'BTC'))
+                                    chain_type=opts.get('ch', 'BTC'),
+                                    allow_explorer=opts.get('ae', False))
         rv.storage_idx = idx
 
         return rv
@@ -198,7 +202,7 @@ class MultisigWallet:
         fingerprints = sorted(fingerprints)
         N = len(fingerprints)
         rv = []
-        
+
         for idx, rec in enumerate(lst):
             name, m_of_n, xpubs, opts = rec
             if m_of_n[1] != N: continue
@@ -469,9 +473,9 @@ class MultisigWallet:
             # provide a default name
             name = '%s Descriptor %d-of-%d' % (d["addr_fmt"], d["M"], d["N"])
         return cls(name, (d["M"], d["N"]), xpubs, addr_fmt=d["addr_fmt"],
-                   chain_type=expected_chain, common_prefix=common_prefix)
-                                
-    
+                   chain_type=expected_chain, common_prefix=common_prefix, allow_explorer=True)
+
+
     @classmethod
     def from_file(cls, config, name=None):
         # Given a simple text file, parse contents and create instance (unsaved).
@@ -758,7 +762,7 @@ class MultisigWallet:
                                 derivation='m/'+self.common_prefix, xpub=xp)
 
             return rv
-            
+
         await make_json_wallet('Electrum multisig wallet', doit,
                                     fname_pattern=self.make_fname('el', 'json'))
 
@@ -1015,8 +1019,98 @@ async def make_ms_wallet_menu(menu, label, item):
         MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=ms),
         MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
     ]
-
+    print("allow explorer?:" +  str(ms.allow_explorer))
+    if ms.allow_explorer == True:
+        rv.append( MenuItem('Address Explorer', f=multisig_address_explorer, arg=ms) )
+    print(len(rv))
     return rv
+
+def make_redeem(M, keys, path):
+    # Construct a redeem script, and ordered list of pubkeys
+    N = len(keys)
+
+    # derive pubkeys (see BIP 67: <https://github.com/bitcoin/bips/blob/master/bip-0067.mediawiki>)
+    pubkeys = []
+    for xfp, node in keys:
+        node_copy = node.clone() # avoids mutability bug
+        depth = node_copy.depth()
+        for p in path[depth:]: # derive entire path (in-place)
+            node_copy.derive(p)
+        pubkeys.append(node_copy.public_key())
+    pubkeys.sort()
+    # construct redeem script
+    mm = [80 + M] if M <= 16 else [1, M]
+    nn = [80 + N] if N <= 16 else [1, N]
+    rv = bytes(mm)
+    for pk in pubkeys:
+        rv += bytes([len(pk)]) + pk
+    rv += bytes(nn + [0xAE])
+
+    return rv, pubkeys
+
+def ms_path_mapper(idx, is_change, addr_fmt):
+    coin = chains.current_chain().b44_cointype
+    def HARD(n=0):
+        return 0x80000000 | n
+    # currently supported address format derivations
+    if addr_fmt == AF_P2SH:
+        return ([HARD(45), is_change, idx], "m/45'/{change}/{idx}".format(change=is_change, idx=idx))
+    elif addr_fmt == AF_P2WSH_P2SH:
+        return (
+            [HARD(48), HARD(coin), HARD(0), HARD(1), is_change, idx],
+            "m/48'/{coin}'/0'/1'/{change}/{idx}".format(coin=coin, change=is_change, idx=idx)
+        )
+    elif addr_fmt == AF_P2WSH:
+        return (
+            [HARD(48), HARD(coin), HARD(0), HARD(2), is_change, idx],
+            "m/48'/{coin}'/0'/2'/{change}/{idx}".format(coin=coin, change=is_change, idx=idx)
+        )
+    else:
+        raise ValueError("Unsupported address format: %s " % addr_fmt)
+
+def make_ms_address(M, keys, idx, is_change, addr_fmt):
+    from chains import BitcoinMain, BitcoinTestnet
+    # Validations
+    assert M <= len(keys), 'M > N'
+    assert idx >= 0, 'Invalid idx'
+    assert is_change in {0,1}, 'Invalid change value'
+    assert addr_fmt in {AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH}, 'Invalid address format'
+    coin = chains.current_chain().b44_cointype
+    p2sh_address = BitcoinMain.p2sh_address if coin == 0 else BitcoinTestnet.p2sh_address
+
+    # Construct addr and script need to represent a p2sh address
+    path, _ = ms_path_mapper(idx, is_change, addr_fmt)
+    script, pubkeys = make_redeem(M, keys, path)
+    addr = p2sh_address(addr_fmt, script)
+    return (addr, script, pubkeys)
+
+async def multisig_address_explorer(menu, label, item):
+    from address_explorer import show_n_addresses
+    ms = item.arg
+    chain = ms.chain()
+    if ms.common_prefix == None:
+        return await ux_show_story("We don't know the common derivation path for "
+                                   "these keys, so cannot show its addresses.")
+    def get_addresses(first, last=None):
+        if last == None:
+            last = first
+        keys = []
+        for xfp, xpub in ms.xpubs:
+            node = chain.deserialize_node(xpub, AF_P2SH)
+            keys.append( (xfp, node) )
+
+        for idx in range(first, last + 1):
+            addr, _, _ = make_ms_address(
+                M=ms.M,
+                keys=keys,
+                idx=idx,
+                is_change=0,
+                addr_fmt=ms.addr_fmt
+            )
+            _, subpath = ms_path_mapper(idx=idx, is_change=0, addr_fmt=ms.addr_fmt)
+            yield (subpath, addr)
+
+    await show_n_addresses(0, 10, ms.addr_fmt, get_addresses)
 
 async def ms_wallet_delete(menu, label, item):
     ms = item.arg
