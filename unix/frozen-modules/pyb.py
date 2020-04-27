@@ -104,6 +104,13 @@ class SDCard:
             time.sleep(0.100)       # drama
         return False
 
+    @classmethod
+    def info(cls):
+        # num blocks, block size, "card type", CSD, CID registers
+        return (493879296, 512, 0,
+                    b'2\x00^\x00\xd6\x81Y[\x8f\xff\xb7\xed\x94\x00@\x16',
+                    b'APA\tDU F\xd9\x92\x11\x10\x9a\x1a\x01\xdf')
+
 class Pin:
     PULL_NONE =1
     PULL_UP =2
