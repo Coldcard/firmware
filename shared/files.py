@@ -256,6 +256,13 @@ class CardSlot:
 
         return [root]
 
+    def card_hash(self):
+        # hash over card config and serial # details
+        import tcc
+        info = pyb.SDCard().info()
+        assert info and len(info) >= 5       # need micropython changes
+        return tcc.sha256(repr(info)).digest()
+
     def pick_filename(self, pattern, path=None):
         # given foo.txt, return a full path to filesystem, AND
         # a nice shortened version of the filename for display to user
