@@ -39,7 +39,7 @@ still backed-up.''')
             return
 
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
-                'XPRV', '32-bytes hex', '64-bytes hex']
+                'XPRV (BIP32)', '32-bytes hex', '64-bytes hex']
 
     m = MenuSystem([MenuItem(c, f=drv_entro_step2) for c in choices])
     the_ux.push(m)
@@ -64,7 +64,7 @@ def drv_entro_step2(_1, picked, _2):
         path = "m/83696968'/2'/{index}'".format(index=index)
         width = 32
     elif picked == 4:
-        # Straight XPRV
+        # New XPRV
         path = "m/83696968'/32'/{index}'".format(index=index)
         s_mode = 'xprv'
         width = 64
@@ -80,19 +80,14 @@ def drv_entro_step2(_1, picked, _2):
 
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(path)
-        if s_mode == 'xprv':
-            # strip parent-node data via encode/decode and skip HMAC512 step
-            encoded = stash.SecretStash.encode(xprv=node)
-            new_secret = None
-        else:
-            entropy = hmac.HMAC(b'bip-entropy-from-k', node.private_key(), tcc.sha512).digest()
-            sv.register(entropy)
+        entropy = hmac.HMAC(b'bip-entropy-from-k', node.private_key(), tcc.sha512).digest()
+        sv.register(entropy)
 
-            # truncate for this application
-            new_secret = entropy[0:width]
+        # truncate for this application
+        new_secret = entropy[0:width]
             
 
-    # only "new_secret" is interesting past here (node already blanked here)
+    # only "new_secret" is interesting past here (node already blanked at this point)
     del node
 
     # Reveal to user!
@@ -118,15 +113,13 @@ def drv_entro_step2(_1, picked, _2):
 
         msg = 'WIF (privkey):\n' + tcc.codecs.b58_encode(chain.b58_privkey + pk)
 
-        msg += '\n\nRaw secret:\n' + str(b2a_hex(new_secret), 'ascii')
-
     elif s_mode == 'xprv':
         # Raw XPRV value.
-        #ch, pk = new_secret[0:32], new_secret[32:64]
-        #master_node = tcc.bip32.HDNode(chain_code=ch, private_key=pk,
-        #                                        child_num=0, depth=0, fingerprint=0)
+        ch, pk = new_secret[0:32], new_secret[32:64]
+        master_node = tcc.bip32.HDNode(chain_code=ch, private_key=pk,
+                                                child_num=0, depth=0, fingerprint=0)
 
-        _, _, master_node = stash.SecretStash.decode(encoded)
+        encoded = stash.SecretStash.encode(xprv=master_node)
         
         msg = 'Derived XPRV:\n' + chain.serialize_private(master_node)
 

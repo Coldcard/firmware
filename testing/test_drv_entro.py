@@ -3,10 +3,12 @@
 #
 # test drv_entro.py features
 #
-import pytest, time, os
-from binascii import a2b_hex
+import pytest, time, os, re
+from binascii import a2b_hex, b2a_hex
 from helpers import B2A
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.key.Key import Key
+from mnemonic import Mnemonic
 
 # XPRV from spec: xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb
 EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a589c3f15e5d852dc2e9ba5e9fe189a8dd2e1547badef5b563bbe6579fc6807d80ed900000000000000'
@@ -26,9 +28,9 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
     ('WIF (privkey)', 0,
         '7040bb53104f27367f317558e78a994ada7296c6fde36a364e5baf206e502bb1',
         'Kzyv4uF39d4Jrw2W7UryTHwZr1zQVNk4dAFyqE6BuMrMh1Za7uhp'),
-    ('XPRV', 0,
+    ('XPRV (BIP32)', 0,
         None,
-        'xprv9s21ZrQH143K3KJoGoKpsDsWdDNDBKs1wqFymBpCGJtrYXrfKzykGDBadZq5SrNde22F83X9qhFZr4uyV9TptTgLqCBc6XFN9tssphdxVeg'),     # XXX no second-source on this one
+        'xprv9s21ZrQH143K2srSbCSg4m4kLvPMzcWydgmKEnMmoZUurYuBuYG46c6P71UGXMzmriLzCCBvKQWBUv3vPB3m1SATMhp3uEjXHJ42jFg7myX'),
     ('32-bytes hex', 0,
         None,
         'ea3ceb0b02ee8e587779c63f4b7b3a21e950a213f1ec53cab608d13e8796e6dc'),
@@ -88,7 +90,7 @@ def test_bip_vectors(mode, index, entropy, expect,
         assert ' '.join(got) == expect
         do_import = 'words'
 
-    elif mode == 'XPRV':
+    elif 'XPRV' in mode:
         assert 'Derived XPRV:' in story
         assert f"m/83696968'/32'/{index}'" in story
         assert expect in story
@@ -170,5 +172,72 @@ def test_bip_vectors(mode, index, entropy, expect,
 
 
     need_keypress('x')
+
+HISTORY = set()
+
+@pytest.mark.parametrize('mode,pattern', [ 
+    ('WIF (privkey)', r'[1-9A-HJ-NP-Za-km-z]{51,52}' ),
+    ('XPRV (BIP32)', r'[tx]prv[1-9A-HJ-NP-Za-km-z]{107}'),
+    ('32-bytes hex', r'[a-f0-9]{32}'),
+    ('64-bytes hex', r'[a-f0-9]{64}'),
+    ('12 words', r'[a-f0-9]{32}'),
+    ('18 words', r'[a-f0-9]{48}'),
+    ('24 words', r'[a-f0-9]{64}'),
+])
+@pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
+def test_path_index(mode, pattern, index, 
+        set_encoded_secret, dev, cap_menu, pick_menu_item,
+        goto_home, cap_story, need_keypress
+):
+    # Uses any key on Simulator; just checking for operation + entropy level
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Derive Entropy')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'seed value' in story
+    assert 'other wallet systems' in story
+    
+    need_keypress('y')
+    time.sleep(0.1)
+    
+    pick_menu_item(mode) 
+
+    if index is not None:
+        time.sleep(0.1)
+        for n in str(index):
+            need_keypress(n)
+
+    need_keypress('y')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert f'Path Used (index={index}):' in story
+    assert "m/83696968'/" in story
+    assert f"/{index}'" in story
+
+    got = re.findall(pattern, story)[0]
+
+    assert len(set(got)) >= 12
+
+    global HISTORY
+    assert got not in HISTORY
+    HISTORY.add(got)
+
+    if 'words' in mode:
+        exp = Mnemonic('english').to_mnemonic(a2b_hex(got)).split()
+        assert '\n'.join(f'{n+1:2d}: {w}' for n, w in enumerate(exp)) in story
+    elif 'XPRV' in mode:
+        node = BIP32Node.from_hwif(got)
+        assert str(b2a_hex(node.chain_code()), 'ascii') in story
+        assert hex(node.secret_exponent())[2:] in story
+    elif 'WIF' in mode:
+        key = Key.from_text(got)
+        assert hex(key.secret_exponent())[2:] in story
+    
 
 # EOF
