@@ -445,6 +445,7 @@ class MultisigWallet:
     @classmethod
     def from_descriptor(cls, desc_str, expected_chain, name=None):
         from main import settings
+
         d = cls.parse_descriptor(desc_str, expected_chain)
         xpubs = []
         common_prefix = None
@@ -456,6 +457,12 @@ class MultisigWallet:
             if xfp == my_xfp:
                 has_mine = True
                 common_prefix = ko["derivation"]
+                # check that xpub is correct at the given path
+                with stash.SensitiveValues() as sv:
+                    node = sv.derive_path(common_prefix)
+                    actual_xpub = chains.get_chain(expected_chain).serialize_public(node, AF_P2SH)
+                    print(actual_xpub)
+                    assert actual_xpub == ko["xpub"], "Derived xpub at {} doesn't match provided xpub".format(ko["derivation"])
         if has_mine == False:
             raise Exception("Descriptor doesn't include our fingerprint.")
         if name is None:
@@ -649,13 +656,16 @@ class MultisigWallet:
         print("Descriptor to parse: " + desc)
         match = None
         address_fmt = None
-        for addr_fmt, pat in DESCRIPTOR_REGEXES:
+        for addr_fmt, pat in cls.DESCRIPTOR_REGEXES:
             match = ure.search(pat, desc)
             if match is not None:
                 address_fmt = addr_fmt
                 break
         if match is None:
             raise Exception("Invalid or unsupported descriptor type.")
+        M = match.group(1)
+        if len(M) > 1 and M[0] == "0": # check for leading zeros
+            raise Exception("Invalid M value (contains leading zeros)")
         M = int(match.group(1))
         key_origins_str = match.group(2)
         key_origins = []
@@ -666,7 +676,6 @@ class MultisigWallet:
         N = len(key_origins)
         if N < M:
             raise Exception("Invalid descriptor: M must be greater than N")
-    
         return {
             "addr_fmt": address_fmt,
             "M": M,
@@ -702,9 +711,11 @@ class MultisigWallet:
             else:
                 global_hardened = False
             try:
+                if len(der) > 1 and der[0] == "0": # check for leading zeros
+                    raise Exception("")
                 i = int(der)
             except:
-                raise Exception("Bad index in key origin derivation.")
+                raise Exception("Invalid index in key origin derivation.")
         r["derivation"] = "/".join(arr[1:])
         # check xpub
         xpubs = []
