@@ -130,17 +130,13 @@ class PassphraseSaver:
 
         async def doit(menu, idx, item):
             # apply the password immediately and drop them at top menu
-
-            err = set_bip39_passphrase(data[idx].get('pw'))
-            if err:
-                # kinda very late: but if not BIP39 based key, ends up here.
-                return await ux_show_story(err, title="Fail")
+            set_bip39_passphrase(data[idx].get('pw'))
 
             from main import settings
             from utils import xfp2str
             xfp = settings.get('xfp')
 
-            # they are big boys now, and don't need to have BIP39 explained everytime.
+            # they are big boys now, and won't need to have BIP39 explained everytime.
             if not settings.get('b39skip', False):
                 settings.set('b39skip', True)
 
