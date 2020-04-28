@@ -42,7 +42,7 @@ def render_backup_contents():
 
     COMMENT('Private key details: ' + chain.name)
 
-    with stash.SensitiveValues(for_backup=True) as sv:
+    with stash.SensitiveValues(bypass_pw=True) as sv:
 
         if sv.mode == 'words':
             ADD('mnemonic', tcc.bip39.from_data(sv.raw))

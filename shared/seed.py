@@ -22,6 +22,7 @@ from stash import SecretStash, SensitiveValues
 from ckcc import rng_bytes
 from random import rng, shuffle
 from ubinascii import hexlify as b2a_hex
+from pwsave import PassphraseSaver
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
@@ -596,6 +597,14 @@ class PassphraseMenu(MenuSystem):
             MenuItem('CANCEL', f=self.done_cancel),
         ]
 
+        try:
+            saved = PassphraseSaver().make_menu()
+            if saved:
+                items.insert(0, MenuItem('Restore Saved', menu=saved))
+        except:
+            # don't want bugs/corrupt files to make rest of menu inaccessible
+            pass
+
         super(PassphraseMenu, self).__init__(items)
 
     def on_cancel(self):
@@ -714,14 +723,18 @@ class PassphraseMenu(MenuSystem):
         from main import settings
         xfp = settings.get('xfp')
 
-        ch = await ux_show_story('''Above is the master key fingerprint of the new wallet.
+        msg = '''Above is the master key fingerprint of the new wallet.
 
-Press X to abort and keep editing passphrase. OK to use the new wallet.''',
-                                title="[%s]" % xfp2str(xfp))
+Press X to abort and keep editing passphrase, OK to use the new wallet and 1 to save to MicroSD'''
+
+        ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
         if ch == 'x':
             # go back!
             set_bip39_passphrase(old_pw)
             return
+
+        if ch == '1':
+            await PassphraseSaver().append(xfp, pp_sofar)
 
         goto_top_menu()
 

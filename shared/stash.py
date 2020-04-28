@@ -115,7 +115,7 @@ bip39_passphrase = ''
 class SensitiveValues:
     # be a context manager, and holder to secrets in-memory
 
-    def __init__(self, secret=None, for_backup=False):
+    def __init__(self, secret=None, bypass_pw=False):
         if secret is None:
             # fetch the secret from bootloader/atecc508a
             from main import pa
@@ -130,7 +130,7 @@ class SensitiveValues:
             self.secret = secret
 
         # backup during volatile bip39 encryption: do not use passphrase
-        self._bip39pw = '' if for_backup else str(bip39_passphrase)
+        self._bip39pw = '' if bypass_pw else str(bip39_passphrase)
 
     def __enter__(self):
         import chains
@@ -237,6 +237,20 @@ class SensitiveValues:
         self.register(rv)
 
         return rv
+
+    def encryption_key(self, salt):
+        # Return a 32-byte derived secret to be used for our own internal encryption purposes
+        # 0x80000000 - 0xCC30 = 2147431376
+        node = self.derive_path("m/2147431408'/0'")     # plan: 0' will be an index for other apps
+
+        acc = tcc.sha256(salt)
+        acc.update(tcc.sha256(node.private_key()).digest())
+        acc.update(salt)
+
+        pk = tcc.sha256(acc.digest()).digest()
+
+        self.register(pk)
+        return pk
     
 
 # EOF
