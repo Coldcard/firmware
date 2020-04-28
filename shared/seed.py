@@ -440,7 +440,6 @@ def set_seed_value(words):
 
 def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
-    # - return None or error msg
     import stash
 
     stash.bip39_passphrase = pw
@@ -450,9 +449,8 @@ def set_bip39_passphrase(pw):
     dis.fullscreen("Working...")
 
     with stash.SensitiveValues() as sv:
-        if sv.mode != 'words':
-            # can't do it without original seed woods
-            return 'No BIP39 seed words'
+        # can't do it without original seed woods
+        assert sv.mode == 'words'
 
         sv.capture_xpub()
 
@@ -715,10 +713,7 @@ class PassphraseMenu(MenuSystem):
         from stash import bip39_passphrase
         old_pw = str(bip39_passphrase)
 
-        err = set_bip39_passphrase(pp_sofar)
-        if err:
-            # kinda very late: but if not BIP39 based key, ends up here.
-            return await ux_show_story(err, title="Fail")
+        set_bip39_passphrase(pp_sofar)
 
         from main import settings
         xfp = settings.get('xfp')
