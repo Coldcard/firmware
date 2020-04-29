@@ -29,35 +29,21 @@ class HMAC:
         """
 
         if not isinstance(key, (bytes, bytearray)):
-            raise TypeError("key: expected bytes or bytearray, but got %r" % type(key).__name__)
+            raise TypeError()
 
-        assert callable(digestmod)
-        self.digest_cons = digestmod
-
-        self.outer = self.digest_cons()
-        self.inner = self.digest_cons()
+        self.outer = digestmod()
+        self.inner = digestmod()
         self.digest_size = self.inner.digest_size
 
-        if hasattr(self.inner, 'block_size'):
-            blocksize = self.inner.block_size
-            assert blocksize >= 16
-            #if blocksize < 16:
-            #    _warnings.warn('block_size of %d seems too small; using our '
-            #                   'default of %d.' % (blocksize, self.blocksize),
-            #                   RuntimeWarning, 2)
-            #    blocksize = self.blocksize
-        else:
-            #_warnings.warn('No block_size attribute on given digest object; '
-            #               'Assuming %d.' % (self.blocksize),
-            #               RuntimeWarning, 2)
-            blocksize = self.blocksize
+        blocksize = self.inner.block_size
+        assert blocksize >= 16
 
         # self.blocksize is the default blocksize. self.block_size is
         # effective block size as well as the public API attribute.
         self.block_size = blocksize
 
         if len(key) > blocksize:
-            key = self.digest_cons(key).digest()
+            key = digestmod(key).digest()
 
         def translate(d, t):
             return bytes(t[x] for x in d)
