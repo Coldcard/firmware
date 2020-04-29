@@ -440,23 +440,25 @@ def set_seed_value(words):
 
 def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
-    import stash
-
-    stash.bip39_passphrase = pw
 
     # takes a bit, so show something
     from main import dis
     dis.fullscreen("Working...")
 
+    # set passphrase
+    import stash
+    stash.bip39_passphrase = pw
+
+    # capture updated XFP
     with stash.SensitiveValues() as sv:
-        # can't do it without original seed woods
+        # can't do it without original seed words (late, but caller has checked)
         assert sv.mode == 'words'
 
         sv.capture_xpub()
 
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and
-    # only affects MitM testing.
+    # would only affect MitM test, which has already been done.
 
 async def remember_bip39_passphrase():
     # Compute current xprv and switch to using that as root secret.
