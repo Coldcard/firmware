@@ -183,6 +183,11 @@ OBJDUMP = arm-none-eabi-objdump
 firmware.lss: $(PORT_TOP)/build-COLDCARD/firmware.elf
 	$(OBJDUMP) -h -S $< > $@
 
+# dump sizes of compiled py files
+.PHONY: sizes
+sizes:
+	wc -c l-port/build-COLDCARD/frozen_mpy/*.mpy | sort -n
+
 # one time setup, after repo checkout
 setup:
 	cd $(MPY_TOP) ; git submodule update --init lib/stm32lib
