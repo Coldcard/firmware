@@ -773,6 +773,23 @@ async def electrum_skeleton_step2(_1, _2, item):
         addr_fmt, account_num = item.arg
         await bk.make_json_wallet('Electrum wallet', lambda: bk.generate_electrum_wallet(addr_fmt, account_num))
 
+async def generic_skeleton(*A):
+    # like the Multisig export, make a single JSON file with
+    # basically all useful XPUB's in it.
+
+    if await ux_show_story('''\
+Saves JSON file onto MicroSD card, with XPUB values that are needed to watch typical \
+single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
+        return
+
+    account_num = await ux_enter_number('Account Number:', 9999)
+
+    # no choices to be made, just do it.
+    with imported('backups') as bk:
+        await bk.make_json_wallet('Generic Export',
+                lambda: bk.generate_generic_export(account_num), 'coldcard-export.json')
+
+
 async def wasabi_skeleton(*A):
     # save xpub, and some other public details into a file
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
