@@ -1,11 +1,13 @@
-## 3.1.3 - April , 2020
-- New feature: Export deterministically-derived entropy in the form of
-  seed phrases (BIP39), XPRV, private key (WIF), or hex digits. Useful for seeding
-  other wallets from your Coldcard, so you don't need to backup "yet another" seed phrase.
-  Derived values (all types) can be easly recreated from Coldcard later, or the backup of
-  the Coldcard. Does not expose the Coldcard's master secret, should new wallet be compromised.
-- Save BIP39 passphrases, encrypted, to specific SDCard
+## 3.1.3 - April 30, 2020
+
+- New feature: Option to save your BIP39 passphrases, encrypted, to specific SDCard. Recall
+  them later, if you have that same card, with just a few clicks. Passphrases are encrypted 
+  with AES256 (CTR mode) using a key derived from master secret and a hash of the serial number
+  details of the SDCard, so you cannot copy the file to another card. To use this feature,
+  press (1) after you've successfully entered your passphrase. 'Restore Saved' menu item
+  will appear if corrected-encrypted file is detected.
 - Code cleanups.
+
 
 ## 3.1.2 - Feb 27, 2020
 
