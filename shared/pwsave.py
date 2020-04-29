@@ -5,12 +5,12 @@
 #
 import sys, tcc, stash, ujson, os
 from files import CardSlot, CardMissingError
-from ubinascii import hexlify as b2a_hex
 
 class PassphraseSaver:
     # Encrypts BIP39 passphrase very carefully, and appends
     # to a file on MicroSD card. Order is preserved.
-    # AES-256; key=sha256(microSD serial # hash + some derived key off master)
+    # AES-256 CTR with key=SHA256(SHA256(salt + derived key off master + salt))
+    # where: salt=sha256(microSD serial # details)
 
     def filename(self, card):
         # Construct actual filename to use.
@@ -19,16 +19,14 @@ class PassphraseSaver:
 
     def _calc_key(self, card):
         # calculate the key to be used.
-        if getattr(self, 'key', 0): return
+        if getattr(self, 'key', None): return
 
         try:
             salt = card.get_id_hash()
 
             with stash.SensitiveValues(bypass_pw=True) as sv:
-                key = sv.encryption_key(salt)
-                assert len(key) == 32
+                self.key = bytearray(sv.encryption_key(salt))
 
-                self.key = bytearray(key)
         except:
             self.key = None
 
@@ -69,7 +67,7 @@ class PassphraseSaver:
                     with open(self.filename(card), 'wb') as fd:
                         fd.write(msg)
 
-                await ux_dramatic_pause("Saved.", 2)
+                await ux_dramatic_pause("Saved.", 1)
                 return
 
             except CardMissingError:
@@ -83,16 +81,16 @@ class PassphraseSaver:
         from actions import goto_top_menu
         from ux import ux_show_story
         from seed import set_bip39_passphrase
+        import pyb
+
+        # Very quick check for card not present case.
+        if not pyb.SDCard().present():
+            return None
 
         # Read file, decrypt and make a menu to show; OR return None
         # if any error hit.
         try:
             with CardSlot() as card:
-                try:
-                    # check file exists before doing expensive crypto steps
-                    os.stat(self.filename(card))
-                except:     # OSError for ENOENT
-                    return None
 
                 self._calc_key(card)
                 if not self.key: return None
@@ -107,7 +105,7 @@ class PassphraseSaver:
 
         # We have a list of xfp+pw fields. Make a menu.
 
-        # challenge: we need to hint at which is which, but don't want to
+        # Challenge: we need to hint at which is which, but don't want to
         # show the password on-screen.
         # - simple algo: 
         #   - show either first N or last N chars only
@@ -130,18 +128,14 @@ class PassphraseSaver:
 
         async def doit(menu, idx, item):
             # apply the password immediately and drop them at top menu
-            set_bip39_passphrase(data[idx].get('pw'))
+            set_bip39_passphrase(data[idx]['pw'])
 
             from main import settings
             from utils import xfp2str
             xfp = settings.get('xfp')
 
-            # they are big boys now, and won't need to have BIP39 explained everytime.
-            if not settings.get('b39skip', False):
-                settings.set('b39skip', True)
-
             # verification step; I don't see any way for this to go wrong
-            assert xfp == data[idx].get('xfp')
+            assert xfp == data[idx]['xfp']
 
             # feedback that it worked
             await ux_show_story("Passphrase restored.", title="[%s]" % xfp2str(xfp))
