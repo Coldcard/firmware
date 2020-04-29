@@ -61,49 +61,10 @@ async def usb_keypad_emu():
                 from machine import soft_reset
                 soft_reset()
 
-            if 0:
-                if k == 'd':
-                    numpad.debug = (numpad.debug + 1) % 3
-                    continue
-
-                if k == 'n':
-                    if numpad.disabled:
-                        numpad.start()
-                    else:
-                        numpad.stop()
-
-                    print("npdis = %d" % numpad.disabled)
-                    continue
-
-            if k == 'U':
-                # enter DFU
-                import callgate
-                callgate.enter_dfu()
-                # not reached
-
             if k == 'T':
                 ckcc.vcp_enabled(True)
-                print("Repl enabled")
+                print("Repl")
                 continue
-
-            if k == 'M':
-                import gc
-                print("Memory: %d" % gc.mem_free())
-                continue
-
-            # word menus: shortcut for first letter
-            top = the_ux.top_of_stack()
-            if top and isinstance(top, WordNestMenu) and len(top.items) > 6:
-                pos = min(len(i.label) for i in top.items)
-                if pos >= 2:
-                    for n, it in enumerate(top.items):
-                        if it.label[pos-2] == k:
-                            top.goto_idx(n)
-                            top.show()
-                            k = None
-                            break
-
-                    if k is None: continue
 
             if k in remap:
                 k = remap[k]
@@ -111,7 +72,5 @@ async def usb_keypad_emu():
             if k in '0123456789xy':
                 numpad.inject(k)
                 continue
-            
-            print('? %r' % k)
 
 # EOF

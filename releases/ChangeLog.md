@@ -1,4 +1,11 @@
-## 3.1.3 - Mar , 2020
+## 3.1.3 - April 30, 2020
+
+- New feature: Option to save your BIP39 passphrases, encrypted, to specific SDCard. Recall
+  them later, if you have that same card, with just a few clicks. Passphrases are encrypted 
+  with AES256 (CTR mode) using a key derived from master secret and a hash of the serial number
+  details of the SDCard, so you cannot copy the file to another card. To use this feature,
+  press (1) after you've successfully entered your passphrase. 'Restore Saved' menu item
+  will appear if correctly-encrypted file is detected.
 - Code cleanups.
 
 
