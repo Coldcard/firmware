@@ -244,7 +244,7 @@ class SensitiveValues:
         node = self.derive_path("m/2147431408'/0'")     # plan: 0' will be an index for other apps
 
         acc = tcc.sha256(salt)
-        acc.update(tcc.sha256(node.private_key()).digest())
+        acc.update(node.private_key())
         acc.update(salt)
 
         pk = tcc.sha256(acc.digest()).digest()
