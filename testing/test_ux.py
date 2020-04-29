@@ -451,17 +451,63 @@ def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story
     chk = get_pp_sofar()
     assert chk == ''
 
+@pytest.fixture
+def enter_complex(get_pp_sofar, need_keypress, pick_menu_item):
+    def doit(target):
+        # full entry mode
+        # - just left to right here
+        # - not testing case swap, because might remove that
+        symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+
+        pick_menu_item('Edit Phrase')
+
+        for pos, d in enumerate(target):
+            time.sleep(.01)      # required
+            if d.isalpha():
+                if pos != 0:        # A is already default first
+                    need_keypress('1')
+
+                if d.islower():
+                    time.sleep(.01)      # required
+                    need_keypress('1')
+
+                cnt = ord(d.lower()) - ord('a')
+
+            elif d.isdigit():
+                need_keypress('2')
+                if d == '0':
+                    time.sleep(.01)      # required
+                    need_keypress('8')
+                    cnt = 0
+                else:
+                    cnt = ord(d) - ord('1')
+            else:
+                assert d in symbols
+                if pos == 0:
+                    need_keypress('3')
+
+                cnt = symbols.find(d)
+
+            for i in range(cnt):
+                time.sleep(.01)      # required
+                need_keypress('5')
+
+            if pos != len(target)-1:
+                time.sleep(.01)      # required
+                need_keypress('9')
+
+        time.sleep(0.01)      # required
+        need_keypress('y')
+
+    return doit
+
 @pytest.mark.parametrize('target', ['abc123', 'AbcZz1203', 'Test 123',
         '&*!#^$*&@#^*&^$abcdABCD^%182736',
         'I be stacking sats!! Come at me bro....',
         'Aa'*50,
 ])
 def test_bip39_complex(target, goto_home, pick_menu_item, cap_story, 
-                                cap_menu, word_menu_entry, get_pp_sofar, need_keypress):
-    # full entry mode
-    # - just left to right here
-    # - not testing case swap, because might remove that
-    symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+                        cap_menu, word_menu_entry, get_pp_sofar, need_keypress, enter_complex):
 
     # failed run recovery; gets out of edit screen
     #need_keypress('y')
@@ -469,45 +515,8 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
     goto_home()
     pick_menu_item('Passphrase')
     time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
-    pick_menu_item('Edit Phrase')
 
-    for pos, d in enumerate(target):
-        time.sleep(.01)      # required
-        if d.isalpha():
-            if pos != 0:        # A is already default first
-                need_keypress('1')
-
-            if d.islower():
-                time.sleep(.01)      # required
-                need_keypress('1')
-
-            cnt = ord(d.lower()) - ord('a')
-
-        elif d.isdigit():
-            need_keypress('2')
-            if d == '0':
-                time.sleep(.01)      # required
-                need_keypress('8')
-                cnt = 0
-            else:
-                cnt = ord(d) - ord('1')
-        else:
-            assert d in symbols
-            if pos == 0:
-                need_keypress('3')
-
-            cnt = symbols.find(d)
-
-        for i in range(cnt):
-            time.sleep(.01)      # required
-            need_keypress('5')
-
-        if pos != len(target)-1:
-            time.sleep(.01)      # required
-            need_keypress('9')
-
-    time.sleep(0.01)      # required
-    need_keypress('y')
+    enter_complex(target)
 
     time.sleep(0.01)      # required
     assert get_pp_sofar() == target
