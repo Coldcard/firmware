@@ -22,6 +22,7 @@ from stash import SecretStash, SensitiveValues
 from ckcc import rng_bytes
 from random import rng, shuffle
 from ubinascii import hexlify as b2a_hex
+from pwsave import PassphraseSaver
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
@@ -439,25 +440,25 @@ def set_seed_value(words):
 
 def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
-    # - return None or error msg
-    import stash
-
-    stash.bip39_passphrase = pw
 
     # takes a bit, so show something
     from main import dis
     dis.fullscreen("Working...")
 
+    # set passphrase
+    import stash
+    stash.bip39_passphrase = pw
+
+    # capture updated XFP
     with stash.SensitiveValues() as sv:
-        if sv.mode != 'words':
-            # can't do it without original seed woods
-            return 'No BIP39 seed words'
+        # can't do it without original seed words (late, but caller has checked)
+        assert sv.mode == 'words'
 
         sv.capture_xpub()
 
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and
-    # only affects MitM testing.
+    # would only affect MitM test, which has already been done.
 
 async def remember_bip39_passphrase():
     # Compute current xprv and switch to using that as root secret.
@@ -591,6 +592,14 @@ class PassphraseMenu(MenuSystem):
             MenuItem('CANCEL', f=self.done_cancel),
         ]
 
+        try:
+            saved = PassphraseSaver().make_menu()
+            if saved:
+                items.insert(0, MenuItem('Restore Saved', menu=saved))
+        except:
+            # don't want bugs/corrupt files to make rest of menu inaccessible
+            pass
+
         super(PassphraseMenu, self).__init__(items)
 
     def on_cancel(self):
@@ -701,22 +710,23 @@ class PassphraseMenu(MenuSystem):
         from stash import bip39_passphrase
         old_pw = str(bip39_passphrase)
 
-        err = set_bip39_passphrase(pp_sofar)
-        if err:
-            # kinda very late: but if not BIP39 based key, ends up here.
-            return await ux_show_story(err, title="Fail")
+        set_bip39_passphrase(pp_sofar)
 
         from main import settings
         xfp = settings.get('xfp')
 
-        ch = await ux_show_story('''Above is the master key fingerprint of the new wallet.
+        msg = '''Above is the master key fingerprint of the new wallet.
 
-Press X to abort and keep editing passphrase. OK to use the new wallet.''',
-                                title="[%s]" % xfp2str(xfp))
+Press X to abort and keep editing passphrase, OK to use the new wallet and 1 to save to MicroSD'''
+
+        ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
         if ch == 'x':
             # go back!
             set_bip39_passphrase(old_pw)
             return
+
+        if ch == '1':
+            await PassphraseSaver().append(xfp, pp_sofar)
 
         goto_top_menu()
 

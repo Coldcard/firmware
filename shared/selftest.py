@@ -40,11 +40,11 @@ def set_genuine():
     if not pa.is_successful():
         # assume blank pin during factory selftest
         pa.setup(b'')
-        assert not pa.is_delay_needed(), "PIN failures?"
+        assert not pa.is_delay_needed()     # "PIN failures?"
 
         if not pa.is_successful():
             pa.login()
-            assert pa.is_successful(), "PIN not blank?"
+            assert pa.is_successful()       # "PIN not blank?"
 
     # do verify step
     pa.greenlight_firmware()
@@ -53,15 +53,15 @@ def set_genuine():
 
 async def test_secure_element():
 
-    assert not get_is_bricked(), "SE is bricked"
+    assert not get_is_bricked()         # bricked already
 
     # test right chips installed
     is_fat = ckcc.is_stm32l496()
     if is_fat:
-        assert version.has_608, "expect 608a"
+        assert version.has_608          # expect 608a
         assert version.hw_label == 'mk3'
     else:
-        assert not version.has_608, "expect 508a"
+        assert not version.has_608      # expect 508a
         assert version.hw_label != 'mk3'
 
     if ckcc.is_simulator(): return
@@ -77,7 +77,7 @@ async def test_secure_element():
 
         dis.show()
         k = await ux_wait_keyup('xy')
-        assert k == 'y', "LED bust"
+        assert k == 'y'     # "LED bust"
 
         if ph and gg:
             # stop once it's on and we've tested both states
@@ -94,7 +94,7 @@ async def test_secure_element():
             ux_clear_keys()
 
         ng = get_genuine()
-        assert ng != gg, "Could not invert LED"
+        assert ng != gg     # "Could not invert LED"
             
 async def test_sd_active():
     # Mark 2: SD Card active light.
@@ -113,7 +113,7 @@ async def test_sd_active():
 
         dis.show()
         k = await ux_wait_keyup('xy')
-        assert k == 'y', "SD Active LED bust"
+        assert k == 'y'     # "SD Active LED bust"
 
 async def test_multipress():
     dis.clear()
@@ -147,7 +147,7 @@ async def test_sflash():
             await sleep_ms(250)
             if not sf.is_busy(): break
 
-        assert not sf.is_busy(), "didn't finish"
+        assert not sf.is_busy()     # "didn't finish"
 
         # leave chip blank
         if phase == 1: break
@@ -156,12 +156,12 @@ async def test_sflash():
         buf = bytearray(32)
         for addr in range(0, msize, 1024):
             sf.read(addr, buf)
-            assert set(buf) == {255}, "not blank"
+            assert set(buf) == {255}        # "not blank"
 
             rnd = tcc.sha256(pack('I', addr)).digest()
             sf.write(addr, rnd)
             sf.read(addr, buf)
-            assert buf == rnd, "write failed"
+            assert buf == rnd           #  "write failed"
 
             dis.progress_bar_show(addr/msize)
 
@@ -169,7 +169,7 @@ async def test_sflash():
         for addr in range(0, msize, 1024):
             expect = tcc.sha256(pack('I', addr)).digest()
             sf.read(addr, buf)
-            assert buf == expect, "readback failed"
+            assert buf == expect        # "readback failed"
 
             dis.progress_bar_show(addr/msize)
 
@@ -227,7 +227,7 @@ async def test_microsd():
         dis.show()
 
         # card inserted
-        assert sd.present(), "SD not present?"
+        assert sd.present()     #, "SD not present?"
 
         # power up?
         sd.power(1)
@@ -237,7 +237,7 @@ async def test_microsd():
             blks, bsize, ctype = sd.info()
             assert bsize == 512
         except:
-            assert 0, "card info"
+            assert 0        # , "card info"
 
         # just read it a bit, writing would prove little
         buf = bytearray(512)
@@ -247,7 +247,7 @@ async def test_microsd():
             dis.progress_bar_show(addr/msize)
 
             if addr == 0:
-                assert buf[-2:] == b'\x55\xaa', "Bad read"
+                assert buf[-2:] == b'\x55\xaa'      # "Bad read"
 
         # force removal, so cards don't get stuck in finished units
         await wait_til_state(False)

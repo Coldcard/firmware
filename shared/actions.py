@@ -29,7 +29,7 @@ async def start_selftest(*args):
 
 async def needs_microsd():
     # Standard msg shown if no SD card detected when we need one.
-    await ux_show_story("Please insert a MicroSD card before attempting this operation.")
+    return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
 async def needs_primary():
     # Standard msg shown if action can't be done w/o main PIN

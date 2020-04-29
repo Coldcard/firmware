@@ -256,7 +256,7 @@ class CardSlot:
 
         return [root]
 
-    def card_hash(self):
+    def get_id_hash(self):
         # hash over card config and serial # details
         import tcc
         info = pyb.SDCard().info()
