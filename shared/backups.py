@@ -684,6 +684,40 @@ def generate_wasabi_wallet():
                 ColdCardFirmwareVersion=vers,
                 ExtPubKey=xpub)
 
+def generate_generic_export(account_num=0):
+    # Generate data that other programers will use to import Coldcard (single-signer)
+    from main import settings
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+
+    chain = chains.current_chain()
+
+    rv = dict(chain=chain.ctype,
+                xpub = settings.get('xpub'),
+                xfp = xfp2str(settings.get('xfp')),
+                account = account_num,
+            )
+
+    with stash.SensitiveValues() as sv:
+        # each of these paths would have /{change}/{idx} in usage (not hardened)
+        for name, deriv, fmt, atype in [
+            ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh' ),
+            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2wpkh-p2sh' ),
+            ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh' ),
+        ]:
+            dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
+            node = sv.derive_path(dd)
+            xp = chain.serialize_public(node, AF_CLASSIC)
+            zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
+
+            # bonus/check: first address: 0/0
+            node.derive(0)
+            node.derive(0)
+
+            rv[name] = dict(deriv=dd, xpub=xp, first=chain.address(node, fmt), name=atype)
+            if zp:
+                rv[name]['_pub'] = zp
+
+    return rv
 
 def generate_electrum_wallet(addr_type, account_num=0):
     # Generate line-by-line JSON details about wallet.
