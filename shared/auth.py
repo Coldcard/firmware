@@ -875,12 +875,9 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                err = set_bip39_passphrase(self._pw)
+                set_bip39_passphrase(self._pw)
 
-                if err:
-                    await self.failure(err)
-                else:
-                    self.result = settings.get('xpub')
+                self.result = settings.get('xpub')
 
 
         except BaseException as exc:
