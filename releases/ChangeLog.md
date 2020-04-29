@@ -5,7 +5,7 @@
   with AES256 (CTR mode) using a key derived from master secret and a hash of the serial number
   details of the SDCard, so you cannot copy the file to another card. To use this feature,
   press (1) after you've successfully entered your passphrase. 'Restore Saved' menu item
-  will appear if corrected-encrypted file is detected.
+  will appear if correctly-encrypted file is detected.
 - Code cleanups.
 
 
