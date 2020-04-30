@@ -56,8 +56,12 @@ to be the first (non-change) receive address for the wallet.
 2. The user may specify any value (up to 9999) for the account number, and it's meant to
 segregate funds into sub-wallets. Don't assume it's zero.
 
-2. When making your PSBT files to spend these amounts, remember that the XFP of the master
+3. When making your PSBT files to spend these amounts, remember that the XFP of the master
 (`0F056943` in this example) is is the root of the subkey paths found in the file, and 
-you must include the full derivation path from master. So based on this example, to spend a deposit
-from `tb1qc58ys2dphtphg6yuugdf3d0kufmk0tye044g3l`, the input section
+you must include the full derivation path from master. So based on this example,
+to spend a UTXO on `tb1qc58ys2dphtphg6yuugdf3d0kufmk0tye044g3l`, the input section
 of your PSBT would need to specify `(m=0F056943)/84'/1'/123'/0/0`.
+
+4. The `_pub` value is the [SLIP-132](https://github.com/satoshilabs/slips/blob/master/slip-0132.md) style "ypub/zpub/etc" which some systems might want. It implies
+a specific address format.
+
