@@ -18,6 +18,9 @@ Here is an example, produced by the Simulator for account number 123.
 
 ```javascript
 {
+    "chain": "XTN",
+    "xfp": "0F056943",
+    "xpub": "tpubD6NzVbkrYhZ4XzL5Dhayo67Gorv1YMS7j8pRUvVMd5odC2LBPLAygka9p7748JtSq82FNGPppFEz5xxZUdasBRCqJqXvUHq6xpnsMcYJzeh",
     "account": 123,
     "bip44": {
         "deriv": "m/44'/1'/123'",
@@ -41,9 +44,20 @@ Here is an example, produced by the Simulator for account number 123.
         "name": "p2wpkh",
         "xfp": "78CF94E5",
         "xpub": "tpubDC7jGaaSE66VDB6VhEDFYQSCAyugXmfnMnrMVyHNzW9wryyTxvha7TmfAHd7GRXrr2TaAn2HXn9T8ep4gyNX1bzGiieqcTUNcu2poyntrET"
-    },
-    "chain": "XTN",
-    "xfp": "0F056943",
-    "xpub": "tpubD6NzVbkrYhZ4XzL5Dhayo67Gorv1YMS7j8pRUvVMd5odC2LBPLAygka9p7748JtSq82FNGPppFEz5xxZUdasBRCqJqXvUHq6xpnsMcYJzeh"
+    }
 }
 ```
+
+## Notes
+
+1. The `first` address is formed by added `/0/0` onto the given derivation, and is assumed
+to be the first (non-change) receive address for the wallet.
+
+2. The user may specify any value (up to 9999) for the account number, and it's meant to
+segregate funds into sub-wallets. Don't assume it's zero.
+
+2. When making your PSBT files to spend these amounts, remember that the XFP of the master
+(`0F056943` in this example) is is the root of the subkey paths found in the file, and 
+you must include the full derivation path from master. So based on this example, to spend a deposit
+from `tb1qc58ys2dphtphg6yuugdf3d0kufmk0tye044g3l`, the input section
+of your PSBT would need to specify `(m=0F056943)/84'/1'/123'/0/0`.
