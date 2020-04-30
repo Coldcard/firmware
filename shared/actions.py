@@ -367,6 +367,8 @@ async def login_countdown(minutes):
 
         dis.show()
         dis.busy_bar(1)
+
+        # XXX this should be more accurate, errors are accumulating
         await sleep_ms(1000)
 
         sec -= 1
@@ -404,7 +406,6 @@ async def show_nickname(nick):
     else:
         dis.text(None, 27, nick, font=FontSmall)
 
-    #dis.text(None, -1, "ANY KEY to CONTINUE", FontTiny)
     dis.show()
 
     await ux_wait_keyup()
@@ -710,8 +711,8 @@ that you will need to import other wallet software to track balance.''' + SENSIT
         return
 
     # pick a semi-random file name, save it.
-    with imported('backups') as bk:
-        await bk.make_summary_file()
+    import export
+    await export.make_summary_file()
 
 def electrum_export_story(background=False):
     # saves memory being in a function
@@ -763,15 +764,16 @@ You can then run that command in Bitcoin Core without ever connecting this Coldc
         return
 
     # no choices to be made, just do it.
-    with imported('backups') as bk:
-        await bk.make_bitcoin_core_wallet(account_num)
+    import export
+    await export.make_bitcoin_core_wallet(account_num)
 
 
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    with imported('backups') as bk:
-        addr_fmt, account_num = item.arg
-        await bk.make_json_wallet('Electrum wallet', lambda: bk.generate_electrum_wallet(addr_fmt, account_num))
+    import export
+    addr_fmt, account_num = item.arg
+    await export.make_json_wallet('Electrum wallet',
+                                    lambda: export.generate_electrum_wallet(addr_fmt, account_num))
 
 async def generic_skeleton(*A):
     # like the Multisig export, make a single JSON file with
@@ -785,9 +787,10 @@ single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 
     account_num = await ux_enter_number('Account Number:', 9999)
 
     # no choices to be made, just do it.
-    with imported('backups') as bk:
-        await bk.make_json_wallet('Generic Export',
-                lambda: bk.generate_generic_export(account_num), 'coldcard-export.json')
+    import export
+    await export.make_json_wallet('Generic Export',
+                                    lambda: export.generate_generic_export(account_num),
+                                    'coldcard-export.json')
 
 
 async def wasabi_skeleton(*A):
@@ -801,25 +804,25 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
         return
 
     # no choices to be made, just do it.
-    with imported('backups') as bk:
-        await bk.make_json_wallet('Wasabi wallet', lambda: bk.generate_wasabi_wallet(), 'new-wasabi.json')
+    import export
+    await export.make_json_wallet('Wasabi wallet', lambda: export.generate_wasabi_wallet(), 'new-wasabi.json')
 
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
-    with imported('backups') as bk:
-        await bk.make_complete_backup()
+    import backups
+
+    await backups.make_complete_backup()
 
 async def verify_backup(*A):
     # check most recent backup is "good"
     # read 7z header, and measure checksums
+    import backups
 
-    with imported('backups') as bk:
+    fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=backups.MAX_BACKUP_FILE_SIZE)
 
-        fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=bk.MAX_BACKUP_FILE_SIZE)
-
-        if fn:
-            # do a limited CRC-check over encrypted file
-            await bk.verify_backup_file(fn)
+    if fn:
+        # do a limited CRC-check over encrypted file
+        await backups.verify_backup_file(fn)
 
 def import_from_dice(*a):
     import seed
@@ -892,9 +895,9 @@ the start of a line, and probably starts with "xprv".''', title="FAILED")
     d = dict(chain=chain.ctype, raw_secret=b2a_hex(SecretStash.encode(xprv=node)))
     node.blank()
 
-    # TODO: capture the address format implied by SLIP32 version bytes
-    #addr_fmt = 
-    
+    # SHould capture the address format implied by SLIP32 version bytes
+    # (addr_fmt var here) but no means to store that in our settings, and we're
+    # not supposed to care anyway.
 
     # restore as if it was a backup (code reuse)
     await restore_from_dict(d)
@@ -918,8 +921,8 @@ async def restore_everything(*A):
                             'then enter the password.', suffix='.7z', max_size=10000)
 
     if fn:
-        with imported('backups') as bk:
-            await bk.restore_complete(fn)
+        import backups
+        await backups.restore_complete(fn)
 
 async def restore_everything_cleartext(*A):
     # Asssume no password on backup file; devs and crazy people only
@@ -934,10 +937,10 @@ async def restore_everything_cleartext(*A):
                              suffix='.txt', max_size=10000)
 
     if fn:
-        with imported('backups') as bk:
-            prob = await bk.restore_complete_doit(fn, [])
-            if prob:
-                await ux_show_story(prob, title='FAILED')
+        import backups
+        prob = await backups.restore_complete_doit(fn, [])
+        if prob:
+            await ux_show_story(prob, title='FAILED')
 
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
