@@ -16,9 +16,8 @@ def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt,):
 
     need_keypress('y')
 
-    if "'" not in path:
-        # check expected addr was used
-        addr_vs_path(addr, path, addr_fmt)
+    # check expected addr was used
+    addr_vs_path(addr, path, addr_fmt)
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
@@ -33,9 +32,8 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
 
     #need_keypress('x')
 
-    if "'" not in path:
-        # check expected addr was used
-        addr_vs_path(addr, path, addr_fmt)
+    # check expected addr was used
+    addr_vs_path(addr, path, addr_fmt)
 
     print('addr_fmt = 0x%x' % addr_fmt)
 

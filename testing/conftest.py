@@ -207,12 +207,19 @@ def addr_vs_path(master_xpub):
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
     from bech32 import bech32_decode, convertbits
     from pycoin.encoding import a2b_hashed_base58, hash160
+    from  pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
 
     def doit(given_addr, path=None, addr_fmt=None, script=None):
         if not script:
-            mk = BIP32Node.from_wallet_key(master_xpub)
-            sk = mk.subkey_for_path(path[2:])
+            try:
+                # prefer using xpub if we can
+                mk = BIP32Node.from_wallet_key(master_xpub)
+                sk = mk.subkey_for_path(path[2:])
+            except PublicPrivateMismatchError:
+                mk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+                sk = mk.subkey_for_path(path[2:])
+
 
         if addr_fmt == AF_CLASSIC:
             # easy
@@ -256,6 +263,8 @@ def addr_vs_path(master_xpub):
                 raise pytest.fail(f'not ready for {addr_fmt:x} yet')
         else:
             raise ValueError(addr_fmt)
+
+        return sk if not script else None
 
     return doit
 
