@@ -104,7 +104,6 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
     assert x['iswitness'] == True
     assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
-
 def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
     # test UX and operation of the 'wasabi wallet export'
 
@@ -213,5 +212,66 @@ def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_hom
             assert got.sec() == expect.sec()
 
     os.unlink(path)
+
+@pytest.mark.parametrize('acct_num', [ None, '99', '123'])
+def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+    from pycoin.contrib.segwit_addr import encode as sw_encode
+
+    # test UX and values produced.
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('MicroSD Card')
+    pick_menu_item('Export Wallet')
+    pick_menu_item('Generic JSON')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert 'Saves JSON file' in story
+
+    need_keypress('y')
+    if acct_num:
+        for n in acct_num:
+            need_keypress(n)
+    else:
+        acct_num = '0'
+    need_keypress('y')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Generic Export file written' in story
+    fname = story.split('\n')[-1]
+
+    need_keypress('y')
+
+    path = microsd_path(fname)
+    with open(path, 'rt') as fp:
+        obj = json.load(fp)
+
+        for fn in ['xfp', 'xpub', 'chain']:
+            assert fn in obj
+            assert obj[fn]
+        assert obj['account'] == int(acct_num or 0)
+
+        for fn in ['bip44', 'bip49', 'bip84']:
+            assert fn in obj
+            v = obj[fn]
+            assert all([i in v for i in ['deriv', 'name', 'first', 'xpub', 'xfp']])
+
+            assert v['deriv'].endswith(f"'/{acct_num}'")
+
+            node = BIP32Node.from_wallet_key(v['xpub'])
+            first = node.subkey_for_path('0/0')
+            addr = v['first']
+
+            if fn == 'bip44':
+                assert first.address() == v['first']
+            else:
+                assert v['_pub'][1:4] == 'pub'
+
+                if fn == 'bip84':
+                    h20 = first.hash160()
+                    assert addr == sw_encode(addr[0:2], 0, h20)
+
 
 # EOF
