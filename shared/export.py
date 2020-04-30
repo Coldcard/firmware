@@ -284,14 +284,15 @@ def generate_generic_export(account_num=0):
         ]:
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
             node = sv.derive_path(dd)
+            xfp = xfp2str(node.my_fingerprint())
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
 
-            # bonus/check: first address: 0/0
+            # bonus/check: first non-change address: 0/0
             node.derive(0)
             node.derive(0)
 
-            rv[name] = dict(deriv=dd, xpub=xp, first=chain.address(node, fmt), name=atype)
+            rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, first=chain.address(node, fmt), name=atype)
             if zp:
                 rv[name]['_pub'] = zp
 
