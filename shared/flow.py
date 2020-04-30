@@ -69,6 +69,7 @@ WalletExportMenu = [
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
+    MenuItem("Generic JSON", f=generic_skeleton),
 ]
 
 SDCardMenu = [

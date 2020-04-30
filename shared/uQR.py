@@ -56,7 +56,6 @@ Formerly in LUT.py
 
 # Result. Usage: input: ecCount, output: Polynomial.num
 # e.g. rsPoly = base.Polynomial(LUT.rsPoly_LUT[ecCount], 0)
-rsPoly_LUT = {}
 ## rsPoly_LUT = {
 ##     7:  [1, 127, 122, 154, 164, 11, 68, 117],
 ##     10: [1, 216, 194, 159, 111, 199, 94, 95, 113, 157, 193],
@@ -362,7 +361,7 @@ RS_BLOCK_TABLE = [
 
 def glog(n):
     if n < 1:  # pragma: no cover
-        raise ValueError("glog(%s)" % n)
+        raise ValueError
     return LOG_TABLE[n]
 
 
@@ -374,7 +373,7 @@ class Polynomial:
 
     def __init__(self, num, shift):
         if not num:  # pragma: no cover
-            raise Exception("%s/%s" % (len(num), shift))
+            raise ValueError        # Exception("%s/%s" % (len(num), shift))
 
         for offset in range(len(num)):
             if num[offset] != 0:
@@ -438,9 +437,9 @@ class RSBlock:
 
 def make_rs_blocks(version, error_correction):
     if error_correction not in RS_BLOCK_OFFSET:  # pragma: no cover
-        raise Exception(
-            "bad rs block @ version: %s / error_correction: %s" %
-            (version, error_correction))
+        raise ValueError
+            # Exception("bad rs block @ version: %s / error_correction: %s" %
+            #  (version, error_correction))
     offset = RS_BLOCK_OFFSET[error_correction]
     rs_block = RS_BLOCK_TABLE[(version - 1) * 4 + offset]
 
@@ -539,16 +538,16 @@ PATTERN_POSITION_TABLE = [
 ##     [6, 30, 58, 86, 114, 142, 170]
 ]
 
-G15 = (
+G15 = const(
     (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) |
     (1 << 0))
-G18 = (
+G18 = const(
     (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) |
     (1 << 2) | (1 << 0))
-G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1)
+G15_MASK = const((1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1))
 
-PAD0 = 0xEC
-PAD1 = 0x11
+PAD0 = const(0xEC)
+PAD1 = const(0x11)
 
 if 0:
     # Precompute bit count limits, indexed by error correction level and code size
@@ -607,7 +606,7 @@ def make_mask_func(pattern):
         return lambda i, j: ((i * j) % 2 + (i * j) % 3) % 2 == 0
     if pattern == 7:  # 111
         return lambda i, j: ((i * j) % 3 + (i + j) % 2) % 2 == 0
-    raise TypeError("Bad mask pattern: " + pattern)  # pragma: no cover
+    raise TypeError     #("Bad mask pattern: " + pattern)  # pragma: no cover
 
 
 def mode_sizes_for_version(version):
@@ -622,11 +621,10 @@ def mode_sizes_for_version(version):
 def length_in_bits(mode, version):
     if mode not in (
             MODE_NUMBER, MODE_ALPHA_NUM, MODE_8BIT_BYTE, MODE_KANJI):
-        raise TypeError("Invalid mode (%s)" % mode)  # pragma: no cover
+        raise TypeError     #("Invalid mode (%s)" % mode)  # pragma: no cover
 
     if version < 1 or version > 40:  # pragma: no cover
-        raise ValueError(
-            "Invalid version (was %s, expected 1 to 40)" % version)
+        raise ValueError    #("Invalid version (was %s, expected 1 to 40)" % version)
 
     return mode_sizes_for_version(version)[mode]
 
@@ -712,11 +710,11 @@ class QRData:
         else:
             self.mode = mode
             if mode not in (MODE_NUMBER, MODE_ALPHA_NUM, MODE_8BIT_BYTE):
-                raise TypeError("Invalid mode (%s)" % mode)  # pragma: no cover
+                raise TypeError     #("Invalid mode (%s)" % mode)  # pragma: no cover
             if check_data and mode < optimal_mode(data):  # pragma: no cover
-                raise ValueError(
-                    "Provided data can not be represented in mode "
-                    "{0}".format(mode))
+                raise ValueError
+                    #("Provided data can not be represented in mode "
+                    #"{0}".format(mode))
 
         self.data = data
 
@@ -801,9 +799,10 @@ def create_bytes(buffer, rs_blocks):
         offset += dcCount
 
         # Get error correction polynomial.
-        if ecCount in rsPoly_LUT:
-            rsPoly = Polynomial(rsPoly_LUT[ecCount], 0)
-        else:
+        #if ecCount in rsPoly_LUT:
+            #rsPoly = Polynomial(rsPoly_LUT[ecCount], 0)
+        #else:
+        if 1:
             rsPoly = Polynomial([1], 0)
             for i in range(ecCount):
                 rsPoly = rsPoly * Polynomial([1, gexp(i)], 0)
@@ -856,9 +855,9 @@ def create_data(version, error_correction, data_list):
         bit_limit += block.data_count * 8
 
     if len(buffer) > bit_limit:
-        raise DataOverflowError(
-            "Code length overflow. Data size (%s) > size available (%s)" %
-            (len(buffer), bit_limit))
+        raise DataOverflowError
+            #"Code length overflow. Data size (%s) > size available (%s)" %
+            #(len(buffer), bit_limit))
 
     # Terminate the bits (add up to four 0s).
     for i in range(min(bit_limit - len(buffer), 4)):
@@ -895,25 +894,23 @@ def make(data=None, **kwargs):
 
 def _check_version(version):
     if version < 1 or version > 40:
-        raise ValueError(
-            "Invalid version (was %s, expected 1 to 40)" % version)
+        raise ValueError    # ("Invalid version (was %s, expected 1 to 40)" % version)
 
 
 def _check_box_size(size):
     if int(size) <= 0:
-        raise ValueError(
-            "Invalid box size (was %s, expected larger than 0)" % size)
+        raise ValueError    #( "Invalid box size (was %s, expected larger than 0)" % size)
 
 
 def _check_mask_pattern(mask_pattern):
     if mask_pattern is None:
         return
     if not isinstance(mask_pattern, int):
-        raise TypeError(
-            "Invalid mask pattern (was %s, expected int)" % type(mask_pattern))
+        raise TypeError
+            #("Invalid mask pattern (was %s, expected int)" % type(mask_pattern))
     if mask_pattern < 0 or mask_pattern > 7:
-        raise ValueError(
-            "Mask pattern should be in range(8) (got %s)" % mask_pattern)
+        raise ValueError
+            #("Mask pattern should be in range(8) (got %s)" % mask_pattern)
 
 class QRCode:
 

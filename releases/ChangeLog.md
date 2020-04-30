@@ -6,6 +6,11 @@
   details of the SDCard, so you cannot copy the file to another card. To use this feature,
   press (1) after you've successfully entered your passphrase. 'Restore Saved' menu item
   will appear if correctly-encrypted file is detected.
+- Enhancement: Export a generic JSON skeleton file, not aligned with any 
+  particular desktop/mobile wallet, but useful for most such integrations. Includes
+  XPUB (and associated data) needed for P2PKH, P2WPKH (segwit) and P2WPKH-P2SH wallets,
+  which conform to BIP44, BIP84, and BIP49 respectively.
+  Thanks to [@craigraw](https://twitter.com/craigraw) the idea.
 - Code cleanups.
 
 
