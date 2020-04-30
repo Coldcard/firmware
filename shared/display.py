@@ -237,4 +237,9 @@ class Display:
         for c in cmds:
             self.dis.write_cmd(c)
 
+    def set_brightness(self, val):
+        # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
+        self.dis.write_cmd(0x81)        # Set Contrast Control
+        self.dis.write_cmd(val)
+
 # EOF

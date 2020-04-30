@@ -187,22 +187,18 @@ class CardSlot:
 
         cls.irq = ExtInt(Pin('SD_SW'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
-        # mark 2 boards have a light for SD activity.
-        import version
+        # mark 2+ boards have a light for SD activity.
         from machine import Pin
-
-        if version.has_membrane:
-            cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+        cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
     def __init__(self):
         self.active = False
 
     def __enter__(self):
         # Get ready!
-        if self.active_led:
-            self.active_led.on()
+        self.active_led.on()
 
-        # turn of touch scanning
+        # turn off touch scanning
         from main import numpad
         numpad.stop()
 
@@ -233,8 +229,7 @@ class CardSlot:
         # done using the microSD -- unpower it
         from main import numpad
 
-        if self.active_led:
-            self.active_led.off()
+        self.active_led.off()
 
         self.active = False
 
@@ -260,6 +255,13 @@ class CardSlot:
         root = self.get_sd_root()
 
         return [root]
+
+    def get_id_hash(self):
+        # hash over card config and serial # details
+        import tcc
+        info = pyb.SDCard().info()
+        assert info and len(info) >= 5       # need micropython changes
+        return tcc.sha256(repr(info)).digest()
 
     def pick_filename(self, pattern, path=None):
         # given foo.txt, return a full path to filesystem, AND

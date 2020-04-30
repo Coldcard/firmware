@@ -87,19 +87,29 @@ class USB_HID:
             self.send(b)
 
 class SDCard:
-    @staticmethod
-    def present():
-        #return False
+    ejected = False
+
+    @classmethod
+    def present(cls):
+        if cls.ejected:
+            return False
         SDCard.power(1)
         return True
 
-    @staticmethod
-    def power(st=0):
+    @classmethod
+    def power(cls, st=0):
         from ckcc import led_pipe
         led_pipe.write(bytes([0x20 | (0x2 if st else 0x0)]))
         if st:
             time.sleep(0.100)       # drama
         return False
+
+    @classmethod
+    def info(cls):
+        # num blocks, block size, "card type", CSD, CID registers
+        return (493879296, 512, 0,
+                    b'2\x00^\x00\xd6\x81Y[\x8f\xff\xb7\xed\x94\x00@\x16',
+                    b'APA\tDU F\xd9\x92\x11\x10\x9a\x1a\x01\xdf')
 
 class Pin:
     PULL_NONE =1

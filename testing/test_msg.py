@@ -11,7 +11,7 @@ from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from constants import simulator_fixed_xprv
 
-@pytest.mark.parametrize('msg', [ 'aB', 'hello', 'abc def eght', "x"*140, 'a'*240])
+@pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 def test_sign_msg_good(dev, need_keypress, msg, path, addr_fmt, addr_vs_path):

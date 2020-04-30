@@ -12,7 +12,7 @@
 #       (in xterm)
 #       import callgate; callgate.get_bl_version()
 # - you may need to get the (real) Coldcard into the REPL before starting this
-# - required exclusive use of USB emulated serial port, so quit other programs
+# - requires exclusive use of USB emulated serial port, so quit other programs
 #   before starting simulator
 #
 

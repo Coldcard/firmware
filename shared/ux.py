@@ -244,7 +244,7 @@ def word_wrap(ln, w):
 
         yield left
 
-async def ux_show_story(msg, title=None, escape=None, sensitive=False):
+async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
@@ -324,7 +324,8 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False):
             # allow another way out for some usages
             return ch
         elif ch in 'xy':
-            return ch
+            if not strict_escape:
+                return ch
         elif ch == '0':
             top = 0
         elif ch == '7':     # page up
@@ -339,9 +340,10 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False):
         
 
 async def idle_logout():
+    import main
     from main import numpad, settings
 
-    while 1:
+    while not main.hsm_active:
         await sleep_ms(250)
 
         # they may have changed setting recently
@@ -356,7 +358,7 @@ async def idle_logout():
 
         if now > numpad.last_event_time + timeout:
             # do a logout now.
-            print("Idle timeout now!")
+            print("Idle!")
 
             from actions import logout_now
             await logout_now()
@@ -371,7 +373,10 @@ async def ux_confirm(msg):
 
 
 async def ux_dramatic_pause(msg, seconds):
-    from main import dis
+    from main import dis, hsm_active
+
+    if hsm_active:
+        return
 
     # show a full-screen msg, with a dramatic pause + progress bar
     n = seconds * 8
@@ -405,7 +410,7 @@ def show_fatal_error(msg):
     dis.show()
 
 async def ux_aborted():
-    # us this when dangerous action is not performed due to confirmations
+    # use this when dangerous action is not performed due to confirmations
     await ux_dramatic_pause('Aborted.', 2)
     return None
 
@@ -420,10 +425,195 @@ def restore_menu():
         m.show()
 
 def abort_and_goto(m):
+    # cancel any menu drill-down and show them some UX
     from main import numpad
-
     the_ux.reset(m)
-
     numpad.abort_ux()
+
+def abort_and_push(m):
+    # keep menu position, but interrupt it with a new UX
+    from main import numpad
+    the_ux.push(m)
+    numpad.abort_ux()
+
+async def show_qr_codes(addrs, is_alnum, start_n):
+    o = QRDisplay(addrs, is_alnum, start_n, sidebar=None)
+    await o.interact_bare()
+
+class QRDisplay(UserInteraction):
+    # Show a QR code for (typically) a list of addresses. Can only work on Mk3
+
+    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None):
+        self.is_alnum = is_alnum
+        self.idx = 0             # start with first address
+        self.invert = False      # looks better, but neither mode is ideal
+        self.addrs = addrs
+        self.sidebar = sidebar
+        self.start_n = start_n
+        self.qr_data = None
+
+    def render_qr(self, msg):
+        # Version 2 would be nice, but can't hold what we need, even at min error correction,
+        # so we are forced into version 3 = 29x29 pixels
+        # - see <https://www.qrcode.com/en/about/version.html>
+        # - to display 29x29 pixels, we have to double them up: 58x58
+        # - not really providing enough space around it
+        # - inverted QR (black/white swap) still readable by scanners, altho wrong
+
+        from utils import imported
+
+        with imported('uQR') as uqr:
+            if self.is_alnum:
+                # targeting 'alpha numeric' mode, typical len is 42
+                ec = uqr.ERROR_CORRECT_Q
+                assert len(msg) <= 47
+            else:
+                # has to be 'binary' mode, altho shorter msg, typical 34-36
+                ec = uqr.ERROR_CORRECT_M
+                assert len(msg) <= 42
+
+            q = uqr.QRCode(version=3, box_size=1, border=0, mask_pattern=3, error_correction=ec)
+            if self.is_alnum:
+                here = uqr.QRData(msg.upper().encode('ascii'),
+                                        mode=uqr.MODE_ALPHA_NUM, check_data=False)
+            else:
+                here = uqr.QRData(msg.encode('ascii'), mode=uqr.MODE_8BIT_BYTE, check_data=False)
+            q.add_data(here)
+            q.make(fit=False)
+
+            self.qr_data = q.get_matrix()
+
+
+    def redraw(self):
+        # Redraw screen.
+        from main import dis
+        from display import FontSmall, FontTiny
+
+
+        # what we are showing inside the QR
+        msg = self.addrs[self.idx]
+
+        # make the QR, if needed.
+        if not self.qr_data:
+            dis.busy_bar(True)
+
+            self.render_qr(msg)
+
+        # draw display
+        dis.clear()
+
+        w = 29          # because version=3
+        XO,YO = 7, 3    # offsets
+
+        if not self.invert:
+            dis.dis.fill_rect(XO-YO, 0, 64, 64, 1)
+
+        data = self.qr_data
+        inv = self.invert
+        for x in range(w):
+            for y in range(w):
+                px = data[x][y]
+                X = (x*2) + XO
+                Y = (y*2) + YO
+                dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
+
+        x, y = 73, 0 if self.is_alnum else 2
+        sidebar, ll = self.sidebar or (msg, 7)
+        for i in range(0, len(sidebar), ll):
+            dis.text(x, y, sidebar[i:i+ll], FontSmall)
+            y += 10 if self.is_alnum else 12
+
+        if not inv and len(self.addrs) > 1:
+            # show path number, very tiny
+            ai = str(self.start_n + self.idx)
+            if len(ai) == 1:
+                dis.text(0, 30, ai[0], FontTiny)
+            else:
+                dis.text(0, 27, ai[0], FontTiny)
+                dis.text(0, 27+7, ai[1], FontTiny)
+
+        dis.busy_bar(False)     # includes show
+
+
+    async def interact_bare(self):
+        self.redraw()
+
+        while 1:
+            ch = await ux_wait_keyup()
+
+            if ch == '1':
+                self.invert = not self.invert
+                self.redraw()
+                continue
+            elif ch in 'xy':
+                break
+            elif ch == '5' or ch == '7':
+                if self.idx > 0:
+                    self.idx -= 1
+            elif ch == '8' or ch == '9':
+                if self.idx != len(self.addrs)-1:
+                    self.idx += 1
+            else:
+                continue
+
+            # self.idx has changed, so need full re-render
+            self.qr_data = None
+            self.redraw()
+
+    async def interact(self):
+        await self.interact_bare()
+        the_ux.pop()
+
+
+async def ux_enter_number(prompt, max_value):
+    # return the decimal number which the user has entered
+    # - default/blank value assumed to be zero
+    # - clamps large values to the max
+    from main import dis
+    from display import FontTiny, FontSmall
+    from math import log
+
+    # allow key repeat on X only
+    press = PressRelease('1234567890y')
+
+    footer = "X to DELETE, or OK when DONE."
+    y = 26
+    value = ''
+    max_w = int(log(max_value, 10) + 1)
+
+    while 1:
+        dis.clear()
+        dis.text(0, 0, prompt)
+
+        # text centered
+        if value:
+            bx = dis.text(None, y, value)
+            dis.icon(bx+1, y+11, 'space')
+        else:
+            dis.icon(64-7, y+11, 'space')
+
+        dis.text(None, -1, footer, FontTiny)
+        dis.show()
+
+        ch = await press.wait()
+        if ch == 'y':
+
+            if not value: return 0
+            return min(max_value, int(value))
+
+        elif ch == 'x':
+            if value:
+                value = value[0:-1]
+            else:
+                # quit if they press X on empty screen
+                return 0
+        else:
+            if len(value) == max_w:
+                value = value[0:-1] + ch
+            else:
+                value += ch
+
+            # cleanup leading zeros and such
+            value = str(int(value))
 
 # EOF

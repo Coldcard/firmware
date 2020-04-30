@@ -12,7 +12,7 @@ def doit(c_fname, py_file):
             lines.append(None)
 
     with open(py_file, 'wt') as o:
-        print("# Autogen'ed file, don't edit. See bootloader/mk-sigheader.h for original\n",file=o)
+        print("# Autogen'ed file, don't edit. See bootloader/sigheader.h for original\n",file=o)
 
         for ln in lines:
             if ln is None:

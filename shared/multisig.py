@@ -576,8 +576,8 @@ class MultisigWallet:
             print(xpub)
             raise AssertionError('unable to parse xpub')
 
-        assert node.private_key() == None, 'no private keys plz'
-        assert chain.ctype == expect_chain, 'wrong chain, expect: ' + expect_chain
+        assert node.private_key() == None, 'no privkeys plz'
+        assert chain.ctype == expect_chain, 'wrong chain'
 
         # NOTE: could enforce all same depth, and/or all depth >= 1, but
         # seems like more restrictive than needed.
@@ -613,7 +613,7 @@ class MultisigWallet:
 
     async def export_electrum(self):
         # Generate and save an Electrum JSON file.
-        from backups import make_json_wallet
+        from export import make_json_wallet
 
         def doit():
             rv = dict(seed_version=17, use_encryption=False,
@@ -726,15 +726,9 @@ class MultisigWallet:
 
         ms = cls(name, (M, N), xpubs, chain_type=expect_chain, common_prefix=prefix)
 
-        if trust_mode == TRUST_PSBT:
-            # keep just in-memory version, no approval required
-            return ms, False
-
-        assert trust_mode == TRUST_OFFER
-
-        # caller need to handle interact w.r.t new wallet
-        print("Offering import")
-        return ms, True
+        # may just keep just in-memory version, no approval required, if we are
+        # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
+        return ms, (trust_mode != TRUST_PSBT)
 
     async def confirm_import(self):
         # prompt them about a new wallet, let them see details and then commit change.
@@ -1221,13 +1215,13 @@ Coldcard multisig setup file and an Electrum wallet file will be created automat
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype,
                             common_prefix=deriv[2:], addr_fmt=addr_fmt)
 
-    from auth import NewEnrollRequest, active_request
+    from auth import NewEnrollRequest, UserAuthorizedAction
 
-    active_request = NewEnrollRequest(ms, auto_export=True)
+    UserAuthorizedAction.active_request = NewEnrollRequest(ms, auto_export=True)
 
     # menu item case: add to stack
     from ux import the_ux
-    the_ux.push(active_request)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 async def create_ms_step1(*a):
     # Show story, have them pick address format.

@@ -10,7 +10,7 @@ from ckcc_protocol.constants import *
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt):
+def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt,):
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
 
@@ -21,7 +21,8 @@ def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt):
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, cap_story):
+@pytest.mark.parametrize('show_qr', [ False, True ])
+def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, cap_story, show_qr, cap_screen_qr):
     time.sleep(0.1)
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
@@ -40,6 +41,13 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
     assert path in story
     assert addr in story
     assert addr in story.split('\n')
+
+    if show_qr:
+        need_keypress('4')
+        time.sleep(0.1)
+        qr = cap_screen_qr()
+
+        assert qr == addr
 
 @pytest.mark.parametrize('example_addr', [
         '2N2VBntgcoY4wN7H6VfrhH8an1BwieRMZCF', '2N551pf65tPS7VthC1rvwFDbLA1EUDYkTg9'])

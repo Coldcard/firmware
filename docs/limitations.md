@@ -61,8 +61,6 @@
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
 - we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
-- if XPUB values are in the PSBT, we assume it's going to be a multisig transaction signing, so
-  there must be an unsigned input with M-of-N script
 - change outputs (indicated with paths, scripts in output section) must correspond to
   the active multisig wallet, and cannot be used to describe an unrelated (multisig) wallet.
 

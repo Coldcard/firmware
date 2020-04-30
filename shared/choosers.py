@@ -109,38 +109,24 @@ def chain_chooser():
 
     return which, [t for _,t in ch], set_chain
 
-def sensitivity_chooser():
-    from main import numpad
+def scramble_keypad_chooser():
+    #   rngk = randomize keypad for PIN entry
+    from nvstore import SettingsObject
 
-    #            xxxxxxxxxxxxxxxx
-    ch = [  (0, '+2 Sensitive'),
-            (4, '+1 '),
-            (1, ' 0 Default'),
-            (3, '-1 '),
-            (2, '-2 Sensitive'),
-        ]
+    s = SettingsObject()
+    which = s.get('rngk', 0)
+    del s
 
-    try:
-        which = [n for n, (k,v) in enumerate(ch) if k == numpad.sensitivity][0]
-    except IndexError:
-        which = 0
+    ch = ['Normal', 'Scramble Keys']
 
-    def set_it(idx, text):
-        value = ch[idx][0]
-        settings.set('sens', value)
-        numpad.sensitivity = value
+    def set(idx, text):
+        # save it, but "outside" of login PIN
+        s = SettingsObject()
+        s.set('rngk', idx)
+        s.save()
+        del s
 
-        # save also for next login time.
-        from main import pa
-        from nvstore import SettingsObject
-
-        if not pa.is_secondary:
-            tmp = SettingsObject()
-            tmp.set('sens', value)
-            tmp.save()
-            del tmp
-
-    return which, [n for k,n in ch], set_it
+    return which, ch, set
 
 
 # EOF

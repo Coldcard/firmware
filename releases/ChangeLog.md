@@ -1,7 +1,55 @@
-## 3.0.7 - Jan TBD, 2020
+## 3.1.3 - April 30, 2020
+
+- New feature: Option to save your BIP39 passphrases, encrypted, to specific SDCard. Recall
+  them later, if you have that same card, with just a few clicks. Passphrases are encrypted 
+  with AES256 (CTR mode) using a key derived from master secret and a hash of the serial number
+  details of the SDCard, so you cannot copy the file to another card. To use this feature,
+  press (1) after you've successfully entered your passphrase. 'Restore Saved' menu item
+  will appear if correctly-encrypted file is detected.
+- Enhancement: Export a generic JSON skeleton file, not aligned with any 
+  particular desktop/mobile wallet, but useful for most such integrations. Includes
+  XPUB (and associated data) needed for P2PKH, P2WPKH (segwit) and P2WPKH-P2SH wallets,
+  which conform to BIP44, BIP84, and BIP49 respectively.
+  Thanks to [@craigraw](https://twitter.com/craigraw) the idea.
 - Enhancement: when signing a text file from MicroSD card, if you specify a derivation
   path that starts with `m/84'/...` indicating that you are following BIP84 for
   segwit addresses, the resulting signature will be formatted as P2WPKH in Bech32.
+- Code cleanups.
+
+
+## 3.1.2 - Feb 27, 2020
+
+- Bugfix: exporting non-zero account numbers didn't work
+
+
+## 3.1.1 - Feb 26, 2020
+
+- Enhancement: New setting to enable a scrambled numeric keypad during PIN login.
+- Enhancement: Press 4 when viewing a payment address (triggered by USB command) to
+  see the QR code on-screen (Mk3 only).
+- Enhancement: Can enter non-zero account numbers when exporting wallet files for Electrum
+  and Bitcoin Core. This makes importing seeds from other systems easier and safer.
+- Enhancement: Dims the display when entering HSM Mode.
+- Bugfix: Trust PSBT setting (for multisig wallets) was being ignored. Thanks to @CasaHODL
+  for reporting this.
+- Bugfix: XPUB values volunteered in the global section of a PSBT for single-signer files would
+  cause errors (but ok in multisig). Coldcard will now handle this, although it doesn't need them.
+
+## 3.1.0 - Feb 20, 2020
+
+- HSM (Hardware Security Module) mode: give Coldcard spending rules, including whitelisted
+  addresses, velocity limits, subsets of authorizing users ... and Coldcard can sign with
+  no human present. Requires companion software to setup (ckbunker or ckcc-protocol),
+  and disabled by default, with multi-step on-screen confirmation required to enable. Mk3 only.
+- Enhancement: New "user management" menu. Advanced > User Management shows a menu
+  with usernames, some details and a 'delete user' command. USB commands must be used to
+  create user accounts and they are only used to authenticate txn approvals in HSM mode.
+- Enhancement: PSBT transaction can be "visualized" over USB, meaning you can view what
+  the Coldcard will show on the screen during approval process, as text, downloaded over USB.
+  That text can be signed (always with root key) to prove authenticity.
+- Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
+- IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
+>>>>>>> a0ffa2344d659dbe196484fc75e73240c811ba6a
 
 ## 3.0.6 - Dec 19, 2019
 
@@ -18,6 +66,7 @@
 - Bugfix: add blank line between addresses shown if sending to multiple destinations.
 - Bugfix: multisig outputs were not checked to see if they are change (would have been
   shown as regular outputs), if the PSBT did not have XPUB data in globals section.
+- NOTE: This is the final version to support Mk1 hardware.
 
 ## 3.0.5 - Nov 25, 2019
 
