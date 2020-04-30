@@ -7,7 +7,8 @@
 #
 import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
-from utils import imported
+from ux import ux_enter_number
+from utils import imported, pretty_short_delay
 from main import settings
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
@@ -28,7 +29,7 @@ async def start_selftest(*args):
 
 async def needs_microsd():
     # Standard msg shown if no SD card detected when we need one.
-    await ux_show_story("Please insert a MicroSD card before attempting this operation.")
+    return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
 async def needs_primary():
     # Standard msg shown if action can't be done w/o main PIN
@@ -197,32 +198,24 @@ async def microsd_upgrade(*a):
         with open(fn, 'rb') as fp:
             from main import sf, dis
             from files import dfu_parse
-            from ustruct import unpack_from
+            from utils import check_firmware_hdr
 
             offset, size = dfu_parse(fp)
 
-            # get a copy of special signed heaer at the end of the flash as well
-            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
+            # we also put a copy of special signed heaer at the end of the flash
+            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
+
+            # read just the signature header
             hdr = bytearray(FW_HEADER_SIZE)
             fp.seek(offset + FW_HEADER_OFFSET)
+            rv = fp.readinto(hdr)
+            assert rv == FW_HEADER_SIZE
 
-            # basic checks only: for confused customers, not attackers.
-            try:
-                rv = fp.readinto(hdr)
-                assert rv == FW_HEADER_SIZE
-
-                magic_value, timestamp, version_string, pk, fw_size = \
-                                unpack_from(FWH_PY_FORMAT, hdr)[0:5]
-                assert magic_value == FW_HEADER_MAGIC
-                assert fw_size == size
-
-                # TODO: maybe show the version string? Warn them that downgrade doesn't work?
-
-            except Exception as exc:
-                failed = "Sorry! That does not look like a firmware " \
-                            "file we would want to use.\n\n\n%s" % exc
+            # check header values
+            failed = check_firmware_hdr(hdr, size)
 
             if not failed:
+                patched = 0
             
                 # copy binary into serial flash
                 fp.seek(offset)
@@ -236,9 +229,15 @@ async def microsd_upgrade(*a):
                     if pos == size:
                         # save an extra copy of the header (also means we got done)
                         buf = hdr
+                        patched += 1
                     else:
                         here = fp.readinto(buf)
                         if not here: break
+
+                    if pos == (FW_HEADER_OFFSET & ~255):
+                        # update w/ our patched version of hdr
+                        buf[128:FW_HEADER_SIZE+128] = hdr
+                        patched += 1
 
                     if pos % 4096 == 0:
                         # erase here
@@ -254,8 +253,10 @@ async def microsd_upgrade(*a):
 
                     pos += here
 
+                assert patched == 2
+
     if failed:
-        await ux_show_story(failed, title='Corrupt')
+        await ux_show_story(failed, title='Sorry!')
         return
 
     # continue process...
@@ -362,15 +363,12 @@ async def login_countdown(minutes):
         dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
         y += 5
 
-        if sec >= 3600:
-            msg = '%2dh %2dm %2ds' % (sec //3600, (sec//60) % 60, sec % 60)
-        else:
-            msg = '%2dm %2ds' % ((sec//60) % 60, sec % 60)
-
-        dis.text(None, y, msg, font=FontLarge)
+        dis.text(None, y, pretty_short_delay(sec), font=FontLarge)
 
         dis.show()
         dis.busy_bar(1)
+
+        # XXX this should be more accurate, errors are accumulating
         await sleep_ms(1000)
 
         sec -= 1
@@ -386,7 +384,7 @@ async def block_until_login(*a):
     from ux import AbortInteraction
 
     while not pa.is_successful():
-        lll = LoginUX()
+        lll = LoginUX(settings.get('rngk', 0))
 
         try:
             await lll.try_login()
@@ -408,10 +406,21 @@ async def show_nickname(nick):
     else:
         dis.text(None, 27, nick, font=FontSmall)
 
-    #dis.text(None, -1, "ANY KEY to CONTINUE", FontTiny)
     dis.show()
 
     await ux_wait_keyup()
+
+
+async def pick_scramble(*a):
+    # Setting: scrambled keypad or normal
+    if await ux_show_story("When entering PIN, randomize the order of the key numbers, "
+            "so that cameras and shoulder-surfers are defeated.") != 'y':
+        return
+
+    from choosers import scramble_keypad_chooser
+    from menu import start_chooser
+    start_chooser(scramble_keypad_chooser)
+
 
 async def pick_nickname(*a):
     # from settings menu, enter a nickname
@@ -438,17 +447,13 @@ You can give this Coldcard a nickname and it will be shown before login.''')
 
 async def logout_now(*a):
     # wipe memory and lock up
-    from callgate import show_logout
-    from main import sf
-    sf.wipe_most()
-    show_logout()
+    from utils import clean_shutdown
+    clean_shutdown()
 
 async def login_now(*a):
     # wipe memory and reboot
-    from callgate import show_logout
-    from main import sf
-    sf.wipe_most()
-    show_logout(2)
+    from utils import clean_shutdown
+    clean_shutdown(2)
     
 
 async def virgin_help(*a):
@@ -625,9 +630,6 @@ async def start_login_sequence():
     # implement idle timeout now that we are logged-in
     loop.create_task(idle_logout())
 
-    # Restore a login preference or two
-    numpad.sensitivity = settings.get('sens', numpad.sensitivity)
-
     # Do green-light set immediately after firmware upgrade
     if not pa.is_secondary:
         if version.is_fresh_version():
@@ -650,6 +652,18 @@ async def start_login_sequence():
             # is early in boot process
             print("XFP save failed: %s" % exc)
 
+    # If HSM policy file is available, offer to start that,
+    # **before** the USB is even enabled.
+    if version.has_fatram:
+        try:
+            import hsm, hsm_ux
+
+            if hsm.hsm_policy_available():
+                ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
+                if ar:
+                    await ar.interact()
+        except: pass
+
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
     enable_usb(loop, False)
@@ -661,13 +675,16 @@ def goto_top_menu():
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
-    from main import pa
+    from main import pa, hsm_active
 
     if version.is_factory_mode():
         m = MenuSystem(FactoryMenu)
     elif pa.is_blank():
         # let them play a little before picking a PIN first time
         m = MenuSystem(VirginSystem, should_cont=lambda: pa.is_blank())
+    elif hsm_active:
+        from hsm_ux import hsm_ux_obj
+        m = hsm_ux_obj
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 
@@ -682,6 +699,8 @@ SENSITIVE_NOT_SECRET = '''
 The file created is sensitive--in terms of privacy--but should not \
 compromise your funds directly.'''
 
+PICK_ACCOUNT = '''\n\nPress 1 to enter a non-zero account number.'''
+
 
 async def dump_summary(*A):
     # save addresses, and some other public details into a file
@@ -692,8 +711,8 @@ that you will need to import other wallet software to track balance.''' + SENSIT
         return
 
     # pick a semi-random file name, save it.
-    with imported('backups') as bk:
-        await bk.make_summary_file()
+    import export
+    await export.make_summary_file()
 
 def electrum_export_story(background=False):
     # saves memory being in a function
@@ -701,17 +720,19 @@ def electrum_export_story(background=False):
 This saves a skeleton Electrum wallet file onto the MicroSD card. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
 ''' 
-        + (background or 'Choose an address type for the wallet on the next screen.\n')
+        + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
         + SENSITIVE_NOT_SECRET)
 
 async def electrum_skeleton(*a):
     # save xpub, and some other public details into a file: NOT MULTISIG
 
-    if not await ux_show_story(electrum_export_story()):
-        return
+    ch = await ux_show_story(electrum_export_story(), escape='1')
 
-    import chains
-    ch = chains.current_chain()
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_number('Account Number:', 9999)
+    elif ch != 'y':
+        return
 
     # pick segwit or classic derivation+such
     from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
@@ -721,45 +742,60 @@ async def electrum_skeleton(*a):
     # 'classic' instead of 'legacy' personallly.
     rv = []
 
-    if AF_CLASSIC in ch.slip132:
-        rv.append(MenuItem("Legacy (P2PKH)", f=electrum_skeleton_step2, arg=AF_CLASSIC))
-    if AF_P2WPKH_P2SH in ch.slip132:
-        rv.append(MenuItem("P2SH-Segwit", f=electrum_skeleton_step2, arg=AF_P2WPKH_P2SH))
-    if AF_P2WPKH in ch.slip132:
-        rv.append(MenuItem("Native Segwit", f=electrum_skeleton_step2, arg=AF_P2WPKH))
+    rv.append(MenuItem("Legacy (P2PKH)", f=electrum_skeleton_step2, arg=(AF_CLASSIC, account_num)))
+    rv.append(MenuItem("P2SH-Segwit", f=electrum_skeleton_step2, arg=(AF_P2WPKH_P2SH, account_num)))
+    rv.append(MenuItem("Native Segwit", f=electrum_skeleton_step2, arg=(AF_P2WPKH, account_num)))
 
     return MenuSystem(rv)
 
 async def bitcoin_core_skeleton(*A):
     # save output descriptors into a file
     # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
-    import chains
 
-    ch = chains.current_chain()
-
-    if await ux_show_story('''\
-This saves a command onto the MicroSD card that includes the public keys.\
+    ch = await ux_show_story('''\
+This saves a command onto the MicroSD card that includes the public keys. \
 You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
-''' + SENSITIVE_NOT_SECRET) != 'y':
+''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
+
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_number('Account Number:', 9999)
+    elif ch != 'y':
         return
 
     # no choices to be made, just do it.
-    with imported('backups') as bk:
-        await bk.make_bitcoin_core_wallet()
+    import export
+    await export.make_bitcoin_core_wallet(account_num)
 
 
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    with imported('backups') as bk:
-        addr_fmt = item.arg
-        await bk.make_json_wallet('Electrum wallet', lambda: bk.generate_electrum_wallet(addr_fmt))
+    import export
+    addr_fmt, account_num = item.arg
+    await export.make_json_wallet('Electrum wallet',
+                                    lambda: export.generate_electrum_wallet(addr_fmt, account_num))
+
+async def generic_skeleton(*A):
+    # like the Multisig export, make a single JSON file with
+    # basically all useful XPUB's in it.
+
+    if await ux_show_story('''\
+Saves JSON file onto MicroSD card, with XPUB values that are needed to watch typical \
+single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
+        return
+
+    account_num = await ux_enter_number('Account Number:', 9999)
+
+    # no choices to be made, just do it.
+    import export
+    await export.make_json_wallet('Generic Export',
+                                    lambda: export.generate_generic_export(account_num),
+                                    'coldcard-export.json')
+
 
 async def wasabi_skeleton(*A):
     # save xpub, and some other public details into a file
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
-    import chains
-
-    ch = chains.current_chain()
 
     if await ux_show_story('''\
 This saves a skeleton Wasabi wallet file onto the MicroSD card. \
@@ -768,25 +804,25 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
         return
 
     # no choices to be made, just do it.
-    with imported('backups') as bk:
-        await bk.make_json_wallet('Wasabi wallet', lambda: bk.generate_wasabi_wallet(), 'new-wasabi.json')
+    import export
+    await export.make_json_wallet('Wasabi wallet', lambda: export.generate_wasabi_wallet(), 'new-wasabi.json')
 
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
-    with imported('backups') as bk:
-        await bk.make_complete_backup()
+    import backups
+
+    await backups.make_complete_backup()
 
 async def verify_backup(*A):
     # check most recent backup is "good"
     # read 7z header, and measure checksums
+    import backups
 
-    with imported('backups') as bk:
+    fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=backups.MAX_BACKUP_FILE_SIZE)
 
-        fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=bk.MAX_BACKUP_FILE_SIZE)
-
-        if fn:
-            # do a limited CRC-check over encrypted file
-            await bk.verify_backup_file(fn)
+    if fn:
+        # do a limited CRC-check over encrypted file
+        await backups.verify_backup_file(fn)
 
 def import_from_dice(*a):
     import seed
@@ -859,9 +895,9 @@ the start of a line, and probably starts with "xprv".''', title="FAILED")
     d = dict(chain=chain.ctype, raw_secret=b2a_hex(SecretStash.encode(xprv=node)))
     node.blank()
 
-    # TODO: capture the address format implied by SLIP32 version bytes
-    #addr_fmt = 
-    
+    # SHould capture the address format implied by SLIP32 version bytes
+    # (addr_fmt var here) but no means to store that in our settings, and we're
+    # not supposed to care anyway.
 
     # restore as if it was a backup (code reuse)
     await restore_from_dict(d)
@@ -885,8 +921,8 @@ async def restore_everything(*A):
                             'then enter the password.', suffix='.7z', max_size=10000)
 
     if fn:
-        with imported('backups') as bk:
-            await bk.restore_complete(fn)
+        import backups
+        await backups.restore_complete(fn)
 
 async def restore_everything_cleartext(*A):
     # Asssume no password on backup file; devs and crazy people only
@@ -901,10 +937,10 @@ async def restore_everything_cleartext(*A):
                              suffix='.txt', max_size=10000)
 
     if fn:
-        with imported('backups') as bk:
-            prob = await bk.restore_complete_doit(fn, [])
-            if prob:
-                await ux_show_story(prob, title='FAILED')
+        import backups
+        prob = await backups.restore_complete_doit(fn, [])
+        if prob:
+            await ux_show_story(prob, title='FAILED')
 
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
@@ -1435,5 +1471,16 @@ async def import_multisig(*a):
         maybe_enroll_xpub(config=data, name=possible_name)
     except Exception as e:
         await ux_show_story('Failed to import.\n\n\n'+str(e))
+
+async def start_hsm_menu_item(*a):
+    from hsm_ux import start_hsm_approval 
+    await start_hsm_approval(sf_len=0, usb_mode=False)
+
+async def wipe_hsm_policy(*A):
+    # deep in danger zone menu; no background story, nor confirmation
+    # - sends them back to top menu, so that dynamic contents are fixed
+    from hsm import hsm_delete_policy
+    hsm_delete_policy()
+    goto_top_menu()
 
 # EOF

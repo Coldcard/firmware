@@ -29,7 +29,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 3.0.6
+VERSION_STRING = 3.1.3
 
 #
 # Sign and merge various parts
@@ -39,9 +39,24 @@ firmware-signed.bin: l-port/build-COLDCARD/firmware?.bin
 firmware-signed.dfu: firmware-signed.bin Makefile
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
-# This is fast for Coinkite devs, but no DFU support in wild.
-dfu up: firmware-signed.dfu
-	$(PYTHON_DO_DFU) -u firmware-signed.dfu
+# make the DFU file which is shared for upgrades
+dfu: firmware-signed.dfu
+
+# Build a binary, signed w/ production key
+# - always rebuild binary
+.PHONY: dev.dfu
+dev.dfu: l-port/build-COLDCARD/firmware?.bin
+	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
+	$(SIGNIT) sign $(VERSION_STRING) -o dev.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
+
+# This is fast for Coinkite devs, but no DFU support in the wild.
+up: dev.dfu
+	$(PYTHON_DO_DFU) -u dev.dfu
+
+# Slow, but works with unmod-ed board: use USB protocol to upgrade (2 minutes)
+dev: dev.dfu
+	ckcc upgrade dev.dfu
 
 # Make a factory release: using key #1
 production.bin: firmware-signed.bin Makefile
@@ -130,14 +145,6 @@ stlink:
 unsigned-dfu:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) deploy
 
-# make a dev.dfu with production key so it loads faster
-dev:
-	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
-	$(SIGNIT) sign "test123" -k 1 -o dev.bin
-	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
-	rm dev.bin
-	ckcc upgrade dev.dfu
-
 # see COLDCARD/mpconfigboard.mk
 tags: 
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) tags
@@ -175,6 +182,18 @@ debug:
 OBJDUMP = arm-none-eabi-objdump
 firmware.lss: $(PORT_TOP)/build-COLDCARD/firmware.elf
 	$(OBJDUMP) -h -S $< > $@
+
+# Dump sizes of all frozen py files; requires recent build.
+.PHONY: sizes
+sizes:
+	wc -c l-port/build-COLDCARD/frozen_mpy/*.mpy | sort -n
+
+# Measure flash impact of a single file. Great for before/after.
+# 	make F=foo.py size
+# where: foo.py is anything in ../shared
+size:
+	$(MPY_CROSS) -o tmp.mpy -s $F ../shared/$F
+	wc -c tmp.mpy
 
 # one time setup, after repo checkout
 setup:

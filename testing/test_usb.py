@@ -125,13 +125,13 @@ def test_upload_short(dev, data_len):
     dev.send_recv(CCProtocolPacker.upload(256, 256, b''))
 
 @pytest.mark.parametrize('pkt_len', [256, 1024, 2048])
-def test_upload_long(dev, pkt_len, count=5):
+def test_upload_long(dev, pkt_len, count=5, data=None):
     # upload a larger "file"
     
     from hashlib import sha256
     import os
 
-    data = os.urandom(pkt_len * count)
+    data = data or os.urandom(pkt_len * count)
 
     for pos in range(0, len(data), pkt_len):
         v = dev.send_recv(CCProtocolPacker.upload(pos, len(data), data[pos:pos+pkt_len]))

@@ -1,4 +1,5 @@
 # do NOT import main from this file.
+# do NOT 'from main import settings' either
 
 import os, sys
 from sim_secel import SECRETS
@@ -22,7 +23,7 @@ elif '-l' in sys.argv:
     
 else:
     # default values for simulator
-    # CAUTION: some test cases will rely on these
+    # CAUTION: many test cases will rely on these
     sim_defaults = {
         '_age': 42,
         #'chain': 'BTC',
@@ -40,6 +41,11 @@ else:
         '_pin1_secret': '82faf8c43d8835d20aef178a530bb658071a5252b722ba910a4143d9010ebfded9000000000000000000000000000000000000000000000000000000000000000000000000000000',
     })
 
+if '--pin' in sys.argv:
+    pin = sys.argv[sys.argv.index('--pin') + 1]
+    sim_defaults.pop('_skip_pin', 0)
+    SECRETS['_pin1'] = pin
+
 if '-2' in sys.argv:
     # enable second wallet, but no seeds
     sim_defaults.pop('_skip_pin', 0)
@@ -52,7 +58,7 @@ if '-p' in sys.argv:
     # pretend BIP39 words don't exist (affects menus mostly)
     sim_defaults['words'] = False
 
-if '-m' in sys.argv:
+if '--ms' in sys.argv:
     # Include useful multisig wallet, and shortcut to MS menu
 
     if '--p2wsh' in sys.argv:
@@ -76,7 +82,7 @@ if '--xfp' in sys.argv:
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
 if '--seed' in sys.argv:
-    # --xfp aabbccdd   => pretend we know that key (won't be able to sign)
+    # --seed word1 word2 .. word24  => import seed phrase
     from ustruct import unpack
     from utils import xfp2str
     from seed import set_seed_value
@@ -90,6 +96,28 @@ if '--seed' in sys.argv:
     settings.set('_skip_pin', '12-12')
     settings.set('chain', 'XTN')
     print("Seed phrase set, resulting XFP: " + xfp2str(settings.get('xfp')))
+
+if '--secret' in sys.argv:
+    # --secret 01a1a1a....   Set SE master secret directly. See SecretStash.encode
+    from ubinascii import unhexlify as a2b_hex
+    from ubinascii import hexlify as b2a_hex
+
+    val = sys.argv[sys.argv.index('--secret') + 1]
+    val = a2b_hex(val)
+    assert val[0] in { 0x01, 0x80, 0x81, 0x82} or 16 <= val[0] <= 64, "bad first byte"
+    val += bytes(72 - len(val))
+
+    SECRETS.update({
+        '_pin1_secret': b2a_hex(val),
+    })
+
+    sim_defaults['terms_ok'] = 1
+    sim_defaults['_skip_pin'] = '12-12'
+    sim_defaults['chain'] = 'XTN'
+    sim_defaults['words'] = bool(val[0] & 0x80)
+    sim_defaults.pop('xfp')
+    sim_defaults.pop('xpub')
+
 
 if '-g' in sys.argv:
     # do login
@@ -123,5 +151,22 @@ if '--set' in sys.argv:
         v = int(v)
     except: pass
     sim_defaults[k] = v
+
+if '--users' in sys.argv:
+    sim_defaults['usr'] = { 
+            # time based OTP
+            # otpauth://totp/totp?secret=UR4LAZMTSJOF52FE&issuer=Coldcard%20simulator
+            'totp': [1, 'UR4LAZMTSJOF52FE', 0],
+
+            # OBSCURE: counter-based, not time
+            # - no way to get your counter in sync w/ simulator
+            # otpauth://hotp/hotp?secret=DBDCOKLQKM6BAKXD&issuer=Coldcard%20simulator
+            'hotp': [2, 'DBDCOKLQKM6BAKXD', 0],
+
+            # password
+            # pw / 1234abcd
+            'pw': [3, 'THNUHHFTG44NLI4EC7H7D6MU5AYMC3B3ER2ZFIBHQVUBOLGADA7Q', 0],
+        }
+
 
 # EOF

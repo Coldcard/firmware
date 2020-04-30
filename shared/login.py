@@ -18,12 +18,19 @@ MIN_PIN_PART_LEN = 2
 
 class LoginUX:
 
-    def __init__(self):
+    def __init__(self, randomize=False):
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
         self.offer_second = not version.has_608
         self.reset()
+        self.randomize = randomize
+
+    def shuffle_keys(self):
+        from random import shuffle
+        keys = [str(i) for i in range(10)]
+        shuffle(keys)
+        self.randomize = keys
 
     def reset(self):
         self.pin = ''       # just the part we're showing
@@ -32,11 +39,40 @@ class LoginUX:
         self.is_secondary = False
         self.footer = None
 
+    def show_pin_randomized(self):
+        # screen redraw, when we are "randomized"
+        dis.clear()
+
+        # prompt
+        dis.text(5+3, 2, "ENTER PIN")
+        dis.text(5+6, 17, ('1st part' if not self.pin_prefix else '2nd part'))
+
+        # remapped keypad
+        y = 2
+        x = 89
+        h = 16
+        for i in range(0, 10, 3):
+            if i == 9:
+                dis.text(x, y, '  %s' % self.randomize[0])
+            else:
+                dis.text(x, y, ' '.join(self.randomize[1+i:1+i+3]))
+            y += h
+
+        # placeholder text
+        msg = '[' + ('*'*len(self.pin)) + ']'
+        x = 40 - ((10*len(msg))//2)
+        dis.text(x, 40, msg, FontLarge)
+
+        dis.show()
+
     def show_pin(self, show_hint=False):
+        if self.randomize:
+            return self.show_pin_randomized()
+
         filled = len(self.pin)
         if show_hint:
             filled -= 1
-            hint = self.pin[-1] if not version.has_membrane else None
+            hint = None     # used to be: self.pin[-1]  (for Mk1)
 
         dis.clear()
 
@@ -61,16 +97,11 @@ class LoginUX:
             x += w
 
         if show_hint:
-            if not version.has_membrane:
-                dis.text(x+1, y+1, hint, FontLarge)
-                dis.icon(x, y, 'box')
-            else:
-                dis.icon(x, y, 'tbox')
+            dis.icon(x, y, 'tbox')
         else:
             if len(self.pin) != MAX_PIN_PART_LEN:
                 dis.icon(x, y, 'box')
 
-        # BTW: √ also works here, but looks like square root, not a checkmark
         if self.footer:
             footer = self.footer
         elif self.is_repeat:
@@ -114,6 +145,8 @@ class LoginUX:
 
     def interact(self):
         # Prompt for prefix and pin. Returns string or None if the abort.
+        if self.randomize:
+            self.shuffle_keys()
 
         self.show_pin()
         while 1:
@@ -160,6 +193,9 @@ class LoginUX:
 
             else:
                 assert ch in '0123456789' or ch == ''
+
+                if self.randomize and ch:
+                    ch = self.randomize[int(ch)]
 
                 if len(self.pin) == MAX_PIN_PART_LEN:
                     self.pin = self.pin[:-1] + ch
@@ -221,8 +257,8 @@ Press OK to continue, X to stop for now.
 
     async def try_login(self, retry=True):
         from main import pa, numpad
-
         while retry:
+
             if version.has_608 and not pa.attempts_left:
                 # tell them it's futile
                 await self.we_are_ewaste(pa.num_fails)
@@ -237,8 +273,7 @@ Press OK to continue, X to stop for now.
             pin = await self.interact()
 
             if pin is None:
-                # Perhaps they are having trouble with touch pad?
-                numpad.sensitivity = 2
+                # pressed X on empty screen ... RFU
                 continue
             
             pa.setup(pin, self.is_secondary)
@@ -331,8 +366,6 @@ Press 2 to try the second one again, X or OK to give up for now.''',
 
             if ch != '2':
                 return None
-
-
 
 
 # EOF

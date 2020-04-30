@@ -4,23 +4,24 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, tcc, ux, chains, sys, gc, uio
+import stash, ure, tcc, ux, chains, sys, gc, uio, version
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AF_P2WPKH
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
+from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
-
-global active_request
-active_request = None
+from exceptions import HSMDenied
 
 # Where in SPI flash the two transactions are (in and out)
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
 
 class UserAuthorizedAction:
+    active_request = None
+
     def __init__(self):
         self.refused = False
         self.failed = None
@@ -51,26 +52,23 @@ class UserAuthorizedAction:
     @classmethod
     def cleanup(cls):
         # user has collected the results/errors and no need for objs
-        global active_request
-        active_request = None
+        cls.active_request = None
         gc.collect()
 
     @classmethod
     def check_busy(cls, allowed_cls=None):
         # see if we're busy. don't interrupt that... unless it's of allowed_cls
         # - also handle cleanup of stale actions
-        global active_request
-
-        if not active_request:
+        if not cls.active_request:
             return
-        if allowed_cls and isinstance(active_request, allowed_cls):
+        if allowed_cls and isinstance(cls.active_request, allowed_cls):
             return
 
         # check if UX actally was cleared, and we're not really doing that anymore; recover
         # - happens if USB caller never comes back for their final results
         from ux import the_ux
         top_ux = the_ux.top_of_stack()
-        if not isinstance(top_ux, cls) and active_request.ux_done:
+        if not isinstance(top_ux, cls) and cls.active_request.ux_done:
             # do cleaup
             print('recovery cleanup')
             cls.cleanup()
@@ -86,6 +84,14 @@ class UserAuthorizedAction:
             print("%s:" % msg)
             sys.print_exception(exc)
             msg += "\n\n(%s)" % problem_file_line(exc)
+
+        
+        from main import hsm_active, dis
+
+        # do nothing more for HSM case: msg will be available over USB
+        if hsm_active:
+            dis.progress_bar(1)     # finish the Validating... or whatever was up
+            return
 
         # may be a user-abort waiting, but we want to see error msg; so clear it
         ux_clear_keys(True)
@@ -119,6 +125,27 @@ RFC_SIGNATURE_TEMPLATE = '''\
 -----END {blockchain} SIGNED MESSAGE-----
 '''
 
+def sign_message_digest(digest, subpath, prompt):
+    # do the signature itself!
+    from main import dis
+
+    if prompt:
+        dis.fullscreen(prompt, percent=.25)
+
+    with stash.SensitiveValues() as sv:
+        dis.progress_bar_show(.50)
+
+        node = sv.derive_path(subpath)
+        pk = node.private_key()
+        sv.register(pk)
+
+        dis.progress_bar_show(.75)
+        rv = tcc.secp256k1.sign(pk, digest)
+
+    dis.progress_bar_show(1)
+
+    return rv
+
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None):
         super().__init__()
@@ -133,33 +160,26 @@ class ApproveMessageSign(UserAuthorizedAction):
             node = sv.derive_path(subpath)
             self.address = sv.chain.address(node, addr_fmt)
 
+        dis.progress_bar_show(1)
+
     async def interact(self):
         # Prompt user w/ details and get approval
-        from main import dis
+        from main import dis, hsm_active
 
-        ch = await ux_show_story(MSG_SIG_TEMPLATE.format(msg=self.text, 
-                            addr=self.address, subpath=self.subpath))
+        if hsm_active:
+            ch = await hsm_active.approve_msg_sign(self.text, self.address, self.subpath)
+        else:
+            story = MSG_SIG_TEMPLATE.format(msg=self.text, addr=self.address, subpath=self.subpath)
+            ch = await ux_show_story(story)
 
         if ch != 'y':
             # they don't want to!
             self.refused = True
         else:
-            dis.fullscreen('Signing...', percent=.25)
 
-            # do the signature itself!
-            with stash.SensitiveValues() as sv:
-                dis.progress_bar_show(.50)
-
-                node = sv.derive_path(self.subpath)
-                pk = node.private_key()
-                sv.register(pk)
-
-                digest = sv.chain.hash_message(self.text.encode())
-
-                dis.progress_bar_show(.75)
-                self.result = tcc.secp256k1.sign(pk, digest)
-
-            dis.progress_bar_show(1.0)
+            # perform signing (progress bar shown)
+            digest = chains.current_chain().hash_message(self.text.encode())
+            self.result = sign_message_digest(digest, self.subpath, "Signing...")
 
             if self.approved_cb:
                 # for micro sd case
@@ -203,7 +223,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 def sign_msg(text, subpath, addr_fmt):
     # Convert to strings
     try:
-        text = str(text,'ascii')
+        text = str(text, 'ascii')
     except UnicodeError:
         raise AssertionError('must be ascii')
 
@@ -218,20 +238,17 @@ def sign_msg(text, subpath, addr_fmt):
     # Do some verification before we even show to the local user
     ApproveMessageSign.validate(text)
 
-    global active_request
     UserAuthorizedAction.check_busy()
-    active_request = ApproveMessageSign(text, subpath, addr_fmt)
+    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from files import CardSlot, CardMissingError
     from sram2 import tmp_buf
-
-    global active_request
 
     UserAuthorizedAction.cleanup()
     addr_fmt = AF_CLASSIC
@@ -326,21 +343,23 @@ def sign_txt_file(filename):
         msg = "Created new file:\n\n%s" % out_fn
         await ux_show_story(msg, title='File Signed')
 
-    global active_request
     UserAuthorizedAction.check_busy()
-    active_request = ApproveMessageSign(text, subpath, addr_fmt, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt, approved_cb=done)
 
     # do not kill the menu stack!
     from ux import the_ux
-    the_ux.push(active_request)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, do_finalize=False, approved_cb=None):
+    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None):
         super().__init__()
         self.psbt_len = psbt_len
-        self.do_finalize = do_finalize
+        self.do_finalize = bool(flags & STXN_FINALIZE)
+        self.do_visualize = bool(flags & STXN_VISUALIZE)
+        self.stxn_flags = flags
         self.psbt = None
+        self.psbt_sha = psbt_sha
         self.approved_cb = approved_cb
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
@@ -358,7 +377,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
     async def interact(self):
         # Prompt user w/ details and get approval
-        from main import dis
+        from main import dis, hsm_active
 
         # step 1: parse PSBT from sflash into in-memory objects.
         dis.fullscreen("Validating...")
@@ -434,12 +453,24 @@ class ApproveTransaction(UserAuthorizedAction):
             if self.psbt.warnings:
                 msg.write('\n---WARNING---\n\n')
 
-                for label,m in self.psbt.warnings:
+                for label, m in self.psbt.warnings:
                     msg.write('- %s: %s\n\n' % (label, m))
 
-            msg.write("\nPress OK to approve and sign transaction. X to abort.")
+            if self.do_visualize:
+                # stop here and just return the text of approval message itself
+                self.result = await self.save_visualization(msg, (self.stxn_flags & STXN_SIGNED))
+                del self.psbt
+                self.done()
 
-            ch = await ux_show_story(msg, title="OK TO SEND?")
+                return
+
+            if not hsm_active:
+                msg.write("\nPress OK to approve and sign transaction. X to abort.")
+                ch = await ux_show_story(msg, title="OK TO SEND?")
+            else:
+                ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
+                dis.progress_bar(1)     # finish the Validating...
+
         except MemoryError:
             # recovery? maybe.
             try:
@@ -454,6 +485,7 @@ class ApproveTransaction(UserAuthorizedAction):
         if ch != 'y':
             # they don't want to!
             self.refused = True
+
             await ux_dramatic_pause("Refused.", 1)
 
             del self.psbt
@@ -495,6 +527,34 @@ class ApproveTransaction(UserAuthorizedAction):
 
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
+
+    def save_visualization(self, msg, sign_text=False):
+        # write text into spi flash, maybe signing it as we go
+        # - return length and checksum
+        txt_len = msg.seek(0, 2)
+        msg.seek(0)
+
+        chk = self.chain.hash_message(msg_len=txt_len) if sign_text else None
+
+        with SFFile(TXN_OUTPUT_OFFSET, max_size=txt_len+300, message="Visualizing...") as fd:
+            await fd.erase()
+
+            while 1:
+                blk = msg.read(256).encode('ascii')
+                if not blk: break
+                if chk:
+                    chk.update(blk)
+                fd.write(blk)
+
+            if chk:
+                from ubinascii import b2a_base64
+                # append the signature
+                digest = tcc.sha256(chk.digest()).digest()
+                sig = sign_message_digest(digest, 'm', None)
+                fd.write(b2a_base64(sig).decode('ascii').strip())
+                fd.write('\n')
+
+            return (fd.tell(), fd.checksum.digest())
 
     def output_change_text(self, msg):
         # Produce text report of what the "change" outputs are (based on our opinion).
@@ -598,14 +658,13 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write('%s %s\n' % self.chain.render_value(mtot))
 
 
-def sign_transaction(psbt_len, do_finalize=False):
+def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
     # transaction (binary) loaded into sflash already, checksum checked
-    global active_request
     UserAuthorizedAction.check_busy(ApproveTransaction)
-    active_request = ApproveTransaction(psbt_len, do_finalize)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, flags, psbt_sha=psbt_sha)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
     
 def sign_psbt_file(filename):
@@ -614,7 +673,6 @@ def sign_psbt_file(filename):
     from main import dis
     from sram2 import tmp_buf
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
-    global active_request
 
     UserAuthorizedAction.cleanup()
 
@@ -746,10 +804,10 @@ def sign_psbt_file(filename):
 
         UserAuthorizedAction.cleanup()
 
-    active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
     def __init__(self):
@@ -780,14 +838,12 @@ class RemoteBackup(UserAuthorizedAction):
 def start_remote_backup():
     # tell the local user the secret words, and then save to SPI flash
     # USB caller has to come back and download encrypted contents.
-    global active_request
 
     UserAuthorizedAction.cleanup()
-
-    active_request = RemoteBackup()
+    UserAuthorizedAction.active_request = RemoteBackup()
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 
 class NewPassphrase(UserAuthorizedAction):
@@ -825,12 +881,9 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                err = set_bip39_passphrase(self._pw)
+                set_bip39_passphrase(self._pw)
 
-                if err:
-                    await self.failure(err)
-                else:
-                    self.result = settings.get('xpub')
+                self.result = settings.get('xpub')
 
 
         except BaseException as exc:
@@ -848,14 +901,12 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
 def start_bip39_passphrase(pw):
     # tell the local user the secret words, and then save to SPI flash
     # USB caller has to come back and download encrypted contents.
-    global active_request
 
     UserAuthorizedAction.cleanup()
-
-    active_request = NewPassphrase(pw)
+    UserAuthorizedAction.active_request = NewPassphrase(pw)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 
 class ShowAddressBase(UserAuthorizedAction):
@@ -872,11 +923,26 @@ class ShowAddressBase(UserAuthorizedAction):
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        msg = self.get_msg()
+        from main import hsm_active, dis
 
-        msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
+        if not hsm_active:
+            msg = self.get_msg()
+            msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
+            if version.has_fatram:
+                msg += ' Press 4 to view QR Code.'
 
-        ch = await ux_show_story(msg, title=self.title)
+            while 1:
+                ch = await ux_show_story(msg, title=self.title, escape='4')
+
+                if ch == '4' and version.has_fatram:
+                    q = ux.QRDisplay([self.address], (self.addr_fmt & AFC_BECH32))
+                    await q.interact_bare()
+                    continue
+
+                break
+        else:
+            # finish the Wait...
+            dis.progress_bar(1)     
 
         self.done()
         UserAuthorizedAction.cleanup()      # because no results to store
@@ -886,6 +952,7 @@ class ShowPKHAddress(ShowAddressBase):
 
     def setup(self, addr_fmt, subpath):
         self.subpath = subpath
+        self.addr_fmt = addr_fmt
 
         with stash.SensitiveValues() as sv:
             node = sv.derive_path(subpath)
@@ -900,6 +967,7 @@ class ShowP2SHAddress(ShowAddressBase):
     def setup(self, ms, addr_fmt, xfp_paths, witdeem_script):
 
         self.witdeem_script = witdeem_script
+        self.addr_fmt = addr_fmt
         self.ms = ms
 
         # calculate all the pubkeys involved.
@@ -946,16 +1014,15 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     assert ms.M == M
     assert ms.N == N
 
-    global active_request
-    UserAuthorizedAction.check_busy(ShowAddressBase)
 
-    active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
+    UserAuthorizedAction.check_busy(ShowAddressBase)
+    UserAuthorizedAction.active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
     # provide the value back to attached desktop
-    return active_request.address
+    return UserAuthorizedAction.active_request.address
 
 def start_show_address(addr_format, subpath):
     try:
@@ -967,15 +1034,18 @@ def start_show_address(addr_format, subpath):
     # require a path to a key
     subpath = cleanup_deriv_path(subpath)
 
-    global active_request
+    from main import hsm_active
+    if hsm_active and not hsm_active.approve_address_share(subpath):
+        raise HSMDenied
+
     UserAuthorizedAction.check_busy(ShowAddressBase)
-    active_request = ShowPKHAddress(addr_format, subpath)
+    UserAuthorizedAction.active_request = ShowPKHAddress(addr_format, subpath)
 
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(active_request)
+    abort_and_goto(UserAuthorizedAction.active_request)
 
     # provide the value back to attached desktop
-    return active_request.address
+    return UserAuthorizedAction.active_request.address
 
 
 class NewEnrollRequest(UserAuthorizedAction):
@@ -1016,7 +1086,6 @@ class NewEnrollRequest(UserAuthorizedAction):
 
 def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
     # Offer to import (enroll) a new multisig wallet. Allow reject by user.
-    global active_request
     from multisig import MultisigWallet
 
     UserAuthorizedAction.cleanup()
@@ -1029,15 +1098,15 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
     # and be shown on screen/over usb
     ms = MultisigWallet.from_file(config, name=name)
 
-    active_request = NewEnrollRequest(ms)
+    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
 
     if ux_reset:
         # for USB case, and import from PSBT
         # kill any menu stack, and put our thing at the top
-        abort_and_goto(active_request)
+        abort_and_goto(UserAuthorizedAction.active_request)
     else:
         # menu item case: add to stack
         from ux import the_ux
-        the_ux.push(active_request)
+        the_ux.push(UserAuthorizedAction.active_request)
 
 # EOF

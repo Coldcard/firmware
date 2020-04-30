@@ -47,14 +47,9 @@ from display import Display
 dis = Display()
 dis.splash()
 
-if version.has_membrane:
-    # Setup membrane numpad (mark 2+)
-    from mempad import MembraneNumpad
-    numpad = MembraneNumpad(loop)
-else:
-    # Setup touch numpad (mark 1 hardware)
-    from touchpad import TouchNumpad
-    numpad = TouchNumpad(loop)
+# Setup membrane numpad (mark 2+)
+from mempad import MembraneNumpad
+numpad = MembraneNumpad(loop)
 
 # Serial Flash memory
 from sflash import SPIFlash
@@ -64,8 +59,8 @@ sf = SPIFlash()
 from nvstore import SettingsObject
 settings = SettingsObject(loop)
 
-# important default/restore preference
-numpad.sensitivity = settings.get('sens', numpad.sensitivity)
+# global ptr to HSM policy, if any (supported on Mk3 only)
+hsm_active = None
 
 
 async def done_splash2():
