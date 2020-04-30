@@ -6,7 +6,7 @@
 #
 import stash, ure, tcc, ux, chains, sys, gc, uio, version
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
@@ -251,6 +251,7 @@ def sign_txt_file(filename):
     from sram2 import tmp_buf
 
     UserAuthorizedAction.cleanup()
+    addr_fmt = AF_CLASSIC
 
     # copy message into memory
     with CardSlot() as card:
@@ -265,6 +266,11 @@ def sign_txt_file(filename):
         except:
             await ux_show_story("Second line of file, if included, must specify a subkey path, like: m/44'/0/0")
             return
+
+        # if they are following BIP84 recommended derivation scheme,
+        # then they probably would prefer a segwit/bech32 formatted address
+        if subpath.startswith("m/84'/"):
+            addr_fmt = AF_P2WPKH
             
     else:
         # default: top of wallet.
@@ -338,7 +344,7 @@ def sign_txt_file(filename):
         await ux_show_story(msg, title='File Signed')
 
     UserAuthorizedAction.check_busy()
-    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, AF_CLASSIC, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt, approved_cb=done)
 
     # do not kill the menu stack!
     from ux import the_ux

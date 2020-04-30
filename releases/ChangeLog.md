@@ -11,6 +11,9 @@
   XPUB (and associated data) needed for P2PKH, P2WPKH (segwit) and P2WPKH-P2SH wallets,
   which conform to BIP44, BIP84, and BIP49 respectively.
   Thanks to [@craigraw](https://twitter.com/craigraw) the idea.
+- Enhancement: when signing a text file from MicroSD card, if you specify a derivation
+  path that starts with `m/84'/...` indicating that you are following BIP84 for
+  segwit addresses, the resulting signature will be formatted as P2WPKH in Bech32.
 - Code cleanups.
 
 
@@ -46,6 +49,7 @@
   That text can be signed (always with root key) to prove authenticity.
 - Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
 - IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
+>>>>>>> a0ffa2344d659dbe196484fc75e73240c811ba6a
 
 ## 3.0.6 - Dec 19, 2019
 

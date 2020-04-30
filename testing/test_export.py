@@ -12,6 +12,7 @@ from ckcc_protocol.constants import *
 from helpers import xfp2str
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
+from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH, AF_P2WSH_P2SH
 
 @pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
 def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet):
@@ -214,7 +215,7 @@ def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_hom
     os.unlink(path)
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '123'])
-def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path):
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
     # test UX and values produced.
@@ -266,12 +267,16 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
 
             if fn == 'bip44':
                 assert first.address() == v['first']
+                addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC)
             else:
                 assert v['_pub'][1:4] == 'pub'
 
                 if fn == 'bip84':
                     h20 = first.hash160()
                     assert addr == sw_encode(addr[0:2], 0, h20)
-
+                    addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH)
+                else:
+                    addr_fmt = AF_P2WSH_P2SH
+                    # don't have test logic for verifying these addrs
 
 # EOF
