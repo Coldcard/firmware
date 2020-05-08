@@ -465,7 +465,6 @@ class MultisigWallet:
                 with stash.SensitiveValues() as sv:
                     node = sv.derive_path(common_prefix)
                     actual_xpub = chains.get_chain(expected_chain).serialize_public(node, AF_P2SH)
-                    print(actual_xpub)
                     assert actual_xpub == ko["xpub"], "Derived xpub at {} doesn't match provided xpub".format(ko["derivation"])
         if has_mine == False:
             raise Exception("Descriptor doesn't include our fingerprint.")
@@ -657,7 +656,6 @@ class MultisigWallet:
     @classmethod
     def parse_descriptor(cls, desc, expected_chain):
         # try matching each type of descriptor
-        print("Descriptor to parse: " + desc)
         match = None
         address_fmt = None
         for addr_fmt, pat in cls.DESCRIPTOR_REGEXES:
@@ -671,15 +669,15 @@ class MultisigWallet:
         if len(M) > 1 and M[0] == "0": # check for leading zeros
             raise Exception("Invalid M value (contains leading zeros)")
         M = int(match.group(1))
+        if not (M >= 1 and M <= 15):
+            raise Exception("Invalid M value (must be between 1 and 15)")
         key_origins_str = match.group(2)
         key_origins = []
         for ko in key_origins_str.split(","):
-            key_origins.append(
-                cls.parse_key_origin(ko, expected_chain)
-            )
+            key_origins.append(cls.parse_key_origin(ko, expected_chain))
         N = len(key_origins)
-        if N < M:
-            raise Exception("Invalid descriptor: M must be greater than N")
+        if not (N > 1 and N >= M and N <= 15):
+            raise Exception("Invalid N value (must be greater than 1 and between M and 15)")
         return {
             "addr_fmt": address_fmt,
             "M": M,
@@ -689,17 +687,16 @@ class MultisigWallet:
 
     @classmethod
     def parse_key_origin(cls, ko, expected_chain):
-        print("Parsing key origin: " + ko)
         r = { "derivation": None }
         arr = ko.strip().split("]")
-        if len(arr) <= 1:
+        if len(arr) != 2:
             raise Exception("Invalid key origin")
         derivation = arr[0].replace("h","'").lower()
         xpub = arr[1]
         if derivation[0] != "[":
             raise Exception("Origin missing leading [")
         arr = derivation[1:].split("/")
-        pat = r"^[a-fA-F0-9]*$"
+        pat = r"^[a-f0-9]*$"
         match = ure.search(pat, arr[0])
         if match is None:
             raise Exception("Fingerprint is not hex")
@@ -710,7 +707,7 @@ class MultisigWallet:
         for der in arr[1:]:
             if der[-1] == "'":
                 if global_hardened == False:
-                    raise Exception("Invalid key origin: cannot derive hardened child from non-hardened parent")
+                    raise Exception("Invalid key origin (bad derivation path)")
                 der = der[:-1]
             else:
                 global_hardened = False
@@ -719,12 +716,10 @@ class MultisigWallet:
                     raise Exception("")
                 i = int(der)
             except:
-                raise Exception("Invalid index in key origin derivation.")
+                raise Exception("Invalid key origin (bad index in derivation path)")
         r["derivation"] = "/".join(arr[1:])
         # check xpub
         xpubs = []
-        print(xpub, expected_chain)
-        print(r["xfp"], xpub)
         cls.check_xpub(r["xfp"], xpub, expected_chain, xpubs, set())
         _, xpub = xpubs.pop()
         r["xpub"] = xpub
@@ -1033,8 +1028,7 @@ def make_redeem(M, keys, path):
     pubkeys = []
     for xfp, node in keys:
         node_copy = node.clone() # avoids mutability bug
-        depth = node_copy.depth()
-        for p in path[depth:]: # derive entire path (in-place)
+        for p in path: # derive path (in-place)
             node_copy.derive(p)
         pubkeys.append(node_copy.public_key())
     pubkeys.sort()
@@ -1048,38 +1042,13 @@ def make_redeem(M, keys, path):
 
     return rv, pubkeys
 
-def ms_path_mapper(idx, is_change, addr_fmt):
-    coin = chains.current_chain().b44_cointype
-    def HARD(n=0):
-        return 0x80000000 | n
-    # currently supported address format derivations
-    if addr_fmt == AF_P2SH:
-        return ([HARD(45), is_change, idx], "m/45'/{change}/{idx}".format(change=is_change, idx=idx))
-    elif addr_fmt == AF_P2WSH_P2SH:
-        return (
-            [HARD(48), HARD(coin), HARD(0), HARD(1), is_change, idx],
-            "m/48'/{coin}'/0'/1'/{change}/{idx}".format(coin=coin, change=is_change, idx=idx)
-        )
-    elif addr_fmt == AF_P2WSH:
-        return (
-            [HARD(48), HARD(coin), HARD(0), HARD(2), is_change, idx],
-            "m/48'/{coin}'/0'/2'/{change}/{idx}".format(coin=coin, change=is_change, idx=idx)
-        )
-    else:
-        raise ValueError("Unsupported address format: %s " % addr_fmt)
-
 def make_ms_address(M, keys, idx, is_change, addr_fmt):
     from chains import BitcoinMain, BitcoinTestnet
-    # Validations
-    assert M <= len(keys), 'M > N'
-    assert idx >= 0, 'Invalid idx'
-    assert is_change in {0,1}, 'Invalid change value'
-    assert addr_fmt in {AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH}, 'Invalid address format'
     coin = chains.current_chain().b44_cointype
     p2sh_address = BitcoinMain.p2sh_address if coin == 0 else BitcoinTestnet.p2sh_address
 
     # Construct addr and script need to represent a p2sh address
-    path, _ = ms_path_mapper(idx, is_change, addr_fmt)
+    path = [is_change, idx]
     script, pubkeys = make_redeem(M, keys, path)
     addr = p2sh_address(addr_fmt, script)
     return (addr, script, pubkeys)
@@ -1107,8 +1076,9 @@ async def multisig_address_explorer(menu, label, item):
                 is_change=0,
                 addr_fmt=ms.addr_fmt
             )
-            _, subpath = ms_path_mapper(idx=idx, is_change=0, addr_fmt=ms.addr_fmt)
-            yield (subpath, addr)
+            # is the common_prefix really what we want to show here?
+            path = "m/{}/0/{}".format(ms.common_prefix, idx)
+            yield (path, addr)
 
     await show_n_addresses(0, 10, ms.addr_fmt, get_addresses)
 
