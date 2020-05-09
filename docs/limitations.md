@@ -97,7 +97,6 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 - the _witnessScript_ in a `p2wsh-p2sh` is not optional.
 - depending on the address type of the output, different values are required in the
   corresponding output section, as follows
-    
     - `p2pkh`: no _redeemScript_, no _witnessScript_
     - `p2wpkh-p2sh`: only _redeemScript_ (which will be: `0x00 + 0x14 + HASH160(key)`)
     - `p2wpkh`: no _redeemScript_, no _witnessScript_
