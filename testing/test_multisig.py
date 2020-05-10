@@ -3,7 +3,7 @@
 #
 # Multisig-related tests.
 #
-import time, pytest, os, random
+import time, pytest, os, random, json
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
@@ -16,6 +16,7 @@ from pycoin.encoding import a2b_hashed_base58
 from io import BytesIO
 from hashlib import sha256
 from test_bip39pw import set_bip39_pw
+from test_address_explorer import parse_display_screen
 
 def HARD(n=0):
     return 0x80000000 | n
@@ -34,6 +35,19 @@ def str2ipath(s):
             assert 0 <= here < 0x80000000, here
 
         yield here
+
+def int2strpath(path):
+    # convert integer array to text path (w/o leading 'm')
+    hardended = True
+    parts = []
+    for i in path:
+        if bool(i & 0x80000000):
+            if not hardended:
+                raise ValueError("Invalid derivation path")
+            parts.append(str(i & ~0x80000000) + "'")
+        else:
+            parts.append(str(i))
+    return "/".join(parts)
 
 
 @pytest.fixture()
@@ -69,9 +83,9 @@ def clear_ms(unit_test):
 def make_multisig():
     # make a multsig wallet, always with simulator as an element
 
-    # always BIP45:   m/45'/... (but no co-signer idx)
+    # defaults to BIP45 (m/45' with no co-signer idx) but accepts arbitary derivation path
 
-    def doit(M, N, unique=0):
+    def doit(M, N, unique=0, path=[HARD(45)]):
         keys = []
 
         for i in range(N-1):
@@ -79,11 +93,17 @@ def make_multisig():
 
             xfp = unpack("<I", pk.fingerprint())[0]
 
-            sub = pk.subkey(45, is_hardened=True, as_private=True)
+            sub = pk
+            for p in path:
+                sub = sub.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000), as_private=True)
             keys.append((xfp, pk, sub))
 
+        # generate key tuple for simulator
         pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
-        keys.append((simulator_fixed_xfp, pk, pk.subkey(45, is_hardened=True, as_private=True)))
+        sub = pk
+        for p in path:
+            sub = sub.subkey(p & ~0x80000000, is_hardened=bool(p & 0x80000000), as_private=True)
+        keys.append((simulator_fixed_xfp, pk, sub))
 
         return keys
 
@@ -140,6 +160,53 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
             # Test it worked.
             time.sleep(.1)      # required
+            xor = 0
+            for xfp, _, _ in keys:
+                xor ^= xfp
+            assert dev.send_recv(CCProtocolPacker.multisig_check(M, N, xor)) == 1
+
+        return keys
+
+    return doit
+
+@pytest.fixture
+def import_descriptor_wallet(dev, make_multisig, offer_ms_import, need_keypress):
+
+    def doit(M, N, keys, addr_fmt=AF_P2SH, common_path=[HARD(45)], name=None, accept=False, desc=None):
+        # render as a file for import
+        config = ""
+        if name:
+            config = f"name: {name}\n"
+
+        # generate descriptor based on address format, keys, and path if not provided
+        if desc is None:
+            desc_prefix, desc_suffix = {
+                AF_P2SH: ("sh(sortedmulti(", "))"),
+                AF_P2WSH_P2SH: ("sh(wsh(sortedmulti(", ")))"),
+                AF_P2WSH: ("wsh(sortedmulti(", "))")
+            }[addr_fmt]
+
+            common_prefix = int2strpath(common_path)
+            key_origins = []
+            for xfp, _, subkey in keys:
+                ko = "[" + xfp2str(xfp) + "/" + common_prefix + "]" + subkey.hwif(as_private=False)
+                key_origins.append(ko)
+
+            desc = desc_prefix + ",".join([str(M)] + key_origins) + desc_suffix
+        config += f"descriptor: {desc}"
+
+        title, story = offer_ms_import(config)
+
+        assert 'Create new multisig' in story
+        assert name in story
+        assert f'Policy: {M} of {N}\n' in story
+
+        if accept:
+            time.sleep(0.1)
+            need_keypress('y')
+
+            # Test it worked.
+            time.sleep(0.1)      # required
             xor = 0
             for xfp, _, _ in keys:
                 xor ^= xfp
@@ -1471,4 +1538,107 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
     assert story.strip() in str(ee)
     assert len(story.split(':')[-1].strip()), story
 
+@pytest.mark.parametrize('policy', [(2, 3), (3, 5), (7, 15)]) # test various policies
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
+def test_multisig_address_explorer(make_multisig, import_descriptor_wallet, goto_home, pick_menu_item, need_keypress, parse_display_screen, policy, addr_fmt):
+    from binascii import hexlify
+    M, N = policy
+    coin = 1
+    coin_type = 'XTN'
+    name = 'test-descriptor'
+    idx = int(hexlify(os.urandom(1)).decode(), 16) % 100 # random index in [0, 100)
+    addr_fmt_str, path_len, path_mapper = {
+        AF_P2SH: ('p2sh', 1, lambda _: [HARD(45), 0, idx]),
+        AF_P2WSH_P2SH: ('p2wsh-p2sh', 4, lambda _: [HARD(48), HARD(coin), HARD(0), HARD(1), 0, idx]),
+        AF_P2WSH: ('p2wsh', 4, lambda _: [HARD(48), HARD(coin), HARD(0), HARD(2), 0, idx])
+    }[addr_fmt]
+    path = path_mapper(None)[:path_len]
+    keys = import_descriptor_wallet(
+        M=M,
+        N=N,
+        keys=make_multisig(M, N, 0, path),
+        addr_fmt=addr_fmt,
+        common_path=path,
+        name=name,
+        accept=True
+    )
+
+    # Get expected address
+    make_redeem_args = {'path_mapper': path_mapper}
+    addr_expected, _, _, _ = make_ms_address(M, keys, idx, 0, addr_fmt, coin, **make_redeem_args)
+
+    # Fetch Address Explorer address map on idx screen
+    ADDRESSES_SHOWN = 10
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item("%d/%d: %s" % (M, N, name))
+    pick_menu_item("Address Explorer")
+    for _ in range(idx // ADDRESSES_SHOWN): # scroll to idx screen
+        need_keypress('9')
+        time.sleep(0.01)
+    d = parse_display_screen(idx - idx % ADDRESSES_SHOWN, ADDRESSES_SHOWN)
+
+    # Get address at index
+    path_to_idx = lambda path: int(path.split('/')[-1])
+    indices = set(map(path_to_idx, d.keys()))
+    assert idx in indices
+
+    # Assert the address is as expected
+    for p, addr in d.items():
+        idx_at_p = path_to_idx(p)
+        if idx == idx_at_p:
+            assert addr_expected == addr
+
+    # Cleanup (delete multisig wallet)
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item("%d/%d: %s" % (M, N, name))
+    pick_menu_item("Delete")
+    need_keypress('y')
+    time.sleep(0.01)
+
+def test_import_invalid_descriptors(make_multisig, import_descriptor_wallet, goto_home, pick_menu_item, need_keypress, parse_display_screen):
+    from binascii import hexlify
+    vectors = json.load(open('bad-descriptor-vectors.json'))
+    for [descriptor, err] in vectors:
+        with pytest.raises(BaseException) as ee:
+            keys = import_descriptor_wallet(
+                M=None,
+                N=None,
+                keys=None,
+                addr_fmt=None,
+                common_path=None,
+                name=None,
+                accept=False,
+                desc=descriptor
+            )
+        assert err in str(ee.value)
+
+    # test case: derived account xpub doesn't match the one specified by the descriptor
+    # replace our account xpub with a random one
+    M, N = 2, 3
+    path = [HARD(48), HARD(1), HARD(0), HARD(2)]
+
+    keys_original = make_multisig(M, N, 0, path)
+    keys = []
+    for xfp, pk, subkey in keys_original:
+        if xfp == simulator_fixed_xfp:
+            random_bip32node = BIP32Node.from_master_secret(b"blah blah blah", 'XTN')
+            subkey = random_bip32node.subkey_for_path(int2strpath(path)).public_copy()
+        keys.append( (xfp, pk, subkey)  )
+
+    with pytest.raises(BaseException) as ee:
+        keys = import_descriptor_wallet(
+            M=M,
+            N=N,
+            keys=keys,
+            addr_fmt=AF_P2WSH,
+            common_path=path,
+            name=None,
+            accept=True
+        )
+    assert "Derived xpub at" in str(ee.value)
+    assert "doesn't match provided xpub" in str(ee.value)
 # EOF

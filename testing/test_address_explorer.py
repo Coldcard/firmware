@@ -60,11 +60,11 @@ def parse_display_screen(cap_story):
             assert 'Press 1 to save to MicroSD.' in lines[0]
             assert '4 to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
-            raw_addrs = lines[4:-2] # Remove header & last line
+            raw_addrs = lines[4:-1] # Remove header & last line
         else:
             # no header after first page
             assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
-            raw_addrs = lines[2:-2]
+            raw_addrs = lines[2:-1]
 
         d = dict()
         for path_raw, addr, empty in zip(*[iter(raw_addrs)]*3):

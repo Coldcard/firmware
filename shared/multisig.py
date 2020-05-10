@@ -100,10 +100,10 @@ class MultisigWallet:
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),
     ]
     # regexes for parsing multisig descriptors
-    DESCRIPTOR_REGEXES = [
-        (AF_P2SH, r"^sh\(sortedmulti\((\d+),(\S+)\)\)$"),
-        (AF_P2WSH_P2SH, r"^sh\(wsh\(sortedmulti\((\d+),(\S+)\)\)\)$"),
-        (AF_P2WSH, r"^wsh\(sortedmulti\((\d+),(\S+)\)\)$")
+    DESCRIPTOR_PATTERNS = [
+        (AF_P2SH, "sh(sortedmulti(", "))"),
+        (AF_P2WSH_P2SH, "sh(wsh(sortedmulti(", ")))"),
+        (AF_P2WSH, "wsh(sortedmulti(", "))")
     ]
 
     def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, common_prefix=None, chain_type='BTC', allow_explorer=False):
@@ -465,9 +465,10 @@ class MultisigWallet:
                 with stash.SensitiveValues() as sv:
                     node = sv.derive_path(common_prefix)
                     actual_xpub = chains.get_chain(expected_chain).serialize_public(node, AF_P2SH)
-                    assert actual_xpub == ko["xpub"], "Derived xpub at {} doesn't match provided xpub".format(ko["derivation"])
+                    if(actual_xpub != ko["xpub"]):
+                        raise AssertionError("Derived xpub at {} doesn't match provided xpub".format(ko["derivation"]))
         if has_mine == False:
-            raise Exception("Descriptor doesn't include our fingerprint.")
+            raise AssertionError("Descriptor doesn't include our fingerprint.")
         if name is None:
             # provide a default name
             name = '%s Descriptor %d-of-%d' % (d["addr_fmt"], d["M"], d["N"])
@@ -576,6 +577,7 @@ class MultisigWallet:
                 descriptor = value
 
         if descriptor:
+            # ignores all keys except 'descriptor' and 'name'
             return cls.from_descriptor(descriptor, expect_chain, name)
 
         assert len(xpubs), 'need xpubs'
@@ -658,26 +660,25 @@ class MultisigWallet:
         # try matching each type of descriptor
         match = None
         address_fmt = None
-        for addr_fmt, pat in cls.DESCRIPTOR_REGEXES:
-            match = ure.search(pat, desc)
-            if match is not None:
+        for addr_fmt, desc_prefix, desc_suffix in cls.DESCRIPTOR_PATTERNS:
+            if desc.startswith(desc_prefix) and desc.endswith(desc_suffix):
                 address_fmt = addr_fmt
+                desc_meta = desc[len(desc_prefix):-len(desc_suffix)].split(",")
                 break
-        if match is None:
-            raise Exception("Invalid or unsupported descriptor type.")
-        M = match.group(1)
+        if address_fmt is None:
+            raise AssertionError("Invalid or unsupported descriptor type.")
+        M = desc_meta[0]
         if len(M) > 1 and M[0] == "0": # check for leading zeros
-            raise Exception("Invalid M value (contains leading zeros)")
-        M = int(match.group(1))
+            raise AssertionError("Invalid M value (contains leading zeros)")
+        M = int(M)
         if not (M >= 1 and M <= 15):
-            raise Exception("Invalid M value (must be between 1 and 15)")
-        key_origins_str = match.group(2)
+            raise AssertionError("Invalid M value (must be between 1 and 15)")
         key_origins = []
-        for ko in key_origins_str.split(","):
+        for ko in desc_meta[1:]:
             key_origins.append(cls.parse_key_origin(ko, expected_chain))
         N = len(key_origins)
         if not (N > 1 and N >= M and N <= 15):
-            raise Exception("Invalid N value (must be greater than 1 and between M and 15)")
+            raise AssertionError("Invalid N value (must be greater than 1 and between M and 15)")
         return {
             "addr_fmt": address_fmt,
             "M": M,
@@ -690,37 +691,37 @@ class MultisigWallet:
         r = { "derivation": None }
         arr = ko.strip().split("]")
         if len(arr) != 2:
-            raise Exception("Invalid key origin")
+            raise AssertionError("Invalid key origin")
         derivation = arr[0].replace("h","'").lower()
         xpub = arr[1]
         if derivation[0] != "[":
-            raise Exception("Origin missing leading [")
+            raise AssertionError("Origin missing leading [")
         arr = derivation[1:].split("/")
         pat = r"^[a-f0-9]*$"
         match = ure.search(pat, arr[0])
         if match is None:
-            raise Exception("Fingerprint is not hex")
+            raise AssertionError("Fingerprint is not hex")
         if len(arr[0]) != 8:
-            raise Exception("Incorrect fingerprint length")
+            raise AssertionError("Incorrect fingerprint length")
         r["xfp"] = arr[0].upper()
         global_hardened = True
         for der in arr[1:]:
             if der[-1] == "'":
                 if global_hardened == False:
-                    raise Exception("Invalid key origin (bad derivation path)")
+                    raise AssertionError("Invalid key origin (bad derivation path)")
                 der = der[:-1]
             else:
                 global_hardened = False
             try:
                 if len(der) > 1 and der[0] == "0": # check for leading zeros
-                    raise Exception("")
+                    raise AssertionError("")
                 i = int(der)
             except:
-                raise Exception("Invalid key origin (bad index in derivation path)")
+                raise AssertionError("Invalid key origin (bad index in derivation path)")
         r["derivation"] = "/".join(arr[1:])
         # check xpub
         xpubs = []
-        cls.check_xpub(r["xfp"], xpub, expected_chain, xpubs, set())
+        cls.check_xpub(str2xfp(r["xfp"]), xpub, expected_chain, xpubs, set())
         _, xpub = xpubs.pop()
         r["xpub"] = xpub
         r["string"] = ko
