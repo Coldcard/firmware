@@ -80,6 +80,7 @@ SRC_MOD += $(addprefix crypto/,\
 	chacha20poly1305/chacha_merged.c \
 	chacha20poly1305/poly1305-donna.c \
 	chacha20poly1305/rfc7539.c )
+SRC_MOD += ../external/mpy-qr/moduqr.c
 
 
 
