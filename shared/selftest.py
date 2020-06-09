@@ -234,7 +234,7 @@ async def test_microsd():
         await sleep_ms(100)
 
         try:
-            blks, bsize, ctype = sd.info()
+            blks, bsize, *unused = sd.info()
             assert bsize == 512
         except:
             assert 0        # , "card info"
