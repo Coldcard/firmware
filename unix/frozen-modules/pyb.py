@@ -24,6 +24,7 @@ class USB_HID:
         import usocket as socket
         fn = b'/tmp/ckcc-simulator.sock'
         self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        # If on linux, try commenting the following line
         addr = bytes([len(fn)+2, socket.AF_UNIX] + list(fn))
         # If on linux, try uncommenting the following two lines
         #import struct

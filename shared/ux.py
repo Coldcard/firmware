@@ -462,26 +462,18 @@ class QRDisplay(UserInteraction):
 
         from utils import imported
 
-        with imported('uQR') as uqr:
+        with imported('uqr') as uqr:
             if self.is_alnum:
                 # targeting 'alpha numeric' mode, typical len is 42
-                ec = uqr.ERROR_CORRECT_Q
+                enc = uqr.Mode_ALPHANUMERIC
                 assert len(msg) <= 47
+                msg = msg.upper()
             else:
                 # has to be 'binary' mode, altho shorter msg, typical 34-36
-                ec = uqr.ERROR_CORRECT_M
+                enc = uqr.Mode_BYTE
                 assert len(msg) <= 42
 
-            q = uqr.QRCode(version=3, box_size=1, border=0, mask_pattern=3, error_correction=ec)
-            if self.is_alnum:
-                here = uqr.QRData(msg.upper().encode('ascii'),
-                                        mode=uqr.MODE_ALPHA_NUM, check_data=False)
-            else:
-                here = uqr.QRData(msg.encode('ascii'), mode=uqr.MODE_8BIT_BYTE, check_data=False)
-            q.add_data(here)
-            q.make(fit=False)
-
-            self.qr_data = q.get_matrix()
+            self.qr_data = uqr.make(msg, min_version=3, max_version=3, encoding=enc)
 
 
     def redraw(self):
@@ -508,11 +500,10 @@ class QRDisplay(UserInteraction):
         if not self.invert:
             dis.dis.fill_rect(XO-YO, 0, 64, 64, 1)
 
-        data = self.qr_data
         inv = self.invert
         for x in range(w):
             for y in range(w):
-                px = data[x][y]
+                px = self.qr_data.get(x, y)
                 X = (x*2) + XO
                 Y = (y*2) + YO
                 dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))

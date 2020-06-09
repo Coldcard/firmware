@@ -115,19 +115,14 @@ class PaperWalletMaker:
             wif = tcc.codecs.b58_encode(ch.b58_privkey + privkey + b'\x01')
 
             if self.can_do_qr():
-                with imported('uQR') as uqr:
+                with imported('uqr') as uqr:
                     # make the QR's now, since it's slow
-                    q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
-                    q.add_data(addr if not self.is_segwit else addr.upper(), optimize=0)
-                    q.make(fit=False)
-                    qr_addr = q.get_matrix()
-                    del q
+                    is_alnum = self.is_segwit 
+                    qr_addr = uqr.make(addr if not is_alnum else addr.upper(), 
+                                min_version=4, max_version=4,
+                                encoding=(uqr.Mode_ALPHANUMERIC if is_alnum else 0))
 
-                    q = uqr.QRCode(version=4, box_size=1, border=0, mask_pattern=3)
-                    q.add_data(wif, optimize=0)
-                    q.make(fit=False)
-                    qr_wif = q.get_matrix()
-                    del q
+                    qr_wif = uqr.make(wif, min_version=4, max_version=4, encoding=uqr.Mode_BYTE)
             else:
                 qr_addr = None
                 qr_wif = None
@@ -157,10 +152,7 @@ class PaperWalletMaker:
             # - and yet, we just output the WIF to SDCard anyway
             blank_object(privkey)
             blank_object(wif)
-            if qr_wif:
-                for x in range(33):
-                    for y in range(33):
-                        qr_wif[y][x] = 0
+            del qr_wif
 
         except CardMissingError:
             await needs_microsd()
@@ -210,9 +202,11 @@ class PaperWalletMaker:
             for idx, (qr, val) in enumerate([(qr_addr, addr), (qr_wif, wif)]):
                 fp.write(('Private key' if idx else 'Deposit address') + ':\n\n')
 
-                for ln in qr:
+                w = qr.width()
+                for y in range(w):
                     fp.write('        ')
-                    fp.write(''.join('\u2588\u2588' if n else '  ' for n in ln))
+                    ln = ''.join('\u2588\u2588' if qr.get(x,y) else '' for x in range(w))
+                    fp.write(ln)
                     fp.write('\n')
 
                 fp.write('\n        %s\n\n\n\n' % val)
@@ -222,9 +216,10 @@ class PaperWalletMaker:
     def insert_qr_hex(self, out_fp, qr, width):
         # render QR as binary data: 1 bit per pixel 33x33
         # - aways 8:1 expansion ratio here
-        assert len(qr) == len(qr[0]) == width == 33
-        for row in qr:
-            ln = b''.join(b'00' if x else b'FF' for x in row) + b'\n'
+        assert qr.width() == width == 33        # only version==4 supported
+        for y in range(width):
+            ln = b''.join(b'00' if qr.get(x,y) else b'FF' for x in range(width))
+            ln += b'\n'
             out_fp.write(ln * 8)
         
     def make_pdf(self, out_fp, addr, wif, qr_addr, qr_wif):
@@ -264,9 +259,6 @@ class PaperWalletMaker:
 
                 # typical case: echo the line back out
                 out_fp.write(ln)
-                
-                        
-                        
 
 async def make_paper_wallet(*a):
 
