@@ -17,7 +17,7 @@ def drv_entro_start(*a):
 
     # UX entry
     ch = await ux_show_story('''\
-Create Entropy for Other Wallets
+Create Entropy for Other Wallets (BIP-85)
 
 This feature derives "entropy" based mathematically on this wallet's seed value. \
 This will be displayed as a 12 or 24 word seed phrase, \
