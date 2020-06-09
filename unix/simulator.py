@@ -83,6 +83,8 @@ class OLEDSimulator:
         fn = time.strftime('../movie-%j-%H%M%S.gif')
         from PIL import Image, ImageSequence
 
+        if not self.movie: return
+
         dt0, img = self.movie[0]
 
         img.save(fn, save_all=True, append_images=[fr for _,fr in self.movie[1:]],

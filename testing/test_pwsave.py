@@ -8,7 +8,7 @@ from test_ux import word_menu_entry, enter_complex
 from binascii import b2a_hex, a2b_hex
 from constants import simulator_fixed_xprv
 
-SIM_FNAME = '../unix/work/MicroSD/.fseventsd.'
+SIM_FNAME = '../unix/work/MicroSD/.tmp.tmp'
 
 @pytest.fixture
 def set_pw_phrase(pick_menu_item, word_menu_entry):

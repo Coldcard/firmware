@@ -288,8 +288,12 @@ Here's what the warning screen looks like:
 ### Limitation
 
 - if new device is intercepted from our factory (ie. without a main pin set),
-  new code cannot be loaded until the PIN is set, and there is no way to clear main PIN.
-- the serialized, tamper-evident bag also indicates it's been touched
+  new code cannot be loaded until the PIN is set, and there is no way to clear main PIN,
+  using the normal firmware. However, as the proud new owner of the device, you could
+  load custom firmware that does it.
+- the serialized, tamper-evident bag may indicate it's been touched
+- more discussion about supply-chain
+  attacks is [published here](https://blog.coinkite.com/supply-chain-trust-minimized/)
 
 ### Obvious Hack-Attack
 

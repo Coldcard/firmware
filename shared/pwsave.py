@@ -15,7 +15,7 @@ class PassphraseSaver:
     def filename(self, card):
         # Construct actual filename to use.
         # - some very minor obscurity, but we aren't relying on that.
-        return card.get_sd_root() + '/.fseventsd.'
+        return card.get_sd_root() + '/.tmp.tmp'
 
     def _calc_key(self, card):
         # calculate the key to be used.
