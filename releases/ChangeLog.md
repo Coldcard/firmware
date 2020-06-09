@@ -1,3 +1,5 @@
+- Enhancement: QR Code rendering improved. Should be more readable in more cases. Faster.
+
 ## 3.1.3 - April 30, 2020
 
 - Enhancement: Save your BIP39 passphrases, encrypted, onto a specific SDCard, if desired.
@@ -49,7 +51,6 @@
   That text can be signed (always with root key) to prove authenticity.
 - Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
 - IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
->>>>>>> a0ffa2344d659dbe196484fc75e73240c811ba6a
 
 ## 3.0.6 - Dec 19, 2019
 

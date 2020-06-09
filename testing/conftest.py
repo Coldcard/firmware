@@ -346,13 +346,11 @@ def cap_screen_qr(cap_image):
         np = numpy.array(img.getdata(), 'uint8').reshape(img.width, img.height)
 
         for sym, value, *_ in scanner.scan(np):
-            assert sym == 'QRCode', 'unexpected symbology: ' + sym
+            assert sym == 'QR-Code', 'unexpected symbology: ' + sym
             value = str(value, 'ascii')
             return value
 
-        raise pytest.xfail('qr code not found')      # XXX fixme
-
-        return None
+        raise pytest.fail('qr code not found')
 
     return doit
 

@@ -208,6 +208,7 @@ extern const struct _mp_obj_module_t mp_module_usocket;
 extern const struct _mp_obj_module_t mp_module_network;
 extern const struct _mp_obj_module_t ckcc_module;
 extern const struct _mp_obj_module_t mp_module_tcc;
+extern const struct _mp_obj_module_t mp_module_uqr;
 
 
 #if MICROPY_PY_USOCKET
@@ -234,6 +235,7 @@ extern const struct _mp_obj_module_t mp_module_tcc;
     NETWORK_BUILTIN_MODULE \
     { MP_ROM_QSTR(MP_QSTR_ckcc), MP_ROM_PTR(&ckcc_module) }, \
     { MP_ROM_QSTR(MP_QSTR_tcc), MP_ROM_PTR(&mp_module_tcc) }, \
+    { MP_ROM_QSTR(MP_QSTR_uqr), MP_ROM_PTR(&mp_module_uqr) }, \
 
 // PDG: don't love this, but it makes "import os" work as "import uos"
 #define MICROPY_PORT_BUILTIN_MODULE_WEAK_LINKS \
