@@ -183,10 +183,17 @@ OBJDUMP = arm-none-eabi-objdump
 firmware.lss: $(PORT_TOP)/build-COLDCARD/firmware.elf
 	$(OBJDUMP) -h -S $< > $@
 
-# dump sizes of compiled py files
+# Dump sizes of all frozen py files; requires recent build.
 .PHONY: sizes
 sizes:
 	wc -c l-port/build-COLDCARD/frozen_mpy/*.mpy | sort -n
+
+# Measure flash impact of a single file. Great for before/after.
+# 	make F=foo.py size
+# where: foo.py is anything in ../shared
+size:
+	$(MPY_CROSS) -o tmp.mpy -s $F ../shared/$F
+	wc -c tmp.mpy
 
 # one time setup, after repo checkout
 setup:

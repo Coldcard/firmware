@@ -1,12 +1,20 @@
 ## 3.1.3 - April 30, 2020
 
-- New feature: Option to save your BIP39 passphrases, encrypted, to specific SDCard. Recall
-  them later, if you have that same card, with just a few clicks. Passphrases are encrypted 
-  with AES256 (CTR mode) using a key derived from master secret and a hash of the serial number
-  details of the SDCard, so you cannot copy the file to another card. To use this feature,
-  press (1) after you've successfully entered your passphrase. 'Restore Saved' menu item
-  will appear if correctly-encrypted file is detected.
-- Code cleanups.
+- Enhancement: Save your BIP39 passphrases, encrypted, onto a specific SDCard, if desired.
+  Passphrases are encrypted with AES-256 (CTR mode) using a key derived from the master
+  secret and hash of the serial number of the SDCard. You cannot copy the file to
+  another card. To use this feature, press (1) after you've successfully entered your
+  passphrase. 'Restore Saved' menu item will appear at top of passphrase-entry menu,
+  if correctly-encrypted file is detected.
+- Enhancement: Export a generic JSON skeleton file, not aligned with any particular
+  desktop/mobile wallet, but useful for any such integrations. Includes XPUB (and
+  associated data) needed for P2PKH, P2WPKH (segwit) and P2WPKH-P2SH wallets, which
+  conform to BIP44, BIP84, and BIP49 respectively.
+  Thanks to [@craigraw](https://twitter.com/craigraw) the idea.
+- Enhancement: when signing a text file from MicroSD card, if you specify a derivation
+  path that starts with `m/84'/...` indicating that you are following BIP84 for
+  segwit addresses, the resulting signature will be formatted as P2WPKH in Bech32.
+- Minor code cleanups and optimizations.
 
 
 ## 3.1.2 - Feb 27, 2020
@@ -41,6 +49,7 @@
   That text can be signed (always with root key) to prove authenticity.
 - Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
 - IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
+>>>>>>> a0ffa2344d659dbe196484fc75e73240c811ba6a
 
 ## 3.0.6 - Dec 19, 2019
 

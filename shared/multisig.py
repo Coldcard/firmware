@@ -613,7 +613,7 @@ class MultisigWallet:
 
     async def export_electrum(self):
         # Generate and save an Electrum JSON file.
-        from backups import make_json_wallet
+        from export import make_json_wallet
 
         def doit():
             rv = dict(seed_version=17, use_encryption=False,

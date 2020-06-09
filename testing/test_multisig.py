@@ -326,6 +326,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
                 assert ('/_/%d/0/0' % i) in story
 
         need_keypress('y')
+
         # check expected addr was generated based on my math
         addr_vs_path(got_addr, addr_fmt=addr_fmt, script=scr)
 
