@@ -468,11 +468,6 @@ async def remember_bip39_passphrase():
     dis.fullscreen('Check...')
 
     with stash.SensitiveValues() as sv:
-        if sv.mode != 'words':
-            # not a BIP39 derived secret, so cannot work.
-            await ux_show_story('''The wallet secret was not based on a seed phrase, so we cannot add a BIP39 passphrase at this time.''', title='Failed')
-            return
-
         nv = SecretStash.encode(xprv=sv.node)
 
     # Important: won't write new XFP to nvram if pw still set
