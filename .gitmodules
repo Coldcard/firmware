@@ -11,3 +11,6 @@
 [submodule "external/ckcc-protocol"]
 	path = external/ckcc-protocol
 	url = https://github.com/Coldcard/ckcc-protocol.git
+[submodule "external/mpy-qr"]
+	path = external/mpy-qr
+	url = https://github.com/coinkite/mpy-qr.git
