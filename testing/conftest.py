@@ -350,9 +350,7 @@ def cap_screen_qr(cap_image):
             value = str(value, 'ascii')
             return value
 
-        raise pytest.fail('qr code not found')      # XXX fixme
-
-        return None
+        raise pytest.fail('qr code not found')
 
     return doit
 
