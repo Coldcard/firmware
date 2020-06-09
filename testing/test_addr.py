@@ -47,7 +47,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
         time.sleep(0.1)
         qr = cap_screen_qr()
 
-        assert qr == addr
+        assert qr == addr or qr == addr.upper()
 
 @pytest.mark.parametrize('example_addr', [
         '2N2VBntgcoY4wN7H6VfrhH8an1BwieRMZCF', '2N551pf65tPS7VthC1rvwFDbLA1EUDYkTg9'])

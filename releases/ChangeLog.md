@@ -6,7 +6,7 @@
   or even 32/64 bytes of hex for other applications. The point of this is your
   Coldcard backup also backs up the new wallet, since it's root secret is 
   deterministically derived. Advanced > DangerZone > Derive Entropy.
-
+- Enhancement: QR Code rendering improved. Should be more readable in more cases. Faster.
 
 ## 3.1.3 - April 30, 2020
 

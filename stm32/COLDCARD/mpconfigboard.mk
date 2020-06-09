@@ -36,6 +36,7 @@ SRC_MOD += $(addprefix boards/$(BOARD)/crypto/,\
 				chacha20poly1305/chacha_merged.c \
 				chacha20poly1305/poly1305-donna.c \
 				chacha20poly1305/rfc7539.c )
+SRC_MOD += ../../external/mpy-qr/moduqr.c
 
 # settings that apply only to crypto C-lang code
 build-COLDCARD/boards/COLDCARD/crypto/%.o: CFLAGS_MOD += \
