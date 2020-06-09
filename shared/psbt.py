@@ -25,7 +25,7 @@ from public_constants import (
 )
 
 # Max miner's fee, as percentage of output value, that we will allow to be signed.
-# Amounts over 1% are warned regardless.
+# Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
