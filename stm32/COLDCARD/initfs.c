@@ -102,10 +102,6 @@ force_boot_py_contents(FATFS *fs)
 MP_NOINLINE bool init_flash_fs(uint reset_mode)
 {
 
-    static const char fresh_pybcdc_inf[] =
-#include "genhdr/pybcdc_inf.h"
-    ;
-
     static const char fresh_readme_txt[] =
         "Coldcard Wallet: Virtual Disk\r\n"
         "\r\n"
@@ -153,14 +149,9 @@ MP_NOINLINE bool init_flash_fs(uint reset_mode)
         // make required subdirs
         f_mkdir(&vfs_fat->fatfs, "/lib");
 
-        // TODO kill this?
+        // XXX need this due to a line of code in stm32/main.c
         f_open(&vfs_fat->fatfs, &fp, "/SKIPSD", FA_WRITE | FA_CREATE_ALWAYS);
         f_write(&fp, "y", 1, &n);
-        f_close(&fp);
-
-        // create .inf driver file
-        f_open(&vfs_fat->fatfs, &fp, "pybcdc.inf", FA_WRITE | FA_CREATE_ALWAYS);
-        f_write(&fp, fresh_pybcdc_inf, sizeof(fresh_pybcdc_inf) - 1, &n);
         f_close(&fp);
 
         // create an ident file, or two
