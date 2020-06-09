@@ -69,7 +69,14 @@ You'll probably need to install these (Ubuntu 16):
 
     apt install libudev-dev python-sdl2 gcc-arm-none-eabi
 
-
+If you get stuck on the "Skip PIN" screen after the startup, edit the `pyb.py` file located under `/unix/frozen-modules/` and follow the instructions from line 27 to line 31:
+```
+# If on linux, try commenting the following line
+addr = bytes([len(fn)+2, socket.AF_UNIX] + list(fn))
+# If on linux, try uncommenting the following two lines
+#import struct
+#addr = struct.pack('H108s', socket.AF_UNIX, fn)
+```
 
 ## Code Organization
 
