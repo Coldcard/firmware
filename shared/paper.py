@@ -152,14 +152,12 @@ class PaperWalletMaker:
             # - and yet, we just output the WIF to SDCard anyway
             blank_object(privkey)
             blank_object(wif)
-            if qr_wif:
-                del qr_wif
+            del qr_wif
 
         except CardMissingError:
             await needs_microsd()
             return
         except Exception as e:
-            raise
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
 
