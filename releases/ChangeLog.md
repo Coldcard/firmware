@@ -1,11 +1,10 @@
+## 3.1.4 - Jun , 2020
 
-- Enhancement: adds BIP-85 support: "One seed to rule them all". Takes the
-  secret of this Coldcard, and (safely) constructs a secret/seed phrase you
-  can import into another wallet system. Supports BIP-39 seeds of 12,18 or 24 words,
-  "HDSeed" (WIF private key) for Bitcoin Core, a fresh XPRV for BIP-32 systems,
-  or even 32/64 bytes of hex for other applications. The point of this is your
-  Coldcard backup also backs up the new wallet, since it's root secret is 
-  deterministically derived. Advanced > DangerZone > Derive Entropy.
+- New feature: Export deterministically-derived entropy in the form of
+  seed phrases (BIP39), XPRV, private key (WIF), or hex digits. Useful for seeding
+  other wallets from your Coldcard, so you don't need to backup "yet another" seed phrase.
+  Derived values (all types) can be easly recreated from Coldcard later, or the backup of
+  the Coldcard. Does not expose the Coldcard's master secret, should new wallet be compromised.
 - Enhancement: QR Code rendering improved. Should be more readable in more cases. Faster.
 
 ## 3.1.3 - April 30, 2020
