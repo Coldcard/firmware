@@ -375,7 +375,7 @@ async def login_countdown(minutes):
 
     dis.busy_bar(0)
 
-async def block_until_login(*a):
+async def block_until_login(rnd_keypad):
     #
     # Force user to enter a valid PIN.
     # 
@@ -384,7 +384,7 @@ async def block_until_login(*a):
     from ux import AbortInteraction
 
     while not pa.is_successful():
-        lll = LoginUX(settings.get('rngk', 0))
+        lll = LoginUX(rnd_keypad)
 
         try:
             await lll.try_login()
@@ -620,11 +620,14 @@ async def start_login_sequence():
             pa.login()
         except: pass
 
+    # do they want a randomized (shuffled) keypad?
+    rnd_keypad = settings.get('rngk', 0)
+
     # if that didn't work, or no skip defined, force
     # them to login succefully.
     while not pa.is_successful():
         # always get a PIN and login first
-        await block_until_login()
+        await block_until_login(rnd_keypad)
 
     # Must re-read settings after login
     settings.set_key()
@@ -635,7 +638,7 @@ async def start_login_sequence():
     if delay:
         pa.reset()
         await login_countdown(delay)
-        await block_until_login()
+        await block_until_login(rnd_keypad)
 
     # implement idle timeout now that we are logged-in
     loop.create_task(idle_logout())
