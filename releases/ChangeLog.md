@@ -1,10 +1,15 @@
 ## 3.1.4 - Jun , 2020
 
-- New feature: Export deterministically-derived entropy in the form of
-  seed phrases (BIP39), XPRV, private key (WIF), or hex digits. Useful for seeding
-  other wallets from your Coldcard, so you don't need to backup "yet another" seed phrase.
-  Derived values (all types) can be easly recreated from Coldcard later, or the backup of
-  the Coldcard. Does not expose the Coldcard's master secret, should new wallet be compromised.
+- Enhancement: Export deterministically-derived entropy in the form of
+  seed phrases (BIP39), XPRV, private key (WIF), or hex digits using new BIP-85 standard.
+  Useful for seeding other wallets from your Coldcard, so you don't need to backup
+  "yet another" seed phrase. Derived values (all types) can be easly recreated from
+  Coldcard later, or the backup of the Coldcard. Does not expose the Coldcard's master
+  secret, should new wallet be compromised.
+- Bugfix: When scrambled keypad used with the login delay feature, the PIN-entry sequence
+  was not scrambled after the forced delay was complete. Thanks to an anon customer
+  for reporting this.
+- Enhancement: Scrambled keypad didn't change between PIN prefix and suffix.
 - Enhancement: QR Code rendering improved. Should be more readable in more cases. Faster.
 
 ## 3.1.3 - April 30, 2020

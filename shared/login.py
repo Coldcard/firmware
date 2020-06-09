@@ -184,6 +184,9 @@ class LoginUX:
                     self.pin_prefix = self.pin
                     self.pin = ''
                     self.is_secondary = (nxt == '2')
+
+                    if self.randomize:
+                        self.shuffle_keys()
                 elif nxt == 'x':
                     self.reset()
 
