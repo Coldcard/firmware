@@ -1,3 +1,5 @@
+- Enhancement: QR Code rendering improved. Should be more readable in more cases. Faster.
+
 ## 3.1.3 - April 30, 2020
 
 - Enhancement: Save your BIP39 passphrases, encrypted, onto a specific SDCard, if desired.
