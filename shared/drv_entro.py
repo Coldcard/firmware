@@ -1,13 +1,11 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-# BIP-(tbd): Deterministic Entropy From BIP32 Keychains
+# BIP-85: Deterministic Entropy From BIP32 Keychains, by
+#         Ethan Kosakovsky <ethankosakovsky@protonmail.com>
 #
-# Using the system's BIP32 master key, safely derive seeds phrases/entropy for other systems.
-#
-# see <https://gist.github.com/ethandrv_entro/268c52f018b94bea29a6e809381c05d6>
-# idea from: Ethan Kosakovsky <ethankosakovsky@protonmail.com>
-#
+# Using the system's BIP32 master key, safely derive seeds phrases/entropy for other
+# wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
 import stash, tcc, hmac, chains
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm
