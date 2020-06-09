@@ -1,3 +1,13 @@
+
+- Enhancement: adds BIP-85 support: "One seed to rule them all". Takes the
+  secret of this Coldcard, and (safely) constructs a secret/seed phrase you
+  can import into another wallet system. Supports BIP-39 seeds of 12,18 or 24 words,
+  "HDSeed" (WIF private key) for Bitcoin Core, a fresh XPRV for BIP-32 systems,
+  or even 32/64 bytes of hex for other applications. The point of this is your
+  Coldcard backup also backs up the new wallet, since it's root secret is 
+  deterministically derived. Advanced > DangerZone > Derive Entropy.
+
+
 ## 3.1.3 - April 30, 2020
 
 - Enhancement: Save your BIP39 passphrases, encrypted, onto a specific SDCard, if desired.
@@ -49,7 +59,6 @@
   That text can be signed (always with root key) to prove authenticity.
 - Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
 - IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
->>>>>>> a0ffa2344d659dbe196484fc75e73240c811ba6a
 
 ## 3.0.6 - Dec 19, 2019
 
