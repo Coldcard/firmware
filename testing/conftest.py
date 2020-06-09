@@ -472,6 +472,32 @@ def set_master_key(sim_exec, sim_execfile, simulator, reset_seed_words):
     reset_seed_words()
 
 @pytest.fixture(scope="function")
+def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):
+    # load simulator w/ a specific secret
+
+    def doit(encoded):
+        assert 17 <= len(encoded) <= 72
+
+        encoded += bytes(72- len(encoded))
+
+        sim_exec('import main; main.ENCODED_SECRET = %r; ' % encoded)
+        rv = sim_execfile('devtest/set_encoded_secret.py')
+        if rv: pytest.fail(rv)
+
+        simulator.start_encryption()
+        simulator.check_mitm()
+
+        #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+
+        return simulator.master_fingerprint
+
+    yield doit
+
+    # Important cleanup: restore normal key, because other tests assume that
+    # - actually need seed words for all tests
+    reset_seed_words()
+
+@pytest.fixture(scope="function")
 def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific bip32 master key
 
@@ -512,7 +538,6 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
         return words
 
     return doit
-
 
 
 

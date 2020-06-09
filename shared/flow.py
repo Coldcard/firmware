@@ -16,8 +16,10 @@ from users import make_users_menu
 
 if version.has_fatram:
     from hsm import hsm_policy_available
+    from drv_entro import drv_entro_start
 else:
     hsm_policy_available = lambda: False
+    drv_entro_start = None
 
 #
 # NOTE: "Always In Title Case"
@@ -131,10 +133,8 @@ DebugFunctionsMenu = [
 DangerZoneMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),       # actually harmless
-    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32,
-                                predicate=lambda: settings.get('words', True)),
-    MenuItem('View Seed Words', f=view_seed_words,
-                                predicate=lambda: settings.get('words', True)),
+    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
+    MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem("Destroy Seed", f=clear_seed),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem("Wipe Patch Area", f=wipe_filesystem),             # needs better label
@@ -160,6 +160,7 @@ AdvancedNormalMenu = [
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
+    MenuItem('Derive Entropy', f=drv_entro_start, predicate=lambda: version.has_fatram),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
