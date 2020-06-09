@@ -49,7 +49,6 @@
   That text can be signed (always with root key) to prove authenticity.
 - Enhancement: Sending large PSBT files, and firmware upgrades over USB should be a little faster.
 - IMPORTANT: This release is NOT COMPATIBLE with Mk1 hardware. It will brick Mk1 Coldcards.
->>>>>>> a0ffa2344d659dbe196484fc75e73240c811ba6a
 
 ## 3.0.6 - Dec 19, 2019
 
