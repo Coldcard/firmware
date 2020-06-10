@@ -21,5 +21,17 @@ class CCBusyError(RuntimeError):
 class HSMDenied(RuntimeError):
     pass
 
+# PSBT / transaction related
+class FatalPSBTIssue(RuntimeError):
+    pass
+
+class FraudulentChangeOutput(FatalPSBTIssue):
+    def __init__(self, out_idx, msg):
+        super().__init__('Output#%d: %s' % (out_idx, msg))
+
+class IncorrectUTXOAmount(FatalPSBTIssue):
+    def __init__(self, in_idx, msg):
+        super().__init__('Input#%d: %s' % (in_idx, msg))
+
 
 # EOF
