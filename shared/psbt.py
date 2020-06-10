@@ -9,12 +9,13 @@ from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256
 from serializations import ser_string
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str
-import tcc, stash, gc
+from utils import xfp2str, B2A
+import tcc, stash, gc, history
 from uio import BytesIO
 from sffile import SizerFile
 from sram2 import psbt_tmp256
 from multisig import MultisigWallet, MAX_SIGNERS, disassemble_multisig, disassemble_multisig_mn
+from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -28,16 +29,8 @@ from public_constants import (
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
-B2A = lambda x: str(b2a_hex(x), 'ascii')
-
 # print some things 
 DEBUG = const(0)
-
-class FatalPSBTIssue(RuntimeError):
-    pass
-class FraudulentChangeOutput(FatalPSBTIssue):
-    def __init__(self, out_idx, msg):
-        super().__init__('Output#%d: %s' % (out_idx, msg))
 
 class HashNDump:
     def __init__(self, d=None):
@@ -94,6 +87,68 @@ def _skip_n_objs(fd, n, cls):
                 fd.seek(p, 1)
 
     return rv
+
+def calc_txid(fd, poslen, body_poslen=None):
+    # Given the (pos,len) of a transaction in a file, return the txid for that txn.
+    # - doesn't validate data
+    # - does detect witness txn vs. old style
+    # - simple double-sha256() if old style txn, otherwise witness data must be carefully skipped
+
+    # see if witness encoding in effect
+    fd.seek(poslen[0])
+
+    txn_version, marker, flags = unpack("<iBB", fd.read(6))
+    has_witness = (marker == 0 and flags != 0x0)
+
+    if not has_witness:
+        # txn does not have witness data, so txid==wtxix
+        return get_hash256(fd, poslen)
+
+    rv = tcc.sha256()
+
+    # de/reserialize much of the txn -- but not the witness data
+    rv.update(pack("<i", txn_version))
+
+    if body_poslen is None:
+        body_start = fd.tell()
+
+        # determine how long ins + outs are...
+        num_in = deser_compact_size(fd)
+        _skip_n_objs(fd, num_in, 'CTxIn')
+        num_out = deser_compact_size(fd)
+        _skip_n_objs(fd, num_out, 'CTxOut')
+
+        body_poslen = (body_start, fd.tell() - body_start)
+
+    # hash the bulk of txn
+    get_hash256(fd, body_poslen, hasher=rv)
+
+    # assume last 4 bytes are the lock_time
+    fd.seek(sum(poslen) - 4)
+
+    rv.update(fd.read(4))
+
+    return tcc.sha256(rv.digest()).digest()
+
+def get_hash256(fd, poslen, hasher=None):
+    # return the double-sha256 of a value, without loading it into memory
+    pos, ll = poslen
+    rv = hasher or tcc.sha256()
+
+    fd.seek(pos)
+    while ll:
+        here = fd.read_into(psbt_tmp256)
+        if not here: break
+        if here > ll:
+            here = ll
+        rv.update(memoryview(psbt_tmp256)[0:here])
+        ll -= here
+
+    if hasher:
+        return
+
+    return tcc.sha256(rv.digest()).digest()
+
 
 
 class psbtProxy:
@@ -172,25 +227,6 @@ class psbtProxy:
         pos, ll = val
         self.fd.seek(pos)
         return self.fd.read(ll)
-
-    def get_hash256(self, val, hasher=None):
-        # return the double-sha256 of a value, without loading it into memory
-        pos, ll = val
-        rv = hasher or tcc.sha256()
-
-        self.fd.seek(pos)
-        while ll:
-            here = self.fd.read_into(psbt_tmp256)
-            if not here: break
-            if here > ll:
-                here = ll
-            rv.update(memoryview(psbt_tmp256)[0:here])
-            ll -= here
-
-        if hasher:
-            return
-
-        return tcc.sha256(rv.digest()).digest()
 
     def parse_subpaths(self, my_xfp):
         # Reformat self.subpaths into a more useful form for us; return # of them
@@ -520,53 +556,11 @@ class psbtInputProxy(psbtProxy):
             # - challenge: it's a straight dsha256() for old serializations, but not for newer
             #   segwit txn's... plus I don't want to deserialize it here.
             try:
-                observed = uint256_from_str(self.calc_txid(self.utxo))
+                observed = uint256_from_str(calc_txid(self.fd, self.utxo))
             except:
                 raise AssertionError("Trouble parsing UTXO given for input #%d" % idx)
 
             assert txin.prevout.hash == observed, "utxo hash mismatch for input #%d" % idx
-
-    def calc_txid(self, poslen):
-        # Given the (pos,len) of a transaction, return the txid for that.
-        # - doesn't validate data
-        # - does detected witness txn vs. old style
-        # - simple dsha256() if old style txn, otherwise witness data must be skipped
-
-        # see if witness encoding in effect
-        fd = self.fd
-        fd.seek(poslen[0])
-
-        txn_version, marker, flags = unpack("<iBB", fd.read(6))
-        has_witness = (marker == 0 and flags != 0x0)
-
-        if not has_witness:
-            # txn does not have witness data, so txid==wtxix
-            return self.get_hash256(poslen)
-
-        rv = tcc.sha256()
-
-        # de/reserialize much of the txn -- but not the witness data
-        rv.update(pack("<i", txn_version))
-
-        body_start = fd.tell()
-
-        # determine how long ins + outs are...
-        num_in = deser_compact_size(fd)
-        _skip_n_objs(fd, num_in, 'CTxIn')
-        num_out = deser_compact_size(fd)
-        _skip_n_objs(fd, num_out, 'CTxOut')
-
-        body_len = fd.tell() - body_start
-
-        # hash the bulk of txn
-        self.get_hash256((body_start, body_len), hasher=rv)
-
-        # assume last 4 bytes are the lock_time
-        fd.seek(sum(poslen) - 4)
-
-        rv.update(fd.read(4))
-
-        return tcc.sha256(rv.digest()).digest()
 
     def has_utxo(self):
         # do we have a copy of the corresponding UTXO?
@@ -1231,6 +1225,8 @@ class psbtObject(psbtProxy):
             # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self)
 
+            history.verify_amount(txi.prevout, inp.amount, i)
+
             del utxo
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
@@ -1616,6 +1612,8 @@ class psbtObject(psbtProxy):
     def finalize(self, fd):
         # Stream out the finalized transaction, with signatures applied
         # - assumption is it's complete already.
+        # - returns the TXID of resulting transaction
+        # - but in segwit case, needs to re-read to calculate it
 
         fd.write(pack('<i', self.txn_version))           # nVersion
 
@@ -1627,6 +1625,8 @@ class psbtObject(psbtProxy):
         if needs_witness:
             # zero marker, and flags=0x01
             fd.write(b'\x00\x01')
+
+        body_start = fd.tell()
 
         # inputs
         fd.write(ser_compact_size(self.num_inputs))
@@ -1642,7 +1642,7 @@ class psbtObject(psbtProxy):
                     # major win for segwit (p2pkh): no redeem script bloat anymore
                     txi.scriptSig = b''
 
-                # NOTE: Actual signature will be in witness data area
+                # Actual signature will be in witness data area
 
             elif inp.added_sig:
                 # insert the new signature(s)
@@ -1663,6 +1663,11 @@ class psbtObject(psbtProxy):
         for out_idx, txo in self.output_iter():
             fd.write(txo.serialize())
 
+            if needs_witness and self.outputs[out_idx].is_change:
+                history.add_segwit_utxos(out_idx, txo.nValue)
+
+        body_end = fd.tell()
+
         if needs_witness:
             # witness values
             # - preserve any given ones, add ours
@@ -1682,6 +1687,18 @@ class psbtObject(psbtProxy):
 
         # locktime
         fd.write(pack('<I', self.lock_time))
+
+        # calc transaction ID
+        if not needs_witness:
+            # easy w/o witness data
+            txid = tcc.sha256(fd.checksum.digest()).digest()
+        else:
+            # legacy cost here for segwit: re-read what we just wrote
+            txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))
+
+        history.add_segwit_utxos_finalize(txid)
+
+        return B2A(bytes(reversed(txid)))
 
 
 # EOF
