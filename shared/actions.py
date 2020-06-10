@@ -1496,4 +1496,16 @@ async def wipe_hsm_policy(*A):
     hsm_delete_policy()
     goto_top_menu()
 
+async def wipe_ovc(*a):
+    # Factory command: for dev and test units that have no bag number, and never will.
+    ok = await ux_confirm('''Clear history of segwit UTXO input values we have seen already. \
+This data protects you against specific attacks. Use this only if certain a false positive \
+has occured in the detection logic.''')
+    if not ok: return
+
+    import history
+    history.OutptValueCache.clear_cache()
+
+    await ux_dramatic_pause("Cleared.", 3)
+
 # EOF
