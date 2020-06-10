@@ -1,5 +1,11 @@
 ## 3.1.4 - Jun , 2020
 
+- Enhancement: Detect, report and block the recently reported type of attack
+  against BIP-143 (replay of segwit inputs) with an error message. No changes
+  needed to your input PBST files. Will show errors similar to:
+  "Input#0: Expected 15 but PSBT claims 5.00001 BTC"
+- Enhancement: When the Coldcard is finalizing the transaction, we show the TXID (hex
+  transaction ID) of the transaction on the screen. 
 - Enhancement: Export deterministically-derived entropy in the form of
   seed phrases (BIP39), XPRV, private key (WIF), or hex digits using new BIP-85 standard.
   Useful for seeding other wallets from your Coldcard, so you don't need to backup
