@@ -8,6 +8,8 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 
+B2A = lambda x: str(b2a_hex(x), 'ascii')
+
 class imported:
     # Context manager that temporarily imports
     # a list of modules.
