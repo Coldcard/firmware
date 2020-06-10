@@ -38,6 +38,7 @@ from sffile import SFFile
 #   axi = index of last selected address in explorer
 #   lgto = (minutes) how long to wait for Login Countdown feature
 #   usr = (dict) map from username to their secret, as base32
+#   ovc = (list) "outpoint value cache"; only for segwit UTXO inputs (see history.py)
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
@@ -179,7 +180,7 @@ class SettingsObject:
             else:
                 # stale data seen; clean it up.
                 assert self.current['_age'] > 0
-                print("NV: cleanup @ %d" % pos)
+                #print("NV: cleanup @ %d" % pos)
                 sf.sector_erase(pos)
                 sf.wait_done()
 
@@ -226,6 +227,10 @@ class SettingsObject:
 
     set = put
 
+    def remove_key(self, kn):
+        self.current.pop(kn, None)
+        self.changed()
+
     def clear(self):
         # could be just:
         #       self.current = {}
@@ -249,7 +254,7 @@ class SettingsObject:
             self.save()
             #print("settings committed")
         except MemoryError:
-            print("write_out retry")
+            #print("write_out retry")
             self.loop.call_later_ms(250, self.write_out())
 
     def find_spot(self, not_here=0):
