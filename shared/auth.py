@@ -11,7 +11,7 @@ from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STX
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 
@@ -511,13 +511,14 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
             return
 
+        txid = None
         try:
             # re-serialize the PSBT back out
             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
                 await fd.erase()
 
                 if self.do_finalize:
-                    self.psbt.finalize(fd)
+                    txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)
 
@@ -527,6 +528,10 @@ class ApproveTransaction(UserAuthorizedAction):
 
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
+
+        if self.do_finalize and txid:
+            # show txid when we can; advisory
+            await ux_show_story(txid, "Final TXID")
 
     def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
