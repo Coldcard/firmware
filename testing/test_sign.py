@@ -685,7 +685,7 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
 
         signed = end_sign(True, finalize=fin)
 
-        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wb').write(signed)
+        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wt').write(B2A(signed))
 
 @pytest.mark.parametrize('fee_max', [ 10, 25, 50])
 @pytest.mark.parametrize('under', [ False, True])
@@ -973,5 +973,32 @@ def test_change_troublesome(start_sign, cap_story, try_path, expect):
     assert expect in story, story
 
     assert parse_change_back(story) == (Decimal('1.09997082'), ['mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'])
+
+def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
+    settings_set('ovc', [])
+
+    # hand-modified transactions from Andrew Chow
+    set_xfp('D1A226A9')
+    mod1 = b64decode(open('data/b143a_mod1.psbt').read())
+    mod2 = b64decode(open('data/b143a_mod2.psbt').read())
+
+    orig, result = try_sign(mod1, accept=False)
+
+    # after seeing first one, should raise an error on second one
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod2, accept=False)
+
+    assert 'but PSBT claims 15 XTN' in str(ee), ee
+
+    assert len(settings_get('ovc')) == 2
+    settings_set('ovc', [])
+
+    # try in opposite order, should also trigger
+    orig, result = try_sign(mod2, accept=False)
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod1, accept=False)
+
+    assert 'but PSBT claims' in str(ee), ee
+    assert 'Expected 15 but' in str(ee)
 
 # EOF
