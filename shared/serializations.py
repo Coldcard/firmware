@@ -317,8 +317,7 @@ class COutPoint(object):
         self.n = struct.unpack("<I", f.read(4))[0]
 
     def serialize(self):
-        r = b""
-        r += ser_uint256(self.hash)
+        r = ser_uint256(self.hash)
         r += struct.pack("<I", self.n)
         return r
 
