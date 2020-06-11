@@ -1663,7 +1663,10 @@ class psbtObject(psbtProxy):
         for out_idx, txo in self.output_iter():
             fd.write(txo.serialize())
 
-            if needs_witness and self.outputs[out_idx].is_change:
+            # capture change output amounts (if segwit)
+            if needs_witness \
+                    and self.outputs[out_idx].is_change \
+                    and self.outputs[out_idx].witness_script:
                 history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()
