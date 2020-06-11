@@ -57,9 +57,8 @@ orig_show_story = ux.ux_show_story
 
 ux.ux_show_story = lambda *a, **kw: hack_story(*a, **kw)
 
-def hack_story(*a, **kw):
-    msg = a[0]
-    title = kw.get('title', 'NO-TITLE')
+def hack_story(msg, title=None, **kw):
+    title = title or 'NO-TITLE'
 
     global story
 
@@ -70,7 +69,7 @@ def hack_story(*a, **kw):
 
     #print("Story: %s: %s" % (title, msg))
 
-    return orig_show_story(*a, **kw)
+    return orig_show_story(msg, title, **kw)
 
 # And menus
 

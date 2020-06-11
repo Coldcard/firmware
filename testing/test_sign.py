@@ -1001,4 +1001,40 @@ def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
     assert 'but PSBT claims' in str(ee), ee
     assert 'Expected 15 but' in str(ee)
 
+@pytest.mark.parametrize('segwit', [False, True])
+@pytest.mark.parametrize('num_ins', [1, 17])
+def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story):
+    # create a TXN using actual addresses that are correct for DUT
+    xp = dev.master_xpub
+
+    psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
+
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+
+    #print('Signed; ' + B2A(txn))
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert '0' in story
+    assert 'TXID' in title, story
+    txid = story.strip()
+
+    if 1:
+        # compare to PyCoin
+        from pycoin.tx.Tx import Tx
+        t = Tx.from_bin(txn)
+        assert t.id() == txid
+
+    if 1:
+        # compare to bitcoin core
+        decoded = decode_with_bitcoind(txn)
+        pprint(decoded)
+
+        assert len(decoded['vin']) == num_ins
+        if segwit:
+            assert all(x['txinwitness'] for x in decoded['vin'])
+
+        assert decoded['txid'] == txid
+
+
 # EOF
