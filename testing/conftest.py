@@ -562,7 +562,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 def settings_set(sim_exec):
 
     def doit(key, val):
-        x = sim_exec("from main import settings; settings.set('%s', %r)" % (key, val))
+        x = sim_exec("main.settings.set('%s', %r)" % (key, val))
         assert x == ''
 
     return doit
@@ -571,8 +571,10 @@ def settings_set(sim_exec):
 def settings_get(sim_exec):
 
     def doit(key):
-        cmd = f"from main import settings; RV.write(repr(settings.get('{key}')))"
-        return eval(sim_exec(cmd))
+        cmd = f"RV.write(repr(main.settings.get('{key}')))"
+        resp = sim_exec(cmd)
+        assert 'Traceback' not in resp, resp
+        return eval(resp)
 
     return doit
 
