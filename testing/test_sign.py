@@ -3,7 +3,7 @@
 #
 # Transaction Signing. Important.
 #
-import time, pytest, os
+import time, pytest, os, random
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -975,7 +975,8 @@ def test_change_troublesome(start_sign, cap_story, try_path, expect):
     assert parse_change_back(story) == (Decimal('1.09997082'), ['mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'])
 
 def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
-    settings_set('ovc', [])
+    # cleanup prev runs
+    sim_exec('import history; history.OutptValueCache.clear()')
 
     # hand-modified transactions from Andrew Chow
     set_xfp('D1A226A9')
@@ -991,7 +992,7 @@ def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
     assert 'but PSBT claims 15 XTN' in str(ee), ee
 
     assert len(settings_get('ovc')) == 2
-    settings_set('ovc', [])
+    sim_exec('import history; history.OutptValueCache.clear()')
 
     # try in opposite order, should also trigger
     orig, result = try_sign(mod2, accept=False)
@@ -1014,7 +1015,8 @@ def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
     spendables = [(n,i) for n,i in enumerate(funding.tx_outs_as_spendable()) 
                         if i.script[0:2] == b'\x00\x14' and b4.outputs[n].bip32_paths]
 
-    spendables = list(reversed(spendables))
+    #spendables = list(reversed(spendables))
+    random.shuffle(spendables)
 
     if tweaker:
         tweaker(spendables)
@@ -1050,13 +1052,17 @@ def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
 
     return nn, raw
 
-def test_bip143_attack_data_capture(try_sign, fake_txn, sim_exec, settings_set,
-                                    settings_get, cap_story):
-    # make a txn, capture the outputs of that as inputs for another txn
-    settings_set('ovc', [])
+@pytest.mark.parametrize('num_utxo', [9, 100])
+def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, settings_set,
+                                    settings_get, cap_story, sim_exec):
 
-    psbt = fake_txn(1, 10, segwit_in=True, change_outputs=range(9),
-                        outstyles=['p2wpkh-p2sh', 'p2pkh']+['p2wpkh']*7)
+    # make a txn, capture the outputs of that as inputs for another txn
+
+    # cleanup prev runs
+    sim_exec('import history; history.OutptValueCache.clear()')
+
+    psbt = fake_txn(1, num_utxo+3, segwit_in=True, change_outputs=range(num_utxo+2),
+                        outstyles=(['p2wpkh']*num_utxo) + ['p2wpkh-p2sh', 'p2pkh'])
     _, txn = try_sign(psbt, accept=True, finalize=True)
 
     time.sleep(.1)
@@ -1069,18 +1075,23 @@ def test_bip143_attack_data_capture(try_sign, fake_txn, sim_exec, settings_set,
     t = Tx.from_bin(txn)
     assert t.id() == txid
 
-    # expect all of new "change outputs" to be recorded, plus the one input
-    # minus 2 that are not p2wpkh
+    # expect all of new "change outputs" to be recorded (none of the non-segwit change tho)
+    # plus the one input we "revealed"
     after1 = settings_get('ovc')
-    assert len(after1) == 9 + 1 - 2
+    assert len(after1) == min(30, num_utxo + 1)
+
+    all_utxo = int(sim_exec(
+        'import history; RV.write(str(len(history.OutptValueCache.runtime_cache)));'))
+    assert all_utxo == num_utxo+1
 
     # build a new PSBT based on those change outputs
     psbt2, raw = spend_outputs(psbt, txn)
 
     # try to sign that ... should work fine
     try_sign(raw, accept=True, finalize=True)
+    time.sleep(.1)
 
-    # should not affect stored data
+    # should not affect stored data, because those values already cached
     assert settings_get('ovc') == after1
 
     # any tweaks to input side's values should fail.
