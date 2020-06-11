@@ -529,7 +529,7 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
-        if self.do_finalize and txid:
+        if self.do_finalize and txid and not hsm_active:
             # show txid when we can; advisory
             await ux_show_story(txid, "Final TXID")
 
