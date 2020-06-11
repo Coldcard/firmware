@@ -169,7 +169,7 @@ class SettingsObject:
                 # bytes here would copy it; better to use file emulation.
                 fd = BytesIO(_tmp)
                 d = ujson.load(fd)
-                self.capacity = fd.ftell() / 4096
+                self.capacity = fd.seek(0,1) / 4096         # .tell() is missing
             except:
                 # One in 65k or so chance to come here w/ garbage decoded, so
                 # not an error.
