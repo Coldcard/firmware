@@ -110,6 +110,11 @@ Extended Master Key:
 
     await ux_show_story(msg)
 
+async def show_settings_space(*a):
+    from main import settings
+
+    await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.capacity * 100))
+
 async def maybe_dev_menu(*a):
     from main import is_devmode
 

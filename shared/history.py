@@ -105,6 +105,10 @@ class OutptValueCache:
         key = cls.encode_key(prevout)
         vals = settings.get(cls.KEY) or []
 
+        depth = HISTORY_DEPTH
+        if settings.capacity > 0.8:
+            depth //= 2
+
         while len(vals) >= HISTORY_DEPTH:
             del vals[0]
 
