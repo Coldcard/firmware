@@ -1001,6 +1001,101 @@ def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
     assert 'but PSBT claims' in str(ee), ee
     assert 'Expected 15 but' in str(ee)
 
+def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
+    # take details from PSBT that created a finalized txn (also provided)
+    # and build a new PSBT that spends those change outputs.
+    from pycoin.tx.Tx import Tx
+    from pycoin.tx.TxOut import TxOut
+    from pycoin.tx.TxIn import TxIn
+    funding = Tx.from_bin(finalized_txn)
+    b4 = BasicPSBT().parse(funding_psbt)
+
+    # segwit change outputs only
+    spendables = [(n,i) for n,i in enumerate(funding.tx_outs_as_spendable()) 
+                        if i.script[0:2] == b'\x00\x14' and b4.outputs[n].bip32_paths]
+
+    spendables = list(reversed(spendables))
+
+    if tweaker:
+        tweaker(spendables)
+
+    nn = BasicPSBT()
+    nn.inputs = [BasicPSBTInput(idx=i) for i in range(len(spendables))]
+    nn.outputs = [BasicPSBTOutput(idx=0)]
+
+    # copy input values from funding PSBT's output side
+    for p_in, (f_out, sp) in zip(nn.inputs, [(b4.outputs[x], s) for x,s in spendables]):
+        p_in.bip32_paths = f_out.bip32_paths
+        p_in.witness_script = f_out.redeem_script
+        with BytesIO() as fd:
+            sp.stream(fd)
+            p_in.witness_utxo = fd.getvalue()
+
+    # build new txn: single output, no change, no miner fee
+    act_scr = fake_dest_addr('p2wpkh')
+    dest_out = TxOut(sum(s.coin_value for n,s in spendables), act_scr)
+
+    txn = Tx(2, [s.tx_in() for _,s in spendables], [dest_out])
+
+    # put unsigned TXN into PSBT
+    with BytesIO() as b:
+        txn.stream(b)
+        nn.txn = b.getvalue()
+
+    with BytesIO() as rv:
+        nn.serialize(rv)
+        raw = rv.getvalue()
+    
+    open('debug/spend_outs.psbt', 'wb').write(raw)
+
+    return nn, raw
+
+def test_bip143_attack_data_capture(try_sign, fake_txn, sim_exec, settings_set,
+                                    settings_get, cap_story):
+    # make a txn, capture the outputs of that as inputs for another txn
+    settings_set('ovc', [])
+
+    psbt = fake_txn(1, 10, segwit_in=True, change_outputs=range(9),
+                        outstyles=['p2wpkh-p2sh', 'p2pkh']+['p2wpkh']*7)
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'TXID' in title, story
+    txid = story.strip()
+
+    # compare to PyCoin
+    from pycoin.tx.Tx import Tx
+    t = Tx.from_bin(txn)
+    assert t.id() == txid
+
+    # expect all of new "change outputs" to be recorded, plus the one input
+    # minus 2 that are not p2wpkh
+    after1 = settings_get('ovc')
+    assert len(after1) == 9 + 1 - 2
+
+    # build a new PSBT based on those change outputs
+    psbt2, raw = spend_outputs(psbt, txn)
+
+    # try to sign that ... should work fine
+    try_sign(raw, accept=True, finalize=True)
+
+    # should not affect stored data
+    assert settings_get('ovc') == after1
+
+    # any tweaks to input side's values should fail.
+    for amt in [int(1E6), 1]:
+        def value_tweak(spendables):
+            assert len(spendables) > 2
+            spendables[0][1].coin_value += amt
+
+        psbt3, raw = spend_outputs(psbt, txn, tweaker=value_tweak)
+        with pytest.raises(CCProtoError) as ee:
+            orig, result = try_sign(raw, accept=True, finalize=True)
+
+        assert 'but PSBT claims' in str(ee), ee
+
+
 @pytest.mark.parametrize('segwit', [False, True])
 @pytest.mark.parametrize('num_ins', [1, 17])
 def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story):
