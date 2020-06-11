@@ -142,6 +142,7 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
+    MenuItem('Settings space', f=show_settings_space),
 ]
 
 BackupStuffMenu = [
