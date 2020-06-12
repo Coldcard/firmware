@@ -25,7 +25,7 @@ HISTORY_SAVED = const(30)
 HISTORY_MAX_MEM = const(128)
 
 # length of hashed&encoded key only (base64(15 bytes) => 20)
-ENCKEY_LEN = 20
+ENCKEY_LEN = const(20)
 
 class OutptValueCache:
     # storing a list in settings
@@ -42,8 +42,18 @@ class OutptValueCache:
     def clear(cls):
         # user action in danger zone menu
         cls.runtime_cache.clear()
+        cls._cache_loaded = True
         settings.remove_key(cls.KEY)
         settings.save()
+
+    @classmethod
+    def load_cache(cls):
+        # first time: read saved value, but rest of time; use what's in memory
+        if not cls._cache_loaded:
+            saved = settings.get(cls.KEY) or []
+            cls.runtime_cache.extend(saved)
+            cls._cache_loaded = True
+    
 
     @classmethod
     def encode_key(cls, prevout):
@@ -74,12 +84,7 @@ class OutptValueCache:
     @classmethod
     def fetch_amount(cls, prevout):
         # Return the amount we expect for this utxo, if we have it, else None
-
-        # first time: read saved value
-        if not cls._cache_loaded:
-            saved = settings.get(cls.KEY) or []
-            cls.runtime_cache.extend(saved)
-            cls._cache_loaded = True
+        cls.load_cache()
 
         if not cls.runtime_cache:
             return None
@@ -104,10 +109,11 @@ class OutptValueCache:
             cls.add(prevout, amount)
 
         elif exp != amount:
-            # the error we are looking for!
+            # Found the hacking we are looking for!
             ch = chains.current_chain()
             exp, units = ch.render_value(exp, True)
             amount, _ = ch.render_value(amount, True)
+
             raise IncorrectUTXOAmount(in_idx, "Expected %s but PSBT claims %s %s" % (
                                                 exp, amount, units))
 
@@ -123,6 +129,7 @@ class OutptValueCache:
             depth //= 2
 
         # also limit in-memory use
+        cls.load_cache()
         if len(cls.runtime_cache) >= HISTORY_MAX_MEM:
             del cls.runtime_cache[0]
 
