@@ -16,7 +16,7 @@ from utils import xfp2str
 
 async def start_selftest(*args):
 
-    if len(args) and not version.is_factory_mode():
+    if len(args) and not version.is_factory_mode:
         # called from inside menu, not directly
         if not await ux_confirm('''Selftest destroys settings on other profiles (not seeds). Requires MicroSD card and might have other consequences. Recommended only for factory.'''):
             return await ux_aborted()
@@ -695,14 +695,14 @@ def goto_top_menu():
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
     from main import pa, hsm_active
 
-    if version.is_factory_mode():
+    if hsm_active:
+        from hsm_ux import hsm_ux_obj
+        m = hsm_ux_obj
+    elif version.is_factory_mode:
         m = MenuSystem(FactoryMenu)
     elif pa.is_blank():
         # let them play a little before picking a PIN first time
         m = MenuSystem(VirginSystem, should_cont=lambda: pa.is_blank())
-    elif hsm_active:
-        from hsm_ux import hsm_ux_obj
-        m = hsm_ux_obj
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 

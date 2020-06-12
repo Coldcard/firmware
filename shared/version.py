@@ -53,22 +53,6 @@ def is_devmode():
 
     return is_devmode
 
-# Boot loader needs to tell us stuff about how we were booted, sometimes:
-# - did we just install a new version, for example
-# - are we running in "factory mode" with flash un-secured?
-
-def is_factory_mode():
-    from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
-    import stm, callgate
-
-    is_factory = bool(stm.mem32[RAM_BOOT_FLAGS] & RBF_FACTORY_MODE)
-
-    bn = callgate.get_bag_number()
-    if bn:
-        # this path supports testing/dev with RDP!=2, which normal production bootroms enforce
-        is_factory = False
-
-    return is_factory
 
 def is_fresh_version():
     from sigheader import RAM_BOOT_FLAGS, RBF_FRESH_VERSION
@@ -91,9 +75,10 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, has_fatram
+    global hw_label, has_608, has_fatram, is_factory_mode
 
-    import ckcc, callgate
+    from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
+    import ckcc, callgate, stm
     from machine import Pin
 
     # NOTE: mk1 not supported anymore.
@@ -112,6 +97,15 @@ def probe_system():
         hw_label = 'mk3'
 
     has_608 = callgate.has_608()
+
+    # Boot loader needs to tell us stuff about how we were booted, sometimes:
+    # - did we just install a new version, for example
+    # - are we running in "factory mode" with flash un-secured?
+    is_factory_mode = bool(stm.mem32[RAM_BOOT_FLAGS] & RBF_FACTORY_MODE)
+    bn = callgate.get_bag_number()
+    if bn:
+        # this path supports testing/dev with RDP!=2, which normal production bootroms enforce
+        is_factory_mode = False
 
 probe_system()
 

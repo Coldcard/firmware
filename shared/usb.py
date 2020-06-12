@@ -763,7 +763,7 @@ class USBHandler:
         import version, callgate
         from main import dis, pa, is_devmode, settings
 
-        if version.is_factory_mode() and bag_num:
+        if version.is_factory_mode and bag_num:
             # check state first
             assert settings.get('tested', False)
             assert pa.is_blank()
