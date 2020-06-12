@@ -45,16 +45,14 @@ SIGHASH_ANYONECANPAY = 0x80
 
 # Serialization/deserialization tools
 def ser_compact_size(l):
-    r = b""
     if l < 253:
-        r = struct.pack("B", l)
+        return struct.pack("B", l)
     elif l < 0x10000:
-        r = struct.pack("<BH", 253, l)
+        return struct.pack("<BH", 253, l)
     elif l < 0x100000000:
-        r = struct.pack("<BI", 254, l)
+        return struct.pack("<BI", 254, l)
     else:
-        r = struct.pack("<BQ", 255, l)
-    return r
+        return struct.pack("<BQ", 255, l)
 
 def deser_compact_size(f):
     nit = struct.unpack("<B", f.read(1))[0]
@@ -297,8 +295,7 @@ def ser_sig_compact(r, s, recid):
     rec = struct.unpack("B", recid)[0]
     prefix = struct.pack("B", 27 + 4 +rec)
 
-    sig = b""
-    sig += prefix
+    sig = prefix
     sig += r + s
 
     return sig
@@ -317,8 +314,7 @@ class COutPoint(object):
         self.n = struct.unpack("<I", f.read(4))[0]
 
     def serialize(self):
-        r = b""
-        r += ser_uint256(self.hash)
+        r = ser_uint256(self.hash)
         r += struct.pack("<I", self.n)
         return r
 
@@ -342,8 +338,7 @@ class CTxIn(object):
         self.nSequence = struct.unpack("<I", f.read(4))[0]
 
     def serialize(self):
-        r = b""
-        r += self.prevout.serialize()
+        r = self.prevout.serialize()
         r += ser_string(self.scriptSig)
         r += struct.pack("<I", self.nSequence)
         return r
@@ -364,8 +359,7 @@ class CTxOut(object):
         self.scriptPubKey = deser_string(f)
 
     def serialize(self):
-        r = b""
-        r += struct.pack("<q", self.nValue)
+        r = struct.pack("<q", self.nValue)
         r += ser_string(self.scriptPubKey)
         return r
 
@@ -518,8 +512,7 @@ class CTransaction(object):
         self.hash = None
 
     def serialize_without_witness(self):
-        r = b""
-        r += struct.pack("<i", self.nVersion)
+        r = struct.pack("<i", self.nVersion)
         r += ser_vector(self.vin)
         r += ser_vector(self.vout)
         r += struct.pack("<I", self.nLockTime)
@@ -530,8 +523,7 @@ class CTransaction(object):
         flags = 0
         if not self.wit.is_null():
             flags |= 1
-        r = b""
-        r += struct.pack("<i", self.nVersion)
+        r = struct.pack("<i", self.nVersion)
         if flags:
             dummy = []
             r += ser_vector(dummy)

@@ -11,7 +11,7 @@ from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STX
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 
@@ -28,12 +28,13 @@ class UserAuthorizedAction:
         self.result = None
         self.ux_done = False
 
-    def done(self):
+    def done(self, redraw=True):
         # drop them back into menu system, but at top.
         self.ux_done = True
         from actions import goto_top_menu
         m = goto_top_menu()
-        m.show()
+        if redraw:
+            m.show()
 
     def pop_menu(self):
         # drop them back into menu system, but try not to affect
@@ -511,22 +512,27 @@ class ApproveTransaction(UserAuthorizedAction):
             self.done()
             return
 
+        txid = None
         try:
             # re-serialize the PSBT back out
             with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
                 await fd.erase()
 
                 if self.do_finalize:
-                    self.psbt.finalize(fd)
+                    txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)
 
                 self.result = (fd.tell(), fd.checksum.digest())
 
-            self.done()
+            self.done(redraw=(not txid))
 
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
+
+        if self.do_finalize and txid and not hsm_active:
+            # show txid when we can; advisory
+            await ux_show_story(txid, "Final TXID")
 
     def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go

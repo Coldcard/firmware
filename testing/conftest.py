@@ -472,6 +472,24 @@ def set_master_key(sim_exec, sim_execfile, simulator, reset_seed_words):
     reset_seed_words()
 
 @pytest.fixture(scope="function")
+def set_xfp(sim_exec, sim_execfile, simulator, reset_seed_words):
+    # set the XFP, without really knowing the private keys
+    # - won't be able to sign, but should accept PSBT for signing
+
+    def doit(xfp):
+        assert len(xfp) == 8, "expect 8 hex digits"
+
+        import struct
+        need_xfp, = struct.unpack("<I", a2b_hex(xfp))
+
+        sim_exec('from main import settings; settings.set("xfp", 0x%x);' % need_xfp)
+
+    yield doit
+
+    # Important cleanup: restore normal key, because other tests assume that
+    reset_seed_words()
+
+@pytest.fixture(scope="function")
 def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific secret
 
@@ -540,13 +558,23 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
     return doit
 
 
-
 @pytest.fixture()
 def settings_set(sim_exec):
 
     def doit(key, val):
-        x = sim_exec("from main import settings; settings.set('%s', %r)" % (key, val))
+        x = sim_exec("main.settings.set('%s', %r)" % (key, val))
         assert x == ''
+
+    return doit
+
+@pytest.fixture()
+def settings_get(sim_exec):
+
+    def doit(key):
+        cmd = f"RV.write(repr(main.settings.get('{key}')))"
+        resp = sim_exec(cmd)
+        assert 'Traceback' not in resp, resp
+        return eval(resp)
 
     return doit
 
@@ -880,7 +908,7 @@ def end_sign(dev, need_keypress):
             time.sleep(0.050)
 
         if accept != None:
-            need_keypress('y' if accept else 'x')
+            need_keypress('y' if accept else 'x', timeout=None)
 
         if accept == False:
             with pytest.raises(CCUserRefused):
