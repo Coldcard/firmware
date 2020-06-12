@@ -68,7 +68,7 @@ async def done_splash2():
                 
     # MAYBE: check if we're a brick and die again? Or show msg?
 
-    if version.is_factory_mode():
+    if version.is_factory_mode:
         # in factory mode, turn on USB early to allow debug/setup
         from usb import enable_usb
         enable_usb(loop, True)
