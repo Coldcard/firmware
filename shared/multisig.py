@@ -665,20 +665,16 @@ class MultisigWallet:
                 address_fmt = addr_fmt
                 desc_meta = desc[len(desc_prefix):-len(desc_suffix)].split(",")
                 break
-        if address_fmt is None:
-            raise AssertionError("Invalid or unsupported descriptor type.")
+        assert address_fmt is not None
         M = desc_meta[0]
-        if len(M) > 1 and M[0] == "0": # check for leading zeros
-            raise AssertionError("Invalid M value (contains leading zeros)")
+        assert len(M) == 1 or M[0] != "0" # check for leading zeros
         M = int(M)
-        if not (M >= 1 and M <= 15):
-            raise AssertionError("Invalid M value (must be between 1 and 15)")
+        assert M >= 1 and M <= 15
         key_origins = []
         for ko in desc_meta[1:]:
             key_origins.append(cls.parse_key_origin(ko, expected_chain))
         N = len(key_origins)
-        if not (N > 1 and N >= M and N <= 15):
-            raise AssertionError("Invalid N value (must be greater than 1 and between M and 15)")
+        assert N > 1 and N >= M and N <= 15
         return {
             "addr_fmt": address_fmt,
             "M": M,
@@ -690,34 +686,28 @@ class MultisigWallet:
     def parse_key_origin(cls, ko, expected_chain):
         r = { "derivation": None }
         arr = ko.strip().split("]")
-        if len(arr) != 2:
-            raise AssertionError("Invalid key origin")
+        assert len(arr) == 2
         derivation = arr[0].replace("h","'").lower()
         xpub = arr[1]
-        if derivation[0] != "[":
-            raise AssertionError("Origin missing leading [")
+        assert derivation[0] == "["
         arr = derivation[1:].split("/")
         pat = r"^[a-f0-9]*$"
         match = ure.search(pat, arr[0])
-        if match is None:
-            raise AssertionError("Fingerprint is not hex")
-        if len(arr[0]) != 8:
-            raise AssertionError("Incorrect fingerprint length")
+        assert match is not None
+        assert len(arr[0]) == 8
         r["xfp"] = arr[0].upper()
         global_hardened = True
         for der in arr[1:]:
             if der[-1] == "'":
-                if global_hardened == False:
-                    raise AssertionError("Invalid key origin (bad derivation path)")
+                assert global_hardened != False
                 der = der[:-1]
             else:
                 global_hardened = False
             try:
-                if len(der) > 1 and der[0] == "0": # check for leading zeros
-                    raise AssertionError("")
+                assert len(der) == 1 or der[0] != "0" # check for leading zeros
                 i = int(der)
             except:
-                raise AssertionError("Invalid key origin (bad index in derivation path)")
+                assert False # bad index in derivation path
         r["derivation"] = "/".join(arr[1:])
         # check xpub
         xpubs = []
