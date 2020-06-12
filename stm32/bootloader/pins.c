@@ -132,6 +132,7 @@ pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose)
     sha256_update(&ctx, rom_secrets->pairing_secret, 32);
     sha256_update(&ctx, (uint8_t *)&purpose, 4);
     sha256_update(&ctx, (uint8_t *)pin, pin_len);
+    sha256_update(&ctx, rom_secrets->otp_key, 32);
 
     sha256_final(&ctx, result);
 
