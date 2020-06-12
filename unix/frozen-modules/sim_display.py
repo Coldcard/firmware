@@ -58,14 +58,12 @@ orig_show_story = ux.ux_show_story
 ux.ux_show_story = lambda *a, **kw: hack_story(*a, **kw)
 
 def hack_story(msg, title=None, **kw):
-    title = title or 'NO-TITLE'
-
     global story
 
     if hasattr(msg, 'readline'):
-        story = (title, msg.getvalue())
+        story = (title or 'NO-TITLE', msg.getvalue())
     else:
-        story = (title, msg)
+        story = (title or 'NO-TITLE', msg)
 
     #print("Story: %s: %s" % (title, msg))
 
