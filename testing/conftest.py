@@ -908,7 +908,7 @@ def end_sign(dev, need_keypress):
             time.sleep(0.050)
 
         if accept != None:
-            need_keypress('y' if accept else 'x')
+            need_keypress('y' if accept else 'x', timeout=None)
 
         if accept == False:
             with pytest.raises(CCUserRefused):
