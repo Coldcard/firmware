@@ -15,8 +15,10 @@
 - Bugfix: When scrambled keypad used with the login delay feature, the PIN-entry sequence
   was not scrambled after the forced delay was complete. Thanks to an anon customer
   for reporting this.
-- Enhancement: Scrambled keypad didn't change between PIN prefix and suffix.
+- Bugfix: Scrambled keypad didn't change between PIN prefix and suffix.
 - Enhancement: QR Code rendering improved. Should be more readable in more cases. Faster.
+- Enhancement: View percent consumed of the settings flash space (just for debug)
+- Enhancement: New command to clear the UTXO history, in rare case of false positive.
 
 ## 3.1.3 - April 30, 2020
 
