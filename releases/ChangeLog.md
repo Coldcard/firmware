@@ -1,4 +1,4 @@
-## 3.1.4 - Jun , 2020
+## 3.1.4 - Jun 12, 2020
 
 - Enhancement: Detect, report and block the recently reported type of attack
   against BIP-143 (replay of segwit inputs) with an error message. No changes
