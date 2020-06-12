@@ -28,12 +28,13 @@ class UserAuthorizedAction:
         self.result = None
         self.ux_done = False
 
-    def done(self):
+    def done(self, redraw=True):
         # drop them back into menu system, but at top.
         self.ux_done = True
         from actions import goto_top_menu
         m = goto_top_menu()
-        m.show()
+        if redraw:
+            m.show()
 
     def pop_menu(self):
         # drop them back into menu system, but try not to affect
@@ -524,7 +525,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
                 self.result = (fd.tell(), fd.checksum.digest())
 
-            self.done()
+            self.done(redraw=(not txid))
 
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
