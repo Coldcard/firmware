@@ -4,3 +4,5 @@
 *.psbt
 *.csv
 *.pdf
+*.dfu
+.tmp.tmp
