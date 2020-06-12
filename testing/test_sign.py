@@ -3,7 +3,7 @@
 #
 # Transaction Signing. Important.
 #
-import time, pytest, os
+import time, pytest, os, random
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -685,7 +685,7 @@ def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, s
 
         signed = end_sign(True, finalize=fin)
 
-        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wb').write(signed)
+        open('debug/sn-signed.'+ ('txn' if fin else 'psbt'), 'wt').write(B2A(signed))
 
 @pytest.mark.parametrize('fee_max', [ 10, 25, 50])
 @pytest.mark.parametrize('under', [ False, True])
@@ -973,5 +973,188 @@ def test_change_troublesome(start_sign, cap_story, try_path, expect):
     assert expect in story, story
 
     assert parse_change_back(story) == (Decimal('1.09997082'), ['mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'])
+
+def test_bip143_attack(try_sign, sim_exec, set_xfp, settings_set, settings_get):
+    # cleanup prev runs
+    sim_exec('import history; history.OutptValueCache.clear()')
+
+    # hand-modified transactions from Andrew Chow
+    set_xfp('D1A226A9')
+    mod1 = b64decode(open('data/b143a_mod1.psbt').read())
+    mod2 = b64decode(open('data/b143a_mod2.psbt').read())
+
+    orig, result = try_sign(mod1, accept=False)
+
+    # after seeing first one, should raise an error on second one
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod2, accept=False)
+
+    assert 'but PSBT claims 15 XTN' in str(ee), ee
+
+    assert len(settings_get('ovc')) == 2
+    sim_exec('import history; history.OutptValueCache.clear()')
+
+    # try in opposite order, should also trigger
+    orig, result = try_sign(mod2, accept=False)
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod1, accept=False)
+
+    assert 'but PSBT claims' in str(ee), ee
+    assert 'Expected 15 but' in str(ee)
+
+def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
+    # take details from PSBT that created a finalized txn (also provided)
+    # and build a new PSBT that spends those change outputs.
+    from pycoin.tx.Tx import Tx
+    from pycoin.tx.TxOut import TxOut
+    from pycoin.tx.TxIn import TxIn
+    funding = Tx.from_bin(finalized_txn)
+    b4 = BasicPSBT().parse(funding_psbt)
+
+    # segwit change outputs only
+    spendables = [(n,i) for n,i in enumerate(funding.tx_outs_as_spendable()) 
+                        if i.script[0:2] == b'\x00\x14' and b4.outputs[n].bip32_paths]
+
+    #spendables = list(reversed(spendables))
+    random.shuffle(spendables)
+
+    if tweaker:
+        tweaker(spendables)
+
+    nn = BasicPSBT()
+    nn.inputs = [BasicPSBTInput(idx=i) for i in range(len(spendables))]
+    nn.outputs = [BasicPSBTOutput(idx=0)]
+
+    # copy input values from funding PSBT's output side
+    for p_in, (f_out, sp) in zip(nn.inputs, [(b4.outputs[x], s) for x,s in spendables]):
+        p_in.bip32_paths = f_out.bip32_paths
+        p_in.witness_script = f_out.redeem_script
+        with BytesIO() as fd:
+            sp.stream(fd)
+            p_in.witness_utxo = fd.getvalue()
+
+    # build new txn: single output, no change, no miner fee
+    act_scr = fake_dest_addr('p2wpkh')
+    dest_out = TxOut(sum(s.coin_value for n,s in spendables), act_scr)
+
+    txn = Tx(2, [s.tx_in() for _,s in spendables], [dest_out])
+
+    # put unsigned TXN into PSBT
+    with BytesIO() as b:
+        txn.stream(b)
+        nn.txn = b.getvalue()
+
+    with BytesIO() as rv:
+        nn.serialize(rv)
+        raw = rv.getvalue()
+    
+    open('debug/spend_outs.psbt', 'wb').write(raw)
+
+    return nn, raw
+
+@pytest.fixture
+def hist_count(sim_exec):
+    def doit():
+        return int(sim_exec(
+            'import history; RV.write(str(len(history.OutptValueCache.runtime_cache)));'))
+    return doit
+
+@pytest.mark.parametrize('num_utxo', [9, 100])
+@pytest.mark.parametrize('segwit_in', [False, True])
+def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, settings_set,
+                                    settings_get, cap_story, sim_exec, hist_count):
+
+    # cleanup prev runs, if very first time thru
+    sim_exec('import history; history.OutptValueCache.clear()')
+    hist_b4 = hist_count()
+    assert hist_b4 == 0
+
+    # make a txn, capture the outputs of that as inputs for another txn
+    psbt = fake_txn(1, num_utxo+3, segwit_in=segwit_in, change_outputs=range(num_utxo+2),
+                        outstyles=(['p2wpkh']*num_utxo) + ['p2wpkh-p2sh', 'p2pkh'])
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+
+    open('debug/funding.psbt', 'wb').write(psbt)
+
+    num_inp_utxo = (1 if segwit_in else 0)
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert 'TXID' in title, story
+    txid = story.strip()
+
+    assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
+
+    # compare to PyCoin
+    from pycoin.tx.Tx import Tx
+    t = Tx.from_bin(txn)
+    assert t.id() == txid
+
+    # expect all of new "change outputs" to be recorded (none of the non-segwit change tho)
+    # plus the one input we "revealed"
+    after1 = settings_get('ovc')
+    assert len(after1) == min(30, num_utxo + num_inp_utxo)
+
+    all_utxo = hist_count()
+    assert all_utxo == hist_b4+num_utxo+num_inp_utxo
+
+    # build a new PSBT based on those change outputs
+    psbt2, raw = spend_outputs(psbt, txn)
+
+    # try to sign that ... should work fine
+    try_sign(raw, accept=True, finalize=True)
+    time.sleep(.1)
+
+    # should not affect stored data, because those values already cached
+    assert settings_get('ovc') == after1
+
+    # any tweaks to input side's values should fail.
+    for amt in [int(1E6), 1]:
+        def value_tweak(spendables):
+            assert len(spendables) > 2
+            spendables[0][1].coin_value += amt
+
+        psbt3, raw = spend_outputs(psbt, txn, tweaker=value_tweak)
+        with pytest.raises(CCProtoError) as ee:
+            orig, result = try_sign(raw, accept=True, finalize=True)
+
+        assert 'but PSBT claims' in str(ee), ee
+
+
+@pytest.mark.parametrize('segwit', [False, True])
+@pytest.mark.parametrize('num_ins', [1, 17])
+def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story):
+    # verify correct txid for transactions is being calculated
+    xp = dev.master_xpub
+
+    psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
+
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+
+    #print('Signed; ' + B2A(txn))
+
+    time.sleep(.1)
+    title, story = cap_story()
+    assert '0' in story
+    assert 'TXID' in title, story
+    txid = story.strip()
+
+    if 1:
+        # compare to PyCoin
+        from pycoin.tx.Tx import Tx
+        t = Tx.from_bin(txn)
+        assert t.id() == txid
+
+    if 1:
+        # compare to bitcoin core
+        decoded = decode_with_bitcoind(txn)
+        pprint(decoded)
+
+        assert len(decoded['vin']) == num_ins
+        if segwit:
+            assert all(x['txinwitness'] for x in decoded['vin'])
+
+        assert decoded['txid'] == txid
+
 
 # EOF

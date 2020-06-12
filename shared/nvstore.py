@@ -38,6 +38,7 @@ from sffile import SFFile
 #   axi = index of last selected address in explorer
 #   lgto = (minutes) how long to wait for Login Countdown feature
 #   usr = (dict) map from username to their secret, as base32
+#   ovc = (list) "outpoint value cache"; only for segwit UTXO inputs (see history.py)
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
@@ -62,8 +63,9 @@ class SettingsObject:
         self.my_pos = 0
 
         self.nvram_key = b'\0'*32
+        self.capacity = 0
         self.current = self.default_values()
-        self.overrides = {}     # volatile overide values
+        self.overrides = {}         # volatile overide values
 
         self.load()
 
@@ -120,6 +122,7 @@ class SettingsObject:
         self.overrides.clear()
         self.my_pos = 0
         self.is_dirty = 0
+        self.capacity = 0
 
         # 4k, but last 32 bytes are a SHA (itself encrypted)
         global _tmp
@@ -164,7 +167,9 @@ class SettingsObject:
 
                 # loads() can't work from a byte array, and converting to 
                 # bytes here would copy it; better to use file emulation.
-                d = ujson.load(BytesIO(_tmp))
+                fd = BytesIO(_tmp)
+                d = ujson.load(fd)
+                self.capacity = fd.seek(0,1) / 4096         # .tell() is missing
             except:
                 # One in 65k or so chance to come here w/ garbage decoded, so
                 # not an error.
@@ -179,7 +184,7 @@ class SettingsObject:
             else:
                 # stale data seen; clean it up.
                 assert self.current['_age'] > 0
-                print("NV: cleanup @ %d" % pos)
+                #print("NV: cleanup @ %d" % pos)
                 sf.sector_erase(pos)
                 sf.wait_done()
 
@@ -226,6 +231,10 @@ class SettingsObject:
 
     set = put
 
+    def remove_key(self, kn):
+        self.current.pop(kn, None)
+        self.changed()
+
     def clear(self):
         # could be just:
         #       self.current = {}
@@ -247,9 +256,7 @@ class SettingsObject:
         try:
             gc.collect()
             self.save()
-            #print("settings committed")
         except MemoryError:
-            print("write_out retry")
             self.loop.call_later_ms(250, self.write_out())
 
     def find_spot(self, not_here=0):
@@ -295,8 +302,11 @@ class SettingsObject:
             d = ujson.dumps(self.current)
 
             # pad w/ zeros
-            pad_len = (4096-32) - len(d)
+            dat_len = len(d)
+            pad_len = (4096-32) - dat_len
             assert pad_len >= 0, 'too big'
+
+            self.capacity = dat_len / 4096
 
             fd.write(aes.update(d))
             chk.update(d)
@@ -322,7 +332,6 @@ class SettingsObject:
 
         self.my_pos = pos
         self.is_dirty = 0
-        #print("NV: wrote @ %d" % pos)
 
     def merge(self, prev):
         # take a dict of previous values and merge them into what we have
@@ -342,6 +351,7 @@ class SettingsObject:
         self.current.clear()
         self.overrides.clear()
         self.is_dirty = 0
+        self.capacity = 0
 
     @staticmethod
     def default_values():
