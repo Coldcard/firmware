@@ -1225,7 +1225,10 @@ class psbtObject(psbtProxy):
             # - also finds appropriate multisig wallet to be used
             inp.determine_my_signing_key(i, utxo, self.my_xfp, self)
 
-            history.verify_amount(txi.prevout, inp.amount, i)
+            # iff to UTXO is segwit, then check it's value, and also
+            # capture that value, since it's supposed to be immutable
+            if inp.is_segwit:
+                history.verify_amount(txi.prevout, inp.amount, i)
 
             del utxo
 
@@ -1664,9 +1667,7 @@ class psbtObject(psbtProxy):
             fd.write(txo.serialize())
 
             # capture change output amounts (if segwit)
-            if needs_witness \
-                    and self.outputs[out_idx].is_change \
-                    and self.outputs[out_idx].witness_script:
+            if self.outputs[out_idx].is_change and self.outputs[out_idx].witness_script:
                 history.add_segwit_utxos(out_idx, txo.nValue)
 
         body_end = fd.tell()

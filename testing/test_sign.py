@@ -1052,23 +1052,38 @@ def spend_outputs(funding_psbt, finalized_txn, tweaker=None):
 
     return nn, raw
 
+@pytest.fixture
+def hist_count(sim_exec):
+    def doit():
+        return int(sim_exec(
+            'import history; RV.write(str(len(history.OutptValueCache.runtime_cache)));'))
+    return doit
+
 @pytest.mark.parametrize('num_utxo', [9, 100])
-def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, settings_set,
-                                    settings_get, cap_story, sim_exec):
+@pytest.mark.parametrize('segwit_in', [False, True])
+def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, settings_set,
+                                    settings_get, cap_story, sim_exec, hist_count):
+
+    # cleanup prev runs, if very first time thru
+    sim_exec('import history; history.OutptValueCache.clear()')
+    hist_b4 = hist_count()
+    assert hist_b4 == 0
 
     # make a txn, capture the outputs of that as inputs for another txn
-
-    # cleanup prev runs
-    sim_exec('import history; history.OutptValueCache.clear()')
-
-    psbt = fake_txn(1, num_utxo+3, segwit_in=True, change_outputs=range(num_utxo+2),
+    psbt = fake_txn(1, num_utxo+3, segwit_in=segwit_in, change_outputs=range(num_utxo+2),
                         outstyles=(['p2wpkh']*num_utxo) + ['p2wpkh-p2sh', 'p2pkh'])
     _, txn = try_sign(psbt, accept=True, finalize=True)
+
+    open('debug/funding.psbt', 'wb').write(psbt)
+
+    num_inp_utxo = (1 if segwit_in else 0)
 
     time.sleep(.1)
     title, story = cap_story()
     assert 'TXID' in title, story
     txid = story.strip()
+
+    assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
 
     # compare to PyCoin
     from pycoin.tx.Tx import Tx
@@ -1078,11 +1093,10 @@ def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, settings_set,
     # expect all of new "change outputs" to be recorded (none of the non-segwit change tho)
     # plus the one input we "revealed"
     after1 = settings_get('ovc')
-    assert len(after1) == min(30, num_utxo + 1)
+    assert len(after1) == min(30, num_utxo + num_inp_utxo)
 
-    all_utxo = int(sim_exec(
-        'import history; RV.write(str(len(history.OutptValueCache.runtime_cache)));'))
-    assert all_utxo == num_utxo+1
+    all_utxo = hist_count()
+    assert all_utxo == hist_b4+num_utxo+num_inp_utxo
 
     # build a new PSBT based on those change outputs
     psbt2, raw = spend_outputs(psbt, txn)
@@ -1110,7 +1124,7 @@ def test_bip143_attack_data_capture(num_utxo, try_sign, fake_txn, settings_set,
 @pytest.mark.parametrize('segwit', [False, True])
 @pytest.mark.parametrize('num_ins', [1, 17])
 def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoind, cap_story):
-    # create a TXN using actual addresses that are correct for DUT
+    # verify correct txid for transactions is being calculated
     xp = dev.master_xpub
 
     psbt = fake_txn(num_ins, 1, xp, segwit_in=segwit)
