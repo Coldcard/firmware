@@ -1023,8 +1023,7 @@ def fake_ms_txn():
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True, 'no-import' ])
-#@pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
-@pytest.mark.parametrize('transport', [ 'usb' ])
+@pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
 @pytest.mark.parametrize('has_change', [ True, False])
 def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, settings_set, M=1, N=3):
