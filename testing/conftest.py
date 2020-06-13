@@ -779,7 +779,6 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
             os.unlink(f)
 
         if encoding == 'hex':
-            from binascii import b2a_hex, a2b_hex
             ip = b2a_hex(ip)
         elif encoding == 'base64':
             from base64 import b64encode, b64decode
@@ -818,7 +817,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
             time.sleep(0.050)
 
             # look for "Aborting..." ??
-            return ip, None
+            return ip, None, None
 
         # wait for it to finish
         for r in range(10):
@@ -828,17 +827,22 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         else:
             assert False, 'timed out'
 
-        result_fname = story.split('\n')[-1]
+        txid = None
+        lines = story.split('\n')
+        if 'Final TXID:' in lines:
+            txid = lines[-1]
+            result_fname = lines[-4]
+        else:
+            result_fname = lines[-1]
 
         result = open_microsd(result_fname, 'rb').read()
 
-        if encoding == 'hex':
+        if encoding == 'hex' or finalize:
             result = a2b_hex(result.strip())
         elif encoding == 'base64':
             result = b64decode(result)
         else:
             assert encoding == 'binary'
-        assert result[0:5] == b'psbt\xff'
 
         # read back final product
         if finalize:
@@ -851,6 +855,8 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
             assert t.version in [1, 2]
 
         else:
+            assert result[0:5] == b'psbt\xff'
+
             if complete:
                 assert '-signed' in result_fname
             else:
@@ -862,7 +868,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
             assert was.txn == now.txn
             assert was != now
 
-        return ip, result
+        return ip, result, txid
 
     return doit
 
