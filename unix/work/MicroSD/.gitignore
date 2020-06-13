@@ -5,4 +5,5 @@
 *.csv
 *.pdf
 *.dfu
+*.txn
 .tmp.tmp
