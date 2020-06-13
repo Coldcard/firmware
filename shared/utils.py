@@ -3,7 +3,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct
+import gc, sys, ustruct, tcc
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -91,17 +91,45 @@ class HexWriter:
     # Emulate a file/stream but convert binary to hex as they write
     def __init__(self, fd):
         self.fd = fd
+        self.pos = 0
+        self.checksum = tcc.sha256()
 
     def __enter__(self):
         self.fd.__enter__()
         return self
 
     def __exit__(self, *a, **k):
+        self.fd.seek(0, 3)          # go to end
         self.fd.write(b'\r\n')
         return self.fd.__exit__(*a, **k)
 
+    def tell(self):
+        return self.pos
+
     def write(self, b):
+        self.checksum.update(b)
+        self.pos += len(b)
+
         self.fd.write(b2a_hex(b))
+
+    def seek(self, offset, whence=0):
+        assert whence == 0          # limited support
+        self.pos = offset
+        self.fd.seek((2*offset), 0)
+
+    def read(self, ll):
+        b = self.fd.read(ll*2)
+        if not b:
+            return b
+        assert len(b)%2 == 0
+        self.pos += len(b)//2
+        return a2b_hex(b)
+
+    def read_into(self, buf):
+        b = self.read(len(buf))
+        assert len(buf) == len(b)
+        buf[:] = b + bytes(len(buf) - len(b))
+        return len(b)
 
 class Base64Writer:
     # Emulate a file/stream but convert binary to Base64 as they write
