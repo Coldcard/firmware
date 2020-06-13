@@ -772,6 +772,7 @@ def sign_psbt_file(filename):
                 prob = ''
             else:
                 # attempt write-out
+                txid = None
                 try:
                     with CardSlot() as card:
                         with output_encoder(open(out_full, 'wb')) as fd:
@@ -782,9 +783,9 @@ def sign_psbt_file(filename):
                             # write out as hex too, if it's final
                             out2_full, out2_fn = card.pick_filename(base+'-final.txn', out_path)
                             if out2_full:
-                                with HexWriter(open(out2_full, 'wt')) as fd:
+                                with HexWriter(open(out2_full, 'w+t')) as fd:
                                     # save transaction, in hex
-                                    psbt.finalize(fd)
+                                    txid = psbt.finalize(fd)
 
                     # success and done!
                     break
@@ -805,6 +806,8 @@ def sign_psbt_file(filename):
         msg = "Updated PSBT is:\n\n%s" % out_fn
         if out2_fn:
             msg += '\n\nFinalized transaction (ready for broadcast):\n\n%s' % out2_fn
+            if txid:
+                msg += '\n\nFinal TXID:\n'+txid
 
         await ux_show_story(msg, title='PSBT Signed')
 
