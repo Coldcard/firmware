@@ -1617,6 +1617,7 @@ class psbtObject(psbtProxy):
         # - assumption is it's complete already.
         # - returns the TXID of resulting transaction
         # - but in segwit case, needs to re-read to calculate it
+        # - fd must be read/write and seekable to support txid calc
 
         fd.write(pack('<i', self.txn_version))           # nVersion
 
