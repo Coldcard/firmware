@@ -746,6 +746,7 @@ def sign_psbt_file(filename):
         base = basename.rsplit('.', 1)[0]
         out2_fn = None
         out_fn = None
+        txid = None
 
         while 1:
             # try to put back into same spot, but also do top-of-card
@@ -772,7 +773,6 @@ def sign_psbt_file(filename):
                 prob = ''
             else:
                 # attempt write-out
-                txid = None
                 try:
                     with CardSlot() as card:
                         with output_encoder(open(out_full, 'wb')) as fd:
