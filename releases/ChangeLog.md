@@ -1,3 +1,8 @@
+## 3.1.5 - Jun 13, 2020
+
+- Bugfix: Signing PSBT with finalization, from MicroSD card did not work. Error about
+  "HexWriter" was shown. Fixed!
+
 ## 3.1.4 - Jun 12, 2020
 
 - Enhancement: Detect, report and block the recently reported type of attack
