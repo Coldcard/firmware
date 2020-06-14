@@ -127,8 +127,7 @@ class HexWriter:
 
     def read_into(self, buf):
         b = self.read(len(buf))
-        assert len(buf) == len(b)
-        buf[:] = b + bytes(len(buf) - len(b))
+        buf[0:len(b)] = b
         return len(b)
 
 class Base64Writer:

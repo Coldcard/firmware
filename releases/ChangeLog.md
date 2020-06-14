@@ -1,3 +1,8 @@
+## 3.1.6 - Jun 14, 2020
+
+- Bugfix of the bugfix: Clear up assertion error that occured with some specific sizes of
+  transactions.
+
 ## 3.1.5 - Jun 13, 2020
 
 - Bugfix: Signing PSBT with finalization, from MicroSD card did not work. Error about
