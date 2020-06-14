@@ -1157,11 +1157,12 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
         assert decoded['txid'] == txid
 
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
-def test_sdcard_signing(encoding, try_sign_microsd, fake_txn, try_sign, dev):
-    # create a TXN using actual addresses that are correct for DUT
+@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
+def test_sdcard_signing(encoding, num_outs, try_sign_microsd, fake_txn, try_sign, dev):
+    # exercise the txn encode/decode from sdcard
     xp = dev.master_xpub
 
-    psbt = fake_txn(2, 2, xp, segwit_in=True)
+    psbt = fake_txn(2, num_outs, xp, segwit_in=True)
 
     _, txn, txid = try_sign_microsd(psbt, finalize=True, encoding=encoding)
 
