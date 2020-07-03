@@ -767,7 +767,7 @@ class USBHandler:
             # check state first
             assert settings.get('tested', False)
             assert pa.is_blank()
-            assert len(bag_num) == 8
+            assert 8 <= len(bag_num) < 32
 
             # do the change
             failed = callgate.set_bag_number(bag_num)

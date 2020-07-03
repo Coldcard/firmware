@@ -1,3 +1,7 @@
+## 3.1.7 - Jul 3, 2020
+
+- Bugfix: support use of new security bags with longer serial numbers.
+
 ## 3.1.6 - Jun 14, 2020
 
 - Bugfix of the bugfix: Clear up assertion error that occured with some specific sizes of
@@ -30,7 +34,7 @@
 - Enhancement: View percent consumed of the settings flash space (just for debug)
 - Enhancement: New command to clear the UTXO history, in rare case of false positive.
 
-## 3.1.3 - April 30, 2020
+## 3.1.3 - Apr 30, 2020
 
 - Enhancement: Save your BIP39 passphrases, encrypted, onto a specific SDCard, if desired.
   Passphrases are encrypted with AES-256 (CTR mode) using a key derived from the master
