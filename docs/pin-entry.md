@@ -33,7 +33,7 @@ Do not continue to enter more digits of your real PIN!
 8) After the delay, check the PIN. The PIN is checked in this order:
 
     - Is it the PIN for the duress wallet? If so, open that wallet and continue as if it
-        was was the normal (1) or (2) wallet that was picked in step 4.
+        was the normal (1) or (2) wallet that was picked in step 4.
 
     - Otherwise, we increment the PIN attempt counter for indicated wallet at this point.
 
