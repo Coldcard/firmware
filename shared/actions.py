@@ -982,7 +982,28 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
 
 async def list_files(*A):
     # list files, don't do anything with them?
-    fn = await file_picker('List files on MicroSD')
+    fn = await file_picker('Lists all files on MicroSD. Select one and SHA256(file contents) will be shown.', min_size=0)
+    if not fn: return
+
+    import tcc
+    from utils import B2A
+    chk = tcc.sha256()
+
+    try:
+        with CardSlot() as card:
+            with open(fn, 'rb') as fp:
+                while 1:
+                    data = fp.read(1024)
+                    if not data: break
+                    chk.update(data)
+    except CardMissingError:
+        await needs_microsd()
+        return
+
+    basename = fn.rsplit('/', 1)[-1]
+
+    await ux_show_story('''SHA256(%s):\n\n%s''' % (basename, B2A(chk.digest())))
+
     return
 
 async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None, none_msg=None):
@@ -1077,6 +1098,8 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     async def clicked(_1,_2,item):
         picked.append('/'.join(item.arg))
         the_ux.pop()
+
+    choices.sort()
 
     items = [MenuItem(label, f=clicked, arg=(path, fn)) for label, path, fn in choices]
 
