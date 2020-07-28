@@ -1006,7 +1006,7 @@ async def list_files(*A):
 
     return
 
-async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None, none_msg=None):
+async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None, none_msg=None, title=None):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
@@ -1090,7 +1090,7 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     else:
         msg += '\n\nThere is only one file to pick from.'
 
-    ch = await ux_show_story(msg, escape=escape)
+    ch = await ux_show_story(msg, escape=escape, title=title)
     if escape and ch in escape: return ch
     if ch == 'x': return
 
@@ -1102,14 +1102,6 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     choices.sort()
 
     items = [MenuItem(label, f=clicked, arg=(path, fn)) for label, path, fn in choices]
-
-    if 0:
-        # don't like; and now showing count on previous page
-        if len(choices) == 1:
-            # if only one choice, we could make the choice for them ... except very confusing
-            items.append(MenuItem('  (one file)', f=None))
-        else:
-            items.append(MenuItem('  (%d files)' % len(choices), f=None))
 
     menu = MenuSystem(items)
     the_ux.push(menu)
@@ -1147,6 +1139,12 @@ async def ready2sign(*a):
     # - check if any signable in SD card, if so do it
     # - if nothing, then talk about USB connection
     from public_constants import MAX_TXN_LEN
+    import stash
+    
+    if stash.bip39_passphrase:
+        title = '[%s]' % settings.get('xfp')
+    else:
+        title = None
 
     def is_psbt(filename):
         if '-signed' in filename.lower():
@@ -1162,6 +1160,7 @@ async def ready2sign(*a):
                 return True
             return False
 
+    # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
                             max_size=MAX_TXN_LEN, taster=is_psbt)
 
@@ -1174,8 +1173,8 @@ in PSBT format (Partially Signed Bitcoin Transaction) \
 or upload a transaction to be signed \
 from your wallet software (Electrum) or command line tools. \
 
-You will always be prompted to confirm the details before any signature is performed.
-""")
+You will always be prompted to confirm the details before any signature is performed.\
+""", title=title)
         return
 
     if len(choices) == 1:
@@ -1183,7 +1182,7 @@ You will always be prompted to confirm the details before any signature is perfo
         label,path,fn = choices[0]
         input_psbt = path + '/' + fn
     else:
-        input_psbt = await file_picker('Choose PSBT file to be signed.', choices=choices)
+        input_psbt = await file_picker('Choose PSBT file to be signed.', choices=choices, title=title)
         if not input_psbt:
             return
 
