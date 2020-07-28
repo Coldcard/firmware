@@ -1015,7 +1015,8 @@ class psbtObject(psbtProxy):
         assert not self.active_multisig
 
         xfps = [unpack_from('<I', k)[0] for k,_ in self.xpubs]
-        assert self.my_xfp in xfps, 'My XFP not involved'
+        if self.my_xfp not in xfps:
+            raise FatalPSBTIssue('My XFP not involved')
 
         candidates = MultisigWallet.find_candidates(xfps)
 
