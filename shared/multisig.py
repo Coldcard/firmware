@@ -12,6 +12,7 @@ from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_P
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from actions import needs_microsd
+from exceptions import FatalPSBTIssue
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -698,7 +699,7 @@ class MultisigWallet:
 
         if trust_mode == TRUST_VERIFY:
             # already checked for existing import and wasn't found, so fail
-            raise AssertionError("XPUBs in PSBT do not match any existing wallet")
+            raise FatalPSBTIssue("XPUBs in PSBT do not match any existing wallet")
 
         # build up an in-memory version of the wallet.
 
@@ -718,7 +719,7 @@ class MultisigWallet:
             if xfp == my_xfp:
                 has_mine = True
 
-        assert has_mine, 'my key not included'
+        assert has_mine         # 'my key not included'
 
         name = 'PSBT-%d-of-%d' % (M, N)
 
