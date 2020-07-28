@@ -1,5 +1,6 @@
 import utime as time
 import uerrno as errno
+import sys
 
 class USB_VCP:
     @staticmethod
@@ -88,7 +89,7 @@ class USB_HID:
             self.send(b)
 
 class SDCard:
-    ejected = False
+    ejected = bool('--eject' in sys.argv)
 
     @classmethod
     def present(cls):
