@@ -717,7 +717,7 @@ class PassphraseMenu(MenuSystem):
 
         msg = '''Above is the master key fingerprint of the new wallet.
 
-Press X to abort and keep editing passphrase, OK to use the new wallet and 1 to save to MicroSD'''
+Press X to abort and keep editing passphrase, OK to use the new wallet, or 1 to use and save to MicroSD'''
 
         ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
         if ch == 'x':
