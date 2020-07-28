@@ -40,6 +40,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--pin 123456-123456` => set PIN code to indicated value
 - `--deriv` => go to the Derive Entropy menu inside settings, also loads XPRV from BIP
 - `--secret 01abababab...` => directly set contents of SE secret, see SecretStash.encode()
+- `--eject` => pretend no (simulated) SD Card is inserted
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 
