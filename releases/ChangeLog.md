@@ -5,6 +5,7 @@
 - Enhancement: File names from SD Card are now shown in sorted order.
 - Enhancement: Can show the SHA256(file contents) for any file on SD Card. Use
   Advanced > MicroSD > List Files and pick your file. Thanks to XXX for this idea.
+- Enhancement: Enable BIP-85 support on older Mk2 hardware.
 - Enhancement: minor text changes based on feedback.
 
 ## 3.1.7 - Jul 3, 2020

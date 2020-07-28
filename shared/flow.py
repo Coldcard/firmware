@@ -13,13 +13,12 @@ from multisig import make_multisig_menu
 from paper import make_paper_wallet
 from address_explorer import address_explore
 from users import make_users_menu
+from drv_entro import drv_entro_start
 
 if version.has_fatram:
     from hsm import hsm_policy_available
-    from drv_entro import drv_entro_start
 else:
     hsm_policy_available = lambda: False
-    drv_entro_start = None
 
 #
 # NOTE: "Always In Title Case"
@@ -163,7 +162,7 @@ AdvancedNormalMenu = [
     MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
-    MenuItem('Derive Entropy', f=drv_entro_start, predicate=lambda: version.has_fatram),
+    MenuItem('Derive Entropy', f=drv_entro_start),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
