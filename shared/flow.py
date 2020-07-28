@@ -75,6 +75,7 @@ WalletExportMenu = [
 ]
 
 SDCardMenu = [
+    #         xxxxxxxxxxxxxxxx
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Dump Summary", f=dump_summary),

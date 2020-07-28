@@ -1,3 +1,10 @@
+## 3.1.8 - Aug , 2020
+
+- Enhancement: File names from SD Card are now shown in sorted order.
+- Enhancement: Shows the SHA256(file contents) for anything selected from:
+  Advanced > MicroSD > List Files. Thanks to XXX for this idea.
+- Enhancement: minor text changes based on feedback.
+
 ## 3.1.7 - Jul 3, 2020
 
 - Bugfix: support use of new security bags with longer serial numbers.
