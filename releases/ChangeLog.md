@@ -1,8 +1,10 @@
 ## 3.1.8 - Aug , 2020
 
+- Enhancement: The current XFP (xpub fingerprint) is shown on the "Ready To Sign" screen,
+  if you have entered an BIP39 Passphrase.
 - Enhancement: File names from SD Card are now shown in sorted order.
-- Enhancement: Shows the SHA256(file contents) for anything selected from:
-  Advanced > MicroSD > List Files. Thanks to XXX for this idea.
+- Enhancement: Can show the SHA256(file contents) for any file on SD Card. Use
+  Advanced > MicroSD > List Files and pick your file. Thanks to XXX for this idea.
 - Enhancement: minor text changes based on feedback.
 
 ## 3.1.7 - Jul 3, 2020
