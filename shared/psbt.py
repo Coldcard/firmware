@@ -385,7 +385,7 @@ class psbtOutputProxy(psbtProxy):
                 # But definately required, else we don't know what script we're sending to.
                 raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
 
-            if not is_segwit and \
+            if not is_segwit and redeem_script and \
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
 
