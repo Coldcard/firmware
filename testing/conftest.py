@@ -1,7 +1,7 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
 # and is covered by GPLv3 license found in COPYING.
 #
-import pytest, glob, time, sys, random
+import pytest, glob, time, sys, random, re
 from pprint import pprint
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
@@ -757,7 +757,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
 
     # like "try_sign" but use "air gapped" file transfer via microSD
 
-    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False, encoding='binary'):
+    def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False, encoding='binary', del_after=0):
 
         if f_or_data[0:5] == b'psbt\xff':
             ip = f_or_data
@@ -846,7 +846,16 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
 
         # read back final product
         if finalize:
-            assert 'final' in result_fname
+            in_file = microsd_path(psbtname+'.psbt')
+
+            if del_after:
+                if not txid:
+                    txid = re.findall('[0-9a-f]{64}', result_fname)[0]
+                assert result_fname == txid+'.txn'
+                assert not os.path.exists(in_file)
+            else:
+                assert 'final' in result_fname
+                assert os.path.exists(in_file)
 
             from pycoin.tx.Tx import Tx
             # parse it a little

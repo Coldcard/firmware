@@ -3,7 +3,7 @@
 #
 # Transaction Signing. Important.
 #
-import time, pytest, os, random
+import time, pytest, os, random, pdb
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -1157,19 +1157,22 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
         assert decoded['txid'] == txid
 
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
-@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
-def test_sdcard_signing(encoding, num_outs, try_sign_microsd, fake_txn, try_sign, dev):
+#@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
+@pytest.mark.parametrize('num_outs', [1,2])
+@pytest.mark.parametrize('del_after', [1, 0])
+def test_sdcard_signing(encoding, num_outs, del_after, try_sign_microsd, fake_txn, try_sign, dev, settings_set):
     # exercise the txn encode/decode from sdcard
     xp = dev.master_xpub
 
+    settings_set('del', del_after)
+
     psbt = fake_txn(2, num_outs, xp, segwit_in=True)
 
-    _, txn, txid = try_sign_microsd(psbt, finalize=True, encoding=encoding)
+    _, txn, txid = try_sign_microsd(psbt, finalize=True, encoding=encoding, del_after=del_after)
 
     from pycoin.tx.Tx import Tx
     t = Tx.from_bin(txn)
     assert t.id() == txid
-    
 
 
 # EOF

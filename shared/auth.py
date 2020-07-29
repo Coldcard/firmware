@@ -675,7 +675,7 @@ def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
     
 def sign_psbt_file(filename):
     # sign a PSBT file found on a MicroSD card
-    from files import CardSlot, CardMissingError
+    from files import CardSlot, CardMissingError, securely_blank_file
     from main import dis
     from sram2 import tmp_buf
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
@@ -748,6 +748,10 @@ def sign_psbt_file(filename):
         out_fn = None
         txid = None
 
+        from main import settings
+        import os
+        del_after = settings.get('del', 0)
+
         while 1:
             # try to put back into same spot, but also do top-of-card
             is_comp = psbt.is_complete()
@@ -775,9 +779,13 @@ def sign_psbt_file(filename):
                 # attempt write-out
                 try:
                     with CardSlot() as card:
-                        with output_encoder(open(out_full, 'wb')) as fd:
-                            # save as updated PSBT
-                            psbt.serialize(fd)
+                        if is_comp and del_after:
+                            # don't write signed PSBT if we'd just delete it anyway
+                            out_fn = None
+                        else:
+                            with output_encoder(open(out_full, 'wb')) as fd:
+                                # save as updated PSBT
+                                psbt.serialize(fd)
 
                         if is_comp:
                             # write out as hex too, if it's final
@@ -786,6 +794,19 @@ def sign_psbt_file(filename):
                                 with HexWriter(open(out2_full, 'w+t')) as fd:
                                     # save transaction, in hex
                                     txid = psbt.finalize(fd)
+
+                                if del_after:
+                                    # rename it now that we know the txid
+                                    after_full, out2_fn = card.pick_filename(
+                                                            txid+'.txn', out_path, overwrite=True)
+                                    os.rename(out2_full, after_full)
+
+                    if del_after:
+                        # this can do nothing if they swapped SDCard between steps, which is ok,
+                        # but if the original file is still there, this blows it away.
+                        try:
+                            securely_blank_file(filename)
+                        except: pass
 
                     # success and done!
                     break
@@ -803,10 +824,17 @@ def sign_psbt_file(filename):
                 return
 
         # done.
-        msg = "Updated PSBT is:\n\n%s" % out_fn
+        if out_fn:
+            msg = "Updated PSBT is:\n\n%s" % out_fn
+            if out2_fn:
+                msg += '\n\n'
+        else:
+            # del_after is probably set
+            msg = ''
+
         if out2_fn:
-            msg += '\n\nFinalized transaction (ready for broadcast):\n\n%s' % out2_fn
-            if txid:
+            msg += 'Finalized transaction (ready for broadcast):\n\n%s' % out2_fn
+            if txid and not del_after:
                 msg += '\n\nFinal TXID:\n'+txid
 
         await ux_show_story(msg, title='PSBT Signed')

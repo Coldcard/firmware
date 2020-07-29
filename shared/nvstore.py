@@ -39,6 +39,7 @@ from sffile import SFFile
 #   lgto = (minutes) how long to wait for Login Countdown feature
 #   usr = (dict) map from username to their secret, as base32
 #   ovc = (list) "outpoint value cache"; only for segwit UTXO inputs (see history.py)
+#   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)

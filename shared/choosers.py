@@ -128,5 +128,18 @@ def scramble_keypad_chooser():
 
     return which, ch, set
 
+def delete_inputs_chooser():
+    #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
+    del_psbt = settings.get('del', 0)
+
+    ch = [  'Normal', 'Delete PSBTs']
+
+    def set_del_psbt(idx, text):
+        settings.set('del', idx)
+
+    return del_psbt, ch, set_del_psbt
+
+
+
 
 # EOF
