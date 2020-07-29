@@ -43,7 +43,7 @@ def hsm_policy_available():
 def hsm_delete_policy():
     # un-install HSM policy file.
     try:
-        uos.unlink(POLICY_FNAME)
+        uos.remove(POLICY_FNAME)
     except:
         pass
 
