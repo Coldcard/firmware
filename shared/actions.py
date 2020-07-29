@@ -426,6 +426,19 @@ async def pick_scramble(*a):
     from menu import start_chooser
     start_chooser(scramble_keypad_chooser)
 
+async def pick_inputs_delete(*a):
+    # Setting: delete input PSBT
+    if await ux_show_story('''\
+PSBT files (on SDCard) will be blanked & deleted after they are used.
+The signed transaction is named <TXID>.txn, so the file name does not leak information.
+
+MS-DOS tools should not be able to find the input data (ie. undelete), but forensic tools
+which take apart the flash chips of the SDCard may still be able to find the data.''') != 'y':
+        return
+
+    from choosers import delete_inputs_chooser
+    from menu import start_chooser
+    start_chooser(delete_inputs_chooser)
 
 async def pick_nickname(*a):
     # from settings menu, enter a nickname
@@ -1002,7 +1015,11 @@ async def list_files(*A):
 
     basename = fn.rsplit('/', 1)[-1]
 
-    await ux_show_story('''SHA256(%s):\n\n%s''' % (basename, B2A(chk.digest())))
+    ch = await ux_show_story('''SHA256(%s)\n\n%s\n\nPress 6 to delete.''' % (basename, B2A(chk.digest())), escape='6')
+
+    if ch == '6':
+        from files import securely_blank_file
+        securely_blank_file(fn)
 
     return
 

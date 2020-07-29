@@ -263,7 +263,7 @@ class CardSlot:
         assert info and len(info) >= 5       # need micropython changes
         return tcc.sha256(repr(info)).digest()
 
-    def pick_filename(self, pattern, path=None):
+    def pick_filename(self, pattern, path=None, overwrite=False):
         # given foo.txt, return a full path to filesystem, AND
         # a nice shortened version of the filename for display to user
         # - assuming we will write to it, so cannot exist
@@ -292,6 +292,9 @@ class CardSlot:
                 return fname, basename+ext
             pass
 
+        if overwrite:
+            return fname, basename+ext
+
         # look for existing numbered files, even if some are deleted, and pick next
         # highest filename
         highest = 1
@@ -305,5 +308,44 @@ class CardSlot:
         fname = path + basename + ('-%d'% (highest+1)) + ext
 
         return fname, fname[len(path):]
+
+def securely_blank_file(full_path):
+    # input PSBT file no longer required; so delete it
+    # - blank with zeros
+    # - rename to garbage (to hide filename after undelete)
+    # - delete 
+    # - ok if file missing already (card maybe have been swapped)
+    #
+    # NOTE: we know the FAT filesystem code is simple, see 
+    #       ../external/micropython/extmod/vfs_fat.[ch]
+
+    path, basename = full_path.rsplit('/', 1)
+
+    with CardSlot() as card:
+        try:
+            blk = bytes(64)
+
+            with open(full_path, 'r+b') as fd:
+                size = fd.seek(0, 2)
+                fd.seek(0)
+
+                # blank it
+                for i in range((size // len(blk)) + 1):
+                    fd.write(blk)
+
+                assert fd.seek(0, 1) >= size
+
+            # probably pointless, but why not:
+            os.sync()
+
+        except OSError as exc:
+            # missing file is okay
+            if exc.args[0] == ENOENT: return
+            raise
+
+        # rename it and delete
+        new_name = path + '/' + ('x'*len(basename))
+        os.rename(full_path, new_name)
+        os.remove(new_name)
 
 # EOF

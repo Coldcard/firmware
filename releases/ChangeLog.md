@@ -1,13 +1,15 @@
 ## 3.1.8 - Aug , 2020
 
+- New feature: New setting, "Delete PSBTs", will blank and securely erase input PSBT files
+  when they are no longer needed. Also renames signed transaction to be `(txid).txn` (in hex)
 - Enhancement: The current XFP (xpub fingerprint) is shown on the "Ready To Sign" screen,
   if you have entered an BIP39 Passphrase.
 - Enhancement: File names from SD Card are now shown in sorted order.
 - Enhancement: Can show the SHA256(file contents) for any file on SD Card. Use
   Advanced > MicroSD > List Files and pick your file. Thanks to B.O. for this idea.
 - Enhancement: Enable full BIP-85 support on older Mk2 hardware (derived entropy feature).
-- Enhancement: minor text changes based on feedback from customers.
-- Enhancement: two assertions promoted to text error messags.
+- Enhancement: Minor text changes based on feedback from customers.
+- Enhancement: Two assertions promoted to text error messags related to bad PSBT files.
 
 ## 3.1.7 - Jul 3, 2020
 

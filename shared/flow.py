@@ -62,6 +62,7 @@ SettingsMenu = [
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
+    MenuItem('Delete PSBTs', f=pick_inputs_delete),
     MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
