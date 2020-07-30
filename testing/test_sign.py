@@ -1160,19 +1160,24 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
 #@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('del_after', [1, 0])
-def test_sdcard_signing(encoding, num_outs, del_after, try_sign_microsd, fake_txn, try_sign, dev, settings_set):
+@pytest.mark.parametrize('partial', [1, 0])
+def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd, fake_txn, try_sign, dev, settings_set):
     # exercise the txn encode/decode from sdcard
     xp = dev.master_xpub
 
     settings_set('del', del_after)
 
-    psbt = fake_txn(2, num_outs, xp, segwit_in=True)
+    def hack(psbt):
+        if partial:
+            # change first input to not be ours
+            pk = list(psbt.inputs[0].bip32_paths.keys())[0]
+            pp = psbt.inputs[0].bip32_paths[pk]
+            psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
 
-    _, txn, txid = try_sign_microsd(psbt, finalize=True, encoding=encoding, del_after=del_after)
+    psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
 
-    from pycoin.tx.Tx import Tx
-    t = Tx.from_bin(txn)
-    assert t.id() == txid
+    _, txn, txid = try_sign_microsd(psbt, finalize=not partial,
+                                        encoding=encoding, del_after=del_after)
 
 
 # EOF
