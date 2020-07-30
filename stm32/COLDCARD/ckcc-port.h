@@ -376,4 +376,6 @@ static inline mp_uint_t disable_irq(void) {
 #undef MICROPY_HW_ENABLE_DHT
 #define MICROPY_HW_ENABLE_DHT        (0)
 
+#undef MICROPY_PY_MACHINE_PULSE
+#define MICROPY_PY_MACHINE_PULSE     (0)
 
