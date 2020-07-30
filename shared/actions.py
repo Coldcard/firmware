@@ -429,11 +429,12 @@ async def pick_scramble(*a):
 async def pick_inputs_delete(*a):
     # Setting: delete input PSBT
     if await ux_show_story('''\
-PSBT files (on SDCard) will be blanked & deleted after they are used.
-The signed transaction is named <TXID>.txn, so the file name does not leak information.
+PSBT files (on SDCard) will be blanked & deleted after they are used. \
+The signed transaction will be named <TXID>.txn, so the file name does not leak information.
 
-MS-DOS tools should not be able to find the input data (ie. undelete), but forensic tools
-which take apart the flash chips of the SDCard may still be able to find the data.''') != 'y':
+MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
+which take apart the flash chips of the SDCard may still be able to find the \
+data or filenames.''') != 'y':
         return
 
     from choosers import delete_inputs_chooser
