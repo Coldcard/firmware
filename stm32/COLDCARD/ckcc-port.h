@@ -46,6 +46,7 @@
 extern bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block);
 #endif
 
+
 // memory allocation policies
 #define MICROPY_ALLOC_PATH_MAX      (128)
 
@@ -108,8 +109,8 @@ extern bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block);
 #define MICROPY_PY_BUILTINS_INPUT   (1)
 #define MICROPY_PY_BUILTINS_POW3    (1)
 
-#define MICROPY_PY_BUILTINS_HELP    (1)
-#define MICROPY_PY_BUILTINS_HELP_TEXT ckcc_help_text
+#define MICROPY_PY_BUILTINS_HELP    (0)
+#define MICROPY_PY_BUILTINS_HELP_TEXT   __unused__
 #define MICROPY_PY_BUILTINS_HELP_MODULES (0)
 
 #define MICROPY_PY_MICROPYTHON_MEM_INFO (1)
@@ -150,7 +151,7 @@ extern bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block);
 #define MICROPY_PY_UTIME_MP_HAL     (1)
 #define MICROPY_PY_OS_DUPTERM       (1)
 #define MICROPY_PY_MACHINE          (1)
-#define MICROPY_PY_MACHINE_PULSE    (1)
+#define MICROPY_PY_MACHINE_PULSE    (0)
 #define MICROPY_PY_MACHINE_PIN_MAKE_NEW mp_pin_make_new
 // no i2c
 #define MICROPY_PY_MACHINE_I2C      (0)
@@ -370,5 +371,9 @@ static inline mp_uint_t disable_irq(void) {
 
 // We need to provide a declaration/definition of alloca()
 #include <alloca.h>
+
+// not wanted
+#undef MICROPY_HW_ENABLE_DHT
+#define MICROPY_HW_ENABLE_DHT        (0)
 
 
