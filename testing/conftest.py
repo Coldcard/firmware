@@ -844,9 +844,10 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         else:
             assert encoding == 'binary'
 
+        in_file = microsd_path(psbtname+'.psbt')
+
         # read back final product
         if finalize:
-            in_file = microsd_path(psbtname+'.psbt')
 
             if del_after:
                 if not txid:
@@ -862,6 +863,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
             assert result[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
             t = Tx.from_bin(result)
             assert t.version in [1, 2]
+            assert t.id() == txid
 
         else:
             assert result[0:5] == b'psbt\xff'
@@ -870,6 +872,9 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
                 assert '-signed' in result_fname
             else:
                 assert '-part' in result_fname
+
+            if del_after:
+                assert not os.path.exists(in_file)
 
             from psbt import BasicPSBT
             was = BasicPSBT().parse(ip) 
