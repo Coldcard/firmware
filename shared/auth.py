@@ -789,7 +789,9 @@ def sign_psbt_file(filename):
 
                         if is_comp:
                             # write out as hex too, if it's final
-                            out2_full, out2_fn = card.pick_filename(base+'-final.txn', out_path)
+                            out2_full, out2_fn = card.pick_filename(
+                                base+'-final.txn' if not del_after else 'tmp.txn', out_path)
+
                             if out2_full:
                                 with HexWriter(open(out2_full, 'w+t')) as fd:
                                     # save transaction, in hex
@@ -804,6 +806,7 @@ def sign_psbt_file(filename):
                     if del_after:
                         # this can do nothing if they swapped SDCard between steps, which is ok,
                         # but if the original file is still there, this blows it away.
+                        # - if not yet final, the foo-part.psbt file stays
                         try:
                             securely_blank_file(filename)
                         except: pass
