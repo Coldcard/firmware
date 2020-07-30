@@ -68,7 +68,7 @@ def fake_txn():
     from struct import pack
 
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
-                outvals=None, segwit_in=False, outstyles=['p2pkh'],
+                outvals=None, segwit_in=False, outstyles=['p2pkh'], psbt_hacker=None,
                 change_outputs=[], capture_scripts=None, add_xpub=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
@@ -152,6 +152,10 @@ def fake_txn():
             # some people want extra xpub data in their PSBTs
             from pycoin.encoding import a2b_base58
             psbt.xpubs = [ (a2b_base58(master_xpub),  xfp) ]
+
+        # last minute chance to mod PSBT object
+        if psbt_hacker:
+            psbt_hacker(psbt)
 
         rv = BytesIO()
         psbt.serialize(rv)
