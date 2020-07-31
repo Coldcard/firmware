@@ -622,8 +622,13 @@ class PassphraseMenu(MenuSystem):
         lx = 6
         y = 16
         here = ''
+
+        dis.clear()
+        dis.text(None, -1, footer, FontTiny)
+        dis.save()
+
         while 1:
-            dis.clear()
+            dis.restore()
 
             # text centered
             msg = here
@@ -639,7 +644,6 @@ class PassphraseMenu(MenuSystem):
             if len(here) < 32:
                 dis.icon(bx, by-2, 'sm_box')
 
-            dis.text(None, -1, footer, FontTiny)
             dis.show()
 
             ch = await press.wait()
