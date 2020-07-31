@@ -8,21 +8,20 @@ from uasyncio.queues import Queue
 from machine import Pin
 from random import shuffle
 from numpad import NumpadBase
+from files import CardSlot      # XXX debug
 
 NUM_ROWS = const(4)
 NUM_COLS = const(3)
-SAMPLE_RATE = const(5)          # ms
-NUM_SAMPLES = const(10)         # this many matching samples required for debounce
+SAMPLE_RATE = const(1)          # ms
+NUM_SAMPLES = const(3)         # this many matching samples required for debounce
+
+# (row, col) => keycode
+DECODER = 'y0x987654321'
 
 class MembraneNumpad(NumpadBase):
-    # (row, col) => keycode
-    DECODER = 'y0x987654321'
 
     def __init__(self, loop):
         super(MembraneNumpad, self).__init__(loop)
-
-        # we can handle faster key-repeat start
-        self.repeat_delay = 250
 
         # No idea how to pick a safe timer number.
         self.timer = pyb.Timer(7)
@@ -32,12 +31,12 @@ class MembraneNumpad(NumpadBase):
         self.rows = [Pin(i, Pin.OUT_OD, value=0) 
                         for i in ('M2_ROW0', 'M2_ROW1', 'M2_ROW2', 'M2_ROW3')]
 
-        self.scan_order = array.array('b', list(range(NUM_ROWS)))
         self.history = bytearray(NUM_ROWS * NUM_COLS)
 
         # We scan in random order, because Tempest.
         # - scanning only starts when something pressed
         # - complete scan is done before acting on what was measured
+        self.scan_order = array.array('b', list(range(NUM_ROWS)))
         shuffle(self.scan_order)
 
         self.scan_count = 0
@@ -57,7 +56,6 @@ class MembraneNumpad(NumpadBase):
 
     def start(self):
         # Begin scanning for events
-        self._disabled = False
         self._wait_any()
 
     def _wait_any(self):
@@ -70,8 +68,6 @@ class MembraneNumpad(NumpadBase):
 
     def _start_scan(self):
         # reset and start a new scan
-        if self._disabled: return
-
         self.waiting_for_any = False
 
         #assert self.scan_count == 0         # can happen when CPU busy?
@@ -131,25 +127,44 @@ class MembraneNumpad(NumpadBase):
         if sum(self.history) == 0:
             # all keys are 100% up.
             self._key_event('')
+            CardSlot.active_led(0)
 
             # stop scanning for now
             self._wait_any()
             return
 
+        CardSlot.active_led(1)
         #print(' '.join(str(i) for i in self.history), end='')
 
         # handle debounce, which happens in both directions: press and release
-        # - all samples must be in agreement to count as either
-        for rc, count in enumerate(self.history):
-            key = self.DECODER[rc]
+        # - all samples must be in agreement to count as either up or down
+        # - only handling single key-down at a time.
 
-            if count == 0 and key == self.key_pressed:
-                # key up
+        # look for key-up event
+        if self.key_pressed:
+            pos = DECODER.index(self.key_pressed)
+            count = self.history[pos]
+            if count == 0:
+                # old pressed key is consistently up now
                 self._key_event('')
-                break
-            elif count == NUM_SAMPLES:
-                self._key_event(key)
-                break
+
+        # look for key-down event
+        if not self.key_pressed:
+            for rc, count in enumerate(self.history):
+                if count == NUM_SAMPLES:
+                    self._key_event(DECODER[rc])
+                    break
+
+#        for rc, count in enumerate(self.history):
+#            key = DECODER[rc]
+#
+#            if count == 0 and key == self.key_pressed:
+#                # key up
+#                self._key_event('')
+#                break
+#            elif count == NUM_SAMPLES:
+#                self._key_event(key)
+#                break
 
         # do another scan
         self._start_scan()
