@@ -1,5 +1,6 @@
 ## 3.1.8 - Aug , 2020
 
+- Enhancement: Optimized and improved drawing speed on screen.
 - New feature: New setting, "Delete PSBTs", will blank and securely erase input PSBT files
   when they are no longer needed. Also renames signed transaction to be `(txid).txn` (in hex)
 - Enhancement: The current XFP (xpub fingerprint) is shown on the "Ready To Sign" screen,

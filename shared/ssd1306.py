@@ -8,7 +8,6 @@
 from micropython import const
 import framebuf
 
-
 # register definitions
 SET_CONTRAST        = const(0x81)
 SET_ENTIRE_ON       = const(0xa4)
@@ -101,31 +100,10 @@ class SSD1306(framebuf.FrameBuffer):
         self.write_cmd(self.pages - 1)
         self.write_data(self.buffer)
 
-
-class SSD1306_I2C(SSD1306):
-    def __init__(self, width, height, i2c, addr=0x3c, external_vcc=False):
-        self.i2c = i2c
-        self.addr = addr
-        self.temp = bytearray(2)
-        super().__init__(width, height, external_vcc)
-
-    def write_cmd(self, cmd):
-        self.temp[0] = 0x80 # Co=1, D/C#=0
-        self.temp[1] = cmd
-        self.i2c.writeto(self.addr, self.temp)
-
-    def write_data(self, buf):
-        self.temp[0] = self.addr << 1
-        self.temp[1] = 0x40 # Co=0, D/C#=1
-        self.i2c.start()
-        self.i2c.write(self.temp)
-        self.i2c.write(buf)
-        self.i2c.stop()
-
+SPI_RATE = const(40000000)        # max chip can do, still slower than display limit tho
 
 class SSD1306_SPI(SSD1306):
     def __init__(self, width, height, spi, dc, res, cs, external_vcc=False):
-        self.rate = 10 * 1024 * 1024
         dc.init(dc.OUT, value=0)
         res.init(res.OUT, value=0)
         cs.init(cs.OUT, value=1)
@@ -142,7 +120,7 @@ class SSD1306_SPI(SSD1306):
         super().__init__(width, height, external_vcc)
 
     def write_cmd(self, cmd):
-        self.spi.init(baudrate=self.rate, polarity=0, phase=0)
+        self.spi.init(baudrate=SPI_RATE, polarity=0, phase=0)
         self.cs(1)
         self.dc(0)
         self.cs(0)
@@ -150,7 +128,7 @@ class SSD1306_SPI(SSD1306):
         self.cs(1)
 
     def write_data(self, buf):
-        self.spi.init(baudrate=self.rate, polarity=0, phase=0)
+        self.spi.init(baudrate=SPI_RATE, polarity=0, phase=0)
         self.cs(1)
         self.dc(1)
         self.cs(0)
