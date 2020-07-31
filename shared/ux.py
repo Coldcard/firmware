@@ -134,7 +134,8 @@ class PressRelease:
             # two values here:
             #  - (ms) time to wait before first key-repeat
             #  - (ms) time between 2nd and Nth repeated events
-            rep_delay = 200 if not self.num_repeats else 50
+            #  - these values approved by @nvk
+            rep_delay = 200 if not self.num_repeats else 20
             so_far = 0
 
             while numpad.empty():

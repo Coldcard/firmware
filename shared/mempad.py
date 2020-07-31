@@ -5,15 +5,16 @@
 #
 import array, utime, pyb
 from uasyncio.queues import Queue
+from ucollections import deque
 from machine import Pin
 from random import shuffle
 from numpad import NumpadBase
-from files import CardSlot      # XXX debug
 
 NUM_ROWS = const(4)
-NUM_COLS = const(3)
-SAMPLE_RATE = const(1)          # ms
-NUM_SAMPLES = const(3)         # this many matching samples required for debounce
+NUM_COLS = const(3)         
+SAMPLE_FREQ = const(60)         # (Hz) how fast to do each scan
+NUM_SAMPLES = const(3)          # this many matching samples required for debounce
+Q_CHECK_RATE = const(5)         # (ms) how fast to check event Q
 
 # (row, col) => keycode
 DECODER = 'y0x987654321'
@@ -31,16 +32,24 @@ class MembraneNumpad(NumpadBase):
         self.rows = [Pin(i, Pin.OUT_OD, value=0) 
                         for i in ('M2_ROW0', 'M2_ROW1', 'M2_ROW2', 'M2_ROW3')]
 
-        self.history = bytearray(NUM_ROWS * NUM_COLS)
 
         # We scan in random order, because Tempest.
         # - scanning only starts when something pressed
         # - complete scan is done before acting on what was measured
         self.scan_order = array.array('b', list(range(NUM_ROWS)))
-        shuffle(self.scan_order)
 
-        self.scan_count = 0
+        # each full scan is pushed onto this, only last one kept if overflow
+        self.scans = deque((), 50, 0)
+
+        # internal to timer irq handler
+        self._history = None        # see _start_scan
+        self._scan_count = 0
+        self._cycle = 0
+
         self.waiting_for_any = True
+
+        # time of last press
+        self.lp_time = 0
 
         for c in self.cols:
             c.irq(self.anypress_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
@@ -67,51 +76,64 @@ class MembraneNumpad(NumpadBase):
         self.waiting_for_any = True
 
     def _start_scan(self):
-        # reset and start a new scan
+        # reset and re-start scanning keys
         self.waiting_for_any = False
+        self.lp_time = utime.ticks_ms()
+        shuffle(self.scan_order)
 
-        #assert self.scan_count == 0         # can happen when CPU busy?
-        self.scan_count = NUM_SAMPLES-1
-        self.history = bytearray(NUM_ROWS * NUM_COLS)
-        self.timer.init(freq=1000//SAMPLE_RATE, callback=self._measure_irq)
-        self.loop.call_later_ms(SAMPLE_RATE * (NUM_SAMPLES + 2), self._finish_scan)
+        self._scan_count = 0
+        self._history = bytearray(NUM_ROWS * NUM_COLS)
+
+        self.timer.init(freq=SAMPLE_FREQ, callback=self._measure_irq)
+        self.loop.call_later_ms(Q_CHECK_RATE, self._finish_scan)
 
     def _measure_irq(self, _timer):
         # CHALLENGE: Called at high rate, and cannot do memory alloc.
         # - sample all keys once, record any that are pressed
 
-        if self.scan_count == NUM_SAMPLES:
-            # First irq may be a runt of unknown length, so don't collect data 
-            # until after first time called.
-            pass
-        else:
-            for i in range(NUM_ROWS):
-                row = self.scan_order[i]
-
-                self.rows[0].value(row != 0)
-                self.rows[1].value(row != 1)
-                self.rows[2].value(row != 2)
-                self.rows[3].value(row != 3)
-
-                # sample the column values
-                if self.cols[0].value() == 0:
-                    col = 0
-                elif self.cols[1].value() == 0:
-                    col = 1
-                elif self.cols[2].value() == 0:
-                    col = 2
-                else:
-                    continue
-
-                # track any press observed
-                self.history[(row * NUM_COLS) + col] += 1
-
-        # should we do that again in a bit?
-        if self.scan_count == 0:
-            # we are done a full scan
+        if self.waiting_for_any:
+            # stop
             _timer.deinit()
-        else:
-            self.scan_count -= 1
+            return
+
+        for i in range(NUM_ROWS):
+            row = self.scan_order[i]
+
+            self.rows[0].value(row != 0)
+            self.rows[1].value(row != 1)
+            self.rows[2].value(row != 2)
+            self.rows[3].value(row != 3)
+
+            # sample the column values
+            if self.cols[0].value() == 0:
+                col = 0
+            elif self.cols[1].value() == 0:
+                col = 1
+            elif self.cols[2].value() == 0:
+                col = 2
+            else:
+                continue
+
+            # track any press observed
+            self._history[(row * NUM_COLS) + col] += 1
+
+        self._scan_count += 1
+        if self._scan_count == NUM_SAMPLES:
+            self._scan_count = 0
+
+            # handle debounce, which happens in both directions: press and release
+            # - all samples must be in agreement to count as either up or down
+            # - only handling single key-down at a time.
+            if sum(self._history) == 0:
+                # all are up, and debounced as such
+                self.scans.append(0xff)
+
+            for i in range(NUM_ROWS * NUM_COLS):
+                if self._history[i] == NUM_SAMPLES:
+                    # down
+                    self.scans.append(i)
+
+                self._history[i] = 0
 
     def _finish_scan(self):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
@@ -119,54 +141,24 @@ class MembraneNumpad(NumpadBase):
         from main import dis
         from display import FontTiny
 
-        if self.scan_count != 0:
-            # This happened like once, some kind of race/timing window. Recover.
-            self._start_scan()
-            return
+        while self.scans:
+            event = self.scans.popleft()
 
-        if sum(self.history) == 0:
-            # all keys are 100% up.
-            self._key_event('')
-            CardSlot.active_led(0)
+            if event == 0xff:
+                # all keys are now up
+                if self.key_pressed:
+                    self._key_event('')
+            else:
+                # indicated key was found to be down
+                key = DECODER[event]
+                self._key_event(key)
 
-            # stop scanning for now
+                self.lp_time = utime.ticks_ms()
+
+        if not self.key_pressed and utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
+            # stop scanning now... nothing happening
             self._wait_any()
-            return
-
-        CardSlot.active_led(1)
-        #print(' '.join(str(i) for i in self.history), end='')
-
-        # handle debounce, which happens in both directions: press and release
-        # - all samples must be in agreement to count as either up or down
-        # - only handling single key-down at a time.
-
-        # look for key-up event
-        if self.key_pressed:
-            pos = DECODER.index(self.key_pressed)
-            count = self.history[pos]
-            if count == 0:
-                # old pressed key is consistently up now
-                self._key_event('')
-
-        # look for key-down event
-        if not self.key_pressed:
-            for rc, count in enumerate(self.history):
-                if count == NUM_SAMPLES:
-                    self._key_event(DECODER[rc])
-                    break
-
-#        for rc, count in enumerate(self.history):
-#            key = DECODER[rc]
-#
-#            if count == 0 and key == self.key_pressed:
-#                # key up
-#                self._key_event('')
-#                break
-#            elif count == NUM_SAMPLES:
-#                self._key_event(key)
-#                break
-
-        # do another scan
-        self._start_scan()
+        else:
+            self.loop.call_later_ms(Q_CHECK_RATE, self._finish_scan)
     
 # EOF
