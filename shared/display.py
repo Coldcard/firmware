@@ -8,6 +8,7 @@ from ssd1306 import SSD1306_SPI
 import framebuf
 from uasyncio import sleep_ms
 from graphics import Graphics
+from sram2 import display2_buf
 
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
@@ -104,6 +105,12 @@ class Display:
 
     def show(self):
         self.dis.show()
+
+    # rather than clearing and redrawing, use this buffer w/ fixed parts of screen
+    def save(self):
+        display2_buf[:] = self.dis.buffer
+    def restore(self):
+        self.dis.buffer[:] = display2_buf
 
     def hline(self, y):
         self.dis.line(0, y, 128, y, 1)
