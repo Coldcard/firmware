@@ -107,15 +107,16 @@ class LoginUX:
             dis.clear_rect(0, y, 128, 21)
 
         w = 18
-        x = 12
-        # filled box
-        for idx in range(filled):
-            dis.icon(x, y, 'xbox')
-            x += w
 
         # extra (empty) box after
-        if len(self.pin) != MAX_PIN_PART_LEN:
-            dis.icon(x, y, 'box')
+        if not filled:
+            dis.icon(64-(w//2), y, 'box')
+        else:
+            x = 64 - ((w*filled)//2)
+            # filled boxes
+            for idx in range(filled):
+                dis.icon(x, y, 'xbox')
+                x += w
 
         dis.show()
 
