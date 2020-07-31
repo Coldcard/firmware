@@ -805,10 +805,16 @@ async def spinner_edit(pw, confirm_exit=True):
             assert ch in my_rng
         pw[pos] = ch
 
+    # pre-render the fixed stuff
+    dis.clear()
+    dis.text(None, -10, footer1, FontTiny)
+    dis.text(None, -1, footer2, FontTiny)
+    dis.save()
+
     # no key-repeat on certain keys
     press = PressRelease('4xy')
     while 1:
-        dis.clear()
+        dis.restore()
 
         lr = pos - scroll_x     # left/right distance of cursor
         if lr < 4 and scroll_x:
@@ -844,14 +850,6 @@ async def spinner_edit(pw, confirm_exit=True):
         if scroll_x + n_visible < len(pw):
             dis.text(-1, 1, "MORE>", FontTiny)
 
-        if 0:
-            wy = 6
-            count = len(pw)
-            dis.text(-8, wy-4, "%d" % count)
-
-
-        dis.text(None, -10, footer1, FontTiny)
-        dis.text(None, -1, footer2, FontTiny)
         dis.show()
 
         ch = await press.wait()
