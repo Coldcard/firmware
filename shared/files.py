@@ -168,7 +168,7 @@ class CardMissingError(RuntimeError):
     pass
 
 class CardSlot:
-    # Touch interface must be disabled during any SD Card usage!
+    # Manage access to the SDCard h/w resources
     last_change = None
     active_led = None
 
@@ -198,10 +198,6 @@ class CardSlot:
         # Get ready!
         self.active_led.on()
 
-        # turn off touch scanning
-        from main import numpad
-        numpad.stop()
-
         # busy wait for card pin to debounce/settle
         while 1:
             since = utime.ticks_diff(utime.ticks_ms(), self.last_change)
@@ -227,8 +223,6 @@ class CardSlot:
         
     def recover(self):
         # done using the microSD -- unpower it
-        from main import numpad
-
         self.active_led.off()
 
         self.active = False
@@ -240,8 +234,6 @@ class CardSlot:
         # important: turn off power so touch can work again
         sd = pyb.SDCard()
         sd.power(0)
-
-        numpad.start()
 
     def get_sd_root(self):
         # get the path to the SD card

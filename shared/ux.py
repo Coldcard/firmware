@@ -131,24 +131,22 @@ class PressRelease:
         armed = None
 
         while 1:
-            rep_delay = numpad.repeat_delay if not self.num_repeats else 100
+            # two values here:
+            #  - (ms) time to wait before first key-repeat
+            #  - (ms) time between 2nd and Nth repeated events
+            rep_delay = 200 if not self.num_repeats else 50
             so_far = 0
 
-            while 1:
-                try:
-                    # Poll for an event
-                    ch = numpad.get_nowait()
-                    break
-                except QueueEmpty:
-                    so_far += 5
-                    await sleep_ms(5)
+            while numpad.empty():
+                if self.last_key and numpad.key_pressed == self.last_key:
+                    if so_far >= rep_delay:
+                        self.num_repeats += 1
+                        return self.last_key
 
-                    if self.last_key and numpad.key_pressed == self.last_key:
-                        if so_far >= rep_delay:
-                            self.num_repeats += 1
-                            return self.last_key
+                await sleep_ms(1)
+                so_far += 1
 
-                    continue
+            ch = numpad.get_nowait()
 
             if ch == numpad.ABORT_KEY:
                 raise AbortInteraction
@@ -251,8 +249,6 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     # - accepts a stream or string
     from main import dis, numpad
     from display import FontLarge
-
-    assert not numpad.disabled      # probably inside a CardSlot context
 
     lines = []
     if title:

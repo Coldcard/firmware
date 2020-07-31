@@ -115,18 +115,6 @@ async def test_sd_active():
         k = await ux_wait_keyup('xy')
         assert k == 'y'     # "SD Active LED bust"
 
-async def test_multipress():
-    dis.clear()
-    dis.text(None, 10, 'Welcome', font=FontLarge)
-    dis.show()
-
-    while 1:
-        pr = await numpad.get()
-        dis.clear()
-        dis.text(None, 20, 'Pressed', font=FontSmall)
-        dis.text(None, 35, pr, font=FontLarge)
-        dis.show()
-
 async def test_sflash():
     dis.clear()
     dis.text(None, 18, 'Serial Flash')
@@ -188,10 +176,6 @@ async def test_oled():
 
 async def test_microsd():
     if ckcc.is_simulator(): return
-
-    from main import numpad
-    numpad.stop()
-
 
     async def wait_til_state(want):
         dis.clear()

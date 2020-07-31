@@ -17,16 +17,10 @@ class NumpadBase:
         # once pressed, and released; keys show up in this queue
         self._changes = Queue(24)
         self.key_pressed = ''
-        self._disabled = False
 
         self.debug = 0                # 0..2
-        self.repeat_delay = 450       # (ms) time to wait before first key-repeat
 
         self.last_event_time = utime.ticks_ms()
-
-    @property
-    def disabled(self):
-        return self._disabled
 
     async def get(self):
         # Get keypad events. Single-character strings.
@@ -42,10 +36,6 @@ class NumpadBase:
     def capture_baseline(self):
         # call this at a time when we feel no keys are pressed (during boot up)
         pass
-
-    def stop(self):
-        # Stop scanning
-        self._disabled = True
 
     def abort_ux(self):
         # pretend a key was pressed, in order to unblock things

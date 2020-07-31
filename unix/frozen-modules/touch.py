@@ -4,9 +4,8 @@ from uasyncio import StreamReader
 
 class Touch:
 
-    # emulate modtouch.c but with the simulator
-
     # XXX doesn't do key repeat well
+    # XXX emulating a membrane now, not a touch interface
 
     def __init__(self, *a, **kw):
 

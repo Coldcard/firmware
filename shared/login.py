@@ -214,23 +214,16 @@ class LoginUX:
     async def do_delay(self, pa):
         # show # of failures and implement the delay, which could be 
         # very long.
-        from main import numpad
-
         dis.clear()
         dis.text(None, 0, "Checking...", FontLarge)
         dis.text(None, 24, 'Wait '+pretty_delay(pa.delay_required * pa.seconds_per_tick))
         dis.text(None, 40, "(%d failures)" % pa.num_fails)
-
-        # save a little bit of interrupt load/overhead
-        numpad.stop()
 
         while pa.is_delay_needed():
             dis.progress_bar(pa.delay_achieved / pa.delay_required)
             dis.show()
 
             pa.delay()
-
-        numpad.start()
 
     async def we_are_ewaste(self, num_fails):
         msg = '''After %d failed PIN attempts this Coldcard is locked forever. \
@@ -259,7 +252,7 @@ Press OK to continue, X to stop for now.
         
 
     async def try_login(self, retry=True):
-        from main import pa, numpad
+        from main import pa
         while retry:
 
             if version.has_608 and not pa.attempts_left:
