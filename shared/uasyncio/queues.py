@@ -3,7 +3,7 @@
 #
 # See also: <https://github.com/micropython/micropython-lib/blob/master/LICENSE>
 #
-from collections.deque import deque
+from ucollections import deque
 from uasyncio.core import sleep
 
 
@@ -30,7 +30,7 @@ class Queue:
 
     def __init__(self, maxsize=0):
         self.maxsize = maxsize
-        self._queue = deque()
+        self._queue = deque((), 20)
 
     def _get(self):
         return self._queue.popleft()
