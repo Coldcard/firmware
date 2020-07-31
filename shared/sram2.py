@@ -26,13 +26,14 @@ def _alloc(ln):
 
 nvstore_buf = _alloc(4096-32)
 display_buf = _alloc(1024)
+display2_buf = _alloc(1024)
 usb_buf = _alloc(2048+12)       # 2060 @ 0x10001be0
 tmp_buf = _alloc(1024)
 psbt_tmp256 = _alloc(256)
 
 assert _start <= 0x10006000
 
-# observed: about 14k
+# observed: about 22k on Mk2
 ckcc.stack_limit(SRAM2_LENGTH - (_start - SRAM2_START))
 
 # EOF
