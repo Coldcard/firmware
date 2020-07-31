@@ -175,6 +175,7 @@ async def ux_press_release(need_release='xy', key_repeat=None):
     # Wait for single char press event, 
     # except for need_release keys, which must be released before they
     # are sent as events, and no corresponding release event (already consumed).
+    # XXX obsolete? see PressRelease object
     #
     from main import numpad
 

@@ -8,8 +8,7 @@
 import pincodes, version
 from main import dis
 from display import FontLarge, FontTiny
-from uasyncio import sleep_ms
-from ux import ux_press_release, ux_wait_keyup, ux_all_up, ux_poll_once, ux_show_story
+from ux import PressRelease, ux_wait_keyup, ux_all_up, ux_poll_once, ux_show_story
 from utils import pretty_delay
 from callgate import show_logout
 
@@ -39,24 +38,29 @@ class LoginUX:
         self.is_secondary = False
         self.footer = None
 
-    def show_pin_randomized(self):
+    def show_pin_randomized(self, force_draw):
         # screen redraw, when we are "randomized"
-        dis.clear()
 
-        # prompt
-        dis.text(5+3, 2, "ENTER PIN")
-        dis.text(5+6, 17, ('1st part' if not self.pin_prefix else '2nd part'))
+        if force_draw:
+            dis.clear()
 
-        # remapped keypad
-        y = 2
-        x = 89
-        h = 16
-        for i in range(0, 10, 3):
-            if i == 9:
-                dis.text(x, y, '  %s' % self.randomize[0])
-            else:
-                dis.text(x, y, ' '.join(self.randomize[1+i:1+i+3]))
-            y += h
+            # prompt
+            dis.text(5+3, 2, "ENTER PIN")
+            dis.text(5+6, 17, ('1st part' if not self.pin_prefix else '2nd part'))
+
+            # remapped keypad
+            y = 2
+            x = 89
+            h = 16
+            for i in range(0, 10, 3):
+                if i == 9:
+                    dis.text(x, y, '  %s' % self.randomize[0])
+                else:
+                    dis.text(x, y, ' '.join(self.randomize[1+i:1+i+3]))
+                y += h
+        else:
+            # just clear what we need to: the PIN area
+            dis.clear_rect(0, 40, 88, 20)
 
         # placeholder text
         msg = '[' + ('*'*len(self.pin)) + ']'
@@ -65,53 +69,53 @@ class LoginUX:
 
         dis.show()
 
-    def show_pin(self, show_hint=False):
+    def show_pin(self, force_draw=False):
         if self.randomize:
-            return self.show_pin_randomized()
+            return self.show_pin_randomized(force_draw)
 
         filled = len(self.pin)
-        if show_hint:
-            filled -= 1
-            hint = None     # used to be: self.pin[-1]  (for Mk1)
-
-        dis.clear()
-
-        if not self.pin_prefix:
-            prompt="Enter PIN Prefix" 
-        else:
-            prompt="Enter rest of PIN" 
-
-
-        if self.subtitle:
-            dis.text(None, 0, self.subtitle)
-            dis.text(None, 16, prompt, FontTiny)
-        else:
-            dis.text(None, 4, prompt)
-
         y = 27
+
+        if force_draw:
+            dis.clear()
+
+            if not self.pin_prefix:
+                prompt="Enter PIN Prefix" 
+            else:
+                prompt="Enter rest of PIN" 
+
+
+            if self.subtitle:
+                dis.text(None, 0, self.subtitle)
+                dis.text(None, 16, prompt, FontTiny)
+            else:
+                dis.text(None, 4, prompt)
+
+            if self.footer:
+                footer = self.footer
+            elif self.is_repeat:
+                footer = "CONFIRM PIN VALUE"
+            elif not self.pin_prefix:
+                footer = "X to CANCEL, or OK when DONE"
+            else:
+                footer = "X to CANCEL, or OK to CONTINUE"
+
+            dis.text(None, -1, footer, FontTiny)
+
+        else:
+            # just clear what we need to: the PIN area
+            dis.clear_rect(0, y, 128, 21)
+
         w = 18
         x = 12
-
+        # filled box
         for idx in range(filled):
             dis.icon(x, y, 'xbox')
             x += w
 
-        if show_hint:
-            dis.icon(x, y, 'tbox')
-        else:
-            if len(self.pin) != MAX_PIN_PART_LEN:
-                dis.icon(x, y, 'box')
-
-        if self.footer:
-            footer = self.footer
-        elif self.is_repeat:
-            footer = "CONFIRM PIN VALUE"
-        elif not self.pin_prefix:
-            footer = "X to CANCEL, or OK when DONE"
-        else:
-            footer = "X to CANCEL, or OK to CONTINUE"
-
-        dis.text(None, -1, footer, FontTiny)
+        # extra (empty) box after
+        if len(self.pin) != MAX_PIN_PART_LEN:
+            dis.icon(x, y, 'box')
 
         dis.show()
 
@@ -140,18 +144,19 @@ class LoginUX:
 
     def cancel(self):
         self.reset()
-        self.show_pin()
+        self.show_pin(True)
             
 
-    def interact(self):
+    async def interact(self):
         # Prompt for prefix and pin. Returns string or None if the abort.
         if self.randomize:
             self.shuffle_keys()
 
-        self.show_pin()
+        self.show_pin(True)
+        pr = PressRelease('y')
         while 1:
+            ch = await pr.wait()
 
-            ch = await ux_press_release()
             if ch == 'x':
                 if not self.pin and self.pin_prefix:
                     # cancel on empty 2nd-stage: start over
@@ -190,12 +195,10 @@ class LoginUX:
                 elif nxt == 'x':
                     self.reset()
 
-                self.show_pin()
-
-                continue
+                self.show_pin(True)
 
             else:
-                assert ch in '0123456789' or ch == ''
+                #assert ch in '0123456789' or ch == ''
 
                 if self.randomize and ch:
                     ch = self.randomize[int(ch)]
@@ -205,11 +208,7 @@ class LoginUX:
                 else:
                     self.pin += ch
 
-                self.show_pin(show_hint=True)
-
-                await ux_all_up()
-
-                self.show_pin(show_hint=False)
+                self.show_pin()
 
     async def do_delay(self, pa):
         # show # of failures and implement the delay, which could be 
