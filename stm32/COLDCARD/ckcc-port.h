@@ -379,3 +379,5 @@ static inline mp_uint_t disable_irq(void) {
 #undef MICROPY_PY_MACHINE_PULSE
 #define MICROPY_PY_MACHINE_PULSE     (0)
 
+#define MICROPY_PY_COLLECTIONS_DEQUE (1)
+
