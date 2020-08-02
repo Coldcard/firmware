@@ -261,31 +261,34 @@ async def show_words(words, prompt=None, escape=None, extra=''):
 async def add_dice_rolls(count, seed, judge_them):
     from main import dis
     from display import FontTiny, FontLarge
-    from ux import PressRelease, ux_press_release
 
     md = tcc.sha256(seed)
+    pr = PressRelease()
+
+    # fixed parts of screen
+    dis.clear()
+    y = 38
+    dis.text(0, y, "Press 1-6 for each dice"); y += 13
+    dis.text(0, y, "roll to mix in.")
+    dis.save()
 
     while 1:
         # Note: cannot scroll this msg because 5=up arrow
-        dis.clear()
+        dis.restore()
         dis.text(None, 0, '%d rolls' % count, FontLarge)
 
         hx = str(b2a_hex(md.digest()), 'ascii')
         dis.text(0, 20, hx[0:32], FontTiny)
         dis.text(0, 20+7, hx[32:], FontTiny)
 
-        y = 38
-        dis.text(0, y, "Press 1-6 for each dice"); y += 13
-        dis.text(0, y, "roll to mix in.")
-
         dis.show()
 
-        ch = await ux_press_release('123456xy')
+        ch = await pr.wait()
 
         if ch in '123456':
             count += 1
 
-            dis.clear()
+            dis.restore()
             dis.text(None, 0, '%d rolls' % count, FontLarge)
             dis.show()
 
