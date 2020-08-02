@@ -125,15 +125,12 @@ class Display:
         pos = min(int(mm*fraction), mm)
         self.dis.fill_rect(128-2, pos, 1, 8, 1)
 
-    async def animate_splash(self, loop, done_fcn, func50):
-        ns = 32 if not ckcc.is_simulator() else 4
+    async def animate_splash(self, loop, done_fcn):
+        ns = 32
         for i in range(ns):
             self.progress_bar(i / (ns-1))
             self.show()
-            if i == ns//2 and func50:
-                # do something at 50% mark
-                func50()
-            await sleep_ms(5)
+            await sleep_ms(3)
 
         if done_fcn:
             # create a new task, so this stack can be freed
@@ -181,9 +178,9 @@ class Display:
         self.progress_bar(percent)
         self.show()
 
-    def splash_animate(self, loop, done_fcn=None, func50=None):
+    def splash_animate(self, loop, done_fcn):
         # do a bootup delay and some work along the way
-        loop.create_task(self.animate_splash(loop, done_fcn, func50))
+        loop.create_task(self.animate_splash(loop, done_fcn))
 
     def mark_sensitive(self, from_y, to_y):
         wx = self.WIDTH-4       # avoid scroll bar

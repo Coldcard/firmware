@@ -33,10 +33,6 @@ class NumpadBase:
     def empty(self):
         return self._changes.empty()
 
-    def capture_baseline(self):
-        # call this at a time when we feel no keys are pressed (during boot up)
-        pass
-
     def abort_ux(self):
         # pretend a key was pressed, in order to unblock things
         self.inject(self.ABORT_KEY)
