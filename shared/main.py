@@ -105,7 +105,7 @@ async def mainline():
         await the_ux.interact()
 
 # Setup to start the splash screen.
-dis.splash_animate(loop, done_splash2, numpad.capture_baseline)
+dis.splash_animate(loop, done_splash2)
 
 # Some background "tasks"
 #
