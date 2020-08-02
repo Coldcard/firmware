@@ -8,7 +8,7 @@
 import pincodes, version
 from main import dis
 from display import FontLarge, FontTiny
-from ux import PressRelease, ux_wait_keyup, ux_all_up, ux_poll_once, ux_show_story
+from ux import PressRelease, ux_wait_keyup, ux_poll_once, ux_show_story
 from utils import pretty_delay
 from callgate import show_logout
 

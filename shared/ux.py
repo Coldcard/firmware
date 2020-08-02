@@ -171,55 +171,6 @@ class PressRelease:
                 self.last_key = ch
                 return ch
 
-async def ux_press_release(need_release='xy', key_repeat=None):
-    # Wait for single char press event, 
-    # except for need_release keys, which must be released before they
-    # are sent as events, and no corresponding release event (already consumed).
-    # XXX obsolete? see PressRelease object
-    #
-    from main import numpad
-
-    # never do key-repeat on keys that need "ups"
-    if key_repeat and key_repeat in need_release:
-        key_repeat = None
-
-    armed = None
-    while 1:
-        if key_repeat and numpad.key_pressed == key_repeat:
-            await sleep_ms(100)     # key repeat-rate, also key-repeat delay time
-            if numpad.key_pressed == key_repeat:
-                return key_repeat
-
-        ch = await numpad.get()
-
-        if ch == numpad.ABORT_KEY:
-            raise AbortInteraction
-
-        if len(ch) > 1:
-            # multipress: cancel press/release cycle and be a keyup
-            # for other keys.
-            armed = None
-            continue
-
-        if ch == '':
-            if armed:
-                return armed
-        elif ch in need_release:
-            armed = ch
-        else:
-            return ch
-
-async def ux_all_up():
-    # wait until all keys are released
-    from main import numpad
-
-    while 1:
-        ch = await numpad.get()
-        if ch == numpad.ABORT_KEY:
-            raise AbortInteraction
-        if ch == '':
-            return
-
 # how many characters can we fit on each line?
 # (using FontSmall)
 CH_PER_W = const(17)
