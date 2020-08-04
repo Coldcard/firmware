@@ -1,4 +1,4 @@
-## 3.1.8 - Aug , 2020
+## 3.1.8 - Aug 4, 2020
 
 - Enhancement: Optimized and improved drawing speed on screen, and responsiveness of keypad 
   entry. You'll see some slight changes to login screen (centered now) and massive drawing
