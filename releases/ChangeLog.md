@@ -1,3 +1,8 @@
+## 3.1.9 - Aug 6, 2020
+
+- Enhancement: Very minor change so that login feels more responsive.
+- Bugfix: Small bug in production selftest. No other changes.
+
 ## 3.1.8 - Aug 4, 2020
 
 - Enhancement: Optimized and improved drawing speed on screen, and responsiveness of keypad 

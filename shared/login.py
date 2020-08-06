@@ -272,6 +272,7 @@ Press OK to continue, X to stop for now.
                 # pressed X on empty screen ... RFU
                 continue
             
+            dis.fullscreen("Wait...")
             pa.setup(pin, self.is_secondary)
 
             if version.has_608 and pa.num_fails > 3:
@@ -282,7 +283,6 @@ Press OK to continue, X to stop for now.
                 await self.do_delay(pa)
 
             # do the actual login attempt now
-            dis.fullscreen("Wait...")
             try:
                 dis.busy_bar(True)
                 ok = pa.login()
