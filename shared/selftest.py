@@ -239,7 +239,6 @@ async def test_microsd():
     finally:
         # CRTICAL: power it back down
         sd.power(0)
-        numpad.start()
 
 
 async def start_selftest():
