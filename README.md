@@ -115,3 +115,7 @@ Top-level dirs:
 
 - schematic and bill of materials for the Coldcard
 
+
+## Support
+
+Found a bug? Email: support@coinkite.com
