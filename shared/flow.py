@@ -63,7 +63,6 @@ SettingsMenu = [
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Delete PSBTs', f=pick_inputs_delete),
-    MenuItem('Blockchain', chooser=chain_chooser),
 ]
 
 WalletExportMenu = [  
@@ -143,6 +142,7 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
+    MenuItem('Testnet Mode', f=confirm_testnet_mode),
     MenuItem('Settings space', f=show_settings_space),
 ]
 

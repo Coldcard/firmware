@@ -426,6 +426,18 @@ async def pick_scramble(*a):
     from menu import start_chooser
     start_chooser(scramble_keypad_chooser)
 
+async def confirm_testnet_mode(*a):
+    from choosers import chain_chooser
+    from menu import start_chooser
+    from chains import current_chain
+
+    if settings.get('chain') != 'XTN':
+        if not await ux_confirm("Testnet must only be used by developers because \
+correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."):
+            return
+
+    start_chooser(chain_chooser)
+
 async def pick_inputs_delete(*a):
     # Setting: delete input PSBT
     if await ux_show_story('''\

@@ -16,7 +16,7 @@ def start_chooser(chooser):
     # get which one to show as selected, list of choices, and fcn to call after
     selected, choices, setter = chooser()
 
-    def picked(menu, picked, xx_self):
+    async def picked(menu, picked, xx_self):
         menu.chosen = picked
         menu.show()
         await sleep_ms(100)     # visual feedback that we changed it

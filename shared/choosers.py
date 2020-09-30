@@ -81,6 +81,7 @@ def countdown_chooser():
 
 
 def chain_chooser():
+    # Pick Bitcoin or Testnet3 blockchains
     from chains import AllChains
 
     chain = settings.get('chain', 'BTC')
