@@ -1,3 +1,12 @@
+## 3.1.10 - Sep 30, 2020
+
+- Enhancement: Move the "blockchain" setting deep into the "Danger Zone" and add
+  warning screen. This mitigates a concern raised by @benma (Marko Bencun) where
+  an attacker could socially-engineer you to sign a transaction on Testnet, which
+  corresponds to UTXO on main net being stolen. Only developers should be using
+  Testnet anyway.
+
+
 ## 3.1.9 - Aug 6, 2020
 
 - Enhancement: Very minor change so that login feels more responsive.
