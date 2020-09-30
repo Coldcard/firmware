@@ -39,6 +39,7 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
         'aBc1 aBc2 aBc3', 
         'abcd defg',
         '1aaa 2aaa',
+        '1aaa2aaa',
         'ab'*25,
     ])
 def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, enter_complex, cap_menu, get_to_pwmenu):
@@ -59,7 +60,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         time.sleep(.01)
         title, story = cap_story()
         xfp = title[1:-1]
-        assert '1 to save to MicroSD' in story
+        assert '1 to use and save to MicroSD' in story
 
         need_keypress('1')
         xfps.append(xfp)
