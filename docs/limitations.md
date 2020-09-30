@@ -42,7 +42,7 @@
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
 - we can handle transactions with up to 20 inputs to be signed at one time.
-- a minimum of 250 outputs per transaction is supported (will attempt more if memory allows)
+- a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
 
 
 # P2SH / Multisig
