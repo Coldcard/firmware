@@ -1,14 +1,9 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# HMAC (Keyed-Hashing for Message Authentication) Python module.
 #
-# See also: <https://github.com/micropython/micropython-lib/blob/master/LICENSE>
+# Implements the HMAC algorithm as described by RFC 2104.
 #
-"""HMAC (Keyed-Hashing for Message Authentication) Python module.
-
-Implements the HMAC algorithm as described by RFC 2104.
-
-from: https://github.com/micropython/micropython-lib/blob/master/hmac/hmac.py @ 96c981b
-"""
+# from: https://github.com/micropython/micropython-lib/blob/master/hmac/hmac.py @ 96c981b
+# license: https://github.com/micropython/micropython-lib/blob/master/LICENSE
 
 class HMAC:
     """RFC 2104 HMAC class.  Also complies with RFC 4231.
