@@ -1181,9 +1181,18 @@ async def ready2sign(*a):
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
                             max_size=MAX_TXN_LEN, taster=is_psbt)
+    bigchoices = await file_picker(None, suffix='psbt', min_size=MAX_TXN_LEN,
+                            max_size=10000000, taster=is_psbt)
 
     if not choices:
-        await ux_show_story("""\
+        if len(bigchoices) >= 1:
+            await ux_show_story("""\
+A PSBT file larger than allowed size was found on the MicroSD card. \
+Please prepare a new transaction with fewer inputs. \
+The file size limit is 384KB.\
+""", title=title)        
+        else:
+            await ux_show_story("""\
 Coldcard is ready to sign spending transactions!
 
 Put the proposed transaction onto MicroSD card \
