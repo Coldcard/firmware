@@ -1,3 +1,8 @@
+## 3.1.10 - Nov 5, 2020
+
+- Enhancement: Add support for signing Payjoin PSBT files based on
+  [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
+
 ## 3.1.9 - Aug 6, 2020
 
 - Enhancement: Very minor change so that login feels more responsive.
