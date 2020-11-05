@@ -143,6 +143,6 @@ class PassphraseSaver:
             goto_top_menu()
 
 
-        return MenuSystem((MenuItem(label, f=doit) for label in parts))
+        return MenuSystem((MenuItem(label or '(empty)', f=doit) for label in parts))
         
 # EOF
