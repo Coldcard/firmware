@@ -1,3 +1,6 @@
+- Bugfix: zero-length BIP39 passphrase, when saved, would cause a crash when
+  restore attempted. We recommend longer passphrases.
+
 ## 3.1.9 - Aug 6, 2020
 
 - Enhancement: Very minor change so that login feels more responsive.
