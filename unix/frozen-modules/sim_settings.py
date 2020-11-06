@@ -33,7 +33,7 @@ else:
         '_skip_pin': '12-12',
         'terms_ok': 1,
         'xfp': 1130956047,
-        'idle_to': 28800
+        'idle_to': 0
     }
 
     SECRETS.update({
