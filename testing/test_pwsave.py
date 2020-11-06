@@ -36,6 +36,10 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
 
 
 @pytest.mark.parametrize('pws', [
+        'empty',
+        '1 2 3',
+        '1 2 3 11 22 33',
+        '1aa1 2aa2 1aa2 2aa1',
         'aBc1 aBc2 aBc3', 
         'abcd defg',
         '1aaa 2aaa',
@@ -50,10 +54,17 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
     pws = pws.split()
     xfps = []
 
+    if pws[0] == 'empty':
+        pws.append('')
+
     for pw in pws:
         get_to_pwmenu()
 
-        enter_complex(pw)
+        if pw == '':
+            pick_menu_item('Add Word')
+            need_keypress('x')
+        else:
+            enter_complex(pw)
 
         pick_menu_item('APPLY')
 
@@ -74,9 +85,10 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         m = cap_menu()
         print(m)
         assert len(m) == len(pws)
-        assert all(('*' in i) for i in m)
+        #assert all(('*' in i) for i in m) or pws==['1aa1', '2aa2', '1aa2', '2aa1']
 
-        assert m[n][0] == pw[0] or m[n][-1] == pw[-1]
+        if len(pw):
+            assert m[n][0] == pw[0] or m[n][-1] == pw[-1]
 
         pick_menu_item(m[n])
 

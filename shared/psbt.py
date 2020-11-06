@@ -63,6 +63,10 @@ def path_to_str(bin_path, prefix='m/', skip=1):
     return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
                             for i in bin_path[skip:])
 
+def seq_to_str(seq):
+    # take a set or list of numbers and show a tidy list in order.
+    return ', '.join(str(i) for i in sorted(seq))
+
 def _skip_n_objs(fd, n, cls):
     # skip N sized objects in the stream, for example a vectors of CTxIns
     # - returns starting position
@@ -148,7 +152,6 @@ def get_hash256(fd, poslen, hasher=None):
         return
 
     return tcc.sha256(rv.digest()).digest()
-
 
 
 class psbtProxy:
@@ -504,7 +507,7 @@ class psbtInputProxy(psbtProxy):
         #self.is_multisig = None
         #self.is_p2sh = False
 
-        #self.required_key = None
+        #self.required_key = None    # which of our keys will be used to sign input
         #self.scriptSig = None
         #self.amount = None
         #self.scriptCode = None      # only expected for segwit inputs
@@ -530,6 +533,9 @@ class psbtInputProxy(psbtProxy):
 
         # sighash, but we're probably going to ignore anyway.
         self.sighash = SIGHASH_ALL if self.sighash is None else self.sighash
+        if self.sighash != SIGHASH_ALL:
+            # - someday we will expand to other types, but not yet
+            raise FatalPSBTIssue('Can only do SIGHASH_ALL')
 
         if self.part_sig:
             # How complete is the set of signatures so far?
@@ -541,13 +547,6 @@ class psbtInputProxy(psbtProxy):
         else:
             # No signatures at all yet for this input (typical non multisig)
             self.fully_signed = False
-
-        if not self.fully_signed:
-            if not self.subpaths:
-                raise FatalPSBTIssue('We require subpaths to be specified in the PSBT')
-
-            if self.sighash != SIGHASH_ALL:
-                raise FatalPSBTIssue('Can only do SIGHASH_ALL')
 
         if self.utxo:
             # Important: they might be trying to trick us with an un-related
@@ -626,13 +625,21 @@ class psbtInputProxy(psbtProxy):
         # - which pubkey needed
         # - scriptSig value
         # - also validates redeem_script when present
-        addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
 
-        which_key = None
-        self.is_multisig = False
-        self.is_p2sh = False
         self.amount = utxo.nValue
 
+        if not self.subpaths or self.fully_signed:
+            # without xfp+path we will not be able to sign this input
+            # - okay if fully signed
+            # - okay if payjoin or other multi-signer (not multisig) txn
+            self.required_key = None
+            return
+
+        self.is_multisig = False
+        self.is_p2sh = False
+        which_key = None
+
+        addr_type, addr_or_pubkey, addr_is_segwit = utxo.get_address()
         if addr_is_segwit and not self.is_segwit:
             self.is_segwit = True
 
@@ -1261,14 +1268,16 @@ class psbtObject(psbtProxy):
                             if inp.required_key == None and not inp.fully_signed)
         if no_keys:
             # This is seen when you re-sign same signed file by accident (multisig)
-            self.warnings.append(('Not Signing',
-                'Some inputs are signed already, or we do not know the key: %r' % list(no_keys)))
+            # - case of len(no_keys)==num_inputs is handled by consider_keys
+            self.warnings.append(('Limited Signing',
+                'We are not signing these inputs, because we do not know the key: ' +
+                        seq_to_str(no_keys)))
 
         if self.presigned_inputs:
             # this isn't really even an issue for some complex usage cases
             self.warnings.append(('Partly Signed Already',
-                'Some input(s) provided were already completely signed by other parties: %r'
-                                % list(self.presigned_inputs)))
+                'Some input(s) provided were already completely signed by other parties: ' +
+                        seq_to_str(self.presigned_inputs)))
 
     def calculate_fee(self):
         # what miner's reward is included in txn?
@@ -1521,7 +1530,7 @@ class psbtObject(psbtProxy):
         # locktime
         rv.update(pack('<I', self.lock_time))
 
-        assert sighash_type == SIGHASH_ALL, "only SIGHASH_ALL supported"
+        assert sighash_type == SIGHASH_ALL      # "only SIGHASH_ALL supported"
         # SIGHASH_ALL==1 value
         rv.update(b'\x01\x00\x00\x00')
 
@@ -1538,7 +1547,7 @@ class psbtObject(psbtProxy):
         fd = self.fd
         old_pos = fd.tell()
 
-        assert sighash_type == SIGHASH_ALL, "only SIGHASH_ALL supported"
+        assert sighash_type == SIGHASH_ALL      # add support for others here
 
         if self.hashPrevouts is None:
             # First time thru, we'll need to hash up this stuff.
