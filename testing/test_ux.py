@@ -24,12 +24,13 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
     m = cap_menu()
     assert 'Ready To Sign' in m
     assert 'Secure Logout' in m
+    assert 'Address Explorer' in m
     assert 'Advanced' in m
     assert 'Settings' in m
-    if len(m) == 5:
+    if len(m) == 6:
         assert 'Passphrase' in m
     else:
-        assert len(m) == 4
+        assert len(m) == 5
 
     # check 4 lines of menu are shown right
     scr = cap_screen()
