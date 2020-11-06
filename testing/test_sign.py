@@ -32,8 +32,8 @@ def test_sign1(dev, need_keypress, finalize):
         while dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None) == None:
             pass
 
-    #assert 'None of the keys' in str(ee)
-    assert 'require subpaths' in str(ee)
+    assert 'None of the keys' in str(ee)
+    #assert 'require subpaths' in str(ee)
 
 
 @pytest.mark.parametrize('fn', [
@@ -42,6 +42,7 @@ def test_sign1(dev, need_keypress, finalize):
 	'data/truncated.psbt',
 	'data/unknowns-ins.psbt',
 	'data/unknowns-ins.psbt',
+	'data/dup_keys.psbt',
 ])
 def test_psbt_parse_fails(try_sign, fn):
 
@@ -54,7 +55,6 @@ def test_psbt_parse_fails(try_sign, fn):
 
 @pytest.mark.parametrize('fn', [
 	'data/2-of-2.psbt',
-	'data/dup_keys.psbt',
 	'data/filled_scriptsig.psbt',
 	'data/one-p2pkh-in.psbt',
 	'data/p2pkh+p2sh+outs.psbt',
@@ -1181,5 +1181,46 @@ def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd
     _, txn, txid = try_sign_microsd(psbt, finalize=not partial,
                                         encoding=encoding, del_after=del_after)
 
+@pytest.mark.parametrize('num_ins', [2,3,8])
+@pytest.mark.parametrize('num_outs', [1,2,8])
+def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_sign, cap_story):
+
+    # Try to simulate a PSBT that might be involved in a Payjoin (BIP-78 txn)
+
+    def hack(psbt):
+        # change an input to be "not ours" ... but with utxo details
+        psbt.inputs[num_ins-1].bip32_paths.clear()
+
+    psbt = fake_txn(num_ins, num_outs, segwit_in=True, psbt_hacker=hack)
+
+    open('debug/payjoin.psbt', 'wb').write(psbt)
+
+    ip = start_sign(psbt, finalize=False)
+    time.sleep(.1)
+    _, story = cap_story()
+
+    assert 'warning below' in story
+    assert 'Limited Signing' in story
+    assert 'Some inputs are signed already' in story
+    assert ': %s' % (num_ins-1) in story
+
+    txn = end_sign(True, finalize=False)
+
+@pytest.mark.parametrize('segwit', [False, True])
+def test_fully_unsigned(fake_txn, try_sign, segwit):
+
+    # A PSBT which is unsigned but all inputs lack keypaths
+
+    def hack(psbt):
+        # change all inputs to be "not ours" ... but with utxo details
+        for i in psbt.inputs:
+            i.bip32_paths.clear()
+
+    psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(psbt, accept=True)
+
+    assert 'None of the keys' in str(ee)
 
 # EOF

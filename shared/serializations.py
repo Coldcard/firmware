@@ -38,10 +38,10 @@ def hash160(s):
 def bytes_to_hex_str(s):
     return str(b2a_hex(s), 'ascii')
 
-SIGHASH_ALL = 1
-SIGHASH_NONE = 2
-SIGHASH_SINGLE = 3
-SIGHASH_ANYONECANPAY = 0x80
+SIGHASH_ALL = const(1)
+SIGHASH_NONE = const(2)
+SIGHASH_SINGLE = const(3)
+SIGHASH_ANYONECANPAY = const(0x80)
 
 # Serialization/deserialization tools
 def ser_compact_size(l):
