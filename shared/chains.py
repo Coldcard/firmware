@@ -150,16 +150,18 @@ class ChainsBase:
         # convert nValue from a transaction into human form.
         # - always be precise
         # - return (string, units label)
+        e8 = 100000000          # caution: don't use 1E8 here, that's a float
         if unpad:
-            if (val % 1E8):
+            if (val % e8):
                 # precise but unpadded
-                txt = ('%d.%08d' % (val // 1E8, val % 1E8)).rstrip('0')
+                txt = ('%d.%08d' % (val // e8, val % e8)).rstrip('0')
             else:
                 # round BTC amount, show no decimal
-                txt = '%d' % (val // 1E8)
+                txt = '%d' % (val // e8)
         else:
             # all the zeros
-            txt = '%d.%08d' % (val // 1E8, val % 1E8)
+            txt = '%d.%08d' % (val // e8, val % e8)
+
         return txt, cls.ctype
 
     @classmethod

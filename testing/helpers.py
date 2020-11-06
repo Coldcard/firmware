@@ -119,7 +119,7 @@ def parse_change_back(story):
     lines = story.split('\n')
     s = lines.index('Change back:')
     assert s > 3
-    assert 'XTN' in lines[s+1]
+    assert 'XTN' in lines[s+1] or 'BTC' in lines[s+1]
     val = Decimal(lines[s+1].split()[0])
     assert 'address' in lines[s+2]
     addrs = []

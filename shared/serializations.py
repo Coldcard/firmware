@@ -318,8 +318,8 @@ class COutPoint(object):
         r += struct.pack("<I", self.n)
         return r
 
-    def __repr__(self):
-        return "COutPoint(hash=%064x n=%i)" % (self.hash, self.n)
+    #def __repr__(self):
+    #    return "COutPoint(hash=%064x n=%i)" % (self.hash, self.n)
 
 
 class CTxIn(object):
@@ -343,10 +343,10 @@ class CTxIn(object):
         r += struct.pack("<I", self.nSequence)
         return r
 
-    def __repr__(self):
-        return "CTxIn(prevout=%s scriptSig=%s nSequence=%i)" \
-            % (repr(self.prevout), bytes_to_hex_str(self.scriptSig),
-               self.nSequence)
+    #def __repr__(self):
+    #    return "CTxIn(prevout=%s scriptSig=%s nSequence=%i)" \
+    #        % (repr(self.prevout), bytes_to_hex_str(self.scriptSig),
+    #           self.nSequence)
 
 
 class CTxOut(object):
@@ -406,9 +406,9 @@ class CTxOut(object):
                 and (self.scriptPubKey[0] == 0x21 or self.scriptPubKey[0] == 0x41) \
                 and self.scriptPubKey[-1] == 0xac
 
-    def __repr__(self):
-        return "CTxOut(nValue=%d.%08d scriptPubKey=%s)" \
-            % (self.nValue//1E8, self.nValue%1E8, b2a_hex(self.scriptPubKey))
+    #def __repr__(self):
+    #    return "CTxOut(nValue=%d scriptPubKey=%s)" \
+    #        % (self.nValue, b2a_hex(self.scriptPubKey))
 
 
 class CScriptWitness(object):
@@ -416,9 +416,9 @@ class CScriptWitness(object):
         # stack is a vector of strings
         self.stack = []
 
-    def __repr__(self):
-        return "CScriptWitness(%s)" % \
-               (",".join([bytes_to_hex_str(x) for x in self.stack]))
+    #def __repr__(self):
+    #    return "CScriptWitness(%s)" % \
+    #           (",".join([bytes_to_hex_str(x) for x in self.stack]))
 
     def is_null(self):
         if self.stack:
@@ -436,8 +436,8 @@ class CTxInWitness(object):
     def serialize(self):
         return ser_string_vector(self.scriptWitness.stack)
 
-    def __repr__(self):
-        return repr(self.scriptWitness)
+    #def __repr__(self):
+    #    return repr(self.scriptWitness)
 
     def is_null(self):
         return self.scriptWitness.is_null()
@@ -460,9 +460,9 @@ class CTxWitness(object):
             r += x.serialize()
         return r
 
-    def __repr__(self):
-        return "CTxWitness(%s)" % \
-               (';'.join([repr(x) for x in self.vtxinwit]))
+    #def __repr__(self):
+    #    return "CTxWitness(%s)" % \
+    #           (';'.join([repr(x) for x in self.vtxinwit]))
 
     def is_null(self):
         for x in self.vtxinwit:
@@ -569,9 +569,9 @@ class CTransaction(object):
                 return False
         return True
 
-    def __repr__(self):
-        return "CTransaction(nVersion=%i vin=%s vout=%s wit=%s nLockTime=%i)" \
-            % (self.nVersion, repr(self.vin), repr(self.vout), repr(self.wit), self.nLockTime)
+    #def __repr__(self):
+    #    return "CTransaction(nVersion=%i vin=%s vout=%s wit=%s nLockTime=%i)" \
+    #        % (self.nVersion, repr(self.vin), repr(self.vout), repr(self.wit), self.nLockTime)
 
 
 # EOF
