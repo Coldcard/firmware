@@ -1223,4 +1223,48 @@ def test_fully_unsigned(fake_txn, try_sign, segwit):
 
     assert 'None of the keys' in str(ee)
 
+@pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
+@pytest.mark.parametrize('segwit', [False, True])
+@pytest.mark.parametrize('outval', ['.5', '.788888', '0.92640866'])
+def test_render_outs(out_style, segwit, outval, fake_txn, start_sign, end_sign, dev):
+    # check how we render the value of outputs
+    # - works on simulator and connected USB real-device
+    xp = dev.master_xpub
+    oi = int(Decimal(outval) * int(1E8))
+
+    psbt = fake_txn(1, 2, dev.master_xpub, segwit_in=segwit, outvals=[oi, 1E8-oi],
+                        outstyles=[out_style], change_outputs=[1])
+
+    open('debug/render.psbt', 'wb').write(psbt)
+
+    # should be able to sign, but get warning
+
+    # use new feature to have Coldcard return the 'visualization' of transaction
+    start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+    story = end_sign(accept=None, expect_txn=False)
+
+    story = story.decode('ascii')
+
+    assert 'Network fee' in story
+    assert '- to address -' in story
+
+    # check rendered right
+    lines = story.split('\n')
+    amt = Decimal(lines[lines.index(' - to address -')-1].split(' ')[0])
+    assert amt == Decimal(outval)
+
+    val, addrs = parse_change_back(story)
+    assert val  == (1-Decimal(outval))
+    assert len(addrs) == 1
+
+    if out_style == 'p2pkh':
+        assert all((i[0] in 'mn1') for i in addrs)
+    elif out_style == 'p2wpkh':
+        pr = set(i[0:4] for i in addrs)
+        assert len(pr) == 1
+        assert pr.pop() in {'tb1q', 'bc1q'}
+    elif out_style == 'p2wpkh-p2sh':
+        assert len(set(i[0] for i in addrs)) == 1
+        assert addrs[0][0] in {'2', '3'}
+
 # EOF
