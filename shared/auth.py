@@ -939,8 +939,7 @@ Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % le
 
 
 def start_bip39_passphrase(pw):
-    # tell the local user the secret words, and then save to SPI flash
-    # USB caller has to come back and download encrypted contents.
+    # new passphrase has come in via USB. offer to switch to it.
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = NewPassphrase(pw)

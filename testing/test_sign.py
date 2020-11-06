@@ -309,10 +309,11 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         network = a2b_hex(resp['hex'])
 
         # assert resp['complete']
-        #print("Final txn: %r" % network)
+        print("Final txn: %r" % network)
         open('debug/finalized-by-btcd.txn', 'wb').write(network)
 
         # try to send it
+        assert 0
         txed = bitcoind.sendrawtransaction(B2A(network))
         print("Final txn hash: %r" % txed)
 
@@ -321,6 +322,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         #print("Final txn: %s" % B2A(signed))
         open('debug/finalized-by-cc.txn', 'wb').write(signed)
 
+        assert 0
         txed = bitcoind.sendrawtransaction(B2A(signed))
         print("Final txn hash: %r" % txed)
 
