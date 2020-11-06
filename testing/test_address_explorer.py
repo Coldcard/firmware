@@ -29,7 +29,6 @@ def mk_common_derivations():
 def goto_address_explorer(goto_home, pick_menu_item, need_keypress):
     def doit(click_idx=None):
         goto_home()
-        pick_menu_item('Advanced')
         pick_menu_item('Address Explorer')
 
         if click_idx is not None:
