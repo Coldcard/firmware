@@ -81,6 +81,9 @@ if '--xfp' in sys.argv:
     sim_defaults['xfp'] = unpack("<I", a2b_hex(xfp))[0]
     print("Override XFP: " + xfp2str(sim_defaults['xfp']))
 
+if '--mainnet' in sys.argv:
+    sim_defaults['chain'] = 'BTC'
+
 if '--seed' in sys.argv:
     # --seed "word1 word2 ... word24" => import that seed phrase at start
     from ustruct import unpack

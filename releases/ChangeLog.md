@@ -1,7 +1,10 @@
-## 3.1.10 - Nov 5, 2020
+## 3.1.10 - Nov ?, 2020
 
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
+- Enhancement: Promoted the address explorer to the main menu. It's useful!
+- Bugfix: zero-length BIP39 passphrase, when saved, would cause a crash when
+  restore attempted. We recommend longer passphrases, but fixed the issue.
 
 ## 3.1.9 - Aug 6, 2020
 
