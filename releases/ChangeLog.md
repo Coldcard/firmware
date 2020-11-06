@@ -1,5 +1,6 @@
+- Enhancement: Promoted the address explorer to the main menu. It's useful!
 - Bugfix: zero-length BIP39 passphrase, when saved, would cause a crash when
-  restore attempted. We recommend longer passphrases.
+  restore attempted. We recommend longer passphrases, but fixed the issue.
 
 ## 3.1.9 - Aug 6, 2020
 
