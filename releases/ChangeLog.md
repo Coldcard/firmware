@@ -1,4 +1,4 @@
-## 3.1.10 - Nov ?, 2020
+## 3.1.10 - Nov 9, 2020
 
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
@@ -8,8 +8,8 @@
 - Enhancement: Move the "blockchain" setting deep into the "Danger Zone" and add
   warning screen. This mitigates a concern raised by @benma (Marko Bencun) where
   an attacker could socially-engineer you to sign a transaction on Testnet, which
-  corresponds to UTXO on main net being stolen. Only developers should be using
-  Testnet anyway.
+  corresponds to real UTXO being stolen. Only developers should be using Testnet.
+- Bugfix: Display of amounts could be incorrect by a few sats in final digits.
 
 
 ## 3.1.9 - Aug 6, 2020
