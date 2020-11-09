@@ -2,8 +2,6 @@
 #
 # Search for an XFP collision.
 #
-# LATER: trivial to make XFP collisions: just modulate the chain-code, keep same secret exponent.
-#
 import os, hmac, hashlib
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.encoding import from_bytes_32, to_bytes_32
@@ -23,6 +21,7 @@ def search(target_xfp):
     sec_exp = k._secret_exponent + (pid * int(1e40))
     
     i = 0
+    last_xfp = None
     while 1:
         i += 1
         sec_exp += 1
@@ -38,8 +37,16 @@ def search(target_xfp):
             assert b._secret_exponent == sec_exp
             assert xfp == chk, (xfp,chk)
 
+        assert xfp != last_xfp, 'repeat xfp!'
+        last_xfp = xfp
+
         if xfp == target_xfp:
-            print(f"\n\nsec_exp = {sec_exp}\n\n")
+            print(f"\n\nFOUND: sec_exp = {sec_exp}\n")
+            b = BIP32Node(netcode='BTC', chain_code=bytes(32), secret_exponent=sec_exp)
+            chk = b.fingerprint()
+            assert b._secret_exponent == sec_exp
+            assert xfp == chk, (xfp,chk)
+            print(b.hwif(), end='\n\n')
             return
 
         if not (i % 27):
