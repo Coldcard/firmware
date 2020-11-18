@@ -8,7 +8,7 @@
 import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
 from ux import ux_enter_number
-from utils import imported, pretty_short_delay
+from utils import imported, pretty_short_delay, problem_file_line
 from main import settings
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
@@ -1524,7 +1524,6 @@ async def import_multisig(*a):
 
     fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
                                     min_size=100, max_size=20*200, taster=possible)
-
     if not fn: return
 
     try:
@@ -1540,7 +1539,9 @@ async def import_multisig(*a):
         possible_name = (fn.split('/')[-1].split('.'))[0]
         maybe_enroll_xpub(config=data, name=possible_name)
     except Exception as e:
-        await ux_show_story('Failed to import.\n\n\n'+str(e))
+        import sys
+        sys.print_exception(e)
+        await ux_show_story('Failed to import.\n\n\n'+problem_file_line(e))
 
 async def start_hsm_menu_item(*a):
     from hsm_ux import start_hsm_approval 

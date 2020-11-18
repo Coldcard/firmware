@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Transaction Signing. Important.
 #
@@ -313,7 +312,6 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         open('debug/finalized-by-btcd.txn', 'wb').write(network)
 
         # try to send it
-        assert 0
         txed = bitcoind.sendrawtransaction(B2A(network))
         print("Final txn hash: %r" % txed)
 
@@ -322,7 +320,6 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         #print("Final txn: %s" % B2A(signed))
         open('debug/finalized-by-cc.txn', 'wb').write(signed)
 
-        assert 0
         txed = bitcoind.sendrawtransaction(B2A(signed))
         print("Final txn hash: %r" % txed)
 
@@ -1201,7 +1198,7 @@ def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_
 
     assert 'warning below' in story
     assert 'Limited Signing' in story
-    assert 'Some inputs are signed already' in story
+    assert 'because we do not know the key' in story
     assert ': %s' % (num_ins-1) in story
 
     txn = end_sign(True, finalize=False)

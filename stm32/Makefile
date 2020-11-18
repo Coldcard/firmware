@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Build micropython for stm32 (an ARM processor). Also handles signing of resulting firmware images.
 #
@@ -29,7 +28,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 3.1.10
+VERSION_STRING = 3.2.1
 
 #
 # Sign and merge various parts

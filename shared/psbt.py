@@ -3,19 +3,19 @@
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
-from serializations import ser_compact_size, deser_compact_size, hash160, hash256
-from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
-from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
-from serializations import ser_string
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A
-import tcc, stash, gc, history
+from utils import xfp2str, B2A, keypath_to_str, problem_file_line
+import tcc, stash, gc, history, sys
 from uio import BytesIO
 from sffile import SizerFile
 from sram2 import psbt_tmp256
 from multisig import MultisigWallet, MAX_SIGNERS, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
+from serializations import ser_compact_size, deser_compact_size, hash160, hash256
+from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
+from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
+from serializations import ser_string
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -58,10 +58,6 @@ def read_varint(v):
     elif nit == 255:
         return unpack_from("<Q", v, 1)[0]
     return nit
-
-def path_to_str(bin_path, prefix='m/', skip=1):
-    return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
-                            for i in bin_path[skip:])
 
 def seq_to_str(seq):
     # take a set or list of numbers and show a tidy list in order.
@@ -169,7 +165,7 @@ class psbtProxy:
     def __getattr__(self, nm):
         if nm in self.blank_flds:
             return None
-        raise AttributeError
+        raise AttributeError(nm)
 
     def parse(self, fd):
         self.fd = fd
@@ -260,8 +256,7 @@ class psbtProxy:
 
             # promote to a list of ints
             v = self.get(self.subpaths[pk])
-            here = list(unpack_from('<I', v, off)[0] for off in range(0, vl, 4))
-            assert len(here) == vl // 4
+            here = list(unpack_from('<%dI' % (vl//4), v))
 
             # update in place
             self.subpaths[pk] = here
@@ -269,8 +264,8 @@ class psbtProxy:
             if here[0] == my_xfp:
                 num_ours += 1
             else:
-                # Address that isn't based on my seed; might be another leg in a p2sh
-                # and that's okay, or an input we're not supposed to be able to sign
+                # Address that isn't based on my seed; might be another leg in a p2sh,
+                # or an input we're not supposed to be able to sign... and that's okay.
                 pass
 
         self.num_our_keys = num_ours
@@ -283,7 +278,7 @@ class psbtProxy:
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
-                    'is_change', 'is_p2sh_change', 'num_our_keys')
+                    'is_change', 'num_our_keys')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -295,9 +290,6 @@ class psbtOutputProxy(psbtProxy):
 
         # this flag is set when we are assuming output will be change (same wallet)
         #self.is_change = False
-
-        # output is change into same multisig wallet
-        #self.is_p2sh_change = False
 
         self.parse(fd)
 
@@ -406,8 +398,8 @@ class psbtOutputProxy(psbtProxy):
 
                 # it cannot be change if it doesn't precisely match our multisig setup
                 if not active_multisig:
-                    # might be a p2sh output for another wallet that isn't us
-                    # not fraud, just an output with more details than we need.
+                    # - might be a p2sh output for another wallet that isn't us
+                    # - not fraud, just an output with more details than we need.
                     self.is_change = False
                     return
 
@@ -422,9 +414,6 @@ class psbtOutputProxy(psbtProxy):
                 except BaseException as exc:
                     raise FraudulentChangeOutput(out_idx, 
                                 "P2WSH or P2SH change output script: %s" % exc)
-
-                # mark pubkeys as already checked.
-                self.is_p2sh_change = True
 
                 if is_segwit:
                     # p2wsh case
@@ -715,23 +704,25 @@ class psbtInputProxy(psbtProxy):
 
             #print("redeem: %s" % b2a_hex(redeem_script))
             M, N = disassemble_multisig_mn(redeem_script)
-            xfps = [lst[0] for lst in self.subpaths.values()]
+            xfp_paths = list(self.subpaths.values())
+            xfp_paths.sort()
 
             if not psbt.active_multisig:
                 # search for multisig wallet
-                wal = MultisigWallet.find_match(M, N, xfps)
-                if wal < 0:
+                wal = MultisigWallet.find_match(M, N, xfp_paths)
+                if not wal:
                     raise FatalPSBTIssue('Unknown multisig wallet')
 
-                psbt.active_multisig = MultisigWallet.get_by_idx(wal)
+                psbt.active_multisig = wal
             else:
                 # check consistent w/ already selected wallet
-                psbt.active_multisig.assert_matching(M, N, xfps)
+                psbt.active_multisig.assert_matching(M, N, xfp_paths)
 
             # validate redeem script, by disassembling it and checking all pubkeys
             try:
                 psbt.active_multisig.validate_script(redeem_script, subpaths=self.subpaths)
             except BaseException as exc:
+                sys.print_exception(exc)
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
 
         if not which_key and DEBUG:
@@ -1019,18 +1010,27 @@ class psbtObject(psbtProxy):
     async def handle_xpubs(self):
         # Lookup correct wallet based on xpubs in globals
         # - only happens if they volunteered this 'extra' data
+        # - do not assume multisig
         assert not self.active_multisig
 
-        xfps = [unpack_from('<I', k)[0] for k,_ in self.xpubs]
-        if self.my_xfp not in xfps:
+        xfp_paths = []
+        has_mine = 0
+        for k,_ in self.xpubs:
+            h = unpack_from('<%dI' % (len(k)//4), k, 0)
+            assert len(h) >= 1
+            xfp_paths.append(h)
+
+            if h[0] == self.my_xfp:
+                has_mine += 1
+
+        if not has_mine:
             raise FatalPSBTIssue('My XFP not involved')
 
-        candidates = MultisigWallet.find_candidates(xfps)
+        candidates = MultisigWallet.find_candidates(xfp_paths)
 
-        match_idx = -1
         if len(candidates) == 1:
-            # exact match (by xfp set) .. normal case
-            self.active_multisig = MultisigWallet.get_by_idx(candidates[0])
+            # exact match (by xfp+deriv set) .. normal case
+            self.active_multisig = candidates[0]
         else:
             # don't want to guess M if not needed, but we need it
             M, N = self.guess_M_of_N()
@@ -1041,13 +1041,15 @@ class psbtObject(psbtProxy):
                 # - too slow to re-derive it here, so nothing more to validate at this point
                 return
 
-            assert N == len(xfps) 
+            assert N == len(xfp_paths) 
 
-            if candidates:
-                # maybe narrowed down to single match now
-                match_idx = MultisigWallet.find_match(M, N, xfps)
-                if match_idx != -1:
-                    self.active_multisig = MultisigWallet.get_by_idx(match_idx)
+            for c in candidates:
+                if c.M == M:
+                    assert c.N == N
+                    self.active_multisig = c
+                    break
+
+        del candidates
 
         if not self.active_multisig:
             # Maybe create wallet, for today, forever, or fail, etc.
@@ -1063,6 +1065,16 @@ class psbtObject(psbtProxy):
                     raise FatalPSBTIssue("Refused to import new wallet")
 
             self.active_multisig = proposed
+        else:
+            # Validate good match here. The xpubs must be exactly right, but
+            # we're going to use our own values from setup time anyway and not trusting
+            # new values without user interaction.
+            # Check:
+            # - chain codes match what we have stored already
+            # - pubkey vs. path will be checked later
+            # - xfp+path already checked above when selecting wallet
+            # Any issue here is a fraud attempt in some way, not innocent
+            self.active_multisig.validate_psbt_xpubs(self.xpubs)
 
         if not self.active_multisig:
             # not clear if an error... might be part-way to importing, and
@@ -1070,9 +1082,6 @@ class psbtObject(psbtProxy):
             # we should not reach this point (ie. raise something to abort signing)
             return
 
-        # Could validate good match here? The xpubs must be exactly right, but
-        # we're going to use our own values from setup time anyway and not trusting
-        # these values without user interaction.
 
     async def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
@@ -1194,8 +1203,8 @@ class psbtObject(psbtProxy):
                     continue
 
                 probs.append("Output#%d: %s: %s not %s/{0~1}%s/{0~%d}%s expected" 
-                        % (nout, iss, path_to_str(path, skip=0),
-                            path_to_str(path_prefix, skip=0),
+                        % (nout, iss, keypath_to_str(path, skip=0),
+                            keypath_to_str(path_prefix, skip=0),
                             "'" if hard_pattern[-2] else "",
                             idx_max, "'" if hard_pattern[-1] else "",
                           ))
@@ -1370,8 +1379,7 @@ class psbtObject(psbtProxy):
             # Double check the change outputs are right. This is slow, but critical because
             # it detects bad actors, not bugs or mistakes.
             # - equivilent check already done for p2sh outputs when we re-built the redeem script
-            change_outs = [n for n,o in enumerate(self.outputs) 
-                                if o.is_change and not o.is_p2sh_change]
+            change_outs = [n for n,o in enumerate(self.outputs) if o.is_change]
             if change_outs:
                 dis.fullscreen('Change Check...')
 
@@ -1379,17 +1387,27 @@ class psbtObject(psbtProxy):
                     # only expecting single case, but be general
                     dis.progress_bar_show(count / len(change_outs))
 
-                    for pubkey, subpath in self.outputs[out_idx].subpaths.items():
-                        # derive it
-                        skp = path_to_str(subpath)
+                    oup = self.outputs[out_idx]
+
+                    good = 0
+                    for pubkey, subpath in oup.subpaths.items():
+                        if subpath[0] != self.my_xfp:
+                            # for multisig, will be N paths, and exactly one will
+                            # be our key. For single-signer, should always be my XFP
+                            continue
+                            
+                        # derive actual pubkey from private
+                        skp = keypath_to_str(subpath)
                         node = sv.derive_path(skp)
 
                         # check the pubkey of this BIP32 node
-                        pu = node.public_key()
-                        if pu != pubkey:
-                            raise FraudulentChangeOutput(out_idx, 
-                                      "Deception regarding change output. "
-                                      "BIP32 path doesn't match actual address.")
+                        if pubkey == node.public_key():
+                            good += 1
+
+                    if not good:
+                        raise FraudulentChangeOutput(out_idx, 
+                              "Deception regarding change output. "
+                              "BIP32 path doesn't match actual address.")
 
             # progress
             dis.fullscreen('Signing...')
@@ -1430,7 +1448,7 @@ class psbtObject(psbtProxy):
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
                         # get node required
-                        skp = path_to_str(inp.subpaths[which_key])
+                        skp = keypath_to_str(inp.subpaths[which_key])
                         node = sv.derive_path(skp, register=False)
 
                         # expensive test, but works... and important
@@ -1453,7 +1471,7 @@ class psbtObject(psbtProxy):
                         continue
 
                     # get node required
-                    skp = path_to_str(inp.subpaths[which_key])
+                    skp = keypath_to_str(inp.subpaths[which_key])
                     node = sv.derive_path(skp, register=False)
 
                     # expensive test, but works... and important

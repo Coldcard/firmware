@@ -1,7 +1,6 @@
 # Autogen'ed file, don't edit. See bootloader/sigheader.h for original
 
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 
 # Our simple firmware header.
 # Although called a header, this data is placed into the middle of the binary.

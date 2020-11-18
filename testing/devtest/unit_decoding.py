@@ -1,3 +1,5 @@
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 from utils import HexStreamer, Base64Streamer
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex

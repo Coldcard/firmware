@@ -1,3 +1,5 @@
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # unit test for address decoding from various types of CTxOuts
 from h import a2b_hex, b2a_hex
 from psbt import psbtObject

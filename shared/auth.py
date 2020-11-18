@@ -1043,16 +1043,13 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
         raise AssertionError('Unknown/unsupported addr format')
 
     # Search for matching multisig wallet that we must already know about
-    xfps = [i[0] for i in xfp_paths]
+    xs = list(xfp_paths)
+    xs.sort()
 
-    idx = MultisigWallet.find_match(M, N, xfps)
-    assert idx >= 0, 'Multisig wallet with those fingerprints not found'
-
-    ms = MultisigWallet.get_by_idx(idx)
-    assert ms
+    ms = MultisigWallet.find_match(M, N, xs)
+    assert ms, 'Multisig wallet with those fingerprints not found'
     assert ms.M == M
     assert ms.N == N
-
 
     UserAuthorizedAction.check_busy(ShowAddressBase)
     UserAuthorizedAction.active_request = ShowP2SHAddress(ms, addr_format, xfp_paths, witdeem_script)

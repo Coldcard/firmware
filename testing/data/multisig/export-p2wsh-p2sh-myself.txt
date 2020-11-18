@@ -2,8 +2,9 @@
 #
 Name: CC-2-of-4
 Policy: 2 of 4
-Derivation: m/48'/1'/0'/1'
 Format: P2WSH-P2SH
+
+Derivation: m/48'/1'/0'/1'
 
 0F056943: tpubDF2rnouQaaYrUEy2JM1YD3RFzew4onawGM4X2Re67gguTf5CbHonBRiFGe3Xjz7DK88dxBFGf2i7K1hef3PM4cFKyUjcbJXddaY9F5tJBoP
 6BA6CFD0: tpubDFcrvj5n7gyatVbr8dHCUfHT4CGvL8hREBjtxc4ge7HZgqNuPhFimPRtVg6fRRwfXiQthV9EBjNbwbpgV2VoQeL1ZNXoAWXxP2L9vMtRjax

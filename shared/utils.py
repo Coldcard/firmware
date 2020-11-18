@@ -247,6 +247,30 @@ def cleanup_deriv_path(bin_path, allow_star=False):
             
     return 'm/' + '/'.join(parts)
 
+def keypath_to_str(bin_path, prefix='m/', skip=1):
+    # take binary path, like from a PSBT and convert into text notation
+    return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
+                            for i in bin_path[skip:])
+
+def str_to_keypath(xfp, path):
+    # Take a numeric xfp, and string derivation, and make a list of numbers,
+    # like occurs in a PSBT.
+    # - no error checking ehre
+
+    rv = [xfp]
+    for i in path.split('/'):
+        if i == 'm': continue
+        if not i: continue      # trailing or duplicated slashes
+
+        if i[-1] == "'":
+            here = int(i[:-1]) | 0x80000000
+        else:
+            here = int(i)
+
+        rv.append(here)
+
+    return rv
+
 def match_deriv_path(patterns, path):
     # check for exact string match, or wildcard match (star in last position)
     # - both args must be cleaned by cleanup_deriv_path() already

@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # BIP39 seed word encryption
 #

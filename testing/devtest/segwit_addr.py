@@ -1,3 +1,5 @@
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # this will run on the simulator
 # run manually with:
 #   execfile('../../testing/devtest/segwit_addr.py')
