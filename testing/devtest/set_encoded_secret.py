@@ -1,3 +1,5 @@
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # load up the simulator w/ indicated encoded secret. could be xprv/words/etc.
 import tcc, main
 from sim_settings import sim_defaults

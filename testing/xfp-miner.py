@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 #
-# Search for an XFP collision.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
+# Search for an XFP collision. Needs to be much faster.
 #
 import os, hmac, hashlib
 from pycoin.key.BIP32Node import BIP32Node

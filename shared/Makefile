@@ -1,3 +1,5 @@
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # Just a little helper for CK devs ... so we can do "make up" in this dir.
 
 all:

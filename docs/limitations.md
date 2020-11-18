@@ -63,6 +63,8 @@
 - we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
 - change outputs (indicated with paths, scripts in output section) must correspond to
   the active multisig wallet, and cannot be used to describe an unrelated (multisig) wallet.
+- derivation path for each cosigner must be known and consistent with PSBT
+- fixed: XFP values (fingerprints) for each of the co-signers must be unique (limitation removed)
 
 # SIGHASH types
 

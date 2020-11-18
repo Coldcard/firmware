@@ -1,3 +1,5 @@
+# (c) Copyright 2020 by Coinkite Inc. All rights reserved.
+#
 # Unit test for shared/backups.py
 #
 # this will run on the simulator only

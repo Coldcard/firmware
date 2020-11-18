@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 #
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Simulate the hardware of a Coldcard. Particularly the OLED display (128x32) and 
 # the numberpad. 

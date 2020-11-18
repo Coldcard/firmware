@@ -40,7 +40,7 @@ import uasyncio.core as asyncio
 
 loop = asyncio.get_event_loop()
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018.\n")
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2020.\n")
 
 # Setup OLED and get something onto it.
 from display import Display

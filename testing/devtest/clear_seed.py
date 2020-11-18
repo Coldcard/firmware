@@ -1,3 +1,5 @@
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # quickly main wipe seed; don't install anything new
 from main import pa, settings, numpad, dis
 from pincodes import AE_SECRET_LEN, PA_IS_BLANK

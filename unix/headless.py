@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 #
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Simulate the hardware of a Coldcard.. except not: be headless.
 # - does simulate USB (altho that's not here, but part of mpy code for simulator)
