@@ -528,6 +528,7 @@ def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
         simulator.check_mitm()
 
         #print("sim xfp: 0x%08x" % simulator.master_fingerprint)
+        return simulator.master_fingerprint
 
     yield doit
 
