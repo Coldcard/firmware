@@ -5,12 +5,13 @@
 - Enhancement: Promoted the address explorer to the main menu. It's useful!
 - Bugfix: zero-length BIP39 passphrase, when saved, would cause a crash when
   restore attempted. We recommend longer passphrases, but fixed the issue.
-- Enhancement: Move the "blockchain" setting deep into the "Danger Zone" and add
+- Enhancement: Move the "blockchain" setting deeper into the "Danger Zone" and add
   warning screen. This mitigates a concern raised by @benma (Marko Bencun) where
   an attacker could socially-engineer you to sign a transaction on Testnet, which
   corresponds to real UTXO being stolen. Only developers should be using Testnet.
 - Bugfix: Display of amounts could be incorrect by a few sats in final digits.
-
+- Bugfix: Incorrect digest method picked when P2WSH-P2SH incorrectly identified
+  as plain P2SH.
 
 ## 3.1.9 - Aug 6, 2020
 
