@@ -10,6 +10,8 @@
   an attacker could socially-engineer you to sign a transaction on Testnet, which
   corresponds to real UTXO being stolen. Only developers should be using Testnet.
 - Bugfix: Display of amounts could be incorrect by a few sats in final digits.
+- Bugfix: Incorrect digest method picked when P2WSH-P2SH incorrectly identified
+  as plain P2SH.
 
 
 ## 3.1.9 - Aug 6, 2020
