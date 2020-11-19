@@ -675,6 +675,11 @@ class psbtInputProxy(psbtProxy):
                 # multiple keys involved, we probably can't do the finalize step
                 self.is_multisig = True
 
+            if self.witness_script and not self.is_segwit and self.is_multisig:
+                # bugfix
+                addr_type = 'p2wsh-p2sh'
+                self.is_segwit = True
+
         elif addr_type == 'p2pkh':
             # input is hash160 of a single public key
             self.scriptSig = utxo.scriptPubKey
