@@ -3,7 +3,7 @@
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
 - Enhancement: Promoted the address explorer to the main menu–It's useful! 
-  (credit by @matt_odell)
+  (credit to @matt_odell)
 - Bugfix: zero-length BIP39 passphrase, when saved, would cause a crash when
   restore attempted. We recommend longer passphrases, but fixed the issue.
 - Enhancement: Move the "blockchain" setting deeper into the "Danger Zone" and add
