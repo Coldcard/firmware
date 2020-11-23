@@ -1,11 +1,18 @@
-## 3.2.0 - Nov 19, 2020
+## 3.2.0 - Nov XXX, 2020
 
-- Major Multisig improvements: 
-  Tracks derivation path for each co-signer and no longer assumes
+**BETA** Version --- Please test and report issues! Continue to use v3.1.9 for day-to-day applications.
+
+- Major Multisig improvements!
+- MS Enhancement: Tracks derivation path for each co-signer and no longer assumes
   they all use a shared derivation prefix. Blocks multiple instances of same XFP in the wallet
   (not supported anymore, bad idea). Various displays updated to reflect derivation path change.
-  Text file import: "Derivation:" line can be repeated, applies too all following xpubs.
-  Show Ypub/Zpub formated values from SLIP-132 when viewing details of wallet.
+  Text file import: "Derivation:" line can be repeated, applies to all following xpubs.
+- MS Enhancement: Show Ypub/Zpub formated values from SLIP-132 when viewing details of wallet.
+- MS Enhancement: standardize on "p2sh-p2wsh" nomenclature, rather than "p2wsh-p2sh", thanks
+  to [@humanumbrella](https://github.com/humanumbrella). For airgaped multisig wallet 
+  creation, you must use same firmware verison on all Coldcards or this change makes trouble.
+- MS Enhancement: Address type (p2wsh-p2sh, p2sh, p2wsh) is captured from MS wallets created
+  by PSBT file import.
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
 - Enhancement: Promoted the address explorer to the main menu. It's useful!
@@ -16,8 +23,7 @@
   an attacker could socially-engineer you to sign a transaction on Testnet, which
   corresponds to real UTXO being stolen. Only developers should be using Testnet.
 - Bugfix: Display of amounts could be incorrect by a few sats in final digits.
-- Bugfix: Incorrect digest method picked when P2WSH-P2SH incorrectly identified
-  as plain P2SH.
+- Bugfix: Incorrect digest method picked when P2SH-P2WSH incorrectly identified as plain P2SH.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020

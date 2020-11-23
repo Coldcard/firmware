@@ -102,7 +102,8 @@ class MultisigWallet:
     FORMAT_NAMES = [
         (AF_P2SH, 'p2sh'),
         (AF_P2WSH, 'p2wsh'),
-        (AF_P2WSH_P2SH, 'p2wsh-p2sh'),
+        (AF_P2WSH_P2SH, 'p2sh-p2wsh'),      # preferred
+        (AF_P2WSH_P2SH, 'p2wsh-p2sh'),      # obsolete (now an alias)
     ]
 
     def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC'):
@@ -114,7 +115,7 @@ class MultisigWallet:
         self.chain_type = chain_type or 'BTC'
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
-        self.addr_fmt = addr_fmt            # not clear how useful that is.
+        self.addr_fmt = addr_fmt            # address format for wallet
 
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
@@ -186,7 +187,7 @@ class MultisigWallet:
         return rv
 
     @classmethod
-    def find_match(cls, M, N, xfp_paths):
+    def find_match(cls, M, N, xfp_paths, addr_fmt=None):
         # Find index of matching wallet. Don't de-serialize more than needed.
         # - xfp_paths is list of lists: [xfp, *path] like in psbt files
         # - M and N must be known
@@ -204,6 +205,10 @@ class MultisigWallet:
 
             if set(f[0] for f in xpubs) != fingerprints: continue
 
+            if addr_fmt is not None:
+                af = opts.get('ft', AF_P2SH)
+                if af != addr_fmt: continue
+
             rv = cls.deserialize(rec, idx)
             if rv.matching_subpaths(xfp_paths):
                 return rv
@@ -212,7 +217,7 @@ class MultisigWallet:
         return None
 
     @classmethod
-    def find_candidates(cls, xfp_paths, addr_fmt=None):
+    def find_candidates(cls, xfp_paths, addr_fmt=None, M=None):
         # Return a list of matching wallets for various M values.
         # - xpfs_paths hsould already be sorted
         # - returns set of matches, of any M value
@@ -226,6 +231,7 @@ class MultisigWallet:
         for idx, rec in enumerate(lst):
             name, m_of_n, xpubs, opts = rec
             if m_of_n[1] != N: continue
+            if M is not None and m_of_n[0] != M: continue
 
             if addr_fmt is not None:
                 af = opts.get('ft', AF_P2SH)
@@ -332,8 +338,7 @@ class MultisigWallet:
             self.storage_idx = len(v)
             v.append(obj)
         else:
-            # update: no provision for changing fingerprints
-            assert sorted(k for k,v in v[self.storage_idx][2]) == self.xfps
+            # update in place
             v[self.storage_idx] = obj
 
         settings.set('multisig', v)
@@ -353,14 +358,26 @@ class MultisigWallet:
 
     def has_similar(self):
         # check if we already have a saved duplicate to this proposed wallet
-        # - return (name_change, diff_items) where:
+        # - return (name_change, diff_items, count_similar) where:
         #   - name_change is existing wallet that has exact match, different name
         #   - diff_items: text list of similarity/differences
+        #   - count_similar: same N, same xfp+paths
 
-        similar = MultisigWallet.find_candidates(list(self.xfp_paths.values()))
+        lst = list(self.xfp_paths.values())
+        c = self.find_match(self.M, self.N, lst, addr_fmt=self.addr_fmt)
+        if c:
+            # All details are same: M/N, paths, addr fmt
+            if self.xpubs != c.xpubs:
+                return None, ['xpubs'], 0
+            elif self.name == c.name:
+                return None, [], 1
+            else:
+                return c, ['name'], 0
+
+        similar = MultisigWallet.find_candidates(lst)
         if not similar:
-            # no matches
-            return None, []
+            # no matches, good.
+            return None, [], 0
 
         # See if the xpubs are changing, which is risky... other differences like
         # name are okay.
@@ -371,14 +388,12 @@ class MultisigWallet:
                 diffs.add('M differs')
             if c.addr_fmt != self.addr_fmt:
                 diffs.add('address type')
-            if c.name != self.name and c.matching_subpaths(c):
+            if c.name != self.name:
                 diffs.add('name')
-                name_diff = c
+            if c.xpubs != self.xpubs:
+                diffs.add('xpubs')
 
-        if name_diff and len(diffs) == 1:
-            return name_diff, []
-
-        return None, diffs
+        return None, diffs, len(similar)
 
     def delete(self):
         # remove saved entry
@@ -761,6 +776,35 @@ class MultisigWallet:
             print('%s: %s' % (xfp2str(xfp), val), file=fp)
 
     @classmethod
+    def guess_addr_fmt(cls, npath):
+        # Assuming  the bips are being respected, what address format will be used,
+        # based on indicated numeric subkey path observed.
+        # - return None if unsure, no errors
+        #
+        #( "m/45'", 'p2sh', AF_P2SH), 
+        #( "m/48'/{coin}'/0'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        #( "m/48'/{coin}'/0'/2'", 'p2wsh', AF_P2WSH)
+
+        top = npath[0] & 0x7fffffff
+        if top == npath[0]:
+            # non-hardened top?
+            return
+
+        if top == 45:
+            return AF_P2SH
+
+        if top == 48:
+            if len(npath) < 4: return
+
+            last = npath[3] & 0x7fffffff
+            if last == 1:
+                return AF_P2WSH_P2SH
+            if last == 2:
+                return AF_P2WSH
+
+            
+
+    @classmethod
     def import_from_psbt(cls, M, N, xpubs_list):
         # given the raw data fro PSBT global header, offer the user
         # the details, and/or bypass that all and just trust the data.
@@ -793,15 +837,45 @@ class MultisigWallet:
                                                         expect_chain, my_xfp, xpubs)
             if is_mine:
                 has_mine += 1
+                addr_fmt = cls.guess_addr_fmt(path)
 
         assert has_mine == 1         # 'my key not included'
 
         name = 'PSBT-%d-of-%d' % (M, N)
-        ms = cls(name, (M, N), xpubs, chain_type=expect_chain)
+        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH)
 
         # may just keep just in-memory version, no approval required, if we are
         # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
         return ms, (trust_mode != TRUST_PSBT)
+
+    def validate_psbt_xpubs(self, xpubs_list):
+        # The xpubs provided in PSBT must be exactly right?
+        # But we're going to use our own values from setup time anyway.
+        # Check:
+        # - chain codes match what we have stored already
+        # - pubkey vs. path will be checked later
+        # - xfp+path already checked when selecting this wallet
+        # Any issue here is a fraud attempt in some way, not innocent
+        # but it would not have tricked us, perhaps some other signer.
+        import tcc
+        assert len(xpubs_list) == self.N
+
+        for k, v in xpubs_list:
+            xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
+            xpub = tcc.codecs.b58_encode(v)
+
+            tmp = []
+            self.check_xpub(xfp, xpub, keypath_to_str(path, skip=0), self.chain_type, 0, tmp)
+            (_, deriv, xpub_reserialized) = tmp[0]
+
+            # find in our records.
+            for (x_xfp, x_deriv, x_xpub) in self.xpubs: 
+                if x_xfp != xfp: continue
+                assert deriv == x_deriv
+                assert xpub_reserialized == x_xpub
+                break
+            else:
+                assert False            # not reachable, since we picked wallet based on xfps
 
     def format_deriv_paths(self):
         # show either single common derivation path, or indented list of them
@@ -828,17 +902,21 @@ class MultisigWallet:
         else:
             exp = '{M} signatures, from {N} possible co-signers, will be required to approve spends.'.format(M=M, N=N)
 
-        # Look for duplicate case.
-        name_change, diff_items = self.has_similar()
+        # Look for duplicate stuff
+        name_change, diff_items, num_dups = self.has_similar()
 
+        is_dup = False
         if name_change:
             story = 'Update NAME only of existing multisig wallet?'
         elif diff_items:
             # Concern here is overwrite when similar, but we don't overwrite anymore, so 
             # more of a warning about funny business.
             story = '''\
-WARNING: This new wallet is very similar to an existing wallet, but will NOT replace it. Consider deleting previous wallet first. Differences: \
+WARNING: This new wallet is similar to an existing wallet, but will NOT replace it. Consider deleting previous wallet first. Differences: \
 ''' + ', '.join(diff_items)
+        elif num_dups:
+            story = 'Duplicate wallet. All details are the same as existing!'
+            is_dup = True
         else:
             story = 'Create new multisig wallet?'
 
@@ -858,9 +936,10 @@ Addresses:
 Derivation:
   {deriv}
 
-Press (1) to see extended public keys, \
-OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp, deriv=ds, 
+Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, deriv=ds, 
                                         at=self.render_addr_fmt(self.addr_fmt))
+
+        story += 'OK to approve, X to cancel.' if not is_dup else 'X to cancel'
 
         ux_clear_keys(True)
         while 1:
@@ -870,10 +949,12 @@ OK to approve, X to cancel.'''.format(M=M, N=N, name=self.name, exp=exp, deriv=d
                 await self.show_detail(verbose=False)
                 continue
 
-            if ch == 'y':
+            if ch == 'y' and not is_dup:
                 # save to nvram, may raise MultisigOutOfSpace
                 if name_change:
                     name_change.delete()
+
+                assert self.storage_idx == -1
                 self.commit()
                 await ux_dramatic_pause("Saved.", 2)
             break
@@ -901,7 +982,7 @@ Addresses:
 
             if self.addr_fmt != AF_P2SH:
                 # SLIP-132 format [yz]pubs here when not p2sh mode.
-                # - has some info as proper bitcoin serialization, but useful still
+                # - has same info as proper bitcoin serialization, but looks much different
                 node = self.chain.deserialize_node(xpub, AF_P2SH)
                 xp = self.chain.serialize_public(node, self.addr_fmt)
 
@@ -1092,7 +1173,7 @@ The public keys exported are:
 
 BIP45:
    m/45'
-P2WSH-P2SH:
+P2SH-P2WSH:
    m/48'/{coin}'/0'/1'
 P2WSH:
    m/48'/{coin}'/0'/2'
@@ -1112,7 +1193,7 @@ OK to continue. X to abort.
                 with stash.SensitiveValues() as sv:
                     for deriv, name, fmt in [
                         ( "m/45'", 'p2sh', AF_P2SH), 
-                        ( "m/48'/{coin}'/0'/1'", 'p2wsh_p2sh', AF_P2WSH_P2SH),
+                        ( "m/48'/{coin}'/0'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
                         ( "m/48'/{coin}'/0'/2'", 'p2wsh', AF_P2WSH)
                     ]:
 
@@ -1316,13 +1397,13 @@ Insert SD card with exported XPUB files from at least one other \
 Coldcard. A multisig wallet will be constructed using those keys and \
 this device.
 
-Default is P2WSH addresses (segwit), but press (1) for P2WSH-P2SH or (2) for P2SH (legacy) instead.
+Default is P2WSH addresses (segwit), but press (1) for P2SH-P2WSH or (2) for P2SH (legacy) instead.
 ''', escape='12')
 
     if ch == 'y':
         n, f = 'p2wsh', AF_P2WSH
     elif ch == '1':
-        n, f = 'p2wsh_p2sh', AF_P2WSH_P2SH
+        n, f = 'p2sh_p2wsh', AF_P2WSH_P2SH
     elif ch == '2':
         n, f = 'p2sh', AF_P2SH
     else:
