@@ -1,4 +1,4 @@
-## 3.2.0 - Nov XXX, 2020
+## 3.2.0 - Nov 23, 2020
 
 **BETA** Version --- Please test and report issues! Continue to use v3.1.9 for day-to-day applications.
 
