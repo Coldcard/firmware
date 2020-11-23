@@ -99,6 +99,7 @@ class MultisigWallet:
         (AF_P2SH, 'p2sh'),
         (AF_P2WSH, 'p2wsh'),
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),
+        (AF_P2WSH_P2SH, 'p2sh-p2wsh'),
     ]
 
     def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, common_prefix=None, chain_type='BTC'):
