@@ -20,6 +20,7 @@ unmap_addr_fmt = {
     'p2sh': AF_P2SH,
     'p2wsh': AF_P2WSH,
     'p2wsh-p2sh': AF_P2WSH_P2SH,
+    'p2sh-p2wsh': AF_P2WSH_P2SH,
 }
 
 # all possible addr types, including multisig/scripts

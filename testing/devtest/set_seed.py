@@ -19,7 +19,7 @@ if 1:
     settings.set('chain', 'XTN')
     settings.set('words', True)
     settings.set('terms_ok', True)
-    settings.set('idle_to', 3600)
+    settings.set('idle_to', 0)
 
     set_seed_value(main.WORDS)
 

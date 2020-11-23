@@ -434,7 +434,7 @@ class psbtOutputProxy(psbtProxy):
                         # iff they provide a redeeem script, then it needs to match
                         # what we expect it to be
                         raise FraudulentChangeOutput(out_idx,
-                                        "P2WSH-P2SH redeem script provided, and doesn't match")
+                                        "P2SH-P2WSH redeem script provided, and doesn't match")
 
                     expect_pkh = hash160(expect_rs)
                 else:
