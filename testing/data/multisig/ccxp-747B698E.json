@@ -1,8 +1,8 @@
 {
   "p2sh_deriv": "m/45'",
   "p2sh": "tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc",
-  "p2wsh_p2sh_deriv": "m/48'/1'/0'/1'",
-  "p2wsh_p2sh": "Upub5SzPmFgatRMeLd6ADjvTiG9gnHoXXJy3qu8RNapLymh3GtHDeogzgy2nGtH1P7gPYF4zW9f4R8UYMCoUqUjSpSSZb8NWVKpbesbtP21e6Z4",
+  "p2sh_p2wsh_deriv": "m/48'/1'/0'/1'",
+  "p2sh_p2wsh": "Upub5SzPmFgatRMeLd6ADjvTiG9gnHoXXJy3qu8RNapLymh3GtHDeogzgy2nGtH1P7gPYF4zW9f4R8UYMCoUqUjSpSSZb8NWVKpbesbtP21e6Z4",
   "p2wsh_deriv": "m/48'/1'/0'/2'",
   "p2wsh": "Vpub5mpf4vMW36u8EJTa6EYq3Bs2xY1zRN3JfaU283VYs592nQVHhatepJ8cYs7f9kZwrZtXpxJAtDTvcbxn9PuqMBLR1DvrgfFhdJSR3Fb5yob",
   "xfp": "747B698E"
