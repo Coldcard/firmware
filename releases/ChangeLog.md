@@ -1,4 +1,4 @@
-## 3.2.0 - Nov 23, 2020
+## 3.2.1 - Nov 24, 2020
 
 **BETA** Version --- Please test and report issues! Continue to use v3.1.9 for day-to-day applications.
 
@@ -26,6 +26,7 @@
 - Bugfix: Display of amounts could be incorrect by a few sats in final digits.
 - Bugfix: Incorrect digest method picked when P2SH-P2WSH incorrectly identified as plain P2SH.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
+- v3.2.1 Bugfix: Better reporting when importing bogus multisig wallet files.
 
 ## 3.1.9 - Aug 6, 2020
 
