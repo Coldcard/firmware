@@ -563,7 +563,7 @@ class MultisigWallet:
                     #if ln: print("no colon: " + ln)
                     continue
             else:
-                label, value = ln.split(':')
+                label, value = ln.split(':', 1)
                 label = label.lower()
 
             value = value.strip()
@@ -664,7 +664,7 @@ class MultisigWallet:
                 # generally cannot check fingerprint values, but if we can, do.
                 assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
 
-        assert xfp              # 'need fingerprint'
+        assert xfp, 'need fingerprint'          # happens if bare xpub given (and not bip45)
 
         # In most cases, we cannot verify the derivation path because it's hardened
         # and we know none of the private keys involved.
