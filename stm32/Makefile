@@ -13,7 +13,7 @@ SIGNIT = signit
 
 MAKE_ARGS = BOARD=COLDCARD -j 4
 
-all:
+all: COLDCARD/file_time.c
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
 
 clean-mpy:
@@ -56,6 +56,9 @@ up: dev.dfu
 # Slow, but works with unmod-ed board: use USB protocol to upgrade (2 minutes)
 dev: dev.dfu
 	ckcc upgrade dev.dfu
+
+COLDCARD/file_time.c: Makefile make_filetime.py
+	./make_filetime.py COLDCARD/file_time.c $(VERSION_STRING)
 
 # Make a factory release: using key #1
 production.bin: firmware-signed.bin Makefile

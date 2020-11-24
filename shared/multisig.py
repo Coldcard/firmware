@@ -1295,7 +1295,8 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
                         if not deriv:
                             deriv = cleanup_deriv_path(vals[mode+'_deriv'])
                         else:
-                            assert deriv == vals[mode+'_deriv'], "wrong derivation"
+                            assert deriv == vals[mode+'_deriv'], "wrong derivation: %s != %s"%(
+                                            deriv, vals[mode+'_deriv'])
 
                         is_mine = MultisigWallet.check_xpub(xfp, ln, deriv,
                                                     chain.ctype, my_xfp, xpubs)
