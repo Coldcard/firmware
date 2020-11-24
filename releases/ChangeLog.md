@@ -26,7 +26,11 @@
 - Bugfix: Display of amounts could be incorrect by a few sats in final digits.
 - Bugfix: Incorrect digest method picked when P2SH-P2WSH incorrectly identified as plain P2SH.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
-- v3.2.1 Bugfix: Better reporting when importing bogus multisig wallet files.
+- Bugfix: Better reporting when importing bogus multisig wallet files.
+- Enhancement: Files created on MicroSD will have date and time determined by the version
+  of firmware that made them. Downstream systems might use this know when the Coldcard
+  should be upgraded or which firmware version created the data. Idea from
+  [@sancoder](https://twitter.com/sancoder)
 
 ## 3.1.9 - Aug 6, 2020
 
