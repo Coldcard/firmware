@@ -28,8 +28,8 @@
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 - Bugfix: Better reporting when importing bogus multisig wallet files.
 - Enhancement: Files created on MicroSD will have date and time determined by the version
-  of firmware that made them. Downstream systems might use this know when the Coldcard
-  should be upgraded or which firmware version created the data. Idea from
+  of firmware that made them. Downstream systems might use this to know when the Coldcard
+  should be upgraded, or which firmware version created the data. Idea from
   [@sancoder](https://twitter.com/sancoder)
 
 ## 3.1.9 - Aug 6, 2020
