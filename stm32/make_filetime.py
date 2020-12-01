@@ -11,12 +11,14 @@ out_fname, version = sys.argv[1:]
 
 assert out_fname.endswith('.c'), out_fname
 
-# return ((2000 + date.Year - 1980) << 25) | ((date.Month) << 21) | ((date.Date) << 16) | ((time.Hours) << 11) | ((time.Minutes) << 5) | (time.Seconds / 2);
+# DWORD contains date+time w/ 2-second resolution
 today = datetime.date.today()
 value = ((today.year - 1980) << 25) | (today.month << 21) | (today.day << 16) 
 
-h, m, s = [int(x) for x in version.split('.')]
-value |= (h << 11) | (m << 5) | s;
+# only 2second resolution for times, so can only support minor verion up to x.x.5 and hard to see
+# anyway, let's omit ... worst case, use the date instead
+h, m, _ = [int(x) for x in version.split('.')]
+value |= (h << 11) | (m << 5)
 
 with open(out_fname, 'wt') as fd:
     fd.write('''
