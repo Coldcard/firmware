@@ -13,6 +13,8 @@
   creation, you must use same firmware verison on all Coldcards or this change makes trouble.
 - MS Enhancement: Address type (p2wsh-p2sh, p2sh, p2wsh) is captured from MS wallets created
   by PSBT file import.
+- MS Enhancement: Can now store multiple wallets involving same set of XFP values, if they
+  have differing subkey paths and/or address formats.
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
 - Enhancement: Promoted the address explorer to the main menu–It's useful! 
@@ -25,12 +27,13 @@
   corresponds to real UTXO being stolen. Only developers should be using Testnet.
 - Bugfix: Display of amounts could be incorrect by a few sats in final digits.
 - Bugfix: Incorrect digest method picked when P2SH-P2WSH incorrectly identified as plain P2SH.
-- License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
-- Bugfix: Better reporting when importing bogus multisig wallet files.
+- Bugfix: Better error reporting when importing bogus multisig wallet files.
 - Enhancement: Files created on MicroSD will have date and time determined by the version
   of firmware that made them. Downstream systems might use this to know when the Coldcard
   should be upgraded, or which firmware version created the data. Idea from
   [@sancoder](https://twitter.com/sancoder)
+- Enhancement: Show version of secure element, under Advanced > Upgrade > Show Version.
+- License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020
 
