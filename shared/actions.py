@@ -1446,6 +1446,11 @@ async def show_version(*a):
     bl = callgate.get_bl_version()[0]
     chk = str(b2a_hex(callgate.get_bl_checksum(0))[-8:], 'ascii')
 
+    if version.has_608:
+        se = '608B' if callgate.has_608b() else '608A'
+    else:
+        se = '508A'
+
     msg = '''\
 Coldcard Firmware
 
@@ -1462,9 +1467,12 @@ Serial:
 
 Hardware:
   {hw}
+
+Secure Element:
+  ATECC{se}
 '''
 
-    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk,
+    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
                             ser=version.serial_number(), hw=version.hw_label))
 
 async def ship_wo_bag(*a):

@@ -92,4 +92,9 @@ def set_highwater(ts):
 def has_608():
     return ckcc.gate(6, None, 0) == 0
 
+def has_608b():
+    config = bytearray(128)
+    ckcc.gate(20, config, 0)
+    return (config[7] >= 0x3)
+
 # EOF

@@ -10,5 +10,5 @@
 
 // this overrides ports/stm32/fatfs_port.c
 uint32_t get_fattime(void) {
-    return 0x51781841UL;
+    return 0x51781840UL;
 }
