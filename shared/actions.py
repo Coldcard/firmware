@@ -1547,9 +1547,8 @@ async def import_multisig(*a):
         possible_name = (fn.split('/')[-1].split('.'))[0]
         maybe_enroll_xpub(config=data, name=possible_name)
     except Exception as e:
-        import sys
-        sys.print_exception(e)
-        await ux_show_story('Failed to import.\n\n\n'+problem_file_line(e))
+        #import sys; sys.print_exception(e)
+        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def start_hsm_menu_item(*a):
     from hsm_ux import start_hsm_approval 
