@@ -33,6 +33,7 @@
   should be upgraded, or which firmware version created the data. Idea from
   [@sancoder](https://twitter.com/sancoder)
 - Enhancement: Show version of secure element, under Advanced > Upgrade > Show Version.
+- Enhancement: Improve 'None of the keys involved...' message to show XFP found inside PSBT file.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020

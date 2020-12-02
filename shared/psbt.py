@@ -1300,11 +1300,23 @@ class psbtObject(psbtProxy):
         return self.total_value_in - self.total_value_out
 
     def consider_keys(self):
-        # check we process the right keys for the inputs
+        # check we posess the right keys for the inputs
         cnt = sum(1 for i in self.inputs if i.num_our_keys)
-        if not cnt:
-            raise FatalPSBTIssue('None of the keys involved in this transaction '
-                                 'belong to this Coldcard (need %s).' % xfp2str(self.my_xfp))
+        if cnt: return
+
+        # collect a list of XFP's given in file that aren't ours
+        others = set()
+        for inp in self.inputs:
+            if not inp.subpaths: continue
+            for path in inp.subpaths.values():
+                others.add(path[0])
+
+        others.discard(self.my_xfp)
+        msg = ', '.join(xfp2str(i) for i in others)
+
+        raise FatalPSBTIssue('None of the keys involved in this transaction '
+                                 'belong to this Coldcard (need %s, found %s).' 
+                                    % (xfp2str(self.my_xfp), msg))
 
     @classmethod
     def read_psbt(cls, fd):

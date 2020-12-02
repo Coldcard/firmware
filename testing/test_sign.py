@@ -2,7 +2,7 @@
 #
 # Transaction Signing. Important.
 #
-import time, pytest, os, random, pdb
+import time, pytest, os, random, pdb, struct
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -11,6 +11,7 @@ from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
+from helpers import xfp2str
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE
 from txn import *
@@ -272,9 +273,8 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
 
     # check some basics
     mine = BasicPSBT().parse(psbt)
-    from struct import unpack_from
     for i in mine.inputs:
-        got_xfp, = unpack_from('I', list(i.bip32_paths.values())[0])
+        got_xfp, = struct.unpack_from('I', list(i.bip32_paths.values())[0])
         #assert hex(got_xfp) == hex(wallet_xfp), "wrong HD master key fingerprint"
 
         # see <https://github.com/bitcoin/bitcoin/issues/15884>
@@ -822,7 +822,6 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
 
     used = set(i[0:4] for i in paths)
     assert len(used) == 1, "multiple key fingerprints in inputs, can only handle 1"
-    import struct
     need_xfp, = struct.unpack("<I", used.pop())
 
     sim_exec('from main import settings; settings.set("xfp", 0x%x);' % need_xfp)
@@ -870,9 +869,8 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
 
     # check some basics
     mine = BasicPSBT().parse(psbt)
-    from struct import unpack_from
     for i in mine.inputs:
-        got_xfp, = unpack_from('I', list(i.bip32_paths.values())[0])
+        got_xfp, = struct.unpack_from('I', list(i.bip32_paths.values())[0])
         #assert hex(got_xfp) == hex(wallet_xfp), "wrong HD master key fingerprint"
 
         # see <https://github.com/bitcoin/bitcoin/issues/15884>
@@ -928,8 +926,6 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     ("44'/1'/0'/3/5", '2nd last component'),
 ])
 def test_change_troublesome(start_sign, cap_story, try_path, expect):
-    from struct import pack
-
     # NOTE: out#1 is change:
     # addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
     # path = (m=4369050F)/44'/1'/0'/1/5
@@ -954,7 +950,7 @@ def test_change_troublesome(start_sign, cap_story, try_path, expect):
     path = [int(p) if ("'" not in p) else 0x80000000+int(p[:-1]) 
                         for p in try_path.split('/')]
     bin_path = b4.outputs[1].bip32_paths[pubkey][0:4] \
-                + b''.join(pack('<I', i) for i in path)
+                + b''.join(struct.pack('<I', i) for i in path)
     b4.outputs[1].bip32_paths[pubkey] = bin_path
 
     with BytesIO() as fd:
@@ -1219,6 +1215,53 @@ def test_fully_unsigned(fake_txn, try_sign, segwit):
         orig, result = try_sign(psbt, accept=True)
 
     assert 'None of the keys' in str(ee)
+
+@pytest.mark.parametrize('segwit', [False, True])
+def test_wrong_xfp(fake_txn, try_sign, segwit):
+
+    # A PSBT which is unsigned and doesn't involve our XFP value
+
+    wrong_xfp = b'\x12\x34\x56\x78'
+
+    def hack(psbt):
+        # change all inputs to be "not ours" ... but with utxo details
+        for i in psbt.inputs:
+            for pubkey in i.bip32_paths:
+                i.bip32_paths[pubkey] = wrong_xfp + i.bip32_paths[pubkey][4:]
+
+    psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(psbt, accept=True)
+
+    assert 'None of the keys' in str(ee)
+    assert 'found 12345678' in str(ee)
+
+@pytest.mark.parametrize('segwit', [False, True])
+def test_wrong_xfp_multi(fake_txn, try_sign, segwit):
+
+    # A PSBT which is unsigned and doesn't involve our XFP value
+    # - but multiple wrong XFP values
+
+    wrongs = set()
+    wrong_xfp = b'\x12\x34\x56\x78'
+
+    def hack(psbt):
+        # change all inputs to be "not ours" ... but with utxo details
+        for idx, i in enumerate(psbt.inputs):
+            for pubkey in i.bip32_paths:
+                here = struct.pack('<I', idx)
+                i.bip32_paths[pubkey] = here + i.bip32_paths[pubkey][4:]
+                wrongs.add(xfp2str(idx))
+
+    psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(psbt, accept=True)
+
+    assert 'None of the keys' in str(ee)
+    # WEAK: device keeps them in order, but that's chance/impl defined...
+    assert 'found '+', '.join(sorted(wrongs)) in str(ee)
 
 @pytest.mark.parametrize('out_style', ADDR_STYLES_SINGLE)
 @pytest.mark.parametrize('segwit', [False, True])
