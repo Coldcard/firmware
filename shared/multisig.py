@@ -24,7 +24,6 @@ TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
 # when we aren't sure of the derivation of an xpub we are holding
-# - should only happen from older version data
 UNSURE_DERIV = '*'
 
 class MultisigOutOfSpace(RuntimeError):
@@ -120,7 +119,11 @@ class MultisigWallet:
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
         for xfp, deriv, _ in self.xpubs:
-            self.xfp_paths[xfp] = str_to_keypath(xfp, deriv)
+            if deriv == UNSURE_DERIV:
+                self.xfp_paths[xfp] = []
+            else:
+                self.xfp_paths[xfp] = str_to_keypath(xfp, deriv)
+
         assert len(self.xfp_paths) == self.N, 'dup XFP'         # not supported
 
     @classmethod
@@ -155,11 +158,18 @@ class MultisigWallet:
             opts['ch'] = self.chain_type
 
         # Data compression: most legs will all use same derivation.
-        # put a int(0) in place and set option 'pp' to be deriation
+        # put a int(0) in place and set option 'pp' to be derivation
         # (used to be common_prefix assumption)
         pp = list(sorted(set(d for _,d,_ in self.xpubs)))
-        opts['d'] = pp
-        xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
+        if len(pp) == 1:
+            # generate old-format data, to preserve firmware downgrade path
+            xp = [(a, c) for a,deriv,c in self.xpubs]
+            if pp[0] != UNSURE_DERIV:
+                opts['pp'] = pp[0]
+        else:
+            # allow for distinct deriv paths on each leg
+            opts['d'] = pp
+            xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
 
         return (self.name, (self.M, self.N), xp, opts)
 
@@ -187,32 +197,39 @@ class MultisigWallet:
         return rv
 
     @classmethod
-    def find_match(cls, M, N, xfp_paths, addr_fmt=None):
-        # Find index of matching wallet. Don't de-serialize more than needed.
-        # - xfp_paths is list of lists: [xfp, *path] like in psbt files
-        # - M and N must be known
-        # - returns instance, or None if not found
+    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmt=None):
+        # yield MS wallets we know about, that match at least right M,N if known.
+        # - this is only place we should be searching this list, please!!
         from main import settings
         lst = settings.get('multisig', [])
 
-        fingerprints = set(f[0] for f in xfp_paths)
-        
         for idx, rec in enumerate(lst):
-            name, m_of_n, xpubs, opts = rec
-
-            if tuple(m_of_n) != (M, N):
+            if idx == not_idx:
+                # ignore one by index
                 continue
 
-            if set(f[0] for f in xpubs) != fingerprints: continue
+            if M or N:
+                # peek at M/N
+                has_m, has_n = tuple(rec[1])
+                if M is not None and has_m != M: continue
+                if N is not None and has_n != N: continue
 
             if addr_fmt is not None:
+                opts = rec[3]
                 af = opts.get('ft', AF_P2SH)
                 if af != addr_fmt: continue
+                
+            yield cls.deserialize(rec, idx)
 
-            rv = cls.deserialize(rec, idx)
+    @classmethod
+    def find_match(cls, M, N, xfp_paths, addr_fmt=None):
+        # Find index of matching wallet
+        # - xfp_paths is list of lists: [xfp, *path] like in psbt files
+        # - M and N must be known
+        # - returns instance, or None if not found
+        for rv in cls.iter_wallets(M, N, addr_fmt=addr_fmt):
             if rv.matching_subpaths(xfp_paths):
                 return rv
-            del rv
 
         return None
 
@@ -221,29 +238,16 @@ class MultisigWallet:
         # Return a list of matching wallets for various M values.
         # - xpfs_paths hsould already be sorted
         # - returns set of matches, of any M value
-        from main import settings
-        lst = settings.get('multisig', [])
 
         # we know N, but not M at this point.
         N = len(xfp_paths)
         
-        rv = []
-        for idx, rec in enumerate(lst):
-            name, m_of_n, xpubs, opts = rec
-            if m_of_n[1] != N: continue
-            if M is not None and m_of_n[0] != M: continue
+        matches = []
+        for rv in cls.iter_wallets(M=M, addr_fmt=addr_fmt):
+            if rv.matching_subpaths(xfp_paths):
+                matches.append(rv)
 
-            if addr_fmt is not None:
-                af = opts.get('ft', AF_P2SH)
-                if af != addr_fmt: continue
-
-            maybe = cls.deserialize(rec, idx)
-            if maybe.matching_subpaths(xfp_paths):
-                rv.append(maybe)
-            else:
-                del maybe
-
-        return rv
+        return matches
 
     def matching_subpaths(self, xfp_paths):
         # Does this wallet use same set of xfp values, and 
@@ -277,18 +281,11 @@ class MultisigWallet:
 
     @classmethod
     def quick_check(cls, M, N, xfp_xor):
-        # quicker USB method.
-        from main import settings
-        lst = settings.get('multisig', [])
-
+        # quicker? USB method.
         rv = []
-        for rec in lst:
-            name, m_of_n, xpubs, opts = rec
-            if m_of_n[0] != M: continue
-            if m_of_n[1] != N: continue
-
+        for ms in cls.iter_wallets(M, N):
             x = 0
-            for xfp, _,  _ in xpubs:
+            for xfp in ms.xfp_paths.keys():
                 x ^= xfp
             if x != xfp_xor: continue
 
@@ -299,12 +296,7 @@ class MultisigWallet:
     @classmethod
     def get_all(cls):
         # return them all, as a generator
-        from main import settings
-
-        lst = settings.get('multisig', [])
-
-        for idx, v in enumerate(lst):
-            yield cls.deserialize(v, idx)
+        return cls.iter_wallets()
 
     @classmethod
     def exists(cls):
@@ -314,7 +306,7 @@ class MultisigWallet:
 
     @classmethod
     def get_by_idx(cls, nth):
-        # instance from index number
+        # instance from index number (used in menu)
         from main import settings
         lst = settings.get('multisig', [])
         try:
@@ -680,9 +672,7 @@ class MultisigWallet:
             else:
                 deriv = guess           # reachable? doubt it
 
-        assert deriv, 'need deriv path'
-
-        if xfp == my_xfp:
+        if deriv and xfp == my_xfp:
             # its supposed to be my key, so I should be able to generate pubkey
             # - might indicate collision on xfp value between co-signers, and that's not supported
             with stash.SensitiveValues() as sv:
@@ -691,7 +681,7 @@ class MultisigWallet:
 
         # serialize xpub w/ BIP32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
-        xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
+        xpubs.append((xfp, deriv or UNSURE_DERIV, chain.serialize_public(node, AF_P2SH)))
 
         return (xfp == my_xfp)
 
@@ -855,8 +845,8 @@ class MultisigWallet:
         # - chain codes match what we have stored already
         # - pubkey vs. path will be checked later
         # - xfp+path already checked when selecting this wallet
-        # Any issue here is a fraud attempt in some way, not innocent
-        # but it would not have tricked us, perhaps some other signer.
+        # Any issue here is a fraud attempt in some way, not innocent.
+        # But it would not have tricked us, perhaps targets some other signer.
         import tcc
         assert len(xpubs_list) == self.N
 
@@ -864,14 +854,18 @@ class MultisigWallet:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
             xpub = tcc.codecs.b58_encode(v)
 
+            # cleanup and normalize xpub
             tmp = []
             self.check_xpub(xfp, xpub, keypath_to_str(path, skip=0), self.chain_type, 0, tmp)
             (_, deriv, xpub_reserialized) = tmp[0]
+            assert deriv            # because given as arg
 
             # find in our records.
             for (x_xfp, x_deriv, x_xpub) in self.xpubs: 
                 if x_xfp != xfp: continue
-                assert deriv == x_deriv
+                # found matching XFP
+                if x_deriv != UNSURE_DERIV:
+                    assert deriv == x_deriv
                 assert xpub_reserialized == x_xpub
                 break
             else:
