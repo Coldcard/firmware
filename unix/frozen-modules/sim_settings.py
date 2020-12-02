@@ -92,7 +92,7 @@ if '--seed' in sys.argv:
     from main import pa, settings
 
     words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
-    assert len(words) == 24, "Expected 24 space-separated words: add some quotes"
+    assert len(words) in {12, 18, 24}, "Expected space-separated words: add some quotes"
     pa.pin = b'12-12'
     set_seed_value(words)
     settings.set('terms_ok', 1)
