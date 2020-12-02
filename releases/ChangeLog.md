@@ -1,8 +1,9 @@
-## 3.2.1 - Nov 24, 2020
+## 3.2.1 - Dec XXX, 2020
 
 **BETA** Version --- Please test and report issues! Continue to use v3.1.9 for day-to-day applications.
 
-- Major Multisig improvements!
+- Major Multisig improvements! If you are using multisig features, please backup
+  your Coldcard before upgrade, just in case (but shouldn't be a problem).
 - MS Enhancement: Tracks derivation path for each co-signer and no longer assumes
   they all use a shared derivation prefix. Blocks multiple instances of same XFP in the wallet
   (not supported anymore, bad idea). Various displays updated to reflect derivation path change.
@@ -17,7 +18,7 @@
   have differing subkey paths and/or address formats.
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
-- Enhancement: Promoted the address explorer to the main menu–It's useful! 
+- Enhancement: Promoted the address explorer to the main menu. It's useful! 
   (credit to @matt_odell)
 - Bugfix: zero-length BIP39 passphrase, when saved, would cause a crash when
   restore attempted. We recommend longer passphrases, but fixed the issue.

@@ -725,7 +725,7 @@ def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
             break
 
     if N == 3:
-        assert count == 8, "Expect fail at 8"
+        assert count == 9, "Expect fail at 9"
     if N == 15:
         assert count == 2, "Expect fail at 2"
 
@@ -1596,9 +1596,9 @@ def test_ms_change_fraud(case, pk_num, num_ins, dev, addr_fmt, clear_ms, incl_xp
 
     open('debug/last.psbt', 'wb').write(psbt)
 
-    start_sign(psbt)
     with pytest.raises(Exception) as ee:
-        signed = end_sign(accept=True, accept_ms_import=True)
+        start_sign(psbt)
+        signed = end_sign(accept=True, accept_ms_import=False)
     assert 'Output#0:' in str(ee)
     assert 'P2WSH or P2SH change output script' in str(ee)
     #assert 'Deception regarding change output' in str(ee)
@@ -1650,5 +1650,20 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     assert out_psbt == psbt_right
 
     open('debug/i6.psbt', 'wt').write(out_psbt.hex())
+
+@pytest.mark.parametrize('N', [ 3, 15])
+def test_ms_import_nopath(N, make_multisig, clear_ms, offer_ms_import, need_keypress):
+
+    keys = make_multisig(N, N, deriv="m/48'/0'/0'/1'/0", unique=1)
+
+    # just fingerprints, no deriv paths
+    config = 'Format: p2sh-p2wsh\n'
+    for xfp,m,sk in keys:
+        config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
+    title, story = offer_ms_import(config)
+    assert f'Policy: {N} of {N}\n' in story
+    assert f'P2SH-P2WSH' in story
+    need_keypress('x')
+
 
 # EOF
