@@ -2,7 +2,7 @@
 #
 Name: CC-2-of-4
 Policy: 2 of 4
-Format: P2WSH-P2SH
+Format: P2SH-P2WSH
 
 Derivation: m/48'/1'/0'/1'
 
