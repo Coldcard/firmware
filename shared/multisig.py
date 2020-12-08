@@ -23,8 +23,8 @@ TRUST_VERIFY = const(0)
 TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
-# when we aren't sure of the derivation of an xpub we are holding
-UNSURE_DERIV = '*'
+# when we don't know the derivation of an xpub we are holding
+UNKNOWN_DERIV = '*'
 
 class MultisigOutOfSpace(RuntimeError):
     pass
@@ -119,8 +119,8 @@ class MultisigWallet:
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
         for xfp, deriv, _ in self.xpubs:
-            if deriv == UNSURE_DERIV:
-                self.xfp_paths[xfp] = []
+            if deriv == UNKNOWN_DERIV:
+                self.xfp_paths[xfp] = [xfp]
             else:
                 self.xfp_paths[xfp] = str_to_keypath(xfp, deriv)
 
@@ -164,7 +164,7 @@ class MultisigWallet:
         if len(pp) == 1:
             # generate old-format data, to preserve firmware downgrade path
             xp = [(a, c) for a,deriv,c in self.xpubs]
-            if pp[0] != UNSURE_DERIV:
+            if pp[0] != UNKNOWN_DERIV:
                 opts['pp'] = pp[0]
         else:
             # allow for distinct deriv paths on each leg
@@ -182,7 +182,7 @@ class MultisigWallet:
             # promote from old format to new: assume common prefix is the derivation
             # for all of them
             # PROBLEM: we don't have enough info if no common prefix can be assumed
-            common_prefix = opts.get('pp', None) or UNSURE_DERIV
+            common_prefix = opts.get('pp', None) or UNKNOWN_DERIV
             xpubs = [(a, common_prefix, b) for a,b in xpubs]
         else:
             # new format decompression
@@ -220,6 +220,10 @@ class MultisigWallet:
                 if af != addr_fmt: continue
                 
             yield cls.deserialize(rec, idx)
+
+    def get_xfp_paths(self):
+        # return list of lists [xfp, *deriv]
+        return list(self.xfp_paths.values())
 
     @classmethod
     def find_match(cls, M, N, xfp_paths, addr_fmt=None):
@@ -355,7 +359,7 @@ class MultisigWallet:
         #   - diff_items: text list of similarity/differences
         #   - count_similar: same N, same xfp+paths
 
-        lst = list(self.xfp_paths.values())
+        lst = self.get_xfp_paths()
         c = self.find_match(self.M, self.N, lst, addr_fmt=self.addr_fmt)
         if c:
             # All details are same: M/N, paths, addr fmt
@@ -395,7 +399,7 @@ class MultisigWallet:
         assert self.storage_idx >= 0
 
         # safety check
-        existing = self.find_match(self.M, self.N, list(self.xfp_paths.values()))
+        existing = self.find_match(self.M, self.N, self.get_xfp_paths())
         assert existing
         assert existing.storage_idx == self.storage_idx
 
@@ -547,7 +551,7 @@ class MultisigWallet:
 
             if ':' not in ln:
                 if 'pub' in ln:
-                    # optimization: allow bare xpub if we can calc xfp
+                    # pointless optimization: allow bare xpub if we can calc xfp
                     label = '0'*8
                     value = ln
                 else:
@@ -576,7 +580,10 @@ class MultisigWallet:
             elif label == 'derivation':
                 # reveal the path derivation for following key(s)
                 try:
-                    deriv = cleanup_deriv_path(value)
+                    if value.lower() in { 'any', 'unknown', '*', '', 'none', UNKNOWN_DERIV }:
+                        deriv = UNKNOWN_DERIV
+                    else:
+                        deriv = cleanup_deriv_path(value)
                 except BaseException as exc:
                     raise AssertionError('bad derivation line: ' + str(exc))
 
@@ -672,7 +679,7 @@ class MultisigWallet:
             else:
                 deriv = guess           # reachable? doubt it
 
-        if deriv and xfp == my_xfp:
+        if xfp == my_xfp and deriv and deriv != UNKNOWN_DERIV:
             # its supposed to be my key, so I should be able to generate pubkey
             # - might indicate collision on xfp value between co-signers, and that's not supported
             with stash.SensitiveValues() as sv:
@@ -681,7 +688,7 @@ class MultisigWallet:
 
         # serialize xpub w/ BIP32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
-        xpubs.append((xfp, deriv or UNSURE_DERIV, chain.serialize_public(node, AF_P2SH)))
+        xpubs.append((xfp, deriv or UNKNOWN_DERIV, chain.serialize_public(node, AF_P2SH)))
 
         return (xfp == my_xfp)
 
@@ -702,6 +709,7 @@ class MultisigWallet:
             # the important stuff.
             for idx, (xfp, deriv, xpub) in enumerate(self.xpubs): 
 
+                node = None
                 if self.addr_fmt != AF_P2SH:
                     # CHALLENGE: we must do slip-132 format [yz]pubs here when not p2sh mode.
                     node = ch.deserialize_node(xpub, AF_P2SH); assert node
@@ -709,7 +717,11 @@ class MultisigWallet:
                 else:
                     xp = xpub
 
-                assert deriv != UNSURE_DERIV            # also checked above
+                if deriv == UNKNOWN_DERIV:
+                    # create an (obviously) fake path at right depth
+                    if not node:
+                        node = ch.deserialize_node(xpub, AF_P2SH)
+                    deriv = 'm' + ("/42069'" * node.depth())
 
                 rv['x%d/' % (idx+1)] = dict(
                                 hw_type='coldcard', type='hardware',
@@ -777,7 +789,7 @@ class MultisigWallet:
 
         top = npath[0] & 0x7fffffff
         if top == npath[0]:
-            # non-hardened top?
+            # non-hardened top? rare/bad
             return
 
         if top == 45:
@@ -810,7 +822,7 @@ class MultisigWallet:
             raise FatalPSBTIssue("XPUBs in PSBT do not match any existing wallet")
 
         # build up an in-memory version of the wallet.
-        # TODO: capture address format from an input?
+        #  - capture address format based on path used for my leg (if standards compliant)
 
         assert N == len(xpubs_list)
         assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
@@ -864,24 +876,24 @@ class MultisigWallet:
             for (x_xfp, x_deriv, x_xpub) in self.xpubs: 
                 if x_xfp != xfp: continue
                 # found matching XFP
-                if x_deriv != UNSURE_DERIV:
+                if x_deriv != UNKNOWN_DERIV:
                     assert deriv == x_deriv
                 assert xpub_reserialized == x_xpub
                 break
             else:
                 assert False            # not reachable, since we picked wallet based on xfps
 
-    def format_deriv_paths(self):
-        # show either single common derivation path, or indented list of them
-        ds = set(d for _,d,_ in self.xpubs)
-        unsure = (UNSURE_DERIV in ds)
+    def get_deriv_paths(self):
+        # List of unique derivation paths being used. Often length one. May contain UNKNOWN_DERIV
+        # - also a rendered single-value summary
+        derivs =  sorted(set(d for _,d,_ in self.xpubs))
 
-        if len(ds) == 1:
-            ds = ds.pop()
+        if len(derivs) == 1:
+            dsum = derivs[0] if derivs[0] != UNKNOWN_DERIV else 'Any'
         else:
-            ds = '  ' + '\n  '.join(sorted(ds))
+            dsum = 'Varies'
 
-        return unsure, ds
+        return derivs, dsum
 
     async def confirm_import(self):
         # prompt them about a new wallet, let them see details and then commit change.
@@ -914,7 +926,7 @@ WARNING: This new wallet is similar to an existing wallet, but will NOT replace 
         else:
             story = 'Create new multisig wallet?'
 
-        _, ds = self.format_deriv_paths()
+        derivs, dsum = self.get_deriv_paths()
 
         story += '''\n
 Wallet Name:
@@ -928,9 +940,9 @@ Addresses:
   {at}
 
 Derivation:
-  {deriv}
+  {dsum}
 
-Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, deriv=ds, 
+Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=exp, dsum=dsum, 
                                         at=self.render_addr_fmt(self.addr_fmt))
 
         story += 'OK to approve, X to cancel.' if not is_dup else 'X to cancel'
@@ -1123,13 +1135,10 @@ async def ms_wallet_electrum_export(menu, label, item):
     ms = item.arg
     from actions import electrum_export_story
 
-    unsure, derivs = ms.format_deriv_paths()
-    if unsure:
-        return await ux_show_story("We don't know all the derivation paths for "
-                                   "these keys, so cannot create Electrum wallet.")
+    derivs, dsum = ms.get_deriv_paths()
 
     msg = 'The new wallet will have derivation path:\n  %s\n and use %s addresses.\n' % (
-            derivs, MultisigWallet.render_addr_fmt(ms.addr_fmt) )
+            dsum, MultisigWallet.render_addr_fmt(ms.addr_fmt) )
 
     if await ux_show_story(electrum_export_story(msg)) != 'y':
         return

@@ -8,10 +8,13 @@
   they all use a shared derivation prefix. Blocks multiple instances of same XFP in the wallet
   (not supported anymore, bad idea). Various displays updated to reflect derivation path change.
   Text file import: "Derivation:" line can be repeated, applies to all following xpubs.
+  Use "Derivation: any" for co-signers where it's unknown.
 - MS Enhancement: Show Ypub/Zpub formated values from SLIP-132 when viewing details of wallet.
+- MS Enhancement: Electrum export can be done even if we don't know the derivation paths of
+  some or all xpubs. For those, we make up a placeholder path, starting with `m/42069'/...`.
 - MS Enhancement: standardize on "p2sh-p2wsh" nomenclature, rather than "p2wsh-p2sh", thanks
   to [@humanumbrella](https://github.com/humanumbrella). For airgaped multisig wallet 
-  creation, you must use same firmware verison on all Coldcards or this change makes trouble.
+  creation, you must use same firmware verison on all Coldcards or this change can make trouble.
 - MS Enhancement: Address type (p2wsh-p2sh, p2sh, p2wsh) is captured from MS wallets created
   by PSBT file import.
 - MS Enhancement: Can now store multiple wallets involving same set of XFP values, if they
@@ -34,7 +37,8 @@
   should be upgraded, or which firmware version created the data. Idea from
   [@sancoder](https://twitter.com/sancoder)
 - Enhancement: Show version of secure element, under Advanced > Upgrade > Show Version.
-- Enhancement: Improve 'None of the keys involved...' message to show XFP found inside PSBT file.
+- Enhancement: Improve 'None of the keys involved...' message to show XFP value actually
+  found inside PSBT file.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020
