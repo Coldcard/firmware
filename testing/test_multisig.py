@@ -2,7 +2,7 @@
 #
 # Multisig-related tests.
 #
-import time, pytest, os, random
+import time, pytest, os, random, json
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
@@ -534,7 +534,6 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
 
 def test_export_airgap(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path):
     # test UX and math for bip45 export
-    import json
 
     goto_home()
     pick_menu_item('Settings')
@@ -1288,7 +1287,6 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     assert fname.endswith('.json')
     el_fname = microsd_path(fname)
 
-    import json
     wal = json.load(open(el_fname, 'rt'))
     assert f'{M}of{N}' in wal['wallet_type']
 
@@ -1652,7 +1650,9 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     open('debug/i6.psbt', 'wt').write(out_psbt.hex())
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_ms_import_nopath(N, make_multisig, clear_ms, offer_ms_import, need_keypress):
+@pytest.mark.parametrize('xderiv', [ None, 'any', 'unknown', '*', '', 'none'])
+def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import, need_keypress):
+    # try various synonyms for unknown/any derivation styles
 
     keys = make_multisig(N, N, deriv="m/48'/0'/0'/1'/0", unique=1)
 
@@ -1660,10 +1660,84 @@ def test_ms_import_nopath(N, make_multisig, clear_ms, offer_ms_import, need_keyp
     config = 'Format: p2sh-p2wsh\n'
     for xfp,m,sk in keys:
         config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
+    if xderiv != None:
+        config += 'Derivation: %s\n' % xderiv
     title, story = offer_ms_import(config)
     assert f'Policy: {N} of {N}\n' in story
     assert f'P2SH-P2WSH' in story
+    assert 'Derivation:\n  Any\n' in story
     need_keypress('x')
 
+@pytest.mark.parametrize('N', [ 15])
+@pytest.mark.parametrize('M', [ 15])
+def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, need_keypress,
+        goto_home, pick_menu_item, cap_story, microsd_path):
+    # try config file with many different derivation paths given, including None
+    # - also check we can convert those into Electrum wallets
+    actual = "m/48'/0'/0'/1'/0"
+    derivs = [ actual, 'unknown', '*', "m/45'/0'/99'", "m/45'/34/34'/34"]
+    #clear_ms()
+
+    keys = make_multisig(M, N, deriv=actual, unique=1)
+
+    # just fingerprints, no deriv paths
+    config = 'Format: p2sh-p2wsh\nName: impmany\n'
+    for idx, (xfp,m,sk) in enumerate(keys):
+        if idx == len(keys)-1:
+            # last one always simulator's xfp, so can't lie about derivation
+            config += 'Derivation: unknown\n'
+        else:
+            config += 'Derivation: %s\n' % derivs[idx % len(derivs)]
+        config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
+
+    title, story = offer_ms_import(config)
+    assert f'Policy: {M} of {N}\n' in story
+    assert f'P2SH-P2WSH' in story
+    assert 'Derivation:\n  Varies\n' in story
+    need_keypress('y')
+
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item(f'{M}/{N}: impmany')
+
+    pick_menu_item('Coldcard Export')
+
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split('\n')[-1]
+    assert fname, story
+    need_keypress('y')
+
+    with open(microsd_path(fname), 'rt') as fp:
+        lines = list(fp.readlines())
+    for xfp,_,_ in keys:
+        m = xfp2str(xfp)
+        assert any(m in ln for ln in lines)
+
+    pick_menu_item('Electrum Wallet')
+
+    time.sleep(.25)
+    title, story = cap_story()
+    assert 'This saves a skeleton Electrum wallet file' in story
+    need_keypress('y')
+
+    time.sleep(.25)
+    title, story = cap_story()
+    fname = story.split('\n')[-1]
+    assert fname, story
+    need_keypress('y')
+
+    with open(microsd_path(fname), 'rt') as fp:
+        el = json.load(fp)
+    assert el['seed_version'] == 17
+    for n in range(1, N+1):
+        kk = f'x{n}/'
+        assert kk in el
+        co = el[kk]
+        assert 'Coldcard' in co['label']
+        dd = co['derivation']
+        assert (dd in derivs) or (dd == actual) or ("42069'" in dd)
 
 # EOF
