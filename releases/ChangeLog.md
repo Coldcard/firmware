@@ -39,6 +39,7 @@
 - Enhancement: Show version of secure element, under Advanced > Upgrade > Show Version.
 - Enhancement: Improve 'None of the keys involved...' message to show XFP value actually
   found inside PSBT file.
+- Enhancement: Invalid PSBT errors are shown with more information now.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020
