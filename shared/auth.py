@@ -81,11 +81,17 @@ class UserAuthorizedAction:
         self.failed = msg
         self.done()
 
+        # show line number and/or simple text about error
         if exc:
             print("%s:" % msg)
             sys.print_exception(exc)
-            msg += "\n\n(%s)" % problem_file_line(exc)
 
+            msg += '\n\n'
+            em = str(exc)
+            if em:
+                msg += em
+                msg += '\n\n'
+            msg += problem_file_line(exc)
         
         from main import hsm_active, dis
 
