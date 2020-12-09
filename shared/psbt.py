@@ -1004,7 +1004,7 @@ class psbtObject(psbtProxy):
             if rs[-1] != OP_CHECKMULTISIG: continue
 
             M, N = disassemble_multisig_mn(rs)
-            assert 1 <= M <= N < MAX_SIGNERS
+            assert 1 <= M <= N <= MAX_SIGNERS
 
             return (M, N)
 
