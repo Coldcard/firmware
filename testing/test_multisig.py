@@ -2,7 +2,7 @@
 #
 # Multisig-related tests.
 #
-import time, pytest, os, random, json
+import time, pytest, os, random, json, shutil
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
@@ -874,7 +874,8 @@ def test_import_dup_xfp_fails(m_of_n, addr_fmt, clear_ms, make_multisig, import_
     with pytest.raises(Exception) as ee:
         import_ms_wallet(M, N, addr_fmt, accept=1, keys=keys)
 
-    assert 'XFP' in str(ee)
+    #assert 'XFP' in str(ee)
+    assert 'wrong pubkey' in str(ee)
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=3):
@@ -1108,7 +1109,8 @@ def fake_ms_txn():
 @pytest.mark.parametrize('transport', [ 'usb', 'sd' ])
 @pytest.mark.parametrize('out_style', ADDR_STYLES_MS)
 @pytest.mark.parametrize('has_change', [ True, False])
-def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, settings_set, M=1, N=3):
+@pytest.mark.parametrize('N', [ 3, 15])
+def test_ms_sign_simple(N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, try_sign, try_sign_microsd, transport, out_style, has_change, settings_set, M=1):
     
     num_outs = num_ins-1
 
@@ -1129,7 +1131,7 @@ def test_ms_sign_simple(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
         try_sign(psbt)
 
 @pytest.mark.parametrize('num_ins', [ 15 ])
-@pytest.mark.parametrize('M', [ 2, 4, 1 ])
+@pytest.mark.parametrize('M', [ 2, 4, 1])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
 def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
@@ -1145,6 +1147,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
     # create a wallet, with 3 bip39 pw's
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
     N = len(keys)
+    assert M<=N
 
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
@@ -1294,7 +1297,6 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     need_keypress('y')
 
     if N == 4:
-        import shutil
 
         # capture useful test data for testing Electrum plugin, etc
         for fn in glob(microsd_path('ccxp-*.json')):
@@ -1373,13 +1375,13 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
 
     keys = [
         (bc_xfp, None, node),
-        (1130956047, None, BIP32Node.from_hwif('tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')),     # simulator: m/45'
+        (simulator_fixed_xfp, None, BIP32Node.from_hwif('tpubD8NXmKsmWp3a3DXhbihAYbYLGaRNVdTnr6JoSxxfXYQcmwVtW2hv8QoDwng6JtEonmJoL3cNEwfd2cLXMpGezwZ2vL2dQ7259bueNKj9C8n')),     # simulator: m/45'
     ]
 
     M,N=2,2
 
     clear_ms()
-    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=["m", "m/45'"])
+    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45'"])
 
     cc_deriv = "m/45'/55"
     cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(cc_deriv[2:]).sec())
@@ -1669,25 +1671,29 @@ def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import, n
     need_keypress('x')
 
 @pytest.mark.parametrize('N', [ 15])
-@pytest.mark.parametrize('M', [ 15])
+@pytest.mark.parametrize('M', [ 1, 15])
 def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, need_keypress,
         goto_home, pick_menu_item, cap_story, microsd_path):
     # try config file with many different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
     actual = "m/48'/0'/0'/1'/0"
     derivs = [ actual, 'unknown', '*', "m/45'/0'/99'", "m/45'/34/34'/34"]
-    #clear_ms()
 
     keys = make_multisig(M, N, deriv=actual, unique=1)
 
     # just fingerprints, no deriv paths
-    config = 'Format: p2sh-p2wsh\nName: impmany\n'
+    config = f'Format: p2sh-p2wsh\nName: impmany\n\npolicy: {M} of {N}\n'
     for idx, (xfp,m,sk) in enumerate(keys):
         if idx == len(keys)-1:
             # last one always simulator's xfp, so can't lie about derivation
-            config += 'Derivation: unknown\n'
+            config += "Derivation: %s\n" % actual
         else:
-            config += 'Derivation: %s\n' % derivs[idx % len(derivs)]
+            dp = derivs[idx % len(derivs)]
+            config += 'Derivation: %s\n' % dp
+            if '/' in dp:
+                print('%s => %s   was %d, gonna be %d' % (
+                        xfp2str(xfp), dp, sk._depth, dp.count('/')))
+                sk._depth = dp.count('/')
         config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
 
     title, story = offer_ms_import(config)
@@ -1725,19 +1731,28 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
 
     time.sleep(.25)
     title, story = cap_story()
-    fname = story.split('\n')[-1]
-    assert fname, story
+    fname2 = story.split('\n')[-1]
+    assert fname2, story
     need_keypress('y')
 
-    with open(microsd_path(fname), 'rt') as fp:
+    if M == 1 and N == 15:
+        # useful and easier-to-use test wallet
+        shutil.copy(microsd_path(fname), f'debug/test-wallet-ms.txt')
+        shutil.copy(microsd_path(fname2), f'debug/test-wallet-ms.json')
+
+    with open(microsd_path(fname2), 'rt') as fp:
         el = json.load(fp)
     assert el['seed_version'] == 17
+    assert el['wallet_type'] == f"{M}of{N}"
     for n in range(1, N+1):
         kk = f'x{n}/'
         assert kk in el
         co = el[kk]
         assert 'Coldcard' in co['label']
         dd = co['derivation']
-        assert (dd in derivs) or (dd == actual) or ("42069'" in dd)
+        assert (dd in derivs) or (dd == actual) or ("42069'" in dd) or (dd == 'm')
+
+    clear_ms()
+
 
 # EOF

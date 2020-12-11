@@ -3,7 +3,7 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio, sys
+import stash, chains, ustruct, ure, uio, sys, tcc
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
@@ -464,6 +464,9 @@ class MultisigWallet:
                 node = ch.deserialize_node(xpub, AF_P2SH); assert node
                 dp = node.depth()
 
+                #print("%s => deriv=%s dp=%d len(path)=%d path=%s" %
+                #        (xfp2str(xfp), self.xpubs[xp_idx][1], dp, len(path), path))
+
                 if not (0 <= dp <= len(path)):
                     # obscure case: xpub isn't deep enough to represent
                     # indicated path... not wrong really.
@@ -653,9 +656,11 @@ class MultisigWallet:
         assert node.private_key() == None       # 'no privkeys plz'
         assert chain.ctype == expect_chain      # 'wrong chain'
 
+        depth = node.depth()
+
         # NOTE: could enforce all same depth, and/or all depth >= 1, but
         # seems like more restrictive than needed.
-        if node.depth() == 1:
+        if depth == 1:
             if not xfp:
                 # allow a shortcut: zero/omit xfp => use observed parent value
                 xfp = swab32(node.fingerprint())
@@ -667,24 +672,35 @@ class MultisigWallet:
 
         # In most cases, we cannot verify the derivation path because it's hardened
         # and we know none of the private keys involved.
-        if node.depth() == 1:
+        if depth == 1:
             # but derivation is implied at depth==1
-            cn = node.child_num()
-            guess = 'm/%d' % (cn & 0x7fffffff)
-            if cn & 0x80000000:
-                guess += "'"
+            guess = keypath_to_str([node.child_num()], skip=0)
 
             if deriv:
                 assert guess == deriv, '%s != %s' % (guess, deriv)
             else:
                 deriv = guess           # reachable? doubt it
 
-        if xfp == my_xfp and deriv and deriv != UNKNOWN_DERIV:
-            # its supposed to be my key, so I should be able to generate pubkey
-            # - might indicate collision on xfp value between co-signers, and that's not supported
-            with stash.SensitiveValues() as sv:
-                chk_node = sv.derive_path(deriv)
-                assert node.public_key() == chk_node.public_key(), "XFP non-unique"
+        if depth == 0 and deriv == 'm':
+            # empty subpath given in PSBT globals means we don't really know derivation,
+            # (probably) or (less likely) maybe they just use 'm'. So assume unknown derivation.
+            deriv = UNKNOWN_DERIV
+
+        if deriv and deriv != UNKNOWN_DERIV:
+            # path length of derivation given needs to match xpub's depth
+            assert deriv[0] == 'm'
+            p_len = deriv.count('/')
+            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+                                            p_len, depth, xfp2str(xfp))
+
+            if xfp == my_xfp:
+                # its supposed to be my key, so I should be able to generate pubkey
+                # - might indicate collision on xfp value between co-signers,
+                #   and that's not supported
+                with stash.SensitiveValues() as sv:
+                    chk_node = sv.derive_path(deriv)
+                    assert node.public_key() == chk_node.public_key(), \
+                                "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
         # serialize xpub w/ BIP32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
@@ -813,7 +829,6 @@ class MultisigWallet:
         # - xpubs_list is a list of (xfp+path, binary BIP32 xpub)
         # - already know not in our records.
         from main import settings
-        import tcc
 
         trust_mode = cls.get_trust_policy()
 
@@ -851,16 +866,17 @@ class MultisigWallet:
         return ms, (trust_mode != TRUST_PSBT)
 
     def validate_psbt_xpubs(self, xpubs_list):
-        # The xpubs provided in PSBT must be exactly right?
+        # The xpubs provided in PSBT must be exactly right, compared to our record.
         # But we're going to use our own values from setup time anyway.
         # Check:
         # - chain codes match what we have stored already
         # - pubkey vs. path will be checked later
         # - xfp+path already checked when selecting this wallet
+        # - some cases we cannot check, so count those for a warning
         # Any issue here is a fraud attempt in some way, not innocent.
-        # But it would not have tricked us, perhaps targets some other signer.
-        import tcc
+        # But it would not have tricked us and so the attack targets some other signer.
         assert len(xpubs_list) == self.N
+        unsure = 0
 
         for k, v in xpubs_list:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
@@ -878,10 +894,18 @@ class MultisigWallet:
                 # found matching XFP
                 if x_deriv != UNKNOWN_DERIV:
                     assert deriv == x_deriv
-                assert xpub_reserialized == x_xpub
+                else:
+                    # we don't know the derivation it's supposed to be, so xpub
+                    # might differ from what we have on file (different depth, etc)
+                    unsure += 1
+                    break
+
+                assert xpub_reserialized == x_xpub, 'xpub wrong (xfp=%s)' % xfp2str(xfp)
                 break
             else:
                 assert False            # not reachable, since we picked wallet based on xfps
+
+        return unsure
 
     def get_deriv_paths(self):
         # List of unique derivation paths being used. Often length one. May contain UNKNOWN_DERIV
@@ -1223,7 +1247,7 @@ def import_xpub(ln):
     # - can handle any garbage line
     # - returns (node, chain, addr_fmt)
     # - people are using SLIP132 so we need this
-    import tcc, chains, ure
+    import chains, ure
 
     pat = ure.compile(r'.pub[A-Za-z0-9]+')
 
