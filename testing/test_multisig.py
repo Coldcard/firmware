@@ -1667,11 +1667,10 @@ def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import, n
         config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
     if xderiv != None:
         config += 'Derivation: %s\n' % xderiv
-    title, story = offer_ms_import(config)
-    assert f'Policy: {N} of {N}\n' in story
-    assert f'P2SH-P2WSH' in story
-    assert 'Derivation:\n  Any\n' in story
-    need_keypress('x')
+
+    with pytest.raises(BaseException) as ee:
+        title, story = offer_ms_import(config)
+    assert 'empty deriv' in str(ee)
 
 @pytest.mark.parametrize('N', [ 15])
 @pytest.mark.parametrize('M', [ 1, 15])
@@ -1680,7 +1679,7 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
     # try config file with many different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
     actual = "m/48'/0'/0'/1'/0"
-    derivs = [ actual, 'unknown', '*', "m/45'/0'/99'", "m/45'/34/34'/34"]
+    derivs = [ actual, 'm', "m/45'/0'/99'", "m/45'/34/34'/34"]
 
     keys = make_multisig(M, N, deriv=actual, unique=1)
 
@@ -1693,16 +1692,16 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
         else:
             dp = derivs[idx % len(derivs)]
             config += 'Derivation: %s\n' % dp
-            if '/' in dp:
-                print('%s => %s   was %d, gonna be %d' % (
-                        xfp2str(xfp), dp, sk._depth, dp.count('/')))
-                sk._depth = dp.count('/')
+            print('%s => %s   was %d, gonna be %d' % (
+                    xfp2str(xfp), dp, sk._depth, dp.count('/')))
+            sk._depth = dp.count('/')
         config += '%s: %s\n' % (xfp2str(xfp), sk.hwif(as_private=False))
 
     title, story = offer_ms_import(config)
     assert f'Policy: {M} of {N}\n' in story
     assert f'P2SH-P2WSH' in story
-    assert 'Derivation:\n  Varies\n' in story
+    assert 'Derivation:\n  Varies' in story
+    assert f'  Varies ({len(set(derivs))})\n' in story
     need_keypress('y')
 
 
