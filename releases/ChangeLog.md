@@ -5,13 +5,10 @@
 - Major Multisig improvements! If you are using multisig features, please backup
   your Coldcard before upgrade, just in case (but shouldn't be a problem).
 - MS Enhancement: Tracks derivation path for each co-signer and no longer assumes
-  they all use a shared derivation prefix. Blocks multiple instances of same XFP in the wallet
+  they all use a shared derivation path. Blocks multiple instances of same XFP in the wallet
   (not supported anymore, bad idea). Various displays updated to reflect derivation path change.
   Text file import: "Derivation:" line can be repeated, applies to all following xpubs.
-  Use "Derivation: any" for co-signers where it's unknown.
 - MS Enhancement: Show Ypub/Zpub formated values from SLIP-132 when viewing details of wallet.
-- MS Enhancement: Electrum export can be done even if we don't know the derivation paths of
-  some or all xpubs. For those, we make up a placeholder path, starting with `m/42069'/...`.
 - MS Enhancement: standardize on "p2sh-p2wsh" nomenclature, rather than "p2wsh-p2sh", thanks
   to [@humanumbrella](https://github.com/humanumbrella). For airgaped multisig wallet 
   creation, you must use same firmware verison on all Coldcards or this change can make trouble.
@@ -39,7 +36,7 @@
 - Enhancement: Show version of secure element, under Advanced > Upgrade > Show Version.
 - Enhancement: Improve 'None of the keys involved...' message to show XFP value actually
   found inside PSBT file.
-- Enhancement: Invalid PSBT errors are shown with more information now.
+- Enhancement: "Invalid PSBT" errors are shown with more information now.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020
