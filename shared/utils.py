@@ -249,8 +249,9 @@ def cleanup_deriv_path(bin_path, allow_star=False):
 
 def keypath_to_str(bin_path, prefix='m/', skip=1):
     # take binary path, like from a PSBT and convert into text notation
-    return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
+    rv = prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
                             for i in bin_path[skip:])
+    return 'm' if rv == 'm/' else rv
 
 def str_to_keypath(xfp, path):
     # Take a numeric xfp, and string derivation, and make a list of numbers,

@@ -1078,8 +1078,12 @@ class psbtObject(psbtProxy):
             # - chain codes match what we have stored already
             # - pubkey vs. path will be checked later
             # - xfp+path already checked above when selecting wallet
-            # Any issue here is a fraud attempt in some way, not innocent
-            self.active_multisig.validate_psbt_xpubs(self.xpubs)
+            # Any issue here is a fraud attempt in some way, not innocent; but
+            # some are warnings because we don't have enough info to be sure either way.
+            unsure = self.active_multisig.validate_psbt_xpubs(self.xpubs)
+            if unsure:
+                self.warnings.append(('Pubkey',
+                        'Some public keys used in redeem script cannot be confirmed'))
 
         if not self.active_multisig:
             # not clear if an error... might be part-way to importing, and
