@@ -1011,9 +1011,12 @@ def fake_ms_txn():
         if incl_xpubs:
             # add global header with XPUB's
             # - assumes BIP45
-            for xfp, m, sk in keys:
-                kk = pack('<II', xfp, 45|0x80000000)
-                psbt.xpubs.append( (sk.serialize(as_private=False), kk) )
+            for idx, (xfp, m, sk) in enumerate(keys):
+                if callable(incl_xpubs):
+                    psbt.xpubs.append( incl_xpubs(idx, xfp, m, sk) )
+                else:
+                    kk = pack('<II', xfp, 45|0x80000000)
+                    psbt.xpubs.append( (sk.serialize(as_private=False), kk) )
 
         psbt.inputs = [BasicPSBTInput(idx=i) for i in range(num_ins)]
         psbt.outputs = [BasicPSBTOutput(idx=i) for i in range(num_outs)]
