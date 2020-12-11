@@ -23,9 +23,6 @@ TRUST_VERIFY = const(0)
 TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
-# when we don't know the derivation of an xpub we are holding
-UNKNOWN_DERIV = '*'
-
 class MultisigOutOfSpace(RuntimeError):
     pass
 
@@ -119,10 +116,7 @@ class MultisigWallet:
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
         for xfp, deriv, _ in self.xpubs:
-            if deriv == UNKNOWN_DERIV:
-                self.xfp_paths[xfp] = [xfp]
-            else:
-                self.xfp_paths[xfp] = str_to_keypath(xfp, deriv)
+            self.xfp_paths[xfp] = str_to_keypath(xfp, deriv)
 
         assert len(self.xfp_paths) == self.N, 'dup XFP'         # not supported
 
@@ -164,8 +158,7 @@ class MultisigWallet:
         if len(pp) == 1:
             # generate old-format data, to preserve firmware downgrade path
             xp = [(a, c) for a,deriv,c in self.xpubs]
-            if pp[0] != UNKNOWN_DERIV:
-                opts['pp'] = pp[0]
+            opts['pp'] = pp[0]
         else:
             # allow for distinct deriv paths on each leg
             opts['d'] = pp
@@ -182,7 +175,10 @@ class MultisigWallet:
             # promote from old format to new: assume common prefix is the derivation
             # for all of them
             # PROBLEM: we don't have enough info if no common prefix can be assumed
-            common_prefix = opts.get('pp', None) or UNKNOWN_DERIV
+            common_prefix = opts.get('pp', None)
+            if not common_prefix:
+                # TODO: this should raise a warning, not supported anymore
+                common_prefix = 'm'
             xpubs = [(a, common_prefix, b) for a,b in xpubs]
         else:
             # new format decompression
@@ -583,10 +579,8 @@ class MultisigWallet:
             elif label == 'derivation':
                 # reveal the path derivation for following key(s)
                 try:
-                    if value.lower() in { 'any', 'unknown', '*', '', 'none', UNKNOWN_DERIV }:
-                        deriv = UNKNOWN_DERIV
-                    else:
-                        deriv = cleanup_deriv_path(value)
+                    assert value, 'blank'
+                    deriv = cleanup_deriv_path(value)
                 except BaseException as exc:
                     raise AssertionError('bad derivation line: ' + str(exc))
 
@@ -646,6 +640,8 @@ class MultisigWallet:
         # to list: xpubs with a tuple: (xfp, deriv, xpub)
         # return T if it's our own key
         # - deriv can be None, and in very limited cases can recover derivation path
+        # - could enforce all same depth, and/or all depth >= 1, but
+        #   seems like more restrictive than needed, so "m" is allowed
 
         try:
             # Note: addr fmt detected here via SLIP-132 isn't useful
@@ -658,17 +654,15 @@ class MultisigWallet:
 
         depth = node.depth()
 
-        # NOTE: could enforce all same depth, and/or all depth >= 1, but
-        # seems like more restrictive than needed.
         if depth == 1:
             if not xfp:
                 # allow a shortcut: zero/omit xfp => use observed parent value
                 xfp = swab32(node.fingerprint())
             else:
-                # generally cannot check fingerprint values, but if we can, do.
+                # generally cannot check fingerprint values, but if we can, do so.
                 assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
 
-        assert xfp, 'need fingerprint'          # happens if bare xpub given (and not bip45)
+        assert xfp, 'need fingerprint'          # happens if bare xpub given
 
         # In most cases, we cannot verify the derivation path because it's hardened
         # and we know none of the private keys involved.
@@ -681,30 +675,26 @@ class MultisigWallet:
             else:
                 deriv = guess           # reachable? doubt it
 
-        if depth == 0 and deriv == 'm':
-            # empty subpath given in PSBT globals means we don't really know derivation,
-            # (probably) or (less likely) maybe they just use 'm'. So assume unknown derivation.
-            deriv = UNKNOWN_DERIV
+        assert deriv, 'empty deriv'         # or force to be 'm'?
 
-        if deriv and deriv != UNKNOWN_DERIV:
-            # path length of derivation given needs to match xpub's depth
-            assert deriv[0] == 'm'
-            p_len = deriv.count('/')
-            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
-                                            p_len, depth, xfp2str(xfp))
+        # path length of derivation given needs to match xpub's depth
+        assert deriv[0] == 'm'
+        p_len = deriv.count('/')
+        assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+                                        p_len, depth, xfp2str(xfp))
 
-            if xfp == my_xfp:
-                # its supposed to be my key, so I should be able to generate pubkey
-                # - might indicate collision on xfp value between co-signers,
-                #   and that's not supported
-                with stash.SensitiveValues() as sv:
-                    chk_node = sv.derive_path(deriv)
-                    assert node.public_key() == chk_node.public_key(), \
-                                "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
+        if xfp == my_xfp:
+            # its supposed to be my key, so I should be able to generate pubkey
+            # - might indicate collision on xfp value between co-signers,
+            #   and that's not supported
+            with stash.SensitiveValues() as sv:
+                chk_node = sv.derive_path(deriv)
+                assert node.public_key() == chk_node.public_key(), \
+                            "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
         # serialize xpub w/ BIP32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
-        xpubs.append((xfp, deriv or UNKNOWN_DERIV, chain.serialize_public(node, AF_P2SH)))
+        xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
 
         return (xfp == my_xfp)
 
@@ -732,12 +722,6 @@ class MultisigWallet:
                     xp = ch.serialize_public(node, self.addr_fmt)
                 else:
                     xp = xpub
-
-                if deriv == UNKNOWN_DERIV:
-                    # create an (obviously) fake path at right depth
-                    if not node:
-                        node = ch.deserialize_node(xpub, AF_P2SH)
-                    deriv = 'm' + ("/42069'" * node.depth())
 
                 rv['x%d/' % (idx+1)] = dict(
                                 hw_type='coldcard', type='hardware',
@@ -876,7 +860,6 @@ class MultisigWallet:
         # Any issue here is a fraud attempt in some way, not innocent.
         # But it would not have tricked us and so the attack targets some other signer.
         assert len(xpubs_list) == self.N
-        unsure = 0
 
         for k, v in xpubs_list:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
@@ -892,30 +875,22 @@ class MultisigWallet:
             for (x_xfp, x_deriv, x_xpub) in self.xpubs: 
                 if x_xfp != xfp: continue
                 # found matching XFP
-                if x_deriv != UNKNOWN_DERIV:
-                    assert deriv == x_deriv
-                else:
-                    # we don't know the derivation it's supposed to be, so xpub
-                    # might differ from what we have on file (different depth, etc)
-                    unsure += 1
-                    break
+                assert deriv == x_deriv
 
                 assert xpub_reserialized == x_xpub, 'xpub wrong (xfp=%s)' % xfp2str(xfp)
                 break
             else:
                 assert False            # not reachable, since we picked wallet based on xfps
 
-        return unsure
-
     def get_deriv_paths(self):
-        # List of unique derivation paths being used. Often length one. May contain UNKNOWN_DERIV
+        # List of unique derivation paths being used. Often length one.
         # - also a rendered single-value summary
         derivs =  sorted(set(d for _,d,_ in self.xpubs))
 
         if len(derivs) == 1:
-            dsum = derivs[0] if derivs[0] != UNKNOWN_DERIV else 'Any'
+            dsum = derivs[0]
         else:
-            dsum = 'Varies'
+            dsum = 'Varies (%d)' % len(derivs)
 
         return derivs, dsum
 
@@ -1147,14 +1122,12 @@ async def ms_wallet_ckcc_export(menu, label, item):
 
 async def ms_wallet_electrum_export(menu, label, item):
     # create a JSON file that Electrum can use. Challenges:
-    # - file contains a derivation path that we don't really know.
+    # - file contains derivation paths for each co-signer to use
     # - electrum is using BIP43 with purpose=48 (purpose48_derivation) to make paths like:
     #       m/48'/1'/0'/2'
     # - other signers might not be coldcards (we don't know)
     # solution: 
-    # - (much earlier) when exporting, include all the paths needed.
     # - when building air-gap, pick address type at that point, and matching path to suit
-    # - require a common prefix path here
     # - could check path prefix and addr_fmt make sense together, but meh.
     ms = item.arg
     from actions import electrum_export_story
