@@ -2,7 +2,11 @@
 #
 # Multisig-related tests.
 #
-import time, pytest, os, random, json, shutil
+# After this file passes, also run again like this:
+#
+#       py.test test_multisig.py -m ms_danger --ms-danger
+#
+import time, pytest, os, random, json, shutil, pdb
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from pprint import pprint, pformat
@@ -34,6 +38,24 @@ def str2ipath(s):
             assert 0 <= here < 0x80000000, here
 
         yield here
+
+@pytest.fixture(scope='function')
+def has_ms_checks(request, sim_exec):
+    # Add this fixture to any test that should FAIL if ms checks are disabled
+    # - in other words, tests that test the checks which are disabled.
+    # - still need to run w/ --ms-danger flag set to test that cases
+    # - also mark testcase with ms_danger
+
+    danger_mode = (request.config.getoption('--ms-danger'))
+    if danger_mode:
+        print("Enabling multisig danger mode")
+        
+        request.node.add_marker(pytest.mark.xfail(True, strict=True,
+                reason="check was bypassed, so testcase should fail"))
+
+    sim_exec(f'from multisig import MultisigWallet; MultisigWallet.disable_checks={danger_mode}')
+
+    return danger_mode
 
 
 @pytest.fixture()
@@ -357,11 +379,14 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
 
         #print(story)
 
-        assert got_addr in story
-        assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
-        if bip45:
-            for i in range(len(keys)):
-                assert ('/_/%d/0/0' % i) in story
+        if not ms_danger_mode:
+            assert got_addr in story
+            assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
+            if bip45:
+                for i in range(len(keys)):
+                    assert ('/_/%d/0/0' % i) in story
+        else:
+            assert 'UNVERIFIED' in story
 
         need_keypress('y')
 
@@ -395,7 +420,8 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
     finally:
         clear_ms()
 
-def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+@pytest.mark.ms_danger
+def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks):
     # detect when pubkeys are not in order in the redeem script
     M, N = 1, 15
 
@@ -412,7 +438,7 @@ def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
 
 
 @pytest.mark.parametrize('which_pubkey', [0, 1, 14])
-def test_bad_pubkey(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
+def test_bad_pubkey(has_checks, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
     # give incorrect pubkey inside redeem script
     M, N = 1, 15
     keys = import_ms_wallet(M, N, accept=1)
@@ -455,8 +481,13 @@ def test_zero_depth(clear_ms, addr_fmt, import_ms_wallet, need_keypress, test_ms
         clear_ms()
 
 @pytest.mark.parametrize('mode', ['wrong-xfp', 'long-path', 'short-path', 'zero-path'])
-def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+@pytest.mark.ms_danger
+def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks, request):
     # give incorrect xfp+path args during show_address
+
+    if has_ms_checks and (mode in {'zero-path', 'wrong-xfp'}):
+        # for these 2 cases, we detect the issue regardless of has_ms_checks mode
+        request.node.get_closest_marker('xfail').kwargs['strict'] = False
 
     M, N = 1, 15
     keys = import_ms_wallet(M, N, accept=1)
@@ -776,7 +807,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
 
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
-        assert len(menu) == 4 + num_wallets
+        assert len(menu) == 5 + num_wallets
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
@@ -1510,7 +1541,8 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
 @pytest.mark.parametrize('incl_xpubs', [ False])
 @pytest.mark.parametrize('out_style', ['p2wsh'])
 @pytest.mark.parametrize('bitrot', list(range(0,6)) + [98, 99, 100] + list(range(-5, 0)))
-def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story, bitrot):
+@pytest.mark.ms_danger
+def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_wallet, addr_vs_path, fake_ms_txn, start_sign, end_sign, out_style, cap_story, bitrot, has_ms_checks):
     
     M = 1
     N = 3
@@ -1756,5 +1788,29 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
 
     clear_ms()
 
+
+@pytest.mark.ms_danger
+def test_danger_warning(request, clear_ms, import_ms_wallet, cap_story, fake_ms_txn, start_sign, sim_exec):
+    # note: cant use has_ms_checks fixture here
+    danger_mode = (request.config.getoption('--ms-danger'))
+    sim_exec(f'from multisig import MultisigWallet; MultisigWallet.disable_checks={danger_mode}')
+
+    clear_ms()
+    M,N = 2,3
+    keys = import_ms_wallet(M, N, accept=1)
+
+    psbt = fake_ms_txn(1, 1, M, keys, incl_xpubs=True)
+
+    open('debug/last.psbt', 'wb').write(psbt)
+
+    start_sign(psbt)
+    title, story = cap_story()
+
+    if danger_mode:
+        assert 'WARNING' in story
+        assert 'Danger' in story
+        assert 'Some multisig checks are disabled' in story
+    else:
+        assert 'WARNING' not in story
 
 # EOF

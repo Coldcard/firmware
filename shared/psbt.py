@@ -403,6 +403,12 @@ class psbtOutputProxy(psbtProxy):
                     self.is_change = False
                     return
 
+                if MultisigWallet.disable_checks:
+                    # Without validation, we have to assume all outputs
+                    # will be taken from us, and are not really change.
+                    self.is_change = False
+                    return
+
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
                 # - BIP45, BIP67 rules applied
@@ -1292,6 +1298,9 @@ class psbtObject(psbtProxy):
             self.warnings.append(('Partly Signed Already',
                 'Some input(s) provided were already completely signed by other parties: ' +
                         seq_to_str(self.presigned_inputs)))
+
+        if MultisigWallet.disable_checks:
+            self.warnings.append(('Danger', 'Some multisig checks are disabled.'))
 
     def calculate_fee(self):
         # what miner's reward is included in txn?

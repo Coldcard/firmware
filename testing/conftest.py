@@ -25,6 +25,9 @@ def pytest_addoption(parser):
     parser.addoption("--duress", action="store_true",
                      default=False, help="assume logged-in with duress PIN")
 
+    parser.addoption("--ms-danger", action="store_true",
+                     default=False, help="Operate with multisig checks off")
+
 @pytest.fixture(scope='session')
 def dev(request):
     # a connected Coldcard (via USB) .. or the simulator
@@ -980,7 +983,6 @@ def is_mark2(request):
 @pytest.fixture(scope='session')
 def is_mark3(request):
     return int(request.config.getoption('--mk')) == 3
-
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,

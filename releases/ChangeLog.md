@@ -4,18 +4,21 @@
 
 - Major Multisig improvements! If you are using multisig features, please backup
   your Coldcard before upgrade, just in case (but shouldn't be a problem).
-- MS Enhancement: Tracks derivation path for each co-signer and no longer assumes
-  they all use a shared derivation path. Blocks multiple instances of same XFP in the wallet
-  (not supported anymore, bad idea). Various displays updated to reflect derivation path change.
-  Text file import: "Derivation:" line can be repeated, applies to all following xpubs.
-- MS Enhancement: Show Ypub/Zpub formated values from SLIP-132 when viewing details of wallet.
-- MS Enhancement: standardize on "p2sh-p2wsh" nomenclature, rather than "p2wsh-p2sh", thanks
-  to [@humanumbrella](https://github.com/humanumbrella). For airgaped multisig wallet 
-  creation, you must use same firmware verison on all Coldcards or this change can make trouble.
-- MS Enhancement: Address type (p2wsh-p2sh, p2sh, p2wsh) is captured from MS wallets created
-  by PSBT file import.
-- MS Enhancement: Can now store multiple wallets involving same set of XFP values, if they
-  have differing subkey paths and/or address formats.
+    - Tracks derivation path for each co-signer and no longer assumes
+      they all use a shared derivation path. Blocks multiple instances of same XFP in the
+      wallet (not supported anymore, bad idea). Various displays updated to reflect
+      derivation path change.  Text file import: "Derivation:" line can be repeated,
+      applies to all following xpubs.
+    - Show Ypub/Zpub formated values from SLIP-132 when viewing details of wallet.
+    - Standardize on "p2sh-p2wsh" nomenclature, rather than "p2wsh-p2sh", thanks
+      to [@humanumbrella](https://github.com/humanumbrella). For airgaped multisig wallet 
+      creation, you must use same firmware verison on all Coldcards or this change can
+      make trouble.
+    - Address type (p2wsh-p2sh, p2sh, p2wsh) is captured from MS wallets created
+      by PSBT file import.
+    - Can now store multiple wallets involving same set of XFP values, if they
+      have differing subkey paths and/or address formats.
+    - New mode which disables certain multisig checks to assist bug compatibility.
 - Enhancement: Add support for signing Payjoin PSBT files based on
   [BIP-78](https://github.com/bitcoin/bips/blob/master/bip-0078.mediawiki). 
 - Enhancement: Promoted the address explorer to the main menu. It's useful! 
