@@ -102,6 +102,9 @@ class MultisigWallet:
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),      # obsolete (now an alias)
     ]
 
+    # optional: user can short-circuit many checks (system wide, one power-cycle only)
+    disable_checks = False
+
     def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC'):
         self.storage_idx = -1
 
@@ -277,6 +280,7 @@ class MultisigWallet:
         # - xfp_paths must be sorted already
         assert (self.M, self.N) == (M, N), "M/N mismatch"
         assert len(xfp_paths) == N, "XFP count"
+        if self.disable_checks: return
         assert self.matching_subpaths(xfp_paths), "wrong XFP/derivs"
 
     @classmethod
@@ -414,6 +418,7 @@ class MultisigWallet:
     def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
         # Check we can generate all pubkeys in the redeem script, raise on errors.
         # - working from pubkeys in the script, because duplicate XFP can happen
+        # - if disable_checks is set better to handle in caller, but we're also neutered
         #
         # redeem_script: what we expect and we were given
         # subpaths: pubkey => (xfp, *path)
@@ -425,6 +430,8 @@ class MultisigWallet:
 
         M, N, pubkeys = disassemble_multisig(redeem_script)
         assert M==self.M and N == self.N, 'wrong M/N in script'
+
+        if self.disable_checks: return ['UNVERIFIED']
 
         for pk_order, pubkey in enumerate(pubkeys):
             check_these = []
@@ -660,7 +667,8 @@ class MultisigWallet:
                 xfp = swab32(node.fingerprint())
             else:
                 # generally cannot check fingerprint values, but if we can, do so.
-                assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
+                if not cls.disable_checks:
+                    assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
 
         assert xfp, 'need fingerprint'          # happens if bare xpub given
 
@@ -671,26 +679,28 @@ class MultisigWallet:
             guess = keypath_to_str([node.child_num()], skip=0)
 
             if deriv:
-                assert guess == deriv, '%s != %s' % (guess, deriv)
+                if not cls.disable_checks:
+                    assert guess == deriv, '%s != %s' % (guess, deriv)
             else:
                 deriv = guess           # reachable? doubt it
 
         assert deriv, 'empty deriv'         # or force to be 'm'?
+        assert deriv[0] == 'm'
 
         # path length of derivation given needs to match xpub's depth
-        assert deriv[0] == 'm'
-        p_len = deriv.count('/')
-        assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+        if not cls.disable_checks:
+            p_len = deriv.count('/')
+            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
                                         p_len, depth, xfp2str(xfp))
 
-        if xfp == my_xfp:
-            # its supposed to be my key, so I should be able to generate pubkey
-            # - might indicate collision on xfp value between co-signers,
-            #   and that's not supported
-            with stash.SensitiveValues() as sv:
-                chk_node = sv.derive_path(deriv)
-                assert node.public_key() == chk_node.public_key(), \
-                            "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
+            if xfp == my_xfp:
+                # its supposed to be my key, so I should be able to generate pubkey
+                # - might indicate collision on xfp value between co-signers,
+                #   and that's not supported
+                with stash.SensitiveValues() as sv:
+                    chk_node = sv.derive_path(deriv)
+                    assert node.public_key() == chk_node.public_key(), \
+                                "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
         # serialize xpub w/ BIP32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
@@ -999,6 +1009,37 @@ async def no_ms_yet(*a):
     # action for 'no wallets yet' menu item
     await ux_show_story("You don't have any multisig wallets yet.")
 
+def disable_checks_chooser():
+    ch = [ 'Normal', 'Skip Checks']
+
+    def xset(idx, text):
+        MultisigWallet.disable_checks = bool(idx)
+
+    return int(MultisigWallet.disable_checks), ch, xset
+
+async def disable_checks_menu(*a):
+    from menu import start_chooser
+
+    if not MultisigWallet.disable_checks:
+        ch = await ux_show_story('''\
+With many different wallet vendors and implementors involved, it can \
+be hard to create a PSBT consistent with the many keys involved. \
+With this setting, you can \
+disable the more stringent verification checks your Coldcard normally provides.
+
+USE AT YOUR OWN RISK. These checks exist for good reason! Signed txn may \
+not be accepted by network.
+
+This settings lasts only until power down.
+
+Press 4 to confirm entering this DANGEROUS mode. 
+''', escape='4')
+
+        if ch != '4': return
+
+    start_chooser(disable_checks_chooser)
+
+
 def psbt_xpubs_policy_chooser():
     # Chooser for trust policy
     ch = [ 'Verify Only', 'Offer Import', 'Trust PSBT']
@@ -1056,6 +1097,7 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
+        rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
 
         return rv
 
