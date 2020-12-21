@@ -203,3 +203,13 @@ wrong yard year yellow you young youth zebra zero zone zoo'''.split()
 
 # Print index number and each word (24)
 print('\n'.join('%4d: %s' % (n+1, wl[i]) for n, i in enumerate(w)))
+
+# Sanity check for empty input
+empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+if h.hex() == empty:
+    print('WARNING: Input is empty. This is a known wallet')
+
+# Warnings for short length
+if len(r) < 99:
+    ae = 2.585 * len(r)
+    print('WARNING: Input is only %d bits of entropy' % ae)
