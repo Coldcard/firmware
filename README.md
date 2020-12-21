@@ -115,6 +115,10 @@ Top-level dirs:
 
 - schematic and bill of materials for the Coldcard
 
+`work`
+
+- files for microSD card 
+
 
 ## Support
 
