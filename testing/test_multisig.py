@@ -248,6 +248,9 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_ms_import, need_
     config = [sk.hwif(as_private=False) for xfp,m,sk in keys]
     for i in range(len(config)):
         config.insert(i, '# comment')
+        config.insert(i, ' #')
+        config.insert(i, ' # ')
+        config.insert(i, ' #  ')
         config.insert(i, '')
     title, story = offer_ms_import('\n'.join(config))
     assert f'Policy: {N} of {N}\n' in story

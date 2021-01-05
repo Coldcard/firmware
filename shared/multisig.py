@@ -553,7 +553,7 @@ class MultisigWallet:
             if comm == 0:
                 continue
             if comm != -1:
-                if not ln[comm+1].isdigit():
+                if not ln[comm+1:comm+2].isdigit():
                     ln = ln[0:comm]
 
             ln = ln.strip()
