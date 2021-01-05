@@ -550,8 +550,11 @@ class MultisigWallet:
         for ln in lines:
             # remove comments
             comm = ln.find('#')
+            if comm == 0:
+                continue
             if comm != -1:
-                ln = ln[0:comm]
+                if not ln[comm+1].isdigit():
+                    ln = ln[0:comm]
 
             ln = ln.strip()
 
