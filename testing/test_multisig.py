@@ -230,7 +230,7 @@ def test_ms_import_variations(N, make_multisig, clear_ms, offer_ms_import, need_
 
 
     # normal names
-    for name in [ 'Zy', 'Z'*20 ]:
+    for name in [ 'Zy', 'Z'*20, 'Vault #3' ]:
         config = f'name: {name}\n'
         config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
         title, story = offer_ms_import(config)
