@@ -11,8 +11,6 @@ from actions import goto_top_menu
 from menu import MenuSystem, MenuItem, start_chooser
 from public_constants import AFC_BECH32
 
-SCREEN_CHAR_WIDTH = const(16)
-
 async def choose_first_address(*a):
     # Choose from a truncated list of index 0 common addresses, remember
     # the last address the user selected and use it as the default
@@ -25,11 +23,8 @@ async def choose_first_address(*a):
 
         def truncate_address(addr):
             # Truncates address to width of screen, replacing middle chars
-            middle = "-"
-            leftover = SCREEN_CHAR_WIDTH - len(middle)
-            start = addr[0:(leftover+1) // 2]
-            end = addr[len(addr) - (leftover // 2):]
-            return start + middle + end
+            # - 16 chars screen width, so show 8 prefix, dash, and 7 of end of address
+            return addr[0:8] + '-' + addr[-7:]
 
         # Create list of choices (address_index_0, path, addr_fmt)
         choices = []

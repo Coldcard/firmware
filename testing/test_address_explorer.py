@@ -143,8 +143,8 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
 
         # validate that stub is correct
         [start, end] = m[idx].split('-')
-        assert start in expected_addr
-        assert end in expected_addr
+        assert expected_addr.startswith(start)
+        assert expected_addr.endswith(end)
 
 @pytest.mark.parametrize('press_seq, expected_start, expected_n', [
     (['9', '9', '9', '7', '7', '9'], 20, 10), # forward backward forward
