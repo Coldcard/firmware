@@ -40,6 +40,7 @@
 - Enhancement: Improve 'None of the keys involved...' message to show XFP value actually
   found inside PSBT file.
 - Enhancement: "Invalid PSBT" errors are shown with more information now.
+- Paper Wallet features temporarily removed to free space; will return in future version.
 - License changed from GPL to MIT+CC on files for which the GPL doesn't apply.
 
 ## 3.1.9 - Aug 6, 2020

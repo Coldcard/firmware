@@ -10,15 +10,21 @@ from main import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu
-from paper import make_paper_wallet
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start
 
+# Optional feature: HSM
 if version.has_fatram:
     from hsm import hsm_policy_available
 else:
     hsm_policy_available = lambda: False
+
+# Optional feature: Paper Wallets
+try:
+    from paper import make_paper_wallet
+except:
+    make_paper_wallet = None
 
 #
 # NOTE: "Always In Title Case"
@@ -106,7 +112,7 @@ AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem('Upgrade firmware', menu=UpgradeMenu),
-    MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem('Secure Logout', f=logout_now),
 ]
@@ -115,7 +121,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem("Upgrade", menu=UpgradeMenu),
-    MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem('Secure Logout', f=logout_now),
@@ -160,7 +166,7 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem("MicroSD Card", menu=SDCardMenu),
-    MenuItem('Paper Wallets', f=make_paper_wallet),
+    MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem('Derive Entropy', f=drv_entro_start),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
