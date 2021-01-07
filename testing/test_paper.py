@@ -24,7 +24,10 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
 
     goto_home()
     pick_menu_item('Advanced')
-    pick_menu_item('Paper Wallets')
+    try:
+        pick_menu_item('Paper Wallets')
+    except:
+        raise pytest.skip('Feature absent')
 
     time.sleep(0.1)
     title, story = cap_story()
@@ -132,7 +135,10 @@ def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_stor
 
     goto_home()
     pick_menu_item('Advanced')
-    pick_menu_item('Paper Wallets')
+    try:
+        pick_menu_item('Paper Wallets')
+    except:
+        raise pytest.skip('Feature absent')
 
     time.sleep(0.1)
     title, story = cap_story()
