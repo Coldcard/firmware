@@ -441,7 +441,7 @@ def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
 
 
 @pytest.mark.parametrize('which_pubkey', [0, 1, 14])
-def test_bad_pubkey(has_checks, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
+def test_bad_pubkey(has_ms_checks, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
     # give incorrect pubkey inside redeem script
     M, N = 1, 15
     keys = import_ms_wallet(M, N, accept=1)
