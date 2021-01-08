@@ -451,7 +451,7 @@ class USBHandler:
             if txn_sha != self.file_checksum.digest():
                 return b'err_Checksum'
 
-            assert 50 < txn_len <= MAX_TXN_LEN, "bad txn len"
+            assert 50 < txn_len <= MAX_TXN_LEN, "badlen"
 
             from auth import sign_transaction
             sign_transaction(txn_len, (flags & STXN_FLAGS_MASK), txn_sha)
