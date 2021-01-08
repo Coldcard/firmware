@@ -130,7 +130,7 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
 @pytest.mark.parametrize('num_in', [1, 10, 20])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES)
-def test_io_size(request, decode_with_bitcoind, fake_txn,
+def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3,
                     start_sign, end_sign, dev, segwit, out_style, 
                     num_out, num_in, accept=True):
 
@@ -140,6 +140,10 @@ def test_io_size(request, decode_with_bitcoind, fake_txn,
     # - simulator can do 400/400 but takes long time
     # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
     # - complete run on real hardware takes 1800.94 seconds = 30 minutes
+    # - mk3 required for larger output counts
+
+    if not is_mark3 and num_out > 10:
+        raise pytest.xfail('need mk3')
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=[out_style])
 
