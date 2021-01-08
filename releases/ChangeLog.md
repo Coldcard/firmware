@@ -1,6 +1,4 @@
-## 3.2.1 - Dec XXX, 2020
-
-**BETA** Version --- Please test and report issues! Continue to use v3.1.9 for day-to-day applications.
+## 3.2.1 - Jan 8, 2021
 
 - Major Multisig improvements! If you are using multisig features, please backup
   your Coldcard before upgrade, just in case (but shouldn't be a problem).
@@ -14,7 +12,7 @@
       to [@humanumbrella](https://github.com/humanumbrella). For airgaped multisig wallet 
       creation, you must use same firmware verison on all Coldcards or this change can
       make trouble.
-    - Address type (p2wsh-p2sh, p2sh, p2wsh) is captured from MS wallets created
+    - Address type (p2sh-p2wsh, p2sh, p2wsh) is captured from MS wallets created
       by PSBT file import.
     - Can now store multiple wallets involving same set of XFP values, if they
       have differing subkey paths and/or address formats.
