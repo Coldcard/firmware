@@ -31,9 +31,10 @@ if len(r) < 99:
 # Apply BIP39 to convert into seed words
 v = int.from_bytes(h, 'big') << 8
 w = []
-while v:
+for i in range(24):
     v, m = divmod(v, 2048)
     w.insert(0, m)
+assert not v
 
 # final 8 bits are a checksum
 w[-1] |= sha256(h).digest()[0]
