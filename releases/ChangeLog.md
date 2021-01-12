@@ -1,3 +1,9 @@
+- Address Explorer enhancements:
+    - can do sub-accounts now, just enter the number
+    - can hide warning after reading first time (press 6)
+    - can do custom derivation paths
+    - can do multisig wallets
+
 ## 3.2.1 - Jan 8, 2021
 
 - Major Multisig improvements! If you are using multisig features, please backup

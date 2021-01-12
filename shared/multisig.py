@@ -16,6 +16,7 @@ from exceptions import FatalPSBTIssue
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
+# - serializations of M/N in redeem scripts assume this range
 MAX_SIGNERS = const(15)
 
 # PSBT Xpub trust policies
@@ -83,6 +84,26 @@ def disassemble_multisig(redeem_script):
         pass
 
     return M, N, pubkeys
+
+def make_redeem_script(M, nodes, subkey_idx):
+    # take a list of BIP32 nodes, and derive Nth subkey (subkey_idx) and make
+    # a standard M-of-N redeem script for that. Always applies BIP67 sorting.
+    N = len(nodes)
+    assert 1 <= M <= N <= MAX_SIGNERS
+
+    pubkeys = []
+    for n in nodes:
+        copy = n.clone()
+        n.derive(subkey_idx)
+        pubkeys.append(n.public_key())
+
+    pubkeys.sort()
+
+    # serialize redeem script
+    pubkeys.insert(0, bytes([80 + M]))
+    pubkeys.append(bytes([80 + N, OP_CHECKMULTISIG]))
+
+    return b''.join(pubkeys)
 
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a
@@ -414,6 +435,41 @@ class MultisigWallet:
         # return set of indexes of xpubs with indicated xfp
         return set(xp_idx for xp_idx, (wxfp, _, _) in enumerate(self.xpubs)
                         if wxfp == xfp)
+
+    def yield_addresses(self, start_idx, count, change_idx=0):
+        # Assuming a suffix of /0/0 on the defined prefix's, yield
+        # possible deposit addresses for this wallet. Never show
+        # user the resulting addresses because we cannot be certain
+        # they are valid and could be signed. And yet, dont blank too many
+        # spots or else an attacker could grid out a suitable replacement.
+        ch = self.chain
+
+        assert self.addr_fmt, 'no addr fmt known'
+
+        # setup
+        nodes = []
+        paths = []
+        for xfp, deriv, xpub in self.xpubs:
+            # load bip32 node for each cosigner, derive /0/ based on change idx
+            node = ch.deserialize_node(xpub, AF_P2SH)
+            node.derive(change_idx)
+            nodes.append(node)
+
+            # indicate path used (for UX)
+            path = "(m=%s)/%s/%d/{idx}" % (xfp2str(xfp), deriv, change_idx)
+            paths.append(path)
+
+        idx = start_idx
+        while count:
+            # make the redeem script
+            script = make_redeem_script(self.M, nodes, idx)
+            addr = ch.p2sh_address(self.addr_fmt, script)
+            addr = addr[0:12] + '___' + addr[12+3:]
+
+            yield idx, [p.format(idx=idx) for p in paths], addr
+
+            idx += 1
+            count -= 1
 
     def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
         # Check we can generate all pubkeys in the redeem script, raise on errors.
