@@ -884,6 +884,11 @@ class MultisigWallet:
             (_, deriv, xpub_reserialized) = tmp[0]
             assert deriv            # because given as arg
 
+            if self.disable_checks:
+                # allow wrong derivation paths in PSBT; but also allows usage when
+                # old pre-3.2.1 MS wallet lacks derivation details for all legs
+                continue
+
             # find in our records.
             for (x_xfp, x_deriv, x_xpub) in self.xpubs: 
                 if x_xfp != xfp: continue
