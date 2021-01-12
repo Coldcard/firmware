@@ -1,3 +1,8 @@
+## 3.2.2 - Jan ??, 2021
+- Bugfix: Disable more path derivation checks to "Skip Checks" feature for multisig
+  compatibility. Addresses error shown when working previous Spectre multisig wallets
+  (`multisig.py: 891`)
+
 ## 3.2.1 - Jan 8, 2021
 
 - Major Multisig improvements! If you are using multisig features, please backup
