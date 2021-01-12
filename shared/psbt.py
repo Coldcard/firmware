@@ -412,7 +412,7 @@ class psbtOutputProxy(psbtProxy):
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
                 # - BIP45, BIP67 rules applied
-                # - p2wsh-p2sh needs witness script here, not redeem script value
+                # - p2sh-p2wsh needs witness script here, not redeem script value
                 # - if details provided in output section, must our match multisig wallet
                 try:
                     active_multisig.validate_script(witness_script or redeem_script,
@@ -433,7 +433,7 @@ class psbtOutputProxy(psbtProxy):
                     return
 
                 if witness_script:
-                    # p2wsh-p2sh case (because it had witness script)
+                    # p2sh-p2wsh case (because it had witness script)
                     expect_rs = b'\x00\x20' + tcc.sha256(witness_script).digest()
                     
                     if redeem_script and expect_rs != redeem_script:
@@ -674,7 +674,7 @@ class psbtInputProxy(psbtProxy):
                     len(redeem_script) == 22 and \
                     redeem_script[0] == 0 and redeem_script[1] == 20:
                 # it's actually segwit p2pkh inside p2sh
-                addr_type = 'p2wpkh-p2sh'
+                addr_type = 'p2sh-p2wpkh'
                 addr = redeem_script[2:22]
                 self.is_segwit = True
             else:
@@ -683,7 +683,7 @@ class psbtInputProxy(psbtProxy):
 
             if self.witness_script and not self.is_segwit and self.is_multisig:
                 # bugfix
-                addr_type = 'p2wsh-p2sh'
+                addr_type = 'p2sh-p2wsh'
                 self.is_segwit = True
 
         elif addr_type == 'p2pkh':
