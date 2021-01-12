@@ -279,7 +279,7 @@ def generate_generic_export(account_num=0):
         # each of these paths would have /{change}/{idx} in usage (not hardened)
         for name, deriv, fmt, atype in [
             ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh' ),
-            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2wpkh-p2sh' ),
+            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2sh-p2wpkh' ),   # was "p2wpkh-p2sh"
             ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh' ),
         ]:
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
