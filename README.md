@@ -115,9 +115,9 @@ Top-level dirs:
 
 - schematic and bill of materials for the Coldcard
 
-`work`
+`unix/work/MicroSD`
 
-- files for microSD card 
+- files on "simulated" microSD card 
 
 
 ## Support
