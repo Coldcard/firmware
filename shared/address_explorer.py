@@ -129,6 +129,11 @@ class AddressListMenu(MenuSystem):
             for name, path, addr_fmt in chains.CommonDerivations:
                 if '{coin_type}' in path:
                     path = path.replace('{coin_type}', str(chain.b44_cointype))
+
+                if self.account_num != 0 and '{account}' not in path:
+                    # skip derivations that are not affected by account number
+                    continue
+
                 deriv = path.format(account=self.account_num, change=0, idx=0)
                 node = sv.derive_path(deriv, register=False)
                 address = chain.address(node, addr_fmt)
