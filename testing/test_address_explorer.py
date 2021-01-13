@@ -58,16 +58,17 @@ def parse_display_screen(cap_story):
             assert 'Press 1 to save to MicroSD.' in lines[0]
             assert '4 to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
-            raw_addrs = lines[4:-2] # Remove header & last line
+            raw_addrs = lines[4:-1] # Remove header & last line
         else:
             # no header after first page
             assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
-            raw_addrs = lines[2:-2]
+            raw_addrs = lines[2:-1]
 
         d = dict()
         for path_raw, addr, empty in zip(*[iter(raw_addrs)]*3):
             path = path_raw.split(" =>")[0]
             d[path] = addr
+        assert len(d) == n
         return d
     return doit
 
@@ -244,5 +245,107 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
         assert expected_addr.endswith(end)
 
         need_keypress('x')
+
+# NOTE: (2**31)-1 = 0x7fff_ffff = 2147483647
+
+@pytest.mark.parametrize('path', [
+    "m/1'/{idx}",
+    "m/2147483647/2147483647/2147483647'/2147483647/2147483647/2147483647'/2147483647/2147483647",
+    "m/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647",
+    "m/1/2/3/4/5",
+    "m/1'/2'/3'/4'/5'",
+])
+@pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
+def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story):
+
+    is_single = '{idx}' not in path
+
+    goto_address_explorer()
+    time.sleep(.01)
+    # skip warning
+    need_keypress('4')
+    time.sleep(.01)
+
+    def ss(x):
+        return x.split('/')
+
+    pick_menu_item('Custom Path')
+
+    # blind entry, using only first 2 menu items
+    deeper = ss(path)[1:]
+    last = ss(path)[-1]
+    for depth, part in enumerate(deeper):
+        time.sleep(.01)
+        m = cap_menu()
+        if depth == 0:
+            assert m[0] == 'm/..'
+            pick_menu_item(m[0])
+        elif part == '{idx}':
+            break
+        else:
+            assert m[0].endswith("'/..")
+            assert m[1].endswith("/..")
+            assert m[0] != m[1]
+
+            pick_menu_item(m[0 if last_part[-1] == "'" else 1])
+
+        # enter path component
+        for d in part:
+            if d == "'": break
+            need_keypress(d)
+        need_keypress('y')
+
+        last_part = part
+
+    time.sleep(.01)
+    m = cap_menu()
+    if is_single:
+        if len(last) <= 3:
+            assert m[2].endswith(f"/{last}") or m[3].endswith(f"/{last}")
+
+        pick_menu_item(m[2 if part[-1] == "'" else 3])
+    else:
+        assert last == '{idx}'
+        iis = [i for i in m if i.endswith(f"/{last_part}"+"/{idx}")]
+        assert len(iis) == 1
+        pick_menu_item(iis[0])
+
+    time.sleep(.5)          # .2 not enuf
+    m = cap_menu()
+    assert m[0] == 'Classic P2PKH'
+    assert m[1] == 'Segwit P2WPKH'
+    assert m[2] == 'P2SH-P2WPKH'
+        
+    fmts = {
+        AF_CLASSIC: 'Classic P2PKH', 
+        AF_P2WPKH: 'Segwit P2WPKH', 
+        AF_P2WPKH_P2SH: 'P2SH-P2WPKH', 
+    }
+
+    pick_menu_item(fmts[which_fmt])
+
+    title, body = cap_story()
+    assert 'DANGER' in title
+    assert 'DO NOT DEPOSIT' in body
+    assert path in body
+
+    need_keypress('3')      # approve risk
+
+    if is_single:
+        title, body = cap_story()
+        assert 'Showing single addr' in body
+        assert path in body
+
+        addr = body.split()[-1]
+
+        addr_vs_path(addr, path, addr_fmt=which_fmt)
+
+    else:
+        n = 10
+        addr_dict = parse_display_screen(0, n)
+        for i in range(n):
+            p = path.format(idx=i)
+            assert p in addr_dict
+            addr_vs_path(addr_dict[p], p, addr_fmt=which_fmt)
 
 # EOF
