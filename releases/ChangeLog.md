@@ -1,8 +1,10 @@
-- Address Explorer enhancements:
-    - can do sub-accounts now, just enter the number
-    - can hide warning after reading first time (press 6)
-    - can do custom derivation paths
-    - can do multisig wallets
+- Major Address Explorer enhancements! Thanks go to [@switck](https://twitter.com/switck)
+  for this major bump.
+    - View sub-accounts now, just enter the account number.
+    - Enter any custom derivation path, by entering numbers directly.
+    - Multisig wallet support! (Caveat: addresses are for verification only
+      and never for direct use as deposit, so they are partially redacted)
+    - Warning screen can be suppressed after reading first time (press 6)
 
 ## 3.2.1 - Jan 8, 2021
 
