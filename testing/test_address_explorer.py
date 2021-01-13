@@ -174,7 +174,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(given_addr, sk)
 
-@pytest.mark.parametrize('click_idx', range(6))
+@pytest.mark.parametrize('click_idx', range(4))
 def test_dump_addresses(generate_addresses_file, mk_common_derivations, sim_execfile, validate_address, click_idx):
     # Validate  addresses dumped to text file
     node_prv = BIP32Node.from_wallet_key(
@@ -188,5 +188,61 @@ def test_dump_addresses(generate_addresses_file, mk_common_derivations, sim_exec
         # derive the subkey and validate the corresponding address
         sk = node_prv.subkey_for_path(subpath[2:])
         validate_address(addr, sk)
+
+@pytest.mark.parametrize('account_num', [ 34, 100, 9999, 1])
+def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations, parse_display_screen, validate_address):
+    # Try a few sub-accounts
+    node_prv = BIP32Node.from_wallet_key(
+        sim_execfile('devtest/dump_private.py').strip()
+    )
+    common_derivs = mk_common_derivations(node_prv.netcode())
+
+    # capture menu address stubs
+    goto_address_explorer()
+    time.sleep(.01)
+    # skip warning
+    need_keypress('4')
+    time.sleep(.01)
+
+    m = cap_menu()
+    pick_menu_item([i for i in m if i.startswith('Account')][0])
+
+    # enter account number
+    time.sleep(0.1)
+    for d in str(account_num):
+        need_keypress(d)
+    need_keypress('y')
+    time.sleep(0.1)
+
+    m = cap_menu()
+    assert f'Account: {account_num}' in m
+
+    which = 0
+    for idx, (path, addr_format) in enumerate(common_derivs[1:]):
+        # derive index=0 address
+        assert '{account}' in path
+
+        subpath = path.format(account=account_num, change=0, idx=0) # e.g. "m/44'/1'/X'/0/0"
+        sk = node_prv.subkey_for_path(subpath[2:])
+
+        # capture full index=0 address from display screen & validate it
+
+        # go down menu to expected derivation spot
+        m = cap_menu()
+        pick_menu_item(m[idx])
+        time.sleep(0.1)
+
+        addr_dict = parse_display_screen(0, 10)
+        if subpath not in addr_dict:
+            raise Exception('Subpath ("%s") not found in address explorer display' % subpath)
+        expected_addr = addr_dict[subpath]
+        validate_address(expected_addr, sk)
+
+        # validate that stub is correct
+        [start, end] = m[idx].split('-')
+        assert expected_addr.startswith(start)
+        assert expected_addr.endswith(end)
+
+        need_keypress('x')
 
 # EOF
