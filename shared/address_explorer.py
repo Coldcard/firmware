@@ -23,23 +23,25 @@ class KeypathMenu(MenuSystem):
         self.prefix = None
 
         if path is None:
-            # Top level menu
+            # Top level menu; useful shortcuts, and special case just "m"
             items = [
                      MenuItem("m/..", f=self.deeper),
                      MenuItem("m/49'/..", f=self.deeper),
                      MenuItem("m/84'/..", f=self.deeper),
                      MenuItem("m/44'/..", f=self.deeper),
                      MenuItem("m/0/{idx}", menu=self.done),
+                     MenuItem("m/{idx}", menu=self.done),
                      MenuItem("m", f=self.done),
                     ]
         else:
             # drill down one layer: (nl) is the current leaf
+            # - hardened choice first
             p = '%s/%d' % (path, nl)
             items = [ 
                 MenuItem(p+"'/..", menu=self.deeper),
                 MenuItem(p+"/..",  menu=self.deeper),
-                MenuItem(p, menu=self.done),
                 MenuItem(p+"'", menu=self.done),
+                MenuItem(p, menu=self.done),
                 MenuItem(p+"'/0/{idx}", menu=self.done),
                 MenuItem(p+"/0/{idx}", menu=self.done),      #useful shortcut?
                 MenuItem(p+"'/{idx}", menu=self.done),
@@ -63,7 +65,7 @@ class KeypathMenu(MenuSystem):
         from display import FontTiny
         y = 64 - 8
         dis.clear_rect(0, y, dis.WIDTH, 8)
-        dis.text(0, y+4, self.prefix, FontTiny, invert=False)
+        dis.text(-1, y+4, self.prefix, FontTiny, invert=False)
 
     def done(self, _1, menu_idx, item):
         final_path = item.arg or item.label
