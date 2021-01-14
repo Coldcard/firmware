@@ -135,4 +135,26 @@ def path_to_str(bin_path, prefix='m/', skip=1):
     return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
                             for i in bin_path[skip:])
 
+def str_to_path(path):
+    # Take string derivation path, and make a list of numbers,
+    # - no syntax checking here
+
+    assert path[0:2] == 'm/'
+
+    rv = []
+    for p in path.split('/'):
+        if p == 'm': continue
+        if not p: continue      # trailing or duplicated slashes
+
+        if p[-1] == "'":
+            here = int(p[:-1]) | 0x80000000
+        else:
+            here = int(p)
+
+        rv.append(here)
+
+    assert path == path_to_str(rv, skip=0)
+
+    return rv
+
 # EOF
