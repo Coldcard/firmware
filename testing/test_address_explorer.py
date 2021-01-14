@@ -47,7 +47,7 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress):
     return doit
 
 @pytest.fixture
-def parse_display_screen(cap_story):
+def parse_display_screen(cap_story, is_mark3):
     # start: index of first address displayed in body
     # n: number of addresses displayed in body
     # return: dictionary of subpath => address
@@ -56,7 +56,8 @@ def parse_display_screen(cap_story):
         lines = body.split('\n')
         if start == 0:
             assert 'Press 1 to save to MicroSD.' in lines[0]
-            assert '4 to view QR Codes' in lines[0]
+            if is_mark3:
+                assert '4 to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
             raw_addrs = lines[4:-1] # Remove header & last line
         else:
