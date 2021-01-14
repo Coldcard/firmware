@@ -12,7 +12,7 @@ from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRef
 from pprint import pprint, pformat
 from base64 import b64encode, b64decode
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, swab32, xfp2str, parse_change_back
-from helpers import path_to_str
+from helpers import path_to_str, str_to_path
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
@@ -292,6 +292,8 @@ def make_redeem(M, keys, path_mapper=None,
 
         pk = node.sec(use_uncompressed=False)
         data.append( (pk, xfp, path))
+
+        #print("path: %s => pubkey %s" % (path_to_str(path, skip=0), B2A(pk)))
 
     data.sort(key=lambda i:i[0])
 
@@ -1815,5 +1817,66 @@ def test_danger_warning(request, clear_ms, import_ms_wallet, cap_story, fake_ms_
         assert 'Some multisig checks are disabled' in story
     else:
         assert 'WARNING' not in story
+
+@pytest.mark.parametrize('N', [ 3, 15])
+@pytest.mark.parametrize('M', [ 3, 15])
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH] )
+def test_ms_addr_explorer(M, N, addr_fmt, make_multisig, clear_ms, offer_ms_import, need_keypress,
+        goto_home, pick_menu_item, cap_story, cap_menu, import_ms_wallet):
+
+    wal_name = f"ax{M}-{N}-{addr_fmt}"
+
+    M = min(M, N)
+
+    dd = {
+        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+    }
+    deriv, text_a_fmt = dd[addr_fmt]
+
+    keys = make_multisig(M, N, unique=1, deriv=deriv)
+
+    derivs = [deriv.format(idx=i) for i in range(N)]
+
+    clear_ms()
+    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs, addr_fmt=text_a_fmt)
+
+    goto_home()
+    pick_menu_item("Address Explorer")
+    need_keypress('4')      # warning
+
+    m = cap_menu()
+    assert wal_name in m
+    pick_menu_item(wal_name)
+
+    time.sleep(.5)
+    title, story = cap_story()
+
+    # unwrap text a bit
+    story = story.replace("=>\n", "=> ").replace('0/0\n =>', "0/0 =>")
+
+    maps = []
+    for ln in story.split('\n'):
+        if '=>' not in ln: continue
+
+        path,chk,addr = ln.split()
+        assert chk == '=>'
+        assert '/' in path
+
+        maps.append( (path, addr) )
+
+    assert len(maps) == 10
+    for idx, (subpath, addr) in enumerate(maps):
+        path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [0, idx]
+        
+        expect, pubkey, script, _  = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
+                                                        path_mapper=path_mapper)
+
+        assert int(subpath.split('/')[-1]) == idx
+        #print('../0/%s => \n %s' % (idx, B2A(script)))
+
+        trunc = expect[0:8] + "-" + expect[-7:]
+        assert trunc == addr
 
 # EOF

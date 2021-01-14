@@ -256,7 +256,7 @@ def keypath_to_str(bin_path, prefix='m/', skip=1):
 def str_to_keypath(xfp, path):
     # Take a numeric xfp, and string derivation, and make a list of numbers,
     # like occurs in a PSBT.
-    # - no error checking ehre
+    # - no error checking here
 
     rv = [xfp]
     for i in path.split('/'):
