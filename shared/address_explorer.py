@@ -191,8 +191,8 @@ class AddressListMenu(MenuSystem):
 Now you will see the address for custom derivation path:\n\n%s\n\n\
 DO NOT DEPOSIT to this address unless you are 100%% certain that some other software will \
 be able to generate a valid PSBT for signing the UTXO, \
-and also that specific path details will not get lost. \n
-This is for gurus only! You may have created a Bitcoin blackhole.\n\n
+and also that specific path details will not get lost.\n
+This is for gurus only! You may have created a Bitcoin blackhole.\n
 Press 3 if you really understand and accept these risks.
 ''' % path, title='MUCH DANGER', escape='3')
 
@@ -219,7 +219,10 @@ Press 3 if you really understand and accept these risks.
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
-                msg += "Showing single address. Press 4 to view QR Code.\n\n"
+                msg += "Showing single address."
+                if version.has_fatram:
+                    msg += " Press 4 to view QR Codes."
+                msg += '\n\n'
 
             addrs = []
             chain = chains.current_chain()
@@ -340,7 +343,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, count=250):
     # - takes 60 seconds to write 250 addresses on actual hardware
 
     dis.fullscreen('Saving 0-%d' % count)
-    fname_pattern='addresses.txt'
+    fname_pattern='addresses.csv'
 
     # generator function
     body = generate_address_csv(path, addr_fmt, ms_wallet, count)

@@ -5,6 +5,7 @@
     - Multisig wallet support! (Caveat: addresses are for verification only
       and never for direct use as deposit, so they are partially redacted)
     - Warning screen can be suppressed after reading first time (press 6)
+    - Export of addresses now named "addresses.csv" not "...txt"
 
 ## 3.2.1 - Jan 8, 2021
 
