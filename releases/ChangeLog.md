@@ -1,16 +1,18 @@
 ## 3.2.2 - Jan 14, 2021
 
 - Major Address Explorer enhancements! Thanks go to [@switck](https://twitter.com/switck)
-  for this major bump.
-    - View sub-accounts now, just enter the account number.
-    - Enter any custom derivation path, by entering numbers directly.
+  for this major feature bump.
+    - View sub-accounts as exported, just enter the account number.
     - Multisig wallet support! (Caveat: addresses are for verification purposes
       and never for direct use as deposit, so they are partially redacted)
+    - Enter any custom derivation path, by entering numbers directly; for gurus.
     - Warning screen can be suppressed after reading first time (press 6)
-    - Export of addresses now named "addresses.csv" not "...txt"
-- Bugfix: Disable more path derivation checks for "Skip Checks" in
-  multisig compatibility feature. Handles error shown when working
-  with previously-imported Spectre multisig wallets (`multisig.py: 891`).
+    - Export of addresses now named "addresses.csv" not ".txt"
+- Bugfix: Disable a few more path derivation checks for "Skip Checks" for
+  multisig compatibility. Handles error shown when working
+  with previously-imported Spectre multisig wallets (ie. `multisig.py: 891`).
+- Bugfix: Generic wallet export (JSON) name for BIP49 wallets changed
+  from "p2wpkh-p2sh" to "p2sh-p2wpkh".
 
 ## 3.2.1 - Jan 8, 2021
 
