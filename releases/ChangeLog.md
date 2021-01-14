@@ -12,7 +12,7 @@
   multisig compatibility. Handles error shown when working
   with previously-imported Spectre multisig wallets (ie. `multisig.py: 891`).
 - Bugfix: Generic wallet export (JSON) name for BIP49 wallets changed
-  from "p2wpkh-p2sh" to "p2sh-p2wpkh".
+  from "p2wpkh-p2sh" to "p2sh-p2wpkh". Thanks [@craigraw](https://twitter.com/craigraw)
 
 ## 3.2.1 - Jan 8, 2021
 
