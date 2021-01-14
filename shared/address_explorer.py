@@ -232,7 +232,7 @@ Press 3 if you really understand and accept these risks.
                 # - makes a redeem script
                 # - converts into addr
                 # - assumes 0/0 is first address.
-                for (i, paths, addr) in ms_wallet.yield_addresses(start, n):
+                for (i, paths, addr, script) in ms_wallet.yield_addresses(start, n):
                     if i == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
@@ -301,14 +301,24 @@ Press 3 if you really understand and accept these risks.
 def generate_address_csv(path, addr_fmt, ms_wallet, n, start=0, account_num=0):
     # Produce CSV file contents as a generator
 
-    yield '"Index","Payment Address","Derivation"\n'
-
     if ms_wallet:
-        for (idx, _, addr) in ms_wallet.yield_addresses(start, n):
-            yield '%d,"%s","%s"\n' % (idx, addr, '.../0/%d' % idx)
+        from ubinascii import hexlify as b2a_hex
+
+        # For multisig, include redeem script and derivation for each signer
+        yield '"' + '","'.join(['Index', 'Payment Address',
+                                    'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)] 
+                                    + (['Derivation'] * ms_wallet.N)) + '"\n'
+
+        for (idx, derivs, addr, script) in ms_wallet.yield_addresses(start, n):
+            ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
+            ln += '","'.join(derivs)
+            ln += '"\n'
+
+            yield ln
 
         return
 
+    yield '"Index","Payment Address","Derivation"\n'
     ch = chains.current_chain()
 
     with stash.SensitiveValues() as sv:

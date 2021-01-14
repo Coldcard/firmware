@@ -94,8 +94,9 @@ def make_redeem_script(M, nodes, subkey_idx):
     pubkeys = []
     for n in nodes:
         copy = n.clone()
-        n.derive(subkey_idx)
-        pubkeys.append(n.public_key())
+        copy.derive(subkey_idx)
+        # 0x21 = 33 = len(pubkey) = OP_PUSHDATA(33)
+        pubkeys.append(b'\x21' + copy.public_key())
 
     pubkeys.sort()
 
@@ -461,12 +462,12 @@ class MultisigWallet:
 
         idx = start_idx
         while count:
-            # make the redeem script
+            # make the redeem script, convert into address
             script = make_redeem_script(self.M, nodes, idx)
             addr = ch.p2sh_address(self.addr_fmt, script)
             addr = addr[0:12] + '___' + addr[12+3:]
 
-            yield idx, [p.format(idx=idx) for p in paths], addr
+            yield idx, [p.format(idx=idx) for p in paths], addr, script
 
             idx += 1
             count -= 1
