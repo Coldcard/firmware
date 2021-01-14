@@ -1,3 +1,12 @@
+- Major Address Explorer enhancements! Thanks go to [@switck](https://twitter.com/switck)
+  for this major bump.
+    - View sub-accounts now, just enter the account number.
+    - Enter any custom derivation path, by entering numbers directly.
+    - Multisig wallet support! (Caveat: addresses are for verification only
+      and never for direct use as deposit, so they are partially redacted)
+    - Warning screen can be suppressed after reading first time (press 6)
+    - Export of addresses now named "addresses.csv" not "...txt"
+
 ## 3.2.1 - Jan 8, 2021
 
 - Major Multisig improvements! If you are using multisig features, please backup
