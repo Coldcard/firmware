@@ -36,10 +36,6 @@ class ChainsBase:
 
     @classmethod
     def msg_signing_prefix(cls):
-        return cls.name.encode() + b' Signed Message:\n'
-
-    @classmethod
-    def msg_signing_prefix(cls):
         # see strMessageMagic ... but usually just the coin's name
         # prefixed w/ a length byte
         return '\x18Bitcoin Signed Message:\n'
