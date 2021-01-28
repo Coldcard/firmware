@@ -141,9 +141,9 @@ class MultisigWallet:
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
         for xfp, deriv, _ in self.xpubs:
-            self.xfp_paths[xfp] = str_to_keypath(xfp, deriv)
+            self.xfp_paths.setdefault(xfp, list()).append(str_to_keypath(xfp, deriv))
 
-        assert len(self.xfp_paths) == self.N, 'dup XFP'         # not supported
+        assert len(self.xpubs) == self.N, 'Number of pubkeys does not match N'
 
     @classmethod
     def render_addr_fmt(cls, addr_fmt):
@@ -244,7 +244,11 @@ class MultisigWallet:
 
     def get_xfp_paths(self):
         # return list of lists [xfp, *deriv]
-        return list(self.xfp_paths.values())
+        ret = []
+        for paths_list in self.xfp_paths:
+            for xfp_path in paths_list:
+                ret.append(xfp_path)
+        return ret
 
     @classmethod
     def find_match(cls, M, N, xfp_paths, addr_fmt=None):
@@ -282,17 +286,23 @@ class MultisigWallet:
         for x in xfp_paths:
             if x[0] not in self.xfp_paths:
                 return False
-            prefix = self.xfp_paths[x[0]]
+            for prefix in self.xfp_paths[x[0]]:
+                if len(x) < len(prefix):
+                    # PSBT specs a path shorter than wallet's xpub
+                    #print('path len: %d vs %d' % (len(prefix), len(x)))
+                    return False
 
-            if len(x) < len(prefix):
-                # PSBT specs a path shorter than wallet's xpub
-                #print('path len: %d vs %d' % (len(prefix), len(x)))
-                return False
-
-            comm = len(prefix)
-            if tuple(prefix[:comm]) != tuple(x[:comm]):
-                # xfp => maps to wrong path
-                #print('path mismatch:\n%r\n%r\ncomm=%d' % (prefix[:comm], x[:comm], comm))
+                comm = len(prefix)
+                if tuple(prefix[:comm]) != tuple(x[:comm]):
+                    # xfp => maps to wrong path
+                    # But maybe there is another path that does match, so keep going
+                    #print('path mismatch:\n%r\n%r\ncomm=%d' % (prefix[:comm], x[:comm], comm))
+                    continue
+                else:
+                    # Found a match, cleanly exit
+                    break
+            else:
+                # No match was found
                 return False
 
         return True
