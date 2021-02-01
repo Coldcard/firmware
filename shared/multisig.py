@@ -493,10 +493,10 @@ class MultisigWallet:
         for pk_order, pubkey in enumerate(pubkeys):
             check_these = []
 
+            # TODO: this could be simpler now that XFP is unique per co-signer
             if subpaths:
                 # in PSBT, we are given a map from pubkey to xfp/path, use it
                 # while remembering it's potentially one-2-many
-                # TODO: this could be simpler now
                 assert pubkey in subpaths, "unexpected pubkey"
                 xfp, *path = subpaths[pubkey]
 
