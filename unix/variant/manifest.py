@@ -1,0 +1,23 @@
+freeze_as_mpy('', [
+	'bare_metal.py',
+	'ckcc.py',
+	'ffilib.py',
+	'machine.py',
+	'mock.py',
+	'os.py',
+	'pyb.py',
+	'sflash.py',
+	'sim_display.py',
+	'sim_quickstart.py',
+	'sim_secel.py',
+	'sim_settings.py',
+	'sram2.py',
+	'ssd1306.py',
+	'stm.py',
+	'struct.py',
+	'touch.py',
+	'usb_test_commands.py',
+	'version.py',
+	'zevvpeep.py',
+], opt=3)
+

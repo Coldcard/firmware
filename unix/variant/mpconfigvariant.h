@@ -28,8 +28,6 @@
 #define MICROPY_VFS                    (0)
 #define MICROPY_PY_UOS_VFS             (0)
 
-#include <mpconfigport.h>
-
 #undef MICROPY_STREAMS_NON_BLOCK
 #define MICROPY_STREAMS_NON_BLOCK (0)
 
@@ -61,8 +59,8 @@
 #define MICROPY_HELPER_REPL         (1)
 #define MICROPY_PY_BUILTINS_HELP    (1)
 
-#undef MICROPY_PY_URANDOM
-#define MICROPY_PY_URANDOM          (0)
+//XXX//#undef MICROPY_PY_URANDOM
+//XXX//#define MICROPY_PY_URANDOM          (0)
 
 // Provide a sys.path that doesn't run stuff I might have
 // installed for normal micropython (upip)
@@ -172,7 +170,7 @@
 
 */
 
-extern const struct _mp_obj_module_t mp_module_tcc;
+#if 0
 extern const struct _mp_obj_module_t mp_module_uqr;
 
 #undef MICROPY_PORT_BUILTIN_MODULES
@@ -184,7 +182,6 @@ extern const struct _mp_obj_module_t mp_module_uqr;
     { MP_ROM_QSTR(MP_QSTR_umachine), MP_ROM_PTR(&mp_module_machine) }, \
     { MP_ROM_QSTR(MP_QSTR_uos), MP_ROM_PTR(&mp_module_os) }, \
     { MP_ROM_QSTR(MP_QSTR_utime), MP_ROM_PTR(&mp_module_time) }, \
-    { MP_ROM_QSTR(MP_QSTR_tcc), MP_ROM_PTR(&mp_module_tcc) }, \
     { MP_ROM_QSTR(MP_QSTR_uqr), MP_ROM_PTR(&mp_module_uqr) }, \
     MICROPY_PY_UOS_DEF \
     MICROPY_PY_USELECT_DEF \
@@ -206,3 +203,11 @@ extern const struct _mp_obj_module_t mp_module_uqr;
     { MP_ROM_QSTR(MP_QSTR_machine), MP_ROM_PTR(&machine_module) }, \
     { MP_ROM_QSTR(MP_QSTR_errno), MP_ROM_PTR(&mp_module_uerrno) }, \
 
+
+
+#endif
+
+#define MICROPY_SSL_AXTLS             1
+#define MICROPY_PY_UCRYPTOLIB           1
+#define MICROPY_PY_UCRYPTOLIB_CONSTS    1
+#define MICROPY_PY_UCRYPTOLIB_CTR       1

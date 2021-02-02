@@ -3,7 +3,7 @@
 # Use this to build the simulator.
 #
 # BUG: sometimes gets caught in a depenancy loop, where it's remaking Q strings.
-# - workaround: "make clean && make tool" ... just a make clean isn't enough
+# - workaround: "make clean && make tools" ... just a make clean isn't enough
 #
 MPY_TOP = ../external/micropython
 PORT_TOP = $(MPY_TOP)/ports/unix
@@ -13,7 +13,7 @@ V=0
 # bugfix for my Mac at least
 export PKG_CONFIG_PATH=/usr/local/opt/libffi/lib/pkgconfig
 
-MAKE_ARGS = -j 4 FROZEN_MPY_DIR=$(PWD)/frozen-modules MPCONFIGPORT_MK=$(PWD)/mpconfigport.mk CC_UNIX_TOP=$(CC_UNIX_TOP) PROG=coldcard-mpy V=$(V) DEBUG=1
+MAKE_ARGS = -j 4 VARIANT=coldcard-mpy VARIANT_DIR=$(PWD)/variant FROZEN_MANIFEST=$(PWD)/variant/manifest.py
 
 all:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
