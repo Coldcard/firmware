@@ -274,7 +274,7 @@ Press 3 if you really understand and accept these risks.
 
             if ch == '1':
                 # save addresses to MicroSD signal
-                await make_address_summary_file(path, addr_fmt, ms_wallet,
+                await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num,
                                                             count=(250 if n!=1 else 1))
                 # .. continue on same screen in case they want to write to multiple cards
                 continue
@@ -301,7 +301,7 @@ Press 3 if you really understand and accept these risks.
 
             msg, addrs = make_msg()
 
-def generate_address_csv(path, addr_fmt, ms_wallet, n, start=0, account_num=0):
+def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
     # Produce CSV file contents as a generator
 
     if ms_wallet:
@@ -333,7 +333,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, n, start=0, account_num=0):
 
         stash.blank_object(node)
 
-async def make_address_summary_file(path, addr_fmt, ms_wallet, count=250):
+async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250):
     # write addresses into a text file on the MicroSD
     from main import dis
     from files import CardSlot, CardMissingError
@@ -346,7 +346,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, count=250):
     fname_pattern='addresses.csv'
 
     # generator function
-    body = generate_address_csv(path, addr_fmt, ms_wallet, count)
+    body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count)
 
     # pick filename and write
     try:
