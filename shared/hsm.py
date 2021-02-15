@@ -30,7 +30,7 @@ ABSOLUTE_MAX_REFUSALS = const(100)
 
 # you have this many seconds after boot to escape HSM
 # mode, if you enable the boot_to_hsm feature
-BOOT_LOCKOUT_TIME = const(30)
+BOOT_LOCKOUT_TIME = const(45)
 
 def hsm_policy_available():
     # Is there an HSM policy ready to go? Offer the menu item then.
