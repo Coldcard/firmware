@@ -72,12 +72,26 @@ This is for minimal setup installation, but you can run the commands on yours to
 
 Then:
 
-- `sudo apt install -y build-essential make python3-dev python3-virtualenv autogen xterm libsdl2-dev`
+- `sudo apt install -y build-essential make python3-dev python3-virtualenv autogen xterm libsdl2-dev gcc-arm-none-eabi`
 - `cd firmware`
 - `git submodule update --init` _(if needed?)_
 - `virtualenv -p python3 ENV` (Python > 3.5 is required)
 - `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
 - `pip install -r requirements.txt`
+
+Building the firmware:
+
+- `cd ../cli; pip install --editable .`
+- `cd ../stm32; make setup && make; make firmware-signed.dfu`
+- The resulting file, `firmware-signed.dfu` can be loaded directly onto a Coldcard, using this
+  command (already installed based on above)
+- `ckcc upgrade firmware-signed.dfu`
+
+Which looks like this:
+
+    [ENV] [firmware/stm32 42] ckcc upgrade firmware-signed.dfu
+    675328 bytes (start @ 293) to send from 'firmware-signed.dfu'
+    Uploading  [##########--------------------------]   29%  0d 00:01:04
 
 Setup and Run the Desktop-based Coldcard simulator:
 
