@@ -14,6 +14,8 @@ with the latest updates and security alerts.
 
 ## Check-out and Setup
 
+This is for macOS, see for Ubuntu 20.04 below
+
 Do a checkout, recursively to get all the submodules:
 
     git clone --recursive https://github.com/Coldcard/firmware.git
@@ -62,7 +64,26 @@ Used to be these were needed as well:
 
 You may need to reboot to avoid a `DISPLAY is not set` error.
 
-### Linux
+### Ubuntu 20.04
+
+This is for minimal setup installation, but you can run the commands on yours too to guarantee things are installed
+    
+    git clone --recursive https://github.com/Coldcard/firmware.git
+
+Then:
+
+- `sudo apt install -y build-essential make python3-dev python3-virtualenv autogen xterm libsdl2-dev`
+- `cd firmware`
+- `git submodule update --init` _(if needed?)_
+- `virtualenv -p python3 ENV` (Python > 3.5 is required)
+- `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
+- `pip install -r requirements.txt`
+
+Setup and Run the Desktop-based Coldcard simulator:
+
+- `cd unix; make setup && make; ./simulator.py`
+
+### General Linux
 
 You'll probably need to install these (Ubuntu 16):
 
