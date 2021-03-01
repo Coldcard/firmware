@@ -2,11 +2,11 @@
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, ckcc, chains, gc, sys, bip39
+import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import imported, xfp2str
-from ux import ux_show_story, ux_confirm
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 import version, ujson
 from uio import StringIO
 import seed
@@ -175,7 +175,7 @@ async def restore_from_dict(vals):
 
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '
-            'updated settings and/or seed.', title='Success!')
+            'updated settings and seed.', title='Success!')
 
     from machine import reset
     reset()
@@ -214,9 +214,9 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         ch = await seed.word_quiz(words, limited=(num_pw_words//3))
         if ch == 'x': return
 
-    return await write_complete_backup(words, fname_pattern, write_sflash)
+    return await write_complete_backup(words, fname_pattern, write_sflash=write_sflash)
 
-async def write_complete_backup(words, fname_pattern, write_sflash):
+async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_copies=True):
     # Just do the writing
     from glob import dis
     from files import CardSlot, CardMissingError
@@ -288,6 +288,9 @@ async def write_complete_backup(words, fname_pattern, write_sflash):
                                     'and press OK to try again.\n\nX to cancel.\n\n\n'+str(e))
             if ch == 'x': break
             continue
+
+        if not allow_copies:
+            return
 
         if copy == 0:
             while 1:
@@ -362,7 +365,7 @@ async def restore_complete(fname_or_fd):
 
     the_ux.push(m)
 
-async def restore_complete_doit(fname_or_fd, words):
+async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
     # Open file, read it, maybe decrypt it; return string if any error
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
@@ -411,6 +414,10 @@ async def restore_complete_doit(fname_or_fd, words):
                                                 '\n\nTried:\n\n' + password)
             finally:
                 fd.close()
+
+                if file_cleanup:
+                    file_cleanup(fname_or_fd)
+
     except CardMissingError:
         await needs_microsd()
         return
@@ -431,5 +438,136 @@ async def restore_complete_doit(fname_or_fd, words):
 
     # this leads to reboot if it works, else errors shown, etc.
     return await restore_from_dict(vals)
+
+async def clone_start(*a):
+    # Begins cloning process, on target device.
+    from files import CardSlot, CardMissingError
+
+    ch = await ux_show_story('''Insert a MicroSD card and press OK to start. A small \
+file with an ephemeral public key will be written.''')
+    if ch != 'y': return
+
+    # pick a random key pair, just for this cloning session
+    pair = ngu.secp256k1.keypair()
+    my_pubkey = pair.pubkey().to_bytes(False)
+
+    # write to SD Card, fixed filename for ease of use
+    try:
+        with CardSlot() as card:
+            fname, nice = card.pick_filename('ccbk-start.json', overwrite=True)
+
+            with open(fname, 'wb') as fd:
+                fd.write(ujson.dumps(dict(pubkey=b2a_hex(my_pubkey))))
+            
+    except CardMissingError:
+        await needs_microsd()
+        return
+    except Exception as e:
+        await ux_show_story('Error: ' + str(e))
+        return
+    
+    # Wait for incoming clone file, allow retries
+    ch = await ux_show_story('''Keep power on this Coldcard, and take MicroSD card \
+to source Coldcard. Select Advanced > MicroSD > Clone Coldcard to write to card. Bring that card \
+back and press OK to complete clone process.''')
+
+    while 1:
+        if ch != 'y': 
+            # try to clean up, but card probably not there? No errors.
+            try:
+                with CardSlot() as card:
+                    uos.remove(fname)
+            except:
+                pass 
+
+            await ux_dramatic_pause('Aborted.', 2)
+            return
+
+        # Hopefully we have a suitable 7z file now. Pubkey in the filename
+        incoming = None
+        try:
+            with CardSlot() as card:
+                for path in card.get_paths():
+                    for fn, ftype, *var in uos.ilistdir(path):
+                        if fn.endswith('-ccbk.7z'):
+                            incoming = path + '/' + fn
+                            his_pubkey = a2b_hex(fn[0:66])
+
+                            assert len(his_pubkey) == 33
+                            assert 2 <= his_pubkey[0] <= 3
+                            break
+
+        except CardMissingError:
+            await needs_microsd()
+            continue
+        except Exception as e:
+            pass
+
+        if incoming:
+            break
+
+        ch = await ux_show_story("Clone file not found. OK to try again, X to stop.")
+
+    # calculate point
+    session_key = pair.ecdh_multiply(his_pubkey)
+
+    # "password" is that hex value
+    words = [b2a_hex(session_key).decode()]
+
+    def delme(xfn):
+        # Callback to delete file after its read; could still fail but
+        # need to start over in that case anyway.
+        uos.remove(xfn)
+        uos.remove(fname)       # ccbk-start.json
+
+    # this will reset in successful case, no return (but delme is called)
+    prob = await restore_complete_doit(incoming, words, file_cleanup=delme)
+
+    if prob:
+        await ux_show_story(prob, title='FAILED')
+
+async def clone_write_data(*a):
+    # Write encrypted backup file, for cloning purposes, based on a public key
+    # found on the SD Card.
+    # - input file must already exist on inserted card
+    from files import CardSlot, CardMissingError
+
+    try:
+        with CardSlot() as card:
+            path = card.get_sd_root()
+            with open(path + '/ccbk-start.json', 'rb') as fd:
+                d = ujson.load(fd)
+                his_pubkey = a2b_hex(d.get('pubkey'))
+                # expect compress pubkey
+                assert len(his_pubkey) == 33
+                assert 2 <= his_pubkey[0] <= 3
+
+            # remove any other clone-files on this card, so no confusion
+            # on receiving end; unlikely they can work anyway since new key each time
+            for path in card.get_paths():
+                for fn, ftype, *var in uos.ilistdir(path):
+                    if fn.endswith('-ccbk.7z'):
+                        try:
+                            uos.remove(path + '/' + fn)
+                        except:
+                            pass
+
+    except (CardMissingError, OSError) as exc:
+        # Standard msg shown if no SD card detected when we need one.
+        await ux_show_story("Start this process on the other Coldcard, which will write a file onto MicroSD card as the first step.\n\nInsert that card and try again here.")
+        return
+
+    # pick our own temp keys for this encryption
+    pair = ngu.secp256k1.keypair()
+    my_pubkey = pair.pubkey().to_bytes(False)
+    session_key = pair.ecdh_multiply(his_pubkey)
+
+    words = [b2a_hex(session_key).decode()]
+
+    fname = b2a_hex(my_pubkey).decode() + '-ccbk.7z'
+
+    await write_complete_backup(words, fname, allow_copies=False)
+
+    await ux_show_story("Done.\n\nTake this MicroSD card back to other Coldcard and continue from there.")
 
 # EOF
