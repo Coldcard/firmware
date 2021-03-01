@@ -912,7 +912,7 @@ async def import_xprv(*A):
                 found = found.group(0)
 
                 try:
-                    node, chain, addr_fmt, is_priv = chains.slp32_deserialize(found)
+                    node, chain, addr_fmt, is_priv = chains.slip32_deserialize(found)
                     break
                 except:
                     continue
