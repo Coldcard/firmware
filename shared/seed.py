@@ -38,33 +38,49 @@ def letter_choices(sofar='', depth=0, thres=5):
         # - and q- which is really qu-, because English.
         return [('%s-' % chr(97+i)) if i != 16 else 'qu-'  for i in range(26) if i != 23]
 
-    final, nexts, matched = bip39.next_char(sofar)
+    exact, nexts, matched = bip39.next_char(sofar)
+    #print("[%d] %s => x=%r n=%r m=%r" % (depth, sofar, exact, nexts, matched))
 
     if not nexts:
         # no more choices; done
-        return [sofar]
+        return [matched]
 
     rv = []
-    if final:
+    if exact:
         # ie: "act" plus "action", "actor"
         rv.append(sofar)
 
-    for w in nexts:
-        rv.append(sofar + w)
+    if len(nexts) == 1 and matched:
+        # aba => abandon (unambig first 3 chars)
+        # but not: age => age, agent (abig first 3)
+        rv.append(matched)
+    else:
+        for w in nexts:
+            rv.append(sofar + w + '-')
 
-    if len(rv) <= thres and depth == 0:
-        # examples:
-        #   z => ze- and zo-  ... better if all 4 z-words are shown
-        #   y => 6 choices
-        # - above thres=5, we get menus w/60+ entries
-        # - recurse only one level also to keep size down
-        a = []
-        for i in rv:
-            if i[-1] != '-':
-                a.append(i)
-            else:
-                a.extend(letter_choices(i[:-1], depth+1))
-        return a
+    # replace bab- => baby and other cases where prefix is unique
+    # - doesn't grow menu length
+    if len(sofar) >= 2:
+        for n, w in enumerate(rv):
+            if w[-1] != '-': continue
+            exact, nexts, matched = bip39.next_char(w[:-1])
+            if matched:
+                rv[n] = matched
+
+    if len(rv) <= thres:
+        if depth == 0:
+            # examples:
+            #   z => ze- and zo-  ... better if all 4 z-words are shown
+            #   y => 6 choices
+            # - above thres=5, we get menus w/60+ entries
+            # - recurse only one level also to keep size down
+            a = []
+            for i in rv:
+                if i[-1] != '-':
+                    a.append(i)
+                else:
+                    a.extend(letter_choices(i[:-1], depth+1))
+            return a
 
     return rv
 
@@ -142,6 +158,19 @@ class WordNestMenu(MenuSystem):
 
         #print(("words[%d]: " % len(words)) + ' '.join(words))
         assert len(words) <= self.target_words
+
+        if len(words) == 23 and self.has_checksum:
+            # we can provide final 8 choices, but only for 24-word case
+            final_words = list(bip39.a2b_words_guess(words))
+
+            async def picks_chk_word(s, idx, choice):
+                # they picked final word, the word includes valid checksum bits
+                words.append(choice.label)
+                await cls.done_cb(words.copy())
+
+            items = [MenuItem(w, f=picks_chk_word) for w in final_words]
+            items.append(MenuItem('(none above)', f=self.explain_error))
+            return cls(is_commit=True, items=items)
 
         # add a few top-items in certain cases
         if len(words) == self.target_words:
