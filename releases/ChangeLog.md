@@ -1,17 +1,23 @@
-## 4.0.0 - , 2021
+## 4.0.0 - March XXX, 2021
+
 - Major internal changes! Minimal external changes...
-    - now using Bitcoin Core's "libsecp256k1" for EC crypto operations
+    - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)
+      for all EC crypto operations
     - super fast pure-assembly AES256-CTR code makes USB communications faster
     - newly optimized SHA256 and SHA256(SHA256()) code
-    - all BIP39 related code replaced
-- HSM/CKBunker mode:
-    - users with passwords will have to be recreated as hash used has changed 
+    - all crypto and BIP39 related code replaced
+    - major thanks to [@switck](https://twitter.com/switck) for the new library
+- Enhancement: During seed phrase import, after 23 words provided, Coldcard will
+  calculate the correct checksum and show the valid choices for the last word (there
+  will be 8 typically). This means you can pick seed words by drawing from a hat.
 - New feature: Secure Device Cloning. Using a MicroSD card, copy your Coldcard's secrets
-    and settings to a blank Coldcard. Very quick and easy, uses public key encryption
-    (Diffie-Hellman key exchange) and AES-256-CBC for the transfer.
+  and settings to a blank Coldcard. Very quick and easy, uses public key encryption
+  (Diffie-Hellman key exchange) and AES-256-CBC for the transfer.
 - Bugfix: CSV of addresses explorer export via Address Explorere, when account number
   was used, did not reflect the (non-zero) account number.
-- Enhancement: Paper wallet features restored as they were previously. Same cautions apply.
+- HSM/CKBunker mode:
+    - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
+- Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
 - Enhancement: Show a progress bar during slow parts of the login process.
 - Remaining GPL code has been removed, so licence is now MIT+CC on everything.
 

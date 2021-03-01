@@ -48,7 +48,7 @@ async def test_7z():
     from backups import write_complete_backup, restore_complete_doit
     from sffile import SFFile
     import ngu, version, uos
-    from main import numpad, pa
+    from glob import numpad, pa
     from nvstore import settings
 
     if version.has_fatram:
@@ -121,8 +121,8 @@ async def test_7z():
             ux.restore_menu()
 
 
-from main import loop
-loop.run_until_complete(test_7z())
+import uasyncio
+uasyncio.get_event_loop().run_until_complete(test_7z())
 
 
 # test recovery/reset

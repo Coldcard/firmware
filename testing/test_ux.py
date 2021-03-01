@@ -52,7 +52,7 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
 def word_menu_entry(cap_menu, pick_menu_item):
     def doit(words):
         # do the massive drilling-down to pick a specific pass phrase
-        assert len(words) in {1, 12, 18, 24}
+        assert len(words) in {1, 12, 18, 23, 24}
 
         for word in words:
             while 1:
@@ -106,7 +106,7 @@ def pass_word_quiz(need_keypress, cap_story):
 
     return doit
 
-@pytest.mark.parametrize('multisig', ['multisig', False])
+@pytest.mark.parametrize('multisig', [False, 'multisig'])
 def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting):
     # Make an encrypted 7z backup, verify it, and even restore it!
 
@@ -254,6 +254,50 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
     v = get_secrets()
 
     assert v['mnemonic'] == seed_words
+    reset_seed_words()
+
+wordlist = None
+
+@pytest.mark.veryslow           # 40 minutes realtime, skp with "-m not\ veryslow" on cmd line
+@pytest.mark.parametrize('pos', range(0, 0x800, 23))
+def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words):
+    global wordlist
+    if not wordlist:
+        from mnemonic import Mnemonic
+        wordlist = Mnemonic('english').wordlist
+
+    # try every single word! In 23-word batches (89 of them)
+    unit_test('devtest/clear_seed.py')
+
+    m = cap_menu()
+    assert m[0] == 'New Wallet'    
+    pick_menu_item('Import Existing')
+
+    sw = []
+    for i in range(pos, pos+23):
+        try:
+            sw.append(wordlist[i])
+        except IndexError:
+            sw.append('abandon')
+
+    assert len(sw) == 23
+
+    pick_menu_item('24 Words')
+    word_menu_entry(sw)
+
+    m = cap_menu()
+    assert len(m) == 9, repr(m)
+    sw.append(m[0])
+    pick_menu_item(m[0])
+
+    print("Words: %r" % sw)
+
+    m = cap_menu()
+    assert m[0] == 'Ready To Sign'
+
+    v = get_secrets()
+    assert v['mnemonic'] == ' '.join(sw)
+
     reset_seed_words()
 
 @pytest.mark.parametrize('count', [20, 51, 99, 104])
