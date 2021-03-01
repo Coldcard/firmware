@@ -1,11 +1,10 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # flow.py - Menu structure
 #
 from menu import MenuItem
 import version
-from main import settings
+from nvstore import settings
 
 from actions import *
 from choosers import *
@@ -52,11 +51,11 @@ if not version.has_608:
 
 async def which_pin_menu(_1,_2, item):
     if version.has_608: return PinChangesMenu
-    from main import pa
+    from pincodes import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
 def has_secrets():
-    from main import pa
+    from pincodes import pa
     return not pa.is_secret_blank()
 
 SettingsMenu = [

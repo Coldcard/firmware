@@ -1,10 +1,9 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # numpad.py - Base class for numeric keypads. Touch or membrane matrix.
 #
 import utime
-from uasyncio.queues import Queue
+from queues import Queue
 
 class NumpadBase:
 
@@ -13,7 +12,7 @@ class NumpadBase:
     # this signals a need to stop user interaction and re-look at ux stack
     ABORT_KEY = '\xff'
 
-    def __init__(self, loop):
+    def __init__(self):
         # once pressed, and released; keys show up in this queue
         self._changes = Queue(24)
         self.key_pressed = ''

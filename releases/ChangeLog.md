@@ -1,3 +1,16 @@
+## 4.0.0 - , 2021
+- Major internal changes! Minimal external change...
+    - now using Bitcoin Core's "libsecp256k1" for EC crypto operations
+    - super fast pure-assembly AES256-CTR code makes USB communications faster
+    - new optimized SHA256 and SHA256(SHA256()) code in use
+- HSM/CKBunker mode:
+    - users with passwords will have to be recreated as hash used has changed 
+- Bugfix: CSV of addresses explorer export via Address Explorere, when account number
+  was used, did not reflect the (non-zero) account number.
+- Enhancement: Show a progress bar during slow parts of the login process.
+- Enhancement: Paper wallet features restored as they were previously. Same cautions apply.
+- Last remaining GPL code removed, so licence is now MIT+CC on everything.
+
 ## 3.2.2 - Jan 14, 2021
 
 - Major Address Explorer enhancements! Thanks go to [@switck](https://twitter.com/switck)

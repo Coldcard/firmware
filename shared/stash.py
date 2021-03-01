@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # stash.py - encoding the ultrasecrets: bip39 seeds and words
 #
@@ -11,8 +10,10 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import tcc, uctypes, gc
+import ngu, uctypes, gc, bip39
+from uhashlib import sha256
 from pincodes import AE_SECRET_LEN
+from utils import swab32
 
 def blank_object(item):
     # Use/abuse uctypes to blank objects until python. Will likely
@@ -24,7 +25,7 @@ def blank_object(item):
         buf = uctypes.bytearray_at(addr, ln)
         for i in range(ln):
             buf[i] = 0
-    elif isinstance(item, tcc.bip32.HDNode):
+    elif isinstance(item, ngu.hdnode.HDNode):
         item.blank()
     else:
         raise TypeError(item)
@@ -58,10 +59,10 @@ class SecretStash:
         elif xprv:
             # master xprivkey, which could be a subkey of something we don't know
             # - we record only the minimum
-            assert isinstance(xprv, tcc.bip32.HDNode)
+            assert isinstance(xprv, ngu.hdnode.HDNode)
             nv[0] = 0x01
             nv[1:33] = xprv.chain_code()
-            nv[33:65] = xprv.private_key()
+            nv[33:65] = xprv.privkey()
 
         return nv
 
@@ -73,13 +74,15 @@ class SecretStash:
         #
         marker = secret[0]
 
+        hd = ngu.hdnode.HDNode()
+
         if marker == 0x01:
             # xprv => BIP32 private key values
             ch, pk = secret[1:33], secret[33:65]
             assert not _bip39pw
 
-            return 'xprv', ch+pk, tcc.bip32.HDNode(chain_code=ch, private_key=pk,
-                                                child_num=0, depth=0, fingerprint=0)
+            hd.from_chaincode_privkey(ch, pk)
+            return 'xprv', ch+pk, hd
 
         if marker & 0x80:
             # seed phrase
@@ -92,9 +95,9 @@ class SecretStash:
 
             # make master secret, using the memonic words, and passphrase (or empty string)
             seed_bits = secret[1:1+ll]
-            ms = tcc.bip39.seed(tcc.bip39.from_data(seed_bits), _bip39pw)
+            ms = bip39.master_secret(bip39.b2a_words(seed_bits), _bip39pw)
 
-            hd = tcc.bip32.from_seed(ms, 'secp256k1')
+            hd.from_master(ms)
 
             return 'words', seed_bits, hd
 
@@ -105,7 +108,7 @@ class SecretStash:
             assert not _bip39pw
 
             ms = secret[1:1+vlen]
-            hd = tcc.bip32.from_seed(ms, 'secp256k1')
+            hd = hd.from_master(ms)
 
             return 'master', ms, hd
 
@@ -118,7 +121,7 @@ class SensitiveValues:
     def __init__(self, secret=None, bypass_pw=False):
         if secret is None:
             # fetch the secret from bootloader/atecc508a
-            from main import pa
+            from pincodes import pa
 
             if pa.is_secret_blank():
                 raise ValueError('no secrets yet')
@@ -176,11 +179,11 @@ class SensitiveValues:
     def capture_xpub(self):
         # track my xpubkey fingerprint & value in settings (not sensitive really)
         # - we share these on any USB connection
-        from main import settings
+        from nvstore import settings
 
         # Implicit in the values is the BIP39 encryption passphrase,
         # which we might not want to actually store.
-        xfp = self.node.my_fingerprint()
+        xfp = swab32(self.node.my_fp())
         xpub = self.chain.serialize_public(self.node)
 
         if self._bip39pw:
@@ -202,7 +205,7 @@ class SensitiveValues:
 
     def derive_path(self, path, master=None, register=True):
         # Given a string path, derive the related subkey
-        rv = (master or self.node).clone()
+        rv = (master or self.node).copy()
 
         if register:
             self.register(rv)
@@ -212,15 +215,15 @@ class SensitiveValues:
             if not i: continue      # trailing or duplicated slashes
 
             if i[-1] == "'":
-                assert len(i) >= 2, i
+                assert len(i) >= 2
+                is_hard = True
                 here = int(i[:-1])
-                assert 0 <= here < 0x80000000, here
-                here |= 0x80000000
             else:
                 here = int(i)
-                assert 0 <= here < 0x80000000, here
+                is_hard = False
 
-            rv.derive(here)
+            assert 0 <= here < 0x80000000
+            rv.derive(here, is_hard)
 
         return rv
 
@@ -230,12 +233,12 @@ class SensitiveValues:
         dirty = self.derive_path("m/2147431408'/0'/0'")
 
         # clear the parent linkage by rebuilding it.
-        cc, pk = dirty.chain_code(), dirty.private_key()
+        cc, pk = dirty.chain_code(), dirty.privkey()
         self.register(cc)
         self.register(pk)
 
-        rv = tcc.bip32.HDNode(chain_code=cc, private_key=pk,
-                                                child_num=0, depth=0, fingerprint=0)
+        rv = ngu.hdnode.HDNode()
+        rv.from_chaincode_privkey(ch, pk)
         self.register(rv)
 
         return rv
@@ -245,11 +248,11 @@ class SensitiveValues:
         # 0x80000000 - 0xCC30 = 2147431376
         node = self.derive_path("m/2147431408'/0'")     # plan: 0' will be an index for other apps
 
-        acc = tcc.sha256(salt)
-        acc.update(node.private_key())
+        acc = sha256(salt)
+        acc.update(node.privkey())
         acc.update(salt)
 
-        pk = tcc.sha256(acc.digest()).digest()
+        pk = ngu.hash.sha256s(acc.digest())
 
         self.register(pk)
         return pk

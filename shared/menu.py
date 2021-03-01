@@ -1,10 +1,8 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # menu.py - Implement an interactive menu system.
 #
 import gc
-from main import dis
 from display import FontLarge, FontTiny
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
@@ -100,6 +98,7 @@ class MenuSystem:
         #
         # Redraw the menu.
         #
+        from glob import dis
         dis.clear()
 
         #print('cur=%d ypos=%d' % (self.cursor, self.ypos))

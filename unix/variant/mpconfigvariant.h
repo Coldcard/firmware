@@ -207,7 +207,11 @@ extern const struct _mp_obj_module_t mp_module_uqr;
 
 #endif
 
+#if 0
 #define MICROPY_SSL_AXTLS             1
 #define MICROPY_PY_UCRYPTOLIB           1
 #define MICROPY_PY_UCRYPTOLIB_CONSTS    1
 #define MICROPY_PY_UCRYPTOLIB_CTR       1
+#endif
+
+#define MICROPY_PY_UASYNCIO                     (1)

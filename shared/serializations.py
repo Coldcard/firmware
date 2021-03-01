@@ -1,4 +1,4 @@
-# Additions Copyright 2018 by Coinkite Inc. 
+# Additions Copyright 2018-2021 by Coinkite Inc. 
 # Copyright (c) 2010 ArtForz -- public domain half-a-node
 # Copyright (c) 2012 Jeff Garzik
 # Copyright (c) 2010-2016 The Bitcoin Core developers
@@ -20,20 +20,14 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ucollections import OrderedDict
 import ustruct as struct
-import tcc
+import ngu
 from opcodes import *
 
-def sha256(s):
-    return tcc.sha256(s).digest()
-
-def ripemd160(s):
-    return tcc.ripemd160(s).digest()
-
-def hash256(s):
-    return sha256(sha256(s))
-
-def hash160(s):
-    return ripemd160(sha256(s))
+# single-shot hash functions
+sha256 = ngu.hash.sha256s
+ripemd160 = ngu.hash.ripemd160
+hash256 = ngu.hash.sha256d
+hash160 = ngu.hash.hash160
 
 def bytes_to_hex_str(s):
     return str(b2a_hex(s), 'ascii')

@@ -93,8 +93,9 @@ def validate_address():
 def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, open_microsd):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
-    def doit(click_idx, expected_qty=250):
-        goto_address_explorer(click_idx=click_idx)
+    def doit(click_idx=None, expected_qty=250):
+        if click_idx is not None:
+            goto_address_explorer(click_idx=click_idx)
         need_keypress('1')
         time.sleep(.5) # always long enough to write the file?
         title, body = cap_story()
@@ -192,7 +193,7 @@ def test_dump_addresses(generate_addresses_file, mk_common_derivations, sim_exec
         validate_address(addr, sk)
 
 @pytest.mark.parametrize('account_num', [ 34, 100, 9999, 1])
-def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations, parse_display_screen, validate_address):
+def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations, parse_display_screen, validate_address, generate_addresses_file):
     # Try a few sub-accounts
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -245,6 +246,12 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
+        for subpath, addr in generate_addresses_file():
+            assert subpath.split('/')[-3] == str(account_num)+"'"
+            sk = node_prv.subkey_for_path(subpath[2:])
+            validate_address(addr, sk)
+
+        need_keypress('x')
         need_keypress('x')
 
 # NOTE: (2**31)-1 = 0x7fff_ffff = 2147483647

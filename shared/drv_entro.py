@@ -1,5 +1,4 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # BIP-85: Deterministic Entropy From BIP32 Keychains, by
 #         Ethan Kosakovsky <ethankosakovsky@protonmail.com>
@@ -7,7 +6,7 @@
 # Using the system's BIP32 master key, safely derive seeds phrases/entropy for other
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
-import stash, tcc, hmac, chains
+import stash, ngu, chains, bip39
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
@@ -43,7 +42,7 @@ still backed-up.''')
     the_ux.push(m)
 
 def drv_entro_step2(_1, picked, _2):
-    from main import dis
+    from glob import dis
     from files import CardSlot, CardMissingError
 
     the_ux.pop()
@@ -78,7 +77,8 @@ def drv_entro_step2(_1, picked, _2):
 
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(path)
-        entropy = hmac.HMAC(b'bip-entropy-from-k', node.private_key(), tcc.sha512).digest()
+        entropy = ngu.hmac.hmac_sha512(b'bip-entropy-from-k', node.privkey())
+    
         sv.register(entropy)
 
         # truncate for this application
@@ -93,7 +93,7 @@ def drv_entro_step2(_1, picked, _2):
 
     if s_mode == 'words':
         # BIP39 seed phrase, various lengths
-        words = tcc.bip39.from_data(new_secret).split(' ')
+        words = bip39.b2a_words(new_secret).split(' ')
 
         msg = 'Seed words (%d):\n' % len(words)
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
@@ -109,13 +109,12 @@ def drv_entro_step2(_1, picked, _2):
         # append 0x01 to indicate it's a compressed private key
         pk = new_secret + b'\x01'
 
-        msg = 'WIF (privkey):\n' + tcc.codecs.b58_encode(chain.b58_privkey + pk)
+        msg = 'WIF (privkey):\n' + ngu.codecs.b58_encode(chain.b58_privkey + pk)
 
     elif s_mode == 'xprv':
         # Raw XPRV value.
         ch, pk = new_secret[0:32], new_secret[32:64]
-        master_node = tcc.bip32.HDNode(chain_code=ch, private_key=pk,
-                                                child_num=0, depth=0, fingerprint=0)
+        master_node = ngu.hdnode.HDNode().from_chaincode_privkey(ch, pk)
 
         encoded = stash.SecretStash.encode(xprv=master_node)
         
@@ -169,8 +168,8 @@ def drv_entro_step2(_1, picked, _2):
     stash.blank_object(msg)
 
     if ch == '2' and (encoded is not None):
-        from main import pa, settings, dis
-        from pincodes import AE_SECRET_LEN
+        from glob import dis
+        from pincodes import pa, AE_SECRET_LEN
 
         # switch over to new secret!
         dis.fullscreen("Applying...")

@@ -1,9 +1,8 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # backups.py - Save and restore backup data.
 #
-import compat7z, stash, tcc, ckcc, chains, gc, sys
+import compat7z, stash, ckcc, chains, gc, sys, bip39
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from utils import imported, xfp2str
@@ -11,6 +10,8 @@ from ux import ux_show_story, ux_confirm
 import version, ujson
 from uio import StringIO
 import seed
+from nvstore import settings
+from pincodes import pa, AE_SECRET_LEN
 
 # we make passwords with this number of words
 num_pw_words = const(12)
@@ -23,7 +24,6 @@ def render_backup_contents():
     #   key = value
     # or #comments
     # but value is JSON
-    from main import settings, pa
 
     rv = StringIO()
 
@@ -45,7 +45,7 @@ def render_backup_contents():
     with stash.SensitiveValues(bypass_pw=True) as sv:
 
         if sv.mode == 'words':
-            ADD('mnemonic', tcc.bip39.from_data(sv.raw))
+            ADD('mnemonic', bip39.b2a_words(sv.raw))
 
         if sv.mode == 'master':
             ADD('bip32_master_key', b2a_hex(sv.raw))
@@ -95,8 +95,7 @@ def render_backup_contents():
 async def restore_from_dict(vals):
     # Restore from a dict of values. Already JSON decoded.
     # Reboot on success, return string on failure
-    from main import pa, dis, settings
-    from pincodes import AE_SECRET_LEN
+    from glob import dis
 
     #print("Restoring from: %r" % vals)
 
@@ -189,7 +188,7 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
     b = bytearray(32)
     while 1:
         ckcc.rng_bytes(b)
-        words = tcc.bip39.from_data(b).split(' ')[0:num_pw_words]
+        words = bip39.b2a_words(b).split(' ')[0:num_pw_words]
 
         ch = await seed.show_words(words,
                         prompt="Record this (%d word) backup file password:\n", escape='6')
@@ -219,7 +218,7 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
 
 async def write_complete_backup(words, fname_pattern, write_sflash):
     # Just do the writing
-    from main import dis, pa, settings
+    from glob import dis
     from files import CardSlot, CardMissingError
 
     # Show progress:
@@ -367,7 +366,7 @@ async def restore_complete_doit(fname_or_fd, words):
     # Open file, read it, maybe decrypt it; return string if any error
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
-    from main import dis
+    from glob import dis
     from files import CardSlot, CardMissingError
     from actions import needs_microsd
 

@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # dev_helper.py - Debug and similar code.
 #
@@ -35,6 +34,8 @@ async def usb_keypad_emu():
     # - code is **not** used in real product, but left here for devs to use
     # - this code isn't even called; unless you add code to do so, see ../stm32/my_lib_boot2.py
     #
+    await sleep_ms(1000)        # avoid slowing the startup
+
     from ux import the_ux
     from menu import MenuSystem
     from seed import WordNestMenu
@@ -52,7 +53,7 @@ async def usb_keypad_emu():
         await sleep_ms(100)
 
         while u.isconnected() and u.any():
-            from main import numpad
+            from glob import numpad
 
             k = u.read(3).decode()
 

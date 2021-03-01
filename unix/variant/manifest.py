@@ -18,6 +18,8 @@ freeze_as_mpy('', [
 	'touch.py',
 	'usb_test_commands.py',
 	'version.py',
+	'aes256ctr.py',
 	'zevvpeep.py',
-], opt=3)
+], opt=0)
+include("$(MPY_DIR)/extmod/uasyncio/manifest.py")
 

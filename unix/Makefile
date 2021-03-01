@@ -2,18 +2,20 @@
 #
 # Use this to build the simulator.
 #
-# BUG: sometimes gets caught in a depenancy loop, where it's remaking Q strings.
-# - workaround: "make clean && make tools" ... just a make clean isn't enough
 #
 MPY_TOP = ../external/micropython
 PORT_TOP = $(MPY_TOP)/ports/unix
-CC_UNIX_TOP = $(PWD)
 V=0
 
 # bugfix for my Mac at least
 export PKG_CONFIG_PATH=/usr/local/opt/libffi/lib/pkgconfig
 
-MAKE_ARGS = -j 4 VARIANT=coldcard-mpy VARIANT_DIR=$(PWD)/variant FROZEN_MANIFEST=$(PWD)/variant/manifest.py
+CC_TOP := $(realpath ..)
+
+MAKE_ARGS = -j 4 VARIANT=coldcard-mpy VARIANT_DIR=$(PWD)/variant CC_TOP=$(CC_TOP) DEBUG=1
+
+#		FROZEN_MANIFEST=$(PWD)/variant/manifest.py \
+#		NGU_NEEDS_CIFRA=1 USER_C_MODULES=$(LIB_NGU) NGU_TOP_DIR=$(LIB_NGU)
 
 all:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
@@ -21,16 +23,10 @@ all:
 clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
 
-up: 
-	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) deploy-stlink
-
-dfu: 
-	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) deploy
-
 tags: 
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) tags
 
-# Make a vanilla copy of micropython (unix) for use with upip and comparsions purposes
+# Make a vanilla copy of micropython (unix) for use with upip and comparsion purposes
 tools:
 	cd $(PORT_TOP) && $(MAKE) clean deplibs all
 	cp $(PORT_TOP)/micropython ./micropython
@@ -44,3 +40,7 @@ setup:
 	$(MAKE) tools
 	@echo Setup DONE
 
+ngu-setup:
+	cd ../external/libnga/libs/cifra; git submodule update --init .
+	cd ../external/libnga/libs/secp256k1; git submodule update --init .
+	cd ../external/libnga; make k1-config

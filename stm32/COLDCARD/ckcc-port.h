@@ -1,6 +1,5 @@
 /*
- * (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
- * and is covered by GPLv3 license found in COPYING.
+ * (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  *
  * based on ports/stm32/mpconfigport.h
  *
@@ -91,8 +90,8 @@ extern bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block);
 #define MICROPY_USE_INTERNAL_ERRNO  (1)
 #define MICROPY_ENABLE_SCHEDULER    (1)
 #define MICROPY_SCHEDULER_DEPTH     (8)
-#define MICROPY_VFS                 (1)
-#define MICROPY_VFS_FAT             (1)
+//?//#define MICROPY_VFS                 (1)
+//?//#define MICROPY_VFS_FAT             (1)
 
 // control over Python builtins
 #define MICROPY_PY_FUNCTION_ATTRS   (1)
@@ -356,6 +355,7 @@ static inline mp_uint_t disable_irq(void) {
 // We need an implementation of the log2 function which is not a macro
 #define MP_NEED_LOG2 (1)
 
+#if 0
 // There is no classical C heap in bare-metal ports, only Python
 // garbage-collected heap. For completeness, emulate C heap via
 // GC heap. Note that MicroPython core never uses malloc() and friends,
@@ -363,6 +363,7 @@ static inline mp_uint_t disable_irq(void) {
 #define malloc(n) m_malloc(n)
 #define free(p) m_free(p)
 #define realloc(p, n) m_realloc(p, n)
+#endif
 
 // see stm32f4XX_hal_conf.h USE_USB_FS & USE_USB_HS
 // at the moment only USB_FS is supported
@@ -372,12 +373,6 @@ static inline mp_uint_t disable_irq(void) {
 // We need to provide a declaration/definition of alloca()
 #include <alloca.h>
 
-// not wanted
-#undef MICROPY_HW_ENABLE_DHT
-#define MICROPY_HW_ENABLE_DHT        (0)
-
-#undef MICROPY_PY_MACHINE_PULSE
 #define MICROPY_PY_MACHINE_PULSE     (0)
-
 #define MICROPY_PY_COLLECTIONS_DEQUE (1)
 

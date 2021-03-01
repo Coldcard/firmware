@@ -1,11 +1,9 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # ux.py - UX/UI related helper functions
 #
-# NOTE: do not import from main at top.
 from uasyncio import sleep_ms
-from uasyncio.queues import QueueEmpty
+from queues import QueueEmpty
 import utime, gc
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
@@ -15,7 +13,7 @@ DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 # stack has already been updated, but the old 
 # top-of-stack code was waiting for a key event.
 #
-class AbortInteraction(Exception):
+class AbortInteraction(BaseException):
     pass
 
 class UserInteraction:
@@ -59,14 +57,14 @@ the_ux = UserInteraction()
 
 def ux_clear_keys(no_aborts=False):
     # flush any pending keypresses
-    from main import numpad
+    from glob import numpad
 
     try:
         while 1:
             ch = numpad.get_nowait()
 
             if not no_aborts and ch == numpad.ABORT_KEY:
-                raise AbortInteraction
+                raise AbortInteraction()
 
     except QueueEmpty:
         return
@@ -74,14 +72,14 @@ def ux_clear_keys(no_aborts=False):
 async def ux_wait_keyup(expected=None):
     # Wait for single keypress in 'expected' set, return it
     # no visual feedback, no escape
-    from main import numpad
+    from glob import numpad
 
     armed = None
     while 1:
         ch = await numpad.get()
 
         if ch == numpad.ABORT_KEY:
-            raise AbortInteraction
+            raise AbortInteraction()
 
         if len(ch) > 1:
             # multipress
@@ -101,7 +99,7 @@ def ux_poll_once(expected='x'):
     # - ignore and suppress any key not in expected
     # - responds to key down only
     # - eats any existing key presses
-    from main import numpad
+    from glob import numpad
 
     while 1:
         try:
@@ -110,7 +108,7 @@ def ux_poll_once(expected='x'):
                 ch = numpad.get_nowait()
 
                 if ch == numpad.ABORT_KEY:
-                    raise AbortInteraction
+                    raise AbortInteraction()
         except QueueEmpty:
             return None
 
@@ -126,7 +124,7 @@ class PressRelease:
         self.num_repeats = 0
 
     async def wait(self):
-        from main import numpad
+        from glob import numpad
 
         armed = None
 
@@ -150,7 +148,7 @@ class PressRelease:
             ch = numpad.get_nowait()
 
             if ch == numpad.ABORT_KEY:
-                raise AbortInteraction
+                raise AbortInteraction()
 
             self.num_repeats = 0
 
@@ -200,7 +198,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
     # - accepts a stream or string
-    from main import dis, numpad
+    from glob import dis, numpad
     from display import FontLarge
 
     lines = []
@@ -289,10 +287,10 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         
 
 async def idle_logout():
-    import main
-    from main import numpad, settings
+    import glob
+    from nvstore import settings
 
-    while not main.hsm_active:
+    while not glob.hsm_active:
         await sleep_ms(250)
 
         # they may have changed setting recently
@@ -302,10 +300,10 @@ async def idle_logout():
 
         now = utime.ticks_ms() 
 
-        if not numpad.last_event_time:
+        if not glob.numpad.last_event_time:
             continue
 
-        if now > numpad.last_event_time + timeout:
+        if now > glob.numpad.last_event_time + timeout:
             # do a logout now.
             print("Idle!")
 
@@ -322,7 +320,7 @@ async def ux_confirm(msg):
 
 
 async def ux_dramatic_pause(msg, seconds):
-    from main import dis, hsm_active
+    from glob import dis, hsm_active
 
     if hsm_active:
         return
@@ -338,7 +336,7 @@ async def ux_dramatic_pause(msg, seconds):
 
 def show_fatal_error(msg):
     # show a multi-line error message, over some kinda "fatal" banner
-    from main import dis
+    from glob import dis
     from display import FontTiny
 
     dis.clear()
@@ -375,13 +373,13 @@ def restore_menu():
 
 def abort_and_goto(m):
     # cancel any menu drill-down and show them some UX
-    from main import numpad
+    from glob import numpad
     the_ux.reset(m)
     numpad.abort_ux()
 
 def abort_and_push(m):
     # keep menu position, but interrupt it with a new UX
-    from main import numpad
+    from glob import numpad
     the_ux.push(m)
     numpad.abort_ux()
 
@@ -427,7 +425,7 @@ class QRDisplay(UserInteraction):
 
     def redraw(self):
         # Redraw screen.
-        from main import dis
+        from glob import dis
         from display import FontSmall, FontTiny
 
 
@@ -509,7 +507,7 @@ async def ux_enter_number(prompt, max_value):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
-    from main import dis
+    from glob import dis
     from display import FontTiny
     from math import log
 

@@ -1,10 +1,9 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, tcc, ux, chains, sys, gc, uio, version
+import stash, ure, ux, chains, sys, gc, uio, version, ngu
 from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
@@ -93,7 +92,7 @@ class UserAuthorizedAction:
                 msg += '\n\n'
             msg += problem_file_line(exc)
         
-        from main import hsm_active, dis
+        from glob import hsm_active, dis
 
         # do nothing more for HSM case: msg will be available over USB
         if hsm_active:
@@ -134,7 +133,7 @@ RFC_SIGNATURE_TEMPLATE = '''\
 
 def sign_message_digest(digest, subpath, prompt):
     # do the signature itself!
-    from main import dis
+    from glob import dis
 
     if prompt:
         dis.fullscreen(prompt, percent=.25)
@@ -143,11 +142,11 @@ def sign_message_digest(digest, subpath, prompt):
         dis.progress_bar_show(.50)
 
         node = sv.derive_path(subpath)
-        pk = node.private_key()
+        pk = node.privkey()
         sv.register(pk)
 
         dis.progress_bar_show(.75)
-        rv = tcc.secp256k1.sign(pk, digest)
+        rv = ngu.secp256k1.sign(pk, digest).to_bytes()
 
     dis.progress_bar_show(1)
 
@@ -160,7 +159,7 @@ class ApproveMessageSign(UserAuthorizedAction):
         self.subpath = subpath
         self.approved_cb = approved_cb
 
-        from main import dis
+        from glob import dis
         dis.fullscreen('Wait...')
 
         with stash.SensitiveValues() as sv:
@@ -171,7 +170,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 
     async def interact(self):
         # Prompt user w/ details and get approval
-        from main import dis, hsm_active
+        from glob import dis, hsm_active
 
         if hsm_active:
             ch = await hsm_active.approve_msg_sign(self.text, self.address, self.subpath)
@@ -384,7 +383,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
     async def interact(self):
         # Prompt user w/ details and get approval
-        from main import dis, hsm_active
+        from glob import dis, hsm_active
 
         # step 1: parse PSBT from sflash into in-memory objects.
         dis.fullscreen("Validating...")
@@ -561,7 +560,7 @@ class ApproveTransaction(UserAuthorizedAction):
             if chk:
                 from ubinascii import b2a_base64
                 # append the signature
-                digest = tcc.sha256(chk.digest()).digest()
+                digest = ngu.hash.sha256s(chk.digest())
                 sig = sign_message_digest(digest, 'm', None)
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
@@ -682,7 +681,7 @@ def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
 def sign_psbt_file(filename):
     # sign a PSBT file found on a MicroSD card
     from files import CardSlot, CardMissingError, securely_blank_file
-    from main import dis
+    from glob import dis
     from sram2 import tmp_buf
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
 
@@ -754,7 +753,7 @@ def sign_psbt_file(filename):
         out_fn = None
         txid = None
 
-        from main import settings
+        from nvstore import settings
         import os
         del_after = settings.get('del', 0)
 
@@ -900,7 +899,7 @@ class NewPassphrase(UserAuthorizedAction):
 
     async def interact(self):
         # prompt them
-        from main import settings
+        from nvstore import settings
 
         showit = False
         while 1:
@@ -960,7 +959,7 @@ class ShowAddressBase(UserAuthorizedAction):
     def __init__(self, *args):
         super().__init__()
 
-        from main import dis
+        from glob import dis
         dis.fullscreen('Wait...')
 
         # this must set self.address and do other slow setup
@@ -968,7 +967,7 @@ class ShowAddressBase(UserAuthorizedAction):
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        from main import hsm_active, dis
+        from glob import hsm_active, dis
 
         if not hsm_active:
             msg = self.get_msg()
@@ -1076,7 +1075,7 @@ def start_show_address(addr_format, subpath):
     # require a path to a key
     subpath = cleanup_deriv_path(subpath)
 
-    from main import hsm_active
+    from glob import hsm_active
     if hsm_active and not hsm_active.approve_address_share(subpath):
         raise HSMDenied
 

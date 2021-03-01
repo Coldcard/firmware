@@ -1,17 +1,16 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # See also: <https://github.com/micropython/micropython-lib/blob/master/LICENSE>
 #
 from ucollections import deque
-from uasyncio.core import sleep
+from uasyncio.core import sleep_ms
 
 
-class QueueEmpty(Exception):
+class QueueEmpty(BaseException):
     """Exception raised by get_nowait()."""
 
 
-class QueueFull(Exception):
+class QueueFull(BaseException):
     """Exception raised by put_nowait()."""
 
 
@@ -26,7 +25,7 @@ class Queue:
     with qsize(), since your single-threaded uasyncio application won't be
     interrupted between calling qsize() and doing an operation on the Queue.
     """
-    _attempt_delay = 0.01
+    _attempt_delay = 10         # milliseconds
 
     def __init__(self, maxsize=0):
         self.maxsize = maxsize
@@ -44,7 +43,7 @@ class Queue:
             item = yield from queue.get()
         """
         while not self._queue:
-            yield from sleep(self._attempt_delay)
+            yield from sleep_ms(self._attempt_delay)
         return self._get()
 
     def get_nowait(self):
@@ -67,7 +66,7 @@ class Queue:
             yield from queue.put(item)
         """
         while self.qsize() >= self.maxsize and self.maxsize:
-            yield from sleep(self._attempt_delay)
+            yield from sleep_ms(self._attempt_delay)
         self._put(val)
 
     def put_nowait(self, val):
