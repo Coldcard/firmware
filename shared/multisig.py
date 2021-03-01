@@ -1,9 +1,8 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio, sys, tcc
+import stash, chains, ustruct, ure, uio, sys, ngu
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
@@ -13,6 +12,7 @@ from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from actions import needs_microsd
 from exceptions import FatalPSBTIssue
+from nvstore import settings
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -94,7 +94,7 @@ def make_redeem_script(M, nodes, subkey_idx):
     pubkeys = []
     for n in nodes:
         copy = n.clone()
-        copy.derive(subkey_idx)
+        copy.derive(subkey_idx, False)
         # 0x21 = 33 = len(pubkey) = OP_PUSHDATA(33)
         pubkeys.append(b'\x21' + copy.public_key())
 
@@ -158,7 +158,6 @@ class MultisigWallet:
 
     @classmethod
     def get_trust_policy(cls):
-        from main import settings
 
         which = settings.get('pms', None)
 
@@ -221,7 +220,6 @@ class MultisigWallet:
     def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmt=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
-        from main import settings
         lst = settings.get('multisig', [])
 
         for idx, rec in enumerate(lst):
@@ -327,13 +325,11 @@ class MultisigWallet:
     @classmethod
     def exists(cls):
         # are there any wallets defined?
-        from main import settings
         return bool(settings.get('multisig', False))
 
     @classmethod
     def get_by_idx(cls, nth):
         # instance from index number (used in menu)
-        from main import settings
         lst = settings.get('multisig', [])
         try:
             obj = lst[nth]
@@ -345,8 +341,6 @@ class MultisigWallet:
     def commit(self):
         # data to save
         # - important that this fails immediately when nvram overflows
-        from main import settings
-
         obj = self.serialize()
 
         v = settings.get('multisig', [])
@@ -416,8 +410,6 @@ class MultisigWallet:
     def delete(self):
         # remove saved entry
         # - important: not expecting more than one instance of this class in memory
-        from main import settings
-
         assert self.storage_idx >= 0
 
         # safety check
@@ -453,7 +445,7 @@ class MultisigWallet:
         for xfp, deriv, xpub in self.xpubs:
             # load bip32 node for each cosigner, derive /0/ based on change idx
             node = ch.deserialize_node(xpub, AF_P2SH)
-            node.derive(change_idx)
+            node.derive(change_idx, False)
             nodes.append(node)
 
             # indicate path used (for UX)
@@ -535,9 +527,9 @@ class MultisigWallet:
 
                 for sp in path[dp:]:
                     assert not (sp & 0x80000000), 'hard deriv'
-                    node.derive(sp)     # works in-place
+                    node.derive(sp, False)     # works in-place
 
-                found_pk = node.public_key()
+                found_pk = node.pubkey()
 
                 # Document path(s) used. Not sure this is useful info to user tho.
                 # - Do not show what we can't verify: we don't really know the hardeneded
@@ -592,8 +584,6 @@ class MultisigWallet:
         # - M of N line (assume N of N if not spec'd)
         # - xpub: any bip32 serialization we understand, but be consistent
         #
-        from main import settings
-
         my_xfp = settings.get('xfp')
         deriv = None
         xpubs = []
@@ -716,7 +706,10 @@ class MultisigWallet:
         except:
             raise AssertionError('unable to parse xpub')
 
-        assert node.private_key() == None       # 'no privkeys plz'
+        try:
+            assert node.privkey() == None       # 'no privkeys plz'
+        except ValueError:
+            pass
         assert chain.ctype == expect_chain      # 'wrong chain'
 
         depth = node.depth()
@@ -759,7 +752,7 @@ class MultisigWallet:
                 #   and that's not supported
                 with stash.SensitiveValues() as sv:
                     chk_node = sv.derive_path(deriv)
-                    assert node.public_key() == chk_node.public_key(), \
+                    assert node.pubkey() == chk_node.pubkey(), \
                                 "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
         # serialize xpub w/ BIP32 standard now.
@@ -806,7 +799,6 @@ class MultisigWallet:
 
     async def export_wallet_file(self, mode="exported from", extra_msg=None):
         # create a text file with the details; ready for import to next Coldcard
-        from main import settings
         my_xfp = xfp2str(settings.get('xfp'))
 
         fname_pattern = self.make_fname('export')
@@ -882,8 +874,6 @@ class MultisigWallet:
         # the details, and/or bypass that all and just trust the data.
         # - xpubs_list is a list of (xfp+path, binary BIP32 xpub)
         # - already know not in our records.
-        from main import settings
-
         trust_mode = cls.get_trust_policy()
 
         if trust_mode == TRUST_VERIFY:
@@ -903,7 +893,7 @@ class MultisigWallet:
 
         for k, v in xpubs_list:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
-            xpub = tcc.codecs.b58_encode(v)
+            xpub = ngu.codecs.b58_encode(v)
             is_mine = cls.check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
                                                         expect_chain, my_xfp, xpubs)
             if is_mine:
@@ -933,7 +923,7 @@ class MultisigWallet:
 
         for k, v in xpubs_list:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
-            xpub = tcc.codecs.b58_encode(v)
+            xpub = ngu.codecs.b58_encode(v)
 
             # cleanup and normalize xpub
             tmp = []
@@ -1110,7 +1100,6 @@ def psbt_xpubs_policy_chooser():
     ch = [ 'Verify Only', 'Offer Import', 'Trust PSBT']
 
     def xset(idx, text):
-        from main import settings
         settings.set('pms', idx)
 
     return MultisigWallet.get_trust_policy(), ch, xset
@@ -1175,7 +1164,7 @@ class MultisigMenu(MenuSystem):
 
 async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
-    from main import pa
+    from pincodes import pa
 
     if pa.is_secret_blank():
         await ux_show_story("You must have wallet seed before creating multisig wallets.")
@@ -1265,7 +1254,6 @@ async def export_multisig_xpubs(*a):
     #
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
     #
-    from main import settings
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
     
@@ -1335,21 +1323,14 @@ def import_xpub(ln):
     if not found:
         return None
 
-    found = found.group(0)
+    # serialize, and note version code
+    node = ngu.hdnode.HDNode()
+    try:
+        node, chain, addr_fmt, _ = chains.slip32_deserialize(found.group(0))
+    except:
+        return None
 
-    for ch in chains.AllChains:
-        for kk in ch.slip132:
-            if found[0] == ch.slip132[kk].hint:
-                try:
-                    node = tcc.bip32.deserialize(found, ch.slip132[kk].pub, ch.slip132[kk].priv)
-                    chain = ch
-                    addr_fmt = kk
-                    return (node, ch, kk)
-                except ValueError:
-                    pass
-
-    # looked like one, but fail.
-    return None
+    return (node, chain, addr_fmt)
 
 async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
     # collect all xpub- exports on current SD card (must be > 1)
@@ -1360,7 +1341,6 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
     from actions import file_picker
     import uos, ujson
     from utils import get_filesize
-    from main import settings
 
     chain = chains.current_chain()
     my_xfp = settings.get('xfp')

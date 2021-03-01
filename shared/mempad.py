@@ -1,14 +1,13 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # mempad.py - Numeric keypad implemented with membrane metal-dome, not touch.
 #
 import array, utime, pyb
-from uasyncio.queues import Queue
 from ucollections import deque
 from machine import Pin
 from random import shuffle
 from numpad import NumpadBase
+from utils import call_later_ms
 
 NUM_ROWS = const(4)
 NUM_COLS = const(3)         
@@ -21,8 +20,8 @@ DECODER = 'y0x987654321'
 
 class MembraneNumpad(NumpadBase):
 
-    def __init__(self, loop):
-        super(MembraneNumpad, self).__init__(loop)
+    def __init__(self):
+        super(MembraneNumpad, self).__init__()
 
         # No idea how to pick a safe timer number.
         self.timer = pyb.Timer(7)
@@ -55,7 +54,6 @@ class MembraneNumpad(NumpadBase):
             c.irq(self.anypress_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
 
         # ready to start 
-        self.loop = loop
 
     def anypress_irq(self, pin):
         # come here for any change, high or low
@@ -85,7 +83,7 @@ class MembraneNumpad(NumpadBase):
         self._history = bytearray(NUM_ROWS * NUM_COLS)
 
         self.timer.init(freq=SAMPLE_FREQ, callback=self._measure_irq)
-        self.loop.call_later_ms(Q_CHECK_RATE, self._finish_scan)
+        call_later_ms(Q_CHECK_RATE, self._finish_scan)
 
     def _measure_irq(self, _timer):
         # CHALLENGE: Called at high rate, and cannot do memory alloc.
@@ -135,12 +133,9 @@ class MembraneNumpad(NumpadBase):
 
                 self._history[i] = 0
 
-    def _finish_scan(self):
+    async def _finish_scan(self):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
         # - not trying to support multiple presses, just one
-        from main import dis
-        from display import FontTiny
-
         while self.scans:
             event = self.scans.popleft()
 
@@ -159,6 +154,6 @@ class MembraneNumpad(NumpadBase):
             # stop scanning now... nothing happening
             self._wait_any()
         else:
-            self.loop.call_later_ms(Q_CHECK_RATE, self._finish_scan)
+            call_later_ms(Q_CHECK_RATE, self._finish_scan)
     
 # EOF

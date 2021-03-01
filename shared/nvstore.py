@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # nvstore.py - manage a few key values that aren't super secrets
 #
@@ -18,10 +17,13 @@
 # - you cannot move data between slots because AES-CTR with CTR seed based on slot #
 # - SHA check on decrypted data
 #
-import os, ujson, tcc, ustruct, ckcc, gc
-from uasyncio import sleep_ms
+import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr
 from uio import BytesIO
 from sffile import SFFile
+from sflash import SF
+from uhashlib import sha256
+from random import shuffle
+from utils import call_later_ms
 
 # Setting values:
 #   xfp = master xpub's fingerprint (32 bit unsigned)
@@ -59,8 +61,7 @@ _tmp = nvstore_buf
 
 class SettingsObject:
 
-    def __init__(self, loop=None):
-        self.loop = loop
+    def __init__(self, dis=None):
         self.is_dirty = 0
         self.my_pos = 0
 
@@ -69,18 +70,19 @@ class SettingsObject:
         self.current = self.default_values()
         self.overrides = {}         # volatile overide values
 
-        self.load()
+        self.load(dis)
 
-    def get_aes(self, mode,  pos):
-        # Build AES key for en/decrypt of specific block.
+    def get_aes(self, pos):
+        # Build AES object for en/decrypt of specific block.
         # Include the slot number as part of the initial counter (CTR)
-        return tcc.AES(tcc.AES.CTR | mode, self.nvram_key, ustruct.pack('<4I', 4, 3, 2, pos))
+        ctr = ustruct.pack('<4I', 4, 3, 2, pos)
+        return aes256ctr.new(self.nvram_key, ctr)
 
     def set_key(self, new_secret=None):
         # System settings (not secrets) are stored in SPI Flash, encrypted with this
         # key that is derived from main wallet secret. Call this method when the secret
         # is first loaded, or changes for some reason.
-        from main import pa
+        from pincodes import pa
         from stash import blank_object
 
         key = None
@@ -99,12 +101,12 @@ class SettingsObject:
             # hash up the secret... without decoding it or similar
             assert len(new_secret) >= 32
             
-            s = tcc.sha256(new_secret)
+            s = sha256(new_secret)
 
             for round in range(5):
                 s.update('pad')
             
-                s = tcc.sha256(s.digest())
+                s = sha256(s.digest())
 
             key = s.digest()
 
@@ -114,11 +116,9 @@ class SettingsObject:
         # for restore from backup case, or when changing (created) the seed
         self.nvram_key = key
 
-    def load(self):
+    def load(self, dis=None):
         # Search all slots for any we can read, decrypt that,
         # and pick the newest one (in unlikely case of dups)
-        from main import sf
-
         # reset
         self.current.clear()
         self.overrides.clear()
@@ -132,31 +132,32 @@ class SettingsObject:
         buf = bytearray(4)
         empty = 0
         for pos in SLOTS:
+            if dis:
+                dis.progress_bar_show((pos-SLOTS.start) / (SLOTS.stop-SLOTS.start))
             gc.collect()
 
-            sf.read(pos, buf)
+            SF.read(pos, buf)
             if buf[0] == buf[1] == buf[2] == buf[3] == 0xff:
                 # erased (probably)
                 empty += 1
                 continue
 
             # check if first 2 bytes makes sense for JSON
-            aes = self.get_aes(tcc.AES.Encrypt, pos)
-            chk = aes.update(b'{"')
+            aes = self.get_aes(pos)
+            chk = aes.copy().cipher(b'{"')
 
             if chk != buf[0:2]:
                 # doesn't look like JSON meant for me
                 continue
 
             # probably good, read it
-            aes = self.get_aes(tcc.AES.Encrypt, pos)
-
-            chk = tcc.sha256()
+            chk = sha256()
+            aes = aes.cipher
             expect = None
 
             with SFFile(pos, length=4096, pre_erased=True) as fd:
                 for i in range(4096/32):        
-                    b = aes.update(fd.read(32))
+                    b = aes(fd.read(32))
                     if i != 127:
                         _tmp[i*32:(i*32)+32] = b
                         chk.update(b)
@@ -187,8 +188,8 @@ class SettingsObject:
                 # stale data seen; clean it up.
                 assert self.current['_age'] > 0
                 #print("NV: cleanup @ %d" % pos)
-                sf.sector_erase(pos)
-                sf.wait_done()
+                SF.sector_erase(pos)
+                SF.wait_done()
 
         # 4k is a large object, sigh, for us right now. cleanup
         gc.collect()
@@ -205,13 +206,13 @@ class SettingsObject:
             # Whole thing is blank. Bad for plausible deniability. Write 3 slots
             # with garbage. They will be wasted space until it fills.
             blks = list(SLOTS)
-            tcc.random.shuffle(blks)
+            shuffle(blks)
 
             for pos in blks[0:3]:
                 for i in range(0, 4096, 256):
-                    h = tcc.random.bytes(256)
-                    sf.wait_done()
-                    sf.write(pos+i, h)
+                    h = ngu.random.bytes(256)
+                    SF.wait_done()
+                    SF.write(pos+i, h)
 
     def get(self, kn, default=None):
         if kn in self.overrides:
@@ -221,8 +222,8 @@ class SettingsObject:
 
     def changed(self):
         self.is_dirty += 1
-        if self.is_dirty < 2 and self.loop:
-            self.loop.call_later_ms(250, self.write_out())
+        if self.is_dirty < 2:
+            call_later_ms(250, self.write_out)
 
     def put(self, kn, v):
         self.current[kn] = v
@@ -259,46 +260,44 @@ class SettingsObject:
             gc.collect()
             self.save()
         except MemoryError:
-            self.loop.call_later_ms(250, self.write_out())
+            call_later_ms(250, self.write_out)
 
     def find_spot(self, not_here=0):
         # search for a blank sector to use 
         # - check randomly and pick first blank one (wear leveling, deniability)
         # - we will write and then erase old slot
         # - if "full", blow away a random one
-        from main import sf
-
         options = [s for s in SLOTS if s != not_here]
-        tcc.random.shuffle(options)
+        shuffle(options)
 
         buf = bytearray(16)
         for pos in options:
-            sf.read(pos, buf)
+            SF.read(pos, buf)
             if set(buf) == {0xff}:
                 # blank
-                return sf, pos
+                return pos
 
         # No where to write! (probably a bug because we have lots of slots)
         # ... so pick a random slot and kill what it had
         #print("ERROR: nvram full?")
 
         victem = options[0]
-        sf.sector_erase(victem)
-        sf.wait_done()
+        SF.sector_erase(victem)
+        SF.wait_done()
 
-        return sf, victem
+        return victem
 
     def save(self):
         # render as JSON, encrypt and write it.
 
         self.current['_age'] = self.current.get('_age', 1) + 1
 
-        sf, pos = self.find_spot(self.my_pos)
+        pos = self.find_spot(self.my_pos)
 
-        aes = self.get_aes(tcc.AES.Encrypt, pos)
+        aes = self.get_aes(pos).cipher
 
         with SFFile(pos, max_size=4096, pre_erased=True) as fd:
-            chk = tcc.sha256()
+            chk = sha256()
 
             # first the json data
             d = ujson.dumps(self.current)
@@ -310,7 +309,7 @@ class SettingsObject:
 
             self.capacity = dat_len / 4096
 
-            fd.write(aes.update(d))
+            fd.write(aes(d))
             chk.update(d)
             del d
 
@@ -318,19 +317,19 @@ class SettingsObject:
                 here = min(32, pad_len)
 
                 pad = bytes(here)
-                fd.write(aes.update(pad))
+                fd.write(aes(pad))
                 chk.update(pad)
 
                 pad_len -= here
         
-            fd.write(aes.update(chk.digest()))
+            fd.write(aes(chk.digest()))
             assert fd.tell() == 4096
 
         # erase old copy of data
         if self.my_pos and self.my_pos != pos:
-            sf.wait_done()
-            sf.sector_erase(self.my_pos)
-            sf.wait_done()
+            SF.wait_done()
+            SF.sector_erase(self.my_pos)
+            SF.wait_done()
 
         self.my_pos = pos
         self.is_dirty = 0
@@ -342,11 +341,9 @@ class SettingsObject:
     def blank(self):
         # erase current copy of values in nvram; older ones may exist still
         # - use when clearing the seed value
-        from main import sf
-
         if self.my_pos:
-            sf.wait_done()
-            sf.sector_erase(self.my_pos)
+            SF.wait_done()
+            SF.sector_erase(self.my_pos)
             self.my_pos = 0
 
         # act blank too, just in case.
@@ -360,5 +357,9 @@ class SettingsObject:
         # Please try to avoid defaults here... It's better to put into code
         # where value is used, and treat undefined as the default state.
         return dict(_age=0)
+
+# not a singleton, but default widely-used object
+from glob import dis
+settings = SettingsObject(dis)
 
 # EOF

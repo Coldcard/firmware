@@ -83,24 +83,26 @@ class PaperWalletMaker:
 
     async def doit(self, *a, have_key=None):
         # make the wallet.
-        from main import dis
+        from glob import dis
 
         try:
+            import ngu
             from chains import current_chain
-            import tcc
             from serializations import hash160
             from stash import blank_object
 
             if not have_key:
                 # get some random bytes
                 await ux_dramatic_pause("Picking key...", 2)
-                privkey = tcc.secp256k1.generate_secret()
+                pair = ngu.secp256k1.keypair()
             else:
                 # caller must range check this already: 0 < privkey < order
-                privkey = have_key
+                # - actually libsecp256k1 will check it again anyway
+                pair = ngu.secp256k1.keypair(have_key)
 
-            # calculate corresponding public key value
-            pubkey = tcc.secp256k1.publickey(privkey, True)       # always compressed style
+            # pull out binary versions (serialized) as we need
+            privkey = pair.privkey()
+            pubkey = pair.pubkey().to_bytes(False)       # always compressed style
 
             dis.fullscreen("Rendering...")
 
@@ -108,11 +110,11 @@ class PaperWalletMaker:
             digest = hash160(pubkey)
             ch = current_chain()
             if self.is_segwit:
-                addr = tcc.codecs.bech32_encode(ch.bech32_hrp, 0, digest)
+                addr = ngu.codecs.segwit_encode(ch.bech32_hrp, 0, digest)
             else:
-                addr = tcc.codecs.b58_encode(ch.b58_addr + digest)
+                addr = ngu.codecs.b58_encode(ch.b58_addr + digest)
 
-            wif = tcc.codecs.b58_encode(ch.b58_privkey + privkey + b'\x01')
+            wif = ngu.codecs.b58_encode(ch.b58_privkey + privkey + b'\x01')
 
             if self.can_do_qr():
                 with imported('uqr') as uqr:
@@ -205,7 +207,7 @@ class PaperWalletMaker:
                 w = qr.width()
                 for y in range(w):
                     fp.write('        ')
-                    ln = ''.join('\u2588\u2588' if qr.get(x,y) else '' for x in range(w))
+                    ln = ''.join('\u2588\u2588' if qr.get(x,y) else '  ' for x in range(w))
                     fp.write(ln)
                     fp.write('\n')
 

@@ -1,9 +1,9 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # chains.py - Magic values for the coins and altcoins we support
 #
-import tcc
+import ngu
+from uhashlib import sha256
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
 from serializations import hash160, ser_compact_size
@@ -43,19 +43,23 @@ class ChainsBase:
     @classmethod
     def serialize_private(cls, node, addr_fmt=AF_CLASSIC):
         # output a xprv
-        return node.serialize_private(cls.slip132[addr_fmt].priv)
+        return node.serialize(cls.slip132[addr_fmt].priv, True)
 
     @classmethod
     def serialize_public(cls, node, addr_fmt=AF_CLASSIC):
         # output a xpub
         addr_fmt = AF_CLASSIC if addr_fmt == AF_P2SH else addr_fmt
-        return node.serialize_public(cls.slip132[addr_fmt].pub)
+        return node.serialize(cls.slip132[addr_fmt].pub, False)
 
     @classmethod
     def deserialize_node(cls, text, addr_fmt):
         # xpub/xprv to object
         addr_fmt = AF_CLASSIC if addr_fmt == AF_P2SH else addr_fmt
-        return tcc.bip32.deserialize(text, cls.slip132[addr_fmt].pub, cls.slip132[addr_fmt].priv)
+        node = ngu.hdnode.HDNode()
+        version = node.deserialize(text)
+        assert (version == cls.slip132[addr_fmt].pub) \
+                or (version == cls.slip132[addr_fmt].priv)
+        return node
 
     @classmethod
     def p2sh_address(cls, addr_fmt, witdeem_script):
@@ -71,19 +75,19 @@ class ChainsBase:
         assert witdeem_script, "need witness/redeem script"
 
         if addr_fmt & AFC_SEGWIT:
-            digest = tcc.sha256(witdeem_script).digest()
+            digest = ngu.hash.sha256s(witdeem_script)
         else:
             digest = hash160(witdeem_script)
 
         if addr_fmt & AFC_BECH32:
             # bech32 encoded segwit p2sh
-            addr = tcc.codecs.bech32_encode(cls.bech32_hrp, 0, digest)
+            addr = ngu.codecs.segwit_encode(cls.bech32_hrp, 0, digest)
         elif addr_fmt == AF_P2WSH_P2SH:
             # segwit p2wsh encoded as classic P2SH
-            addr = tcc.codecs.b58_encode(cls.b58_script + hash160(b'\x00\x20' + digest))
+            addr = ngu.codecs.b58_encode(cls.b58_script + hash160(b'\x00\x20' + digest))
         else:
             # P2SH classic
-            addr = tcc.codecs.b58_encode(cls.b58_script + digest)
+            addr = ngu.codecs.b58_encode(cls.b58_script + digest)
 
         return addr
 
@@ -94,7 +98,7 @@ class ChainsBase:
         if addr_fmt == AF_CLASSIC:
             # olde fashioned P2PKH
             assert len(cls.b58_addr) == 1
-            return node.address(cls.b58_addr[0])
+            return node.addr_help(cls.b58_addr[0])
 
         if addr_fmt & AFC_SCRIPT:
             # use p2sh_address() instead.
@@ -102,30 +106,30 @@ class ChainsBase:
 
         # so must be P2PKH, fetch it.
         assert addr_fmt & AFC_PUBKEY
-        raw = node.address_raw()
+        raw = node.addr_help()
         assert len(raw) == 20
 
         if addr_fmt & AFC_BECH32:
             # bech32 encoded segwit p2pkh
-            return tcc.codecs.bech32_encode(cls.bech32_hrp, 0, raw)
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, raw)
 
-        # see bip-141, "P2WPKH nested in BIP16 P2SH" section
+        # see BIP-141, "P2WPKH nested in BIP16 P2SH" section
         assert addr_fmt == AF_P2WPKH_P2SH
         assert len(cls.b58_script) == 1
         digest = hash160(b'\x00\x14' + raw)
 
-        return tcc.codecs.b58_encode(cls.b58_script + digest)
+        return ngu.codecs.b58_encode(cls.b58_script + digest)
 
     @classmethod
     def privkey(cls, node):
         # serialize a private key (generally shouldn't be!)
-        return node.serialize_private(cls.b58_privkey)
+        return node.serialize(cls.b58_privkey, True)
 
     @classmethod
     def hash_message(cls, msg=None, msg_len=0):
         # Perform sha256 for message-signing purposes (only)
         # - or get setup for that, if msg == None
-        s = tcc.sha256()
+        s = sha256()
 
         s.update(cls.msg_signing_prefix())
 
@@ -138,7 +142,7 @@ class ChainsBase:
 
         s.update(msg)
 
-        return tcc.sha256(s.digest()).digest()
+        return ngu.hash.sha256s(s.digest())
 
 
     @classmethod
@@ -169,19 +173,19 @@ class ChainsBase:
 
         # P2PKH
         if ll == 25 and script[0:3] == b'\x76\xA9\x14' and script[23:26] == b'\x88\xAC':
-            return tcc.codecs.b58_encode(cls.b58_addr + script[3:3+20])
+            return ngu.codecs.b58_encode(cls.b58_addr + script[3:3+20])
 
         # P2SH
         if ll == 23 and script[0:2] == b'\xA9\x14' and script[22] == 0x87:
-            return tcc.codecs.b58_encode(cls.b58_script + script[2:2+20])
+            return ngu.codecs.b58_encode(cls.b58_script + script[2:2+20])
 
         # P2WPKH
         if ll == 22 and script[0:2] == b'\x00\x14':
-            return tcc.codecs.bech32_encode(cls.bech32_hrp, 0, script[2:])
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
 
         # P2WSH
         if ll == 34 and script[0:2] == b'\x00\x20':
-            return tcc.codecs.bech32_encode(cls.bech32_hrp, 0, script[2:])
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
 
         raise ValueError('Unknown payment script', repr(script))
 
@@ -251,11 +255,26 @@ def get_chain(short_name, btc_default=False):
 
 def current_chain():
     # return chain matching current setting
-    from main import settings
+    from nvstore import settings
 
     chain = settings.get('chain', 'BTC')
 
     return get_chain(chain)
+
+
+def slip32_deserialize(xp):
+    # .. and classify chain and addr-type, as implied by prefix
+    node = ngu.hdnode.HDNode()
+    version = node.deserialize(xp)
+
+    for ch in AllChains:
+        for kk in ch.slip132:
+            if ch.slip132[kk].pub == version:
+                return node, ch, kk, False
+            if ch.slip132[kk].priv == version:
+                return node, ch, kk, True
+
+    raise ValueError(hex(version))
 
 # Some common/useful derivation paths and where they may be used.
 # see bip49 for meaning of the meta vars

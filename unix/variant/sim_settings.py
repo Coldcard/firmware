@@ -89,7 +89,8 @@ if '--seed' in sys.argv:
     from ustruct import unpack
     from utils import xfp2str
     from seed import set_seed_value
-    from main import pa, settings
+    from main import pa
+    from nvstore import settings
 
     words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
     assert len(words) in {12, 18, 24}, "Expected space-separated words: add some quotes"

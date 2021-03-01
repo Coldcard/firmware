@@ -132,8 +132,9 @@ def test_decoding(unit_test):
 def test_hmac(sim_exec, msg, key, hasher):
     import hashlib, hmac
 
-    cmd = "import hmac, tcc; from h import b2a_hex; " + \
-                    f"RV.write(b2a_hex(hmac.new({key}, {msg}, tcc.{hasher}).digest()))"
+    cmd = "import ngu; from h import b2a_hex; " + \
+                    f"RV.write(b2a_hex(ngu.hmac.hmac_{hasher}({key}, {msg})))"
+    print(cmd)
 
     got = sim_exec(cmd)
     expect = hmac.new(key, msg, hasher).hexdigest()
@@ -176,7 +177,7 @@ def test_hmac_key(sim_exec, count=50):
 
         got = sim_exec(cmd)
 
-        expect = B2A(pbkdf2_hmac('sha256', pw, salt, PBKDF2_ITER_COUNT))
+        expect = B2A(pbkdf2_hmac('sha512', pw, salt, PBKDF2_ITER_COUNT)[0:32])
 
         assert got == expect
         print(got)

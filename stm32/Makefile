@@ -11,7 +11,7 @@ PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
 # aka ../cli/signit.py
 SIGNIT = signit
 
-MAKE_ARGS = BOARD=COLDCARD -j 4
+MAKE_ARGS = BOARD=COLDCARD -j 4 EXCLUDE_NGU_TESTS=1
 
 all: COLDCARD/file_time.c
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
@@ -28,7 +28,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 3.2.2
+VERSION_STRING = 4.0.0
 
 #
 # Sign and merge various parts
@@ -48,6 +48,10 @@ dev.dfu: l-port/build-COLDCARD/firmware?.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
 	$(SIGNIT) sign $(VERSION_STRING) -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
+
+.PHONY: remake
+remake:
+	rm -rf l-port/build-COLDCARD/firmware?.bin l-port/build-COLDCARD/frozen_mpy*
 
 # This is fast for Coinkite devs, but no DFU support in the wild.
 up: dev.dfu
@@ -168,7 +172,7 @@ build/%.mpy: ../shared/%.py Makefile
 
 # In another window: 
 #
-#		openocd -f l-port/boards/openocd_stm32l4.cfg
+#		openocd -f openocd_stm32l4x6.cfg
 #
 # Can do:
 # - "load" which writes the flash (medium speed, lots of output on st-util)

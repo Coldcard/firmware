@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # address_explorer.py
 #
@@ -12,6 +11,7 @@ from menu import MenuSystem, MenuItem, start_chooser
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
+from nvstore import settings
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -119,7 +119,7 @@ class AddressListMenu(MenuSystem):
     async def render(self):
         # Choose from a truncated list of index 0 common addresses, remember
         # the last address the user selected and use it as the default
-        from main import settings, dis
+        from glob import dis
         chain = chains.current_chain()
 
         dis.fullscreen('Wait...')
@@ -169,13 +169,11 @@ class AddressListMenu(MenuSystem):
         await self.render()
 
     async def pick_single(self, _1, menu_idx, item):
-        from main import settings
         settings.put('axi', menu_idx)       # update last clicked address
         path, addr_fmt = item.arg
         await self.show_n_addresses(path, addr_fmt, None)
 
     async def pick_multisig(self, _1, menu_idx, item):
-        from main import settings
         ms_wallet = item.arg
         settings.put('axi', menu_idx)       # update last clicked address
         await self.show_n_addresses(None, None, ms_wallet)
@@ -205,7 +203,7 @@ Press 3 if you really understand and accept these risks.
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
         # - or multisig case
-        from main import dis
+        from glob import dis
         import version
 
         def make_msg():
@@ -335,7 +333,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250):
     # write addresses into a text file on the MicroSD
-    from main import dis
+    from glob import dis
     from files import CardSlot, CardMissingError
     from actions import needs_microsd
 
@@ -374,7 +372,6 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, coun
 async def address_explore(*a):
     # explore addresses based on derivation path chosen
     # by proxy external index=0 address
-    from main import settings
 
     while not settings.get('axskip', False):
         ch = await ux_show_story('''\

@@ -1,19 +1,20 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # usb.py - USB related things
 #
-import ckcc, pyb, callgate, sys, ux, tcc, stash
-from uasyncio import sleep_ms, IORead
+import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr
+from uasyncio import sleep_ms, core
+from uhashlib import sha256
 from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN, AFC_SCRIPT
 from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
-from ckcc import rng_bytes, watchpoint, is_simulator
+from ckcc import watchpoint, is_simulator
 import uselect as select
-from utils import problem_file_line
-from version import has_fatram
+from utils import problem_file_line, call_later_ms
+from version import has_fatram, is_devmode
 from exceptions import FramingError, CCBusyError, HSMDenied
+from nvstore import settings
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -65,29 +66,24 @@ HSM_WHITELIST = frozenset({
 # singleton instance of USBHandler()
 handler = None
 
-def enable_usb(loop, repl_enable=False):
-    # start it.
-    cur = pyb.usb_mode()
-
+def enable_usb(repl_enable):
     # allow/block REPL access
     ckcc.vcp_enabled(repl_enable)
 
+    # We can't change it on the fly; must be disabled before here
+    cur = pyb.usb_mode()
     if cur:
-        # We can't change it on the fly; must be disabled before here
-        print("USB already enabled")
+        print("USB already enabled: %s" % cur)
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
         hid_info = (0x0, 0x0, 64, 5, hid_descp )
-        try:
-            pyb.usb_mode('VCP+HID', vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
-        except:
-            assert False, 'bad usb mode'
-            return
+        pyb.usb_mode('VCP+HID', vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler
-    if loop and not handler:
+    if not handler:
         handler = USBHandler()
-        loop.create_task(handler.usb_hid_recv())
+        from imptask import IMPT
+        IMPT.start_task('USB', handler.usb_hid_recv())
 
 def is_vcp_active():
     # VCP = Virtual Comm Port
@@ -102,7 +98,7 @@ class USBHandler:
 
         # We keep a running hash over whatever has been uploaded
         # - reset at offset zero, can be read back anytime
-        self.file_checksum = tcc.sha256()
+        self.file_checksum = sha256()
 
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
@@ -114,7 +110,7 @@ class USBHandler:
 
         self.encrypted_req = False
 
-        # these will be tcc.AES objects later
+        # these will be objects later
         self.encrypt = None
         self.decrypt = None
 
@@ -145,7 +141,8 @@ class USBHandler:
         msg_len = 0
 
         while 1:
-            yield IORead(self.blockable)
+            yield core._io_queue.queue_read(self.blockable)
+            #yield IORead(self.blockable)
 
             try:
                 here, is_last, is_encrypted = self.get_packet()
@@ -204,8 +201,9 @@ class USBHandler:
                     msg_len = 0
                 except Exception as exc:
                     # catch bugs and fuzzing too
-                    print("USB request caused this: ", end='')
-                    sys.print_exception(exc)
+                    if is_simulator():
+                        print("USB request caused this: ", end='')
+                        sys.print_exception(exc)
                     resp = b'err_Confused ' + problem_file_line(exc)
                     msg_len = 0
 
@@ -214,26 +212,26 @@ class USBHandler:
 
             except FramingError as exc:
                 reason = exc.args[0]
-                print("Framing: %s" % reason)
+                #print("Framing: %s" % reason)
                 self.framing_error(reason)
                 msg_len = 0
 
             except BaseException as exc:
                 # recover from general issues/keep going
-                print("USB!")
-                sys.print_exception(exc)
+                #print("USB!")
+                #sys.print_exception(exc)
                 msg_len = 0
 
     def decrypt_inplace(self, msg_len):
         # self.msg is encrypted. decode it in place
         # - seems dangerous to use memview here, but works
-        # - some memory alloc still happens here tho; probably in return of decrypt.update
-        self.msg[0:msg_len] = self.decrypt.update(memoryview(self.msg)[0:msg_len])
+        # - some memory alloc still happens here tho
+        self.msg[0:msg_len] = self.decrypt(memoryview(self.msg)[0:msg_len])
 
     def encrypt_response(self, msg):
         # encrypt what we'll send to desktop
 
-        return self.encrypt.update(msg)
+        return self.encrypt(msg)
 
     async def send_response(self, resp):
         # send a python object as the response
@@ -251,7 +249,7 @@ class USBHandler:
         elif isinstance(resp, int):
             resp = pack('<4sI', 'int1', resp)
         else:
-            print("Unknown resp: " + repr(resp))
+            #print("Unknown resp: " + repr(resp))
             raise NotImplementedError()
 
         assert len(resp) >= 4
@@ -296,7 +294,7 @@ class USBHandler:
 
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
-        from main import hsm_active, is_devmode
+        from glob import hsm_active
 
         try:
             cmd = bytes(cmd).decode()
@@ -309,7 +307,6 @@ class USBHandler:
                 from usb_test_commands import do_usb_command
                 return do_usb_command(cmd, args)
             except: 
-                raise
                 pass
 
         if hsm_active:
@@ -500,7 +497,6 @@ class USBHandler:
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
             from auth import start_bip39_passphrase
-            from main import settings
 
             assert settings.get('words', True), 'no seed'
             assert len(args) < 400, 'too long'
@@ -524,7 +520,7 @@ class USBHandler:
             return self.handle_bag_number(args)
 
         if has_fatram:
-            # HSM and user-related  features only larger-memory Mk3
+            # HSM and user-related features only supported on larger-memory Mk3
 
             if cmd == 'hsms':
                 # HSM mode "start" -- requires user approval
@@ -584,22 +580,14 @@ class USBHandler:
                     # dryrun/testing purposes: validate only, doesn't unlock nothing
                     return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
 
-        print("USB garbage: %s +[%d]" % (cmd, len(args)))
+        #print("USB garbage: %s +[%d]" % (cmd, len(args)))
 
         return b'err_Unknown cmd'
 
 
     def call_after(self, func, *args):
-        from main import loop
-
-        async def doit():
-            # we want to provide nice response before dying
-            await sleep_ms(500)
-            func(*args)
-
-        loop.create_task(doit())
-
-        return None
+        # we want to provide nice response before dying
+        call_later_ms(500, func, *args)
 
     def handle_crypto_setup(self, version, his_pubkey):
         # pick a one-time key pair for myself, and return the pubkey for that
@@ -608,24 +596,22 @@ class USBHandler:
         assert len(his_pubkey) == 64
 
         # pick a random key pair, just for this session
-        my_key = tcc.secp256k1.generate_secret()
-        my_pubkey = tcc.secp256k1.publickey(my_key, False)
+        pair = ngu.secp256k1.keypair()
+        my_pubkey = pair.pubkey().to_bytes(True)        # un-compressed
 
         #print('my pubkey = ' + str(b2a_hex(my_pubkey)))
         #print('his pubkey = ' + str(b2a_hex(his_pubkey)))
 
-        pt = tcc.secp256k1.multiply(my_key, b'\x04' + his_pubkey)
-        #assert pt[0] == 4
-        self.session_key = tcc.sha256(pt[1:]).digest()
+        self.session_key = pair.ecdh_multiply(b'\x04' + his_pubkey)
 
         #print("session = " + str(b2a_hex(self.session_key)))
 
         # Would be nice to have nonce in addition to the counter, but
-        # library not ready for that, and also harder on the desktop side.
-        self.encrypt = tcc.AES(tcc.AES.CTR | tcc.AES.Encrypt, self.session_key)
-        self.decrypt = tcc.AES(tcc.AES.CTR | tcc.AES.Decrypt, self.session_key)
+        # harder on the desktop side.
+        ctr = aes256ctr.new(self.session_key)
+        self.encrypt = ctr.cipher
+        self.decrypt = ctr.copy().cipher
 
-        from main import settings
         xfp = settings.get('xfp', 0)
         xpub = settings.get('xpub', '')
 
@@ -637,13 +623,13 @@ class USBHandler:
         # - proves our identity and that no-one is between 
 
         # Rate limit and fuzz timing in case we have timing sensitivity
-        await sleep_ms(250 + tcc.random.uniform(1000))
+        await sleep_ms(100 + ngu.random.uniform(100))
 
         with stash.SensitiveValues() as sv:
-            pk = sv.node.private_key()
+            pk = sv.node.privkey()
             sv.register(pk)
 
-            signature = tcc.secp256k1.sign(pk, self.session_key)
+            signature = ngu.secp256k1.sign(pk, self.session_key).to_bytes()
 
             assert len(signature) == 65
 
@@ -653,7 +639,7 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
-        from main import sf
+        from sflash import SF
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
@@ -664,26 +650,27 @@ class USBHandler:
 
         # maintain a running SHA256 over what's sent
         if offset == 0:
-            self.file_checksum = tcc.sha256()
+            self.file_checksum = sha256()
 
         pos = (MAX_TXN_LEN * file_number) + offset
 
         resp = bytearray(4 + length)
         resp[0:4] = b'biny'
-        sf.read(pos, memoryview(resp)[4:])
+        SF.read(pos, memoryview(resp)[4:])
 
         self.file_checksum.update(memoryview(resp)[4:])
 
         return resp
 
     async def handle_upload(self, offset, total_size, data):
-        from main import dis, sf, hsm_active
+        from sflash import SF
+        from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
 
         # maintain a running SHA256 over what's received
         if offset == 0:
-            self.file_checksum = tcc.sha256()
+            self.file_checksum = sha256()
 
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
@@ -699,10 +686,12 @@ class USBHandler:
                 # erase here
                 dis.fullscreen("Receiving...", offset/total_size)
 
-                sf.sector_erase(pos)
+                SF.sector_erase(pos)
 
-                while sf.is_busy():
-                    await sleep_ms(10)
+                # expect 10-22 ms delay here
+                await sleep_ms(12)
+                while SF.is_busy():
+                    await sleep_ms(2)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
@@ -721,10 +710,10 @@ class USBHandler:
                 if prob:
                     raise ValueError(prob)
 
-            sf.write(pos, here)
+            SF.write(pos, here)
 
             # full page write: 0.6 to 3ms
-            while sf.is_busy():
+            while SF.is_busy():
                 await sleep_ms(1)
 
 
@@ -746,7 +735,7 @@ class USBHandler:
 
         subpath = cleanup_deriv_path(subpath)
 
-        from main import hsm_active
+        from glob import hsm_active
         if hsm_active and not hsm_active.approve_xpub_share(subpath):
             raise HSMDenied
 
@@ -761,7 +750,8 @@ class USBHandler:
 
     def handle_bag_number(self, bag_num):
         import version, callgate
-        from main import dis, pa, is_devmode, settings
+        from glob import dis
+        from pincodes import pa
 
         if version.is_factory_mode and bag_num:
             # check state first

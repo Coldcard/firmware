@@ -35,6 +35,7 @@ _minimum_heap_size = 16K;
    above last byte of RAM.  Note that EABI requires the stack to be 8-byte
    aligned for a call. */
 _estack = ORIGIN(SRAM2) + LENGTH(SRAM2);
+_sstack = ORIGIN(SRAM2);
 
 /* RAM extents for the garbage collector */
 _ram_start = ORIGIN(RAM);

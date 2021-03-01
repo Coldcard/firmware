@@ -1,17 +1,25 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # random.py -  subset of random module, with no compat, and using crypto-quality rng
 #
-from ckcc import rng
+import ngu
+
+# use this instead of rand%n
+randbelow = ngu.random.uniform
+
+# for bytes
+bytes = ngu.random.bytes
 
 # In-place list shuffle using Fisher-Yates algo
 #
 # see <https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#Implementation_errors>
 #
-def shuffle(seq):
-    for i in range(len(seq)-1, 0, -1):
-        j = rng() % (i+1)
-        seq[i], seq[j] = seq[j], seq[i]
+def shuffle(lst):
+    # cpython random.py:L286 -- Fisher-Yates
+
+    for i in reversed(range(1, len(lst))):
+        j = randbelow(i+1)
+        lst[i], lst[j] = lst[j], lst[i]
+        
 
 # EOF

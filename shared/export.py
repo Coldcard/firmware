@@ -1,15 +1,15 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # export.py - Export and share various semi-public data
 #
-import stash, tcc, chains, sys
+import stash, chains, sys
 #from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
-from utils import xfp2str
+from utils import xfp2str, swab32
 from ux import ux_show_story
 import version, ujson
 from uio import StringIO
+from nvstore import settings
 
 def generate_public_contents():
     # Generate public details about wallet.
@@ -18,7 +18,6 @@ def generate_public_contents():
     #   key = value
     # or #comments
     # but value is JSON
-    from main import settings
     from public_constants import AF_CLASSIC
 
     num_rx = 5
@@ -26,6 +25,8 @@ def generate_public_contents():
     chain = chains.current_chain()
 
     with stash.SensitiveValues() as sv:
+
+        xfp = xfp2str(swab32(sv.node.my_fp()))
 
         yield ('''\
 # Coldcard Wallet Summary File
@@ -50,7 +51,7 @@ be needed for different systems.
 
 
 '''.format(nb=chain.name, xpub=chain.serialize_public(sv.node), 
-            sym=chain.ctype, ct=chain.b44_cointype, xfp=xfp2str(sv.node.my_fingerprint())))
+            sym=chain.ctype, ct=chain.b44_cointype, xfp=xfp))
 
         for name, path, addr_fmt in chains.CommonDerivations:
 
@@ -116,7 +117,7 @@ be needed for different systems.
 
 async def write_text_file(fname_pattern, body, title, total_parts=72):
     # - total_parts does need not be precise
-    from main import dis, pa, settings
+    from glob import dis
     from files import CardSlot, CardMissingError
     from actions import needs_microsd
 
@@ -142,7 +143,7 @@ async def write_text_file(fname_pattern, body, title, total_parts=72):
     await ux_show_story(msg)
 
 async def make_summary_file(fname_pattern='public.txt'):
-    from main import dis
+    from glob import dis
 
     # record **public** values and helpful data into a text file
     dis.fullscreen('Generating...')
@@ -153,7 +154,7 @@ async def make_summary_file(fname_pattern='public.txt'):
     await write_text_file(fname_pattern, body, 'Summary')
 
 async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
-    from main import dis, settings
+    from glob import dis
     import ustruct
     xfp = xfp2str(settings.get('xfp'))
 
@@ -193,7 +194,6 @@ def generate_bitcoin_core_wallet(example_addrs, account_num):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
     from descriptor import append_checksum
-    from main import settings
     import ustruct
 
     from public_constants import AF_P2WPKH
@@ -239,7 +239,6 @@ def generate_bitcoin_core_wallet(example_addrs, account_num):
 
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
-    from main import settings
     import ustruct, version
 
     # bitcoin (xpub) is used, even for testnet case (ie. no tpub)
@@ -264,7 +263,6 @@ def generate_wasabi_wallet():
 
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
-    from main import settings
     from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
     chain = chains.current_chain()
@@ -284,13 +282,12 @@ def generate_generic_export(account_num=0):
         ]:
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
             node = sv.derive_path(dd)
-            xfp = xfp2str(node.my_fingerprint())
+            xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
 
             # bonus/check: first non-change address: 0/0
-            node.derive(0)
-            node.derive(0)
+            node.derive(0, False).derive(0, False)
 
             rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, first=chain.address(node, fmt), name=atype)
             if zp:
@@ -303,7 +300,6 @@ def generate_electrum_wallet(addr_type, account_num=0):
     #
     # Much reverse enginerring of Electrum here. It's a complex
     # legacy file format.
-    from main import settings
     from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
     chain = chains.current_chain()
@@ -346,7 +342,7 @@ def generate_electrum_wallet(addr_type, account_num=0):
 async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
-    from main import dis, pa, settings
+    from glob import dis
     from files import CardSlot, CardMissingError
     from actions import needs_microsd
 

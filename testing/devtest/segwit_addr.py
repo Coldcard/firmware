@@ -6,11 +6,9 @@
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 
-import tcc
-bech32_decode = tcc.codecs.bech32_decode
-bech32_encode = tcc.codecs.bech32_encode
-
-#from tcc.codecs import bech32_decode, bech32_encode
+import ngu
+bech32_decode = ngu.codecs.segwit_decode
+bech32_encode = ngu.codecs.segwit_encode
 
 # from <https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki>
 # - these are valid bech32, but invalid segwit addresses, and so they fail
@@ -51,6 +49,7 @@ decode = [
 ]
 
 for addr, expect, v in decode:
+    if v != 0: continue         # obsolete test vectors
     hrp, version, data = bech32_decode(addr)
     assert version == v, (addr, version, v)
     assert hrp == addr.lower()[0:2]

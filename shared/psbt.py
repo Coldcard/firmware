@@ -1,12 +1,12 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # psbt.py - understand PSBT file format: verify and generate them
 #
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, problem_file_line
-import tcc, stash, gc, history, sys
+import stash, gc, history, sys, ngu
+from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
 from sram2 import psbt_tmp256
@@ -16,6 +16,7 @@ from serializations import ser_compact_size, deser_compact_size, hash160, hash25
 from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
 from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
 from serializations import ser_string
+from nvstore import settings
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -34,7 +35,7 @@ DEBUG = const(0)
 
 class HashNDump:
     def __init__(self, d=None):
-        self.rv = tcc.sha256()
+        self.rv = sha256()
         print('Hashing: ', end='')
         if d:
             self.update(d)
@@ -104,7 +105,7 @@ def calc_txid(fd, poslen, body_poslen=None):
         # txn does not have witness data, so txid==wtxix
         return get_hash256(fd, poslen)
 
-    rv = tcc.sha256()
+    rv = sha256()
 
     # de/reserialize much of the txn -- but not the witness data
     rv.update(pack("<i", txn_version))
@@ -128,12 +129,12 @@ def calc_txid(fd, poslen, body_poslen=None):
 
     rv.update(fd.read(4))
 
-    return tcc.sha256(rv.digest()).digest()
+    return ngu.hash.sha256s(rv.digest())
 
 def get_hash256(fd, poslen, hasher=None):
     # return the double-sha256 of a value, without loading it into memory
     pos, ll = poslen
-    rv = hasher or tcc.sha256()
+    rv = hasher or sha256()
 
     fd.seek(pos)
     while ll:
@@ -147,7 +148,7 @@ def get_hash256(fd, poslen, hasher=None):
     if hasher:
         return
 
-    return tcc.sha256(rv.digest()).digest()
+    return ngu.hash.sha256s(rv.digest())
 
 
 class psbtProxy:
@@ -425,7 +426,7 @@ class psbtOutputProxy(psbtProxy):
                     # p2wsh case
                     # - need witness script and check it's hash against proposed p2wsh value
                     assert len(addr_or_pubkey) == 32
-                    expect_wsh = tcc.sha256(witness_script).digest()
+                    expect_wsh = ngu.hash.sha256s(witness_script)
                     if expect_wsh != addr_or_pubkey:
                         raise FraudulentChangeOutput(out_idx, "P2WSH witness script has wrong hash")
 
@@ -434,7 +435,7 @@ class psbtOutputProxy(psbtProxy):
 
                 if witness_script:
                     # p2sh-p2wsh case (because it had witness script)
-                    expect_rs = b'\x00\x20' + tcc.sha256(witness_script).digest()
+                    expect_rs = b'\x00\x20' + ngu.hash.sha256s(witness_script)
                     
                     if redeem_script and expect_rs != redeem_script:
                         # iff they provide a redeeem script, then it needs to match
@@ -838,7 +839,7 @@ class psbtObject(psbtProxy):
         self.txn = None
         self.xpubs = []         # tuples(xfp_path, xpub)
 
-        from main import settings, dis
+        from glob import dis
         self.my_xfp = settings.get('xfp', 0)
 
         # details that we discover as we go
@@ -1067,7 +1068,7 @@ class psbtObject(psbtProxy):
             proposed, need_approval = MultisigWallet.import_from_psbt(M, N, self.xpubs)
             if need_approval:
                 # do a complex UX sequence, which lets them save new wallet
-                from main import hsm_active
+                from glob import hsm_active
                 if hsm_active:
                     raise FatalPSBTIssue("MS enroll not allowed in HSM mode")
 
@@ -1138,7 +1139,6 @@ class psbtObject(psbtProxy):
         else:
             per_fee = self.calculate_fee() * 100 / self.total_value_out
 
-        from main import settings
         fee_limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
 
         if fee_limit != -1 and per_fee >= fee_limit:
@@ -1399,7 +1399,7 @@ class psbtObject(psbtProxy):
         # - inputs might be p2sh, p2pkh and/or segwit style
         # - save partial inputs somewhere (append?)
         # - update our state with new partial sigs
-        from main import dis
+        from glob import dis
 
         with stash.SensitiveValues() as sv:
             # Double check the change outputs are right. This is slow, but critical because
@@ -1427,7 +1427,7 @@ class psbtObject(psbtProxy):
                         node = sv.derive_path(skp)
 
                         # check the pubkey of this BIP32 node
-                        if pubkey == node.public_key():
+                        if pubkey == node.pubkey():
                             good += 1
 
                     if not good:
@@ -1478,7 +1478,7 @@ class psbtObject(psbtProxy):
                         node = sv.derive_path(skp, register=False)
 
                         # expensive test, but works... and important
-                        pu = node.public_key()
+                        pu = node.pubkey()
                         if pu == which_key:
                             break
                     else:
@@ -1501,18 +1501,18 @@ class psbtObject(psbtProxy):
                     node = sv.derive_path(skp, register=False)
 
                     # expensive test, but works... and important
-                    pu = node.public_key()
+                    pu = node.pubkey()
                     assert pu == which_key, "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
 
                 # The precious private key we need
-                pk = node.private_key()
+                pk = node.privkey()
 
                 #print("privkey %s" % b2a_hex(pk).decode('ascii'))
                 #print(" pubkey %s" % b2a_hex(which_key).decode('ascii'))
                 #print(" digest %s" % b2a_hex(digest).decode('ascii'))
 
                 # Do the ACTUAL signature ... finally!!!
-                result = tcc.secp256k1.sign(pk, digest)
+                result = ngu.secp256k1.sign(pk, digest).to_bytes()
 
                 # private key no longer required
                 stash.blank_object(pk)
@@ -1548,7 +1548,7 @@ class psbtObject(psbtProxy):
         # - sha256 over that
         fd = self.fd
         old_pos = fd.tell()
-        rv = tcc.sha256()
+        rv = sha256()
 
         # version number
         rv.update(pack('<i', self.txn_version))           # nVersion
@@ -1581,7 +1581,7 @@ class psbtObject(psbtProxy):
         fd.seek(old_pos)
 
         # double SHA256
-        return tcc.sha256(rv.digest()).digest()
+        return ngu.hash.sha256s(rv.digest())
 
     def make_txn_segwit_sighash(self, replace_idx, replacement, amount, scriptCode, sighash_type):
         # Implement BIP 143 hashing algo for signature of segwit programs.
@@ -1596,25 +1596,25 @@ class psbtObject(psbtProxy):
         if self.hashPrevouts is None:
             # First time thru, we'll need to hash up this stuff.
 
-            po = tcc.sha256()
-            sq = tcc.sha256()
+            po = sha256()
+            sq = sha256()
 
             # input side
             for in_idx, txi in self.input_iter():
                 po.update(txi.prevout.serialize())
                 sq.update(pack("<I", txi.nSequence))
 
-            self.hashPrevouts = tcc.sha256(po.digest()).digest()
-            self.hashSequence = tcc.sha256(sq.digest()).digest()
+            self.hashPrevouts = ngu.hash.sha256s(po.digest())
+            self.hashSequence = ngu.hash.sha256s(sq.digest())
 
             del po, sq, txi
 
             # output side
-            ho = tcc.sha256()
+            ho = sha256()
             for out_idx, txo in self.output_iter():
                 ho.update(txo.serialize())
 
-            self.hashOutputs = tcc.sha256(ho.digest()).digest()
+            self.hashOutputs = ngu.hash.sha256s(ho.digest())
 
             del ho, txo
             gc.collect()
@@ -1623,7 +1623,7 @@ class psbtObject(psbtProxy):
             #print('hSeq : %s' % str(b2a_hex(self.hashSequence), 'ascii'))
             #print('hOuts: %s' % str(b2a_hex(self.hashOutputs), 'ascii'))
 
-        rv = tcc.sha256()
+        rv = sha256()
 
         # version number
         rv.update(pack('<i', self.txn_version))       # nVersion
@@ -1647,7 +1647,7 @@ class psbtObject(psbtProxy):
         fd.seek(old_pos)
 
         # double SHA256
-        return tcc.sha256(rv.digest()).digest()
+        return ngu.hash.sha256s(rv.digest())
 
     def is_complete(self):
         # Are all the inputs (now) signed?
@@ -1750,7 +1750,7 @@ class psbtObject(psbtProxy):
         # calc transaction ID
         if not needs_witness:
             # easy w/o witness data
-            txid = tcc.sha256(fd.checksum.digest()).digest()
+            txid = ngu.hash.sha256s(fd.checksum.digest())
         else:
             # legacy cost here for segwit: re-read what we just wrote
             txid = calc_txid(fd, (0, fd.tell()), (body_start, body_end-body_start))

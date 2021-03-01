@@ -1,11 +1,11 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # pincodes.py - manage PIN code (which map to wallet seeds)
 #
-import ustruct, ckcc, tcc, version
+import ustruct, ckcc, version
 from ubinascii import hexlify as b2a_hex
 from callgate import enter_dfu
+from bip39 import wordlist_en
 
 # See ../stm32/bootloader/pins.h for source of these constants.
 #
@@ -275,7 +275,7 @@ class PinAttempt:
         w1 = (bits >> 11) & 0x7ff
         w2 = bits & 0x7ff
 
-        rv = tcc.bip39.lookup_nth(w1), tcc.bip39.lookup_nth(w2)
+        rv = wordlist_en[w1], wordlist_en[w2]
 
         if version.has_608:
             # MRU: keep only a few
@@ -377,7 +377,7 @@ class PinAttempt:
     def new_main_secret(self, raw_secret, chain=None):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
-        from main import settings
+        from nvstore import settings
         import stash
 
         # capture values we have already
@@ -397,5 +397,7 @@ class PinAttempt:
 
         # does not call settings.save() but caller should!
 
+# singleton
+pa = PinAttempt()
 
 # EOF

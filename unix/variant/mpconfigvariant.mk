@@ -30,8 +30,8 @@ MICROPY_PY_SOCKET = 1
 MICROPY_PY_FFI = 1
 
 # not wanted
-MICROPY_PY_USSL = 1
-MICROPY_SSL_AXTLS = 1
+MICROPY_PY_USSL = 0
+MICROPY_SSL_AXTLS = 0
 MICROPY_SSL_MBEDTLS = 0
 MICROPY_PY_JNI = 0
 
@@ -39,9 +39,11 @@ MICROPY_PY_JNI = 0
 # as submodules (currently affects only libffi).
 MICROPY_STANDALONE = 0
 
-#INC += -I$(CC_UNIX_TOP) 
-#CFLAGS_EXTRA = -DMP_CONFIGFILE="\"mpconfigport_coldcard.h\""
+# NGU library
+FROZEN_MANIFEST += $(CC_TOP)/unix/variant/manifest.py
+NGU_NEEDS_CIFRA = 1
 
-#SRC_MOD += ../../external/mpy-qr/moduqr.c
+USER_C_MODULES = $(CC_TOP)/external/c-modules
 
+# target binary
 PROG = coldcard-mpy

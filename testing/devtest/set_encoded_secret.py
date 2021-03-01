@@ -1,15 +1,16 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # load up the simulator w/ indicated encoded secret. could be xprv/words/etc.
-import tcc, main
+import main
 from sim_settings import sim_defaults
 import stash, chains
 from h import b2a_hex
-from main import settings, pa
+from main import pa
+from nvstore import settings
 from stash import SecretStash, SensitiveValues
 from utils import xfp2str
 
-settings.current = sim_defaults
+settings.current = dict(sim_defaults)
 settings.overrides.clear()
 
 raw = main.ENCODED_SECRET

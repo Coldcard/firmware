@@ -1,6 +1,5 @@
 /*
- * (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
- * and is covered by GPLv3 license found in COPYING.
+ * (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  */
 
 #define MICROPY_HW_BOARD_NAME       "Coldcard"
@@ -12,10 +11,12 @@
 #define MICROPY_HW_HAS_FLASH        (1)
 #define MICROPY_HW_HAS_SDCARD       (1)
 #define MICROPY_HW_HAS_LCD          (0)
-#define MICROPY_HW_ENABLE_RTC       (0)
 #define MICROPY_HW_ENABLE_HW_I2C    (0)
 
-#define HSE_VALUE    ((uint32_t)8000000) /*!< Value of the External oscillator in Hz */
+// don't want, but lots of modules interdepend on this
+#define MICROPY_HW_ENABLE_RTC       (0)
+
+//#define HSE_VALUE    ((uint32_t)8000000) /*!< Value of the External oscillator in Hz */
 
 // USB config
 #define MICROPY_HW_ENABLE_USB (1)
@@ -38,13 +39,14 @@
 #define MICROPY_HW_UARTn_IS_HALF_DUPLEX(n)    ((n) == 4)
 
 
-// no I2C at all
-
 /*
+// no debug serial port, sadly
+
 #define MICROPY_HW_UART_REPL        PYB_UART_2
 #define MICROPY_HW_UART_REPL_BAUD   115200
+*/
 
-// I2C busses
+/* I2C busses 00 none
 #define MICROPY_HW_I2C1_SCL (pin_B6)
 #define MICROPY_HW_I2C1_SDA (pin_B7)
 #define MICROPY_HW_I2C2_SCL (pin_B10)
@@ -64,19 +66,6 @@
 #define MICROPY_HW_SPI2_MISO    (pin_C2)
 #define MICROPY_HW_SPI2_MOSI    (pin_C3)
 
-/*
-// USRSW is pulled low. Pressing the button makes the input go high.
-#define MICROPY_HW_USRSW_PIN        (pin_C13)
-#define MICROPY_HW_USRSW_PULL       (GPIO_NOPULL)
-#define MICROPY_HW_USRSW_EXTI_MODE  (GPIO_MODE_IT_FALLING)
-#define MICROPY_HW_USRSW_PRESSED    (0)
-
-// LEDs
-#define MICROPY_HW_LED1             (pin_A5) // Green LD2 LED on Nucleo
-#define MICROPY_HW_LED_ON(pin)      (mp_hal_pin_high(pin))
-#define MICROPY_HW_LED_OFF(pin)     (mp_hal_pin_low(pin))
-*/
-
 // SD card detect switch
 // - open when card inserted, grounded when no card
 #define MICROPY_HW_SDCARD_DETECT_PIN        (pin_A9)
@@ -89,9 +78,6 @@
 
 extern void ckcc_early_init(void);
 #define MICROPY_BOARD_EARLY_INIT        ckcc_early_init
-
-// Pull in lots of crypto stuff
-#define MICROPY_PY_TREZORCRYPTO     (1)
 
 // Need CRC32 for 7z support.
 #define MICROPY_PY_UBINASCII_CRC32  (1)
@@ -113,3 +99,21 @@ extern void *ckcc_heap_end(void);
 #define MICROPY_HEAP_START      ckcc_heap_start()
 #define MICROPY_HEAP_END        ckcc_heap_end()
 
+// Features/or not.
+#define MICROPY_HW_ENABLE_DHT       (0)
+#define MICROPY_HW_ENABLE_ADC       (0)
+
+// override some boot-up stuff
+#define MICROPY_BOARD_BEFORE_BOOT_PY    ckcc_boardctrl_before_boot_py
+#define MICROPY_BOARD_AFTER_BOOT_PY     ckcc_boardctrl_after_boot_py
+
+struct _boardctrl_state_t;
+extern void ckcc_boardctrl_before_boot_py(struct _boardctrl_state_t *state);
+extern void ckcc_boardctrl_after_boot_py(struct _boardctrl_state_t *state);
+
+#define MICROPY_HW_SDCARD_MOUNT_AT_BOOT         (0)
+
+#define MICROPY_HW_ENABLE_SDCARD                (1)
+#define MICROPY_HW_ENABLE_CARD_IDENT            (1)
+
+// EOF

@@ -1,11 +1,9 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # files.py - MicroSD and related functions.
 #
 import pyb, ckcc, os, sys, utime
 from uerrno import ENOENT
-
 
 def _try_microsd(bad_fs_ok=False):
     # Power up, mount the SD card, return False if we can't for some reason.
@@ -44,7 +42,7 @@ def _try_microsd(bad_fs_ok=False):
 def wipe_flash_filesystem():
     # erase and re-format the flash filesystem (/flash/)
     import ckcc, pyb
-    from main import dis, settings
+    from glob import dis
     
     dis.fullscreen('Erasing...')
     os.umount('/flash')
@@ -74,13 +72,14 @@ def wipe_flash_filesystem():
     dis.fullscreen('Rebuilding...')
     ckcc.wipe_fs()
 
-    # re-store settings
+    # re-store current settings
+    from nvstore import settings
     settings.save()
 
 def wipe_microsd_card():
     # Erase and re-format SD card. Not secure erase, because that is too slow.
     import ckcc, pyb
-    from main import dis
+    from glob import dis
     
     try:
         os.umount('/sd')
@@ -105,7 +104,7 @@ def wipe_microsd_card():
         sd.writeblocks(bnum, blk)
         dis.progress_bar_show(bnum/cutoff)
 
-    dis.fullscreen('Formating...')
+    dis.fullscreen('Formatting...')
 
     # remount, with newfs option
     os.mount(sd, '/sd', readonly=0, mkfs=1)
@@ -250,10 +249,18 @@ class CardSlot:
 
     def get_id_hash(self):
         # hash over card config and serial # details
-        import tcc
+        # - stupidly it's over the repr of a functions' result
+        import ngu
+
         info = pyb.SDCard().info()
-        assert info and len(info) >= 5       # need micropython changes
-        return tcc.sha256(repr(info)).digest()
+        assert info 
+
+        if len(info) == 3:
+            # expected in v4
+            csd_cid = pyb.SDCard().ident()
+            info = tuple(list(info) + list(csd_cid))
+
+        return ngu.hash.sha256s(repr(info))
 
     def pick_filename(self, pattern, path=None, overwrite=False):
         # given foo.txt, return a full path to filesystem, AND

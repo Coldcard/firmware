@@ -9,12 +9,12 @@
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 
-import tcc, ustruct
-from main import settings, sf
-from nvstore import SLOTS
+import ustruct
+from sflash import SF
+from nvstore import SLOTS, settings
 
 # reset whatever's there
-sf.chip_erase()
+SF.chip_erase()
 settings.load()
 
 for v in [123, 'hello', 34.56, dict(a=45)]:
@@ -53,13 +53,13 @@ assert 'test' not in settings.current
 
 
 def count_busy():
-    from main import sf
     from nvstore import SLOTS
+    from sflash import SF
 
     busy = 0
     b = bytearray(4096)
     for pos in SLOTS:
-        sf.read(pos, b)
+        SF.read(pos, b)
         if len(set(b)) > 200:
             busy += 1
     return busy
@@ -68,7 +68,7 @@ def count_busy():
 assert count_busy() == len(SLOTS)
 
 # check we hide initial values
-sf.chip_erase()
+SF.chip_erase()
 settings.load()
 settings.save()
 assert count_busy() == 4
@@ -78,7 +78,7 @@ settings.set('wrecked', 768)
 settings.save()
 
 b = bytearray(4096)
-sf.read(settings.my_pos, b)
+SF.read(settings.my_pos, b)
 was_age = settings.get('_age')
 
 settings.set('wrecked', 123)
@@ -90,7 +90,7 @@ was_pos = settings.my_pos
 for pos in SLOTS:
     if pos != was_pos: 
         for i in range(0, 4096, 256):
-            sf.write(pos+i, b[i:i+256])
+            SF.write(pos+i, b[i:i+256])
 
 settings.load()
 assert was_pos == settings.my_pos
@@ -99,13 +99,13 @@ assert settings.get('wrecked') == 123
 
 # try changing one byte
 b = bytearray(256)
-sf.read(settings.my_pos, b)
+SF.read(settings.my_pos, b)
 for i in range(10, 100):
     # can only change non-zero bytes (ie. clear bits)
     if b[i] != 0:
         b[i] = 0
         break
-sf.write(settings.my_pos, b)
+SF.write(settings.my_pos, b)
 
 # will load older data here, since we just destroyed newer version
 # but 1/32 times, we will have destroyed older version
@@ -118,7 +118,7 @@ else:
     assert settings.get('_age') in {44, 42, 0}, settings.get('_age')
 
 # test recovery/reset
-sf.chip_erase()
+SF.chip_erase()
 settings.load()
 
 

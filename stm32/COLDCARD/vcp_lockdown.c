@@ -1,6 +1,5 @@
 /*
- * (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
- * and is covered by GPLv3 license found in COPYING.
+ * (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  */
 #include <string.h>
 
@@ -11,7 +10,8 @@
 #include "usb.h"
 #include "uart.h"
 
-bool ckcc_vcp_enabled = false;
+//XXX/bool ckcc_vcp_enabled = false;
+bool ckcc_vcp_enabled = true;
 
 // replacements for more permissive versions found in stm32/mphalport.c
 // - we don't support any h/w UARTs 
