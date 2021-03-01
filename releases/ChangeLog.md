@@ -1,15 +1,19 @@
 ## 4.0.0 - , 2021
-- Major internal changes! Minimal external change...
+- Major internal changes! Minimal external changes...
     - now using Bitcoin Core's "libsecp256k1" for EC crypto operations
     - super fast pure-assembly AES256-CTR code makes USB communications faster
-    - new optimized SHA256 and SHA256(SHA256()) code in use
+    - newly optimized SHA256 and SHA256(SHA256()) code
+    - all BIP39 related code replaced
 - HSM/CKBunker mode:
     - users with passwords will have to be recreated as hash used has changed 
+- New feature: Secure Device Cloning. Using a MicroSD card, copy your Coldcard's secrets
+    and settings to a blank Coldcard. Very quick and easy, uses public key encryption
+    (Diffie-Hellman key exchange) and AES-256-CBC for the transfer.
 - Bugfix: CSV of addresses explorer export via Address Explorere, when account number
   was used, did not reflect the (non-zero) account number.
-- Enhancement: Show a progress bar during slow parts of the login process.
 - Enhancement: Paper wallet features restored as they were previously. Same cautions apply.
-- Last remaining GPL code removed, so licence is now MIT+CC on everything.
+- Enhancement: Show a progress bar during slow parts of the login process.
+- Remaining GPL code has been removed, so licence is now MIT+CC on everything.
 
 ## 3.2.2 - Jan 14, 2021
 

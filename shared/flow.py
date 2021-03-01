@@ -12,6 +12,7 @@ from multisig import make_multisig_menu
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start
+from backups import clone_start, clone_write_data
 
 # Optional feature: HSM
 if version.has_fatram:
@@ -86,6 +87,7 @@ SDCardMenu = [
     MenuItem('Export Wallet', menu=WalletExportMenu),
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
+    MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
     MenuItem('Format Card', f=wipe_sd_card),
 ]
@@ -156,6 +158,7 @@ BackupStuffMenu = [
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Restore Backup", f=restore_everything),   # just a redirect really
+    MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem("Dump Summary", f=dump_summary),
 ]
 
@@ -181,10 +184,12 @@ VirginSystem = [
 ]
 
 ImportWallet = [
+    #         xxxxxxxxxxxxxxxx
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("Restore Backup", f=restore_everything),
+    MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv),
     MenuItem("Dice Rolls", f=import_from_dice),
 ]
