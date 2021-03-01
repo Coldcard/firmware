@@ -88,7 +88,7 @@ def pin_stuff(submethod, buf_io):
 
     elif submethod == 1:
         # delay
-        time.sleep(0.500)
+        time.sleep(0.05)
         delay_achieved += 1
 
     elif submethod == 2:
@@ -114,7 +114,7 @@ def pin_stuff(submethod, buf_io):
 
             return EPIN_AUTH_FAIL
 
-        time.sleep(0.5)
+        time.sleep(0.05)
 
         if ts == b'\0'*72:
             state_flags |= PA_ZERO_SECRET
@@ -193,7 +193,7 @@ def pin_stuff(submethod, buf_io):
         if change_flags & CHANGE_DURESS_SECRET:
             SECRETS[kk+'_duress_secret'] = str(b2a_hex(secret), 'ascii')
 
-        time.sleep(1.5)
+        time.sleep(0.05)
 
     elif submethod == 4:
         # Fetch secrets
