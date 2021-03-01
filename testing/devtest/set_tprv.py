@@ -5,7 +5,7 @@ import main, ngu
 from sim_settings import sim_defaults
 import stash, chains
 from h import b2a_hex
-from main import pa
+from pincodes import pa
 from nvstore import settings
 from stash import SecretStash, SensitiveValues
 from utils import xfp2str
