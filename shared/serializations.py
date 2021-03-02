@@ -15,10 +15,8 @@ CTransaction,CTxIn, CTxOut, etc....:
 ser_*, deser_*: functions that handle serialization/deserialization
 """
 
-from uio import BytesIO
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from ucollections import OrderedDict
 import ustruct as struct
 import ngu
 from opcodes import *
