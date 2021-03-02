@@ -717,11 +717,11 @@ class MultisigWallet:
         if depth == 1:
             if not xfp:
                 # allow a shortcut: zero/omit xfp => use observed parent value
-                xfp = swab32(node.fingerprint())
+                xfp = swab32(node.parent_fp())
             else:
                 # generally cannot check fingerprint values, but if we can, do so.
                 if not cls.disable_checks:
-                    assert swab32(node.fingerprint()) == xfp, 'xfp depth=1 wrong'
+                    assert swab32(node.parent_fp()) == xfp, 'xfp depth=1 wrong'
 
         assert xfp, 'need fingerprint'          # happens if bare xpub given
 
@@ -729,7 +729,9 @@ class MultisigWallet:
         # and we know none of the private keys involved.
         if depth == 1:
             # but derivation is implied at depth==1
-            guess = keypath_to_str([node.child_num()], skip=0)
+            kn, is_hard = node.child_number()
+            if is_hard: kn |= 0x80000000
+            guess = keypath_to_str([kn], skip=0)
 
             if deriv:
                 if not cls.disable_checks:
@@ -1324,7 +1326,6 @@ def import_xpub(ln):
         return None
 
     # serialize, and note version code
-    node = ngu.hdnode.HDNode()
     try:
         node, chain, addr_fmt, _ = chains.slip32_deserialize(found.group(0))
     except:
