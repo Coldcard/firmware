@@ -11,6 +11,13 @@ out_fname, version = sys.argv[1:]
 
 assert out_fname.endswith('.c'), out_fname
 
+if os.path.exists(out_fname):
+    # to help deterministic builds, don't replace the file from git if verison # is right
+    with open(out_fname, 'rt') as fd:
+        if ('// version: %s\n' % version) in fd.read():
+            print("==> %s already version %s; not changing it" % (out_fname, version))
+            sys.exit(0)
+
 # DWORD contains date+time w/ 2-second resolution
 today = datetime.date.today()
 value = ((today.year - 1980) << 25) | (today.month << 21) | (today.day << 16) 
