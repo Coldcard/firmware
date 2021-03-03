@@ -43,7 +43,7 @@ def str2ipath(s):
 def has_ms_checks(request, sim_exec):
     # Add this fixture to any test that should FAIL if ms checks are disabled
     # - in other words, tests that test the checks which are disabled.
-    # - still need to run w/ --ms-danger flag set to test that cases
+    # - still need to run w/ --ms-danger flag set to test those cases
     # - also mark testcase with ms_danger
 
     danger_mode = (request.config.getoption('--ms-danger'))
@@ -363,7 +363,7 @@ def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **
     
 
 @pytest.fixture
-def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh):
+def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh, has_ms_checks):
     def doit(M, keys, addr_fmt=AF_P2SH, bip45=True, **make_redeem_args):
         # test we are showing addresses correctly
         # - verifies against bitcoind as well
@@ -384,7 +384,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
 
         #print(story)
 
-        if not ms_danger_mode:
+        if not has_ms_checks:
             assert got_addr in story
             assert all((xfp2str(xfp) in story) for xfp,_,_ in keys)
             if bip45:
