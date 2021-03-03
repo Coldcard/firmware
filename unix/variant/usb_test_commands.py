@@ -1,4 +1,4 @@
-import uio, sys, version
+import uio, sys, version, nvstore
 
 def do_usb_command(cmd, args):
     # TESTING commands!
