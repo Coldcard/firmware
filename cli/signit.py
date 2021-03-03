@@ -105,6 +105,73 @@ def show_version(fname):
 
     print('{built}-v{ver}'.format(built=built, ver=ver))
 
+def dfu_parse(fd):
+    # do just a little parsing of DFU headers, to find start/length of main binary
+    # - not trying to support anything but what ../stm32/Makefile will generate
+    # - see external/micropython/tools/pydfu.py for details
+    # - works sequentially only
+    import struct
+    from collections import namedtuple
+
+    fd.seek(0)
+
+    def consume(xfd, tname, fmt, names):
+        # Parses the struct defined by `fmt` from `data`, stores the parsed fields
+        # into a named tuple using `names`. Returns the named tuple.
+        size = struct.calcsize(fmt)
+        here = xfd.read(size)
+        ty = namedtuple(tname, names.split())
+        values = struct.unpack(fmt, here)
+        return ty(*values)
+
+    dfu_prefix = consume(fd, 'DFU', '<5sBIB', 'signature version size targets')
+
+    #print('dfu: ' + repr(dfu_prefix))
+
+    assert dfu_prefix.signature == b'DfuSe', "Not a DFU file (bad magic)"
+
+    for idx in range(dfu_prefix.targets):
+
+        prefix = consume(fd, 'Target', '<6sBI255s2I', 
+                                   'signature altsetting named name size elements')
+
+        #print("target%d: %r" % (idx, prefix))
+
+        for ei in range(prefix.elements):
+            # Decode target prefix
+            #   <   little endian
+            #   I   uint32_t    element address
+            #   I   uint32_t    element size
+            elem = consume(fd, 'Element', '<2I', 'addr size')
+
+            #print("target%d: %r" % (ei, elem))
+
+            yield fd.tell(), elem.size, fd.read(elem.size)
+
+
+@main.command('split')
+@click.argument('dfu', metavar='202....-coldcard.dfu')
+@click.argument('firmware', metavar='FIRMWARE.bin')
+@click.argument('bootrom', metavar='BOOTROM.bin')
+def split_dfu(dfu, firmware, bootrom):
+    "Pull out sections from DFU file for verification purposes"
+
+    with open(dfu, 'rb') as fd:
+        for n, (off, ln, data) in enumerate(dfu_parse(fd)):
+            if n == 0:
+                target = firmware
+                name = 'Firmware'
+            elif n == 1:
+                target = bootrom
+                name = 'Bootrom'
+            else:
+                raise ValueError(n)
+
+            # keep this printout so others can check our copy is faithful
+            print(f'start {off} for {ln} bytes: {name} => {target}')
+
+            open(target, 'wb').write(data)
+
 @main.command('check')
 @click.argument('fname', default='firmware-signed.bin')
 def readback(fname):
