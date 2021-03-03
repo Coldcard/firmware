@@ -8,7 +8,7 @@ from h import b2a_hex
 from pincodes import pa
 from nvstore import settings
 from stash import SecretStash, SensitiveValues
-from utils import xfp2str
+from utils import xfp2str, swab32
 
 tn = chains.BitcoinTestnet
 
@@ -20,7 +20,7 @@ v = node.deserialize(main.TPRV)
 assert v == b32_version_priv
 assert node
 
-if settings.get('xfp') == node.my_fingerprint():
+if settings.get('xfp') == swab32(node.my_fp()):
     print("right xfp already")
 
 else:
@@ -35,5 +35,5 @@ else:
     print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
     print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
 
-    assert settings.get('xfp', 0) == node.my_fingerprint()
+    assert settings.get('xfp', 0) == swab32(node.my_fp())
 

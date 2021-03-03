@@ -565,7 +565,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 def settings_set(sim_exec):
 
     def doit(key, val):
-        x = sim_exec("main.settings.set('%s', %r)" % (key, val))
+        x = sim_exec("nvstore.settings.set('%s', %r)" % (key, val))
         assert x == ''
 
     return doit
@@ -574,7 +574,7 @@ def settings_set(sim_exec):
 def settings_get(sim_exec):
 
     def doit(key):
-        cmd = f"RV.write(repr(main.settings.get('{key}')))"
+        cmd = f"RV.write(repr(nvstore.settings.get('{key}')))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
