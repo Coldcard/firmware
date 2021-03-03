@@ -134,7 +134,7 @@ def drv_entro_step2(_1, picked, _2):
     if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
 
-    print(msg)      # XXX debug
+    #print(msg)      # XXX debug
 
     prompt = '\n\nPress 1 to save to MicroSD card'
     if encoded is not None:

@@ -93,10 +93,11 @@ def make_redeem_script(M, nodes, subkey_idx):
 
     pubkeys = []
     for n in nodes:
-        copy = n.clone()
+        copy = n.copy()
         copy.derive(subkey_idx, False)
         # 0x21 = 33 = len(pubkey) = OP_PUSHDATA(33)
-        pubkeys.append(b'\x21' + copy.public_key())
+        pubkeys.append(b'\x21' + copy.pubkey())
+        del copy
 
     pubkeys.sort()
 
