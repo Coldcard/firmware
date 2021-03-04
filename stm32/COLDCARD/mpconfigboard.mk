@@ -26,11 +26,9 @@ TEXT0_ADDR = 0x08008000
 TEXT1_ADDR = 0x0800C000
 
 # don't want any of these: soft_spi, soft_qspi, dht
-DRIVERS_SRC_C -= \
-	drivers/bus/softspi.c \
-	drivers/bus/softqspi.c \
-	drivers/memory/spiflash.c \
-	drivers/dht/dht.c
+#DRIVERS_SRC_C -= drivers/bus/softspi.c \
+#	drivers/bus/softqspi.c drivers/memory/spiflash.c \
+#	drivers/dht/dht.c
 
 # Approximately all the source code files?
 ALL_SRC = $(SRC_LIB) $(SRC_LIBM) $(EXTMOD_SRC_C) $(DRIVERS_SRC_C) \

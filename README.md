@@ -12,6 +12,23 @@ with the latest updates and security alerts.
 ![coldcard picture front](https://coldcardwallet.com/static/images/coldcard-front.png)
 ![coldcard picture back](https://coldcardwallet.com/static/images/coldcard-back.png)
 
+## Reproducable Builds
+
+To have confidence this source code tree is the same as the binary on your device,
+you can rebuild it from source and get **exactly the same bytes**. This process
+has been automated using Docker. Steps are as follows:
+
+1. Install Docker
+2. You'll need [GNUMake](https://www.gnu.org/software/make/) but you probably already have it.
+3. Checkout the code, and start the process.
+
+    git clone --recursive https://github.com/Coldcard/firmware.git
+    cd firmware/stm32
+    make repro
+
+4. Maek a coffee, drink it.
+5. At the end the process, the differences, if any are shown and/or a clear confirmation message.
+
 ## Check-out and Setup
 
 Do a checkout, recursively to get all the submodules:
