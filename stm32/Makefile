@@ -209,7 +209,9 @@ setup:
 	cd $(MPY_TOP)/mpy-cross ; make
 	-ln -s $(PORT_TOP) l-port
 	-ln -s $(MPY_TOP) l-mpy
-	#-ln -s ../../../../../stm32/COLDCARD $(PORT_TOP)/boards/COLDCARD
+	(cd $(PORT_TOP)/boards; if [ ! -L COLDCARD ]; then \
+		ln -s ../../../../../stm32/COLDCARD COLDCARD; fi
+	
 
 # Caution: docker container has write access to your source tree
 # - a readonly copy of source tree, and one output directory
