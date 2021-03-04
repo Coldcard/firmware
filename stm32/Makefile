@@ -209,7 +209,7 @@ setup:
 	cd $(MPY_TOP)/mpy-cross ; make
 	-ln -s $(PORT_TOP) l-port
 	-ln -s $(MPY_TOP) l-mpy
-	(cd $(PORT_TOP)/boards; if [ ! -L COLDCARD ]; then \
+	cd $(PORT_TOP)/boards; if [ ! -L COLDCARD ]; then \
 		ln -s ../../../../../stm32/COLDCARD COLDCARD; fi
 	
 
