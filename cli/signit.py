@@ -254,6 +254,14 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     "Add signature into binary file before it becomes a DFU file."
 
     assert len(version) < 8, "Version string limited to 8 bytes, got: %r" % version
+
+    # load key
+    try:
+        sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
+    except FileNotFoundError:
+        click.secho("You don't have that key ({pubkey_num}), so using key zero instead!", fg='red')
+        pubkey_num = 0
+        sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
     
     if resign_file:
         whole = resign_file.read()
@@ -315,9 +323,6 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     if verbose:
         print("Hdr: %s" % repr(hdr))
         print('Hash: %s' % b2a_hex(fw_hash).decode('ascii'))
-
-    # load key
-    sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
 
     from ecdsa.util import sigencode_string
     sig = sk.sign_digest(fw_hash, sigencode=sigencode_string)
