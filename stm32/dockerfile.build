@@ -9,7 +9,7 @@ FROM alpine:3.13.2
 
 WORKDIR /work
 
-RUN apk add --no-cache git python3 py-pip musl-dev make rsync autoconf automake && \
+RUN apk add --no-cache git python3 py-pip musl-dev make rsync autoconf automake libtool && \
     apk add gcc-arm-none-eabi newlib-arm-none-eabi --update-cache \
         --repository http://dl-3.alpinelinux.org/alpine/edge/testing/
 
