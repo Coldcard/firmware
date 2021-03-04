@@ -4,7 +4,7 @@
 #
 set -ex
 
-TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu"
+TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss"
 
 BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt"
 
