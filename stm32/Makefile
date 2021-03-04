@@ -206,8 +206,9 @@ size:
 # one time setup, after repo checkout
 setup:
 	cd $(MPY_TOP) ; git submodule update --init lib/stm32lib
-	cd $(MPY_TOP)/lib/stm32lib ; sed -i .orig -e 's/#define VECT_TAB_OFFSET  0x00/    /' \
+	cd $(MPY_TOP)/lib/stm32lib ; sed -i.orig -e 's/#define VECT_TAB_OFFSET  0x00/    /' \
 				CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.c
+	cd ../extern/libngu; make one-time
 	cd $(MPY_TOP)/mpy-cross ; make
 	-ln -s $(PORT_TOP) l-port
 	-ln -s $(MPY_TOP) l-mpy
