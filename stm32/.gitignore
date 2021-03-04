@@ -14,3 +14,9 @@ firmware-signed.dfu
 
 dev.bin
 dev.dfu
+
+# byproducts of check-repro target
+check-fw.bin
+check-bootrom.bin
+repro-got.txt
+repro-want.txt

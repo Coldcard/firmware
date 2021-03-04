@@ -1,0 +1,17 @@
+# Dockerfile to build tools for building firmware binary
+#
+# Thanks to <https://github.com/lucaszanella/coldcard-docker> for inspiration.
+#
+# Also somewhat based on 
+#  <https://blog.feabhas.com/2017/12/introduction-docker-embedded-developers-part-4-reducing-docker-image-size/>
+#
+FROM alpine:3.13.2
+
+WORKDIR /work
+
+RUN apk add --no-cache git python3 py-pip musl-dev make rsync && \
+    apk add gcc-arm-none-eabi newlib-arm-none-eabi --update-cache \
+        --repository http://dl-3.alpinelinux.org/alpine/edge/testing/
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
