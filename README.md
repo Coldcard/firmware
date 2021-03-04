@@ -18,16 +18,16 @@ To have confidence this source code tree is the same as the binary on your devic
 you can rebuild it from source and get **exactly the same bytes**. This process
 has been automated using Docker. Steps are as follows:
 
-1. Install Docker
-2. You'll need [GNUMake](https://www.gnu.org/software/make/) but you probably already have it.
+1. Install Docker and start it.
+2. Install [make (GNUMake)](https://www.gnu.org/software/make/) if you don't already have it.
 3. Checkout the code, and start the process.
 
     git clone --recursive https://github.com/Coldcard/firmware.git
     cd firmware/stm32
     make repro
 
-4. Maek a coffee, drink it.
-5. At the end the process, the differences, if any are shown and/or a clear confirmation message.
+4. At the end of the process a clear confirmation message is shown, or the differences.
+5. Build products can be found `firmware/stm32/built`.
 
 ## Check-out and Setup
 

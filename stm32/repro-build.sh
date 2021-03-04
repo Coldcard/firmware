@@ -6,6 +6,8 @@ set -ex
 
 TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu"
 
+BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt"
+
 cd /work/src/stm32
 
 if ! touch repro-build.sh ; then
@@ -35,7 +37,7 @@ make $TARGETS
 
 if [ $PWD == '/work/tmp/stm32' ]; then
     # Copy back build products.
-    rsync -av --ignore-missing-args $TARGETS /work/built
+    rsync -av --ignore-missing-args $TARGETS $BYPRODUCTS /work/built
 fi
 
 make check-repro
