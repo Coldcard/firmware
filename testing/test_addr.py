@@ -2,6 +2,9 @@
 #
 # test "show address" feature
 #
+# - these only work well on the simulator
+# - must put real device into testnet mode first
+#
 import pytest, time
 from pycoin.contrib.msg_signing import verify_message
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError
@@ -9,11 +12,14 @@ from ckcc_protocol.constants import *
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt,):
+def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt, is_simulator):
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
 
     need_keypress('y')
+
+    if "'" in path and not is_simulator():
+        raise pytest.skip('we cant confirm hardened-derived keypaths')
 
     # check expected addr was used
     addr_vs_path(addr, path, addr_fmt)
