@@ -22,7 +22,7 @@ has been automated using Docker. Steps are as follows:
 2. Install [make (GNUMake)](https://www.gnu.org/software/make/) if you don't already have it.
 3. Checkout the code, and start the process.
 
-    git clone --recursive https://github.com/Coldcard/firmware.git
+    git clone https://github.com/Coldcard/firmware.git
     cd firmware/stm32
     make repro
 
