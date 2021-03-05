@@ -1,4 +1,5 @@
-exec-file l-port/build-COLDCARD/firmware.elf
+#exec-file l-port/build-COLDCARD/firmware.elf
+exec-file built/firmware.elf
 #add-symbol-file l-port/build-COLDCARD/firmware.elf 0x8000000
 add-symbol-file bootloader/bootloader.elf 0x8000000
 

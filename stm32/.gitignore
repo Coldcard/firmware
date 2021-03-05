@@ -7,6 +7,7 @@ build/
 mpy-files.timestamp
 firmware.lss
 firmware-signed.*
+firmware.elf
 
 # somewhat useful binary snapshots
 mostly.dfu

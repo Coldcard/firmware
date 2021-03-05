@@ -1,10 +1,12 @@
 #!/bin/sh
 #
-# Executes inside the docker container... but works on your files here!
+# NOTE: Executes inside the docker container.
+# - assumes /work/src is a git checkout
+# - copy certain files (build products) back to /work/built
 #
 set -ex
 
-TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss"
+TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf"
 
 BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt"
 
@@ -15,7 +17,6 @@ if false ; then
     # If we seem to be on a R/O filesystem:
     # - create a writable overlay on top of read-only source tree
     #   from <https://stackoverflow.com/a/54465442>
-    # - copy certain files (build products) back to /work/built
 
     mkdir /tmp/overlay
     mount -t tmpfs tmpfs /tmp/overlay

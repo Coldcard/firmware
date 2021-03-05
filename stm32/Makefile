@@ -24,6 +24,9 @@ l-port/build-COLDCARD/firmware.elf: all
 l-port/build-COLDCARD/firmware0.bin: all
 l-port/build-COLDCARD/firmware1.bin: all
 
+firmware.elf: l-port/build-COLDCARD/firmware.elf
+	cp l-port/build-COLDCARD/firmware.elf .
+
 # These values used to make .DFU files. Flash memory locations.
 FIRMWARE_BASE   = 0x08008000
 BOOTLOADER_BASE = 0x08000000
