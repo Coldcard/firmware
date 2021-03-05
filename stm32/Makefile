@@ -187,7 +187,7 @@ MPY_FILES = $(filter-out build/obsolete/%, $(ALL_MPY_FILES))
 # - and so on
 #
 debug:
-	arm-none-eabi-gdb l-port/build-COLDCARD/firmware.elf -x gogo.gdb
+	arm-none-eabi-gdb built/firmware.elf -x gogo.gdb
 
 # detailed listing, very handy
 OBJDUMP = arm-none-eabi-objdump
@@ -219,13 +219,14 @@ setup:
 		ln -s ../../../../../stm32/COLDCARD COLDCARD; fi
 	
 
-# Caution: docker container has write access to your source tree
+# Caution: docker container has read access to your source tree
 # - a readonly copy of source tree, and one output directory
 # - build products are copied to there, see repro-build.sh
+# - works from this repo, but starts with copy of HEAD
 DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				-v $(realpath built):/work/built:rw \
 				--privileged coldcard-build
-repro:
+repro: code-committed
 	docker build -t coldcard-build - < dockerfile.build
 	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh)
 
