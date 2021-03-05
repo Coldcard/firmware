@@ -10,7 +10,8 @@ BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt"
 
 cd /work/src/stm32
 
-if ! touch repro-build.sh ; then
+#if ! touch repro-build.sh ; then
+if false ; then
     # If we seem to be on a R/O filesystem:
     # - create a writable overlay on top of read-only source tree
     #   from <https://stackoverflow.com/a/54465442>
@@ -24,6 +25,18 @@ if ! touch repro-build.sh ; then
     cd /work/tmp/stm32
 fi
 
+if ! touch repro-build.sh ; then
+    # If we seem to be on a R/O filesystem:
+    # - do a local checkout of HEAD, build from that
+    mkdir /tmp/checkout
+    mount -t tmpfs tmpfs /tmp/checkout
+    cd /tmp/checkout
+    git clone /work/src/.git firmware
+    cd firmware/external
+    git submodule update --init
+    cd ../stm32
+fi
+
 # need signit.py in path
 cd ../cli
 python -m pip install -r requirements.txt
@@ -35,9 +48,16 @@ make setup
 make all
 make $TARGETS
 
-if [ $PWD == '/work/tmp/stm32' ]; then
+if [ $PWD != '/work/src/stm32' ]; then
     # Copy back build products.
-    rsync -av --ignore-missing-args $TARGETS $BYPRODUCTS /work/built
+    rsync -av --ignore-missing-args $TARGETS /work/built
 fi
 
+set +x
 make check-repro
+
+set +ex
+if [ $PWD != '/work/src/stm32' ]; then
+    # Copy back byproducts
+    rsync -a --ignore-missing-args $BYPRODUCTS /work/built
+fi
