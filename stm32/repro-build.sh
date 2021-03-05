@@ -53,7 +53,7 @@ if [ $PWD != '/work/src/stm32' ]; then
     rsync -av --ignore-missing-args $TARGETS /work/built
 fi
 
-set +x
+set +e
 make check-repro
 
 set +ex
