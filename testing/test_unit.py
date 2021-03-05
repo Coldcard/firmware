@@ -162,12 +162,12 @@ def test_hotp(sim_exec, secret, counter, expect):
     got = sim_exec(cmd)
     assert got == expect
 
-def test_hmac_key(sim_exec, count=50):
+def test_hmac_key(dev, sim_exec, count=10):
     from hashlib import pbkdf2_hmac, sha256
-    from constants import simulator_serial_number
     from ckcc_protocol.constants import PBKDF2_ITER_COUNT
 
-    salt = sha256(b'pepper'+simulator_serial_number.encode('ascii')).digest()
+    sn = dev.serial.encode('ascii')
+    salt = sha256(b'pepper'+sn).digest()
 
     for i in range(count):
         pw = ('test%09d' % i).encode('ascii')
