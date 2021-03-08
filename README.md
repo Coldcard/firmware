@@ -50,9 +50,9 @@ Which looks like this:
 
 You'll probably need to install at least these packages:
 
-    brew cask install xquartz
+    brew install --cask xquartz
     brew install sdl2 xterm
-    brew cask install gcc-arm-none-eabi
+    brew install --cask gcc-arm-embedded
 
 Used to be these were needed as well:
 
