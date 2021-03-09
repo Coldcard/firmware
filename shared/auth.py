@@ -386,9 +386,9 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import dis, hsm_active
 
         # step 1: parse PSBT from sflash into in-memory objects.
-        dis.fullscreen("Validating...")
 
         try:
+            dis.fullscreen("Reading...")
             with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len) as fd:
                 self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
@@ -399,6 +399,8 @@ class ApproveTransaction(UserAuthorizedAction):
                 msg = "PSBT parse failed"
 
             return await self.failure(msg, exc)
+
+        dis.fullscreen("Validating...")
 
         # Do some analysis/ validation
         try:
@@ -501,7 +503,8 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # do the actual signing.
         try:
-            gc.collect()
+            dis.fullscreen('Wait...')
+            gc.collect()           # visible delay causes by this but also sign_it() below
             self.psbt.sign_it()
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
