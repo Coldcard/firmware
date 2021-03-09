@@ -943,7 +943,7 @@ def end_sign(dev, need_keypress):
         else:
             done = None
             while done == None:
-                time.sleep(0.050)
+                time.sleep(0.00)
                 done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
 
         assert len(done) == 2
