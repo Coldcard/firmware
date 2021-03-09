@@ -66,10 +66,7 @@ HSM_WHITELIST = frozenset({
 # singleton instance of USBHandler()
 handler = None
 
-def enable_usb(repl_enable):
-    # allow/block REPL access
-    ckcc.vcp_enabled(repl_enable)
-
+def enable_usb():
     # We can't change it on the fly; must be disabled before here
     cur = pyb.usb_mode()
     if cur:
@@ -142,7 +139,6 @@ class USBHandler:
 
         while 1:
             yield core._io_queue.queue_read(self.blockable)
-            #yield IORead(self.blockable)
 
             try:
                 here, is_last, is_encrypted = self.get_packet()
@@ -199,9 +195,13 @@ class USBHandler:
                         msg = 'Assertion ' + problem_file_line(exc)
                     resp = b'err_' + msg.encode()[0:80]
                     msg_len = 0
+                except MemoryError:
+                    # prefer to catch at higher layers, but sometimes can't
+                    resp = b'err_Out of RAM'
+                    msg_len = 0
                 except Exception as exc:
                     # catch bugs and fuzzing too
-                    if is_simulator():
+                    if is_simulator() or is_devmode:
                         print("USB request caused this: ", end='')
                         sys.print_exception(exc)
                     resp = b'err_Confused ' + problem_file_line(exc)
