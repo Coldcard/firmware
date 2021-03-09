@@ -603,6 +603,7 @@ class USBHandler:
         #print('his pubkey = ' + str(b2a_hex(his_pubkey)))
 
         self.session_key = pair.ecdh_multiply(b'\x04' + his_pubkey)
+        del pair
 
         #print("session = " + str(b2a_hex(self.session_key)))
 
