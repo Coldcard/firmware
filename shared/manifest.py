@@ -17,7 +17,6 @@ freeze_as_mpy('', [
 	'files.py',
 	'flow.py',
 	'glob.py',
-	'graphics.py',
 	'h.py',
 	'history.py',
 	'hsm.py',
@@ -34,7 +33,6 @@ freeze_as_mpy('', [
 	'paper.py',
 	'pincodes.py',
 	'psbt.py',
-	'public_constants.py',
 	'pwsave.py',
 	'random.py',
 	'seed.py',
@@ -42,7 +40,6 @@ freeze_as_mpy('', [
 	'serializations.py',
 	'sffile.py',
 	'sflash.py',
-	'sigheader.py',
 	'sram2.py',
 	'ssd1306.py',
 	'stash.py',
@@ -51,7 +48,13 @@ freeze_as_mpy('', [
 	'utils.py',
 	'ux.py',
 	'version.py',
-	'zevvpeep.py',
 	'queues.py',
 ], opt=0)
 
+# Data-like files, since no need to debug them
+freeze_as_mpy('', [
+	'sigheader.py',
+	'graphics.py',
+	'zevvpeep.py',
+	'public_constants.py',
+], opt=3)
