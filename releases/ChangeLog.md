@@ -1,8 +1,8 @@
-## 4.0.0 - March XXX, 2021
+## 4.0.0 BETA - March 9, 2021
 
 **BETA RELEASE** Not recommended for general use!
 
-- Major internal changes!
+- Major internal changes.
     - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)
       for all EC crypto operations
     - super fast pure-assembly AES256-CTR code makes USB communications faster
