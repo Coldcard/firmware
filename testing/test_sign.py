@@ -125,14 +125,42 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     rb = BasicPSBT().parse(open(rb, 'rb').read())
     assert oo == rb
 
+def test_speed_test(request, fake_txn, is_mark3, start_sign, end_sign, dev, need_keypress):
+    import time
+    # measure time to sign a larger txn
+    if is_mark3:
+        num_in = 20
+        num_out = 250
+    else:
+        num_in = 9
+        num_out = 100
 
-@pytest.mark.parametrize('num_out', [1, 10,11, 250])
-@pytest.mark.parametrize('num_in', [1, 10, 20])
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=True)
+
+    open('debug/speed.psbt', 'wb').write(psbt)
+    dt = time.time()
+    start_sign(psbt, finalize=False)
+
+    tx_time = time.time() - dt
+
+    need_keypress('y', timeout=None)
+
+    dt = time.time()
+    done = None
+    while done == None:
+        time.sleep(0.05)
+        done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+
+    ready_time = time.time() - dt
+
+    print("  Tx time: %.1f" % tx_time)
+    print("Sign time: %.1f" % ready_time)
+
+
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES)
 def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3,
-                    start_sign, end_sign, dev, segwit, out_style, 
-                    num_out, num_in, accept=True):
+                    start_sign, end_sign, dev, segwit, out_style, accept = True):
 
     # try a bunch of different bigger sized txns
     # - important to test on real device, due to it's limited memory
@@ -140,10 +168,17 @@ def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3,
     # - simulator can do 400/400 but takes long time
     # - offical target: 20 inputs, 250 outputs (see docs/limitations.md)
     # - complete run on real hardware takes 1800.94 seconds = 30 minutes
-    # - mk3 required for larger output counts
+    # - only mk3 can do full amounts
+    # - time on mk3, v4.0.0 firmware: 13 minutes
 
-    if not is_mark3 and num_out > 10:
-        raise pytest.xfail('need mk3')
+    if not is_mark3:
+        num_in = 10
+        num_out = 10
+    else:
+        num_in = 20
+        num_out = 250
+
+    
 
     psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=[out_style])
 
