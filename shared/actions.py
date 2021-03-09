@@ -176,9 +176,12 @@ async def dev_enable_protocol(*a):
     # might need to reset stuff?
     from usb import enable_usb
 
-    # reset / re-enable
+    # reset and re-enable
     pyb.usb_mode(None)
-    enable_usb(True)
+    enable_usb()
+
+    # enable REPL
+    ckcc.vcp_enabled(True)
 
     await ux_show_story('Back to normal USB mode.')
 
@@ -346,7 +349,7 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
-    enable_usb(False)
+    enable_usb()
 
     from menu import MenuSystem
     from flow import EmptyWallet
@@ -708,7 +711,7 @@ async def start_login_sequence():
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
-    enable_usb(False)
+    enable_usb()
 
     goto_top_menu()
 
