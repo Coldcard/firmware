@@ -1,5 +1,7 @@
 ## 4.0.0 - March XXX, 2021
 
+**BETA RELEASE** Not recommended for general use!
+
 - Major internal changes!
     - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)
       for all EC crypto operations
