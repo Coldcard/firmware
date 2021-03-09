@@ -207,7 +207,7 @@ class Display:
             self.show()
         else:
 
-            # a pattern that repeats nices mod 128
+            # a pattern that repeats nicely mod 128
             # - each byte here is a vertical column, 8 pixels tall, MSB at bottom
             data = bytes(0x80 if (x%4)<2 else 0x0 for x in range(128))
 
