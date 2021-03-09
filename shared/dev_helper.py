@@ -39,6 +39,7 @@ async def usb_keypad_emu():
     from ux import the_ux
     from menu import MenuSystem
     from seed import WordNestMenu
+    import gc
 
     u = pyb.USB_VCP()
 
@@ -65,6 +66,10 @@ async def usb_keypad_emu():
             if k == 'T':
                 ckcc.vcp_enabled(True)
                 print("Repl")
+                continue
+
+            if k == 'm':
+                print("free = %d" % gc.mem_free())
                 continue
 
             if k in remap:
