@@ -80,7 +80,7 @@ async def more_setup():
     if version.is_factory_mode:
         # in factory mode, turn on USB early to allow debug/setup
         from usb import enable_usb
-        enable_usb(True)
+        enable_usb()
 
         # always start the self test.
         if not settings.get('tested', False):
@@ -105,7 +105,10 @@ async def mainline():
     #
     # - Do not add to this function, its vars are
     #   in memory forever; instead, extend more_setup above.
+    from actions import goto_top_menu
     from ux import the_ux
+
+    goto_top_menu()
 
     gc.collect()
     #print("Free mem: %d" % gc.mem_free())

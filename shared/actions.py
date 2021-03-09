@@ -713,8 +713,6 @@ async def start_login_sequence():
     from usb import enable_usb
     enable_usb()
 
-    goto_top_menu()
-
         
 def goto_top_menu():
     # Start/restart menu system
