@@ -1,12 +1,12 @@
 ## 4.0.0 - March XXX, 2021
 
-- Major internal changes! Minimal external changes...
+- Major internal changes!
     - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)
       for all EC crypto operations
     - super fast pure-assembly AES256-CTR code makes USB communications faster
     - newly optimized SHA256 and SHA256(SHA256()) code
     - all crypto and BIP39 related code replaced
-    - major thanks to [@switck](https://twitter.com/switck) for the new library
+    - huge thanks to [@switck](https://twitter.com/switck) for the new library!
 - Enhancement: During seed phrase import, after 23 words provided, Coldcard will
   calculate the correct checksum and show the valid choices for the last word (there
   will be 8 typically). This means you can pick seed words by drawing from a hat.
@@ -20,6 +20,8 @@
 - Enhancement: Reproducable builds! Checkout code, "cd stm32; make repro" should do it all.
 - Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
 - Enhancement: Show a progress bar during slow parts of the login process.
+- Limitation: Mk2 (older hardware, with less memory) may struggle with some of the new
+  features, but can still run this firmware release... so you can clone it to your new Mk3!
 - Remaining GPL code has been removed, so licence is now MIT+CC on everything.
 
 ## 3.2.2 - Jan 14, 2021
