@@ -19,7 +19,7 @@
   was used, did not reflect the (non-zero) account number.
 - HSM/CKBunker mode:
     - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
-- Enhancement: Reproducable builds! Checkout code, "cd stm32; make repro" should do it all.
+- Enhancement: Reproducible builds! Checkout code, "cd stm32; make repro" should do it all.
 - Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
 - Enhancement: Show a progress bar during slow parts of the login process.
 - Limitation: Mk2 (older hardware, with less memory) may struggle with some of the new
