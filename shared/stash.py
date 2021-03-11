@@ -68,7 +68,7 @@ class SecretStash:
 
     @staticmethod
     def decode(secret, _bip39pw=''):
-        # expecting 72-bytes of secret payload; decode meaning
+        # expecting 72-bytes of secret payload; decode contents into objects
         # returns:
         #    type, secrets bytes, HDNode(root)
         #
@@ -238,7 +238,7 @@ class SensitiveValues:
         self.register(pk)
 
         rv = ngu.hdnode.HDNode()
-        rv.from_chaincode_privkey(ch, pk)
+        rv.from_chaincode_privkey(cc, pk)
         self.register(rv)
 
         return rv
