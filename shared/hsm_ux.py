@@ -4,7 +4,7 @@
 #
 # User experience related to the HSM. Ironic because there isn't a user present.
 #
-import ustruct, ux, chains, sys, gc, uio, ujson, uos, utime
+import ustruct, ux, chains, sys, gc, uio, ujson, uos, utime, ngu
 from ckcc import is_simulator
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, the_ux
@@ -59,7 +59,7 @@ class ApproveHSMPolicy(UserAuthorizedAction):
             self.refused = (ch != 'y')
 
             if not self.refused and self.new_file:
-                confirm_char = '12346'[ngu.random.uint32() % 5]
+                confirm_char = '12346'[ngu.random.uniform(5)]
                 msg = '''Last chance. You are defining a new policy which \
 allows the Coldcard to sign specific transactions without any further user approval.\n\n\
 Press %s to save policy and enable HSM mode.''' % confirm_char
