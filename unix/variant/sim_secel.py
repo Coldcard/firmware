@@ -199,15 +199,24 @@ def pin_stuff(submethod, buf_io):
         # Fetch secrets
         duress_pin = SECRETS.get(kk+'_duress')
 
+        secret = None
+
         if pin == duress_pin:
             secret = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
         else:
-            # main/sec secrets
-            expect = SECRETS.get(kk, '')
-            if pin == expect:
-                secret = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
+            if change_flags & CHANGE_DURESS_SECRET:
+                # wants the duress secret
+                expect = SECRETS.get(kk, '')
+                if pin == expect:
+                    secret = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
             else:
-                return EPIN_AUTH_FAIL
+                # main/secondary secret
+                expect = SECRETS.get(kk, '')
+                if pin == expect:
+                    secret = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
+
+        if secret is None:
+            return EPIN_AUTH_FAIL
 
     elif submethod == 5:
         # greenlight firmware
