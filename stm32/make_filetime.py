@@ -24,7 +24,7 @@ value = ((today.year - 1980) << 25) | (today.month << 21) | (today.day << 16)
 
 # only 2second resolution for times, so can only support minor verion up to x.x.5 and hard to see
 # anyway, let's omit ... worst case, use the date instead
-h, m, _ = [int(x) for x in version.split('.')]
+h, m, _ = [int(x) for x in version.split('b')[0].split('.')]
 value |= (h << 11) | (m << 5)
 
 with open(out_fname, 'wt') as fd:
