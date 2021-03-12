@@ -83,6 +83,8 @@ release: NEW_VERSION = $(shell $(SIGNIT) version built/production.bin)
 release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
 release: built/production.bin
 	test ! -f $(RELEASE_FNAME)
+	cp built/file_time.c COLDCARD/file_time.c
+	git commit COLDCARD/file_time.c -m "For $(NEW_VERSION)"
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)
@@ -110,9 +112,9 @@ code-committed:
 	@echo '... yes'
 
 .PHONY: sign-release
-sign-release: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
+sign-release: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
 sign-release:
-	test -f ../releases/$(PBULIC_VERSION)-coldcard.dfu		# need to copy built=>releases
+	test -f ../releases/$(PUBLIC_VERSION)-coldcard.dfu		# need to copy built=>releases
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
 		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
 	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
@@ -123,7 +125,7 @@ sign-release:
 # - this target will "git add" the new binary in ../release/*dfu 
 # - update & sign signatures file
 # - and tag everything
-tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
+tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
 tag-source: sign-release code-committed
 	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
 	git commit -am "New release: "$(PUBLIC_VERSION)
