@@ -8,7 +8,7 @@ set -ex
 
 TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf"
 
-BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt"
+BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt COLDCARD/file_time.c"
 
 cd /work/src/stm32
 
