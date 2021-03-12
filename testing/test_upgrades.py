@@ -124,7 +124,7 @@ def test_hacky_upgrade(mode, transport, dev, sim_exec, make_firmware, upload_fil
 
     # check data was uploaded verbatim (VERY SLOW)
     for pos in range(0, cooked.firmware_length + 128, 128):
-        a = eval(sim_eval(f'main.sf.array[{pos}:{pos+128}]'))
+        a = eval(sim_eval(f'SF.array[{pos}:{pos+128}]'))
         if pos in [ FW_HEADER_OFFSET, cooked.firmware_length]:
             assert a == hdr, f"wrong @ {pos}"
         else:
