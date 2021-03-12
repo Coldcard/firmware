@@ -1,6 +1,6 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# imptask.py -- important tasks
+# imptask.py -- important async tasks that shouldn't die
 # 
 import sys, uasyncio
 
@@ -11,28 +11,22 @@ class ImportantTask:
         uasyncio.get_event_loop().set_exception_handler(self.handle_exc)
 
     def handle_exc(self, loop, context):
-        # Unhandled exception in a task
+        # Unhandled exception in a task.
         task = context['future']
-        print("IMPTASK: " + context["message"])
-        sys.print_exception(context["exception"])
 
-        # see if it matters: some tasks are short-lived and exception in them
+        # See if it matters: some tasks are short-lived and exception in them
         # may not be fatal or even serious
         for name, t in self.tasks.items():
             if t == task:
                 print("Panic stop: %r has died" % name)
-
-                from uasyncio.core import _stop_task
-
-                if not _stop_task:
-                    uasyncio.get_event_loop().stop()
-                else:
-                    # re-raise on main loop's task so nice display
-                    _stop_task.throw(context["exception"])
-
-                return
-
-        print("Ignoring exc")
+                from main import die_with_debug
+                die_with_debug(context["exception"])
+                # not reached, except on simulator:
+                break
+        else:
+            print("IMPTASK: " + context["message"])
+            sys.print_exception(context["exception"])
+            print("... ignoring that")
 
     def start_task(self, name, awaitable):
         # start a critical task and watch for it to never die
@@ -47,12 +41,5 @@ class ImportantTask:
         return None
 
 IMPT = ImportantTask()
-
-if 0:
-    # test code
-    async def die():
-        await asyncio.sleep(27)
-        raise RuntimeError("fgoo")
-    IMPT.start_task('test', die())
 
 # EOF
