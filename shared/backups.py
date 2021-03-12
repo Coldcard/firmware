@@ -235,7 +235,12 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_
         zz = compat7z.Builder(password=pw, progress_fcn=dis.progress_bar_show)
         zz.add_data(body)
 
-        hdr, footer = zz.save('ckcc-backup.txt')
+        # pick random filename, but ending in .txt
+        word = bip39.wordlist_en[ngu.random.uniform(2048)]
+        num = ngu.random.uniform(1000)
+        fname = '%s%d.txt' % (word, num)
+
+        hdr, footer = zz.save(fname)
 
         filesize = len(body) + MAX_BACKUP_FILE_SIZE
 
@@ -332,7 +337,7 @@ async def verify_backup_file(fname_or_fd):
 
             assert len(files) == 1
             fname, fsize = files[0]
-            assert fname == 'ckcc-backup.txt'
+            assert fname.endswith('.txt')
             assert 400 < fsize < MAX_BACKUP_FILE_SIZE, 'size'
 
     except CardMissingError:
@@ -403,7 +408,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
                                                 progress_fcn=dis.progress_bar_show)
 
                         # simple quick sanity checks
-                        assert fname == 'ckcc-backup.txt'
+                        assert fname.endswith('.txt')       # was == 'ckcc-backup.txt'
                         assert contents[0:1] == b'#' and contents[-1:] == b'\n'
 
                     except Exception as e:

@@ -178,14 +178,16 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     # List contents using unix tools
     from subprocess import check_output
+    import re
     pn = microsd_path(files[0])
     out = check_output(['7z', 'l', pn], encoding='utf8')
-    assert 'ckcc-backup.txt' in out
+    xfname, = re.findall('[a-z0-9]{4,30}.txt', out)
+    print(f"Filename inside 7z: {xfname}")
+    assert xfname in out
     assert 'Method = 7zAES' in out
 
     # does decryption; at least for CRC purposes
-    out = check_output(['7z', 't', '-p'+' '.join(words), pn, 'ckcc-backup.txt'],
-                            encoding='utf8')
+    out = check_output(['7z', 't', '-p'+' '.join(words), pn, xfname], encoding='utf8')
     assert "Everything is Ok" in out, out
 
     for i in range(10):

@@ -34,20 +34,22 @@ process and that the data is in fact encrypted. Any 7z tool that
 supports AES256-SHA256 encryption should be able to read the files
 we make. Take the 12 words and put them together with a single space
 between each word (all lowercase). The decoded archive will contain
-a single file, `ckcc-backup.txt`, which is a simple text file and
-easy to read.
+a single file, which is a simple text file and
+easy to read. Before version 4.0.0, this text file was always
+called `ckcc-backup.txt`, but the filename is now picked randomly.
 
 ## Limitations
 
-- The archive file names are not encrypted. You can see `ckcc-backup.txt` in
-  the hex dump of the encrypted file, encoded as `utf-16-le` bytes.
+- The archive file names are not encrypted. You can see there is a single
+  text file `word(number).txt` in the encrypted file without decrypting it.
 - The device PIN code is not preserved during backup.
 - We produce standards-compliant files, but do not support reading any
   file except the ones produced by Coldcard.
 - Do not attempt to edit the file and restore it onto a Coldcard.
 - You cannot construct a file for the Coldcard to read because we implement only
   enough to support reading files that we know that we've produced.
-- There is no plausible deniability here: the 7z file is clearly a Coldcard backup file.
+- There is limited plausible deniability here: if you are forced to decrypt
+  the file, it is clearly a Coldcard backup file.
 
 ## Example File
 
@@ -108,6 +110,14 @@ If you are playing along at home, the passphrase for the above file is:
 
 You can grab the [example file here](backup.7z) and test it yourself, or use
 a real Coldcard to make your own.
+
+
+## Internal Filenames
+
+The internal filename in these examples is `ckcc-backup.txt`, but
+starting in version 4.0.0 of the Coldcard firwmare, your backup
+files will each have a different random filename inside. Use 
+`7z l backup.7z` to view the actual filename inside the 7z file.
 
 ### Archive Contents
 

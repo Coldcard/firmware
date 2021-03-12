@@ -19,6 +19,9 @@
   was used, did not reflect the (non-zero) account number.
 - Enhancement: Reproducible builds! Checkout code, "cd stm32; make repro" should do it all.
 - Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
+- Enhancement: Inside encrypted backup files (7z), the cleartext filename is not longer
+  fixed as `ckcc-backup.txt`. Instead it's a random word and number. Improves plausible
+  denial when backup files discovered.
 - Enhancement: Show a progress bar during slow parts of the login process.
 - Enhancement: Long menus, like the seed-word picking system, now wrap around from top/bottom, so
   you can get to Z by going up from A.
