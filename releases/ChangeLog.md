@@ -1,6 +1,6 @@
-## 4.0.0 BETA - March 9, 2021
+## 4.0.0b2 BETA - March 12, 2021
 
-**BETA RELEASE** Not recommended for general use!
+**BETA RELEASE** — Not recommended for general use!
 
 - Major internal changes.
     - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)
@@ -17,13 +17,15 @@
   (Diffie-Hellman key exchange) and AES-256-CBC for the transfer.
 - Bugfix: CSV of addresses explorer export via Address Explorere, when account number
   was used, did not reflect the (non-zero) account number.
-- HSM/CKBunker mode:
-    - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
 - Enhancement: Reproducible builds! Checkout code, "cd stm32; make repro" should do it all.
 - Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
 - Enhancement: Show a progress bar during slow parts of the login process.
+- Enhancement: Long menus, like the seed-word picking system, now wrap around from top/bottom, so
+  you can get to Z by going up from A.
 - Limitation: Mk2 (older hardware, with less memory) may struggle with some of the new
   features, but can still run this firmware release... so you can clone it to your new Mk3!
+- HSM/CKBunker mode:
+    - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
 - Remaining GPL code has been removed, so licence is now MIT+CC on everything.
 
 ## 3.2.2 - Jan 14, 2021
