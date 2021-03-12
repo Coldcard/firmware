@@ -85,7 +85,10 @@ def pop_count(i):
 def get_filesize(fn):
     # like os.path.getsize()
     import uos
-    return uos.stat(fn)[6]
+    try:
+        return uos.stat(fn)[6]
+    except OSError:
+        return 0
 
 class HexWriter:
     # Emulate a file/stream but convert binary to hex as they write
