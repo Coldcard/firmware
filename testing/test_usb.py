@@ -1,6 +1,8 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # A few USB link layer tests.
+# 
+# - not working well on simulator right now, but that's not key
 #
 import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node

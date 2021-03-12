@@ -24,10 +24,10 @@ def under_duress(request):
     return request.config.getoption('duress') 
 
 @pytest.fixture
-def get_duress_secret(sim_eval):
+def get_duress_secret(sim_exec):
     def doit(pin):
         # read the duress secret
-        rv = sim_eval(f'main.pa.fetch(duress_pin=b"{pin}")', timeout=9000)
+        rv = sim_exec(f'from pincodes import pa; RV.write(repr(pa.fetch(duress_pin=b"{pin}")))')
         if rv.startswith('Traceback'):
             raise RuntimeError(rv)
         assert rv[0:2] == "b'"
@@ -35,7 +35,7 @@ def get_duress_secret(sim_eval):
     return doit
 
 @pytest.fixture
-def verify_pin_set(sim_eval):
+def verify_pin_set(sim_exec):
     def doit(pin, secondary=False, duress=False, brickme=False):
         # check the SE holds the indicated PIN code
         kws = ''
@@ -45,16 +45,16 @@ def verify_pin_set(sim_eval):
             kws += ", is_duress=1"
         if brickme:
             kws += ", is_brickme=1"
-        rv = sim_eval(f'main.pa.change(new_pin=b"{pin}", old_pin=b"{pin}" {kws})', timeout=9000)
+        rv = sim_exec(f'from pincodes import pa; RV.write(repr(pa.change(new_pin=b"{pin}", old_pin=b"{pin}" {kws})))')
         if rv != 'None':
             raise RuntimeError(rv)
 
     return doit
 
 @pytest.fixture
-def get_secondary_login(sim_eval):
+def get_secondary_login(sim_exec):
     def doit():
-        return sim_eval('main.pa.is_secondary') == 'True'
+        return sim_exec('from pincodes import pa; RV.write(repr(pa.is_secondary))') == 'True'
     return doit
 
 @pytest.fixture

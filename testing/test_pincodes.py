@@ -18,7 +18,7 @@ from pprint import pprint
 
 @pytest.fixture(scope='session')
 def setup_repl(repl):
-    repl.exec('from main import pa, dis; import callgate')
+    repl.exec('from glob import dis; from pincodes import pa; import callgate')
 
 def xxx_test_repl(repl, setup_repl):
     # check repl works

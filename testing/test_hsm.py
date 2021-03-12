@@ -673,7 +673,8 @@ def calc_hmac_key(serial, secret='abcd1234'):
     from ckcc_protocol.constants import PBKDF2_ITER_COUNT
 
     salt = sha256(b'pepper'+serial.encode('ascii')).digest()
-    key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+    #key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+    key = pbkdf2_hmac('sha512', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)[0:32]
 
     return key
 
