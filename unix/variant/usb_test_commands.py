@@ -1,4 +1,6 @@
 import uio, sys, version, nvstore
+#from pincodes import pa
+from sflash import SF
 
 def do_usb_command(cmd, args):
     # TESTING commands!
