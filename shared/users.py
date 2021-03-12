@@ -50,7 +50,7 @@ def calc_hotp(secret, counter):
 def calc_hmac_key(text_password):
     # Calculate a 32-byte key based on user's text password, PBKDF2_ITER_COUNT,
     # and device serial number as salt.
-    # before v4, this was pbkdf2_sha256
+    # - before v4, this was pbkdf2_sha256
     import version
 
     salt = ngu.hash.sha256s(b'pepper' + version.serial_number().encode())
