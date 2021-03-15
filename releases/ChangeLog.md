@@ -21,13 +21,13 @@
 - Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
 - Enhancement: Inside encrypted backup files (7z), the cleartext filename is not longer
   fixed as `ckcc-backup.txt`. Instead it's a random word and number. Improves plausible
-  denial when backup files discovered.
+  denials when backup files discovered.
 - Enhancement: Show a progress bar during slow parts of the login process.
 - Enhancement: Long menus, like the seed-word picking system, now wrap around from top/bottom, so
   you can get to Z by going up from A.
 - Limitation: Mk2 (older hardware, with less memory) may struggle with some of the new
   features, but can still run this firmware release... so you can clone it to your new Mk3!
-- HSM/CKBunker mode:
+- HSM/CKBunker mode changes:
     - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
     - when unlocking HSM mode from "boot to HSM mode" (using secret PIN immediately after bootup)
       the HSM policy is no longer removed automatically. 
