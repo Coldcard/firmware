@@ -1,4 +1,4 @@
-## 4.0.0b2 BETA - March 12, 2021
+## 4.0.0b3 BETA - March 15, 2021
 
 **BETA RELEASE** — Not recommended for general use!
 
@@ -19,7 +19,7 @@
   was used, did not reflect the (non-zero) account number.
 - Enhancement: Reproducible builds! Checkout code, "cd stm32; make repro" should do it all.
 - Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
-- Enhancement: Inside encrypted backup files (7z), the cleartext filename is not longer
+- Enhancement: Inside encrypted backup files (7z), the cleartext filename is no longer
   fixed as `ckcc-backup.txt`. Instead it's a random word and number. Improves plausible
   denials when backup files discovered.
 - Enhancement: Show a progress bar during slow parts of the login process.
