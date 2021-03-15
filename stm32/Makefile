@@ -84,7 +84,7 @@ release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
 release: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c COLDCARD/file_time.c
-	git commit COLDCARD/file_time.c -m "For $(NEW_VERSION)"
+	-git commit COLDCARD/file_time.c -m "For $(NEW_VERSION)"
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)
