@@ -29,6 +29,8 @@
   features, but can still run this firmware release... so you can clone it to your new Mk3!
 - HSM/CKBunker mode:
     - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
+    - when unlocking HSM mode from "boot to HSM mode" (using secret PIN immediately after bootup)
+      the HSM policy is no longer removed automatically. 
 - Remaining GPL code has been removed, so licence is now MIT+CC on everything.
 
 ## 3.2.2 - Jan 14, 2021

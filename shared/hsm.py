@@ -681,7 +681,6 @@ class HSMPolicy:
             if code == self.boot_to_hsm:
                 # let them out of jail
                 from hsm_ux import hsm_ux_obj
-                hsm_delete_policy()
                 hsm_ux_obj.test_restart = True
 
     def consume_local_code(self, psbt_sha):
