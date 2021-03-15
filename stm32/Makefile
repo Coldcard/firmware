@@ -112,12 +112,10 @@ code-committed:
 	@echo '... yes'
 
 .PHONY: sign-release
-sign-release: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
 sign-release:
-	test -f ../releases/$(PUBLIC_VERSION)-coldcard.dfu		# need to copy built=>releases
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
 		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
-	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
+	git commit -m "Signed for release." ../releases/signatures.txt
 
 # Tag source code associate with built release version.
 # - do "make release" before this step!
