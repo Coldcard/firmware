@@ -31,6 +31,7 @@
     - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
     - when unlocking HSM mode from "boot to HSM mode" (using secret PIN immediately after bootup)
       the HSM policy is no longer removed automatically. 
+    - time limit to escape "boot to HSM" mode has doubled from 30 seconds to 1 minute.
 - Remaining GPL code has been removed, so licence is now MIT+CC on everything.
 
 ## 3.2.2 - Jan 14, 2021
