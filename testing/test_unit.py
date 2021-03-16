@@ -166,7 +166,7 @@ def test_hmac_key(dev, sim_exec, count=10):
     from hashlib import pbkdf2_hmac, sha256
     from ckcc_protocol.constants import PBKDF2_ITER_COUNT
 
-    sn = dev.serial.encode('ascii')
+    sn = sim_exec('import version; RV.write(version.serial_number().encode())').encode()
     salt = sha256(b'pepper'+sn).digest()
 
     for i in range(count):
@@ -177,6 +177,7 @@ def test_hmac_key(dev, sim_exec, count=10):
 
         got = sim_exec(cmd)
 
+        #print('pw=%r s=%r cnt=%d' % (pw, salt, PBKDF2_ITER_COUNT))
         expect = B2A(pbkdf2_hmac('sha512', pw, salt, PBKDF2_ITER_COUNT)[0:32])
 
         assert got == expect
