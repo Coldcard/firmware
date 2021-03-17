@@ -71,6 +71,8 @@ COLDCARD/file_time.c: Makefile make_filetime.py
 	./make_filetime.py COLDCARD/file_time.c $(VERSION_STRING)
 
 # Make a factory release: using key #1
+# - when executed in a repro w/o the required key, it defaults to key zero
+# - and that's what happens inside the Docker build
 production.bin: firmware-signed.bin Makefile
 	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o $@
 
@@ -78,8 +80,7 @@ production.bin: firmware-signed.bin Makefile
 BOOTLOADER_VERSION = 2.0.1
 
 .PHONY: release
-#release: code-committed
-release:
+release: code-committed
 	$(MAKE) clean
 	$(MAKE) repro
 	test -f built/production.bin
@@ -95,6 +96,7 @@ release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c COLDCARD/file_time.c
 	-git commit COLDCARD/file_time.c -m "For $(NEW_VERSION)"
+	$(SIGNIT) sign $(VERSION_STRING) -r built/production.bin -k 1 -o built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)
