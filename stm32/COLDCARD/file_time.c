@@ -4,7 +4,7 @@
 // AUTO-generated.
 //
 //   built: 2021-03-17
-// version: 4.0.0b4
+// version: 4.0.0
 //
 #include <stdint.h>
 
