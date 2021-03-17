@@ -1,16 +1,17 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # menu.py - Implement an interactive menu system.
 #
 import gc
-from main import dis
 from display import FontLarge, FontTiny
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
 
 # number of full lines per screen
-PER_M = 4
+PER_M = const(4)
+
+# do wrap-around, but only for mega menus like seed words
+WRAP_IF_OVER = const(16)
 
 def start_chooser(chooser):
     # get which one to show as selected, list of choices, and fcn to call after
@@ -100,6 +101,7 @@ class MenuSystem:
         #
         # Redraw the menu.
         #
+        from glob import dis
         dis.clear()
 
         #print('cur=%d ypos=%d' % (self.cursor, self.ypos))
@@ -140,14 +142,19 @@ class MenuSystem:
     def down(self):
         if self.cursor < self.count-1:
             self.cursor += 1
-        if self.cursor - self.ypos >= (PER_M-1):
-            self.ypos += 1
+
+            if self.cursor - self.ypos >= (PER_M-1):
+                self.ypos += 1
+        elif self.count > WRAP_IF_OVER:
+            self.goto_idx(0)
 
     def up(self):
         if self.cursor > 0:
             self.cursor -= 1
             if self.cursor < self.ypos:
                 self.ypos -= 1
+        elif self.count > WRAP_IF_OVER:
+            self.goto_idx(self.count-1)
 
     def top(self):
         self.cursor = 0

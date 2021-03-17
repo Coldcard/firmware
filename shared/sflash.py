@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # sflash.py - SPI Flash on rev D and up boards. Simple serial SPI flash on SPI2 port.
 #
@@ -116,7 +115,7 @@ class SPIFlash:
         from nvstore import SLOTS
         end = SLOTS[0]
 
-        from main import dis
+        from glob import dis
         dis.fullscreen("Cleanup...")
 
         for addr in range(0, end, self.BLOCK_SIZE):
@@ -125,5 +124,8 @@ class SPIFlash:
 
             while self.is_busy():
                 pass
+
+# singleton
+SF = SPIFlash()
 
 # EOF

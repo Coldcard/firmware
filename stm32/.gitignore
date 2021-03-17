@@ -7,6 +7,7 @@ build/
 mpy-files.timestamp
 firmware.lss
 firmware-signed.*
+firmware.elf
 
 # somewhat useful binary snapshots
 mostly.dfu
@@ -14,3 +15,9 @@ firmware-signed.dfu
 
 dev.bin
 dev.dfu
+
+# byproducts of check-repro target
+check-fw.bin
+check-bootrom.bin
+repro-got.txt
+repro-want.txt

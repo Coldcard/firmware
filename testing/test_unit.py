@@ -132,8 +132,9 @@ def test_decoding(unit_test):
 def test_hmac(sim_exec, msg, key, hasher):
     import hashlib, hmac
 
-    cmd = "import hmac, tcc; from h import b2a_hex; " + \
-                    f"RV.write(b2a_hex(hmac.new({key}, {msg}, tcc.{hasher}).digest()))"
+    cmd = "import ngu; from h import b2a_hex; " + \
+                    f"RV.write(b2a_hex(ngu.hmac.hmac_{hasher}({key}, {msg})))"
+    print(cmd)
 
     got = sim_exec(cmd)
     expect = hmac.new(key, msg, hasher).hexdigest()
@@ -161,12 +162,12 @@ def test_hotp(sim_exec, secret, counter, expect):
     got = sim_exec(cmd)
     assert got == expect
 
-def test_hmac_key(sim_exec, count=50):
+def test_hmac_key(dev, sim_exec, count=10):
     from hashlib import pbkdf2_hmac, sha256
-    from constants import simulator_serial_number
     from ckcc_protocol.constants import PBKDF2_ITER_COUNT
 
-    salt = sha256(b'pepper'+simulator_serial_number.encode('ascii')).digest()
+    sn = sim_exec('import version; RV.write(version.serial_number().encode())').encode()
+    salt = sha256(b'pepper'+sn).digest()
 
     for i in range(count):
         pw = ('test%09d' % i).encode('ascii')
@@ -176,7 +177,8 @@ def test_hmac_key(sim_exec, count=50):
 
         got = sim_exec(cmd)
 
-        expect = B2A(pbkdf2_hmac('sha256', pw, salt, PBKDF2_ITER_COUNT))
+        #print('pw=%r s=%r cnt=%d' % (pw, salt, PBKDF2_ITER_COUNT))
+        expect = B2A(pbkdf2_hmac('sha512', pw, salt, PBKDF2_ITER_COUNT)[0:32])
 
         assert got == expect
         print(got)

@@ -1,19 +1,20 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # load up the simulator w/ indicated test master key
-import tcc, main
 from sim_settings import sim_defaults
 import stash, chains
 from h import b2a_hex
-from main import settings, pa
+from pincodes import pa
+from nvstore import settings
 from stash import SecretStash, SensitiveValues
 from utils import xfp2str
 
+import main
 rs = main.RAW_SECRET 
 print("New raw secret: %s" % b2a_hex(rs))
 
 if 1:
-    settings.current = sim_defaults
+    settings.current = dict(sim_defaults)
     settings.overrides.clear()
     settings.set('chain', 'XTN')
 

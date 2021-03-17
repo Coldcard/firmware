@@ -1,16 +1,16 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # login.py - UX related to PIN code entry/login.
 #
 # NOTE: Mark3 hardware does not support secondary wallet concept.
 #
-import pincodes, version
-from main import dis
+import pincodes, version, random
+from glob import dis
 from display import FontLarge, FontTiny
 from ux import PressRelease, ux_wait_keyup, ux_poll_once, ux_show_story
 from utils import pretty_delay
 from callgate import show_logout
+from pincodes import pa
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
@@ -26,9 +26,8 @@ class LoginUX:
         self.randomize = randomize
 
     def shuffle_keys(self):
-        from random import shuffle
         keys = [str(i) for i in range(10)]
-        shuffle(keys)
+        random.shuffle(keys)
         self.randomize = keys
 
     def reset(self):
@@ -211,7 +210,7 @@ class LoginUX:
 
                 self.show_pin()
 
-    async def do_delay(self, pa):
+    async def do_delay(self):
         # show # of failures and implement the delay, which could be 
         # very long.
         dis.clear()
@@ -252,7 +251,6 @@ Press OK to continue, X to stop for now.
         
 
     async def try_login(self, retry=True):
-        from main import pa
         while retry:
 
             if version.has_608 and not pa.attempts_left:
@@ -280,7 +278,7 @@ Press OK to continue, X to stop for now.
                 await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
             elif pa.is_delay_needed():
                 # mark 1/2 might come here, never mark3
-                await self.do_delay(pa)
+                await self.do_delay()
 
             # do the actual login attempt now
             try:

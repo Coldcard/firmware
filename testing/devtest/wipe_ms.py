@@ -1,7 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # quickly clear all multisig wallets installed
-from main import settings
+from nvstore import settings
 from ux import restore_menu
 
 if settings.get('multisig'):

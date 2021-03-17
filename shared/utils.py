@@ -1,12 +1,12 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, tcc
+import gc, sys, ustruct, ngu
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
+from uhashlib import sha256
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -85,14 +85,17 @@ def pop_count(i):
 def get_filesize(fn):
     # like os.path.getsize()
     import uos
-    return uos.stat(fn)[6]
+    try:
+        return uos.stat(fn)[6]
+    except OSError:
+        return 0
 
 class HexWriter:
     # Emulate a file/stream but convert binary to hex as they write
     def __init__(self, fd):
         self.fd = fd
         self.pos = 0
-        self.checksum = tcc.sha256()
+        self.checksum = sha256()
 
     def __enter__(self):
         self.fd.__enter__()
@@ -376,12 +379,21 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
 def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
     import callgate
+    from sflash import SF
 
     try:
-        from main import sf
-        sf.wipe_most()
+        SF.wipe_most()
     except: pass
 
     callgate.show_logout(style)
+
+def call_later_ms(delay, cb, *args):
+    import uasyncio
+
+    async def doit():
+        await uasyncio.sleep_ms(delay)
+        await cb(*args)
+        
+    uasyncio.create_task(doit())
 
 # EOF

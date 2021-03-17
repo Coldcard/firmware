@@ -1,23 +1,26 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # load up the simulator w/ indicated test master key
-import tcc, main
+import main, ngu
 from sim_settings import sim_defaults
 import stash, chains
 from h import b2a_hex
-from main import settings, pa
+from pincodes import pa
+from nvstore import settings
 from stash import SecretStash, SensitiveValues
-from utils import xfp2str
+from utils import xfp2str, swab32
 
 tn = chains.BitcoinTestnet
 
 b32_version_pub  = 0x043587cf
 b32_version_priv = 0x04358394
 
-node = tcc.bip32.deserialize(main.TPRV, b32_version_pub, b32_version_priv)
+node = ngu.hdnode.HDNode()
+v = node.deserialize(main.TPRV)
+assert v == b32_version_priv
 assert node
 
-if settings.get('xfp') == node.my_fingerprint():
+if settings.get('xfp') == swab32(node.my_fp()):
     print("right xfp already")
 
 else:
@@ -32,5 +35,5 @@ else:
     print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
     print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
 
-    assert settings.get('xfp', 0) == node.my_fingerprint()
+    assert settings.get('xfp', 0) == swab32(node.my_fp())
 

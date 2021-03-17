@@ -94,6 +94,10 @@ def show_version(fname):
     # just dump the version number in a form that makes for good filenames
     data = open(fname, 'rb').read()
 
+    if data[0:5] == b'DfuSe':
+        # Got DFU file, pulling out raw binary.
+        (_, _, data),*_ = dfu_parse(open(fname, 'rb'))
+
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE ]
 
     hdr = header(**dict(zip(FWH_PY_VALUES.split(), struct.unpack(FWH_PY_FORMAT, hdr))))
@@ -105,13 +109,82 @@ def show_version(fname):
 
     print('{built}-v{ver}'.format(built=built, ver=ver))
 
+def dfu_parse(fd):
+    # do just a little parsing of DFU headers, to find start/length of main binary
+    # - not trying to support anything but what ../stm32/Makefile will generate
+    # - see external/micropython/tools/pydfu.py for details
+    # - works sequentially only
+    import struct
+    from collections import namedtuple
+
+    fd.seek(0)
+
+    def consume(xfd, tname, fmt, names):
+        # Parses the struct defined by `fmt` from `data`, stores the parsed fields
+        # into a named tuple using `names`. Returns the named tuple.
+        size = struct.calcsize(fmt)
+        here = xfd.read(size)
+        ty = namedtuple(tname, names.split())
+        values = struct.unpack(fmt, here)
+        return ty(*values)
+
+    dfu_prefix = consume(fd, 'DFU', '<5sBIB', 'signature version size targets')
+
+    #print('dfu: ' + repr(dfu_prefix))
+
+    assert dfu_prefix.signature == b'DfuSe', "Not a DFU file (bad magic)"
+
+    for idx in range(dfu_prefix.targets):
+
+        prefix = consume(fd, 'Target', '<6sBI255s2I', 
+                                   'signature altsetting named name size elements')
+
+        #print("target%d: %r" % (idx, prefix))
+
+        for ei in range(prefix.elements):
+            # Decode target prefix
+            #   <   little endian
+            #   I   uint32_t    element address
+            #   I   uint32_t    element size
+            elem = consume(fd, 'Element', '<2I', 'addr size')
+
+            #print("target%d: %r" % (ei, elem))
+
+            yield fd.tell(), elem.size, fd.read(elem.size)
+
+
+@main.command('split')
+@click.argument('dfu', metavar='202....-coldcard.dfu')
+@click.argument('firmware', metavar='FIRMWARE.bin')
+@click.argument('bootrom', metavar='BOOTROM.bin')
+def split_dfu(dfu, firmware, bootrom):
+    "Pull out sections from DFU file for verification purposes"
+
+    with open(dfu, 'rb') as fd:
+        for n, (off, ln, data) in enumerate(dfu_parse(fd)):
+            if n == 0:
+                target = firmware
+                name = 'Firmware'
+            elif n == 1:
+                target = bootrom
+                name = 'Bootrom'
+            else:
+                raise ValueError(n)
+
+            # keep this printout so others can check our copy is faithful
+            print(f'start {off} for {ln} bytes: {name} => {target}')
+
+            open(target, 'wb').write(data)
+
 @main.command('check')
 @click.argument('fname', default='firmware-signed.bin')
 def readback(fname):
     "Verify pubkey and signature used in binary file"
     data = open(fname, 'rb').read()
 
-    assert data[0:5] != b'DfuSe', "got DFU, expect raw binary"
+    if data[0:5] == b'DfuSe':
+        click.secho("Got DFU file, pulling out raw binary.", fg='red')
+        (_, _, data),*_ = dfu_parse(open(fname, 'rb'))
 
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE ]
 
@@ -187,6 +260,14 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     "Add signature into binary file before it becomes a DFU file."
 
     assert len(version) < 8, "Version string limited to 8 bytes, got: %r" % version
+
+    # load key
+    try:
+        sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
+    except FileNotFoundError:
+        click.secho(f"You don't have that key ({pubkey_num}), so using key zero instead!", fg='red')
+        pubkey_num = 0
+        sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
     
     if resign_file:
         whole = resign_file.read()
@@ -248,9 +329,6 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     if verbose:
         print("Hdr: %s" % repr(hdr))
         print('Hash: %s' % b2a_hex(fw_hash).decode('ascii'))
-
-    # load key
-    sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
 
     from ecdsa.util import sigencode_string
     sig = sk.sign_digest(fw_hash, sigencode=sigencode_string)

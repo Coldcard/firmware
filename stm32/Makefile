@@ -11,16 +11,22 @@ PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
 # aka ../cli/signit.py
 SIGNIT = signit
 
-MAKE_ARGS = BOARD=COLDCARD -j 4
+MAKE_ARGS = BOARD=COLDCARD -j 4 EXCLUDE_NGU_TESTS=1
 
 all: COLDCARD/file_time.c
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
 
-clean-mpy:
-	rm -rf build
-
-clean: clean-mpy
+clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
+	git clean -xf built
+
+# These trigger the 'all' target when we haven't completed a successful build yet
+l-port/build-COLDCARD/firmware.elf: all
+l-port/build-COLDCARD/firmware0.bin: all
+l-port/build-COLDCARD/firmware1.bin: all
+
+firmware.elf: l-port/build-COLDCARD/firmware.elf
+	cp l-port/build-COLDCARD/firmware.elf .
 
 # These values used to make .DFU files. Flash memory locations.
 FIRMWARE_BASE   = 0x08008000
@@ -28,13 +34,13 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 3.2.2
+VERSION_STRING = 4.0.0b4
 
 #
 # Sign and merge various parts
 #
-firmware-signed.bin: l-port/build-COLDCARD/firmware?.bin
-	$(SIGNIT) sign $(VERSION_STRING)
+firmware-signed.bin: l-port/build-COLDCARD/firmware0.bin l-port/build-COLDCARD/firmware1.bin
+	$(SIGNIT) sign $(VERSION_STRING) -o $@
 firmware-signed.dfu: firmware-signed.bin Makefile
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
@@ -42,12 +48,16 @@ firmware-signed.dfu: firmware-signed.bin Makefile
 dfu: firmware-signed.dfu
 
 # Build a binary, signed w/ production key
-# - always rebuild binary
+# - always rebuild binary for this one
 .PHONY: dev.dfu
 dev.dfu: l-port/build-COLDCARD/firmware?.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
 	$(SIGNIT) sign $(VERSION_STRING) -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
+
+.PHONY: remake
+remake:
+	rm -rf l-port/build-COLDCARD/firmware?.bin l-port/build-COLDCARD/frozen_mpy*
 
 # This is fast for Coinkite devs, but no DFU support in the wild.
 up: dev.dfu
@@ -61,25 +71,42 @@ COLDCARD/file_time.c: Makefile make_filetime.py
 	./make_filetime.py COLDCARD/file_time.c $(VERSION_STRING)
 
 # Make a factory release: using key #1
+# - when executed in a repro w/o the required key, it defaults to key zero
+# - and that's what happens inside the Docker build
 production.bin: firmware-signed.bin Makefile
-	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o production.bin
+	$(SIGNIT) sign $(VERSION_STRING) -r firmware-signed.bin -k 1 -o $@
 
 # This is release of the bootloader that will be built into the release firmware.
 BOOTLOADER_VERSION = 2.0.1
 
+.PHONY: release
+release: code-committed
+	$(MAKE) clean
+	$(MAKE) repro
+	test -f built/production.bin
+	$(MAKE) release-products
+	$(MAKE) tag-source
+
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
-.PHONY: release
-release: NEW_VERSION = $(shell $(SIGNIT) version production.bin)
-release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
-release: production.bin
+.PHONY: release-products
+release-products: NEW_VERSION = $(shell $(SIGNIT) version built/production.bin)
+release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
+release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
-	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):production.bin \
+	cp built/file_time.c COLDCARD/file_time.c
+	-git commit COLDCARD/file_time.c -m "For $(NEW_VERSION)"
+	$(SIGNIT) sign $(VERSION_STRING) -r built/production.bin -k 1 -o built/production.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)
 	@echo
 	@echo 'Made release: ' $(RELEASE_FNAME)
 	@echo
+
+built/production.bin:
+	@echo "To make production build, must run docker code"
+	@false
 
 # Use DFU to install the latest production version you have on hand
 dfu-latest: 
@@ -97,11 +124,10 @@ code-committed:
 	@echo '... yes'
 
 .PHONY: sign-release
-sign-release: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
 		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
-	git commit -m "Signed for release: "$(PUBLIC_VERSION) ../releases/signatures.txt
+	git commit -m "Signed for release." ../releases/signatures.txt
 
 # Tag source code associate with built release version.
 # - do "make release" before this step!
@@ -109,7 +135,7 @@ sign-release:
 # - this target will "git add" the new binary in ../release/*dfu 
 # - update & sign signatures file
 # - and tag everything
-tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version production.bin)
+tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
 tag-source: sign-release code-committed
 	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
 	git commit -am "New release: "$(PUBLIC_VERSION)
@@ -161,14 +187,9 @@ PY_FILES = $(shell find ../shared -name \*.py)
 ALL_MPY_FILES = $(addprefix build/, $(PY_FILES:../shared/%.py=%.mpy))
 MPY_FILES = $(filter-out build/obsolete/%, $(ALL_MPY_FILES))
 
-build/%.mpy: ../shared/%.py Makefile
-	mkdir -p $(dir $@)
-	$(MPY_CROSS) -o $@ -s $*.py $<
-
-
 # In another window: 
 #
-#		openocd -f l-port/boards/openocd_stm32l4.cfg
+#		openocd -f openocd_stm32l4x6.cfg
 #
 # Can do:
 # - "load" which writes the flash (medium speed, lots of output on st-util)
@@ -178,11 +199,11 @@ build/%.mpy: ../shared/%.py Makefile
 # - and so on
 #
 debug:
-	arm-none-eabi-gdb $(PORT_TOP)/build-COLDCARD/firmware.elf -x gogo.gdb
+	arm-none-eabi-gdb built/firmware.elf -x gogo.gdb
 
 # detailed listing, very handy
 OBJDUMP = arm-none-eabi-objdump
-firmware.lss: $(PORT_TOP)/build-COLDCARD/firmware.elf
+firmware.lss: l-port/build-COLDCARD/firmware.elf
 	$(OBJDUMP) -h -S $< > $@
 
 # Dump sizes of all frozen py files; requires recent build.
@@ -200,9 +221,59 @@ size:
 # one time setup, after repo checkout
 setup:
 	cd $(MPY_TOP) ; git submodule update --init lib/stm32lib
+	cd $(MPY_TOP)/lib/stm32lib ; sed -i.orig -e 's/#define VECT_TAB_OFFSET  0x00/    /' \
+				CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.c
+	cd ../external/libngu; make min-one-time
 	cd $(MPY_TOP)/mpy-cross ; make
 	-ln -s $(PORT_TOP) l-port
 	-ln -s $(MPY_TOP) l-mpy
-	-cd $(PORT_TOP)/boards ; ln -s ../../../../../stm32/COLDCARD COLDCARD
+	cd $(PORT_TOP)/boards; if [ ! -L COLDCARD ]; then \
+		ln -s ../../../../../stm32/COLDCARD COLDCARD; fi
+	
+
+# Caution: docker container has read access to your source tree
+# - a readonly copy of source tree, and one output directory
+# - build products are copied to there, see repro-build.sh
+# - works from this repo, but starts with copy of HEAD
+DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
+				-v $(realpath built):/work/built:rw \
+				--privileged coldcard-build
+repro: code-committed
+	docker build -t coldcard-build - < dockerfile.build
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh)
+
+# debug: shell into docker container
+shell:
+	docker run -it $(DOCK_RUN_ARGS) sh
+
+# debug: allow docker to write into source tree
+#DOCK_RUN_ARGS := -v $(realpath ..):/work/src:rw --privileged coldcard-build
+
+PUBLISHED_BIN = $(wildcard ../releases/*-v$(VERSION_STRING)-coldcard.dfu)
+
+# final step in repro-building: check you got the right bytes
+# - but you don't have the production signing key, so that section is removed
+check-repro: TRIM_SIG = sed -e 's/^00003f[89abcdef]0 .*/(firmware signature here)/'
+check-repro: firmware-signed.bin
+ifeq ($(PUBLISHED_BIN),)
+	@echo ""
+	@echo "No binary published yet for: $(VERSION_STRING)"
+	@echo ""
+else
+	@echo Comparing against: $(PUBLISHED_BIN)
+	test -n "$(PUBLISHED_BIN)" -a -f $(PUBLISHED_BIN)
+	$(RM) -f check-fw.bin check-bootrom.bin
+	$(SIGNIT) split $(PUBLISHED_BIN) check-fw.bin check-bootrom.bin
+	$(SIGNIT) check check-fw.bin
+	$(SIGNIT) check firmware-signed.bin
+	hexdump -C firmware-signed.bin | $(TRIM_SIG) > repro-got.txt
+	hexdump -C check-fw.bin | $(TRIM_SIG) > repro-want.txt
+	diff repro-got.txt repro-want.txt
+	@echo ""
+	@echo "SUCCESS. "
+	@echo ""
+	@echo "You have built a bit-for-bit identical copy of Coldcard firmware for v$(VERSION_STRING)"
+endif
+
 
 # EOF

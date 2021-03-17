@@ -1,6 +1,5 @@
 //
-// (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-// and is covered by GPLv3 license found in COPYING.
+// (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 //
 // modckcc.c - module for Coldcard hardware features and glue.
 // 
@@ -9,6 +8,7 @@
 
 #include "modckcc.h"
 #include "rng.h"
+#include "usb.h"
 #include "flash.h"
 #include "bufhelper.h"
 #include "py/gc.h"
@@ -16,6 +16,7 @@
 #include "py/mphal.h"
 #include "py/mpstate.h"
 #include "py/stackctrl.h"
+#include "boardctrl.h"
 
 #include "storage.h"
 #include "usb.h"
@@ -208,7 +209,7 @@ STATIC mp_obj_t stack_limit(mp_obj_t new_val)
 
         // Small values will cause immediate crash due to stack-depth checking, so avoid.
         if((limit < 1024) || (limit > 64*1024)) {
-            mp_raise_ValueError("out of range");
+            mp_raise_ValueError(NULL);
         }
 
         mp_stack_set_limit(limit);
@@ -227,9 +228,9 @@ STATIC mp_obj_t wipe_fs(void)
     // after, it will be remounted already
 
     // see initfs.c
-    extern bool init_flash_fs(uint reset_mode);     
+    extern int factory_reset_create_filesystem(void);
 
-    return MP_OBJ_NEW_SMALL_INT(init_flash_fs(3));
+    return MP_OBJ_NEW_SMALL_INT(factory_reset_create_filesystem());
 }
 MP_DEFINE_CONST_FUN_OBJ_0(wipe_fs_obj, wipe_fs);
 
@@ -275,6 +276,8 @@ const mp_obj_module_t ckcc_module = {
     .globals = (mp_obj_dict_t*)&ckcc_module_globals,
 };
 
+MP_REGISTER_MODULE(MP_QSTR_ckcc, ckcc_module, 1);
+
 void ckcc_early_init(void)
 {
     // Add system-wide init code here.
@@ -282,6 +285,20 @@ void ckcc_early_init(void)
     // Disable ^C to interrupt code.
     // cannot find where this might be set by other code to ^C.
     mp_interrupt_char = -1;
+
+    // Do the equivilent of "py.usb_mode(None)" in boot.py
+    extern mp_uint_t pyb_usb_flags;
+    pyb_usb_flags |= PYB_USB_FLAG_USB_MODE_CALLED;
+}
+
+void ckcc_boardctrl_before_boot_py(boardctrl_state_t *state)
+{
+    // do not run /boot.py even if it exists
+    state->run_boot_py = false;
+}
+void ckcc_boardctrl_after_boot_py(boardctrl_state_t *state)
+{
+    // nothing to do, no way to report failures anyway
 }
 
 // ckcc_heap_start()
@@ -330,3 +347,24 @@ bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block)
 }
 #endif
 
+// There is no classical C heap in bare-metal ports, only Python
+// garbage-collected heap. For completeness, emulate C heap via
+// GC heap. Note that MicroPython core never uses malloc() and friends,
+// but I need these for the C-language extensions I'm using.
+void *malloc(size_t size)
+{
+    return m_malloc(size);
+}
+
+void free(void *ptr)
+{
+    m_free(ptr);
+}
+
+void *realloc(void *ptr, size_t size)
+{
+    return m_realloc(ptr, size);
+}
+
+
+// EOF

@@ -1,11 +1,10 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # flow.py - Menu structure
 #
 from menu import MenuItem
 import version
-from main import settings
+from nvstore import settings
 
 from actions import *
 from choosers import *
@@ -13,6 +12,7 @@ from multisig import make_multisig_menu
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start
+from backups import clone_start, clone_write_data
 
 # Optional feature: HSM
 if version.has_fatram:
@@ -52,11 +52,11 @@ if not version.has_608:
 
 async def which_pin_menu(_1,_2, item):
     if version.has_608: return PinChangesMenu
-    from main import pa
+    from pincodes import pa
     return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
 def has_secrets():
-    from main import pa
+    from pincodes import pa
     return not pa.is_secret_blank()
 
 SettingsMenu = [
@@ -87,6 +87,7 @@ SDCardMenu = [
     MenuItem('Export Wallet', menu=WalletExportMenu),
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     MenuItem('Upgrade From SD', f=microsd_upgrade),
+    MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
     MenuItem('Format Card', f=wipe_sd_card),
 ]
@@ -157,6 +158,7 @@ BackupStuffMenu = [
     MenuItem("Backup System", f=backup_everything),
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Restore Backup", f=restore_everything),   # just a redirect really
+    MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem("Dump Summary", f=dump_summary),
 ]
 
@@ -182,10 +184,12 @@ VirginSystem = [
 ]
 
 ImportWallet = [
+    #         xxxxxxxxxxxxxxxx
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("Restore Backup", f=restore_everything),
+    MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv),
     MenuItem("Dice Rolls", f=import_from_dice),
 ]

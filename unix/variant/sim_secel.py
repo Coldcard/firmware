@@ -88,7 +88,7 @@ def pin_stuff(submethod, buf_io):
 
     elif submethod == 1:
         # delay
-        time.sleep(0.500)
+        time.sleep(0.05)
         delay_achieved += 1
 
     elif submethod == 2:
@@ -114,7 +114,7 @@ def pin_stuff(submethod, buf_io):
 
             return EPIN_AUTH_FAIL
 
-        time.sleep(0.5)
+        time.sleep(0.05)
 
         if ts == b'\0'*72:
             state_flags |= PA_ZERO_SECRET
@@ -193,21 +193,30 @@ def pin_stuff(submethod, buf_io):
         if change_flags & CHANGE_DURESS_SECRET:
             SECRETS[kk+'_duress_secret'] = str(b2a_hex(secret), 'ascii')
 
-        time.sleep(1.5)
+        time.sleep(0.05)
 
     elif submethod == 4:
         # Fetch secrets
         duress_pin = SECRETS.get(kk+'_duress')
 
+        secret = None
+
         if pin == duress_pin:
             secret = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
         else:
-            # main/sec secrets
-            expect = SECRETS.get(kk, '')
-            if pin == expect:
-                secret = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
+            if change_flags & CHANGE_DURESS_SECRET:
+                # wants the duress secret
+                expect = SECRETS.get(kk, '')
+                if pin == expect:
+                    secret = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
             else:
-                return EPIN_AUTH_FAIL
+                # main/secondary secret
+                expect = SECRETS.get(kk, '')
+                if pin == expect:
+                    secret = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
+
+        if secret is None:
+            return EPIN_AUTH_FAIL
 
     elif submethod == 5:
         # greenlight firmware

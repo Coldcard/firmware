@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # sffile.py - file-like objects stored in SPI Flash
 #
@@ -10,9 +9,10 @@
 # - the offset is the file name
 # - last 64k of memory reserved for settings
 #
-import tcc
 from uasyncio import sleep_ms
 from uio import BytesIO
+from uhashlib import sha256
+from sflash import SF
 
 # this code works on large "blocks" defined by the chip as 64k
 blksize = const(65536)
@@ -33,12 +33,9 @@ class SFFile:
         if max_size != None:
             self.max_size = PADOUT(max_size) if not pre_erased else max_size
             self.readonly = False
-            self.checksum = tcc.sha256()
+            self.checksum = sha256()
         else:
             self.readonly = True
-
-        from main import sf
-        self.sf = sf
 
     def tell(self):
         # where are we?
@@ -74,32 +71,32 @@ class SFFile:
         assert self.length == 0 # 'already wrote?'
 
         for i in range(0, self.max_size, blksize):
-            self.sf.block_erase(self.start + i)
+            SF.block_erase(self.start + i)
 
             if i and self.message:
-                from main import dis
+                from glob import dis
                 dis.progress_bar_show(i/self.max_size)
 
             # expect block erase to take up to 2 seconds
-            while self.sf.is_busy():
+            while SF.is_busy():
                 await sleep_ms(50)
 
     def __enter__(self):
         if self.message:
-            from main import dis
+            from glob import dis
             dis.fullscreen(self.message)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.message:
-            from main import dis
+            from glob import dis
             dis.progress_bar_show(1)
 
         return False
 
     def wait_writable(self):
         # TODO: timeouts here
-        while self.sf.is_busy():
+        while SF.is_busy():
             pass
 
     def write(self, b):
@@ -128,7 +125,7 @@ class SFFile:
 
             self.wait_writable()
 
-            self.sf.write(self.start + self.pos + sofar, here)
+            SF.write(self.start + self.pos + sofar, here)
 
             left -= len(here)
             sofar += len(here)
@@ -155,12 +152,12 @@ class SFFile:
             return b''
 
         rv = bytearray(ll)
-        self.sf.read(self.start + self.pos, rv)
+        SF.read(self.start + self.pos, rv)
 
         self.pos += ll
 
         if self.message and ll > 1:
-            from main import dis
+            from glob import dis
             dis.progress_bar_show(self.pos / self.length)
 
         # altho tempting to return a bytearray (which we already have) many
@@ -173,7 +170,7 @@ class SFFile:
         if actual <= 0:
             return 0
 
-        self.sf.read(self.start + self.pos, b)
+        SF.read(self.start + self.pos, b)
 
         self.pos += actual
 

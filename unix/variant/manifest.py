@@ -1,0 +1,25 @@
+freeze_as_mpy('', [
+	'bare_metal.py',
+	'ckcc.py',
+	'ffilib.py',
+	'machine.py',
+	'mock.py',
+	'os.py',
+	'pyb.py',
+	'sflash.py',
+	'sim_display.py',
+	'sim_quickstart.py',
+	'sim_secel.py',
+	'sim_settings.py',
+	'sram2.py',
+	'ssd1306.py',
+	'stm.py',
+	'struct.py',
+	'touch.py',
+	'usb_test_commands.py',
+	'version.py',
+	'aes256ctr.py',
+	'zevvpeep.py',
+], opt=0)
+include("$(MPY_DIR)/extmod/uasyncio/manifest.py")
+

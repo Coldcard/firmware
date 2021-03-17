@@ -1,6 +1,8 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # A few USB link layer tests.
+# 
+# - not working well on simulator right now, but that's not key
 #
 import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node
@@ -64,7 +66,7 @@ def test_usb_fuzz(dev):
 
 # note: 0x80000000 = 2147483648
 
-@pytest.mark.parametrize('path', [ 'm', 'm/', 'm/1', "m/1'", "m/1'/0/1'",
+@pytest.mark.parametrize('path', [ '', 'm', 'm/1', "m/1'", "m/1'/0/1'",
     "m/2147483647", "m/2147483647'",
     'm/1/2/3/4/5/6/7/8/9/10'])
 def test_xpub_good(dev, master_xpub, path):
@@ -88,7 +90,7 @@ def test_xpub_good(dev, master_xpub, path):
     if len(path) <= 2:
         assert mk.fingerprint() == struct.pack('<I', dev.master_fingerprint)
 
-@pytest.mark.parametrize('path', [ '', '1/2', 'x/1/2', "m'"])
+@pytest.mark.parametrize('path', [ 'x/1/2', "m'", "m/"])
 def test_xpub_invalid(dev, path):
     # some bad paths
 
@@ -199,7 +201,7 @@ def test_remote_upload(dev):
     dev.upload_file(b'testing')
     dev.upload_file(os.urandom(3000))
 
-@pytest.mark.parametrize('f_len', [256, 1024, 2048, 384*1024])
+@pytest.mark.parametrize('f_len', [256, 1024, 2048, 8196, 384*1024])
 def test_remote_up_download(f_len, dev):
     import os
     data = os.urandom(f_len)

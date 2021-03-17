@@ -99,7 +99,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         need_keypress('y'); 
 
 
-def test_crypto_unittest(sim_eval, sim_exec):
+def test_crypto_unittest(sim_eval, sim_exec, simulator):
     # unit test for AES key generation from SDCard and master secret
     card = sim_exec('import files; from h import b2a_hex; cs = files.CardSlot().__enter__(); RV.write(b2a_hex(cs.get_id_hash())); cs.__exit__()')
 

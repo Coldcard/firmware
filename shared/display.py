@@ -1,11 +1,11 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # display.py - OLED rendering
 #
 import machine, ssd1306, uzlib, ckcc
 from ssd1306 import SSD1306_SPI
 import framebuf
+import uasyncio
 from uasyncio import sleep_ms
 from graphics import Graphics
 from sram2 import display2_buf
@@ -13,8 +13,6 @@ from sram2 import display2_buf
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
 FontFixed = object()    # ugly 8x8 PET font
-
-#ARROWS = [chr(i) for i in range(8592, 8592+4)]
 
 class Display:
 
@@ -125,17 +123,6 @@ class Display:
         pos = min(int(mm*fraction), mm)
         self.dis.fill_rect(128-2, pos, 1, 8, 1)
 
-    async def animate_splash(self, loop, done_fcn):
-        ns = 32
-        for i in range(ns):
-            self.progress_bar(i / (ns-1))
-            self.show()
-            await sleep_ms(3)
-
-        if done_fcn:
-            # create a new task, so this stack can be freed
-            loop.create_task(done_fcn())
-
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
         self.clear()
@@ -177,10 +164,6 @@ class Display:
         # useful as a callback
         self.progress_bar(percent)
         self.show()
-
-    def splash_animate(self, loop, done_fcn):
-        # do a bootup delay and some work along the way
-        loop.create_task(self.animate_splash(loop, done_fcn))
 
     def mark_sensitive(self, from_y, to_y):
         wx = self.WIDTH-4       # avoid scroll bar
@@ -224,7 +207,7 @@ class Display:
             self.show()
         else:
 
-            # a pattern that repeats nices mod 128
+            # a pattern that repeats nicely mod 128
             # - each byte here is a vertical column, 8 pixels tall, MSB at bottom
             data = bytes(0x80 if (x%4)<2 else 0x0 for x in range(128))
 

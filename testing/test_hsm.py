@@ -197,9 +197,9 @@ def tweak_rule(sim_exec):
     # reach under the skirt, and change policy rule ... so much faster
 
     def doit(idx, new_rule):
-        #cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write(hsm_active.rules[{idx}].to_text())"
+        #cmd = f"from hsm import ApprovalRule; from glob import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write(hsm_active.rules[{idx}].to_text())"
         #print(f"Rule #{idx+1} now: {txt}")
-        cmd = f"from hsm import ApprovalRule; from main import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write('ok')"
+        cmd = f"from hsm import ApprovalRule; from glob import hsm_active; hsm_active.rules[{idx}] = ApprovalRule({dict(new_rule)}, {idx}); hsm_active.summary='**tweaked**'; RV.write('ok')"
         txt = sim_exec(cmd)
         if 'Traceback' in txt:
             raise RuntimeError(txt)
@@ -211,7 +211,7 @@ def tweak_rule(sim_exec):
 def readback_rule(sim_exec):
     # readback the stored config of a rule, after parsing
     def doit(idx):
-        cmd = f"import ujson; from main import hsm_active; RV.write(ujson.dumps(hsm_active.rules[{idx}].to_json()));"
+        cmd = f"import ujson; from glob import hsm_active; RV.write(ujson.dumps(hsm_active.rules[{idx}].to_json()));"
         txt = sim_exec(cmd)
         if 'Traceback' in txt:
             raise RuntimeError(txt)
@@ -222,7 +222,7 @@ def readback_rule(sim_exec):
 def tweak_hsm_attr(sim_exec):
     # reach under the skirt, and change and attr on hsm obj
     def doit(name, value):
-        cmd = f"from main import hsm_active; setattr(hsm_active, '{name}', {value})"
+        cmd = f"from glob import hsm_active; setattr(hsm_active, '{name}', {value})"
         sim_exec(cmd)
     return doit
 
@@ -230,7 +230,7 @@ def tweak_hsm_attr(sim_exec):
 def tweak_hsm_method(sim_exec):
     # reach under the skirt, and change and attr on hsm obj
     def doit(fcn_name, *args):
-        cmd = f"from main import hsm_active; getattr(hsm_active, '{name}')({', '.join(args)})"
+        cmd = f"from glob import hsm_active; getattr(hsm_active, '{name}')({', '.join(args)})"
         sim_exec(cmd)
     return doit
 
@@ -267,11 +267,11 @@ def change_hsm(sim_eval, sim_exec, hsm_status):
     def doit(policy):
         # if already an HSM in motion; just replace it quickly
 
-        act = sim_eval('main.hsm_active')
+        act = sim_eval('glob.hsm_active')
         assert act != 'None', 'hsm not enabled yet'
 
-        cmd = f"import main; from hsm import HSMPolicy; \
-                    p=HSMPolicy(); p.load({dict(policy)}); main.hsm_active=p; p.explain(RV)"
+        cmd = f"import glob; from hsm import HSMPolicy; \
+                    p=HSMPolicy(); p.load({dict(policy)}); glob.hsm_active=p; p.explain(RV)"
         rv = sim_exec(cmd)
         assert 'Other policy' in rv
 
@@ -282,12 +282,16 @@ def change_hsm(sim_eval, sim_exec, hsm_status):
 def quick_start_hsm(hsm_reset, start_hsm, hsm_status, change_hsm, sim_eval):
     # if already an HSM in motion; just replace it quickly
     def doit(policy):
-        act = sim_eval('main.hsm_active')
+        act = sim_eval('glob.hsm_active')
 
         if act != 'None':
-            return change_hsm(policy)
+            rv = change_hsm(policy)
         else:
-            return start_hsm(policy)
+            rv = start_hsm(policy)
+
+        assert rv.active
+
+        return rv
     return doit
 
 @pytest.fixture
@@ -543,7 +547,7 @@ def test_huge_fee(warnings_ok, dev, quick_start_hsm, hsm_status, tweak_hsm_attr,
     # - doesn't matter what current policy is
     policy = {'warnings_ok': warnings_ok, 'rules': [{}]}
 
-    stat = quick_start_hsm(policy)
+    quick_start_hsm(policy)
 
     tweak_hsm_attr('warnings_ok', warnings_ok)
 
@@ -669,7 +673,8 @@ def calc_hmac_key(serial, secret='abcd1234'):
     from ckcc_protocol.constants import PBKDF2_ITER_COUNT
 
     salt = sha256(b'pepper'+serial.encode('ascii')).digest()
-    key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+    #key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
+    key = pbkdf2_hmac('sha512', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)[0:32]
 
     return key
 
@@ -785,7 +790,7 @@ def test_unit_local_conf(sim_exec, enter_local_code, quick_start_hsm):
     quick_start_hsm({})
 
     enter_local_code('123456')
-    rb = sim_exec('from main import hsm_active; RV.write(hsm_active.local_code_pending)')
+    rb = sim_exec('from glob import hsm_active; RV.write(hsm_active.local_code_pending)')
     assert rb == '123456'
 
 
@@ -893,7 +898,7 @@ def test_xpub_sharing(dev, start_hsm, change_hsm, addr_fmt=AF_CLASSIC):
 @pytest.fixture
 def fast_forward(sim_exec):
     def doit(dt):
-        cmd = f'from main import hsm_active; hsm_active.period_started -= {dt}; RV.write("ok")'
+        cmd = f'from glob import hsm_active; hsm_active.period_started -= {dt}; RV.write("ok")'
         assert sim_exec(cmd) == 'ok'
     return doit
 
@@ -1110,6 +1115,7 @@ def test_worst_policy(start_hsm, load_hsm_users):
 @pytest.mark.parametrize('case', ['simple', 'worst'])
 def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
     # exercise dump of backup data
+    # XXX run once/by itself
 
     if case == 'simple':
         policy = DICT(rules=[dict()])

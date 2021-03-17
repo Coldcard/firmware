@@ -1,4 +1,6 @@
-import uio, sys, main, version
+import uio, sys, version, nvstore
+#from pincodes import pa
+from sflash import SF
 
 def do_usb_command(cmd, args):
     # TESTING commands!
@@ -8,7 +10,7 @@ def do_usb_command(cmd, args):
     # - commands must be upper case
 
     if cmd == 'XKEY':
-        from main import numpad
+        from glob import numpad
         try:
             numpad.inject(str(args, 'ascii'))
         except: pass

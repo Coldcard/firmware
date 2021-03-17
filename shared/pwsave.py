@@ -1,9 +1,8 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import sys, tcc, stash, ujson, os
+import sys, stash, ujson, os, ngu
 from files import CardSlot, CardMissingError
 
 class PassphraseSaver:
@@ -33,11 +32,11 @@ class PassphraseSaver:
     def _read(self, card):
         # Return a list of saved passphrases, or empty list if fail.
         # Fail silently in all cases. Expect to see lots of noise here.
-        decrypt = tcc.AES(tcc.AES.CTR | tcc.AES.Decrypt, self.key)
+        decrypt = ngu.aes.CTR(self.key)
 
         try:
             msg = open(self.filename(card), 'rb').read()
-            txt = decrypt.update(msg)
+            txt = decrypt.cipher(msg)
             return ujson.loads(txt)
         except:
             return []
@@ -46,7 +45,7 @@ class PassphraseSaver:
     async def append(self, xfp, bip39pw):
         # encrypt and save; always appends.
         from ux import ux_dramatic_pause
-        from main import dis
+        from glob import dis
         from actions import needs_microsd
 
         while 1:
@@ -60,9 +59,9 @@ class PassphraseSaver:
 
                     data.append(dict(xfp=xfp, pw=bip39pw))
 
-                    encrypt = tcc.AES(tcc.AES.CTR | tcc.AES.Encrypt, self.key)
+                    encrypt = ngu.aes.CTR(self.key)
 
-                    msg = encrypt.update(ujson.dumps(data))
+                    msg = encrypt.cipher(ujson.dumps(data))
 
                     with open(self.filename(card), 'wb') as fd:
                         fd.write(msg)
@@ -130,7 +129,7 @@ class PassphraseSaver:
             # apply the password immediately and drop them at top menu
             set_bip39_passphrase(data[idx]['pw'])
 
-            from main import settings
+            from nvstore import settings
             from utils import xfp2str
             xfp = settings.get('xfp')
 

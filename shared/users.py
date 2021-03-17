@@ -1,21 +1,22 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # users.py
 #
 # Users, passwords and management of same. Primarily for HSM feature.
 #
 
-import ustruct, hmac, tcc
+import ustruct, ngu
 from public_constants import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC, USER_AUTH_SHOW_QR
 from public_constants import MAX_USERNAME_LEN, PBKDF2_ITER_COUNT
 from menu import MenuSystem, MenuItem
 from ucollections import namedtuple
 from ux import ux_dramatic_pause, ux_show_story, ux_confirm
+from nvstore import settings
 
 # accepting strings and strings, returning bytes when decoding, str when encoding (ie. correct)
-b32encode = tcc.codecs.b32_encode
-b32decode = tcc.codecs.b32_decode
+b32encode = ngu.codecs.b32_encode
+b32decode = ngu.codecs.b32_decode
+hmac_sha256 = ngu.hmac.hmac_sha256
 
 # to keep menus and such to a reasonable size
 MAX_NUMBER_USERS = const(30)
@@ -38,10 +39,10 @@ def calc_hotp(secret, counter):
 
     msg = ustruct.pack('>Q', counter)
 
-    hmac_digest = hmac.new(secret, msg, tcc.sha1).digest()
+    md = ngu.hmac.hmac_sha1(secret, msg)
 
-    o = hmac_digest[19] & 15
-    token = ustruct.unpack('>I', hmac_digest[o:o + 4])[0] & 0x7fffffff
+    o = md[19] & 15
+    token = ustruct.unpack('>I', md[o:o + 4])[0] & 0x7fffffff
 
     # return lowest 6 digits
     return '%06d' % (token % 1000000)
@@ -49,12 +50,13 @@ def calc_hotp(secret, counter):
 def calc_hmac_key(text_password):
     # Calculate a 32-byte key based on user's text password, PBKDF2_ITER_COUNT,
     # and device serial number as salt.
+    # - before v4, this was pbkdf2_sha256
     import version
 
-    salt = tcc.sha256(b'pepper' + version.serial_number().encode()).digest()
-    pw = tcc.pbkdf2('hmac-sha256', text_password, salt, PBKDF2_ITER_COUNT).key()
+    salt = ngu.hash.sha256s(b'pepper' + version.serial_number().encode())
+    pw = ngu.hash.pbkdf2_sha512(text_password, salt, PBKDF2_ITER_COUNT)
 
-    return pw
+    return pw[0:32]
 
 def calc_local_pincode(psbt_sha, hmac_secret):
     # Given a b64 encoded secret (shared from CC over USB) and the PSBT
@@ -62,7 +64,7 @@ def calc_local_pincode(psbt_sha, hmac_secret):
     from ubinascii import a2b_base64
     key = a2b_base64(hmac_secret)
     assert len(psbt_sha) == 32
-    digest = hmac.new(key, psbt_sha, tcc.sha256).digest()
+    digest = hmac_sha256(key, psbt_sha)
 
     num = ustruct.unpack('>I', digest[-4:])[0] & 0x7fffffff
     return '%06d' % (num % 1000000)
@@ -79,7 +81,6 @@ class Users:
 
     @classmethod
     def get(cls):
-        from main import settings
         rv = settings.get(KEY)
         return rv or dict()
 
@@ -91,7 +92,6 @@ class Users:
 
     @classmethod
     def update_counter(cls, username, cnt):
-        from main import settings
         t = cls.get()
         assert username in t
         t[username][2] = cnt
@@ -111,8 +111,6 @@ class Users:
         # - username must be unique
         # - if secret is empty, we pick it and return choice
         # - show QR of secret (for TOTP/HOTP) if 
-        from main import settings
-
         qr_mode = bool(auth_mode & USER_AUTH_SHOW_QR)
         if qr_mode:
             auth_mode &= ~USER_AUTH_SHOW_QR
@@ -168,8 +166,6 @@ class Users:
     @classmethod
     def delete(cls, username):
         # remove a user. simple. no checking
-        from main import settings
-
         u = cls.get()
         u.pop(username, None)
         settings.put(KEY, u)
@@ -204,7 +200,7 @@ class Users:
         secret = b32decode(secret)
 
         if auth_mode == USER_AUTH_HMAC:
-            expect = hmac.new(secret, psbt_hash or bytes(32), tcc.sha256).digest()
+            expect = hmac_sha256(secret, psbt_hash or bytes(32))
             if expect != token:
                 return 'mismatch'
 

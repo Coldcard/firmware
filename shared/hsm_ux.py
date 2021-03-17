@@ -1,18 +1,17 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # hsm_ux.py
 #
 # User experience related to the HSM. Ironic because there isn't a user present.
 #
-import ustruct, tcc, ux, chains, sys, gc, uio, ujson, uos, utime
+import ustruct, ux, chains, sys, gc, uio, ujson, uos, utime, ngu
 from ckcc import is_simulator
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, the_ux
 from ux import AbortInteraction
 from utils import problem_file_line, cleanup_deriv_path
 from auth import UserAuthorizedAction
-from uasyncio.queues import QueueEmpty
+from queues import QueueEmpty
 from ubinascii import a2b_base64
 from users import Users, MAX_NUMBER_USERS
 from public_constants import MAX_USERNAME_LEN
@@ -60,7 +59,7 @@ class ApproveHSMPolicy(UserAuthorizedAction):
             self.refused = (ch != 'y')
 
             if not self.refused and self.new_file:
-                confirm_char = '12346'[tcc.random.uniform(5)]
+                confirm_char = '12346'[ngu.random.uniform(5)]
                 msg = '''Last chance. You are defining a new policy which \
 allows the Coldcard to sign specific transactions without any further user approval.\n\n\
 Press %s to save policy and enable HSM mode.''' % confirm_char
@@ -177,7 +176,7 @@ class hsmUxInteraction:
 
     def draw_background(self):
         # Render and capture static parts of screen one-time.
-        from main import dis
+        from glob import dis
         from display import FontTiny
 
         dis.clear()
@@ -218,7 +217,7 @@ class hsmUxInteraction:
 
 
     def show(self):
-        from main import dis, hsm_active
+        from glob import dis, hsm_active
 
         # Plan: show "time til period reset", and some stats,
         # but never show amounts or private info.
@@ -268,7 +267,7 @@ class hsmUxInteraction:
 
     def draw_busy(self, msg, percent):
         from display import FontTiny
-        from main import dis
+        from glob import dis
 
         self.last_percent = 0.5
 
@@ -306,21 +305,21 @@ class hsmUxInteraction:
         self.draw_busy(None, percent)
 
     async def interact(self):
-        import main
-        from main import numpad, is_devmode
+        import glob
+        from glob import numpad
         from actions import login_now
         from uasyncio import sleep_ms
 
         # Replace some drawing functions
-        orig_fullscreen = main.dis.fullscreen
-        orig_progress_bar = main.dis.progress_bar
-        orig_progress_bar_show = main.dis.progress_bar_show
-        main.dis.fullscreen = self.hack_fullscreen
-        main.dis.progress_bar = self.hack_progress_bar
-        main.dis.progress_bar_show = self.hack_progress_bar
+        orig_fullscreen = glob.dis.fullscreen
+        orig_progress_bar = glob.dis.progress_bar
+        orig_progress_bar_show = glob.dis.progress_bar_show
+        glob.dis.fullscreen = self.hack_fullscreen
+        glob.dis.progress_bar = self.hack_progress_bar
+        glob.dis.progress_bar_show = self.hack_progress_bar
 
         # get ready ourselves
-        main.dis.set_brightness(0)        # dimest, but still readable
+        glob.dis.set_brightness(0)        # dimest, but still readable
         self.draw_background()
 
         # Kill time, waiting for user input
@@ -338,7 +337,7 @@ class hsmUxInteraction:
                     self.digits = ''
                 elif ch == 'y':
                     if len(self.digits) == LOCAL_PIN_LENGTH:
-                        main.hsm_active.local_pin_entered(self.digits)
+                        glob.hsm_active.local_pin_entered(self.digits)
                         self.digits = ''
                 elif ch == numpad.ABORT_KEY:
                     # important to eat these and fully suppress them
@@ -349,7 +348,7 @@ class hsmUxInteraction:
                         self.digits += ch[0]
                     if len(self.digits) == LOCAL_PIN_LENGTH:
                         # send it, even if they didn't press OK yet
-                        main.hsm_active.local_pin_entered(self.digits)
+                        glob.hsm_active.local_pin_entered(self.digits)
 
                 # do immediate screen update
                 continue
@@ -373,14 +372,14 @@ class hsmUxInteraction:
         # and when the "boot_to_hsm" feature is used and successfully unlock near
         # boottime.
         from actions import goto_top_menu
-        main.hsm_active = None
+        glob.hsm_active = None
         goto_top_menu()
 
         # restore normal operation of UX
         from display import Display
-        main.dis.fullscreen = orig_fullscreen
-        main.dis.progress_bar = orig_progress_bar
-        main.dis.progress_bar_show = orig_progress_bar_show
+        glob.dis.fullscreen = orig_fullscreen
+        glob.dis.progress_bar = orig_progress_bar
+        glob.dis.progress_bar_show = orig_progress_bar_show
 
         return
 

@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # version.py - Get lots of different version numbers from stuff.
 #
@@ -39,7 +38,7 @@ def get_header_value(fld_name):
 
     return ustruct.unpack_from(FWH_PY_FORMAT, hdr)[idx]
 
-def is_devmode():
+def get_is_devmode():
     # what firmware signing key did we boot with? are we in dev mode?
     from sigheader import RAM_HEADER_BASE, FWH_PK_NUM_OFFSET
     import stm
@@ -75,7 +74,7 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, has_fatram, is_factory_mode
+    global hw_label, has_608, has_fatram, is_factory_mode, is_devmode
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
     import ckcc, callgate, stm
@@ -106,6 +105,9 @@ def probe_system():
     if bn:
         # this path supports testing/dev with RDP!=2, which normal production bootroms enforce
         is_factory_mode = False
+
+    # what firmware signing key did we boot with? are we in dev mode?
+    is_devmode = get_is_devmode()
 
 probe_system()
 

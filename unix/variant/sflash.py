@@ -63,4 +63,6 @@ class SPIFlash:
             while self.is_busy():
                 pass
 
+SF = SPIFlash()
+
 # EOF

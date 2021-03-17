@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # seed.py - bip39 seeds and words
 #
@@ -13,40 +12,23 @@
 #
 from menu import MenuItem, MenuSystem
 from utils import pop_count, xfp2str
-import tcc, uctypes
+import ngu, uctypes, bip39, random
+from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease
 from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
-from ckcc import rng_bytes
-from random import rng, shuffle
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver
+from nvstore import settings
+from pincodes import pa
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
 
 # bit flag that means "also include bare prefix as a valid word"
 _PREFIX_MARKER = const(1<<26)
-
-def extend_word(w):
-    # try to add as many non-abiguous chars onto end,
-    # and append - if we had to stop before we got to final end
-    while 1:
-        bitmask = tcc.bip39.complete_word(w)
-
-        if bitmask == 0 or bitmask == _PREFIX_MARKER:
-            return w
-
-        if pop_count(bitmask) != 1:
-            return w+'-'
-
-        for n in range(26):
-            msk = 1<<n
-            if (msk & bitmask):
-                w += chr(97+n)
-                break
     
 def letter_choices(sofar='', depth=0, thres=5):
     # make a list of word completions based on indicated prefix
@@ -56,33 +38,49 @@ def letter_choices(sofar='', depth=0, thres=5):
         # - and q- which is really qu-, because English.
         return [('%s-' % chr(97+i)) if i != 16 else 'qu-'  for i in range(26) if i != 23]
 
-    bitmask = tcc.bip39.complete_word(sofar)
+    exact, nexts, matched = bip39.next_char(sofar)
+    #print("[%d] %s => x=%r n=%r m=%r" % (depth, sofar, exact, nexts, matched))
 
-    if not bitmask:
+    if not nexts:
         # no more choices; done
-        return [sofar]
+        return [matched]
 
     rv = []
-    if bitmask & _PREFIX_MARKER:
+    if exact:
         # ie: "act" plus "action", "actor"
         rv.append(sofar)
 
-    for w in (sofar+chr(i+97) for i in range(0, 26) if (bitmask & (1<<i))):
-        rv.append(extend_word(w))
+    if len(nexts) == 1 and matched:
+        # aba => abandon (unambig first 3 chars)
+        # but not: age => age, agent (abig first 3)
+        rv.append(matched)
+    else:
+        for w in nexts:
+            rv.append(sofar + w + '-')
 
-    if len(rv) <= thres and depth == 0:
-        # examples:
-        #   z => ze- and zo-  ... better if all 4 z-words are shown
-        #   y => 6 choices
-        # - above thres=5, we get menus w/60+ entries
-        # - recurse only one level also to keep size down
-        a = []
-        for i in rv:
-            if i[-1] != '-':
-                a.append(i)
-            else:
-                a.extend(letter_choices(i[:-1], depth+1))
-        return a
+    # replace bab- => baby and other cases where prefix is unique
+    # - doesn't grow menu length
+    if len(sofar) >= 2:
+        for n, w in enumerate(rv):
+            if w[-1] != '-': continue
+            exact, nexts, matched = bip39.next_char(w[:-1])
+            if matched:
+                rv[n] = matched
+
+    if len(rv) <= thres:
+        if depth == 0:
+            # examples:
+            #   z => ze- and zo-  ... better if all 4 z-words are shown
+            #   y => 6 choices
+            # - above thres=5, we get menus w/60+ entries
+            # - recurse only one level also to keep size down
+            a = []
+            for i in rv:
+                if i[-1] != '-':
+                    a.append(i)
+                else:
+                    a.extend(letter_choices(i[:-1], depth+1))
+            return a
 
     return rv
 
@@ -161,10 +159,27 @@ class WordNestMenu(MenuSystem):
         #print(("words[%d]: " % len(words)) + ' '.join(words))
         assert len(words) <= self.target_words
 
+        if len(words) == 23 and self.has_checksum:
+            # we can provide final 8 choices, but only for 24-word case
+            final_words = list(bip39.a2b_words_guess(words))
+
+            async def picks_chk_word(s, idx, choice):
+                # they picked final word, the word includes valid checksum bits
+                words.append(choice.label)
+                await cls.done_cb(words.copy())
+
+            items = [MenuItem(w, f=picks_chk_word) for w in final_words]
+            items.append(MenuItem('(none above)', f=self.explain_error))
+            return cls(is_commit=True, items=items)
+
         # add a few top-items in certain cases
         if len(words) == self.target_words:
             if self.has_checksum:
-                correct = tcc.bip39.check(' '.join(words))
+                try:
+                    bip39.a2b_words(' '.join(words))
+                    correct = True
+                except ValueError:
+                    correct = False
             else:
                 correct = True
 
@@ -259,10 +274,10 @@ async def show_words(words, prompt=None, escape=None, extra=''):
     return await ux_show_story(msg, escape=escape, sensitive=True)
 
 async def add_dice_rolls(count, seed, judge_them):
-    from main import dis
+    from glob import dis
     from display import FontTiny, FontLarge
 
-    md = tcc.sha256(seed)
+    md = sha256(seed)
     pr = PressRelease()
 
     # fixed parts of screen
@@ -331,18 +346,17 @@ async def import_from_dice():
     await approve_word_list(seed)
 
 async def make_new_wallet():
-    # Pick a new random seed, and 
+    # Pick a new random seed.
 
     await ux_dramatic_pause('Generating...', 4)
 
     # always full 24-word (256 bit) entropy
-    seed = bytearray(32)
-    rng_bytes(seed)
+    seed = random.bytes(32)
 
     assert len(set(seed)) > 4       # TRNG failure
 
-    # hash to mitigate bias in TRNG
-    seed = tcc.sha256(seed).digest()
+    # hash to mitigate possible bias in TRNG
+    seed = ngu.hash.sha256s(seed)
 
     await approve_word_list(seed)
 
@@ -353,7 +367,7 @@ async def approve_word_list(seed):
     # vividly instructed, then it's a big deal to lose those words and have to start
     # over. So confirm that action, and don't volunteer it.
 
-    words = tcc.bip39.from_data(seed).split(' ')
+    words = bip39.b2a_words(seed).split(' ')
     assert len(words) == 24
 
     while 1:
@@ -373,7 +387,7 @@ async def approve_word_list(seed):
             count, new_seed = await add_dice_rolls(0, seed, False)
             if count:
                 seed = new_seed
-                words = tcc.bip39.from_data(seed).split(' ')
+                words = bip39.b2a_words(seed).split(' ')
 
             continue
 
@@ -405,11 +419,11 @@ async def approve_word_list(seed):
 def set_seed_value(words):
     # Save the seed words into secure element, and reboot. BIP39 password
     # is not set at this point (empty string)
-    ok = tcc.bip39.check(' '.join(words))
-    assert ok, "seed check: %r" % words
+
+    bip39.a2b_words(words)      # checksum check
 
     # map words to bip39 wordlist indices
-    data = [tcc.bip39.lookup_word(w) for w in words]
+    data = [bip39.wordlist_en.index(w) for w in words]
 
     # map to packed binary representation.
     val = 0
@@ -425,7 +439,7 @@ def set_seed_value(words):
     seed = val.to_bytes(vlen, 'big')
     assert len(seed) == vlen
     
-    from main import dis, pa, settings
+    from glob import dis
 
     # encode it for our limited secret space
     nv = SecretStash.encode(seed_phrase=seed)
@@ -445,7 +459,7 @@ def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
 
     # takes a bit, so show something
-    from main import dis
+    from glob import dis
     dis.fullscreen("Working...")
 
     # set passphrase
@@ -466,7 +480,7 @@ def set_bip39_passphrase(pw):
 async def remember_bip39_passphrase():
     # Compute current xprv and switch to using that as root secret.
     import stash
-    from main import dis, pa
+    from glob import dis
 
     dis.fullscreen('Check...')
 
@@ -488,7 +502,7 @@ async def remember_bip39_passphrase():
     pa.login()
 
 def clear_seed():
-    from main import dis, pa, settings
+    from glob import dis
     import utime, version
 
     dis.fullscreen('Clearing...')
@@ -523,14 +537,14 @@ async def word_quiz(words, limited=None):
         # truncate to some N randomly-selected words in the list
         # and always the last word
         order = list(range(wl-1))
-        shuffle(order)
+        random.shuffle(order)
 
         order = order[0:limited-1]
         order.append(wl-1)
     else:
         order = list(range(wl))
         
-    shuffle(order)
+    random.shuffle(order)
 
     for o in order:
         # always 3 choices: right answer, wrong from correct set, random word
@@ -538,19 +552,19 @@ async def word_quiz(words, limited=None):
 
         choices = [right]
         while 1:
-            n = words[rng() % wl]
+            n = words[random.randbelow(wl)]
             if n in choices: continue
             choices.append(n)
             break
 
         while 1:
-            n = tcc.bip39.lookup_nth(rng() % 0x800)
+            n = bip39.wordlist_en[random.randbelow(0x800)]
             if n in choices: continue
             choices.append(n)
             break
 
         while 1:
-            shuffle(choices)
+            random.shuffle(choices)
             
             msg = '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
             msg += '\n\nWhich word is right?\n\nX to give up, OK to see all the words again.'
@@ -614,7 +628,7 @@ class PassphraseMenu(MenuSystem):
 
     async def add_numbers(self, *a):
         # collect a series of digits
-        from main import dis
+        from glob import dis
         from display import FontTiny, FontSmall
         global pp_sofar
 
@@ -719,7 +733,6 @@ class PassphraseMenu(MenuSystem):
 
         set_bip39_passphrase(pp_sofar)
 
-        from main import settings
         xfp = settings.get('xfp')
 
         msg = '''Above is the master key fingerprint of the new wallet.
@@ -764,7 +777,7 @@ class SingleWordMenu(WordNestMenu):
 
 async def spinner_edit(pw, confirm_exit=True):
     # Allow them to pick each digit using "D-pad"
-    from main import dis
+    from glob import dis
     from display import FontTiny, FontSmall
 
     # Should allow full unicode, NKDN

@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # compat7z.py
 #
@@ -7,13 +6,13 @@
 # always does AES-256. Not really expecting to be able to read any 7z file, except
 # those we created ourselves.
 #
-import os, sys, tcc, ckcc
+import os, sys, ckcc, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import crc32
 from ustruct import unpack, pack, calcsize
 from ucollections import namedtuple
-from tcc import sha256          # uhashlib also works
+from uhashlib import sha256
 from uio import BytesIO
         
 def masked_crc(bits):
@@ -263,11 +262,13 @@ class Builder(object):
             # figure out key to be used
             key = self.calculate_key(password, progress_fcn)
 
-            out = b''
-            aes = tcc.AES(tcc.AES.CBC | tcc.AES.Decrypt, key, self.iv)
+            aes = ngu.aes.CBC(False, key, self.iv)
 
+            out = b''
             for blk in range(0, len(body), 16):
-                out += aes.update(body[blk:blk+16])
+                out += aes.cipher(body[blk:blk+16])
+
+            aes.blank()
 
             # trim padding, check CRC
             out = out[0:unpacked_size]
@@ -290,9 +291,9 @@ class Builder(object):
             fname, body_size, unpacked_size, expect_crc = self.parse_section_hdr(meta)
 
             assert len(body) == body_size
-            assert unpacked_size <= max_size, 'too big'
-            assert len(body) <= unpacked_size+16, 'too big, encoded'
-            assert len(body) % 16 == 0, 'not blocked'
+            assert unpacked_size <= max_size        # 'too big'
+            assert len(body) <= unpacked_size+16    # 'too big, encoded'
+            assert len(body) % 16 == 0              # 'not blocked'
 
             #print("Section ok: '%s' of %d bytes =>  %r" % (fname, unpacked_size, shdr))
 
@@ -306,8 +307,7 @@ class Builder(object):
     def add_data(self, raw):
         if not self.aes:
             # do this late, so easier to test w/ known values.
-            #self.aes = AES.AESCipher(self.key, mode=AES.MODE_CBC, IV=self.iv)
-            self.aes = tcc.AES(tcc.AES.CBC | tcc.AES.Encrypt, self.key, self.iv)
+            self.aes = ngu.aes.CBC(True, self.key, self.iv)
 
         here = len(raw)
         self.pt_crc = crc32(raw, self.pt_crc)
@@ -315,13 +315,13 @@ class Builder(object):
         padded_len = (here + 15) & ~15
         if padded_len != here:
             if self.padding != None:
-                raise ValueError("can't do less than a block except at end")
+                raise ValueError()          # "can't do less than a block except at end"
             self.padding =  (padded_len - here)
-            raw += '\x00' * self.padding
+            raw += bytes(self.padding)
         self.unpacked_size += here
 
-        assert len(raw) % 16 == 0, b2a_hex(raw)
-        self.body += self.aes.update(raw)
+        assert len(raw) % 16 == 0
+        self.body += self.aes.cipher(raw)
 
 
     def calculate_key(self, password, progress_fcn=None):

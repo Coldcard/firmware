@@ -1,15 +1,15 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # history.py - store some history about past transactions and/or outputs they involved
 #
-import tcc, gc, chains
+import gc, chains
 from utils import B2A
+from uhashlib import sha256
 from ustruct import pack, unpack
 from exceptions import IncorrectUTXOAmount
 from ubinascii import b2a_base64, a2b_base64
 from serializations import COutPoint, uint256_from_str
-from main import settings
+from nvstore import settings
 
 # Very limited space in serial flash, so we compress as much as possible:
 # - would be bad for privacy to store these **UTXO amounts** in plaintext
@@ -60,7 +60,7 @@ class OutptValueCache:
         # hash up the txid and output number, truncate, and encode as base64
         # - truncating at (mod3) bytes so no padding on b64 output
         # - expects a COutPoint
-        md = tcc.sha256('OutptValueCache')
+        md = sha256('OutptValueCache')
         md.update(prevout.serialize())
         return b2a_base64(md.digest()[:15])[:-1].decode()
 

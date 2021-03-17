@@ -17,10 +17,11 @@ if '--sflash' not in sys.argv:
     import nvstore
     from sim_settings import sim_defaults
     nvstore.SettingsObject.default_values = lambda _: dict(sim_defaults)
+    nvstore.settings.current = dict(sim_defaults)
 
 if sys.argv[-1] != '-q':
-    from main import go
+    #from main import go
+    import main
     import sim_quickstart
-    go()
 
 # EOF

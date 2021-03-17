@@ -1,11 +1,10 @@
-# (c) Copyright 2020 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # hsm.py
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ustruct, tcc, chains, sys, gc, uio, ujson, uos, utime, ckcc
+import stash, ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
 from sffile import SFFile
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
@@ -30,7 +29,7 @@ ABSOLUTE_MAX_REFUSALS = const(100)
 
 # you have this many seconds after boot to escape HSM
 # mode, if you enable the boot_to_hsm feature
-BOOT_LOCKOUT_TIME = const(30)
+BOOT_LOCKOUT_TIME = const(60)
 
 def hsm_policy_available():
     # Is there an HSM policy ready to go? Offer the menu item then.
@@ -123,12 +122,12 @@ def cleanup_whitelist_value(s):
     # - later matching is string-based, so just doing basic syntax check here
     # - must be checksumed-base58 or bech32
     try:
-        tcc.codecs.b58_decode(s)
+        ngu.codecs.b58_decode(s)
         return s
     except: pass
 
     try:
-        tcc.codecs.bech32_decode(s)
+        ngu.codecs.segwit_decode(s)
         return s
     except: pass
 
@@ -500,11 +499,12 @@ class HSMPolicy:
 
     def activate(self, new_file):
         # user approved the HSM activation, so apply it.
-        from main import pa, dis
+        from glob import dis
+        from pincodes import pa
 
-        import main
-        assert not main.hsm_active
-        main.hsm_active = self
+        import glob
+        assert not glob.hsm_active
+        glob.hsm_active = self
 
         self.start_time = utime.ticks_ms()
 
@@ -571,7 +571,7 @@ class HSMPolicy:
         # save the "long secret" ... probably only happens first time HSM policy
         # is activated, because we don't store that original value except here 
         # and in SE.
-        from main import pa
+        from pincodes import pa
 
         # add length half-word to start, and pad to max size
         tmp = bytearray(AE_LONG_SECRET_LEN)
@@ -597,7 +597,7 @@ class HSMPolicy:
         assert self.sl_reads < self.allow_sl, 'consumed'
         self.sl_reads += 1
 
-        from main import pa
+        from pincodes import pa
         raw = pa.ls_fetch()
         ll, = ustruct.unpack_from('H', raw)
         assert 0 <= ll <= AE_LONG_SECRET_LEN-2
@@ -617,7 +617,7 @@ class HSMPolicy:
     async def approve_msg_sign(self, msg_text, address, subpath):
         # Maybe approve indicated message to be signed.
         # return 'y' or 'x'
-        sha = tcc.sha256(msg_text).digest()
+        sha = ngu.hash.sha256s(msg_text)
         with AuditLogger('messages', sha, self.never_log) as log:
 
             if self.must_log and log.is_unsaved:
@@ -681,7 +681,6 @@ class HSMPolicy:
             if code == self.boot_to_hsm:
                 # let them out of jail
                 from hsm_ux import hsm_ux_obj
-                hsm_delete_policy()
                 hsm_ux_obj.test_restart = True
 
     def consume_local_code(self, psbt_sha):
@@ -701,7 +700,7 @@ class HSMPolicy:
         # provide a random key to be used as HMAC key to generate the local code
         # - want to keep this relatively short, and free of padding chars
         from ubinascii import b2a_base64
-        self.next_local_code = b2a_base64(tcc.random.bytes(15)).strip().decode('ascii')
+        self.next_local_code = b2a_base64(ngu.random.bytes(15)).strip().decode('ascii')
 
     async def approve_transaction(self, psbt, psbt_sha, story):
         # Approve or don't a transaction. Catch assertions and other
@@ -807,9 +806,8 @@ class HSMPolicy:
         
         # Crash if too many refusals happen.
         if self.refusals >= ABSOLUTE_MAX_REFUSALS:
-            from utils import clean_shutdown
-            from main import loop
-            loop.call_later_ms(250, clean_shutdown)
+            from utils import clean_shutdown, call_later_ms
+            call_later_ms(250, clean_shutdown)
 
     def approve(self, log, msg):
         # when things fail
@@ -822,7 +820,8 @@ def hsm_status_report():
     # Return a JSON-able object. Documented and external programs
     # rely on this output... and yet, don't overshare either.
     from auth import UserAuthorizedAction
-    from main import hsm_active, settings
+    from glob import hsm_active
+    from nvstore import settings
     from hsm_ux import ApproveHSMPolicy
 
     rv = dict()

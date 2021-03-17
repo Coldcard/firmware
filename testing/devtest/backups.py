@@ -9,8 +9,8 @@
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 
-import tcc, ustruct
-from main import settings, sf
+import ngu, ustruct
+from nvstore import settings
 
 if 1:
     # test file contents: completeness, syntax
@@ -47,8 +47,9 @@ async def test_7z():
     # Altho cleartext mode is not for real, if the code is written, I must test it.
     from backups import write_complete_backup, restore_complete_doit
     from sffile import SFFile
-    import tcc, version, uos
-    from main import settings, sf, numpad, pa
+    import ngu, version, uos
+    from glob import numpad, pa
+    from nvstore import settings
 
     if version.has_fatram:
         import hsm
@@ -56,7 +57,7 @@ async def test_7z():
     else:
         had_policy = False
 
-    today = tcc.random.uniform(1000000)
+    today = ngu.random.uniform(1000000)
 
     import machine
     machine.reset = lambda: None
@@ -79,7 +80,7 @@ async def test_7z():
                 assert ll > 800
                 assert len(sha) == 32
                 assert result[0:6] == b"7z\xbc\xaf'\x1c"
-                assert tcc.sha256(result).digest() == sha
+                assert ngu.hash.sha256s(result) == sha
                 assert len(set(result)) >= 240      # encrypted
             else:
                 sr = str(result, 'ascii')
@@ -120,12 +121,13 @@ async def test_7z():
             ux.restore_menu()
 
 
-from main import loop
-loop.run_until_complete(test_7z())
+import uasyncio
+uasyncio.get_event_loop().run_until_complete(test_7z())
 
 
 # test recovery/reset
-sf.chip_erase()
+from sflash import SF
+SF.chip_erase()
 settings.load()
 
 

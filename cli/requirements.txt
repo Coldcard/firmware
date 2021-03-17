@@ -1,15 +1,4 @@
-# NOTE: much of this is implied by ckcc-protocol/setup
-
-# may need "brew install hidapi" before this?
-hidapi>=0.7.99.post21
+# only items needed for signit.py
 
 click>=6.7
-
-# required by signit.py and link-layer encryption in client.py
 ecdsa>=0.13
-
-# so pydfu.py can run?
-pyusb
-
-# for link-layer encryption
-pyaes

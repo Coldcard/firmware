@@ -1,17 +1,17 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # selftest.py - Interactive Selftest code
 #
 import ckcc
 from uasyncio import sleep_ms
-from main import dis, settings
+from glob import dis
 from display import FontLarge
 from ux import ux_wait_keyup, ux_clear_keys, ux_poll_once
 from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
 from utils import imported
 import version
+from nvstore import settings
 
 async def test_numpad():
     # do an interactive self test
@@ -32,7 +32,7 @@ async def test_numpad():
 def set_genuine():
     # PIN must be blank for this to work
     # - or logged in already as main
-    from main import pa
+    from pincodes import pa
 
     if pa.is_secondary:
         return
@@ -120,12 +120,12 @@ async def test_sflash():
     dis.text(None, 18, 'Serial Flash')
     dis.show()
 
-    from main import sf
+    from sflash import SF
     from ustruct import pack
-    import tcc
+    import ngu
 
     msize = 1024*1024
-    sf.chip_erase()
+    SF.chip_erase()
 
     for phase in [0, 1]:
         steps = 7*4
@@ -133,9 +133,9 @@ async def test_sflash():
             dis.progress_bar(i/steps)
             dis.show()
             await sleep_ms(250)
-            if not sf.is_busy(): break
+            if not SF.is_busy(): break
 
-        assert not sf.is_busy()     # "didn't finish"
+        assert not SF.is_busy()     # "didn't finish"
 
         # leave chip blank
         if phase == 1: break
@@ -143,20 +143,20 @@ async def test_sflash():
 
         buf = bytearray(32)
         for addr in range(0, msize, 1024):
-            sf.read(addr, buf)
+            SF.read(addr, buf)
             assert set(buf) == {255}        # "not blank"
 
-            rnd = tcc.sha256(pack('I', addr)).digest()
-            sf.write(addr, rnd)
-            sf.read(addr, buf)
+            rnd = ngu.hash.sha256s(pack('I', addr))
+            SF.write(addr, rnd)
+            SF.read(addr, buf)
             assert buf == rnd           #  "write failed"
 
             dis.progress_bar_show(addr/msize)
 
         # check no aliasing, also right size part
         for addr in range(0, msize, 1024):
-            expect = tcc.sha256(pack('I', addr)).digest()
-            sf.read(addr, buf)
+            expect = ngu.hash.sha256s(pack('I', addr))
+            SF.read(addr, buf)
             assert buf == expect        # "readback failed"
 
             dis.progress_bar_show(addr/msize)

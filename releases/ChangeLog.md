@@ -1,3 +1,39 @@
+## 4.0.0b4 BETA - March 17, 2021
+
+**BETA RELEASE** — (release candidate for v4.0.0)
+
+- Major internal changes.
+    - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)
+      for all EC crypto operations
+    - super fast pure-assembly AES256-CTR code makes USB communications faster
+    - newly optimized SHA256 and SHA256(SHA256) code
+    - all crypto and BIP39 related code replaced
+    - huge thanks to [@switck](https://twitter.com/switck) for the new library!
+- Enhancement: During seed phrase import, after 23 words provided, Coldcard will
+  calculate the correct checksum and show the valid choices for the last word (there
+  will be 8 typically). This means you can pick seed words by drawing from a hat.
+- New feature: Secure Device Cloning. Using a MicroSD card, copy your Coldcard's secrets
+  and settings to a blank Coldcard. Very quick and easy, uses public key encryption
+  (Diffie-Hellman key exchange) and AES-256-CBC for the transfer.
+- Bugfix: CSV of addresses explorer export via Address Explorer, when account number
+  was used, did not reflect the (non-zero) account number.
+- Enhancement: Reproducible builds! Checkout code, "cd stm32; make repro" should do it all.
+- Enhancement: Paper wallet feature restored as it was previously. Same cautions apply.
+- Enhancement: Inside encrypted backup files (7z), the cleartext filename is no longer
+  fixed as `ckcc-backup.txt`. Instead it's a random word and number. Improves plausible
+  deniability when backup files discovered.
+- Enhancement: Show a progress bar during slow parts of the login process.
+- Enhancement: Long menus, like the seed-word picking system, now wrap around from top/bottom, so
+  you can get to Z by going up from A.
+- Limitation: Mk2 (older hardware, with less memory) may struggle with some of the new
+  features, but can still run this firmware release... so you can clone it to your new Mk3!
+- HSM/CKBunker mode changes:
+    - IMPORTANT: users with passwords will have to be reconstructed as hash algo has changed 
+    - when unlocking HSM mode from "boot to HSM mode" (using secret PIN immediately after bootup)
+      the HSM policy is no longer removed automatically. 
+    - time limit to escape "boot to HSM" mode has doubled from 30 seconds to 1 minute.
+- Remaining GPL code has been removed, so license is now MIT+CC on everything.
+
 ## 3.2.2 - Jan 14, 2021
 
 - Major Address Explorer enhancements! Thanks go to [@switck](https://twitter.com/switck)
@@ -10,7 +46,7 @@
     - Export of addresses now named "addresses.csv" not ".txt"
 - Bugfix: Disable a few more path derivation checks for "Skip Checks" for
   multisig compatibility. Handles error shown when working
-  with previously-imported Spectre multisig wallets (ie. `multisig.py: 891`).
+  with previously-imported Specter multisig wallets (ie. `multisig.py: 891`).
 - Bugfix: Generic wallet export (JSON) name for BIP49 wallets changed
   from "p2wpkh-p2sh" to "p2sh-p2wpkh". Thanks [@craigraw](https://twitter.com/craigraw)
 

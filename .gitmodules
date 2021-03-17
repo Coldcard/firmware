@@ -2,15 +2,12 @@
 	path = external/micropython
 	url = https://github.com/Coldcard/micropython.git
 	branch = master
-[submodule "external/modcryptocurrency"]
-	path = external/modcryptocurrency
-	url = https://github.com/Coldcard/modcryptocurrency.git
-[submodule "external/crypto"]
-	path = external/crypto
-	url = https://github.com/peter-conalgo/trezor-crypto.git
 [submodule "external/ckcc-protocol"]
 	path = external/ckcc-protocol
 	url = https://github.com/Coldcard/ckcc-protocol.git
 [submodule "external/mpy-qr"]
 	path = external/mpy-qr
 	url = https://github.com/coinkite/mpy-qr.git
+[submodule "external/libngu"]
+	path = external/libngu
+	url = https://github.com/switck/libngu.git

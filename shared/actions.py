@@ -1,5 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # actions.py
 #
@@ -9,10 +8,12 @@ import ckcc, pyb, version
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
 from ux import ux_enter_number
 from utils import imported, pretty_short_delay, problem_file_line
-from main import settings
+import uasyncio
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
 from utils import xfp2str
+from nvstore import settings
+from pincodes import pa
 
 async def start_selftest(*args):
 
@@ -74,7 +75,6 @@ Press OK to accept terms and continue.""", escape='7')
 
 async def view_ident(*a):
     # show the XPUB, and other ident on screen
-    from main import settings, pa
     import callgate, stash
 
     tpl = '''\
@@ -111,12 +111,11 @@ Extended Master Key:
     await ux_show_story(msg)
 
 async def show_settings_space(*a):
-    from main import settings
 
     await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.capacity * 100))
 
 async def maybe_dev_menu(*a):
-    from main import is_devmode
+    from version import is_devmode
 
     if not is_devmode:
         ok = await ux_confirm('Developer features could be used to weaken security or release key material.\n\nDo not proceed unless you know what you are doing and why.')
@@ -169,8 +168,6 @@ Keep tmp files and other junk out!""")
 
 async def dev_enable_protocol(*a):
     # Turn off disk emulation. Keep VCP enabled, since they are still devs.
-    from main import loop
-
     cur = pyb.usb_mode()
     if cur and 'HID' in cur:
         await ux_show_story('Coldcard USB protocol is already enabled (HID mode)')
@@ -179,9 +176,12 @@ async def dev_enable_protocol(*a):
     # might need to reset stuff?
     from usb import enable_usb
 
-    # reset / re-enable
+    # reset and re-enable
     pyb.usb_mode(None)
-    enable_usb(loop, True)
+    enable_usb()
+
+    # enable REPL
+    ckcc.vcp_enabled(True)
 
     await ux_show_story('Back to normal USB mode.')
 
@@ -201,7 +201,8 @@ async def microsd_upgrade(*a):
 
     with CardSlot() as card:
         with open(fn, 'rb') as fp:
-            from main import sf, dis
+            from sflash import SF
+            from glob import dis
             from files import dfu_parse
             from utils import check_firmware_hdr
 
@@ -246,14 +247,14 @@ async def microsd_upgrade(*a):
 
                     if pos % 4096 == 0:
                         # erase here
-                        sf.sector_erase(pos)
-                        while sf.is_busy():
+                        SF.sector_erase(pos)
+                        while SF.is_busy():
                             await sleep_ms(10)
 
-                    sf.write(pos, buf)
+                    SF.write(pos, buf)
 
                     # full page write: 0.6 to 3ms
-                    while sf.is_busy():
+                    while SF.is_busy():
                         await sleep_ms(1)
 
                     pos += here
@@ -323,7 +324,7 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
     if pin is None: return
 
     # A new pin is to be set!
-    from main import pa, dis, settings, loop
+    from glob import dis
     dis.fullscreen("Saving...")
 
     try:
@@ -348,7 +349,7 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
-    enable_usb(loop, False)
+    enable_usb()
 
     from menu import MenuSystem
     from flow import EmptyWallet
@@ -357,7 +358,7 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
 async def login_countdown(minutes):
     # show a countdown, which may need to
     # run for multiple **days**
-    from main import dis
+    from glob import dis
     from display import FontSmall, FontLarge
 
     sec = minutes * 60
@@ -385,7 +386,6 @@ async def block_until_login(rnd_keypad):
     # Force user to enter a valid PIN.
     # 
     from login import LoginUX
-    from main import pa, loop, settings
     from ux import AbortInteraction
 
     while not pa.is_successful():
@@ -400,7 +400,7 @@ async def block_until_login(rnd_keypad):
 async def show_nickname(nick):
     # Show a nickname for this coldcard (as a personalization)
     # - no keys here, just show it until they press anything
-    from main import dis
+    from glob import dis
     from display import FontLarge, FontTiny, FontSmall
     from ux import ux_wait_keyup
 
@@ -566,7 +566,6 @@ async def clear_seed(*a):
     # Erase the seed words, and private key from this wallet!
     # This is super dangerous for the customer's money.
     import seed
-    from main import pa
 
     if pa.has_duress_pin():
         await ux_show_story('''Please empty the duress wallet, and clear the duress PIN before clearing main seed.''')
@@ -587,14 +586,14 @@ consequences.''', escape='4')
     # NOT REACHED -- reset happens
 
 async def view_seed_words(*a):
-    import stash, tcc
+    import stash, bip39
 
     if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
         return
 
     with stash.SensitiveValues() as sv:
         if sv.mode == 'words':
-            words = tcc.bip39.from_data(sv.raw).split(' ')
+            words = bip39.b2a_words(sv.raw).split(' ')
 
             msg = 'Seed words (%d):\n' % len(words)
             msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
@@ -621,8 +620,8 @@ async def view_seed_words(*a):
 async def start_login_sequence():
     # Boot up login sequence here.
     #
-    from main import pa, settings, dis, loop, numpad
     from ux import idle_logout
+    from glob import dis
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
@@ -661,8 +660,9 @@ async def start_login_sequence():
         await block_until_login(rnd_keypad)
 
     # Must re-read settings after login
+    dis.fullscreen("Startup...")
     settings.set_key()
-    settings.load()
+    settings.load(dis)
 
     # implement "login countdown" feature
     delay = settings.get('lgto', 0)
@@ -672,7 +672,8 @@ async def start_login_sequence():
         await block_until_login(rnd_keypad)
 
     # implement idle timeout now that we are logged-in
-    loop.create_task(idle_logout())
+    from imptask import IMPT
+    IMPT.start_task('idle', idle_logout()) 
 
     # Do green-light set immediately after firmware upgrade
     if not pa.is_secondary:
@@ -710,16 +711,14 @@ async def start_login_sequence():
 
     # Allow USB protocol, now that we are auth'ed
     from usb import enable_usb
-    enable_usb(loop, False)
-
-    goto_top_menu()
+    enable_usb()
 
         
 def goto_top_menu():
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
-    from main import pa, hsm_active
+    from glob import hsm_active
 
     if hsm_active:
         from hsm_ux import hsm_ux_obj
@@ -874,8 +873,7 @@ def import_from_dice(*a):
         
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
-    import tcc, chains, ure
-    from main import pa
+    import ngu, chains, ure
     from stash import SecretStash
     from ubinascii import hexlify as b2a_hex
     from backups import restore_from_dict
@@ -903,7 +901,8 @@ async def import_xprv(*A):
     node, chain, addr_fmt = None, None, None
 
     # open file and do it
-    pat=ure.compile(r'.prv[A-Za-z0-9]+')
+    pat = ure.compile(r'.prv[A-Za-z0-9]+')
+    node = None
     with CardSlot() as card:
         with open(fn, 'rt') as fd:
             for ln in fd.readlines():
@@ -911,22 +910,13 @@ async def import_xprv(*A):
 
                 found = pat.search(ln)
                 if not found: continue
-
                 found = found.group(0)
 
-                for ch in chains.AllChains:
-                    for kk in ch.slip132:
-                        if found[0] == ch.slip132[kk].hint:
-                            try:
-                                node = tcc.bip32.deserialize(found,
-                                            ch.slip132[kk].pub, ch.slip132[kk].priv)
-                                chain = ch
-                                addr_fmt = kk
-                                break
-                            except ValueError:
-                                pass
-                if node:
+                try:
+                    node, chain, addr_fmt, is_priv = chains.slip32_deserialize(found)
                     break
+                except:
+                    continue
 
     if not node:
         # unable
@@ -939,9 +929,10 @@ the start of a line, and probably starts with "xprv".''', title="FAILED")
     d = dict(chain=chain.ctype, raw_secret=b2a_hex(SecretStash.encode(xprv=node)))
     node.blank()
 
-    # SHould capture the address format implied by SLIP32 version bytes
+    # Should capture the address format implied by SLIP32 version bytes
     # (addr_fmt var here) but no means to store that in our settings, and we're
     # not supposed to care anyway.
+    # TODO: would be nice for addr explorer tho
 
     # restore as if it was a backup (code reuse)
     await restore_from_dict(d)
@@ -954,7 +945,6 @@ the seed value and the old seed would be lost.\n\n\
 Visit the advanced menu and choose 'Destroy Seed'.'''
 
 async def restore_everything(*A):
-    from main import pa
 
     if not pa.is_secret_blank():
         await ux_show_story(EMPTY_RESTORE_MSG)
@@ -970,7 +960,6 @@ async def restore_everything(*A):
 
 async def restore_everything_cleartext(*A):
     # Asssume no password on backup file; devs and crazy people only
-    from main import pa
 
     if not pa.is_secret_blank():
         await ux_show_story(EMPTY_RESTORE_MSG)
@@ -1011,9 +1000,9 @@ async def list_files(*A):
     fn = await file_picker('Lists all files on MicroSD. Select one and SHA256(file contents) will be shown.', min_size=0)
     if not fn: return
 
-    import tcc
+    from uhashlib import sha256
     from utils import B2A
-    chk = tcc.sha256()
+    chk = sha256()
 
     try:
         with CardSlot() as card:
@@ -1153,7 +1142,7 @@ async def check_firewall_read(*a):
 
 async def bless_flash(*a):
     # make green LED turn on
-    from main import pa, dis
+    from glob import dis
 
     if pa.is_secondary:
         await needs_primary()
@@ -1252,7 +1241,7 @@ async def pin_changer(_1, _2, item):
     # - there is a duress wallet for both main/sec pins, and you need to know main pin for that
     # - what may look like just policy here, is in fact enforced by the bootrom code
     #
-    from main import pa, dis
+    from glob import dis
     from login import LoginUX
     from pincodes import BootloaderError, EPIN_OLD_AUTH_FAIL
 
@@ -1438,7 +1427,6 @@ We strongly recommend all PIN codes used be unique between each other.
 
 async def show_version(*a):
     # show firmware, bootload versions.
-    from main import settings
     import callgate, version
     from ubinascii import hexlify as b2a_hex
 
@@ -1481,7 +1469,8 @@ async def ship_wo_bag(*a):
     if not ok: return
 
     import callgate
-    from main import dis, pa, is_devmode
+    from glob import dis 
+    from version import is_devmode
 
     failed = callgate.set_bag_number(b'NOT BAGGED')      # 32 chars max
 
