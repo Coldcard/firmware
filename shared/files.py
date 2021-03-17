@@ -76,6 +76,9 @@ def wipe_flash_filesystem():
     from nvstore import settings
     settings.save()
 
+    # remount it
+    os.mount(fl, '/flash')
+
 def wipe_microsd_card():
     # Erase and re-format SD card. Not secure erase, because that is too slow.
     import ckcc, pyb
