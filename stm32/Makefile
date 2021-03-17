@@ -18,6 +18,7 @@ all: COLDCARD/file_time.c
 
 clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
+	git clean -xf built
 
 # These trigger the 'all' target when we haven't completed a successful build yet
 l-port/build-COLDCARD/firmware.elf: all
@@ -33,7 +34,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 4.0.0b3
+VERSION_STRING = 4.0.0b4
 
 #
 # Sign and merge various parts
@@ -76,12 +77,21 @@ production.bin: firmware-signed.bin Makefile
 # This is release of the bootloader that will be built into the release firmware.
 BOOTLOADER_VERSION = 2.0.1
 
+.PHONY: release
+#release: code-committed
+release:
+	$(MAKE) clean
+	$(MAKE) repro
+	test -f built/production.bin
+	$(MAKE) release-products
+	$(MAKE) tag-source
+
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
-.PHONY: release
-release: NEW_VERSION = $(shell $(SIGNIT) version built/production.bin)
-release: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
-release: built/production.bin
+.PHONY: release-products
+release-products: NEW_VERSION = $(shell $(SIGNIT) version built/production.bin)
+release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-coldcard.dfu
+release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c COLDCARD/file_time.c
 	-git commit COLDCARD/file_time.c -m "For $(NEW_VERSION)"
