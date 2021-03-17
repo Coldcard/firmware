@@ -12,7 +12,7 @@ with the latest updates and security alerts.
 ![coldcard picture front](https://coldcardwallet.com/static/images/coldcard-front.png)
 ![coldcard picture back](https://coldcardwallet.com/static/images/coldcard-back.png)
 
-## Reproducable Builds
+## Reproducible Builds
 
 To have confidence this source code tree is the same as the binary on your device,
 you can rebuild it from source and get **exactly the same bytes**. This process
