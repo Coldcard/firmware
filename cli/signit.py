@@ -178,7 +178,9 @@ def readback(fname):
     "Verify pubkey and signature used in binary file"
     data = open(fname, 'rb').read()
 
-    assert data[0:5] != b'DfuSe', "got DFU, expect raw binary"
+    if data[0:5] == b'DfuSe':
+        click.secho("Got DFU file, pulling out raw binary.", fg='red')
+        (_, _, data),*_ = dfu_parse(open(fname, 'rb'))
 
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE ]
 
@@ -259,7 +261,7 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     try:
         sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
     except FileNotFoundError:
-        click.secho("You don't have that key ({pubkey_num}), so using key zero instead!", fg='red')
+        click.secho(f"You don't have that key ({pubkey_num}), so using key zero instead!", fg='red')
         pubkey_num = 0
         sk = SigningKey.from_pem(open(f"{keydir}/{pubkey_num:02d}.pem").read())
     
