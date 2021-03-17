@@ -94,6 +94,10 @@ def show_version(fname):
     # just dump the version number in a form that makes for good filenames
     data = open(fname, 'rb').read()
 
+    if data[0:5] == b'DfuSe':
+        # Got DFU file, pulling out raw binary.
+        (_, _, data),*_ = dfu_parse(open(fname, 'rb'))
+
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE ]
 
     hdr = header(**dict(zip(FWH_PY_VALUES.split(), struct.unpack(FWH_PY_FORMAT, hdr))))
