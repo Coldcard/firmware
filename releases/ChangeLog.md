@@ -1,6 +1,9 @@
-## 4.0.0b4 BETA - March 17, 2021
+## 4.0.1 - March 29, 2021
 
-**BETA RELEASE** — (release candidate for v4.0.0)
+- Fixes security issue discovered in v4.0.0.
+- Known issue: formating of SD Card does not work and leads to a crash.
+
+## 4.0.0 - March 17, 2021
 
 - Major internal changes.
     - now using [Bitcoin Core's "libsecp256k1"](https://github.com/bitcoin-core/secp256k1)

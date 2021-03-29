@@ -10,8 +10,7 @@
 #include "usb.h"
 #include "uart.h"
 
-//XXX/bool ckcc_vcp_enabled = false;
-bool ckcc_vcp_enabled = true;
+extern bool ckcc_vcp_enabled;
 
 // replacements for more permissive versions found in stm32/mphalport.c
 // - we don't support any h/w UARTs 

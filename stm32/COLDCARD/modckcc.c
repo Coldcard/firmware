@@ -23,10 +23,11 @@
 #include "extint.h"
 #include "lib/utils/interrupt_char.h"       // for mp_interrupt_char
 
-// Presume guinie light is on, at start
+// Presume genuine light is on, at start
 STATIC bool presumably_green_light = true;
 
-extern bool ckcc_vcp_enabled;           // see vcp_lockdown.c
+// see vcp_lockdown.c where this is used
+bool ckcc_vcp_enabled;
 
 MP_DECLARE_CONST_FUN_OBJ_0(pyb_rng_get_obj);
 MP_DECLARE_CONST_FUN_OBJ_1(pyb_rng_get_bytes_obj);

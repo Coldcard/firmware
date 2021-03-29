@@ -9,7 +9,7 @@
 
 # see RAM_HEADER_BASE, and coldcardFirmwareHeader_t in sigheader.h
 import pyb, sys, gc, glob
-from imptask import IMPT
+from imptask import IMPT, die_with_debug
 
 assert not glob.dis, "main reimport"
 
@@ -115,36 +115,6 @@ async def mainline():
 
     while 1:
         await the_ux.interact()
-
-def die_with_debug(exc):
-    from usb import is_vcp_active
-    is_debug = is_vcp_active()
-
-    if is_debug and isinstance(exc, KeyboardInterrupt):
-        # preserve GUI state, but want to see where we are
-        print("KeyboardInterrupt")
-        raise exc
-    elif isinstance(exc, SystemExit):
-        # Ctrl-D and warm reboot cause this, not bugs
-        raise exc
-    else:
-        # show stacktrace for debug photos
-        try:
-            import uio, ux
-            tmp = uio.StringIO()
-            sys.print_exception(exc, tmp)
-            msg = tmp.getvalue()
-            del tmp
-            print(msg)
-            ux.show_fatal_error(msg)
-        except: pass
-
-        # securely die (wipe memory)
-        if not is_debug:
-            try:
-                import callgate
-                callgate.show_logout(1)
-            except: pass
 
 
 def go():

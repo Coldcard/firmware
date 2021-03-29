@@ -4,6 +4,36 @@
 # 
 import sys, uasyncio
 
+def die_with_debug(exc):
+    from usb import is_vcp_active
+    is_debug = is_vcp_active()
+
+    if is_debug and isinstance(exc, KeyboardInterrupt):
+        # preserve GUI state, but want to see where we are
+        print("KeyboardInterrupt")
+        raise exc
+    elif isinstance(exc, SystemExit):
+        # Ctrl-D and warm reboot cause this, not bugs
+        raise exc
+    else:
+        # show stacktrace for debug photos
+        try:
+            import uio, ux
+            tmp = uio.StringIO()
+            sys.print_exception(exc, tmp)
+            msg = tmp.getvalue()
+            del tmp
+            print(msg)
+            ux.show_fatal_error(msg)
+        except: pass
+
+        # securely die (wipe memory)
+        if not is_debug:
+            try:
+                import callgate
+                callgate.show_logout(1)
+            except: pass
+
 class ImportantTask:
     def __init__(self):
         self.tasks = dict()
@@ -19,7 +49,6 @@ class ImportantTask:
         for name, t in self.tasks.items():
             if t == task:
                 print("Panic stop: %r has died" % name)
-                from main import die_with_debug
                 die_with_debug(context["exception"])
                 # not reached, except on simulator:
                 break
