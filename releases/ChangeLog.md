@@ -1,6 +1,6 @@
 ## 4.0.1 - March 29, 2021
 
-- Fixes security issue discovered in v4.0.0.
+- Fixes security issue in v4.0.0. (3.x.x Unaffected)
 - Known issue: formating of SD Card does not work and leads to a crash.
 
 ## 4.0.0 - March 17, 2021
