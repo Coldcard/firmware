@@ -173,6 +173,10 @@ async def dev_enable_protocol(*a):
         await ux_show_story('Coldcard USB protocol is already enabled (HID mode)')
         return
 
+    if settings.get('du', 0):
+        await ux_show_story('USB disabled in settings.')
+        return
+
     # might need to reset stuff?
     from usb import enable_usb
 
@@ -710,9 +714,9 @@ async def start_login_sequence():
         except: pass
 
     # Allow USB protocol, now that we are auth'ed
-    from usb import enable_usb
-    enable_usb()
-
+    if not settings.get('du', 0):
+        from usb import enable_usb
+        enable_usb()
         
 def goto_top_menu():
     # Start/restart menu system

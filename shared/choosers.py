@@ -128,6 +128,24 @@ def scramble_keypad_chooser():
 
     return which, ch, set
 
+def disable_usb_chooser():
+    value = settings.get('du', 0)
+    ch = [ 'Normal', 'Disable USB']
+    def set_it(idx, text):
+        settings.set('du', idx)
+
+        import pyb
+        from usb import enable_usb, disable_usb
+        cur = pyb.usb_mode()
+        if cur and idx:
+            # usb enabled, but should not be now
+            disable_usb()
+        elif not cur and not idx:
+            # USB disabled, but now should be
+            enable_usb()
+
+    return value, ch, set_it
+
 def delete_inputs_chooser():
     #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
     del_psbt = settings.get('del', 0)

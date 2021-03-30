@@ -43,6 +43,7 @@ from utils import call_later_ms
 #   ovc = (list) "outpoint value cache"; only for segwit UTXO inputs (see history.py)
 #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
 #   axskip = (bool) skip warning about addr explorer
+#   du = (bool) if set, disable the USB port at all times
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)

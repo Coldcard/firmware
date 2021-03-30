@@ -82,6 +82,10 @@ def enable_usb():
         from imptask import IMPT
         IMPT.start_task('USB', handler.usb_hid_recv())
 
+def disable_usb():
+    # pull the plug
+    pyb.usb_mode(None)
+
 def is_vcp_active():
     # VCP = Virtual Comm Port
     en = ckcc.vcp_enabled(None)

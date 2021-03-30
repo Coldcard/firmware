@@ -1,3 +1,9 @@
+## 4.0.2 - March 30, 2021
+
+- Security Enhancement: New setting to disable USB port if your plan is air-gap only. Default
+  remains USB port enabled, see: Settings > Disable USB
+- Bugfix: Formating of larger SD Cards works again.
+
 ## 4.0.1 - March 29, 2021
 
 - Fixes security issue in v4.0.0. (3.x.x Unaffected)
