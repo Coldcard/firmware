@@ -63,13 +63,13 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('Disable USB', chooser=disable_usb_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Delete PSBTs', f=pick_inputs_delete),
+    MenuItem('Disable USB', chooser=disable_usb_chooser),
 ]
 
 WalletExportMenu = [  
