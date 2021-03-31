@@ -11,22 +11,15 @@ class USB_VCP:
     def any():
         return False
 
-_usb_instance = None
 _umode = None
 
 UNSET = object()
 def usb_mode(nm=UNSET, **kws):
-    global _umode, _usb_instance
+    global _umode
 
     if nm is not UNSET:
         #print("SET: usb_mode(%s)" % nm)
         _umode = nm
-
-        if _usb_instance:
-            if nm:
-                _usb_instance._open()
-            else:
-                _usb_instance._close()
 
     return _umode
 
@@ -34,21 +27,11 @@ class USB_HID:
     fn = b'/tmp/ckcc-simulator.sock'
 
     def __init__(self):
-        global _usb_instance
-        _usb_instance = self
         self.pipe = None
+        self.last_from = None
         self._open()
 
-    def _close(self):
-        if self.pipe:
-            import os
-            self.pipe.close()
-            os.remove(self.fn)
-        self.pipe = None
-
     def _open(self):
-        if self.pipe: return
-
         import sys
         import usocket as socket
         self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -92,6 +75,8 @@ class USB_HID:
         self.last_from = frm
         assert frm[2] != b'\0', "writer must bind to a name"
 
+        if not _umode: return       # weak sauce
+
         #print("Rx[%d]: %r (from %r)" % (len(msg), msg, frm))
 
         assert _umode, "Got USB traffic, but disabled?"
@@ -103,6 +88,8 @@ class USB_HID:
             return len(msg)
 
     def send(self, buf):
+        if not _umode: return  # weak sauce
+
         try:
             return self.pipe.sendto(buf, self.last_from)
         except OSError as exc:
