@@ -38,6 +38,7 @@ PinChangesMenu = [
                                 predicate=lambda: not version.has_608),
     MenuItem('Duress PIN', f=pin_changer, arg='duress'),
     MenuItem('Brick Me PIN', f=pin_changer, arg='brickme'),
+    MenuItem('Countdown PIN', menu=countdown_pin_submenu, predicate=lambda: version.has_608),
     MenuItem('Login Now', f=login_now, arg=1),
 ]
 
@@ -47,6 +48,7 @@ if not version.has_608:
         #         xxxxxxxxxxxxxxxx
         MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
         MenuItem('Duress PIN', f=pin_changer, arg='duress'),
+        MenuItem('Countdown PIN', menu=countdown_pin_submenu),
         MenuItem('Login Now', f=login_now, arg=1),
     ]
 

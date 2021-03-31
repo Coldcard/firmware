@@ -2,7 +2,7 @@
 #
 # choosers.py - various interactive menus for setting config values.
 #
-from nvstore import settings
+from nvstore import settings, SettingsObject
 
 def max_fee_chooser():
     from psbt import DEFAULT_MAX_FEE_PERCENTAGE
@@ -46,25 +46,29 @@ def idle_timeout_chooser():
 
     return which, ch, set_idle_timeout
 
+# shared values
+lgto_ch = [  'Disabled',
+        ' 5 minutes',
+        '15 minutes',
+        '30 minutes',
+        ' 1 hour',
+        ' 2 hours',
+        ' 4 hours',
+        ' 8 hours',
+        '12 hours',
+        '24 hours',
+        '48 hours',
+        ' 3 days',
+        ' 1 week',
+        '28 days later',
+      ]
+lgto_va = [ 0, 5, 15, 30, 60, 2*60, 4*60, 8*60, 12*60, 24*60, 48*60, 72*60, 7*24*60, 28*24*60]
+
 def countdown_chooser():
     # Login countdown length, stored in minutes
     #
-    ch = [  'Disabled',
-            ' 5 minutes',
-            '15 minutes',
-            '30 minutes',
-            ' 1 hour',
-            ' 2 hours',
-            ' 4 hours',
-            ' 8 hours',
-            '12 hours',
-            '24 hours',
-            '48 hours',
-            ' 3 days',
-            ' 1 week',
-            '28 days later',
-          ]
-    va = [ 0, 5, 15, 30, 60, 2*60, 4*60, 8*60, 12*60, 24*60, 48*60, 72*60, 7*24*60, 28*24*60]
+    ch = lgto_ch
+    va = lgto_va
     assert len(ch) == len(va)
 
     timeout = settings.get('lgto', 0)        # in minutes
@@ -111,7 +115,6 @@ def chain_chooser():
 
 def scramble_keypad_chooser():
     #   rngk = randomize keypad for PIN entry
-    from nvstore import SettingsObject
 
     s = SettingsObject()
     which = s.get('rngk', 0)
@@ -123,6 +126,43 @@ def scramble_keypad_chooser():
         # save it, but "outside" of login PIN
         s = SettingsObject()
         s.set('rngk', idx)
+        s.save()
+        del s
+
+    return which, ch, set
+
+def cd_countdown_chooser():
+    ch = lgto_ch[1:]
+    va = lgto_va[1:]
+
+    s = SettingsObject()
+    timeout = s.get('cd_lgto', 60)        # in minutes
+    try:
+        which = va.index(timeout)
+    except ValueError:
+        which = 0
+
+    def set_it(idx, text):
+        s = SettingsObject()
+        s.set('cd_lgto', va[idx])
+        s.save()
+        del s
+
+    return which, ch, set_it
+
+
+def set_countdown_pin_mode():
+    #   cd_mode = various harms
+    s = SettingsObject()
+    which = s.get('cd_test', 1)
+    del s
+
+    ch = ['Test Mode', 'Brick', '3 Attempts', 'Final Chance']
+
+    def set(idx, text):
+        # save it, but "outside" of login PIN
+        s = SettingsObject()
+        s.set('cd_test', idx)
         s.save()
         del s
 
@@ -156,8 +196,6 @@ def delete_inputs_chooser():
         settings.set('del', idx)
 
     return del_psbt, ch, set_del_psbt
-
-
 
 
 # EOF

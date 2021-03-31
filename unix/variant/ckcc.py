@@ -128,7 +128,9 @@ def gate(method, buf_io, arg2):
 def oneway(method, arg2):
 
     print("\n\nNOTE: One-way callgate into bootloader: method=%d arg2=%d\n\n" % (method, arg2))
-    raise SystemExit
+    import time
+    while 1:
+        time.sleep(60)
 
 def is_simulator():
     return True

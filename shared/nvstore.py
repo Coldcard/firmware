@@ -38,7 +38,7 @@ from utils import call_later_ms
 #   multisig = list of defined multisig wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   axi = index of last selected address in explorer
-#   lgto = (minutes) how long to wait for Login Countdown feature
+#   lgto = (minutes) how long to wait for Login Countdown feature [pre v4.0.2]
 #   usr = (dict) map from username to their secret, as base32
 #   ovc = (list) "outpoint value cache"; only for segwit UTXO inputs (see history.py)
 #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
@@ -48,6 +48,11 @@ from utils import call_later_ms
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
 #   rngk = randomize keypad for PIN entry
+#   delay_left = seconds remaining on login countdown, if defined
+#   lgto = (minutes) how long to wait for Login Countdown feature [in v4.0.2+]
+#   cd_lgto = minutes to show in countdown (in countdown-to-brick mode)
+#   cd_mode = set to enable some less-destructive modes
+#   cd_pin = pin code which enables "countdown to brick" mode
 
 
 # where in SPI Flash we work (last 128k)

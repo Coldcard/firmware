@@ -129,6 +129,10 @@ if '--down' in sys.argv:
     numpad.inject('4')
     numpad.inject('y')  # countdown 
 
+if '--enter' in sys.argv:
+    # keep at end of file: extra enter to confirm something from above
+    numpad.inject('y')
+
 # not best place for this
 import hsm
 hsm.POLICY_FNAME = hsm.POLICY_FNAME.replace('/flash/', '')
