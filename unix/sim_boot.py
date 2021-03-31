@@ -20,8 +20,6 @@ if '--sflash' not in sys.argv:
     nvstore.settings.current = dict(sim_defaults)
 
 if sys.argv[-1] != '-q':
-    #from main import go
-    import main
-    import sim_quickstart
+    import main     # must be last, does not return
 
 # EOF

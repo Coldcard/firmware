@@ -1,26 +1,28 @@
+# Quick command-line shortcuts
+#
 # imported late, for simulator only ... go to specific sub-sub-menus (dev aid)
 import sys
+from glob import numpad
 
-if '-m' in sys.argv:
+if '--multi' in sys.argv:
     # start in multisig wallet
-    from main import numpad
+    numpad.inject('9')
     numpad.inject('9')
     numpad.inject('y')
+    numpad.inject('9')
+    numpad.inject('y')
+
+if '--sd' in sys.argv:
+    # MicroSD menu
+    numpad.inject('9')
     numpad.inject('9')
     numpad.inject('5')
-    numpad.inject('y')
-
-if '-s' in sys.argv:
-    # MicroSD menu
-    from main import numpad
-    numpad.inject('4')
     numpad.inject('y')
     numpad.inject('4')
     numpad.inject('y')
 
 if '--addr' in sys.argv:
     # Address Explorer
-    from main import numpad
     numpad.inject('8')
     numpad.inject('8')
     numpad.inject('y')
@@ -28,19 +30,20 @@ if '--addr' in sys.argv:
 
 if '--dz' in sys.argv:
     # Enter the "Danger Zone"
-    from main import numpad
-    numpad.inject('4')
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')
     numpad.inject('y')
-    numpad.inject('4')
-    numpad.inject('8')
-    numpad.inject('8')
-    numpad.inject('8')
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('9')
     numpad.inject('y')
 
 if '--xw' in sys.argv:
     # Export wallet (all types)
-    from main import numpad
-    numpad.inject('4')
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')
     numpad.inject('y')
     numpad.inject('4')
     numpad.inject('y')
@@ -49,8 +52,9 @@ if '--xw' in sys.argv:
 
 if '--paper' in sys.argv:
     # Paper wallet menu
-    from main import numpad
-    numpad.inject('4')
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')
     numpad.inject('y')
     numpad.inject('4')
     numpad.inject('8')
@@ -58,8 +62,9 @@ if '--paper' in sys.argv:
 
 if '--msg' in sys.argv:
     # Sign from MicoSD card
-    from main import numpad
-    numpad.inject('4')
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')
     numpad.inject('y')
     numpad.inject('4')
     numpad.inject('y')
@@ -71,7 +76,6 @@ if '--hsm' in sys.argv:
     # Enable existing HSM file
     # - also prelaod a long-secret for an onion server
     # - must already be a .../unix/work/hsm-policy.json file in place
-    from main import numpad
     if 0:
         from sim_secel import SECRETS
         m = 'QnVuawt8phazfnQYVJLzrqrrVScN+7A54QaU+f4OXV3MeR00'
@@ -85,8 +89,8 @@ if '--hsm' in sys.argv:
         #numpad.inject(ch)
 
 if '--user-mgmt' in sys.argv:
-    from main import numpad
     numpad.inject('x')  # no HSM, thanks
+    numpad.inject('9')
     numpad.inject('9')
     numpad.inject('5')
     numpad.inject('y')  # advanced
@@ -106,7 +110,7 @@ if '--deriv' in sys.argv:
     SECRETS['_pin1_secret'] = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a589c3f15e5d852dc2e9ba5e9fe189a8dd2e1547badef5b563bbe6579fc6807d80ed900000000000000'
     sim_defaults['chain'] = 'BTC'
 
-    from main import numpad
+    numpad.inject('9')
     numpad.inject('9')
     numpad.inject('5')
     numpad.inject('y')  # advanced
@@ -114,6 +118,16 @@ if '--deriv' in sys.argv:
     numpad.inject('9')
     numpad.inject('5')  # up one from bottom
     numpad.inject('y')  # Derive Entropy
+
+if '--down' in sys.argv:
+    # Settings > PIN Options > Countdown PIN
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('y')  # settings
+    numpad.inject('4')
+    numpad.inject('y')  # pin options
+    numpad.inject('4')
+    numpad.inject('y')  # countdown 
 
 # not best place for this
 import hsm
