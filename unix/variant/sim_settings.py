@@ -149,12 +149,15 @@ if '--idle' in sys.argv:
 if '--set' in sys.argv:
     # use: --set foo=23
     # overrides/predefines anything
-    val = sys.argv[sys.argv.index('--set') + 1]
-    k,v = val.split('=', 1)
-    try:
-        v = int(v)
-    except: pass
-    sim_defaults[k] = v
+    for n, a in enumerate(sys.argv):
+        if a != '--set': continue
+
+        val = sys.argv[n+ 1]
+        k,v = val.split('=', 1)
+        try:
+            v = int(v) if '.' not in v else float(v)
+        except: pass
+        sim_defaults[k] = v
 
 if '--users' in sys.argv:
     sim_defaults['usr'] = { 
