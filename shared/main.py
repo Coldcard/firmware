@@ -62,41 +62,44 @@ async def more_setup():
                 
     # MAYBE: check if we're a brick and die again? Or show msg?
     
-    # Some background "tasks"
-    #
-    from dev_helper import monitor_usb
-    IMPT.start_task('vcp', monitor_usb())
-
-    from files import CardSlot
-    CardSlot.setup()
-
-    # This "pa" object holds some state shared w/ bootloader about the PIN
     try:
-        from pincodes import pa
-        pa.setup(b'')       # just to see where we stand.
-    except RuntimeError as e:
-        print("Problem: %r" % e)
+        # Some background "tasks"
+        #
+        from dev_helper import monitor_usb
+        IMPT.start_task('vcp', monitor_usb())
 
-    if version.is_factory_mode:
-        # in factory mode, turn on USB early to allow debug/setup
-        from usb import enable_usb
-        enable_usb()
+        from files import CardSlot
+        CardSlot.setup()
 
-        # always start the self test.
-        if not settings.get('tested', False):
-            from actions import start_selftest
-            await start_selftest()
+        # This "pa" object holds some state shared w/ bootloader about the PIN
+        try:
+            from pincodes import pa
+            pa.setup(b'')       # just to see where we stand.
+        except RuntimeError as e:
+            print("Problem: %r" % e)
 
-    else:
-        # force them to accept terms (unless marked as already done)
-        from actions import accept_terms
-        await accept_terms()
+        if version.is_factory_mode:
+            # in factory mode, turn on USB early to allow debug/setup
+            from usb import enable_usb
+            enable_usb()
 
-    # Prompt for PIN and then pick appropriate top-level menu,
-    # based on contents of secure chip (ie. is there
-    # a wallet defined)
-    from actions import start_login_sequence
-    await start_login_sequence()
+            # always start the self test.
+            if not settings.get('tested', False):
+                from actions import start_selftest
+                await start_selftest()
+
+        else:
+            # force them to accept terms (unless marked as already done)
+            from actions import accept_terms
+            await accept_terms()
+
+        # Prompt for PIN and then pick appropriate top-level menu,
+        # based on contents of secure chip (ie. is there
+        # a wallet defined)
+        from actions import start_login_sequence
+        await start_login_sequence()
+    except BaseException as exc:
+        die_with_debug(exc)
 
     IMPT.start_task('mainline', mainline())
 
