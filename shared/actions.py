@@ -656,27 +656,23 @@ async def damage_myself():
     # - operate in background if possbile (cant, bootrom turns off interrupts)
     # - be fast?
     # - mk2 cannot do this, mk4 will be able to do this instantly
-    mode = settings.get('cd_mode', 1)
+    mode = settings.get('cd_mode', 0)
+    #['Brick', 'Final PIN', 'Test Mode']
 
-    # ['Test Mode', 'Brick', '3 Attempts Left', 'Last Chance PIN']
-
-    if mode == 0:
-        # test mode, do nothing
+    if mode == 2:
+        # test mode, do no damage
         return
 
     if mode == 1:
+        # leave single attempt; careful!
+        # - always do one attempt, regardless
+        todo = max(1, pa.attempts_left - 1)
+    else:
         # brick ourselves, by consuming all PIN attempts
-        left = -1
-    elif mode == 2:
-        # leave 3 attempts
-        left = 3
-    elif mode == 3:
-        # leave single attempts; careful!
-        left = 1
+        todo = pa.attempts_left
 
     # do a bunch of failed attempts
     pa.setup('hfsp', False)
-    todo = max(1, pa.attempts_left - left)
     print("burning %d" % todo)
     for i in range(todo):
         try:
@@ -684,9 +680,8 @@ async def damage_myself():
         except:
             # expecting EPIN_AUTH_FAIL
             pass
-
-        # keep UX responsive
-        await sleep_ms(50)
+        # keep UX responsive? But callgate stuff block everything, so just
+        # go as fast as possible
 
 async def start_login_sequence():
     # Boot up login sequence here.
@@ -705,7 +700,7 @@ async def start_login_sequence():
         goto_top_menu()
         return
 
-    # did they power down during a login countdown? If so continue it.
+    # Did they power down during a login countdown? If so continue it.
     existing_delay = settings.get('delay_left', 0)
     if existing_delay:
         await login_countdown(existing_delay)
@@ -741,8 +736,13 @@ async def start_login_sequence():
         await damage_myself()
         delay = settings.get('cd_lgto', 60)
     else:
-        # assume the previous delay is enough to continue without delay
-        delay = settings.get('lgto', 0) if not existing_delay else 0
+        # They do know the right PIN, do a delay tho, because they wanted that
+        if not existing_delay:
+            delay = settings.get('lgto', 0)
+        else:
+            # except assume the continued power-up delay was enough to
+            # continue without more delay
+            delay = 0
 
     if delay:
         import callgate
@@ -754,17 +754,18 @@ async def start_login_sequence():
         if not cd_login:
             cd_login = await block_until_login(rnd_keypad)
 
-            # if they did correct pin, wait for delay, and the do countdown-pin,
-            # skip any additional delay and do the damage
+            # If they did correct pin, waited for delay, and the do countdown-pin,
+            # skip any additional delay and just do the damage now.
             if cd_login:
                 await damage_myself()
 
         if cd_login:
             # crash
-            dis.fullscreen("Error.")
+            dis.fullscreen("ERROR")
             callgate.show_logout(1)
 
-            
+
+    # Successful login...
 
     # Must re-read settings after login
     dis.fullscreen("Startup...")
@@ -1369,7 +1370,9 @@ async def set_countdown_pin(_1, _2, menu_item):
     else:
         s.set('cd_pin', pin)
         msg = 'PIN Set.'
-        menu_item.label = "PIN is Set"
+        menu_item.label = "PIN is Set!"
+
+    s.save()
 
     await ux_dramatic_pause(msg, 3)
     
@@ -1382,12 +1385,12 @@ async def countdown_pin_submenu(*a):
 
     if not pin_set:
         ok = await ux_show_story('''\
-This special PIN will silently brick the Coldcard (the seed can never be recovered), \
-but as it does that it shows a normal-looking countdown timer. You do not have to \
-use the login countdown timer for your real PIN.
+This special PIN will immediately and silently brick the Coldcard, \
+but as it does that, it shows a normal-looking countdown timer for login. \
+At the end of the countdown, the Coldcard crashes with a vague error. \
 
-Instead of complete brick, you may select a test mode (no harm) or \
-to consume all but a few PIN attempts.\
+Instead of complete brick, you may select a test mode (no harm done) or \
+to consume all but the final PIN attempt.\
 ''')
         if not ok: return
 

@@ -152,17 +152,17 @@ def cd_countdown_chooser():
 
 
 def set_countdown_pin_mode():
-    #   cd_mode = various harms
+    #   cd_mode = various harm levels
     s = SettingsObject()
-    which = s.get('cd_test', 1)
+    which = s.get('cd_mode', 0)     # default is brick
     del s
 
-    ch = ['Test Mode', 'Brick', '3 Attempts', 'Final Chance']
+    ch = ['Brick', 'Final PIN', 'Test Mode']
 
     def set(idx, text):
         # save it, but "outside" of login PIN
         s = SettingsObject()
-        s.set('cd_test', idx)
+        s.set('cd_mode', idx)
         s.save()
         del s
 
