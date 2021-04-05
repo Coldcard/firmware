@@ -82,7 +82,7 @@ def get_highwater():
     arg = bytearray(8)
     ckcc.gate(21, arg, 0)
 
-    return arg
+    return bytes(arg)
     
 def set_highwater(ts):
     arg = bytearray(ts)
