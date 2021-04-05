@@ -285,7 +285,6 @@ Press OK to continue, X to stop for now.
             try:
                 dis.busy_bar(True)
                 if bypass_pin and pin == bypass_pin:
-                    await sleep_ms(800)         # XXX tune delay
                     return True
 
                 ok = pa.login()
