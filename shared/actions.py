@@ -394,7 +394,7 @@ async def login_countdown(sec):
         await sleep_ms(dt)
         st = ticks_ms()
 
-        if sec % 60 == 0:
+        if sec % 30 == 0:
             settings.set('delay_left', sec)
             settings.save()
 
@@ -652,9 +652,6 @@ async def view_seed_words(*a):
 async def damage_myself():
     # called when it's time to disable ourselves due to various
     # features related to duress and so on
-    # - no visible feedback allowed
-    # - operate in background if possbile (cant, bootrom turns off interrupts)
-    # - be fast?
     # - mk2 cannot do this, mk4 will be able to do this instantly
     mode = settings.get('cd_mode', 0)
     #['Brick', 'Final PIN', 'Test Mode']
@@ -663,9 +660,12 @@ async def damage_myself():
         # test mode, do no damage
         return
 
+    dis.fullscreen("Wait...")
+    dis.busy_bar(True)
+
     if mode == 1:
         # leave single attempt; careful!
-        # - always do one attempt, regardless
+        # - always consume one attempt, regardless
         todo = max(1, pa.attempts_left - 1)
     else:
         # brick ourselves, by consuming all PIN attempts
@@ -673,7 +673,6 @@ async def damage_myself():
 
     # do a bunch of failed attempts
     pa.setup('hfsp', False)
-    print("burning %d" % todo)
     for i in range(todo):
         try:
             pa.login()
@@ -682,6 +681,31 @@ async def damage_myself():
             pass
         # keep UX responsive? But callgate stuff block everything, so just
         # go as fast as possible
+
+    dis.busy_bar(False)
+
+async def version_migration():
+    # Handle changes between upgrades, and allow downgrades when possible.
+    # - long term we generally cannot delete code from here, because we
+    #   never know when a user might skip a bunch of intermetiate versions
+    import callgate
+
+    # Data migration issue: 
+    # - "login countdown" feature now stored elsewhere
+    had_delay = settings.get('lgto', 0)
+    if had_delay:
+        from nvstore import SettingsObject
+        settings.remove_key('lgto')
+        s = SettingsObject()
+        s.set('lgto', had_delay)
+        s.save()
+        del s
+
+    # Block very obsolete versions.
+    MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
+    now = callgate.get_highwater()
+    if now < MIN_WATERMARK:
+        callgate.set_highwater(MIN_WATERMARK)
 
 async def start_login_sequence():
     # Boot up login sequence here.
@@ -730,8 +754,7 @@ async def start_login_sequence():
     # always get a PIN and login first
     cd_login = await block_until_login(rnd_keypad)
 
-    # Do we need to delay (real or otherwise)
-    # - note: these values are stored on key=0, pre-login values
+    # Do we need to delay? (real or otherwise)
     if cd_login:
         await damage_myself()
         delay = settings.get('cd_lgto', 60)
@@ -772,15 +795,11 @@ async def start_login_sequence():
     settings.set_key()
     settings.load(dis)
 
-    # Data migration issue: "login countdown" feature now stored elsewhere
-    had_delay = settings.get('lgto', 0)
-    if had_delay:
-        from nvstore import SettingsObject
-        settings.remove_key('lgto')
-        s = SettingsObject()
-        s.set('lgto', had_delay)
-        s.save()
-        del s
+    # handle upgrades/downgrade issues
+    try:
+        await version_migration()
+    except:
+        pass
 
     # implement idle timeout now that we are logged-in
     from imptask import IMPT
