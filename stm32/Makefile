@@ -52,7 +52,7 @@ dfu: firmware-signed.dfu
 .PHONY: dev.dfu
 dev.dfu: l-port/build-COLDCARD/firmware?.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
-	$(SIGNIT) sign $(VERSION_STRING) -o dev.bin
+	$(SIGNIT) sign $(VERSION_STRING) -k 1 -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
 
 .PHONY: remake
