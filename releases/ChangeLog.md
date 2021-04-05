@@ -2,18 +2,19 @@
 
 - New feature: "Countdown and Brick" (Mk3 only)
     - set a special PIN code, and when used, the Coldcard is immediately bricked while a 
-    normal-looking countdown for login is shown (default 1hr). As an alternative to bricking,
-    you can make this PIN consume all but one of PIN attempts.
+    normal-looking countdown for login is shown (default 1 hour). As an alternative to
+    bricking, you can make it consume all but the final PIN attempts.
 - Enhancements to "Login Countdown" feature:
-    - turning off the Coldcard will not clear the countdown, it continues on power-up.
+    - turning off the Coldcard will not clear the countdown, it continues on next power-up.
     - login countdown time delays are more accurate now.
     - Important: for the first login when firmware runs (immediately after upgrade),
-      the login countdown delay, if you have previously enabled it, will **not** be
+      the login countdown delay, if you had previously enabled it, will **not** be
       enforced. However, the setting is then migrated to a new spot and takes effect going
       forward without any action needed.
 - Enhancement: New setting to disable USB port if your plan is air-gap only. Default
   remains USB port enabled, see: Settings > Disable USB
-- Bugfix: Formating of larger SD Cards works again.
+- Bugfix: Formating of larger SD Cards works again (FAT32 support).
+- Downgrades to v3 no longer supported.
 
 ## 4.0.1 - March 29, 2021
 
