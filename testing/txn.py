@@ -67,7 +67,7 @@ def fake_txn():
     from struct import pack
 
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
-                outvals=None, segwit_in=False, outstyles=['p2pkh'], psbt_hacker=None,
+                invals=None, outvals=None, segwit_in=False, outstyles=['p2pkh'], psbt_hacker=None,
                 change_outputs=[], capture_scripts=None, add_xpub=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
@@ -97,7 +97,7 @@ def fake_txn():
 
             scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
-            supply.txs_out.append(TxOut(1E8, scr))
+            supply.txs_out.append(TxOut(1E8 if not invals else invals[i], scr))
 
             with BytesIO() as fd:
                 if not segwit_in:

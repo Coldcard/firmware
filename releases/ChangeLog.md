@@ -1,4 +1,4 @@
-## 4.0.2 - March 30, 2021
+## 4.0.2 - April 7, 2021
 
 - New feature: "Countdown and Brick" (Mk3 only)
     - set a special PIN code, and when used, the Coldcard is immediately bricked while a 
@@ -11,9 +11,13 @@
       the login countdown delay, if you had previously enabled it, will **not** be
       enforced. However, the setting is then migrated to a new spot and takes effect going
       forward without any action needed.
-- Enhancement: New setting to disable USB port if your plan is air-gap only. Default
-  remains USB port enabled, see: Settings > Disable USB
+- Enhancement: Settings > Display Units: Select how to show Bitcoin amounts when displayed
+  on-screen. Choices are _BTC_ (default), _mBTC_ (millibit), _bits_ (aka uBTC),
+  and _sats_ (an integer).
+- Enhancement: Settings > Disable USB: New setting to disable USB port if your plan
+  is air-gap only. Default remains USB port enabled.
 - Bugfix: Formating of larger SD Cards works again (FAT32 support).
+- Bugfix: Reject transactions whose outputs are greater than inputs.
 - Downgrades to v3 no longer supported.
 
 ## 4.0.1 - March 29, 2021

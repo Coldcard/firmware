@@ -46,6 +46,23 @@ def idle_timeout_chooser():
 
     return which, ch, set_idle_timeout
 
+def value_resolution_chooser():
+    # how to render Bitcoin values
+    ch = [ 'BTC', 'mBTC', 'bits', 'sats' ]
+    va = [ 8, 5, 2, 0 ]
+
+    rz = settings.get('rz', 8)
+
+    try:
+        which = va.index(rz)
+    except ValueError:
+        which = 0
+
+    def doit(idx, text):
+        settings.set('rz', va[idx])
+
+    return which, ch, doit
+
 def real_countdown_chooser(tag, offset, def_to):
     # Login countdown length, stored in minutes
     #

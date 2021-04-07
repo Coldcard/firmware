@@ -72,6 +72,7 @@ SettingsMenu = [
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Delete PSBTs', f=pick_inputs_delete),
     MenuItem('Disable USB', chooser=disable_usb_chooser),
+    MenuItem('Display Units', chooser=value_resolution_chooser),
 ]
 
 WalletExportMenu = [  

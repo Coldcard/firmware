@@ -44,6 +44,7 @@ from utils import call_later_ms
 #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
 #   axskip = (bool) skip warning about addr explorer
 #   du = (bool) if set, disable the USB port at all times
+#   rz = (int) display value resolution/units: 8=BTC 5=mBTC 2=bits 0=sats
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
