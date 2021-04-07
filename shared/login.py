@@ -277,6 +277,7 @@ Press OK to continue, X to stop for now.
             if version.has_608 and pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
                 await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
+                dis.fullscreen("Wait...")
             elif pa.is_delay_needed():
                 # mark 1/2 might come here, never mark3
                 await self.do_delay()
