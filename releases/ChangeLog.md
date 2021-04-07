@@ -3,7 +3,7 @@
 - New feature: "Countdown and Brick" (Mk3 only)
     - set a special PIN code, and when used, the Coldcard is immediately bricked while a 
     normal-looking countdown for login is shown (default 1 hour). As an alternative to
-    bricking, you can make it consume all but the final PIN attempts.
+    bricking, you can make it consume all but the final PIN attempt.
 - Enhancements to "Login Countdown" feature:
     - turning off the Coldcard will not clear the countdown, it continues on next power-up.
     - login countdown time delays are more accurate now.
