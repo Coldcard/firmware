@@ -16,7 +16,7 @@
   and _sats_ (an integer).
 - Enhancement: Settings > Disable USB: New setting to disable USB port if your plan
   is air-gap only. Default remains USB port enabled.
-- Bugfix: Formating of larger SD Cards works again (FAT32 support).
+- Bugfix: Formatting of larger SD Cards works again (FAT32 support).
 - Bugfix: Reject transactions whose outputs are greater than inputs.
 - Downgrades to v3 no longer supported.
 
