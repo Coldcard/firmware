@@ -660,6 +660,7 @@ async def damage_myself():
         # test mode, do no damage
         return
 
+    from glob import dis
     dis.fullscreen("Wait...")
     dis.busy_bar(True)
 
@@ -679,8 +680,9 @@ async def damage_myself():
         except:
             # expecting EPIN_AUTH_FAIL
             pass
-        # keep UX responsive? But callgate stuff block everything, so just
-        # go as fast as possible
+
+        # Try to keep UX responsive? But callgate stuff blocks everything,
+        # so just go as fast as possible.
 
     dis.busy_bar(False)
 
