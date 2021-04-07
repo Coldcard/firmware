@@ -25,7 +25,6 @@ def test_sign1(dev, need_keypress, finalize):
 
     dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize))
 
-
     #need_keypress('y')
 
     with pytest.raises(CCProtoError) as ee:
@@ -1345,5 +1344,55 @@ def test_render_outs(out_style, segwit, outval, fake_txn, start_sign, end_sign, 
     elif out_style == 'p2wpkh-p2sh':
         assert len(set(i[0] for i in addrs)) == 1
         assert addrs[0][0] in {'2', '3'}
+
+
+def test_negative_fee(fake_txn, try_sign):
+    # Silly to sign a psbt the network won't accept, but anyway...
+    with pytest.raises(CCProtoError) as ee:
+        psbt = fake_txn(1, 1, outvals=[int(2E8)])
+        orig, result = try_sign(psbt, accept=False)
+
+    msg = ee.value.args[0]
+    assert 'Outputs worth more than inputs' in msg
+
+@pytest.mark.parametrize('units', [
+    ( 8, 'XTN'), 
+    ( 5, 'mXTN'), 
+    ( 2, 'bits'), 
+    ( 0, 'sats')])
+def test_value_render(units, fake_txn, start_sign, cap_story, settings_set, settings_remove):
+
+    # Check we are rendering values in right units.
+    decimal, units = units
+    settings_set('rz', decimal)
+
+    outputs = [int(i) for i in [
+                    10E8, 3E8, 
+                    1.2345678E8, 
+                    1, 12, 123, 123456, 1234567, 12345678,
+                    123456789012,
+                ]]
+
+    need = sum(outputs)
+    psbt = fake_txn(1, len(outputs), segwit_in=True, outvals=outputs, invals=[need])
+
+    open('debug/values.psbt', 'wb').write(psbt)
+
+    ip = start_sign(psbt, finalize=False)
+    time.sleep(.1)
+    _, story = cap_story()
+
+    lines = story.split('\n')
+    for v in outputs:
+        div = int(10**decimal)
+        #expect = '%d %s' % ((v//div), units)
+        if decimal == 0:
+            expect = '%d %s' % (v, units)
+        else:
+            expect = f'%d.%0{decimal}d %s' % ((v//div), (v % div), units)
+
+        assert expect in lines
+
+    settings_remove('rz')
 
 # EOF

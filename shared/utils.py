@@ -339,6 +339,7 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
     from sigheader import MK_1_OK, MK_2_OK, MK_3_OK
     from ustruct import unpack_from
     from version import hw_label
+    import callgate
 
     try:
         assert len(hdr) >= FW_HEADER_SIZE
@@ -372,6 +373,10 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
         
         if not ok:
             return "New firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
+
+    water = callgate.get_highwater()
+    if water[0] and timestamp < water:
+        return "That downgrade is not supported."
 
     return None
 

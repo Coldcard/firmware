@@ -150,19 +150,37 @@ class ChainsBase:
         # convert nValue from a transaction into human form.
         # - always be precise
         # - return (string, units label)
-        e8 = 100000000          # caution: don't use 1E8 here, that's a float
-        if unpad:
-            if (val % e8):
-                # precise but unpadded
-                txt = ('%d.%08d' % (val // e8, val % e8)).rstrip('0')
-            else:
-                # round BTC amount, show no decimal
-                txt = '%d' % (val // e8)
-        else:
-            # all the zeros
-            txt = '%d.%08d' % (val // e8, val % e8)
+        from nvstore import settings
+        rz = settings.get('rz', 8)
 
-        return txt, cls.ctype
+        if rz == 8:
+            # full Bitcoins, for OG's
+            unit = cls.ctype
+            div = 100000000          # caution: don't use 1E8 here, that's a float
+            fmt = '%08d'
+        elif rz == 5:
+            unit = 'm' + cls.ctype      # includes mXTN
+            div = 100000
+            fmt = '%05d'
+        elif rz == 2:
+            unit = 'bits'
+            div = 100
+            fmt = '%02d'
+        elif rz == 0:
+            return str(val), 'sats'
+
+        if unpad:
+            # show precise value, but no trailing zeros
+            if (val % div):
+                txt = (('%d.'+fmt) % (val // div, val % div)).rstrip('0')
+            else:
+                # round amount, omit decimal point
+                txt = '%d' % (val // div)
+        else:
+            # all the zeros & fixed with result
+            txt = ('%d.'+fmt) % (val // div, val % div)
+
+        return txt, unit
 
     @classmethod
     def render_address(cls, script):

@@ -6,8 +6,7 @@ def get_mpy_version():
 # pretend signed w/ dev key and allow debug
 is_factory_mode = bool('-f' in sys.argv)
 
-def is_devmode():
-    return True
+is_devmode = True
 
 def is_fresh_version():
     return False

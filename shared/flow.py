@@ -38,6 +38,7 @@ PinChangesMenu = [
                                 predicate=lambda: not version.has_608),
     MenuItem('Duress PIN', f=pin_changer, arg='duress'),
     MenuItem('Brick Me PIN', f=pin_changer, arg='brickme'),
+    MenuItem('Countdown PIN', menu=countdown_pin_submenu, predicate=lambda: version.has_608),
     MenuItem('Login Now', f=login_now, arg=1),
 ]
 
@@ -47,6 +48,7 @@ if not version.has_608:
         #         xxxxxxxxxxxxxxxx
         MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
         MenuItem('Duress PIN', f=pin_changer, arg='duress'),
+        MenuItem('Countdown PIN', menu=countdown_pin_submenu),
         MenuItem('Login Now', f=login_now, arg=1),
     ]
 
@@ -63,13 +65,14 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('Disable USB', chooser=disable_usb_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('PIN Options', menu=which_pin_menu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Delete PSBTs', f=pick_inputs_delete),
+    MenuItem('Disable USB', chooser=disable_usb_chooser),
+    MenuItem('Display Units', chooser=value_resolution_chooser),
 ]
 
 WalletExportMenu = [  

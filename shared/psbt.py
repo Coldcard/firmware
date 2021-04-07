@@ -1133,11 +1133,16 @@ class psbtObject(psbtProxy):
             for out_idx, txo in self.output_iter():
                 pass
 
+
         # check fee is reasonable
         if self.total_value_out == 0:
             per_fee = 100
         else:
-            per_fee = self.calculate_fee() * 100 / self.total_value_out
+            the_fee = self.calculate_fee()
+            if the_fee < 0:
+                raise FatalPSBTIssue("Outputs worth more than inputs!")
+
+            per_fee = the_fee * 100 / self.total_value_out
 
         fee_limit = settings.get('fee_limit', DEFAULT_MAX_FEE_PERCENTAGE)
 

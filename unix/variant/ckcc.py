@@ -4,7 +4,7 @@
 # REMINDER: you must recompile coldcard-mpy if you change this file!
 #
 import ustruct
-#from ubinascii import hexlify as b2a_hex
+from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
 #import utime as time
 
@@ -114,7 +114,12 @@ def gate(method, buf_io, arg2):
     if method == 21:
         # high water mark
         if arg2 == 0:
-            buf_io[0:8] = b'\x18\x07\x11\x19S\x08\x00\x00'
+            #buf_io[0:8] = b'\x18\x07\x11\x19S\x08\x00\x00'
+            #buf_io[0:8] = b'!\x04)\x21\'"\x00\x00'
+            buf_io[0:8] = b'!\x03)\x19\'"\x00\x00'
+            #buf_io[0:8] = bytes(8)
+        elif arg2 == 2:
+            print("New highwater: %s" % b2a_hex(buf_io[0:8]))
         return 0
 
     if method == 20:
@@ -128,7 +133,9 @@ def gate(method, buf_io, arg2):
 def oneway(method, arg2):
 
     print("\n\nNOTE: One-way callgate into bootloader: method=%d arg2=%d\n\n" % (method, arg2))
-    raise SystemExit
+    import time
+    while 1:
+        time.sleep(60)
 
 def is_simulator():
     return True

@@ -11,6 +11,7 @@ from ux import PressRelease, ux_wait_keyup, ux_poll_once, ux_show_story
 from utils import pretty_delay
 from callgate import show_logout
 from pincodes import pa
+from uasyncio import sleep_ms
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
@@ -250,8 +251,8 @@ Press OK to continue, X to stop for now.
             # no return
         
 
-    async def try_login(self, retry=True):
-        while retry:
+    async def try_login(self, bypass_pin=None):
+        while 1:
 
             if version.has_608 and not pa.attempts_left:
                 # tell them it's futile
@@ -276,6 +277,7 @@ Press OK to continue, X to stop for now.
             if version.has_608 and pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
                 await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
+                dis.fullscreen("Wait...")
             elif pa.is_delay_needed():
                 # mark 1/2 might come here, never mark3
                 await self.do_delay()
@@ -283,8 +285,12 @@ Press OK to continue, X to stop for now.
             # do the actual login attempt now
             try:
                 dis.busy_bar(True)
+                if bypass_pin and pin == bypass_pin:
+                    return True
+
                 ok = pa.login()
-                if ok: break        # success, leave
+                if ok: 
+                    return      # success, leave
             except RuntimeError as exc:
                 # I'm a brick and other stuff can happen here
                 # - especially AUTH_FAIL when pin is just wrong.

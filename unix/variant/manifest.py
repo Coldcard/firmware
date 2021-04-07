@@ -9,6 +9,7 @@ freeze_as_mpy('', [
 	'sflash.py',
 	'sim_display.py',
 	'sim_quickstart.py',
+	'main2.py',
 	'sim_secel.py',
 	'sim_settings.py',
 	'sram2.py',

@@ -581,6 +581,15 @@ def settings_get(sim_exec):
 
     return doit
 
+@pytest.fixture()
+def settings_remove(sim_exec):
+
+    def doit(key):
+        x = sim_exec("nvstore.settings.remove_key('%s')" % key)
+        assert x == ''
+
+    return doit
+
 @pytest.fixture(scope='session')
 def repl(dev=None):
     # Provide an interactive connection to the REPL. Has to be real device, with

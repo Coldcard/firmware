@@ -15,6 +15,8 @@ from utils import xfp2str
 from nvstore import settings
 from pincodes import pa
 
+CLEAR_PIN = b'999999-999999'
+
 async def start_selftest(*args):
 
     if len(args) and not version.is_factory_mode:
@@ -359,47 +361,73 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
     from flow import EmptyWallet
     return MenuSystem(EmptyWallet)
 
-async def login_countdown(minutes):
-    # show a countdown, which may need to
+async def login_countdown(sec):
+    # Show a countdown, which may need to
     # run for multiple **days**
     from glob import dis
     from display import FontSmall, FontLarge
+    from utime import ticks_ms, ticks_diff
 
-    sec = minutes * 60
-    while sec:
-        dis.clear()
-        y = 0
-        dis.text(None, y, 'Login countdown in', font=FontSmall); y += 14
-        dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
-        y += 5
+    # capture this before even drawing screen
+    settings.set('delay_left', sec)
+    settings.save()
 
+    # pre-render fixed parts
+    dis.clear()
+    y = 0
+    dis.text(None, y, 'Login countdown in', font=FontSmall); y += 14
+    dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
+    y += 5
+    dis.save()
+
+    st = ticks_ms()
+    while sec > 0:
+        dis.restore()
         dis.text(None, y, pretty_short_delay(sec), font=FontLarge)
 
         dis.show()
         dis.busy_bar(1)
 
-        # XXX this should be more accurate, errors are accumulating
-        await sleep_ms(1000)
+        # this should be more accurate, errors are accumulating
+        now = ticks_ms()
+        dt = 1000 - ticks_diff(now, st)
+        await sleep_ms(dt)
+        st = ticks_ms()
+
+        if sec % 30 == 0:
+            settings.set('delay_left', sec)
+            settings.save()
 
         sec -= 1
 
     dis.busy_bar(0)
 
+    settings.remove_key('delay_left')
+    settings.save()
+
 async def block_until_login(rnd_keypad):
     #
     # Force user to enter a valid PIN.
+    # - or accept a bogus one and return T
     # 
     from login import LoginUX
     from ux import AbortInteraction
+
+    cd_pin = settings.get('cd_pin', None)
+
+    rv = None       # might already be logged-in if _skip_pin used
 
     while not pa.is_successful():
         lll = LoginUX(rnd_keypad)
 
         try:
-            await lll.try_login()
+            rv = await lll.try_login(bypass_pin=cd_pin)
+            if rv: break
         except AbortInteraction:
             # not allowed!
             pass
+
+    return rv
 
 async def show_nickname(nick):
     # Show a nickname for this coldcard (as a personalization)
@@ -621,6 +649,66 @@ async def view_seed_words(*a):
 
         stash.blank_object(msg)
 
+async def damage_myself():
+    # called when it's time to disable ourselves due to various
+    # features related to duress and so on
+    # - mk2 cannot do this, mk4 will be able to do this instantly
+    mode = settings.get('cd_mode', 0)
+    #['Brick', 'Final PIN', 'Test Mode']
+
+    if mode == 2:
+        # test mode, do no damage
+        return
+
+    from glob import dis
+    dis.fullscreen("Wait...")
+    dis.busy_bar(True)
+
+    if mode == 1:
+        # leave single attempt; careful!
+        # - always consume one attempt, regardless
+        todo = max(1, pa.attempts_left - 1)
+    else:
+        # brick ourselves, by consuming all PIN attempts
+        todo = pa.attempts_left
+
+    # do a bunch of failed attempts
+    pa.setup('hfsp', False)
+    for i in range(todo):
+        try:
+            pa.login()
+        except:
+            # expecting EPIN_AUTH_FAIL
+            pass
+
+        # Try to keep UX responsive? But callgate stuff blocks everything,
+        # so just go as fast as possible.
+
+    dis.busy_bar(False)
+
+async def version_migration():
+    # Handle changes between upgrades, and allow downgrades when possible.
+    # - long term we generally cannot delete code from here, because we
+    #   never know when a user might skip a bunch of intermetiate versions
+    import callgate
+
+    # Data migration issue: 
+    # - "login countdown" feature now stored elsewhere
+    had_delay = settings.get('lgto', 0)
+    if had_delay:
+        from nvstore import SettingsObject
+        settings.remove_key('lgto')
+        s = SettingsObject()
+        s.set('lgto', had_delay)
+        s.save()
+        del s
+
+    # Block very obsolete versions.
+    MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
+    now = callgate.get_highwater()
+    if now < MIN_WATERMARK:
+        callgate.set_highwater(MIN_WATERMARK)
+
 async def start_login_sequence():
     # Boot up login sequence here.
     #
@@ -638,12 +726,17 @@ async def start_login_sequence():
         goto_top_menu()
         return
 
-    # maybe show a nickname before we do anything
-    nickname = settings.get('nick', None)
-    if nickname:
-        try:
-            await show_nickname(nickname)
-        except: pass
+    # Did they power down during a login countdown? If so continue it.
+    existing_delay = settings.get('delay_left', 0)
+    if existing_delay:
+        await login_countdown(existing_delay)
+    else:
+        # maybe show a nickname before we do anything
+        nickname = settings.get('nick', None)
+        if nickname:
+            try:
+                await show_nickname(nickname)
+            except: pass
 
     # Allow impatient devs and crazy people to skip the PIN
     guess = settings.get('_skip_pin', None)
@@ -659,21 +752,56 @@ async def start_login_sequence():
 
     # if that didn't work, or no skip defined, force
     # them to login succefully.
-    while not pa.is_successful():
-        # always get a PIN and login first
-        await block_until_login(rnd_keypad)
+
+    # always get a PIN and login first
+    cd_login = await block_until_login(rnd_keypad)
+
+    # Do we need to delay? (real or otherwise)
+    if cd_login:
+        await damage_myself()
+        delay = settings.get('cd_lgto', 60)
+    else:
+        # They do know the right PIN, do a delay tho, because they wanted that
+        if not existing_delay:
+            delay = settings.get('lgto', 0)
+        else:
+            # except assume the continued power-up delay was enough to
+            # continue without more delay
+            delay = 0
+
+    if delay:
+        import callgate
+        pa.reset()
+
+        await login_countdown(delay*60)
+
+        # second PIN challenge; but only if first one was actually legit
+        if not cd_login:
+            cd_login = await block_until_login(rnd_keypad)
+
+            # If they did correct pin, waited for delay, and the do countdown-pin,
+            # skip any additional delay and just do the damage now.
+            if cd_login:
+                await damage_myself()
+
+        if cd_login:
+            # crash
+            dis.fullscreen("ERROR")
+            callgate.show_logout(1)
+
+
+    # Successful login...
 
     # Must re-read settings after login
     dis.fullscreen("Startup...")
     settings.set_key()
     settings.load(dis)
 
-    # implement "login countdown" feature
-    delay = settings.get('lgto', 0)
-    if delay:
-        pa.reset()
-        await login_countdown(delay)
-        await block_until_login(rnd_keypad)
+    # handle upgrades/downgrade issues
+    try:
+        await version_migration()
+    except:
+        pass
 
     # implement idle timeout now that we are logged-in
     from imptask import IMPT
@@ -1238,6 +1366,64 @@ async def sign_message_on_sd(*a):
     await sign_txt_file(fn)
 
 
+async def set_countdown_pin(_1, _2, menu_item):
+    # Accept a new PIN to be used to enable this feature
+    from login import LoginUX
+    from nvstore import SettingsObject
+
+    lll = LoginUX()
+    lll.reset()
+    lll.subtitle = "Countdown PIN"
+
+    pin = await lll.get_new_pin(None, allow_clear=True)     # a string
+
+    s = SettingsObject()
+
+    if pin == pa.pin.decode():
+        # can't compare to others like duress/brickme but will override them
+        await ux_show_story("Must be a unique PIN value!")
+        return
+    elif not pin:
+        # X on first screen does this (better than CLEAR_PIN thing)
+        s.remove_key('cd_pin')
+        msg = 'PIN Cleared.'
+        menu_item.label = "Enable Feature"
+    else:
+        s.set('cd_pin', pin)
+        msg = 'PIN Set.'
+        menu_item.label = "PIN is Set!"
+
+    s.save()
+
+    await ux_dramatic_pause(msg, 3)
+    
+
+async def countdown_pin_submenu(*a):
+    # Background and settings for duress-countdown pin
+    from nvstore import SettingsObject
+    s = SettingsObject()
+    pin_set = bool(s.get('cd_pin', 0))
+
+    if not pin_set:
+        ok = await ux_show_story('''\
+This special PIN will immediately and silently brick the Coldcard, \
+but as it does that, it shows a normal-looking countdown timer for login. \
+At the end of the countdown, the Coldcard crashes with a vague error. \
+
+Instead of complete brick, you may select a test mode (no harm done) or \
+to consume all but the final PIN attempt.\
+''')
+        if not ok: return
+
+    from menu import MenuItem
+
+    from choosers import cd_countdown_chooser, set_countdown_pin_mode
+    return [
+                MenuItem('PIN is Set!' if pin_set else 'Enable Feature', f=set_countdown_pin),
+                MenuItem('Countdown Time', chooser=cd_countdown_chooser),
+                MenuItem('Brick Mode', chooser=set_countdown_pin_mode),
+            ]
+
 async def pin_changer(_1, _2, item):
     # Help them to change pins with appropriate warnings.
     # - forcing them to drill-down to get warning about secondary is on purpose
@@ -1364,7 +1550,7 @@ We strongly recommend all PIN codes used be unique between each other.
         if pin is None:
             return await ux_aborted()
 
-        is_clear = (pin == '999999-999999')
+        is_clear = (pin == CLEAR_PIN)
 
         args['new_pin'] = pin.encode() if not is_clear else b''
 
