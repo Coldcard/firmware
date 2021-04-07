@@ -46,8 +46,10 @@ def idle_timeout_chooser():
 
     return which, ch, set_idle_timeout
 
-# shared values
-lgto_ch = [  'Disabled',
+def real_countdown_chooser(tag, offset, def_to):
+    # Login countdown length, stored in minutes
+    #
+    lgto_ch = [  'Disabled',
         ' 5 minutes',
         '15 minutes',
         '30 minutes',
@@ -62,25 +64,32 @@ lgto_ch = [  'Disabled',
         ' 1 week',
         '28 days later',
       ]
-lgto_va = [ 0, 5, 15, 30, 60, 2*60, 4*60, 8*60, 12*60, 24*60, 48*60, 72*60, 7*24*60, 28*24*60]
+    lgto_va = [ 0, 5, 15, 30, 60, 2*60, 4*60, 8*60, 12*60, 24*60, 48*60, 72*60, 7*24*60, 28*24*60]
 
-def countdown_chooser():
-    # Login countdown length, stored in minutes
-    #
-    ch = lgto_ch
-    va = lgto_va
-    assert len(ch) == len(va)
+    # 'disabled' choice not appropriate for cd_lgto case
+    ch = lgto_ch[offset:]
+    va = lgto_va[offset:]
 
-    timeout = settings.get('lgto', 0)        # in minutes
+    s = SettingsObject()
+    timeout = s.get(tag, def_to)        # in minutes
     try:
         which = va.index(timeout)
     except ValueError:
         which = 0
 
-    def set_login_countdown(idx, text):
-        settings.set('lgto', va[idx])
+    def set_it(idx, text):
+        # save on key0, not normal settings
+        s = SettingsObject()
+        s.set(tag, va[idx])
+        s.save()
+        del s
 
-    return which, ch, set_login_countdown
+    return which, ch, set_it
+
+def countdown_chooser():
+    return real_countdown_chooser('lgto', 0, 0)
+def cd_countdown_chooser():
+    return real_countdown_chooser('cd_lgto', 1, 60)
 
 
 def chain_chooser():
@@ -130,25 +139,6 @@ def scramble_keypad_chooser():
         del s
 
     return which, ch, set
-
-def cd_countdown_chooser():
-    ch = lgto_ch[1:]
-    va = lgto_va[1:]
-
-    s = SettingsObject()
-    timeout = s.get('cd_lgto', 60)        # in minutes
-    try:
-        which = va.index(timeout)
-    except ValueError:
-        which = 0
-
-    def set_it(idx, text):
-        s = SettingsObject()
-        s.set('cd_lgto', va[idx])
-        s.save()
-        del s
-
-    return which, ch, set_it
 
 
 def set_countdown_pin_mode():
