@@ -47,3 +47,9 @@ USER_C_MODULES = $(CC_TOP)/external/c-modules
 
 # target binary
 PROG = coldcard-mpy
+
+# bugfix: building on MacOS using clang
+%/lib_secp256k1.o: \
+	CFLAGS_USERMOD += -Wno-unknown-warning-option
+
+# EOF
