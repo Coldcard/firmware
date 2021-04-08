@@ -35,6 +35,11 @@ Do a checkout, recursively to get all the submodules:
 
     git clone --recursive https://github.com/Coldcard/firmware.git
 
+Already checked-out and getting git errors? Do this:
+
+    git fetch
+    git reset --hard origin/master
+
 Then:
 
 - `cd firmware`
