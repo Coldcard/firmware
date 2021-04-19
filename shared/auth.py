@@ -273,7 +273,7 @@ def sign_txt_file(filename):
             await ux_show_story("Second line of file, if included, must specify a subkey path, like: m/44'/0/0")
             return
 
-        # if they are following BIP84 recommended derivation scheme,
+        # if they are following BIP-84 recommended derivation scheme,
         # then they probably would prefer a segwit/bech32 formatted address
         if subpath.startswith("m/84'/"):
             addr_fmt = AF_P2WPKH
@@ -911,7 +911,7 @@ class NewPassphrase(UserAuthorizedAction):
 
 OK to continue, X to cancel.''' % self._pw, title="Passphrase")
             else:
-                ch = await ux_show_story('''BIP39 passphrase (%d chars long) has been provided over USB connection. Should we switch to that wallet now?
+                ch = await ux_show_story('''BIP-39 passphrase (%d chars long) has been provided over USB connection. Should we switch to that wallet now?
 
 Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % len(self._pw), title="Passphrase", escape='2')
 

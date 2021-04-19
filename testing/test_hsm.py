@@ -10,7 +10,6 @@
 # - no microSD card installed
 #
 import pytest, time, struct, os, itertools
-#from pycoin.key.BIP32Node import BIP32Node
 from binascii import b2a_hex, a2b_hex
 from hashlib import sha256
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError

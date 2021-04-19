@@ -9,6 +9,7 @@
   use same account number on each participating Coldcard, but we recommend that.
 - Bugfix: Deleting a multisig wallet that was identical to another wallet, except
   for different address type, would lead to an error.
+- Bugfix: Standardize on BIP-nn in place of BIPnn in source code and messages.
 
 ## 4.0.2 - April 7, 2021
 

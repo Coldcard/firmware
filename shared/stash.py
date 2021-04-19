@@ -50,7 +50,7 @@ class SecretStash:
             nv[1:1+vlen] = seed_phrase
 
         elif master_secret:
-            # between 128 and 512 bits of master secret for BIP32 key derivation
+            # between 128 and 512 bits of master secret for BIP-32 key derivation
             vlen = len(master_secret)
             assert 16 <= vlen <= 64
             nv[0] = vlen
@@ -77,7 +77,7 @@ class SecretStash:
         hd = ngu.hdnode.HDNode()
 
         if marker == 0x01:
-            # xprv => BIP32 private key values
+            # xprv => BIP-32 private key values
             ch, pk = secret[1:33], secret[33:65]
             assert not _bip39pw
 
@@ -102,7 +102,7 @@ class SecretStash:
             return 'words', seed_bits, hd
 
         else:
-            # variable-length master secret for BIP32
+            # variable-length master secret for BIP-32
             vlen = secret[0]
             assert 16 <= vlen <= 64
             assert not _bip39pw
@@ -112,7 +112,7 @@ class SecretStash:
 
             return 'master', ms, hd
 
-# optional global value: user-supplied passphrase to salt BIP39 seed process
+# optional global value: user-supplied passphrase to salt BIP-39 seed process
 bip39_passphrase = ''
 
 class SensitiveValues:
@@ -181,7 +181,7 @@ class SensitiveValues:
         # - we share these on any USB connection
         from nvstore import settings
 
-        # Implicit in the values is the BIP39 encryption passphrase,
+        # Implicit in the values is the BIP-39 encryption passphrase,
         # which we might not want to actually store.
         xfp = swab32(self.node.my_fp())
         xpub = self.chain.serialize_public(self.node)

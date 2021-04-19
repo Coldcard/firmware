@@ -3,7 +3,7 @@
 # BIP-85: Deterministic Entropy From BIP32 Keychains, by
 #         Ethan Kosakovsky <ethankosakovsky@protonmail.com>
 #
-# Using the system's BIP32 master key, safely derive seeds phrases/entropy for other
+# Using the system's BIP-32 master key, safely derive seeds phrases/entropy for other
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
 import stash, ngu, chains, bip39
@@ -32,11 +32,11 @@ still backed-up.''')
     if ch != 'y': return
 
     if stash.bip39_passphrase:
-        if not await ux_confirm('''You have a BIP39 passphrase set right now and so that will become wrapped into the new secret.'''):
+        if not await ux_confirm('''You have a BIP-39 passphrase set right now and so that will become wrapped into the new secret.'''):
             return
 
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
-                'XPRV (BIP32)', '32-bytes hex', '64-bytes hex']
+                'XPRV (BIP-32)', '32-bytes hex', '64-bytes hex']
 
     m = MenuSystem([MenuItem(c, f=drv_entro_step2) for c in choices])
     the_ux.push(m)
@@ -50,7 +50,7 @@ def drv_entro_step2(_1, picked, _2):
     index = await ux_enter_number("Index Number?", 9999)
 
     if picked in (0,1,2):
-        # BIP39 seed phrases (we only support English)
+        # BIP-39 seed phrases (we only support English)
         num_words = (12, 18, 24)[picked]
         width = (16, 24, 32)[picked]        # of bytes
         path = "m/83696968'/39'/0'/{num_words}'/{index}'".format(num_words=num_words, index=index)
@@ -92,7 +92,7 @@ def drv_entro_step2(_1, picked, _2):
     chain = chains.current_chain()
 
     if s_mode == 'words':
-        # BIP39 seed phrase, various lengths
+        # BIP-39 seed phrase, various lengths
         words = bip39.b2a_words(new_secret).split(' ')
 
         msg = 'Seed words (%d):\n' % len(words)

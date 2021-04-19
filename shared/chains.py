@@ -296,14 +296,15 @@ def slip32_deserialize(xp):
 
 # Some common/useful derivation paths and where they may be used.
 # see bip49 for meaning of the meta vars
+# - single signer only
 CommonDerivations = [
     # name, path.format(), addr format
-    ( 'Electrum (not BIP44)', "m/{change}/{idx}", AF_CLASSIC ),
-    ( 'BIP44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
-    ( 'BIP49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
+    ( 'Electrum (not BIP-44)', "m/{change}/{idx}", AF_CLASSIC ),
+    ( 'BIP-44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
+    ( 'BIP-49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses
 
-    ( 'BIP84 (Native Segwit P2WPKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
+    ( 'BIP-84 (Native Segwit P2WPKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH ),           # generates bc1 bech32 addresses
 ]
 

@@ -25,7 +25,7 @@ def HARD(n=0):
     return 0x80000000 | n
 
 def str2ipath(s):
-    # convert text to numeric path for BIP174
+    # convert text to numeric path for BIP-174
     for i in s.split('/'):
         if i == 'm': continue
         if not i: continue      # trailing or duplicated slashes
@@ -91,7 +91,7 @@ def clear_ms(unit_test):
 def make_multisig():
     # make a multsig wallet, always with simulator as an element
 
-    # default is BIP45:   m/45'/... (but no co-signer idx)
+    # default is BIP-45:   m/45'/... (but no co-signer idx)
     # - but can provide str format for deriviation, use {idx} for cosigner idx
 
     def doit(M, N, unique=0, deriv=None):
@@ -437,7 +437,7 @@ def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
         time.sleep(.1)
         with pytest.raises(BaseException) as ee:
             test_ms_show_addr(M, keys, violate_bip67=1)
-        assert 'BIP67' in str(ee.value)
+        assert 'BIP-67' in str(ee.value)
     finally:
         clear_ms()
 
@@ -1074,7 +1074,7 @@ def fake_ms_txn():
 
         if incl_xpubs:
             # add global header with XPUB's
-            # - assumes BIP45
+            # - assumes BIP-45
             for idx, (xfp, m, sk) in enumerate(keys):
                 if callable(incl_xpubs):
                     psbt.xpubs.append( incl_xpubs(idx, xfp, m, sk) )

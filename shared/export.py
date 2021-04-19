@@ -34,7 +34,7 @@ def generate_public_contents():
 
 Wallet operates on blockchain: {nb}
 
-For BIP44, this is coin_type '{ct}', and internally we use
+For BIP-44, this is coin_type '{ct}', and internally we use
 symbol {sym} for this blockchain.
 
 ## IMPORTANT WARNING

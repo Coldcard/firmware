@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# BIP39 seed word encryption
+# BIP-39 seed word encryption
 #
 import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node
@@ -18,7 +18,7 @@ vectors = json.load(open('bip39-vectors.json'))['english']
 
 @pytest.mark.parametrize('vector', vectors)
 def test_b9p_vectors(dev, set_seed_words, need_keypress, vector, pw='RoZert'[::-1].upper()):
-    # Test all BIP39 vectors. Slow.
+    # Test all BIP-39 vectors. Slow.
     _, words, cooked, xprv = vector
 
     seed = Mnemonic.to_seed(words, passphrase=pw)
@@ -66,7 +66,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
         if pw == '':
             return simulator_fixed_xfp
 
-        print(f"Setting BIP39 pw: {pw}")
+        print(f"Setting BIP-39 pw: {pw}")
         dev.send_recv(CCProtocolPacker.bip39_passphrase(pw), timeout=None)
 
         if pw:
@@ -153,7 +153,7 @@ def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, c
         time.sleep(0.1)
         title, story = cap_story()
         assert 'Are you SURE' in story
-        assert 'do not have a BIP39 passphrase' in story
+        assert 'do not have a BIP-39 passphrase' in story
         
         need_keypress('x')
         return

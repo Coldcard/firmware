@@ -28,7 +28,7 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
         pick_menu_item('Passphrase')
 
         _, story = cap_story()
-        if 'your BIP39 seed words' in story:
+        if 'your BIP-39 seed words' in story:
             time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
 
     return doit

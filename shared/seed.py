@@ -417,7 +417,7 @@ async def approve_word_list(seed):
     goto_top_menu()
 
 def set_seed_value(words):
-    # Save the seed words into secure element, and reboot. BIP39 password
+    # Save the seed words into secure element, and reboot. BIP-39 password
     # is not set at this point (empty string)
 
     bip39.a2b_words(words)      # checksum check
@@ -590,7 +590,7 @@ async def word_quiz(words, limited=None):
 pp_sofar = ''
 
 class PassphraseMenu(MenuSystem):
-    # Collect up to 100 chars as a BIP39 passphrase
+    # Collect up to 100 chars as a BIP-39 passphrase
 
     # singleton (cls level) vars
     done_cb = None

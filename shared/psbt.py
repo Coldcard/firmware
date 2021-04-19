@@ -412,7 +412,7 @@ class psbtOutputProxy(psbtProxy):
 
                 # redeem script must be exactly what we expect
                 # - pubkeys will be reconstructed from derived paths here
-                # - BIP45, BIP67 rules applied
+                # - BIP-45, BIP-67 rules applied
                 # - p2sh-p2wsh needs witness script here, not redeem script value
                 # - if details provided in output section, must our match multisig wallet
                 try:
@@ -445,7 +445,7 @@ class psbtOutputProxy(psbtProxy):
 
                     expect_pkh = hash160(expect_rs)
                 else:
-                    # old BIP16 style; looks like payment addr
+                    # old BIP-16 style; looks like payment addr
                     expect_pkh = hash160(redeem_script)
 
         elif addr_type == 'p2pkh':
@@ -1431,14 +1431,14 @@ class psbtObject(psbtProxy):
                         skp = keypath_to_str(subpath)
                         node = sv.derive_path(skp)
 
-                        # check the pubkey of this BIP32 node
+                        # check the pubkey of this BIP-32 node
                         if pubkey == node.pubkey():
                             good += 1
 
                     if not good:
                         raise FraudulentChangeOutput(out_idx, 
                               "Deception regarding change output. "
-                              "BIP32 path doesn't match actual address.")
+                              "BIP-32 path doesn't match actual address.")
 
             # progress
             dis.fullscreen('Signing...')

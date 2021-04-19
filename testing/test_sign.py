@@ -451,7 +451,7 @@ def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, d
 
     psbt = a2b_hex(open('data/worked-unsigned.psbt', 'rb').read())
 
-    # PROBLEM: revised BIP174 has p2sh multisig cases which we don't support yet.
+    # PROBLEM: revised BIP-174 has p2sh multisig cases which we don't support yet.
     # - it has two signatures from same key on same input
     # - that's a rare case and not worth supporting in the firmware
     # - but we can do it in two passes
@@ -543,7 +543,7 @@ def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
 @pytest.mark.parametrize('case', [ 1, 2])
 @pytest.mark.bitcoind
 def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, cap_story):
-    # fraud: BIP32 path of output doesn't lead to pubkey indicated
+    # fraud: BIP-32 path of output doesn't lead to pubkey indicated
 
     # NOTE: out#1 is change:
     chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
@@ -572,7 +572,7 @@ def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, c
         start_sign(mod_psbt)
         with pytest.raises(CCProtoError) as ee:
             signed = end_sign(True)
-        assert 'BIP32 path' in str(ee)
+        assert 'BIP-32 path' in str(ee)
     elif case == 2:
         # will not consider it a change output, but not an error either
         start_sign(mod_psbt)
@@ -587,7 +587,7 @@ def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, c
 
 @pytest.mark.bitcoind
 def test_change_fraud_addr(start_sign, end_sign, check_against_bitcoind, cap_story):
-    # fraud: BIP32 path of output doesn't match TXO address
+    # fraud: BIP-32 path of output doesn't match TXO address
     from pycoin.tx.Tx import Tx
     from pycoin.tx.TxOut import TxOut
 

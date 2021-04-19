@@ -598,7 +598,7 @@ def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress
     assert lines[1:25] == ['%2d: %s' % (n+1, w) for n,w in enumerate(words)]
 
     if b39_word:
-        assert lines[-2] == 'BIP39 Passphrase:'
+        assert lines[-2] == 'BIP-39 Passphrase:'
         assert lines[-1] == b39_word
         assert len(lines) == 1+24+3
 

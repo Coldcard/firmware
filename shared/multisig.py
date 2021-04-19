@@ -86,8 +86,8 @@ def disassemble_multisig(redeem_script):
     return M, N, pubkeys
 
 def make_redeem_script(M, nodes, subkey_idx):
-    # take a list of BIP32 nodes, and derive Nth subkey (subkey_idx) and make
-    # a standard M-of-N redeem script for that. Always applies BIP67 sorting.
+    # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
+    # a standard M-of-N redeem script for that. Always applies BIP-67 sorting.
     N = len(nodes)
     assert 1 <= M <= N <= MAX_SIGNERS
 
@@ -565,7 +565,7 @@ class MultisigWallet:
 
             if pk_order:
                 # verify sorted order
-                assert bytes(pubkey) > bytes(pubkeys[pk_order-1]), 'BIP67 violation'
+                assert bytes(pubkey) > bytes(pubkeys[pk_order-1]), 'BIP-67 violation'
 
         assert len(used) == self.N, 'not all keys used: %d of %d' % (len(used), self.N)
 
@@ -760,7 +760,7 @@ class MultisigWallet:
                     assert node.pubkey() == chk_node.pubkey(), \
                                 "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
-        # serialize xpub w/ BIP32 standard now.
+        # serialize xpub w/ BIP-32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
         xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
 
@@ -877,7 +877,7 @@ class MultisigWallet:
     def import_from_psbt(cls, M, N, xpubs_list):
         # given the raw data fro PSBT global header, offer the user
         # the details, and/or bypass that all and just trust the data.
-        # - xpubs_list is a list of (xfp+path, binary BIP32 xpub)
+        # - xpubs_list is a list of (xfp+path, binary BIP-32 xpub)
         # - already know not in our records.
         trust_mode = cls.get_trust_policy()
 
@@ -1224,7 +1224,7 @@ async def ms_wallet_ckcc_export(menu, label, item):
 async def ms_wallet_electrum_export(menu, label, item):
     # create a JSON file that Electrum can use. Challenges:
     # - file contains derivation paths for each co-signer to use
-    # - electrum is using BIP43 with purpose=48 (purpose48_derivation) to make paths like:
+    # - electrum is using BIP-43 with purpose=48 (purpose48_derivation) to make paths like:
     #       m/48'/1'/0'/2'
     # - other signers might not be coldcards (we don't know)
     # solution: 
@@ -1322,7 +1322,7 @@ OK to continue. X to abort.
     await ux_show_story(msg)
 
 def import_xpub(ln):
-    # read an xpub/ypub/etc and return BIP32 node and what chain it's on.
+    # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
     # - can handle any garbage line
     # - returns (node, chain, addr_fmt)
     # - people are using SLIP132 so we need this

@@ -6,7 +6,7 @@ import sys, stash, ujson, os, ngu
 from files import CardSlot, CardMissingError
 
 class PassphraseSaver:
-    # Encrypts BIP39 passphrase very carefully, and appends
+    # Encrypts BIP-39 passphrase very carefully, and appends
     # to a file on MicroSD card. Order is preserved.
     # AES-256 CTR with key=SHA256(SHA256(salt + derived key off master + salt))
     # where: salt=sha256(microSD serial # details)

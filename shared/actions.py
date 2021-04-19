@@ -104,7 +104,7 @@ Extended Master Key:
         msg += '\n(Secondary wallet)\n'
 
     if stash.bip39_passphrase:
-        msg += '\nBIP39 passphrase is in effect.\n'
+        msg += '\nBIP-39 passphrase is in effect.\n'
 
     bn = callgate.get_bag_number()
     if bn:
@@ -540,7 +540,7 @@ async def start_seed_import(menu, label, item):
 async def start_b39_pw(menu, label, item):
     if not settings.get('b39skip', False):
         ch = await ux_show_story('''\
-You may add a passphrase to your BIP39 seed words. \
+You may add a passphrase to your BIP-39 seed words. \
 This creates an entirely new wallet, for every possible passphrase.
 
 By default, the Coldcard uses an empty string as the passphrase.
@@ -576,16 +576,16 @@ def pick_new_wallet(*a):
 async def convert_bip39_to_bip32(*a):
     import seed, stash
 
-    if not await ux_confirm('''This operation computes the extended master private key using your BIP39 seed words and passphrase, and then saves the resulting value (xprv) as the wallet secret.
+    if not await ux_confirm('''This operation computes the extended master private key using your BIP-39 seed words and passphrase, and then saves the resulting value (xprv) as the wallet secret.
 
-The seed words themselves are erased forever, but effectively there is no other change. If a BIP39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with any other passphrase.
+The seed words themselves are erased forever, but effectively there is no other change. If a BIP-39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with any other passphrase.
 
 A reboot is part of this process. PIN code, and funds are not affected.
 '''):
         return await ux_aborted()
 
     if not stash.bip39_passphrase:
-        if not await ux_confirm('''You do not have a BIP39 passphrase set right now, so this command does little except forget the seed words. It does not enhance security.'''):
+        if not await ux_confirm('''You do not have a BIP-39 passphrase set right now, so this command does little except forget the seed words. It does not enhance security.'''):
             return
 
     await seed.remember_bip39_passphrase()
@@ -620,7 +620,7 @@ consequences.''', escape='4')
 async def view_seed_words(*a):
     import stash, bip39
 
-    if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
+    if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP-39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
         return
 
     with stash.SensitiveValues() as sv:
@@ -632,7 +632,7 @@ async def view_seed_words(*a):
 
             pw = stash.bip39_passphrase
             if pw:
-                msg += '\n\nBIP39 Passphrase:\n%s' % stash.bip39_passphrase
+                msg += '\n\nBIP-39 Passphrase:\n%s' % stash.bip39_passphrase
         elif sv.mode == 'xprv':
             import chains
             msg = chains.current_chain().serialize_private(sv.node)

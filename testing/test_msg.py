@@ -3,7 +3,6 @@
 # Message signing.
 #
 import pytest, time, os
-from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.msg_signing import verify_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused

@@ -27,7 +27,7 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
     ('WIF (privkey)', 0,
         '7040bb53104f27367f317558e78a994ada7296c6fde36a364e5baf206e502bb1',
         'Kzyv4uF39d4Jrw2W7UryTHwZr1zQVNk4dAFyqE6BuMrMh1Za7uhp'),
-    ('XPRV (BIP32)', 0,
+    ('XPRV (BIP-32)', 0,
         None,
         'xprv9s21ZrQH143K2srSbCSg4m4kLvPMzcWydgmKEnMmoZUurYuBuYG46c6P71UGXMzmriLzCCBvKQWBUv3vPB3m1SATMhp3uEjXHJ42jFg7myX'),
     ('32-bytes hex', 0,
@@ -179,7 +179,7 @@ HISTORY = set()
 
 @pytest.mark.parametrize('mode,pattern', [ 
     ('WIF (privkey)', r'[1-9A-HJ-NP-Za-km-z]{51,52}' ),
-    ('XPRV (BIP32)', r'[tx]prv[1-9A-HJ-NP-Za-km-z]{107}'),
+    ('XPRV (BIP-32)', r'[tx]prv[1-9A-HJ-NP-Za-km-z]{107}'),
     ('32-bytes hex', r'[a-f0-9]{32}'),
     ('64-bytes hex', r'[a-f0-9]{64}'),
     ('12 words', r'[a-f0-9]{32}'),

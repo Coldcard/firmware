@@ -29,8 +29,8 @@ from utils import call_later_ms
 #   xfp = master xpub's fingerprint (32 bit unsigned)
 #   xpub = master xpub in base58
 #   chain = 3-letter codename for chain we are working on (BTC)
-#   words = (bool) BIP39 seed words exist (else XPRV or master secret based)
-#   b39skip = (bool) skip discussion about use of BIP39 passphrase
+#   words = (bool) BIP-39 seed words exist (else XPRV or master secret based)
+#   b39skip = (bool) skip discussion about use of BIP-39 passphrase
 #   idle_to = idle timeout period (seconds)
 #   _age = internal verison number for data (see below)
 #   terms_ok = customer has signed-off on the terms of sale
