@@ -253,12 +253,16 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
             assert obj[fn]
         assert obj['account'] == int(acct_num or 0)
 
-        for fn in ['bip44', 'bip49', 'bip84']:
+        for fn in ['bip44', 'bip49', 'bip84', 'bip48_1', 'bip48_2']:
             assert fn in obj
             v = obj[fn]
             assert all([i in v for i in ['deriv', 'name', 'first', 'xpub', 'xfp']])
 
-            assert v['deriv'].endswith(f"'/{acct_num}'")
+            if 'bip48' not in fn:
+                assert v['deriv'].endswith(f"'/{acct_num}'")
+            else:
+                b48n = fn[-1]
+                assert v['deriv'].endswith(f"'/{acct_num}'/{b48n}'")
 
             node = BIP32Node.from_wallet_key(v['xpub'])
             first = node.subkey_for_path('0/0')
@@ -267,6 +271,8 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
             if fn == 'bip44':
                 assert first.address() == v['first']
                 addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC)
+            elif 'bip48' in fn:
+                assert addr == None
             else:
                 assert v['_pub'][1:4] == 'pub'
 

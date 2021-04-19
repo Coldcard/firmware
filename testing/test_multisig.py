@@ -12,7 +12,7 @@ from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRef
 from pprint import pprint, pformat
 from base64 import b64encode, b64decode
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, swab32, xfp2str, parse_change_back
-from helpers import path_to_str, str_to_path
+from helpers import path_to_str, str_to_path, slip132undo
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
@@ -568,7 +568,8 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     need_keypress('x')
 
 
-def test_export_airgap(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path):
+@pytest.mark.parametrize('acct_num', [ 0, 99, 123])
+def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path):
     # test UX and math for bip45 export
 
     goto_home()
@@ -578,10 +579,17 @@ def test_export_airgap(goto_home, cap_story, pick_menu_item, cap_menu, need_keyp
 
     time.sleep(.1)
     title, story = cap_story()
-    assert 'BIP45' in story
+    assert 'BIP-48' in story
     assert "m/45'" in story
     assert "m/48'/" in story
+    assert "acct'" in story
     
+    need_keypress('y')
+
+    # enter account number every time
+    time.sleep(.1)
+    for n in str(acct_num):
+        need_keypress(n)
     need_keypress('y')
 
     time.sleep(.1)
@@ -597,16 +605,36 @@ def test_export_airgap(goto_home, cap_story, pick_menu_item, cap_menu, need_keyp
     assert 'xfp' in rv
     assert len(rv) >= 7
 
-    n = BIP32Node.from_wallet_key(rv['p2sh'])
-
-    assert n.tree_depth() == 1
-    assert n.child_index() == 45 | (1<<31)
-    mxfp = unpack("<I", n.parent_fingerprint())[0]
-    assert hex(mxfp) == hex(simulator_fixed_xfp)
-
     e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
-    expect = e.subkey_for_path("45'.pub") 
+
+    n = BIP32Node.from_wallet_key(rv['p2sh'])
+    if acct_num == 0:
+        assert n.tree_depth() == 1
+        assert n.child_index() == 45 | (1<<31)
+        mxfp = unpack("<I", n.parent_fingerprint())[0]
+        assert hex(mxfp) == hex(simulator_fixed_xfp)
+
+        expect = e.subkey_for_path("45'.pub") 
+    else:
+        assert n.tree_depth() == 2
+        assert n.child_index() == acct_num | (1<<31)
+        expect = e.subkey_for_path(f"45'/{acct_num}'.pub") 
     assert expect.hwif() == n.hwif()
+
+    for name, deriv in [ 
+        ('p2sh_p2wsh', f"m/48'/1'/{acct_num}'/1'"),
+        ('p2wsh', f"m/48'/1'/{acct_num}'/2'"),
+    ]:
+        e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+        xpub, *_ = slip132undo(rv[name])
+        n = BIP32Node.from_wallet_key(xpub)
+        assert rv[name+'_deriv'] == deriv
+        assert n.hwif() == xpub
+        assert n.tree_depth() == 4
+        assert n.child_index() & (1<<31)
+        assert n.child_index() & 0xff == int(deriv[-2])
+        expect = e.subkey_for_path(deriv[2:] + ".pub") 
+        assert expect.hwif() == n.hwif()
 
 @pytest.mark.parametrize('N', [ 3, 15])
 def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, make_multisig):
@@ -1232,8 +1260,8 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         assert ex != aft
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh', 'p2sh'])
-#@pytest.mark.parametrize('N', [3, 4, 14])
-def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, get_settings, N=4):
+@pytest.mark.parametrize('acct_num', [ 0, 99, 4321])
+def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, get_settings, N=4):
     # test UX and math for bip45 export
 
     # cleanup
@@ -1255,6 +1283,13 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
         pick_menu_item('Export XPUB')
         time.sleep(.05)
         need_keypress('y')
+
+        # enter account number every time
+        time.sleep(.05)
+        for n in str(acct_num):
+            need_keypress(n)
+        need_keypress('y')
+
         need_keypress('y')
 
     set_bip39_pw('')
@@ -1335,7 +1370,7 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     need_keypress('y')
     need_keypress('y')
 
-    if N == 4:
+    if N == 4 and acct_num == 0:
 
         # capture useful test data for testing Electrum plugin, etc
         for fn in glob(microsd_path('ccxp-*.json')):
@@ -1362,6 +1397,8 @@ def test_make_airgapped(addr_fmt, goto_home, cap_story, pick_menu_item, cap_menu
     title, story = cap_story()
     assert "Create new multisig" in story
     assert f"Policy: {M} of {N}" in story
+    if addr_fmt != 'p2sh':
+        assert f"/{acct_num}'/" in story
 
     need_keypress('1')
     time.sleep(.05)

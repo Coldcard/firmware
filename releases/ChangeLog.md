@@ -1,5 +1,12 @@
 ## 4.0.3 - April XX, 2021
 
+- Enhancement: Add support for BIP-48 derivations when exporting generic JSON (including
+  the accounts number) under Advanced > MicroSD Card > Export Wallet > Generic JSON.
+  These would are targeted for multisig wallets,
+  such as [Sparrow](https://sparrowwallet.com/docs/coldcard-wallet.html)
+- Enhancement: Ask for account number when creating Multisig Wallets via air-gapped
+  Coldcards. Use account zero for compatibility with previous versions. No need to
+  use same account number on each participating Coldcard, but we recommend that.
 
 ## 4.0.2 - April 7, 2021
 

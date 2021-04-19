@@ -5,7 +5,7 @@
 import stash, chains, ustruct, ure, uio, sys, ngu
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
 from files import CardSlot, CardMissingError
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
 from menu import MenuSystem, MenuItem
@@ -1252,7 +1252,7 @@ async def ms_wallet_detail(menu, label, item):
 
 async def export_multisig_xpubs(*a):
     # WAS: Create a single text file with lots of docs, and all possible useful xpub values.
-    # THEN: Just create the one-liner xpub export value they need/want to support BIP45
+    # THEN: Just create the one-liner xpub export value they need/want to support BIP-45
     # NOW: Export JSON with one xpub per useful address type and semi-standard derivation path
     #
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
@@ -1267,20 +1267,31 @@ This feature creates a small file containing \
 the extended public keys (XPUB) you would need to join \
 a multisig wallet using the 'Create Airgapped' feature.
 
-The public keys exported are:
+The public keys for BIP-48 conformant paths are used:
 
-BIP45:
-   m/45'
 P2SH-P2WSH:
-   m/48'/{coin}'/0'/1'
+   m/48'/{coin}'/acct'/1'
 P2WSH:
-   m/48'/{coin}'/0'/2'
+   m/48'/{coin}'/acct'/2'
+
+For P2SH (obsolete), we use either:
+   m/45'
+or if non-zero account:
+   m/45'/acct'
 
 OK to continue. X to abort.
 '''.format(coin = chain.b44_cointype)
 
     resp = await ux_show_story(msg)
     if resp != 'y': return
+
+    acct_num = await ux_enter_number('Account Number:', 9999)
+
+    todo = [
+        ( "m/45'/{acct_num}'" if acct_num != 0 else "m/45'", 'p2sh', AF_P2SH), 
+        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
+        ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
+    ]
 
     try:
         with CardSlot() as card:
@@ -1289,13 +1300,8 @@ OK to continue. X to abort.
             with open(fname, 'wt') as fp:
                 fp.write('{\n')
                 with stash.SensitiveValues() as sv:
-                    for deriv, name, fmt in [
-                        ( "m/45'", 'p2sh', AF_P2SH), 
-                        ( "m/48'/{coin}'/0'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-                        ( "m/48'/{coin}'/0'/2'", 'p2wsh', AF_P2WSH)
-                    ]:
-
-                        dd = deriv.format(coin = chain.b44_cointype)
+                    for deriv, name, fmt in todo:
+                        dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
                         node = sv.derive_path(dd)
                         xp = chain.serialize_public(node, fmt)
                         fp.write('  "%s_deriv": "%s",\n' % (name, dd))
@@ -1310,7 +1316,7 @@ OK to continue. X to abort.
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''BIP45 multisig xpub file written:\n\n%s''' % nice
+    msg = '''Multisig XPUB file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
 def import_xpub(ln):

@@ -263,7 +263,7 @@ def generate_wasabi_wallet():
 
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH
 
     chain = chains.current_chain()
 
@@ -275,10 +275,12 @@ def generate_generic_export(account_num=0):
 
     with stash.SensitiveValues() as sv:
         # each of these paths would have /{change}/{idx} in usage (not hardened)
-        for name, deriv, fmt, atype in [
-            ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh' ),
-            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2sh-p2wpkh' ),   # was "p2wpkh-p2sh"
-            ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh' ),
+        for name, deriv, fmt, atype, is_ms in [
+            ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh', False ),
+            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
+            ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh', False ),
+            ( 'bip48_1', "m/48'/{ct}'/{acc}'/1'", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
+            ( 'bip48_2', "m/48'/{ct}'/{acc}'/2'", AF_P2WSH, 'p2wsh', True ),
         ]:
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
             node = sv.derive_path(dd)
@@ -286,10 +288,14 @@ def generate_generic_export(account_num=0):
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
 
-            # bonus/check: first non-change address: 0/0
-            node.derive(0, False).derive(0, False)
+            if not is_ms:
+                # bonus/check: first non-change address: 0/0
+                node.derive(0, False).derive(0, False)
+                first_addr = chain.address(node, fmt)
+            else:
+                first_addr = None
 
-            rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, first=chain.address(node, fmt), name=atype)
+            rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, first=first_addr, name=atype)
             if zp:
                 rv[name]['_pub'] = zp
 
