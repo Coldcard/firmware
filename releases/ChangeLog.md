@@ -7,6 +7,8 @@
 - Enhancement: Ask for account number when creating Multisig Wallets via air-gapped
   Coldcards. Use account zero for compatibility with previous versions. No need to
   use same account number on each participating Coldcard, but we recommend that.
+- Bugfix: Deleting a multisig wallet that was identical to another wallet, except
+  for different address type, would lead to an error.
 
 ## 4.0.2 - April 7, 2021
 

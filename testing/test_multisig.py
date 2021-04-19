@@ -154,7 +154,7 @@ def offer_ms_import(cap_story, dev, need_keypress):
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None):
-        keys = keys or make_multisig(M, N, unique=unique, deriv=common)
+        keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None))
 
         if not do_import:
             return keys
@@ -1915,5 +1915,33 @@ def test_ms_addr_explorer(M, N, addr_fmt, make_multisig, clear_ms, offer_ms_impo
 
         trunc = expect[0:8] + "-" + expect[-7:]
         assert trunc == addr
+
+def test_dup_ms_wallet_bug(goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, import_ms_wallet, clear_ms, M=2, N=3):
+
+    deriv = ["m/48'/1'/0'/69'/1"]*N
+    fmts = [ 'p2wsh', 'p2sh-p2wsh']
+
+    clear_ms()
+
+    for n, ty in enumerate(fmts):
+        import_ms_wallet(M, N, name=f'name-{n}', accept=1, derivs=deriv, addr_fmt=ty)
+
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+
+    # drill down to second one
+    time.sleep(.1)
+    pick_menu_item('2/3: name-1')
+    pick_menu_item('Delete')
+    need_keypress('y')
+
+    # BUG: pre v4.0.3, would be showing a "Yikes" referencing multisig:419 at this point
+
+    pick_menu_item('2/3: name-0')
+    pick_menu_item('Delete')
+    need_keypress('y')
+
+    clear_ms()
 
 # EOF

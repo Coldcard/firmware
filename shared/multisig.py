@@ -414,9 +414,11 @@ class MultisigWallet:
         assert self.storage_idx >= 0
 
         # safety check
-        existing = self.find_match(self.M, self.N, self.get_xfp_paths())
-        assert existing
-        assert existing.storage_idx == self.storage_idx
+        for existing in self.iter_wallets(M=self.M, N=self.N, addr_fmt=self.addr_fmt):
+            if existing.storage_idx != self.storage_idx: continue
+            break
+        else:
+            raise IndexError        # consistency bug
 
         lst = settings.get('multisig', [])
         del lst[self.storage_idx]
