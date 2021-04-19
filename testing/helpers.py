@@ -2,7 +2,7 @@
 #
 # stuff I need sometimes
 from io import BytesIO
-from binascii import b2a_hex
+from binascii import b2a_hex, a2b_hex
 from decimal import Decimal
 import random
 
@@ -156,5 +156,46 @@ def str_to_path(path):
     assert path == path_to_str(rv, skip=0)
 
     return rv
+
+def slip132undo(orig):
+    # take a SLIP-132 xpub/ypub/z/U/?pub/prv and convert into BIP-32 style
+    # - preserve testnet vs. mainnet
+    # - return addr fmt info
+    from pycoin.encoding import a2b_hashed_base58, b2a_hashed_base58
+    from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
+    from ckcc_protocol.constants import AF_P2WPKH
+
+
+    assert orig[0] not in 'xt', "already legit bip32"
+
+    xpub = a2b_hex('0488B21E')
+    tpub = a2b_hex('043587cf')
+    xprv = a2b_hex('0488ADE4')
+    tprv = a2b_hex('04358394')
+
+    variants  = [
+        (False, AF_P2WPKH_P2SH, '049d7cb2', '049d7878', 'y'),
+        (False, AF_P2WPKH, '04b24746', '04b2430c', 'z'),
+        (False, AF_P2WSH_P2SH, '0295b43f', '0295b005', 'Y'),
+        (False, AF_P2WSH, '02aa7ed3', '02aa7a99', 'Z'),
+        (True, AF_P2WPKH_P2SH, '044a5262', '044a4e28', 'u'),
+        (True, AF_P2WPKH, '045f1cf6', '045f18bc', 'v'),
+        (True, AF_P2WSH_P2SH, '024289ef', '024285b5', 'U'),
+        (True, AF_P2WSH, '02575483', '02575048', 'V'),
+    ]
+
+    raw = a2b_hashed_base58(orig)
+
+    for testnet, addr_fmt, pub, priv, hint in variants:
+
+        if raw[0:4] == a2b_hex(pub):
+            return b2a_hashed_base58((tpub if testnet else xpub) + raw[4:]), \
+                        testnet, addr_fmt, False
+
+        if raw[0:4] == a2b_hex(priv):
+            return b2a_hashed_base58((tprv if testnet else xprv) + raw[4:]), \
+                        testnet, addr_fmt, True
+
+    raise RuntimeError("unknown prefix")
 
 # EOF
