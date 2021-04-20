@@ -1226,6 +1226,7 @@ async def ms_wallet_electrum_export(menu, label, item):
     # - file contains derivation paths for each co-signer to use
     # - electrum is using BIP-43 with purpose=48 (purpose48_derivation) to make paths like:
     #       m/48'/1'/0'/2'
+    # - above is now called BIP-48
     # - other signers might not be coldcards (we don't know)
     # solution: 
     # - when building air-gap, pick address type at that point, and matching path to suit
@@ -1269,17 +1270,12 @@ This feature creates a small file containing \
 the extended public keys (XPUB) you would need to join \
 a multisig wallet using the 'Create Airgapped' feature.
 
-The public keys for BIP-48 conformant paths are used:
+Public keys for BIP-48 conformant paths are used:
 
 P2SH-P2WSH:
    m/48'/{coin}'/acct'/1'
 P2WSH:
    m/48'/{coin}'/acct'/2'
-
-For P2SH (obsolete), we use either:
-   m/45'
-or if non-zero account:
-   m/45'/acct'
 
 OK to continue. X to abort.
 '''.format(coin = chain.b44_cointype)
@@ -1290,7 +1286,7 @@ OK to continue. X to abort.
     acct_num = await ux_enter_number('Account Number:', 9999)
 
     todo = [
-        ( "m/45'/{acct_num}'" if acct_num != 0 else "m/45'", 'p2sh', AF_P2SH), 
+        #( "m/45'", 'p2sh', AF_P2SH),           # considered obsolete
         ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
     ]
@@ -1303,12 +1299,14 @@ OK to continue. X to abort.
                 fp.write('{\n')
                 with stash.SensitiveValues() as sv:
                     for deriv, name, fmt in todo:
+                        if fmt == AF_P2SH and acct_num: continue
                         dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
                         node = sv.derive_path(dd)
                         xp = chain.serialize_public(node, fmt)
                         fp.write('  "%s_deriv": "%s",\n' % (name, dd))
                         fp.write('  "%s": "%s",\n' % (name, xp))
 
+                fp.write('  "account": "%d",\n' % acct_num)
                 fp.write('  "xfp": "%s"\n}\n' % xfp)
 
     except CardMissingError:
@@ -1343,7 +1341,7 @@ def import_xpub(ln):
     return (node, chain, addr_fmt)
 
 async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
-    # collect all xpub- exports on current SD card (must be > 1)
+    # collect all xpub- exports on current SD card (must be > 1) to make "air gapped" wallet
     # - ask for M value 
     # - create wallet, save and also export 
     # - also create electrum skel to go with that
@@ -1495,15 +1493,12 @@ Insert SD card with exported XPUB files from at least one other \
 Coldcard. A multisig wallet will be constructed using those keys and \
 this device.
 
-Default is P2WSH addresses (segwit), but press (1) for P2SH-P2WSH or (2) for P2SH (legacy) instead.
-''', escape='12')
+Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
 
     if ch == 'y':
         n, f = 'p2wsh', AF_P2WSH
     elif ch == '1':
         n, f = 'p2sh_p2wsh', AF_P2WSH_P2SH
-    elif ch == '2':
-        n, f = 'p2sh', AF_P2SH
     else:
         return
 

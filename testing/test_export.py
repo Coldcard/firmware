@@ -8,7 +8,7 @@ from base64 import b64encode
 from binascii import b2a_hex, a2b_hex
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
-from helpers import xfp2str
+from helpers import xfp2str, slip132undo
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH, AF_P2WSH_P2SH
@@ -256,7 +256,7 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
         for fn in ['bip44', 'bip49', 'bip84', 'bip48_1', 'bip48_2']:
             assert fn in obj
             v = obj[fn]
-            assert all([i in v for i in ['deriv', 'name', 'first', 'xpub', 'xfp']])
+            assert all([i in v for i in ['deriv', 'name', 'xpub', 'xfp']])
 
             if 'bip48' not in fn:
                 assert v['deriv'].endswith(f"'/{acct_num}'")
@@ -266,22 +266,27 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
 
             node = BIP32Node.from_wallet_key(v['xpub'])
             first = node.subkey_for_path('0/0')
-            addr = v['first']
+            addr = v.get('first', None)
 
             if fn == 'bip44':
                 assert first.address() == v['first']
                 addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC)
-            elif 'bip48' in fn:
+            elif 'bip48_' in fn:
                 assert addr == None
             else:
                 assert v['_pub'][1:4] == 'pub'
+                assert slip132undo(v['_pub'])[0] == v['xpub']
 
+                h20 = first.hash160()
                 if fn == 'bip84':
-                    h20 = first.hash160()
                     assert addr == sw_encode(addr[0:2], 0, h20)
                     addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH)
-                else:
-                    addr_fmt = AF_P2WSH_P2SH
+                elif fn == 'bip49':
                     # don't have test logic for verifying these addrs
+                    # - need to make script, and bleh
+                    assert addr[0] in '23'
+                    #addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WSH_P2SH, script=)
+                else:
+                    assert False
 
 # EOF

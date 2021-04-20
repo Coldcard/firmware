@@ -288,14 +288,13 @@ def generate_generic_export(account_num=0):
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
 
+            rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, name=atype)
+
             if not is_ms:
                 # bonus/check: first non-change address: 0/0
                 node.derive(0, False).derive(0, False)
-                first_addr = chain.address(node, fmt)
-            else:
-                first_addr = None
+                rv[name]['first'] = chain.address(node, fmt)
 
-            rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, first=first_addr, name=atype)
             if zp:
                 rv[name]['_pub'] = zp
 

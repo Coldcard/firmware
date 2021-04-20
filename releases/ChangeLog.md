@@ -6,10 +6,12 @@
   such as [Sparrow](https://sparrowwallet.com/docs/coldcard-wallet.html)
 - Enhancement: Ask for account number when creating Multisig Wallets via air-gapped
   Coldcards. Use account zero for compatibility with previous versions. No need to
-  use same account number on each participating Coldcard, but we recommend that.
+  use same account number on each participating Coldcard, but we recommend that. Creating
+  new P2SH (BIP-45) type air-gapped wallets has been removed since it cannot support
+  multiple accounts.
 - Bugfix: Deleting a multisig wallet that was identical to another wallet, except
   for different address type, would lead to an error.
-- Bugfix: Standardize on BIP-nn in place of BIPnn in source code and messages.
+- Bugfix: Standardize on BIP-nn in place of BIPnn in source code, messages and docs.
 
 ## 4.0.2 - April 7, 2021
 

@@ -580,7 +580,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
     time.sleep(.1)
     title, story = cap_story()
     assert 'BIP-48' in story
-    assert "m/45'" in story
+    assert "m/45'" not in story
     assert "m/48'/" in story
     assert "acct'" in story
     
@@ -603,23 +603,27 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         rv = json.load(fp)
 
     assert 'xfp' in rv
-    assert len(rv) >= 7
+    assert len(rv) >= 6
 
     e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
 
-    n = BIP32Node.from_wallet_key(rv['p2sh'])
-    if acct_num == 0:
-        assert n.tree_depth() == 1
-        assert n.child_index() == 45 | (1<<31)
-        mxfp = unpack("<I", n.parent_fingerprint())[0]
-        assert hex(mxfp) == hex(simulator_fixed_xfp)
+    if 0:
+        # obsolete, removed
+        n = BIP32Node.from_wallet_key(rv['p2sh'])
+        if acct_num == 0:
+            assert n.tree_depth() == 1
+            assert n.child_index() == 45 | (1<<31)
+            mxfp = unpack("<I", n.parent_fingerprint())[0]
+            assert hex(mxfp) == hex(simulator_fixed_xfp)
 
-        expect = e.subkey_for_path("45'.pub") 
+            expect = e.subkey_for_path("45'.pub") 
+        else:
+            assert n.tree_depth() == 2
+            assert n.child_index() == acct_num | (1<<31)
+            expect = e.subkey_for_path(f"45'/{acct_num}'.pub") 
+        assert expect.hwif() == n.hwif()
     else:
-        assert n.tree_depth() == 2
-        assert n.child_index() == acct_num | (1<<31)
-        expect = e.subkey_for_path(f"45'/{acct_num}'.pub") 
-    assert expect.hwif() == n.hwif()
+        assert 'p2sh' not in rv
 
     for name, deriv in [ 
         ('p2sh_p2wsh', f"m/48'/1'/{acct_num}'/1'"),
@@ -1259,7 +1263,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         assert is_complete
         assert ex != aft
 
-@pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh', 'p2sh'])
+@pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
 @pytest.mark.parametrize('acct_num', [ 0, 99, 4321])
 def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, set_bip39_pw, clear_ms, get_settings, N=4):
     # test UX and math for bip45 export
