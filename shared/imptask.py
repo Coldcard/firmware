@@ -5,8 +5,12 @@
 import sys, uasyncio
 
 def die_with_debug(exc):
-    from usb import is_vcp_active
-    is_debug = is_vcp_active()
+    try:
+        from usb import is_vcp_active
+        is_debug = is_vcp_active()
+    except:
+        # robustness
+        is_debug = False
 
     if is_debug and isinstance(exc, KeyboardInterrupt):
         # preserve GUI state, but want to see where we are

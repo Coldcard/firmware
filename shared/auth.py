@@ -1153,4 +1153,63 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
         from ux import the_ux
         the_ux.push(UserAuthorizedAction.active_request)
 
+class FirmwareUpgradeRequest(UserAuthorizedAction):
+    def __init__(self, hdr, length):
+        super().__init__()
+        self.hdr = hdr
+        self.length = length
+
+    async def interact(self):
+        from version import decode_firmware_header
+        from sflash import SF
+
+        date, version, _ = decode_firmware_header(self.hdr)
+
+        msg = '''\
+Install this new firmware?
+
+  {version}
+  {built}
+
+Binary checksum and signature will be further verified before any changes are made.
+'''.format(version=version, built=date)
+
+        try:
+            ch = await ux_show_story(msg)
+
+            if ch == 'y':
+                # Accepted:
+                # - write final file header, so bootloader will see it
+                # - reboot to start process
+                from glob import dis
+                import callgate
+                SF.write(self.length, self.hdr)
+
+                dis.fullscreen('Upgrading...', percent=1)
+
+                callgate.show_logout(2)
+            else:
+                # they don't want to!
+                self.refused = True
+                SF.block_erase(0)           # just in case, but not required
+                await ux_dramatic_pause("Refused.", 2)
+
+        except BaseException as exc:
+            self.failed = "Exception"
+            sys.print_exception(exc)
+        finally:
+            UserAuthorizedAction.cleanup()      # because no results to store
+            self.pop_menu()
+
+def authorize_upgrade(hdr, length):
+    # final USB write has come in, get buy-in
+
+    # Do some verification before we even show to the local user
+    UserAuthorizedAction.check_busy()
+    UserAuthorizedAction.active_request = FirmwareUpgradeRequest(hdr, length)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+
 # EOF

@@ -100,6 +100,7 @@ class USBHandler:
         # We keep a running hash over whatever has been uploaded
         # - reset at offset zero, can be read back anytime
         self.file_checksum = sha256()
+        self.is_fw_upgrade = False
 
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
@@ -323,7 +324,16 @@ class USBHandler:
             return self.call_after(callgate.enter_dfu)
 
         if cmd == 'rebo':
+            from auth import UserAuthorizedAction, FirmwareUpgradeRequest
             import machine
+
+            req = UserAuthorizedAction.active_request
+            if req and isinstance(req, FirmwareUpgradeRequest):
+                # We're waiting on firmware upgrade approval, so don't reboot
+                # (which would not apply the upgrade anyway) and also don't
+                # give an error, because ckcc-protocol and other clients
+                # send the reboot as part of the old upgrade process.
+                return
             return self.call_after(machine.reset)
 
         if cmd == 'logo':
@@ -671,11 +681,12 @@ class USBHandler:
         from sflash import SF
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
-        from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
+        from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
 
         # maintain a running SHA256 over what's received
         if offset == 0:
             self.file_checksum = sha256()
+            self.is_fw_upgrade = False
 
         assert offset % 256 == 0, 'alignment'
         assert offset+len(data) <= total_size <= MAX_UPLOAD_LEN, 'long'
@@ -700,7 +711,6 @@ class USBHandler:
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
-
             self.file_checksum.update(here)
 
             # Very special case for firmware upgrades: intercept and modify
@@ -708,12 +718,30 @@ class USBHandler:
             # on this specific hardware.
             # - workaround: ckcc-protocol upgrade process understates the file
             #   length and appends hdr, but that's kinda a bug, so support both
-            if (pos == (FW_HEADER_OFFSET & ~255) 
-                or pos == (total_size - FW_HEADER_SIZE) or pos == total_size):
+            is_trailer = (pos == (total_size - FW_HEADER_SIZE) or pos == total_size)
 
-                prob = check_firmware_hdr(memoryview(here)[-128:], None, bad_magic_ok=True)
-                if prob:
-                    raise ValueError(prob)
+            if pos == (FW_HEADER_OFFSET & ~255):
+                hdr = memoryview(here)[-128:]
+                magic, = unpack_from('<I', hdr[0:4])
+                if magic == FW_HEADER_MAGIC:
+                    self.is_fw_upgrade = bytes(hdr)
+
+                    prob = check_firmware_hdr(hdr, total_size)
+                    if prob:
+                        raise ValueError(prob)
+
+            if is_trailer and self.is_fw_upgrade:
+                # expect the trailer to exactly match the original one
+                assert len(here) == 128      # == FW_HEADER_SIZE
+                hdr = memoryview(here)[-128:]
+                assert hdr == self.is_fw_upgrade        # indicates hacking
+
+                # but don't write it, instead offer user a chance to abort
+                from auth import authorize_upgrade
+                authorize_upgrade(self.is_fw_upgrade, pos)
+
+                # pretend we wrote it, so ckcc-protocol or whatever gives normal feedback
+                return offset
 
             SF.write(pos, here)
 
