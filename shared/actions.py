@@ -227,29 +227,17 @@ async def microsd_upgrade(*a):
             failed = check_firmware_hdr(hdr, size)
 
             if not failed:
-                patched = 0
-            
                 # copy binary into serial flash
                 fp.seek(offset)
 
                 buf = bytearray(256)        # must be flash page size
                 pos = 0
                 dis.fullscreen("Loading...")
-                while pos <= size + FW_HEADER_SIZE:
+                while pos < size:
                     dis.progress_bar_show(pos/size)
 
-                    if pos == size:
-                        # save an extra copy of the header (also means we got done)
-                        buf = hdr
-                        patched += 1
-                    else:
-                        here = fp.readinto(buf)
-                        if not here: break
-
-                    if pos == (FW_HEADER_OFFSET & ~255):
-                        # update w/ our patched version of hdr
-                        buf[128:FW_HEADER_SIZE+128] = hdr
-                        patched += 1
+                    here = fp.readinto(buf)
+                    if not here: break
 
                     if pos % 4096 == 0:
                         # erase here
@@ -265,16 +253,14 @@ async def microsd_upgrade(*a):
 
                     pos += here
 
-                assert patched == 2
-
     if failed:
         await ux_show_story(failed, title='Sorry!')
         return
 
     # continue process...
-    import machine
-    machine.reset()
-        
+    from auth import FirmwareUpgradeRequest
+    m = FirmwareUpgradeRequest(hdr, size)
+    the_ux.push(m)
 
 async def start_dfu(*a):
     from callgate import enter_dfu

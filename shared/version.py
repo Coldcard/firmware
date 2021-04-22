@@ -5,24 +5,31 @@
 # REMINDER: update simulator version of this file if API changes are made.
 #
 
+def decode_firmware_header(hdr):
+    from sigheader import FWH_PY_FORMAT
+    import ustruct
+
+    magic_value, timestamp, version_string = ustruct.unpack_from(FWH_PY_FORMAT, hdr)[0:3]
+
+    parts = ['%02x'%i for i in timestamp]
+    date = '20' + '-'.join(parts[0:3])
+
+    vers = bytes(version_string).rstrip(b'\0').decode()
+
+    return date, vers, ''.join(parts[:-2])
+
 def get_mpy_version():
     # read my own file header
     # see stm32/bootloader/sigheader.h
-    from sigheader import FLASH_HEADER_BASE, FW_HEADER_SIZE, FWH_PY_FORMAT
-    import ustruct, uctypes
 
     try:
         # located in flash, but could also use RAM version
+        from sigheader import FLASH_HEADER_BASE, FW_HEADER_SIZE
+        import uctypes
+
         hdr = uctypes.bytes_at(FLASH_HEADER_BASE, FW_HEADER_SIZE)
 
-        magic_value, timestamp, version_string = ustruct.unpack_from(FWH_PY_FORMAT, hdr)[0:3]
-
-        parts = ['%02x'%i for i in timestamp]
-        date = '20' + '-'.join(parts[0:3])
-
-        vers = bytes(version_string).rstrip(b'\0').decode()
-
-        return date, vers, ''.join(parts[:-2])
+        return decode_firmware_header(hdr)
     except:
         # this is early in boot process, so don't fail!
         return '20YY-MM-DD', '?.??', '180731121314'

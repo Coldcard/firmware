@@ -330,7 +330,7 @@ class Base64Streamer(DecodeStreamer):
         return a2b_base64(x)
 
 
-def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
+def check_firmware_hdr(hdr, binary_size):
     # Check basics of new firmware being loaded. Return text of error msg if any.
     # - basic checks only: for confused customers, not attackers.
     # - hdr must be a bytearray(FW_HEADER_SIZE+more)
@@ -347,15 +347,8 @@ def check_firmware_hdr(hdr, binary_size=None, bad_magic_ok=False):
         magic_value, timestamp, version_string, pk, fw_size, install_flags, hw_compat = \
                         unpack_from(FWH_PY_FORMAT, hdr)[0:7]
 
-        if bad_magic_ok and magic_value != FW_HEADER_MAGIC:
-            # it's just not a firmware file, and that's ok
-            return None
-
         assert magic_value == FW_HEADER_MAGIC, 'bad magic'
-        if binary_size is not None:
-            assert fw_size == binary_size, 'truncated'
-
-        # TODO: maybe show the version string? Warn them that downgrade doesn't work?
+        assert fw_size == binary_size or fw_size == (binary_size-128), 'size problem'
 
     except Exception as exc:
         return "That does not look like a firmware " \

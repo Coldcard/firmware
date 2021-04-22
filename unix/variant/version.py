@@ -1,5 +1,18 @@
 import sys
 
+def decode_firmware_header(hdr):
+    from sigheader import FWH_PY_FORMAT
+    import ustruct
+
+    magic_value, timestamp, version_string = ustruct.unpack_from(FWH_PY_FORMAT, hdr)[0:3]
+
+    parts = ['%02x'%i for i in timestamp]
+    date = '20' + '-'.join(parts[0:3])
+
+    vers = bytes(version_string).rstrip(b'\0').decode()
+
+    return date, vers, ''.join(parts[:-2])
+
 def get_mpy_version():
     return '2019-09-30', '3.x.x', '180711195308'
 
