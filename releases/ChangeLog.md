@@ -9,6 +9,8 @@
   use same account number on each participating Coldcard, but we recommend that. Creating
   new P2SH (BIP-45) type air-gapped wallets has been removed since it cannot support
   multiple accounts.
+- Bugfix: Could not clear PIN codes, including the duress PIN, so was not possible to wipe
+  the main secret, if a duress PIN had been set. 999999-999999 works again now.
 - Bugfix: Deleting a multisig wallet that was identical to another wallet, except
   for different address type, would lead to an error.
 - Bugfix: Standardize on BIP-nn in place of BIPnn in source code, messages and docs.
