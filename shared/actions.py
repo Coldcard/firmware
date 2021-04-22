@@ -15,7 +15,7 @@ from utils import xfp2str
 from nvstore import settings
 from pincodes import pa
 
-CLEAR_PIN = b'999999-999999'
+CLEAR_PIN = '999999-999999'
 
 async def start_selftest(*args):
 
