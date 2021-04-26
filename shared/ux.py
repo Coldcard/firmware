@@ -181,6 +181,8 @@ def word_wrap(ln, w):
             # bad-break the line
             sp = min(len(ln), w)
             nsp = sp
+            if ln[nsp] == ' ':
+                nsp += 1
         else:
             nsp = sp+1
 
