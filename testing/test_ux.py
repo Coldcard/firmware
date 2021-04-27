@@ -608,4 +608,9 @@ def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress
 
     need_keypress('y')      # clear screen
 
+@pytest.mark.onetime
+def test_dump_menutree(sim_execfile):
+    # prints to console, more fun with headless.py
+    sim_execfile('devtest/menu_dump.py')
+
 # EOF
