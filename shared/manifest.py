@@ -34,6 +34,7 @@ freeze_as_mpy('', [
 	'pincodes.py',
 	'psbt.py',
 	'pwsave.py',
+	'queues.py',
 	'random.py',
 	'seed.py',
 	'selftest.py',
@@ -48,7 +49,7 @@ freeze_as_mpy('', [
 	'utils.py',
 	'ux.py',
 	'version.py',
-	'queues.py',
+	'xor_seed.py',
 ], opt=0)
 
 # Data-like files, since no need to debug them

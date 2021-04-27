@@ -1,5 +1,14 @@
-## 4.0.3 - April XX, 2021
+## 4.1.0 - April XX, 2021
 
+- New feature: Seed XOR -- split you secret BIP-39 seed into 2 (or 3 or 4) new seed phrases
+    - any combination of found seed word phrases is a fully working wallet (great for duress)
+    - still 24 words, and can be encoded onto a SEEDPLATE
+    - all parts are required to be known to get back to original
+      seed phrase (**not** M of N, always N of N),
+    - your existing seed can be split by Coldcard (one already in use)
+    - you can do the math on paper, and it's possible to split/combine without the Coldcard
+    - see [docs/seed-xor.md](docs/seed-xor.md) for more, and the paper tools you need
+      are available at <https://github.com/Coldcard/wordlist-paper>
 - Enhancement: Add support for BIP-48 derivations when exporting generic JSON (including
   the accounts number) under Advanced > MicroSD Card > Export Wallet > Generic JSON.
   These would are targeted towards multisig wallets, such as

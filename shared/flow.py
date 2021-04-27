@@ -13,6 +13,7 @@ from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start
 from backups import clone_start, clone_write_data
+from xor_seed import xor_split_start, xor_restore_start
 
 # Optional feature: HSM
 if version.has_fatram:
@@ -141,12 +142,23 @@ DebugFunctionsMenu = [
     #MenuItem("Perform Selftest", f=start_selftest),
 ]
 
+SeedXORMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("Split Existing", f=xor_split_start),
+    MenuItem("Restore Seed XOR", f=xor_restore_start),
+]
+
+SeedFunctionsMenu = [
+    MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
+    MenuItem('Seed XOR', menu=SeedXORMenu),
+    MenuItem("Destroy Seed", f=clear_seed),
+    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
+]
+
 DangerZoneMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),       # actually harmless
-    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
-    MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
-    MenuItem("Destroy Seed", f=clear_seed),
+    MenuItem("Seed Functions", menu=SeedFunctionsMenu),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
     MenuItem("Wipe Patch Area", f=wipe_filesystem),             # needs better label
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
@@ -196,6 +208,7 @@ ImportWallet = [
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv),
     MenuItem("Dice Rolls", f=import_from_dice),
+    MenuItem("Seed XOR", f=xor_restore_start),
 ]
 
 # has PIN, but no secret seed yet

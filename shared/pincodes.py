@@ -109,6 +109,7 @@ class PinAttempt:
         self.pin = None
         self.secret = None
         self.is_empty = None
+        self.tmp_value = False          # simulated SE, in-ram only
         self.magic_value = PA_MAGIC_V2 if version.has_608 else PA_MAGIC_V1
         self.delay_achieved = 0         # so far, how much time wasted?
         self.delay_required = 0         # how much will be needed?
@@ -338,6 +339,8 @@ class PinAttempt:
 
     def change(self, **kws):
         # change various values, stored in secure element
+        if self.tmp_value: return
+
         self.roundtrip(3, **kws)
 
         # IMPORTANT: 
@@ -345,6 +348,10 @@ class PinAttempt:
         # - is_secret_blank and is_successful may be wrong now, re-login to get again
 
     def fetch(self, duress_pin=None):
+        if self.tmp_value:
+            # must make a copy here, and must be mutable instance so not reused
+            return bytearray(self.tmp_value)
+
         if duress_pin is None:
             secret = self.roundtrip(4)
         else:
@@ -355,6 +362,8 @@ class PinAttempt:
     def ls_fetch(self):
         # get the "long secret"
         #assert (13 * 32) == 416 == AE_LONG_SECRET_LEN
+        if self.tmp_value:
+            return bytes(AE_LONG_SECRET_LEN)
 
         secret = b''
         for n in range(13):
@@ -365,6 +374,7 @@ class PinAttempt:
     def ls_change(self, new_long_secret):
         # set the "long secret"
         assert len(new_long_secret) == AE_LONG_SECRET_LEN
+        if self.tmp_value: return
 
         for n in range(13):
             self.roundtrip(6, ls_offset=n, new_secret=new_long_secret[n*32:(n*32)+32])
@@ -396,6 +406,21 @@ class PinAttempt:
             sv.capture_xpub()
 
         # does not call settings.save() but caller should!
+
+    def tmp_secret(self, encoded):
+        # Use indicated secret and stop using the SE; operate like this until reboot
+        self.tmp_value = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
+
+        # We're no longer blank. hard to say about duress secret and stuff tho
+        self.state_flags = PA_SUCCESSFUL
+
+        # Clear bip-39 secret, not applicable anymore.
+        import stash
+        stash.bip39_passphrase = ''
+
+        # Copies system settings to new encrypted-key value, calculates
+        # XFP, XPUB and saves into that, and starts using them.
+        self.new_main_secret(self.tmp_value)
 
 # singleton
 pa = PinAttempt()

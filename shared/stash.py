@@ -16,7 +16,7 @@ from pincodes import AE_SECRET_LEN
 from utils import swab32
 
 def blank_object(item):
-    # Use/abuse uctypes to blank objects until python. Will likely
+    # Use/abuse uctypes to blank objects under python. Will likely
     # even work on immutable types, so be careful. Also works
     # well to kill references to sensitive values (but not copies).
     #
@@ -256,6 +256,5 @@ class SensitiveValues:
 
         self.register(pk)
         return pk
-    
 
 # EOF
