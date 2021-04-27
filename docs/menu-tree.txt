@@ -1,0 +1,193 @@
+
+No PIN Set
+  Choose PIN Code
+  Advanced
+    View Identity
+    Upgrade firmware
+      Show Version
+      From MicroSD
+      Bless Firmware
+    Paper Wallets [MAYBE]
+    Perform Selftest
+    Secure Logout
+  Bag Number
+  Help
+
+Empty Wallet
+  New Wallet
+  Import Existing
+    24 Words
+    18 Words
+    12 Words
+    Restore Backup
+    Clone Coldcard
+    Import XPRV
+    Dice Rolls
+    Seed XOR
+  Help
+  Advanced
+    View Identity
+    Upgrade
+      Show Version
+      From MicroSD
+      Bless Firmware
+    Paper Wallets [MAYBE]
+    Perform Selftest
+    I Am Developer.
+    Secure Logout
+  Settings
+    Idle Timeout
+       2 minutes
+       5 minutes
+      15 minutes
+       1 hour
+       4 hours
+       8 hours
+       Never
+    Login Countdown
+      Disabled
+       5 minutes
+      15 minutes
+      30 minutes
+       1 hour
+       2 hours
+       4 hours
+       8 hours
+      12 hours
+      24 hours
+      48 hours
+       3 days
+       1 week
+      28 days later
+    Max Network Fee
+      10% (default)
+      25%
+      50%
+      no limit
+    PIN Options
+    Multisig Wallets
+    Set Nickname
+    Scramble Keypad
+    Delete PSBTs
+    Disable USB
+      Normal
+      Disable USB
+    Display Units
+      BTC
+      mBTC
+      bits
+      sats
+
+Normal
+  Ready To Sign
+  Passphrase [MAYBE]
+  Start HSM Mode [MAYBE]
+  Address Explorer
+  Secure Logout
+  Advanced
+    View Identity
+    Upgrade
+      Show Version
+      From MicroSD
+      Bless Firmware
+    Backup
+      Backup System
+      Verify Backup
+      Restore Backup
+      Clone Coldcard [MAYBE]
+      Dump Summary
+    MicroSD Card
+      Verify Backup
+      Backup System
+      Dump Summary
+      Export Wallet
+        Bitcoin Core
+        Electrum Wallet
+        Wasabi Wallet
+        Generic JSON
+      Sign Text File [MAYBE]
+      Upgrade From SD
+      Clone Coldcard [MAYBE]
+      List Files
+      Format Card
+    Paper Wallets [MAYBE]
+    User Management [MAYBE]
+    Derive Entropy
+    Danger Zone
+      Debug Functions
+        Debug: assert
+        Debug: except
+        Check: BL FW
+        Warm Reset
+      Seed Functions
+        View Seed Words
+        Seed XOR
+          Split Existing
+          Restore Seed XOR
+        Destroy Seed
+        Lock Down Seed
+      I Am Developer.
+      Wipe Patch Area
+      Perform Selftest
+      Set High-Water
+      Wipe HSM Policy [MAYBE]
+      Clear OV cache
+      Testnet Mode
+      Settings space
+  Settings
+    Idle Timeout
+       2 minutes
+       5 minutes
+      15 minutes
+       1 hour
+       4 hours
+       8 hours
+       Never
+    Login Countdown
+      Disabled
+       5 minutes
+      15 minutes
+      30 minutes
+       1 hour
+       2 hours
+       4 hours
+       8 hours
+      12 hours
+      24 hours
+      48 hours
+       3 days
+       1 week
+      28 days later
+    Max Network Fee
+      10% (default)
+      25%
+      50%
+      no limit
+    PIN Options
+    Multisig Wallets
+    Set Nickname
+    Scramble Keypad
+    Delete PSBTs
+    Disable USB
+      Normal
+      Disable USB
+    Display Units
+      BTC
+      mBTC
+      bits
+      sats
+
+Factory Mode
+  Bag Me Now
+  DFU Upgrade
+  Show Version
+  Ship W/O Bag
+  Debug Functions
+    Debug: assert
+    Debug: except
+    Check: BL FW
+    Warm Reset
+  Perform Selftest
+
+
+
