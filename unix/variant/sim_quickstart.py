@@ -129,6 +129,20 @@ if '--down' in sys.argv:
     numpad.inject('4')
     numpad.inject('y')  # countdown 
 
+if '--xor' in sys.argv:
+    # Advanced > Danger > Seed funcs > Seed XOR 
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('5')
+    numpad.inject('y')  # adv
+    numpad.inject('9')
+    numpad.inject('9')
+    numpad.inject('y')  # danger
+    numpad.inject('8')
+    numpad.inject('y')  # seed functions
+    numpad.inject('8')
+    #numpad.inject('y')  # seed xor
+
 if '--enter' in sys.argv:
     # keep at end of file: extra enter to confirm something from above
     numpad.inject('y')
