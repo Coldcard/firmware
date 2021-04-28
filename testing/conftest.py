@@ -412,21 +412,30 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
 
 @pytest.fixture
 def pick_menu_item(cap_menu, need_keypress):
+    WRAP_IF_OVER = 16       # see ../shared/menu.py
+
     def doit(text):
         need_keypress('0')
         m = cap_menu()
         if text not in m:
             raise KeyError(text, "%r not in menu: %r" % (text, m))
 
-        for label in m:
-            if label == text:
-                need_keypress('y')
-                time.sleep(.01)      # required
-                return
-            need_keypress('8')
-            time.sleep(.01)      # required
+        m_pos = m.index(text)
 
-        assert False, 'not reached'
+        if len(m) > WRAP_IF_OVER and m_pos > (len(m)//2):
+            # use wrap around, work up from bottom
+            for n in range(len(m) - m_pos):
+                need_keypress('5')
+                time.sleep(.01)      # required
+            need_keypress('y')
+            time.sleep(.01)      # required
+        else:
+            # go down
+            for n in range(m_pos):
+                need_keypress('8')
+                time.sleep(.01)      # required
+            need_keypress('y')
+            time.sleep(.01)      # required
 
     return doit
 

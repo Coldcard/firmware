@@ -424,6 +424,13 @@ def start():
                             oled.movie_end()
                     continue
 
+                if ch == 'm':
+                    # do many OK's in a row ... for word nest menu
+                    for i in range(30):
+                        numpad_tx.write(b'y\n')
+                        numpad_tx.write(b'\n')
+                    continue
+
                 if ch not in '0123456789xy':
                     if ch.isprintable():
                         print("Invalid key: '%s'" % ch)

@@ -156,7 +156,6 @@ class WordNestMenu(MenuSystem):
         # terminal choice, start next word
         words.append(choice.label)
 
-        #print(("words[%d]: " % len(words)) + ' '.join(words))
         assert len(words) <= self.target_words
 
         if len(words) == 23 and self.has_checksum:
@@ -246,6 +245,9 @@ individual words if you wish.''')
         self.words = []
         the_ux.push(self.__class__(num_words=WordNestMenu.target_words))
 
+    def tr_label(self):
+        return 'Word'
+
     def late_draw(self, dis):
         # add an overlay with "word N" in small text, top right.
         from display import FontTiny
@@ -262,7 +264,7 @@ individual words if you wish.''')
 
         y = 6
         dis.text(-8, y-4, "%d" % count, invert=invert)
-        dis.text(-18-(6 if count >= 10 else 0), y, "Word", FontTiny, invert=invert)
+        dis.text(-18-(6 if count >= 10 else 0), y, self.tr_label(), FontTiny, invert=invert)
 
 
 async def show_words(words, prompt=None, escape=None, extra=''):
@@ -416,34 +418,35 @@ async def approve_word_list(seed):
     # send them to home menu, now with a wallet enabled
     goto_top_menu()
 
-def set_seed_value(words):
+def set_seed_value(words=None, encoded=None):
     # Save the seed words into secure element, and reboot. BIP-39 password
     # is not set at this point (empty string)
+    if words:
+        bip39.a2b_words(words)      # checksum check
 
-    bip39.a2b_words(words)      # checksum check
+        # map words to bip39 wordlist indices
+        data = [bip39.wordlist_en.index(w) for w in words]
 
-    # map words to bip39 wordlist indices
-    data = [bip39.wordlist_en.index(w) for w in words]
+        # map to packed binary representation.
+        val = 0
+        for v in data:
+            val <<= 11
+            val |= v
 
-    # map to packed binary representation.
-    val = 0
-    for v in data:
-        val <<= 11
-        val |= v
+        # remove the checksum part
+        vlen = (len(words) * 4) // 3
+        val >>= (len(words) // 3)
 
-    # remove the checksum part
-    vlen = (len(words) * 4) // 3
-    val >>= (len(words) // 3)
+        # convert to bytes
+        seed = val.to_bytes(vlen, 'big')
+        assert len(seed) == vlen
 
-    # convert to bytes
-    seed = val.to_bytes(vlen, 'big')
-    assert len(seed) == vlen
-    
+        # encode it for our limited secret space
+        nv = SecretStash.encode(seed_phrase=seed)
+    else:
+        nv = encoded
+
     from glob import dis
-
-    # encode it for our limited secret space
-    nv = SecretStash.encode(seed_phrase=seed)
-
     dis.fullscreen('Applying...')
     pa.change(new_secret=nv)
 
@@ -526,7 +529,7 @@ def clear_seed():
     from machine import reset
     reset()
 
-async def word_quiz(words, limited=None):
+async def word_quiz(words, limited=None, title='Word %d is?'):
     # Perform a test, to check they wrote them down
     # Return X if they cancel early.
     # Can just pick a subset # of words, with limited arg.
@@ -569,7 +572,7 @@ async def word_quiz(words, limited=None):
             msg = '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
             msg += '\n\nWhich word is right?\n\nX to give up, OK to see all the words again.'
 
-            ch = await ux_show_story(msg, title='Word %d is?' % (o+1), escape='123', sensitive=True)
+            ch = await ux_show_story(msg, title=title % (o+1), escape='123', sensitive=True)
             if ch == 'x':
                 # user abort
                 return 'x'

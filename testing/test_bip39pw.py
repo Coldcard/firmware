@@ -139,6 +139,7 @@ def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, c
     goto_home()
     pick_menu_item('Advanced')
     pick_menu_item('Danger Zone')
+    pick_menu_item('Seed Functions')
     pick_menu_item('Lock Down Seed')
 
     time.sleep(0.1)

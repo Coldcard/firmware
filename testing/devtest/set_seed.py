@@ -22,6 +22,7 @@ if 1:
     settings.set('idle_to', 0)
 
     import main
+    pa.tmp_value = None
     set_seed_value(main.WORDS)
 
     print("New key in effect: %s" % settings.get('xpub', 'MISSING'))

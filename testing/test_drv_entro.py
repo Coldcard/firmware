@@ -139,8 +139,6 @@ def test_bip_vectors(mode, index, entropy, expect,
     if do_import:
         assert '2 to switch to derived secret' in story
 
-        raise pytest.skip('XXX recovery not working well')
-
         try:
             time.sleep(0.1)
             need_keypress('2')

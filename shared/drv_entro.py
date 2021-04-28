@@ -169,23 +169,12 @@ def drv_entro_step2(_1, picked, _2):
 
     if ch == '2' and (encoded is not None):
         from glob import dis
-        from pincodes import pa, AE_SECRET_LEN
+        from pincodes import pa
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
 
-        stash.bip39_passphrase = ''
-        tmp_secret = encoded + bytes(AE_SECRET_LEN - len(encoded))
-
-        # monkey-patch to block SE access, and just use new secret
-        pa.fetch = lambda *a, **k: bytearray(tmp_secret)
-        pa.change = lambda *a, **k: None
-        pa.ls_fetch = pa.change
-        pa.ls_change = pa.change
-
-        # copies system settings to new encrypted-key value, calculates
-        # XFP, XPUB and saves into that, and starts using them.
-        pa.new_main_secret(pa.fetch())
+        pa.tmp_secret(encoded)
 
         await ux_show_story("New master key in effect until next power down.")
 
