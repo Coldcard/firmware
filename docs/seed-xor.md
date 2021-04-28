@@ -1,5 +1,25 @@
 # Seed XOR
 
+## The Problem
+
+What do I do with my [SEEDPLATE](https://bitcoinmetalbackup.com/)?
+
+Most people now understand that metal seed backups are paramount,
+as paper burns. The main issue is, storing clear text secrets can be
+a challenge. Anyone with access to the physical secret could now use
+it. Encrypted digital backups are great too, but you could be compelled
+to produce.
+
+Enter Seed XOR, a plausibly deniable means of storing secrets in two or
+more parts that look and behave just like the original secret. This means,
+you have two or more parts that are BIP39 compatible seeds. Those could be
+backed up in your preferred method, metal or otherwise. These two parts+
+could be loaded with honeypot funds as they are 24 words, with the 24th
+being the checksum and will work as such in any BIP39 compatible wallet.
+
+This one more solution for your game-theory arsenal.
+
+
 ## Background
 
 [_Seed XOR_](https://seedxor.com) works by taking any number of 24-word seed phrases in BIP-39 style, 
