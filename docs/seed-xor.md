@@ -1,3 +1,42 @@
+# Seed XOR
+
+## Background
+
+_Seed XOR_ works by taking any number of 24-word seed phrases in BIP-39 style, 
+and simply XOR-ing them together, bit-by-bit into a new phrase.
+
+The last word (in 24-word case, which is the only width we support) has
+8 bits of checksum. For the "parts" (sometimes called shares) this checksum 
+is calculated as normal for BIP-39, but those final 8-bits are not used in
+the XOR process. But the checksums still protects the integrity of the
+individual parts.
+
+Useful properties of this approach:
+
+- Every "part" looks and operates as a valid BIP-39 wallet.
+- All the parts can be combined in any order and you arrive at the same result.
+- You must have all parts, because any combination of less than all parts is a
+  valid Seed XOR wallet too.
+- Each "part" can be recorded on a SEEDPLATE like normal and no new recording tools
+  are needed. No informatation about you original seed is leaked by finding up
+  to N-1 of the parts.
+- You can store funds on the seeds of any part, and any subset of parts, which
+  opens even more duress options.
+
+We recommend storing the checksum word (24-th) of the original
+wallet along with your N parts. This allows you to be sure you've
+gotten all the parts and assembled them correctly. This does reveal
+3 bits of your real wallet however, and also reveals that a
+working and correct subset of parts has been assembled.
+
+It is not hard to calculate a Seed XOR on paper (or to verify or
+reconstruct a seed split by Coldcard). Below is a complete example,
+and a lookup table that allows you to XOR together hex digits. You
+can do the XOR at the bit level, but we recommend looking up each
+word and finding it's 3-digit hex value (0x000 to 0x7FF), and going
+hex-digit by hex-digit (4 bits).
+
+
 ## XOR Lookup Table
 
 
