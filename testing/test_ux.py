@@ -78,15 +78,21 @@ def word_menu_entry(cap_menu, pick_menu_item):
 
 @pytest.fixture
 def pass_word_quiz(need_keypress, cap_story):
-    def doit(words):
-        need_keypress('y'); time.sleep(.01) 
-        count = 0
-        while 1:
-            title, body = cap_story()
-            if not title.startswith('Word '): break
-            assert title.endswith(' is?')
+    def doit(words, prefix='', preload=None):
+        if not preload:
+            need_keypress('y'); time.sleep(.01) 
 
-            wn = int(title.split()[1])
+        count = 0
+        last_title = None
+        while 1:
+            title, body = preload or cap_story()
+            preload = None
+
+            if not title.startswith('Word '+prefix): break
+            assert title.endswith(' is?')
+            assert not last_title or last_title != title, "gave wrong ans?"
+
+            wn = int(title.split()[1][len(prefix):])
             assert 1 <= wn <= len(words)
             wn -= 1
 
@@ -99,8 +105,10 @@ def pass_word_quiz(need_keypress, cap_story):
             #print("Pick %d: %s" % (correct, ans[correct]))
 
             need_keypress(chr(49 + correct))
-            time.sleep(.05) 
+            time.sleep(.1) 
             count += 1
+
+            last_title = title
 
         return count, title, body
 
@@ -582,6 +590,7 @@ def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress
     goto_home()
     pick_menu_item('Advanced')
     pick_menu_item('Danger Zone')
+    pick_menu_item('Seed Functions')
     pick_menu_item('View Seed Words')
     time.sleep(.01); 
     title, body = cap_story()
@@ -607,6 +616,34 @@ def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress
         assert len(lines) == 1+24
 
     need_keypress('y')      # clear screen
+
+def test_destroy_seed(goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
+                                cap_menu, get_secrets):
+
+    # Check UX of destroying seeds, rarely used?
+
+    #v = get_secrets()
+    #words = v['mnemonic'].split(' ')
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Danger Zone')
+    pick_menu_item('Seed Functions')
+    pick_menu_item('Destroy Seed')
+    time.sleep(.01); 
+    title, body = cap_story()
+    assert 'Are you SURE' in body
+    assert 'All funds will be lost' in body
+    need_keypress('y');    
+    time.sleep(0.01)
+
+    title, body = cap_story()
+    assert 'Are you REALLY sure though' in body
+    assert 'certainly cause' in body
+    assert 'accept all consequences' in body
+    need_keypress('y');         # wants 4
+    time.sleep(0.01)
+
 
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):

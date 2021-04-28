@@ -9,6 +9,7 @@ import stash, ngu, chains, bip39, random
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
 from seed import word_quiz, WordNestMenu, set_seed_value
 from nvstore import settings
+from actions import goto_top_menu
 
 def xor32(*args):
     # bit-wise xor between all args
@@ -23,7 +24,7 @@ def xor32(*args):
 async def xor_split_start(*a):
 
     ch = await ux_show_story('''\
-XOR Seed Split
+Seed XOR Split
 
 This feature splits your BIP-39 seed phrase into multiple parts. \
 Each part is 24 words and looks and functions as a normal BIP-39 wallet.
@@ -74,9 +75,10 @@ Otherwise, press OK to continue.'''.format(n=num_parts, t=num_parts*24), escape=
 
             # checksum of target result is useful.
             chk_word = words[-1]
+            del words
 
             # going to need the secret
-            raw_secret = sv.raw
+            raw_secret = bytearray(sv.raw)
             assert len(raw_secret) == 32
     
         parts = []
@@ -97,21 +99,25 @@ Otherwise, press OK to continue.'''.format(n=num_parts, t=num_parts*24), escape=
     finally:
         stash.blank_object(raw_secret)
 
-    words = [bip39.b2a_words(p).split(' ') for p in parts]
+    word_parts = [bip39.b2a_words(p).split(' ') for p in parts]
 
     while 1:
-        ch = await show_n_parts(num_parts, words, chk_word)
+        ch = await show_n_parts(word_parts, chk_word)
         if ch == 'x': 
             if not use_rng: return
             if await ux_confirm("Stop and forget those words?"):
                 return
             continue
 
-        for ws, part in enumerate(words):
+        for ws, part in enumerate(word_parts):
             ch = await word_quiz(part, title='Word %s%%d is?' % chr(65+ws))
             if ch == 'x': break
         else:
             break
+
+    await ux_show_story('''\
+Quiz Passed!\n
+No change has made to this Coldcard.''')
 
 # list of seed phrases
 import_xor_parts = []
@@ -165,10 +171,11 @@ class XORWordNestMenu(WordNestMenu):
         pn = len(import_xor_parts)
         return chr(65+pn) + ' Word' 
 
-async def show_n_parts(num_parts, words, chk_word):
+async def show_n_parts(parts, chk_word):
+    num_parts = len(parts)
     msg = 'Record these %d lists of 24-words each.\n\n' % num_parts
 
-    for n,words in enumerate(words):
+    for n,words in enumerate(parts):
         msg += 'Part %s:\n' % chr(65+n)
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
         msg += '\n\n'
@@ -193,10 +200,10 @@ any time and you will have a valid wallet.''')
     from pincodes import pa
 
     if not pa.is_secret_blank():
-        msg = "Since you have a seed already on this Coldcard, the reconstructed XOR seed will be temporary and not saved. Please wipe the seed if you want to commit the new value into the secure element."
-        if settings.get('words', False):
+        msg = "Since you have a seed already on this Coldcard, the reconstructed XOR seed will be temporary and not saved. Wipe the seed first if you want to commit the new value into the secure element."
+        if settings.get('words', True):
             msg += '''\n
-Press (1) to include this Coldcard's seed words into the XOR seed set.'''
+Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to continue without.'''
 
         ch = await ux_show_story(msg, escape='1')
 
