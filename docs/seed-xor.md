@@ -18,7 +18,7 @@ Useful properties of this approach:
 - You must have all parts, because any combination of less than all parts is a
   valid Seed XOR wallet too.
 - Each "part" can be recorded on a SEEDPLATE like normal and no new recording tools
-  are needed. No informatation about you original seed is leaked by finding up
+  are needed. No information about you original seed is leaked by finding up
   to N-1 of the parts.
 - You can store funds on the seeds of any part, and any subset of parts, which
   opens even more duress options.
@@ -35,6 +35,60 @@ and a lookup table that allows you to XOR together hex digits. You
 can do the XOR at the bit level, but we recommend looking up each
 word and finding it's 3-digit hex value (0x000 to 0x7FF), and going
 hex-digit by hex-digit (4 bits).
+
+## How Parts are Generated
+
+Create new parts on your Coldcard:
+
+Advanced > Danger Zone > Seed Functions > Seed XOR > Split Existing
+
+You can choose between 2, 3 or 4 parts. You can also choose (next
+screen) to generate them deterministically or using the TRNG. The
+advantage of the deterministic approach is you'll always get the
+same answers, so you can check that you've recording the correct
+48 to 96 words right the next day.
+
+When shares are made deterministically, we take a double-SHA256 over
+a fixed string (`Batshitoshi`), your master secret,  and the text
+`1 of 4 parts` which changes for each part.
+
+In random mode, we simply pick 32 random bytes (and then double-SHA256
+them).
+
+This is done to make all but the last part. The final part is the
+value needed to get back to your secret, so it's the XOR of the
+other N-1 parts.
+
+### Other Notes
+
+- So many possible duress games are possible once you've split your
+seed up, and you are able to "give up" all of the seed phrases,
+except one, and the attackers will still get nothing. You can load
+various possible combinations of your Seed XOR's with various amounts,
+so none are obviously empty and so on.
+
+- Any two or more SEEDPLATES you have already encoded can be used
+together to make a new wallet based on their XOR. No changes to
+their existing values are needed... just import the set into a new
+Coldcard and effectively a new random seed is in play at that point.
+
+- One downside of the deterministic approach is that it allows
+attackers to verify they have a seed that was split by Coldcard.
+They can import the N parts into a Coldcard, and then split them
+again on that Coldcard, and should arrive at the same values. If
+they don't then either you used the TRNG, or they have some subset
+of all the parts.
+
+- You can pick your XOR parts randomly, and the result when XOR'ed
+together, is a random wallet. However, it would be best to get the
+24-th word checksum recorded correctly, so please use a tool such
+as the Coldcard to lookup the 24th word and save that (for each
+part).  For example, you might take a fresh Coldcard (no secret)
+and draw 23 words from a hat. After providing the 23rd word, the
+Coldcard will show 8 possible final words. You can pick randomly
+from that list, or simple use the first one, and then cancel the seed
+import process on the Coldcard. Record that final word along
+with the others on a SEEDPLATE.
 
 
 ## XOR Lookup Table
@@ -126,6 +180,7 @@ hex-digit by hex-digit (4 bits).
 
       final word between: gas [300] - lend [3FF]
       correct final word: indoor [398]
+
 - It's not possible to calculate the checksum of the final seed phrase on paper (needs SHA256).
 - But it must start with the indicated digit, and there will be only one
   suitable choice offered by the Coldcard in that range (x00 to xFF),
