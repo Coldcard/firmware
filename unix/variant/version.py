@@ -14,7 +14,7 @@ def decode_firmware_header(hdr):
     return date, vers, ''.join(parts[:-2])
 
 def get_mpy_version():
-    return '2019-09-30', '3.x.x', '180711195308'
+    return '2021-03-31', '4.x.x', '210331195308'
 
 # pretend signed w/ dev key and allow debug
 is_factory_mode = bool('-f' in sys.argv)
