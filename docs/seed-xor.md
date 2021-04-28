@@ -2,7 +2,7 @@
 
 ## Background
 
-_Seed XOR_ works by taking any number of 24-word seed phrases in BIP-39 style, 
+_Seed XOR_ (https://seedxor.com) works by taking any number of 24-word seed phrases in BIP-39 style, 
 and simply XOR-ing them together, bit-by-bit into a new phrase.
 
 The last word (in 24-word case, which is the only width we support) has
