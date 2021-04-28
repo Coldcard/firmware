@@ -10,7 +10,7 @@ a challenge. Anyone with access to the physical secret could now use
 it. Encrypted digital backups are great too, but you could be compelled
 to produce.
 
-Enter Seed XOR, a plausibly deniable means of storing secrets in two or
+Enter [_Seed XOR_](https://seedxor.com), a plausibly deniable means of storing secrets in two or
 more parts that look and behave just like the original secret. This means,
 you have two or more parts that are BIP39 compatible seeds. Those could be
 backed up in your preferred method, metal or otherwise. These two parts+
