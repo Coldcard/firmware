@@ -87,6 +87,12 @@ release: code-committed
 	$(MAKE) release-products
 	$(MAKE) tag-source
 
+.PHONY: rc1
+rc1: 
+	$(MAKE) repro
+	test -f built/production.bin
+	$(MAKE) release-products
+
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
 .PHONY: release-products
@@ -256,7 +262,9 @@ check-repro: TRIM_SIG = sed -e 's/^00003f[89abcdef]0 .*/(firmware signature here
 check-repro: firmware-signed.bin
 ifeq ($(PUBLISHED_BIN),)
 	@echo ""
-	@echo "No binary published yet for: $(VERSION_STRING)"
+	@echo "Need published binary for: $(VERSION_STRING)"
+	@echo ""
+	@echo "Copy it into ../releases"
 	@echo ""
 else
 	@echo Comparing against: $(PUBLISHED_BIN)
