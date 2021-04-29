@@ -87,6 +87,7 @@ release: code-committed
 	$(MAKE) release-products
 	$(MAKE) tag-source
 
+# Make a release-candidate, faster.
 .PHONY: rc1
 rc1: 
 	$(MAKE) repro
