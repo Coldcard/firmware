@@ -1,6 +1,6 @@
-## 4.1.0 - April 30, 2021
+## 4.1.0 - April 29, 2021
 
-- New feature: Seed XOR -- split you secret BIP-39 seed into 2 (or 3 or 4) new seed phrases
+- New feature: Seed XOR -- split your secret BIP-39 seed into 2 (or 3 or 4) new seed phrases
     - any combination of found seed word phrases is a fully working wallet (great for duress)
     - still 24 words, and can be encoded onto a SEEDPLATE
     - all parts are required to be known to get back to original
