@@ -1,4 +1,4 @@
-## 4.1.0 - April XX, 2021
+## 4.1.0 - April 30, 2021
 
 - New feature: Seed XOR -- split you secret BIP-39 seed into 2 (or 3 or 4) new seed phrases
     - any combination of found seed word phrases is a fully working wallet (great for duress)
@@ -11,7 +11,7 @@
       are available at <https://github.com/Coldcard/wordlist-paper>
 - Enhancement: Add support for BIP-48 derivations when exporting generic JSON (including
   the accounts number) under Advanced > MicroSD Card > Export Wallet > Generic JSON.
-  These would are targeted towards multisig wallets, such as
+  These are targeted towards multisig wallets, such as
   [Sparrow](https://sparrowwallet.com/docs/coldcard-wallet.html)
 - Enhancement: Ask for account number when creating Multisig Wallets via air-gapped
   Coldcards. Use account zero for compatibility with previous versions. No need to

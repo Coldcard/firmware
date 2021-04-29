@@ -1,8 +1,4 @@
-
 # Coldcard Releases
-
-Here we keep only the current binary release, useful older
-releases, and some documentation:
 
 `ChangeLog.md`
 
@@ -16,5 +12,10 @@ releases, and some documentation:
 
 `signatures.txt`
 
-- PGP signed hashs (SHA-256) of the above files and the firmwares themselves.
+- PGP signed hashes (SHA-256) of the above files and the firmware files themselves.
 
+## Looking for Firmware Binaries?
+
+[Go to our website for the latest binaries.](https://coldcardwallet.com/docs/upgrade)
+
+Please do check the signatures using the files here.

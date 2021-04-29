@@ -34,7 +34,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 4.0.3
+VERSION_STRING = 4.1.0
 
 #
 # Sign and merge various parts
@@ -123,6 +123,7 @@ code-committed:
 	git diff --stat --exit-code .
 	@echo '... yes'
 
+# Sign a message with the contents of ../releases on the developer's machine
 .PHONY: sign-release
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
@@ -132,16 +133,14 @@ sign-release:
 # Tag source code associate with built release version.
 # - do "make release" before this step!
 # - also edit/commit ChangeLog text too
-# - this target will "git add" the new binary in ../release/*dfu 
 # - update & sign signatures file
 # - and tag everything
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
 tag-source: sign-release code-committed
-	git add ../releases/$(PUBLIC_VERSION)-coldcard.dfu
-	git commit -am "New release: "$(PUBLIC_VERSION)
-	git push
+	git commit  --allow-empty -am "New release: "$(PUBLIC_VERSION)
 	echo "Taging version: " $(PUBLIC_VERSION)
 	git tag -a $(PUBLIC_VERSION) -m "Release "$(PUBLIC_VERSION)
+	git push
 	git push --tags
 
 # DFU file of boot and main code
