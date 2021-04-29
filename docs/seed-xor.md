@@ -20,6 +20,9 @@ the checksum and will work as such in any normal BIP-39 compatible wallet.
 
 This one more solution for your game-theory arsenal.
 
+- Q:I'm lazy, can I do this to my Existing Seed?
+- A:Yes
+
 ## Background
 
 [_Seed XOR_](https://seedxor.com) works by taking any number of 24-word
