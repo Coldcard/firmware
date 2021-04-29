@@ -2,31 +2,32 @@
 
 ## The Problem
 
-What do I do with my [SEEDPLATE](https://bitcoinmetalbackup.com/)?
+What do I do to secure my [SEEDPLATE](https://bitcoinmetalbackup.com/)?
 
 Most people now understand that metal seed backups are paramount,
-as paper burns. The main issue is, storing clear text secrets can be
-a challenge. Anyone with access to the physical secret could now use
-it. Encrypted digital backups are great too, but you could be compelled
-to produce.
+as paper burns. The challenge is how to store clear-text secrets?
+Anyone with physical access could use it and gain complete
+control of your funds! Encrypted digital backups are great, but they
+are not discrete and you could be compelled to produce the passphrase.
 
-Enter [_Seed XOR_](https://seedxor.com), a plausibly deniable means of storing secrets in two or
-more parts that look and behave just like the original secret. This means,
-you have two or more parts that are BIP39 compatible seeds. Those could be
-backed up in your preferred method, metal or otherwise. These two parts+
-could be loaded with honeypot funds as they are 24 words, with the 24th
-being the checksum and will work as such in any BIP39 compatible wallet.
+Enter [_Seed XOR_](https://seedxor.com), a plausibly deniable means
+of storing secrets in two or more parts that look and behave just
+like the original secret. One 24-word seed phrase becomes two or more parts
+that are also BIP-39 compatible seeds phrases. These should be backed up in your
+preferred method, metal or otherwise. These parts can be individually loaded
+with honeypot funds as each one is 24 words, with the 24th being
+the checksum and will work as such in any normal BIP-39 compatible wallet.
 
 This one more solution for your game-theory arsenal.
 
-
 ## Background
 
-[_Seed XOR_](https://seedxor.com) works by taking any number of 24-word seed phrases in BIP-39 style, 
-and simply XOR-ing them together, bit-by-bit into a new phrase.
+[_Seed XOR_](https://seedxor.com) works by taking any number of 24-word
+seed phrases in BIP-39 style, and simply XOR-ing them together,
+bit-by-bit into a new phrase.
 
 The last word (in 24-word case, which is the only width we support) has
-8 bits of checksum. For the "parts" (sometimes called shares) this checksum 
+8 bits of checksum. For the "parts" (sometimes called "shares") this checksum 
 is calculated as normal for BIP-39, but those final 8-bits are not used in
 the XOR process. But the checksums still protects the integrity of the
 individual parts.
@@ -68,16 +69,17 @@ advantage of the deterministic approach is you'll always get the
 same answers, so you can check that you've recording the correct
 48 to 96 words right the next day.
 
-When shares are made deterministically, we take a double-SHA256 over
-a fixed string (`Batshitoshi`), your master secret,  and the text
+When the parts are made deterministically, we take a double-SHA256 over
+a fixed string (`Batshitoshi`), your master secret, and the text
 `1 of 4 parts` which changes for each part.
 
 In random mode, we simply pick 32 random bytes (and then double-SHA256
-them).
+them) from the Coldcard's True Random Number Generator (TRNG)..
 
-This is done to make all but the last part. The final part is the
+This is done to make all but the one part. The final part is the
 value needed to get back to your secret, so it's the XOR of the
-other N-1 parts.
+other N-1 parts. It contains just as much entropy as the other
+parts.
 
 ### Other Notes
 
@@ -106,7 +108,7 @@ as the Coldcard to lookup the 24th word and save that (for each
 part).  For example, you might take a fresh Coldcard (no secret)
 and draw 23 words from a hat. After providing the 23rd word, the
 Coldcard will show 8 possible final words. You can pick randomly
-from that list, or simple use the first one, and then cancel the seed
+from that list, or simply use the first one, and then cancel the seed
 import process on the Coldcard. Record that final word along
 with the others on a SEEDPLATE.
 
