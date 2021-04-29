@@ -36,10 +36,7 @@ seed phrase cannot be reconstructed.
 
 Finding a single part does not help an attacker construct the original seed.
 
-Funds could probably be recovered if single-word transcription errors are made, but \
-ALL FUNDS will certainly be lost if 24 words are lost.
-
-Press from 2, 3 or 4 to select number of parts. ''', strict_escape=True, escape='234x')
+Press 2, 3 or 4 to select number of parts to split into. ''', strict_escape=True, escape='234x')
     if ch == 'x': return
 
     num_parts = int(ch)
@@ -117,7 +114,7 @@ Otherwise, press OK to continue.'''.format(n=num_parts, t=num_parts*24), escape=
 
     await ux_show_story('''\
 Quiz Passed!\n
-No change has made to this Coldcard.''')
+You have confirmed the details of the new split.''')
 
 # list of seed phrases
 import_xor_parts = []
@@ -140,14 +137,20 @@ class XORWordNestMenu(WordNestMenu):
             chk_word = bip39.b2a_words(seed).split(' ')[-1]
             msg += "If you stop now, the 24th word of the XOR-combined seed phrase\nwill be:\n\n"
             msg += "24: %s\n\n" % chk_word
+
+        if all((not x) for x in seed):
+            # zero seeds are never right.
+            msg += "ZERO WARNING\nProvided seed works out to all zeros "\
+                    "right now. You may have doubled a part or made some other mistake.\n\n"
+
         msg += "Press (1) to enter next list of words, or (2) if done with all words."
 
         ch = await ux_show_story(msg, strict_escape=True, escape='12x', sensitive=True)
 
         if ch == 'x':
             # give up
-            import_xor_parts.clear()          # concern: contaminated w/ secrets
-            goto_top_menu()
+            import_xor_parts.clear()          # concern: we are contaminated w/ secrets
+            return None
         elif ch == '1':
             # do another list of words
             nxt = XORWordNestMenu(num_words=24)
@@ -189,11 +192,13 @@ async def show_n_parts(parts, chk_word):
 async def xor_restore_start(*a):
     # shown on import menu when no seed of any kind yet
     # - or operational system
-    await ux_show_story('''\
+    ch = await ux_show_story('''\
 To import a seed split using XOR, you must import all the parts.
 It does not matter the order (A/B/C or C/A/B) and the Coldcard
 cannot determine when you have all the parts. You may stop at
 any time and you will have a valid wallet.''')
+    if ch == 'x': return
+
     global import_xor_parts
     import_xor_parts.clear()
 
@@ -207,7 +212,9 @@ Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to 
 
         ch = await ux_show_story(msg, escape='1')
 
-        if ch == '1':
+        if ch == 'x':
+            return
+        elif ch == '1':
             with stash.SensitiveValues() as sv:
                 if sv.mode == 'words':
                     words = bip39.b2a_words(sv.raw).split(' ')

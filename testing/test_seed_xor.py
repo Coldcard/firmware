@@ -68,6 +68,12 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
 
         if n != len(parts)-1:
             need_keypress('1')
+        else:
+            # correct anticipated checksum word
+            chk_word = expect.split()[-1]
+            assert f"24: {chk_word}" in body
+            if expect == zero32:
+                assert 'ZERO WARNING' in body
 
     need_keypress('2')
 
@@ -141,5 +147,96 @@ def test_xor_split(qty, trng, goto_home, pick_menu_item, cap_story, need_keypres
         assert count == 24
 
     assert 'Quiz Passed' in body
+
+def test_import_zero_set(goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, reset_seed_words, set_seed_words):
+
+    # look for a warning
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Danger Zone')
+    pick_menu_item('Seed Functions')
+    pick_menu_item('Seed XOR')
+    pick_menu_item('Restore Seed XOR')
+    time.sleep(.01); 
+    title, body = cap_story()
+
+    assert 'all the parts' in body
+    need_keypress('y');    
+    time.sleep(0.01)
+
+    title, body = cap_story()
+    assert 'you have a seed already' in body
+    assert '(1) to include this Coldcard' in body
+    need_keypress('y')
+
+    #time.sleep(0.01)
+
+    for n in range(2):
+        word_menu_entry(ones32.split())
+
+        time.sleep(0.01)
+        title, body = cap_story()
+        assert f"You've entered {n} parts so far"
+        assert "or (2) if done"
+
+        if n == 1:
+            assert 'ZERO WARNING' in body
+            return
+
+        need_keypress('1')
+
+    raise pytest.fail("reached")
+
+@pytest.mark.parametrize('parts, expect', [
+    ( [ 'romance wink lottery autumn shop bring dawn tongue range crater truth ability miss spice fitness easy legal release recall obey exchange recycle dragon room',
+        'lion misery divide hurry latin fluid camp advance illegal lab pyramid unaware eager fringe sick camera series noodle toy crowd jeans select depth lounge',
+        'vault nominee cradle silk own frown throw leg cactus recall talent worry gadget surface shy planet purpose coffee drip few seven term squeeze educate',],
+    'silent toe meat possible chair blossom wait occur this worth option bag nurse find fish scene bench asthma bike wage world quit primary indoor'),
+])
+def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, reset_seed_words, unit_test):
+
+    # test import when wallet empty
+    unit_test('devtest/clear_seed.py')
+
+    m = cap_menu()
+    assert m[0] == 'New Wallet'    
+    pick_menu_item('Import Existing')
+    pick_menu_item('Seed XOR')
+
+    time.sleep(0.01)
+    title, body = cap_story()
+    assert 'all the parts' in body
+    need_keypress('y');    
+    time.sleep(0.01)
+
+    for n, part in enumerate(parts):
+        word_menu_entry(part.split())
+
+        time.sleep(0.01)
+        title, body = cap_story()
+        assert f"You've entered {n} parts so far"
+        assert "or (2) if done"
+
+        if n != len(parts)-1:
+            assert 'ZERO WARNING' not in body
+            need_keypress('1')
+        else:
+            # correct anticipated checksum word
+            chk_word = expect.split()[-1]
+            assert f"24: {chk_word}" in body
+            if expect == zero32:
+                assert 'ZERO WARNING' in body
+
+    # install seed ... causes reset on real device
+    need_keypress('2')
+
+    time.sleep(0.01)
+    title, body = cap_story()
+    assert 'New master key in effect' not in body
+    assert body == ''
+
+    assert get_secrets()['mnemonic'] == expect
+    reset_seed_words()
+
 
 # EOF
