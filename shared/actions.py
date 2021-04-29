@@ -284,7 +284,7 @@ Pick the main wallet's PIN code now. Be more clever, but an example:
 123-4567
 
 It has two parts: prefix (123-) and suffix (-4567). \
-Each part must between 2 to 6 digits long. Total length \
+Each part must be between 2 to 6 digits long. The total length \
 can be as long as 12 digits.
 
 The prefix part determines the anti-phishing words you will \
