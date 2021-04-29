@@ -20,8 +20,11 @@ the checksum and will work as such in any normal BIP-39 compatible wallet.
 
 This one more solution for your game-theory arsenal.
 
-- Q:I'm lazy, can I do this to my Existing Seed?
-- A:Yes
+- *Q*: I'm lazy, can I do this to my Existing Seed?
+- *A*: Yes. You can split the words you have from the menu on your
+  existing Coldcard. You could also any number of existing SEEDPLATES
+  you have, and combine them to make a new random wallet that
+  is the XOR of their values.
 
 ## Background
 
