@@ -261,9 +261,40 @@ def generate_wasabi_wallet():
                 ColdCardFirmwareVersion=vers,
                 ExtPubKey=xpub)
 
+def generate_unchained_export(acct_num=0):
+    # They used to rely on our airgapped export file, so this is same style
+    # - for multisig purposes
+    # - BIP-45 style paths for now
+    # - no account numbers (at this level)
+    from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH
+
+    chain = chains.BitcoinMain
+    todo = [
+        ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
+        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
+        ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
+    ]
+
+    xfp = xfp2str(settings.get('xfp', 0))
+    rv = dict(account=acct_num, xfp=xfp)
+
+    with stash.SensitiveValues() as sv:
+        for deriv, name, fmt in todo:
+            if fmt == AF_P2SH and acct_num:
+                continue
+            dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
+            node = sv.derive_path(dd)
+            xp = chain.serialize_public(node, fmt)
+
+            rv['%s_deriv' % name] = dd
+            rv[name] = xp
+
+    return rv
+
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
     from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH
+    from public_constants import AF_P2SH
 
     chain = chains.current_chain()
 
@@ -281,7 +312,11 @@ def generate_generic_export(account_num=0):
             ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh', False ),
             ( 'bip48_1', "m/48'/{ct}'/{acc}'/1'", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
             ( 'bip48_2', "m/48'/{ct}'/{acc}'/2'", AF_P2WSH, 'p2wsh', True ),
+            ( 'bip45', "m/45'", AF_P2SH, 'p2sh', True ),
         ]:
+            if fmt == AF_P2SH and account_num:
+                continue
+
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
             node = sv.derive_path(dd)
             xfp = xfp2str(swab32(node.my_fp()))

@@ -81,6 +81,7 @@ WalletExportMenu = [
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
+    MenuItem("Unchained Capital", f=unchained_capital_export),
     MenuItem("Generic JSON", f=generic_skeleton),
 ]
 

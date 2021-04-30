@@ -1259,6 +1259,7 @@ async def export_multisig_xpubs(*a):
     # NOW: Export JSON with one xpub per useful address type and semi-standard derivation path
     #
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
+    # - however some 3rd parts are making use of it as well.
     #
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
@@ -1286,7 +1287,7 @@ OK to continue. X to abort.
     acct_num = await ux_enter_number('Account Number:', 9999)
 
     todo = [
-        #( "m/45'", 'p2sh', AF_P2SH),           # considered obsolete
+        ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
         ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
     ]
@@ -1299,7 +1300,8 @@ OK to continue. X to abort.
                 fp.write('{\n')
                 with stash.SensitiveValues() as sv:
                     for deriv, name, fmt in todo:
-                        if fmt == AF_P2SH and acct_num: continue
+                        if fmt == AF_P2SH and acct_num:
+                            continue
                         dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
                         node = sv.derive_path(dd)
                         xp = chain.serialize_public(node, fmt)

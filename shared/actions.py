@@ -968,6 +968,21 @@ You can then open that file in Wasabi without ever connecting this Coldcard to a
     import export
     await export.make_json_wallet('Wasabi wallet', lambda: export.generate_wasabi_wallet(), 'new-wasabi.json')
 
+async def unchained_capital_export(*a):
+    # they were using our airgapped export, and the BIP-45 path from that
+    #
+    if await ux_show_story('''\
+This saves multisig XPUB information required to setup on the Unchained Capital platform. \
+''' + SENSITIVE_NOT_SECRET) != 'y':
+        return
+
+    xfp = xfp2str(settings.get('xfp', 0))
+    fname = 'unchained-%s.json' % xfp
+
+    import export
+    await export.make_json_wallet('Unchained Capital', lambda: export.generate_unchained_export(), fname)
+
+
 async def backup_everything(*A):
     # save everything, using a password, into single encrypted file, typically on SD
     import backups

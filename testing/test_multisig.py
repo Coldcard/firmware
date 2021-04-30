@@ -607,23 +607,18 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
 
     e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
 
-    if 0:
-        # obsolete, removed
-        n = BIP32Node.from_wallet_key(rv['p2sh'])
-        if acct_num == 0:
-            assert n.tree_depth() == 1
-            assert n.child_index() == 45 | (1<<31)
-            mxfp = unpack("<I", n.parent_fingerprint())[0]
-            assert hex(mxfp) == hex(simulator_fixed_xfp)
+    if 'p2sh' in rv:
+        # perhaps obsolete, but not removed
+        assert acct_num == 0
 
-            expect = e.subkey_for_path("45'.pub") 
-        else:
-            assert n.tree_depth() == 2
-            assert n.child_index() == acct_num | (1<<31)
-            expect = e.subkey_for_path(f"45'/{acct_num}'.pub") 
+        n = BIP32Node.from_wallet_key(rv['p2sh'])
+        assert n.tree_depth() == 1
+        assert n.child_index() == 45 | (1<<31)
+        mxfp = unpack("<I", n.parent_fingerprint())[0]
+        assert hex(mxfp) == hex(simulator_fixed_xfp)
+
+        expect = e.subkey_for_path("45'.pub") 
         assert expect.hwif() == n.hwif()
-    else:
-        assert 'p2sh' not in rv
 
     for name, deriv in [ 
         ('p2sh_p2wsh', f"m/48'/1'/{acct_num}'/1'"),

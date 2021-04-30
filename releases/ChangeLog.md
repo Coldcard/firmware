@@ -1,3 +1,9 @@
+## 4.1.1 - April 30, 2021
+
+- Bugfix/Enhancement: [Unchained Captial](https://unchained-capital.com/) was
+  using the P2SH (BIP-45) values we used to export in our multisig wallet file. Restored,
+  and added BIP-45 path to our generic JSON export (if account number is zero).
+
 ## 4.1.0 - April 29, 2021
 
 - New feature: Seed XOR -- split your secret BIP-39 seed into 2 (or 3 or 4) new seed phrases

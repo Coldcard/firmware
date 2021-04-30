@@ -253,25 +253,33 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
             assert obj[fn]
         assert obj['account'] == int(acct_num or 0)
 
-        for fn in ['bip44', 'bip49', 'bip84', 'bip48_1', 'bip48_2']:
+        for fn in ['bip44', 'bip49', 'bip84', 'bip48_1', 'bip48_2', 'bip45']:
+            if obj['account'] and fn == 'bip45':
+                assert fn not in obj
+                continue
+
             assert fn in obj
             v = obj[fn]
             assert all([i in v for i in ['deriv', 'name', 'xpub', 'xfp']])
 
-            if 'bip48' not in fn:
+            if fn == 'bip45':
+                assert v['deriv'] == "m/45'"
+            elif 'bip48' not in fn:
                 assert v['deriv'].endswith(f"'/{acct_num}'")
             else:
                 b48n = fn[-1]
                 assert v['deriv'].endswith(f"'/{acct_num}'/{b48n}'")
 
             node = BIP32Node.from_wallet_key(v['xpub'])
+            assert v['xpub'] == node.hwif(as_private=False)
             first = node.subkey_for_path('0/0')
             addr = v.get('first', None)
 
             if fn == 'bip44':
                 assert first.address() == v['first']
                 addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC)
-            elif 'bip48_' in fn:
+            elif ('bip48_' in fn) or (fn == 'bip45'):
+                # multisig: cant do addrs
                 assert addr == None
             else:
                 assert v['_pub'][1:4] == 'pub'
@@ -288,5 +296,47 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
                     #addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WSH_P2SH, script=)
                 else:
                     assert False
+
+
+def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+    # test UX and operation of the 'unchained capital export'
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('MicroSD Card')
+    pick_menu_item('Export Wallet')
+    pick_menu_item('Unchained Capital')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Unchained Capital' in story
+
+    need_keypress('y')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Unchained Capital file' in story
+    fname = story.split('\n')[-1]
+    assert 'unchained' in fname
+
+    need_keypress('y')
+
+    root = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+    path = microsd_path(fname)
+    with open(path, 'rt') as fp:
+        obj = json.load(fp)
+
+        assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
+        assert obj['account'] == 0
+
+        assert obj['p2sh_deriv'] == "m/45'"
+        for k in ['p2sh_p2wsh', 'p2sh', 'p2wsh']:
+            xpub = slip132undo(obj[k])[0] if k != 'p2sh' else obj[k]
+            node = BIP32Node.from_wallet_key(xpub)
+            assert xpub == node.hwif(as_private=False)
+            sk = root.subkey_for_path(obj[f'{k}_deriv'][2:] + '.pub')
+            assert node.chain_code() == sk.chain_code()
 
 # EOF
