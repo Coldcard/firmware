@@ -268,7 +268,7 @@ def generate_unchained_export(acct_num=0):
     # - no account numbers (at this level)
     from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH
 
-    chain = chains.BitcoinMain
+    chain = chains.current_chain()
     todo = [
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
         ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),

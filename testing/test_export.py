@@ -337,6 +337,7 @@ def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, n
             node = BIP32Node.from_wallet_key(xpub)
             assert xpub == node.hwif(as_private=False)
             sk = root.subkey_for_path(obj[f'{k}_deriv'][2:] + '.pub')
-            assert node.chain_code() == sk.chain_code()
+            #assert node.chain_code() == sk.chain_code()
+            assert node.hwif() == sk.hwif()
 
 # EOF
