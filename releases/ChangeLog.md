@@ -1,8 +1,10 @@
 ## 4.1.1 - April 30, 2021
 
-- Bugfix/Enhancement: [Unchained Captial](https://unchained-capital.com/) was
-  using the P2SH (BIP-45) values we used to export in our multisig wallet file. Restored,
-  and added BIP-45 path to our generic JSON export (if account number is zero).
+- Bugfix/Enhancement: [Unchained Capital](https://unchained-capital.com/)
+  was using the P2SH (BIP-45) value we exported in our multisig
+  wallet file (removed in 4.1.0). So we've restored that, added
+  BIP-45 path to our generic JSON export (if account number is zero),
+  and added a dedicated menu item: Advanced > MicroSD > Export > Unchained Capital
 
 ## 4.1.0 - April 29, 2021
 
