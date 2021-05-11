@@ -3,6 +3,7 @@
  */
 #pragma once
 #include "basics.h"
+#include <stdio.h>
 
 void console_setup(void);
 
@@ -13,10 +14,21 @@ void puthex4(uint16_t w);
 // put hex onto the end of a string. output length always 2*len + nul
 void strcat_hex(char *msg, const void *d, int len);
 
+// my versions, being careful not to pull in FILE and other stdio.h parts
+#undef puts
+int puts(const char *msg);
+#undef putchar
+int putchar(int c);
+
 // like puts() but without newline
 void puts2(const char *msg);
 
 // Print out a standard hex dump, with relative offsets
-//
 void hex_dump(const void *data, int len);
 
+// Blocking read.
+#undef getchar
+int getchar(void);
+
+
+// EOF

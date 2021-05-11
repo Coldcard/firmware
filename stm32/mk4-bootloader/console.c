@@ -5,16 +5,12 @@
  *
  */
 #include "basics.h"
+#include "console.h"
 #include "stm32l4xx_hal.h"
 #include <string.h>
 
-#undef putchar
-
 // mk4 has USART1 on header pins: RGT = Rx Gnd Tx
 #define MY_UART        USART1
-
-// (ms) timeout for tx (disable code)
-#define TX_TIMEOUT      HAL_MAX_DELAY
 
 static const char hexmap[16] = "0123456789abcdef";
 static const char *CRLF = "\r\n";
@@ -68,7 +64,7 @@ puthex4(uint16_t w)
 puts2(const char *msg)
 {
 	// output string with NO newline.
-    HAL_USART_Transmit(&con, (uint8_t *)msg, strlen(msg), TX_TIMEOUT);
+    HAL_USART_Transmit(&con, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
 }
 
 
@@ -96,23 +92,40 @@ putchar(int c)
     uint8_t cb = c;
 
     if(cb != '\n') {
-        HAL_USART_Transmit(&con, &cb, 1, TX_TIMEOUT);
+        HAL_USART_Transmit(&con, &cb, 1, HAL_MAX_DELAY);
     } else {
-        HAL_USART_Transmit(&con, (uint8_t *)CRLF, 2, TX_TIMEOUT);
+        HAL_USART_Transmit(&con, (uint8_t *)CRLF, 2, HAL_MAX_DELAY);
     }
 
     return c;
 }
 
+// puts()
+//
     int
 puts(const char *msg)
 {
-    HAL_USART_Transmit(&con, (uint8_t *)msg, strlen(msg), TX_TIMEOUT);
-    HAL_USART_Transmit(&con, (uint8_t *)CRLF, 2, TX_TIMEOUT);
+    int ln = strlen(msg);
+    if(ln) HAL_USART_Transmit(&con, (uint8_t *)msg, ln, HAL_MAX_DELAY);
+    HAL_USART_Transmit(&con, (uint8_t *)CRLF, 2, HAL_MAX_DELAY);
 
     return 1;
 }
 
+// getchar()
+//
+    int
+getchar(void)
+{
+    uint8_t rv = 0;
+
+    HAL_USART_Receive(&con, &rv, 1, HAL_MAX_DELAY);
+
+    return rv;
+}
+
+// is_print()
+//
     static inline bool
 is_print(uint8_t c)
 {
