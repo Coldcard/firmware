@@ -102,10 +102,6 @@ wipe_all_sram(void)
 {
     const uint32_t noise = 0xdeadbeef;
 
-// strange omission from HAL headers
-#define SRAM3_BASE            ((uint32_t)0x20040000U)
-#define SRAM3_SIZE            ((uint32_t)0x00060000U)
-
     // wipe all of SRAM (except our own memory, which was already wiped)
     memset4((void *)(SRAM1_BASE+BL_SRAM_SIZE), noise, SRAM1_SIZE_MAX - BL_SRAM_SIZE);
     memset4((void *)SRAM2_BASE, noise, SRAM2_SIZE);
@@ -801,15 +797,5 @@ fail:
 
     return rv;
 }
-
-// HAL support garbage
-const uint8_t  AHBPrescTable[16] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 6, 7, 8, 9};
-const uint8_t  APBPrescTable[8] =  {0, 0, 0, 0, 1, 2, 3, 4};
-const uint32_t MSIRangeTable[12] = {100000, 200000, 400000, 800000, 1000000, 2000000, \
-                                  4000000, 8000000, 16000000, 24000000, 32000000, 48000000};
-uint32_t SystemCoreClock;
-
-// TODO: cleanup HAL stuff to not use this
-uint32_t HAL_GetTick(void) { return 53; }
 
 // EOF

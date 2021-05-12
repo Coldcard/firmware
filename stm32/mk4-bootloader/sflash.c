@@ -5,6 +5,7 @@
  *
  */
 #include "sflash.h"
+#include "console.h"
 #include <string.h>
 #include "delay.h"
 #include "stm32l4xx_hal.h"

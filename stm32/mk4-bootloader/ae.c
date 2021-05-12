@@ -353,9 +353,13 @@ ae_setup(void)
     MY_UART->CR1 = 0;
     MY_UART->CR1 = 0x1000002d & ~(0
                                     | USART_CR1_PEIE 
+#ifdef USART_CR1_TXEIE
                                     | USART_CR1_TXEIE 
+#endif
                                     | USART_CR1_TCIE 
+#ifdef USART_CR1_RXNEIE
                                     | USART_CR1_RXNEIE
+#endif
                                     | USART_CR1_IDLEIE
                                     | USART_CR1_OVER8
                                     | USART_CR1_UE);

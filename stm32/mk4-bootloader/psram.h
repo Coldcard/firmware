@@ -4,6 +4,9 @@
 #pragma once
 #include "basics.h"
 
+// 8 bytes of unique data from chip
+extern uint8_t psram_chip_eid[8];
+
 extern void psram_setup(void);
 
 // EOF

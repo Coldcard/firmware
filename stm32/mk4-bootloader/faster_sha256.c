@@ -7,6 +7,16 @@
 #include "stm32l4xx_hal.h"
 #include <string.h>
 
+// so we don't need stm32l4xx_hal_hash_ex.c
+HAL_StatusTypeDef HAL_HASHEx_SHA256_Accmlt(HASH_HandleTypeDef *hhash, uint8_t *pInBuffer, uint32_t Size)
+{
+  return  HASH_Accumulate(hhash, pInBuffer, Size,HASH_ALGOSELECTION_SHA256);
+}
+HAL_StatusTypeDef HAL_HASHEx_SHA256_Start(HASH_HandleTypeDef *hhash, uint8_t *pInBuffer, uint32_t Size, uint8_t* pOutBuffer, uint32_t Timeout)
+{
+  return HASH_Start(hhash, pInBuffer, Size, pOutBuffer, Timeout, HASH_ALGOSELECTION_SHA256);
+}
+
 void sha256_init(SHA256_CTX *ctx)
 {
     memset(ctx, 0, sizeof(SHA256_CTX));
@@ -88,14 +98,13 @@ sha256_single(const uint8_t data[], uint32_t len, uint8_t digest[32])
 //#pragma GCC push_options
 //#pragma GCC optimize ("O0")
 
-
     void
 sha256_selftest(void) 
 {
     SHA256_CTX      ctx;
     uint8_t         md[32], md2[32];
 
-    puts("sha256 selftest start");
+    puts2("sha256 selftest: ");
 
     sha256_single((uint8_t *)"a", 1, md);
     ASSERT(md[0] == 0xca);
@@ -129,9 +138,8 @@ sha256_selftest(void)
         }
     }
 
-    puts("sha256 selftest PASS");
+    puts("PASS");
 }
-
 #endif
 
 // EOF

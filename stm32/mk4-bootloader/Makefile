@@ -27,11 +27,14 @@ TARGET_NAME = bootloader
 OBJS += startup.o assets/screens.o
 OBJS += enable.o dispatch.o verify.o oled.o clocks.o storage.o constant_time.o rng.o ae.o
 OBJS += delay.o gpio.o pins.o version.o sflash.o console.o psram.o
+OBJS += faster_sha256.o micro-ecc/uECC.o hal_glue.o
+
+# Have to have copies of these because the DMA and interrupt stuff
+# needs to be commented-out.
 OBJS += stm32l4xx_hal_firewall.o stm32l4xx_hal_gpio.o stm32l4xx_hal_spi.o
 OBJS += stm32l4xx_hal_rcc.o stm32l4xx_hal_rcc_ex.o
-OBJS += faster_sha256.o micro-ecc/uECC.o
-OBJS += stm32l4xx_hal_hash.o stm32l4xx_hal_hash_ex.o stm32l4xx_hal_usart.o
-OBJS += stm32l4xx_hal_qspi.o
+OBJS += stm32l4xx_hal_hash.o 	# stm32l4xx_hal_usart.o
+OBJS += stm32l4xx_hal_ospi.o
 
 #OBJS = $(addsuffix .o, $(basename $(C_SRCS) $(ASM_SRCS)))
 
@@ -39,7 +42,7 @@ OBJS += stm32l4xx_hal_qspi.o
 micro-ecc/uECC.o: c_flags += -Wno-undef -Wno-redundant-decls
 
 # Headers for chip stuff (assumes STM32L476 chip)
-STM32LIB_PATH = ../../external/micropython/lib
+#STM32LIB_PATH = ../../external/micropython/lib
 
 # Where we will end up in the memory map (at start of flash)
 # - reserve last 8k flash page for other purposes
@@ -62,7 +65,7 @@ BL_SRAM_SIZE = 0x00001c00
 CFLAGS = -I. -Wall --std=gnu99 -Os -g3 \
 			-mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mtune=cortex-m4 \
 			-ffunction-sections -fdata-sections \
-			-mcpu=cortex-m4 -DMCU_SERIES_L4 -DSTM32L4A6xx
+			-mcpu=cortex-m4 -DMCU_SERIES_L4 -DSTM32L4S5xx
 
 # -flto -fdata-sections -ffunction-sections -funsigned-char -funsigned-bitfields 
 
@@ -72,9 +75,12 @@ CFLAGS += -D BL_NVROM_BASE=$(BL_NVROM_BASE) -D BL_NVROM_SIZE=$(BL_NVROM_SIZE)
 CFLAGS += -D BL_SRAM_BASE=$(BL_SRAM_BASE) -D BL_SRAM_SIZE=$(BL_SRAM_SIZE) 
 
 # Header file search path
-INC_PATHS = $(STM32LIB_PATH)/stm32lib/CMSIS/STM32L4xx/Include \
-			$(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/Inc \
-			$(STM32LIB_PATH)/cmsis/inc
+#INC_PATHS = $(STM32LIB_PATH)/stm32lib/CMSIS/STM32L4xx/Include \
+#			$(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/Inc \
+#			$(STM32LIB_PATH)/cmsis/inc
+INC_PATHS = hal/Drivers/CMSIS/Device/ST/STM32L4xx/Include \
+			hal/Drivers/STM32L4xx_HAL_Driver/Inc \
+			hal/Drivers/CMSIS/Include
 
 CFLAGS += $(foreach INC,$(INC_PATHS),-I$(INC))
 
@@ -218,5 +224,10 @@ xxx:
 	@echo OBJS = $(OBJS)
 
 tags:
-	ctags -f .tags *.[ch] -R $(INC_PATHS) $(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/*/*.h
+	ctags -f .tags *.[ch] -R $(INC_PATHS) \
+		hal/Drivers/STM32L4xx_HAL_Driver/Src/*.c
+		
 
+	#$(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/*/*.h
+
+# EOF
