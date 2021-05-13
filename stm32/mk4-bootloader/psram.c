@@ -219,7 +219,7 @@ fail:
 psram_wipe(void)
 {
     puts2("PSRAM Wipe: ");
-    memset4(PSRAM_BASE, rng_sample(), PSRAM_SIZE);
+    memset4((uint32_t *)PSRAM_BASE, rng_sample(), PSRAM_SIZE);
     puts("done");
 }
 

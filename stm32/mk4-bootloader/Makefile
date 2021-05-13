@@ -25,7 +25,7 @@ TARGET_NAME = bootloader
 
 # Source files. Important: Add them also to link-script.ld to control placement.
 OBJS += startup.o assets/screens.o
-OBJS += enable.o dispatch.o verify.o oled.o clocks.o storage.o constant_time.o rng.o ae.o
+OBJS += firewall.o main.o dispatch.o verify.o oled.o clocks.o storage.o constant_time.o rng.o ae.o
 OBJS += delay.o gpio.o pins.o version.o sflash.o console.o psram.o
 OBJS += faster_sha256.o micro-ecc/uECC.o hal_glue.o
 

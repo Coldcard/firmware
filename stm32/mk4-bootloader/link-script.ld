@@ -31,7 +31,7 @@ SECTIONS
         _sfixed = .;
         KEEP(*(.entry_code))
         KEEP(*(.outside_fw))
-        enable.o(.text*)
+        firewall.o(.text*)
         stm32l4xx_hal_firewall.o(.text*)
 
         . = ALIGN(256);
@@ -39,6 +39,7 @@ SECTIONS
 
         KEEP(*(.firewall_code))
         dispatch.o(.text*)
+        main.o(.text*)
         oled.o(.text*)
         stm32l4xx_hal_gpio.o(.text*)
         stm32l4xx_hal_spi.o(.text*)

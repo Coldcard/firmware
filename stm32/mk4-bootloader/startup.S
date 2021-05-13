@@ -78,7 +78,7 @@ my_version_code:
     .type       reset_entry, %function       // critical to have this, marks thumb entry pt
 reset_entry:
 
-    // do the critical one-time setup of firewall
+    // do the critical one-time setup of firewall, see firewall.c
     bl      firewall_setup
 
     // init some other things, maybe the screen

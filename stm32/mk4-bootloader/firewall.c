@@ -1,8 +1,7 @@
 //
 // (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 //
-//
-// enable.c
+// firewall.c
 //
 // C-level code to enable the firewall feature. All **outside** the firewall.
 //
@@ -17,7 +16,7 @@
 // firewall_setup()
 //
 // It's best if this is outside the firewall. After we return, we'll
-// jump into setup code contained inside the firewall.
+// jump into setup code contained inside the firewall. Called from startup.S
 //
     void
 firewall_setup(void)
@@ -65,12 +64,14 @@ firewall_setup(void)
     //
     // - many of the bits in these registers are not-implemented and are forced to zero
     // - that prevents the firewall being used for things like protecting OTP area
-    // - volatile data is SRAM1 only, so doesn't help us, since we're using SRAM2
+    // - (Mk1-3) volatile data is SRAM1 only, so doesn't help us, since we're using SRAM2
     // - on-chip DFU will erase up to start (0x300), which borks the reset vector 
     //   but sensitive stuff is still there (which would allow bypass)
     // - so it's important to enable option bytes to set write-protect on entire bootloader
     // - to disable debug and complete protection, must enable write-protect "level 2"
     //
+
+    // XXX TODO: protect part SRAM1 for us to use?
 
     FIREWALL_InitTypeDef init = {
         .CodeSegmentStartAddress = start,
