@@ -85,16 +85,6 @@ reboot_seed_setup(void)
 #endif
 }
 
-// memset4()
-//
-    static inline void
-memset4(uint32_t *dest, uint32_t value, uint32_t byte_len)
-{
-    for(; byte_len; byte_len-=4, dest++) {
-        *dest = value;
-    }
-}
-
 // wipe_all_sram()
 //
     static void
@@ -188,22 +178,17 @@ system_startup(void)
     flash_setup();
 
     puts("flash setup done");
-    // escape into DFU
-    if(dfu_button_pressed()) dfu_by_request();
 
     // maybe upgrade to a firmware image found in sflash
     sf_firmware_upgrade();
 
-    puts("psram setup");
+    //puts("PSRAM setup");
     psram_setup();
 
     puts("verify");
     // SLOW part: check firmware is legit; else enter DFU
     // - may die due to downgrade attack or unsigned/badly signed image
     verify_firmware();
-
-    // .. for slow people, check again; last chance
-    if(dfu_button_pressed()) dfu_by_request();
 
     // track reboots, capture firmware hdr used
     // - must be near end of boot process, ie: here.

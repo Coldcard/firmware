@@ -2,7 +2,10 @@
  * (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  *
  * Setup and talk with the ESP-PSRAM64H chip, new on Mk4.
- * See stm32l4xx_hal_qspi.h
+ * See stm32l4xx_hal_ospi.h
+ *
+ * CAUTION: All writes must be word aligned.
+ *
  *
  */
 #include "psram.h"
@@ -10,17 +13,45 @@
 #include "assets/screens.h"
 #include <string.h>
 #include "delay.h"
+#include "rng.h"
 #include "stm32l4xx_hal.h"
 #include "console.h"
+#include "faster_sha256.h"
+#include "misc.h"
 
 uint8_t psram_chip_eid[8];
 
-static OSPI_HandleTypeDef  qh;
+//static void psram_memtest(bool simple);
 
+// psram_send_byte()
+//
+    void
+psram_send_byte(OSPI_HandleTypeDef  *qh, uint8_t cmd_byte, bool is_quad)
+{   
+    // Send single-byte commands to the PSRAM chip. Quad mode or normal SPI.
+
+    OSPI_RegularCmdTypeDef cmd = {
+        .OperationType = HAL_OSPI_OPTYPE_COMMON_CFG,
+        .Instruction = cmd_byte,                    // Exit Quad Mode
+        .InstructionMode = is_quad ? HAL_OSPI_INSTRUCTION_4_LINES : HAL_OSPI_INSTRUCTION_1_LINE,
+        .AddressMode = HAL_OSPI_ADDRESS_NONE,
+        .AlternateBytesMode = HAL_OSPI_ALTERNATE_BYTES_NONE,
+        .DummyCycles = 0,
+        .DataMode = HAL_OSPI_DATA_NONE,
+        .NbData = 0,                        // how much to read in bytes
+    };
+
+    // Start and finish a "Indirection functional mode" request
+    HAL_OSPI_Command(qh, &cmd, HAL_MAX_DELAY);
+}
+
+// psram_setup()
+//
     void
 psram_setup(void)
 {
     // Using OSPI1 block
+    OSPI_HandleTypeDef  qh = { 0 };
 
     // enable clocks
     __HAL_RCC_OSPI1_CLK_ENABLE();
@@ -40,68 +71,26 @@ psram_setup(void)
     };
     HAL_GPIO_Init(GPIOE, &setup);
 
-#if 0
-  uint32_t FifoThreshold;             /*!< This is the threshold used by the Peripheral to generate the interrupt
-                                           indicating that data are available in reception or free place
-                                           is available in transmission.
-                                           This parameter can be a value between 1 and 32 */
-  uint32_t DualQuad;                  /*!< It enables or not the dual-quad mode which allow to access up to
-                                           quad mode on two different devices to increase the throughput.
-                                           This parameter can be a value of @ref OSPI_DualQuad */
-  uint32_t MemoryType;                /*!< It indicates the external device type connected to the OSPI.
-                                           This parameter can be a value of @ref OSPI_MemoryType */
-  uint32_t DeviceSize;                /*!< It defines the size of the external device connected to the OSPI,
-                                           it corresponds to the number of address bits required to access
-                                           the external device.
-                                           This parameter can be a value between 1 and 32 */
-  uint32_t ChipSelectHighTime;        /*!< It defines the minimun number of clocks which the chip select
-                                           must remain high between commands.
-                                           This parameter can be a value between 1 and 8 */
-  uint32_t FreeRunningClock;          /*!< It enables or not the free running clock.
-                                           This parameter can be a value of @ref OSPI_FreeRunningClock */
-  uint32_t ClockMode;                 /*!< It indicates the level of clock when the chip select is released.
-                                           This parameter can be a value of @ref OSPI_ClockMode */
-  uint32_t ClockPrescaler;            /*!< It specifies the prescaler factor used for generating
-                                           the external clock based on the AHB clock.
-                                           This parameter can be a value between 1 and 256 */
-  uint32_t SampleShifting;            /*!< It allows to delay to 1/2 cycle the data sampling in order
-                                           to take in account external signal delays.
-                                           This parameter can be a value of @ref OSPI_SampleShifting */
-  uint32_t DelayHoldQuarterCycle;     /*!< It allows to hold to 1/4 cycle the data.
-                                           This parameter can be a value of @ref OSPI_DelayHoldQuarterCycle */
-  uint32_t ChipSelectBoundary;        /*!< It enables the transaction boundary feature and
-                                           defines the boundary of bytes to release the chip select.
-                                           This parameter can be a value between 0 and 31 */
-  uint32_t DelayBlockBypass;          /*!< It enables the delay block bypass, so the sampling is not affected
-                                           by the delay block.
-                                           This parameter can be a value of @ref OSPI_DelayBlockBypass */
-#if   defined (OCTOSPI_DCR3_MAXTRAN)
-  uint32_t MaxTran;                   /*!< It enables the communication regulation feature. The chip select is
-                                           released every MaxTran+1 bytes when the other OctoSPI request the access
-                                           to the bus.
-                                           This parameter can be a value between 0 and 255 */
-#endif
-#if   defined (OCTOSPI_DCR4_REFRESH)
-  uint32_t Refresh;                   /*!< It enables the refresh rate feature. The chip select is released every
-                                           Refresh+1 clock cycles.
-                                           This parameter can be a value between 0 and 0xFFFFFFFF */
-#endif
-#endif
 
-    memset(&qh, 0, sizeof(qh));
-
+    // Config operational values
     qh.Instance = OCTOSPI1;
-    qh.Init.FifoThreshold = 4;                          // ??
+    qh.Init.FifoThreshold = 1;                          // ?? unused
     qh.Init.DualQuad = HAL_OSPI_DUALQUAD_DISABLE;
-    qh.Init.MemoryType = HAL_OSPI_MEMTYPE_MICRON;       // seems like 8-bit mode stuff?
-    qh.Init.DeviceSize = 23;
-    qh.Init.ChipSelectHighTime = 8;             // maxed out to start
-    qh.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE; 
-    qh.Init.ClockMode = HAL_OSPI_CLOCK_MODE_0;                      // low clock between ops
-    qh.Init.ClockPrescaler = 16;                 // prescaller, decrease me
+    qh.Init.MemoryType = HAL_OSPI_MEMTYPE_MICRON;       // want standard mode (but octo only?)
+    qh.Init.DeviceSize = 24;                    // assume max size, actual is 8Mbyte
+    qh.Init.ChipSelectHighTime = 1;             // 1, maxed out, seems to work
+    qh.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_ENABLE;       // maybe?
+    qh.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE;     // required!
+    qh.Init.ClockMode = HAL_OSPI_CLOCK_MODE_0;  // low clock between ops (required, see errata)
+    qh.Init.ClockPrescaler = 1;                 // prescaler (1=>80Mhz, 2=>40Mhz, etc)
+    qh.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_BYPASSED;        // dont need it?
 
-    qh.Init.ChipSelectBoundary = 0;            // set for 1024-byte block size?
-
+    // ESP-PSRAM64H calls for max of 8us w/ CS low. Needs it for refresh time.
+    // - stm32 datasheet says min 3 here; found 1-3 all work
+    // - zero works, but CS is never released (but doesn't seem to affect operation?)
+    // - (during reads) 3 => 400ns  4 => 660ns   5+ => 1us 
+    // - LATER: Errata 2.8.1 => says shall not use
+    qh.Init.ChipSelectBoundary = 0;
 
     // module init 
     HAL_StatusTypeDef rv = HAL_OSPI_Init(&qh);
@@ -109,41 +98,109 @@ psram_setup(void)
 
     // do some SPI commands first
 
+    // Exit Quad mode, to get to a known state, after first power-up
+    psram_send_byte(&qh, 0xf5, true);
+
+    // Chip Reset sequence
+    psram_send_byte(&qh, 0x66, false);      // reset enable
+    psram_send_byte(&qh, 0x99, false);      // reset
+
     // Read Electronic ID
-    // - length not clear from datasheet, but bits repeat after 8 bytes
+    // - length not clear from datasheet, but repeats after 8 bytes
 
-    OSPI_RegularCmdTypeDef cmd = {
-        .OperationType = HAL_OSPI_OPTYPE_COMMON_CFG,
-        .Instruction = 0x9f,                    // "read ID" command
-        .InstructionMode = HAL_OSPI_INSTRUCTION_1_LINE,
-        .Address = 0,                           // dont care
-        .AddressSize = HAL_OSPI_ADDRESS_24_BITS,
-        .AddressMode = HAL_OSPI_ADDRESS_1_LINE,
-        .AlternateBytesMode = HAL_OSPI_ALTERNATE_BYTES_NONE,
-        .DummyCycles = 0,
-        .DataMode = HAL_OSPI_DATA_1_LINE,
-        .NbData = sizeof(psram_chip_eid),                        // how much to read in bytes
-    };
+    {   OSPI_RegularCmdTypeDef cmd = {
+            .OperationType = HAL_OSPI_OPTYPE_COMMON_CFG,
+            .Instruction = 0x9f,                    // "read ID" command
+            .InstructionMode = HAL_OSPI_INSTRUCTION_1_LINE,
+            .Address = 0,                           // dont care
+            .AddressSize = HAL_OSPI_ADDRESS_24_BITS,
+            .AddressMode = HAL_OSPI_ADDRESS_1_LINE,
+            .AlternateBytesMode = HAL_OSPI_ALTERNATE_BYTES_NONE,
+            .DummyCycles = 0,
+            .DataMode = HAL_OSPI_DATA_1_LINE,
+            .NbData = sizeof(psram_chip_eid),                        // how much to read in bytes
+        };
 
-    // Start "Indirection functional mode"
-    rv = HAL_OSPI_Command(&qh, &cmd, HAL_MAX_DELAY);
-    if(rv != HAL_OK) goto fail;
+        // Start a "Indirection functional mode" request
+        rv = HAL_OSPI_Command(&qh, &cmd, HAL_MAX_DELAY);
+        if(rv != HAL_OK) goto fail;
 
-    rv = HAL_OSPI_Receive(&qh, psram_chip_eid, HAL_MAX_DELAY);
-    if(rv != HAL_OK) goto fail;
+        rv = HAL_OSPI_Receive(&qh, psram_chip_eid, HAL_MAX_DELAY);
+        if(rv != HAL_OK) goto fail;
+    }
 
     puts2("PSRAM EID: "); 
     hex_dump(psram_chip_eid, sizeof(psram_chip_eid));
     ASSERT(psram_chip_eid[0] == 0x0d);
     ASSERT(psram_chip_eid[1] == 0x5d);
 
-#if 0
-    OSPI_MemoryMappedTypeDef mmap = {
-    };
+    // Put into Quad mode
+    psram_send_byte(&qh, 0x35, false);  // 0x35 = Enter Quad Mode
 
-    rv = HAL_OSPI_MemoryMapped(&qh, &cmd, &mmap);
-    ASSERT(rv == HAL_OK);
+    // Configure read/write cycles for mem-mapped mode
+    {   OSPI_RegularCmdTypeDef cmd = {
+            .OperationType = HAL_OSPI_OPTYPE_WRITE_CFG,
+            .Instruction = 0x02,                    // write command
+            .InstructionMode = HAL_OSPI_INSTRUCTION_4_LINES,
+            .Address = 0,                           // dont care
+            .AddressSize = HAL_OSPI_ADDRESS_24_BITS,
+            .AddressMode = HAL_OSPI_ADDRESS_4_LINES,
+            .AlternateBytesMode = HAL_OSPI_ALTERNATE_BYTES_NONE,
+            .DummyCycles = 0,
+            .DataMode = HAL_OSPI_DATA_4_LINES,
+            .NbData = 0,                        // don't care / TBD?
+        };
+
+        // Config for write
+        rv = HAL_OSPI_Command(&qh, &cmd, HAL_MAX_DELAY);
+        if(rv != HAL_OK) goto fail;
+
+        // .. for read
+        OSPI_RegularCmdTypeDef cmd2 = {
+            .OperationType = HAL_OSPI_OPTYPE_READ_CFG,
+            .Instruction = 0xeb,                    // fast read quad command
+            .InstructionMode = HAL_OSPI_INSTRUCTION_4_LINES,
+            .Address = 0,                           // dont care
+            .AddressSize = HAL_OSPI_ADDRESS_24_BITS,
+            .AddressMode = HAL_OSPI_ADDRESS_4_LINES,
+            .AlternateBytesMode = HAL_OSPI_ALTERNATE_BYTES_NONE,
+            .DummyCycles = 6,
+            .DataMode = HAL_OSPI_DATA_4_LINES,
+            .NbData = 0,                        // don't care / TBD?
+        };
+
+        // Config for read
+        rv = HAL_OSPI_Command(&qh, &cmd2, HAL_MAX_DELAY);
+        if(rv != HAL_OK) goto fail;
+    }
+
+    // config for memmap
+    {   OSPI_MemoryMappedTypeDef mmap = {
+           // Need this so that CS lines returns to inactive sometimes.
+          .TimeOutActivation = HAL_OSPI_TIMEOUT_COUNTER_ENABLE,
+          .TimeOutPeriod = 16,          // no idea, max value 0xffff
+        };
+
+        rv = HAL_OSPI_MemoryMapped(&qh, &mmap);
+        if(rv != HAL_OK) goto fail;
+    }
+
+#if 0
+    while(1) {
+        psram_memtest(1);
+        psram_memtest(0);
+    }
 #endif
+
+    // Only a quick operational check only here. Non-destructive.
+    {   __IO uint32_t    *ptr = (uint32_t *)(PSRAM_BASE+PSRAM_SIZE-4);
+        uint32_t    tmp;
+
+        tmp = *ptr;
+        *ptr = 0x55aa1234;
+        if(*ptr != 0x55aa1234) goto fail;
+        *ptr = tmp;
+    }
 
     return;
 
@@ -155,5 +212,63 @@ fail:
 
     LOCKUP_FOREVER();
 }
+
+// psram_wipe()
+//
+    void
+psram_wipe(void)
+{
+    puts2("PSRAM Wipe: ");
+    memset4(PSRAM_BASE, rng_sample(), PSRAM_SIZE);
+    puts("done");
+}
+
+#if 0
+// psram_memtest()
+//
+    static void
+psram_memtest(bool simple)
+{
+    uint8_t         *base = (uint8_t *)PSRAM_BASE;
+    const uint8_t   *end = (uint8_t *)(PSRAM_BASE+PSRAM_SIZE);
+    const int sz = 32;
+
+    uint8_t pattern[32];
+    if(simple) {
+        //rng_buffer(pattern, sz);
+        for(int i=0; i<sz; i++) {
+            pattern[i] = i;
+        }
+    }
+
+    puts2("memtest: fill .. ");
+    for(uint8_t *ptr = base; ptr < end-sz; ptr += sz) {
+        if(!simple) {
+            sha256_single((uint8_t *)&ptr, 4, pattern);
+        }
+        memcpy(ptr, pattern, sz);
+    }
+
+    puts2("check .. ");
+    for(uint8_t *ptr = base; ptr < end-sz; ptr += sz) {
+        if(!simple) {
+            sha256_single((uint8_t *)&ptr, 4, pattern);
+        }
+        if(memcmp(pattern, ptr, sz) != 0) {
+            puts2("FAIL @ ");
+            puthex8((uint32_t)ptr);
+            putchar('\n');
+
+            hex_dump(ptr, sz);
+            puts("should be:");
+            hex_dump(pattern, sz);
+
+            BREAKPOINT;
+        }
+    }
+
+    puts("PASS");
+}
+#endif
 
 // EOF

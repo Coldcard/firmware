@@ -10,6 +10,7 @@ void console_setup(void);
 // print stuff in hex. no NL or other jazz
 void puthex2(uint8_t b);
 void puthex4(uint16_t w);
+void puthex8(uint32_t w);
 
 // put hex onto the end of a string. output length always 2*len + nul
 void strcat_hex(char *msg, const void *d, int len);

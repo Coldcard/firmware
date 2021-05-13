@@ -19,7 +19,7 @@ void sha256_update(SHA256_CTX *ctx, const uint8_t data[], uint32_t len);
 void sha256_final(SHA256_CTX *ctx, uint8_t digest[32]);
 
 // single-shot version (best)
-void sha256_single( const uint8_t data[], uint32_t len, uint8_t digest[32]);
+void sha256_single(const uint8_t data[], uint32_t len, uint8_t digest[32]);
 
 #ifndef RELEASE
 void sha256_selftest(void);

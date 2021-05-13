@@ -58,6 +58,15 @@ puthex4(uint16_t w)
 	putchar(hexmap[(w>>0) & 0xf]);
 }
 
+// puthex8()
+//
+	void
+puthex8(uint32_t w)
+{
+    puthex4(w >> 16);
+    puthex4(w & 0xffff);
+}
+
 // puts2()
 //
 	void
