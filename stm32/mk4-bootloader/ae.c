@@ -280,7 +280,7 @@ ae_wake(void)
     // send zero (all low), delay 2.5ms
     _send_byte(0x00);
 
-    delay_us(2500);     // measured: ~2.9ms
+    delay_ms(3);     // measured: ~2.9ms
 
     _flush_rx();
 }

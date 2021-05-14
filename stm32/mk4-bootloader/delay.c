@@ -25,21 +25,4 @@ delay_ms(int ms)
     }
 }
 
-// delay_us()
-//
-    void
-delay_us(int us)
-{
-    if(us > 1000) {
-        // big round up
-        delay_ms((us + 500) / 1000);
-
-    } else {
-        // XXX calibrate this
-        for(volatile int i=0; i<(10000*us); i++) {
-            __NOP();
-        }
-    }
-}
-
 // EOF

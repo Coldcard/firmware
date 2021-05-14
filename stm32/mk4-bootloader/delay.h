@@ -3,7 +3,7 @@
  */
 #pragma once
 
-// Software delay loops (we have no interrupts)
-
+// Uses SYSTICK in polling mode
 void delay_ms(int ms);
-void delay_us(int us);
+
+// EOF
