@@ -1,5 +1,10 @@
 # Coldcard Desktop Simulator
 
+## One Time Setup
+
+    make setup
+    make ngu-setup
+
 ## Usage
 
     make && ./simulator.py
