@@ -72,7 +72,7 @@ Advanced > Danger Zone > Seed Functions > Seed XOR > Split Existing
 You can choose between 2, 3 or 4 parts. You can also choose (next
 screen) to generate them deterministically or using the TRNG. The
 advantage of the deterministic approach is you'll always get the
-same answers, so you can check that you've recording the correct
+same answers, so you can check that you've recorded the correct
 48 to 96 words right the next day.
 
 When the parts are made deterministically, we take a double-SHA256 over
