@@ -1,7 +1,5 @@
-#exec-file l-port/build-COLDCARD/firmware.elf
-exec-file built/firmware.elf
-#add-symbol-file l-port/build-COLDCARD/firmware.elf 0x8000000
-add-symbol-file bootloader/bootloader.elf 0x8000000
+# NOTE: main firmware.elf file provided on command line, see Makefile
+add-symbol-file mk4-bootloader/bootloader.elf 0x8000000
 
 # hex for all numbers
 set output-radix 16

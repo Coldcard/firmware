@@ -74,7 +74,11 @@ your key storage per-system unique.
 
 This is a useful command, but only works on non-production units:
 
+Mk1-3:
     dfu-util -d 0483:df11 -a 0 -s 0x08007800:256 -U pairing.bin
+
+Mk4:
+    dfu-util -d 0483:df11 -a 0 -s 0x0800e000:256 -U pairing.bin
 
 
 # Resources
@@ -85,6 +89,6 @@ This is a useful command, but only works on non-production units:
 
 - measure OLED reset and CS pulse lengths, and SPI clk during boot w/ internal RC oscilator
 - HAL code for SPI should be removed and replaced with a few one-liners
-- GPIO code maybe removed as well?
+- GPIO code may be removed as well?
 
 
