@@ -3,11 +3,12 @@
  */
 #include "oled.h"
 #include "delay.h"
-#include "stm32l4xx_hal_gpio.h"
-#include "stm32l4xx_hal_rcc.h"
-#include "stm32l4xx_hal_dma.h"
-#include "stm32l4xx_hal_spi.h"
+#include "console.h"
+#include "stm32l4xx_hal.h"
 #include <string.h>
+
+// OLED pins block use of MCO for testing
+#undef DISABLE_OLED
 
 // Reset and config sequence.
 //
@@ -48,17 +49,20 @@ static const uint8_t before_show[] = {
 #define SPI_SCK         GPIO_PIN_5
 #define SPI_MOSI        GPIO_PIN_7
 
-HAL_StatusTypeDef HAL_SPI_Transmit(SPI_HandleTypeDef *hspi, uint8_t *pData, uint16_t Size, uint32_t Timeout);
 
+#ifndef DISABLE_OLED
 static SPI_HandleTypeDef   spi_port;
+#endif
 
 // write_bytes()
 //
     static inline void
 write_bytes(int len, const uint8_t *buf)
 {
+#ifndef DISABLE_OLED
     // send via SPI(1)
     HAL_SPI_Transmit(&spi_port, (uint8_t *)buf, len, HAL_MAX_DELAY);
+#endif
 }
 
 // oled_write_cmd()
@@ -106,6 +110,7 @@ oled_write_data(int len, const uint8_t *pixels)
     void
 oled_spi_setup(void)
 {
+#ifndef DISABLE_OLED
     // might already be setup
     if(spi_port.Instance == SPI1) return;
 
@@ -126,6 +131,7 @@ oled_spi_setup(void)
     spi_port.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
 
     HAL_SPI_Init(&spi_port);
+#endif
 }
 
 // oled_setup()
@@ -135,6 +141,10 @@ oled_spi_setup(void)
     void
 oled_setup(void)
 {
+#ifdef DISABLE_OLED
+    puts("oled disabled");return;     // disable so I can use MCO
+#endif
+
     static uint32_t inited;
 
     if(inited == 0x238a572F) {

@@ -50,7 +50,7 @@ firewall_setup(void)
     uint32_t    start = (uint32_t)&firewall_starts;
     uint32_t    len = BL_FLASH_SIZE - (start - BL_FLASH_BASE);
 
-#if 0
+#if 1
     ASSERT(start);
     ASSERT(!(start & 0xff));
     ASSERT(len>256);
@@ -65,13 +65,12 @@ firewall_setup(void)
     // - many of the bits in these registers are not-implemented and are forced to zero
     // - that prevents the firewall being used for things like protecting OTP area
     // - (Mk1-3) volatile data is SRAM1 only, so doesn't help us, since we're using SRAM2
+    // - (Mk4) we are in SRAM1, so we could protect all our RAM ... but errata 2.4.2 fucks that
     // - on-chip DFU will erase up to start (0x300), which borks the reset vector 
     //   but sensitive stuff is still there (which would allow bypass)
     // - so it's important to enable option bytes to set write-protect on entire bootloader
     // - to disable debug and complete protection, must enable write-protect "level 2"
     //
-
-    // XXX TODO: protect part SRAM1 for us to use?
 
     FIREWALL_InitTypeDef init = {
         .CodeSegmentStartAddress = start,

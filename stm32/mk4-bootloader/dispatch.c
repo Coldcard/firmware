@@ -40,16 +40,19 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
 {
     uint32_t x = (uint32_t)b;
 
-    // XXX needs changes for mk4
-
     if(minlen) {
         if(!b) return EFAULT;               // gave no buffer
         if(len < minlen) return ERANGE;     // too small
     }
         
+    // mk4 is different
+    STATIC_ASSERT(SRAM1_BASE == BL_SRAM_BASE);
 
-    if((x >= SRAM1_BASE) && ((x-SRAM1_BASE) < SRAM1_SIZE_MAX)) {
-        // inside SRAM1, okay
+    const uint32_t sram_start = BL_SRAM_BASE + BL_SRAM_SIZE;
+    const uint32_t sram_end = SRAM3_BASE + SRAM3_SIZE;
+
+    if((x >= sram_start) && ((x+len) <= sram_end)) {
+        // inside the 3 SRAM areas
         return 0;
     }
 
@@ -97,7 +100,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
     int rv = 0;
 
-#if 0
+#if 1
     // TODO: re-enable this; causing crash now.
     // in case the caller didn't already, but would just lead to a crash anyway
     __disable_irq();
@@ -169,17 +172,21 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                         rv = EPERM;
                         goto fail;
                     }
+                    puts("Die: DFU");
                     scr = screen_dfu;
                     break;
                 case 1:
                     // in case some way for Micropython to detect it.
                     scr = screen_downgrade;
+                    puts("Die: Downgrade");
                     break;
                 case 2:
                     scr = screen_blankish;
+                    puts("Die: Blankish");
                     break;
                 case 3:
                     scr = screen_brick;
+                    puts("Die: Brick");
                     secure = true;      // no point going into DFU, if even possible
                     break;
             }
@@ -188,6 +195,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             oled_show(scr);
 
             wipe_all_sram();
+            psram_wipe();
 
             if(secure) {
                 // just die with that message shown; can't start DFU
@@ -231,6 +239,8 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
                 // NOT-REACHED (but ok if it does)
             }
+
+            psram_wipe();
 
             // wait for an interrupt which will never happen (ie. sleep)
             LOCKUP_FOREVER()

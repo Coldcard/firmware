@@ -3,6 +3,7 @@
  */
 #include "basics.h"
 #include "ae.h"
+#include "clocks.h"
 #include "rng.h"
 #include "delay.h"
 #include "faster_sha256.h"
@@ -12,6 +13,7 @@
 #include "stm32l4xx_hal.h"
 #include "ae_config.h"
 #include "oled.h"
+#include "console.h"
 #include <errno.h>
 #include <string.h>
 
@@ -23,6 +25,11 @@
 #else
 # define ERR(msg)
 # define ERRV(val, msg)
+#endif
+#if 0
+// affects timing
+# define ERR(msg)       puts(msg)
+# define ERRV(val, msg) do { puts2(msg); puts2(": "); puthex2(val); putchar('\n'); } while(0)
 #endif
 
 // Must be exactly 32 chars:
@@ -367,7 +374,13 @@ ae_setup(void)
     MY_UART->RTOR = 24;                  // timeout in bit periods: 3 chars or so
     MY_UART->CR2 = USART_CR2_RTOEN;      // rx timeout enable
     MY_UART->CR3 = USART_CR3_HDSEL | USART_CR3_ONEBIT;
-    MY_UART->BRR = 0x0000015b;          // 230400 bps 
+#if HCLK_FREQUENCY == 80000000
+    MY_UART->BRR = 0x0000015b;          // 230400 bps @ 80 Mhz SYSCLK
+#elif HCLK_FREQUENCY == 120000000
+    MY_UART->BRR = 521;                 // 230400 bps @ 120 Mhz SYSCLK
+#else
+#   error "needs math"
+#endif
 
     // clear rx timeout flag
     MY_UART->ICR = USART_ICR_RTOCF;
@@ -375,7 +388,7 @@ ae_setup(void)
     // finally enable UART
     MY_UART->CR1 |= USART_CR1_UE;
     
-    // configure pin A0 to be AF8_UART4, PULL_NONE
+    // configure pin A0 to be AFx_UARTy, PULL_NONE
     gpio_setup();
     
     // mark it as ready

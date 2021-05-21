@@ -3,6 +3,8 @@
  */
 #pragma once
 
+#define HCLK_FREQUENCY      120000000
+
 // call once at startup
 void clocks_setup(void);
 

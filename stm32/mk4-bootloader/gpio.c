@@ -25,11 +25,14 @@ gpio_setup(void)
     // - try not to limit PCB changes for future revs; leave unused unchanged.
     // - oled_setup() uses pins on PA4 thru PA8
 
-    // enable clock to that part of chip
+    // enable clock to GPIO's ... we will be using them all at some point
     __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
     __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOD_CLK_ENABLE();
+    __HAL_RCC_GPIOE_CLK_ENABLE();
 
-    {   // Onewire bus pins used for ATECC508A comms
+    {   // Onewire bus pins used for ATECC608 comms
         GPIO_InitTypeDef setup = {
             .Pin = ONEWIRE_PIN,
             .Mode = GPIO_MODE_AF_OD,
@@ -45,8 +48,11 @@ gpio_setup(void)
         HAL_GPIO_Init(ONEWIRE_PORT, &setup);
     }
 
-    // debug console: USART1 = PA9=Tx & PA10=Rx
-    {   GPIO_InitTypeDef setup = {
+    // Bugfix: re-init of console port pins seems to wreck
+    // the mpy uart code, so avoid after first time.
+    if(USART1->BRR == 0) {
+        // debug console: USART1 = PA9=Tx & PA10=Rx
+        GPIO_InitTypeDef setup = {
             .Pin = GPIO_PIN_9,
             .Mode = GPIO_MODE_AF_PP,
             .Pull = GPIO_NOPULL,
@@ -70,8 +76,29 @@ gpio_setup(void)
         };
         HAL_GPIO_Init(GPIOC, &setup);
 
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 1);    // turn on
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 0);    // turn LED off
     }
+
+
+#if 0
+    // TEST CODE -- keep
+    // enable MCO=PA8 for clock watching. Conflicts w/ OLED normal use.
+    GPIO_InitTypeDef mco_setup = {
+        .Pin = GPIO_PIN_8,
+        .Mode = GPIO_MODE_AF_PP,
+        .Pull = GPIO_NOPULL,
+        .Speed = GPIO_SPEED_FREQ_VERY_HIGH,
+        .Alternate = GPIO_AF0_MCO,
+    };
+    HAL_GPIO_Init(GPIOA, &mco_setup);
+
+    // select a signal to view here.
+    // RCC_MCO1SOURCE_SYSCLK => 120Mhz (correct)
+    // RCC_MCO1SOURCE_PLLCLK  (PLL R output) => (same os SYSCLK)
+    // RCC_MCO1SOURCE_HSI48  => 48Mhz
+    // RCC_MCO1SOURCE_HSE => 8Mhz (correct)
+    __HAL_RCC_MCO1_CONFIG(RCC_MCO1SOURCE_SYSCLK, RCC_MCODIV_1);
+#endif
 
 #if 0
     __HAL_RCC_GPIOB_CLK_ENABLE();
@@ -93,5 +120,6 @@ gpio_setup(void)
     //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 0);
 #endif
 }
+
 
 // EOF

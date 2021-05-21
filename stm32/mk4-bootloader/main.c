@@ -50,8 +50,8 @@ reboot_seed_setup(void)
 
     // can only do this once, and might be done already
     if(SYSCFG->SWPR != (1<<31)) {
-        ASSERT(((uint32_t)reboot_seed) == 0x10007c00);
-        ASSERT(((uint32_t)hdr_copy) == RAM_HEADER_BASE);
+        ASSERT(((uint32_t)reboot_seed) == 0x20007c00);
+        ASSERT(((uint32_t)hdr_copy) == RAM_HEADER_BASE_MK4);
 
         // populate seed w/ noise
         memset(reboot_seed, 0x55, 1024);
@@ -149,12 +149,24 @@ system_startup(void)
     // wipe all of SRAM (except our own memory, which was already wiped)
     wipe_all_sram();
 
-    puts("AE setup start");
+    puts2("AE setup: ");
     // secure element setup
     ae_setup();
     ae_set_gpio(0);         // not checking return on purpose
 
-    puts("AE setup done");
+    puts("done");
+
+#if 0
+    {   uint8_t config[128] = {0};
+        int x = ae_config_read(config);
+        if(x == 0) {
+            puts("config[128]:");
+            hex_dump(config, 128);
+        } else {
+            puts("config read fail");
+        }
+    }
+#endif
 
     // protect our flash, and/or check it's protected 
     // - and pick pairing secret if we don't already have one

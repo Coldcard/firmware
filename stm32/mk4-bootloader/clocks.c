@@ -31,18 +31,34 @@
 #include "stm32l4xx_hal.h"
 
 // HSE is used and is 8MHz
-// - not doing a complete setup here, but enough
-// - expect mainline code to refine this more
+// - doing a complete setup here, and not changing in MicroPython anymore
 // - this chip is well made and can handle later changes to clocks
+// - lots of internal RC osc we can use as well... HSI, MSI and HSI48
 
-#define CKCC_CLK_PLLN (40)
-#define CKCC_CLK_PLLM (2)
-#define CKCC_CLK_PLLR (2)
-#define CKCC_CLK_PLLP (7)
-#define CKCC_CLK_PLLQ (4)
+#if HCLK_FREQUENCY == 80000000
+// To get 80Mhz for SYSCLK...
+// 8Mhz (HSE) => /2 (M) *40 (N) /2 (R) => 80Mhz
 
-// expected value of HAL_RCC_GetHCLKFreq(): 80Mhz
-#define HCLK_FREQUENCY      80000000
+# define CKCC_CLK_PLLM (2)
+# define CKCC_CLK_PLLN (40)
+# define CKCC_CLK_PLLR (2)
+# define CKCC_CLK_PLLP (7)
+# define CKCC_CLK_PLLQ (4)
+#endif
+
+
+#if HCLK_FREQUENCY == 120000000
+// For for 120Mhz SYSCLK...
+// 8Mhz (HSE) => /2 (M) *60 (N) /2 (R) => 120Mhz
+// R output => main sysclk (target 120)
+// Q output => should be 48Mhz for RNG and OCTOSPI maybe
+
+# define CKCC_CLK_PLLM (2)
+# define CKCC_CLK_PLLN (60)
+# define CKCC_CLK_PLLR (2)
+# define CKCC_CLK_PLLP (7)
+# define CKCC_CLK_PLLQ (5)
+#endif
 
 // systick_setup()
 //
@@ -63,6 +79,9 @@ clocks_setup(void)
 {
     RCC_ClkInitTypeDef RCC_ClkInitStruct;
     RCC_OscInitTypeDef RCC_OscInitStruct;
+
+    // setup power supplies
+    HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
 
     // Configure LSE Drive Capability
     __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
@@ -95,7 +114,7 @@ clocks_setup(void)
 
     HAL_RCC_OscConfig(&RCC_OscInitStruct);
 
-    HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4);
+    HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5);
 
     // DIS-able MSI-Hardware auto calibration mode with LSE
     CLEAR_BIT(RCC->CR, RCC_CR_MSIPLLEN);
@@ -112,7 +131,7 @@ clocks_setup(void)
     PeriphClkInitStruct.Sai1ClockSelection = RCC_SAI1CLKSOURCE_PLLSAI1;
     PeriphClkInitStruct.AdcClockSelection = RCC_ADCCLKSOURCE_PLLSAI1;
     PeriphClkInitStruct.UsbClockSelection = RCC_USBCLKSOURCE_PLLSAI1;
-    PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+    PeriphClkInitStruct.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;           // XXX wrong?
     PeriphClkInitStruct.RngClockSelection = RCC_RNGCLKSOURCE_PLLSAI1;
 
     PeriphClkInitStruct.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_HSE;
@@ -128,10 +147,17 @@ clocks_setup(void)
     HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
 
     __HAL_RCC_RTC_ENABLE();
-    __HAL_RCC_HASH_CLK_ENABLE();
+    __HAL_RCC_HASH_CLK_ENABLE();        // for SHA256
+    __HAL_RCC_SPI1_CLK_ENABLE();        // for OLED
+    __HAL_RCC_SPI2_CLK_ENABLE();        // for SPI flash
+    //__HAL_RCC_DMA1_CLK_ENABLE();        // for SPI from mpy
+    //__HAL_RCC_DMA2_CLK_ENABLE();        // might not need
+    __HAL_RCC_DMAMUX1_CLK_ENABLE();         // because code missing in mpy?
 
     // setup SYSTICK, but we don't have the irq hooked up and not using HAL
+    // but we use it in polling mode for delay_ms()
     systick_setup();
+
 }
 
 // EOF

@@ -10,6 +10,7 @@
  */
 #include "psram.h"
 #include "oled.h"
+#include "clocks.h"
 #include "assets/screens.h"
 #include <string.h>
 #include "delay.h"
@@ -19,9 +20,13 @@
 #include "faster_sha256.h"
 #include "misc.h"
 
+#undef INCL_SELFTEST
+
 uint8_t psram_chip_eid[8];
 
-//static void psram_memtest(bool simple);
+#ifdef INCL_SELFTEST
+static void psram_memtest(bool simple);
+#endif
 
 // psram_send_byte()
 //
@@ -82,7 +87,13 @@ psram_setup(void)
     qh.Init.DelayHoldQuarterCycle = HAL_OSPI_DHQC_ENABLE;       // maybe?
     qh.Init.FreeRunningClock = HAL_OSPI_FREERUNCLK_DISABLE;     // required!
     qh.Init.ClockMode = HAL_OSPI_CLOCK_MODE_0;  // low clock between ops (required, see errata)
+#if HCLK_FREQUENCY == 80000000
     qh.Init.ClockPrescaler = 1;                 // prescaler (1=>80Mhz, 2=>40Mhz, etc)
+#elif HCLK_FREQUENCY == 120000000
+    qh.Init.ClockPrescaler = 2;                 // prescaler (1=>120Mhz, 2=>60Mhz, etc)
+#else
+#   error "testing needed"
+#endif
     qh.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_BYPASSED;        // dont need it?
 
     // ESP-PSRAM64H calls for max of 8us w/ CS low. Needs it for refresh time.
@@ -185,13 +196,10 @@ psram_setup(void)
         if(rv != HAL_OK) goto fail;
     }
 
-#if 0
-    while(1) {
-        psram_memtest(1);
-        psram_memtest(0);
-    }
-#endif
-
+#ifdef INCL_SELFTEST
+    psram_memtest(1);
+    psram_memtest(0);
+#else
     // Only a quick operational check only here. Non-destructive.
     {   __IO uint32_t    *ptr = (uint32_t *)(PSRAM_BASE+PSRAM_SIZE-4);
         uint32_t    tmp;
@@ -201,6 +209,7 @@ psram_setup(void)
         if(*ptr != 0x55aa1234) goto fail;
         *ptr = tmp;
     }
+#endif
 
     return;
 
@@ -218,12 +227,14 @@ fail:
     void
 psram_wipe(void)
 {
+    if(OCTOSPI1->CR == 0) return;       // PSRAM not enabled (yet?)
+
     puts2("PSRAM Wipe: ");
     memset4((uint32_t *)PSRAM_BASE, rng_sample(), PSRAM_SIZE);
     puts("done");
 }
 
-#if 0
+#ifdef INCL_SELFTEST
 // psram_memtest()
 //
     static void

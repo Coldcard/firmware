@@ -89,8 +89,8 @@ reset_entry:
     bl      callgate_entry0
 
     // get a ptr to real code
-    // load R1 with 0x08008000 value: start of firmware's area
-    movw    r1, (0x08008000 >> 12)
+    // load R1 with first byte of firmware's area
+    movw    r1, (MPY_FLASH_BASE >> 12)
     lsl     r1, 12
 
     // set stack pointer to their preference

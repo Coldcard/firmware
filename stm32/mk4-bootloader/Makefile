@@ -50,6 +50,8 @@ BL_FLASH_BASE = 0x08000000
 BL_FLASH_SIZE = 0xe000
 BL_FLASH_LAST = 0x0800e000
 
+MPY_FLASH_BASE = 0x08010000
+
 # Final 8k bytes of flash reserved for secret data (not code)
 # - must be page-aligned, contains pairing secret
 BL_NVROM_BASE = 0x0800e000		# = BL_FLASH_LAST
@@ -100,6 +102,7 @@ LDFLAGS += -Wl,-Map=$(TARGET_NAME).map
 
 ASFLAGS += -Wa,--defsym,BL_FLASH_BASE=$(BL_FLASH_BASE) -Wa,--defsym,BL_FLASH_SIZE=$(BL_FLASH_SIZE)
 ASFLAGS += -Wa,--defsym,BL_SRAM_BASE=$(BL_SRAM_BASE) -Wa,--defsym,BL_SRAM_SIZE=$(BL_SRAM_SIZE)
+ASFLAGS += -Wa,--defsym,MPY_FLASH_BASE=$(MPY_FLASH_BASE)
 
 
 TARGET_ELF = $(TARGET_NAME).elf
@@ -152,7 +155,10 @@ dfu-slow: $(TARGET_NAME).dfu
 	dfu-util -d 0483:df11 -a 0 -D $<
 
 dfu: $(TARGET_NAME).dfu
+	echo 'dfu' | nc localhost 4444
 	$(PYTHON_DO_DFU) -u $<
+
+up: dfu
 
 # upload current production version (or latest release version anyway)
 latest:

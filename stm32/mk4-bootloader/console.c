@@ -212,6 +212,16 @@ hex_dump(const void *d, int len)
 #define USART_TEACK_REACK_TIMEOUT             1000U             /*!< USART TX or RX enable acknowledge time-out value */
 #define USART_DUMMY_DATA          ((uint16_t) 0xFFFF)           /*!< USART transmitted dummy data                     */
 
+// WaitOnFlag()
+//
+    static void
+WaitOnFlag(uint32_t Flag, FlagStatus Status) 
+{
+  while((((MY_UART->ISR & Flag) == Flag) ? SET : RESET) == Status) {
+    ;
+  }
+}
+
 /**
   * @brief  Handle USART Communication Timeout.
   * @param  husart USART handle.
@@ -481,6 +491,30 @@ HAL_StatusTypeDef HAL_USART_Init(USART_HandleTypeDef *husart)
   */
 HAL_StatusTypeDef HAL_USART_Transmit(USART_HandleTypeDef *husart, uint8_t *pTxData, uint16_t Size, uint32_t Timeout)
 {
+    while(Size > 0U) {
+        while(!(MY_UART->ISR & UART_FLAG_TXE)) {
+            // wait to be able send
+        }
+
+        MY_UART->TDR = *pTxData;
+        pTxData++;
+        Size --;
+    }
+
+    while(!(MY_UART->ISR & UART_FLAG_TC)) {
+        // wait for final byte to be sent
+    }
+
+    // Clear Transmission Complete Flag
+    MY_UART->ICR = USART_CLEAR_TCF;
+
+    // Clear overrun flag and discard the received data
+    MY_UART->ICR = USART_CLEAR_OREF;
+    MY_UART->RQR = USART_RXDATA_FLUSH_REQUEST;
+    MY_UART->RQR = USART_TXDATA_FLUSH_REQUEST;
+
+    return HAL_OK;
+#if 0
   uint8_t  *ptxdata8bits;
   uint16_t *ptxdata16bits;
   uint32_t tickstart;
@@ -562,6 +596,7 @@ HAL_StatusTypeDef HAL_USART_Transmit(USART_HandleTypeDef *husart, uint8_t *pTxDa
   {
     return HAL_BUSY;
   }
+#endif
 }
 
 

@@ -291,7 +291,6 @@ pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result)
     static void
 _hmac_attempt(const pinAttempt_t *args, uint8_t result[32])
 {
-
 	SHA256_CTX ctx;
 
     sha256_init(&ctx);
@@ -307,9 +306,7 @@ _hmac_attempt(const pinAttempt_t *args, uint8_t result[32])
     sha256_final(&ctx, result);
 
     // and a second-sha256 on that, just in case.
-    sha256_init(&ctx);
-    sha256_update(&ctx, result, 32);
-    sha256_final(&ctx, result);
+    sha256_single(result, 32, result);
 }
 
 // _validate_attempt()

@@ -237,11 +237,13 @@ verify_firmware(void)
     // but only if we arrived at same hash before. It decides.
     int not_green = ae_set_gpio_secure(world_check);
 
+#if 0
     // XXX change this, no more dev key
     // maybe show big warning if not an "approved" key
     if(not_green) {
         check_factory_key(FW_HDR->pubkey_num);
     }
+#endif
 
     puts("good firmware");
     oled_show_progress(screen_verify, 100);
