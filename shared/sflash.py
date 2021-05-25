@@ -39,7 +39,11 @@ class SPIFlash:
     def __init__(self):
         from machine import Pin
 
-        self.spi = machine.SPI(2, baudrate=8000000)
+        # chip can do 80Mhz, but very limited prescaler-only baudrate generation, so
+        # sysclk/2 or /4 will happen depending on Mk3 vs. 4
+        # - Mk4: 120Mhz => 60Mhz result (div 2)
+        # - Mk3: 80Mhz => 40Mhz result (div 2)
+        self.spi = machine.SPI(2, baudrate=80_000_000)
         self.cs = Pin('SF_CS', Pin.OUT)
 
     def cmd(self, cmd, addr=None, complete=True, pad=False):
