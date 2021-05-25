@@ -9,7 +9,7 @@ from display import FontLarge
 from ux import ux_wait_keyup, ux_clear_keys, ux_poll_once
 from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
-from utils import imported
+from utils import problem_file_line
 import version
 from nvstore import settings
 
@@ -56,13 +56,11 @@ async def test_secure_element():
     assert not get_is_bricked()         # bricked already
 
     # test right chips installed
-    is_fat = ckcc.is_stm32l496()
-    if is_fat:
-        assert version.has_608          # expect 608a
-        assert version.hw_label == 'mk3'
+    if version.has_fatram:
+        assert version.has_608          # expect 608
     else:
         assert not version.has_608      # expect 508a
-        assert version.hw_label != 'mk3'
+        assert version.hw_label == 'mk2'
 
     if ckcc.is_simulator(): return
 
@@ -115,6 +113,36 @@ async def test_sd_active():
         k = await ux_wait_keyup('xy')
         assert k == 'y'     # "SD Active LED bust"
 
+async def test_psram():
+    if not version.has_psram: return
+
+    from psram import PSRAM
+    from ustruct import pack
+    import ngu
+
+    dis.clear()
+    dis.text(None, 18, 'PSRAM Test')
+    dis.show()
+
+    test_len = PSRAM.length * 2
+    chk = bytearray(32)
+    spots = set()
+    for pos in range(0, PSRAM.length, 800 * 17):
+        if pos >= PSRAM.length: break
+        rnd = ngu.hash.sha256s(pack('I', pos))
+
+        PSRAM.write(pos, rnd)
+        PSRAM.read(pos, chk)
+        assert chk == rnd, "bad @ 0x%x" % pos
+        dis.progress_bar_show(pos / test_len)
+        spots.add(pos)
+
+    for pos in spots:
+        rnd = ngu.hash.sha256s(pack('I', pos))
+        PSRAM.read(pos, chk)
+        assert chk == rnd, "RB bad @ 0x%x" % pos
+        dis.progress_bar_show((PSRAM.length + pos) / test_len)
+
 async def test_sflash():
     dis.clear()
     dis.text(None, 18, 'Serial Flash')
@@ -148,6 +176,7 @@ async def test_sflash():
 
             rnd = ngu.hash.sha256s(pack('I', addr))
             SF.write(addr, rnd)
+            SF.wait_done()
             SF.read(addr, buf)
             assert buf == rnd           #  "write failed"
 
@@ -245,9 +274,10 @@ async def start_selftest():
 
     try:
         await test_oled()
+        await test_psram()
+        await test_sflash()
         await test_microsd()
         await test_numpad()
-        await test_sflash()
         await test_secure_element()
         await test_sd_active()
 
@@ -257,6 +287,7 @@ async def start_selftest():
         await ux_show_story("Selftest complete", 'PASS')
 
     except (RuntimeError, AssertionError) as e:
+        e = str(e) or problem_file_line(e)
         await ux_show_story("Test failed:\n" + str(e), 'FAIL')
         
     
