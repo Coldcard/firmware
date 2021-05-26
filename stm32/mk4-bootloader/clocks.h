@@ -5,6 +5,9 @@
 
 #define HCLK_FREQUENCY      120000000
 
+// very early setup/chip reset stuff
+void system_init0(void);
+
 // call once at startup
 void clocks_setup(void);
 

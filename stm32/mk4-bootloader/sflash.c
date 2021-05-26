@@ -4,6 +4,7 @@
  * sflash.c -- talk to the serial flash
  *
  */
+#include "main.h"
 #include "sflash.h"
 #include "console.h"
 #include <string.h>
@@ -16,6 +17,7 @@
 #include "dispatch.h"
 #include "storage.h"
 #include "gpio.h"
+#include "sigheader.h"
 #include "assets/screens.h"
 
 // Connections:
@@ -48,8 +50,6 @@
 #define CS_HIGH()      HAL_GPIO_WritePin(GPIOB, SF_CS_PIN, 1)
 
 static SPI_HandleTypeDef   sf_spi_port;
-
-uint32_t     sf_completed_upgrade;
 
 // sf_read_bytes()
 //
@@ -430,7 +430,7 @@ puts("SPI flash: nope");
     sf_write(off, sizeof(zeros), zeros);
 
     // Tell python, ultimately, that it worked.
-    sf_completed_upgrade = SF_COMPLETED_UPGRADE;
+    shared_bootflags |= RBF_FRESH_VERSION;
 }
 
 // EOF

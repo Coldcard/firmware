@@ -3,6 +3,7 @@
  */
 #include "oled.h"
 #include "delay.h"
+#include "rng.h"
 #include "console.h"
 #include "stm32l4xx_hal.h"
 #include <string.h>
@@ -196,6 +197,8 @@ oled_setup(void)
 
     // write a sequence to reset things
     oled_write_cmd_sequence(sizeof(reset_commands), reset_commands);
+
+    rng_delay();
 }
 
 // oled_show_raw()
@@ -216,6 +219,7 @@ oled_show_raw(uint32_t len, const uint8_t *pixels)
     write_bytes(len, pixels);
 
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
+    rng_delay();
 }
 
 // oled_show()
@@ -256,6 +260,7 @@ oled_show(const uint8_t *pixels)
     }
 
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
+    rng_delay();
 }
 
 // oled_show_progress()
@@ -324,6 +329,7 @@ oled_show_progress(const uint8_t *pixels, int progress)
     }
 
     HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
+    rng_delay();
 }
 
 #if 0

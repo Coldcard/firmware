@@ -5,6 +5,11 @@
 #include "basics.h"
 
 void rng_setup(void);
+
 uint32_t rng_sample(void);
+
 void rng_buffer(uint8_t *result, int len);
 
+void rng_delay(void);
+
+// EOF

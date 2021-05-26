@@ -36,44 +36,31 @@
 // We need to know when we are rebooted, so write some noise
 // into SRAM and lock its value. Not secrets. One page = 1k bytes here.
 //
-    void
+// PROBLEM: 4S5 memory map puts SRAM2 in the middle of useful things, and
+// so protecting one page of it would be unworkable. Firewall doesn't
+// work due to an errata, so can't protect SRAM1 with that.
+//
+    static inline void
 reboot_seed_setup(void)
 {
-#warning "re-enable sram protection"
-#if 0
     extern uint8_t      reboot_seed_base[1024];      // see link-script.ld
 
     // lots of manual memory alloc here...
     uint8_t                     *reboot_seed = &reboot_seed_base[0];  // 32 bytes
-    coldcardFirmwareHeader_t    *hdr_copy = (void *)&reboot_seed_base[32];
-    uint32_t                    *boot_flags = (uint32_t *)RAM_BOOT_FLAGS;
 
-    // can only do this once, and might be done already
-    if(SYSCFG->SWPR != (1<<31)) {
-        ASSERT(((uint32_t)reboot_seed) == 0x20007c00);
-        ASSERT(((uint32_t)hdr_copy) == RAM_HEADER_BASE_MK4);
+    // populate seed w/ some noise
+    ASSERT(((uint32_t)reboot_seed) == 0x20001c00);
+    rng_buffer(reboot_seed, 32);
 
-        // populate seed w/ noise
-        memset(reboot_seed, 0x55, 1024);
-        rng_buffer(reboot_seed, 32);
+    ASSERT((uint32_t)&shared_bootflags == RAM_BOOT_FLAGS_MK4);
 
-        // preserve a copy of the verified FW header
-        memcpy(hdr_copy, FW_HDR, sizeof(coldcardFirmwareHeader_t));
+    // clear
+    shared_bootflags = 0;
 
-        // document how we booted.
-        uint32_t fl = 0;
-        if(!flash_is_security_level2()) {
-            fl |= RBF_FACTORY_MODE;
-        }
-        if(sf_completed_upgrade == SF_COMPLETED_UPGRADE) {
-            fl |= RBF_FRESH_VERSION;
-        }
-        *boot_flags = fl;
-
-        // lock it (top most page = 1k bytes)
-        SYSCFG->SWPR = (1<<31);
+    // this value can also be checked at runtime, but historical
+    if(!flash_is_security_level2()) {
+        shared_bootflags |= RBF_FACTORY_MODE;
     }
-#endif
 }
 
 // wipe_all_sram()
@@ -83,8 +70,9 @@ wipe_all_sram(void)
 {
     const uint32_t noise = 0xdeadbeef;
 
-    // wipe all of SRAM (except our own memory, which was already wiped)
-    memset4((void *)(SRAM1_BASE+BL_SRAM_SIZE), noise, SRAM1_SIZE_MAX - BL_SRAM_SIZE);
+    // wipe all of SRAM (except our own memory)
+    const uint32_t s1start = SRAM1_BASE + BL_SRAM_SIZE + 0x400;
+    memset4((void *)s1start, noise, SRAM1_BASE  + SRAM1_SIZE_MAX - s1start);
     memset4((void *)SRAM2_BASE, noise, SRAM2_SIZE);
     memset4((void *)SRAM3_BASE, noise, SRAM3_SIZE);
 }
@@ -97,7 +85,10 @@ wipe_all_sram(void)
 system_startup(void)
 {
     // configure clocks first
+    system_init0();
     clocks_setup();
+    rng_setup();            // needs to be super early
+    rng_delay();
 
 #if RELEASE
     // security check: should we be in protected mode? Was there some UV-C bitrot perhaps?
@@ -120,9 +111,14 @@ system_startup(void)
     puts2("\r\n\nMk4 Bootloader: ");
     puts(version_string);
 
-    sha256_selftest();
+    // setup some limited shared data space between mpy and ourselves
+    rng_delay();
+    reboot_seed_setup();
 
-    // workaround to get into DFU from micropython
+    sha256_selftest();
+    rng_delay();
+
+    // Workaround to get into DFU from micropython
     // LATER: none of this is useful with RDP=2, but okay in the office.
     if(memcmp(dfu_flag->magic, REBOOT_TO_DFU, sizeof(dfu_flag->magic)) == 0) {
         dfu_flag->magic[0] = 0;
@@ -134,13 +130,12 @@ system_startup(void)
         enter_dfu();
         // NOT-REACHED
     }
+    rng_delay();
 
     // clear and setup OLED display
     oled_setup();
+    rng_delay();
     oled_show_progress(screen_verify, 0);
-
-    // won't always need it, but enable RNG anyway
-    rng_setup();
 
     puts2("RNG setup done: ");
     puthex4(rng_sample());
@@ -181,14 +176,11 @@ system_startup(void)
 
     //puts("PSRAM setup");
     psram_setup();
-    puts("verify");
-    // SLOW part: check firmware is legit; else enter DFU
-    // - may die due to downgrade attack or unsigned/badly signed image
-    verify_firmware();
 
-    // track reboots, capture firmware hdr used
-    // - must be near end of boot process, ie: here.
-    reboot_seed_setup();
+    // Check firmware is legit; else enter DFU
+    // - may die due to downgrade attack or unsigned/badly signed image
+    puts2("Verify: ");
+    verify_firmware();
 
     // load a blank screen, so that if the firmware crashes, we are showing
     // something reasonable and not misleading.

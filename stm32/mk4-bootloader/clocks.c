@@ -72,6 +72,42 @@ systick_setup(void)
     SysTick->CTRL = SYSTICK_CLKSOURCE_HCLK | SysTick_CTRL_ENABLE_Msk;
 }
 
+
+// from HAL/Drivers/CMSIS/Device/ST/STM32L4xx/Source/Templates/system_stm32l4xx.c
+//
+    void
+system_init0(void)
+{
+#if defined(USER_VECT_TAB_ADDRESS)
+  /* Configure the Vector Table location -------------------------------------*/
+  SCB->VTOR = VECT_TAB_BASE_ADDRESS | VECT_TAB_OFFSET;
+#endif
+
+  /* FPU settings ------------------------------------------------------------*/
+#if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
+  SCB->CPACR |= ((3UL << 20U)|(3UL << 22U));  /* set CP10 and CP11 Full Access */
+#endif
+
+  /* Reset the RCC clock configuration to the default reset state ------------*/
+  /* Set MSION bit */
+  RCC->CR |= RCC_CR_MSION;
+
+  /* Reset CFGR register */
+  RCC->CFGR = 0x00000000U;
+
+  /* Reset HSEON, CSSON , HSION, and PLLON bits */
+  RCC->CR &= 0xEAF6FFFFU;
+
+  /* Reset PLLCFGR register */
+  RCC->PLLCFGR = 0x00001000U;
+
+  /* Reset HSEBYP bit */
+  RCC->CR &= 0xFFFBFFFFU;
+
+  /* Disable all interrupts */
+  RCC->CIER = 0x00000000U;
+}
+
 // clocks_setup()
 //
     void
@@ -150,9 +186,7 @@ clocks_setup(void)
     __HAL_RCC_HASH_CLK_ENABLE();        // for SHA256
     __HAL_RCC_SPI1_CLK_ENABLE();        // for OLED
     __HAL_RCC_SPI2_CLK_ENABLE();        // for SPI flash
-    //__HAL_RCC_DMA1_CLK_ENABLE();        // for SPI from mpy
-    //__HAL_RCC_DMA2_CLK_ENABLE();        // might not need
-    __HAL_RCC_DMAMUX1_CLK_ENABLE();         // because code missing in mpy?
+    __HAL_RCC_DMAMUX1_CLK_ENABLE();     // (need this) because code missing in mpy?
 
     // setup SYSTICK, but we don't have the irq hooked up and not using HAL
     // but we use it in polling mode for delay_ms()

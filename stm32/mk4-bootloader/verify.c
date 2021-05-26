@@ -12,6 +12,7 @@
 #include "console.h"
 #include "misc.h"
 #include "ae.h"
+#include "rng.h"
 #include "gpio.h"
 #include "delay.h"
 #include "storage.h"
@@ -59,6 +60,8 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32])
 {
     const uint8_t *start = (const uint8_t *)FIRMWARE_START;
 
+    rng_delay();
+
     SHA256_CTX  ctx;
     uint32_t    total_len = 0;
     uint8_t first[32];
@@ -92,6 +95,8 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32])
     const uint8_t *last = base + MAIN_FLASH_SIZE;
     checksum_more(&ctx, &total_len, fs, last-fs);
 
+    rng_delay();
+
     // OTP area
     checksum_more(&ctx, &total_len, (void *)0x1fff7000, 0x400);
 
@@ -112,6 +117,8 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32])
 
     // double SHA256 (a bitcoin fetish)
     sha256_single(world_digest, 32, world_digest);
+
+    rng_delay();
 }
 
 // get_min_version()
@@ -124,6 +131,7 @@ get_min_version(uint8_t min_version[8])
 {
     const uint8_t *otp = (const uint8_t *)OPT_FLASH_BASE;
 
+    rng_delay();
     memset(min_version, 0, 8);
 
     for(int i=0; i<NUM_OPT_SLOTS; i++, otp+=8) {
@@ -186,6 +194,8 @@ check_factory_key(uint32_t pubkey_num)
     bool
 verify_header(const coldcardFirmwareHeader_t *hdr)
 {
+    rng_delay();
+
     if(hdr->magic_value != FW_HEADER_MAGIC) goto fail;
     if(hdr->version_string[0] == 0x0) goto fail;
     if(hdr->timestamp[0] >= 0x40) goto fail;        // 22 yr product lifetime
@@ -209,7 +219,7 @@ verify_signature(const coldcardFirmwareHeader_t *hdr, const uint8_t fw_check[32]
     int ok = uECC_verify(approved_pubkeys[hdr->pubkey_num], fw_check, 32,
                                     hdr->signature, uECC_secp256k1());
 
-    puts(ok ? "Sig ok" : "Sig fail");
+    //puts(ok ? "Sig ok" : "Sig fail");
 
     return ok;
 }
@@ -221,21 +231,31 @@ verify_firmware(void)
 {
     STATIC_ASSERT(sizeof(coldcardFirmwareHeader_t) == FW_HEADER_SIZE);
 
+    rng_delay();
+
     // watch for unprogrammed header. and some 
     if(FW_HDR->version_string[0] == 0xff) goto blank;
     if(!verify_header(FW_HDR)) goto fail;
+
+    rng_delay();
 
     // measure checksum
     uint8_t fw_check[32], world_check[32];
     checksum_flash(fw_check, world_check);
 
+    rng_delay();
+
     // Verify the signature
     // - use pubkey_num to pick a specific key
     if(!verify_signature(FW_HDR, fw_check)) goto fail;
+
+    rng_delay();
  
     // Push the hash to the SE which might make the Genuine light green,
     // but only if we arrived at same hash before. It decides.
     int not_green = ae_set_gpio_secure(world_check);
+
+    rng_delay();
 
 #if 0
     // XXX change this, no more dev key

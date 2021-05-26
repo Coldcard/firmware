@@ -393,6 +393,8 @@ ae_setup(void)
     
     // mark it as ready
     ae_chip_is_setup = AE_CHIP_IS_SETUP;
+
+    rng_delay();
 }
 
 // ae_probe()
@@ -400,6 +402,8 @@ ae_setup(void)
 	const char *
 ae_probe(void)
 {
+    rng_delay();
+
     // Make it sleep / wake it up.
 	ae_send_sleep();
 
@@ -420,6 +424,8 @@ ae_probe(void)
 	// put into a low-power mode, might be a bit before we come back
 	ae_send_sleep();
 
+    rng_delay();
+
 	return NULL;
 }
 
@@ -434,6 +440,7 @@ ae_keep_alive(void)
 
     // no need to wake: next transaction will do that 
 	//ae_wake();
+    rng_delay();
 }
 
 // Originally from Libraries/ecc108_library/ecc108_helper.c
@@ -822,6 +829,8 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 
 	ae_delay(OP_Nonce);
 
+    rng_delay();
+
 	// Nonce command returns the RNG result, but not contents of TempKey
 	uint8_t randout[32];
 	int rv = ae_read_n(32, randout);
@@ -842,6 +851,8 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
     sha256_update(&ctx, fixed, 3);
 
     sha256_final(&ctx, tempkey);
+
+    rng_delay();
 
 	return 0;
 }

@@ -6,6 +6,8 @@
 #include "basics.h"
 #include "stm32l4xx_hal.h"
 
+
+
 // rng_setup()
 //
     void
@@ -79,6 +81,19 @@ rng_buffer(uint8_t *result, int len)
         len -= 4;
         result += 4;
     }
+}
+
+// rng_delay()
+//
+// Call anytime; delays for a random time period, to fustrate glitchers.
+//
+    void
+rng_delay(void)
+{
+    uint32_t    r = rng_sample() % 20;
+    volatile uint32_t    cnt = (1<<r);
+
+    while(cnt) cnt--;
 }
 
 // EOF

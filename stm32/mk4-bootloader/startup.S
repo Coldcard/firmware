@@ -102,7 +102,6 @@ reset_entry:
     ldr     lr, [r1, 4]
     bx      lr
 
-
     //
     // Firewalled region starts here, must be 0x100 aligned.
     //
