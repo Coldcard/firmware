@@ -114,4 +114,12 @@ extern void ckcc_boardctrl_after_boot_py(struct _boardctrl_state_t *state);
 #define MICROPY_HW_ENABLE_SDCARD                (1)
 #define MICROPY_HW_ENABLE_CARD_IDENT            (1)
 
+// called from usb.c to setup customized MSC storage
+struct _usbd_cdc_msc_hid_state_t;
+extern void psramdisk_USBD_MSC_RegisterStorage(int num_lun, struct _usbd_cdc_msc_hid_state_t *usbd);
+#define MICROPY_HW_CUSTOM_USB_MSC   psramdisk_USBD_MSC_RegisterStorage
+
+// enable some code inside oofatfs that we need
+#define FF_USE_FASTSEEK         (1)
+
 // EOF

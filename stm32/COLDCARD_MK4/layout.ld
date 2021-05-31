@@ -1,17 +1,21 @@
-/* based on ../stm32l476xg.ld
 /*
-    GNU linker script for Mk4 running on STM32L4s5
+    GNU linker script for Coldcard Mk4 running on STM32L4s5 with 2MB of flash
 */
 
 /* Specify the memory areas */
 MEMORY
 {
-    FLASH (rx)      : ORIGIN = 0x08010000, LENGTH = 112K
+    FLASH (rx)      : ORIGIN = 0x08010000, LENGTH = 1984K
 
-    /* NOTE: first 16k of flash reserved for bootloader and firewalled code */
+    /* Flash layout:
+        - first 64k of flash is the Coldcard Mk4 bootloader
+        - next 16k of flash reserved for interupt vectors and few other little things
+        - (bulk of firmware  ~ 1.5meg)
+        - 512k of user settings in LFS2 filesystem
+    */
     FLASH_ISR (rx)  : ORIGIN = 0x08010000, LENGTH = 16K
-    FLASH_TEXT (rx) : ORIGIN = 0x08014000, LENGTH = 848K
-    FLASH_FS (r)    : ORIGIN = 0x080e8000, LENGTH = 128K
+    FLASH_TEXT (rx) : ORIGIN = 0x08014000, LENGTH = 1456K
+    FLASH_FS (r)    : ORIGIN = 0x08180000, LENGTH = 512K
 
     /* SRAM1,2, and 3 are continuous, first 0x2000 reserved for bootloader */
     RAM (xrw)       : ORIGIN = 0x20002000, LENGTH =  0x9e000   
@@ -31,7 +35,7 @@ _ram_start = ORIGIN(RAM);
 _ram_end = ORIGIN(RAM) + LENGTH(RAM);
 
 _ram_fs_cache_end = _ram_end;
-_ram_fs_cache_start = _ram_fs_cache_end - 2K; /* fs cache = 2K */
+_ram_fs_cache_start = _ram_fs_cache_end - 8K; /* fs cache = 8K .. one flash sector */
 
 _estack = _ram_fs_cache_start - _estack_reserve;
 _sstack = _estack - 16K; /* stack = 16K */

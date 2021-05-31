@@ -96,23 +96,7 @@ STATIC mp_obj_t sec_oneway_gate(mp_obj_t method_obj, mp_obj_t arg2_obj)
     pyb_usb_dev_deinit();
     storage_flush();
 
-    // this causes the OLED to blank when we do callgate.show_logout(1)
-#if 0
-    HAL_RCC_DeInit();
-    HAL_DeInit();
-
-    #if (__MPU_PRESENT == 1)
-    // MPU must be disabled for bootloader to function correctly
-    HAL_MPU_Disable();
-    #endif
-
-    for(uint i=0; i<EXTI_NUM_VECTORS; i++) {
-        // XXX doesn't help
-        extint_disable(i);
-    }
-#endif
-
-    // XXX this may not work with compiler optimizations enabled (ie. -O0 only!!)
+    // NOTE: this may not work with compiler optimizations enabled (ie. -O0 only!!)
 
     mp_uint_t before = disable_irq();
 
@@ -227,16 +211,11 @@ MP_DEFINE_CONST_FUN_OBJ_1(stack_limit_obj, stack_limit);
 
 STATIC mp_obj_t wipe_fs(void)
 {
-    // Erase and reformat filesystem
+    // Erase and reformat flash filesystem
+    // - not supported on Mk4
+    mp_raise_ValueError(NULL);
 
-    // Before calling do this:
-    //      uos.umount('/flash')
-    // after, it will be remounted already
-
-    // see initfs.c
-    extern int factory_reset_create_filesystem(void);
-
-    return MP_OBJ_NEW_SMALL_INT(factory_reset_create_filesystem());
+    return mp_const_none;
 }
 MP_DEFINE_CONST_FUN_OBJ_0(wipe_fs_obj, wipe_fs);
 
@@ -258,6 +237,8 @@ STATIC mp_obj_t watchpoint(volatile mp_obj_t arg1)
 }
 MP_DEFINE_CONST_FUN_OBJ_1(watchpoint_obj, watchpoint);
 
+// See psram.c
+extern const mp_obj_type_t psram_type;
 
 STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__),            MP_ROM_QSTR(MP_QSTR_ckcc) },
@@ -273,6 +254,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_breakpoint),          MP_ROM_PTR(&breakpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_watchpoint),          MP_ROM_PTR(&watchpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_stack_limit),         MP_ROM_PTR(&stack_limit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_PSRAM),               MP_ROM_PTR(&psram_type) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(ckcc_module_globals, ckcc_module_globals_table);
@@ -301,6 +283,10 @@ void ckcc_boardctrl_before_boot_py(boardctrl_state_t *state)
 {
     // do not run /boot.py even if it exists
     state->run_boot_py = false;
+
+    // Clear PSRAM from previous cycles
+    extern void psram_init(void);
+    psram_init();
 }
 void ckcc_boardctrl_after_boot_py(boardctrl_state_t *state)
 {

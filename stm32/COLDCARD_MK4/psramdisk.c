@@ -29,10 +29,12 @@ static const uint32_t BLOCK_COUNT = 16384;     // =PSRAM_SIZE / BLOCK_SIZE
 
 STATIC mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self);
 
+STATIC const uint8_t psram_msc_lu_num = 1;
+STATIC uint16_t psram_msc_lu_flags;
+
 // This flag is needed to support removal of the medium, so that the USB drive
 // can be unmounted and won't be remounted automatically.
 #define FLAGS_STARTED (0x01)
-
 #define FLAGS_READONLY (0x02)
 
 // psram_init()
@@ -47,16 +49,13 @@ psram_init(void)
 static uint8_t *block_to_ptr(uint32_t blk, uint16_t num_blk)
 {
     // Range checking on incoming requests also done in SCSI_CheckAddressRange()
-    // but this is extra layer of safety, needed since we might expose
+    // but this is an extra layer of safety, important since we might expose
     // our address space otherwise.
     if(blk >= BLOCK_COUNT) return NULL;
-    if(blk+(num_blk*BLOCK_SIZE) >= BLOCK_COUNT) return NULL;
+    if((blk+num_blk) > BLOCK_COUNT) return NULL;
 
     return &PSRAM_BASE[blk * BLOCK_SIZE];
 }
-
-STATIC const uint8_t psram_msc_lu_num = 1;
-STATIC uint16_t psram_msc_lu_flags;
 
 static inline void lu_flag_set(uint8_t lun, uint8_t flag) {
     psram_msc_lu_flags |= flag << (lun * 2);
@@ -451,10 +450,12 @@ mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self)
 
         f_open(&vfs.fatfs, &fp, fname, FA_WRITE | FA_CREATE_ALWAYS);
         f_write(&fp, fname+5, 12, &n);
+        f_write(&fp, "\r\n", 2, &n);
         f_close(&fp);
 
         f_open(&vfs.fatfs, &fp, "serial.txt", FA_WRITE | FA_CREATE_ALWAYS);
         f_write(&fp, fname+5, 12, &n);
+        f_write(&fp, "\r\n", 2, &n);
         f_close(&fp);
     }
 
@@ -480,9 +481,10 @@ static DWORD clst2sect (    /* !=0:Sector number, 0:Failed (invalid cluster#) */
 
 mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
 {
-    // Find a file on FATFS and return a list of tuples which
+    // Find a file inside a FATFS and return a list of tuples which
     // provide the physical locations/lengths of the bytes of the
     // file's contents. Effectively it's the mmap call.
+    // - file path must be striped of mountpt
     const char *fname = mp_obj_str_get_str(fname_in);
 
     // Build obj to handle python protocol
@@ -491,26 +493,16 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
 
     FRESULT res = f_mount(&vfs.fatfs);
     if (res != FR_OK) {
-        mp_raise_ValueError(MP_ERROR_TEXT("unmounted"));
-        goto fail;
+        mp_raise_ValueError(MP_ERROR_TEXT("unmountable"));
     }
 
-#if 0
-    pyb_file_obj_t  *file
-
-    file->fp
-#endif
+    // open the file directly
+    FIL fp = {0};
+    if(f_open(&vfs.fatfs, &fp, fname, FA_READ) != FR_OK) {
+        mp_raise_ValueError(MP_ERROR_TEXT("file no open"));
+    }
 
     // see <http://elm-chan.org/fsw/ff/doc/lseek.html> to learn this magic
-    FIL fp = {};
-
-    // import ckcc; ckcc.PSRAM().mmap('serial.txt')
-
-    if(f_open(&vfs.fatfs, &fp, fname, FA_READ) != FR_OK) {
-        mp_raise_ValueError(MP_ERROR_TEXT("open file"));
-        goto fail;
-    }
-
     DWORD   mapping[64];
     mapping[0] = MP_ARRAY_SIZE(mapping);
     fp.cltbl = mapping;
@@ -518,29 +510,50 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
     int rv = f_lseek(&fp, CREATE_LINKMAP);
     if(rv != FR_OK) {
         mp_raise_ValueError(MP_ERROR_TEXT("lseek"));
-        goto fail;
     }
 
     // Convert and remap list of clusters
+
+    // import ckcc; ckcc.PSRAM().mmap('serial.txt')
     
-    int num_used = (mapping[0] - 1)/2;
-printf("[0] = %lu\n", mapping[0]);
-printf("num = %d\n", num_used);
+    int num_used = (mapping[0] - 1) / 2;
+    if((num_used < 1) || (num_used >= MP_ARRAY_SIZE(mapping))) {
+        mp_raise_ValueError(NULL);
+    }
     DWORD *ptr = &mapping[1];
 
+    mp_obj_t    tups[num_used];
+
+    uint32_t so_far = 0;
     for(int i=0; i<num_used; i++) {
         int num_clusters = *(ptr++);
         uint32_t cluster = *(ptr++);
-        //if(!cluster) break;         // sentinel
 
-        printf("[%d] (cl=0x%lx ln=%d) => ", i, cluster, num_clusters);
-        printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
+        uint8_t *spot = block_to_ptr(clst2sect(&vfs.fatfs, cluster), num_clusters);
+        if(!spot) {
+            printf("[%d] (cl=0x%lx ln=%d) => ", i, cluster, num_clusters);
+            printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
+        }
+        uint32_t len = num_clusters*BLOCK_SIZE;
+
+        if(i == num_used-1) {
+            // final cluster might include some bytes past the EOF
+            len = fp.obj.objsize - so_far;
+        } else {
+            so_far += len;
+        }
+
+        mp_obj_t    here[2] = { 
+            mp_obj_new_int_from_uint((uint32_t)spot),
+            MP_OBJ_NEW_SMALL_INT(len)
+        };
+
+        tups[i] = mp_obj_new_tuple(2, here);
+
     }
     f_close(&fp);
 
-    return mp_const_none;
-fail:
-    return mp_const_none;
+    return mp_obj_new_list(num_used, tups);
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(psram_mmap_file_obj, psram_mmap_file);
 

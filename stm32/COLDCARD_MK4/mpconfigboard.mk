@@ -1,10 +1,14 @@
-# Comparable ../B_L475E_IOT01A
-
+# Config for our board.
+#
 MCU_SERIES = l4
 CMSIS_MCU = STM32L4S5xx
 AF_FILE = boards/$(BOARD)/stm32l4s5_af.csv
 LD_FILES = boards/$(BOARD)/layout.ld boards/common_ifs.ld
 OPENOCD_CONFIG = boards/openocd_stm32l4.cfg
+
+# MicroPython settings
+MICROPY_VFS_LFS2 = 1
+MICROPY_VFS_FAT = 1
 
 # see py/mpconfig.h which uses this var if set
 #INC += -DMP_CONFIGFILE=\"boards/$(BOARD)/ckcc-port.h\"
@@ -18,7 +22,10 @@ NGU_NEEDS_CIFRA = 1
 USER_C_MODULES = boards/$(BOARD)/c-modules
 
 # the bulk of the COLDCARD-specific code
-FROZEN_MANIFEST += boards/$(BOARD)/shared/manifest.py boards/manifest.py
+FROZEN_MANIFEST +=  \
+					boards/$(BOARD)/shared/manifest.py \
+					boards/$(BOARD)/shared/manifest_mk4.py \
+					boards/manifest.py
 
 # This will relocate things up by 64k=0x1_0000
 # see also ./layout.ld
