@@ -10,7 +10,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 import version, ujson
 from uio import StringIO
 import seed
-from nvstore import settings
+from glob import settings
 from pincodes import pa, AE_SECRET_LEN
 
 # we make passwords with this number of words

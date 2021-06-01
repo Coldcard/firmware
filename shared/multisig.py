@@ -12,7 +12,7 @@ from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from actions import needs_microsd
 from exceptions import FatalPSBTIssue
-from nvstore import settings
+from glob import settings
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 

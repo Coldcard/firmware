@@ -11,7 +11,7 @@ from menu import MenuSystem, MenuItem, start_chooser
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
-from nvstore import settings
+from glob import settings
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars

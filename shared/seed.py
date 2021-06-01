@@ -21,7 +21,7 @@ from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver
-from nvstore import settings
+from glob import settings
 from pincodes import pa
 
 # seed words lengths we support: 24=>256 bits, and recommended

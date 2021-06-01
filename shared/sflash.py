@@ -15,6 +15,7 @@
 # During firmware updates, entire flash, starting at zero may be used.
 #
 import machine
+from version import mk_num
 
 CMD_WRSR        = const(0x01)
 CMD_WRITE       = const(0x02)
@@ -116,11 +117,13 @@ class SPIFlash:
 
     def wipe_most(self):
         # erase everything except settings: takes 5 seconds at least
-        from nvstore import SLOTS
-        end = SLOTS[0]
-
         from glob import dis
         dis.fullscreen("Cleanup...")
+
+        assert mk_num <= 3      # obsolete in mk4
+
+        from nvstore import SLOTS
+        end = SLOTS[0]
 
         for addr in range(0, end, self.BLOCK_SIZE):
             self.block_erase(addr)

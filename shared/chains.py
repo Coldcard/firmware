@@ -150,7 +150,7 @@ class ChainsBase:
         # convert nValue from a transaction into human form.
         # - always be precise
         # - return (string, units label)
-        from nvstore import settings
+        from glob import settings
         rz = settings.get('rz', 8)
 
         if rz == 8:
@@ -273,7 +273,7 @@ def get_chain(short_name, btc_default=False):
 
 def current_chain():
     # return chain matching current setting
-    from nvstore import settings
+    from glob import settings
 
     chain = settings.get('chain', 'BTC')
 

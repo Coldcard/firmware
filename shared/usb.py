@@ -12,9 +12,9 @@ from ubinascii import hexlify as b2a_hex
 from ckcc import watchpoint, is_simulator
 import uselect as select
 from utils import problem_file_line, call_later_ms
-from version import has_fatram, is_devmode
+from version import has_fatram, is_devmode, has_psram
 from exceptions import FramingError, CCBusyError, HSMDenied
-from nvstore import settings
+from glob import settings
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -61,6 +61,7 @@ HSM_WHITELIST = frozenset({
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
 
+PSRAM_WORK_DIR = '/psram/'
 
 
 # singleton instance of USBHandler()
@@ -74,7 +75,8 @@ def enable_usb():
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
         hid_info = (0x0, 0x0, 64, 5, hid_descp )
-        pyb.usb_mode('VCP+HID', vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
+        classes = 'VCP+HID' if not has_psram else 'VCP+MSC+HID'
+        pyb.usb_mode(classes, vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler
     if not handler:
@@ -115,6 +117,9 @@ class USBHandler:
         # these will be objects later
         self.encrypt = None
         self.decrypt = None
+
+        # mk4 writes to PSRAM filesystem.
+        self.working_file = None
 
     def get_packet(self):
         # read next packet (64 bytes) waiting on the wire. Unframe it and return
@@ -654,7 +659,6 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
-        from sflash import SF
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
@@ -667,18 +671,42 @@ class USBHandler:
         if offset == 0:
             self.file_checksum = sha256()
 
-        pos = (MAX_TXN_LEN * file_number) + offset
-
         resp = bytearray(4 + length)
         resp[0:4] = b'biny'
-        SF.read(pos, memoryview(resp)[4:])
+        buf = memoryview(resp)[4:]
 
-        self.file_checksum.update(memoryview(resp)[4:])
+        if not has_psram:
+            from sflash import SF
+            pos = (MAX_TXN_LEN * file_number) + offset
+
+            SF.read(pos, buf)
+        else:
+            # Mk4 and later
+            if offset == 0:
+                self.open_ram_file(file_number, 'rb')
+            assert self.working_file
+            self.working_file.seek(offset)
+            assert self.working_file.tell() == offset
+            self.working_file.readinto(buf)
+
+        self.file_checksum.update(buf)
 
         return resp
 
+    def open_ram_file(self, file_number, mode):
+        if self.working_file:
+            try:
+                self.working_file.close()
+            except:
+                pass
+            self.working_file = None
+
+        self.working_file = open(PSRAM_WORK_DIR+'usb-%d.bin' % file_number, mode)
+        assert self.working_file
+
     async def handle_upload(self, offset, total_size, data):
-        from sflash import SF
+        if not has_psram:
+            from sflash import SF
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
@@ -699,15 +727,16 @@ class USBHandler:
 
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
-                # erase here
                 dis.fullscreen("Receiving...", offset/total_size)
 
-                SF.sector_erase(pos)
+                if not has_psram:
+                    # erase here
+                    SF.sector_erase(pos)
 
-                # expect 10-22 ms delay here
-                await sleep_ms(12)
-                while SF.is_busy():
-                    await sleep_ms(2)
+                    # expect 10-22 ms delay here
+                    await sleep_ms(12)
+                    while SF.is_busy():
+                        await sleep_ms(2)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
@@ -724,11 +753,10 @@ class USBHandler:
                 hdr = memoryview(here)[-128:]
                 magic, = unpack_from('<I', hdr[0:4])
                 if magic == FW_HEADER_MAGIC:
-                    self.is_fw_upgrade = bytes(hdr)
-
                     prob = check_firmware_hdr(hdr, total_size)
                     if prob:
                         raise ValueError(prob)
+                    self.is_fw_upgrade = bytes(hdr)
 
             if is_trailer and self.is_fw_upgrade:
                 # expect the trailer to exactly match the original one
@@ -743,12 +771,27 @@ class USBHandler:
                 # pretend we wrote it, so ckcc-protocol or whatever gives normal feedback
                 return offset
 
-            SF.write(pos, here)
+            if not has_psram:
+                # write to SPI Flash
+                SF.write(pos, here)
 
-            # full page write: 0.6 to 3ms
-            while SF.is_busy():
-                await sleep_ms(1)
+                # full page write: 0.6 to 3ms
+                while SF.is_busy():
+                    await sleep_ms(1)
+            else:
+                # Mk4 and later: write to RAM
+                if pos == 0:
+                    self.open_ram_file(0, 'wb')
+                assert self.working_file
+                self.working_file.seek(pos)
+                assert self.working_file.tell() == pos
+                self.working_file.write(here)
 
+        if has_psram and self.working_file:
+            if offset+len(data) >= total_size:
+                self.working_file.close()
+            else:
+                self.working_file.flush()
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done

@@ -11,7 +11,7 @@ from public_constants import MAX_USERNAME_LEN, PBKDF2_ITER_COUNT
 from menu import MenuSystem, MenuItem
 from ucollections import namedtuple
 from ux import ux_dramatic_pause, ux_show_story, ux_confirm
-from nvstore import settings
+from glob import settings
 
 # accepting strings and strings, returning bytes when decoding, str when encoding (ie. correct)
 b32encode = ngu.codecs.b32_encode

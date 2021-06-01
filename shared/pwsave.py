@@ -129,7 +129,7 @@ class PassphraseSaver:
             # apply the password immediately and drop them at top menu
             set_bip39_passphrase(data[idx]['pw'])
 
-            from nvstore import settings
+            from glob import settings
             from utils import xfp2str
             xfp = settings.get('xfp')
 

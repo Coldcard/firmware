@@ -38,11 +38,11 @@ def _try_microsd(bad_fs_ok=False):
         #sys.print_exception(exc)
         return False
 
-
 def wipe_flash_filesystem():
-    # erase and re-format the flash filesystem (/flash/)
+    # erase and re-format the flash filesystem (/flash/**)
     import ckcc, pyb
     from glob import dis
+    from version import mk_num
     
     dis.fullscreen('Erasing...')
     os.umount('/flash')
@@ -52,32 +52,35 @@ def wipe_flash_filesystem():
     BP_IOCTL_SEC_SIZE  = (5)
 
     # block-level erase
-    fl = pyb.Flash()
+    fl = pyb.Flash(start=0)         # start=0 does magic things
     bsize = fl.ioctl(BP_IOCTL_SEC_SIZE, 0)
     assert bsize == 512
     bcount = fl.ioctl(BP_IOCTL_SEC_COUNT, 0)
 
     blk = bytearray(bsize)
     ckcc.rng_bytes(blk)
-    
-    # trickiness: actual flash blocks are offset by 0x100 (FLASH_PART1_START_BLOCK)
-    # so fake MBR can be inserted. Count also inflated by 2X, but not from ioctl above.
-    for n in range(bcount):
-        fl.writeblocks(n + 0x100, blk)
-        ckcc.rng_bytes(blk)
 
-        dis.progress_bar_show(n*2/bcount)
+    for n in range(bcount):
+        fl.writeblocks(n, blk)
+        ckcc.rng_bytes(blk)
+        dis.progress_bar_show(n/bcount)
         
     # rebuild and mount /flash
     dis.fullscreen('Rebuilding...')
-    ckcc.wipe_fs()
+    
+    if mk_num == 4:
+        # no need to erase, we just put new FS on top
+        import mk4
+        mk4.make_flash_fs()
+    else:
+        ckcc.wipe_fs()
+
+        # remount it
+        os.mount(fl, '/flash')
 
     # re-store current settings
-    from nvstore import settings
+    from glob import settings
     settings.save()
-
-    # remount it
-    os.mount(fl, '/flash')
 
 def wipe_microsd_card():
     # Erase and re-format SD card. Not secure erase, because that is too slow.

@@ -8,7 +8,7 @@
 import stash, ngu, chains, bip39, random
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
 from seed import word_quiz, WordNestMenu, set_seed_value
-from nvstore import settings
+from glob import settings
 from actions import goto_top_menu
 
 def xor32(*args):

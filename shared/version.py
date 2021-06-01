@@ -18,17 +18,22 @@ def decode_firmware_header(hdr):
 
     return date, vers, ''.join(parts[:-2])
 
+def get_fw_header():
+    # located in our own flash, but could also use RAM version
+    from sigheader import FLASH_HEADER_BASE, FLASH_HEADER_BASE_MK4, FW_HEADER_SIZE
+    import uctypes
+
+    global mk_num
+
+    return uctypes.bytes_at(FLASH_HEADER_BASE_MK4 if mk_num == 4 else FLASH_HEADER_BASE,
+                            FW_HEADER_SIZE)
+
 def get_mpy_version():
     # read my own file header
     # see stm32/bootloader/sigheader.h
 
     try:
-        # located in flash, but could also use RAM version
-        from sigheader import FLASH_HEADER_BASE, FW_HEADER_SIZE
-        import uctypes
-
-        hdr = uctypes.bytes_at(FLASH_HEADER_BASE, FW_HEADER_SIZE)
-
+        hdr = get_fw_header()
         return decode_firmware_header(hdr)
     except:
         # this is early in boot process, so don't fail!
@@ -36,12 +41,11 @@ def get_mpy_version():
 
 def get_header_value(fld_name):
     # get a single value, raw, from header; based on field name
-    from sigheader import FLASH_HEADER_BASE, FW_HEADER_SIZE, FWH_PY_FORMAT, FWH_PY_VALUES
-    import ustruct, uctypes
+    from sigheader import FWH_PY_FORMAT, FWH_PY_VALUES
+    import ustruct
 
     idx = FWH_PY_VALUES.split().index(fld_name)
-
-    hdr = uctypes.bytes_at(FLASH_HEADER_BASE, FW_HEADER_SIZE)
+    hdr = get_fw_header()
 
     return ustruct.unpack_from(FWH_PY_FORMAT, hdr)[idx]
 
@@ -50,8 +54,12 @@ def get_is_devmode():
     from sigheader import RAM_HEADER_BASE, FWH_PK_NUM_OFFSET
     import stm
 
-    # Important? Use the RAM version of this, not flash version!
-    kn = stm.mem32[RAM_HEADER_BASE + FWH_PK_NUM_OFFSET]
+    if mk_num == 4:
+        # mk4 we use flash header
+        kn = get_header_value('pubkey_num')
+    else:
+        # Important? Use the RAM version of this, not flash version!
+        kn = stm.mem32[RAM_HEADER_BASE + FWH_PK_NUM_OFFSET]
 
     # For now, all keys are "production" except number zero, which will be made public
     # - some other keys may be de-authorized and so on in the future
@@ -61,10 +69,11 @@ def get_is_devmode():
 
 
 def is_fresh_version():
-    from sigheader import RAM_BOOT_FLAGS, RBF_FRESH_VERSION
+    # Did we just boot into a new firmware for the first time?
+    from sigheader import RAM_BOOT_FLAGS, RBF_FRESH_VERSION, RAM_BOOT_FLAGS_MK4
     import stm
 
-    flags = stm.mem32[RAM_BOOT_FLAGS]
+    flags = stm.mem32[RAM_BOOT_FLAGS_MK4 if mk_num == 4 else RAM_BOOT_FLAGS]
 
     return bool(flags & RBF_FRESH_VERSION)
 
@@ -81,7 +90,8 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, has_fatram, is_factory_mode, is_devmode
+    global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
+    global has_se2, mk_num
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
     import ckcc, callgate, stm
@@ -90,19 +100,28 @@ def probe_system():
     # NOTE: mk1 not supported anymore.
     # PA10 is pulled-down in Mark2, open in previous revs
     #mark2 = (Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0)
-    #
-    #if not mark2:
-    #    has_membrane = False
-    #    hw_label = 'mk1'
 
     hw_label = 'mk2'
+    has_fatram = False
+    has_psram = False
+    has_608 = True
+    has_se2 = False
+    mk_num = 2
 
-    has_fatram = ckcc.is_stm32l496()
-
-    if has_fatram:
+    cpuid = ckcc.get_cpu_id()
+    if cpuid == 0x461:      # STM32L496RG6
+        has_fatram = True
         hw_label = 'mk3'
-
-    has_608 = callgate.has_608()
+        mk_num = 3
+    elif cpuid == 0x470:    # STM32L4S5VI
+        has_fatram = True
+        has_psram = True
+        hw_label = 'mk4'
+        has_se2 = True
+        mk_num = 4
+    else:
+        # mark 2
+        has_608 = callgate.has_608()
 
     # Boot loader needs to tell us stuff about how we were booted, sometimes:
     # - did we just install a new version, for example

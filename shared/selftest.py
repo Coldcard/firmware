@@ -11,7 +11,7 @@ from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
 import version
-from nvstore import settings
+from glob import settings
 
 async def test_numpad():
     # do an interactive self test
@@ -116,7 +116,7 @@ async def test_sd_active():
 async def test_psram():
     if not version.has_psram: return
 
-    from psram import PSRAM
+    from glob import PSRAM
     from ustruct import pack
     import ngu
 
@@ -273,9 +273,9 @@ async def test_microsd():
 async def start_selftest():
 
     try:
-        await test_oled()
         await test_psram()
         await test_sflash()
+        await test_oled()
         await test_microsd()
         await test_numpad()
         await test_secure_element()

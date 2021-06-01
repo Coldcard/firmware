@@ -131,6 +131,7 @@ class PinAttempt:
         import callgate
         if callgate.get_is_bricked():
             # die right away if it's not going to work
+            print("SE bricked")
             callgate.enter_dfu(3)
 
     def __repr__(self):
@@ -387,7 +388,7 @@ class PinAttempt:
     def new_main_secret(self, raw_secret, chain=None):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
-        from nvstore import settings
+        from glob import settings
         import stash
 
         # capture values we have already

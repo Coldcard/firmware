@@ -4,7 +4,7 @@
 #
 from menu import MenuItem
 import version
-from nvstore import settings
+from glob import settings
 
 from actions import *
 from choosers import *

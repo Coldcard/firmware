@@ -16,7 +16,7 @@ from serializations import ser_compact_size, deser_compact_size, hash160, hash25
 from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
 from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
 from serializations import ser_string
-from nvstore import settings
+from glob import settings
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -138,7 +138,7 @@ def get_hash256(fd, poslen, hasher=None):
 
     fd.seek(pos)
     while ll:
-        here = fd.read_into(psbt_tmp256)
+        here = fd.readinto(psbt_tmp256)
         if not here: break
         if here > ll:
             here = ll

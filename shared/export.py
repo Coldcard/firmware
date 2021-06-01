@@ -9,7 +9,7 @@ from utils import xfp2str, swab32
 from ux import ux_show_story
 import version, ujson
 from uio import StringIO
-from nvstore import settings
+from glob import settings
 
 def generate_public_contents():
     # Generate public details about wallet.

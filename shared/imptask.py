@@ -2,12 +2,11 @@
 #
 # imptask.py -- important async tasks that shouldn't die
 # 
-import sys, uasyncio
+import sys, uasyncio, ckcc
 
 def die_with_debug(exc):
     try:
-        from usb import is_vcp_active
-        is_debug = is_vcp_active()
+        is_debug = ckcc.vcp_enabled(None)
     except:
         # robustness
         is_debug = False
@@ -63,6 +62,7 @@ class ImportantTask:
 
     def start_task(self, name, awaitable):
         # start a critical task and watch for it to never die
+        print("Start: %s" % name)
         task = uasyncio.create_task(awaitable)
         self.tasks[name] = task
         return task

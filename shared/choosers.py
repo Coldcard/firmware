@@ -2,7 +2,8 @@
 #
 # choosers.py - various interactive menus for setting config values.
 #
-from nvstore import settings, SettingsObject
+from glob import settings
+from nvstore import SettingsObject
 
 def max_fee_chooser():
     from psbt import DEFAULT_MAX_FEE_PERCENTAGE

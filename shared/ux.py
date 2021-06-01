@@ -290,7 +290,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
 
 async def idle_logout():
     import glob
-    from nvstore import settings
+    from glob import settings
 
     while not glob.hsm_active:
         await sleep_ms(250)

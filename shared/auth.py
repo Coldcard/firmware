@@ -13,6 +13,7 @@ from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
+from version import has_psram, has_fatram
 
 # Where in SPI flash the two transactions are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -369,6 +370,7 @@ class ApproveTransaction(UserAuthorizedAction):
         self.approved_cb = approved_cb
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
+        self._fd = None
 
     def render_output(self, o):
         # Pretty-print a transactions output. 
@@ -380,6 +382,53 @@ class ApproveTransaction(UserAuthorizedAction):
 
         return '%s\n - to address -\n%s\n' % (val, dest)
 
+    def read_input_psbt(self):
+        # return a file-like object w/ new PSBT in it.
+        if not has_psram:
+            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len) as fd:
+                return psbtObject.read_psbt(fd)
+        else: 
+            # NOTE: psbtObject captures the file descriptor and uses it later
+            if self._fd:
+                try:
+                    self._fd.close()
+                except: pass
+                self._fd = None
+
+            self._fd = open('/psram/usb-0.bin', 'rb')
+            return psbtObject.read_psbt(self._fd)
+
+    async def open_output_file(self, extension, message):
+        if not has_psram:
+            fd = SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...")
+            await fd.erase()
+
+            return fd
+        else:
+            from glob import dis
+            dis.fullscreen(message)
+            return open('/psram/output.%s' % extension, 'w+b')
+
+    def calc_result(self, fd):
+        # Return length and SHA-256 over output bytes just written
+        if not has_psram:
+            return (fd.tell(), fd.checksum.digest())
+
+        # Normal file io protocol doesn't do checksums... calc manually
+        # TODO, do this with h/w accel and memmap features
+        from hashlib import sha256
+
+        fd.flush()
+        ln = fd.tell()
+        fd.seek(0)
+        chk = sha256()
+        while 1:
+            blk = fd.read(8196)
+            if not blk: break
+            chk.update(blk)
+
+        assert fd.tell() == ln
+        return (ln, chk.digest())
 
     async def interact(self):
         # Prompt user w/ details and get approval
@@ -389,8 +438,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         try:
             dis.fullscreen("Reading...")
-            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len) as fd:
-                self.psbt = psbtObject.read_psbt(fd)
+            self.psbt = self.read_input_psbt()
         except BaseException as exc:
             if isinstance(exc, MemoryError):
                 msg = "Transaction is too complex"
@@ -523,15 +571,14 @@ class ApproveTransaction(UserAuthorizedAction):
         txid = None
         try:
             # re-serialize the PSBT back out
-            with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
-                await fd.erase()
+            with await self.open_output_file('txn' if self.do_finalize else 'psbt', 'Saving...') as fd:
 
                 if self.do_finalize:
                     txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)
 
-                self.result = (fd.tell(), fd.checksum.digest())
+                self.result = self.calc_result(fd)
 
             self.done(redraw=(not txid))
 
@@ -550,8 +597,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         chk = self.chain.hash_message(msg_len=txt_len) if sign_text else None
 
-        with SFFile(TXN_OUTPUT_OFFSET, max_size=txt_len+300, message="Visualizing...") as fd:
-            await fd.erase()
+        with await self.open_output_file('txt', 'Visualizing...') as fd:
 
             while 1:
                 blk = msg.read(256).encode('ascii')
@@ -568,7 +614,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
-            return (fd.tell(), fd.checksum.digest())
+            return self.calc_result(fd)
 
     def output_change_text(self, msg):
         # Produce text report of what the "change" outputs are (based on our opinion).
@@ -756,7 +802,7 @@ def sign_psbt_file(filename):
         out_fn = None
         txid = None
 
-        from nvstore import settings
+        from glob import settings
         import os
         del_after = settings.get('del', 0)
 
@@ -902,7 +948,7 @@ class NewPassphrase(UserAuthorizedAction):
 
     async def interact(self):
         # prompt them
-        from nvstore import settings
+        from glob import settings
 
         showit = False
         while 1:
@@ -975,13 +1021,13 @@ class ShowAddressBase(UserAuthorizedAction):
         if not hsm_active:
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
-            if version.has_fatram:
+            if has_fatram:
                 msg += ' Press 4 to view QR Code.'
 
             while 1:
                 ch = await ux_show_story(msg, title=self.title, escape='4')
 
-                if ch == '4' and version.has_fatram:
+                if ch == '4' and has_fatram:
                     q = ux.QRDisplay([self.address], (self.addr_fmt & AFC_BECH32))
                     await q.interact_bare()
                     continue
@@ -1191,7 +1237,8 @@ Binary checksum and signature will be further verified before any changes are ma
             else:
                 # they don't want to!
                 self.refused = True
-                SF.block_erase(0)           # just in case, but not required
+                if not has_psram:
+                    SF.block_erase(0)           # just in case, but not required
                 await ux_dramatic_pause("Refused.", 2)
 
         except BaseException as exc:

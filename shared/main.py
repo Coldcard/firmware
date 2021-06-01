@@ -16,15 +16,20 @@ assert not glob.dis, "main reimport"
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
-if 0:
+if 1:
     # useful for debug: keep this stub!
     import ckcc
     ckcc.vcp_enabled(True)
     #pyb.usb_mode('VCP+MSC')            # handy but annoying disk issues
-    pyb.usb_mode('VCP')
+    #pyb.usb_mode('VCP')
+if 0:
     raise SystemExit
 
 print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2021.\n")
+
+from version import get_mpy_version
+datestamp,vers,_ = get_mpy_version()
+print("Version: " + vers + " / " + datestamp)
 
 # Setup OLED and get something onto it.
 from display import Display
@@ -34,6 +39,19 @@ glob.dis = dis
 
 # slowish imports, some with side-effects
 import version, ckcc, uasyncio
+
+if version.mk_num == 4:
+    # early setup code needed on Mk4
+    try:
+        import mk4
+        mk4.init0()
+
+        from psram import PSRAMWrapper
+        glob.PSRAM = PSRAMWrapper()
+
+    except BaseException as exc:
+        sys.print_exception(exc)
+        # continue tho
 
 if version.is_devmode:
     # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!
@@ -55,7 +73,9 @@ glob.numpad = numpad
 from sflash import SF
 
 # NV settings
-from nvstore import settings
+from nvstore import SettingsObject
+settings = SettingsObject(glob.dis)
+glob.settings = settings
 
 async def more_setup():
     # Boot up code; splash screen is being shown
@@ -79,6 +99,7 @@ async def more_setup():
             print("Problem: %r" % e)
 
         if version.is_factory_mode:
+            print("factory mode")
             # in factory mode, turn on USB early to allow debug/setup
             from usb import enable_usb
             enable_usb()
@@ -114,7 +135,7 @@ async def mainline():
     goto_top_menu()
 
     gc.collect()
-    #print("Free mem: %d" % gc.mem_free())
+    print("Free mem: %d" % gc.mem_free())
 
     while 1:
         await the_ux.interact()

@@ -12,7 +12,7 @@ import uasyncio
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError
 from utils import xfp2str
-from nvstore import settings
+from glob import settings
 from pincodes import pa
 
 CLEAR_PIN = '999999-999999'
@@ -114,7 +114,7 @@ Extended Master Key:
 
 async def show_settings_space(*a):
 
-    await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.capacity * 100))
+    await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.get_capacity() * 100))
 
 async def maybe_dev_menu(*a):
     from version import is_devmode
@@ -1111,12 +1111,12 @@ async def restore_everything_cleartext(*A):
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
-used for code patches. Does not affect funds, settings or seed words. \
+used for code patches. Does not affect funds, or seed words but may reset settings \
+used with other BIP39 passphrases. \
 Does not affect SD card, if any.'''):
         return
 
     from files import wipe_flash_filesystem
-
     wipe_flash_filesystem()
 
 async def wipe_sd_card(*A):
@@ -1630,6 +1630,9 @@ async def show_version(*a):
     else:
         se = '508A'
 
+    if version.has_se2:
+        se += '\n  DS28C36B'
+
     msg = '''\
 Coldcard Firmware
 
@@ -1647,12 +1650,13 @@ Serial:
 Hardware:
   {hw}
 
-Secure Element:
+Secure Element{ses}:
   ATECC{se}
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=version.serial_number(), hw=version.hw_label))
+                            ser=version.serial_number(), hw=version.hw_label,
+                ses='s' if version.has_se2 else ''))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.

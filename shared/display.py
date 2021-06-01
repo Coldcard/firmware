@@ -31,7 +31,12 @@ class Display:
         dc_pin = Pin('PA8', Pin.OUT)
         cs_pin = Pin('PA4', Pin.OUT)
 
-        self.dis = SSD1306_SPI(128, 64, spi, dc_pin, reset_pin, cs_pin)
+        try:
+            self.dis = SSD1306_SPI(128, 64, spi, dc_pin, reset_pin, cs_pin)
+        except OSError:
+            print("OLED unplugged?")
+            raise
+
         self.clear()
         self.show()
 

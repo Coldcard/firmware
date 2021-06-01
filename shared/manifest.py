@@ -1,4 +1,6 @@
-# freeze everything in this directoy
+# Freeze everything in this list.
+# - not optimized because we need asserts to work
+# - for mk3 vs mk4, see manifest_mk[34].py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
@@ -52,7 +54,7 @@ freeze_as_mpy('', [
 	'xor_seed.py',
 ], opt=0)
 
-# Data-like files, since no need to debug them
+# Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
 	'sigheader.py',
 	'graphics.py',

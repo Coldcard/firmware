@@ -179,7 +179,7 @@ class SensitiveValues:
     def capture_xpub(self):
         # track my xpubkey fingerprint & value in settings (not sensitive really)
         # - we share these on any USB connection
-        from nvstore import settings
+        from glob import settings
 
         # Implicit in the values is the BIP-39 encryption passphrase,
         # which we might not want to actually store.
