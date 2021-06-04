@@ -13,6 +13,7 @@
 #include "console.h"
 #include "misc.h"
 #include "ae.h"
+#include "ae_config.h"
 #include "rng.h"
 #include "gpio.h"
 #include "delay.h"
@@ -286,6 +287,22 @@ verify_firmware_in_ram(const uint8_t *start, uint32_t len, uint8_t world_check[3
 fail:
     return false;
 }
+
+// verify_world_checksum()
+//
+// Check we have the **right** firmware, based on the world check sum.
+// - don't set the light at this point.
+// - requires bootloader to have been unchanged since world_check recorded (debug issue)
+//
+    bool
+verify_world_checksum(const uint8_t world_check[32])
+{
+    ae_setup();
+    ae_pair_unlock();
+
+    return (ae_checkmac_hard(KEYNUM_firmware, world_check) == 0);
+}
+
 
 // verify_firmware()
 //

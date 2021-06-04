@@ -48,6 +48,8 @@ icons = {
     'logout': '',
     'ticket': '',
     'dots': '',
+    'file': '',
+    'maglass': '',
 }
 
 def make_background():
@@ -182,6 +184,8 @@ results = [
     ( 'devmode', 'Danger! Caution!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
     ( 'upgrading', 'Upgrading', 'graph-up', {}),
     ( 'replug', 'Replug', None, {}),        # visible in factory only
+    ( 'search', 'Searching...', 'maglass', {}),
+    ( 'recovery', 'Insert Card', 'file', {}),
 ]
 
 if __name__ == '__main__':

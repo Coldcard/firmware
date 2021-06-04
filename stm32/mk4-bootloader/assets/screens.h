@@ -36,3 +36,9 @@ extern const unsigned char screen_upgrading[];
 
 extern const unsigned char screen_replug[];
 
+
+extern const unsigned char screen_search[];
+
+
+extern const unsigned char screen_recovery[];
+

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "basics.h"
+#include "rng.h"
 #include "stm32l4xx_hal.h"
 
 // Details of the OTP area. 64-bit slots.
@@ -45,6 +46,7 @@ void flash_save_bag_number(const uint8_t new_number[32]);
 
 // Are we operating in level2?
 static inline bool flash_is_security_level2(void) {
+    rng_delay();
     return ((FLASH->OPTR & FLASH_OPTR_RDP_Msk) == 0xCC);
 }
 

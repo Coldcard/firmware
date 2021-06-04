@@ -85,15 +85,18 @@ rng_buffer(uint8_t *result, int len)
 
 // rng_delay()
 //
-// Call anytime; delays for a random time period, to fustrate glitchers.
+// Call anytime. Delays for a random time period to fustrate glitchers.
 //
     void
 rng_delay(void)
 {
     uint32_t    r = rng_sample() % 20;
-    volatile uint32_t    cnt = (1<<r);
+    uint32_t    cnt = (1<<r);
 
-    while(cnt) cnt--;
+    while(cnt) {
+        asm("nop");         // need this to keep from being optimized away, check bootloader.lss
+        cnt--;
+    }
 }
 
 // EOF

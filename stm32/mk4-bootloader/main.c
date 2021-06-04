@@ -24,7 +24,6 @@
 #include "pins.h"
 #include "verify.h"
 #include "storage.h"
-//#include "sflash.h"
 #include "psram.h"
 #include "sdcard.h"
 #include "dispatch.h"
@@ -152,11 +151,6 @@ system_startup(void)
 
     puts("done");
 
-    if(sdcard_is_inserted()) {
-        puts2("SDCard: ");
-        sdcard_setup();
-    }
-
 #if 0
     {   uint8_t config[128] = {0};
         int x = ae_config_read(config);
@@ -195,6 +189,9 @@ system_startup(void)
     // try to recover, from an image hanging around in PSRAM
     // .. will reboot if it works; only helps w/ reset pulses, not power downs.
     psram_recover_firmware();
+
+    // use SDCard to recover
+    sdcard_recovery();
 
     // plan B?
     enter_dfu();

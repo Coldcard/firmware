@@ -7,6 +7,8 @@
 #include "oled.h"
 #include "clocks.h"
 #include "sigheader.h"
+#include "ae.h"
+#include "ae_config.h"
 #include "assets/screens.h"
 #include <string.h>
 #include "delay.h"
@@ -57,12 +59,12 @@ sdcard_setup(void)
     // reset module
     __HAL_RCC_SDMMC1_FORCE_RESET();
     __HAL_RCC_SDMMC1_RELEASE_RESET();
-
-    sdcard_probe();
 }
 
-    bool
-sdcard_probe(void)
+// sdcard_probe()
+//
+    static bool
+sdcard_probe(uint32_t *num_blocks)
 {
     memset(&hsd, 0, sizeof(SD_HandleTypeDef));
 
@@ -81,6 +83,8 @@ sdcard_probe(void)
         return false;
     }
 
+    sdcard_light(true);
+
     // configure the SD bus width for 4-bit wide operation
     rv = HAL_SD_ConfigWideBusOperation(&hsd, SDMMC_BUS_WIDE_4B);
     if(rv != HAL_OK) {
@@ -88,16 +92,14 @@ sdcard_probe(void)
         return false;
     }
 
-
-    uint8_t     blk[512];
-    rv = HAL_SD_ReadBlocks(&hsd, blk, 0, 1, 60000);
-    if(rv != HAL_OK) {
-        puts("read fail");
+    if(hsd.SdCard.BlockSize != 512) {
+        puts("bsize?");
         return false;
     }
 
+    *num_blocks = hsd.SdCard.BlockNbr;
+
     puts("ok");
-    hex_dump(blk, 512);
 
     return true;
 }
@@ -108,6 +110,182 @@ sdcard_probe(void)
 sdcard_is_inserted(void)
 {
     return !!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13); 
+}
+
+// dfu_hdr_parse()
+//
+// reimplement shared/files.py:dfu_parse()
+//
+    static const uint8_t *
+dfu_hdr_parse(const uint8_t *ptr, uint32_t *target_size)
+{
+
+    typedef struct __PACKED {
+        // '<5sBIB', 'signature version size targets'
+        char        signature[5];   // == "DfuSe"
+        uint8_t     version;
+        uint32_t    size;
+        uint8_t     targets;
+    } DFUFile_t;
+
+    typedef struct __PACKED {
+        // '<6sBI255s2I', 'signature altsetting named name size elements'
+        char        signature[6];   // == "Target"
+        uint8_t     altseting;
+        uint32_t    name_len;
+        char        name[255];
+        uint32_t    size;
+        uint32_t    elements;
+    } DFUTarget_t;
+
+    typedef struct __PACKED {
+        //  '<2I', 'addr size'
+        uint32_t    addr;
+        uint32_t    size;
+    } DFUElement_t;
+
+    const DFUFile_t   *file = (const DFUFile_t *)ptr;
+    ptr += sizeof(DFUFile_t);
+
+    for(int idx=0; idx<file->targets; idx++) {
+        const DFUTarget_t   *target = (const DFUTarget_t *)ptr;
+        ptr += sizeof(DFUTarget_t);
+
+        for(int ei=0; ei<target->elements; ei++) {
+            const DFUElement_t   *elem = (const DFUElement_t *)ptr;
+            ptr += sizeof(DFUElement_t);
+
+            if(elem->addr == FIRMWARE_START) {
+                *target_size = elem->size;
+                return ptr;
+            }
+        }
+    }
+
+    // Mk3 and earlier firmwares will fail here because the load address is
+    // different from Mk4 images.
+    puts("DFU parse fail");
+
+    return NULL;
+}
+
+#pragma GCC optimize ("O0")
+// sdcard_try_file()
+//
+    void
+sdcard_try_file(uint32_t blk_pos)
+{
+    oled_show(screen_verify);
+
+    // read full possible file into PSRAM, assume continguous, and big enough
+    uint8_t *tmp = (uint8_t *)PSRAM_BASE;
+    
+    int rv = HAL_SD_ReadBlocks(&hsd, tmp, blk_pos, FW_MAX_LENGTH_MK4 / 512, 60000);
+    if(rv != HAL_OK) return;
+
+    // work in psram now
+
+    // skip DFU header and find length of firmware section
+    uint32_t    len = 0;
+    const uint8_t *start = dfu_hdr_parse(tmp, &len);
+    if(!start) return;
+
+    uint8_t world_check[32];
+    bool ok = verify_firmware_in_ram(start, len, world_check);
+
+    // it is a valid, signed image
+    puts("good firmware");
+
+    // Check we have the **right** firmware, based on the world check sum
+    // but don't set the light at this point.
+    // - this includes check over bootrom (ourselves)
+    if(!verify_world_checksum(world_check)) {
+        puts("wrong world");
+        return;
+    }
+
+    sdcard_light(false);
+
+    // Re-do the upgrade.
+    psram_do_upgrade(start, len);
+
+    // done
+    NVIC_SystemReset();
+}
+
+// sdcard_search()
+//
+    void
+sdcard_search(void)
+{
+    oled_show(screen_search);
+
+    if(!sdcard_is_inserted()) return;
+
+    uint32_t num_blocks;
+
+    // open card (power it) and get details, do setup
+    puts2("SDCard: ");
+    sdcard_setup();
+    if(!sdcard_probe(&num_blocks)) return;
+
+    uint8_t     blk[512];
+    for(int pos=0; pos<num_blocks; pos += 1) {
+        // read a single block
+        int rv = HAL_SD_ReadBlocks(&hsd, blk, pos, 1, 60000);
+        if(rv != HAL_OK) {
+            puts("fail read");
+
+            return;
+        }
+
+        if(memcmp(blk, "DfuSe", 5) == 0) {
+            // candidate file found
+            puts2("found @ ");
+            puthex8(pos);
+            putchar('\n');
+
+            sdcard_try_file(pos);
+
+            goto redraw;
+        }
+
+        if(pos % 128 == 0) {
+redraw:
+            oled_show_progress(screen_search, pos*100 / num_blocks);
+        }
+    }
+
+}
+
+// sdcard_light()
+//
+    void
+sdcard_light(bool on)
+{
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, !!on);    // turn LED off
+}
+
+// sdcard_recovery()
+//
+    void
+sdcard_recovery(void)
+{
+    // Use SDCard to recover. Must be precise version they tried to
+    // install before, and will be slow AF.
+
+    while(1) {
+        // .. need them to insert a card
+        
+        sdcard_light(false);
+        while(!sdcard_is_inserted()) {
+            oled_show(screen_recovery);
+            delay_ms(200);
+        }
+            
+        // look for binary, will reset system if successful
+        sdcard_search();
+    }
 }
 
 // EOF

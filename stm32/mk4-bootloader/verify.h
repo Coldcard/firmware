@@ -36,4 +36,7 @@ bool verify_firmware_in_ram(const uint8_t *start, uint32_t len, uint8_t world_ch
 // read what the watermark is, might be all zeros
 void get_min_version(uint8_t min_version[8]);
 
+// does the 608 hold indicated checksum (for red/green)?
+bool verify_world_checksum(const uint8_t world_check[32]);
+
 // EOF

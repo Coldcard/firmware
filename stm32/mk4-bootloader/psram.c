@@ -10,8 +10,6 @@
 #include "oled.h"
 #include "clocks.h"
 #include "sigheader.h"
-#include "ae.h"
-#include "ae_config.h"
 #include "assets/screens.h"
 #include <string.h>
 #include "delay.h"
@@ -283,9 +281,7 @@ psram_recover_firmware(void)
     // Check we have the **right** firmware, based on the world check sum
     // but don't set the light at this point.
     // - this includes check over bootrom (ourselves)
-    ae_setup();
-    ae_pair_unlock();
-    if(ae_checkmac_hard(KEYNUM_firmware, world_check) != 0) {
+    if(!verify_world_checksum(world_check)) {
         puts("PSR: version");
         return false;
     }
