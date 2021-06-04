@@ -8,11 +8,12 @@
 #define PSRAM_BASE      0x90000000
 #define PSRAM_SIZE      0x00800000
 
-// 8 bytes of unique data from chip
-extern uint8_t psram_chip_eid[8];
-
 extern void psram_setup(void);
 
 extern void psram_wipe(void);
+
+bool psram_recover_firmware(void);
+
+void psram_do_upgrade(const uint8_t *start, uint32_t size);
 
 // EOF

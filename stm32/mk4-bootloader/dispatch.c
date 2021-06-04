@@ -229,6 +229,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
 
             wipe_all_sram();
+            psram_wipe();
 
             if(arg2 == 2) {
                 // need some time to show OLED contents
@@ -239,8 +240,6 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
                 // NOT-REACHED (but ok if it does)
             }
-
-            psram_wipe();
 
             // wait for an interrupt which will never happen (ie. sleep)
             LOCKUP_FOREVER()
@@ -266,7 +265,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     uint8_t fw_digest[32], world_digest[32];
 
                     // takes time, shows progress bar
-                    checksum_flash(fw_digest, world_digest);
+                    checksum_flash(fw_digest, world_digest, 0);
 
                     rv = ae_set_gpio_secure(world_digest);
 
@@ -369,6 +368,10 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
                 case 6:         // new for v2
                     rv = pin_long_secret(args);
+                    break;
+
+                case 7:         // new for Mk4
+                    rv = pin_firmware_upgrade(args);
                     break;
 
                 default:

@@ -48,26 +48,12 @@ static inline bool flash_is_security_level2(void) {
     return ((FLASH->OPTR & FLASH_OPTR_RDP_Msk) == 0xCC);
 }
 
-#if 0
-// We store some values in the RTC "backup" registers
-// - these are protected against accidental writes
-// - not cleared by system reset, full power cycle required
-// - mpy code could still change, so not secure.
-// - kinda pointless, but I have no SRAM that isn't wiped at boot
-// - XXX not working! no clock maybe? Reads as zero.
-#define IDX_WORD_LOOKUPS_USED               0x0
-#define IDX_DURESS_USED                     0x1
-
-uint32_t backup_data_get(int idx);
-void backup_data_set(int idx, uint32_t new_value);
-#endif
-
-
 // generial purpose flash functions
 void flash_setup0(void);
 void flash_lock(void);
 void flash_unlock(void);
 int flash_burn(uint32_t address, uint64_t val);
+int flash_burn_fast(uint32_t address, const uint32_t values[128]);
 int flash_page_erase(uint32_t address);
 
 // write to OTP

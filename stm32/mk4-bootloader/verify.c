@@ -6,6 +6,7 @@
  */
 #include "basics.h"
 #include "verify.h"
+#include "psram.h"
 #include "faster_sha256.h"
 #include "assets/screens.h"
 #include "oled.h"
@@ -21,13 +22,14 @@
 #include "firmware-keys.h"
 
 // 2 megabyte on mk4
-#define MAIN_FLASH_SIZE          (2<<20)
+// - less the LFS2 filesystem which contains settings and such that change at runtime normally.
+#define MAIN_FLASH_SIZE          ((2<<20) - (512*1024))
 
 // actual qty of bytes we check
 // - minus 64 because the firmware signature is skipped
 // - 0x400 of OTP area
 // - plus (0x28) twice for option bytes
-// - plus complete "system meory" area (boot rom with DFU)
+// - plus complete "system meory" area (STM boot rom containing DFU code)
 // - 12 bytes of device serial number
 #define TOTAL_CHECKSUM_LEN      (MAIN_FLASH_SIZE - 64 + 0x400 + (0x28 *2) + 0x7000 + 12)
 
@@ -56,7 +58,7 @@ checksum_more(SHA256_CTX *ctx, uint32_t *total, const uint8_t *addr, int len)
 // checksum_flash()
 //
     void
-checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32])
+checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32], uint32_t fw_length)
 {
     const uint8_t *start = (const uint8_t *)FIRMWARE_START;
 
@@ -64,21 +66,29 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32])
 
     SHA256_CTX  ctx;
     uint32_t    total_len = 0;
-    uint8_t first[32];
 
-    sha256_init(&ctx);
+    if(fw_length == 0) {
+        uint8_t first[32];
+        sha256_init(&ctx);
 
-    // start of firmware (just after we end) to header
-    checksum_more(&ctx, &total_len, start, FW_HEADER_OFFSET + FW_HEADER_SIZE - 64);
+        // use length from header in flash
+        fw_length = FW_HDR->firmware_length;
 
-    // from after header to end
-    checksum_more(&ctx, &total_len, start + FW_HEADER_OFFSET + FW_HEADER_SIZE, 
-                            FW_HDR->firmware_length - (FW_HEADER_OFFSET + FW_HEADER_SIZE));
+        // start of firmware (just after we end) to header
+        checksum_more(&ctx, &total_len, start, FW_HEADER_OFFSET + FW_HEADER_SIZE - 64);
 
-    sha256_final(&ctx, first);
+        // from after header to end
+        checksum_more(&ctx, &total_len, start + FW_HEADER_OFFSET + FW_HEADER_SIZE, 
+                                fw_length - (FW_HEADER_OFFSET + FW_HEADER_SIZE));
 
-    // double SHA256
-    sha256_single(first, sizeof(first), fw_digest);
+        sha256_final(&ctx, first);
+
+        // double SHA256
+        sha256_single(first, sizeof(first), fw_digest);
+    } else {
+        // fw_digest should already be populated by caller
+        total_len = fw_length - 64;
+    }
 
     // start over, and get the rest of flash. All of it.
     sha256_init(&ctx);
@@ -91,7 +101,7 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32])
     checksum_more(&ctx, &total_len, base, start-base);
 
     // probably-blank area after firmware, and filesystem area
-    const uint8_t *fs = start + FW_HDR->firmware_length;
+    const uint8_t *fs = start + fw_length;
     const uint8_t *last = base + MAIN_FLASH_SIZE;
     checksum_more(&ctx, &total_len, fs, last-fs);
 
@@ -168,19 +178,19 @@ check_is_downgrade(const uint8_t timestamp[8], const char *version)
     return (memcmp(timestamp, min, 8) < 0);
 }
 
-// check_factory_key()
+// warn_bad_checksum()
 //
     void
-check_factory_key(uint32_t pubkey_num)
+warn_bad_checksum(void)
 {
-    if(IS_FACTORY_KEY(pubkey_num)) return;
-
-    // warn the victim/altcoin user/developer
+    // warn the victim about corrupted flash/ident info
 #if RELEASE
     const int wait = 100;
 #else
-    const int wait = 1;
+    const int wait = 10;
 #endif
+
+    puts("WARN: Bad firmware");
     
     for(int i=0; i < wait; i++) {
         oled_show_progress(screen_devmode, (i*100)/wait);
@@ -220,13 +230,66 @@ verify_signature(const coldcardFirmwareHeader_t *hdr, const uint8_t fw_check[32]
                                     hdr->signature, uECC_secp256k1());
 
     //puts(ok ? "Sig ok" : "Sig fail");
+    rng_delay();
 
     return ok;
 }
 
+// verify_firmware_in_ram()
+//
+// Check hdr, and even signature of protential new firmware in PSRAM.
+// Returns checksum needed for 608
+//
+    bool
+verify_firmware_in_ram(const uint8_t *start, uint32_t len, uint8_t world_check[32])
+{
+    const coldcardFirmwareHeader_t *hdr = (const coldcardFirmwareHeader_t *)
+                                                    (start + FW_HEADER_OFFSET);
+    uint8_t fw_digest[32];
+
+    // check basics like verison, hw compat, etc
+    if(!verify_header(hdr)) goto fail;
+
+    if(check_is_downgrade(hdr->timestamp, (const char *)hdr->version_string)) {
+        puts("downgrade");
+        goto fail;
+    }
+
+    rng_delay();
+
+    SHA256_CTX  ctx;
+    uint32_t    total_len = 0;
+
+    sha256_init(&ctx);
+
+    // start of firmware up to header's signature
+    checksum_more(&ctx, &total_len, start, FW_HEADER_OFFSET + FW_HEADER_SIZE - 64);
+
+    // from after header to end
+    checksum_more(&ctx, &total_len, start + FW_HEADER_OFFSET + FW_HEADER_SIZE, 
+                            hdr->firmware_length - (FW_HEADER_OFFSET + FW_HEADER_SIZE));
+
+    // double SHA256
+    sha256_final(&ctx, fw_digest);
+    sha256_single(fw_digest, 32, fw_digest);
+
+    rng_delay();
+
+    if(!verify_signature(hdr, fw_digest)) {
+        puts("sig fail");
+        goto fail;
+    }
+
+    checksum_flash(fw_digest, world_check, hdr->firmware_length);
+
+    return true;
+fail:
+    return false;
+}
+
 // verify_firmware()
 //
-    void
+    bool
 verify_firmware(void)
 {
     STATIC_ASSERT(sizeof(coldcardFirmwareHeader_t) == FW_HEADER_SIZE);
@@ -241,15 +304,13 @@ verify_firmware(void)
 
     // measure checksum
     uint8_t fw_check[32], world_check[32];
-    checksum_flash(fw_check, world_check);
+    checksum_flash(fw_check, world_check, 0);
 
     rng_delay();
 
     // Verify the signature
     // - use pubkey_num to pick a specific key
     if(!verify_signature(FW_HDR, fw_check)) goto fail;
-
-    rng_delay();
  
     // Push the hash to the SE which might make the Genuine light green,
     // but only if we arrived at same hash before. It decides.
@@ -257,30 +318,27 @@ verify_firmware(void)
 
     rng_delay();
 
-#if 0
-    // XXX change this, no more dev key
-    // maybe show big warning if not an "approved" key
+    // show big/slow warning if light is not green
     if(not_green) {
-        check_factory_key(FW_HDR->pubkey_num);
+        warn_bad_checksum();
     }
-#endif
 
     puts("good firmware");
     oled_show_progress(screen_verify, 100);
 
-    return;
+    return true;
 
 fail:
     puts("corrupt firmware");
     oled_show(screen_corrupt);
-    enter_dfu();
-    return;
+    return false;
 
 blank:
     puts("no firmware");
     oled_show(screen_dfu);
-    enter_dfu();
-    return;
+    //enter_dfu();
+
+    return false;
 }
 
 // EOF

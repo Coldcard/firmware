@@ -28,8 +28,9 @@
 #define CHANGE_SECRET               0x008
 #define CHANGE_DURESS_SECRET        0x010
 #define CHANGE_SECONDARY_WALLET_PIN 0x020     // when used from main wallet only (obsolete)
+#define CHANGE_FIRMWARE             0x040     // when providing firmware via PSRAM
 #define CHANGE_LS_OFFSET            0xf00     // v2: which 32-byte part of long-secret to affect
-#define CHANGE__MASK                0xf3f
+#define CHANGE__MASK                0xf7f
 
 // Magic value and/or version number.
 #define PA_MAGIC_V1         0x2eaf6311          // before v3.0.0 of main firmware (508a, mk1/2)
@@ -114,5 +115,8 @@ int pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result);
 
 // Read/write the long secret. 32 bytes at a time.
 int pin_long_secret(pinAttempt_t *args);
+
+// Start firmware upgrade using data in PSRAM.
+int pin_firmware_upgrade(pinAttempt_t *args);
 
 // EOF

@@ -14,6 +14,7 @@
 #include "constant_time.h"
 #include "storage.h"
 #include "clocks.h"
+#include "psram.h"
 
 // Number of iterations for KDF
 #define KDF_ITER_WORDS      12
@@ -1187,7 +1188,7 @@ pin_firmware_greenlight(pinAttempt_t *args)
 
     // step 1: calc the value to use
     uint8_t fw_check[32], world_check[32];
-    checksum_flash(fw_check, world_check);
+    checksum_flash(fw_check, world_check, 0);
 
     // step 2: write it out to chip.
     if(warmup_ae()) return EPIN_I_AM_BRICK;
@@ -1215,5 +1216,88 @@ pin_firmware_greenlight(pinAttempt_t *args)
     return 0;
 }
 
+// pin_firmware_upgrade()
+//
+// Update the system firmware via file in PSRAM. Arrange for 
+// light to stay green through out process.
+//
+    int
+pin_firmware_upgrade(pinAttempt_t *args)
+{
+    // Validate args and signature
+    int rv = _validate_attempt(args, false);
+    if(rv) return rv;
+
+    if((args->state_flags & PA_SUCCESSFUL) != PA_SUCCESSFUL) {
+        // must come here with a successful PIN login
+        return EPIN_WRONG_SUCCESS;
+    }
+
+    if(args->change_flags != CHANGE_FIRMWARE) {
+        return EPIN_BAD_REQUEST;
+    }
+
+    // expecting start/length relative to psram start
+    uint32_t *about = (uint32_t *)args->secret;
+    uint32_t start = about[0];
+    uint32_t len = about[1];
+
+    if(len < 32768) return EPIN_RANGE_ERR;
+    if(len > 2<<20) return EPIN_RANGE_ERR;
+    if(start+len > PSRAM_SIZE) return EPIN_RANGE_ERR;
+
+    const uint8_t *data = (const uint8_t *)PSRAM_BASE+start;
+
+    // verify a firmware image that's in RAM, and calc its digest
+    // - also applies watermark policy, etc
+    uint8_t world_check[32];
+    bool ok = verify_firmware_in_ram(data, len, world_check);
+    if(!ok) {
+        return EPIN_AUTH_FAIL;
+    }
+
+    // load existing PIN's hash
+    uint8_t     digest[32];
+    pin_cache_restore(args, digest);
+
+    // step 1: calc the value to use, see above
+
+    // step 2: write it out to chip.
+    if(warmup_ae()) return EPIN_I_AM_BRICK;
+
+    // under duress, we can't fake this, but we go through the motions,
+    bool is_duress = get_is_duress(args);
+    if(!is_duress) {
+        rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
+
+        if(rv) {
+            ae_reset_chip();
+
+            return EPIN_AE_FAIL;
+        }
+    }
+
+    // turn on light? maybe not idk
+    rv = ae_set_gpio_secure(world_check);
+    if(rv) {
+        ae_reset_chip();
+
+        return EPIN_AE_FAIL;
+    }
+
+    // -- point of no return -- 
+
+    // TODO backup to SPI flash??
+    // TODO backup to SPI flash??
+    // TODO backup to SPI flash??
+
+    // burn it, shows progress
+    psram_do_upgrade(data, len);
+
+    // done
+    NVIC_SystemReset();
+
+    return 0;
+}
 
 // EOF

@@ -2,31 +2,44 @@
  * (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  *
  * Setup and talk with the ESP-PSRAM64H chip, new on Mk4.
- * See stm32l4xx_hal_ospi.h
  *
- * CAUTION: All writes must be word aligned.
- *
+ * CAUTION: All writes must be word aligned. Unaligned read okay.
  *
  */
 #include "psram.h"
 #include "oled.h"
 #include "clocks.h"
+#include "sigheader.h"
+#include "ae.h"
+#include "ae_config.h"
 #include "assets/screens.h"
 #include <string.h>
 #include "delay.h"
 #include "rng.h"
+#include "storage.h"
+#include "sigheader.h"
 #include "stm32l4xx_hal.h"
+#include "verify.h"
 #include "console.h"
 #include "faster_sha256.h"
 #include "misc.h"
 
 #undef INCL_SELFTEST
 
-uint8_t psram_chip_eid[8];
-
 #ifdef INCL_SELFTEST
 static void psram_memtest(bool simple);
 #endif
+
+// Stash some data in PSRAM to survive brief power outages
+#define RECHDR_POS          (recovery_header_t *)(PSRAM_BASE + PSRAM_SIZE - 2048)
+#define RECHDR_MAGIC1       0xdbcc8350
+#define RECHDR_MAGIC2       0xbafcfba3
+typedef struct {
+    uint32_t    magic1;
+    const uint8_t     *start;
+    uint32_t    size;
+    uint32_t    magic2;
+} recovery_header_t;
 
 // psram_send_byte()
 //
@@ -118,6 +131,7 @@ psram_setup(void)
 
     // Read Electronic ID
     // - length not clear from datasheet, but repeats after 8 bytes
+    uint8_t psram_chip_eid[8];
 
     {   OSPI_RegularCmdTypeDef cmd = {
             .OperationType = HAL_OSPI_OPTYPE_COMMON_CFG,
@@ -140,10 +154,11 @@ psram_setup(void)
         if(rv != HAL_OK) goto fail;
     }
 
-    puts2("PSRAM EID: "); 
-    hex_dump(psram_chip_eid, sizeof(psram_chip_eid));
+    //puts2("PSRAM EID: "); 
+    //hex_dump(psram_chip_eid, sizeof(psram_chip_eid));
     ASSERT(psram_chip_eid[0] == 0x0d);
     ASSERT(psram_chip_eid[1] == 0x5d);
+    // .. other bits seem pretty similar between devices, they don't claim they are UUID
 
     // Put into Quad mode
     psram_send_byte(&qh, 0x35, false);  // 0x35 = Enter Quad Mode
@@ -234,6 +249,106 @@ psram_wipe(void)
     puts("done");
 }
 
+// recover_from_psram()
+//
+// Try to recover from interrupt PSRAM-based firmware upgrade.
+//
+    bool
+psram_recover_firmware(void)
+{
+    volatile recovery_header_t   *h = RECHDR_POS;
+
+    // Check header is valid.
+    if(    (h->magic1 != RECHDR_MAGIC1)
+        || (h->magic2 != RECHDR_MAGIC2)
+        || ((uint32_t)h->start < PSRAM_BASE) 
+        || ((uint32_t)h->start >= PSRAM_BASE+(PSRAM_SIZE/2)) 
+        || (h->size > FW_MAX_LENGTH_MK4) 
+        || (h->size < FW_MIN_LENGTH)
+    ) {
+        puts("PSR: nada");
+        return false;
+    }
+
+    // Re-verify bytes and factory signature; will catch any bitrot in our 
+    // PSRAM copy of firmware
+    uint8_t     world_check[32];
+    bool ok = verify_firmware_in_ram(h->start, h->size, world_check);
+
+    if(!ok) {
+        puts("PSR: !check");
+        return false;
+    }
+
+    // Check we have the **right** firmware, based on the world check sum
+    // but don't set the light at this point.
+    // - this includes check over bootrom (ourselves)
+    ae_setup();
+    ae_pair_unlock();
+    if(ae_checkmac_hard(KEYNUM_firmware, world_check) != 0) {
+        puts("PSR: version");
+        return false;
+    }
+
+    // Re-do the upgrade.
+    psram_do_upgrade(h->start, h->size);
+
+    // done
+    NVIC_SystemReset();
+
+    // not-reached
+    return true;
+}
+
+// psram_do_upgrade()
+//
+// Copy from PSRAM to real flash, at final executable location.
+//
+// NOTE: incoming start address is typically not aligned.
+//
+    void
+psram_do_upgrade(const uint8_t *start, uint32_t size)
+{
+    ASSERT(size >= FW_MIN_LENGTH);
+
+    // In case of reset/crash, we can recover, so save
+    // what we need for that -- yes, we will re-verify signatures
+    volatile recovery_header_t   *h = RECHDR_POS;
+    h->start = start;
+    h->size = size;
+    h->magic1 = RECHDR_MAGIC1;
+    h->magic2 = RECHDR_MAGIC2;
+
+    flash_setup0();
+    flash_unlock();
+
+    int rv;
+
+    // one uint64_t at a time = 8 bytes
+    uint64_t tmp;
+    for(uint32_t pos=0; pos < size; pos += 8) {
+        uint32_t dest = FIRMWARE_START+pos;
+
+        if(dest % (4*FLASH_PAGE_SIZE) == 0) {
+            // show some progress
+            oled_show_progress(screen_upgrading, pos*100/size);
+        }
+
+        if(dest % FLASH_PAGE_SIZE == 0) {
+            // page erase as we go
+            rv = flash_page_erase(dest);
+            ASSERT(rv == 0);
+        }
+
+        memcpy(&tmp, start+pos, 8);
+        rv = flash_burn(dest, tmp);
+        ASSERT(rv == 0);
+    }
+
+    flash_lock();
+}
+
+
 #ifdef INCL_SELFTEST
 // psram_memtest()
 //
@@ -283,3 +398,4 @@ psram_memtest(bool simple)
 #endif
 
 // EOF
+

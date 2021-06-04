@@ -179,4 +179,9 @@ HAL_StatusTypeDef HAL_PWREx_ControlVoltageScaling(uint32_t VoltageScaling)
   return HAL_OK;
 }
 
+__weak void HAL_SDEx_DriveTransceiver_1_8V_Callback(FlagStatus status)
+{
+    // unused?
+}
+
 

@@ -311,8 +311,10 @@ static uint32_t SD_WideBus_Enable (SD_HandleTypeDef *hsd);
 static uint32_t SD_WideBus_Disable(SD_HandleTypeDef *hsd);
 static uint32_t SD_FindSCR        (SD_HandleTypeDef *hsd, uint32_t *pSCR);
 static void     SD_PowerOFF       (SD_HandleTypeDef *hsd);
+#if 0
 static void     SD_Write_IT       (SD_HandleTypeDef *hsd);
 static void     SD_Read_IT        (SD_HandleTypeDef *hsd);
+#endif
 #if !defined(STM32L4P5xx) && !defined(STM32L4Q5xx) && !defined(STM32L4R5xx) && !defined(STM32L4R7xx) && !defined(STM32L4R9xx) && !defined(STM32L4S5xx) && !defined(STM32L4S7xx) && !defined(STM32L4S9xx)
 static void     SD_DMATransmitCplt(DMA_HandleTypeDef *hdma);
 static void     SD_DMAReceiveCplt (DMA_HandleTypeDef *hdma);
@@ -1693,6 +1695,7 @@ HAL_StatusTypeDef HAL_SD_Erase(SD_HandleTypeDef *hsd, uint32_t BlockStartAdd, ui
   }
 }
 
+#if 0
 /**
   * @brief  This function handles SD card interrupt request.
   * @param  hsd Pointer to SD handle
@@ -2001,6 +2004,7 @@ void HAL_SD_IRQHandler(SD_HandleTypeDef *hsd)
     /* Nothing to do */
   }
 }
+#endif
 
 /**
   * @brief return the SD state
@@ -4018,6 +4022,7 @@ static uint32_t SD_FindSCR(SD_HandleTypeDef *hsd, uint32_t *pSCR)
   return HAL_SD_ERROR_NONE;
 }
 
+#if 0
 /**
   * @brief  Wrap up reading in non-blocking mode.
   * @param  hsd pointer to a SD_HandleTypeDef structure that contains
@@ -4056,7 +4061,9 @@ static void SD_Read_IT(SD_HandleTypeDef *hsd)
     hsd->RxXferSize = dataremaining;
   }
 }
+#endif
 
+#if 0
 /**
   * @brief  Wrap up writing in non-blocking mode.
   * @param  hsd pointer to a SD_HandleTypeDef structure that contains
@@ -4095,6 +4102,7 @@ static void SD_Write_IT(SD_HandleTypeDef *hsd)
     hsd->TxXferSize = dataremaining;
   }
 }
+#endif
 
 #if defined(STM32L4P5xx) || defined(STM32L4Q5xx) || defined(STM32L4R5xx) || defined(STM32L4R7xx) || defined(STM32L4R9xx) || defined(STM32L4S5xx) || defined(STM32L4S7xx) || defined(STM32L4S9xx)
 /**

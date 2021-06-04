@@ -78,6 +78,15 @@ gpio_setup(void)
 
         HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 0);    // turn LED off
     }
+    // SD card detect switch: PC13
+    {   GPIO_InitTypeDef setup = {
+            .Pin = GPIO_PIN_13,
+            .Mode = GPIO_MODE_INPUT,
+            .Pull = GPIO_PULLUP,
+            .Speed = GPIO_SPEED_FREQ_LOW,
+        };
+        HAL_GPIO_Init(GPIOC, &setup);
+    }
 
 
 #if 0

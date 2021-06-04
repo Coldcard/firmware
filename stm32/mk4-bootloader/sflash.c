@@ -336,6 +336,7 @@ sf_calc_checksum(const coldcardFirmwareHeader_t *hdr, uint8_t fw_digest[32])
     sha256_final(&ctx, fw_digest);
 }
 
+#if 0
 // sf_firmware_upgrade()
 //
 // maybe upgrade to a firmware image found in sflash
@@ -355,7 +356,6 @@ sf_firmware_upgrade(void)
 
     if(!verify_header(&hdr)) {
         // something wrong with it. might be noise, blank or otherwise. Not an error.
-puts("SPI flash: nope");
         return;
     }
 
@@ -432,5 +432,6 @@ puts("SPI flash: nope");
     // Tell python, ultimately, that it worked.
     shared_bootflags |= RBF_FRESH_VERSION;
 }
+#endif
 
 // EOF

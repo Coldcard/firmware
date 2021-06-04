@@ -2,6 +2,7 @@
  * (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  */
 #include "constant_time.h"
+#include "rng.h"
 
 // check_all_ones()
 //
@@ -17,6 +18,7 @@ check_all_ones(const void *ptrV, int len)
 		rv &= *ptr;
 	}
 
+    rng_delay();
 	return (rv == 0xff);
 }
 
@@ -34,6 +36,7 @@ check_all_zeros(const void *ptrV, int len)
 		rv |= *ptr;
 	}
 
+    rng_delay();
 	return (rv == 0x00);
 }
 
@@ -53,6 +56,7 @@ check_equal(const void *aV, const void *bV, int len)
         diff |= (left[i] ^ right[i]);
     }
 
+    rng_delay();
     return (diff == 0);
 }
 

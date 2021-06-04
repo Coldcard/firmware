@@ -21,7 +21,16 @@
 #include "stm32l4xx_hal.h"
 #include "constant_time.h"
 
-const uint32_t num_pages_locked = ((BL_FLASH_SIZE + BL_NVROM_SIZE) / 0x800)-1;      // == 15
+#if defined (STM32L4P5xx) || defined (STM32L4Q5xx) || defined (STM32L4R5xx) || defined (STM32L4R7xx) || defined (STM32L4R9xx) || defined (STM32L4S5xx) || defined (STM32L4S7xx) || defined (STM32L4S9xx)
+#define FLASH_NB_DOUBLE_WORDS_IN_ROW  64
+#else
+#define FLASH_NB_DOUBLE_WORDS_IN_ROW  32
+#endif
+
+// Number of flash pages to write-protect (ie. our size in flash pages)
+// - written into FLASH->WRP1AR
+// - once done, can't change bootrom via DFU (no error given, but doesn't change)
+const uint32_t num_pages_locked = ((BL_FLASH_SIZE + BL_NVROM_SIZE) / FLASH_PAGE_SIZE)-1; // == 15
 
 // flash_setup0()
 //
@@ -190,6 +199,55 @@ flash_burn(uint32_t address, uint64_t val)
     return 0;
 }
 
+#if 0
+// flash_burn_fast()
+//
+// My simplified version of FLASH_Program_Fast()
+//
+// NOTES:
+//  - this function **AND** everything it calls, must be in RAM
+//  - interrupts are already off here (entire bootloader)
+//  - return non-zero on failure; don't try to handle anything
+//  - needs 128 bytes
+//  - PROBLEM: Requires bank erase, and we can't do that in any case.
+//
+    __attribute__((section(".ramfunc")))
+    __attribute__((noinline))
+    int
+flash_burn_fast(uint32_t address, const uint32_t values[2*FLASH_NB_DOUBLE_WORDS_IN_ROW])
+{
+    uint32_t    rv;
+
+    // just in case?
+    _flash_wait_done();
+
+    // clear any and all errors
+    FLASH->SR = FLASH->SR & 0xffff;
+
+    // disable data cache
+    __HAL_FLASH_DATA_CACHE_DISABLE();
+
+    // Set FSTPG bit
+    SET_BIT(FLASH->CR, FLASH_CR_FSTPG);
+
+    for(int i=0; i<2*FLASH_NB_DOUBLE_WORDS_IN_ROW; i++, address++) {
+        *(__IO uint32_t *)(address) = values[i];
+    }
+
+    rv = _flash_wait_done();
+    if(rv) return rv;
+
+    // If the program operation is completed, disable the FSTPG Bit
+    CLEAR_BIT(FLASH->CR, FLASH_CR_FSTPG);
+
+    // Flush the caches to be sure of data consistency, and reenable.
+    __HAL_FLASH_DATA_CACHE_RESET();
+    __HAL_FLASH_DATA_CACHE_ENABLE();
+
+    return 0;
+}
+#endif
+
 // flash_page_erase()
 //
 // See HAL_FLASHEx_Erase(FLASH_EraseInitTypeDef *pEraseInit, uint32_t *PageError)
@@ -199,7 +257,7 @@ flash_burn(uint32_t address, uint64_t val)
     int
 flash_page_erase(uint32_t address)
 {
-    uint32_t    page_num = (address & 0x7ffffff) / FLASH_PAGE_SIZE;      // 2k pages
+    uint32_t    page_num = (address & 0x7ffffff) / FLASH_PAGE_SIZE;
 
     // protect ourselves!
     if(page_num < ((BL_FLASH_SIZE + BL_NVROM_SIZE) / FLASH_PAGE_SIZE)) {
@@ -407,9 +465,13 @@ flash_setup(void)
     STATIC_ASSERT(sizeof(rom_secrets_t) <= 2048);
 
     // see if we have picked a pairing secret yet.
+    // NOTE: critical section for glitching (at least in past versions)
+    //  - check_all.. functions have a rng_delay in them already
+    rng_delay();
     bool blank_ps = check_all_ones(rom_secrets->pairing_secret, 32);
     bool blank_xor = check_all_ones(rom_secrets->pairing_secret_xor, 32);
     bool blank_ae = (~rom_secrets->ae_serial_number[0] == 0);
+    rng_delay();
 
     if(blank_ps) {
         // get some good entropy, save it.
@@ -423,6 +485,7 @@ flash_setup(void)
         // configure and lock-down the SE
         int rv = ae_setup_config();
 
+        rng_delay();
         if(rv) {
             // Hardware fail speaking to AE chip ... be careful not to brick here.
             // Do not continue!! We might fix the board, or add missing pullup, etc.
@@ -432,6 +495,7 @@ flash_setup(void)
             LOCKUP_FOREVER();
         }
 
+        rng_delay();
         if(blank_xor) {
             // write secret again, complemented, to indicate successful AE programming
             confirm_pairing_secret();
@@ -444,6 +508,7 @@ flash_setup(void)
         LOCKUP_FOREVER();
     }
 
+    rng_delay();
     if(!blank_ps && !blank_xor) {
         // check the XOR value also written: 2 phase commit
         uint8_t tmp[32];
@@ -492,7 +557,6 @@ flash_lockdown_hard(uint8_t rdp_level_code)
         FLASH->WRP2AR = 0xff;      // unused.
         FLASH->WRP2BR = 0xff;      // unused.
 
-#if 0
         // PCRO = Proprietary Code Read-Out (protection)
         // - isn't useful to us (doesn't protect data, exec-only code)
         // - "In case the Level 1 is configured and no PCROP area is defined,
@@ -500,49 +564,13 @@ flash_lockdown_hard(uint8_t rdp_level_code)
         //    the RDP level is decreased from Level 1 to Level 0)."
         // - D-bus access blocked, even for code running inside the PCROP area! (AN4758)
         //   So literal values and constant tables and such would need special linking.
-        //
-        FLASH->PCROP1ER = (1<<31);      // set PCROP_RDP bit, since maybe we need to?
-        FLASH->PCROP1SR = 0xffff;
-        FLASH->PCROP2ER = (1<<31);      // set PCROP_RDP bit, since maybe we need to?
-        FLASH->PCROP2SR = 0xffff;
-#endif
 
         // set protection level
-        FLASH->OPTR = 0xffeff800 | rdp_level_code;    // select level X, other values as observed
+        uint32_t was = FLASH->OPTR & ~0xff;
+        FLASH->OPTR = was | rdp_level_code;    // select level X, other values as observed
 
     flash_ob_lock(true);
 }
-
-
-#if 0
-// backup_data_get()
-//
-    uint32_t
-backup_data_get(int idx)
-{
-    ASSERT(idx < 32);
-
-    return (&RTC->BKP0R)[idx];
-}
-
-// backup_data_set()
-//
-    void
-backup_data_set(int idx, uint32_t new_value)
-{
-    ASSERT(idx < 32);
-
-    // unlock sequence.
-    RTC->WPR = 0xCA;
-    RTC->WPR = 0x53;
-
-    (&RTC->BKP0R)[idx] = new_value;
-
-    // relock (any value)
-    // doesn't seem to work tho? stays unlocked
-    RTC->WPR = 0xff;
-}
-#endif
 
 // record_highwater_version()
 //

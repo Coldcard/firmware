@@ -24,8 +24,9 @@
 #include "pins.h"
 #include "verify.h"
 #include "storage.h"
-#include "sflash.h"
+//#include "sflash.h"
 #include "psram.h"
+#include "sdcard.h"
 #include "dispatch.h"
 #include "constant_time.h"
 #include "assets/screens.h"
@@ -46,7 +47,7 @@ reboot_seed_setup(void)
     extern uint8_t      reboot_seed_base[1024];      // see link-script.ld
 
     // lots of manual memory alloc here...
-    uint8_t                     *reboot_seed = &reboot_seed_base[0];  // 32 bytes
+    uint8_t            *reboot_seed = &reboot_seed_base[0];  // 32 bytes
 
     // populate seed w/ some noise
     ASSERT(((uint32_t)reboot_seed) == 0x20001c00);
@@ -147,9 +148,14 @@ system_startup(void)
     puts2("AE setup: ");
     // secure element setup
     ae_setup();
-    ae_set_gpio(0);         // not checking return on purpose
+    ae_set_gpio(0);         // not checking return on purpose XXX maybe move elsewhere/skip?
 
     puts("done");
+
+    if(sdcard_is_inserted()) {
+        puts2("SDCard: ");
+        sdcard_setup();
+    }
 
 #if 0
     {   uint8_t config[128] = {0};
@@ -168,23 +174,30 @@ system_startup(void)
     // - may also do one-time setup of 508a
     // - note: ae_setup must already be called, since it can talk to that
     flash_setup();
-
-    puts("flash setup done");
-
-    // maybe upgrade to a firmware image found in sflash
-    sf_firmware_upgrade();
+    puts("Flash: setup done");
 
     //puts("PSRAM setup");
     psram_setup();
 
     // Check firmware is legit; else enter DFU
-    // - may die due to downgrade attack or unsigned/badly signed image
+    // - may die due to downgrade attack or badly signed image
     puts2("Verify: ");
-    verify_firmware();
+    bool main_ok = verify_firmware();
 
-    // load a blank screen, so that if the firmware crashes, we are showing
-    // something reasonable and not misleading.
-    oled_show(screen_blankish);
+    if(main_ok) {
+        // load a blank screen, so that if the firmware crashes, we are showing
+        // something reasonable and not misleading.
+        oled_show(screen_blankish);
+
+        return;
+    }
+
+    // try to recover, from an image hanging around in PSRAM
+    // .. will reboot if it works; only helps w/ reset pulses, not power downs.
+    psram_recover_firmware();
+
+    // plan B?
+    enter_dfu();
 }
 
 // fatal_error(const char *msg)

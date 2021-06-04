@@ -25,4 +25,14 @@ delay_ms(int ms)
     }
 }
 
+// HAL_Delay()
+//
+// Replace HAL version which needs interrupts
+//
+    void
+HAL_Delay(uint32_t Delay)
+{
+    delay_ms(Delay);
+}
+
 // EOF
