@@ -20,17 +20,37 @@
 #include "lib/oofatfs/ff.h"
 #include "py/runtime.h"
 #include "py/mperrno.h"
+#include "softtimer.h"
 
 // Our storage, in quad-serial SPI PSRAM chip
-static uint8_t *PSRAM_BASE = (uint8_t *)0x90000000;    // OCTOSPI mapping
-static const uint32_t PSRAM_SIZE = 0x800000;                 // 8 megs
+// - using top half of chip only
+static uint8_t *PSRAM_TOP_BASE = (uint8_t *)0x90400000;    // OCTOSPI mapping, top half
+static uint8_t *PSRAM_BOT_BASE = (uint8_t *)0x90000000;    // OCTOSPI mapping, bot half
+static const uint32_t PSRAM_SIZE = 0x400000;           // 4 megs (half)
 static const uint32_t BLOCK_SIZE = 512;
-static const uint32_t BLOCK_COUNT = 16384;     // =PSRAM_SIZE / BLOCK_SIZE
+static const uint32_t BLOCK_COUNT = 8196;           // =PSRAM_SIZE / BLOCK_SIZE
+
+extern __IO uint32_t uwTick;
 
 STATIC mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self);
-
 STATIC const uint8_t psram_msc_lu_num = 1;
 STATIC uint16_t psram_msc_lu_flags;
+
+typedef struct _psram_obj_t {
+    mp_obj_base_t base;
+
+    uint32_t        host_write_time;
+    uint32_t        cc_write_time;
+} psram_obj_t;
+
+// singleton
+const mp_obj_type_t psram_type;
+psram_obj_t psram_obj = {
+    { &psram_type },
+};
+
+#define HOST_WR_TIMEOUT     2000            // (ms)
+static soft_timer_entry_t  host_wr_done;
 
 // This flag is needed to support removal of the medium, so that the USB drive
 // can be unmounted and won't be remounted automatically.
@@ -44,6 +64,39 @@ psram_init(void)
 {
     // always clear and reset contents
     psram_wipe_and_setup(NULL);
+
+    //mp_pairheap_t pairheap;
+    host_wr_done.mode = SOFT_TIMER_MODE_ONE_SHOT;
+    host_wr_done.expiry_ms = HOST_WR_TIMEOUT;
+    host_wr_done.callback = MP_ROM_NONE;
+    host_wr_done.pairheap.base.type = &psram_type;      // callback gets this object as only arg
+}
+
+// reset_wr_timeout()
+//
+    static void
+reset_wr_timeout(void)
+{
+
+    // host has written something, reset/set a timeout to handle new change
+    soft_timer_remove(&host_wr_done);
+
+    if(host_wr_done.callback != MP_ROM_NONE) {
+        host_wr_done.expiry_ms = uwTick + HOST_WR_TIMEOUT;
+        soft_timer_insert(&host_wr_done);
+    }
+}
+
+// wr_timeout_now()
+//
+    static void
+wr_timeout_now(void)
+{
+    soft_timer_remove(&host_wr_done);
+
+    if(host_wr_done.callback != MP_ROM_NONE) {
+        mp_sched_schedule(host_wr_done.callback, MP_OBJ_FROM_PTR(&psram_obj));
+    }
 }
 
 static uint8_t *block_to_ptr(uint32_t blk, uint16_t num_blk)
@@ -54,7 +107,7 @@ static uint8_t *block_to_ptr(uint32_t blk, uint16_t num_blk)
     if(blk >= BLOCK_COUNT) return NULL;
     if((blk+num_blk) > BLOCK_COUNT) return NULL;
 
-    return &PSRAM_BASE[blk * BLOCK_SIZE];
+    return &PSRAM_TOP_BASE[blk * BLOCK_SIZE];
 }
 
 static inline void lu_flag_set(uint8_t lun, uint8_t flag) {
@@ -205,6 +258,11 @@ STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
 // Prepare a logical unit for possible removal
 STATIC int8_t psram_msc_PreventAllowMediumRemoval(uint8_t lun, uint8_t param) {
     printf("PSRAMdisk: prevallow=%d\n", param);
+    if(param == 0) {
+        // allow removal == host is done (like unmount in MacOS)
+        wr_timeout_now();
+    }
+
     return 0;
 }
 
@@ -232,6 +290,9 @@ STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint
     if(!ptr) return -1;
 
     memcpy(ptr, buf, blk_len*BLOCK_SIZE);
+
+    reset_wr_timeout();
+    psram_obj.host_write_time = uwTick;
 
     return 0;
 }
@@ -267,17 +328,6 @@ void psramdisk_USBD_MSC_RegisterStorage(int num_lun, usbd_cdc_msc_hid_state_t *u
 //
 // see <https://docs.micropython.org/en/latest/library/uos.html#simple-and-extended-interface>
 //
-
-typedef struct _psram_obj_t {
-    mp_obj_base_t base;
-    // nada?
-} psram_obj_t;
-
-// singleton
-const mp_obj_type_t psram_type;
-const psram_obj_t psram_obj = {
-    { &psram_type },
-};
 
 
 STATIC void psram_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind_t kind) {
@@ -356,6 +406,8 @@ int direct_psram_write_blocks(const uint8_t *src, uint32_t block_num, uint32_t n
 
     memcpy(ptr, src, num_blocks * BLOCK_SIZE);
 
+    psram_obj.cc_write_time = uwTick;
+
     return 0;
 }
 
@@ -393,7 +445,7 @@ STATIC mp_obj_t psram_ioctl(mp_obj_t self_in, mp_obj_t cmd_in, mp_obj_t arg_in) 
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_3(psram_ioctl_obj, psram_ioctl);
 
-static void psram_init_vfs(fs_user_mount_t *vfs) {
+static void psram_init_vfs(fs_user_mount_t *vfs, bool readonly) {
     // Simulates mounting the block device into VFS system. Assumes FAT format.
     vfs->base.type = &mp_fat_vfs_type;
     vfs->blockdev.flags |= MP_BLOCKDEV_FLAG_NATIVE | MP_BLOCKDEV_FLAG_HAVE_IOCTL;
@@ -403,9 +455,11 @@ static void psram_init_vfs(fs_user_mount_t *vfs) {
     vfs->blockdev.readblocks[0] = MP_OBJ_FROM_PTR(&psram_readblocks_obj);
     vfs->blockdev.readblocks[1] = MP_OBJ_FROM_PTR(&psram_obj);
     vfs->blockdev.readblocks[2] = MP_OBJ_FROM_PTR(direct_psram_read_blocks);
-    vfs->blockdev.writeblocks[0] = MP_OBJ_FROM_PTR(&psram_writeblocks_obj);
-    vfs->blockdev.writeblocks[1] = MP_OBJ_FROM_PTR(&psram_obj);
-    vfs->blockdev.writeblocks[2] = MP_OBJ_FROM_PTR(direct_psram_write_blocks);
+    if(!readonly) {
+        vfs->blockdev.writeblocks[0] = MP_OBJ_FROM_PTR(&psram_writeblocks_obj);
+        vfs->blockdev.writeblocks[1] = MP_OBJ_FROM_PTR(&psram_obj);
+        vfs->blockdev.writeblocks[2] = MP_OBJ_FROM_PTR(direct_psram_write_blocks);
+    }
     vfs->blockdev.u.ioctl[0] = MP_OBJ_FROM_PTR(&psram_ioctl_obj);
     vfs->blockdev.u.ioctl[1] = MP_OBJ_FROM_PTR(&psram_obj);
 }
@@ -413,14 +467,14 @@ static void psram_init_vfs(fs_user_mount_t *vfs) {
 mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self)
 {
     // Erase and reformat filesystem
-    //  - before calling do this, probably should unmount it.
+    //  - you probably should unmount it, before calling this 
 
     // Wipe contents for security.
-    memset(PSRAM_BASE, 0x21, BLOCK_SIZE * BLOCK_COUNT);
+    memset(PSRAM_TOP_BASE, 0x21, BLOCK_SIZE * BLOCK_COUNT);
 
-    // Build obj to handle python protocol
+    // Build obj to handle blockdev protocol
     fs_user_mount_t vfs;
-    psram_init_vfs(&vfs);
+    psram_init_vfs(&vfs, false);
 
     // newfs:
     // - FAT16 (auto)
@@ -489,7 +543,7 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
 
     // Build obj to handle python protocol
     fs_user_mount_t vfs;
-    psram_init_vfs(&vfs);
+    psram_init_vfs(&vfs, true);
 
     FRESULT res = f_mount(&vfs.fatfs);
     if (res != FR_OK) {
@@ -531,8 +585,9 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
 
         uint8_t *spot = block_to_ptr(clst2sect(&vfs.fatfs, cluster), num_clusters);
         if(!spot) {
-            printf("[%d] (cl=0x%lx ln=%d) => ", i, cluster, num_clusters);
-            printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
+            //printf("[%d] (cl=0x%lx ln=%d) => ", i, cluster, num_clusters);
+            //printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
+            mp_raise_ValueError(MP_ERROR_TEXT("clstfck"));
         }
         uint32_t len = num_clusters*BLOCK_SIZE;
 
@@ -557,6 +612,101 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(psram_mmap_file_obj, psram_mmap_file);
 
+mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fname_in)
+{
+    // Find a file inside a FATFS and copy it into another area of PSRAM.
+    // - file path must be striped of mountpt
+    uint32_t    offset = mp_obj_get_int(offset_in);         // checks below
+    const char *fname = mp_obj_str_get_str(fname_in);
+
+    // Build obj to handle python protocol
+    fs_user_mount_t vfs;
+    psram_init_vfs(&vfs, true);
+
+    FRESULT res = f_mount(&vfs.fatfs);
+    if (res != FR_OK) {
+        mp_raise_ValueError(MP_ERROR_TEXT("unmountable"));
+    }
+
+    // open the file directly
+    FIL fp = {0};
+    if(f_open(&vfs.fatfs, &fp, fname, FA_READ) != FR_OK) {
+        mp_raise_ValueError(MP_ERROR_TEXT("file no open"));
+    }
+
+    // see <http://elm-chan.org/fsw/ff/doc/lseek.html> to learn this magic
+    DWORD   mapping[64];
+    mapping[0] = MP_ARRAY_SIZE(mapping);
+    fp.cltbl = mapping;
+
+    int rv = f_lseek(&fp, CREATE_LINKMAP);
+    if(rv != FR_OK) {
+        mp_raise_ValueError(MP_ERROR_TEXT("lseek"));
+    }
+
+    // Convert and remap list of clusters
+    
+    int num_used = (mapping[0] - 1) / 2;
+    if((num_used < 1) || (num_used >= MP_ARRAY_SIZE(mapping))) {
+        mp_raise_ValueError(NULL);
+    }
+
+    uint32_t actual_len = fp.obj.objsize;
+
+    // where we will put copy
+    uint8_t     *dest = PSRAM_BOT_BASE + offset;
+    if(offset % 4) mp_raise_ValueError(NULL);
+    if(((uint32_t)dest) % 4) mp_raise_ValueError(NULL);
+    if(dest < PSRAM_BOT_BASE) mp_raise_ValueError(NULL);
+    if(dest >= PSRAM_TOP_BASE) mp_raise_ValueError(NULL);
+    if(dest+actual_len+3 >= PSRAM_TOP_BASE) mp_raise_ValueError(NULL);
+
+    uint32_t so_far = 0;
+    DWORD *ptr = &mapping[1];
+    for(int i=0; i<num_used; i++) {
+        int num_clusters = *(ptr++);
+        uint32_t cluster = *(ptr++);
+
+        uint8_t *spot = block_to_ptr(clst2sect(&vfs.fatfs, cluster), num_clusters);
+        if(!spot) {
+            //printf("[%d] (cl=0x%lx ln=%d) => ", i, cluster, num_clusters);
+            //printf("0x%lx\n", clst2sect(&vfs.fatfs, cluster));
+            mp_raise_ValueError(MP_ERROR_TEXT("clstfck"));
+        }
+        uint32_t len = num_clusters*BLOCK_SIZE;
+
+        if(i == num_used-1) {
+            // final cluster might include some bytes past the EOF
+            len = actual_len - so_far;
+            // align4
+            len = (len + 3) & ~0x3;
+        } else {
+            so_far += len;
+        }
+
+        memcpy(dest, spot, len);
+        dest += len;
+
+        if(dest >= PSRAM_TOP_BASE) mp_raise_ValueError(NULL);
+    }
+    f_close(&fp);
+
+    return MP_OBJ_NEW_SMALL_INT(actual_len);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(psram_copy_file_obj, psram_copy_file);
+
+mp_obj_t psram_set_callback(mp_obj_t unused_self, mp_obj_t callback_in)
+{
+    if(callback_in != MP_ROM_NONE) {
+        soft_timer_remove(&host_wr_done);
+
+        host_wr_done.callback = callback_in;
+    }
+
+    return host_wr_done.callback;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(psram_set_callback_obj, psram_set_callback);
+
 
 STATIC const mp_rom_map_elem_t psram_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_readblocks), MP_ROM_PTR(&psram_readblocks_obj) },
@@ -564,6 +714,8 @@ STATIC const mp_rom_map_elem_t psram_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_ioctl), MP_ROM_PTR(&psram_ioctl_obj) },
     { MP_ROM_QSTR(MP_QSTR_wipe), MP_ROM_PTR(&psram_wipe_obj) },
     { MP_ROM_QSTR(MP_QSTR_mmap), MP_ROM_PTR(&psram_mmap_file_obj) },
+    { MP_ROM_QSTR(MP_QSTR_copy_file), MP_ROM_PTR(&psram_copy_file_obj) },
+    { MP_ROM_QSTR(MP_QSTR_callback), MP_ROM_PTR(&psram_set_callback_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(psram_locals_dict, psram_locals_dict_table);
