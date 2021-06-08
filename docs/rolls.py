@@ -26,7 +26,7 @@ if h.hex() == empty:
 # Warnings for short length
 if len(r) < 99:
     ae = 2.585 * len(r)
-    print('WARNING: Input is only %d bits of entropy\n' % ae)
+    print(f'WARNING: Input is only {ae:0.3f} bits of entropy')
 
 # Apply BIP39 to convert into seed words
 v = int.from_bytes(h, 'big') << 8
