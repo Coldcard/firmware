@@ -389,7 +389,7 @@ ae_setup(void)
     MY_UART->CR1 |= USART_CR1_UE;
     
     // configure pin A0 to be AFx_UARTy, PULL_NONE
-    gpio_setup();
+    // should already be done: gpio_setup();
     
     // mark it as ready
     ae_chip_is_setup = AE_CHIP_IS_SETUP;

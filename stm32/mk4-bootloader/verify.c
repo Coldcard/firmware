@@ -338,9 +338,9 @@ verify_firmware(void)
     // show big/slow warning if light is not green
     if(not_green) {
         warn_bad_checksum();
+    } else {
+        puts("good firmware");
     }
-
-    puts("good firmware");
     oled_show_progress(screen_verify, 100);
 
     return true;

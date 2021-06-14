@@ -24,9 +24,17 @@
 
 SD_HandleTypeDef hsd;
 
+// sdcard_light()
+//
+    void inline
+sdcard_light(bool on)
+{
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, !!on);    // turn LED off
+}
+
 // sdcard_setup()
 //
-    void
+    static void
 sdcard_setup(void)
 {
     // pinout setup
@@ -34,7 +42,7 @@ sdcard_setup(void)
     __HAL_RCC_SDMMC1_CLK_ENABLE();
 
     // Configure pins: Port C: C8-C13, PD2=CMD
-    // - C7 (light), and C13 (detect) setup in gpio_setup
+    // - C7 (light), and C13 (detect) already setup in gpio_setup
     {   GPIO_InitTypeDef setup = {
             .Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12,
             .Mode = GPIO_MODE_AF_PP,            // not sure
@@ -169,7 +177,6 @@ dfu_hdr_parse(const uint8_t *ptr, uint32_t *target_size)
     return NULL;
 }
 
-#pragma GCC optimize ("O0")
 // sdcard_try_file()
 //
     void
@@ -251,19 +258,12 @@ sdcard_search(void)
         }
 
         if(pos % 128 == 0) {
-redraw:
+        redraw:
             oled_show_progress(screen_search, pos*100 / num_blocks);
+            sdcard_light(true);
         }
     }
 
-}
-
-// sdcard_light()
-//
-    void
-sdcard_light(bool on)
-{
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, !!on);    // turn LED off
 }
 
 // sdcard_recovery()
@@ -284,6 +284,7 @@ sdcard_recovery(void)
         }
             
         // look for binary, will reset system if successful
+        sdcard_light(true);
         sdcard_search();
     }
 }

@@ -84,7 +84,7 @@ wipe_all_sram(void)
     void
 system_startup(void)
 {
-    // configure clocks first
+    // configure critical stuff
     system_init0();
     clocks_setup();
     rng_setup();            // needs to be super early
@@ -112,8 +112,8 @@ system_startup(void)
     puts(version_string);
 
     // setup some limited shared data space between mpy and ourselves
-    rng_delay();
     reboot_seed_setup();
+    rng_delay();
 
     sha256_selftest();
     rng_delay();
@@ -134,12 +134,7 @@ system_startup(void)
 
     // clear and setup OLED display
     oled_setup();
-    rng_delay();
     oled_show_progress(screen_verify, 0);
-
-    puts2("RNG setup done: ");
-    puthex4(rng_sample());
-    putchar('\n');
 
     // wipe all of SRAM (except our own memory, which was already wiped)
     wipe_all_sram();
@@ -168,7 +163,7 @@ system_startup(void)
     // - may also do one-time setup of 508a
     // - note: ae_setup must already be called, since it can talk to that
     flash_setup();
-    puts("Flash: setup done");
+    //puts("Flash: setup done");
 
     //puts("PSRAM setup");
     psram_setup();
@@ -191,10 +186,7 @@ system_startup(void)
     psram_recover_firmware();
 
     // use SDCard to recover
-    sdcard_recovery();
-
-    // plan B?
-    enter_dfu();
+    while(1) sdcard_recovery();
 }
 
 // fatal_error(const char *msg)

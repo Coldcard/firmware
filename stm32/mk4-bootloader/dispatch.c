@@ -297,8 +297,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
         case 12:
             // read the DFU button (used for selftest at least)
             REQUIRE_OUT(1);
-            gpio_setup();
-            buf_io[0] = dfu_button_pressed();
+            buf_io[0] = 0;          // NOT SUPPORTED on Mk4
             break;
 
         case 15: {

@@ -185,8 +185,13 @@ clocks_setup(void)
     __HAL_RCC_RTC_ENABLE();
     __HAL_RCC_HASH_CLK_ENABLE();        // for SHA256
     __HAL_RCC_SPI1_CLK_ENABLE();        // for OLED
-    __HAL_RCC_SPI2_CLK_ENABLE();        // for SPI flash
+    //__HAL_RCC_SPI2_CLK_ENABLE();        // for SPI flash
     __HAL_RCC_DMAMUX1_CLK_ENABLE();     // (need this) because code missing in mpy?
+
+    // for SE2
+    __HAL_RCC_I2C2_CLK_ENABLE();
+    __HAL_RCC_I2C2_FORCE_RESET();
+    __HAL_RCC_I2C2_RELEASE_RESET();
 
     // setup SYSTICK, but we don't have the irq hooked up and not using HAL
     // but we use it in polling mode for delay_ms()

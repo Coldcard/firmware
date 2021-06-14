@@ -41,11 +41,6 @@ gpio_setup(void)
             .Alternate = GPIO_AF8_UART4,
         };
         HAL_GPIO_Init(ONEWIRE_PORT, &setup);
-
-        // second SE
-        setup.Pin = ONEWIRE2_PIN;
-        setup.Alternate = GPIO_AF7_USART2;
-        HAL_GPIO_Init(ONEWIRE_PORT, &setup);
     }
 
     // Bugfix: re-init of console port pins seems to wreck
@@ -68,16 +63,18 @@ gpio_setup(void)
     }
 
     // SD active LED: PC7
+    // USB active LED: PC6
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_7,
+            .Pin = GPIO_PIN_7 | GPIO_PIN_6,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
         HAL_GPIO_Init(GPIOC, &setup);
 
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, 0);    // turn LED off
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|GPIO_PIN_6, 0);    // turn LEDs off
     }
+
     // SD card detect switch: PC13
     {   GPIO_InitTypeDef setup = {
             .Pin = GPIO_PIN_13,
