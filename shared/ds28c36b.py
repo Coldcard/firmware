@@ -26,7 +26,7 @@ Plan:
 '''
 from utime import sleep_ms
 from utils import B2A
-import ngu
+import ngu, ckcc
 
 # i2c address (7-bits)
 SE2_ADDR = const(0x1b)
@@ -54,6 +54,11 @@ PROT_EPH = const(0x10)
 PROT_AUTH = const(0x20)
 PROT_ECH = const(0x40)
 PROT_ECW = const(0x80)
+
+# random example
+T_pubkey = b'\xf0\xa5\xba6A\xe1\xd5/\n\xed\xbc8b\xfe\xca\xfe7\xe0\xdd\xbd\xad\x1f\xfb%\xb2cL\xd9>\x13\xfd5 &8\xe0l$/\x14\x94dLT,\x92X.;\x95\xe4\x13\xc3\x03\xc7\n\xc6\x15\xa6\xd2\xfd\x8a\xbe\xba'
+T_privkey = b'\x8ev\xa4\xce\xb5B\xe2\x90\x06\x925\xa9\xc3\x90\xe61s^\xa9\x10q\x17\x82\\r$\xc0\xbe\xb7\xfc\xa5>'
+
 
 class SE2Handler:
     def __init__(self):
@@ -86,9 +91,18 @@ class SE2Handler:
     def _read(self, num):
         # responses usually have length in first byte, then status byte, then data
         # - chip provides 0xff when reading past end of response (does not nak)
-        rx = self.i2c.readfrom(SE2_ADDR, num)
-        assert len(rx) == num, 'short read'
-        return rx
+        # - poll until it starts responding again, might take >200ms
+        for retry in range(200):
+            try:
+                rx = self.i2c.readfrom(SE2_ADDR, num)
+                assert len(rx) == num, 'short read'
+
+                return rx
+            except OSError:
+                # expect OSError: [Errno 19] ENODEV
+                pass
+            sleep_ms(2)
+        raise RuntimeError('se2 timeout')
 
     def _read1(self):
         # when expecting a single-byte status byte back
@@ -119,7 +133,6 @@ class SE2Handler:
         # - do not use for any purpose
         assert 1 <= num <= 63
         self._write(0xd2, num)
-        sleep_ms(3)         # tCMP
         rx = self._read(1+num)
         return rx[1:]
 
@@ -129,7 +142,6 @@ class SE2Handler:
         tmp = bytes([0xc0]) + bytes(buf)
 
         self._write(0x33, tmp)
-        sleep_ms(3)         # tCMP
         self._check_result(self._read1())
 
     def page_protection(self, page):
@@ -142,15 +154,12 @@ class SE2Handler:
         # set the protection for one page
         assert 0 <= page < 32
         self._write(0xc3, bytes([page, bitmap]))
-        sleep_ms(3)         # tCMP?
         self._check_result(self._read1())
 
     def read_page(self, page):
-        # unauth version, mitm vulerable, no encryption
+        # unauth version, mitm vulnerable, no encryption
         assert 0 <= page < 32
         self._write(0x69, page)
-        if page in {28, 29}:
-            sleep_ms(3)     # +tCMP
         rx = self._read(34)
         if rx[1] == 0x55:
             raise RuntimeError('read protected')
@@ -159,23 +168,20 @@ class SE2Handler:
         return rx[2:]
 
     def write_page(self, page, value):
-        # unauth version, mitm vulerable
+        # unauth version, mitm vulnerable
         assert 0 <= page < 32
         assert len(value) == 32
         self._write(0x96, bytes([page])+bytes(value))
-        sleep_ms(16)
-        if self._read1() != 0xAA:
-            raise RuntimeError('write fail')
+        self._check_result(self._read1())
 
     def read_enc_page(self, page_num, secret_num, secret):
         # Use secret key, and read encrypted contents of page (XOR w/ HMAC output)
         # - key for HMAC is pre-shared secret, either key A, B or secret S established by ECDH
         # - EPH for keys A/B, ECH forces key S
-        # - IMPORTANT: not secure against simple replay, so always verify
+        # - IMPORTANT: not secure against simple replay, so we always verify
         assert 0 <= page_num <= 32
         assert 0 <= secret_num <= 2
         self._write(0x4b, (secret_num << 6) | page_num)
-        sleep_ms(3)     # tCMP
 
         rx = self._read(42)
         self._check_result(rx[1])
@@ -200,20 +206,38 @@ class SE2Handler:
 
         return readback
 
-    def write_enc_page(self, page_num, secret_num, secret, data):
+    def write_enc_page(self, page_num, secret_num, secret, old_data, new_data):
         # Authenticated write to a page.
+        # - only for pages with APH or EPH
+        # - assume EPH here, with encrypted data tx
         assert 0 <= page_num <= 32
         assert 0 <= secret_num <= 2
-        assert len(data) == 32
+        assert len(new_data) == len(old_data) == 32
 
-        args = bytearray([(secret_num << 6) | page_num])
-        args.extend(data)
+        PGDV = bytes([page_num | 0x80])
+
+        # This is used for encryption: hmac w/ nonce we pick
+        chal = ngu.random.bytes(8)
+        msg = chal + self.rom_id + PGDV + self.manid
+        assert len(msg) == 19
+        otp = ngu.hmac.hmac_sha256(secret, msg)
+
+        # Must know old data to authenticate change.
+        msg2 = self.rom_id + old_data + new_data + PGDV + self.manid
+        assert len(msg2) == 75
+        auth_chk = ngu.hmac.hmac_sha256(secret, msg2)
+
+        # write that + our nonce into buffer
+        self.write_buffer(auth_chk + chal)
+
+        # encrypt new data
+        args = bytearray(33)
+        args[0] = (secret_num << 6) | page_num
+        for i in range(32):
+            args[i+1] = otp[i] ^ new_data[i]
 
         self._write(0x99, args)
-        sleep_ms(15 + (2*3))     # tWM + (2*tCMP)
-
-        result = self._read1()
-        self._check_result(result)
+        self._check_result(self._read1())
 
     def read_ident(self):
         # identity details needed for auth setup
@@ -222,34 +246,37 @@ class SE2Handler:
         self.manid = b[22:22+2]
         assert self.rom_id[0] == 0x4c       # for this device family
 
-    def pick_keypair(self, kn):
+    def pick_keypair(self, kn, lock=False):
         # use device RNG to pick a keypair
         assert 0 <= kn <= 2         # A,B, or C
+        wpe = 0x1 if lock else 0x0
+        self._write(0xcb, (wpe<<6) | kn)
+        self._check_result(self._read1())
         
-    def verify_page(self, page_num, secret_num, expected, secret, hmac=True):
+    def verify_page(self, page_num, secret_num, expected, secret=None, hmac=True):
         # See if chip is holding expected value in a page.
         # - if this fails, you have the secret wrong, or the data is wrong
         assert 0 <= secret_num <= 2         # Secret A,B, or S (or PrivkeyA/B/C)
         assert 0 <= page_num < 32
         assert len(expected) == 32
-        assert len(secret) == 32
+        assert not secret or len(secret) == 32
 
         chal = ngu.random.bytes(32)
         self.write_buffer(chal)
 
-        arg = (secret_num << 5) | page_num
-        if not hmac:
-            arg |= 0x80
+        if hmac:
+            arg = (secret_num << 5) | page_num
+        else:
+            assert 0 <= secret_num <= 1         # privkey A,B only
+            arg = ((0x3 + secret_num) << 5) | page_num
 
         self._write(0xa5, arg)
-        sleep_ms(200)
         if hmac:
             rx = self._read(2+32)
         else:
             rx = self._read(2+64)
 
-        if rx[1] != 0xaa:
-            raise RuntimeError(hex(rx[1]))
+        self._check_result(rx[1])
 
         msg = self.rom_id + expected + chal + bytes([page_num]) + self.manid
         assert len(msg) == 75
@@ -260,14 +287,55 @@ class SE2Handler:
             return rx[2:] == chk
         else:
             # response will be signature over SHA256(msg)
-            # - would need p256r1 code to verify here
-            return rx[2:], chal, msg
+            # - need p256r1 code to be able to verify here
+            md = ngu.hash.sha256s(msg)
+
+            pn = PGN_PUBKEY_A + (2*secret_num)
+            pubkey = self.read_page(pn) + self.read_page(pn+1)
+            # R and S are swapped in the new signature
+            sig = rx[2+32:2+32+32] + rx[2:2+32]
+
+            args = bytearray(pubkey + md + sig)
+            rv = ckcc.gate(30, args, 0)
+
+            return rv == 0
+
+    def write_s(self):
+        # put our pubkey into PGN_PUBKEY_S
+        #self.write_Page(PGN_PUBKEY_S, 0)
+        pass
+
+    def selftest_sig(self):
+        # SELFTEST
+        # make sig, check on device
+        md = b'm'*32
+        args = bytearray(T_privkey + md + bytes(64))
+        rv = ckcc.gate(32, args, 0)
+        assert rv == 0
+
+        sig = bytes(args[-64:])
+
+        # check we like our own work
+        args = bytearray(T_pubkey + md + sig)
+        rv = ckcc.gate(30, args, 0)
+        assert rv == 0
+
+        # try against the chip
+        self.write_page(PGN_PUBKEY_S+0, T_pubkey[:32])
+        self.write_page(PGN_PUBKEY_S+1, T_pubkey[32:])
+
+        self.write_buffer(md)
+
+        b = bytearray([0x03])
+        b.extend(sig)
+        self._write(0x59, b)
+        self._check_result(self._read1())
 
     def first_time(self):
         # reset and lock the ANON flag == 0, so request/responses require serial number
         prot = self.page_protection(PGN_ROM_OPTIONS)
         b = bytearray(self.read_page(PGN_ROM_OPTIONS))
-        if prot == PROT_WP:
+        if prot != 0:
             # after first run, should be protected and in right state.
             assert b[1] == 0x0
         else:
@@ -278,15 +346,30 @@ class SE2Handler:
         assert self.manid[1] & 0xc0 == 0x80, 'not B rev?'
         assert self.rom_id != b'\xff\xff\xff\xff\xff\xff\xff\xff'
 
-        if prot != PROT_WP:
-            # set write lock
-            self.set_page_protection(PGN_ROM_OPTIONS, PROT_WP)
+        if prot != PROT_APH:
+            # set write lock, except WP isn't possible on this page?! So use APH
+            self.set_page_protection(PGN_ROM_OPTIONS, PROT_APH)
 
         # pick a keypair for communications (key C, no choice)
         #self.pick_keypair(kn=2) 
 
         self.write_page(PGN_SECRET_A, b'a'*32)
         self.write_page(PGN_SECRET_B, b'b'*32)
+
+        if self.page_protection(PGN_PUBKEY_C) == 0:
+            # write a pubkey for AUTH purposes
+            self.write_page(PGN_PUBKEY_C, T_pubkey[:32])
+            self.write_page(PGN_PUBKEY_C+1, T_pubkey[32:])
+            self.set_page_protection(PGN_PUBKEY_C, PROT_AUTH|PROT_RP|PROT_WP)
+
+        # known values in all pages
+        for i in range(0, 16):
+            try:
+                SE2.write_page(i, (b'%x'%i)*32)
+            except: pass
+
+
+
 
         
 
