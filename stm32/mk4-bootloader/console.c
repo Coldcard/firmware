@@ -10,7 +10,7 @@
 #include "stm32l4xx_hal.h"
 #include <string.h>
 
-// mk4 has USART1 on header pins: RGT = Rx Gnd Tx
+// Mk4 has USART1 on header pins: RGT = Rx Gnd Tx
 #define MY_UART        USART1
 
 static const char hexmap[16] = "0123456789abcdef";
@@ -24,7 +24,7 @@ void console_setup(void)
     __HAL_RCC_USART1_CONFIG(RCC_USART1CLKSOURCE_SYSCLK);
     __HAL_RCC_USART1_CLK_ENABLE();
 
-    // TODO: replace shit HAL code w/ barebones we need
+    // TODO: cleanup shit HAL code w/ barebones we need
 
     // config for 115200 8N1
     memset(&con, 0, sizeof(con));
@@ -129,18 +129,6 @@ puts(const char *msg)
     rng_delay();
 
     return 1;
-}
-
-// getchar()
-//
-    int
-getchar(void)
-{
-    uint8_t rv = 0;
-
-    HAL_USART_Receive(&con, &rv, 1, HAL_MAX_DELAY);
-
-    return rv;
 }
 
 // is_print()
@@ -525,124 +513,5 @@ HAL_StatusTypeDef HAL_USART_Transmit(USART_HandleTypeDef *husart, uint8_t *pTxDa
 
     return HAL_OK;
 }
-
-
-/**
-  * @brief Receive an amount of data in blocking mode.
-  * @note   To receive synchronous data, dummy data are simultaneously transmitted.
-  * @note   When USART parity is not enabled (PCE = 0), and Word Length is configured to 9 bits (M1-M0 = 01),
-  *         the received data is handled as a set of u16. In this case, Size must indicate the number
-  *         of u16 available through pRxData.
-  * @param husart USART handle.
-  * @param pRxData Pointer to data buffer (u8 or u16 data elements).
-  * @param Size Amount of data elements (u8 or u16) to be received.
-  * @param Timeout Timeout duration.
-  * @retval HAL status
-  */
-HAL_StatusTypeDef HAL_USART_Receive(USART_HandleTypeDef *husart, uint8_t *pRxData, uint16_t Size, uint32_t Timeout)
-{
-  uint8_t  *prxdata8bits;
-  uint16_t *prxdata16bits;
-  uint16_t uhMask;
-  uint32_t tickstart;
-
-  if (husart->State == HAL_USART_STATE_READY)
-  {
-    if ((pRxData == NULL) || (Size == 0U))
-    {
-      return  HAL_ERROR;
-    }
-
-    /* Process Locked */
-    __HAL_LOCK(husart);
-
-    husart->ErrorCode = HAL_USART_ERROR_NONE;
-    husart->State = HAL_USART_STATE_BUSY_RX;
-
-    /* Init tickstart for timeout management */
-    tickstart = HAL_GetTick();
-
-    husart->RxXferSize = Size;
-    husart->RxXferCount = Size;
-
-    /* Computation of USART mask to apply to RDR register */
-    USART_MASK_COMPUTATION(husart);
-    uhMask = husart->Mask;
-
-    /* In case of 9bits/No Parity transfer, pRxData needs to be handled as a uint16_t pointer */
-    if ((husart->Init.WordLength == USART_WORDLENGTH_9B) && (husart->Init.Parity == USART_PARITY_NONE))
-    {
-      prxdata8bits  = NULL;
-      prxdata16bits = (uint16_t *) pRxData;
-    }
-    else
-    {
-      prxdata8bits  = pRxData;
-      prxdata16bits = NULL;
-    }
-
-    /* as long as data have to be received */
-    while (husart->RxXferCount > 0U)
-    {
-#if defined(USART_CR2_SLVEN)
-      if (husart->SlaveMode == USART_SLAVEMODE_DISABLE)
-#endif /* USART_CR2_SLVEN */
-      {
-        /* Wait until TXE flag is set to send dummy byte in order to generate the
-        * clock for the slave to send data.
-        * Whatever the frame length (7, 8 or 9-bit long), the same dummy value
-        * can be written for all the cases. */
-        if (USART_WaitOnFlagUntilTimeout(husart, USART_FLAG_TXE, RESET, tickstart, Timeout) != HAL_OK)
-        {
-          return HAL_TIMEOUT;
-        }
-        husart->Instance->TDR = (USART_DUMMY_DATA & (uint16_t)0x0FF);
-      }
-
-      /* Wait for RXNE Flag */
-      if (USART_WaitOnFlagUntilTimeout(husart, USART_FLAG_RXNE, RESET, tickstart, Timeout) != HAL_OK)
-      {
-        return HAL_TIMEOUT;
-      }
-
-      if (prxdata8bits == NULL)
-      {
-        *prxdata16bits = (uint16_t)(husart->Instance->RDR & uhMask);
-        prxdata16bits++;
-      }
-      else
-      {
-        *prxdata8bits = (uint8_t)(husart->Instance->RDR & (uint8_t)(uhMask & 0xFFU));
-        prxdata8bits++;
-      }
-
-      husart->RxXferCount--;
-
-    }
-
-#if defined(USART_CR2_SLVEN)
-    /* Clear SPI slave underrun flag and discard transmit data */
-    if (husart->SlaveMode == USART_SLAVEMODE_ENABLE)
-    {
-      __HAL_USART_CLEAR_UDRFLAG(husart);
-      __HAL_USART_SEND_REQ(husart, USART_TXDATA_FLUSH_REQUEST);
-    }
-#endif /* USART_CR2_SLVEN */
-
-    /* At end of Rx process, restore husart->State to Ready */
-    husart->State = HAL_USART_STATE_READY;
-
-    /* Process Unlocked */
-    __HAL_UNLOCK(husart);
-
-    return HAL_OK;
-  }
-  else
-  {
-    return HAL_BUSY;
-  }
-}
-
-
 
 // EOF

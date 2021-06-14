@@ -27,9 +27,5 @@ void puts2(const char *msg);
 // Print out a standard hex dump, with relative offsets
 void hex_dump(const void *data, int len);
 
-// Blocking read.
-#undef getchar
-int getchar(void);
-
 
 // EOF
