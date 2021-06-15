@@ -174,13 +174,16 @@ class SE2Handler:
         self._write(0x96, bytes([page])+bytes(value))
         self._check_result(self._read1())
 
-    def read_enc_page(self, page_num, secret_num, secret):
+    def read_enc_page(self, page_num, secret_num, secret=None):
         # Use secret key, and read encrypted contents of page (XOR w/ HMAC output)
         # - key for HMAC is pre-shared secret, either key A, B or secret S established by ECDH
         # - EPH for keys A/B, ECH forces key S
         # - IMPORTANT: not secure against simple replay, so we always verify
         assert 0 <= page_num <= 32
-        assert 0 <= secret_num <= 2
+        if secret_num == 2:
+            secret = self.shared_secret
+        else:
+            assert 0 <= secret_num <= 1
         self._write(0x4b, (secret_num << 6) | page_num)
 
         rx = self._read(42)
@@ -300,10 +303,71 @@ class SE2Handler:
 
             return rv == 0
 
-    def write_s(self):
-        # put our pubkey into PGN_PUBKEY_S
-        #self.write_Page(PGN_PUBKEY_S, 0)
-        pass
+    def setup_auth(self, ecdh_kn=0):
+        # do "Authenticate ECDSA Public Key" proving we know the privkey for
+        # pubkey held in slot C. Set volatile state: AUTH and maybe W_PUB_KEY and S
+        # - must enable ECDH because we want to read using this authority
+        # - lengths/offsets are all messed in spec
+        # - only supporting READ; we will do our writes before locking page(s)
+
+        # this is remembered in SRAM, but needed in general
+        self.write_page(PGN_PUBKEY_S+0, T_pubkey[:32])
+        self.write_page(PGN_PUBKEY_S+1, T_pubkey[32:])
+
+        chal = ngu.random.bytes(32+32)
+        self.write_buffer(chal)
+
+        cs_offset = 32      # very confusing, might be implied by buffer length?
+
+        md = ngu.hash.sha256s(T_pubkey + chal[0:32])
+
+        args = bytearray(T_privkey + md + bytes(64))
+        rv = ckcc.gate(32, args, 0)
+        assert rv == 0
+
+        sig = bytes(args[-64:])
+
+        args = bytearray()
+        args.append( ((cs_offset-1) << 3) | (ecdh_kn << 2) | 0x2 )
+        args.extend(sig)
+
+        self._write(0xa8, args)
+        self._check_result(self._read1())
+
+        print('auth ok')
+
+        # ecdh multi
+        pubkey_pn = PGN_PUBKEY_A + (ecdh_kn*2)
+        their_pubkey = self.read_page(pubkey_pn) + self.read_page(pubkey_pn+1)
+
+        args = bytearray(their_pubkey + T_privkey + bytes(32))
+        rv = ckcc.gate(33, args, 0)
+        assert rv == 0
+        x = args[-32:]
+
+        # shared secret S will be SHA over X of shared ECDH point + chal[32:]
+        s = ngu.hash.sha256s(x + chal[32:])
+
+        self.shared_secret = s
+
+        return True
+
+    def clear_state(self):
+        # No command to reset the volatile state on this chip! Could
+        # be sensitive at times. 608 has a watchdog for this!!
+        self.write_page(PGN_PUBKEY_S+0, bytes(32))
+        self.write_page(PGN_PUBKEY_S+1, bytes(32))
+
+        chal = ngu.random.bytes(32)
+        self.write_buffer(chal)
+
+        # rotate the secret S ... not ideal but only way I've got to change it
+        # - also clears ECDH_SECRET_S flag
+        self._write(0x3c, bytes([ (2<<6), 0 ]))
+        self._read1()
+
+    
+
 
     def selftest_sig(self):
         # SELFTEST
