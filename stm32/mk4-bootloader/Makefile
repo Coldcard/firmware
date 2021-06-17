@@ -27,7 +27,7 @@ TARGET_NAME = bootloader
 OBJS += startup.o assets/screens.o
 OBJS += firewall.o main.o dispatch.o verify.o oled.o clocks.o storage.o constant_time.o rng.o ae.o
 OBJS += delay.o gpio.o pins.o version.o console.o psram.o sdcard.o
-OBJS += faster_sha256.o micro-ecc/uECC.o hal_glue.o
+OBJS += faster_sha256.o micro-ecc/uECC.o hal_glue.o se2.o
 
 # Have to have copies of these because the DMA and interrupt stuff
 # needs to be commented-out.
@@ -35,6 +35,7 @@ OBJS += stm32l4xx_hal_firewall.o stm32l4xx_hal_gpio.o stm32l4xx_hal_spi.o
 OBJS += stm32l4xx_hal_rcc.o stm32l4xx_hal_rcc_ex.o
 OBJS += stm32l4xx_hal_hash.o
 OBJS += stm32l4xx_hal_ospi.o
+OBJS += stm32l4xx_hal_i2c.o
 OBJS += stm32l4xx_hal_sd.o stm32l4xx_ll_sdmmc.o
 
 #OBJS = $(addsuffix .o, $(basename $(C_SRCS) $(ASM_SRCS)))
@@ -232,6 +233,7 @@ xxx:
 
 tags:
 	ctags -f .tags *.[ch] -R $(INC_PATHS) \
+		micro-ecc/*.[ch] \
 		hal/Drivers/STM32L4xx_HAL_Driver/Src/*.c
 		
 
