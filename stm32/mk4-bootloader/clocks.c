@@ -156,11 +156,12 @@ clocks_setup(void)
     CLEAR_BIT(RCC->CR, RCC_CR_MSIPLLEN);
 
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct;
-    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI1|RCC_PERIPHCLK_I2C1
+    PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SAI1|RCC_PERIPHCLK_I2C2
                                               |RCC_PERIPHCLK_USB |RCC_PERIPHCLK_ADC
                                               |RCC_PERIPHCLK_RNG |RCC_PERIPHCLK_RTC;
 
-    PeriphClkInitStruct.I2c1ClockSelection = RCC_I2C1CLKSOURCE_PCLK1;
+    PeriphClkInitStruct.I2c2ClockSelection = RCC_I2C2CLKSOURCE_PCLK1;
+
     // PLLSAI is used to clock USB, ADC, I2C1 and RNG. The frequency is
     // HSE(8MHz)/PLLM(2)*PLLSAI1N(24)/PLLSAIQ(2) = 48MHz.
     //

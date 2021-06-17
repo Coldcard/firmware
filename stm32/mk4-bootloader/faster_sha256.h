@@ -21,6 +21,15 @@ void sha256_final(SHA256_CTX *ctx, uint8_t digest[32]);
 // single-shot version (best)
 void sha256_single(const uint8_t data[], uint32_t len, uint8_t digest[32]);
 
+// HMAC-SHA256
+typedef struct {
+    uint8_t   pending[256];
+    uint32_t  num_pending;
+} HMAC_CTX;
+void hmac_sha256_init(HMAC_CTX *ctx);
+void hmac_sha256_update(HMAC_CTX *ctx, const uint8_t data[], uint32_t len);
+void hmac_sha256_final(HMAC_CTX *ctx, const uint8_t key[32], uint8_t digest[32]);
+
 #ifndef RELEASE
 void sha256_selftest(void);
 #endif

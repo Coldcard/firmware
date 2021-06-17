@@ -4,8 +4,11 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+
 //
 // Constant-time functions, useful for crypto checking.
+//
+// Ironically not constant-time anymore, but the delay is data-independant so same idea.
 //
 
 // Return T if all bytes are 0xff

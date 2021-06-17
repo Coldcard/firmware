@@ -27,6 +27,7 @@
 #include "storage.h"
 #include "sflash.h"
 #include "psram.h"
+#include "se2.h"
 #include "dispatch.h"
 #include "constant_time.h"
 #include "assets/screens.h"
@@ -476,6 +477,51 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     break;
             }
             break;
+
+        // p256r1 test code
+        case 30: {      // verify signature
+            REQUIRE_IN_ONLY(64+32+64);
+            const uint8_t *pubkey = buf_io+0;
+            const uint8_t *digest = buf_io+64;
+            const uint8_t *signature = buf_io+64+32;
+
+            bool ok = p256_verify(pubkey, digest, signature);
+            if(!ok) {
+                rv = EAGAIN;
+            }
+
+            break;
+        }
+        case 31: {      // gen keypair
+            REQUIRE_OUT(32+64);
+            uint8_t *privkey = buf_io+0;
+            uint8_t *pubkey = buf_io+32;
+
+            p256_gen_keypair(privkey, pubkey);
+
+            break;
+        }
+        case 32: {      // sign digest
+            REQUIRE_OUT(32+32+64);
+            const uint8_t *privkey = buf_io+0;
+            const uint8_t *digest = buf_io+32;
+            uint8_t *sig = buf_io+32+32;
+
+            p256_sign(privkey, digest, sig);
+
+            break;
+        }
+        case 33: {      // ecdh multiply
+            REQUIRE_OUT(64+32+32);
+            const uint8_t *pubkey = buf_io+0;
+            const uint8_t *privkey = buf_io+64;
+            uint8_t *result = buf_io+64+32;
+            
+            ps256_ecdh(pubkey, privkey, result);
+
+            break;
+        }
+
 
         case -1:
             // System startup code. Cannot be reached by any code (that hopes to run

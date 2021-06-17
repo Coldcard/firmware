@@ -10,11 +10,17 @@
 // so we don't need stm32l4xx_hal_hash_ex.c
 HAL_StatusTypeDef HAL_HASHEx_SHA256_Accmlt(HASH_HandleTypeDef *hhash, uint8_t *pInBuffer, uint32_t Size)
 {
-  return  HASH_Accumulate(hhash, pInBuffer, Size,HASH_ALGOSELECTION_SHA256);
+  return HASH_Accumulate(hhash, pInBuffer, Size,HASH_ALGOSELECTION_SHA256);
 }
+
 HAL_StatusTypeDef HAL_HASHEx_SHA256_Start(HASH_HandleTypeDef *hhash, uint8_t *pInBuffer, uint32_t Size, uint8_t* pOutBuffer, uint32_t Timeout)
 {
   return HASH_Start(hhash, pInBuffer, Size, pOutBuffer, Timeout, HASH_ALGOSELECTION_SHA256);
+}
+
+HAL_StatusTypeDef HAL_HMACEx_SHA256_Start(HASH_HandleTypeDef *hhash, uint8_t *pInBuffer, uint32_t Size, uint8_t* pOutBuffer, uint32_t Timeout)
+{
+  return HMAC_Start(hhash, pInBuffer, Size, pOutBuffer, Timeout, HASH_ALGOSELECTION_SHA256);
 }
 
 void sha256_init(SHA256_CTX *ctx)
@@ -93,6 +99,50 @@ sha256_single(const uint8_t data[], uint32_t len, uint8_t digest[32])
     ASSERT(rv == HAL_OK);
 }
 
+//
+// HMAC-SHA256
+//
+
+// hmac_sha256_init()
+//
+    void
+hmac_sha256_init(HMAC_CTX *ctx)
+{
+    memset(ctx, 0, sizeof(HMAC_CTX));
+
+    //ctx->num_pending = 0;
+}
+
+// hmac_sha256_update()
+//
+    void
+hmac_sha256_update(HMAC_CTX *ctx, const uint8_t data[], uint32_t len)
+{
+    // simple append
+    ASSERT(ctx->num_pending + len < sizeof(ctx->pending));
+
+    memcpy(ctx->pending+ctx->num_pending, data, len);
+
+    ctx->num_pending += len;
+}
+
+// hmac_sha256_final()
+//
+    void
+hmac_sha256_final(HMAC_CTX *ctx, const uint8_t key[32], uint8_t digest[32])
+{
+    HASH_HandleTypeDef  hh = {0};
+
+    hh.Init.DataType = HASH_DATATYPE_8B;
+    hh.Init.pKey = (uint8_t *)key;      // const viol due to API dumbness
+    hh.Init.KeySize = 32;
+
+    HAL_HASH_Init(&hh);
+
+    HAL_StatusTypeDef rv = HAL_HMACEx_SHA256_Start(&hh,
+                                ctx->pending, ctx->num_pending, digest, HAL_MAX_DELAY);
+    ASSERT(rv == HAL_OK);
+}
 
 #ifndef RELEASE
 //#pragma GCC push_options
@@ -136,6 +186,22 @@ sha256_selftest(void)
             ASSERT(memcmp(md, md2, 32) == 0);
 //            puts(" ... PASS");
         }
+    }
+
+    // HMAC
+    //  from hashlib import sha256
+    //  from hmac import HMAC
+    //  >>> HMAC(key=bytes(range(32)), msg=b'abcd', digestmod=sha256).hexdigest()
+    //  'ce5ab0733fe9b6f0767e841868c523e7db0c60d1fe6f276399fdee63d61d6c5b'
+
+    {   HMAC_CTX c2;
+        static const uint8_t key[32] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
+        static const uint8_t hexpect[32] = { 206, 90, 176, 115, 63, 233, 182, 240, 118, 126, 132, 24, 104, 197, 35, 231, 219, 12, 96, 209, 254, 111, 39, 99, 153, 253, 238, 99, 214, 29, 108, 91 };
+
+        hmac_sha256_init(&c2);
+        hmac_sha256_update(&c2, (uint8_t *)"abcd", 4);
+        hmac_sha256_final(&c2, key, md);
+        ASSERT(memcmp(md, hexpect, 32) == 0);
     }
 
     puts("PASS");

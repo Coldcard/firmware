@@ -200,6 +200,9 @@ sdcard_try_file(uint32_t blk_pos)
     uint8_t world_check[32];
     bool ok = verify_firmware_in_ram(start, len, world_check);
 
+    // msg already printed, if corrupt image
+    if(!ok) return;
+
     // it is a valid, signed image
     puts("good firmware");
 
@@ -213,7 +216,7 @@ sdcard_try_file(uint32_t blk_pos)
 
     sdcard_light(false);
 
-    // Re-do the upgrade.
+    // Do the upgrade, using PSRAM data.
     psram_do_upgrade(start, len);
 
     // done

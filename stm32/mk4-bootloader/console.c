@@ -59,6 +59,19 @@ puthex4(uint16_t w)
 	putchar(hexmap[(w>>0) & 0xf]);
 }
 
+// putdec()
+//
+	void
+putdec4(uint16_t w)
+{
+    for(int m=1000; m; m /= 10) {
+        if(w >= m) {
+            char n = '0' + ((w / m) % 10);
+            putchar(n);
+        }
+    }
+}
+
 // puthex8()
 //
 	void
@@ -210,6 +223,7 @@ hex_dump(const void *d, int len)
 #define USART_TEACK_REACK_TIMEOUT             1000U             /*!< USART TX or RX enable acknowledge time-out value */
 #define USART_DUMMY_DATA          ((uint16_t) 0xFFFF)           /*!< USART transmitted dummy data                     */
 
+#if 0
 // WaitOnFlag()
 //
     static void
@@ -219,6 +233,7 @@ WaitOnFlag(uint32_t Flag, FlagStatus Status)
     ;
   }
 }
+#endif
 
 /**
   * @brief  Handle USART Communication Timeout.

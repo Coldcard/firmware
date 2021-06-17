@@ -372,6 +372,7 @@
 /** @defgroup I2C_Private_Functions I2C Private Functions
   * @{
   */
+#if 0
 /* Private functions to handle DMA transfer */
 static void I2C_DMAMasterTransmitCplt(DMA_HandleTypeDef *hdma);
 static void I2C_DMAMasterReceiveCplt(DMA_HandleTypeDef *hdma);
@@ -400,6 +401,7 @@ static HAL_StatusTypeDef I2C_Master_ISR_IT(struct __I2C_HandleTypeDef *hi2c, uin
 static HAL_StatusTypeDef I2C_Slave_ISR_IT(struct __I2C_HandleTypeDef *hi2c, uint32_t ITFlags, uint32_t ITSources);
 static HAL_StatusTypeDef I2C_Master_ISR_DMA(struct __I2C_HandleTypeDef *hi2c, uint32_t ITFlags, uint32_t ITSources);
 static HAL_StatusTypeDef I2C_Slave_ISR_DMA(struct __I2C_HandleTypeDef *hi2c, uint32_t ITFlags, uint32_t ITSources);
+#endif
 
 /* Private functions to handle flags during polling transfer */
 static HAL_StatusTypeDef I2C_WaitOnFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Flag, FlagStatus Status,
@@ -409,12 +411,14 @@ static HAL_StatusTypeDef I2C_WaitOnRXNEFlagUntilTimeout(I2C_HandleTypeDef *hi2c,
 static HAL_StatusTypeDef I2C_WaitOnSTOPFlagUntilTimeout(I2C_HandleTypeDef *hi2c, uint32_t Timeout, uint32_t Tickstart);
 static HAL_StatusTypeDef I2C_IsAcknowledgeFailed(I2C_HandleTypeDef *hi2c, uint32_t Timeout, uint32_t Tickstart);
 
+#if 0
 /* Private functions to centralize the enable/disable of Interrupts */
 static void I2C_Enable_IRQ(I2C_HandleTypeDef *hi2c, uint16_t InterruptRequest);
 static void I2C_Disable_IRQ(I2C_HandleTypeDef *hi2c, uint16_t InterruptRequest);
 
 /* Private function to treat different error callback */
 static void I2C_TreatErrorCallback(I2C_HandleTypeDef *hi2c);
+#endif
 
 /* Private function to flush TXDR register */
 static void I2C_Flush_TXDR(I2C_HandleTypeDef *hi2c);
@@ -423,8 +427,10 @@ static void I2C_Flush_TXDR(I2C_HandleTypeDef *hi2c);
 static void I2C_TransferConfig(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uint8_t Size, uint32_t Mode,
                                uint32_t Request);
 
+#if 0
 /* Private function to Convert Specific options */
 static void I2C_ConvertOtherXferOptions(I2C_HandleTypeDef *hi2c);
+#endif
 /**
   * @}
   */
@@ -1285,6 +1291,7 @@ HAL_StatusTypeDef HAL_I2C_Master_Receive(I2C_HandleTypeDef *hi2c, uint16_t DevAd
   }
 }
 
+#if 0
 /**
   * @brief  Transmits in slave mode an amount of data in blocking mode.
   * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
@@ -5996,6 +6003,7 @@ static void I2C_TreatErrorCallback(I2C_HandleTypeDef *hi2c)
 #endif /* USE_HAL_I2C_REGISTER_CALLBACKS */
   }
 }
+#endif
 
 /**
   * @brief  I2C Tx data register flush process.
@@ -6018,6 +6026,7 @@ static void I2C_Flush_TXDR(I2C_HandleTypeDef *hi2c)
   }
 }
 
+#if 0
 /**
   * @brief  DMA I2C master transmit process complete callback.
   * @param  hdma DMA handle
@@ -6206,6 +6215,7 @@ static void I2C_DMAAbort(DMA_HandleTypeDef *hdma)
 
   I2C_TreatErrorCallback(hi2c);
 }
+#endif
 
 /**
   * @brief  This function handles I2C Communication Timeout.
@@ -6466,6 +6476,7 @@ static void I2C_TransferConfig(I2C_HandleTypeDef *hi2c, uint16_t DevAddress, uin
                         (((uint32_t)Size << I2C_CR2_NBYTES_Pos) & I2C_CR2_NBYTES) | (uint32_t)Mode | (uint32_t)Request));
 }
 
+#if 0
 /**
   * @brief  Manage the enabling of Interrupts.
   * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
@@ -6629,6 +6640,7 @@ static void I2C_ConvertOtherXferOptions(I2C_HandleTypeDef *hi2c)
     /* Nothing to do */
   }
 }
+#endif
 
 /**
   * @}

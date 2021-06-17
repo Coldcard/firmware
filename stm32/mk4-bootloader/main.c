@@ -21,6 +21,7 @@
 #include "rng.h"
 #include "gpio.h"
 #include "ae.h"
+#include "se2.h"
 #include "pins.h"
 #include "verify.h"
 #include "storage.h"
@@ -139,12 +140,18 @@ system_startup(void)
     // wipe all of SRAM (except our own memory, which was already wiped)
     wipe_all_sram();
 
-    puts2("AE setup: ");
+    puts2("SE1 setup: ");
     // secure element setup
     ae_setup();
     ae_set_gpio(0);         // not checking return on purpose XXX maybe move elsewhere/skip?
 
     puts("done");
+
+    puts2("SE2 setup: ");
+    se2_setup();
+    se2_probe();
+    puts("done");
+
 
 #if 0
     {   uint8_t config[128] = {0};

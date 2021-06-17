@@ -26,6 +26,12 @@ typedef struct {
     uint8_t  otp_key_long[416];         // same, but for longer secret area
     uint8_t  hash_cache_secret[32];     // encryption for cached pin hash value
 
+    // SE2 items
+    uint8_t     se2_pairing[32] __attribute__((aligned(8)));
+    uint8_t     se2_pubkey_A[64];
+    uint8_t     se2_romid[8];           // serial number
+    uint8_t     se2_spare[24];
+
     // ... plus lots more space ...
 } rom_secrets_t;
 
