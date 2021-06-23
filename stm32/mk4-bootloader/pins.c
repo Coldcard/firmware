@@ -63,11 +63,13 @@ pin_is_blank(uint8_t keynum)
     return is_blank;
 }
 
+#if 0
 // is_duress_pin()
 //
     static bool
 is_duress_pin(const uint8_t digest[32], bool is_blank, int *pin_kn)
 {
+    return false;
     // duress PIN can never be blank; that means it wasn't set yet
     if(is_blank) return false;
 
@@ -87,6 +89,7 @@ is_duress_pin(const uint8_t digest[32], bool is_blank, int *pin_kn)
 
     return false;
 }
+#endif
 
 // is_main_pin()
 //
@@ -137,6 +140,7 @@ pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose)
     sha256_final(&ctx, result);
 
     // and a second-sha256 on that, just in case.
+    // TODO: use single-step
     sha256_init(&ctx);
     sha256_update(&ctx, result, 32);
     sha256_final(&ctx, result);
@@ -144,7 +148,7 @@ pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose)
 
 // pin_hash_attempt()
 //
-// Go from PIN to heavily hashed 32-byte value, suitable testing against device.
+// Go from PIN to heavily hashed 32-byte value, suitable for testing against device.
 //
 // - brickme pin doesn't do the extra KDF step, so it can be fast
 // - call with target_kn == 0 to return a mid-state that can be used for both main and duress
@@ -412,7 +416,7 @@ get_last_success(pinAttempt_t *args)
     // Read two values from data slots
     uint32_t lastgood=0, match_count=0, counter=0, duress_lastgood=0;
     if(_read_slot_as_counter(KEYNUM_lastgood, &lastgood)) return -1;
-    if(_read_slot_as_counter(KEYNUM_duress_lastgood, &duress_lastgood)) return -1;
+    //XXX//if(_read_slot_as_counter(KEYNUM_duress_lastgood, &duress_lastgood)) return -1;
     if(_read_slot_as_counter(KEYNUM_match_count, &match_count)) return -1;
 
     // Read the monotonically-increasing counter
@@ -617,6 +621,7 @@ pin_delay(pinAttempt_t *args)
     return 0;
 }
 
+#if 0
 // updates_for_duress_login()
 //
     static int
@@ -641,6 +646,7 @@ updates_for_duress_login(uint8_t digest[32])
 
     return 0;
 }
+#endif
 
 // updates_for_good_login()
 //
@@ -736,6 +742,8 @@ pin_login_attempt(pinAttempt_t *args)
     rv = ae_mixin_key(0, mid_digest, digest);
     if(rv) return EPIN_AE_FAIL;
 
+    // TODO: rework to use SE2
+#if 0
     if(is_duress_pin(digest, (args->pin_len == 0), &pin_kn)) {
         // they gave the duress PIN for this wallet... try to continue w/o any indication
         is_duress = true;
@@ -747,6 +755,9 @@ pin_login_attempt(pinAttempt_t *args)
         if(rv) return EPIN_AE_FAIL;
 
     } else {
+#else
+    {
+#endif
         // It is not the "duress pin", so assume it's the real PIN, and register
         // as an attempt on that.
         rv = ae_mixin_key(KEYNUM_pin_attempt, mid_digest, digest);
@@ -801,10 +812,12 @@ pin_login_attempt(pinAttempt_t *args)
         // provide false answers to status of duress and brickme
         args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
     } else {
+#if 0
         // do we have duress password?
         if(!pin_is_blank(KEYNUM_duress_pin)) {
             args->state_flags |= PA_HAS_DURESS;
         }
+#endif
 
         // do we have brickme set?
         if(!pin_is_blank(KEYNUM_brickme)) {
@@ -889,6 +902,9 @@ pin_change(pinAttempt_t *args)
     bool is_duress = get_is_duress(args);
 
     if(is_duress) {
+        // XXX rework
+        return EPIN_RANGE_ERR;
+#if 0
         // user is a thug.. limit what they can do
 
         // check for brickme pin on everything here.
@@ -906,6 +922,7 @@ pin_change(pinAttempt_t *args)
         }
 
         required_kn = target_slot = KEYNUM_duress_pin;
+#endif
     } else {
         // No real need to re-prove PIN knowledge.
         // If they tricked us to get to this point, doesn't matter as
@@ -916,12 +933,15 @@ pin_change(pinAttempt_t *args)
             target_slot = KEYNUM_main_pin;
         } else if(cf & CHANGE_SECRET) {
             target_slot = KEYNUM_secret;
+        // XXX rework
+#if 0
         } else if(cf & CHANGE_DURESS_PIN) {
             required_kn = KEYNUM_duress_pin;
             target_slot = KEYNUM_duress_pin;
         } else if(cf & CHANGE_DURESS_SECRET) {
             required_kn = KEYNUM_duress_pin;
             target_slot = KEYNUM_duress_secret;
+#endif
         } else if(cf & CHANGE_BRICKME_PIN) {
             required_kn = KEYNUM_brickme;       // but main_pin would be better: rate limited
             target_slot = KEYNUM_brickme;
@@ -933,7 +953,7 @@ pin_change(pinAttempt_t *args)
     // Determine they know hash protecting the secret/pin to be changed.
     uint8_t required_digest[32]; 
     if(   (!is_duress && required_kn == KEYNUM_main_pin) 
-        || (is_duress && required_kn == KEYNUM_duress_pin)
+        //XXX|| (is_duress && required_kn == KEYNUM_duress_pin)
     ) {
         // Restore cached version of PIN digest: faster
         pin_cache_restore(args, required_digest);
@@ -976,16 +996,19 @@ pin_change(pinAttempt_t *args)
 
             updates_for_good_login(new_digest);
         }
+#if 0
         if(is_duress && (target_slot == KEYNUM_duress_pin)) {
             // duress pin changed, and we're the duress thug, so update cache
             pin_cache_save(args, new_digest);
         }
+#endif
     }
 
     // Record new secret.
     // Note the required_digest might have just changed above.
     if(cf & (CHANGE_SECRET | CHANGE_DURESS_SECRET)) {
-        int secret_kn = (required_kn == KEYNUM_main_pin) ? KEYNUM_secret : KEYNUM_duress_secret;
+// XXX // int secret_kn = (required_kn == KEYNUM_main_pin) ? KEYNUM_secret : KEYNUM_duress_secret;
+        int secret_kn = KEYNUM_secret;
 
         bool is_all_zeros = check_all_zeros(args->secret, AE_SECRET_LEN);
 
@@ -1047,13 +1070,19 @@ pin_fetch_secret(pinAttempt_t *args)
     uint8_t     digest[32];
     pin_cache_restore(args, digest);
 
+#if 0
     // determine if we should proceed under duress
     bool is_duress = get_is_duress(args);
 
     int pin_kn = is_duress ? KEYNUM_duress_pin : KEYNUM_main_pin;
     int secret_slot = is_duress ? KEYNUM_duress_secret : KEYNUM_secret;
+#else
+    int pin_kn = KEYNUM_main_pin;
+    int secret_slot = KEYNUM_secret;
+#endif
 
     if(args->change_flags & CHANGE_DURESS_SECRET) {
+#if 0
         // Let them know the duress secret, iff: 
         // - they are logged into corresponding primary pin (not duress) 
         // - and they know the duress pin as well.
@@ -1077,7 +1106,10 @@ pin_fetch_secret(pinAttempt_t *args)
             // because the decryption of the secret below will fail if we had been lied to.
             return EPIN_AUTH_FAIL;
         }
+#else
+        return EPIN_BAD_REQUEST;
     }
+#endif
 
     // read out the secret that corresponds to that pin
     rv = ae_encrypted_read(secret_slot, pin_kn, digest, args->secret, AE_SECRET_LEN);
@@ -1087,7 +1119,7 @@ pin_fetch_secret(pinAttempt_t *args)
     // decrypt the secret, but only if not zeros!
     if(!is_all_zeros) xor_mixin(args->secret, rom_secrets->otp_key, AE_SECRET_LEN);
 
-fail:
+//fail:
     ae_reset_chip();
 
     if(rv) return EPIN_AE_FAIL;

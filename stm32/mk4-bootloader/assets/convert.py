@@ -68,7 +68,7 @@ def make_background():
 
     return img
 
-def make_frame(img, txt, icon_name, text_pos=None, icon_pos=3, icon_xpos=0):
+def make_frame(img, txt, icon_name, text_pos=None, icon_pos=3, icon_xpos=0, crossout=False):
     rv = img.copy()
     d = ImageDraw.Draw(rv)
 
@@ -83,6 +83,10 @@ def make_frame(img, txt, icon_name, text_pos=None, icon_pos=3, icon_xpos=0):
     w,h = d.textsize(txt, font=sm_font)
     assert w <= 128, "Message too wide: " + repr(txt)
     d.text( (64-(w/2), text_pos-h), txt, font=sm_font, fill=1)
+
+    if crossout:
+        x,y = (64-(w/2), text_pos-h)
+        d.line( (x,y, x+(w/2), y+(w/2)) )
 
     return rv
 
@@ -177,15 +181,19 @@ results = [
     #( 'brick', '', 'ticket', dict(icon_pos=12) ),           # was: icon=Trash / I am brick.
     ( 'brick', 'Bricked', None, dict() ),           # was: icon=ticket
     #( 'dfu', 'Send Upgrade', 'download', {} ), # was beautiful, but won't be seen with RDP=2
-    ( 'dfu', 'DFU', None, dict(text_pos=37) ),
+    #( 'dfu', 'DFU', None, dict(text_pos=37) ), # removed
     ( 'downgrade', 'Downgrade?', 'history', {} ),
     ( 'corrupt', 'Firmware?', 'lemon', {} ),
     ( 'logout', 'Logout Done', 'logout', {}),
     ( 'devmode', 'Danger! Caution!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
     ( 'upgrading', 'Upgrading', 'graph-up', {}),
     ( 'replug', 'Replug', None, {}),        # visible in factory only
-    ( 'search', 'Searching...', 'maglass', {}),
-    ( 'recovery', 'Insert Card', 'file', {}),
+    #( 'search', 'Searching...', 'maglass', {}),
+    ( 'search', 'Searching...', None, {}),
+    #( 'recovery', 'Insert Card', 'file', {}),
+    ( 'recovery', 'Recovery!', 'file', {}),
+    ( 'se1_issue', 'U4', None, dict(crossout=1) ), 
+    ( 'se2_issue', 'U5', None, dict(crossout=1) ), 
 ]
 
 if __name__ == '__main__':

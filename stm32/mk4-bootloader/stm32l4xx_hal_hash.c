@@ -1200,6 +1200,7 @@ HAL_StatusTypeDef HAL_HMAC_SHA1_Start(HASH_HandleTypeDef *hhash, uint8_t *pInBuf
   */
 
 
+#if 0
 /**
   * @brief  Initialize the HASH peripheral in HMAC MD5 mode, next process pInBuffer then
   *         read the computed digest in interrupt mode.
@@ -1263,7 +1264,6 @@ HAL_StatusTypeDef HAL_HMAC_SHA1_Start_IT(HASH_HandleTypeDef *hhash, uint8_t *pIn
   */
 
 
-#if 0
 /**
   * @brief  Initialize the HASH peripheral in HMAC MD5 mode then initiate the required
   *         DMA transfers to feed the key and the input buffer to the Peripheral.
@@ -3168,6 +3168,7 @@ if((State_tmp == HAL_HASH_STATE_READY) || (State_tmp == HAL_HASH_STATE_SUSPENDED
 
 
 
+#if 0
 /**
   * @brief  Initialize the HASH peripheral in HMAC mode, next process pInBuffer then
   *         read the computed digest in interruption mode.
@@ -3273,7 +3274,6 @@ if((State_tmp == HAL_HASH_STATE_READY) || (State_tmp == HAL_HASH_STATE_SUSPENDED
 
 
 
-#if 0
 /**
   * @brief  Initialize the HASH peripheral in HMAC mode then initiate the required
   *         DMA transfers to feed the key and the input buffer to the Peripheral.

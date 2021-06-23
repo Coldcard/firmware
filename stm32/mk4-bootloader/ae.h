@@ -9,6 +9,9 @@
 //#define FOR_508     1
 #define FOR_608     1
 
+// Must be exactly 32 chars:
+static const char *copyright_msg = "Copyright 2018- by Coinkite Inc.";     
+
 // Opcodes from table 9-4, page 51
 //
 typedef enum {
@@ -97,6 +100,9 @@ void ae_keep_alive(void);
 
 // Pick a fresh random number.
 int ae_random(uint8_t randout[32]);
+
+// Pick a EC keypair and return public part; private saved.
+int ae_gen_ecc_key(uint8_t keynum, uint8_t pubkey_out[64]);
 
 // Roll (derive) a key using random number we forget. One way!
 int ae_destroy_key(int keynum);

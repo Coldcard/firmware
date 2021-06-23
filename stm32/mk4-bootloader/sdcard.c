@@ -93,6 +93,12 @@ sdcard_probe(uint32_t *num_blocks)
 
     sdcard_light(true);
 
+    rv = HAL_SD_ConfigSpeedBusOperation(&hsd, SDMMC_SPEED_MODE_AUTO);
+    if(rv != HAL_OK) {
+        puts("speed");
+        return false;
+    }
+
     // configure the SD bus width for 4-bit wide operation
     rv = HAL_SD_ConfigWideBusOperation(&hsd, SDMMC_BUS_WIDE_4B);
     if(rv != HAL_OK) {
@@ -276,6 +282,8 @@ sdcard_recovery(void)
 {
     // Use SDCard to recover. Must be precise version they tried to
     // install before, and will be slow AF.
+
+    puts("Recovery mode.");
 
     while(1) {
         // .. need them to insert a card

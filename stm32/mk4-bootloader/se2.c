@@ -8,6 +8,7 @@
 #include "main.h"
 #include "se2.h"
 #include "ae.h"
+#include "secrets.h"
 #include "verify.h"
 #include "psram.h"
 #include "faster_sha256.h"
@@ -33,10 +34,9 @@ static jmp_buf error_env;
 // fixed value for DS28C36B part
 static const uint8_t DEV_MANID[2] = { 0x00, 0x80 };
 
-// DEBUG
-static struct _se2_secrets tbd;
-#define SE2_SECRETS           (&tbd)
-//#define SE2_SECRETS         (&rom_secrets->se2)
+// DEBUG / setup time.
+static struct _se2_secrets _tbd;
+#define SE2_SECRETS         (rom_secrets->se2.pairing[0] == 0xff ? &_tbd : &rom_secrets->se2)
 
 // HAL API requires shift here.
 #define I2C_ADDR        (0x1b << 1)
@@ -80,7 +80,7 @@ static struct _se2_secrets tbd;
 #define PROT_APH		0x08
 #define PROT_EPH		0x10
 #define PROT_AUTH		0x20
-#define PROT_ECH		0x40
+#define PROT_ECH		0x40            // requires ECW too
 #define PROT_ECW		0x80
 
 // forward defs...
@@ -282,6 +282,7 @@ se2_read_page(uint8_t page_num, uint8_t data[32], bool verify)
 //
 // - encrypt and write a value.
 // - needs existing value to pass auth challenge (so we re-read it)
+// - so cannot be used on read-protected pages like keys
 //
     void
 se2_write_encrypted(uint8_t page_num, const uint8_t data[32], int keynum, const uint8_t *secret)
@@ -346,6 +347,7 @@ se2_write_encrypted(uint8_t page_num, const uint8_t data[32], int keynum, const 
 // se2_read_encrypted()
 //
 // - use key to read, but must also do verify because no replay protection otherwise
+// - page must be protected with EPH or ECH, and of course !RP
 //
     void
 se2_read_encrypted(uint8_t page_num, uint8_t data[32], int keynum, const uint8_t *secret)
@@ -430,13 +432,11 @@ se2_probe(void)
 
     // See what's attached. Read serial number and verify it using shared secret
     rng_delay();
-    if(check_all_ones(rom_secrets->se2.romid, 8)) {
-        se2_setup_config();
+    if(rom_secrets->se2.pairing[0] == 0xff) {
+        // chip not setup yet, ok in factory
+        return false;
     } else {
-        // Check the basics are right, like pairing secret.
-        CHECK_RIGHT(!check_all_ones(rom_secrets->se2.pairing, 32));
-
-        // this is also verifying the secret effectively
+        // This is also verifying the pairing secret, effectively.
         uint8_t tmp[32];
         se2_read_page(PGN_ROM_OPTIONS, tmp, true);
 
@@ -470,11 +470,9 @@ se2_clear_volatile(void)
     CHECK_RIGHT(se2_read1() == RC_SUCCESS);
 }
 
-#pragma GCC push_options
-#pragma GCC optimize ("O0")
 // se2_setup_config()
 //
-// One-time config and lockdown of the chip
+// One-time config and lockdown of the SE2 chip.
 //
 // CONCERN: Must not be possible to call this function after replacing
 // the chip deployed originally. But key secrets would have been lost
@@ -503,20 +501,24 @@ se2_setup_config(void)
         LOCKUP_FOREVER();
     }
 
-    memset(&tbd, 0, sizeof(tbd));
+    if(rom_secrets->se2.pairing[0] != 0xff) {
+        // we've been here, so nothing more to do
+        return;
+    }
+
+    // Global (ram) copy of values to be writen, so we can use them during setup
+    memset(&_tbd, 0xff, sizeof(_tbd));
 
     // pick internal keys
-    rng_buffer(tbd.tpin_key, 32);
+    rng_buffer(_tbd.tpin_key, 32);
 
     // capture serial of device
-    // - could verify against 0xff secret A, but can't debug that
     uint8_t tmp[32];
-    //se2_read_page(PGN_ROM_OPTIONS, tmp, true);
     se2_read_page(PGN_ROM_OPTIONS, tmp, false);
 
     ASSERT(tmp[1] == 0x00);     // check ANON is not set
 
-    memcpy(tbd.romid, tmp+24, 8);
+    memcpy(_tbd.romid, tmp+24, 8);
 
     // forget a secret - B
     rng_buffer(tmp, 32);
@@ -524,8 +526,8 @@ se2_setup_config(void)
 
     // have chip pick a keypair, record public part for later
     se2_pick_keypair(0, false);
-    se2_read_page(PGN_PUBKEY_A,   &tbd.pubkey_A[0], false);
-    se2_read_page(PGN_PUBKEY_A+1, &tbd.pubkey_A[32], false);
+    se2_read_page(PGN_PUBKEY_A,   &_tbd.pubkey_A[0], false);
+    se2_read_page(PGN_PUBKEY_A+1, &_tbd.pubkey_A[32], false);
 
     // Burn privkey B with garbage. Invalid ECC key like this cannot
     // be used (except to make errors)
@@ -536,42 +538,68 @@ se2_setup_config(void)
     se2_write_page(PGN_PUBKEY_B+1, tmp);
 
     // pick a paring secret (A)
-    rng_buffer(tbd.pairing, 32);
-    //hex_dump(tbd.pairing, 32);
-    se2_write_page(PGN_SECRET_A, tbd.pairing);
+    do {
+        rng_buffer(_tbd.pairing, 32);
+    } while(_tbd.pairing[0] == 0xff);
+    se2_write_page(PGN_SECRET_A, _tbd.pairing);
+    //se2_set_protection(PGN_SECRET_A, PROT_RP|PROT_WP);
 
     // called the "easy" key, this one requires only SE2 pairing to read/write
-    // - so we can wipe it anytime, easily to reset? IDK
+    // - so we can wipe it anytime as part of bricking maybe
+    // - but also so that more than just the paired pubkey w/ SE1 is needed
     rng_buffer(tmp, 32);
-    se2_write_page(PGN_SE2_EASY_KEY, tmp);
+    se2_set_protection(PGN_SE2_EASY_KEY, PROT_EPH);
+    se2_write_encrypted(PGN_SE2_EASY_KEY, tmp, 0, _tbd.pairing);
 
-    // wipe all trick pins.
+    // wipe all trick pins and their data slots
     memset(tmp, 0, 32);
     for(int pn=0; pn < PGN_LAST_TRICK; pn++) {
         se2_set_protection(pn, PROT_EPH);
-        se2_write_encrypted(pn, tmp, 0, tbd.pairing);
+        se2_write_encrypted(pn, tmp, 0, _tbd.pairing);
     }
 
+    // TODO: check slot protections.
+    //se2_set_protection(PGN_ROM_OPTIONS, PROT_WP); // untested
+
     // save the shared secrets for ourselves, in flash
-
-    // pick some AES keys
-
-    // seed trick pin slots with NOP's / unused values
-
-    // lock all slots appropriately
-    
-
-// a4a4561d39a9212e9952b6b7e587764db662e03eb7821c86c391e220a2571991
-    
-
-    // TODO 
-    //BREAKPOINT;
+    flash_save_se2_data(&_tbd);
 }
-#pragma GCC pop_options
+
+// se2_save_auth_pubkey()
+//
+// Record and enable an ECC pubkey for joining purposes.
+// - trusted env. no need for encrypted comms
+//
+    void
+se2_save_auth_pubkey(const uint8_t pubkey[64])
+{
+    if(setjmp(error_env)) fatal_mitm();
+
+    ASSERT(check_all_ones(rom_secrets->se2.auth_pubkey, 64));
+    memcpy(&_tbd, &rom_secrets->se2, sizeof(_tbd));
+
+    // pick the "hard" key now, while it's easy to set
+    uint8_t     tmp[32];
+    rng_buffer(tmp, 32);
+    se2_write_page(PGN_SE2_HARD_KEY, tmp);
+
+    // save to "pubkey C"
+    se2_write_page(PGN_PUBKEY_C, &pubkey[0]);
+    se2_write_page(PGN_PUBKEY_C+1, &pubkey[32]);
+
+    memcpy(_tbd.auth_pubkey, pubkey, 64);
+
+    // commit pubkey to mcu flash
+    flash_save_se2_data(&_tbd);
+
+    // lock it all up
+    se2_set_protection(PGN_SE2_HARD_KEY, PROT_WP | PROT_ECH | PROT_ECW);
+    se2_set_protection(PGN_PUBKEY_C, PROT_WP | PROT_RP | PROT_AUTH);
+}
 
 // se2_clear_tricks()
 //
-// Wipe all the trick PIN's and their side effects.
+// Wipe all the trick PIN's and their data.
 //
     void
 se2_clear_tricks(void)

@@ -157,8 +157,14 @@ is_print(uint8_t c)
     void
 hex_dump(const void *d, int len)
 {
-    int i,j;
 	const uint8_t *data = (const uint8_t *)d;
+#if 1
+    for(int i=0; i<len; i++) {
+        puthex2(data[i]);
+    }
+    putchar('\n');
+#else
+    int i,j;
 
     for(i=0; i<len;) {
 		puthex4(i);
@@ -197,6 +203,8 @@ hex_dump(const void *d, int len)
         putchar('\n');
         i += j;
     }
+#endif
+
 }
 
 // Copied parts of stm32l4xx_hal_usart.c

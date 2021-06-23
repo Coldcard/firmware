@@ -16,9 +16,6 @@ extern const unsigned char screen_mitm[];
 extern const unsigned char screen_brick[];
 
 
-extern const unsigned char screen_dfu[];
-
-
 extern const unsigned char screen_downgrade[];
 
 
@@ -41,4 +38,10 @@ extern const unsigned char screen_search[];
 
 
 extern const unsigned char screen_recovery[];
+
+
+extern const unsigned char screen_se1_issue[];
+
+
+extern const unsigned char screen_se2_issue[];
 

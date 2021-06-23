@@ -22,4 +22,6 @@ void wipe_all_sram(void);
 // Entry point
 void system_startup(void);
 
+void __attribute__((noreturn)) fatal_mitm(void);
+
 // EOF

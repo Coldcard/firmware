@@ -460,6 +460,7 @@ __weak void HAL_OSPI_MspInit(OSPI_HandleTypeDef *hospi)
    */
 }
 
+#if 0
 /**
   * @brief  De-Initialize the OSPI peripheral.
   * @param  hospi : OSPI handle
@@ -517,6 +518,7 @@ __weak void HAL_OSPI_MspDeInit(OSPI_HandleTypeDef *hospi)
             the HAL_OSPI_MspDeInit can be implemented in the user file
    */
 }
+#endif
 
 /**
   * @}
@@ -900,6 +902,7 @@ HAL_StatusTypeDef HAL_OSPI_Command(OSPI_HandleTypeDef *hospi, OSPI_RegularCmdTyp
   return status;
 }
 
+#if 0
 /**
   * @brief  Set the command configuration in interrupt mode.
   * @param  hospi : OSPI handle
@@ -1172,6 +1175,8 @@ HAL_StatusTypeDef HAL_OSPI_Transmit(OSPI_HandleTypeDef *hospi, uint8_t *pData, u
   return status;
 }
 
+#endif
+
 /**
   * @brief  Receive an amount of data in blocking mode.
   * @param  hospi   : OSPI handle
@@ -1264,6 +1269,8 @@ HAL_StatusTypeDef HAL_OSPI_Receive(OSPI_HandleTypeDef *hospi, uint8_t *pData, ui
   /* Return function status */
   return status;
 }
+
+#if 0
 
 /**
   * @brief  Send an amount of data in non-blocking mode with interrupt.
@@ -1384,7 +1391,6 @@ HAL_StatusTypeDef HAL_OSPI_Receive_IT(OSPI_HandleTypeDef *hospi, uint8_t *pData)
   return status;
 }
 
-#if 0
 /**
   * @brief  Send an amount of data in non-blocking mode with DMA.
   * @param  hospi : OSPI handle

@@ -141,9 +141,10 @@ system_startup(void)
     wipe_all_sram();
 
     puts2("SE1 setup: ");
-    // secure element setup
+
+    // secure elements setup
     ae_setup();
-    ae_set_gpio(0);         // not checking return on purpose XXX maybe move elsewhere/skip?
+    ae_set_gpio(0);         // turn light red
 
     puts("done");
 
@@ -198,7 +199,7 @@ system_startup(void)
 
 // fatal_error(const char *msg)
 //
-    void
+    void __attribute__((noreturn))
 fatal_error(const char *msgvoid)
 {
     oled_setup();
@@ -217,7 +218,7 @@ fatal_error(const char *msgvoid)
 
 // fatal_mitm()
 //
-    void
+    void __attribute__((noreturn))
 fatal_mitm(void)
 {
     oled_setup();
@@ -228,21 +229,6 @@ fatal_mitm(void)
 #endif
 
     LOCKUP_FOREVER();
-}
-
-// dfu_by_request()
-//
-    void
-dfu_by_request(void)
-{
-    if(flash_is_security_level2()) {
-        // cannot get into DFU when secure
-        // so do nothing
-        return;
-    }
-
-    oled_show(screen_dfu);
-    enter_dfu();
 }
 
 // enter_dfu()

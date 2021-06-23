@@ -14,6 +14,7 @@
 #include "rng.h"
 #include "oled.h"
 #include "ae.h"
+#include "se2.h"
 #include "console.h"
 #include <string.h>
 #include <errno.h>
@@ -355,7 +356,7 @@ pick_pairing_secret(void)
     }
 
     // Also at this point, pick RNG noise to use as our one-time-pad
-    // for encrypting the secrets held in the 608a.
+    // for encrypting the secrets held in the secure elements
     {
         uint32_t dest = (uint32_t)&rom_secrets->otp_key;
         const uint32_t blen = sizeof(rom_secrets->otp_key) 
@@ -405,7 +406,7 @@ confirm_pairing_secret(void)
 
 // flash_save_ae_serial()
 //
-// Write the serial number of ATECC508A into flash forever.
+// Write the serial number of ATECC608 into flash forever.
 //
     void
 flash_save_ae_serial(const uint8_t serial[9])
@@ -453,6 +454,38 @@ flash_save_bag_number(const uint8_t new_number[32])
     flash_lock();
 }
 
+// flash_save_se2_data()
+//
+// Save bunch of stuff related to SE2. Leave anything all ones.
+//
+    void
+flash_save_se2_data(const struct _se2_secrets *se2)
+{
+    uint8_t *dest = (uint8_t *)&rom_secrets->se2;
+    uint8_t *src = (uint8_t *)se2;
+
+    flash_setup0();
+    flash_unlock();
+
+    for(int i=0; i<(sizeof(struct _se2_secrets)/8); i++, dest+=8, src+=8) {
+        uint64_t val;
+        memcpy(&val, src, sizeof(val));
+
+        // don't write if all ones or already written correctly
+        if(val == ~0) continue;
+        if(check_equal(dest, src, 8)) continue;
+
+        // can't write if not ones already
+        ASSERT(check_all_ones(dest, 8));
+
+        if(flash_burn((uint32_t)dest, val)) {
+            INCONSISTENT("fail write");
+        }
+    }
+
+    flash_lock();
+}
+
 // flash_setup()
 //
 // This is really a state-machine, to recover boards that are booted w/ missing AE chip.
@@ -482,15 +515,18 @@ flash_setup(void)
 
     if(blank_xor || blank_ae) {
 
-        // configure and lock-down the SE
+        // setup the SE2 (mostly). handles failures
+        se2_setup_config();
+
+        // configure and lock-down the SE1
         int rv = ae_setup_config();
 
         rng_delay();
         if(rv) {
             // Hardware fail speaking to AE chip ... be careful not to brick here.
             // Do not continue!! We might fix the board, or add missing pullup, etc.
-            oled_show(screen_brick);
-            puts("SE config fail");
+            oled_show(screen_se1_issue);
+            puts("SE1 config fail");
 
             LOCKUP_FOREVER();
         }

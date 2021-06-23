@@ -1109,6 +1109,7 @@ HAL_StatusTypeDef HAL_SD_WriteBlocks(SD_HandleTypeDef *hsd, uint8_t *pData, uint
   }
 }
 
+#if 0
 /**
   * @brief  Reads block(s) from a specified address in a card. The Data transfer
   *         is managed in interrupt mode.
@@ -1588,7 +1589,9 @@ HAL_StatusTypeDef HAL_SD_WriteBlocks_DMA(SD_HandleTypeDef *hsd, uint8_t *pData, 
     return HAL_BUSY;
   }
 }
+#endif
 
+#if 0
 /**
   * @brief  Erases the specified memory area of the given SD card.
   * @note   This API should be followed by a check on the card state through
@@ -1695,7 +1698,6 @@ HAL_StatusTypeDef HAL_SD_Erase(SD_HandleTypeDef *hsd, uint32_t BlockStartAdd, ui
   }
 }
 
-#if 0
 /**
   * @brief  This function handles SD card interrupt request.
   * @param  hsd Pointer to SD handle
@@ -2386,6 +2388,8 @@ HAL_StatusTypeDef HAL_SD_UnRegisterTransceiverCallback(SD_HandleTypeDef *hsd)
   * @{
   */
 
+#if 0
+
 /**
   * @brief  Returns information the information of the card which are stored on
   *         the CID register.
@@ -2418,6 +2422,7 @@ HAL_StatusTypeDef HAL_SD_GetCardCID(SD_HandleTypeDef *hsd, HAL_SD_CardCIDTypeDef
 
   return HAL_OK;
 }
+#endif
 
 /**
   * @brief  Returns information the information of the card which are stored on
@@ -2533,6 +2538,7 @@ HAL_StatusTypeDef HAL_SD_GetCardCSD(SD_HandleTypeDef *hsd, HAL_SD_CardCSDTypeDef
 
   return HAL_OK;
 }
+
 
 /**
   * @brief  Gets the SD status info.
@@ -3034,6 +3040,8 @@ HAL_SD_CardStateTypeDef HAL_SD_GetCardState(SD_HandleTypeDef *hsd)
   return (HAL_SD_CardStateTypeDef)cardstate;
 }
 
+#if 0
+
 /**
   * @brief  Abort the current transfer and disable the SD.
   * @param  hsd pointer to a SD_HandleTypeDef structure that contains
@@ -3219,6 +3227,7 @@ HAL_StatusTypeDef HAL_SD_Abort_IT(SD_HandleTypeDef *hsd)
   * @}
   */
 
+
 /* Private function ----------------------------------------------------------*/
 /** @addtogroup SD_Private_Functions
   * @{
@@ -3398,6 +3407,8 @@ static void SD_DMARxAbort(DMA_HandleTypeDef *hdma)
   }
 }
 #endif /* !STM32L4P5xx && !STM32L4Q5xx && !STM32L4R5xx && !STM32L4R7xx && !STM32L4R9xx && !STM32L4S5xx && !STM32L4S7xx && !STM32L4S9xx */
+
+#endif
 
 /**
   * @brief  Initializes the sd card.

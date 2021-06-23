@@ -582,6 +582,7 @@ HAL_StatusTypeDef HAL_I2C_Init(I2C_HandleTypeDef *hi2c)
   return HAL_OK;
 }
 
+#if 0
 /**
   * @brief  DeInitialize the I2C peripheral.
   * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
@@ -627,6 +628,7 @@ HAL_StatusTypeDef HAL_I2C_DeInit(I2C_HandleTypeDef *hi2c)
 
   return HAL_OK;
 }
+#endif
 
 /**
   * @brief Initialize the I2C MSP.

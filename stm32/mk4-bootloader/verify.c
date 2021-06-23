@@ -352,7 +352,7 @@ fail:
 
 blank:
     puts("no firmware");
-    oled_show(screen_dfu);
+    oled_show(screen_corrupt);
     //enter_dfu();
 
     return false;

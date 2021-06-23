@@ -31,8 +31,8 @@ def secel_dump(blk, rnd=None, which_nums=range(16)):
     #hexdump('SN: ', blk[0:4]+blk[8:13])
     hexdump('RevNum: ', blk[4:8])
 
-    # guessing this nibble in RevNum corresponds to chip 508a vs 608a
-    print("Chip type: atecc%x08a" % ((blk[6]>>4)&0xf))
+    # guessing this nibble in RevNum corresponds to chip 508x vs 608x
+    print("Chip type: atecc%x08" % ((blk[6]>>4)&0xf))
     partno = ((blk[6]>>4)&0xf)
     assert partno in [5, 6]
 
@@ -296,6 +296,8 @@ class ComboConfig(object):
         self.kc.KeyType = 4         # secp256r1
         self.kc.Private = 1         # is a EC private key
         self.kc.Lockable = 0        # normally set in stone
+        self.kc.PubInfo = 1         # 1= allow gen of pubkey from this privkey
+        self.kc.ReqRandom = 1       # operations need rnd component? no clear if needed
         self.sc.IsSecret = 1        # because is a private key
         self.sc.ReadKey = 0x2 if limited_sign else 0xf       # allow CheckMac only, or all usages
         self.sc.WriteConfig = 0x2   # enable GenKey (not PrivWrite), no mac for key roll

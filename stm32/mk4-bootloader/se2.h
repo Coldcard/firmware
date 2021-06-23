@@ -8,7 +8,43 @@
 #include <stdint.h>
 
 void se2_setup(void);
-bool se2_probe(void);       // T if problem
+bool se2_probe(void);           // T if problem
+void se2_setup_config(void);
+void se2_clear_volatile(void);  // not fast, and very visible on bus
+
+#define NUM_TRICKS          6
+#define TC_WIPE             0x80
+#define TC_BRICK            0x40
+#define TC_WALLET           0x20
+#define TC_BOOTROM_MASK      0xf0
+// other codes reserved for mpy, plus arg byte
+
+typedef struct {
+    int         slot_num;           // or -1 if not found
+    uint8_t     tc_flags;           // TC_* bitmask
+    uint8_t     arg;                // one byte of argument is stored.
+    uint8_t     seed_words[32];     // binary
+    char        pin[16];            // ascii
+    int         pin_len;
+    uint32_t    blank_slots;        // 1 indicated unused slot
+} trick_slot_t;
+
+// search if this PIN code should trigger a "trick"
+// - if not in safety mode, the side-effect (brick, etc) will have happened before this returns
+// - will always check all slots so bus traffic doesn't change based on result.
+bool se2_test_trick_pin(const uint8_t tpin_hash[32], trick_slot_t *found, bool safety_mode);
+
+// Save trick setup, T if it fails;
+bool se2_setup_trick(const trick_slot_t *config);
+
+// wipe all the trick PIN's and their side effects
+void se2_clear_tricks(void);
+
+// do our hashing of a possible PIN code
+void trick_pin_hash(const char *pin, int pin_len, uint8_t tpin_hash[32]);
+
+// record and enable an ECC pubkey for joining purposes
+void se2_save_auth_pubkey(const uint8_t pubkey[64]);
 
 // secp256r1 curve functions.
 bool p256_verify(const uint8_t pubkey[64], const uint8_t digest[32], const uint8_t signature[64]);

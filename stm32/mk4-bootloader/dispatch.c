@@ -25,7 +25,6 @@
 #include "pins.h"
 #include "verify.h"
 #include "storage.h"
-#include "sflash.h"
 #include "psram.h"
 #include "se2.h"
 #include "dispatch.h"
@@ -174,7 +173,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                         goto fail;
                     }
                     puts("Die: DFU");
-                    scr = screen_dfu;
+                    scr = screen_downgrade;         // was screen_dfu
                     break;
                 case 1:
                     // in case some way for Micropython to detect it.
