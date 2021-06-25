@@ -3,7 +3,6 @@
  */
 #pragma once
 #include <stdint.h>
-#include "stm32l4xx_hal.h"
 
 // NOTE: Always using AES-256-CTR mode.
 
@@ -11,7 +10,7 @@
 
 // hardware state is the context, altho singleton
 typedef struct {
-    CRYP_HandleTypeDef  hh;
+    // NOTE: must be a multiple of AES_BLOCK_SIZE, and word-aligned.
     uint8_t             pending[512] __attribute__((aligned(4))); 
     int                 num_pending;
 } AES_CTX;

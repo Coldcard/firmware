@@ -16,10 +16,13 @@ extern void fatal_error(const char *) __attribute__((noreturn));
 #undef ASSERT
 #ifndef NDEBUG
 
+// this does have an impact, but probably doesn't matter.
+#define __unlikely(x)     __builtin_expect((x),0)
+
 #ifdef RELEASE
-# define ASSERT(x) do { if(!(x)) { fatal_error("assert");} } while(0)
+# define ASSERT(x) do { if(__unlikely(!(x))) { fatal_error("assert");} } while(0)
 #else
-# define ASSERT(x) do { if(!(x)) { puts("assert"); asm("BKPT #0");} } while(0)
+# define ASSERT(x) do { if(__unlikely(!(x))) { puts("assert"); asm("BKPT #0");} } while(0)
 #endif
 
 #else

@@ -35,7 +35,6 @@ OBJS += stm32l4xx_hal_firewall.o stm32l4xx_hal_gpio.o stm32l4xx_hal_spi.o
 OBJS += stm32l4xx_hal_rcc.o stm32l4xx_hal_rcc_ex.o
 OBJS += stm32l4xx_hal_hash.o stm32l4xx_hal_ospi.o stm32l4xx_hal_i2c.o
 OBJS += stm32l4xx_hal_sd.o stm32l4xx_ll_sdmmc.o
-OBJS += stm32l4xx_hal_cryp.o
 
 #OBJS = $(addsuffix .o, $(basename $(C_SRCS) $(ASM_SRCS)))
 
