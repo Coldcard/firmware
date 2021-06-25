@@ -2,8 +2,7 @@
  * (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
  */
 #pragma once
-#include "basics.h"
-#include <stdio.h>
+#include <stdint.h>
 
 void console_setup(void);
 

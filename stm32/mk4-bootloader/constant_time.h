@@ -8,7 +8,7 @@
 //
 // Constant-time functions, useful for crypto checking.
 //
-// Ironically not constant-time anymore, but the delay is data-independant so same idea.
+// Ironically not constant-time anymore, but the delay is NOT data-dependant so same idea.
 //
 
 // Return T if all bytes are 0xff

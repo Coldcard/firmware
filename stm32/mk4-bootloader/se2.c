@@ -559,7 +559,7 @@ se2_setup_config(void)
     }
 
     // TODO: check slot protections.
-    //se2_set_protection(PGN_ROM_OPTIONS, PROT_WP); // untested
+    //se2_set_protection(PGN_ROM_OPTIONS, PROT_WP); // untested, not indicated in datasheet
 
     // save the shared secrets for ourselves, in flash
     flash_save_se2_data(&_tbd);

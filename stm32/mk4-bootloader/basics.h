@@ -4,6 +4,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include "console.h"
 
 extern void fatal_error(const char *) __attribute__((noreturn));
 
@@ -15,16 +16,14 @@ extern void fatal_error(const char *) __attribute__((noreturn));
 #undef ASSERT
 #ifndef NDEBUG
 
-//#define ASSERT(x) do { if(!(x)) { asm("BKPT #0");} } while(0)
 #ifdef RELEASE
 # define ASSERT(x) do { if(!(x)) { fatal_error("assert");} } while(0)
 #else
-# define ASSERT(x) do { if(!(x)) { fatal_error(#x);} } while(0)
+# define ASSERT(x) do { if(!(x)) { puts("assert"); asm("BKPT #0");} } while(0)
 #endif
 
 #else
 #error "Asserts disabled; not allowed"
-#define ASSERT(x)
 #endif
 
 // Use anywhere. Will just crash on production, but useful in dev.

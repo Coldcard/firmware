@@ -14,6 +14,7 @@
 #include "misc.h"
 #include "console.h"
 #include "faster_sha256.h"
+#include "aes.h"
 #include "version.h"
 #include "clocks.h"
 #include "oled.h"
@@ -116,7 +117,10 @@ system_startup(void)
     reboot_seed_setup();
     rng_delay();
 
+#ifndef RELEASE
     sha256_selftest();
+    aes_selftest();
+#endif
     rng_delay();
 
     // Workaround to get into DFU from micropython

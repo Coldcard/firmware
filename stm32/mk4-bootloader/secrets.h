@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 // This is what we're keeping secret... Kept in flash, written mostly once.
-// field groups must be 64-bit aligned so they can be written independently
+// field groups must be **64-bit** aligned so they can be written independently
 typedef struct {
     // Pairing secret: picked once at factory when turned on
     // for the first time, along with most values here.
@@ -12,11 +12,10 @@ typedef struct {
     uint64_t ae_serial_number[2];       // 9 bytes active
     uint8_t  bag_number[32];            // 32 bytes max, zero padded string
 
-    uint8_t  otp_key[72];               // key for secret encryption (seed storage)
-    uint8_t  otp_key_long[416];         // same, but for longer secret area
+    uint8_t  otp_key[72];               // DELME
+    uint8_t  otp_key_long[416];         // DELME
     uint8_t  hash_cache_secret[32];     // encryption for cached pin hash value
     uint8_t  padding1[8];     
-
 
     // SE2 items
     struct _se2_secrets {
@@ -27,6 +26,14 @@ typedef struct {
         uint8_t  tpin_key[32];          // hmac secret for tricky-pin hashing
         uint8_t  auth_pubkey[64];       // aka pubkey C (AUTH) in SE2, and privkey in SE1
     } se2;
+
+    // replaceable MCU key; can be overwritten; use last one in series
+    // - 64 bytes because of flash write alignment limitations
+    uint8_t     mcu_key1[32];           // fixed key
+    uint8_t     mcu_key2[32];           // fixed key
+    struct _mcu_keys {
+        uint8_t  key[64];
+    } mcu_keys[12];
 
     // ... plus lots more space ...
 } rom_secrets_t;
