@@ -47,14 +47,14 @@ micro-ecc/uECC.o: c_flags += -Wno-undef -Wno-redundant-decls
 # Where we will end up in the memory map (at start of flash)
 # - reserve last 8k flash page for other purposes
 BL_FLASH_BASE = 0x08000000
-BL_FLASH_SIZE = 0xe000
-BL_FLASH_LAST = 0x0800e000
+BL_FLASH_SIZE = 0x1e000
+BL_FLASH_LAST = 0x0801e000
 
-MPY_FLASH_BASE = 0x08010000
+MPY_FLASH_BASE = 0x08020000
 
 # Final 8k bytes of flash reserved for secret data (not code)
 # - must be page-aligned, contains pairing secret
-BL_NVROM_BASE = 0x0800e000		# = BL_FLASH_LAST
+BL_NVROM_BASE = 0x0801e000		# = BL_FLASH_LAST
 BL_NVROM_SIZE = 0x2000			# = 8k
 
 # Bottom 8k of SRAM1 is reserved for us.

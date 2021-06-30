@@ -19,19 +19,21 @@
 #include <errno.h>
 #include <string.h>
 
+// Must be exactly 32 chars:
+static const char *copyright_msg = "Copyright 2018- by Coinkite Inc.";     
+
 // Selectable debug level; keep them as comments regardless
 #if 0
 // break on any error: not helpful since some are normal
 # define ERR(msg)            BREAKPOINT;
 # define ERRV(val, msg)       BREAKPOINT;
-#else
-# define ERR(msg)
-# define ERRV(val, msg)
-#endif
-#if 0
+#elif 0
 // affects timing
 # define ERR(msg)       puts(msg)
 # define ERRV(val, msg) do { puts2(msg); puts2(": "); puthex2(val); putchar('\n'); } while(0)
+#else
+# define ERR(msg)
+# define ERRV(val, msg)
 #endif
 
 // "one wire" is on PA0 aka. UART4
@@ -554,6 +556,7 @@ ae_read1(void)
 // ae_read_n()
 //
 // Read and check CRC over N bytes, wrapped in 3-bytes of framing overhead.
+// Return -1 for timeout, zero for normal, and one-byte error code otherwise.
 //
 	int
 ae_read_n(uint8_t len, uint8_t *body)
@@ -587,7 +590,7 @@ ae_read_n(uint8_t len, uint8_t *body)
                 ERRV(tmp[1], "ae errcode");
                 STATS(last_resp1 = tmp[1]);
 
-                return -1;
+                return tmp[1];
             }
 			ERRV(tmp[0], "wr len");		 // wrong length
 			goto try_again;
@@ -722,6 +725,19 @@ ae_load_nonce(const uint8_t nonce[32])
 {
     // p1=3
 	ae_send_n(OP_Nonce, 3, 0, nonce, 32);          // 608a ok
+
+    return ae_read1();
+}
+
+// ae_load_msgdigest()
+//
+// Load 32bytes of message digest  with a specific value.
+// Needed for signing.
+//
+	int
+ae_load_msgdigest(const uint8_t md[32])
+{
+	ae_send_n(OP_Nonce, (1<<6) | 3, 0, md, 32);
 
     return ae_read1();
 }
@@ -953,22 +969,71 @@ ae_checkmac(uint8_t keynum, const uint8_t secret[32])
 	return 0;
 }
 
-// ae_sign()
+// ae_sign_authed()
 //
 // Sign a message (already digested)
 //
 	int
-ae_sign(uint8_t keynum, uint8_t msg_hash[32], uint8_t signature[64])
+ae_sign_authed(uint8_t keynum, const uint8_t msg_hash[32],
+                uint8_t signature[64], int auth_kn, const uint8_t auth_digest[32])
 {
-	int rv = ae_load_nonce(msg_hash);
+    // indicate we know the PIN
+    ae_pair_unlock();
+    int rv = ae_checkmac(KEYNUM_main_pin, auth_digest);
+    RET_IF_BAD(rv);
+
+    // send what we need signed
+	rv = ae_load_msgdigest(msg_hash);
 	RET_IF_BAD(rv);
 
-	ae_send_n(OP_Sign, 0x80, keynum, NULL, 0);
+    do {
+        ae_send(OP_Sign, (7<<5), keynum);
 
-	rv = ae_read_n(64, signature);
-	RET_IF_BAD(rv);
+        delay_ms(60);     // min time for processing
 
-	return 0;
+        rv = ae_read_n(64, signature);
+    } while(rv == AE_ECC_FAULT);
+
+	return rv;
+}
+
+// ae_ecdh()
+//
+// Calc a shared secret.
+//
+	int
+ae_ecdh(uint8_t keynum, const uint8_t pubkey[64], uint8_t shared_x[32], int auth_kn, const uint8_t auth_digest[32])
+{
+    // indicate we know the PIN
+    ae_pair_unlock();
+    int rv = ae_checkmac(KEYNUM_main_pin, auth_digest);
+    RET_IF_BAD(rv);
+
+    uint8_t result[64];
+    do {
+        ae_send_n(OP_ECDH, (3<<2) | (1<<1) | (0<<0), keynum, pubkey, 64);
+
+        delay_ms(60);     // min time for processing
+
+        rv = ae_read_n(64, result);
+    } while(rv == AE_ECC_FAULT);
+
+    RET_IF_BAD(rv);
+
+    // result is encrypted by AE.
+	SHA256_CTX ctx;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, rom_secrets->pairing_secret, 32);
+    sha256_update(&ctx, &result[32], 16);
+
+	uint8_t tempkey[32];
+    sha256_final(&ctx, tempkey);
+
+    memcpy(shared_x, result, 32);
+    xor_mixin(shared_x, tempkey, 32);
+
+	return rv;
 }
 
 // ae_gen_ecc_key()
@@ -980,7 +1045,7 @@ ae_gen_ecc_key(uint8_t keynum, uint8_t pubkey_out[64])
     uint8_t junk[3] = { 0 };
 
     do {
-        ae_send_n(OP_GenKey, 0x4, keynum, junk, 3);
+        ae_send_n(OP_GenKey, (1<<2), keynum, junk, 3);
 
         delay_ms(100);     // to avoid timeouts
 
@@ -989,6 +1054,46 @@ ae_gen_ecc_key(uint8_t keynum, uint8_t pubkey_out[64])
 
     return rv;
 }
+
+#if 0
+// TEST CODE -- works, value will match rom_secrets->se2.auth_pubkey
+// ae_dump_pubkey()
+//
+    int
+ae_dump_pubkey(void)
+{
+    uint8_t keynum = KEYNUM_joiner_key;
+    int rv;
+    uint8_t junk[3] = { 0 };
+    uint8_t pubkey_out[64];
+
+    uint8_t     auth_digest[32]={0};
+    ae_pair_unlock();
+
+	{ uint16_t state = ae_get_info();
+      puts2("st1="); puthex4(state); putchar('\n');
+    }
+
+    // indicate we know the correct PIN
+    rv = ae_checkmac(KEYNUM_main_pin, auth_digest);
+    RET_IF_BAD(rv);
+
+	{ uint16_t state = ae_get_info();
+      puts2("st2="); puthex4(state); putchar('\n');
+    }
+
+    ae_send_n(OP_GenKey, 0x0, keynum, junk, 3);
+
+    delay_ms(50);     // to avoid timeouts?
+
+    rv = ae_read_n(64, pubkey_out);
+
+    puts2("rv="); puthex2(rv);
+    puts2("\r\npk="); hex_dump(pubkey_out, 64);
+
+    return rv;
+}
+#endif
 
 // ae_get_counter()
 //
@@ -1328,6 +1433,8 @@ ae_encrypted_read32(int data_slot, int blk,
 
     return 0;
 }
+
+
 
 // ae_encrypted_read()
 //

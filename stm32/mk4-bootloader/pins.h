@@ -53,7 +53,7 @@ typedef struct {
     uint32_t    num_fails;              // for UI: number of fails PINs
     uint32_t    attempts_left;          // trys left until bricking
     uint32_t    state_flags;            // what things have been setup/enabled already
-    uint32_t    private_state;          // some internal (encrypted) state [actually a nonce]
+    uint32_t    private_state;          // some internal (encrypted) state
     uint8_t     hmac[32];               // my hmac over above, or zeros
     // remaining fields are return values, or optional args;
     int         change_flags;           // bitmask of what to do

@@ -6,6 +6,7 @@
  */
 #include "pins.h"
 #include "ae_config.h"
+#include "se2.h"
 #include <string.h>
 #include "faster_sha256.h"
 #include "delay.h"
@@ -14,6 +15,7 @@
 #include "constant_time.h"
 #include "storage.h"
 #include "clocks.h"
+#include "aes.h"
 #include "psram.h"
 
 // Number of iterations for KDF
@@ -62,34 +64,6 @@ pin_is_blank(uint8_t keynum)
 
     return is_blank;
 }
-
-#if 0
-// is_duress_pin()
-//
-    static bool
-is_duress_pin(const uint8_t digest[32], bool is_blank, int *pin_kn)
-{
-    return false;
-    // duress PIN can never be blank; that means it wasn't set yet
-    if(is_blank) return false;
-
-    const int kn = KEYNUM_duress_pin;
-
-    // LIMITATION: an active MitM could change what we write
-    // to something else (wrong) and thus we'd never see that
-    // the duress PIN was used.
-
-    ae_reset_chip();
-    ae_pair_unlock();
-    if(ae_checkmac(kn, digest) == 0) {
-        *pin_kn = kn;
-
-        return true;
-    }
-
-    return false;
-}
-#endif
 
 // is_main_pin()
 //
@@ -249,13 +223,22 @@ pin_cache_restore(pinAttempt_t *args, uint8_t digest[32])
     }
 }
 
-// get_is_duress()
+// get_is_trick()
 //
     static bool
-get_is_duress(pinAttempt_t *args)
+get_is_trick(const pinAttempt_t *args)
 {
     // read and "decrypt" our one flag bit
     return ((args->private_state ^ rom_secrets->hash_cache_secret[0]) & 0x1);
+}
+
+// set_is_trick()
+//
+    static void
+set_is_trick(pinAttempt_t *args, bool is_trick_pin)
+{
+    // set and "encrypt" our one flag bit
+    args->private_state = ((rng_sample() & ~1) | is_trick_pin) ^ rom_secrets->hash_cache_secret[0];
 }
 
 // pin_prefix_words()
@@ -584,7 +567,7 @@ pin_setup_attempt(pinAttempt_t *args)
         pin_cache_save(args, zeros);
 
         // need legit value in here, saying not duress
-        args->private_state = (rng_sample() & ~1) ^ rom_secrets->hash_cache_secret[0];
+        set_is_trick(args, false);
     }
 
     _sign_attempt(args);
@@ -706,6 +689,15 @@ fail:
     ae_reset_chip();
     return EPIN_AE_FAIL;
 }
+        
+// _make_trick_aes_key()
+//
+        static void
+_make_trick_aes_key(pinAttempt_t *args, uint8_t key[32])
+{
+    memcpy(key, rom_secrets->hash_cache_secret, sizeof(rom_secrets->hash_cache_secret));
+    memcpy(key, &args->private_state, sizeof(args->private_state));
+}
 
 
 // pin_login_attempt()
@@ -730,7 +722,6 @@ pin_login_attempt(pinAttempt_t *args)
     if(warmup_ae()) return EPIN_I_AM_BRICK;
 
     int pin_kn = -1;
-    bool is_duress = false;
     int secret_kn = -1;
 
     // hash up the pin now, assuming we'll use it on main PIN *OR* duress PIN
@@ -742,23 +733,42 @@ pin_login_attempt(pinAttempt_t *args)
     rv = ae_mixin_key(0, mid_digest, digest);
     if(rv) return EPIN_AE_FAIL;
 
-    // TODO: rework to use SE2
-#if 0
-    if(is_duress_pin(digest, (args->pin_len == 0), &pin_kn)) {
-        // they gave the duress PIN for this wallet... try to continue w/o any indication
-        is_duress = true;
+    // Mk4: Check SE2 first to see if this is a "trick" pin.
+    // - this call may have side-effects, like wiping keys, bricking, etc.
+    trick_slot_t    slot;
+    uint8_t         tpin_digest[32];
 
-        secret_kn = KEYNUM_duress_secret;
+    trick_pin_hash(args->pin, args->pin_len, tpin_digest);
+    bool is_trick = se2_test_trick_pin(tpin_digest, &slot, false);
+    
+    if(is_trick) {
+        // They gave a trick PIN. Implement it.
 
-        // for next run, we need to pretend like no failures (a little -- imperfect)
-        rv = updates_for_duress_login(digest);
-        if(rv) return EPIN_AE_FAIL;
+        // mark as success
+        args->state_flags = PA_SUCCESSFUL;
+        args->num_fails = 0;
+        args->attempts_left = MAX_TARGET_ATTEMPTS;
 
+        if(check_all_zeros(slot.seed_words, 32) || (slot.tc_flags & TC_WIPE)) {
+            args->state_flags |= PA_ZERO_SECRET;
+        }
+            
+        // encodes one bit, and picks a nonce
+        set_is_trick(args, true);
+
+        // for firmware to implement other trick features
+        args->delay_required = slot.tc_flags & ~TC_BOOTROM_MASK;
+
+        // save the seed phrase value, encrypted into the cache area
+        uint8_t     key[32];
+        _make_trick_aes_key(args, key);
+
+        AES_CTX ctx;
+        aes_init(&ctx);
+        aes_add(&ctx, slot.seed_words, 32);
+        aes_done(&ctx, args->cached_main_pin, 32, key, NULL);
     } else {
-#else
-    {
-#endif
-        // It is not the "duress pin", so assume it's the real PIN, and register
+        // It is not a "trick pin", so assume it's the real PIN, and register
         // as an attempt on that.
         rv = ae_mixin_key(KEYNUM_pin_attempt, mid_digest, digest);
         if(rv) return EPIN_AE_FAIL;
@@ -774,61 +784,51 @@ pin_login_attempt(pinAttempt_t *args)
         // change the various counters, since this worked
         rv = updates_for_good_login(digest);
         if(rv) return EPIN_AE_FAIL;
-    }
 
-    // SUCCESS! "digest" holds a working value. Save it.
-    pin_cache_save(args, digest);
+        // SUCCESS! "digest" holds a working value. Save it.
+        pin_cache_save(args, digest);
 
-    // ASIDE: even if the above was bypassed, the following code will
-    // fail when it tries to read/update the corresponding slots in the SE
+        // ASIDE: even if the above was bypassed, the following code will
+        // fail when it tries to read/update the corresponding slots in the SE
 
-    // mark as success
-    args->state_flags = PA_SUCCESSFUL;
+        // mark as success
+        args->state_flags = PA_SUCCESSFUL;
 
-    // these are constants, and user doesn't care because they got in... but consistency.
-    args->num_fails = 0;
-    args->attempts_left = MAX_TARGET_ATTEMPTS;
+        // these are constants, and user doesn't care because they got in... but consistency.
+        args->num_fails = 0;
+        args->attempts_left = MAX_TARGET_ATTEMPTS;
 
-    // I used to always read the secret, since it's so hard to get to this point,
-    // but now just indicating if zero or non-zero so that we don't contaminate the
-    // caller w/ sensitive data that they may not want yet.
-    {   uint8_t ts[AE_SECRET_LEN];
+        // I used to always read the secret, since it's so hard to get to this point,
+        // but now just indicating if zero or non-zero so that we don't contaminate the
+        // caller w/ sensitive data that they may not want yet.
+        {   uint8_t ts[AE_SECRET_LEN];
 
-        rv = ae_encrypted_read(secret_kn, pin_kn, digest, ts, AE_SECRET_LEN);
-        if(rv) {
+            rv = ae_encrypted_read(secret_kn, pin_kn, digest, ts, AE_SECRET_LEN);
+            if(rv) {
+                ae_reset_chip();
+
+                return EPIN_AE_FAIL;
+            }
             ae_reset_chip();
 
-            return EPIN_AE_FAIL;
-        }
-        ae_reset_chip();
+            if(check_all_zeros(ts, AE_SECRET_LEN)) {
+                args->state_flags |= PA_ZERO_SECRET;
+            }
 
-        if(check_all_zeros(ts, AE_SECRET_LEN)) {
-            args->state_flags |= PA_ZERO_SECRET;
+            // XXX if mcu_key empty, then that's also "zero"
         }
+
+        // indicate what features already enabled/non-blank
+        //      args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
+        // - mk3 and earlier set these flags, but that's obsolete
+        // - mk4 requires knowledge of specific trick PIN to know if set
+        //
+
+        // In mark1/2, was thinking of maybe storing duress flag into private state,
+        // but no real need, but testing for it is expensive in mark3, so going to use
+        // LSB here for that. Xor'ed with a secret only we have.
+        set_is_trick(args, false);
     }
-
-    // indicate what features already enabled/non-blank
-    if(is_duress) {
-        // provide false answers to status of duress and brickme
-        args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
-    } else {
-#if 0
-        // do we have duress password?
-        if(!pin_is_blank(KEYNUM_duress_pin)) {
-            args->state_flags |= PA_HAS_DURESS;
-        }
-#endif
-
-        // do we have brickme set?
-        if(!pin_is_blank(KEYNUM_brickme)) {
-            args->state_flags |= PA_HAS_BRICKME;
-        }
-    }
-
-    // In mark1/2, was thinking of maybe storing duress flag into private state,
-    // but no real need, but testing for it is expensive in mark3, so going to use
-    // LSB here for that. Xor'ed with a secret only we have.
-    args->private_state = ((rng_sample() & ~1) | is_duress) ^ rom_secrets->hash_cache_secret[0];
 
     _sign_attempt(args);
 
@@ -883,110 +883,59 @@ pin_change(pinAttempt_t *args)
     // but can only prove you know the primary pin up
     // to this point (via login process)... none of the others.
     // That's why we need old_pin fields.
+    // Mk4 ASIDE: old_pin is unused
 
     // unlock the AE chip
     if(warmup_ae()) return EPIN_I_AM_BRICK;
 
-    // what pin do they need to know to make their change?
-    int required_kn = -1;
+    // If they authorized w/ a trick PIN, new policy is to wipe ourselves.
+    // It's hard to fake them out here, and they may be onto us.
+    if(get_is_trick(args)) {
+        // User is a thug.. kill secret and reboot w/o any notice
+        mcu_key_clear(NULL);
+        NVIC_SystemReset();
+
+        // NOT-REACHED
+        return EPIN_BAD_REQUEST;
+    }
+
+    // They are using the main pin, but maybe they want to
+    // change one of the trick pins... 
+    if(cf & (CHANGE_DURESS_PIN | CHANGE_DURESS_SECRET | CHANGE_BRICKME_PIN)) {
+        // need some new API for lookup/changes. 
+        return EPIN_BAD_REQUEST;
+    }
+
+    // No real need to re-prove PIN knowledge.
+    // If they tricked us to get to this point, doesn't matter as
+    // below SE1 validates it all again.
+
     // what slot (key number) are updating?
     int target_slot = -1;
 
-    // If they authorized w/ the duress password, we let them
-    // change it (the duress one) while they think they are changing
-    // the main one. Always pretend like the duress wallet is already enabled.
-    // But if they try to change duress wallet PIN, we can't actually work.
-    // Same for brickme PIN.
-
-    // SO ... we need to know if they started w/ a duress wallet.
-    bool is_duress = get_is_duress(args);
-
-    if(is_duress) {
-        // XXX rework
+    if(cf & CHANGE_WALLET_PIN) {
+        target_slot = KEYNUM_main_pin;
+    } else if(cf & CHANGE_SECRET) {
+        target_slot = KEYNUM_secret;
+    } else {
         return EPIN_RANGE_ERR;
-#if 0
-        // user is a thug.. limit what they can do
-
-        // check for brickme pin on everything here.
-        if(maybe_brick_myself(args->old_pin, args->old_pin_len)
-                || maybe_brick_myself(args->new_pin, args->new_pin_len)
-        ) {
-            return EPIN_I_AM_BRICK;
-        }
-
-        if((cf & CHANGE_WALLET_PIN) != cf) {
-            // trying to do anything but change PIN must fail.
-            ae_reset_chip();
-
-            return EPIN_OLD_AUTH_FAIL;
-        }
-
-        required_kn = target_slot = KEYNUM_duress_pin;
-#endif
-    } else {
-        // No real need to re-prove PIN knowledge.
-        // If they tricked us to get to this point, doesn't matter as
-        // below the SE validates it all again.
-        required_kn = KEYNUM_main_pin;
-
-        if(cf & CHANGE_WALLET_PIN) {
-            target_slot = KEYNUM_main_pin;
-        } else if(cf & CHANGE_SECRET) {
-            target_slot = KEYNUM_secret;
-        // XXX rework
-#if 0
-        } else if(cf & CHANGE_DURESS_PIN) {
-            required_kn = KEYNUM_duress_pin;
-            target_slot = KEYNUM_duress_pin;
-        } else if(cf & CHANGE_DURESS_SECRET) {
-            required_kn = KEYNUM_duress_pin;
-            target_slot = KEYNUM_duress_secret;
-#endif
-        } else if(cf & CHANGE_BRICKME_PIN) {
-            required_kn = KEYNUM_brickme;       // but main_pin would be better: rate limited
-            target_slot = KEYNUM_brickme;
-        } else {
-            return EPIN_RANGE_ERR;
-        }
     }
 
-    // Determine they know hash protecting the secret/pin to be changed.
+    // Restore cached version of PIN digest: fast
     uint8_t required_digest[32]; 
-    if(   (!is_duress && required_kn == KEYNUM_main_pin) 
-        //XXX|| (is_duress && required_kn == KEYNUM_duress_pin)
-    ) {
-        // Restore cached version of PIN digest: faster
-        pin_cache_restore(args, required_digest);
-    } else {
-        // Construct hash of pin needed.
-        pin_hash_attempt(required_kn, args->old_pin, args->old_pin_len, required_digest);
-
-        // Check the old pin provided, is right.
-        ae_pair_unlock();
-        if(ae_checkmac(required_kn, required_digest)) {
-            // they got old PIN wrong, we won't be able to help them
-            ae_reset_chip();
-
-            // NOTE: altho we are changing flow based on result of ae_checkmac() here,
-            // if the response is faked by an active bus attacker, it doesn't matter
-            // because the change to the dataslot below will fail due to wrong PIN.
-
-            return EPIN_OLD_AUTH_FAIL;
-        }
-    }
+    pin_cache_restore(args, required_digest);
 
     // Calculate new PIN hashed value: will be slow for main pin.
-    if(cf & (CHANGE_WALLET_PIN | CHANGE_DURESS_PIN | CHANGE_BRICKME_PIN)) {
-
+    if(cf & CHANGE_WALLET_PIN) {
         uint8_t new_digest[32]; 
-        rv = pin_hash_attempt(required_kn, args->new_pin, args->new_pin_len, new_digest);
+        rv = pin_hash_attempt(KEYNUM_main_pin, args->new_pin, args->new_pin_len, new_digest);
         if(rv) goto ae_fail;
 
-        if(ae_encrypted_write(target_slot, required_kn, required_digest, new_digest, 32)) {
+        if(ae_encrypted_write(target_slot, KEYNUM_main_pin, required_digest, new_digest, 32)) {
             goto ae_fail;
         }
 
-        if(target_slot == required_kn) {
+        if(target_slot == KEYNUM_main_pin) {
             memcpy(required_digest, new_digest, 32);
         }
 
@@ -996,37 +945,29 @@ pin_change(pinAttempt_t *args)
 
             updates_for_good_login(new_digest);
         }
-#if 0
-        if(is_duress && (target_slot == KEYNUM_duress_pin)) {
-            // duress pin changed, and we're the duress thug, so update cache
-            pin_cache_save(args, new_digest);
-        }
-#endif
     }
 
-    // Record new secret.
+    // Recording new secret.
     // Note the required_digest might have just changed above.
-    if(cf & (CHANGE_SECRET | CHANGE_DURESS_SECRET)) {
-// XXX // int secret_kn = (required_kn == KEYNUM_main_pin) ? KEYNUM_secret : KEYNUM_duress_secret;
-        int secret_kn = KEYNUM_secret;
+    if(cf & CHANGE_SECRET) {
+        // encrypt new secret... not simple!
+        uint8_t     tmp[AE_SECRET_LEN];
+        uint8_t     check[AE_SECRET_LEN];
 
-        bool is_all_zeros = check_all_zeros(args->secret, AE_SECRET_LEN);
+        se2_encrypt_secret(args->secret, AE_SECRET_LEN, tmp, check, required_digest);
 
-        // encrypt new secret, but only if not zeros!
-        uint8_t     tmp[AE_SECRET_LEN] = {0};
-        if(!is_all_zeros) {
-            xor_mixin(tmp, rom_secrets->otp_key, AE_SECRET_LEN);
-            xor_mixin(tmp, args->secret, AE_SECRET_LEN);
-        }
-
-        if(ae_encrypted_write(secret_kn, required_kn,
+        // write into two slots
+        if(ae_encrypted_write(KEYNUM_secret, KEYNUM_main_pin,
                                         required_digest, tmp, AE_SECRET_LEN)){
+            goto ae_fail;
+        }
+        if(ae_encrypted_write32(KEYNUM_check_secret, 0, KEYNUM_main_pin, required_digest, check)){
             goto ae_fail;
         }
 
         // update the zero-secret flag to be correct.
         if(cf & CHANGE_SECRET) {
-            if(is_all_zeros) {
+            if(check_all_zeros(args->secret, AE_SECRET_LEN)) {
                 args->state_flags |= PA_ZERO_SECRET;
             } else {
                 args->state_flags &= ~PA_ZERO_SECRET;
@@ -1063,6 +1004,10 @@ pin_fetch_secret(pinAttempt_t *args)
         // must come here with a successful PIN login (so it's rate limited nicely)
         return EPIN_WRONG_SUCCESS;
     }
+    if(args->change_flags & CHANGE_DURESS_SECRET) {
+        // obsolete API: reading the duress secret from main PIN code (was never used)
+        return EPIN_BAD_REQUEST;
+    }
 
     // fetch the already-hashed pin
     // - no real need to re-prove PIN knowledge.
@@ -1070,56 +1015,50 @@ pin_fetch_secret(pinAttempt_t *args)
     uint8_t     digest[32];
     pin_cache_restore(args, digest);
 
-#if 0
+        //se2_encrypt_secret(args->secret, tmp, check, required_digest);
+
     // determine if we should proceed under duress
-    bool is_duress = get_is_duress(args);
+    bool is_trick = get_is_trick(args);
 
-    int pin_kn = is_duress ? KEYNUM_duress_pin : KEYNUM_main_pin;
-    int secret_slot = is_duress ? KEYNUM_duress_secret : KEYNUM_secret;
-#else
-    int pin_kn = KEYNUM_main_pin;
-    int secret_slot = KEYNUM_secret;
-#endif
+    if(is_trick) {
+        // emulate a 24-word wallet
+        uint8_t     key[32], wallet[32];
+        _make_trick_aes_key(args, key);
 
-    if(args->change_flags & CHANGE_DURESS_SECRET) {
-#if 0
-        // Let them know the duress secret, iff: 
-        // - they are logged into corresponding primary pin (not duress) 
-        // - and they know the duress pin as well.
-        // LATER: this feature not being used since we only write the duress secret
-        if(is_duress) return EPIN_AUTH_FAIL;
+        AES_CTX ctx;
+        aes_init(&ctx);
+        aes_add(&ctx, args->cached_main_pin, 32);
+        aes_done(&ctx, wallet, 32, key, NULL);
+        
+        // see stash.py
+        memset(args->secret, 0, AE_SECRET_LEN);
+        args->secret[0] = 0x82;         // 24 word phrase
+        memcpy(&args->secret[1], wallet, 32);
 
-        pin_kn = KEYNUM_duress_pin;
-        secret_slot = KEYNUM_duress_secret;
-
-        rv = pin_hash_attempt(pin_kn, args->old_pin, args->old_pin_len, digest);
-        if(rv) goto fail;
-
-        // Check the that pin is right (optional, but if wrong, encrypted read gives garb)
-        ae_pair_unlock();
-        if(ae_checkmac(pin_kn, digest)) {
-            // They got old duress PIN wrong, we won't be able to help them.
-            ae_reset_chip();
-
-            // NOTE: altho we are changing flow based on result of ae_checkmac() here,
-            // if the response is faked by an active bus attacker, it doesn't matter
-            // because the decryption of the secret below will fail if we had been lied to.
-            return EPIN_AUTH_FAIL;
-        }
-#else
-        return EPIN_BAD_REQUEST;
+        return 0;
     }
-#endif
 
-    // read out the secret that corresponds to that pin
-    rv = ae_encrypted_read(secret_slot, pin_kn, digest, args->secret, AE_SECRET_LEN);
+    // need to read a bunch now
+    uint8_t    tmp[AE_SECRET_LEN];
+    uint8_t    check[32];
 
-    bool is_all_zeros = check_all_zeros(args->secret, AE_SECRET_LEN);
+    // read out the secret that corresponds to pin
+    rv = ae_encrypted_read(KEYNUM_secret, KEYNUM_main_pin, digest, tmp, AE_SECRET_LEN);
+    if(rv) goto fail;
+    rv = ae_encrypted_read32(KEYNUM_check_secret, 0, KEYNUM_main_pin, digest, check);
+    if(rv) goto fail;
 
-    // decrypt the secret, but only if not zeros!
-    if(!is_all_zeros) xor_mixin(args->secret, rom_secrets->otp_key, AE_SECRET_LEN);
+    // decrypt via a complex process.
+    bool is_valid;
+    se2_decrypt_secret(args->secret, AE_SECRET_LEN, tmp, check, digest, &is_valid);
 
-//fail:
+    if(!is_valid) {
+        // means the MCU key has been wiped; so effectively our secret is zeros
+        rv = 0;
+        memset(args->secret, 0, AE_SECRET_LEN);
+    }
+
+fail:
     ae_reset_chip();
 
     if(rv) return EPIN_AE_FAIL;
@@ -1129,11 +1068,14 @@ pin_fetch_secret(pinAttempt_t *args)
 
 // pin_long_secret()
 //
-// Read or write the "long" secret: an additional 416 bytes on 608a only.
+// Read or write the "long" secret: an additional 416 bytes.
+//
+// TODO: change API so whole thing provided in one shot? encryption issues
 //
     int
 pin_long_secret(pinAttempt_t *args)
 {
+#if 0
     // Validate args and signature
     int rv = _validate_attempt(args, false);
     if(rv) return rv;
@@ -1150,10 +1092,10 @@ pin_long_secret(pinAttempt_t *args)
     pin_cache_restore(args, digest);
 
     // determine if we should proceed under duress
-    bool is_duress = get_is_duress(args);
+    bool is_trick = get_is_trick(args);
 
-    if(is_duress) {
-        // Not supported in duress mode. Pretend it's all zeros. Accept all writes.
+    if(is_trick) {
+        // Not supported in trick mode. Pretend it's all zeros. Accept all writes.
         memset(args->secret, 0, 32);
 
         return 0;
@@ -1191,6 +1133,8 @@ fail:
     if(rv) return EPIN_AE_FAIL;
 
     return 0;
+#endif
+    return EPIN_WRONG_SUCCESS;
 }
 
 // pin_firmware_greenlight()
@@ -1226,8 +1170,7 @@ pin_firmware_greenlight(pinAttempt_t *args)
     if(warmup_ae()) return EPIN_I_AM_BRICK;
 
     // under duress, we can't fake this, but we go through the motions,
-    bool is_duress = get_is_duress(args);
-    if(!is_duress) {
+    if(!get_is_trick(args)) {
         rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
 
         if(rv) {
@@ -1288,26 +1231,23 @@ pin_firmware_upgrade(pinAttempt_t *args)
         return EPIN_AUTH_FAIL;
     }
 
+    // under duress, we can't fake this, so kill ourselves.
+    if(get_is_trick(args)) {
+        // User is a thug.. kill secret and reboot w/o any notice
+        mcu_key_clear(NULL);
+        NVIC_SystemReset();
+
+        // NOT-REACHED
+        return EPIN_BAD_REQUEST;
+    }
+
     // load existing PIN's hash
     uint8_t     digest[32];
     pin_cache_restore(args, digest);
 
     // step 1: calc the value to use, see above
-
     // step 2: write it out to chip.
     if(warmup_ae()) return EPIN_I_AM_BRICK;
-
-    // under duress, we can't fake this, but we go through the motions,
-    bool is_duress = get_is_duress(args);
-    if(!is_duress) {
-        rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
-
-        if(rv) {
-            ae_reset_chip();
-
-            return EPIN_AE_FAIL;
-        }
-    }
 
     // turn on light? maybe not idk
     rv = ae_set_gpio_secure(world_check);
@@ -1319,14 +1259,10 @@ pin_firmware_upgrade(pinAttempt_t *args)
 
     // -- point of no return -- 
 
-    // TODO backup to SPI flash??
-    // TODO backup to SPI flash??
-    // TODO backup to SPI flash??
-
     // burn it, shows progress
     psram_do_upgrade(data, len);
 
-    // done
+    // done and reboot
     NVIC_SystemReset();
 
     return 0;

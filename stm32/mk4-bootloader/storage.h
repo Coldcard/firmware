@@ -22,7 +22,7 @@ void flash_lockdown_hard(uint8_t rdp_level_code);
 void flash_save_ae_serial(const uint8_t serial[9]);
 
 // Save bunch of stuff related to SE2
-void flash_save_se2_data(const struct _se2_secrets *se2);
+void flash_save_se2_data(const se2_secrets_t *se2);
 
 // Write bag number (probably a string)
 void flash_save_bag_number(const uint8_t new_number[32]);
@@ -38,10 +38,16 @@ void flash_setup0(void);
 void flash_lock(void);
 void flash_unlock(void);
 int flash_burn(uint32_t address, uint64_t val);
-int flash_burn_fast(uint32_t address, const uint32_t values[128]);
+//int flash_burn_fast(uint32_t address, const uint32_t values[128]);
 int flash_page_erase(uint32_t address);
 
 // write to OTP
 int record_highwater_version(const uint8_t timestamp[8]);
+
+// related to SE2/SE1/seed key management
+const mcu_key_t *mcu_key_get(bool *valid);
+void mcu_key_clear(const mcu_key_t *cur);
+const mcu_key_t *mcu_key_pick(void);
+void mcu_fast_brick(void);
 
 // EOF

@@ -9,9 +9,6 @@
 //#define FOR_508     1
 #define FOR_608     1
 
-// Must be exactly 32 chars:
-static const char *copyright_msg = "Copyright 2018- by Coinkite Inc.";     
-
 // Opcodes from table 9-4, page 51
 //
 typedef enum {
@@ -104,6 +101,9 @@ int ae_random(uint8_t randout[32]);
 // Pick a EC keypair and return public part; private saved.
 int ae_gen_ecc_key(uint8_t keynum, uint8_t pubkey_out[64]);
 
+// Perform ECDH inside the chip.
+int ae_ecdh(uint8_t keynum, const uint8_t pubkey[64], uint8_t shared_x[32], int auth_kn, const uint8_t auth_digest[32]);
+
 // Roll (derive) a key using random number we forget. One way!
 int ae_destroy_key(int keynum);
 
@@ -152,6 +152,9 @@ int ae_config_read(uint8_t config[128]);
 
 // Load TempKey with indicated value, exactly.
 int ae_load_nonce(const uint8_t nonce[32]);
+
+// Sign a hash.
+int ae_sign_authed(uint8_t keynum, const uint8_t msg_hash[32], uint8_t signature[64], int auth_kn, const uint8_t auth_digest[32]);
 
 // Return the serial number.
 // Nine bytes of serial number. First 2 bytes always 0x0123 and last one 0xEE

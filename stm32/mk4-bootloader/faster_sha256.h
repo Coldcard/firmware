@@ -10,7 +10,8 @@
 // hardware state is the context, altho singleton
 typedef struct {
     HASH_HandleTypeDef   hh;
-    uint8_t   pending[4], num_pending;      // up to 3 bytes might be waiting from last call
+    uint8_t   pending[4];       //  __attribute__((aligned(4)));
+    uint8_t   num_pending;      // up to 3 bytes might be waiting from last call
 } SHA256_CTX;
 
 // compatible API

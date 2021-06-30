@@ -27,10 +27,18 @@ void sha256_init(SHA256_CTX *ctx)
 {
     memset(ctx, 0, sizeof(SHA256_CTX));
 
+#if 1
     ctx->num_pending = 0;
     ctx->hh.Init.DataType = HASH_DATATYPE_8B;
-
     HAL_HASH_Init(&ctx->hh);
+#else
+    MODIFY_REG(HASH->CR, HASH_CR_DATATYPE, HASH_DATATYPE_8B);
+
+    __HAL_HASH_RESET_MDMAT();
+
+    MODIFY_REG(HASH->CR, HASH_CR_LKEY|HASH_CR_ALGO|HASH_CR_MODE|HASH_CR_INIT,
+            HASH_ALGOSELECTION_SHA256 | HASH_CR_INIT);
+#endif
 }
 
 void sha256_update(SHA256_CTX *ctx, const uint8_t data[], uint32_t len)
@@ -46,8 +54,12 @@ void sha256_update(SHA256_CTX *ctx, const uint8_t data[], uint32_t len)
             if(!len) break;
         }
         if(ctx->num_pending == 4) {
+#if 1
             rv = HAL_HASHEx_SHA256_Accumulate(&ctx->hh, ctx->pending, 4);
             ASSERT(rv == HAL_OK);
+#else
+            HASH->DIN = *(uint32_t*)&ctx->pending;
+#endif
             ctx->num_pending = 0;
         }
     }
@@ -55,8 +67,16 @@ void sha256_update(SHA256_CTX *ctx, const uint8_t data[], uint32_t len)
     // write full blocks
     uint32_t blocks = len / 4;
     if(blocks) {
+#if 1
         rv = HAL_HASHEx_SHA256_Accumulate(&ctx->hh, (uint8_t *)data, blocks*4);
         ASSERT(rv == HAL_OK);
+#else
+        for(int i=0; i<blocks*4; i++) {
+            uint32_t    tmp;
+            memcpy(&tmp, data, 4);
+            HASH->DIN = tmp;
+        }
+#endif
         len -= blocks*4;
         data += blocks*4;
     }
@@ -73,10 +93,44 @@ void sha256_update(SHA256_CTX *ctx, const uint8_t data[], uint32_t len)
 void sha256_final(SHA256_CTX *ctx, uint8_t digest[32])
 {
     // Do final 0-3 bytes, pad and return digest.
+#if 1
     HAL_StatusTypeDef rv = HAL_HASHEx_SHA256_Start(&ctx->hh,
                                 ctx->pending, ctx->num_pending, digest, HAL_MAX_DELAY);
-
     ASSERT(rv == HAL_OK);
+#else
+    if(ctx->num_pending) {
+        MODIFY_REG(HASH->STR, HASH_STR_NBLW, ctx->num_pending);
+        HASH->DIN = *(uint32_t*)&ctx->pending;
+    }
+
+    __HAL_HASH_START_DIGEST();
+
+    while(__HAL_HASH_GET_FLAG(HASH_FLAG_DCIS) == RESET) {
+    }
+
+
+    // Read out the message digest
+    uint8_t     *out = digest;
+    uint32_t    tmp;
+
+    tmp = __REV(HASH->HR[0]);
+    memcpy(out, &tmp, 4); out += 4;
+    tmp = __REV(HASH->HR[1]);
+    memcpy(out, &tmp, 4); out += 4;
+    tmp = __REV(HASH->HR[2]);
+    memcpy(out, &tmp, 4); out += 4;
+    tmp = __REV(HASH->HR[3]);
+    memcpy(out, &tmp, 4); out += 4;
+    tmp = __REV(HASH->HR[4]);
+    memcpy(out, &tmp, 4); out += 4;
+
+    tmp = __REV(HASH_DIGEST->HR[5]);
+    memcpy(out, &tmp, 4); out += 4;
+    tmp = __REV(HASH_DIGEST->HR[6]);
+    memcpy(out, &tmp, 4); out += 4;
+    tmp = __REV(HASH_DIGEST->HR[7]);
+    memcpy(out, &tmp, 4);
+#endif
 }
 
 // sha256_single()

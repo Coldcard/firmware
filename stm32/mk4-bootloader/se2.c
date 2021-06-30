@@ -8,6 +8,8 @@
 #include "main.h"
 #include "se2.h"
 #include "ae.h"
+#include "ae_config.h"
+#include "aes.h"
 #include "secrets.h"
 #include "verify.h"
 #include "psram.h"
@@ -35,7 +37,7 @@ static jmp_buf error_env;
 static const uint8_t DEV_MANID[2] = { 0x00, 0x80 };
 
 // DEBUG / setup time.
-static struct _se2_secrets _tbd;
+static se2_secrets_t _tbd;
 #define SE2_SECRETS         (rom_secrets->se2.pairing[0] == 0xff ? &_tbd : &rom_secrets->se2)
 
 // HAL API requires shift here.
@@ -85,18 +87,6 @@ static struct _se2_secrets _tbd;
 
 // forward defs...
 void se2_read_encrypted(uint8_t page_num, uint8_t data[32], int keynum, const uint8_t *secret);
-
-#if 0
-// se2_write0()
-//
-    static bool
-se2_write0(uint8_t cmd)
-{
-    HAL_StatusTypeDef rv = HAL_I2C_Master_Transmit(&i2c_port, I2C_ADDR, &cmd, 1, HAL_MAX_DELAY);
-
-    return (rv != HAL_OK);
-}
-#endif
 
 // se2_write1()
 //
@@ -231,7 +221,7 @@ se2_verify_page(uint8_t page_num, uint8_t data[32], int keynum, const uint8_t *s
     rng_buffer(chal, sizeof(chal));
     se2_write_buffer(chal, sizeof(chal));
     
-    // .. do it
+    // .. do it (HMAC method, not ECDSA)
     CALL_CHECK(se2_write1(0xa5, (keynum<<5) | page_num));
 
     uint8_t check[34];
@@ -380,8 +370,12 @@ se2_read_encrypted(uint8_t page_num, uint8_t data[32], int keynum, const uint8_t
 
     xor_mixin(data, otp, 32);
 
-    // CRITICAL: verify right using a nonce we pick!
-    CHECK_RIGHT(se2_verify_page(page_num, data, keynum, secret));
+    // CRITICAL: verify right result using a nonce we pick!
+    if(!keynum) {
+        CHECK_RIGHT(se2_verify_page(page_num, data, keynum, secret));
+    } else {
+        CHECK_RIGHT(se2_verify_page(page_num, data, 0, rom_secrets->se2.pairing));
+    }
 }
 
 
@@ -683,7 +677,26 @@ se2_test_trick_pin(const uint8_t tpin_hash[32], trick_slot_t *found_slot, bool s
             if(!safety_mode && todo) {
                 puts2("Trick activated: ");
                 puthex2(todo);
-                // TODO add code here to brick or wipe
+                putchar(' ');
+
+                // code here to brick or wipe
+                if(todo & (TC_WIPE | TC_BRICK)) {
+                    // wipe keys
+                    mcu_key_clear(NULL);
+                    puts2("wiped ");
+                }
+                if(todo & TC_BRICK) {
+                    puts2("bricked ");
+
+                    mcu_fast_brick();
+                    // NOT REACHED
+                }
+                if(todo & TC_FAKE_OUT) {
+                    // was probably combined w/ wipe above.
+                    puts("fakeout");
+                    goto fake_out;
+                }
+                putchar('\n');
             }
         } else {
             // it's a 24-word BIP-39 seed phrase, un-encrypted.
@@ -693,6 +706,7 @@ se2_test_trick_pin(const uint8_t tpin_hash[32], trick_slot_t *found_slot, bool s
 
         return true;
     } else {
+    fake_out:
         // do similar work? 
         found_slot->slot_num = -1;
         rng_delay();
@@ -876,5 +890,265 @@ se2_setup(void)
 #endif
 }
 
+// se2_read_hard_secret()
+//
+    void
+se2_read_hard_secret(uint8_t hard_key[32], const uint8_t pin_digest[32])
+{
+    int line_num;
+    if((line_num = setjmp(error_env))) {
+        puts2("se2_read_hard_secret: se2.c:"); putdec4(line_num); putchar('\n');
+//      INCONSISTENT("hard");
+        return;
+    }
+
+    // To read the "hard" key from SE1, we need to prove we know the
+    // pubkey_C private key by signing a message. Then we do ECDH to
+    // generate a shared secret for decryption (held in S). Only SE2 has
+    // the private key and we need to work via it's API.
+    // 
+    // - tell se2 the pubkey for this op
+    // - sign a 64 byte msg, which includes that pubkey
+    // - use the pubkey A value (from SE1) to do ECDH => shared secret
+    // - use shared secret to read slot w/ the hard key in it.
+    //
+    SHA256_CTX ctx;
+
+    // pick a temp key pair, share public part w/ SE2
+    uint8_t tmp_privkey[32], tmp_pubkey[64];
+    p256_gen_keypair(tmp_privkey, tmp_pubkey);
+
+    // - this can be mitm-ed, but we sign it next so doesn't matter
+    se2_write_page(PGN_PUBKEY_S, &tmp_pubkey[0]);
+    se2_write_page(PGN_PUBKEY_S+1, &tmp_pubkey[32]);
+
+    // pick nonce
+    uint8_t chal[32+32];
+    rng_buffer(chal, sizeof(chal));
+    se2_write_buffer(chal, sizeof(chal));
+
+    // md = ngu.hash.sha256s(T_pubkey + chal[0:32])
+    sha256_init(&ctx);
+    sha256_update(&ctx, tmp_pubkey, 64);
+    sha256_update(&ctx, chal, 32);      // only first 32 bytes
+
+    uint8_t md[32];
+    sha256_final(&ctx, md);
+
+    // Get that digest signed by SE1 now, and doing that requires
+    // the main pin, because the required slot requires auth by that key.
+    // - this is the critical step attackers would not be able to emulate w/o SE1 contents
+    uint8_t signature[64];
+    int arc = ae_sign_authed(KEYNUM_joiner_key, md, signature, KEYNUM_main_pin, pin_digest);
+    CHECK_RIGHT(arc == 0);
+
+    // "Authenticate ECDSA Public Key" = 0xA8
+    // cs_offset=32   ecdh_keynum=0=pubA ECDH=1 WR=0
+    uint8_t param = ((32-1) << 3) | (0 << 2) | 0x2;
+    se2_write_n(0xA8, &param, signature, 64);
+    CHECK_RIGHT(se2_read1() == RC_SUCCESS);
+
+    uint8_t shared_x[32], shared_secret[32];
+    uint8_t his_pubkey[64];
+    se2_read_page(PGN_PUBKEY_A, &his_pubkey[0], false);
+    se2_read_page(PGN_PUBKEY_A+1, &his_pubkey[32], false);
+    ps256_ecdh(his_pubkey, tmp_privkey, shared_x);
+    //ps256_ecdh(rom_secrets->se2.pubkey_A, tmp_privkey, shared_x);
+
+    // shared secret S will be SHA over X of shared ECDH point + chal[32:]
+    //  s = ngu.hash.sha256s(x + chal[32:])
+    sha256_init(&ctx);
+    sha256_update(&ctx, shared_x, 32);
+    sha256_update(&ctx, &chal[32], 32);      // second half
+    sha256_final(&ctx, shared_secret);
+
+    puts2("got shared sec: "); hex_dump(shared_secret, 32);
+
+    se2_read_encrypted(PGN_SE2_HARD_KEY, hard_key, 2, shared_secret);
+
+    puts2("hard: ");
+    hex_dump(hard_key, 32);
+
+#if 0
+>>> SE2.read_enc_page(14, 2)
+b'\xd4]\xef\x00\x01\xb3\xd6\xac\xe2\x06u^k\x9fr\xafi\xff\xbb\xef\xea\xd5:\r\x05\x04m\xc3\xc2\xedz"'
+>>> 
+>>> SE2.read_enc_page(15, 2)
+b'\x1d\xfc\xe3\xb0\xcdP\x1e\x8a\xc8G\x07B\xc2\x88$\x11\xaah\xf0\xa7\x1f-\xf7\x8e\x98 Ep\xab\x8e:\x03'
+#endif
+
+#if 0
+    def setup_auth(self, ecdh_kn=0):
+        # do "Authenticate ECDSA Public Key" proving we know the privkey for
+        # pubkey held in slot C. Set volatile state: AUTH and maybe W_PUB_KEY and S
+        # - must enable ECDH because we want to read using this authority
+        # - lengths/offsets are all messed in spec
+        # - only supporting READ; we will do our writes before locking page(s)
+
+        # this is remembered in SRAM, but needed in general
+        self.write_page(PGN_PUBKEY_S+0, T_pubkey[:32])
+        self.write_page(PGN_PUBKEY_S+1, T_pubkey[32:])
+
+        chal = ngu.random.bytes(32+32)
+        self.write_buffer(chal)
+
+        cs_offset = 32      # very confusing, might be implied by buffer length?
+
+        md = ngu.hash.sha256s(T_pubkey + chal[0:32])
+
+        args = bytearray(T_privkey + md + bytes(64))
+        rv = ckcc.gate(32, args, 0)
+        assert rv == 0
+
+        sig = bytes(args[-64:])
+
+        args = bytearray()
+        args.append( ((cs_offset-1) << 3) | (ecdh_kn << 2) | 0x2 )
+        args.extend(sig)
+
+        self._write(0xa8, args)
+        self._check_result(self._read1())
+
+        print('auth ok')
+
+        # ecdh multi
+        pubkey_pn = PGN_PUBKEY_A + (ecdh_kn*2)
+        their_pubkey = self.read_page(pubkey_pn) + self.read_page(pubkey_pn+1)
+
+        args = bytearray(their_pubkey + T_privkey + bytes(32))
+        rv = ckcc.gate(33, args, 0)
+        assert rv == 0
+        x = args[-32:]
+
+        # shared secret S will be SHA over X of shared ECDH point + chal[32:]
+        s = ngu.hash.sha256s(x + chal[32:])
+
+        self.shared_secret = s
+
+        return True
+#endif
+
+}
+
+// se2_calc_seed_key()
+//
+    static void
+se2_calc_seed_key(uint8_t aes_key[32], const mcu_key_t *mcu_key, const uint8_t pin_digest[32])
+{
+    // Gather key parts from all over. Combine them w/ HMAC into a AES-256 key
+
+    uint8_t se1_easy_key[32], se1_hard_key[32];
+    se2_read_encrypted(PGN_SE2_EASY_KEY, se1_easy_key, 0, rom_secrets->se2.pairing);
+
+    se2_read_hard_secret(se1_hard_key, pin_digest);
+
+    HMAC_CTX ctx;
+    hmac_sha256_init(&ctx);
+    hmac_sha256_update(&ctx, mcu_key->value, 32);
+    hmac_sha256_update(&ctx, se1_hard_key, 32);
+    hmac_sha256_update(&ctx, se1_easy_key, 32);
+
+    // combine them all using anther MCU key via HMAC-SHA256
+    hmac_sha256_final(&ctx, rom_secrets->mcu_hmac_key, aes_key);
+    hmac_sha256_init(&ctx);     // clear secrets
+}
+
+// se2_encrypt_secret()
+//
+    void
+se2_encrypt_secret(const uint8_t secret[], int secret_len, 
+    uint8_t main_slot[], uint8_t check_value[32],
+    const uint8_t pin_digest[32])
+{
+    bool is_valid;
+    const mcu_key_t *cur = mcu_key_get(&is_valid);
+
+    if(!is_valid) {
+        // pick a fresh MCU key if we don't have one; can do that
+        // because we are encryption and saving (presumably for first time)
+        // - will become a brick if no more slots
+        cur = mcu_key_pick();     
+    }
+
+    uint8_t aes_key[32];
+    se2_calc_seed_key(aes_key, cur, pin_digest);
+
+    // encrypt the secret
+    AES_CTX ctx;
+    aes_init(&ctx);
+    aes_add(&ctx, secret, secret_len);
+    aes_done(&ctx, main_slot, secret_len, aes_key, rom_secrets->mcu_hmac_key);
+
+    // encrypt the check value: 32 zeros
+    aes_init(&ctx);
+    ctx.num_pending = 32;
+    aes_done(&ctx, check_value, 32, aes_key, rom_secrets->mcu_hmac_key);
+}
+
+// se2_decrypt_secret()
+//
+    void
+se2_decrypt_secret(uint8_t secret[], int secret_len, 
+        const uint8_t main_slot[], const uint8_t check_value[32],
+        const uint8_t pin_digest[32], bool *is_valid)
+{
+    const mcu_key_t *cur = mcu_key_get(is_valid);
+    if(!*is_valid) {
+        puts("?blk");
+        return;
+    }
+
+    uint8_t aes_key[32];
+    se2_calc_seed_key(aes_key, cur, pin_digest);
+
+    // decrypt the check value
+    AES_CTX ctx;
+    aes_init(&ctx);
+    aes_add(&ctx, check_value, 32);
+    uint8_t got[32];
+    aes_done(&ctx, got, 32, aes_key, rom_secrets->mcu_hmac_key);
+
+    if(!check_all_zeros(got, 32)) {
+        puts("!chk");
+        *is_valid = false;
+
+        return;
+    }
+
+    // decrypt the real data
+    aes_init(&ctx);
+    aes_add(&ctx, main_slot, secret_len);
+    aes_done(&ctx, secret, secret_len, aes_key, rom_secrets->mcu_hmac_key);
+}
+
+void se2_testcode(void)
+{
+    uint8_t pin_digest[32] = { 0 };
+    uint8_t msg[72] = { 1,2,3};
+
+#if 1
+    uint8_t main_slot[72], check[32];
+
+    se2_encrypt_secret(msg, sizeof(msg), main_slot, check, pin_digest);
+    return;
+#else
+    uint8_t main_slot[72] = {0x71, 0xde, 0xae, 0x7f, 0x1, 0xca, 0x23, 0x4d, 0xcc, 0x9c, 0xfc, 0x3a, 
+  0x37, 0xd0, 0x4b, 0xc5, 0xa2, 0xb1, 0x24, 0x4c, 0x43, 0xcd, 0x56, 0xf7, 
+  0x6b, 0xa9, 0xba, 0x7e, 0x31, 0x4a, 0x1a, 0x81, 0x6c, 0xb3, 0x96, 0xed, 
+  0x2f, 0xb4, 0x6e, 0x9b, 0xf8, 0xe4, 0x4f, 0xe0, 0xc, 0xc7, 0xbb, 0x69, 0xd3, 
+  0x65, 0x4c, 0x19, 0x39, 0x29, 0xa8, 0x24, 0x6e, 0x23, 0x55, 0xe3, 0xea, 
+  0x1b, 0x84, 0x9d, 0xf, 0xf5, 0x3b, 0x2f, 0x57, 0xd1, 0x6, 0x1f };
+    uint8_t check[32] = { 0x70, 0xdc, 0xad, 0x7f, 0x1, 0xca, 0x23, 0x4d, 0xcc, 0x9c, 0xfc, 0x3a, 
+  0x37, 0xd0, 0x4b, 0xc5, 0xa2, 0xb1, 0x24, 0x4c, 0x43, 0xcd, 0x56, 0xf7, 
+  0x6b, 0xa9, 0xba, 0x7e, 0x31, 0x4a, 0x1a, 0x81 };
+#endif
+
+    uint8_t result[72];
+    bool worked;
+    se2_decrypt_secret(result, 72, main_slot, check, pin_digest, &worked);
+
+    ASSERT(worked);
+    ASSERT(check_equal(result, msg, 72));
+}
 
 // EOF

@@ -79,11 +79,18 @@ aes_done(AES_CTX *ctx, uint8_t data_out[], uint32_t len, const uint8_t key[32], 
     AES->KEYR1 = word_pump_bytes(&K);
     AES->KEYR0 = word_pump_bytes(&K);
 
-    const uint8_t *N = nonce;
-    AES->IVR3 = word_pump_bytes(&N);
-    AES->IVR2 = word_pump_bytes(&N);
-    AES->IVR1 = word_pump_bytes(&N);
-    AES->IVR0 = word_pump_bytes(&N);
+    if(nonce) {
+        const uint8_t *N = nonce;
+        AES->IVR3 = word_pump_bytes(&N);
+        AES->IVR2 = word_pump_bytes(&N);
+        AES->IVR1 = word_pump_bytes(&N);
+        AES->IVR0 = word_pump_bytes(&N);
+    } else {
+        AES->IVR3 = 0;
+        AES->IVR2 = 0;
+        AES->IVR1 = 0;
+        AES->IVR0 = 0;          // maybe should be byte-swapped one, but whatever
+    }
 
     // Enable the Peripheral
     AES->CR |= AES_CR_EN;
@@ -158,6 +165,8 @@ aes_selftest(void)
     aes_done(&ctx, tmp, 4, key, nonce);
     ASSERT(check_equal(tmp, msg, 4));
 
+#if 0
+    // passes, but big
 /*
     >>> pyaes.Counter(0x102030405060708090a0b0c0d0e0f0).value
     [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240]
@@ -206,6 +215,7 @@ aes_selftest(void)
     uint8_t tmp2[512];
     aes_done(&ctx, tmp2, 512, key, long_nonce);
     ASSERT(check_equal(tmp2, long_exp, 512));
+#endif
 
 
     puts("PASS");

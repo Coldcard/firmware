@@ -291,7 +291,7 @@ class ComboConfig(object):
     def is_ec_key(self):
         return (self.kc.KeyType == 4)         # secp256r1
 
-    def ec_key(self, limited_sign=False):
+    def ec_key(self, limited_sign=False, ecdh_en=True):
         # basics for an EC key
         self.kc.KeyType = 4         # secp256r1
         self.kc.Private = 1         # is a EC private key
@@ -299,7 +299,9 @@ class ComboConfig(object):
         self.kc.PubInfo = 1         # 1= allow gen of pubkey from this privkey
         self.kc.ReqRandom = 1       # operations need rnd component? no clear if needed
         self.sc.IsSecret = 1        # because is a private key
-        self.sc.ReadKey = 0x2 if limited_sign else 0xf       # allow CheckMac only, or all usages
+        self.sc.ReadKey = 0x2 if limited_sign else 0x3       # allow CheckMac only, or all usages
+        if ecdh_en:
+            self.sc.ReadKey |= 0x4     # enable ECDH, even in the clear
         self.sc.WriteConfig = 0x2   # enable GenKey (not PrivWrite), no mac for key roll
         return self
 

@@ -16,6 +16,7 @@
 #include "ae.h"
 #include "se2.h"
 #include "console.h"
+#include "faster_sha256.h"
 #include <string.h>
 #include <errno.h>
 #include "assets/screens.h"
@@ -315,7 +316,7 @@ pick_pairing_secret(void)
     // Demo to anyone watching that the RNG is working, but likely only
     // to be seen by production team during initial powerup.
     uint8_t    tmp[1024];
-    for(int i=0; i<1000; i++) {
+    for(int i=0; i<200; i++) {
         rng_buffer(tmp, sizeof(tmp));
 
         oled_show_raw(sizeof(tmp), (void *)tmp);
@@ -456,10 +457,11 @@ flash_save_bag_number(const uint8_t new_number[32])
 
 // flash_save_se2_data()
 //
-// Save bunch of stuff related to SE2. Leave anything all ones.
+// Save bunch of stuff related to SE2. Allow updates to sections that are
+// given as ones at this point.
 //
     void
-flash_save_se2_data(const struct _se2_secrets *se2)
+flash_save_se2_data(const se2_secrets_t *se2)
 {
     uint8_t *dest = (uint8_t *)&rom_secrets->se2;
     uint8_t *src = (uint8_t *)se2;
@@ -467,7 +469,7 @@ flash_save_se2_data(const struct _se2_secrets *se2)
     flash_setup0();
     flash_unlock();
 
-    for(int i=0; i<(sizeof(struct _se2_secrets)/8); i++, dest+=8, src+=8) {
+    for(int i=0; i<(sizeof(se2_secrets_t)/8); i++, dest+=8, src+=8) {
         uint64_t val;
         memcpy(&val, src, sizeof(val));
 
@@ -502,9 +504,16 @@ flash_setup(void)
     //  - check_all.. functions have a rng_delay in them already
     rng_delay();
     bool blank_ps = check_all_ones(rom_secrets->pairing_secret, 32);
+    bool zeroed_ps = check_all_zeros(rom_secrets->pairing_secret, 32);
     bool blank_xor = check_all_ones(rom_secrets->pairing_secret_xor, 32);
     bool blank_ae = (~rom_secrets->ae_serial_number[0] == 0);
     rng_delay();
+
+    if(zeroed_ps) {
+        // fast brick process leaves us w/ zero pairing secret
+        oled_show(screen_brick);
+        LOCKUP_FOREVER();
+    }
 
     if(blank_ps) {
         // get some good entropy, save it.
@@ -637,6 +646,143 @@ record_highwater_version(const uint8_t timestamp[8])
 
     // no space.
     return 1;
+}
+
+// mcu_key_get()
+//
+    const mcu_key_t *
+mcu_key_get(bool *valid)
+{
+    // get current "mcu_key" value; first byte will never be 0x0 or 0xff
+    // - except if no key set yet/recently wiped
+    // - if none set, returns ptr to first available slot which will be all ones
+    const mcu_key_t *ptr = rom_secrets->mcu_keys, *avail=NULL;
+
+    for(int i=0; i<numberof(rom_secrets->mcu_keys); i++, ptr++) {
+        if(ptr->value[0] == 0xff) {
+            if(!avail) {
+                avail = ptr;
+            }
+        } else if(ptr->value[0] != 0x00) {
+            rng_delay();
+            *valid = true;
+            return ptr;
+        }
+    }
+
+    rng_delay();
+    *valid = false;
+    return avail;
+}
+
+// mcu_key_clear()
+//
+    void
+mcu_key_clear(const mcu_key_t *cur)
+{
+    if(!cur) {
+        bool valid;
+        cur = mcu_key_get(&valid);
+
+        if(!valid) return;
+    }
+
+    // no delays here since decision has been made, and don't 
+    // want to give them more time to interrupt us
+    flash_setup0();
+    flash_unlock();
+        uint32_t  pos = (uint32_t)cur;
+        flash_burn(pos, 0); pos += 8;
+        flash_burn(pos, 0); pos += 8;
+        flash_burn(pos, 0); pos += 8;
+        flash_burn(pos, 0);
+    flash_lock();
+}
+
+// mcu_key_pick()
+//
+    const mcu_key_t *
+mcu_key_pick(void)
+{
+    mcu_key_t       n;
+
+    // get some good entropy, and whiten it just in case.
+    do { 
+        rng_buffer(n.value, 32);
+        sha256_single(n.value, 32, n.value);
+        sha256_single(n.value, 32, n.value);
+    } while(n.value[0] == 0x0 || n.value[0] == 0xff);
+
+    const mcu_key_t *cur;
+
+    do {
+        bool valid = false; 
+        cur = mcu_key_get(&valid);
+
+        if(!cur) {
+            // no free slots. we are brick.
+            puts("mk full");
+            oled_show(screen_brick);
+
+            LOCKUP_FOREVER();
+        }
+
+        if(valid) {
+            // clear existing key, if it's defined.
+            ASSERT(cur->value[0] != 0x00);
+            ASSERT(cur->value[0] != 0xff);
+
+            mcu_key_clear(cur);
+
+            continue;
+        }
+    } while(0);
+    
+    // burn it
+    flash_setup0();
+    flash_unlock();
+        uint32_t  pos = (uint32_t)cur;
+        const uint8_t   *fr = n.value;
+
+        for(int i=0; i<32; i+= 8, pos += 8, fr += 8) {
+            uint64_t v;
+            memcpy(&v, fr, sizeof(v));
+
+            flash_burn(pos, v);
+        }
+    flash_lock();
+
+#if 1
+    // check it
+    bool valid = false; 
+    const mcu_key_t *after = mcu_key_get(&valid);
+    ASSERT(valid);
+    ASSERT(after == cur);
+#endif
+
+    return cur;
+}
+
+// mcu_fast_brick()
+//
+    void
+mcu_fast_brick(void)
+{
+    flash_setup0();
+    flash_unlock();
+        // simply erase all the critical secrets
+        flash_page_erase(BL_NVROM_BASE);
+
+        // but then write zeros so it doesn't look like unprogrammed part
+        for(uint32_t  pos = BL_NVROM_BASE, i=0; i<64/8; i++, pos += 8) {
+            flash_burn(pos, 0);
+        }
+    flash_lock();
+    
+    puts("fast brck");
+    oled_show(screen_brick);
+
+    LOCKUP_FOREVER();
 }
 
 // EOF

@@ -15,7 +15,8 @@ void se2_clear_volatile(void);  // not fast, and very visible on bus
 #define NUM_TRICKS          6
 #define TC_WIPE             0x80
 #define TC_BRICK            0x40
-#define TC_WALLET           0x20
+#define TC_FAKE_OUT         0x20
+#define TC_WALLET           0x10
 #define TC_BOOTROM_MASK      0xf0
 // other codes reserved for mpy, plus arg byte
 
@@ -43,7 +44,7 @@ void se2_clear_tricks(void);
 // do our hashing of a possible PIN code
 void trick_pin_hash(const char *pin, int pin_len, uint8_t tpin_hash[32]);
 
-// record and enable an ECC pubkey for joining purposes
+// record and enable an ECC pubkey for SE1+SE2 joining purposes
 void se2_save_auth_pubkey(const uint8_t pubkey[64]);
 
 // secp256r1 curve functions.
@@ -51,5 +52,21 @@ bool p256_verify(const uint8_t pubkey[64], const uint8_t digest[32], const uint8
 void p256_gen_keypair(uint8_t privkey[32], uint8_t pubkey[64]);
 void p256_sign(const uint8_t privkey[32], const uint8_t digest[32], uint8_t signature[64]);
 void ps256_ecdh(const uint8_t pubkey[64], const uint8_t privkey[32], uint8_t result[32]);
+
+// Encrypt the main wallet secret.
+// - will pick a new mcu_key if was blank before (during encrypt)
+// - during decrypt if we are missing MCU key, will be invalid, consider it zeros?
+// - you'll need the hash of the main PIN
+
+void se2_encrypt_secret(const uint8_t secret[], int secret_len, 
+        uint8_t main_slot[], uint8_t check_value[32],
+        const uint8_t pin_digest[32]);
+
+void se2_decrypt_secret(uint8_t secret[], int secret_len, 
+        const uint8_t main_slot[], const uint8_t check_value[32],
+        const uint8_t pin_digest[32], bool *is_valid);
+
+void se2_testcode(void);
+void se2_read_hard_secret(uint8_t hard_key[32], const uint8_t pin_digest[32]);
 
 // EOF

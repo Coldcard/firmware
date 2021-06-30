@@ -18,7 +18,7 @@ typedef struct {
     uint8_t  padding1[8];     
 
     // SE2 items
-    struct _se2_secrets {
+    struct _se2_secrets_t {
         uint8_t  pairing[32];
         uint8_t  pubkey_A[64];
         uint8_t  romid[8];              // serial number for SE2 chip
@@ -27,13 +27,12 @@ typedef struct {
         uint8_t  auth_pubkey[64];       // aka pubkey C (AUTH) in SE2, and privkey in SE1
     } se2;
 
-    // replaceable MCU key; can be overwritten; use last one in series
-    // - 64 bytes because of flash write alignment limitations
-    uint8_t     mcu_key1[32];           // fixed key
-    uint8_t     mcu_key2[32];           // fixed key
-    struct _mcu_keys {
-        uint8_t  key[64];
-    } mcu_keys[12];
+    uint8_t  mcu_hmac_key[32];          // used in final HMAC over parts of seed secret key
+
+    // Replaceable MCU keys; can be overwritten; use first non zero/ones value.
+    struct _mcu_key_t {
+        uint8_t  value[32];
+    } mcu_keys[32];
 
     // ... plus lots more space ...
 } rom_secrets_t;
@@ -42,3 +41,7 @@ typedef struct {
 #define rom_secrets         ((rom_secrets_t *)BL_NVROM_BASE)
 
 
+typedef struct _se2_secrets_t se2_secrets_t;
+typedef struct _mcu_key_t mcu_key_t;
+
+// EOF
