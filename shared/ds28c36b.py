@@ -67,7 +67,7 @@ class SE2Handler:
 
         try:
             self.read_ident()
-            self.verify_page(1, 0, bytes(32), b'a'*32)
+            #self.verify_page(1, 0, bytes(32), b'a'*32)
         except: pass
 
     def _write(self, cmd, data=None):
@@ -198,7 +198,7 @@ class SE2Handler:
         assert len(msg) == 19
 
         chk = ngu.hmac.hmac_sha256(secret, msg)
-        readback =  bytes(a^b for a,b in zip(chk, enc))
+        readback = bytes(a^b for a,b in zip(chk, enc))
 
         # Must always verify the response because it can be replayed w/o
         # knowing any secrets
@@ -250,7 +250,7 @@ class SE2Handler:
         assert self.rom_id[0] == 0x4c       # for this device family
 
     def pick_keypair(self, kn, lock=False):
-        # use device RNG to pick a keypair
+        # use device RNG to pick a EC keypair
         assert 0 <= kn <= 2         # A,B, or C
         wpe = 0x1 if lock else 0x0
         self._write(0xcb, (wpe<<6) | kn)
@@ -321,6 +321,7 @@ class SE2Handler:
 
         md = ngu.hash.sha256s(T_pubkey + chal[0:32])
 
+        # sign md with our privkey
         args = bytearray(T_privkey + md + bytes(64))
         rv = ckcc.gate(32, args, 0)
         assert rv == 0
@@ -351,6 +352,10 @@ class SE2Handler:
         self.shared_secret = s
 
         return True
+
+    def load_s(self, s):
+        # take string dumped by ROM
+        self.shared_secret = bytes(int(s[i:i+2], 16) for i in range(0, 64, 2))
 
     def clear_state(self):
         # No command to reset the volatile state on this chip! Could
