@@ -7,6 +7,7 @@
 #pragma once
 #include "basics.h"
 #include "ae.h"
+#include "pins.h"
 
 // We hash it like we don't care, but PIN code is expected to be
 // just digits, no punctuation, and up to this many chars long.
@@ -87,6 +88,7 @@ enum {
     EPIN_AUTH_FAIL          = -112,     // pin is wrong
     EPIN_OLD_AUTH_FAIL      = -113,     // existing pin is wrong (during change attempt)
     EPIN_PRIMARY_ONLY       = -114,     // only primary pin can change brickme
+    EPIN_SE2_FAIL           = -115,     // (mk4) some issue w/ SE2
 };
 
 // Get number of failed attempts on a PIN, since last success. Calculate
@@ -99,6 +101,9 @@ int pin_delay(pinAttempt_t *args);
 
 // Do the PIN check, and return a value. Or fail.
 int pin_login_attempt(pinAttempt_t *args);
+
+// Verify we know the main PIN, but don't do anything
+int pin_check_logged_in(const pinAttempt_t *args, bool *is_trick);
 
 // Change the PIN and/or secrets (must also know the value, or it must be blank)
 int pin_change(pinAttempt_t *args);
@@ -113,8 +118,8 @@ int pin_firmware_greenlight(pinAttempt_t *args);
 // Return 32 bits of bits which are presistently mapped from pin code; for anti-phishing feature.
 int pin_prefix_words(const char *pin_prefix, int prefix_len, uint32_t *result);
 
-// Read/write the long secret. 32 bytes at a time.
-int pin_long_secret(pinAttempt_t *args);
+// Read/write the long secret. 32 bytes at a time, all read all at one if dest!=NULL
+int pin_long_secret(pinAttempt_t *args, uint8_t *dest);
 
 // Start firmware upgrade using data in PSRAM.
 int pin_firmware_upgrade(pinAttempt_t *args);

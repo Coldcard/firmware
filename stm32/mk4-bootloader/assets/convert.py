@@ -207,7 +207,7 @@ if __name__ == '__main__':
     y = 6
     total = 0
     for label, txt, icon, args in results:
-        if 1:
+        if 0:
             # no icons at all
             icon = None
         elif 0:

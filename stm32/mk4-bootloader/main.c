@@ -180,10 +180,6 @@ system_startup(void)
     //puts("PSRAM setup");
     psram_setup();
 
-//ae_dump_pubkey();
-se2_testcode();
-//BREAKPOINT;
-
     // Check firmware is legit; else enter DFU
     // - may die due to downgrade attack or badly signed image
     puts2("Verify: ");

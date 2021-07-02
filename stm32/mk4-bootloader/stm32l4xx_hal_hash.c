@@ -395,6 +395,7 @@ __HAL_HASH_RESET_MDMAT();
   return HAL_OK;
 }
 
+#if 0
 /**
   * @brief  DeInitialize the HASH peripheral.
   * @param  hhash HASH handle.
@@ -450,6 +451,7 @@ HAL_StatusTypeDef HAL_HASH_DeInit(HASH_HandleTypeDef *hhash)
   /* Return function status */
   return HAL_OK;
 }
+#endif
 
 /**
   * @brief  Initialize the HASH MSP.
@@ -3119,7 +3121,7 @@ HAL_StatusTypeDef HMAC_Start(HASH_HandleTypeDef *hhash, uint8_t *pInBuffer, uint
 if((State_tmp == HAL_HASH_STATE_READY) || (State_tmp == HAL_HASH_STATE_SUSPENDED))
   {
     /* Check input parameters */
-    if ((pInBuffer == NULL) || (Size == 0U) || (hhash->Init.pKey == NULL) || (hhash->Init.KeySize == 0U) || (pOutBuffer == NULL))
+    if ((pInBuffer == NULL) || /*(Size == 0U) ||*/ (hhash->Init.pKey == NULL) || (hhash->Init.KeySize == 0U) || (pOutBuffer == NULL))
     {
       hhash->State = HAL_HASH_STATE_READY;
       return  HAL_ERROR;

@@ -997,6 +997,7 @@ ae_sign_authed(uint8_t keynum, const uint8_t msg_hash[32],
 	return rv;
 }
 
+#if 0
 // ae_ecdh()
 //
 // Calc a shared secret.
@@ -1035,6 +1036,7 @@ ae_ecdh(uint8_t keynum, const uint8_t pubkey[64], uint8_t shared_x[32], int auth
 
 	return rv;
 }
+#endif
 
 // ae_gen_ecc_key()
 //
@@ -1902,7 +1904,6 @@ ae_setup_config(void)
 
         switch(kn) {
             default:
-            case 12: break;
             case 15: break;
 
             case KEYNUM_pairing:
@@ -1932,7 +1933,6 @@ ae_setup_config(void)
 
             case KEYNUM_main_pin:
             case KEYNUM_lastgood:
-            case KEYNUM_brickme:
             case KEYNUM_firmware:
                 if(ae_write_data_slot(kn, zeros, 32, false)) {
                     INCONSISTENT("wr blk 32");
@@ -1941,6 +1941,9 @@ ae_setup_config(void)
 
             case KEYNUM_secret:
             case KEYNUM_check_secret:
+            case KEYNUM_spare_1:
+            case KEYNUM_spare_2:
+            case KEYNUM_spare_3:
                 if(ae_write_data_slot(kn, zeros, 72, false)) {
                     INCONSISTENT("wr blk 72");
                 }
@@ -2058,12 +2061,9 @@ ae_mixin_key(uint8_t keynum, const uint8_t start[32], uint8_t end[32])
 
     if(ae_pair_unlock()) return -1;
 
-    if(keynum != 0) {
-        int rv = ae_hmac32(keynum, start, end);
-        RET_IF_BAD(rv);
-    } else {
-        memset(end, 0, 32);
-    }
+    ASSERT(keynum != 0);
+    int rv = ae_hmac32(keynum, start, end);
+    RET_IF_BAD(rv);
 
     // Final value was just read over bus w/o any protection, but
     // we won't be using that, instead, mix in the pairing secret.

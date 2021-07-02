@@ -155,10 +155,11 @@ dfu-slow: $(TARGET_NAME).dfu
 	dfu-util -d 0483:df11 -a 0 -D $<
 
 dfu: $(TARGET_NAME).dfu
-	echo 'dfu' | nc localhost 4444
 	$(PYTHON_DO_DFU) -u $<
 
-up: dfu
+up:
+	echo 'dfu' | nc localhost 4444
+	$(MAKE) dfu
 
 # upload current production version (or latest release version anyway)
 latest:

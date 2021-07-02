@@ -336,7 +336,6 @@ pick_pairing_secret(void)
         secret[0] = rng_sample();
     }
 
-
     // NOTE: if any of these 64-bit words have been programmed already once, this will
     // fail because we are not pre-erasing them. However, this area is expected
     // to be written exactly once in product's lifecycle so that should be okay.
@@ -356,16 +355,15 @@ pick_pairing_secret(void)
         flash_lock();
     }
 
-    // Also at this point, pick RNG noise to use as our one-time-pad
-    // for encrypting the secrets held in the secure elements
+    // Also at this point, pick some RNG noise to use as our non-changing
+    // bits of various things.
     {
-        uint32_t dest = (uint32_t)&rom_secrets->otp_key;
-        const uint32_t blen = sizeof(rom_secrets->otp_key) 
-                                + sizeof(rom_secrets->otp_key_long)
-                                + sizeof(rom_secrets->hash_cache_secret);
+        uint32_t dest = (uint32_t)&rom_secrets->hash_cache_secret;
+        const uint32_t blen = sizeof(rom_secrets->hash_cache_secret) 
+                                + sizeof(rom_secrets->mcu_hmac_key);
 
+        STATIC_ASSERT(offsetof(rom_secrets_t, hash_cache_secret) % 8 == 0);
         STATIC_ASSERT(blen % 8 == 0);
-        STATIC_ASSERT(blen == (72+416+32));
 
         flash_unlock();
         for(int i=0; i<blen; i+=8, dest += 8) {
@@ -389,7 +387,7 @@ confirm_pairing_secret(void)
     // the first 64-bits and the rest would be ones. Easy to brute-force from there.
     // Solution: write also the XOR of the right value, and check at boot time.
     // LATER: probably not a concern because flash is ECC-checked on this chip.
-    // BUT: we are using to mark the 2nd half of a two-phase commit w.r.t AE setup
+    // BUT: so we are just using this to mark the 2nd half of a two-phase commit w.r.t SE1 setup
 
     uint64_t *src = (uint64_t *)&rom_secrets->pairing_secret;
     uint32_t dest = (uint32_t)&rom_secrets->pairing_secret_xor;
@@ -466,6 +464,8 @@ flash_save_se2_data(const se2_secrets_t *se2)
     uint8_t *dest = (uint8_t *)&rom_secrets->se2;
     uint8_t *src = (uint8_t *)se2;
 
+    STATIC_ASSERT(offsetof(rom_secrets_t, se2) % 8 == 0);
+
     flash_setup0();
     flash_unlock();
 
@@ -497,7 +497,7 @@ flash_setup(void)
 {
     flash_setup0();
 
-    STATIC_ASSERT(sizeof(rom_secrets_t) <= 2048);
+    STATIC_ASSERT(sizeof(rom_secrets_t) <= 0x2000);
 
     // see if we have picked a pairing secret yet.
     // NOTE: critical section for glitching (at least in past versions)
@@ -524,7 +524,7 @@ flash_setup(void)
 
     if(blank_xor || blank_ae) {
 
-        // setup the SE2 (mostly). handles failures
+        // setup the SE2 (mostly). handles failures by dying
         se2_setup_config();
 
         // configure and lock-down the SE1
@@ -686,6 +686,8 @@ mcu_key_clear(const mcu_key_t *cur)
 
         if(!valid) return;
     }
+
+    STATIC_ASSERT(offsetof(rom_secrets_t, mcu_keys) % 8 == 0);
 
     // no delays here since decision has been made, and don't 
     // want to give them more time to interrupt us

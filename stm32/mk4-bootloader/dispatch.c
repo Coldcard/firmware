@@ -366,11 +366,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     break;
 
                 case 6:         // new for v2
-                    rv = pin_long_secret(args);
+                    rv = pin_long_secret(args, NULL);
                     break;
 
                 case 7:         // new for Mk4
                     rv = pin_firmware_upgrade(args);
+                    break;
+
+                case 8:         // new for Mk4: faster for reading only tho
+                    REQUIRE_OUT(PIN_ATTEMPT_SIZE_V2 + AE_LONG_SECRET_LEN);
+                    rv = pin_long_secret(args, &buf_io[PIN_ATTEMPT_SIZE_V2]);
                     break;
 
                 default:
@@ -477,8 +482,59 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
             break;
 
+        case 22: {          // Mk4+ only
+            // Trick pin managment: needs pin change args, plus slot data after that!
+            REQUIRE_OUT(PIN_ATTEMPT_SIZE_V2 + sizeof(trick_slot_t));
+            const pinAttempt_t *args = (pinAttempt_t *)buf_io;
+            trick_slot_t *slot = (trick_slot_t *)(&buf_io[PIN_ATTEMPT_SIZE_V2]);
+
+            // Verify we know the main PIN, but don't do anything
+            bool trick_mode;
+            rv = pin_check_logged_in(args, &trick_mode);
+            if(rv) goto fail;
+
+            if(trick_mode) {
+                // Already logged in via a trick PIN, so clear the seed, and keep going.
+                mcu_key_clear(NULL);
+            }
+
+            switch(arg2) {
+                case 0:     // clear all
+                    if(!trick_mode) {
+                        se2_clear_tricks();
+                    }
+                    break;
+                case 1:     // get by pin
+                    if(trick_mode) {
+                        // never finds anything
+                        rv = ENOENT;
+                    } else {
+                        // lookup and return value
+                        if(se2_test_trick_pin(slot->pin, slot->pin_len, slot, true)) {
+                            // found
+                            rv = 0;
+                        } else {
+                            rv = ENOENT;
+                        }
+                    }
+                    break;
+                case 2:     // clear/update slot
+                    if(!trick_mode) {
+                        rv = se2_save_trick(slot);
+                    }
+                    break;
+
+                default:
+                    rv = ENOENT;
+                    break;
+            }
+
+            break;
+        }
+
+#if 0
         // p256r1 test code
-        case 30: {      // verify signature
+        case 130: {      // verify signature
             REQUIRE_IN_ONLY(64+32+64);
             const uint8_t *pubkey = buf_io+0;
             const uint8_t *digest = buf_io+64;
@@ -491,7 +547,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             break;
         }
-        case 31: {      // gen keypair
+        case 131: {      // gen keypair
             REQUIRE_OUT(32+64);
             uint8_t *privkey = buf_io+0;
             uint8_t *pubkey = buf_io+32;
@@ -500,7 +556,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             break;
         }
-        case 32: {      // sign digest
+        case 132: {      // sign digest
             REQUIRE_OUT(32+32+64);
             const uint8_t *privkey = buf_io+0;
             const uint8_t *digest = buf_io+32;
@@ -510,7 +566,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             break;
         }
-        case 33: {      // ecdh multiply
+        case 133: {      // ecdh multiply
             REQUIRE_OUT(64+32+32);
             const uint8_t *pubkey = buf_io+0;
             const uint8_t *privkey = buf_io+64;
@@ -520,6 +576,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             break;
         }
+#endif
 
 
         case -1:

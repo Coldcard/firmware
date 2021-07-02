@@ -4,10 +4,10 @@
 
 // bytes [16..84) of chip config area
 #define AE_CHIP_CONFIG_1 { \
-	0xe1, 0x00, 0x61, 0x00, 0x00, 0x00, 0x8f, 0x2d, 0x8f, 0x80,   \
-	0x8f, 0x43, 0xaf, 0x80, 0x00, 0x43, 0x00, 0x43, 0x87, 0x20,   \
-	0xc3, 0x43, 0xc3, 0x43, 0xc3, 0x43, 0x00, 0x00, 0x00, 0x00,   \
-	0x8f, 0x4d, 0x8f, 0x43, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,   \
+	0xe1, 0x00, 0x61, 0x00, 0x00, 0x00, 0x8f, 0x80, 0x8f, 0x80,   \
+	0x8f, 0x43, 0xaf, 0x80, 0x00, 0x43, 0x00, 0x43, 0x83, 0x20,   \
+	0xc3, 0x43, 0xc3, 0x43, 0xc3, 0x43, 0xc3, 0x43, 0xc3, 0x43,   \
+	0xc3, 0x43, 0x8f, 0x43, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff,   \
 	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00,   \
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00, 0x00,   \
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00   \
@@ -18,8 +18,8 @@
 #define AE_CHIP_CONFIG_2 { \
 	0x02, 0x15, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x5c, 0x00,   \
 	0xbc, 0x01, 0xfc, 0x01, 0xbc, 0x01, 0x9c, 0x01, 0x9c, 0x01,   \
-	0xd3, 0x03, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x03, 0x3c, 0x00,   \
-	0x3c, 0x00, 0xfc, 0x01, 0xdc, 0x01, 0x3c, 0x00   \
+	0xd1, 0x03, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x03,   \
+	0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x01, 0x3c, 0x00   \
 }
 
 
@@ -34,7 +34,9 @@
 #define KEYNUM_long_secret         	8
 #define KEYNUM_secret              	9
 #define KEYNUM_check_secret        	10
-#define KEYNUM_brickme             	13
+#define KEYNUM_spare_1             	11
+#define KEYNUM_spare_2             	12
+#define KEYNUM_spare_3             	13
 #define KEYNUM_firmware            	14
 
 /*
@@ -55,7 +57,7 @@ ChipMode = 0x0
      Slot[0] = 0x0000 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=0, WriteConfig=0)=0x0000
 KeyConfig[0] = 0x3c00 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=0, ReqAuth=0, AuthKey=0, PersistentDisable=0, RFU=0, X509id=0)=0x003c
 
-     Slot[1] = 0x8f2d = SlotConfig(ReadKey=15, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=13, WriteConfig=2)=0x2d8f
+     Slot[1] = 0x8f80 = SlotConfig(ReadKey=15, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=0, WriteConfig=8)=0x808f
 KeyConfig[1] = 0x5c00 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=0, AuthKey=0, PersistentDisable=0, RFU=0, X509id=0)=0x005c
 
      Slot[2] = 0x8f80 = SlotConfig(ReadKey=15, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=0, WriteConfig=8)=0x808f
@@ -73,8 +75,8 @@ KeyConfig[5] = 0x9c01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, R
      Slot[6] = 0x0043 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=3, WriteConfig=4)=0x4300
 KeyConfig[6] = 0x9c01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=0, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x019c
 
-     Slot[7] = 0x8720 = SlotConfig(ReadKey=7, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=0, WriteConfig=2)=0x2087
-KeyConfig[7] = 0xd303 = KeyConfig(Private=1, PubInfo=1, KeyType=4, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03d3
+     Slot[7] = 0x8320 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=0, WriteConfig=2)=0x2083
+KeyConfig[7] = 0xd103 = KeyConfig(Private=1, PubInfo=0, KeyType=4, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03d1
 
      Slot[8] = 0xc343 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=1, IsSecret=1, WriteKey=3, WriteConfig=4)=0x43c3
 KeyConfig[8] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03dc
@@ -85,14 +87,14 @@ KeyConfig[9] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, R
      Slot[10] = 0xc343 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=1, IsSecret=1, WriteKey=3, WriteConfig=4)=0x43c3
 KeyConfig[10] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03dc
 
-     Slot[11] = 0x0000 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=0, WriteConfig=0)=0x0000
-KeyConfig[11] = 0x3c00 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=0, ReqAuth=0, AuthKey=0, PersistentDisable=0, RFU=0, X509id=0)=0x003c
+     Slot[11] = 0xc343 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=1, IsSecret=1, WriteKey=3, WriteConfig=4)=0x43c3
+KeyConfig[11] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03dc
 
-     Slot[12] = 0x0000 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=0, WriteConfig=0)=0x0000
-KeyConfig[12] = 0x3c00 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=0, ReqAuth=0, AuthKey=0, PersistentDisable=0, RFU=0, X509id=0)=0x003c
+     Slot[12] = 0xc343 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=1, IsSecret=1, WriteKey=3, WriteConfig=4)=0x43c3
+KeyConfig[12] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03dc
 
-     Slot[13] = 0x8f4d = SlotConfig(ReadKey=15, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=13, WriteConfig=4)=0x4d8f
-KeyConfig[13] = 0xfc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=1, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x01fc
+     Slot[13] = 0xc343 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=1, IsSecret=1, WriteKey=3, WriteConfig=4)=0x43c3
+KeyConfig[13] = 0xdc03 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03dc
 
      Slot[14] = 0x8f43 = SlotConfig(ReadKey=15, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=3, WriteConfig=4)=0x438f
 KeyConfig[14] = 0xdc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x01dc

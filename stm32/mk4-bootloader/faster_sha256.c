@@ -249,13 +249,26 @@ sha256_selftest(void)
     //  'ce5ab0733fe9b6f0767e841868c523e7db0c60d1fe6f276399fdee63d61d6c5b'
 
     {   HMAC_CTX c2;
-        static const uint8_t key[32] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
-        static const uint8_t hexpect[32] = { 206, 90, 176, 115, 63, 233, 182, 240, 118, 126, 132, 24, 104, 197, 35, 231, 219, 12, 96, 209, 254, 111, 39, 99, 153, 253, 238, 99, 214, 29, 108, 91 };
+        static const uint8_t key[32] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+            13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
+        static const uint8_t hexpect[32] = { 206, 90, 176, 115, 63, 233, 182, 240,
+            118, 126, 132, 24, 104, 197, 35, 231, 219, 12, 96, 209, 254, 111, 39, 99,
+            153, 253, 238, 99, 214, 29, 108, 91 };
 
         hmac_sha256_init(&c2);
         hmac_sha256_update(&c2, (uint8_t *)"abcd", 4);
         hmac_sha256_final(&c2, key, md);
         ASSERT(memcmp(md, hexpect, 32) == 0);
+
+        // empty msg case
+        //  >>> HMAC(key=bytes(range(32)), msg=b'', digestmod=sha256).hexdigest()
+        //  'd38b42096d80f45f826b44a9d5607de72496a415d3f4a1a8c88e3bb9da8dc1cb'
+        static const uint8_t hexpect2[32] = { 0xd3, 0x8b, 0x42, 0x9, 0x6d, 0x80, 0xf4, 0x5f,
+            0x82, 0x6b, 0x44, 0xa9, 0xd5, 0x60, 0x7d, 0xe7, 0x24, 0x96, 0xa4, 0x15, 0xd3, 0xf4,
+            0xa1, 0xa8, 0xc8, 0x8e, 0x3b, 0xb9, 0xda, 0x8d, 0xc1, 0xcb };
+        hmac_sha256_init(&c2);
+        hmac_sha256_final(&c2, key, md);
+        ASSERT(memcmp(md, hexpect2, 32) == 0);
     }
 
     puts("PASS");

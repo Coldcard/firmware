@@ -15,8 +15,8 @@ class KEYNUM_508:       # mark 1, 2
     # reserve 0: it's weird
     pairing = 1     # pairing hash key (picked by bootloader)
     words = 2       # secret used just for generated 2-phase protection words (random, forgotten)
-    pin_1 = 3       # user-defined PIN to protect the cryptocoins (primary)
-    pin_2 = 4       # user-defined PIN to protect cryptocoins (secondary)
+    pin_1 = 3       # user-defined PIN to protect the bitcoins (primary)
+    pin_2 = 4       # user-defined PIN to protect bitcoins (secondary)
     lastgood_1 = 5  # publically readable, PIN required to update: last successful PIN entry (1)
     lastgood_2 = 6  # publically readable, PIN required to update: last successful PIN entry (2)
     pin_3 = 7       # Duress wallet 1 (no PIN failure counts)
@@ -33,7 +33,7 @@ class KEYNUM_608:       # mark 3
     # reserve 0: it's weird
     pairing = 1     # pairing hash key (picked by bootloader)
     pin_stretch = 2 # secret used to stretch pin (random, forgotten)
-    main_pin = 3    # user-defined PIN to protect the cryptocoins (primary)
+    main_pin = 3    # user-defined PIN to protect the bitcoins (primary)
     pin_attempt = 4 # secret mixed into pin generation (rate limited, random, forgotten)
     lastgood = 5    # publically readable, PIN required to update: last successful PIN entry (1)
     match_count = 6 # match counter, updated if they get the PIN right
@@ -52,7 +52,7 @@ class KEYNUM_mk4:       # mark 4
     # reserve 0: it's weird
     pairing = 1     # pairing hash key (picked by bootloader)
     pin_stretch = 2 # secret used to stretch pin (random, forgotten)
-    main_pin = 3    # user-defined PIN to protect the cryptocoins (primary)
+    main_pin = 3    # user-defined PIN to protect the bitcoins (primary)
     pin_attempt = 4 # secret mixed into pin generation (rate limited, random, forgotten)
     lastgood = 5    # publically readable, PIN required to update: last successful PIN entry (1)
     match_count = 6 # match counter, updated if they get the PIN right
@@ -60,9 +60,9 @@ class KEYNUM_mk4:       # mark 4
     long_secret = 8 # 416 bytes protected by main pin (must be #8 - special longer slot) 
     secret = 9      # 72 arbitrary bytes protected by main pin (normal case)
     check_secret = 10      # fixed bytes used as MAC against secret AES key to know we got key right
-    # available: 11
-    # available: 12
-    brickme = 13    # "Brick Me" PIN holder (no associated secret, but can roll the pairing secret)
+    spare_1 = 11    # 72 bytes protected by main pin, usage TBD
+    spare_2 = 12    # 72 bytes protected by main pin, usage TBD
+    spare_3 = 13    # 72 bytes protected by main pin, usage TBD
     firmware = 14   # hash of flash areas, stored as an unreadable secret, controls GPIO+light
     # reserve 15: non-special, but some fields have all ones and so point to it.
 
@@ -175,7 +175,7 @@ def doit(partno, mk_num, ae, KEYNUM, fp):
     # unique keys per-device
     # - pairing key for linking AE and main micro together
     # - critical!
-    cc[KEYNUM.pairing].hash_key(roll_kn=KEYNUM.brickme).lockable(False)
+    cc[KEYNUM.pairing].hash_key().lockable(False)
 
     assert mk_num == 4
     assert partno == 6
@@ -187,7 +187,9 @@ def doit(partno, mk_num, ae, KEYNUM, fp):
         (KEYNUM.main_pin, KEYNUM.check_secret, None), 
     ]
     main_pin = KEYNUM.main_pin
-    unused_slots = [0, 11, 12, 15]
+    unused_slots = [0, 15]
+    spares = [ 11, 12, 13 ]
+    secure_map.extend((KEYNUM.main_pin, sn, None) for sn in spares)
 
     # slots related to pin attempt- and rate-limiting
     # - both hold random, unknown contents, can't be changed
@@ -204,7 +206,7 @@ def doit(partno, mk_num, ae, KEYNUM, fp):
     ae.counter_match(KEYNUM.match_count)
 
     # ECC keypair; we hold privkey, pubkey enables things in SE2
-    cc[KEYNUM.joiner_key].ec_key(limited_sign=False).require_auth(main_pin)
+    cc[KEYNUM.joiner_key].ec_key(limited_sign=False).no_pubkey().require_auth(main_pin)
 
     # turn off selftest feature (performance problem), and enforce encryption
     # (io protection) for verify, etc.
@@ -224,11 +226,8 @@ def doit(partno, mk_num, ae, KEYNUM, fp):
         cc[kn].hash_key(write_kn=kn).require_auth(KEYNUM.pairing)
         cc[sec_num].secret_storage(kn).require_auth(kn)
         if lg_num is not None:
-            # used to hold counter0] value when we last successfully got that PIN
+            # used to hold counter0 value when we last successfully got the right PIN
             cc[lg_num].writeable_storage(kn).require_auth(KEYNUM.pairing)
-
-    # "Brick Me" PIN holder: enables Roll of pairing secret + device destruction
-    cc[KEYNUM.brickme].hash_key(write_kn=KEYNUM.brickme).require_auth(KEYNUM.pairing)
 
     # field updateable secret, hopefully based on hash of flash contents
     # - if you know this value, then you can enable the green light

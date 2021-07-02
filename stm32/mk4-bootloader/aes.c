@@ -60,10 +60,10 @@ aes_done(AES_CTX *ctx, uint8_t data_out[], uint32_t len, const uint8_t key[32], 
     // enable clock to block
     __HAL_RCC_AES_CLK_ENABLE();
 
-    // most settings done w/ disable in effect
-    AES->CR &=  ~AES_CR_EN;
+    // most changes have to be made w/ module disabled
+    AES->CR &= ~AES_CR_EN;
 
-    // Set the Key size selection, operation mode
+    // set the key size and operation mode
     MODIFY_REG(AES->CR, AES_CR_KEYSIZE, CRYP_KEYSIZE_256B);
     MODIFY_REG(AES->CR, AES_CR_DATATYPE|AES_CR_MODE|AES_CR_CHMOD, 
             CRYP_DATATYPE_8B | CRYP_ALGOMODE_ENCRYPT | CRYP_CHAINMODE_AES_CTR);
