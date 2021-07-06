@@ -41,13 +41,8 @@ still backed-up.''')
     m = MenuSystem([MenuItem(c, f=drv_entro_step2) for c in choices])
     the_ux.push(m)
 
-def drv_entro_step2(_1, picked, _2):
-    from glob import dis
-    from files import CardSlot, CardMissingError
-
-    the_ux.pop()
-
-    index = await ux_enter_number("Index Number?", 9999)
+def bip85_derive(picked, index):
+    # implement the core step of BIP85 from our master secret
 
     if picked in (0,1,2):
         # BIP-39 seed phrases (we only support English)
@@ -72,9 +67,6 @@ def drv_entro_step2(_1, picked, _2):
     else:
         raise ValueError(picked)
 
-    dis.fullscreen("Working...")
-    encoded = None
-
     with stash.SensitiveValues() as sv:
         node = sv.derive_path(path)
         entropy = ngu.hmac.hmac_sha512(b'bip-entropy-from-k', node.privkey())
@@ -84,11 +76,21 @@ def drv_entro_step2(_1, picked, _2):
         # truncate for this application
         new_secret = entropy[0:width]
             
+    return new_secret, width, s_mode, path
 
-    # only "new_secret" is interesting past here (node already blanked at this point)
-    del node
+async def drv_entro_step2(_1, picked, _2):
+    from glob import dis
+    from files import CardSlot, CardMissingError
+
+    the_ux.pop()
+
+    index = await ux_enter_number("Index Number?", 9999)
+
+    dis.fullscreen("Working...")
+    new_secret, width, s_mode, path = bip85_derive(picked, index)
 
     # Reveal to user!
+    encoded = None
     chain = chains.current_chain()
 
     if s_mode == 'words':
