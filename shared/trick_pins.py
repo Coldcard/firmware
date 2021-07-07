@@ -10,35 +10,23 @@
 import version, uctypes, errno
 from ubinascii import hexlify as b2a_hex
 
-''' from se2.h
-{
-    int         slot_num;           // or -1 if not found
-    uint8_t     tc_flags;           // TC_* bitmask
-    uint8_t     arg;                // one byte of argument is stored.
-    uint8_t     seed_words[32];     // binary
-    char        pin[16];            // ascii
-    int         pin_len;
-    uint32_t    blank_slots;        // 1 indicates unused slot
-    uint32_t    spare[8];           // RFU
-} trick_slot_t;
-'''
+# see from mk4-bootloader/se2.h
 TRICK_SLOT_LAYOUT = {
     "slot_num": 0 | uctypes.INT32,
-    "tc_flags": 4 | uctypes.UINT8,
-    "arg": 5 | uctypes.UINT8,
-    "_align1": 6 | uctypes.UINT8,
-    "_align2": 7 | uctypes.UINT8,
-    "seed_words": (8 | uctypes.ARRAY, 32 | uctypes.UINT8),
-    "pin": (8+32 | uctypes.ARRAY, 16 | uctypes.UINT8),
-    "pin_len": (8+32+16) | uctypes.INT32,
-    "blank_slots": (8+32+16+4) | uctypes.UINT32,
-    "spare": ((8+32+16+4+4) | uctypes.ARRAY, 8|uctypes.INT32),
+    "tc_flags": 4 | uctypes.UINT16,
+    "arg": 6 | uctypes.UINT16,
+    "xdata": (8 | uctypes.ARRAY, 64 | uctypes.UINT8),
+    "pin": (8+64 | uctypes.ARRAY, 16 | uctypes.UINT8),
+    "pin_len": (8+64+16) | uctypes.INT32,
+    "blank_slots": (8+64+16+4) | uctypes.UINT32,
+    "spare": ((8+64+16+4+4) | uctypes.ARRAY, 8|uctypes.INT32),
 }
-TC_WIPE         = const(0x80)
-TC_BRICK        = const(0x40)
-TC_FAKE_OUT     = const(0x20)
-TC_WALLET       = const(0x10)
-TC_BOOTROM_MASK = const(0xf0)
+TC_WIPE         = const(0x8000)
+TC_BRICK        = const(0x4000)
+TC_FAKE_OUT     = const(0x2000)
+TC_WORD_WALLET  = const(0x1000)
+TC_XPRV_WALLET  = const(0x0800)
+TC_BOOTROM_MASK = const(0xf800)
 NUM_TRICKS      = const(14)
 
 def make_slot():
@@ -48,17 +36,18 @@ def make_slot():
 class TrickPinMgmt:
 
     def __init__(self):
-        assert uctypes.sizeof(TRICK_SLOT_LAYOUT) == 96
+        assert uctypes.sizeof(TRICK_SLOT_LAYOUT) == 128
 
         # we track known PINS as a dictionary:
         # key=pin
-        # value=(tc_flags, arg, ...)
+        # value=(slot_num, tc_flags, arg, ...)
         from glob import settings
         self.tp = settings.get('tp', {})
 
     def update_record(self):
         from glob import settings
         settings.set('tp', self.tp)
+        settings.save()
 
     def roundtrip(self, method_num, slot_buf=None):
         from pincodes import pa
@@ -89,13 +78,18 @@ class TrickPinMgmt:
         slot.blank_slots = sum(1<<s for s in slot_nums)
         self.roundtrip(2)
 
-    def get_empty_slot(self, qty_needed=1):
-        # do impossible search, so we can get block_slots field back
+    def get_available_slots(self):
+        # do an impossible search, so we can get block_slots field back
         b, slot = make_slot()
         slot.pin_len = 1
-        self.roundtrip(1, b)
+        self.roundtrip(1, b)        # expects ENOENT=2
+
         blk = slot.blank_slots
-        avail = [i for i in range(NUM_TRICKS) if (1<<i & blk)]
+        return [i for i in range(NUM_TRICKS) if (1<<i & blk)]
+
+    def find_empty_slots(self, qty_needed):
+        # locate a slot (or 3) that are available for use
+        avail = self.get_available_slots()
         if qty_needed == 1:
             return avail[0] if avail else None
         else:
@@ -121,15 +115,21 @@ class TrickPinMgmt:
 
         return b, slot
 
-    def update_slot(self, pin, new_pin=None, tc_flags=None, arg=None, seed=None, node=None):
+    def update_slot(self, pin, new_pin=None, tc_flags=None, arg=None, secret=None):
         # create or update a trick pin
+        '''
+        >>> from pincodes import pa; pa.setup(b'12-12'); pa.login(); from trick_pins import *
+        '''
+        assert isinstance(pin, bytes)
+
         b, slot = self.get_by_pin(pin)
         if not slot:
+            # Making a new entry
             b, slot = make_slot()
             assert new_pin == pin
 
             # pick a free slot
-            sn = self.get_empty_slot(bool(seed))
+            sn = self.find_empty_slots(1 if not secret else 1+(len(secret)//32))
             if sn == None:
                 # we are full
                 raise RuntimeError("no space")
@@ -139,18 +139,38 @@ class TrickPinMgmt:
         if new_pin is not None:
             slot.pin_len = len(pin)
             slot.pin[0:slot.pin_len] = pin
+            if new_pin != pin:
+                self.tp.pop(pin, None)
+            pin = new_pin
+
         if tc_flags is not None:
+            assert 0 <= tc_flags <= 65536
             slot.tc_flags = tc_flags
+
         if arg is not None:
+            assert 0 <= arg <= 65536
             slot.arg = arg
-        if seed is not None:
-            assert len(seed) == 32
-            slot.tc_flags |= TC_WALLET
-            slot.seed_words[:] = seed
+
+        if secret is not None:
+            # expecting an encoded secret
+            if len(secret) == 32:
+                slot.tc_flags |= TC_WORD_WALLET
+                slot.xdata[0:32] = secret
+            elif len(secret) == 65:
+                # expecting 65 bytes encoded already
+                assert secret[0] == 0x01
+                slot.tc_flags |= TC_XPRV_WALLET
+                slot.xdata[0:64] = secret[1:65]
+
+        record = (slot.slot_num, slot.tc_flags, slot.arg)
 
         slot.blank_slots = 0
         rc = self.roundtrip(2, b)
         assert rc == 0
+
+        # record key details.
+        self.tp[pin] = record
+        self.update_record()
 
         return b, slot
 
