@@ -510,6 +510,10 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                         rv = ENOENT;
                     } else {
                         // lookup and return value
+                        if(slot->pin_len > 16) {
+                            rv = ERANGE;
+                            goto fail;
+                        }
                         if(se2_test_trick_pin(slot->pin, slot->pin_len, slot, true)) {
                             // found
                             rv = 0;
@@ -531,6 +535,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             break;
         }
+
+        case 23:
+            // fast wipe -- does system reset, no UX
+            if(arg2 == 0xBeef) fast_wipe();
+            break;
+
+        case 24:
+            // fast brick -- locks up w/ messag
+            if(arg2 == 0xDead) fast_brick();
+            break;
 
 #if 0
         // p256r1 test code

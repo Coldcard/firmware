@@ -13,21 +13,28 @@ void se2_setup_config(void);
 void se2_clear_volatile(void);  // not fast, and very visible on bus
 
 #define NUM_TRICKS          14
-#define TC_WIPE             0x80
-#define TC_BRICK            0x40
-#define TC_FAKE_OUT         0x20
-#define TC_WALLET           0x10
-#define TC_BOOTROM_MASK      0xf0
-// other codes reserved for mpy, plus arg byte
+#define TC_WIPE             0x8000
+#define TC_BRICK            0x4000
+#define TC_FAKE_OUT         0x2000
+#define TC_WORD_WALLET      0x1000
+#define TC_XPRV_WALLET      0x0800
+#define TC_DELTA_MODE       0x0400
+#define TC_REBOOT           0x0200
+#define TC_RFU              0x0100
+// other codes reserved for mpy, plus "tc_arg" field
 
-typedef struct {
+// these flags are masked-out from mpy so even it can't tell they happened
+#define TC_HIDDEN_MASK      0xf800
+
+typedef struct __PACKED {
     int         slot_num;           // or -1 if not found
-    uint8_t     tc_flags;           // TC_* bitmask
-    uint8_t     arg;                // one byte of argument is stored.
-    uint8_t     seed_words[32];     // binary
+    uint16_t    tc_flags;           // TC_* bitmask
+    uint16_t    tc_arg;             // extra argument is stored for mpy usage (mostly)
+    uint8_t     xdata[64];          // 32 or 64 bytes of stored entropy (seed words or xprv)
     char        pin[16];            // ascii
     int         pin_len;
     uint32_t    blank_slots;        // 1 indicates unused slot
+    uint32_t    spare[8];           // RFU
 } trick_slot_t;
 
 // search if this PIN code should trigger a "trick"
@@ -37,6 +44,9 @@ bool se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found, bool 
 
 // Save trick setup, T if it fails; might be EPIN_ err code
 int se2_save_trick(const trick_slot_t *config);
+
+// read 1 or 2 data slots that immediately follow a trick PIN slot
+void se2_read_trick_data(int slot_num, uint16_t tc_flags, uint8_t data[64]);
 
 // wipe all the trick PIN's and their side effects
 void se2_clear_tricks(void);

@@ -61,7 +61,11 @@ reboot_seed_setup(void)
 
     // this value can also be checked at runtime, but historical
     if(!flash_is_security_level2()) {
+#if RELEASE
         shared_bootflags |= RBF_FACTORY_MODE;
+#else
+        shared_bootflags = 0;
+#endif
     }
 }
 

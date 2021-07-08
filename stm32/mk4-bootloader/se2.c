@@ -603,9 +603,26 @@ se2_clear_tricks(void)
     }
 }
 
+// se2_read_trick_data()
+//
+// Read 1 or 2 data slots that immediately follow a trick PIN slot.
+//
+    void
+se2_read_trick_data(int slot_num, uint16_t tc_flags, uint8_t data[64])
+{
+    if(setjmp(error_env)) fatal_mitm();
+
+    se2_setup();
+    se2_read_encrypted(slot_num+1, &data[0], 0, SE2_SECRETS->pairing);
+
+    if(tc_flags & TC_XPRV_WALLET) {
+        se2_read_encrypted(slot_num+2, &data[32], 0, SE2_SECRETS->pairing);
+    }
+}
+
 // se2_test_trick_pin()
 //
-// search if this PIN code should trigger a "trick"
+// Search if this PIN code should trigger a "trick"
 // - if not in safety mode, the side-effect (brick, etc) will have happened before this returns
 // - will always check all slots so bus traffic doesn't change based on result.
 //
@@ -621,6 +638,9 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
 
         return false;
     }
+
+    // zero-length pin not allowed
+    if(!pin_len) return false;
 
     uint8_t     tpin_hash[32];
     trick_pin_hash(pin, pin_len, tpin_hash);
@@ -638,7 +658,7 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
     uint32_t blank = 0;
     for(int i=0; i<NUM_TRICKS; i++) {
         uint8_t *here = &slots[i][0];
-        if(check_equal(here, tpin_hash, 30)) {
+        if(check_equal(here, tpin_hash, 28)) {
             // we have a winner... but keep checking
             found = i;
         }
@@ -657,27 +677,31 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
         // match found
         found_slot->slot_num = found;
 
-        // 30 bytes are the PIN hash, last two bytes is data.
-        // following slot may hold wallet data (32 bytes)
-        found_slot->tc_flags = slots[found][30];
-        found_slot->arg = slots[found][31];
+        // 30 bytes are the PIN hash, last 4 bytes is our meta-data.
+        // following slot(s) may hold wallet data (32-64 bytes)
+        memcpy(&found_slot->tc_flags, &slots[found][28], 2);
+        memcpy(&found_slot->tc_arg, &slots[found][30], 2);
 
-        uint8_t todo = found_slot->tc_flags & TC_BOOTROM_MASK;
+        uint16_t todo = found_slot->tc_flags;
 
-        if(found_slot->tc_flags & TC_WALLET) {
+        // hmm: don't need this data if safety is off.. but we have it anyway
+        if(found_slot->tc_flags & TC_WORD_WALLET) {
             // it's a 24-word BIP-39 seed phrase, un-encrypted.
             if(found+1 < NUM_TRICKS) {
-                memcpy(found_slot->seed_words, &slots[found+1][0], 32);
-            } else {
-                // error might be better here, but meh.
-                memset(found_slot->seed_words, 0xf0, 32);
+                memcpy(found_slot->xdata, &slots[found+1][0], 32);
+            }
+        } else if(found_slot->tc_flags & TC_XPRV_WALLET) {
+            // it's an xprv-based wallet
+            if(found+2 < NUM_TRICKS) {
+                memcpy(&found_slot->xdata[0], &slots[found+1][0], 32);
+                memcpy(&found_slot->xdata[32], &slots[found+2][0], 32);
             }
         }
 
         if(!safety_mode && todo) {
-#if 1
+#ifndef RELEASE
             puts2("Trick activated: ");
-            puthex2(todo);
+            puthex4(todo);
             putchar(' ');
 #endif
 
@@ -688,8 +712,12 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
                 DEBUG("wiped");
             }
             if(todo & TC_BRICK) {
-                mcu_fast_brick();
+                fast_brick();
                 // NOT REACHED; unit locks up w/ msg shown
+            }
+            if(todo & TC_REBOOT) {
+                // just reboot, but might look like we wiped secret
+                NVIC_SystemReset();
             }
             if(todo & TC_FAKE_OUT) {
                 // Pretend PIN was not found...
@@ -697,6 +725,7 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
                 DEBUG("fakeout");
                 goto fake_out;
             }
+            // TC_DELTA_MODE implemented by caller
         }
 
         return true;
@@ -704,7 +733,6 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
     fake_out:
         // do similar work? 
         found_slot->slot_num = -1;
-        rng_delay();
         rng_delay();
 
         return false;
@@ -726,8 +754,12 @@ se2_save_trick(const trick_slot_t *config)
     if((config->slot_num < 0) || (config->slot_num >= NUM_TRICKS) ) {
         return EPIN_RANGE_ERR;
     }
-    if((config->slot_num == NUM_TRICKS-1) && (config->tc_flags & TC_WALLET) ) {
-        // last slot cannot hold a wallet.
+    if((config->slot_num >= NUM_TRICKS-1) && (config->tc_flags & TC_WORD_WALLET) ) {
+        // last slot cannot hold a seed-word wallet.
+        return EPIN_RANGE_ERR;
+    }
+    if((config->slot_num >= NUM_TRICKS-2) && (config->tc_flags & TC_XPRV_WALLET) ) {
+        // last slot cannot hold an xprv wallet.
         return EPIN_RANGE_ERR;
     }
     if(config->pin_len > sizeof(config->pin)) {
@@ -750,14 +782,18 @@ se2_save_trick(const trick_slot_t *config)
         uint8_t     tpin_digest[32];
         trick_pin_hash(config->pin, config->pin_len, tpin_digest);
 
-        tpin_digest[30] = config->tc_flags;
-        tpin_digest[31] = config->arg;
+        memcpy(&tpin_digest[28], &config->tc_flags, 2);
+        memcpy(&tpin_digest[30], &config->tc_arg, 2);
 
         // write into SE2
         se2_write_encrypted(PGN_TRICK(config->slot_num), tpin_digest, 0, SE2_SECRETS->pairing);
 
-        if(config->tc_flags & TC_WALLET) {
-            se2_write_encrypted(PGN_TRICK(config->slot_num+1), config->seed_words,
+        if(config->tc_flags & (TC_WORD_WALLET | TC_XPRV_WALLET)) {
+            se2_write_encrypted(PGN_TRICK(config->slot_num+1), &config->xdata[0],
+                                                                    0, SE2_SECRETS->pairing);
+        }
+        if(config->tc_flags & TC_XPRV_WALLET) {
+            se2_write_encrypted(PGN_TRICK(config->slot_num+2), &config->xdata[32],
                                                                     0, SE2_SECRETS->pairing);
         }
     }
@@ -806,14 +842,6 @@ rng_for_uECC(uint8_t *dest, unsigned size)
 }
 
 
-// p256_verify()
-//
-    bool
-p256_verify(const uint8_t pubkey[64], const uint8_t digest[32], const uint8_t signature[64])
-{
-    return uECC_verify(pubkey, digest, 32, signature, uECC_secp256r1());
-}
-
 // p256_gen_keypair()
 //
     void
@@ -825,6 +853,7 @@ p256_gen_keypair(uint8_t privkey[32], uint8_t pubkey[64])
     ASSERT(ok == 1);
 }
 
+#if 0
 // p256_sign()
 //
     void
@@ -835,6 +864,15 @@ p256_sign(const uint8_t privkey[32], const uint8_t digest[32], uint8_t signature
     int ok = uECC_sign(privkey, digest, 32, signature, uECC_secp256r1());
     ASSERT(ok == 1);
 }
+
+// p256_verify()
+//
+    bool
+p256_verify(const uint8_t pubkey[64], const uint8_t digest[32], const uint8_t signature[64])
+{
+    return uECC_verify(pubkey, digest, 32, signature, uECC_secp256r1());
+}
+#endif
 
 
 // ps256_ecdh()
@@ -857,6 +895,16 @@ se2_setup(void)
     if(i2c_port.Instance == I2C2) {
         return;
     }
+
+    STATIC_ASSERT(sizeof(trick_slot_t) == 128);
+    STATIC_ASSERT(offsetof(trick_slot_t, slot_num) == 0);
+    STATIC_ASSERT(offsetof(trick_slot_t, tc_flags) == 4);
+    STATIC_ASSERT(offsetof(trick_slot_t, tc_arg) == 6);
+    STATIC_ASSERT(offsetof(trick_slot_t, xdata) == 8);
+    STATIC_ASSERT(offsetof(trick_slot_t, pin) == 8+64);
+    STATIC_ASSERT(offsetof(trick_slot_t, pin_len) == 8+64+16);
+    STATIC_ASSERT(offsetof(trick_slot_t, blank_slots) == 8+64+16+4);
+    STATIC_ASSERT(offsetof(trick_slot_t, spare) == 8+64+16+4+4);
 
     // unlikely we need:
     __HAL_RCC_GPIOB_CLK_ENABLE();

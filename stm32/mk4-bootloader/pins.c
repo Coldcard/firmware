@@ -194,30 +194,97 @@ pin_cache_restore(const pinAttempt_t *args, uint8_t digest[32])
     }
 }
 
+// _make_trick_aes_key()
+//
+    static void
+_make_trick_aes_key(const pinAttempt_t *args, uint8_t key[32])
+{
+    // key is args->private_state (4 bytes) + 28 bytes from hash_cache_secret
+    memcpy(key, &args->private_state, sizeof(args->private_state));
+    memcpy(key+4, rom_secrets->hash_cache_secret+4, sizeof(rom_secrets->hash_cache_secret)-4);
+
+}
+
 // get_is_trick()
 //
     static bool
-get_is_trick(const pinAttempt_t *args)
+get_is_trick(const pinAttempt_t *args, trick_slot_t *slot)
 {
     // read and "decrypt" our one flag bit
-    return ((args->private_state ^ rom_secrets->hash_cache_secret[0]) & 0x1);
+    // - optional: aes-decrypt some more details about the trick slot
+    bool is_trick = ((args->private_state ^ rom_secrets->hash_cache_secret[0]) & 0x1);
+
+    if(!slot || !is_trick) return is_trick;
+
+    memset(slot, 0, sizeof(trick_slot_t));
+
+    if(args->delay_required & TC_DELTA_MODE) {
+        // in delta mode, we are using the cached_main_pin for real PIN (hashed)
+        // so we cannot restore details
+        slot->tc_flags = args->delay_required;
+        slot->tc_arg = 0;           // unknown
+        slot->slot_num = -1;        // unknown
+    } else {
+        // read more detail from cache area
+        // - also read up to 2 more slots of raw seed data needed.
+        uint8_t     key[32];
+        _make_trick_aes_key(args, key);
+
+
+        STATIC_ASSERT(sizeof(args->cached_main_pin) == 32);
+        STATIC_ASSERT(offsetof(trick_slot_t, tc_flags) < 32);
+        STATIC_ASSERT(offsetof(trick_slot_t, tc_arg) < 32);
+        STATIC_ASSERT(sizeof(trick_slot_t) >= 32);
+
+        // decode first 32 bytes of trick slot info into place
+        AES_CTX ctx;
+        aes_init(&ctx);
+        aes_add(&ctx, args->cached_main_pin, 32);
+        aes_done(&ctx, (uint8_t *)slot, 32, key, NULL);
+
+        if(slot->tc_flags & (TC_WORD_WALLET|TC_XPRV_WALLET)) {
+            // read 1 or 2 data slots that immediately follow a trick PIN slot
+            se2_read_trick_data(slot->slot_num, slot->tc_flags, slot->xdata);
+        }
+    }
+
+    return true;;
 }
 
 // set_is_trick()
 //
     static void
-set_is_trick(pinAttempt_t *args, bool is_trick_pin, const trick_slot_t *slot)
+set_is_trick(pinAttempt_t *args, const trick_slot_t *slot)
 {
-    // set and "encrypt" our one flag bit
+    // Set and "encrypt" our one flag bit
+    bool is_trick_pin = !!slot;
+
     args->private_state = ((rng_sample() & ~1) | is_trick_pin) ^ rom_secrets->hash_cache_secret[0];
 
-    // Hint for other mpy firmware to implement more trick features
-    // impt feature: duress wallet case, and many others will still read as zero here.
-    if(slot) {
-        args->delay_required = (slot->tc_flags & ~TC_BOOTROM_MASK) << 8 | slot->arg;
-    } else {
+    if(!slot) {
         args->delay_required = 0;
+        args->delay_achieved = 0;
+
+        return;
     }
+
+    // Hints for other mpy firmware to implement more trick features
+    // impt detail: 
+    // - duress wallet case, and many others will still read as zero here.
+    // - mpy does need to know about TC_DELTA_MODE case, but not direction & amount
+    uint16_t masked = (slot->tc_flags & ~TC_HIDDEN_MASK);
+    args->delay_required = masked;
+    args->delay_achieved = (slot->tc_flags & TC_DELTA_MODE) ? 0 : slot->tc_arg;
+
+    // save more detail into cache area, for our use only
+    uint8_t     key[32];
+    _make_trick_aes_key(args, key);
+
+    // capture first 32 bytes of slot info
+    AES_CTX ctx;
+    aes_init(&ctx);
+    aes_add(&ctx, (uint8_t *)slot, 32);
+    aes_done(&ctx, args->cached_main_pin, 32, key, NULL);
 }
 
 // pin_prefix_words()
@@ -493,7 +560,7 @@ pin_setup_attempt(pinAttempt_t *args)
         pin_cache_save(args, zeros);
 
         // need legit value in here, saying not a trick
-        set_is_trick(args, false, NULL);
+        set_is_trick(args, NULL);
     }
 
     _sign_attempt(args);
@@ -570,15 +637,34 @@ fail:
     ae_reset_chip();
     return EPIN_AE_FAIL;
 }
-        
-// _make_trick_aes_key()
+
+// apply_pin_delta()
 //
-        static void
-_make_trick_aes_key(pinAttempt_t *args, uint8_t key[32])
+    static void
+apply_pin_delta(char *pin, int pin_len, uint16_t replacement, char *tmp_pin)
 {
-    // key is args->private_state (4 bytes) + 28 bytes from hash_cache_secret
-    memcpy(key, &args->private_state, sizeof(args->private_state));
-    memcpy(key+4, rom_secrets->hash_cache_secret+4, sizeof(rom_secrets->hash_cache_secret)-4);
+    // Starting with provided on pin as a string, change the last few digits
+    // given to be replacement value which gives true pin.
+    // - encoding: BCD with 0xf for unchanged
+    
+    memcpy(tmp_pin, pin, pin_len);
+    tmp_pin[pin_len] = 0;
+
+    char *p = &tmp_pin[pin_len-1];
+
+    for(int i=0; i<4; i++, p--) {
+        if(*p == '-') p--;
+
+        int here = replacement & 0xf;
+        replacement >>= 4;
+
+        if((here >= 0) && (here <= 9)) {
+            *p = '0' + here; 
+        }
+    }
+
+    puts2("tmp: ");
+    puts(tmp_pin);
 }
 
 
@@ -589,6 +675,9 @@ _make_trick_aes_key(pinAttempt_t *args, uint8_t key[32])
     int
 pin_login_attempt(pinAttempt_t *args)
 {
+    bool deltamode = false;
+    char tmp_pin[32];
+
     int rv = _validate_attempt(args, false);
     if(rv) return rv;
 
@@ -596,14 +685,6 @@ pin_login_attempt(pinAttempt_t *args)
         // already worked, or is blank
         return EPIN_WRONG_SUCCESS;
     }
-
-    // unlock the AE chip
-    if(warmup_ae()) return EPIN_I_AM_BRICK;
-
-    // hash up the pin now, assuming we'll use it on main PIN
-    uint8_t     digest[32];
-    rv = pin_hash_attempt(args->pin, args->pin_len, digest);
-    if(rv) return EPIN_AE_FAIL;
 
     // Mk4: Check SE2 first to see if this is a "trick" pin.
     // - this call may have side-effects, like wiping keys, bricking, etc.
@@ -618,75 +699,93 @@ pin_login_attempt(pinAttempt_t *args)
         args->num_fails = 0;
         args->attempts_left = MAX_TARGET_ATTEMPTS;
 
-        if(check_all_zeros(slot.seed_words, 32) || (slot.tc_flags & TC_WIPE)) {
+        if(check_all_zeros(slot.xdata, 32) || (slot.tc_flags & TC_WIPE)) {
             args->state_flags |= PA_ZERO_SECRET;
         }
             
-        // encodes one bit, and picks a nonce; also saves hint to mpy if appropriate
-        set_is_trick(args, true, &slot);
+        // this encodes one bit, and picks a nonce; also saves hint to mpy if appropriate
+        // - encrypts and saves slot# and tc_flags as well for duress wallet cases
+        // - but only 32 byte there, so store just the slot number and tc_flags
+        set_is_trick(args, &slot);
 
-        // save the seed phrase value, encrypted into the cache area
-        uint8_t     key[32];
-        _make_trick_aes_key(args, key);
+        if(slot.tc_flags & TC_DELTA_MODE) {
+            // Thug gave wrong PIN, but we are going to let them 
+            // past (by calculating correct PIN, up to 4 digits different),
+            // and the mpy firmware can do tricky stuff to protect funds
+            // even though the private key is known at this point.
+            deltamode = true;
+            apply_pin_delta(args->pin, args->pin_len, slot.tc_arg, tmp_pin);
 
-        AES_CTX ctx;
-        aes_init(&ctx);
-        aes_add(&ctx, slot.seed_words, 32);
-        aes_done(&ctx, args->cached_main_pin, 32, key, NULL);
-    } else {
-        // It is not a "trick pin", so assume it's the real PIN, and register
-        // as an attempt on that.
-        if(!is_main_pin(digest)) {
-            // PIN code is just wrong.
-            // - nothing to update, since the chip's done it already
-            return EPIN_AUTH_FAIL;
+            goto real_login;
         }
+        _sign_attempt(args);
 
-        // change the various counters, since this worked
-        rv = updates_for_good_login(digest);
-        if(rv) return EPIN_AE_FAIL;
+        return 0;
+    }
 
-        // SUCCESS! "digest" holds a working value. Save it.
-        pin_cache_save(args, digest);
+real_login:
+    // unlock the AE chip
+    if(warmup_ae()) return EPIN_I_AM_BRICK;
 
-        // ASIDE: even if the above was bypassed, the following code will
-        // fail when it tries to read/update the corresponding slots in the SE
+    // hash up the pin now, assuming we'll use it on main PIN
+    uint8_t     digest[32];
+    rv = pin_hash_attempt(deltamode ? tmp_pin : args->pin, args->pin_len, digest);
+    if(rv) return EPIN_AE_FAIL;
 
-        // mark as success
-        args->state_flags = PA_SUCCESSFUL;
+    // It is not a "trick pin", so assume it's the real PIN, and register
+    // as an attempt on that.
+    if(!is_main_pin(digest)) {
+        // PIN code is just wrong.
+        // - nothing to update, since the chip's done it already
+        return EPIN_AUTH_FAIL;
+    }
 
-        // these are constants, and user doesn't care because they got in... but consistency.
-        args->num_fails = 0;
-        args->attempts_left = MAX_TARGET_ATTEMPTS;
+    // change the various counters, since this worked
+    rv = updates_for_good_login(digest);
+    if(rv) return EPIN_AE_FAIL;
 
-        // I used to always read the secret, since it's so hard to get to this point,
-        // but now just indicating if zero or non-zero so that we don't contaminate the
-        // caller w/ sensitive data that they may not want yet.
-        {   uint8_t ts[AE_SECRET_LEN];
+    // SUCCESS! "digest" holds a working value. Save it.
+    pin_cache_save(args, digest);
 
-            rv = ae_encrypted_read(KEYNUM_secret, KEYNUM_main_pin, digest, ts, AE_SECRET_LEN);
-            if(rv) {
-                ae_reset_chip();
+    // ASIDE: even if the above was bypassed, the following code will
+    // fail when it tries to read/update the corresponding slots in the SE
 
-                return EPIN_AE_FAIL;
-            }
+    // mark as success
+    args->state_flags = PA_SUCCESSFUL;
+
+    // these are constants, and user doesn't care because they got in... but consistency.
+    args->num_fails = 0;
+    args->attempts_left = MAX_TARGET_ATTEMPTS;
+
+    // I used to always read the secret, since it's so hard to get to this point,
+    // but now just indicating if zero or non-zero so that we don't contaminate the
+    // caller w/ sensitive data that they may not want yet.
+    {   uint8_t ts[AE_SECRET_LEN];
+
+        rv = ae_encrypted_read(KEYNUM_secret, KEYNUM_main_pin, digest, ts, AE_SECRET_LEN);
+        if(rv) {
             ae_reset_chip();
 
-            // if mcu_key empty, then that's also "zero"
-            bool mcu_key_valid;
-            mcu_key_get(&mcu_key_valid);
-
-            // new fresh system comes here comes w/ zeros (plaintext) in secret slot of SE1
-            if(check_all_zeros(ts, AE_SECRET_LEN) || !mcu_key_valid) {
-                args->state_flags |= PA_ZERO_SECRET;
-            }
+            return EPIN_AE_FAIL;
         }
+        ae_reset_chip();
 
-        // indicate what features already enabled/non-blank
-        //      args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
-        // - mk3 and earlier set these flags, but that's obsolete now
-        // - mk4 requires knowledge of the specific trick PIN to know if set
-        set_is_trick(args, false, NULL);
+        // if mcu_key empty, then that's also "zero"
+        bool mcu_key_valid;
+        mcu_key_get(&mcu_key_valid);
+
+        // new fresh system comes here comes w/ zeros (plaintext) in secret slot of SE1
+        if(check_all_zeros(ts, AE_SECRET_LEN) || !mcu_key_valid) {
+            args->state_flags |= PA_ZERO_SECRET;
+        }
+    }
+
+    // indicate what features already enabled/non-blank
+    //      args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
+    // - mk3 and earlier set these flags, but that's obsolete now
+    // - mk4 requires knowledge of the specific trick PIN to know if set
+    if(!deltamode) {
+        set_is_trick(args, NULL);
     }
 
     _sign_attempt(args);
@@ -733,7 +832,7 @@ pin_check_logged_in(const pinAttempt_t *args, bool *is_trick)
         return EPIN_WRONG_SUCCESS;
     }
 
-    if(get_is_trick(args)) {
+    if(get_is_trick(args, NULL)) {
         // they used a trick pin to get this far. Amuse them more.
         *is_trick = true;
 
@@ -800,10 +899,9 @@ pin_change(pinAttempt_t *args)
     //  - it's hard to fake them out here, and they may be onto us.
     //  - this protects the seed, but does end the game somewhat
     //  - all trick PINs will still be in effect, and looks like random reset
-    if(get_is_trick(args)) {
+    if(get_is_trick(args, NULL)) {
         // User is a thug.. kill secret and reboot w/o any notice
-        mcu_key_clear(NULL);
-        NVIC_SystemReset();
+        fast_wipe();
 
         // NOT-REACHED
         return EPIN_BAD_REQUEST;
@@ -911,22 +1009,24 @@ pin_fetch_secret(pinAttempt_t *args)
     pin_cache_restore(args, digest);
 
     // determine if we should proceed under duress
-    bool is_trick = get_is_trick(args);
+    trick_slot_t slot;
+    bool is_trick = get_is_trick(args, &slot);
 
-    if(is_trick) {
-        // emulate a 24-word wallet
-        uint8_t     key[32], wallet[32];
-        _make_trick_aes_key(args, key);
-
-        AES_CTX ctx;
-        aes_init(&ctx);
-        aes_add(&ctx, args->cached_main_pin, 32);
-        aes_done(&ctx, wallet, 32, key, NULL);
-        
-        // see stash.py
+    if(is_trick && !(slot.tc_flags & TC_DELTA_MODE)) {
+        // emulate a 24-word wallet, or xprv based wallet
+        // see stash.py for encoding details
         memset(args->secret, 0, AE_SECRET_LEN);
-        args->secret[0] = 0x82;         // 24 word phrase
-        memcpy(&args->secret[1], wallet, 32);
+
+        if(slot.tc_flags & TC_WORD_WALLET) {
+            args->secret[0] = 0x82;         // 24 word phrase
+            memcpy(&args->secret[1], slot.xdata, 32);
+        } else if(slot.tc_flags & TC_XPRV_WALLET) {
+            args->secret[0] = 0x01;         // XPRV mode
+            memcpy(&args->secret[1], slot.xdata, 64);
+        } else {
+            // legit case: a blank duress wallet
+            // (nothing to do, already zeros)
+        }
 
         return 0;
     }
@@ -955,9 +1055,9 @@ pin_fetch_secret(pinAttempt_t *args)
         rv = 0;
         memset(args->secret, 0, AE_SECRET_LEN);
 
-        if(!(args->state_flags & PA_IS_BLANK)) {
+        if(!(args->state_flags & PA_ZERO_SECRET)) {
             // we didn't know yet that we are blank, update that
-            args->state_flags |= PA_IS_BLANK;
+            args->state_flags |= PA_ZERO_SECRET;
 
             _sign_attempt(args);
         }
@@ -991,7 +1091,7 @@ pin_long_secret(pinAttempt_t *args, uint8_t *dest)
     }
 
     // determine if we should proceed under duress/in some trick way
-    bool is_trick = get_is_trick(args);
+    bool is_trick = get_is_trick(args, NULL);
 
     if(is_trick) {
         // Not supported in trick mode. Pretend it's all zeros. Accept all writes.
@@ -1102,8 +1202,8 @@ pin_firmware_greenlight(pinAttempt_t *args)
     // step 2: write it out to chip.
     if(warmup_ae()) return EPIN_I_AM_BRICK;
 
-    // under duress, we can't fake this, but we go through the motions,
-    if(!get_is_trick(args)) {
+    // under duress, we can't fake this, but we go through the motions anyway
+    if(!get_is_trick(args, NULL)) {
         rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
 
         if(rv) {
@@ -1165,10 +1265,9 @@ pin_firmware_upgrade(pinAttempt_t *args)
     }
 
     // under duress, we can't fake this, so kill ourselves.
-    if(get_is_trick(args)) {
+    if(get_is_trick(args, NULL)) {
         // User is a thug.. kill secret and reboot w/o any notice
-        mcu_key_clear(NULL);
-        NVIC_SystemReset();
+        fast_wipe();
 
         // NOT-REACHED
         return EPIN_BAD_REQUEST;

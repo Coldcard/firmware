@@ -39,18 +39,18 @@
 
 // For state_flags field: report only covers current wallet (primary vs. secondary)
 #define PA_SUCCESSFUL         0x01
-#define PA_IS_BLANK           0x02
-#define PA_HAS_DURESS         0x04
-#define PA_HAS_BRICKME        0x08
-#define PA_ZERO_SECRET        0x10
+#define PA_IS_BLANK           0x02          // blank pin (empty/unset)
+#define PA_HAS_DURESS         0x04          // obsolete
+#define PA_HAS_BRICKME        0x08          // obsolete
+#define PA_ZERO_SECRET        0x10          // no secret yet or is wiped
 
 typedef struct {
     uint32_t    magic_value;            // = PA_MAGIC
     int         is_secondary;           // (bool) primary or secondary [obsolete]
     char        pin[MAX_PIN_LEN];       // value being attempted
     int         pin_len;                // valid length of pin
-    uint32_t    delay_achieved;         // so far, how much time wasted? [obsolete]
-    uint32_t    delay_required;         // how much will be needed? [obsolete]
+    uint32_t    delay_achieved;         // so far, how much time wasted? [obsolete: mk4=arg]
+    uint32_t    delay_required;         // how much will be needed? [obsolete: mk4=masked flags]
     uint32_t    num_fails;              // for UI: number of fails PINs
     uint32_t    attempts_left;          // trys left until bricking
     uint32_t    state_flags;            // what things have been setup/enabled already

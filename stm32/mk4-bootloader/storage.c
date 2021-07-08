@@ -765,10 +765,10 @@ mcu_key_pick(void)
     return cur;
 }
 
-// mcu_fast_brick()
+// fast_brick()
 //
     void
-mcu_fast_brick(void)
+fast_brick(void)
 {
     flash_setup0();
     flash_unlock();
@@ -785,6 +785,21 @@ mcu_fast_brick(void)
     oled_show(screen_brick);
 
     LOCKUP_FOREVER();
+}
+
+// fast_wipe()
+//
+    void
+fast_wipe(void)
+{
+    // dump (part of) the main seed key and become a new Coldcard
+    // - lots of other code can and will detect a missing MCU key as "blank"
+    // - and the check value on main seed will be garbage now
+    mcu_key_clear(NULL);
+
+    NVIC_SystemReset();
+
+    // not reached.
 }
 
 // EOF
