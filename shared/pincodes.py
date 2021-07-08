@@ -35,6 +35,7 @@ CHANGE_BRICKME_PIN          = const(0x004)
 CHANGE_SECRET               = const(0x008)
 CHANGE_DURESS_SECRET        = const(0x010)
 CHANGE_SECONDARY_WALLET_PIN = const(0x020)
+CHANGE_FIRMWARE             = const(0x040)      # Mk4+
 CHANGE_LS_OFFSET            = const(0xf00)
 
 # See below for other direction as well.
@@ -45,7 +46,7 @@ PA_ERROR_CODES = {
      -103: "RANGE_ERR",
      -104: "BAD_REQUEST",
      -105: "I_AM_BRICK",
-     -106: "AE_FAIL",
+     -106: "AE_FAIL",           # SE1 on Mk4
      -107: "MUST_WAIT",
      -108: "PIN_REQUIRED",
      -109: "WRONG_SUCCESS",
@@ -54,6 +55,7 @@ PA_ERROR_CODES = {
      -112: "AUTH_FAIL",
      -113: "OLD_AUTH_FAIL",
      -114: "PRIMARY_ONLY",
+     -115: "SE2_FAIL",
 }
 
 # just a few of the likely ones; non-programing errors
@@ -111,8 +113,8 @@ class PinAttempt:
         self.is_empty = None
         self.tmp_value = False          # simulated SE, in-ram only
         self.magic_value = PA_MAGIC_V2 if version.has_608 else PA_MAGIC_V1
-        self.delay_achieved = 0         # so far, how much time wasted?
-        self.delay_required = 0         # how much will be needed?
+        self.delay_achieved = 0         # so far, how much time wasted?: mk4: tc_arg
+        self.delay_required = 0         # how much will be needed?  mk4: tc_flags
         self.num_fails = 0              # for UI: number of fails PINs
         self.attempts_left = 0          # ignore in mk1/2 case, only valid for mk3
         self.state_flags = 0            # useful readback
@@ -125,8 +127,6 @@ class PinAttempt:
                             ustruct.calcsize(PIN_ATTEMPT_FMT)
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
 
-        self.buf = bytearray(PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1)
-
         # check for bricked system early
         import callgate
         if callgate.get_is_bricked():
@@ -135,13 +135,13 @@ class PinAttempt:
             callgate.enter_dfu(3)
 
     def __repr__(self):
-        return '<PinAttempt: secondary=%d num_fails=%d delay=%d/%d state=0x%x>' % (
-                        self.is_secondary, self.num_fails,
-                        self.delay_achieved, self.delay_required, self.state_flags)
+        return '<PinAttempt: fails/left=%d/%d state=0x%x tc_flag/arg=0x%x>' % (
+                        self.num_fails, self.attempts_left,
+                        self.delay_required, self.delay_achieved)
 
     def marshal(self, msg, is_duress=False, is_brickme=False, new_secret=None, 
                     new_pin=None, old_pin=None, get_duress_secret=False, is_secondary=False,
-                    ls_offset=None
+                    ls_offset=None, fw_upgrade=None, spare_num=None
             ):
         # serialize our state, and maybe some arguments
         change_flags = 0
@@ -179,6 +179,12 @@ class PinAttempt:
 
         if ls_offset is not None:
             change_flags |= (ls_offset << 8)        # see CHANGE_LS_OFFSET
+        if spare_num is not None:
+            change_flags |= (spare_num << 8)        # useful for fetch/change secret on Mk4
+
+        if fw_upgrade:
+            change_flags = CHANGE_FIRMWARE
+            new_secret = ustruct.pack('2I', *fw_upgrade) + bytes(AE_SECRET_LEN-8)
 
         # can't send the V2 extra stuff if the bootrom isn't expecting it
         fields = [self.magic_value,
@@ -234,18 +240,23 @@ class PinAttempt:
 
         return secret
 
-    def roundtrip(self, method_num, **kws):
+    def roundtrip(self, method_num, after_buf=None, **kws):
 
-        self.marshal(self.buf, **kws)
+        buf = bytearray(PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1)
+
+        self.marshal(buf, **kws)
+
+        if after_buf is not None:
+            buf.extend(after_buf)
 
         #print("> tx: %s" % b2a_hex(buf))
 
-        err = ckcc.gate(18, self.buf, method_num)
+        err = ckcc.gate(18, buf, method_num)
 
-        #print("[%d] rx: %s" % (err, b2a_hex(self.buf)))
+        #print("[%d] rx: %s" % (err, b2a_hex(buf)))
         
         if err <= -100:
-            #print("[%d] req: %s" % (err, b2a_hex(self.buf)))
+            #print("[%d] req: %s" % (err, b2a_hex(buf)))
             if err == EPIN_I_AM_BRICK:
                 # don't try to continue!
                 enter_dfu(3)
@@ -253,7 +264,10 @@ class PinAttempt:
         elif err:
             raise RuntimeError(err)
 
-        return self.unmarshal(self.buf)
+        if after_buf is not None:
+            return buf[PIN_ATTEMPT_SIZE:]
+        else:
+            return self.unmarshal(buf)
 
     @staticmethod
     def prefix_words(pin_prefix):
@@ -321,6 +335,7 @@ class PinAttempt:
         return self.state_flags
 
     def delay(self):
+        # obsolete since Mk3
         self.roundtrip(1)
 
     def login(self):
@@ -348,14 +363,17 @@ class PinAttempt:
         # - call new_main_secret() when main secret changes!
         # - is_secret_blank and is_successful may be wrong now, re-login to get again
 
-    def fetch(self, duress_pin=None):
+    def fetch(self, duress_pin=None, spare_num=0):
         if self.tmp_value:
+            if spare_num:
+                return bytes(AE)
             # must make a copy here, and must be mutable instance so not reused
             return bytearray(self.tmp_value)
 
         if duress_pin is None:
-            secret = self.roundtrip(4)
+            secret = self.roundtrip(4, spare_num=spare_num)
         else:
+            # obsolete: mk3 and earlier
             secret = self.roundtrip(4, old_pin=duress_pin, get_duress_secret=True)
 
         return secret
@@ -366,11 +384,15 @@ class PinAttempt:
         if self.tmp_value:
             return bytes(AE_LONG_SECRET_LEN)
 
-        secret = b''
-        for n in range(13):
-            secret += self.roundtrip(6, ls_offset=n)[0:32]
+        if version.mk_num < 4:
+            secret = b''
+            for n in range(13):
+                secret += self.roundtrip(6, ls_offset=n)[0:32]
 
-        return secret
+            return secret
+        else:
+            # faster method for Mk4
+            return self.roundtrip(8, after_buf=bytes(AE_LONG_SECRET_LEN))
 
     def ls_change(self, new_long_secret):
         # set the "long secret"
@@ -384,6 +406,13 @@ class PinAttempt:
         # hash all of flash and commit value to 508a/608a
         self.roundtrip(5)
         ckcc.presume_green()
+
+    def firmware_upgrade(self, start, length):
+        # tell the bootrom to use data in PSRAM to upgrade now.
+        # - requires main pin because it writes expected world check value before upgrade
+        # - will fail if not self.is_successful() already (ie. right PIN entered)
+        self.roundtrip(7, fw_upgrade=(start, length))
+        # not-reached
 
     def new_main_secret(self, raw_secret, chain=None):
         # Main secret has changed: reset the settings+their key,
@@ -422,6 +451,31 @@ class PinAttempt:
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value)
+
+    def trick_request(self, method_num, data):
+        # send/recv a trick-pin related request (mk4 only)
+        buf = bytearray(PIN_ATTEMPT_SIZE)
+        self.marshal(buf)
+        buf.extend(data)
+
+        err = ckcc.gate(22, buf, method_num)
+
+        #print("[%d] rx: %s" % (err, b2a_hex(buf)))
+        
+        if err <= -100:
+            raise BootloaderError(PA_ERROR_CODES[err], err)
+
+        return err, buf[PIN_ATTEMPT_SIZE:]
+
+    def is_deltamode(self):
+        # (mk4 only) are we opperating w/ a slightly wrong PIN code?
+        try:
+            from trick_pins import TC_DELTA_MODE
+        except ImportError:
+            # <= mk3
+            return False
+        return bool(self.delay_required & TC_DELTA_MODE)
+        
 
 # singleton
 pa = PinAttempt()
