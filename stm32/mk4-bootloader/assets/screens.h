@@ -45,3 +45,6 @@ extern const unsigned char screen_se1_issue[];
 
 extern const unsigned char screen_se2_issue[];
 
+
+extern const unsigned char screen_wiped[];
+

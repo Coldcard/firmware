@@ -421,7 +421,7 @@ _read_slot_as_counter(uint8_t slot, uint32_t *dest)
 //
 // Read state about previous attempt(s) from AE. Calculate number of failures,
 // and how many attempts are left. The need for verifing the values from AE is
-// not really so strong with the 608a, since it's all enforced on that side, but
+// not really so strong with the 608, since it's all enforced on that side, but
 // we'll do it anyway.
 //
     static int __attribute__ ((noinline))
@@ -662,11 +662,7 @@ apply_pin_delta(char *pin, int pin_len, uint16_t replacement, char *tmp_pin)
             *p = '0' + here; 
         }
     }
-
-    puts2("tmp: ");
-    puts(tmp_pin);
 }
-
 
 // pin_login_attempt()
 //
@@ -712,7 +708,7 @@ pin_login_attempt(pinAttempt_t *args)
             // Thug gave wrong PIN, but we are going to let them 
             // past (by calculating correct PIN, up to 4 digits different),
             // and the mpy firmware can do tricky stuff to protect funds
-            // even though the private key is known at this point.
+            // even though the private key is known at that point.
             deltamode = true;
             apply_pin_delta(args->pin, args->pin_len, slot.tc_arg, tmp_pin);
 
@@ -737,6 +733,9 @@ real_login:
     if(!is_main_pin(digest)) {
         // PIN code is just wrong.
         // - nothing to update, since the chip's done it already
+        // - but maybe there are consequences to a wrong pin
+        se2_handle_bad_pin(args->num_fails + 1);
+
         return EPIN_AUTH_FAIL;
     }
 
@@ -783,7 +782,7 @@ real_login:
     // indicate what features already enabled/non-blank
     //      args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
     // - mk3 and earlier set these flags, but that's obsolete now
-    // - mk4 requires knowledge of the specific trick PIN to know if set
+    // - mk4 requires knowledge of the specific trick PIN to know what it does
     if(!deltamode) {
         set_is_trick(args, NULL);
     }

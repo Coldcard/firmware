@@ -632,9 +632,9 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
     se2_setup();
 
     // error handling.
-    int line_num;
-    if((line_num = setjmp(error_env))) {
-        DEBUG("se2_test_trick_pin");
+    if(setjmp(error_env)) {
+        // remember messing w/ i2c bus during operation could lead here.
+        if(!safety_mode) fatal_mitm();
 
         return false;
     }
@@ -677,7 +677,7 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
         // match found
         found_slot->slot_num = found;
 
-        // 30 bytes are the PIN hash, last 4 bytes is our meta-data.
+        // 28 bytes are the PIN hash, last 4 bytes is our meta-data.
         // following slot(s) may hold wallet data (32-64 bytes)
         memcpy(&found_slot->tc_flags, &slots[found][28], 2);
         memcpy(&found_slot->tc_arg, &slots[found][30], 2);
@@ -799,6 +799,45 @@ se2_save_trick(const trick_slot_t *config)
     }
 
     return 0;
+}
+
+// se2_handle_bad_pin()
+//
+// Attacker (or confused owner) has just given a wrong PIN code (didn't match true
+// PIN nor any trick PIN)... maybe do something special.
+//
+    void 
+se2_handle_bad_pin(int num_fails)
+{
+    trick_slot_t    slot;
+
+    bool is_trick = se2_test_trick_pin("!p", 2, &slot, true);
+    if(!is_trick) return;
+
+    // Are we configured to do something in this case?
+    if(num_fails >= slot.tc_arg) {
+        if(slot.tc_flags & TC_WIPE) {
+            // Wipe keys and stop. They can power cycle and keep trying
+            // so only do this if a valid key currently exists.
+            bool valid;
+            const mcu_key_t *cur = mcu_key_get(&valid);
+
+            if(valid) {
+                mcu_key_clear(cur);
+                oled_show(screen_wiped);
+
+                LOCKUP_FOREVER();
+            }
+        }
+
+        if(slot.tc_flags & TC_BRICK) {
+            // Not mutually exclusive: if both flags are set, the first
+            // time it's triggered the seed will be wiped (and then lockup)
+            // Next wrong pin will not have a seed to clear, and so this
+            // brick code will happen.
+            fast_brick();
+        }
+    }
 }
 
 // trick_pin_hash()

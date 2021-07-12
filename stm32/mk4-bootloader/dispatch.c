@@ -538,12 +538,23 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
         case 23:
             // fast wipe -- does system reset, no UX
-            if(arg2 == 0xBeef) fast_wipe();
+            if(arg2 == 0xBeef) {
+                // silent version, but does reset system
+                fast_wipe();
+            } else if(arg2 == 0xDead) {
+                // noisy, shows screen, halts
+                mcu_key_clear(NULL);
+                oled_show(screen_wiped);
+
+                LOCKUP_FOREVER();
+            }
+            rv = EPERM;
             break;
 
         case 24:
-            // fast brick -- locks up w/ messag
+            // fast brick -- locks up w/ message
             if(arg2 == 0xDead) fast_brick();
+            rv = EPERM;
             break;
 
 #if 0

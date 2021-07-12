@@ -57,6 +57,9 @@ void trick_pin_hash(const char *pin, int pin_len, uint8_t tpin_hash[32]);
 // record and enable an ECC pubkey for SE1+SE2 joining purposes
 void se2_save_auth_pubkey(const uint8_t pubkey[64]);
 
+// call if a completely unknown PIN is provided
+void se2_handle_bad_pin(int num_fails);
+
 #if 0
 // secp256r1 curve functions.
 bool p256_verify(const uint8_t pubkey[64], const uint8_t digest[32], const uint8_t signature[64]);

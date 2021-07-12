@@ -48,8 +48,11 @@ icons = {
     'logout': '',
     'ticket': '',
     'dots': '',
-    'file': '',
+    'sdcard': '',
     'maglass': '',
+    'insert-card': ' ',
+    'search-card': ' ',
+    'power': '',
 }
 
 def make_background():
@@ -188,12 +191,12 @@ results = [
     ( 'devmode', 'Danger! Caution!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
     ( 'upgrading', 'Upgrading', 'graph-up', {}),
     ( 'replug', 'Replug', None, {}),        # visible in factory only
-    #( 'search', 'Searching...', 'maglass', {}),
-    ( 'search', 'Searching...', None, {}),
-    #( 'recovery', 'Insert Card', 'file', {}),
-    ( 'recovery', 'Recovery!', 'file', {}),
-    ( 'se1_issue', 'U4', None, dict(crossout=1) ), 
-    ( 'se2_issue', 'U5', None, dict(crossout=1) ), 
+    ( 'search', 'Searching...', 'search-card', {}),
+    ( 'recovery', 'Insert Card', 'insert-card', {}),
+    #( 'recovery', 'Recovery!', 'sdcard', {}),
+    ( 'se1_issue', 'U4', 'bug', dict(crossout=1) ), 
+    ( 'se2_issue', 'U5', 'bug', dict(crossout=1) ), 
+    ( 'wiped', 'Seed Wiped', 'power', {}),
 ]
 
 if __name__ == '__main__':
