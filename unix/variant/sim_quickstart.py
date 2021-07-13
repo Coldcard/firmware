@@ -143,6 +143,13 @@ if '--xor' in sys.argv:
     numpad.inject('8')
     #numpad.inject('y')  # seed xor
 
+if '--seq' in sys.argv:
+    # inject a sequence of key presses to get you somewhere
+    seq = sys.argv[sys.argv.index('--seq') + 1]
+    for ch in seq:
+        numpad.inject(ch)
+    assert not numpad._changes.full(), 'too full'
+
 if '--enter' in sys.argv:
     # keep at end of file: extra enter to confirm something from above
     numpad.inject('y')
