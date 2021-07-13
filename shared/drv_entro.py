@@ -6,7 +6,7 @@
 # Using the system's BIP-32 master key, safely derive seeds phrases/entropy for other
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
-import stash, ngu, chains, bip39
+import stash, ngu, chains, bip39, version
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
@@ -90,10 +90,16 @@ def drv_entro_step2(_1, picked, _2):
 
     # Reveal to user!
     chain = chains.current_chain()
+    qr = None
+    qr_alnum = False
 
     if s_mode == 'words':
         # BIP-39 seed phrase, various lengths
         words = bip39.b2a_words(new_secret).split(' ')
+
+        # encode more tightly for QR
+        qr = ' '.join(w[0:4] for w in words)
+        qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
@@ -108,8 +114,9 @@ def drv_entro_step2(_1, picked, _2):
 
         # append 0x01 to indicate it's a compressed private key
         pk = new_secret + b'\x01'
+        qr = ngu.codecs.b58_encode(chain.b58_privkey + pk)
 
-        msg = 'WIF (privkey):\n' + ngu.codecs.b58_encode(chain.b58_privkey + pk)
+        msg = 'WIF (privkey):\n' + qr
 
     elif s_mode == 'xprv':
         # Raw XPRV value.
@@ -117,12 +124,16 @@ def drv_entro_step2(_1, picked, _2):
         master_node = ngu.hdnode.HDNode().from_chaincode_privkey(ch, pk)
 
         encoded = stash.SecretStash.encode(xprv=master_node)
+        qr = chain.serialize_private(master_node)
         
-        msg = 'Derived XPRV:\n' + chain.serialize_private(master_node)
+        msg = 'Derived XPRV:\n' + qr
 
     elif s_mode == 'hex':
         # Random hex number for whatever purpose
-        msg = ('Hex (%d bytes):\n' % width) + str(b2a_hex(new_secret), 'ascii')
+        qr = str(b2a_hex(new_secret), 'ascii')
+        msg = ('Hex (%d bytes):\n' % width) + qr
+
+        qr_alnum = True
 
         stash.blank_object(new_secret)
         new_secret = None       # no need to print it again
@@ -134,14 +145,14 @@ def drv_entro_step2(_1, picked, _2):
     if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
 
-    #print(msg)      # XXX debug
-
     prompt = '\n\nPress 1 to save to MicroSD card'
     if encoded is not None:
-        prompt += ', 2 to switch to derived secret.'
+        prompt += ', 2 to switch to derived secret'
+    if (qr is not None) and version.has_fatram:
+        prompt += ', 3 to view as QR code.'
 
     while 1:
-        ch = await ux_show_story(msg+prompt, sensitive=True, escape='12')
+        ch = await ux_show_story(msg+prompt, sensitive=True, escape='123')
 
         if ch == '1':
             # write to SD card: simple text file
@@ -160,6 +171,11 @@ def drv_entro_step2(_1, picked, _2):
                 continue
 
             await ux_show_story("Filename is:\n\n%s" % out_fn, title='Saved')
+        elif ch == '3' and version.has_fatram:
+            from ux import QRDisplay
+            o = QRDisplay([qr], qr_alnum)
+            await o.interact_bare()
+            continue
         else:
             break
 

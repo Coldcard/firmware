@@ -390,7 +390,7 @@ async def show_qr_codes(addrs, is_alnum, start_n):
     await o.interact_bare()
 
 class QRDisplay(UserInteraction):
-    # Show a QR code for (typically) a list of addresses. Can only work on Mk3
+    # Show a QR code for (typically) a list of addresses. Can only work on Mk3+
 
     def __init__(self, addrs, is_alnum, start_n=0, sidebar=None):
         self.is_alnum = is_alnum
@@ -405,7 +405,9 @@ class QRDisplay(UserInteraction):
         # Version 2 would be nice, but can't hold what we need, even at min error correction,
         # so we are forced into version 3 = 29x29 pixels
         # - see <https://www.qrcode.com/en/about/version.html>
-        # - to display 29x29 pixels, we have to double them up: 58x58
+        # - version=3 => to display 29x29 pixels, we have to double them up: 58x58
+        # - version=4 => 33x33 -> 66x64 (trimmed)
+        # - version=5..11 => single pixel per
         # - not really providing enough space around it
         # - inverted QR (black/white swap) still readable by scanners, altho wrong
 
@@ -415,21 +417,18 @@ class QRDisplay(UserInteraction):
             if self.is_alnum:
                 # targeting 'alpha numeric' mode, typical len is 42
                 enc = uqr.Mode_ALPHANUMERIC
-                assert len(msg) <= 47
                 msg = msg.upper()
             else:
                 # has to be 'binary' mode, altho shorter msg, typical 34-36
                 enc = uqr.Mode_BYTE
-                assert len(msg) <= 42
 
-            self.qr_data = uqr.make(msg, min_version=3, max_version=3, encoding=enc)
-
+            # can fail if not enough space in QR
+            self.qr_data = uqr.make(msg, min_version=3, max_version=11, encoding=enc)
 
     def redraw(self):
         # Redraw screen.
         from glob import dis
         from display import FontSmall, FontTiny
-
 
         # what we are showing inside the QR
         msg = self.addrs[self.idx]
@@ -443,8 +442,20 @@ class QRDisplay(UserInteraction):
         # draw display
         dis.clear()
 
-        w = 29          # because version=3
-        XO,YO = 7, 3    # offsets
+        w = self.qr_data.width()
+        if w == 29:
+            # v 3 => smallest we support
+            XO,YO = 7, 3    # offsets
+            dbl = True
+        elif w == 33:
+            # v 4 => doubled but one line is trimmed
+            XO,YO = 0, 0
+            dbl = True
+        else:
+            # v5+ => just one pixel per module, might not be easy to read
+            dbl = False
+            XO = max(0, (64 - w) // 2)
+            YO = max(0, (64 - w) // 2)
 
         if not self.invert:
             dis.dis.fill_rect(XO-YO, 0, 64, 64, 1)
@@ -453,9 +464,12 @@ class QRDisplay(UserInteraction):
         for x in range(w):
             for y in range(w):
                 px = self.qr_data.get(x, y)
-                X = (x*2) + XO
-                Y = (y*2) + YO
-                dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
+                if dbl:
+                    X = (x*2) + XO
+                    Y = (y*2) + YO
+                    dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
+                else:
+                    dis.dis.pixel(XO+x,YO+y, px if inv else (not px))
 
         x, y = 73, 0 if self.is_alnum else 2
         sidebar, ll = self.sidebar or (msg, 7)
@@ -487,6 +501,8 @@ class QRDisplay(UserInteraction):
                 continue
             elif ch in 'xy':
                 break
+            elif len(self.addrs) == 1:
+                continue
             elif ch == '5' or ch == '7':
                 if self.idx > 0:
                     self.idx -= 1

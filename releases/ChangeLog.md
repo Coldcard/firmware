@@ -1,3 +1,9 @@
+## 4.1.2 - Jun XX, 2021
+
+- Enhancement: Shows QR code with BIP-85 derived entropy value if you press (3) while
+  value shown on-screen. Thanks to [@opennoms](https://twitter.com/openoms) for idea.
+  Works with 12/18/24-words, XPRV, privatekey and even hex cases.
+
 ## 4.1.1 - April 30, 2021
 
 - Bugfix/Enhancement: [Unchained Capital](https://unchained-capital.com/)
