@@ -407,8 +407,8 @@ class QRDisplay(UserInteraction):
         # - see <https://www.qrcode.com/en/about/version.html>
         # - version=3 => to display 29x29 pixels, we have to double them up: 58x58
         # - version=4 => 33x33 -> 66x64 (trimmed)
-        # - version=5..11 => single pixel per
-        # - not really providing enough space around it
+        # - version=5..11 => single pixel per module
+        # - not really providing enough space around these, shrug
         # - inverted QR (black/white swap) still readable by scanners, altho wrong
 
         from utils import imported
@@ -445,37 +445,62 @@ class QRDisplay(UserInteraction):
         w = self.qr_data.width()
         if w == 29:
             # v 3 => smallest we support
-            XO,YO = 7, 3    # offsets
+            XO,YO = 4, 3    # offsets
             dbl = True
+            bw = 62
+            lm, tm = 2, 1           # left, top margin
         elif w == 33:
-            # v 4 => doubled but one line is trimmed
-            XO,YO = 0, 0
+            # v 4 => doubled but one line is trimmed at bottom
+            # - no margins
             dbl = True
+            XO,YO = 0, 0
+            bw = 66
+            lm, tm = 0, 0
         else:
             # v5+ => just one pixel per module, might not be easy to read
+            # - vert center, left just
             dbl = False
-            XO = max(0, (64 - w) // 2)
             YO = max(0, (64 - w) // 2)
+            bw = w + 4
+            lm = 4
+            tm = (64 - bw) // 2
+            XO = 6
 
         if not self.invert:
-            dis.dis.fill_rect(XO-YO, 0, 64, 64, 1)
+            dis.dis.fill_rect(lm, tm, bw, bw, 1)
+        else:
+            dis.dis.fill_rect(lm, tm, bw, bw, 0)
 
         inv = self.invert
         for x in range(w):
             for y in range(w):
-                px = self.qr_data.get(x, y)
+                if not self.qr_data.get(x, y):
+                    continue
                 if dbl:
                     X = (x*2) + XO
                     Y = (y*2) + YO
-                    dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
+                    dis.dis.fill_rect(X,Y, 2,2, inv)
                 else:
-                    dis.dis.pixel(XO+x,YO+y, px if inv else (not px))
+                    dis.dis.pixel(XO+x,YO+y, inv)
 
-        x, y = 73, 0 if self.is_alnum else 2
-        sidebar, ll = self.sidebar or (msg, 7)
-        for i in range(0, len(sidebar), ll):
-            dis.text(x, y, sidebar[i:i+ll], FontSmall)
-            y += 10 if self.is_alnum else 12
+        if not self.sidebar and len(msg) > (5*7):
+            # use FontTiny and word wrap (will just split if no spaces)
+            x = bw + lm + 4
+            ww = ((128 - x)//4) - 1        # char width avail
+            y = 1
+            parts = word_wrap(msg, ww)
+            for line in parts:
+                dis.text(x, y, line, FontTiny)
+                y += 8
+        else:
+            # hand-positioned for known cases
+            x, y = 73, (0 if self.is_alnum else 2)
+            dy = 10 if self.is_alnum else 12
+            sidebar, ll = self.sidebar if self.sidebar else (msg, 7)
+
+            for i in range(0, len(sidebar), ll):
+                dis.text(x, y, sidebar[i:i+ll], FontSmall)
+                y += dy
 
         if not inv and len(self.addrs) > 1:
             # show path number, very tiny
