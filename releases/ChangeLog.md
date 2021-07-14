@@ -3,6 +3,7 @@
 - Enhancement: Shows QR code with BIP-85 derived entropy value if you press (3) while
   value shown on-screen. Thanks to [@opennoms](https://twitter.com/openoms) for idea.
   Works with 12/18/24-words, XPRV, privatekey and even hex cases.
+- Enhancement: Show QR of Coldcard's XPUB, by pressing 3 in Advanced > View Identity
 
 ## 4.1.1 - April 30, 2021
 

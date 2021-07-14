@@ -84,9 +84,6 @@ Master Key Fingerprint:
 
   {xfp}
 
-as LE32:
-  0x{xfp_le:08x}
-
 USB Serial Number:
 
   {serial}
@@ -96,8 +93,9 @@ Extended Master Key:
 {xpub}
 '''
     my_xfp = settings.get('xfp', 0)
-    msg = tpl.format(xpub=settings.get('xpub', '(none yet)'),
-                            xfp=xfp2str(my_xfp), xfp_le=my_xfp,
+    xpub = settings.get('xpub', None)
+    msg = tpl.format(xpub=(xpub or '(none yet)'),
+                            xfp=xfp2str(my_xfp),
                             serial=version.serial_number())
 
     if pa.is_secondary:
@@ -110,7 +108,20 @@ Extended Master Key:
     if bn:
         msg += '\nShipping Bag:\n  %s\n' % bn
 
-    await ux_show_story(msg)
+    if not version.has_fatram:
+        # can't support on mk2
+        xpub = None
+    if xpub:
+        msg += '\nPress 3 to show QR code for xpub.'
+
+    ch = await ux_show_story(msg, escape=('3' if xpub else None))
+
+    if ch == '3':
+        # show the QR
+        from ux import QRDisplay
+        o = QRDisplay([xpub], False)
+        await o.interact_bare()
+    
 
 async def show_settings_space(*a):
 

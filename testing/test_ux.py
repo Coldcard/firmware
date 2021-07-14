@@ -238,7 +238,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     ( 'abandon ' * 23 + 'art', 0x24d73654 ),
     ( "wife shiver author away frog air rough vanish fantasy frozen noodle athlete pioneer citizen symptom firm much faith extend rare axis garment kiwi clarify", 0x4369050f),
     ])
-def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, seed_words, xfp, get_secrets, reset_seed_words):
+def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, seed_words, xfp, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
     
     unit_test('devtest/clear_seed.py')
 
@@ -262,6 +262,11 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
     assert '  '+xfp2str(xfp) in body
 
     v = get_secrets()
+
+    assert 'Press 3 to show QR code' in body
+    need_keypress('3')
+    qr = cap_screen_qr().decode('ascii')
+    assert qr == v['xpub']
 
     assert v['mnemonic'] == seed_words
     reset_seed_words()
