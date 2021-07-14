@@ -324,33 +324,85 @@ def cap_image(sim_execfile):
 
     return doit
 
+QR_HISTORY = []
+
+@pytest.fixture(scope='session')
+def qr_quality_check():
+    # Use this with cap_screen_qr 
+    print("QR codes will be captured and shown at end of run.")
+    yield None
+
+    # quick test:
+    #   py.test test_drv_entro.py -k test_path_index --ff -k '0-64-bytes'
+    #
+
+    global QR_HISTORY
+    if not QR_HISTORY: return
+
+    import textwrap
+    from PIL import Image, ImageOps, ImageFont, ImageDraw
+    w,h = QR_HISTORY[0][1].size
+    count = len(QR_HISTORY)
+    TH = 32
+
+    scale=3
+    rv = Image.new('RGB', (w*scale, ((h*scale)+TH)*count), color=(64,64,64))
+    y = 0
+    fnt = ImageFont.truetype('Courier', size=10)
+    dr = ImageDraw.Draw(rv)
+    mw = int((w*scale) / dr.textsize('M', fnt)[0])
+
+    for test_name, img in QR_HISTORY:
+        test_name = test_name[test_name.index('['):].replace(' (call)','')
+
+        img = img.resize((w*scale,h*scale), resample=Image.NEAREST)
+        rv.paste(img, (0, y))
+        y += (h*scale)
+
+        dr.multiline_text((4, y+3), textwrap.fill(test_name, mw), font=fnt, fill=(0,255,0))
+        y += TH
+
+    #rv = rv.resize(tuple(c*4 for c in rv.size), resample=Image.NEAREST)
+
+    rv.save('debug/all-qrs.png')
+    rv.show()
+
+
+
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit(x=4, w=64):
+    def doit(x=0, w=66):
+        # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
+        global QR_HISTORY
 
         try:
             import zbar
         except ImportError:
             raise pytest.skip('need zbar-py module')
-        import numpy
+        import numpy, os
         from PIL import ImageOps
 
         # see <http://qrlogo.kaarposoft.dk/qrdecode.html>
 
         img = cap_image()
+
+        # document it
+        tname = os.environ.get('PYTEST_CURRENT_TEST')
+        QR_HISTORY.append( (tname, img) )
+
         img = img.crop( (x, 0, x+w, w) )
         img = ImageOps.expand(img, 16, 255)
         img = img.resize( (256, 256))
         img.save('debug/last-qr.png')
         #img.show()
+
     
         scanner = zbar.Scanner()
         np = numpy.array(img.getdata(), 'uint8').reshape(img.width, img.height)
 
         for sym, value, *_ in scanner.scan(np):
             assert sym == 'QR-Code', 'unexpected symbology: ' + sym
-            value = str(value, 'ascii')
-            return value
+            return value            # bytes, could be binary
 
         raise pytest.fail('qr code not found')
 

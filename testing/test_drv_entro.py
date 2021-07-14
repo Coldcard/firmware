@@ -170,6 +170,8 @@ def test_bip_vectors(mode, index, entropy, expect,
             # required cleanup
             reset_seed_words()
 
+    else:
+        assert '3 to view as QR code' in story
 
     need_keypress('x')
 
@@ -178,16 +180,16 @@ HISTORY = set()
 @pytest.mark.parametrize('mode,pattern', [ 
     ('WIF (privkey)', r'[1-9A-HJ-NP-Za-km-z]{51,52}' ),
     ('XPRV (BIP-32)', r'[tx]prv[1-9A-HJ-NP-Za-km-z]{107}'),
-    ('32-bytes hex', r'[a-f0-9]{32}'),
-    ('64-bytes hex', r'[a-f0-9]{64}'),
+    ('32-bytes hex', r'[a-f0-9]{64}'),
+    ('64-bytes hex', r'[a-f0-9]{128}'),
     ('12 words', r'[a-f0-9]{32}'),
     ('18 words', r'[a-f0-9]{48}'),
     ('24 words', r'[a-f0-9]{64}'),
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
-def test_path_index(mode, pattern, index, 
+def test_path_index(mode, pattern, index,
         set_encoded_secret, dev, cap_menu, pick_menu_item,
-        goto_home, cap_story, need_keypress
+        goto_home, cap_story, need_keypress, cap_screen_qr, qr_quality_check
 ):
     # Uses any key on Simulator; just checking for operation + entropy level
 
@@ -238,6 +240,25 @@ def test_path_index(mode, pattern, index,
     elif 'WIF' in mode:
         key = Key.from_text(got)
         assert hex(key.secret_exponent())[2:] in story
+
+    if index == 0:
+        assert '3 to view as QR code' in story
+        need_keypress('3')
+
+        qr = cap_screen_qr().decode('ascii')
+
+        if 'words' in mode:
+            gw = qr.lower().split()
+            assert gw == [i[0:4] for i in exp]
+
+        elif 'hex' in mode:
+            assert qr.lower() == got
+
+        elif 'XPRV' in mode:
+            assert qr == got
+
+        elif 'WIF' in mode:
+            assert qr == got
     
 
 # EOF
