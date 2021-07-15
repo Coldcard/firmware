@@ -389,6 +389,10 @@ async def show_qr_codes(addrs, is_alnum, start_n):
     o = QRDisplay(addrs, is_alnum, start_n, sidebar=None)
     await o.interact_bare()
 
+async def show_qr_code(data, is_alnum):
+    o = QRDisplay([data], is_alnum)
+    await o.interact_bare()
+
 class QRDisplay(UserInteraction):
     # Show a QR code for (typically) a list of addresses. Can only work on Mk3+
 
@@ -444,27 +448,19 @@ class QRDisplay(UserInteraction):
 
         w = self.qr_data.width()
         if w == 29:
-            # v 3 => smallest we support
+            # version 3 => we can double-up the pixels
             XO,YO = 4, 3    # offsets
             dbl = True
             bw = 62
             lm, tm = 2, 1           # left, top margin
-        elif w == 33:
-            # v 4 => doubled but one line is trimmed at bottom
-            # - no margins
-            dbl = True
-            XO,YO = 0, 0
-            bw = 66
-            lm, tm = 0, 0
         else:
-            # v5+ => just one pixel per module, might not be easy to read
-            # - vert center, left just
+            # v4+ => just one pixel per module, might not be easy to read
+            # - vert center, left justify; text on space to right
             dbl = False
             YO = max(0, (64 - w) // 2)
-            bw = w + 4
-            lm = 4
+            XO,lm = 6, 4
+            bw = w + lm
             tm = (64 - bw) // 2
-            XO = 6
 
         if not self.invert:
             dis.dis.fill_rect(lm, tm, bw, bw, 1)
@@ -488,12 +484,19 @@ class QRDisplay(UserInteraction):
             x = bw + lm + 4
             ww = ((128 - x)//4) - 1        # char width avail
             y = 1
-            parts = word_wrap(msg, ww)
+            parts = list(word_wrap(msg, ww))
+            if len(parts) > 8:
+                parts = parts[:8]
+                parts[-1] = parts[-1][0:-3] + '...'
+            elif len(parts) <= 5:
+                parts.insert(0, '')
+    
             for line in parts:
                 dis.text(x, y, line, FontTiny)
                 y += 8
         else:
             # hand-positioned for known cases
+            # - self.sidebar = (text, #of char per line)
             x, y = 73, (0 if self.is_alnum else 2)
             dy = 10 if self.is_alnum else 12
             sidebar, ll = self.sidebar if self.sidebar else (msg, 7)
