@@ -118,9 +118,8 @@ Extended Master Key:
 
     if ch == '3':
         # show the QR
-        from ux import QRDisplay
-        o = QRDisplay([xpub], False)
-        await o.interact_bare()
+        from ux import show_qr_code
+        await show_qr_code(xpub, False)
     
 
 async def show_settings_space(*a):
@@ -621,8 +620,12 @@ async def view_seed_words(*a):
         return
 
     with stash.SensitiveValues() as sv:
+        qr_alnum = False
+
         if sv.mode == 'words':
             words = bip39.b2a_words(sv.raw).split(' ')
+            qr = ' '.join(w[0:4] for w in words)
+            qr_alnum = True
 
             msg = 'Seed words (%d):\n' % len(words)
             msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
@@ -633,17 +636,29 @@ async def view_seed_words(*a):
         elif sv.mode == 'xprv':
             import chains
             msg = chains.current_chain().serialize_private(sv.node)
+            qr = msg
 
         elif sv.mode == 'master':
             from ubinascii import hexlify as b2a_hex
 
             msg = '%d bytes:\n\n' % len(sv.raw)
-            msg += str(b2a_hex(sv.raw), 'ascii')
+            qr = str(b2a_hex(sv.raw), 'ascii')
+            msg += qr
         else:
             raise ValueError(sv.mode)
 
-        await ux_show_story(msg, sensitive=True)
+        if version.has_fatram:
+            msg += '\n\nPress 1 to view as QR Code.'
 
+        while 1:
+            ch = await ux_show_story(msg, sensitive=True, escape='1')
+            if ch == '1':
+                from ux import show_qr_code
+                await show_qr_code(qr, qr_alnum)
+                continue
+            break
+
+        stash.blank_object(qr)
         stash.blank_object(msg)
 
 async def damage_myself():
