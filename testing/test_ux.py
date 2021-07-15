@@ -1,7 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os
-from helpers import xfp2str
+import pytest, time, os, re
+from helpers import xfp2str, prandom
 
 def test_get_secrets(get_secrets, master_xpub):
     v = get_secrets()
@@ -115,7 +115,7 @@ def pass_word_quiz(need_keypress, cap_story):
     return doit
 
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
-def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting):
+def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting, cap_screen_qr):
     # Make an encrypted 7z backup, verify it, and even restore it!
 
     if multisig:
@@ -138,6 +138,12 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     assert len(words) == 12
 
     print("Passphrase: %s" % ' '.join(words))
+
+    if 'QR Code' in body:
+        need_keypress('1')
+        got_qr = cap_screen_qr().decode('ascii').lower().split()
+        assert [w[0:4] for w in words] == got_qr
+        need_keypress('y')
 
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
@@ -316,7 +322,7 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypres
     reset_seed_words()
 
 @pytest.mark.parametrize('count', [20, 51, 99, 104])
-def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen):
+def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen, cap_screen_qr, qr_quality_check):
     import random
     from hashlib import sha256
     
@@ -355,6 +361,13 @@ def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keyp
         title, body = cap_story()
 
     assert 'Record these 24' in body
+
+    assert '1 to view as QR Code' in body
+    words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
+    need_keypress('1')
+    qr = cap_screen_qr()
+    assert qr.decode('ascii').split() == words
+    need_keypress('x')      # close QR
 
     need_keypress('6')
     time.sleep(0.1)
@@ -582,15 +595,30 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
 
 
 
+@pytest.mark.parametrize('mode', ['words', 'xprv', 'ms'])
 @pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
-def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
-                                cap_menu, get_pp_sofar, get_secrets):
+def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
+                cap_menu, get_pp_sofar, get_secrets, cap_screen_qr, set_encoded_secret, qr_quality_check):
+    from constants import simulator_fixed_xprv
 
-    # Check the seed words are displayed correctly: the new "View Seed Words" feature
-    sim_exec("import stash; stash.bip39_passphrase = '%s'" % b39_word)
+    if mode == 'words':
+        # Check the seed words are displayed correctly: the new "View Seed Words" feature
+        sim_exec("import stash; stash.bip39_passphrase = '%s'" % b39_word)
 
-    v = get_secrets()
-    words = v['mnemonic'].split(' ')
+        v = get_secrets()
+        words = v['mnemonic'].split(' ')
+    else:
+        if b39_word: return
+
+        if mode == 'xprv':
+            set_encoded_secret(b'\x01' + prandom(64))
+            v = get_secrets()
+            expect = v['xprv']
+        elif mode == 'ms':
+            set_encoded_secret(b'\x20' + prandom(32))
+            v = get_secrets()
+            expect = v['raw_secret'][2:2+64]
+        
 
     goto_home()
     pick_menu_item('Advanced')
@@ -606,19 +634,29 @@ def test_show_seed(b39_word, goto_home, pick_menu_item, cap_story, need_keypress
 
     title, body = cap_story()
     assert title == 'NO-TITLE'
-    assert '24' in body
 
-    lines = body.split('\n')
-    assert lines[1:25] == ['%2d: %s' % (n+1, w) for n,w in enumerate(words)]
+    if mode == 'words':
+        assert '24' in body
 
-    if b39_word:
-        assert lines[-2] == 'BIP-39 Passphrase:'
-        assert lines[-1] == b39_word
-        assert len(lines) == 1+24+3
+        lines = body.split('\n')
+        assert lines[1:25] == ['%2d: %s' % (n+1, w) for n,w in enumerate(words)]
 
-        sim_exec("import stash; stash.bip39_passphrase = ''")
+        if b39_word:
+            assert lines[26] == 'BIP-39 Passphrase:'
+            assert b39_word in lines[27]
+
+            sim_exec("import stash; stash.bip39_passphrase = ''")
+
+        qr_expect = ' '.join(w[0:4].upper() for w in words)
+
     else:
-        assert len(lines) == 1+24
+        assert expect in body
+        qr_expect = expect
+
+    assert '1 to view as QR Code' in body
+    need_keypress('1')
+    qr = cap_screen_qr().decode('ascii')
+    assert qr == qr_expect
 
     need_keypress('y')      # clear screen
 
