@@ -353,7 +353,10 @@ def qr_quality_check():
     mw = int((w*scale) / dr.textsize('M', fnt)[0])
 
     for test_name, img in QR_HISTORY:
-        test_name = test_name[test_name.index('['):].replace(' (call)','')
+        if '[' in test_name:
+            test_name = test_name[test_name.index('['):].replace(' (call)','')
+        else:
+            test_name = test_name.replace(' (call)','')
 
         img = img.resize((w*scale,h*scale), resample=Image.NEAREST)
         rv.paste(img, (0, y))
@@ -371,8 +374,9 @@ def qr_quality_check():
 
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit(x=0, w=66):
+    def doit(x=0, w=70):
         # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
+        # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
         global QR_HISTORY
 
         try:
@@ -384,18 +388,17 @@ def cap_screen_qr(cap_image):
 
         # see <http://qrlogo.kaarposoft.dk/qrdecode.html>
 
-        img = cap_image()
+        orig_img = cap_image()
 
         # document it
         tname = os.environ.get('PYTEST_CURRENT_TEST')
-        QR_HISTORY.append( (tname, img) )
+        QR_HISTORY.append( (tname, orig_img) )
 
-        img = img.crop( (x, 0, x+w, w) )
-        img = ImageOps.expand(img, 16, 255)
+        img = orig_img.crop( (x, 0, x+w, w) )
+        img = ImageOps.expand(img, 16, 0)
         img = img.resize( (256, 256))
         img.save('debug/last-qr.png')
         #img.show()
-
     
         scanner = zbar.Scanner()
         np = numpy.array(img.getdata(), 'uint8').reshape(img.width, img.height)
@@ -404,6 +407,7 @@ def cap_screen_qr(cap_image):
             assert sym == 'QR-Code', 'unexpected symbology: ' + sym
             return value            # bytes, could be binary
 
+        # debug: check debug/last-qr.png
         raise pytest.fail('qr code not found')
 
     return doit
