@@ -172,9 +172,8 @@ def drv_entro_step2(_1, picked, _2):
 
             await ux_show_story("Filename is:\n\n%s" % out_fn, title='Saved')
         elif ch == '3' and version.has_fatram:
-            from ux import QRDisplay
-            o = QRDisplay([qr], qr_alnum)
-            await o.interact_bare()
+            from ux import show_qr_code
+            await show_qr_code(qr, qr_alnum)
             continue
         else:
             break
