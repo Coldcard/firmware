@@ -264,7 +264,7 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
     "m/1'/2'/3'/4'/5'",
 ])
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story):
+def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check):
 
     is_single = '{idx}' not in path
 
@@ -347,6 +347,13 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         addr = body.split()[-1]
 
         addr_vs_path(addr, path, addr_fmt=which_fmt)
+
+        need_keypress('4')
+        qr = cap_screen_qr().decode('ascii')
+        if which_fmt == AF_P2WPKH:
+            assert qr == addr.upper()
+        else:
+            assert qr == addr
 
     else:
         n = 10
