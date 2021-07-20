@@ -1395,4 +1395,37 @@ def test_value_render(units, fake_txn, start_sign, cap_story, settings_set, sett
 
     settings_remove('rz')
 
+@pytest.mark.parametrize('num_in', [1,2,3])
+@pytest.mark.parametrize('num_out', [1,2,3])
+def test_qr_txn(num_in, num_out, request, fake_txn, try_sign, dev, cap_screen_qr, qr_quality_check, cap_story, need_keypress):
+    segwit=True
+
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=False)
+
+
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+    open('debug/last.txn', 'wb').write(txn)
+
+    print("txn len = %d bytes" % len(txn))
+
+    title, story = cap_story()
+
+    assert 'QR Code' in story
+
+    if 1:
+        # check TXID qr code
+        need_keypress('1')
+
+        qr = cap_screen_qr().decode()
+
+        from pycoin.tx.Tx import Tx
+        t = Tx.from_bin(txn)
+        assert t.id() == qr.lower()
+
+    else:
+        # TODO: QR for txn itself yet
+        need_keypress('2')
+        qr = cap_screen_qr().decode()
+        assert qr.lower() == txn.hex()
+
 # EOF

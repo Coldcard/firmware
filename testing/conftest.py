@@ -374,7 +374,7 @@ def qr_quality_check():
 
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit(x=0, w=70):
+    def doit(x=0, w=64):
         # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
         # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
         global QR_HISTORY
@@ -390,9 +390,13 @@ def cap_screen_qr(cap_image):
 
         orig_img = cap_image()
 
+
         # document it
-        tname = os.environ.get('PYTEST_CURRENT_TEST')
-        QR_HISTORY.append( (tname, orig_img) )
+        if x < 10:
+            # removes dups: happen when same image samples for two different
+            # QR's in side-by-side mode
+            tname = os.environ.get('PYTEST_CURRENT_TEST')
+            QR_HISTORY.append( (tname, orig_img) )
 
         img = orig_img.crop( (x, 0, x+w, w) )
         img = ImageOps.expand(img, 16, 0)
