@@ -35,6 +35,7 @@ freeze_as_mpy('', [
 	'psbt.py',
 	'pwsave.py',
 	'queues.py',
+	'qrs.py',
 	'random.py',
 	'seed.py',
 	'selftest.py',

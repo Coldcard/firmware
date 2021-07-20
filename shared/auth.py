@@ -9,6 +9,7 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
+from ux import show_qr_code
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
@@ -539,8 +540,17 @@ class ApproveTransaction(UserAuthorizedAction):
             return await self.failure("PSBT output failed", exc)
 
         if self.do_finalize and txid and not hsm_active:
-            # show txid when we can; advisory
-            await ux_show_story(txid, "Final TXID")
+            # Show txid when we can; advisory
+            # - maybe even as QR, hex-encoded in alnum mode
+            tmsg = txid
+
+            if version.has_fatram:
+                tmsg += '\n\nPress 1 for QR Code of TXID.'
+
+            ch = await ux_show_story(tmsg, "Final TXID", escape='1')
+
+            if version.has_fatram and ch=='1':
+                await show_qr_code(txid, True)
 
     def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
@@ -982,8 +992,7 @@ class ShowAddressBase(UserAuthorizedAction):
                 ch = await ux_show_story(msg, title=self.title, escape='4')
 
                 if ch == '4' and version.has_fatram:
-                    q = ux.QRDisplay([self.address], (self.addr_fmt & AFC_BECH32))
-                    await q.interact_bare()
+                    await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
 
                 break
