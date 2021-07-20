@@ -239,45 +239,5 @@ def test_match_deriv_path(patterns, paths, answers, sim_exec):
         cmd = f'from utils import match_deriv_path; RV.write(str(match_deriv_path({repr(patterns)}, {repr(path)})))'
         rv = sim_exec(cmd)
         assert rv == str(bool(ans))
-    
-@pytest.mark.parametrize('msg_size, as_hex', [
-    ( 10, True),
-    ( 10, False),
-    ( 100, True),
-    ( 100, False),
-    ( 400, True),
-    ( 400, False),
-    ( 2000, True),
-    ( 2000, False),
-    ( 3680, True),
-])
-def test_qrs(msg_size, as_hex, sim_execfile, cap_screen_qr, sim_exec, qr_quality_check):
-    offset = 0
-
-    if not as_hex:
-        # gave up on this cause
-        raise pytest.skip('zbar decode of random bin not working')
-
-    while 1:
-        # exercise hash digesting for bip143 signatures
-        sim_exec(f'import main; main.MSG_DETS=({msg_size!r}, {as_hex!r}, {offset!r})')
-        resp = sim_execfile('devtest/unit_qrs.py')
-        assert 'Traceback' not in resp, resp
-        parts = [a2b_hex(i) for i in eval(resp)]      # just first 25 each one
-        num_parts = len(parts)
-
-        for n, x in [ (0, 0), (1, 64)]:
-            if offset+n >= num_parts: break
-
-            q = cap_screen_qr(x=x)
-            if as_hex:
-                q = a2b_hex(q)
-
-            assert q[0:25] == parts[offset+n]
-
-        if offset < num_parts:
-            offset += 2
-        else:
-            break
 
 # EOF

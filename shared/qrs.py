@@ -3,7 +3,7 @@
 # qrs.py - QR Display related UX
 #
 import framebuf, math, uqr
-from ux import UserInteraction, ux_wait_keyup, the_ux, ux_poll_once
+from ux import UserInteraction, ux_wait_keyup, the_ux 
 from utils import word_wrap
 from version import has_fatram
 from ubinascii import hexlify as b2a_hex
@@ -138,6 +138,7 @@ class QRDisplaySingle(UserInteraction):
         while 1:
             ch = await ux_wait_keyup()
 
+            was = self.idx
             if ch == '1':
                 self.invert = not self.invert
                 self.redraw()
@@ -155,142 +156,14 @@ class QRDisplaySingle(UserInteraction):
             else:
                 continue
 
-            # self.idx has changed, so need full re-render
-            self.qr_data = None
-            self.redraw()
+            if self.idx != was:
+                # self.idx has changed, so need full re-render
+                self.qr_data = None
+                self.redraw()
 
     async def interact(self):
         await self.interact_bare()
         the_ux.pop()
 
-
-class QRDisplayMega(UserInteraction):
-    # Handle larger displays with "Structured Append" and such
-    # - assumes V11 = 61x61 = 468 alnum or 321 binary
-    # - will do alnum encoding of hex, or raw binary (for PSBT)
-    def __init__(self, parts, as_hex, parity):
-        self.as_hex = as_hex
-        self.parts = parts
-        self.num_parts = len(parts)
-        self.idx = 0
-        self.parity = parity
-
-    @staticmethod
-    def divy_up(nb, as_hex):
-        # see <https://www.qrcode.com/en/about/version.html> for v 11
-        assert nb > 1
-        per_each = 320 if not as_hex else (450 // 2)
-        num_parts = int(math.ceil(nb / per_each))
-
-        # actual amount for each part; want to distribute it evenly otherwise
-        # we'd have a single byte in the final part.
-        each = int(math.ceil(nb / num_parts))
-
-        return each, num_parts
-
-    @classmethod
-    def will_fit(cls, data_len, as_hex):
-        _, num_parts = cls.divy_up(data_len, as_hex)
-        return (num_parts <= 16)
-
-    @classmethod
-    def setup(cls, data, as_hex):
-        # return obj only if it can fit, but maybe don't render it yet?
-        if not has_fatram:
-             return None
-
-        nb = len(data)
-        each, num_parts = cls.divy_up(nb, as_hex)
-        if num_parts > 16:
-            return None
-
-        parts = [memoryview(data)[pos:pos+each] for pos in range(0, nb, each)]
-        assert len(parts) >= 1
-        assert len(parts) == num_parts, (len(parts), num_parts)
-
-        parity = 0
-        if num_parts >= 2:
-            # XXX untestable and critical
-            if not as_hex:
-                for ch in data:
-                    parity ^= ch
-            else:
-                for ch in data:
-                    h = b2a_hex(bytes([ch])).upper()
-                    parity ^= h[0] ^ h[1]
-            
-        return cls(parts, as_hex, parity)
-
-    async def interact(self):
-        await self.interact_bare()
-        the_ux.pop()
-
-    def redraw(self):
-        # On Mk4 we can store these into RAM and animate faster once they
-        # are all shown, but for now, will render and show each frame as we go.
-        # - only v11 codes here = 61x61
-        from glob import dis
-        from display import FontSmall, FontTiny
-
-        txty = 59
-        if self.idx == self.num_parts -1:
-            # single code case
-            dis.clear()
-            dis.dis.fill_rect(0, 0, 64, 64, 1)
-            dis.text(-22, 28, "%d of %d" % (self.idx+1, self.num_parts), FontTiny)
-        else:
-            # will be showing 2 codes, no room for text
-            dis.dis.fill(0xff)
-
-        x = 1
-        for pos in range(self.idx, self.idx+2):
-            if pos >= self.num_parts: 
-                pos -= 1
-                break
-
-            d = self.parts[pos]
-            if self.as_hex:
-                d = b2a_hex(d).upper()
-                enc = uqr.Mode_ALPHANUMERIC
-            else:
-                enc = uqr.Mode_BYTE
-
-            try:
-                qr = uqr.make(d, min_version=11, max_version=11, encoding=enc,
-                                    num_parts=self.num_parts, part_num=pos,
-                                    parity_data=self.parity)
-            except ValueError:
-                print("QR overflow: len(d)=%d as_hex=%d" % (len(d), self.as_hex))
-                raise
-
-            # really not sure anymore if this is inverted or not?!?
-            w, h, packed = qr.packed()
-            packed = bytes(i^0xff for i in packed)
-            gly = framebuf.FrameBuffer(bytearray(packed), h, h, framebuf.MONO_HLSB)
-            dis.dis.blit(gly, x, 1, 1)
-            x += 65
-
-        dis.show()
-
-    async def interact_bare(self):
-        from uasyncio import sleep_ms
-
-        self.redraw()
-
-        # - not supporting invertion; so no interaction is needed/possible
-        while 1:
-            self.redraw()
-
-            # frame delay 
-            for x in range(50):
-                ch = ux_poll_once(expected='xy')
-                if ch is None:
-                    await sleep_ms(10)
-                elif ch in 'xy':
-                    return ch
-
-            self.idx += 2
-            if self.idx >= self.num_parts:
-                self.idx = 0
 
 # EOF
