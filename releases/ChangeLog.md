@@ -3,7 +3,12 @@
 - Enhancement: Shows QR code with BIP-85 derived entropy value if you press (3) while
   value shown on-screen. Thanks to [@opennoms](https://twitter.com/openoms) for idea.
   Works with 12/18/24-words, XPRV, privatekey and even hex cases.
-- Enhancement: Show QR of Coldcard's XPUB, by pressing 3 in Advanced > View Identity
+- Enhancement: Offer to show QR in other places:
+    - Coldcard's main XPUB, in Advanced > View Identity
+    - Seed words, during picking process (before the quiz)
+    - Stored seed words: Advanced > Danger Zone > Seed Functions > View Seed Words
+    - TXID of just-signed transaction (64 hex digits)
+    - Backup password (12 words) which is only case safe to save as a photo on your phone!
 
 ## 4.1.1 - April 30, 2021
 
