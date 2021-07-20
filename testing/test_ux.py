@@ -114,6 +114,7 @@ def pass_word_quiz(need_keypress, cap_story):
 
     return doit
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
 def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting, cap_screen_qr):
     # Make an encrypted 7z backup, verify it, and even restore it!
@@ -238,6 +239,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     reset_seed_words()
 
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('seed_words, xfp', [
     ( 'abandon ' * 11 + 'about', 0x0adac573),
     ( 'abandon ' * 17 + 'agent', 0xc38a8be0),
@@ -321,6 +323,7 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypres
 
     reset_seed_words()
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('count', [20, 51, 99, 104])
 def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen, cap_screen_qr, qr_quality_check):
     import random
@@ -594,7 +597,7 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
     assert get_pp_sofar() == target
 
 
-
+@pytest.mark.qrcode
 @pytest.mark.parametrize('mode', ['words', 'xprv', 'ms'])
 @pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
 def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,

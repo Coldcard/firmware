@@ -177,6 +177,7 @@ def test_bip_vectors(mode, index, entropy, expect,
 
 HISTORY = set()
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('mode,pattern', [ 
     ('WIF (privkey)', r'[1-9A-HJ-NP-Za-km-z]{51,52}' ),
     ('XPRV (BIP-32)', r'[tx]prv[1-9A-HJ-NP-Za-km-z]{107}'),

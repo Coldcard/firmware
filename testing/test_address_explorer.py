@@ -256,6 +256,7 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
 
 # NOTE: (2**31)-1 = 0x7fff_ffff = 2147483647
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('path', [
     "m/1'/{idx}",
     "m/2147483647/2147483647/2147483647'/2147483647/2147483647/2147483647'/2147483647/2147483647",

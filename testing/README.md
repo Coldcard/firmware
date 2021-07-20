@@ -21,6 +21,9 @@ None of this code ships on the product itself, but it does get used for testing 
 
     --dev --manual -s
 
+- test all QR code relates cases with:
+    py.test -m qrcode
+
 ## PSBT reference files
 
 - examples with `IN_REDEEM_SCRIPT`:

@@ -1395,6 +1395,7 @@ def test_value_render(units, fake_txn, start_sign, cap_story, settings_set, sett
 
     settings_remove('rz')
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('num_in', [1,2,3])
 @pytest.mark.parametrize('num_out', [1,2,3])
 def test_qr_txn(num_in, num_out, request, fake_txn, try_sign, dev, cap_screen_qr, qr_quality_check, cap_story, need_keypress):

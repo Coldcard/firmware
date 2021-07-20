@@ -24,6 +24,7 @@ def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt, is_simu
     # check expected addr was used
     addr_vs_path(addr, path, addr_fmt)
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 @pytest.mark.parametrize('show_qr', [ False, True ])
