@@ -232,6 +232,7 @@ def disassemble(script):
         
 
 def ser_sig_der(r, s, sighash_type=1):
+    # Take R and S values from a signature and encode into DER format.
     sig = b"\x30"
 
     # Make r and s as short as possible
