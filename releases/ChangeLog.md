@@ -13,6 +13,9 @@
   This may save a byte or two in transaction size (and miner fees), and makes our signatures
   identical to those produced by BitcoinCore, improving anonymity on-chain. Thanks to
   [@craigraw](https://twitter.com/craigraw) for detecting this.
+- Bugfix: On a blank Coldcard, after importing a seed phrase using the
+  [Seed XOR feature](https://seedxor.com/), the main menu was not updated to show
+  system is "Ready To Sign".
 
 ## 4.1.1 - April 30, 2021
 

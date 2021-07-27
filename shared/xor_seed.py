@@ -163,6 +163,9 @@ class XORWordNestMenu(WordNestMenu):
             if pa.is_secret_blank():
                 # save it since they have no other secret
                 set_seed_value(encoded=enc)
+
+                # update menu contents now that wallet defined
+                goto_top_menu()
             else:
                 pa.tmp_secret(enc)
                 await ux_show_story("New master key in effect until next power down.")
