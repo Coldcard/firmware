@@ -587,6 +587,13 @@ def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):
     reset_seed_words()
 
 @pytest.fixture(scope="function")
+def use_mainnet(settings_set):
+    def doit():
+        settings_set('chain', 'BTC')
+    yield doit
+    settings_set('chain', 'XTN')
+
+@pytest.fixture(scope="function")
 def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific bip32 master key
 
@@ -1033,10 +1040,15 @@ def end_sign(dev, need_keypress):
             # skip checks; it's text
             return psbt_out
 
+        sigs = []
+
         if not finalize:
-            if in_psbt:
-                from psbt import BasicPSBT
-                assert BasicPSBT().parse(in_psbt) != None
+            from psbt import BasicPSBT
+            tp = BasicPSBT().parse(psbt_out)
+            assert tp is not None
+
+            for i in tp.inputs:
+                sigs.extend(i.part_sigs.values())
         else:
             from pycoin.tx.Tx import Tx
             # parse it
@@ -1044,6 +1056,11 @@ def end_sign(dev, need_keypress):
             assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
             t = Tx.from_bin(res)
             assert t.version in [1, 2]
+
+            # TODO: pull out signatures from signed txn, but pycoin not helpful on that
+                    
+        for sig in sigs:
+            assert len(sig) <= 71, "overly long signature observed"
 
         return psbt_out
 

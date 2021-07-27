@@ -222,4 +222,47 @@ def test_sign_msg_microsd_fails(dev, sign_on_microsd, msg, concern, no_file, tra
 
     assert concern in story
 
+@pytest.mark.parametrize('msg,num_iter,expect', [ 
+    ('Test2', 1, 'IHra0jSywF1TjIJ5uf7IDECae438cr4o3VmG6Ri7hYlDL+pUEXyUfwLwpiAfUQVqQFLgs6OaX0KsoydpuwRI71o='),
+    ('Test', 2, 'IDgMx1ljPhLHlKUOwnO/jBIgK+K8n8mvDUDROzTgU8gOaPDMs+eYXJpNXXINUx5WpeV605p5uO6B3TzBVcvs478='),
+    ('Test1', 3, 'IEt/v9K95YVFuRtRtWaabPVwWOFv1FSA/e874I8ABgYMbRyVvHhSwLFz0RZuO87ukxDd4TOsRdofQwMEA90LCgI='),
+])
+def test_low_R_cases(msg, num_iter, expect, dev, set_seed_words, use_mainnet, need_keypress):
+    # Thanks to @craigraw of Sparrow for this test case, copied from:
+    # <https://github.com/sparrowwallet/drongo/blob/master/src/test/java/com/sparrowwallet/drongo/crypto/ECKeyTest.java>
+
+    set_seed_words('absent essay fox snake vast pumpkin height crouch silent bulb excuse razor')
+    use_mainnet()
+    path = "m/44'/0'/0'/0/0"            # first address, P2PKH
+    addr_fmt = AF_CLASSIC
+
+    #addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
+    #assert addr == '14JmU9a7SzieZNEtBnsZo688rt3mGrw6hr'
+
+    msg = msg.encode('ascii')
+    dev.send_recv(CCProtocolPacker.sign_message(msg, path, addr_fmt=addr_fmt), timeout=None)
+
+    need_keypress('y')
+
+    done = None
+    while done == None:
+        time.sleep(0.050)
+        done = dev.send_recv(CCProtocolPacker.get_signed_msg(), timeout=None)
+
+    assert len(done) == 2, done
+    got_addr, raw = done
+
+    assert got_addr == '14JmU9a7SzieZNEtBnsZo688rt3mGrw6hr'
+    assert 40 <= len(raw) <= 65
+
+    sig = str(b64encode(raw), 'ascii').replace('\n', '')
+
+    if num_iter != 1:
+        # I have gotten these cases to pass, but I didn't want to keep the code
+        # that grinded for low R in message signing... Ok for txn signing, but
+        # needless delay for message signing.
+        raise pytest.xfail('no code')
+
+    assert sig == expect
+
 # EOF

@@ -644,7 +644,7 @@ class USBHandler:
             pk = sv.node.privkey()
             sv.register(pk)
 
-            signature = ngu.secp256k1.sign(pk, self.session_key).to_bytes()
+            signature = ngu.secp256k1.sign(pk, self.session_key, 0).to_bytes()
 
             assert len(signature) == 65
 

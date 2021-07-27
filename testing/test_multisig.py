@@ -1169,6 +1169,7 @@ def fake_ms_txn():
 
     return doit
 
+@pytest.mark.unfinalized
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 15 ])
 @pytest.mark.parametrize('incl_xpubs', [ False, True, 'no-import' ])
@@ -1196,6 +1197,7 @@ def test_ms_sign_simple(N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_
     else:
         try_sign(psbt)
 
+@pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [ 2, 4, 1])
 @pytest.mark.parametrize('segwit', [True, False])
@@ -1409,8 +1411,9 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
     need_keypress('x')
 
 
-@pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.unfinalized
 @pytest.mark.bitcoind
+@pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
 def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various

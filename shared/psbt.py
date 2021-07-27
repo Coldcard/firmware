@@ -1517,21 +1517,30 @@ class psbtObject(psbtProxy):
                 #print(" digest %s" % b2a_hex(digest).decode('ascii'))
 
                 # Do the ACTUAL signature ... finally!!!
-                result = ngu.secp256k1.sign(pk, digest).to_bytes()
+
+                # We need to grind sometimes to get a positive R
+                # value that will encode (after DER) into a shorter string.
+                # - saves on miner's fee (which might be expected/required)
+                # - blends in with Bitcoin Core signatures which do this
+                for retry in range(10):
+                    result = ngu.secp256k1.sign(pk, digest, retry).to_bytes()
+
+                    # convert signature to DER format
+                    #assert len(result) == 65
+                    r = result[1:33]
+                    s = result[33:65]
+                    der_sig = ser_sig_der(r, s, inp.sighash)
+
+                    if len(der_sig) <= 71:
+                        # odds of needing retry: just under 50% I think
+                        break
 
                 # private key no longer required
                 stash.blank_object(pk)
                 stash.blank_object(node)
                 del pk, node, pu, skp
 
-                #print("result %s" % b2a_hex(result).decode('ascii'))
-
-                # convert signature to DER format
-                assert len(result) == 65
-                r = result[1:33]
-                s = result[33:65]
-
-                inp.added_sig = (which_key, ser_sig_der(r, s, inp.sighash))
+                inp.added_sig = (which_key, der_sig)
 
                 success.add(in_idx)
 

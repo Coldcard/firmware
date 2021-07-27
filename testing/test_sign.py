@@ -124,6 +124,7 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     rb = BasicPSBT().parse(open(rb, 'rb').read())
     assert oo == rb
 
+@pytest.mark.unfinalized
 def test_speed_test(request, fake_txn, is_mark3, start_sign, end_sign, dev, need_keypress):
     import time
     # measure time to sign a larger txn
@@ -248,6 +249,7 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitc
     if segwit:
         assert all(x['txinwitness'] for x in decoded['vin'])
 
+@pytest.mark.unfinalized        # iff we_finalize=F
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
@@ -386,6 +388,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     #assert 'require subpaths to be spec' in str(ee)
 
+@pytest.mark.unfinalized
 def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     # Check we can finalize p2sh_p2wpkh inputs right.
 
@@ -420,6 +423,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     assert network == signed
 
+@pytest.mark.unfinalized
 def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind, offer_ms_import, need_keypress, clear_ms):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
@@ -687,6 +691,7 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
 
     assert 'None of the keys involved' in str(ee)
 
+@pytest.mark.unfinalized
 def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile):
 
     # Example from SomberNight: we can sign it, but signature won't be accepted by
@@ -873,8 +878,9 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
     assert 'led to wrong pubkey for input' in msg
 
 
-@pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
+@pytest.mark.unfinalized
+@pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
     # Compare how we finalize vs bitcoind ... should be exactly the same txn
 
@@ -1114,7 +1120,7 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
     time.sleep(.1)
     title, story = cap_story()
     assert 'TXID' in title, story
-    txid = story.strip()
+    txid = story.strip().split()[0]
 
     assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
 
@@ -1170,7 +1176,7 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
     title, story = cap_story()
     assert '0' in story
     assert 'TXID' in title, story
-    txid = story.strip()
+    txid = story.strip().split()[0]
 
     if 1:
         # compare to PyCoin
@@ -1189,6 +1195,7 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
 
         assert decoded['txid'] == txid
 
+@pytest.mark.unfinalized            # iff partial=1
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 #@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
 @pytest.mark.parametrize('num_outs', [1,2])
@@ -1212,6 +1219,7 @@ def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd
     _, txn, txid = try_sign_microsd(psbt, finalize=not partial,
                                         encoding=encoding, del_after=del_after)
 
+@pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [2,3,8])
 @pytest.mark.parametrize('num_outs', [1,2,8])
 def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_sign, cap_story):

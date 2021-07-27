@@ -147,7 +147,7 @@ def sign_message_digest(digest, subpath, prompt):
         sv.register(pk)
 
         dis.progress_bar_show(.75)
-        rv = ngu.secp256k1.sign(pk, digest).to_bytes()
+        rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
 
     dis.progress_bar_show(1)
 
