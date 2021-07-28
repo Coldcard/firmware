@@ -1,4 +1,4 @@
-## 4.1.2 - July XX, 2021
+## 4.1.2 - July 28, 2021
 
 - Enhancement: Shows QR code with BIP-85 derived entropy value if you press (3) while
   value shown on-screen. Thanks to [@opennoms](https://twitter.com/openoms) for idea.
@@ -8,14 +8,17 @@
     - Seed words, during picking process (before the quiz)
     - Stored seed words: Advanced > Danger Zone > Seed Functions > View Seed Words
     - TXID of just-signed transaction (64 hex digits)
-    - Backup password (12 words) which is the only safe QR to save as a photo on your phone!!!
+    - Encryption password for the system backup file (12 words) 
 - Enhancement: We now grind a nonce so that our signatures are always 71 bytes or shorter.
-  This may save a byte or two in transaction size (and miner fees), and makes our signatures
-  identical to those produced by BitcoinCore, improving anonymity on-chain. Thanks to
+  This may save a byte in transaction size, and makes our signatures identical to those
+  produced by Bitcoin Core, improving anonymity on-chain. Thanks to
   [@craigraw](https://twitter.com/craigraw) for detecting this.
 - Bugfix: On a blank Coldcard, after importing a seed phrase using the
   [Seed XOR feature](https://seedxor.com/), the main menu was not updated to show
   system is "Ready To Sign".
+- Bugfix: Red caution light could happen (a false positive) if a specific sequence of
+  firmware upgrades and reboots occured in the right order. Issue could only occur once
+  during lifetime of any particular Coldcard.
 
 ## 4.1.1 - April 30, 2021
 

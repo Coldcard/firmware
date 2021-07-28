@@ -702,7 +702,6 @@ async def version_migration():
     # Handle changes between upgrades, and allow downgrades when possible.
     # - long term we generally cannot delete code from here, because we
     #   never know when a user might skip a bunch of intermetiate versions
-    import callgate
 
     # Data migration issue: 
     # - "login countdown" feature now stored elsewhere
@@ -715,17 +714,22 @@ async def version_migration():
         s.save()
         del s
 
-    # Block very obsolete versions.
-    MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
-    now = callgate.get_highwater()
-    if now < MIN_WATERMARK:
-        callgate.set_highwater(MIN_WATERMARK)
-
 async def start_login_sequence():
     # Boot up login sequence here.
     #
+    # - easy to brick units here, so catch and ignore errors where possible/appropriate
+    #
     from ux import idle_logout
     from glob import dis
+    import callgate
+
+    try:
+        # Block very obsolete versions.
+        MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
+        now = callgate.get_highwater()
+        if now < MIN_WATERMARK:
+            callgate.set_highwater(MIN_WATERMARK)
+    except: pass
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
@@ -759,11 +763,11 @@ async def start_login_sequence():
             pa.login()
         except: pass
 
+    # if that didn't work, or no skip defined, force
+    # them to login successfully.
+
     # do they want a randomized (shuffled) keypad?
     rnd_keypad = settings.get('rngk', 0)
-
-    # if that didn't work, or no skip defined, force
-    # them to login succefully.
 
     # always get a PIN and login first
     cd_login = await block_until_login(rnd_keypad)
@@ -782,7 +786,6 @@ async def start_login_sequence():
             delay = 0
 
     if delay:
-        import callgate
         pa.reset()
 
         await login_countdown(delay*60)
