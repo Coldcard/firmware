@@ -51,6 +51,7 @@ Then:
 
 Setup and Run the Desktop-based Coldcard simulator:
 
+- `pushd external/micropython/mpy-cross && make && popd`
 - `cd unix; make setup && make; ./simulator.py`
 
 Building the firmware:
