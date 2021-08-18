@@ -88,8 +88,9 @@ def make_frame(img, txt, icon_name, text_pos=None, icon_pos=3, icon_xpos=0, cros
     d.text( (64-(w/2), text_pos-h), txt, font=sm_font, fill=1)
 
     if crossout:
+        # ugly and covers info
         x,y = (64-(w/2), text_pos-h)
-        d.line( (x,y, x+(w/2), y+(w/2)) )
+        d.line( (x-2,y-2, x+w, y+h), fill=1)
 
     return rv
 
@@ -194,8 +195,8 @@ results = [
     ( 'search', 'Searching...', 'search-card', {}),
     ( 'recovery', 'Insert Card', 'insert-card', {}),
     #( 'recovery', 'Recovery!', 'sdcard', {}),
-    ( 'se1_issue', 'U4', 'bug', dict(crossout=1) ), 
-    ( 'se2_issue', 'U5', 'bug', dict(crossout=1) ), 
+    ( 'se1_issue', 'U4=SE1', 'bug', dict(crossout=0) ), 
+    ( 'se2_issue', 'U5=SE2', 'bug', dict(crossout=0) ), 
     ( 'wiped', 'Seed Wiped', 'power', {}),
 ]
 

@@ -708,8 +708,17 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
             // code here to brick or wipe
             if(todo & TC_WIPE) {
                 // wipe keys - useful to combine with other stuff
+                // .. see below if not combined w/ a fatal action
                 mcu_key_clear(NULL);
                 DEBUG("wiped");
+
+                if(todo == TC_WIPE) {
+                    // we wiped, but no faking it out or rebooting, so
+                    // show attacker we are wiped, and die.
+                    // - need to still allow WIPE+WALLET case
+                    oled_show(screen_wiped);
+                    LOCKUP_FOREVER();
+                }
             }
             if(todo & TC_BRICK) {
                 fast_brick();

@@ -494,7 +494,8 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             if(rv) goto fail;
 
             if(trick_mode) {
-                // Already logged in via a trick PIN, so clear the seed, and keep going.
+                // Already logged in via a trick PIN, so clear the seed to protect 
+                // it (we have a smart one here) and continue.
                 mcu_key_clear(NULL);
             }
 
