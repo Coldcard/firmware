@@ -23,12 +23,6 @@
 #include "stm32l4xx_hal.h"
 #include "constant_time.h"
 
-#if defined (STM32L4P5xx) || defined (STM32L4Q5xx) || defined (STM32L4R5xx) || defined (STM32L4R7xx) || defined (STM32L4R9xx) || defined (STM32L4S5xx) || defined (STM32L4S7xx) || defined (STM32L4S9xx)
-#define FLASH_NB_DOUBLE_WORDS_IN_ROW  64
-#else
-#define FLASH_NB_DOUBLE_WORDS_IN_ROW  32
-#endif
-
 // Number of flash pages to write-protect (ie. our size in flash pages)
 // - written into FLASH->WRP1AR
 // - once done, can't change bootrom via DFU (no error given, but doesn't change)
@@ -171,8 +165,8 @@ flash_burn(uint32_t address, uint64_t val)
     // just in case?
     _flash_wait_done();
 
-    // clear any and all errors
-    FLASH->SR = FLASH->SR & 0xffff;
+    // clear any and all errors, including PEMPTY
+    FLASH->SR = FLASH->SR & FLASH_FLAG_SR_ERRORS;
 
     // disable data cache
     __HAL_FLASH_DATA_CACHE_DISABLE();
@@ -186,6 +180,7 @@ flash_burn(uint32_t address, uint64_t val)
 
     // Program a double word
     *(__IO uint32_t *)(address) = (uint32_t)val;
+    __ISB();                                        // instruction-order barrier
     *(__IO uint32_t *)(address+4) = (uint32_t)(val >> 32);
 
     rv = _flash_wait_done();
@@ -200,55 +195,6 @@ flash_burn(uint32_t address, uint64_t val)
 
     return 0;
 }
-
-#if 0
-// flash_burn_fast()
-//
-// My simplified version of FLASH_Program_Fast()
-//
-// NOTES:
-//  - this function **AND** everything it calls, must be in RAM
-//  - interrupts are already off here (entire bootloader)
-//  - return non-zero on failure; don't try to handle anything
-//  - needs 128 bytes
-//  - PROBLEM: Requires bank erase, and we can't do that in any case.
-//
-    __attribute__((section(".ramfunc")))
-    __attribute__((noinline))
-    int
-flash_burn_fast(uint32_t address, const uint32_t values[2*FLASH_NB_DOUBLE_WORDS_IN_ROW])
-{
-    uint32_t    rv;
-
-    // just in case?
-    _flash_wait_done();
-
-    // clear any and all errors
-    FLASH->SR = FLASH->SR & 0xffff;
-
-    // disable data cache
-    __HAL_FLASH_DATA_CACHE_DISABLE();
-
-    // Set FSTPG bit
-    SET_BIT(FLASH->CR, FLASH_CR_FSTPG);
-
-    for(int i=0; i<2*FLASH_NB_DOUBLE_WORDS_IN_ROW; i++, address++) {
-        *(__IO uint32_t *)(address) = values[i];
-    }
-
-    rv = _flash_wait_done();
-    if(rv) return rv;
-
-    // If the program operation is completed, disable the FSTPG Bit
-    CLEAR_BIT(FLASH->CR, FLASH_CR_FSTPG);
-
-    // Flush the caches to be sure of data consistency, and reenable.
-    __HAL_FLASH_DATA_CACHE_RESET();
-    __HAL_FLASH_DATA_CACHE_ENABLE();
-
-    return 0;
-}
-#endif
 
 // flash_page_erase()
 //
