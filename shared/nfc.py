@@ -50,48 +50,52 @@ class ndefMaker:
         # ndef records, without first byte (bitmask) and type lenght byte
         self.lst = []
 
-    def tlen(self, ln):
-        # variable-length encoding of a number for TLV thing
-        if ln < 0xfe:
-            return pack('B', ln)
-        else:
-            return b'\xff' + pack('>H', ln)
-
     def add_text(self, msg):
         # assume: english, utf-8
         ln = len(msg) + 3
-        hdr = self.tlen(ln) + b'T\x02en'
-        self.lst.append(hdr + msg.encode())
+        self.lst.append( (ln, b'T\x02en' + msg.encode()) )
 
     def add_url(self, url, https=True):
         # always https since we're in Bitcoin, or else full URL
         # - ascii only
         proto_code = b'U\x04' if https else b'U\x00'
-        hdr = pack('B', len(url) + 1) + proto_code
-        self.lst.append(hdr + url.encode())
+        self.lst.append( (len(url)+1, proto_code + url.encode()) )
 
     def bytes(self):
         # walk list of records, and various framing bits to first bytes of each
         # and concat
         rv = bytearray(CC_FILE)
 
-        # estimate? length of all records
-        ln = sum(2 + len(r) for r in self.lst)
-        rv.extend(self.tlen(ln))
+        # calc total length of all records
+        ln = sum((3 if ln <= 255 else 6) + len(rec) for (ln, rec) in self.lst)
+        if ln <= 0xfe:
+            rv.append(ln)
+        else:
+            rv.append(0xff)
+            rv.extend(pack('>H', ln))
 
         last = len(self.lst) - 1
-        for n, rec in enumerate(self.lst):
+        for n, (ln, rec) in enumerate(self.lst):
             # first byte of the NDEF record: it's a bitmask + TNF 3-bit value
             # - only support well-known tags, less 250 bytes, no chunking
-            first = 0x11        # TNF=1 SR=1
+            first = 0x01        # TNF=1
+            if ln <= 255:
+                first |= 0x10   # SR=1
+
             if n == 0:
-                first |= 0x80           # = MB Message Begin
+                first |= 0x80   # = MB Message Begin
             if n == last:
-                first |= 0x40           # = ME Message End
+                first |= 0x40   # = ME Message End
 
             rv.append(first)        # NDEF header byte
             rv.append(0x1)          # type-length always one, because well-known
+            if ln <= 255:
+                rv.append(ln)           # value-length 
+            else:
+                rv.extend(pack('>I', ln))
             rv.extend(rec)
+
+        rv.append(0xfe)          # Terminator TLV
 
         return rv
         
@@ -112,10 +116,12 @@ class NFCHandler:
 
     def big_write(self, data):
         # write lots to start of flash (new ndef records)
+        print('big write...', end='')
         for pos in range(0, len(data), 256):
             here = memoryview(data)[pos:pos+256]
             self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
             sleep_ms(100)     # 6ms per 16 byte row, worst case
+        print('.. done')
 
     # system config area (flash cells, but affect operation): table 12
     def read_config(self, offset, count):
@@ -201,7 +207,7 @@ class NFCHandler:
         self.set_rf_disable(0)
 
         ndef = ndefMaker()
-        ndef.add_text('abcd'*500)
+        ndef.add_text('abcd'*2000)
         ndef.add_url("store.coinkite.com")
         #ndef.add_text("this is simple text")
         self.big_write(ndef.bytes())
