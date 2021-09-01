@@ -246,7 +246,7 @@ DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				--privileged coldcard-build
 repro: code-committed
 	docker build -t coldcard-build - < dockerfile.build
-	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh)
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING))
 
 # debug: shell into docker container
 shell:
@@ -260,13 +260,13 @@ PUBLISHED_BIN = $(wildcard ../releases/*-v$(VERSION_STRING)-coldcard.dfu)
 # final step in repro-building: check you got the right bytes
 # - but you don't have the production signing key, so that section is removed
 check-repro: TRIM_SIG = sed -e 's/^00003f[89abcdef]0 .*/(firmware signature here)/'
-check-repro: firmware-signed.bin
+check-repro: firmware-signed.bin released-file-avail
 ifeq ($(PUBLISHED_BIN),)
 	@echo ""
 	@echo "Need published binary for: $(VERSION_STRING)"
 	@echo ""
-	@echo "Copy it into ../releases"
-	@echo ""
+	@echo "Code in repro-build.sh should have placed it there already!?"
+	false
 else
 	@echo Comparing against: $(PUBLISHED_BIN)
 	test -n "$(PUBLISHED_BIN)" -a -f $(PUBLISHED_BIN)

@@ -10,6 +10,8 @@ TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware
 
 BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt COLDCARD/file_time.c"
 
+VERSION_STRING=$1
+
 cd /work/src/stm32
 
 #if ! touch repro-build.sh ; then
@@ -43,6 +45,10 @@ cd ../cli
 python -m pip install -r requirements.txt
 python -m pip install --editable .
 cd ../stm32
+
+# fetch a copy of the required binary
+PUBLISHED_BIN=`grep $VERSION_STRING ../releases/signatures.txt | dd bs=66 skip=1`
+wget -SP ../releases https://coldcardwallet.com/downloads/$PUBLISHED_BIN
 
 make setup
 #make clean
