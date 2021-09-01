@@ -2,7 +2,7 @@
 
 - Enhancement: remove "m/0/0" derivations from public.txt and address explorer,
   since that path is obsolete and not used by any major wallets now. We can still
-  sign PSBT files with that path, but it's an unnessecary risk to show derived
+  sign PSBT files with that path, but it's an unnecessary risk to show derived
   addresses for a type of wallet that doesn't exist anymore.
 - Enhancement: if PSBT input sections don't contain the key path information we need,
   show a more specific error message. 
@@ -26,7 +26,7 @@
   [Seed XOR feature](https://seedxor.com/), the main menu was not updated to show
   system is "Ready To Sign".
 - Bugfix: Red caution light could happen (a false positive) if a specific sequence of
-  firmware upgrades and reboots occured in the right order. Issue could only occur once
+  firmware upgrades and reboots occurred in the right order. Issue could only occur once
   during lifetime of any particular Coldcard.
 
 ## 4.1.1 - April 30, 2021
@@ -89,7 +89,7 @@
 ## 4.0.1 - March 29, 2021
 
 - Fixes security issue in v4.0.0. (3.x.x Unaffected)
-- Known issue: formating of SD Card does not work and leads to a crash.
+- Known issue: formatting of SD Card does not work and leads to a crash.
 
 ## 4.0.0 - March 17, 2021
 
