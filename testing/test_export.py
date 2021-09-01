@@ -340,4 +340,64 @@ def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, n
             #assert node.chain_code() == sk.chain_code()
             assert node.hwif() == sk.hwif()
 
+def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path):
+    from pycoin.contrib.segwit_addr import encode as sw_encode
+
+    # test UX and values produced.
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('MicroSD Card')
+    pick_menu_item('Dump Summary')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Saves a text file to' in story
+    need_keypress('y')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'Summary file' in story
+    fname = story.split('\n')[-1]
+    assert 'public' in fname
+
+    xfp = xfp2str(simulator_fixed_xfp).upper()
+
+    root = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+    path = microsd_path(fname)
+    with open(path, 'rt') as fp:
+        for ln in fp.readlines():
+            if 'fingerprint' in ln:
+                assert ln.strip().endswith(xfp)
+
+            if '=>' not in ln:
+                continue
+
+            lhs, rhs = ln.strip().split(' => ')
+            assert lhs.startswith('m/')
+            rhs = rhs.split('#')[0].strip()
+
+            if 'SLIP-132' in ln:
+                rhs, _, f, _ = slip132undo(rhs)
+            else:
+                f = None
+
+            if rhs[1:4] == 'pub':
+                expect = root.subkey_for_path(lhs[2:])
+                assert expect.hwif(as_private=False) == rhs
+                continue
+
+            if not f:
+                if rhs[0] in 'mn':
+                    f = AF_CLASSIC
+                elif rhs[0:3] == 'tb1':
+                    f = AF_P2WPKH
+                elif rhs[0] == '2':
+                    f = AF_P2WPKH_P2SH
+                else:
+                    raise ValueError(rhs)
+
+            addr_vs_path(rhs, path=lhs, addr_fmt=f)
+
 # EOF
