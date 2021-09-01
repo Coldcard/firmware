@@ -260,7 +260,7 @@ PUBLISHED_BIN = $(wildcard ../releases/*-v$(VERSION_STRING)-coldcard.dfu)
 # final step in repro-building: check you got the right bytes
 # - but you don't have the production signing key, so that section is removed
 check-repro: TRIM_SIG = sed -e 's/^00003f[89abcdef]0 .*/(firmware signature here)/'
-check-repro: firmware-signed.bin released-file-avail
+check-repro: firmware-signed.bin
 ifeq ($(PUBLISHED_BIN),)
 	@echo ""
 	@echo "Need published binary for: $(VERSION_STRING)"
