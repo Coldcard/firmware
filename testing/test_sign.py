@@ -1457,4 +1457,31 @@ def test_missing_keypaths(dev, try_sign, fake_txn):
     msg = ee.value.args[0]
     assert ('does not contain any key path information' in msg)
 
+def test_wrong_pubkey(dev, try_sign, fake_txn):
+    # psbt input gives a pubkey+subkey path, but that pubkey doesn't map to utxo pubkey
+
+    psbt = fake_txn(1, 1, dev.master_xpub, segwit_in=False)
+
+    # tweak the pubkey of first input
+    oo = BasicPSBT().parse(psbt)
+
+    pubkey = list(oo.inputs[0].bip32_paths.keys())[0]
+    xpk = bytearray(pubkey)
+
+    for i in range(5, 20):
+        xpk[i] = 0xff
+
+    oo.inputs[0].bip32_paths[bytes(xpk)] = oo.inputs[0].bip32_paths[pubkey]
+    del  oo.inputs[0].bip32_paths[pubkey]
+
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod_psbt, accept=False)
+
+    msg = ee.value.args[0]
+    assert ('pubkey vs. address wrong' in msg)
+
 # EOF

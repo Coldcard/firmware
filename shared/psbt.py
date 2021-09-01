@@ -5,7 +5,7 @@
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, problem_file_line
-import stash, gc, history, sys, ngu
+import stash, gc, history, sys, ngu, ckcc
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
@@ -30,8 +30,8 @@ from public_constants import (
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
-# print some things 
-DEBUG = const(0)
+# print some things, sometimes
+DEBUG = ckcc.is_simulator()
 
 class HashNDump:
     def __init__(self, d=None):
@@ -696,6 +696,9 @@ class psbtInputProxy(psbtProxy):
                 if hash160(pubkey) == addr:
                     which_key = pubkey
                     break
+            else:
+                # none of the pubkeys provided hashes to that address
+                raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
 
         elif addr_type == 'p2pk':
             # input is single public key (less common)
@@ -704,6 +707,9 @@ class psbtInputProxy(psbtProxy):
 
             if addr_or_pubkey in self.subpaths:
                 which_key = addr_or_pubkey
+            else:
+                # pubkey provided is just wrong vs. UTXO
+                raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
 
         else:
             # we don't know how to "solve" this type of input

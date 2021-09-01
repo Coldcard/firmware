@@ -6,6 +6,8 @@
   addresses for a type of wallet that doesn't exist anymore.
 - Enhancement: if PSBT input sections don't contain the key path information we need,
   show a more specific error message. 
+- Bugfix: a PSBT which provided the wrong pubkey (based on UTXO being spent) was not
+  flagged as invalid, but instead we proceeded to do nothing. Now says "pubkey vs. address wrong".
 
 ## 4.1.2 - July 28, 2021
 
