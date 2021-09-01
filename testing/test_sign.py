@@ -31,8 +31,9 @@ def test_sign1(dev, need_keypress, finalize):
         while dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None) == None:
             pass
 
-    assert 'None of the keys' in str(ee)
+    #assert 'None of the keys' in str(ee)
     #assert 'require subpaths' in str(ee)
+    assert 'PSBT does not contain any key path information' in str(ee)
 
 
 @pytest.mark.parametrize('fn', [
@@ -79,6 +80,7 @@ def test_psbt_parse_good(try_sign, fn, accept):
     assert ('Missing UTXO' in msg) \
                 or ('None of the keys' in msg) \
                 or ('completely signed already' in msg) \
+                or ('PSBT does not contain any key path information' in msg) \
                 or ('require subpaths' in msg), msg
 
 
@@ -329,7 +331,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
     # verify against how bitcoind reads it
     check_against_bitcoind(txn2, fee)
 
-    signed = end_sign(accept=True)
+    signed = end_sign(accept=True, finalize=we_finalize)
     open('debug/vs-signed.psbt', 'wb').write(signed)
 
     if not we_finalize:
@@ -929,7 +931,7 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     # verify against how bitcoind reads it
     check_against_bitcoind(txn2, fee)
 
-    signed_final = end_sign(accept=True)
+    signed_final = end_sign(accept=True, finalize=True)
     assert signed_final[0:4] != b'psbt', "expecting raw bitcoin txn"
     open('debug/finalized-by-ckcc.txn', 'wt').write(B2A(signed_final))
 
@@ -1260,7 +1262,7 @@ def test_fully_unsigned(fake_txn, try_sign, segwit):
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
 
-    assert 'None of the keys' in str(ee)
+    assert 'does not contain any key path information' in str(ee)
 
 @pytest.mark.parametrize('segwit', [False, True])
 def test_wrong_xfp(fake_txn, try_sign, segwit):
@@ -1483,5 +1485,26 @@ def test_wrong_pubkey(dev, try_sign, fake_txn):
 
     msg = ee.value.args[0]
     assert ('pubkey vs. address wrong' in msg)
+
+def test_incomplete_signing(dev, try_sign, fake_txn, cap_story):
+    # psbt where we only sign one input
+    # - must not allow finalization
+    psbt = fake_txn(2, 1, dev.master_xpub, segwit_in=False)
+
+    oo = BasicPSBT().parse(psbt)
+    oo.inputs[1].bip32_paths = { k: b'\x01\x02\x03\x04'+v[4:] 
+                                        for k,v in oo.inputs[1].bip32_paths.items() }
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod_psbt, accept=True, finalize=True)
+
+    msg = ee.value.args[0]
+    assert ('PSBT output failed' in msg)
+
+    title, story = cap_story()
+    assert 'No signature on input' in story
 
 # EOF

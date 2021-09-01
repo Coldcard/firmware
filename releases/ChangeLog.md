@@ -1,13 +1,14 @@
-## 4.1.3 - Sep 1, 2021
+## 4.1.3 - Sep 2, 2021
 
 - Enhancement: remove "m/0/0" derivations from public.txt and address explorer,
   since that path is obsolete and not used by any major wallets now. We can still
   sign PSBT files with that path, but it's an unnecessary risk to show derived
   addresses for a type of wallet that doesn't exist anymore.
 - Enhancement: if PSBT input sections don't contain the key path information we need,
-  show a more specific error message. 
+  show a more specific error message.
 - Bugfix: a PSBT which provided the wrong pubkey (based on UTXO being spent) was not
   flagged as invalid, but instead we proceeded to do nothing. Now says "pubkey vs. address wrong".
+- Bugfix: if asked to serialize a partially-signed transaction, we did. Now fails properly.
 
 ## 4.1.2 - July 28, 2021
 

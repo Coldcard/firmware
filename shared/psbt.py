@@ -1727,8 +1727,9 @@ class psbtObject(psbtProxy):
 
                 # Actual signature will be in witness data area
 
-            elif inp.added_sig:
-                # insert the new signature(s)
+            else:
+                # insert the new signature(s), assuming fully signed txn.
+                assert inp.added_sig, 'No signature on input #%d'%in_idx
                 assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
                 pubkey, der_sig = inp.added_sig
