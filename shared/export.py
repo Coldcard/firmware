@@ -39,7 +39,7 @@ symbol {sym} for this blockchain.
 
 ## IMPORTANT WARNING
 
-Do **not** deposit to any address in this file unless you have a working
+**NEVER** deposit to any address in this file unless you have a working
 wallet system that is ready to handle the funds at that address!
 
 ## Top-level, 'master' extended public key ('m/'):

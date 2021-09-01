@@ -15,7 +15,7 @@ def mk_common_derivations():
         coin_type = netcode_map[netcode]
         return [
             # path format, address format
-            ( "m/{change}/{idx}", AF_CLASSIC ),
+            # Removed in v4.1.3: ( "m/{change}/{idx}", AF_CLASSIC ),
             #( "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
             #( "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
             ( "m/44'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_CLASSIC ),
@@ -177,7 +177,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(given_addr, sk)
 
-@pytest.mark.parametrize('click_idx', range(4))
+@pytest.mark.parametrize('click_idx', range(3))
 def test_dump_addresses(generate_addresses_file, mk_common_derivations, sim_execfile, validate_address, click_idx):
     # Validate  addresses dumped to text file
     node_prv = BIP32Node.from_wallet_key(
@@ -221,7 +221,7 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
     assert f'Account: {account_num}' in m
 
     which = 0
-    for idx, (path, addr_format) in enumerate(common_derivs[1:]):
+    for idx, (path, addr_format) in enumerate(common_derivs):
         # derive index=0 address
         assert '{account}' in path
 

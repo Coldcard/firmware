@@ -1,3 +1,10 @@
+## 4.1.3 - Sep 1, 2021
+
+- Enhancement: remove "m/0/0" derivations from public.txt and address explorer,
+  since that path is obsolete and not used by any major wallets now. We can still
+  sign PSBT files with that path, but it's an unnessecary risk to show derived
+  addresses for a type of wallet that doesn't exist anymore.
+
 ## 4.1.2 - July 28, 2021
 
 - Enhancement: Shows QR code with BIP-85 derived entropy value if you press (3) while

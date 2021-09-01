@@ -299,7 +299,7 @@ def slip32_deserialize(xp):
 # - single signer only
 CommonDerivations = [
     # name, path.format(), addr format
-    ( 'Electrum (not BIP-44)', "m/{change}/{idx}", AF_CLASSIC ),
+    #Obsolete, removed: ( 'Electrum (not BIP-44)', "m/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP-44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP-49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses
