@@ -4,6 +4,8 @@
   since that path is obsolete and not used by any major wallets now. We can still
   sign PSBT files with that path, but it's an unnessecary risk to show derived
   addresses for a type of wallet that doesn't exist anymore.
+- Enhancement: if PSBT input sections don't contain the key path information we need,
+  show a more specific error message. 
 
 ## 4.1.2 - July 28, 2021
 

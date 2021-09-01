@@ -1325,6 +1325,11 @@ class psbtObject(psbtProxy):
             for path in inp.subpaths.values():
                 others.add(path[0])
 
+        if not others:
+            # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
+            # so doesn't insert that into PSBT.
+            raise FatalPSBTIssue('PSBT does not contain any key path information.')
+
         others.discard(self.my_xfp)
         msg = ', '.join(xfp2str(i) for i in others)
 

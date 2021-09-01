@@ -1437,4 +1437,24 @@ def test_qr_txn(num_in, num_out, request, fake_txn, try_sign, dev, cap_screen_qr
         qr = cap_screen_qr().decode()
         assert qr.lower() == txn.hex()
 
+def test_missing_keypaths(dev, try_sign, fake_txn):
+
+    # make valid psbt
+    psbt = fake_txn(3, 1, dev.master_xpub, segwit_in=False)
+
+    # strip keypaths
+    oo = BasicPSBT().parse(psbt)
+    for inp in oo.inputs:
+        inp.bip32_paths.clear()
+
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod_psbt, accept=False)
+
+    msg = ee.value.args[0]
+    assert ('does not contain any key path information' in msg)
+
 # EOF
