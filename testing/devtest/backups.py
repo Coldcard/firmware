@@ -48,7 +48,8 @@ async def test_7z():
     from backups import write_complete_backup, restore_complete_doit
     from sffile import SFFile
     import ngu, version, uos
-    from glob import numpad, pa
+    from glob import numpad
+    from pincodes import pa
     from nvstore import settings
 
     if version.has_fatram:
