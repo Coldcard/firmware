@@ -1,5 +1,9 @@
 ## 4.1.3 - Sep 2, 2021
 
+- Enhancement: support "importdescriptors" command in Bitcoin Core 0.21 so that
+  a descriptor-based wallet is created. PSBT files are then supported natively by
+  Core, and the resulting desktop wallet can be used for spending (ie. create PSBT
+  via GUI) and also watching. Translation: Easy air-gap PSBT operation with Bitcoin Core!
 - Enhancement: remove "m/0/0" derivations from public.txt and address explorer,
   since that path is obsolete and not used by any major wallets now. We can still
   sign PSBT files with that path, but it's an unnecessary risk to show derived

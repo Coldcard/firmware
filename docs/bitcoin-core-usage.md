@@ -5,7 +5,35 @@ needs a USB connection and additional software such as [HWI](https://github.com/
 
 ## Setup Steps
 
+### Bitcoin Core v0.21.0+
+
+As of Coldcard firmware v4.1.3, we recommend using the "importdescriptors"
+command with a native descriptor wallet in Core, so Core can generate
+and receive PSBT files natively from the GUI. The resulting wallet is
+no longer just a watch wallet, but can be used for spending by creating
+PSBT files for signing offline at the Coldcard.
+
+Step 1: Create a new descriptor-based wallet in Bitcoin Core
+
+- File -> Create Wallet ... 
+- give it a unique name
+- check "Descriptor Wallet"
+
+Step 2: Export descriptor from Coldcard to Core
+
+- on Coldcard, go to Advanced -> MicroSD card -> Export Wallet -> Bitcoin Core
+- on your computer, open `bitcoin-core-XX.txt`, copy the `importdescriptor` command line
+- in Bitcoin Core, go to Windows -> Console
+- select your newly created descriptor wallet in the wallet pulldown (top left)
+- paste the `importdescriptor` command. It should respond with a success message
+
+NOTE: If you are importing an existing wallet this way, with UTXO on the blockchain,
+you may need to rescan and/or delete "timestamp=now" from the command. If the
+balance is zero this is why.
+
 ### Bitcoin Core v0.19.0+
+
+(no longer recommended)
 
 For compatibility with other wallet software we use the BIP84 address derivation
 (m/84'/0'/{account}'/{change}/{index}) and native SegWit (bech32) addresses. It's
@@ -19,8 +47,8 @@ The public keys can exported via an SD card, or via USB.
 
 To export via SD card:
 
-- go to Advanced -> MicroSD card -> Bitcoin Core
-- on your computer open public.txt, copy the `importmulti` command
+- go to Advanced -> MicroSD card -> Export Wallet -> Bitcoin Core
+- on your computer open `bitcoin-core-XX.txt`, copy the `importmulti` command line
 - in Bitcoin Core, go to Windows -> Console
 - select Coldcard in the wallet dropdown
 - paste the `importmulti` command. It should respond with a success message
@@ -45,6 +73,11 @@ createwallet Coldcard true
 ```
 
 ## Day-to-day Operation
+
+### Bitcoin Core v0.21.0+
+
+PSBT files can be directly created and loaded from the Bitcoin Core Qt GUI! HWI is not
+required, and air-gap via MicroSD is easy to use.
 
 ### Bitcoin Core v0.18.0+
 

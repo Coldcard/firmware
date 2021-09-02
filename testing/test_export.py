@@ -12,9 +12,10 @@ from helpers import xfp2str, slip132undo
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH, AF_P2WSH_P2SH
+from pprint import pprint
 
 @pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
-def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet):
+def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet, bitcoind_d_wallet):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
@@ -51,14 +52,21 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
 
     path = microsd_path(fname)
     addrs = []
-    js = None
+    imm_js = None
+    imd_js = None
     with open(path, 'rt') as fp:
         for ln in fp:
             if 'importmulti' in ln:
+                # PLAN: this will become obsolete
                 assert ln.startswith("importmulti '")
                 assert ln.endswith("'\n")
-                assert not js, "dup importmulti lines"
-                js = ln[13:-2]
+                assert not imm_js, "dup importmulti lines"
+                imm_js = ln[13:-2]
+            elif "importdescriptors '" in ln:
+                assert ln.startswith("importdescriptors '")
+                assert ln.endswith("'\n")
+                assert not imd_js, "dup importdesc lines"
+                imd_js = ln[19:-2]
             elif '=>' in ln:
                 path, addr = ln.strip().split(' => ', 1)
                 assert path.startswith(f"m/84'/1'/{acct_num}'/0")
@@ -70,15 +78,51 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
 
     assert len(addrs) == 3
 
-    obj = json.loads(js)
     xfp = xfp2str(simulator_fixed_xfp).lower()
 
+    if imm_js:
+        obj = json.loads(imm_js)
+        for n, here in enumerate(obj):
+            assert here['range'] == [0, 1000]
+            assert here['timestamp'] == 'now'
+            assert here['internal'] == bool(n)
+            assert here['keypool'] == True
+            assert here['watchonly'] == True
+
+            d = here['desc']
+            desc, chk = d.split('#', 1)
+            assert len(chk) == 8
+            assert desc.startswith(f'wpkh([{xfp}/84h/1h/{acct_num}h]')
+
+            expect = BIP32Node.from_wallet_key(simulator_fixed_xprv)\
+                        .subkey_for_path(f"84'/1'/{acct_num}'.pub").hwif()
+
+            assert expect in desc
+            assert expect+f'/{n}/*' in desc
+
+        # test against bitcoind
+        for x in obj:
+            x['label'] = 'testcase'
+        bitcoind_wallet.importmulti(obj)
+        x = bitcoind_wallet.getaddressinfo(addrs[-1])
+        pprint(x)
+        assert x['address'] == addrs[-1]
+        if 'label' in x:
+            # pre 0.21.?
+            assert x['label'] == 'testcase'
+        else:
+            assert x['labels'] == ['testcase']
+        assert x['iswatchonly'] == True
+        assert x['iswitness'] == True
+        assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+
+    # importdescriptors -- its better
+    assert imd_js
+    obj = json.loads(imd_js)
     for n, here in enumerate(obj):
-        assert here['range'] == [0, 1000]
+        assert range not in here
         assert here['timestamp'] == 'now'
         assert here['internal'] == bool(n)
-        assert here['keypool'] == True
-        assert here['watchonly'] == True
 
         d = here['desc']
         desc, chk = d.split('#', 1)
@@ -91,18 +135,21 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
-    # test against bitcoind
-    for x in obj:
-        x['label'] = 'testcase'
-    bitcoind_wallet.importmulti(obj)
-    x = bitcoind_wallet.getaddressinfo(addrs[-1])
-    from pprint import pprint
-    pprint(x)
-    assert x['address'] == addrs[-1]
-    assert x['label'] == 'testcase'
-    assert x['iswatchonly'] == True
-    assert x['iswitness'] == True
-    assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+        if n == 0:
+            assert here['label'] == 'Coldcard ' + xfp
+
+        # test against bitcoind -- needs a "descriptor native" wallet
+        bitcoind_d_wallet.importdescriptors(obj)
+
+        x = bitcoind_d_wallet.getaddressinfo(addrs[-1])
+        pprint(x)
+        assert x['address'] == addrs[-1]
+        assert x['iswatchonly'] == False
+        assert x['iswitness'] == True
+        assert x['ismine'] == True
+        assert x['solvable'] == True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
 def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
     # test UX and operation of the 'wasabi wallet export'
