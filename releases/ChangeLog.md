@@ -9,6 +9,8 @@
 - Bugfix: a PSBT which provided the wrong pubkey (based on UTXO being spent) was not
   flagged as invalid, but instead we proceeded to do nothing. Now says "pubkey vs. address wrong".
 - Bugfix: if asked to serialize a partially-signed transaction, we did. Now fails properly.
+- Bugfix: if multiple copies of the same BIP-39 passphrase were saved to a card, the menu
+  would not display correctly and you might not be able to select your saved value.
 
 ## 4.1.2 - July 28, 2021
 

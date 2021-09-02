@@ -35,6 +35,7 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
 
 
 @pytest.mark.parametrize('pws', [
+        'abc abc def def 123',
         'empty',
         '1 2 3',
         '1 2 3 11 22 33',
@@ -51,12 +52,16 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
     except: pass
 
     pws = pws.split()
-    xfps = []
+    xfps = {}
 
     if pws[0] == 'empty':
         pws.append('')
 
+    uniq = []
     for pw in pws:
+        if pw not in uniq:
+            uniq.append(pw)
+
         get_to_pwmenu()
 
         if pw == '':
@@ -73,21 +78,23 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         assert '1 to use and save to MicroSD' in story
 
         need_keypress('1')
-        xfps.append(xfp)
+        xfps[pw] = xfp
 
 
-    for n, pw in enumerate(pws):
+    for n, pw in enumerate(uniq):
         get_to_pwmenu()
 
         pick_menu_item('Restore Saved')
 
         m = cap_menu()
-        print(m)
-        assert len(m) == len(pws)
-        #assert all(('*' in i) for i in m) or pws==['1aa1', '2aa2', '1aa2', '2aa1']
+        #print(m)
+        assert len(m) == len(uniq)
 
         if len(pw):
-            assert m[n][0] == pw[0] or m[n][-1] == pw[-1]
+            if m[0][0] != '*':
+                assert set(i[0] for i in m) == set(j[0] if j else '(' for j in pws)
+            else:
+                assert set(i[-1] for i in m) == set(j[-1] if j else ')' for j in pws)
 
         pick_menu_item(m[n])
 
@@ -95,7 +102,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         title, story = cap_story()
         xfp = title[1:-1]
 
-        assert xfp == xfps[n]
+        assert xfp == xfps[uniq[n]]
         need_keypress('y'); 
 
 
