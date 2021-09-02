@@ -46,9 +46,13 @@ python -m pip install -r requirements.txt
 python -m pip install --editable .
 cd ../stm32
 
-# fetch a copy of the required binary
-PUBLISHED_BIN=`grep $VERSION_STRING ../releases/signatures.txt | dd bs=66 skip=1`
-wget -SP ../releases https://coldcardwallet.com/downloads/$PUBLISHED_BIN
+if [ ! -f ../releases/*-v$VERSION_STRING-coldcard.dfu ]; then
+    # fetch a copy of the required binary
+    PUBLISHED_BIN=`grep $VERSION_STRING ../releases/signatures.txt | dd bs=66 skip=1`
+    wget -SP ../releases https://coldcardwallet.com/downloads/$PUBLISHED_BIN
+else
+    echo "Using existing binary in ../releases, not download"
+fi
 
 make setup
 #make clean
