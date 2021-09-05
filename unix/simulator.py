@@ -2,8 +2,8 @@
 #
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Simulate the hardware of a Coldcard. Particularly the OLED display (128x32) and 
-# the numberpad. 
+# Simulate the hardware of a Coldcard. Particularly the OLED display (128x32) and
+# the numberpad.
 #
 # This is a normal python3 program, not micropython. It communicates with a running
 # instance of micropython that simulates the micropython that would be running in the main
@@ -11,11 +11,11 @@
 #
 import os, sys, tty, pty, termios, time, pdb, tempfile
 import subprocess
-import sdl2.ext
-from PIL import Image
+from binascii import b2a_hex, a2b_hex
 from select import select
 import fcntl
-from binascii import b2a_hex, a2b_hex
+import sdl2.ext
+from PIL import Image
 
 MPY_UNIX = 'l-port/micropython'
 
@@ -271,7 +271,7 @@ dis.fullscreen("BareMetal")
             print(f"Callgate(method={method}, {len(buf_io) if buf_io else 0} bytes, arg2={arg2}) => rv={rv}")
 
         self.response.write(rv.encode('ascii') + b'\n')
-    
+
 
 def start():
     print('''\nColdcard Simulator: Commands (over simulated window):
@@ -284,7 +284,7 @@ def start():
     factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
     bg = factory.from_image("background.png")
     oled = OLEDSimulator(factory)
-    
+
     # for genuine/caution lights
     led_red = factory.from_image("led-red.png")
     led_green = factory.from_image("led-green.png")
@@ -403,7 +403,7 @@ def start():
                     else:
                         ch = '\0'
 
-                # remap ESC/Enter 
+                # remap ESC/Enter
                 if ch == '\x1b':
                     ch = 'x'
                 elif ch == '\x0d':
@@ -435,7 +435,7 @@ def start():
                     if ch.isprintable():
                         print("Invalid key: '%s'" % ch)
                     continue
-                
+
                 # need this to kill key-repeat
 
                 ch = ch.encode('ascii')
@@ -466,7 +466,7 @@ def start():
             buf = r.read(1024*1000)
             if not buf:
                 break
-        
+
             if r is oled_rx:
                 buf = buf[-1024:]
                 oled.render(window, buf)
@@ -503,7 +503,7 @@ def start():
             break
 
     xterm.kill()
-    
+
 
 if __name__ == '__main__':
     start()
