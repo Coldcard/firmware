@@ -29,6 +29,7 @@ tags:
 # Make a vanilla copy of micropython (unix) for use with upip and comparsion purposes
 tools:
 	cd $(PORT_TOP) && $(MAKE) clean deplibs all
+	pushd $(MPY_TOP)/mpy-cross && make && popd
 	cp $(PORT_TOP)/micropython ./micropython
 	cd $(PORT_TOP) && $(MAKE) clean
 
