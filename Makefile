@@ -31,13 +31,13 @@ ifeq ($(docker),)
 #DOCKER									:= $(shell find /usr/local/bin -name 'docker')
 DOCKER									:= $(shell which docker)
 else
-DOCKER									:= $(docker)
+DOCKER   							    := $(docker)
 endif
 export DOCKER
 
 ifeq ($(compose),)
-#DOCKER_COMPOSE							:= $(shell find /usr/local/bin -name 'docker-compose')
-DOCKER_COMPOSE							:= $(shell which docker-compose)
+#DOCKER_COMPOSE						    := $(shell find /usr/local/bin -name 'docker-compose')
+DOCKER_COMPOSE						    := $(shell which docker-compose)
 else
 DOCKER_COMPOSE							:= $(compose)
 endif
@@ -113,7 +113,7 @@ endif
 export VERBOSE
 
 ifeq ($(port),)
-PUBLIC_PORT								:= 80
+PUBLIC_PORT								:= $(shell shuf -i 200-700 -n 1)
 else
 PUBLIC_PORT								:= $(port)
 endif

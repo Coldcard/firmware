@@ -24,3 +24,6 @@ __pycache__/
 
 .tags
 pp
+
+cli/dist
+site
