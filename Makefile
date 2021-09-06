@@ -27,6 +27,16 @@ SERVICE_TARGET							:= $(target)
 endif
 export SERVICE_TARGET
 
+PYTHON                                  := $(shell which python)
+export PYTHON
+PYTHON3                                 := $(shell which python3)
+export PYTHON3
+
+PIP                                     := $(shell which pip)
+export PIP
+PIP3                                    := $(shell which pip3)
+export PIP3
+
 ifeq ($(docker),)
 #DOCKER									:= $(shell find /usr/local/bin -name 'docker')
 DOCKER									:= $(shell which docker)
@@ -135,12 +145,17 @@ export CMD_ARGUMENTS
 #######################
 PACKAGE_PREFIX							:= ghcr.io
 export PACKAGE_PREFIX
+
+#######################
+.PHONY: -
+-: help
 #######################
 .PHONY: init
 init:
 ifneq ($(shell id -u),0)
 	git submodule update --init
 	git submodule foreach --recursive 'git rev-parse HEAD | xargs -I {} git fetch origin {} && git reset --hard FETCH_HEAD'
+	#@echo 'not sudo'
 endif
 ifeq ($(shell id -u),0)
 	@echo 'sudo'
