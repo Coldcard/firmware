@@ -139,8 +139,8 @@ export PACKAGE_PREFIX
 .PHONY: init
 init:
 ifneq ($(shell id -u),0)
-	@echo 'not sudo'
 	git submodule update --init
+	git submodule foreach --recursive 'git rev-parse HEAD | xargs -I {} git fetch origin {} && git reset --hard FETCH_HEAD'
 endif
 ifeq ($(shell id -u),0)
 	@echo 'sudo'
