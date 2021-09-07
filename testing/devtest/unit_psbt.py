@@ -10,7 +10,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 
 import ustruct
-from nvstore import settings
+from glob import settings
 from public_constants import MAX_TXN_LEN
 
 # load PSBT into simulated SPI Flash

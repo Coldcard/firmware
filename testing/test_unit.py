@@ -239,5 +239,86 @@ def test_match_deriv_path(patterns, paths, answers, sim_exec):
         rv = sim_exec(cmd)
         assert rv == str(bool(ans))
     
+@pytest.mark.parametrize('case', range(6))
+def test_ndef(case, load_shared_mod):
+    # NDEF unit tests
+    import ndef
+    from struct import pack, unpack
+    from binascii import b2a_hex
+
+    def get_body(efile):
+        # unwrap CC_FILE and cruft
+        assert efile[-1] == 0xfe
+        assert efile[0] == 0xE2
+        st = len(cc_ndef.CC_FILE)
+        if efile[st] == 0xff:
+            xl = unpack('>H', efile[st+1:st+3])[0]
+            st += 3
+        else:
+            xl = efile[st]
+            st += 1
+        body = efile[st:-1]
+        assert len(body) == xl
+        return body
+
+    def decode(msg):
+        return list(ndef.message_decoder(get_body(msg)))
+
+    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+    n = cc_ndef.ndefMaker()
+
+    if case == 0:
+        n.add_text("Hello world")
+
+        got, = decode(n.bytes())
+        assert got.type == 'urn:nfc:wkt:T'
+        assert got.text == 'Hello world'
+        assert got.language == 'en'
+        assert got.encoding == 'UTF-8'
+
+    elif case == 1:
+        n.add_text("Hello world")
+        n.add_url("store.coinkite.com/store/coldcard")
+        
+        txt,url = decode(n.bytes())
+        assert txt.text == 'Hello world'
+
+        assert url.type == 'urn:nfc:wkt:U'
+        assert url.uri == 'https://store.coinkite.com/store/coldcard' == url.iri
+
+    elif case == 2:
+        hx = b2a_hex(bytes(range(32)))
+        n.add_text("Title")
+        n.add_custom('bitcoin.org:sha256', hx)
+
+        txt,sha = decode(n.bytes())
+        assert txt.text == 'Title'
+        assert sha.data == hx
+
+    elif case == 3:
+        psbt = b'psbt\xff' + bytes(5000)
+        n.add_text("Title")
+        n.add_custom('bitcoin.org:psbt', psbt)
+        n.add_text("Footer")
+
+        txt,p,ft = decode(n.bytes())
+        assert txt.text == 'Title'
+        assert ft.text == 'Footer'
+        assert p.data == psbt
+        assert p.type == 'urn:nfc:ext:bitcoin.org:psbt'
+
+    elif case == 4:
+        hx = b2a_hex(bytes(range(32)))
+        n.add_custom('bitcoin.org:txid', hx)
+        got, = decode(n.bytes())
+        assert got.type == 'urn:nfc:ext:bitcoin.org:txid'
+        assert got.data == hx
+
+    elif case == 5:
+        hx = bytes(2000)
+        n.add_custom('bitcoin.org:txn', hx)
+        got, = decode(n.bytes())
+        assert got.type == 'urn:nfc:ext:bitcoin.org:txn'
+        assert got.data == hx
 
 # EOF

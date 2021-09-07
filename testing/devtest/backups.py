@@ -10,7 +10,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 
 import ngu, ustruct
-from nvstore import settings
+from glob import settings
 
 if 1:
     # test file contents: completeness, syntax

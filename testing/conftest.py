@@ -20,7 +20,7 @@ def pytest_addoption(parser):
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
 
-    parser.addoption("--mk", default=3, help="Assume mark N hardware")
+    parser.addoption("--mk", default=4, help="Assume mark N hardware")
 
     parser.addoption("--duress", action="store_true",
                      default=False, help="assume logged-in with duress PIN")
@@ -64,8 +64,9 @@ def simulator(request):
 def sim_exec(dev):
     # run code in the simulator's interpretor
 
-    def doit(cmd):
+    def doit(cmd, binary=False):
         s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'))
+        if binary: return s
         return s.decode('utf-8') if not isinstance(s, str) else s
 
     return doit
@@ -574,7 +575,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 def settings_set(sim_exec):
 
     def doit(key, val):
-        x = sim_exec("nvstore.settings.set('%s', %r)" % (key, val))
+        x = sim_exec("settings.set('%s', %r)" % (key, val))
         assert x == ''
 
     return doit
@@ -583,7 +584,7 @@ def settings_set(sim_exec):
 def settings_get(sim_exec):
 
     def doit(key):
-        cmd = f"RV.write(repr(nvstore.settings.get('{key}')))"
+        cmd = f"RV.write(repr(settings.get('{key}')))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -594,7 +595,7 @@ def settings_get(sim_exec):
 def settings_remove(sim_exec):
 
     def doit(key):
-        x = sim_exec("nvstore.settings.remove_key('%s')" % key)
+        x = sim_exec("settings.remove_key('%s')" % key)
         assert x == ''
 
     return doit
@@ -1000,7 +1001,33 @@ def is_mark2(request):
 
 @pytest.fixture(scope='session')
 def is_mark3(request):
+    # better: ask it
     return int(request.config.getoption('--mk')) == 3
+
+@pytest.fixture(scope='session')
+def is_mark4(request):
+    # better: ask it
+    return int(request.config.getoption('--mk')) == 4
+
+@pytest.fixture()
+def nfc_read(sim_exec):
+    def doit():
+        rv = sim_exec('RV.write(NFC.dump_ndef())', binary=True)
+        if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
+        return rv
+    return doit
+
+@pytest.fixture
+def load_shared_mod():
+    # load indicated file.py as a module
+    # from <https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path>
+    def doit(name, path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    return doit
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,

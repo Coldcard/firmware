@@ -3,7 +3,7 @@
 # quickly main wipe seed; don't install anything new
 from glob import numpad, dis
 from pincodes import pa
-from nvstore import settings
+from glob import settings
 from pincodes import AE_SECRET_LEN, PA_IS_BLANK
 
 if not pa.is_secret_blank():

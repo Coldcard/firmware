@@ -10,3 +10,6 @@ onetimepass==1.0.1
 
 # for QR scanning (pulls in numpy)
 zbar-py==1.0.4
+
+nfcpy==1.0.3
+ndef==0.3.3
