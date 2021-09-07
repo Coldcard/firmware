@@ -81,6 +81,40 @@ two parts are sent as part of the NDEF record (ie. `bitcoin.org:psbt`).
 We are using TNF=4 (NFC Forum external type) to communicate the
 prefix of `urn:nfc:ext:`
 
+# Simple Data
+
+## General QR Replacement
+
+Anytime there is a QR displayed on the Coldcard screen, you can
+press (3) and the same data will be shared over NFC. In these cases,
+it will be shared as a simple text record, regardless of the content.
+
+Type: `urn:nfc:wkt:T` (text)
+
+Body: varies, but always ascii text.
+
+Many values can be exported this way, include xpub and even seed
+words after enough warning screens.
+
+## Payment Address
+
+This is typically a deposit address, generated on the Coldcard via
+the address explorer. We share these by themselves as simple text
+records for max compatibility.
+
+Type: `urn:nfc:wkt:T` (text)
+
+Body: bech32 or base58 encoded Bitcoin payment address
+
+If there are multiple addresses (10 shown for address explorer case)
+then they are separated by a single unix new line (`0x0a`).
+
+# Complex Data
+
+For Bitcoin-specific data we provide a few records together. The
+first is a label, then various binary data related to what's going
+on (such as a PSBT file after signing).
+
 ## Text Label
 
 Coldcard's first record will be a simple text record (English, UTF-8) that
@@ -101,18 +135,9 @@ protect against tampering.
 
 Type: `urn:nfc:ext:bitcoin.org:sha256`
 
-Body: Exactly 64 bytes of hex (ascii). It's the SHA256 over the main 
+Body: Exactly 32 bytes of binary. It's the SHA256 over the main 
 payload (PSBT file, for example).
 
-
-## Payment Address
-
-This is typically a deposit address, generated ont he Coldcard via
-the address explorer.
-
-Type: `urn:nfc:ext:bitcoin.org:addr`
-
-Body: bech32 or base58 encoded Bitcoin payment address
 
 ## TXID Value
 
@@ -121,11 +146,11 @@ shared in hex.
 
 Type: `urn:nfc:ext:bitcoin.org:txid`
 
-Body: Exactly 64 bytes of hex (ascii). 
+Body: Exactly 32 bytes of binary. 
 
 The transaction ID is calculated as a hash over the transaction.
-Without signature witness data, it is simply sha256 over the bytes
-of the transaction.  For segwit transactions, it's a bit more complex
+Without signature witness data, it is simply SHA256 over the bytes
+of the transaction. For segwit transactions, it's a bit more complex
 to calculate.
 
 ## PSBT File
@@ -145,9 +170,10 @@ A fully-signed, wire-ready Bitcoin transaction.
 Type: `urn:nfc:ext:bitcoin.org:txn`
 
 Body: Binary, variable length. First four bytes will typically be
-`0x02 0x00 0x00 0x00` (version number, two in LE32).
+`0x02 0x00 0x00 0x00` (version number two, in LE32).
 
 When the Coldcard has signed and finalized a transaction, it can
 share it in this format. Typically the user will want to broadcast
-this transaction on the Bitcoin P2P network.
+this new transaction on the Bitcoin P2P network.
+
 
