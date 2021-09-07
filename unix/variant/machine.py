@@ -21,7 +21,7 @@ UART.OUT = None
 
 def _flush_data():
     try:
-        from nvstore import settings
+        from glob import settings
         settings.save()
     except: pass
 

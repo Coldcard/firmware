@@ -21,6 +21,10 @@ freeze_as_mpy('', [
 	'version.py',
 	'aes256ctr.py',
 	'zevvpeep.py',
+	'mk4.py',
+	'sim_psram.py',
+	'sim_nfc.py',
 ], opt=0)
+#include("../../shared/manifest_mk4.py")
 include("$(MPY_DIR)/extmod/uasyncio/manifest.py")
 

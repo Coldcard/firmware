@@ -39,6 +39,7 @@ if 1:
 # - unix is not freezing the main code, so those bytecodes take major memory
 #balloon = bytearray(700*1024)
 
+SE2_STATE = {}
 
 # patch in monitoring of text on screen
 if 1:
@@ -128,6 +129,56 @@ def gate(method, buf_io, arg2):
         buf_io[:] = b'\x01#\xbf\x0b\x00\x00`\x03CP,\xbf\xeeap\x00\xe1\x00a\x00\x00\x00\x8f-\x8f\x80\x8fC\xaf\x80\x00C\x00C\x8fG\xc3C\xc3C\xc7G\x00G\x00\x00\x8fM\x8fC\x00\x00\x00\x00\x1f\xff\x00\x1a\x00\x1a\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xea\xff\x02\x15\x00\x00\x00\x00<\x00\\\x00\xbc\x01\xfc\x01\xbc\x01\x9c\x01\x9c\x01\xfc\x01\xdc\x03\xdc\x03\xdc\x07\x9c\x01<\x00\xfc\x01\xdc\x01<\x00'
         return 0
 
+    if method == 22:
+        # trick pin actions, just skip for now TODO
+        global SE2_STATE
+
+        from trick_pins import TRICK_SLOT_LAYOUT
+        from pincodes import PIN_ATTEMPT_SIZE
+        import uctypes
+
+        b = buf_io[PIN_ATTEMPT_SIZE:]
+        slot = uctypes.struct(uctypes.addressof(b), TRICK_SLOT_LAYOUT)
+        pc = slot.pin[0:slot.pin_len].decode()
+
+        if arg2 == 0:       # clear all
+            SE2_STATE.clear()
+            return 0
+
+        elif arg2 == 1:     # get by pin
+            if pc in SE2_STATE:
+                buf_io[PIN_ATTEMPT_SIZE:] = SE2_STATE[pc]
+                return 0
+            else:
+                return ENOENT
+
+        elif arg2 == 2:     # update
+            SE2_STATE[pc] = bytes(b)
+
+        return 0
+
+    if method == 23:
+        # fast wipe 
+        if not version.has_se2:
+            return ENOENT
+        if arg2 == 0xBeef:
+            # silent version, but does reset system
+            print("silent wipe of secret")
+        elif arg2 == 0xDead:
+            # noisy, shows screen, halts
+            print("wipe of secret and die w/ screen")
+        return 0
+
+    if method == 24:
+        # fast brick -- locks up w/ message
+        if not version.has_se2:
+            return ENOENT
+        if arg2 == 0xDead:
+            print("Fast brick")
+            return 0
+        else:
+            return EPERM;
+
     return ENOENT
 
 def oneway(method, arg2):
@@ -165,8 +216,16 @@ def watchpoint():
 def vcp_enabled(_):
     return True
 
-def is_stm32l496():
-    return ('--mk2' not in sys.argv)
+def get_cpi_id():
+    if ('--mk2' in sys.argv):
+        return 0x2222       # don't know
+    if ('--mk3' in sys.argv):
+        return 0x461       # STM32L496RG6
+    if ('--mk4' in sys.argv):
+        return 0x470       # STM32L4S5
+
+    #default mk4
+    return 0x470       # STM32L4S5
 
 
 # EOF

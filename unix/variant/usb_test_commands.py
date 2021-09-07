@@ -1,6 +1,14 @@
+# items imported here may be useful to EVAL and EXEC commands, which tests depend on.
 import uio, sys, version, nvstore
-#from pincodes import pa
-from sflash import SF
+try:
+    from sflash import SF
+except: pass
+from glob import *
+
+# Mk4:
+#   copy this file to PSRAMdisk
+#   a=open('/psram/usb_test_commands.py', 'rb').read()
+#   open('/flash/lib/usb_test_commands.py', 'wb').write(a)
 
 def do_usb_command(cmd, args):
     # TESTING commands!

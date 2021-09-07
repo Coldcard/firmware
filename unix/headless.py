@@ -36,7 +36,9 @@ def start():
     atexit.register(cleanup)
 
     os.chdir('./work')
-    cc_cmd = ['../coldcard-mpy', '-i', '../sim_boot.py',
+    cc_cmd = ['../coldcard-mpy',
+                        '-X', 'heapsize=9m',
+                        '-i', '../sim_boot.py',
                         str(oled_w), '-1', str(led_w)] \
                         + sys.argv[1:]
 

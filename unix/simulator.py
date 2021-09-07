@@ -115,15 +115,19 @@ class BareMetal:
         self.request = open(req_r, 'rt', closefd=0)
         self.response = open(resp_w, 'wb', closefd=0, buffering=0)
 
-    def open(self):
+    def open(self, name='usbserial-FTD2MILQ'):
         # return a file-descriptor ready to be used for access to a real Coldcard's console I/O.
         # - assume only one coldcard
         import sys, serial
         from serial.tools.list_ports import comports
 
         for d in comports():
-            if d.pid != 0xcc10: continue
-            sio = serial.Serial(d.device, write_timeout=1)
+            if not name:
+                if d.pid != 0xcc10: continue
+            else:
+                if name not in d.name: continue
+
+            sio = serial.Serial(d.device, write_timeout=1, baudrate=115200)
 
             print("Connecting to: %s" % d.device)
             break
@@ -132,12 +136,23 @@ class BareMetal:
 
         self.sio = sio
         sio.timeout = 0.250
-        greet = sio.readlines()
-        if greet and b'Welcome to Coldcard!' in greet[1]:
+
+        if d.pid == 0xcc10:
+            # USB mode a litte easier
+            greet = sio.readlines()
+            if greet and b'Welcome to Coldcard!' in greet[1]:
+                sio.write(b'\x03')     # ctrl-C
+                while 1:
+                    sio.timeout = 1
+                    lns = sio.readlines()
+                    if not lns: break
+        else:
+            # real serial port
             sio.write(b'\x03')     # ctrl-C
             while 1:
-                sio.timeout = 1
+                sio.timeout = 3
                 lns = sio.readlines()
+                print("ECHO: " + repr(lns))
                 if not lns: break
 
         # hit enter, expect prompt
@@ -151,7 +166,7 @@ class BareMetal:
         print(" Connected to: %s" % d.device)
 
         sio.write(b'''\x05\
-from main import dis
+from glob import dis
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 import ckcc
@@ -204,7 +219,7 @@ dis.fullscreen("BareMetal")
     def wait_done(self, timeout=1):
         sio = self.sio
         sio.timeout = timeout
-        rv = sio.read_until(terminator='>>> ')
+        rv = sio.read_until('>>> ')
         return [str(i, 'ascii') for i in rv.split(b'\r\n')]
 
     def readable(self):
@@ -305,7 +320,6 @@ def start():
     sd_active = False
 
     # capture exec path and move into intended working directory
-    mpy_exec = os.path.realpath('l-port/coldcard-mpy')
     env = os.environ.copy()
     env['MICROPYPATH'] = ':' + os.path.realpath('../shared')
 
@@ -344,7 +358,9 @@ def start():
         bare_metal = None
 
     os.chdir('./work')
-    cc_cmd = ['../coldcard-mpy', '-i', '../sim_boot.py',
+    cc_cmd = ['../coldcard-mpy', 
+                        '-X', 'heapsize=9m',
+                        '-i', '../sim_boot.py',
                         str(oled_w), str(numpad_r), str(led_w)] \
                         + metal_args + sys.argv[1:]
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',

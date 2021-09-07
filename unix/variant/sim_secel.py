@@ -243,6 +243,7 @@ def pin_stuff(submethod, buf_io):
         else:
             secret = SECRETS['ls'][off:off+32]
 
+
     else:
         # bogus submethod
         return ENOENT

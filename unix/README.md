@@ -21,7 +21,8 @@ wallet (on testnet, always with the same seed). But there are other options:
         - add `--p2wsh` or `--wrap` for the other two address types
 - `-s` => go to the MicroSD menu at startup
 - `--mk2` => emulate mark2 hardware (older micro, etc), default is current-gen (mark3)
-- `--mk1` => emulate mark1 hardware
+- `--mk3` => emulate mark3 hardware
+- `--mk4` => emulate mark4 hardware
 - `-g` => don't skip login sequence
 - `--addr` => go to the address explorer at startup
 - `--xw` => go to the wallet export submenu
@@ -42,6 +43,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--deriv` => go to the Derive Entropy menu inside settings, also loads XPRV from BIP
 - `--secret 01abababab...` => directly set contents of SE secret, see SecretStash.encode()
 - `--eject` => pretend no (simulated) SD Card is inserted
+- `--seq 1234yx34` => after start, enter those keypresses to get you to some submenu
 
 See `frozen-modules/sim-settings.py` for the details of settings-related options.
 

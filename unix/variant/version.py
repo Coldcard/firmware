@@ -33,19 +33,34 @@ def get_header_value(fld_name):
     return 0
 
 # default is latest hardware
-hw_label = 'mk3'
+hw_label = 'mk4'
 has_608 = True
 has_membrane = True
 has_fatram = True
+has_se2 = True
+has_psram = True
+
+if  '--mk1' in sys.argv:
+    # doubt this works still
+    hw_label = 'mk1'
+    has_608 = False
+    has_membrane = False
+    has_fatram = False
+    has_se2 = False
+    has_psram = False
 
 if  '--mk2' in sys.argv:
     hw_label = 'mk2'
     has_608 = False
     has_fatram = False
+    has_se2 = False
+    has_psram = False
 
-if  '--mk1' in sys.argv:
-    hw_label = 'mk1'
-    has_608 = False
-    has_membrane = False
+if  '--mk3' in sys.argv:
+    hw_label = 'mk3'
+    has_608 = True
     has_fatram = False
+    has_se2 = False
+    has_psram = False
 
+mk_num = int(hw_label[2:])

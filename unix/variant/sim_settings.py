@@ -33,7 +33,8 @@ else:
         '_skip_pin': '12-12',
         'terms_ok': 1,
         'xfp': 1130956047,
-        'idle_to': 0
+        'idle_to': 0,
+        'tp': {'!p': [7, 32768, 3], '22-22': [3, 0, 12345], '11-11': [0, 2048, 12345], '99-99': [4, 1024, 4626]},
     }
 
     SECRETS.update({
@@ -90,7 +91,7 @@ if '--seed' in sys.argv:
     from utils import xfp2str
     from seed import set_seed_value
     from main import pa
-    from nvstore import settings
+    from glob import settings
 
     words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
     assert len(words) in {12, 18, 24}, "Expected space-separated words: add some quotes"
