@@ -38,7 +38,6 @@ void flash_setup0(void);
 void flash_lock(void);
 void flash_unlock(void);
 int flash_burn(uint32_t address, uint64_t val);
-//int flash_burn_fast(uint32_t address, const uint32_t values[128]);
 int flash_page_erase(uint32_t address);
 
 // write to OTP

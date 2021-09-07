@@ -152,10 +152,10 @@ extern bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block);
 #define MICROPY_PY_MACHINE          (1)
 #define MICROPY_PY_MACHINE_PULSE    (0)
 #define MICROPY_PY_MACHINE_PIN_MAKE_NEW mp_pin_make_new
-// no i2c
-#define MICROPY_PY_MACHINE_I2C      (0)
-//#define MICROPY_PY_MACHINE_I2C_MAKE_NEW machine_hard_i2c_make_new
-#define MICROPY_PY_MACHINE_I2C_MAKE_NEW #error
+
+// one i2c: #2 for SE2
+#define MICROPY_PY_MACHINE_I2C      (1)
+#define MICROPY_PY_MACHINE_I2C_MAKE_NEW machine_hard_i2c_make_new
 
 #define MICROPY_PY_MACHINE_SPI      (1)
 #define MICROPY_PY_MACHINE_SPI_MSB  (SPI_FIRSTBIT_MSB)

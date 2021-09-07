@@ -27,11 +27,11 @@ FROZEN_MANIFEST +=  \
 					boards/$(BOARD)/shared/manifest_mk4.py \
 					boards/manifest.py
 
-# This will relocate things up by 64k=0x1_0000
+# This will relocate things up by 128k=0x2_0000
 # see also ./layout.ld
-CFLAGS_MOD += -DVECT_TAB_OFFSET=0x10000
-TEXT0_ADDR = 0x08010000
-TEXT1_ADDR = 0x08014000
+CFLAGS_MOD += -DVECT_TAB_OFFSET=0x20000
+TEXT0_ADDR = 0x08020000
+TEXT1_ADDR = 0x08024000
 
 # don't want any of these: soft_spi, soft_qspi, dht
 #DRIVERS_SRC_C -= drivers/bus/softspi.c \

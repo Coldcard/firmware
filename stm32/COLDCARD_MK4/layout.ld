@@ -5,7 +5,7 @@
 /* Specify the memory areas */
 MEMORY
 {
-    FLASH (rx)      : ORIGIN = 0x08010000, LENGTH = 1984K
+    FLASH (rx)      : ORIGIN = 0x08020000, LENGTH = 1984K
 
     /* Flash layout:
         - first 64k of flash is the Coldcard Mk4 bootloader
@@ -13,8 +13,8 @@ MEMORY
         - (bulk of firmware  ~ 1.5meg)
         - 512k of user settings in LFS2 filesystem
     */
-    FLASH_ISR (rx)  : ORIGIN = 0x08010000, LENGTH = 16K
-    FLASH_TEXT (rx) : ORIGIN = 0x08014000, LENGTH = 1456K
+    FLASH_ISR (rx)  : ORIGIN = 0x08020000, LENGTH = 16K
+    FLASH_TEXT (rx) : ORIGIN = 0x08024000, LENGTH = 1392K
     FLASH_FS (r)    : ORIGIN = 0x08180000, LENGTH = 512K
 
     /* SRAM1,2, and 3 are continuous, first 0x2000 reserved for bootloader */

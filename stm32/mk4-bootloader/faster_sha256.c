@@ -163,8 +163,6 @@ sha256_single(const uint8_t data[], uint32_t len, uint8_t digest[32])
 hmac_sha256_init(HMAC_CTX *ctx)
 {
     memset(ctx, 0, sizeof(HMAC_CTX));
-
-    //ctx->num_pending = 0;
 }
 
 // hmac_sha256_update()

@@ -11,7 +11,7 @@
 #define MICROPY_HW_HAS_FLASH        (1)
 #define MICROPY_HW_HAS_SDCARD       (1)
 #define MICROPY_HW_HAS_LCD          (0)
-#define MICROPY_HW_ENABLE_HW_I2C    (0)
+#define MICROPY_HW_ENABLE_HW_I2C    (1)
 
 // don't want, but lots of modules interdepend on this
 #define MICROPY_HW_ENABLE_RTC       (0)
@@ -44,25 +44,28 @@
 #define MICROPY_HW_UART_REPL        PYB_UART_1
 #define MICROPY_HW_UART_REPL_BAUD   115200
 
-/* I2C busses 00 none
+/* I2C busses: 2 */
 #define MICROPY_HW_I2C1_SCL (pin_B6)
 #define MICROPY_HW_I2C1_SDA (pin_B7)
-#define MICROPY_HW_I2C2_SCL (pin_B10)
-#define MICROPY_HW_I2C2_SDA (pin_B11)
+#define MICROPY_HW_I2C2_SCL (pin_B13)
+#define MICROPY_HW_I2C2_SDA (pin_B14)
+/*
 #define MICROPY_HW_I2C3_SCL (pin_C0)
 #define MICROPY_HW_I2C3_SDA (pin_C1)
 */
 
-// SPI busses (two)
-//#define MICROPY_HW_SPI1_NSS     (pin_A4)
+// SPI busses (one)
 #define MICROPY_HW_SPI1_SCK     (pin_A5)
-//#define MICROPY_HW_SPI1_MISO    (pin_A6)
 #define MICROPY_HW_SPI1_MOSI    (pin_A7)
+//#define MICROPY_HW_SPI1_NSS     (pin_A4)
+//#define MICROPY_HW_SPI1_MISO    (pin_A6)
 
+/* removed in Mk4 rev B
 #define MICROPY_HW_SPI2_NSS     (pin_B9)
 #define MICROPY_HW_SPI2_SCK     (pin_B10)
 #define MICROPY_HW_SPI2_MISO    (pin_C2)
 #define MICROPY_HW_SPI2_MOSI    (pin_C3)
+*/
 
 // SD card detect switch
 // - open when card inserted, grounded when no card

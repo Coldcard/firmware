@@ -465,8 +465,8 @@ se2_clear_volatile(void)
 //
 // CONCERN: Must not be possible to call this function after replacing
 // the chip deployed originally. But key secrets would have been lost
-// by then anyway... looks harmless, and regardless once the datazone
-// is locked, none of this code will work... but:
+// by then anyway... looks harmless, and regardless once the slots
+// are locked, none of this code will work... but:
 //
 // IMPORTANT: If they blocked the real chip, and provided a blank one for
 // us to write the (existing) pairing secret into, they would see the pairing
@@ -504,16 +504,14 @@ se2_setup_config(void)
 
     memcpy(_tbd.romid, tmp+24, 8);
 
-    // forget a secret - B
+    // forget a secret - B (will not be used)
     rng_buffer(tmp, 32);
     se2_write_page(PGN_SECRET_B, tmp);
-    se2_set_protection(PGN_SECRET_B, PROT_WP);
 
     // have chip pick a keypair, record public part for later
     se2_pick_keypair(0, true);
     se2_read_page(PGN_PUBKEY_A,   &_tbd.pubkey_A[0], false);
     se2_read_page(PGN_PUBKEY_A+1, &_tbd.pubkey_A[32], false);
-    se2_set_protection(PGN_PUBKEY_A, PROT_WP);
 
     // Burn privkey B with garbage. Invalid ECC key like this cannot
     // be used (except to make errors)
@@ -522,34 +520,44 @@ se2_setup_config(void)
     se2_write_page(PGN_PRIVKEY_B+1, tmp);
     se2_write_page(PGN_PUBKEY_B, tmp);
     se2_write_page(PGN_PUBKEY_B+1, tmp);
-    se2_set_protection(PGN_PUBKEY_B, PROT_WP);
 
     // pick a paring secret (A)
     do {
         rng_buffer(_tbd.pairing, 32);
     } while(_tbd.pairing[0] == 0xff);
     se2_write_page(PGN_SECRET_A, _tbd.pairing);
-    se2_set_protection(PGN_SECRET_A, PROT_WP);      // cannot set RP, but already set
 
     // called the "easy" key, this one requires only SE2 pairing to read/write
     // - so we can wipe it anytime as part of bricking (maybe)
     // - but also so that more than just the paired pubkey w/ SE1 is needed
     rng_buffer(tmp, 32);
-    se2_set_protection(PGN_SE2_EASY_KEY, PROT_EPH);
-    se2_write_encrypted(PGN_SE2_EASY_KEY, tmp, 0, _tbd.pairing);
+    se2_write_page(PGN_SE2_EASY_KEY, tmp);
 
     // wipe all trick pins and data slots
     memset(tmp, 0, 32);
     for(int pn=0; pn <= PGN_LAST_TRICK; pn++) {
-        se2_set_protection(pn, PROT_EPH);
-        se2_write_encrypted(pn, tmp, 0, _tbd.pairing);
+        se2_write_page(pn, tmp);
     }
-
-    // Other slot protections.
-    se2_set_protection(PGN_ROM_OPTIONS, PROT_APH);       // not planning to change
 
     // save the shared secrets for ourselves, in flash
     flash_save_se2_data(&_tbd);
+
+    // Now safe to lock down the SE2; failures up to this point could be
+    // recovered by picking new values. After this, if main flash corrupt, no
+    // way to read these values back, nor replace them with new ones.
+    se2_set_protection(PGN_SECRET_A, PROT_WP);
+    se2_set_protection(PGN_SECRET_B, PROT_WP);
+    se2_set_protection(PGN_PUBKEY_A, PROT_WP);
+    se2_set_protection(PGN_PUBKEY_B, PROT_WP);
+
+    se2_set_protection(PGN_SE2_EASY_KEY, PROT_EPH);
+    for(int pn=0; pn <= PGN_LAST_TRICK; pn++) {
+        se2_set_protection(pn, PROT_EPH);
+    }
+
+    se2_set_protection(PGN_ROM_OPTIONS, PROT_APH);       // not planning to change
+
+    // NOTE: PGN_SE2_HARD_KEY and PUBKEY_C not yet known
 }
 
 // se2_save_auth_pubkey()
@@ -565,12 +573,12 @@ se2_save_auth_pubkey(const uint8_t pubkey[64])
     ASSERT(check_all_ones(rom_secrets->se2.auth_pubkey, 64));
     memcpy(&_tbd, &rom_secrets->se2, sizeof(_tbd));
 
-    // pick the "hard" key now, while it's easy to set
+    // pick the "hard" key now
     uint8_t     tmp[32];
     rng_buffer(tmp, 32);
     se2_write_page(PGN_SE2_HARD_KEY, tmp);
 
-    // save to "pubkey C"
+    // save SE1 pubkey into "pubkey C"
     se2_write_page(PGN_PUBKEY_C, &pubkey[0]);
     se2_write_page(PGN_PUBKEY_C+1, &pubkey[32]);
 

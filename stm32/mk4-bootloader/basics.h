@@ -46,8 +46,11 @@ extern void fatal_error(const char *) __attribute__((noreturn));
 // CAUTION: some security checks end up here, so we want to always crash
 // in those cases.
 //
-//#define INCONSISTENT(x)     do { asm("BKPT #0"); while(1); } while(0)
-#define INCONSISTENT(x)     fatal_error("incon")
+#ifdef RELEASE
+# define INCONSISTENT(x)     fatal_error("incon")
+#else
+# define INCONSISTENT(x)     do { puts2("INCON: "); puts(#x); asm("BKPT #0"); } while(0)
+#endif
 
 // Wait for an interrupt which will never happen (ie. die)
 #define LOCKUP_FOREVER()    while(1) { __WFI(); }

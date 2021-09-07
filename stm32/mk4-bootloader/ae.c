@@ -402,8 +402,6 @@ ae_setup(void)
 	const char *
 ae_probe(void)
 {
-    rng_delay();
-
     // Make it sleep / wake it up.
 	ae_send_sleep();
 
@@ -423,8 +421,6 @@ ae_probe(void)
 
 	// put into a low-power mode, might be a bit before we come back
 	ae_send_sleep();
-
-    rng_delay();
 
 	return NULL;
 }
@@ -1805,9 +1801,15 @@ ae_config_read(uint8_t config[128])
     int
 ae_setup_config(void)
 {
+    // Need to wake up AE, since many things happen before this point.
+    for(int retry=0; retry<5; retry++) {
+        if(!ae_probe()) break;
+    }
+
     // Is data zone is locked?
     // Allow rest of function to happen if it's not.
 
+#if 1
     //  0x55 = unlocked; 0x00 = locked
     bool data_locked = (ae_read_config_byte(86) != 0x55);
     if(data_locked) return 0;       // basically success
@@ -1820,6 +1822,11 @@ ae_setup_config(void)
     uint8_t config[128];
     int rv = ae_config_read(config);
     if(rv) return rv;
+#else
+    // DEBUG
+    uint8_t config[128];
+    while(ae_config_read(config)) ;
+#endif
 
     // verify some fixed values
     ASSERT(config[0] == 0x01);

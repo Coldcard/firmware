@@ -37,6 +37,7 @@ your key storage per-system unique.
     FLASH->CR = 0x40022014
     FLASH->WRP1AR = 0x4002202c
 
+    # this works on Mk4: with less weird errors/warnings.
     # have DFU active. doesn't work from running
     halt
     # expect 0x40000000, if it's 0xc0000000, can't work; reboot w/ DFU pressed, to fix
@@ -66,19 +67,26 @@ your key storage per-system unique.
     stm32l4x unlock 0
     stm32l4x mass_erase 0
 
-# Credits
-
-- <https://github.com/B-Con/crypto-algorithms> for sha256 code.
-
 # Reading 'pairing secret'
 
 This is a useful command, but only works on non-production units:
 
 Mk1-3:
+
     dfu-util -d 0483:df11 -a 0 -s 0x08007800:256 -U pairing.bin
 
 Mk4:
-    dfu-util -d 0483:df11 -a 0 -s 0x0800e000:256 -U pairing.bin
+
+    dfu-util -d 0483:df11 -a 0 -s 0x0801e000:8192 -U pairing.bin
+
+- but that file is misleading, because all the unused mcu key slots are un-programmed-cells (ones)
+- will hit assert on new key attempt if you just write that back
+- trim and write only actual non-ones content
+
+# Wiping Secrets
+
+Mk4:
+    flash erase_address 0x801e000 0x2000
 
 
 # Resources
