@@ -35,9 +35,13 @@ class ndefMaker:
 
     def add_large_object(self, ext_type, offset, obj_len):
         # zero-copy a binary file from PSRAM into NFC flash
-        from glob import PSRAM
-        self.lst.append( (obj_len, 0x4, ext_type.encode(),
+        # - or accept bytes
+        if isinstance(offset, int):
+            from glob import PSRAM
+            self.lst.append( (obj_len, 0x4, ext_type.encode(),
                                                 PSRAM.read_at(offset, obj_len)) )
+        else:
+            self.add_custom(ext_type, offset)
 
     def add_custom(self, ext_type, payload):
         # "NFC Forum external Type" using bitcoin.org domain

@@ -149,21 +149,22 @@ class NFCHandler:
             return
 
         ndef = ndefMaker()
-        ndef.add_text('Signed Transaction: ' + txid)
-        ndef.add_custom('bitcoin.org:txid', a2b_hex(txid))          # want binary
+        if txid is not None:
+            ndef.add_text('Signed Transaction: ' + txid)
+            ndef.add_custom('bitcoin.org:txid', a2b_hex(txid))          # want binary
         ndef.add_custom('bitcoin.org:sha256', txn_sha)
         ndef.add_large_object('bitcoin.org:txn', file_offset, txn_len)
         
         await self.share_start(ndef)
 
-    async def share_signed_psbt(self, file_offset, psbt_len, psbt_sha):
+    async def share_psbt(self, file_offset, psbt_len, psbt_sha, label=None):
         # we just signed something, share it over NFC
         if psbt_len >= MAX_NFC_SIZE:
             await ux_show_story("PSBT is too large to share over NFC")
             return
 
         ndef = ndefMaker()
-        ndef.add_text('Partly signed PSBT')
+        ndef.add_text(label or 'Partly signed PSBT')
         ndef.add_custom('bitcoin.org:sha256', psbt_sha)
 
         ndef.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)

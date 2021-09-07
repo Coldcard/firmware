@@ -32,9 +32,9 @@ def make_psram_fs():
     open('/psram/README.txt', 'wt').write('''
 COLDCARD Virtual Disk
 
-1) copy your .PSBT file to be signed here.
+1) copy your PSBT file to be signed here.
 2) select from Coldcard menu, approve transaction.
-3) signed transaction file(s) are created here.
+3) signed transaction file(s) will be created here.
 
 '''.replace('\n', '\r\n'))
 

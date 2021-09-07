@@ -71,6 +71,10 @@ def has_secrets():
     from pincodes import pa
     return not pa.is_secret_blank()
 
+def has_nfc():
+    from glob import NFC
+    return bool(NFC)
+
 SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
@@ -105,6 +109,7 @@ SDCardMenu = [
     MenuItem('Upgrade From SD', f=microsd_upgrade),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
+    MenuItem('NFC File Share', predicate=has_nfc, f=nfc_share_file),
     MenuItem('Format Card', f=wipe_sd_card),
 ]
 

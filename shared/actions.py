@@ -639,9 +639,16 @@ def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
     import stash
 
+    qr_alnum = False
+
     if mode == 'words':
         import bip39
         words = bip39.b2a_words(raw).split(' ')
+
+        # This optimization make the QR very nice, and space for
+        # all the words too
+        qr = ' '.join(w[0:4] for w in words)
+        qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
@@ -652,16 +659,18 @@ def render_master_secrets(mode, raw, node):
     elif mode == 'xprv':
         import chains
         msg = chains.current_chain().serialize_private(node)
+        qr = msg
 
     elif mode == 'master':
         from ubinascii import hexlify as b2a_hex
 
         msg = '%d bytes:\n\n' % len(raw)
-        msg += str(b2a_hex(raw), 'ascii')
+        qr = str(b2a_hex(sv.raw), 'ascii')
+        msg += qr
     else:
         raise ValueError(mode)
 
-    return msg
+    return msg, qr, qr_alnum
 
 async def view_seed_words(*a):
     import stash
@@ -675,7 +684,7 @@ async def view_seed_words(*a):
             import callgate
             callgate.fast_wipe()
 
-        msg = render_master_secrets(sv.mode, sv.raw, sv.node)
+        msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
 
         if version.has_fatram:
             msg += '\n\nPress 1 to view as QR Code.'
@@ -1185,6 +1194,59 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
 
     from files import wipe_microsd_card
     wipe_microsd_card()
+
+
+async def nfc_share_file(*A):
+    # Mk4: Share txt, txn and PSBT files over NFC.
+    # XXX waste of space on mk3
+    MAX_SIZE = 9000
+
+    def is_suitable(fname):
+        f = fname.lower()
+        return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
+
+    from glob import NFC
+    if not NFC: return
+
+    from ubinascii import unhexlify as a2b_hex
+    import ngu
+
+    msg = "Lists PSBT, Text, and TXN files on MicroSD. Select one and contents will be shared over NFC."
+
+    while 1:
+        fn = await file_picker(msg, min_size=10, max_size=MAX_SIZE, taster=is_suitable)
+        if not fn: return
+
+        basename = fn.split('/')[-1]
+        ctype = fn.split('.')[-1].lower()
+
+        try:
+            with CardSlot() as card:
+                with open(fn, 'rb') as fp:
+                    data = fp.read(MAX_SIZE)
+
+        except CardMissingError:
+            await needs_microsd()
+            return
+
+        if data[2:6] == b'000000' and ctype == 'txn':
+            # it's a txn, and we wrote as hex
+            data = a2b_hex(data)
+
+        if ctype == 'psbt':
+            sha = ngu.hash.sha256s(data)
+            await NFC.share_psbt(data, len(data), sha, label="PSBT file: " + basename)
+        elif ctype == 'txn':
+            sha = ngu.hash.sha256s(data)
+            txid = basename[0:64]
+            if len(txid) != 64:
+                # maybe some other txn file?
+                txid = None
+            await NFC.share_signed_txn(txid, data, len(data), sha)
+        elif ctype == 'txt':
+            await NFC.share_text(data.decode())
+        else:
+            raise ValueError(ctype)
 
 
 async def list_files(*A):

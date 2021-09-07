@@ -145,7 +145,7 @@ class SFFile:
         left = len(b)
 
         if has_psram: 
-            # Mk4: memory-map, but can only do word-aligned writes
+            # Mk4: memory-mapped, but can only do word-aligned writes
             self.checksum.update(b)
 
             self.runt.extend(b)

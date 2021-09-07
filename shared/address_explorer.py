@@ -300,7 +300,7 @@ Press 3 if you really understand and accept these risks.
                 if n > 1:
                     await NFC.share_text('\n'.join(addrs))
                 else:
-                    await NFC.share_deposit_address(addrs[0])
+                    await NFC.share_deposit_address(addrs[self.idx])
                 continue
 
             if ch == '7' and start>0:
