@@ -2,7 +2,7 @@
 #
 # display.py - OLED rendering
 #
-import machine, ssd1306, uzlib, ckcc
+import machine, ssd1306, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
 import framebuf
 import uasyncio
@@ -37,6 +37,7 @@ class Display:
             print("OLED unplugged?")
             raise
 
+        self.last_bar_update = 0
         self.clear()
         self.show()
 
@@ -164,6 +165,14 @@ class Display:
         # takes 0.0 .. 1.0 as fraction of doneness
         percent = max(0, min(1.0, percent))
         self.dis.hline(0, self.HEIGHT-1, int(self.WIDTH * percent), 1)
+
+    def progress_sofar(self, done, total):
+        # Update progress bar, but only if it's been a while since last update
+        if utime.ticks_diff(utime.ticks_ms(), self.last_bar_update) < 100:
+            return
+        self.last_bar_update = utime.ticks_ms()
+        self.progress_bar(done / total)
+        self.show()
 
     def progress_bar_show(self, percent):
         # useful as a callback

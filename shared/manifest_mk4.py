@@ -2,5 +2,9 @@
 freeze_as_mpy('', [
 	'psram.py',
 	'mk4.py',
+	'vdisk.py',
+	'nfc.py',
+	'ndef.py',
+	'trick_pins.py',
 ], opt=0)
 

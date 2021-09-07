@@ -1,4 +1,4 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+# (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # psram.py -- access PSRAM chip on Mk4
 #
@@ -7,9 +7,10 @@ import version, uctypes
 # already started and memory mapped by bootrom.
 
 class PSRAMWrapper:
+    base = 0x9000_0000     # OCTOSPI1
+    length = 0x40_0000     # 4 meg (lower half)
+
     def __init__(self):
-        self.base = 0x9000_0000     # OCTOSPI1
-        self.length = 0x80_0000     # 8 meg
         self._wr = uctypes.bytearray_at(self.base, self.length)
 
     def read_at(self, offset, ln):
@@ -44,7 +45,7 @@ class PSRAMWrapper:
     def wait_done(self):
         return
 
-    #  we are not flash
+    # we are not flash
     def chip_erase(self):
         return
     def sector_erase(self, address):

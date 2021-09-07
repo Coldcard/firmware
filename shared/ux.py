@@ -238,9 +238,6 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
 
     lines.append('EOT')
 
-    #print("story:\n\n\"" + '"\n"'.join(lines))
-    #lines[0] = '111111111121234567893'
-
     top = 0
     H = 5
     ch = None
@@ -476,6 +473,7 @@ class QRDisplay(UserInteraction):
 
 
     async def interact_bare(self):
+        from glob import NFC
         self.redraw()
 
         while 1:
@@ -485,6 +483,13 @@ class QRDisplay(UserInteraction):
                 self.invert = not self.invert
                 self.redraw()
                 continue
+
+            if NFC and ch == '3':
+                # Share any QR over NFC!
+                await NFC.share_text(self.addrs[self.idx])
+                self.redraw()
+                continue
+
             elif ch in 'xy':
                 break
             elif ch == '5' or ch == '7':
@@ -556,6 +561,6 @@ async def ux_enter_number(prompt, max_value):
                 value += ch
 
             # cleanup leading zeros and such
-            value = str(int(value))
+            value = str(min(int(value), max_value))
 
 # EOF

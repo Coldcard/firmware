@@ -144,6 +144,8 @@ async def test_psram():
         dis.progress_bar_show((PSRAM.length + pos) / test_len)
 
 async def test_sflash():
+    if version.has_psram: return
+
     dis.clear()
     dis.text(None, 18, 'Serial Flash')
     dis.show()

@@ -48,6 +48,8 @@ from glob import PSRAM
 #   axskip = (bool) skip warning about addr explorer
 #   du = (bool) if set, disable the USB port at all times
 #   rz = (int) display value resolution/units: 8=BTC 5=mBTC 2=bits 0=sats
+#   tp = (complex) trick pins' config on Mk4
+#   kbtn = (1 char) '1'-'9' that will wipe seed during login process (mk4+)
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
@@ -95,7 +97,7 @@ class SettingsObject:
         return aes256ctr.new(self.nvram_key, ctr)
 
     def set_key(self, new_secret=None):
-        # System settings (not secrets) are stored in SPI Flash, encrypted with this
+        # System settings (not secrets) are stored in flash, encrypted with this
         # key that is derived from main wallet secret. Call this method when the secret
         # is first loaded, or changes for some reason.
         from pincodes import pa

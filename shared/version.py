@@ -70,10 +70,13 @@ def get_is_devmode():
 
 def is_fresh_version():
     # Did we just boot into a new firmware for the first time?
-    from sigheader import RAM_BOOT_FLAGS, RBF_FRESH_VERSION, RAM_BOOT_FLAGS_MK4
+    # - mk4+ does not use this approach, light will be solid green during upgrade
+    if mk_num >= 4: return False
+
+    from sigheader import RAM_BOOT_FLAGS, RBF_FRESH_VERSION
     import stm
 
-    flags = stm.mem32[RAM_BOOT_FLAGS_MK4 if mk_num == 4 else RAM_BOOT_FLAGS]
+    flags = stm.mem32[RAM_BOOT_FLAGS]
 
     return bool(flags & RBF_FRESH_VERSION)
 
@@ -93,7 +96,7 @@ def probe_system():
     global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
     global has_se2, mk_num
 
-    from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
+    from sigheader import RAM_BOOT_FLAGS, RAM_BOOT_FLAGS_MK4, RBF_FACTORY_MODE
     import ckcc, callgate, stm
     from machine import Pin
 
@@ -126,7 +129,8 @@ def probe_system():
     # Boot loader needs to tell us stuff about how we were booted, sometimes:
     # - did we just install a new version, for example
     # - are we running in "factory mode" with flash un-secured?
-    is_factory_mode = bool(stm.mem32[RAM_BOOT_FLAGS] & RBF_FACTORY_MODE)
+    is_factory_mode = bool(stm.mem32[RAM_BOOT_FLAGS if mk_num<4 else RAM_BOOT_FLAGS_MK4] 
+                                        & RBF_FACTORY_MODE)
     bn = callgate.get_bag_number()
     if bn:
         # this path supports testing/dev with RDP!=2, which normal production bootroms enforce

@@ -14,6 +14,7 @@ from files import CardSlot, CardMissingError
 from utils import xfp2str
 from glob import settings
 from pincodes import pa
+from menu import start_chooser
 
 CLEAR_PIN = '999999-999999'
 
@@ -21,7 +22,8 @@ async def start_selftest(*args):
 
     if len(args) and not version.is_factory_mode:
         # called from inside menu, not directly
-        if not await ux_confirm('''Selftest destroys settings on other profiles (not seeds). Requires MicroSD card and might have other consequences. Recommended only for factory.'''):
+        # - mk4 doesn't damage settings, only earlier marks
+        if not await ux_confirm('''Selftest may destroy settings on other profiles (not seeds). Requires MicroSD card and might have other consequences. Recommended only for factory.'''):
             return await ux_aborted()
 
     with imported('selftest') as st:
@@ -207,7 +209,11 @@ async def microsd_upgrade(*a):
 
     with CardSlot() as card:
         with open(fn, 'rb') as fp:
-            from sflash import SF
+            from version import has_psram
+            if has_psram:
+                from glob import PSRAM as SF
+            else:
+                from sflash import SF
             from glob import dis
             from files import dfu_parse
             from utils import check_firmware_hdr
@@ -227,31 +233,37 @@ async def microsd_upgrade(*a):
             failed = check_firmware_hdr(hdr, size)
 
             if not failed:
-                # copy binary into serial flash
+                # copy binary into serial flash / PSRAM
                 fp.seek(offset)
 
-                buf = bytearray(256)        # must be flash page size
-                pos = 0
                 dis.fullscreen("Loading...")
-                while pos < size:
-                    dis.progress_bar_show(pos/size)
 
-                    here = fp.readinto(buf)
-                    if not here: break
+                if not has_psram:
+                    buf = bytearray(256)
+                    pos = 0
+                    while pos < size:
+                        dis.progress_bar_show(pos/size)
 
-                    if pos % 4096 == 0:
-                        # erase here
-                        SF.sector_erase(pos)
+                        here = fp.readinto(buf)
+                        if not here: break
+
+                        if pos % 4096 == 0:
+                            # erase here
+                            SF.sector_erase(pos)
+                            while SF.is_busy():
+                                await sleep_ms(10)
+
+                        SF.write(pos, buf)
+
+                        # full page write: 0.6 to 3ms
                         while SF.is_busy():
-                            await sleep_ms(10)
+                            await sleep_ms(1)
 
-                    SF.write(pos, buf)
-
-                    # full page write: 0.6 to 3ms
-                    while SF.is_busy():
-                        await sleep_ms(1)
-
-                    pos += here
+                        pos += here
+                else:
+                    # just read it to where we want it
+                    dest = PSRAM.write(0, size)
+                    fp.readinto(dest)
 
     if failed:
         await ux_show_story(failed, title='Sorry!')
@@ -400,11 +412,12 @@ async def block_until_login(rnd_keypad):
     from ux import AbortInteraction
 
     cd_pin = settings.get('cd_pin', None)
+    kill_btn = settings.get('kbtn', None)
 
     rv = None       # might already be logged-in if _skip_pin used
 
     while not pa.is_successful():
-        lll = LoginUX(rnd_keypad)
+        lll = LoginUX(rnd_keypad, kill_btn)
 
         try:
             rv = await lll.try_login(bypass_pin=cd_pin)
@@ -433,6 +446,17 @@ async def show_nickname(nick):
 
     await ux_wait_keyup()
 
+async def pick_killkey(*a):
+    # Setting: kill seed sometimes (requires mk4)
+    if await ux_show_story('''\
+If you press this key while the anti- phishing words are shown during login, \
+your seed phrase will be immediately wiped.
+
+Best if this does not match the first number of the second half of your PIN.''') != 'y':
+        return
+
+    from choosers import kill_key_chooser
+    start_chooser(kill_key_chooser)
 
 async def pick_scramble(*a):
     # Setting: scrambled keypad or normal
@@ -441,12 +465,10 @@ async def pick_scramble(*a):
         return
 
     from choosers import scramble_keypad_chooser
-    from menu import start_chooser
     start_chooser(scramble_keypad_chooser)
 
 async def confirm_testnet_mode(*a):
     from choosers import chain_chooser
-    from menu import start_chooser
     from chains import current_chain
 
     if settings.get('chain') != 'XTN':
@@ -468,7 +490,6 @@ data or filenames.''') != 'y':
         return
 
     from choosers import delete_inputs_chooser
-    from menu import start_chooser
     start_chooser(delete_inputs_chooser)
 
 async def pick_nickname(*a):
@@ -603,33 +624,48 @@ consequences.''', escape='4')
     seed.clear_seed()
     # NOT REACHED -- reset happens
 
+
+def render_master_secrets(mode, raw, node):
+    # Render list of words, or XPRV / master secret to text.
+    import stash
+
+    if mode == 'words':
+        import bip39
+        words = bip39.b2a_words(raw).split(' ')
+
+        msg = 'Seed words (%d):\n' % len(words)
+        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+
+        pw = stash.bip39_passphrase
+        if pw:
+            msg += '\n\nBIP-39 Passphrase:\n%s' % stash.bip39_passphrase
+    elif mode == 'xprv':
+        import chains
+        msg = chains.current_chain().serialize_private(node)
+
+    elif mode == 'master':
+        from ubinascii import hexlify as b2a_hex
+
+        msg = '%d bytes:\n\n' % len(raw)
+        msg += str(b2a_hex(raw), 'ascii')
+    else:
+        raise ValueError(mode)
+
+    return msg
+
 async def view_seed_words(*a):
-    import stash, bip39
+    import stash
 
     if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP-39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
         return
 
     with stash.SensitiveValues() as sv:
-        if sv.mode == 'words':
-            words = bip39.b2a_words(sv.raw).split(' ')
+        if sv.deltamode:
+            # give up and wipe self rather than show true seed values.
+            import callgate
+            callgate.fast_wipe()
 
-            msg = 'Seed words (%d):\n' % len(words)
-            msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
-
-            pw = stash.bip39_passphrase
-            if pw:
-                msg += '\n\nBIP-39 Passphrase:\n%s' % stash.bip39_passphrase
-        elif sv.mode == 'xprv':
-            import chains
-            msg = chains.current_chain().serialize_private(sv.node)
-
-        elif sv.mode == 'master':
-            from ubinascii import hexlify as b2a_hex
-
-            msg = '%d bytes:\n\n' % len(sv.raw)
-            msg += str(b2a_hex(sv.raw), 'ascii')
-        else:
-            raise ValueError(sv.mode)
+        msg = render_master_secrets(sv.mode, sv.raw, sv.node)
 
         await ux_show_story(msg, sensitive=True)
 
@@ -705,7 +741,7 @@ async def start_login_sequence():
         # Blank devices, with no PIN set all, can continue w/o login
 
         # Do green-light set immediately after firmware upgrade
-        if version.is_fresh_version():
+        if version.is_fresh_version() and version.mk_num <=3:
             pa.greenlight_firmware()
             dis.show()
 
@@ -795,7 +831,7 @@ async def start_login_sequence():
 
     # Do green-light set immediately after firmware upgrade
     if not pa.is_secondary:
-        if version.is_fresh_version():
+        if version.is_fresh_version() and version.mk_num <=3:
             pa.greenlight_firmware()
             dis.show()
 
@@ -1323,7 +1359,7 @@ Coldcard is ready to sign spending transactions!
 Put the proposed transaction onto MicroSD card \
 in PSBT format (Partially Signed Bitcoin Transaction) \
 or upload a transaction to be signed \
-from your wallet software (Electrum) or command line tools. \
+from your desktop wallet software or command line tools. \
 
 You will always be prompted to confirm the details before any signature is performed.\
 """, title=title)
@@ -1606,7 +1642,7 @@ We strongly recommend all PIN codes used be unique between each other.
             else:
                 with SensitiveValues() as sv:
                     # derive required key
-                    node = sv.duress_root()
+                    node, _ = sv.duress_root()
                     d_secret = SecretStash.encode(xprv=node)
                     sv.register(d_secret)
         

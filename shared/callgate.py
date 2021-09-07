@@ -96,4 +96,12 @@ def has_608b():
     ckcc.gate(20, config, 0)
     return (config[7] >= 0x3)
 
+def fast_wipe(silent=True):
+    # mk4: wipe seed, also reboots immediately: can stop and show a screen or not
+    ckcc.gate(23, None, 0xBeef if silent else 0xdead);
+
+def fast_brick():
+    # mk4: brick and reboot. Near instant. Shows brick screen.
+    ckcc.gate(24, None, 0xDead);
+
 # EOF

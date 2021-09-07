@@ -3,7 +3,7 @@
 # mk4.py - Mk4 specific code, not needed on earlier devices.
 #
 #
-import os, sys, pyb, ckcc, version
+import os, sys, pyb, ckcc, version, glob
 
 def make_flash_fs():
     print("Rebuild /flash")
@@ -23,7 +23,7 @@ def make_psram_fs():
     # resets and such.
     print("Mount /psram")
 
-    # Low level code has wipe and created filesystem already, but
+    # Lower level code has wiped and created filesystem already, but
     # add some more files?
     ps = ckcc.PSRAM()
     os.mount(ps, '/psram')
@@ -40,7 +40,9 @@ COLDCARD Virtual Disk
 
     date, ver, *_ = version.get_mpy_version()
     open('/psram/version.txt', 'wt').write('\r\n'.join([ver, date, '']))
-    
+
+    # generally, leave it unmounted
+    os.umount('/psram')
 
 def init0():
     # called very early
@@ -51,10 +53,25 @@ def init0():
 
     try:
         make_psram_fs()
-        os.statvfs('/psram')
     except BaseException as exc:
         sys.print_exception(exc)
-    
+
+    # create singleton for Virtual Disk
+    import vdisk
+    vdisk.VirtDisk()
+    assert glob.VD
+
+    # NFC interface
+    import nfc
+    n = nfc.NFCHandler()
+    try:
+        n.setup()
+        glob.NFC = n
+        n.test_code()       # XXX delme
+    except BaseException as exc:
+        sys.print_exception(exc)        # debug only
+        print("NFC absent/disabled")
+        del n
 
 
 # EOF

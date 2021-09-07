@@ -370,7 +370,6 @@ class ApproveTransaction(UserAuthorizedAction):
         self.approved_cb = approved_cb
         self.result = None      # will be (len, sha256) of the resulting PSBT
         self.chain = chains.current_chain()
-        self._fd = None
 
     def render_output(self, o):
         # Pretty-print a transactions output. 
@@ -382,54 +381,6 @@ class ApproveTransaction(UserAuthorizedAction):
 
         return '%s\n - to address -\n%s\n' % (val, dest)
 
-    def read_input_psbt(self):
-        # return a file-like object w/ new PSBT in it.
-        if not has_psram:
-            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len) as fd:
-                return psbtObject.read_psbt(fd)
-        else: 
-            # NOTE: psbtObject captures the file descriptor and uses it later
-            if self._fd:
-                try:
-                    self._fd.close()
-                except: pass
-                self._fd = None
-
-            self._fd = open('/psram/usb-0.bin', 'rb')
-            return psbtObject.read_psbt(self._fd)
-
-    async def open_output_file(self, extension, message):
-        if not has_psram:
-            fd = SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...")
-            await fd.erase()
-
-            return fd
-        else:
-            from glob import dis
-            dis.fullscreen(message)
-            return open('/psram/output.%s' % extension, 'w+b')
-
-    def calc_result(self, fd):
-        # Return length and SHA-256 over output bytes just written
-        if not has_psram:
-            return (fd.tell(), fd.checksum.digest())
-
-        # Normal file io protocol doesn't do checksums... calc manually
-        # TODO, do this with h/w accel and memmap features
-        from hashlib import sha256
-
-        fd.flush()
-        ln = fd.tell()
-        fd.seek(0)
-        chk = sha256()
-        while 1:
-            blk = fd.read(8196)
-            if not blk: break
-            chk.update(blk)
-
-        assert fd.tell() == ln
-        return (ln, chk.digest())
-
     async def interact(self):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
@@ -437,8 +388,9 @@ class ApproveTransaction(UserAuthorizedAction):
         # step 1: parse PSBT from sflash into in-memory objects.
 
         try:
-            dis.fullscreen("Reading...")
-            self.psbt = self.read_input_psbt()
+            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len, message='Reading...') as fd:
+                # NOTE: psbtObject captures the file descriptor and uses it later
+                self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
             if isinstance(exc, MemoryError):
                 msg = "Transaction is too complex"
@@ -454,8 +406,14 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             await self.psbt.validate()      # might do UX: accept multisig import
             self.psbt.consider_inputs()
+
+            dis.fullscreen("Validating...", percent=0.33)
             self.psbt.consider_keys()
+
+            dis.progress_bar(0.66)
             self.psbt.consider_outputs()
+
+            dis.progress_bar(0.85)
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
@@ -552,7 +510,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
-            gc.collect()           # visible delay causes by this but also sign_it() below
+            gc.collect()           # visible delay caused by this but also sign_it() below
             self.psbt.sign_it()
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
@@ -571,23 +529,42 @@ class ApproveTransaction(UserAuthorizedAction):
         txid = None
         try:
             # re-serialize the PSBT back out
-            with await self.open_output_file('txn' if self.do_finalize else 'psbt', 'Saving...') as fd:
+            with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
+                await fd.erase()
 
                 if self.do_finalize:
                     txid = self.psbt.finalize(fd)
                 else:
                     self.psbt.serialize(fd)
 
-                self.result = self.calc_result(fd)
+                fd.close()
+                self.result = (fd.tell(), fd.checksum.digest())
 
             self.done(redraw=(not txid))
 
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
+        from glob import NFC
+
         if self.do_finalize and txid and not hsm_active:
             # show txid when we can; advisory
-            await ux_show_story(txid, "Final TXID")
+            while 1:
+                s = txid
+                if NFC:
+                    s += '\n\nPress 3 to share signed txn over NFC'
+
+                ch = await ux_show_story(s, "Final TXID", escape='3')
+                if ch == '3' and NFC:
+                    await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
+                                                            self.result[0], self.result[1])
+                    continue
+                break
+
+        # TODO ofter to share / or auto-share over NFC if that seems appropraite
+        #if NFC:
+            #NFC.share_signed_psbt(TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
+
 
     def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
@@ -597,7 +574,8 @@ class ApproveTransaction(UserAuthorizedAction):
 
         chk = self.chain.hash_message(msg_len=txt_len) if sign_text else None
 
-        with await self.open_output_file('txt', 'Visualizing...') as fd:
+        with SFFile(TXN_OUTPUT_OFFSET, max_size=txt_len+300, message="Visualizing...") as fd:
+            await fd.erase()
 
             while 1:
                 blk = msg.read(256).encode('ascii')
@@ -614,7 +592,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 
-            return self.calc_result(fd)
+            return (fd.tell(), fd.checksum.digest())
 
     def output_change_text(self, msg):
         # Produce text report of what the "change" outputs are (based on our opinion).
@@ -1200,15 +1178,30 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
         the_ux.push(UserAuthorizedAction.active_request)
 
 class FirmwareUpgradeRequest(UserAuthorizedAction):
-    def __init__(self, hdr, length):
+    def __init__(self, hdr, length, hdr_check=False, psram_offset=None):
         super().__init__()
         self.hdr = hdr
         self.length = length
+        self.hdr_check = hdr_check
+        self.psram_offset = psram_offset
 
     async def interact(self):
         from version import decode_firmware_header
-        from sflash import SF
+        from utils import check_firmware_hdr
 
+        # check header values
+        if self.hdr_check:
+            # when coming in via USB, this part already done
+            # so the error can be sent back over USB port
+            failed = check_firmware_hdr(self.hdr, self.length)
+            if failed:
+                await ux_show_story(failed, 'Sorry!')
+
+                UserAuthorizedAction.cleanup()
+                #self.pop_menu()
+                return
+
+        # Get informed consent to upgrade.
         date, version, _ = decode_firmware_header(self.hdr)
 
         msg = '''\
@@ -1228,16 +1221,27 @@ Binary checksum and signature will be further verified before any changes are ma
                 # - write final file header, so bootloader will see it
                 # - reboot to start process
                 from glob import dis
-                import callgate
-                SF.write(self.length, self.hdr)
-
                 dis.fullscreen('Upgrading...', percent=1)
 
-                callgate.show_logout(2)
+                if not has_psram:
+                    from sflash import SF
+                    import callgate
+                    SF.write(self.length, self.hdr)
+
+                    callgate.show_logout(2)
+                else:
+                    # Mk4 copies from PSRAM into SPI inside bootrom
+                    # - and does other stuff
+                    #print("offset=%d  len=%d" % (self.psram_offset, self.length))
+                    from pincodes import pa
+                    pa.firmware_upgrade(self.psram_offset, self.length)
+                    # not reached, unless issue?
+                    raise RuntimeError("bootrom fail")
             else:
                 # they don't want to!
                 self.refused = True
                 if not has_psram:
+                    from sflash import SF
                     SF.block_erase(0)           # just in case, but not required
                 await ux_dramatic_pause("Refused.", 2)
 
@@ -1248,12 +1252,12 @@ Binary checksum and signature will be further verified before any changes are ma
             UserAuthorizedAction.cleanup()      # because no results to store
             self.pop_menu()
 
-def authorize_upgrade(hdr, length):
+def authorize_upgrade(hdr, length, **kws):
     # final USB write has come in, get buy-in
 
     # Do some verification before we even show to the local user
     UserAuthorizedAction.check_busy()
-    UserAuthorizedAction.active_request = FirmwareUpgradeRequest(hdr, length)
+    UserAuthorizedAction.active_request = FirmwareUpgradeRequest(hdr, length, **kws)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)

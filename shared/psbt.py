@@ -1365,7 +1365,7 @@ class psbtObject(psbtProxy):
             # write out the ready-to-transmit txn
             # - means we are also a PSBT combiner in this case
             # - hard tho, due to variable length data.
-            # - XXX probably a bad idea, so disabled for now
+            # - probably a bad idea, so disabled for now
             out_fd.write(b'\x01\x00')       # keylength=1, key=b'', PSBT_GLOBAL_UNSIGNED_TX
 
             with SizerFile() as fd:
@@ -1474,6 +1474,12 @@ class psbtObject(psbtProxy):
                     # Hash the inputs and such in totally new ways, based on BIP-143
                     digest = self.make_txn_segwit_sighash(in_idx, txi,
                                     inp.amount, inp.scriptCode, inp.sighash)
+
+                if sv.deltamode:
+                    # Current user is actually a thug with a slightly wrong PIN, so we
+                    # do have access to the private keys and could sign txn, but we 
+                    # are going to silently corrupt our signatures.
+                    digest = bytes(range(32))
 
                 if inp.is_multisig:
                     # need to consider a set of possible keys, since xfp may not be unique

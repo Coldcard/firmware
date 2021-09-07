@@ -52,6 +52,9 @@ if version.mk_num == 4:
     except BaseException as exc:
         sys.print_exception(exc)
         # continue tho
+else:
+    # Serial Flash memory
+    from sflash import SF
 
 if version.is_devmode:
     # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!
@@ -64,13 +67,11 @@ if version.is_devmode:
         import boot2
     except: pass
 
+
 # Setup membrane numpad (mark 2+)
 from mempad import MembraneNumpad
 numpad = MembraneNumpad()
 glob.numpad = numpad
-
-# Serial Flash memory
-from sflash import SF
 
 # NV settings
 from nvstore import SettingsObject

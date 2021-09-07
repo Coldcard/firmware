@@ -43,6 +43,10 @@ def render_backup_contents():
     COMMENT('Private key details: ' + chain.name)
 
     with stash.SensitiveValues(bypass_pw=True) as sv:
+        if sv.deltamode:
+            # die rather than give up our secrets
+            import callgate
+            callgate.fast_wipe()
 
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
@@ -57,9 +61,11 @@ def render_backup_contents():
         # BTW: everything is really a duplicate of this value
         ADD('raw_secret', b2a_hex(sv.secret).rstrip(b'0'))
 
+        # XXX mk4 a bit different
         if pa.has_duress_pin():
             COMMENT('Duress Wallet (informational)')
-            dpk = sv.duress_root()
+            dpk, p = sv.duress_root()
+            COMMENT('path = %s' % p)
             ADD('duress_xprv', chain.serialize_private(dpk))
             ADD('duress_xpub', chain.serialize_public(dpk))
 

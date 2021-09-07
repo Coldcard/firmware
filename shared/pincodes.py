@@ -135,7 +135,7 @@ class PinAttempt:
             callgate.enter_dfu(3)
 
     def __repr__(self):
-        return '<PinAttempt: fails/left=%d/%d state=0x%x tc_flag/arg=0x%x>' % (
+        return '<PinAttempt: fails/left=%d/%d tc_flag/arg=0x%x/0x%x>' % (
                         self.num_fails, self.attempts_left,
                         self.delay_required, self.delay_achieved)
 

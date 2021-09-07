@@ -128,11 +128,12 @@ class SensitiveValues:
 
             self.secret = pa.fetch()
             self.spots = [ self.secret ]
+            self.deltamode = pa.is_deltamode()
         else:
             # sometimes we already know it
-            #assert set(secret) != {0}
             self.secret = secret
             self.spots = []
+            self.deltamode = False
 
         # backup during volatile bip39 encryption: do not use passphrase
         self._bip39pw = '' if bypass_pw else str(bip39_passphrase)
@@ -230,7 +231,8 @@ class SensitiveValues:
     def duress_root(self):
         # Return a bip32 node for the duress wallet linked to this wallet.
         # 0x80000000 - 0xCC10 = 2147431408
-        dirty = self.derive_path("m/2147431408'/0'/0'")
+        p = "m/2147431408'/0'/0'"
+        dirty = self.derive_path(p)
 
         # clear the parent linkage by rebuilding it.
         cc, pk = dirty.chain_code(), dirty.privkey()
@@ -241,7 +243,7 @@ class SensitiveValues:
         rv.from_chaincode_privkey(cc, pk)
         self.register(rv)
 
-        return rv
+        return rv, p
 
     def encryption_key(self, salt):
         # Return a 32-byte derived secret to be used for our own internal encryption purposes

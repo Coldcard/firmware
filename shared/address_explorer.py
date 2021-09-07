@@ -203,7 +203,7 @@ Press 3 if you really understand and accept these risks.
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
         # - or multisig case
-        from glob import dis
+        from glob import dis, NFC
         import version
 
         def make_msg():
@@ -212,15 +212,20 @@ Press 3 if you really understand and accept these risks.
                 if start == 0:
                     msg = "Press 1 to save to MicroSD."
                     if version.has_fatram and not ms_wallet:
-                        msg += " 4 to view QR Codes."
+                        msg += " 2 to view QR Codes."
+                    if NFC:
+                        msg += " Press 3 to share over NFC."
                     msg += '\n\n'
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
                 msg += "Showing single address."
                 if version.has_fatram:
-                    msg += " Press 4 to view QR Codes."
+                    msg += " Press 2 to view QR Codes."
+                if NFC:
+                    msg += " Press 3 to share over NFC."
                 msg += '\n\n'
+
 
             addrs = []
             chain = chains.current_chain()
@@ -268,7 +273,7 @@ Press 3 if you really understand and accept these risks.
         msg, addrs = make_msg()
 
         while 1:
-            ch = await ux_show_story(msg, escape='1479')
+            ch = await ux_show_story(msg, escape='12379')
 
             if ch == '1':
                 # save addresses to MicroSD signal
@@ -280,7 +285,7 @@ Press 3 if you really understand and accept these risks.
             if ch == 'x':
                 return
 
-            if ch == '4':
+            if ch == '2':
                 # switch into a mode that shows them as QR codes
                 if not version.has_fatram or ms_wallet:
                     # requires mk3 and not multisig
@@ -288,6 +293,14 @@ Press 3 if you really understand and accept these risks.
 
                 from ux import show_qr_codes
                 await show_qr_codes(addrs, bool(addr_fmt & AFC_BECH32), start)
+                continue
+
+            if ch == '3' and NFC:
+                # share table over NFC
+                if n > 1:
+                    await NFC.share_text('\n'.join(addrs))
+                else:
+                    await NFC.share_deposit_address(addrs[0])
                 continue
 
             if ch == '7' and start>0:

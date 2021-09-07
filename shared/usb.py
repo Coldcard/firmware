@@ -61,8 +61,6 @@ HSM_WHITELIST = frozenset({
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
 
-PSRAM_WORK_DIR = '/psram/'
-
 
 # singleton instance of USBHandler()
 handler = None
@@ -117,9 +115,6 @@ class USBHandler:
         # these will be objects later
         self.encrypt = None
         self.decrypt = None
-
-        # mk4 writes to PSRAM filesystem.
-        self.working_file = None
 
     def get_packet(self):
         # read next packet (64 bytes) waiting on the wire. Unframe it and return
@@ -675,37 +670,23 @@ class USBHandler:
         resp[0:4] = b'biny'
         buf = memoryview(resp)[4:]
 
-        if not has_psram:
-            from sflash import SF
-            pos = (MAX_TXN_LEN * file_number) + offset
-
-            SF.read(pos, buf)
+        pos = (MAX_TXN_LEN * file_number) + offset
+        
+        if has_psram:
+            from glob import PSRAM
+            PSRAM.read(pos, buf)
         else:
-            # Mk4 and later
-            if offset == 0:
-                self.open_ram_file(file_number, 'rb')
-            assert self.working_file
-            self.working_file.seek(offset)
-            assert self.working_file.tell() == offset
-            self.working_file.readinto(buf)
+            from sflash import SF
+            SF.read(pos, buf)
 
         self.file_checksum.update(buf)
 
         return resp
 
-    def open_ram_file(self, file_number, mode):
-        if self.working_file:
-            try:
-                self.working_file.close()
-            except:
-                pass
-            self.working_file = None
-
-        self.working_file = open(PSRAM_WORK_DIR+'usb-%d.bin' % file_number, mode)
-        assert self.working_file
-
     async def handle_upload(self, offset, total_size, data):
-        if not has_psram:
+        if has_psram:
+            from glob import PSRAM
+        else:
             from sflash import SF
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
@@ -771,27 +752,15 @@ class USBHandler:
                 # pretend we wrote it, so ckcc-protocol or whatever gives normal feedback
                 return offset
 
-            if not has_psram:
-                # write to SPI Flash
+            # write to SPI Flash / PSRAM
+            if has_psram:
+                PSRAM.write(pos, here)
+            else:
                 SF.write(pos, here)
 
                 # full page write: 0.6 to 3ms
                 while SF.is_busy():
                     await sleep_ms(1)
-            else:
-                # Mk4 and later: write to RAM
-                if pos == 0:
-                    self.open_ram_file(0, 'wb')
-                assert self.working_file
-                self.working_file.seek(pos)
-                assert self.working_file.tell() == pos
-                self.working_file.write(here)
-
-        if has_psram and self.working_file:
-            if offset+len(data) >= total_size:
-                self.working_file.close()
-            else:
-                self.working_file.flush()
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done

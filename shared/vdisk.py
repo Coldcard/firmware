@@ -113,8 +113,12 @@ async def psram_upgrade(filename, size):
         # skip the checking and display for us devs and "just do it"
         # - the bootrom still does the checks, you just can't see useful errors
         from pincodes import pa
-        pa.firmware_upgrade(offset, size)
-        print("dev.dfu being installed")
+        if pa.is_successful():
+            print("dev.dfu being installed")
+            pa.firmware_upgrade(offset, size)
+        else:
+            # can't do this before login 
+            print("need PIN")
         return
 
     # get user buy-in and approval of the change.

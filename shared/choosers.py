@@ -158,6 +158,29 @@ def scramble_keypad_chooser():
 
     return which, ch, set
 
+def kill_key_chooser():
+    #   kbtn = single keypress after anti-phishing words will wipe seed
+
+    s = SettingsObject()
+    which = s.get('kbtn', -1)
+    del s
+    which = int(which) + 1
+
+    ch = ['Disable'] + [str(d) for d in range(10)]
+
+    def set(idx, text):
+        # save it, but "outside" of login PIN
+        s = SettingsObject()
+        if idx == 0:
+            s.remove_key('kbtn')
+        else:
+            s.set('kbtn', str(idx-1))
+        s.save()
+        del s
+
+    return which, ch, set
+
+
 
 def set_countdown_pin_mode():
     #   cd_mode = various harm levels

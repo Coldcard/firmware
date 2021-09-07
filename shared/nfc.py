@@ -7,12 +7,14 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
+import ngu, ckcc
 from utime import sleep_ms
 from utils import B2A
 from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
-import ngu, ckcc
-from utime import sleep_ms
+from ubinascii import unhexlify as a2b_hex
+from ux import ux_wait_keyup, ux_show_story
+from ndef import ndefMaker
 
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = 8000
@@ -38,87 +40,6 @@ MB_LEN_Dyn = const(0x2007)   # Length of fast transfer mode message
 I2C_PWD = const(0x900)      # I2C security session password, 8 bytes
 RF_MNGT = const(0x03)       # RF interface state after Power ON
 I2C_CFG = const(0x0e)
-
-# From ST AN4911 - Fixed CC file that uses E2 to indicate 2-byte lengths
-# - allocates entire memory (64k) to tag usage, read only
-# - followed the "NDEF File Control TLV" tag (0x03) but not the length
-CC_FILE = bytes([0xE2, 0x43, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00,   0x03])
-
-class ndefMaker:
-    '''
-        make a few different types of NDEF records, very limited and only
-        for our use-cases
-    '''
-    def __init__(self):
-        # ndef records: len, TNF value, type (byte string), payload (bytes)
-        self.lst = []
-
-    def add_text(self, msg):
-        # assume: english, utf-8
-        ln = len(msg) + 3
-        self.lst.append( (ln, 0x1, b'T', b'\x02en' + msg.encode()) )
-
-    def add_url(self, url, https=True):
-        # always https since we're in Bitcoin, or else full URL
-        # - ascii only
-        proto_code = b'\x04' if https else b'\x00'
-        self.lst.append( (len(url)+1, 0x1, b'U', proto_code + url.encode()) )
-
-    def add_large_object(self, ext_type, offset, obj_len):
-        # zero-copy a binary file from PSRAM into NFC flash
-        from glob import PSRAM
-        self.lst.append( (obj_len, 0x4, ext_type.encode(),
-                                                PSRAM.read_at(offset, obj_len)) )
-
-    def add_custom(self, ext_type, payload):
-        # "NFC Forum external Type" using bitcoin domain
-        self.lst.append( (len(payload), 0x4, ext_type.encode(), payload) )
-
-    def bytes(self):
-        # walk list of records, and various framing bits to first bytes of each
-        # and concat
-        rv = bytearray(CC_FILE)
-
-        # calc total length of all records
-        ln = sum((3 if ln <= 255 else 6) + len(ntype) + len(rec) 
-                            for (ln, _, ntype, rec) in self.lst)
-        if ln <= 0xfe:
-            rv.append(ln)
-        else:
-            rv.append(0xff)
-            rv.extend(pack('>H', ln))
-
-        last = len(self.lst) - 1
-        for n, (ln, tnf, ntype, rec) in enumerate(self.lst):
-            # First byte of the NDEF record: it's a bitmask + TNF 3-bit value
-            
-            # TNF=1 => well-known type
-            # TNF=2 => mime-type from RFC 2046
-            # TNF=4 => NFC Forum external type
-            assert 0 < tnf < 7
-            first = tnf
-
-            if ln <= 255:
-                first |= 0x10   # SR=1
-
-            if n == 0:
-                first |= 0x80   # = MB Message Begin
-            if n == last:
-                first |= 0x40   # = ME Message End
-
-            rv.append(first)        # NDEF header byte
-            rv.append(len(ntype))   # type-length always one, if well-known
-            if ln <= 255:
-                rv.append(ln)           # value-length 
-            else:
-                rv.extend(pack('>I', ln))
-            rv.extend(ntype)
-            rv.extend(rec)
-
-        rv.append(0xfe)          # Terminator TLV
-
-        return rv
-        
 
 class NFCHandler:
     def __init__(self):
@@ -197,7 +118,6 @@ class NFCHandler:
         # set to no RF when first powered up (so CC is quiet when system unpowered)
         # - side-effect: sets rf to sleep now too
         self.write_config1(RF_MNGT, 2)
-        
 
     def setup(self):
         # check if present, alive
@@ -222,31 +142,70 @@ class NFCHandler:
 
         self.set_rf_disable(1)
 
-    def share_signed_txn(self, txid, file_offset, txn_len, txn_sha):
+    async def share_signed_txn(self, txid, file_offset, txn_len, txn_sha):
         # we just signed something, share it over NFC
+        if txn_len >= MAX_NFC_SIZE:
+            await ux_show_story("Transaction is too large to share over NFC")
+            return
+
         ndef = ndefMaker()
         ndef.add_text('Signed Transaction: ' + txid)
-        ndef.add_custom('bitcoin.org:txid', txid.encode())          # it is text
-        ndef.add_custom('bitcoin.org:sha256', b2a_hex(txn_sha))
-        if txn_len < MAX_NFC_SIZE:
-            ndef.add_large_object('bitcoin/txn', file_offset, txn_len)
+        ndef.add_custom('bitcoin.org:txid', a2b_hex(txid))          # want binary
+        ndef.add_custom('bitcoin.org:sha256', txn_sha)
+        ndef.add_large_object('bitcoin.org:txn', file_offset, txn_len)
         
-        self.big_write(ndef.bytes())
-        self.set_rf_disable(0)
+        await self.share_start(ndef)
 
-    def share_signed_psbt(self, file_offset, psbt_len, psbt_sha):
+    async def share_signed_psbt(self, file_offset, psbt_len, psbt_sha):
         # we just signed something, share it over NFC
+        if psbt_len >= MAX_NFC_SIZE:
+            await ux_show_story("PSBT is too large to share over NFC")
+            return
+
         ndef = ndefMaker()
         ndef.add_text('Partly signed PSBT')
-        ndef.add_custom('bitcoin.org:sha256', b2a_hex(psbt_sha))
-        if psbt_len < MAX_NFC_SIZE:
-            ndef.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)
+        ndef.add_custom('bitcoin.org:sha256', psbt_sha)
+
+        ndef.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)
+
+        await self.share_start(ndef)
         
+    async def share_deposit_address(self, addr):
+        ndef = ndefMaker()
+        ndef.add_text('Deposit Address')
+        ndef.add_custom('bitcoin.org:addr', addr.encode())
+        await self.share_start(ndef)
+
+    async def share_text(self, data):
+        # share text from a list of values
+        # - just a text file, no multiple records; max usability!
+        ndef = ndefMaker()
+        ndef.add_text(data)
+
+        await self.share_start(ndef)
+
+
+    async def share_start(self, ndef):
+        # do the UX while we are sharing a value over NFC
+        # - assumpting is people know what they are scanning
+        # - any key to quit
+        # - maybe add a timeout for safety reasons?
+        from glob import dis
+
         self.big_write(ndef.bytes())
         self.set_rf_disable(0)
 
+        dis.fullscreen("NFC")
+        dis.busy_bar(1)
+        await ux_wait_keyup()
+        dis.busy_bar(0)
+
+        self.set_rf_disable(1)
+        
+
     def dump_ndef(self):
-        # show what we are showing, skipping the CCFILE and wrapping
+        # dump what we are showing, skipping the CCFILE and wrapping
+        # - used in test cases
         ll = self.read(8+1, 3)
         if ll[0] == 0xff:
             ll = unpack('>H', ll[1:])[0]
@@ -272,14 +231,3 @@ class NFCHandler:
         #self.set_rf_disable(1)
 
 # EOF
-
-# from NXP:
-# E1 40 80 09  03 10  D1 01 0C 55 01 6E 78 70 2E 63 6F 6D 2F 6E 66 63 FE 00
-
-# ST AN5439 -- works
-# 4-byte CCfile  then "NDEF File Control TLV": 
-#   E1 40 40 00  03 2A   
-# NDef records:
-#   D1012655016578616D706C652E636F6D2F74656D703D303030302F746170636F756E7465723D30303030FE000000
-#
-# m=b'\xe1@@\x00\x03*\xd1\x01&U\x01example.com/temp=0000/tapcounter=0000\xfe\x00\x00\x00'

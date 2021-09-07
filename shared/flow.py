@@ -27,6 +27,7 @@ try:
 except:
     make_paper_wallet = None
 
+
 #
 # NOTE: "Always In Title Case"
 #
@@ -54,9 +55,17 @@ if not version.has_608:
     ]
 
 async def which_pin_menu(_1,_2, item):
-    if version.has_608: return PinChangesMenu
-    from pincodes import pa
-    return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
+    if version.mk_num >= 4:
+        # mk4 only
+        from trick_pins import TrickPinMenu
+        return TrickPinMenu()
+    elif version.has_608:
+        # mk3
+        return PinChangesMenu
+    else:
+        # mk2 only
+        from pincodes import pa
+        return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
 def has_secrets():
     from pincodes import pa
@@ -71,6 +80,7 @@ SettingsMenu = [
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
+    MenuItem('Kill Key', f=pick_killkey, predicate=lambda: version.has_se2),
     MenuItem('Delete PSBTs', f=pick_inputs_delete),
     MenuItem('Disable USB', chooser=disable_usb_chooser),
     MenuItem('Display Units', chooser=value_resolution_chooser),

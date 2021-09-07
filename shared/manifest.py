@@ -42,7 +42,6 @@ freeze_as_mpy('', [
 	'selftest.py',
 	'serializations.py',
 	'sffile.py',
-	'sflash.py',
 	'sram2.py',
 	'ssd1306.py',
 	'stash.py',
