@@ -57,7 +57,7 @@ def parse_display_screen(cap_story, is_mark3):
         if start == 0:
             assert 'Press 1 to save to MicroSD.' in lines[0]
             if is_mark3:
-                assert '4 to view QR Codes' in lines[0]
+                assert '2 to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
             raw_addrs = lines[4:-1] # Remove header & last line
         else:
@@ -265,7 +265,7 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
     "m/1'/2'/3'/4'/5'",
 ])
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check):
+def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check, is_mark4, nfc_read_text):
 
     is_single = '{idx}' not in path
 
@@ -349,12 +349,17 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
 
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 
-        need_keypress('4')
+        need_keypress('2')
         qr = cap_screen_qr().decode('ascii')
         if which_fmt == AF_P2WPKH:
             assert qr == addr.upper()
         else:
             assert qr == addr
+
+        if is_mark4:
+            need_keypress('3')
+            time.sleep(.1)
+            assert nfc_read_text() == addr
 
     else:
         n = 10

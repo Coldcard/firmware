@@ -1076,6 +1076,7 @@ def is_mark1(request):
 def is_mark2(request):
     return int(request.config.getoption('--mk')) == 2
 
+'''
 @pytest.fixture(scope='session')
 def is_mark3(request):
     # weak, avoid
@@ -1085,6 +1086,17 @@ def is_mark3(request):
 def is_mark4(request):
     # weak, avoid
     return int(request.config.getoption('--mk')) == 4
+'''
+
+@pytest.fixture(scope='session')
+def is_mark3(dev):
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    return (v[4] == 'mk3')
+
+@pytest.fixture(scope='session')
+def is_mark4(dev):
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    return (v[4] == 'mk4')
 
 @pytest.fixture(scope='session')
 def only_mk4(dev):
@@ -1106,6 +1118,17 @@ def nfc_read(sim_exec):
         rv = sim_exec('RV.write(NFC.dump_ndef())', binary=True)
         if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
         return rv
+    return doit
+
+@pytest.fixture()
+def nfc_read_text(nfc_read):
+    def doit():
+        import ndef
+        got = list(ndef.message_decoder(nfc_read()))
+        assert len(got) == 1
+        got = got[0]
+        assert got.type == 'urn:nfc:wkt:T'
+        return got.text
     return doit
 
 @pytest.fixture

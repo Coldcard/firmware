@@ -21,7 +21,7 @@ list(wr_fd.erase())
 out_fd = SFFile(MAX_TXN_LEN, max_size=MAX_TXN_LEN)
 list(out_fd.erase())
 
-# read from into MacOS filesystem
+# read from MacOS filesystem
 import main
 fname = getattr(main, 'FILENAME', '../../testing/data/2-of-2.psbt')
 print("Input PSBT: " + fname)
