@@ -59,7 +59,7 @@ if  '--mk2' in sys.argv:
 if  '--mk3' in sys.argv:
     hw_label = 'mk3'
     has_608 = True
-    has_fatram = False
+    has_fatram = True
     has_se2 = False
     has_psram = False
 
