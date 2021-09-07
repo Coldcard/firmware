@@ -12,9 +12,6 @@ from ecdsa import SigningKey, VerifyingKey
 from ecdsa.curves import SECP256k1
 from sigheader import *
 
-# list of hardware we are presently supporting
-CURRENT_HARDWARE = MK_2_OK | MK_3_OK
-
 # more details about header
 header = namedtuple('header', FWH_PY_VALUES)
 packed_len = struct.calcsize(FWH_PY_FORMAT)
@@ -210,7 +207,8 @@ def readback(fname):
             if v & MK_1_OK: d.append('Mk1')
             if v & MK_2_OK: d.append('Mk2')
             if v & MK_3_OK: d.append('Mk3')
-            if v & ~(MK_1_OK | MK_2_OK | MK_3_OK):
+            if v & MK_4_OK: d.append('Mk4')
+            if v & ~(MK_1_OK | MK_2_OK | MK_3_OK | MK_4_OK):
                 d.append('?other?')
             v = nv + '+'.join(d)
         elif fld == 'timestamp':
@@ -228,7 +226,7 @@ def readback(fname):
     a.update(data[FW_HEADER_OFFSET+FW_HEADER_SIZE:])
     chk = sha256(a.digest()).digest()
 
-    #print("sha256^2: %s" % b2a_hex(chk).decode('ascii'))
+    print("sha256^2: %s" % b2a_hex(chk).decode('ascii'))
 
     # from pubkey
     vk = VerifyingKey.from_pem(open("keys/%02d.pubkey.pem" % vals['pubkey_num']).read())
@@ -246,16 +244,17 @@ def readback(fname):
 @click.option('--pubkey-num', '-k', type=int, help='Which key # to use for signing', default=0)
 @click.option('--high_water', '-h', is_flag=True, help='Mark version as new highwater mark (no downgrades below this version)')
 @click.option('--verbose', '-v', default=False, is_flag=True, help='Show numbers related to signature')
-@click.option('--force-hw-compat', type=str, metavar='BITMASK', help="Override HW compat field (hex)")
+@click.option('--hw-compat', '-m', type=int, metavar='BITMASK', help="Set HW compat field (mk number)")
 @click.option('--backdate', type=int, metavar='DAYS',
                             help='Make downgrade attack test version', default=0)
+@click.option('--build_dir', '-b', default='l-port/build-COLDCARD')
 @click.option('--resign_file', '-r', type=click.File('rb'),
                 help='Replace existing signature', default=None)
 @click.option('--outfn', '-o', type=click.Path(),
                 help='Output filename', default='firmware-signed.bin')
 @click.option('--keydir', type=str, metavar='DIRPATH', help="Where to find priv keys for signing", default='keys')
-def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False,
-                        current=False, force_hw_compat=None,
+def doit(keydir, outfn=None, build_dir=None, high_water=False,
+                        current=False, hw_compat=None,
                         version='0.1a', pubkey_num=0, backdate=0, verbose=False, resign_file=None):
     "Add signature into binary file before it becomes a DFU file."
 
@@ -278,14 +277,15 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
         vectors = open(build_dir + '/firmware0.bin', 'rb').read()
         body = open(build_dir + '/firmware1.bin', 'rb').read()
 
+    if hw_compat == 4:
+        hw_compat = MK_4_OK
+    elif hw_compat is None:
+        hw_compat = MK_2_OK | MK_3_OK
+    else:
+        assert not "known"
+
     assert len(vectors) <= FW_HEADER_OFFSET, "isr vectors area is too big!"
     assert len(body) >= FW_MIN_LENGTH, "main firmware is too small: %d" % len(body)
-
-    if force_hw_compat is not None:
-        hw_compat = int(force_hw_compat, 16)
-        click.echo("Overriding hw_compat field: 0x%02x" % hw_compat)
-    else:
-        hw_compat = CURRENT_HARDWARE
 
     body_len = align_to(len(body), 512)
     assert body_len % 512 == 0, body_len
@@ -300,6 +300,7 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
                     firmware_length=FW_HEADER_OFFSET+FW_HEADER_SIZE+body_len,
                     install_flags=(FWHIF_HIGH_WATER if high_water else 0x0),
                     hw_compat=hw_compat,
+                    best_ts=bytes(8),
                     future=b'\0'*(4*FWH_NUM_FUTURE),
                     signature=b'\xff'*64,
                     pubkey_num=pubkey_num,
@@ -307,8 +308,13 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
 
     assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH, hdr.firmware_length
 
-    # actual file length limited by size of SPI flash area reserved to txn data/uploads
-    USB_MAX_LEN = (786432-128)
+    if hw_compat & MK_4_OK:
+        # new value for Mk4: limited only by final binary size, not SPI flash
+        USB_MAX_LEN = 1472 * 1024
+    else:
+        # actual file length limited by size of SPI flash area reserved to txn data/uploads
+        USB_MAX_LEN = (786432-128)
+
     assert hdr.firmware_length <= USB_MAX_LEN, \
         "too big for our USB upgrades: %d = %d bytes too big" % (
             hdr.firmware_length, hdr.firmware_length-USB_MAX_LEN)
@@ -317,8 +323,6 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
 
     binhdr = struct.pack(FWH_PY_FORMAT, *hdr)
     assert len(binhdr) == FW_HEADER_SIZE
-
-    assert len(vectors + binhdr[:-64]) == 0x3fc0
     assert len(vectors + binhdr[:-64]) == 0x3fc0
 
     hashable = vectors + binhdr[:-64] + body
