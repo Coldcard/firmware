@@ -19,6 +19,8 @@ class SimulatedNFCHandler(NFCHandler):
 
     def big_write(self, data):
         self.write(0, data)
+        n = open('nfc-dump.ndef', 'wb').write(self.dump_ndef())
+        print("%d bytes of NDEF written to work/nfc-dump.ndef" % n)
 
     def is_rf_disabled(self):
         # not checking if disable/sleep vs. off
