@@ -39,7 +39,7 @@ symbol {sym} for this blockchain.
 
 ## IMPORTANT WARNING
 
-Do **not** deposit to any address in this file unless you have a working
+**NEVER** deposit to any address in this file unless you have a working
 wallet system that is ready to handle the funds at that address!
 
 ## Top-level, 'master' extended public key ('m/'):
@@ -162,7 +162,14 @@ async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.tx
 
     # make the data
     examples = []
-    payload = ujson.dumps(list(generate_bitcoin_core_wallet(examples, account_num)))
+    imp_multi = []
+    imp_desc = []
+    for a,b in generate_bitcoin_core_wallet(account_num, examples):
+        imp_multi.append(a)
+        imp_desc.append(b)
+
+    imp_multi = ujson.dumps(imp_multi)
+    imp_desc = ujson.dumps(imp_desc)
 
     body = '''\
 # Bitcoin Core Wallet Import File
@@ -178,11 +185,18 @@ Wallet operates on blockchain: {nb}
 The following command can be entered after opening Window -> Console
 in Bitcoin Core, or using bitcoin-cli:
 
-importmulti '{payload}'
+importdescriptors '{imp_desc}'
+
+### Bitcoin Core before v0.21.0 
+
+This command can be used on older versions, but it is not as robust
+and "importdescriptors" should be prefered if possible:
+
+importmulti '{imp_multi}'
 
 ## Resulting Addresses (first 3)
 
-'''.format(payload=payload, xfp=xfp, nb=chains.current_chain().name)
+'''.format(imp_multi=imp_multi, imp_desc=imp_desc, xfp=xfp, nb=chains.current_chain().name)
 
     body += '\n'.join('%s => %s' % t for t in examples)
 
@@ -190,7 +204,7 @@ importmulti '{payload}'
 
     await write_text_file(fname_pattern, body, 'Bitcoin Core')
 
-def generate_bitcoin_core_wallet(example_addrs, account_num):
+def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
     from descriptor import append_checksum
@@ -226,16 +240,31 @@ def generate_bitcoin_core_wallet(example_addrs, account_num):
             coin_type=chain.b44_cointype,
             account=0,
             xpub=xpub,
-            change=(1 if internal else 0))
+            change=(1 if internal else 0) )
 
-        yield {
-            'desc': append_checksum(desc),
+        desc = append_checksum(desc)
+
+        # for importmulti
+        imm = {
+            'desc': desc,
             'range': [0, 1000],
             'timestamp': 'now',
             'internal': internal,
             'keypool': True,
             'watchonly': True
         }
+
+        # for importdescriptors
+        imd = {
+            'desc': desc,
+            'active': True,
+            'timestamp': 'now',
+            'internal': internal,
+        }
+        if not internal:
+            imd['label'] = "Coldcard " + txt_xfp
+
+        yield (imm, imd)
 
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.

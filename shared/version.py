@@ -113,13 +113,13 @@ def probe_system():
 
     cpuid = ckcc.get_cpu_id()
     if cpuid == 0x461:      # STM32L496RG6
-        has_fatram = True
         hw_label = 'mk3'
+        has_fatram = True
         mk_num = 3
     elif cpuid == 0x470:    # STM32L4S5VI
+        hw_label = 'mk4'
         has_fatram = True
         has_psram = True
-        hw_label = 'mk4'
         has_se2 = True
         mk_num = 4
     else:

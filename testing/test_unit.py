@@ -4,6 +4,7 @@
 #
 import pytest, glob
 from helpers import B2A
+from binascii import b2a_hex, a2b_hex
 
 def test_remote_exec(sim_exec):
     assert sim_exec("RV.write('testing123')") == 'testing123'

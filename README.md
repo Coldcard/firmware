@@ -44,7 +44,7 @@ Then:
 
 - `cd firmware`
 - `git submodule update --init` _(if needed?)_
-- `brew install autogen`
+- `brew install autogen virtualenv`
 - `virtualenv -p python3 ENV` (Python > 3.5 is required)
 - `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
 - `pip install -r requirements.txt`

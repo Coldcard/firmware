@@ -9,6 +9,7 @@ from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
+from ux import show_qr_code
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
@@ -147,7 +148,7 @@ def sign_message_digest(digest, subpath, prompt):
         sv.register(pk)
 
         dis.progress_bar_show(.75)
-        rv = ngu.secp256k1.sign(pk, digest).to_bytes()
+        rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
 
     dis.progress_bar_show(1)
 
@@ -548,13 +549,22 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import NFC
 
         if self.do_finalize and txid and not hsm_active:
-            # show txid when we can; advisory
             while 1:
-                s = txid
-                if NFC:
-                    s += '\n\nPress 3 to share signed txn over NFC'
+                # Show txid when we can; advisory
+                # - maybe even as QR, hex-encoded in alnum mode
+                tmsg = txid + '\n\n'
 
-                ch = await ux_show_story(s, "Final TXID", escape='3')
+                if has_fatram:
+                    tmsg += 'Press 1 for QR Code of TXID. '
+                if NFC:
+                    tmsg += 'Press 3 to share signed txn over NFC.'
+
+                ch = await ux_show_story(tmsg, "Final TXID", escape='13')
+
+                if ch=='1' and has_fatram:
+                    await show_qr_code(txid, True)
+                    continue
+
                 if ch == '3' and NFC:
                     await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
                                                             self.result[0], self.result[1])
@@ -564,7 +574,6 @@ class ApproveTransaction(UserAuthorizedAction):
         # TODO ofter to share / or auto-share over NFC if that seems appropraite
         #if NFC:
             #NFC.share_signed_psbt(TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
-
 
     def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
@@ -1006,8 +1015,7 @@ class ShowAddressBase(UserAuthorizedAction):
                 ch = await ux_show_story(msg, title=self.title, escape='4')
 
                 if ch == '4' and has_fatram:
-                    q = ux.QRDisplay([self.address], (self.addr_fmt & AFC_BECH32))
-                    await q.interact_bare()
+                    await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
 
                 break

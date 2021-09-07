@@ -21,6 +21,19 @@ None of this code ships on the product itself, but it does get used for testing 
 
     --dev --manual -s
 
+## Marked Test Cases
+
+- test all QR code related cases with:
+
+    py.test -m qrcode
+
+- txn signing where an unfinalized PSBT is created (low-R tests)
+
+    py.test -m unfinalized
+
+- "bitcoind" which means test would be skipped if you don't have bitcoin core
+  running locally (on testnet)
+
 ## PSBT reference files
 
 - examples with `IN_REDEEM_SCRIPT`:

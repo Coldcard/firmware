@@ -5,6 +5,7 @@
 from uasyncio import sleep_ms
 from queues import QueueEmpty
 import utime, gc
+from utils import word_wrap
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 
@@ -172,28 +173,6 @@ class PressRelease:
 # how many characters can we fit on each line?
 # (using FontSmall)
 CH_PER_W = const(17)
-
-def word_wrap(ln, w):
-    while ln:
-        sp = ln.rfind(' ', 0, w)
-
-        if sp == -1:
-            # bad-break the line
-            sp = min(len(ln), w)
-            nsp = sp
-            if ln[nsp:nsp+1] == ' ':
-                nsp += 1
-        else:
-            nsp = sp+1
-
-        left = ln[0:sp]
-        ln = ln[nsp:]
-
-        if len(left) + 1 + len(ln) <= CH_PER_W:
-            left = left + ' ' + ln
-            ln = ''
-
-        yield left
 
 async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
     # show a big long string, and wait for XY to continue
@@ -383,132 +362,14 @@ def abort_and_push(m):
     numpad.abort_ux()
 
 async def show_qr_codes(addrs, is_alnum, start_n):
-    o = QRDisplay(addrs, is_alnum, start_n, sidebar=None)
+    from qrs import QRDisplaySingle
+    o = QRDisplaySingle(addrs, is_alnum, start_n, sidebar=None)
     await o.interact_bare()
 
-class QRDisplay(UserInteraction):
-    # Show a QR code for (typically) a list of addresses. Can only work on Mk3
-
-    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None):
-        self.is_alnum = is_alnum
-        self.idx = 0             # start with first address
-        self.invert = False      # looks better, but neither mode is ideal
-        self.addrs = addrs
-        self.sidebar = sidebar
-        self.start_n = start_n
-        self.qr_data = None
-
-    def render_qr(self, msg):
-        # Version 2 would be nice, but can't hold what we need, even at min error correction,
-        # so we are forced into version 3 = 29x29 pixels
-        # - see <https://www.qrcode.com/en/about/version.html>
-        # - to display 29x29 pixels, we have to double them up: 58x58
-        # - not really providing enough space around it
-        # - inverted QR (black/white swap) still readable by scanners, altho wrong
-
-        from utils import imported
-
-        with imported('uqr') as uqr:
-            if self.is_alnum:
-                # targeting 'alpha numeric' mode, typical len is 42
-                enc = uqr.Mode_ALPHANUMERIC
-                assert len(msg) <= 47
-                msg = msg.upper()
-            else:
-                # has to be 'binary' mode, altho shorter msg, typical 34-36
-                enc = uqr.Mode_BYTE
-                assert len(msg) <= 42
-
-            self.qr_data = uqr.make(msg, min_version=3, max_version=3, encoding=enc)
-
-
-    def redraw(self):
-        # Redraw screen.
-        from glob import dis
-        from display import FontSmall, FontTiny
-
-
-        # what we are showing inside the QR
-        msg = self.addrs[self.idx]
-
-        # make the QR, if needed.
-        if not self.qr_data:
-            dis.busy_bar(True)
-
-            self.render_qr(msg)
-
-        # draw display
-        dis.clear()
-
-        w = 29          # because version=3
-        XO,YO = 7, 3    # offsets
-
-        if not self.invert:
-            dis.dis.fill_rect(XO-YO, 0, 64, 64, 1)
-
-        inv = self.invert
-        for x in range(w):
-            for y in range(w):
-                px = self.qr_data.get(x, y)
-                X = (x*2) + XO
-                Y = (y*2) + YO
-                dis.dis.fill_rect(X,Y, 2,2, px if inv else (not px))
-
-        x, y = 73, 0 if self.is_alnum else 2
-        sidebar, ll = self.sidebar or (msg, 7)
-        for i in range(0, len(sidebar), ll):
-            dis.text(x, y, sidebar[i:i+ll], FontSmall)
-            y += 10 if self.is_alnum else 12
-
-        if not inv and len(self.addrs) > 1:
-            # show path number, very tiny
-            ai = str(self.start_n + self.idx)
-            if len(ai) == 1:
-                dis.text(0, 30, ai[0], FontTiny)
-            else:
-                dis.text(0, 27, ai[0], FontTiny)
-                dis.text(0, 27+7, ai[1], FontTiny)
-
-        dis.busy_bar(False)     # includes show
-
-
-    async def interact_bare(self):
-        from glob import NFC
-        self.redraw()
-
-        while 1:
-            ch = await ux_wait_keyup()
-
-            if ch == '1':
-                self.invert = not self.invert
-                self.redraw()
-                continue
-
-            if NFC and ch == '3':
-                # Share any QR over NFC!
-                await NFC.share_text(self.addrs[self.idx])
-                self.redraw()
-                continue
-
-            elif ch in 'xy':
-                break
-            elif ch == '5' or ch == '7':
-                if self.idx > 0:
-                    self.idx -= 1
-            elif ch == '8' or ch == '9':
-                if self.idx != len(self.addrs)-1:
-                    self.idx += 1
-            else:
-                continue
-
-            # self.idx has changed, so need full re-render
-            self.qr_data = None
-            self.redraw()
-
-    async def interact(self):
-        await self.interact_bare()
-        the_ux.pop()
-
+async def show_qr_code(data, is_alnum):
+    from qrs import QRDisplaySingle
+    o = QRDisplaySingle([data], is_alnum)
+    await o.interact_bare()
 
 async def ux_enter_number(prompt, max_value):
     # return the decimal number which the user has entered

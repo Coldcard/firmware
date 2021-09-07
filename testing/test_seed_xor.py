@@ -235,6 +235,9 @@ def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, n
     assert 'New master key in effect' not in body
     assert body == ''
 
+    # main menu should be "ready to sign" now
+    assert cap_menu()[0] == 'Ready To Sign' 
+
     assert get_secrets()['mnemonic'] == expect
     reset_seed_words()
 

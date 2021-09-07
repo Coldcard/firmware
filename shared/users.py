@@ -148,7 +148,8 @@ class Users:
             # can only show up to 42 chars, and secret is 16, required overhead is 23 => 39 min
             # - can't fit any meta data, like username or our serial # in there
             # - HOTP not compliant because 'counter=0' not included (works in FreeOTP)
-            from ux import QRDisplay, abort_and_push, the_ux
+            from ux import abort_and_push, the_ux
+            from qrs import QRDisplaySingle
 
             if auth_mode == USER_AUTH_HMAC:
                 qr = picked
@@ -156,7 +157,7 @@ class Users:
                 qr = 'otpauth://{m}otp/CC?secret={s}'.format(s=picked,
                         m=('t' if auth_mode==USER_AUTH_TOTP else 'h'))
 
-            o = QRDisplay([qr], False, sidebar=(picked, 4))
+            o = QRDisplaySingle([qr], False, sidebar=(picked, 4))
             abort_and_push(o)
 
             picked = ''

@@ -20,7 +20,7 @@ settings = None
 # PSRAM (on Mk4 only)
 PSRAM = None
 
-# NFC interface (Mk4, and can be killed)
+# NFC interface (Mk4, and can be disabled)
 NFC = None
 
 

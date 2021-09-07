@@ -31,8 +31,9 @@ def test_sign1(dev, need_keypress, finalize):
         while dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None) == None:
             pass
 
-    assert 'None of the keys' in str(ee)
+    #assert 'None of the keys' in str(ee)
     #assert 'require subpaths' in str(ee)
+    assert 'PSBT does not contain any key path information' in str(ee)
 
 
 @pytest.mark.parametrize('fn', [
@@ -79,6 +80,7 @@ def test_psbt_parse_good(try_sign, fn, accept):
     assert ('Missing UTXO' in msg) \
                 or ('None of the keys' in msg) \
                 or ('completely signed already' in msg) \
+                or ('PSBT does not contain any key path information' in msg) \
                 or ('require subpaths' in msg), msg
 
 
@@ -124,6 +126,7 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     rb = BasicPSBT().parse(open(rb, 'rb').read())
     assert oo == rb
 
+@pytest.mark.unfinalized
 def test_speed_test(request, fake_txn, is_mark3, start_sign, end_sign, dev, need_keypress):
     import time
     # measure time to sign a larger txn
@@ -268,6 +271,7 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitc
     if segwit:
         assert all(x['txinwitness'] for x in decoded['vin'])
 
+@pytest.mark.unfinalized        # iff we_finalize=F
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
@@ -347,7 +351,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
     # verify against how bitcoind reads it
     check_against_bitcoind(txn2, fee)
 
-    signed = end_sign(accept=True)
+    signed = end_sign(accept=True, finalize=we_finalize)
     open('debug/vs-signed.psbt', 'wb').write(signed)
 
     if not we_finalize:
@@ -406,6 +410,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     #assert 'require subpaths to be spec' in str(ee)
 
+@pytest.mark.unfinalized
 def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     # Check we can finalize p2sh_p2wpkh inputs right.
 
@@ -440,6 +445,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     assert network == signed
 
+@pytest.mark.unfinalized
 def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind, offer_ms_import, need_keypress, clear_ms):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
@@ -707,6 +713,7 @@ def test_sign_multisig_partial_fail(start_sign, end_sign):
 
     assert 'None of the keys involved' in str(ee)
 
+@pytest.mark.unfinalized
 def test_sign_wutxo(start_sign, set_seed_words, end_sign, cap_story, sim_exec, sim_execfile):
 
     # Example from SomberNight: we can sign it, but signature won't be accepted by
@@ -893,8 +900,9 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
     assert 'led to wrong pubkey for input' in msg
 
 
-@pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
+@pytest.mark.unfinalized
+@pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
     # Compare how we finalize vs bitcoind ... should be exactly the same txn
 
@@ -943,7 +951,7 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     # verify against how bitcoind reads it
     check_against_bitcoind(txn2, fee)
 
-    signed_final = end_sign(accept=True)
+    signed_final = end_sign(accept=True, finalize=True)
     assert signed_final[0:4] != b'psbt', "expecting raw bitcoin txn"
     open('debug/finalized-by-ckcc.txn', 'wt').write(B2A(signed_final))
 
@@ -1134,7 +1142,7 @@ def test_bip143_attack_data_capture(num_utxo, segwit_in, try_sign, fake_txn, set
     time.sleep(.1)
     title, story = cap_story()
     assert 'TXID' in title, story
-    txid = story.strip()
+    txid = story.strip().split()[0]
 
     assert hist_count() in {128, hist_b4+num_utxo+num_inp_utxo}
 
@@ -1190,7 +1198,7 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
     title, story = cap_story()
     assert '0' in story
     assert 'TXID' in title, story
-    txid = story.split()[0]
+    txid = story.strip().split()[0]
 
     if 1:
         # compare to PyCoin
@@ -1209,6 +1217,7 @@ def test_txid_calc(num_ins, fake_txn, try_sign, dev, segwit, decode_with_bitcoin
 
         assert decoded['txid'] == txid
 
+@pytest.mark.unfinalized            # iff partial=1
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 #@pytest.mark.parametrize('num_outs', [1,2,3,4,5,6,7,8])
 @pytest.mark.parametrize('num_outs', [1,2])
@@ -1232,6 +1241,7 @@ def test_sdcard_signing(encoding, num_outs, del_after, partial, try_sign_microsd
     _, txn, txid = try_sign_microsd(psbt, finalize=not partial,
                                         encoding=encoding, del_after=del_after)
 
+@pytest.mark.unfinalized
 @pytest.mark.parametrize('num_ins', [2,3,8])
 @pytest.mark.parametrize('num_outs', [1,2,8])
 def test_payjoin_signing(num_ins, num_outs, fake_txn, try_sign, start_sign, end_sign, cap_story):
@@ -1272,7 +1282,7 @@ def test_fully_unsigned(fake_txn, try_sign, segwit):
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
 
-    assert 'None of the keys' in str(ee)
+    assert 'does not contain any key path information' in str(ee)
 
 @pytest.mark.parametrize('segwit', [False, True])
 def test_wrong_xfp(fake_txn, try_sign, segwit):
@@ -1415,9 +1425,8 @@ def test_value_render(units, fake_txn, start_sign, cap_story, settings_set, sett
 
     settings_remove('rz')
 
-
 @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
-def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story):
+def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
     # Read signing result over NFC, decode it.
     import ndef
     from hashlib import sha256
@@ -1458,5 +1467,106 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
         else:
             raise ValueError(got.type)
 
+@pytest.mark.qrcode
+@pytest.mark.parametrize('num_in', [1,2,3])
+@pytest.mark.parametrize('num_out', [1,2,3])
+def test_qr_txn(num_in, num_out, request, fake_txn, try_sign, dev, cap_screen_qr, qr_quality_check, cap_story, need_keypress):
+    segwit=True
+
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=False)
+
+
+    _, txn = try_sign(psbt, accept=True, finalize=True)
+    open('debug/last.txn', 'wb').write(txn)
+
+    print("txn len = %d bytes" % len(txn))
+
+    title, story = cap_story()
+
+    assert 'QR Code' in story
+
+    if 1:
+        # check TXID qr code
+        need_keypress('1')
+
+        qr = cap_screen_qr().decode()
+
+        from pycoin.tx.Tx import Tx
+        t = Tx.from_bin(txn)
+        assert t.id() == qr.lower()
+
+    else:
+        # TODO: QR for txn itself yet
+        need_keypress('2')
+        qr = cap_screen_qr().decode()
+        assert qr.lower() == txn.hex()
+
+def test_missing_keypaths(dev, try_sign, fake_txn):
+
+    # make valid psbt
+    psbt = fake_txn(3, 1, dev.master_xpub, segwit_in=False)
+
+    # strip keypaths
+    oo = BasicPSBT().parse(psbt)
+    for inp in oo.inputs:
+        inp.bip32_paths.clear()
+
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod_psbt, accept=False)
+
+    msg = ee.value.args[0]
+    assert ('does not contain any key path information' in msg)
+
+def test_wrong_pubkey(dev, try_sign, fake_txn):
+    # psbt input gives a pubkey+subkey path, but that pubkey doesn't map to utxo pubkey
+
+    psbt = fake_txn(1, 1, dev.master_xpub, segwit_in=False)
+
+    # tweak the pubkey of first input
+    oo = BasicPSBT().parse(psbt)
+
+    pubkey = list(oo.inputs[0].bip32_paths.keys())[0]
+    xpk = bytearray(pubkey)
+
+    for i in range(5, 20):
+        xpk[i] = 0xff
+
+    oo.inputs[0].bip32_paths[bytes(xpk)] = oo.inputs[0].bip32_paths[pubkey]
+    del  oo.inputs[0].bip32_paths[pubkey]
+
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod_psbt, accept=False)
+
+    msg = ee.value.args[0]
+    assert ('pubkey vs. address wrong' in msg)
+
+def test_incomplete_signing(dev, try_sign, fake_txn, cap_story):
+    # psbt where we only sign one input
+    # - must not allow finalization
+    psbt = fake_txn(2, 1, dev.master_xpub, segwit_in=False)
+
+    oo = BasicPSBT().parse(psbt)
+    oo.inputs[1].bip32_paths = { k: b'\x01\x02\x03\x04'+v[4:] 
+                                        for k,v in oo.inputs[1].bip32_paths.items() }
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    with pytest.raises(CCProtoError) as ee:
+        orig, result = try_sign(mod_psbt, accept=True, finalize=True)
+
+    msg = ee.value.args[0]
+    assert ('PSBT output failed' in msg)
+
+    title, story = cap_story()
+    assert 'No signature on input' in story
 
 # EOF

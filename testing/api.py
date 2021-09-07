@@ -112,7 +112,7 @@ def explora():
 @pytest.fixture(scope='function')
 def bitcoind_wallet(bitcoind):
     # Use bitcoind to create a temporary wallet file, and then do cleanup after
-    # - wallet will not have any keys, and is watch only
+    # - wallet will not have any keys, and is watch-only
     import os, shutil
 
     fname = '/tmp/ckcc-test-wallet-%d' % os.getpid()
@@ -136,6 +136,39 @@ def bitcoind_wallet(bitcoind):
     bitcoind.unloadwallet(fname)
     assert fname.startswith('/tmp/ckcc-test-wallet')
     shutil.rmtree(fname)
+
+@pytest.fixture(scope='function')
+def bitcoind_d_wallet(bitcoind):
+    # Use bitcoind to create a temporary DESCRIPTOR-based wallet file, and then do cleanup after
+    # - wallet will not have any keys until a descriptor is added, and is not just watch-only
+    import os, shutil
+
+    fname = '/tmp/ckcc-test-desc-wallet-%d' % os.getpid()
+
+    disable_private_keys = True
+    blank = True
+    password = None
+    avoid_reuse = False
+    descriptors = True
+    w = bitcoind.createwallet(fname, disable_private_keys, blank,
+                                            password, avoid_reuse, descriptors)
+
+    assert w['name'] == fname
+
+    # give them an object they can do API calls w/ rpcwallet filled-in
+    cookie = get_cookie()
+    url = 'http://' + cookie + '@' + URL + '/wallet/' + fname.replace('/', '%2f')
+    #print(url)
+    conn = AuthServiceProxy(url)
+    assert conn.getblockchaininfo()['chain'] == 'test'
+
+    yield conn
+
+    # cleanup
+    bitcoind.unloadwallet(fname)
+    assert fname.startswith('/tmp/ckcc-test-desc-wallet')
+    shutil.rmtree(fname)
+
 
 
 # EOF

@@ -102,10 +102,11 @@ def test_version(dev):
     # read the version, yawn.
     v = dev.send_recv(CCProtocolPacker.version())
     assert '\n' in v
-    date, label, bl, *extras = v.split('\n')
+    date, label, bl, hw_label, *extras = v.split('\n')
     assert '-' in date
     assert '.' in label
     assert '.' in bl
+    assert 'mk' in hw_label
     print("date=%s" % date)
 
 @pytest.mark.parametrize('data_len', [1, 24, 60, 61, 62, 63, 64, 1000])

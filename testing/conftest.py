@@ -5,7 +5,7 @@ from pprint import pprint
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode, explora
-from api import bitcoind_wallet
+from api import bitcoind_wallet, bitcoind_d_wallet
 from binascii import b2a_hex, a2b_hex
 from constants import *
 
@@ -325,22 +325,82 @@ def cap_image(sim_execfile):
 
     return doit
 
+QR_HISTORY = []
+
+@pytest.fixture(scope='session')
+def qr_quality_check():
+    # Use this with cap_screen_qr 
+    print("QR codes will be captured and shown at end of run.")
+    yield None
+
+    # quick test:
+    #   py.test test_drv_entro.py -k test_path_index --ff -k '0-64-bytes'
+    #
+
+    global QR_HISTORY
+    if not QR_HISTORY: return
+
+    import textwrap
+    from PIL import Image, ImageOps, ImageFont, ImageDraw
+    w,h = QR_HISTORY[0][1].size
+    count = len(QR_HISTORY)
+    TH = 32
+
+    scale=3
+    rv = Image.new('RGB', (w*scale, ((h*scale)+TH)*count), color=(64,64,64))
+    y = 0
+    fnt = ImageFont.truetype('Courier', size=10)
+    dr = ImageDraw.Draw(rv)
+    mw = int((w*scale) / dr.textsize('M', fnt)[0])
+
+    for test_name, img in QR_HISTORY:
+        if '[' in test_name:
+            test_name = test_name[test_name.index('['):].replace(' (call)','')
+        else:
+            test_name = test_name.replace(' (call)','')
+
+        img = img.resize((w*scale,h*scale), resample=Image.NEAREST)
+        rv.paste(img, (0, y))
+        y += (h*scale)
+
+        dr.multiline_text((4, y+3), textwrap.fill(test_name, mw), font=fnt, fill=(0,255,0))
+        y += TH
+
+    #rv = rv.resize(tuple(c*4 for c in rv.size), resample=Image.NEAREST)
+
+    rv.save('debug/all-qrs.png')
+    rv.show()
+
+
+
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit(x=4, w=64):
+    def doit(x=0, w=64):
+        # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
+        # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
+        global QR_HISTORY
 
         try:
             import zbar
         except ImportError:
             raise pytest.skip('need zbar-py module')
-        import numpy
+        import numpy, os
         from PIL import ImageOps
 
         # see <http://qrlogo.kaarposoft.dk/qrdecode.html>
 
-        img = cap_image()
-        img = img.crop( (x, 0, x+w, w) )
-        img = ImageOps.expand(img, 16, 255)
+        orig_img = cap_image()
+
+
+        # document it
+        if x < 10:
+            # removes dups: happen when same image samples for two different
+            # QR's in side-by-side mode
+            tname = os.environ.get('PYTEST_CURRENT_TEST')
+            QR_HISTORY.append( (tname, orig_img) )
+
+        img = orig_img.crop( (x, 0, x+w, w) )
+        img = ImageOps.expand(img, 16, 0)
         img = img.resize( (256, 256))
         img.save('debug/last-qr.png')
         #img.show()
@@ -350,9 +410,9 @@ def cap_screen_qr(cap_image):
 
         for sym, value, *_ in scanner.scan(np):
             assert sym == 'QR-Code', 'unexpected symbology: ' + sym
-            value = str(value, 'ascii')
-            return value
+            return value            # bytes, could be binary
 
+        # debug: check debug/last-qr.png
         raise pytest.fail('qr code not found')
 
     return doit
@@ -526,6 +586,13 @@ def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):
     # Important cleanup: restore normal key, because other tests assume that
     # - actually need seed words for all tests
     reset_seed_words()
+
+@pytest.fixture(scope="function")
+def use_mainnet(settings_set):
+    def doit():
+        settings_set('chain', 'BTC')
+    yield doit
+    settings_set('chain', 'XTN')
 
 @pytest.fixture(scope="function")
 def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
@@ -974,10 +1041,15 @@ def end_sign(dev, need_keypress):
             # skip checks; it's text
             return psbt_out
 
+        sigs = []
+
         if not finalize:
-            if in_psbt:
-                from psbt import BasicPSBT
-                assert BasicPSBT().parse(in_psbt) != None
+            from psbt import BasicPSBT
+            tp = BasicPSBT().parse(psbt_out)
+            assert tp is not None
+
+            for i in tp.inputs:
+                sigs.extend(i.part_sigs.values())
         else:
             from pycoin.tx.Tx import Tx
             # parse it
@@ -985,6 +1057,11 @@ def end_sign(dev, need_keypress):
             assert res[0:4] != b'psbt', 'still a PSBT, but asked for finalize'
             t = Tx.from_bin(res)
             assert t.version in [1, 2]
+
+            # TODO: pull out signatures from signed txn, but pycoin not helpful on that
+                    
+        for sig in sigs:
+            assert len(sig) <= 71, "overly long signature observed"
 
         return psbt_out
 
@@ -1001,13 +1078,27 @@ def is_mark2(request):
 
 @pytest.fixture(scope='session')
 def is_mark3(request):
-    # better: ask it
+    # weak, avoid
     return int(request.config.getoption('--mk')) == 3
 
 @pytest.fixture(scope='session')
 def is_mark4(request):
-    # better: ask it
+    # weak, avoid
     return int(request.config.getoption('--mk')) == 4
+
+@pytest.fixture(scope='session')
+def only_mk4(dev):
+    # better: ask it .. use USB version cmd
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    if v[4] != 'mk4':
+        raise pytest.xfail("Mk4 only")
+
+@pytest.fixture(scope='session')
+def only_mk3(dev):
+    # better: ask it .. use USB version cmd
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    if v[4] != 'mk3':
+        raise pytest.xfail("Mk3 only")
 
 @pytest.fixture()
 def nfc_read(sim_exec):

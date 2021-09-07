@@ -12,9 +12,9 @@
 #
 from menu import MenuItem, MenuSystem
 from utils import pop_count, xfp2str
-import ngu, uctypes, bip39, random
+import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
-from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
+from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code
 from ux import PressRelease
 from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
@@ -270,10 +270,24 @@ individual words if you wish.''')
 async def show_words(words, prompt=None, escape=None, extra=''):
     msg = (prompt or 'Record these %d secret words!\n') % len(words)
     msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
-    msg += '\n\nPlease check and double check your notes. There will be a test! ' 
-    msg += extra
+    msg += '\n\nPlease check and double check your notes. There will be a test!' 
 
-    return await ux_show_story(msg, escape=escape, sensitive=True)
+    if version.has_fatram:
+        escape = (escape or '') + '1'
+        extra += 'Press 1 to view as QR Code. '
+
+    if extra:
+        msg += '\n\n'
+        msg += extra
+
+    while 1:
+        ch = await ux_show_story(msg, escape=escape, sensitive=True)
+        if ch == '1':
+            await show_qr_code(' '.join(w[0:4] for w in words), True)
+            continue
+        break
+
+    return ch
 
 async def add_dice_rolls(count, seed, judge_them):
     from glob import dis
@@ -375,7 +389,7 @@ async def approve_word_list(seed):
     while 1:
         # show the seed words
         ch = await show_words(words, escape='46',
-                        extra='\n\nPress 4 to add some dice rolls into the mix.')
+                        extra='Press 4 to add some dice rolls into the mix. ')
 
         if ch == 'x': 
             # user abort, but confirm it!
@@ -506,7 +520,7 @@ async def remember_bip39_passphrase():
 
 def clear_seed():
     from glob import dis
-    import utime, version
+    import utime
 
     dis.fullscreen('Clearing...')
 

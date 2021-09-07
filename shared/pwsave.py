@@ -112,29 +112,30 @@ class PassphraseSaver:
         #
         pws = []
         for i in data:
-            p = i.get('pw') 
-            if p not in pws:
-                pws.append(p)
+            p, x = i.get('pw'), i.get('xfp')
+            if (p,x) not in pws:
+                pws.append( (p, x) )
 
         for N in range(1, 8):
-            parts = [i[0:N] + ('*'*(len(i)-N if len(i) > N else 0)) for i in pws]
+            parts = [i[0:N] + ('*'*(len(i)-N if len(i) > N else 0)) for i,_ in pws]
             if len(set(parts)) == len(pws): break
-            parts = [('*'*(len(i)-N if len(i) > N else 0)) + i[-N:] for i in pws]
+            parts = [('*'*(len(i)-N if len(i) > N else 0)) + i[-N:] for i,_ in pws]
             if len(set(parts)) == len(pws): break
         else:
             # give up: show it all!
-            parts = pws
+            parts = [i for i,_ in pws]
 
         async def doit(menu, idx, item):
             # apply the password immediately and drop them at top menu
-            set_bip39_passphrase(data[idx]['pw'])
+            pw, expect_xfp = item.arg
+            set_bip39_passphrase(pw)
 
             from glob import settings
             from utils import xfp2str
             xfp = settings.get('xfp')
 
             # verification step; I don't see any way for this to go wrong
-            assert xfp == data[idx]['xfp']
+            assert xfp == expect_xfp
 
             # feedback that it worked
             await ux_show_story("Passphrase restored.", title="[%s]" % xfp2str(xfp))
@@ -142,6 +143,6 @@ class PassphraseSaver:
             goto_top_menu()
 
 
-        return MenuSystem((MenuItem(label or '(empty)', f=doit) for label in parts))
+        return MenuSystem((MenuItem(label or '(empty)', f=doit, arg=pw) for pw, label in zip(pws, parts)))
         
 # EOF

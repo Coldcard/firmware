@@ -24,10 +24,11 @@ def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt, is_simu
     # check expected addr was used
     addr_vs_path(addr, path, addr_fmt)
 
+@pytest.mark.qrcode
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 @pytest.mark.parametrize('show_qr', [ False, True ])
-def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, cap_story, show_qr, cap_screen_qr):
+def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, cap_story, show_qr, cap_screen_qr, qr_quality_check):
     time.sleep(0.1)
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
@@ -50,7 +51,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
     if show_qr:
         need_keypress('4')
         time.sleep(0.1)
-        qr = cap_screen_qr()
+        qr = cap_screen_qr().decode('ascii')
 
         assert qr == addr or qr == addr.upper()
 

@@ -41,6 +41,6 @@ setup:
 	@echo Setup DONE
 
 ngu-setup:
-	cd ../external/libnga/libs/cifra; git submodule update --init .
-	cd ../external/libnga/libs/secp256k1; git submodule update --init .
-	cd ../external/libnga; make k1-config
+	cd ../external/libngu/libs/cifra; git submodule update --init .
+	cd ../external/libngu/libs/secp256k1; git submodule update --init .
+	cd ../external/libngu; make min-one-time

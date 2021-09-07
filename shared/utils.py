@@ -401,4 +401,26 @@ def call_later_ms(delay, cb, *args):
         
     uasyncio.create_task(doit())
 
+def word_wrap(ln, w):
+    while ln:
+        sp = ln.rfind(' ', 0, w)
+
+        if sp == -1:
+            # bad-break the line
+            sp = min(len(ln), w)
+            nsp = sp
+            if ln[nsp:nsp+1] == ' ':
+                nsp += 1
+        else:
+            nsp = sp+1
+
+        left = ln[0:sp]
+        ln = ln[nsp:]
+
+        if len(left) + 1 + len(ln) <= w:
+            left = left + ' ' + ln
+            ln = ''
+
+        yield left
+
 # EOF

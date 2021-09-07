@@ -5,7 +5,7 @@
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, problem_file_line
-import stash, gc, history, sys, ngu
+import stash, gc, history, sys, ngu, ckcc
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
@@ -30,8 +30,8 @@ from public_constants import (
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
 
-# print some things 
-DEBUG = const(0)
+# print some things, sometimes
+DEBUG = ckcc.is_simulator()
 
 class HashNDump:
     def __init__(self, d=None):
@@ -696,6 +696,9 @@ class psbtInputProxy(psbtProxy):
                 if hash160(pubkey) == addr:
                     which_key = pubkey
                     break
+            else:
+                # none of the pubkeys provided hashes to that address
+                raise FatalPSBTIssue('Input #%d: pubkey vs. address wrong' % my_idx)
 
         elif addr_type == 'p2pk':
             # input is single public key (less common)
@@ -704,6 +707,9 @@ class psbtInputProxy(psbtProxy):
 
             if addr_or_pubkey in self.subpaths:
                 which_key = addr_or_pubkey
+            else:
+                # pubkey provided is just wrong vs. UTXO
+                raise FatalPSBTIssue('Input #%d: pubkey wrong' % my_idx)
 
         else:
             # we don't know how to "solve" this type of input
@@ -1325,6 +1331,11 @@ class psbtObject(psbtProxy):
             for path in inp.subpaths.values():
                 others.add(path[0])
 
+        if not others:
+            # Can happen w/ Electrum in watch-mode on XPUB. It doesn't know XFP and
+            # so doesn't insert that into PSBT.
+            raise FatalPSBTIssue('PSBT does not contain any key path information.')
+
         others.discard(self.my_xfp)
         msg = ', '.join(xfp2str(i) for i in others)
 
@@ -1523,21 +1534,30 @@ class psbtObject(psbtProxy):
                 #print(" digest %s" % b2a_hex(digest).decode('ascii'))
 
                 # Do the ACTUAL signature ... finally!!!
-                result = ngu.secp256k1.sign(pk, digest).to_bytes()
+
+                # We need to grind sometimes to get a positive R
+                # value that will encode (after DER) into a shorter string.
+                # - saves on miner's fee (which might be expected/required)
+                # - blends in with Bitcoin Core signatures which do this
+                for retry in range(10):
+                    result = ngu.secp256k1.sign(pk, digest, retry).to_bytes()
+
+                    # convert signature to DER format
+                    #assert len(result) == 65
+                    r = result[1:33]
+                    s = result[33:65]
+                    der_sig = ser_sig_der(r, s, inp.sighash)
+
+                    if len(der_sig) <= 71:
+                        # odds of needing retry: just under 50% I think
+                        break
 
                 # private key no longer required
                 stash.blank_object(pk)
                 stash.blank_object(node)
                 del pk, node, pu, skp
 
-                #print("result %s" % b2a_hex(result).decode('ascii'))
-
-                # convert signature to DER format
-                assert len(result) == 65
-                r = result[1:33]
-                s = result[33:65]
-
-                inp.added_sig = (which_key, ser_sig_der(r, s, inp.sighash))
+                inp.added_sig = (which_key, der_sig)
 
                 success.add(in_idx)
 
@@ -1713,8 +1733,9 @@ class psbtObject(psbtProxy):
 
                 # Actual signature will be in witness data area
 
-            elif inp.added_sig:
-                # insert the new signature(s)
+            else:
+                # insert the new signature(s), assuming fully signed txn.
+                assert inp.added_sig, 'No signature on input #%d'%in_idx
                 assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
                 pubkey, der_sig = inp.added_sig

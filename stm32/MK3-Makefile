@@ -9,7 +9,6 @@ PORT_TOP = $(MPY_TOP)/ports/stm32
 MPY_CROSS = $(MPY_TOP)/mpy-cross/mpy-cross
 PYTHON_MAKE_DFU = $(MPY_TOP)/tools/dfu.py
 PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
-BUILD_DIR = l-port/build-COLDCARD
 
 # aka ../cli/signit.py
 SIGNIT = signit
@@ -205,7 +204,7 @@ MPY_FILES = $(filter-out build/obsolete/%, $(ALL_MPY_FILES))
 # - and so on
 #
 debug:
-	arm-none-eabi-gdb $(BUILD_DIR)/firmware.elf -x gogo-mk3.gdb
+	arm-none-eabi-gdb built/firmware.elf -x gogo-mk3.gdb
 
 # detailed listing, very handy
 OBJDUMP = arm-none-eabi-objdump
@@ -246,7 +245,7 @@ DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				--privileged coldcard-build
 repro: code-committed
 	docker build -t coldcard-build - < dockerfile.build
-	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh)
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING))
 
 # debug: shell into docker container
 shell:
@@ -265,8 +264,8 @@ ifeq ($(PUBLISHED_BIN),)
 	@echo ""
 	@echo "Need published binary for: $(VERSION_STRING)"
 	@echo ""
-	@echo "Copy it into ../releases"
-	@echo ""
+	@echo "Code in repro-build.sh should have placed it there already!?"
+	false
 else
 	@echo Comparing against: $(PUBLISHED_BIN)
 	test -n "$(PUBLISHED_BIN)" -a -f $(PUBLISHED_BIN)
@@ -283,5 +282,3 @@ else
 	@echo "You have built a bit-for-bit identical copy of Coldcard firmware for v$(VERSION_STRING)"
 endif
 
-
-# EOF

@@ -1,3 +1,43 @@
+## 4.1.3 - Sep 2, 2021
+
+- Enhancement: support "importdescriptors" command in Bitcoin Core 0.21 so that
+  a descriptor-based wallet is created. PSBT files are then supported natively by
+  Core, and the resulting desktop wallet can be used for spending (ie. create PSBT
+  via GUI) and also watching. Translation: Easy air-gap PSBT operation with Bitcoin Core!
+- Enhancement: remove "m/0/0" derivations from public.txt and address explorer,
+  since that path is obsolete and not used by any major wallets now. We can still
+  sign PSBT files with that path, but it's an unnecessary risk to show derived
+  addresses for a type of wallet that doesn't exist anymore.
+- Enhancement: if PSBT input sections don't contain the key path information we need,
+  show a more specific error message.
+- Bugfix: a PSBT which provided the wrong pubkey (based on UTXO being spent) was not
+  flagged as invalid, but instead we proceeded to do nothing. Now says "pubkey vs. address wrong".
+- Bugfix: if asked to serialize a partially-signed transaction, we did. Now fails properly.
+- Bugfix: if multiple copies of the same BIP-39 passphrase were saved to a card, the menu
+  would not display correctly and you might not be able to select your saved value.
+
+## 4.1.2 - July 28, 2021
+
+- Enhancement: Shows QR code with BIP-85 derived entropy value if you press (3) while
+  value shown on-screen. Thanks to [@opennoms](https://twitter.com/openoms) for idea.
+  Works with 12/18/24-words, XPRV, privatekey and even hex cases.
+- Enhancement: Offer to show QR in other places:
+    - Coldcard's main XPUB, in Advanced > View Identity
+    - Seed words, during picking process (before the quiz)
+    - Stored seed words: Advanced > Danger Zone > Seed Functions > View Seed Words
+    - TXID of just-signed transaction (64 hex digits)
+    - Encryption password for the system backup file (12 words) 
+- Enhancement: We now grind a nonce so that our signatures are always 71 bytes or shorter.
+  This may save a byte in transaction size, and makes our signatures identical to those
+  produced by Bitcoin Core, improving anonymity on-chain. Thanks to
+  [@craigraw](https://twitter.com/craigraw) for detecting this.
+- Bugfix: On a blank Coldcard, after importing a seed phrase using the
+  [Seed XOR feature](https://seedxor.com/), the main menu was not updated to show
+  system is "Ready To Sign".
+- Bugfix: Red caution light could happen (a false positive) if a specific sequence of
+  firmware upgrades and reboots occurred in the right order. Issue could only occur once
+  during lifetime of any particular Coldcard.
+
 ## 4.1.1 - April 30, 2021
 
 - Bugfix/Enhancement: [Unchained Capital](https://unchained-capital.com/)
@@ -58,7 +98,7 @@
 ## 4.0.1 - March 29, 2021
 
 - Fixes security issue in v4.0.0. (3.x.x Unaffected)
-- Known issue: formating of SD Card does not work and leads to a crash.
+- Known issue: formatting of SD Card does not work and leads to a crash.
 
 ## 4.0.0 - March 17, 2021
 
