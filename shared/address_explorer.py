@@ -275,17 +275,17 @@ Press 3 if you really understand and accept these risks.
         while 1:
             ch = await ux_show_story(msg, escape='12379')
 
-            if ch == '1':
+            if ch == 'x':
+                return
+
+            elif ch == '1':
                 # save addresses to MicroSD signal
                 await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num,
                                                             count=(250 if n!=1 else 1))
                 # .. continue on same screen in case they want to write to multiple cards
                 continue
 
-            if ch == 'x':
-                return
-
-            if ch == '2':
+            elif ch == '2':
                 # switch into a mode that shows them as QR codes
                 if not version.has_fatram or ms_wallet:
                     # requires mk3 and not multisig
@@ -295,7 +295,7 @@ Press 3 if you really understand and accept these risks.
                 await show_qr_codes(addrs, bool(addr_fmt & AFC_BECH32), start)
                 continue
 
-            if ch == '3' and NFC:
+            elif ch == '3' and NFC:
                 # share table over NFC
                 if n > 1:
                     await NFC.share_text('\n'.join(addrs))
@@ -303,12 +303,14 @@ Press 3 if you really understand and accept these risks.
                     await NFC.share_deposit_address(addrs[self.idx])
                 continue
 
-            if ch == '7' and start>0:
+            elif ch == '7' and start>0:
                 # go backwards in explorer
                 start -= n
             elif ch == '9':
                 # go forwards
                 start += n
+            else:
+                continue        # 3 in non-NFC mode
 
             msg, addrs = make_msg()
 

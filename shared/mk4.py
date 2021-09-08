@@ -61,17 +61,4 @@ def init0():
     vdisk.VirtDisk()
     assert glob.VD
 
-    # NFC interface
-    import nfc
-    n = nfc.NFCHandler()
-    try:
-        n.setup()
-        glob.NFC = n
-        n.test_code()       # XXX delme
-    except BaseException as exc:
-        sys.print_exception(exc)        # debug only
-        print("NFC absent/disabled")
-        del n
-
-
 # EOF

@@ -899,6 +899,12 @@ async def start_login_sequence():
     if not settings.get('du', 0):
         from usb import enable_usb
         enable_usb()
+
+    if version.mk_num >= 4:
+        # Maybe allow NFC now
+        if settings.get('nfc', 0):
+            import nfc
+            nfc.NFCHandler.startup()
         
 def goto_top_menu():
     # Start/restart menu system
@@ -1413,6 +1419,7 @@ async def ready2sign(*a):
     # - if nothing, then talk about USB connection
     from public_constants import MAX_TXN_LEN
     import stash
+    from glob import NFC
     
     if stash.bip39_passphrase:
         title = '[%s]' % settings.get('xfp')
@@ -1438,16 +1445,26 @@ async def ready2sign(*a):
                             max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if not choices:
-        await ux_show_story("""\
-Coldcard is ready to sign spending transactions!
+        msg = '''Coldcard is ready to sign spending transactions!
 
 Put the proposed transaction onto MicroSD card \
 in PSBT format (Partially Signed Bitcoin Transaction) \
 or upload a transaction to be signed \
-from your desktop wallet software or command line tools. \
+from your desktop wallet software or command line tools.\n\n'''
 
-You will always be prompted to confirm the details before any signature is performed.\
-""", title=title)
+        if NFC:
+            msg += 'Press 3 to send PSBT using NFC.\n\n'
+    
+        msg += "You will always be prompted to confirm the details before \
+any signature is performed."
+
+        ch = await ux_show_story(msg, title=title, escape='3')
+        if ch == '3' and NFC:
+            from auth import sign_psbt_nfc
+            got_some = await NFC.start_nfc_rx()
+            if got_some:
+                await sign_psbt_nfc()
+
         return
 
     if len(choices) == 1:
@@ -1741,6 +1758,7 @@ async def show_version(*a):
     # show firmware, bootload versions.
     import callgate, version
     from ubinascii import hexlify as b2a_hex
+    from glob import NFC
 
     built, rel, *_ = version.get_mpy_version()
     bl = callgate.get_bl_version()[0]
@@ -1753,6 +1771,13 @@ async def show_version(*a):
 
     if version.has_se2:
         se += '\n  DS28C36B'
+
+    # exposed over USB interface:
+    serial = version.serial_number()
+
+    # exposed over NFC interface, when enabled and in active use:
+    if NFC:
+        serial += '\n\nNFC UID:\n' + NFC.get_uid()
 
     msg = '''\
 Coldcard Firmware
@@ -1776,7 +1801,7 @@ Secure Element{ses}:
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=version.serial_number(), hw=version.hw_label,
+                            ser=serial, hw=version.hw_label,
                 ses='s' if version.has_se2 else ''))
 
 async def ship_wo_bag(*a):

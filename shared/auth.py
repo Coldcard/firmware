@@ -713,6 +713,10 @@ def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
 
+
+def sign_psbt_nfc():
+    # file to be signed is already in the NFC chip; up to 8k bytes or so
+    pass
     
 def sign_psbt_file(filename):
     # sign a PSBT file found on a MicroSD card

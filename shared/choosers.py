@@ -217,6 +217,28 @@ def disable_usb_chooser():
 
     return value, ch, set_it
 
+def disable_nfc_chooser():
+    value = settings.get('nfc', 0)
+    ch = [ 'Normal', 'Enable NFC']
+    def set_it(idx, text):
+        if idx:
+            settings.set('nfc', 1)
+        else:
+            settings.remove_key('nfc')
+        enable = bool(idx)
+
+        import glob
+        from glob import NFC
+        import nfc
+
+        if not enable:
+            if glob.NFC:
+                glob.NFC.shutdown()
+        else:
+            nfc.NFCHandler.startup()
+
+    return value, ch, set_it
+
 def delete_inputs_chooser():
     #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
     del_psbt = settings.get('del', 0)
