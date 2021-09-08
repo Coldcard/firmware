@@ -13,6 +13,12 @@ from binascii import hexlify as b2a_hex
 # - followed the "NDEF File Control TLV" tag (0x03) but not the length
 CC_FILE = bytes([0xE2, 0x43, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00,   0x03])
 
+# When we are writable, empty file is given
+CC_WR_FILE = bytes([0xE2, 0x40, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00,
+        0x03, 0x00,  # empty
+        0xfe,        # end marker
+])
+
 class ndefMaker:
     '''
         make a few different types of NDEF records, very limited and only
@@ -92,6 +98,130 @@ class ndefMaker:
         rv.append(0xfe)          # Terminator TLV
 
         return rv
+
+def ccfile_decode(taste):
+    # Given first 16 bytes of tag's memory (user memory):
+    # - returns start and length of real Ndef records
+    # - and is_writable flag
+    # - and max size of tag memory capacity, in bytes (poorly spec'ed / compat issues)
+    ex, b1, b2 = taste[0:3]
+    assert b1 & 0xf0 == 0x40        # bad version.
+    if ex == 0xE1:
+        # "one byte addressing mode" -- max of 2040 bytes, 4-6 byte header
+        if b2 != 0x00:
+            st = 4
+            mlen = b2     # aka MLEN
+        else:
+            st = 6
+            mlen = unpack('>H', taste[4:4+2])[0]
+    elif ex == 0xE2:
+        # 8-byte CC Field, allows 2 byte address mode
+        st = 8
+        mlen = unpack('>H', taste[6:6+2])[0]
+    else:
+       raise ValueError("bad first byte")       # not one of 2 magic values we support
+
+    assert taste[st] == 0x03        # special first TLV
+    st += 1
+    ll = taste[st:st+3]
+    if ll[0] == 0xff:
+        ll = unpack('>H', ll[1:])[0]
+        st += 3
+    else:
+        ll = ll[0]
+        st += 1
+
+    assert 0 <= ll < 8196           # 64kbit max part
+
+    return st, ll, ((b1 & 3) == 0), mlen*4
+
+def record_parser(msg):
+    # Given body of ndef records, yield a tuple for each record:
+    # - type info, as urn string
+    # - bytes of body
+    # - dict of meta data, appropriate to type
+    # - we gag on chunks
+    pos = 0
+    while 1:
+        meta = {}
+        hdr = msg[pos]
+
+        MB = hdr & 0x80
+        ME = hdr & 0x40
+        CF = hdr & 0x20
+        SR = hdr & 0x10
+        IL = hdr & 0x08
+        TNF = hdr & 0x7
+
+        assert not CF                       # no chunks please
+        assert (pos == 0) == bool(MB)       # first one needs MB set
+
+        ty_len = msg[pos+1]
+        pos += 2
+
+        if SR:      # short record: one byte for payload length
+            pl_len = msg[pos] 
+            pos += 1
+        else:
+            pl_len = unpack('>I', msg[pos:pos+4])[0]
+            pos += 4
+
+        id_len = 0 
+        if IL:
+            id_len = msg[pos]
+            pos += 1
+
+        urn = None
+        
+        # type is next
+        ty = msg[pos:pos+ty_len]
+        pos += ty_len
+
+        if TNF == 0x0:      # empty
+            assert ty_len == pl_len == 0
+            urn = None
+        elif TNF == 0x1:        # WKT
+            urn = 'urn:nfc:wkt:'
+            urn += ty.decode()
+
+            if ty == b'T':
+                # unwrap Text
+                hdr2 = msg[pos]
+                assert hdr2 & 0xc0 == 0x00      # only UTF supported
+                lang_len = hdr2 & 0x3f
+
+                meta['lang'] = msg[pos+1:pos+1 + lang_len].decode()
+                skip = 1 + lang_len
+                pl_len -= skip
+                pos += skip
+
+            if ty == b'U':
+                # limited URL support
+                meta['prefix'] = msg[pos]
+                pos += 1
+                pl_len -= 1
+
+        elif TNF == 0x2:        # mime-type, like 'image/png'
+            urn = ty.decode()
+        elif TNF == 0x3:        # absolute URI??
+            urn = 'uri'
+        elif TNF == 0x4:        # NFC forum external type
+            urn = 'urn:nfc:ext:'
+            urn += ty.decode()
+        else:
+            raise ValueError("TNF")     # unknown/reserved/not handled.
+
+        if IL:
+            meta['ident'] = bytes(msg[pos:pos+id_len])
+            pos += id_len
+
+        yield urn, memoryview(msg)[pos:pos+pl_len], meta
+
+        if ME: return
+
+        pos += pl_len
+        assert pos < len(msg)       # missing ME/truncated
+
 
 # EOF
 

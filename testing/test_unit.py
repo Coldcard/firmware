@@ -322,4 +322,59 @@ def test_ndef(case, load_shared_mod):
         assert got.type == 'urn:nfc:ext:bitcoin.org:txn'
         assert got.data == hx
 
+@pytest.mark.parametrize('ccfile', [
+    'E1 40 80 09  03 10  D1 01 0C 55 01 6E 78 70 2E 63 6F 6D 2F 6E 66 63 FE 00', 
+    'E1 40 40 00  03 2A   D1012655016578616D706C652E636F6D2F74656D703D303030302F746170636F756E7465723D30303030FE000000',
+    b'\xe1@@\x00\x03*\xd1\x01&U\x01example.com/temp=0000/tapcounter=0000\xfe\x00\x00\x00',
+    'rx',
+    'short',
+    'long',
+])
+def test_ndef_ccfile(ccfile, load_shared_mod):
+    # NDEF unit tests
+    import ndef
+    from struct import pack, unpack
+    from binascii import b2a_hex
+
+    def decode(body):
+        return list(ndef.message_decoder(body))
+
+    cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+
+    txt_msg = None
+    if ccfile == 'rx':
+        ccfile = cc_ndef.CC_WR_FILE
+    elif ccfile == 'short':
+        n = cc_ndef.ndefMaker()
+        txt_msg = "this is a test"
+        n.add_text(txt_msg)
+        ccfile = n.bytes()
+    elif ccfile == 'long':
+        n = cc_ndef.ndefMaker()
+        txt_msg = "t" * 600
+        n.add_text(txt_msg)
+        ccfile = n.bytes()
+    elif isinstance(ccfile, str):
+        ccfile = a2b_hex(ccfile.replace(' ', ''))
+    
+    st, ll, is_wr, mlen = cc_ndef.ccfile_decode(ccfile[0:16])
+    assert ccfile[st+ll] == 0xfe
+    body = ccfile[st:st+ll]
+    ref = decode(body)
+
+    if ll == 0: return      # empty we can't parse
+
+    got = list(cc_ndef.record_parser(body))
+
+    for r,g in zip(ref, got):
+        assert r.type == g[0]
+        urn, data, meta = g
+        if r.type == 'urn:nfc:wkt:U':
+            assert r.data == bytes([meta['prefix']]) + bytes(data)
+        if r.type == 'urn:nfc:wkt:T':
+            assert data == r.text.encode('utf-8')
+            assert meta['lang'] == 'en'
+            if txt_msg:
+                assert data == txt_msg.encode('utf-8')
+
 # EOF

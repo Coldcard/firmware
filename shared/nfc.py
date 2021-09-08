@@ -14,7 +14,7 @@ from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ux import ux_wait_keyup, ux_show_story
-from ndef import ndefMaker
+from ndef import ndefMaker, CC_WR_FILE
 
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = 8000
@@ -46,6 +46,24 @@ class NFCHandler:
         from machine import I2C, Pin
         self.i2c = I2C(1, freq=400000)
         self.pin_ed = Pin('NFC_ED', mode=Pin.IN, pull=Pin.PULL_UP)
+
+    @classmethod
+    def startup(cls):
+        import glob
+        n = cls()
+        try:
+            n.setup()
+            glob.NFC = n
+        except BaseException as exc:
+            sys.print_exception(exc)        # debug only remove me
+            print("NFC absent/disabled")
+            del n
+
+    def shutdown(self):
+        # we aren't wanted anymore
+        self.set_rf_disable(True)
+        import glob
+        glob.NFC = None
 
     # flash memory access (fixed tag data): 0x0 to 0x2000
     def read(self, offset, count):
@@ -121,10 +139,9 @@ class NFCHandler:
 
     def setup(self):
         # check if present, alive
-        uid = self.read_config(0x18, 8)
+        self.uid = self.read_config(0x18, 8)
 
-        assert uid[-1] == 0xe0      # ST manu code
-        uid = ':'.join('%02x'% i for i in reversed(uid))
+        assert self.uid[-1] == 0xe0      # ST manu code
 
         # read size of memory
         self.mem_size = (unpack('<H', self.read_config(0x14, 2))[0] + 1) * 4
@@ -132,7 +149,7 @@ class NFCHandler:
         # chip revision, expect 0x11 perhaps "1.1"?
         rev = self.read_config(0x20, 1)[0]
 
-        print("NFC: uid=%s size=%d rev=%x" % (uid, self.mem_size, rev))
+        print("NFC: uid=%s size=%d rev=%x" % (self.get_uid(), self.mem_size, rev))
 
         self.send_pw()
         
@@ -185,6 +202,19 @@ class NFCHandler:
 
         await self.share_start(ndef)
 
+    async def ux_animation(self, write_mode):
+        from glob import dis
+
+        self.set_rf_disable(0)
+        dis.fullscreen("NFC", line2="Tap phone onto 8")
+        dis.busy_bar(1)
+
+        # TODO: detect when we are written, or key to exit
+        ch = await ux_wait_keyup()
+        dis.busy_bar(0)
+        self.set_rf_disable(1)
+
+        return ch
 
     async def share_start(self, ndef):
         # do the UX while we are sharing a value over NFC
@@ -194,41 +224,23 @@ class NFCHandler:
         from glob import dis
 
         self.big_write(ndef.bytes())
-        self.set_rf_disable(0)
 
-        dis.fullscreen("NFC")
-        dis.busy_bar(1)
-        await ux_wait_keyup()
-        dis.busy_bar(0)
+        await self.ux_animation(False)
 
-        self.set_rf_disable(1)
+    async def start_nfc_rx(self):
+        # pretend to be a big warm empty tag ready to be stuffed with data
+        self.big_write(CC_WR_FILE)
+        await self.ux_animation(True)
         
+    def get_uid(self):
+        # Unique id for chip. Required for RF protocol.
+        return ':'.join('%02x'% i for i in reversed(self.uid))
 
     def dump_ndef(self):
         # dump what we are showing, skipping the CCFILE and wrapping
-        # - used in test cases
-        ll = self.read(8+1, 3)
-        if ll[0] == 0xff:
-            ll = unpack('>H', ll[1:])[0]
-            st = 12
-        else:
-            ll = ll[0]
-            st = 10
+        # - used in test cases, and psbt rx
+        taste = self.read(0, 16)
+        st, ll, _ = ndef.ccfile_decode(taste)
         return self.read(st, ll)
-    
-    def test_code(self):
-        # test code
-        self.set_rf_disable(0)
-
-        ndef = ndefMaker()
-        #ndef.add_text('abcd'*2000)
-        #ndef.add_url("store.coinkite.com")
-        #ndef.add_text("this is simple text")
-        ndef.add_custom('bitcoin.org:txid', b2a_hex(bytes(range(32))))
-
-        self.big_write(ndef.bytes())
-
-        # always disable RF before we have data
-        #self.set_rf_disable(1)
 
 # EOF
