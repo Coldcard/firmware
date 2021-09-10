@@ -1,20 +1,24 @@
-# NFC and Coldcard
+# NFC and Coldcard Mk4
+
+(Applies to Coldcard Mk4 only)
 
 ## Standards Background
 
 NFC is a layer of protocols on top of ISO standards for short-range
 radio communications.
 
-Unfortunately, both ISO and NFC Forum bodies are so poor they must sell
-their standards. Membership starts at a few thousand dollars, or you must
-buy each PDF for a few hundred dollars. Everything is behind a paywall.
+Unfortunately, both ISO and NFC Forum bodies are so poor they must
+sell their standards. Membership starts at a few thousand dollars,
+or you must buy each PDF for a few hundred dollars. Every single
+thing is behind a paywall.
 
-This policy does not allow us to link to reference standards. Instead we
-have to hand-wave about our interpretation of their standard documents.
+This policy does not allow us to link to reference standards. Instead
+we have to hand-wave about our interpretation of their standards
+documents.
 
 In our opinion, this policy is not in the public interest and is
 hindering adoption of their standards and even technological progress
-in general, since interoperability is critical to radio standards.
+in general. Good interoperability is critical with radio standards.
 
 
 ## Lower Layers
@@ -28,7 +32,8 @@ commands appropriate to a typical Type 5 tag.
 
 Effectively it exposes a flash memory chip, of up to 8k Bytes in
 size. NDEF standards describes the organization of the data in that
-memory. This document will describe what bytes are needed in those records.
+memory. This document will describe what bytes are needed in those
+records.
 
 ## Security
 
@@ -42,13 +47,14 @@ the Coldcard is powered-down, regardless of the NFC setting.
 
 If the above is not enough for you, the antenna can be destroyed
 by cutting the trace labeled "NFC" inside the hole for the MicroSD
-card. Ues a point of a sharp knife to cut and peel up the trace.
+card. Ues the point of a sharp knife to cut and peel up the trace.
 
 The NFC traffic is not encrypted and is subject to evesdropping.
 While the NFC feature is active, your Coldcard can be uniquely
 identifed because the NFC protocol requires a unique ID (64 bits)
 that is defined by the NFC tag chip and shared automatically as
-part of the anti-collion protocol.
+part of the anti-collion protocol. Again, that happens only during
+active transfers, not when idle.
 
 ## Desktop Testing
 
@@ -65,9 +71,11 @@ is integration with mobile wallets.
 
 ## Background
 
-The "NDEF message" is a list of values ("NDEF records"). In most cases we share
-more than a single value. The order is not defined and may change.
-Each NDEF record has data-type information and a payload of bytes.
+The "NDEF message" is a list of values ("NDEF records"). In most
+cases we share only a a single value, but for more complex object
+data we will use multiple records. The order is not defined and may
+change. Each NDEF record has data-type information and a payload
+of bytes.
 
 If we can use "text" or "URI" records, we will, but we generally
 need our own Bitcoin-specific types.
