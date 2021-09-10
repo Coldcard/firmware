@@ -38,7 +38,7 @@ records.
 ## Security
 
 All NFC features of the Coldcard can be disabled from the settings
-menu, and when that is done, the tag chip is comletely disabled,
+menu, and when that is done, the tag chip is completely disabled,
 and there is no way to probe, detect or access the Coldcard over
 RF. Even when NFC features are enabled, we keep the tag chip disabled
 unless we are actively sharing something. We disable the "energy
@@ -47,11 +47,11 @@ the Coldcard is powered-down, regardless of the NFC setting.
 
 If the above is not enough for you, the antenna can be destroyed
 by cutting the trace labeled "NFC" inside the hole for the MicroSD
-card. Ues the point of a sharp knife to cut and peel up the trace.
+card. Use the point of a sharp knife to cut and peel up the trace.
 
-The NFC traffic is not encrypted and is subject to evesdropping.
+The NFC traffic is not encrypted and is subject to eavesdropping.
 While the NFC feature is active, your Coldcard can be uniquely
-identifed because the NFC protocol requires a unique ID (64 bits)
+identified because the NFC protocol requires a unique ID (64 bits)
 that is defined by the NFC tag chip and shared automatically as
 part of the anti-collion protocol. Again, that happens only during
 active transfers, not when idle.
