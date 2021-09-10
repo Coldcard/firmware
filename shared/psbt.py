@@ -228,7 +228,7 @@ class psbtProxy:
         self.fd.seek(pos)
         return self.fd.read(ll)
 
-    def parse_subpaths(self, my_xfp):
+    def parse_subpaths(self, my_xfp, warnings):
         # Reformat self.subpaths into a more useful form for us; return # of them
         # that are ours (and track that as self.num_our_keys)
         # - works in-place, on self.subpaths
@@ -258,6 +258,15 @@ class psbtProxy:
             # promote to a list of ints
             v = self.get(self.subpaths[pk])
             here = list(unpack_from('<%dI' % (vl//4), v))
+
+            # Tricky & Useful: if xfp of zero is observed in file, assume that's a 
+            # placeholder for my XFP value. Replace on the fly. Great when master
+            # XFP is unknown because PSBT built from derived XPUB only. Also privacy.
+            if here[0] == 0:
+                here[0] = my_xfp
+                if not any(True for k,_ in warnings if 'XFP' in k):
+                    warnings.append(('Zero XFP',
+                            'Assuming XFP of zero should be replaced by correct XFP'))
 
             # update in place
             self.subpaths[pk] = here
@@ -327,7 +336,7 @@ class psbtOutputProxy(psbtProxy):
             for k in self.unknown:
                 wr(k[0], self.unknown[k], k[1:])
 
-    def validate(self, out_idx, txo, my_xfp, active_multisig):
+    def validate(self, out_idx, txo, my_xfp, active_multisig, parent):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -339,7 +348,7 @@ class psbtOutputProxy(psbtProxy):
         # - we raise fraud alarms, since these are not innocent errors
         #
 
-        num_ours = self.parse_subpaths(my_xfp)
+        num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
         if num_ours == 0:
             # - not considered fraud because other signers looking at PSBT may have them
@@ -513,7 +522,7 @@ class psbtInputProxy(psbtProxy):
 
         self.parse(fd)
 
-    def validate(self, idx, txin, my_xfp):
+    def validate(self, idx, txin, my_xfp, parent):
         # Validate this txn input: given deserialized CTxIn and maybe witness
 
         # TODO: tighten these
@@ -525,7 +534,7 @@ class psbtInputProxy(psbtProxy):
         # require path for each addr, check some are ours
 
         # rework the pubkey => subpath mapping
-        self.parse_subpaths(my_xfp)
+        self.parse_subpaths(my_xfp, parent.warnings)
 
         # sighash, but we're probably going to ignore anyway.
         self.sighash = SIGHASH_ALL if self.sighash is None else self.sighash
@@ -1109,7 +1118,7 @@ class psbtObject(psbtProxy):
 
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
-            self.inputs[idx].validate(idx, txin, self.my_xfp)
+            self.inputs[idx].validate(idx, txin, self.my_xfp, self)
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
 
@@ -1132,7 +1141,7 @@ class psbtObject(psbtProxy):
         # - mark change outputs, so perhaps we don't show them to users
 
         for idx, txo in self.output_iter():
-            self.outputs[idx].validate(idx, txo, self.my_xfp, self.active_multisig)
+            self.outputs[idx].validate(idx, txo, self.my_xfp, self.active_multisig, self)
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?
