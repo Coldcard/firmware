@@ -1460,10 +1460,7 @@ any signature is performed."
 
         ch = await ux_show_story(msg, title=title, escape='3')
         if ch == '3' and NFC:
-            from auth import sign_psbt_nfc
-            got_some = await NFC.start_nfc_rx()
-            if got_some:
-                await sign_psbt_nfc()
+            await NFC.start_nfc_rx()
 
         return
 

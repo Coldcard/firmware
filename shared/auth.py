@@ -16,7 +16,7 @@ from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 from version import has_psram, has_fatram
 
-# Where in SPI flash the two transactions are (in and out)
+# Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
 
@@ -706,24 +706,39 @@ class ApproveTransaction(UserAuthorizedAction):
 
 
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
-    # transaction (binary) loaded into sflash already, checksum checked
+    # transaction (binary) loaded into sflash/PSRAM already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, flags, psbt_sha=psbt_sha)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
 
+def psbt_encoding_taster(taste, psbt_len):
+    # look at first 10 bytes, and detect file encoding (binary, hex, base64)
+    # - return len is upper bound on size because of unknown whitespace
+    from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
 
-def sign_psbt_nfc():
-    # file to be signed is already in the NFC chip; up to 8k bytes or so
-    pass
+    if taste[0:5] == b'psbt\xff':
+        decoder = None
+        output_encoder = lambda x: x
+    elif taste[0:10] == b'70736274ff' or taste[0:10] == b'70736274FF':
+        decoder = HexStreamer()
+        output_encoder = HexWriter
+        psbt_len //= 2
+    elif taste[0:6] == b'cHNidP':
+        decoder = Base64Streamer()
+        output_encoder = Base64Writer
+        psbt_len = (psbt_len * 3 // 4) + 10
+    else:
+        raise ValueError("not psbt")
+
+    return decoder, output_encoder, psbt_len
     
 def sign_psbt_file(filename):
     # sign a PSBT file found on a MicroSD card
     from files import CardSlot, CardMissingError, securely_blank_file
     from glob import dis
     from sram2 import tmp_buf
-    from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
 
     UserAuthorizedAction.cleanup()
 
@@ -745,17 +760,7 @@ def sign_psbt_file(filename):
             taste = fd.read(10)
             fd.seek(0)
 
-            if taste[0:5] == b'psbt\xff':
-                decoder = None
-                output_encoder = lambda x: x
-            elif taste[0:10] == b'70736274ff':
-                decoder = HexStreamer()
-                output_encoder = HexWriter
-                psbt_len //= 2
-            elif taste[0:6] == b'cHNidP':
-                decoder = Base64Streamer()
-                output_encoder = Base64Writer
-                psbt_len = (psbt_len * 3 // 4) + 10
+            decoder, output_encoder, psbt_len = psbt_encoding_taster(taste, psbt_len)
 
             total = 0
             with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:

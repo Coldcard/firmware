@@ -1425,47 +1425,6 @@ def test_value_render(units, fake_txn, start_sign, cap_story, settings_set, sett
 
     settings_remove('rz')
 
-@pytest.mark.parametrize('num_outs', [ 1, 20, 250])
-def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
-    # Read signing result over NFC, decode it.
-    import ndef
-    from hashlib import sha256
-    psbt = fake_txn(1, num_outs)
-    orig, result = try_sign(psbt, accept=True, finalize=True)
-
-    too_big = len(result) > 8000
-
-    if too_big: assert num_outs > 100
-    if num_outs > 100: assert too_big
-
-    time.sleep(.1)
-    title, story = cap_story()
-    assert 'TXID' in title, story
-    txid = a2b_hex(story.split()[0])
-    assert 'Press 3' in story
-    need_keypress('3')
-
-    if too_big:
-        title, story = cap_story()
-        assert 'is too large' in story
-        return
-
-    contents = nfc_read()
-    #need_keypress('x')
-
-    #print("contents = " + B2A(contents))
-    for got in ndef.message_decoder(contents):
-        if got.type == 'urn:nfc:wkt:T':
-            assert 'Transaction' in got.text
-            assert b2a_hex(txid).decode() in got.text
-        elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
-            assert got.data == txid
-        elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
-            assert got.data == result
-        elif got.type == 'urn:nfc:ext:bitcoin.org:sha256':
-            assert got.data == sha256(result).digest()
-        else:
-            raise ValueError(got.type)
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('num_in', [1,2,3])

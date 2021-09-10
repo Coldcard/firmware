@@ -11,14 +11,9 @@ def make_flash_fs():
 
 def init0():
     # called very, very early
-
-    # (fake) NFC interface
+    
+    # install (fake) NFC interface code
     import sim_nfc
     sys.modules['nfc'] = sim_nfc
-    n = sim_nfc.SimulatedNFCHandler()
-    n.setup()
-    glob.NFC = n
-    
-
 
 # EOF

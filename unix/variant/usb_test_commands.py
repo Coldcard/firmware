@@ -1,5 +1,5 @@
 # items imported here may be useful to EVAL and EXEC commands, which tests depend on.
-import uio, sys, version, nvstore
+import uio, sys, version, nvstore, glob
 try:
     from sflash import SF
 except: pass

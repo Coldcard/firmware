@@ -1076,18 +1076,6 @@ def is_mark1(request):
 def is_mark2(request):
     return int(request.config.getoption('--mk')) == 2
 
-'''
-@pytest.fixture(scope='session')
-def is_mark3(request):
-    # weak, avoid
-    return int(request.config.getoption('--mk')) == 3
-
-@pytest.fixture(scope='session')
-def is_mark4(request):
-    # weak, avoid
-    return int(request.config.getoption('--mk')) == 4
-'''
-
 @pytest.fixture(scope='session')
 def is_mark3(dev):
     v = dev.send_recv(CCProtocolPacker.version()).split()
@@ -1114,10 +1102,19 @@ def only_mk3(dev):
 
 @pytest.fixture()
 def nfc_read(sim_exec):
+    # READ data from NFC chip
     def doit():
-        rv = sim_exec('RV.write(NFC.dump_ndef())', binary=True)
+        rv = sim_exec('RV.write(glob.NFC.dump_ndef())', binary=True)
         if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
         return rv
+    return doit
+
+@pytest.fixture()
+def nfc_write(sim_exec):
+    # WRITE data into NFC "chip"
+    def doit(ccfile):
+        rv = sim_exec('glob.NFC.big_write(%r)' % ccfile)
+        if 'Traceback' in rv: raise pytest.fail(rv)
     return doit
 
 @pytest.fixture()
@@ -1129,6 +1126,20 @@ def nfc_read_text(nfc_read):
         got = got[0]
         assert got.type == 'urn:nfc:wkt:T'
         return got.text
+    return doit
+
+@pytest.fixture()
+def nfc_block4rf(sim_eval):
+    # wait until RF is enable and something to read (doesn't read it tho)
+    def doit(timeout=15):
+        for i in range(timeout*4):
+            rv = sim_eval('glob.NFC.rf_on')
+            print('rv=%r' % rv)
+            if rv: break
+            sleep(0.250)
+        else:
+            raise pytest.fail("NFC timeout")
+
     return doit
 
 @pytest.fixture

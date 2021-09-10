@@ -8,6 +8,7 @@ class SimulatedNFCHandler(NFCHandler):
     def __init__(self):
         self.rf_on = False
         self.i2c = NotImplementedError
+        self.uid = bytes(range(8))
         self.mem_size = len(TAG_DATA)
 
     # flash memory access (fixed tag data): 0x0 to 0x2000
@@ -37,5 +38,9 @@ class SimulatedNFCHandler(NFCHandler):
     def setup(self):
         # check if present, alive
         print("simNFC: setup")
+        
+
+# close door behind ourselves
+NFCHandler = SimulatedNFCHandler
 
 # EOF

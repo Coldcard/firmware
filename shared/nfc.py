@@ -14,7 +14,7 @@ from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from ux import ux_wait_keyup, ux_show_story
-from ndef import ndefMaker, CC_WR_FILE
+import ndef
 
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = 8000
@@ -126,6 +126,17 @@ class NFCHandler:
 
         return (self.read_dyn(I2C_SSO_Dyn) & 0x1 == 0x1)      # else "wrong pw"
         
+    def get_uid(self):
+        # Unique id for chip. Required for RF protocol.
+        return ':'.join('%02x'% i for i in reversed(self.uid))
+
+    def dump_ndef(self):
+        # dump what we are showing, skipping the CCFILE and wrapping
+        # - used in test cases, and psbt rx
+        taste = self.read(0, 16)
+        st, ll, _, _ = ndef.ccfile_decode(taste)
+        return self.read(st, ll)
+        
     def firsttime_setup(self):
         # always setup IC_RF_SWITCHOFF_EN bit in I2C_CFG register
         # - so we can module RF support with special i2c addresses
@@ -136,6 +147,8 @@ class NFCHandler:
         # set to no RF when first powered up (so CC is quiet when system unpowered)
         # - side-effect: sets rf to sleep now too
         self.write_config1(RF_MNGT, 2)
+
+        # XXX locking stuff?
 
     def setup(self):
         # check if present, alive
@@ -165,14 +178,14 @@ class NFCHandler:
             await ux_show_story("Transaction is too large to share over NFC")
             return
 
-        ndef = ndefMaker()
+        n = ndef.ndefMaker()
         if txid is not None:
-            ndef.add_text('Signed Transaction: ' + txid)
-            ndef.add_custom('bitcoin.org:txid', a2b_hex(txid))          # want binary
-        ndef.add_custom('bitcoin.org:sha256', txn_sha)
-        ndef.add_large_object('bitcoin.org:txn', file_offset, txn_len)
+            n.add_text('Signed Transaction: ' + txid)
+            n.add_custom('bitcoin.org:txid', a2b_hex(txid))          # want binary
+        n.add_custom('bitcoin.org:sha256', txn_sha)
+        n.add_large_object('bitcoin.org:txn', file_offset, txn_len)
         
-        await self.share_start(ndef)
+        await self.share_start(n)
 
     async def share_psbt(self, file_offset, psbt_len, psbt_sha, label=None):
         # we just signed something, share it over NFC
@@ -180,27 +193,27 @@ class NFCHandler:
             await ux_show_story("PSBT is too large to share over NFC")
             return
 
-        ndef = ndefMaker()
-        ndef.add_text(label or 'Partly signed PSBT')
-        ndef.add_custom('bitcoin.org:sha256', psbt_sha)
+        n = ndef.ndefMaker()
+        n.add_text(label or 'Partly signed PSBT')
+        n.add_custom('bitcoin.org:sha256', psbt_sha)
 
-        ndef.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)
+        n.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)
 
-        await self.share_start(ndef)
+        await self.share_start(n)
         
     async def share_deposit_address(self, addr):
-        ndef = ndefMaker()
-        ndef.add_text('Deposit Address')
-        ndef.add_custom('bitcoin.org:addr', addr.encode())
-        await self.share_start(ndef)
+        n = ndef.ndefMaker()
+        n.add_text('Deposit Address')
+        n.add_custom('bitcoin.org:addr', addr.encode())
+        await self.share_start(n)
 
     async def share_text(self, data):
         # share text from a list of values
         # - just a text file, no multiple records; max usability!
-        ndef = ndefMaker()
-        ndef.add_text(data)
+        n = ndef.ndefMaker()
+        n.add_text(data)
 
-        await self.share_start(ndef)
+        await self.share_start(n)
 
     async def ux_animation(self, write_mode):
         from glob import dis
@@ -216,31 +229,108 @@ class NFCHandler:
 
         return ch
 
-    async def share_start(self, ndef):
+    async def share_start(self, obj):
         # do the UX while we are sharing a value over NFC
         # - assumpting is people know what they are scanning
         # - any key to quit
         # - maybe add a timeout for safety reasons?
         from glob import dis
 
-        self.big_write(ndef.bytes())
+        self.big_write(obj.bytes())
 
         await self.ux_animation(False)
 
     async def start_nfc_rx(self):
         # pretend to be a big warm empty tag ready to be stuffed with data
-        self.big_write(CC_WR_FILE)
-        await self.ux_animation(True)
-        
-    def get_uid(self):
-        # Unique id for chip. Required for RF protocol.
-        return ':'.join('%02x'% i for i in reversed(self.uid))
+        from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
+        from auth import UserAuthorizedAction, ApproveTransaction
+        from ux import abort_and_goto
+        from sffile import SFFile
 
-    def dump_ndef(self):
-        # dump what we are showing, skipping the CCFILE and wrapping
-        # - used in test cases, and psbt rx
+        self.big_write(ndef.CC_WR_FILE)
+        await self.ux_animation(True)
+
         taste = self.read(0, 16)
-        st, ll, _ = ndef.ccfile_decode(taste)
-        return self.read(st, ll)
+        st, ll, _, _ = ndef.ccfile_decode(taste)
+
+        if not ll:
+            # they wrote nothing / failed to do anything
+            await ux_show_story("No tag data was written?", title="Sorry!")
+            return
+
+        # copy to ram
+        data = self.read(st, ll)
+        psbt_in = None
+        psbt_sha = None
+        for urn, msg, meta in ndef.record_parser(data):
+            if len(msg) > 100:
+                # attempt to decode any large object, ignore type for max compat
+                try:
+                    decoder, output_encoder, psbt_len = \
+                        psbt_encoding_taster(msg[0:10], len(msg))
+                    psbt_in = msg
+                except ValueError:
+                    continue
+
+            if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
+                # probably produced by another Coldcard: SHA256 over expected contents
+                psbt_sha = bytes(msg)
+
+        if psbt_in is None:
+            await ux_show_story("Could not find PSBT", title="Sorry!")
+            return
+
+        # Decode into PSRAM at start
+        total = 0
+        with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
+            if not decoder:
+                total = out.write(psbt_in)
+            else:
+                for here in decoder.more(psbt_in):
+                    total += out.write(here)
+
+        # might have been whitespace inflating initial estimate of PSBT size, adjust
+        assert total <= psbt_len
+        psbt_len = total
+
+        # start signing UX
+        UserAuthorizedAction.cleanup()
+        UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, 0x0, psbt_sha=psbt_sha,
+                                                approved_cb=self.signing_done)
+        # kill any menu stack, and put our thing at the top
+        abort_and_goto(UserAuthorizedAction.active_request)
+
+    async def signing_done(self, psbt):
+        # User approved the PSBT, and signing worked... share result over NFC (only)
+        from auth import TXN_OUTPUT_OFFSET
+        from public_constants import MAX_TXN_LEN
+        from sffile import SFFile
+
+        txid = None
+
+        # asssume they want final transaction when possible, else PSBT output
+        is_comp = psbt.is_complete()
+
+        # re-serialize the PSBT back out (into PSRAM)
+        with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as fd:
+            if is_comp:
+                txid = psbt.finalize(fd)
+            else:
+                psbt.serialize(fd)
+
+            fd.close()
+            self.result = (fd.tell(), fd.checksum.digest())
+
+        out_len, out_sha = self.result
+
+        if is_comp:
+            await self.share_signed_txn(txid, TXN_OUTPUT_OFFSET, out_len, out_sha)
+        else:
+            await self.share_psbt(TXN_OUTPUT_OFFSET, out_len, out_sha)
+
+        # ? show txid on screen ?
+        # thank them?
+
+
 
 # EOF
