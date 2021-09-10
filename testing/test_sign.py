@@ -1489,7 +1489,7 @@ def test_wrong_pubkey(dev, try_sign, fake_txn):
 def test_incomplete_signing(dev, try_sign, fake_txn, cap_story):
     # psbt where we only sign one input
     # - must not allow finalization
-    psbt = fake_txn(2, 1, dev.master_xpub, segwit_in=False)
+    psbt = fake_txn(3, 1, dev.master_xpub, segwit_in=False)
 
     oo = BasicPSBT().parse(psbt)
     oo.inputs[1].bip32_paths = { k: b'\x01\x02\x03\x04'+v[4:] 
@@ -1506,5 +1506,31 @@ def test_incomplete_signing(dev, try_sign, fake_txn, cap_story):
 
     title, story = cap_story()
     assert 'No signature on input' in story
+
+def test_zero_xfp(dev, start_sign, end_sign, fake_txn, cap_story):
+    # will sign PSBT with zero values for XFP in ins and outs
+    psbt = fake_txn(2, 3, dev.master_xpub, segwit_in=False, change_outputs=[1,2])
+
+    oo = BasicPSBT().parse(psbt)
+    for i in oo.inputs:
+        i.bip32_paths = { k: b'\x00\x00\x00\x00'+v[4:] for k,v in i.bip32_paths.items() }
+    for o in oo.outputs:
+        o.bip32_paths = { k: b'\x00\x00\x00\x00'+v[4:] for k,v in o.bip32_paths.items() }
+
+    with BytesIO() as fd:
+        oo.serialize(fd)
+        mod_psbt = fd.getvalue()
+
+    # should work, with a warning
+    start_sign(mod_psbt, finalize=True)
+    time.sleep(.1)
+    _, story = cap_story()
+
+    assert '(1 warning below)' in story
+    assert 'Zero XFP' in story
+
+    # and then signing should work.
+    signed = end_sign(True, finalize=True)
+
 
 # EOF

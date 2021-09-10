@@ -1,3 +1,10 @@
+## 4.1.4 - Sep ??, 2021
+
+- Enhancement: if an XFP of zero is seen in a PSBT file, assume that should be replaced by
+  our current XFP value and try to sign the input (same for change outputs and change-fraud
+  checks).  This makes building a workable PSBT file easier and could be used to preserve
+  privacy of XFP value itself. A warning is shown when this happens.
+
 ## 4.1.3 - Sep 2, 2021
 
 - Enhancement: support "importdescriptors" command in Bitcoin Core 0.21 so that
