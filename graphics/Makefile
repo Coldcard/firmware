@@ -2,10 +2,12 @@
 
 all: graphics.py
 	
-SOURCES = $(wildcard *.txt) $(wildcard *.png)
+SOURCES = $(filter-out mk4_%, $(wildcard *.txt) $(wildcard *.png))
+MK4_SOURCES = $(wildcard mk4_*.txt) $(wildcard mk4_*.png)
 
 graphics.py: Makefile $(SOURCES) build.py
-	./build.py $(SOURCES)
+	./build.py graphics.py $(SOURCES)
+	./build.py graphics_mk4.py $(MK4_SOURCES)
 
 up: all
 	(cd ../shared; make up)
