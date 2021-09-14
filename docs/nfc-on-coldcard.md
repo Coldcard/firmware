@@ -146,6 +146,9 @@ Type: `urn:nfc:ext:bitcoin.org:sha256`
 Body: Exactly 32 bytes of binary. It's the SHA256 over the main 
 payload (PSBT file, for example).
 
+If present, this value will always directly preceed the object (txn
+or PSBT) that it covers. NFC-V has CRC16 over each low-level message,
+but that's all.
 
 ## TXID Value
 
@@ -183,5 +186,11 @@ Body: Binary, variable length. First four bytes will typically be
 When the Coldcard has signed and finalized a transaction, it can
 share it in this format. Typically the user will want to broadcast
 this new transaction on the Bitcoin P2P network.
+
+# Examples
+
+This section will include a number of examples, with analysis of the content.
+
+- __comming soon__
 
 
