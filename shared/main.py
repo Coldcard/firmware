@@ -20,6 +20,7 @@ if 1:
     # useful for debug: keep this stub!
     import ckcc
     ckcc.vcp_enabled(True)
+    from h import *
     #pyb.usb_mode('VCP+MSC')            # handy but annoying disk issues
     #pyb.usb_mode('VCP')
 if 0:

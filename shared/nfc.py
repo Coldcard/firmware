@@ -7,17 +7,20 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import ngu, ckcc
-from utime import sleep_ms
+import ngu, ckcc, utime
+from uasyncio import sleep_ms
 from utils import B2A
 from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from ux import ux_wait_keyup, ux_show_story
+from ux import ux_wait_keyup, ux_show_story, ux_poll_cancel
 import ndef
 
 # practical limit for things to share: 8k part, minus overhead
-MAX_NFC_SIZE = 8000
+MAX_NFC_SIZE = const(8000)
+
+# (ms) How long to wait after RF field comes and goes (or tag is written)
+POST_SCAN_DELAY = const(1000)
 
 # i2c address (7-bits) is not simple...
 # - assume defaults of E0=1 and I2C_DEVICE_CODE=0xa 
@@ -37,15 +40,24 @@ MB_CTRL_Dyn = const(0x2006)  # Fast transfer mode control and status
 MB_LEN_Dyn = const(0x2007)   # Length of fast transfer mode message
 
 # Sys config area
-I2C_PWD = const(0x900)      # I2C security session password, 8 bytes
+GPO1_CFG = const(0x00)       # GPIO config 1
+GPO2_CFG = const(0x01)       # GPIO config 2
 RF_MNGT = const(0x03)       # RF interface state after Power ON
 I2C_CFG = const(0x0e)
+I2C_PWD = const(0x900)      # I2C security session password, 8 bytes
 
 class NFCHandler:
     def __init__(self):
         from machine import I2C, Pin
         self.i2c = I2C(1, freq=400000)
+        self.last_edge = 0
         self.pin_ed = Pin('NFC_ED', mode=Pin.IN, pull=Pin.PULL_UP)
+
+        # track time of last edge
+        def _irq(x):
+            self.last_edge = utime.ticks_ms()
+        self.pin_ed.irq(_irq, Pin.IRQ_FALLING)
+        
 
     @classmethod
     def startup(cls):
@@ -70,17 +82,17 @@ class NFCHandler:
         return self.i2c.readfrom_mem(I2C_ADDR_USER, offset, count, addrsize=16)
     def write(self, offset, data):
         # various limits in place here? Not clear
-        #assert offset+len(data) < 256
         self.i2c.writeto_mem(I2C_ADDR_USER, offset, data, addrsize=16)
 
-    def big_write(self, data):
+    async def big_write(self, data):
         # write lots to start of flash (new ndef records)
-        print('big write...', end='')
+        #print('big write: ', end='')
         for pos in range(0, len(data), 256):
             here = memoryview(data)[pos:pos+256]
             self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
-            sleep_ms(100)     # 6ms per 16 byte row, worst case
-        print('.. done')
+            # 6ms per 16 byte row, worst case, so ~100ms here!
+            await self.wait_ready()
+        #print('Done')
 
     # system config area (flash cells, but affect operation): table 12
     def read_config(self, offset, count):
@@ -111,10 +123,21 @@ class NFCHandler:
         if val:
             self.i2c.writeto(I2C_ADDR_RF_OFF, b'')
             assert self.read_dyn(RF_MNGT_Dyn) & 0x4
+            return
+
+        # re-enable (turn on)
+        for i in range(10):
+            try:
+                self.i2c.writeto(I2C_ADDR_RF_ON, b'')
+                self.write_dyn(RF_MNGT_Dyn, 0)
+                assert self.read_dyn(RF_MNGT_Dyn) == 0x0
+
+                return
+            except:         # assertion, OSError(ENODEV)
+                # handle no-ACK cases (sometimes, after bigger write to flash)
+                utime.sleep_ms(25)
         else:
-            self.i2c.writeto(I2C_ADDR_RF_ON, b'')
-            self.write_dyn(RF_MNGT_Dyn, 0)
-            assert self.read_dyn(RF_MNGT_Dyn) == 0x0
+            raise RuntimeError("timeout")
 
     def send_pw(self, pw=None):
         # show we know a password (but sent cleartext, very lame)
@@ -185,7 +208,7 @@ class NFCHandler:
         n.add_custom('bitcoin.org:sha256', txn_sha)
         n.add_large_object('bitcoin.org:txn', file_offset, txn_len)
         
-        await self.share_start(n)
+        return await self.share_start(n)
 
     async def share_psbt(self, file_offset, psbt_len, psbt_sha, label=None):
         # we just signed something, share it over NFC
@@ -196,16 +219,15 @@ class NFCHandler:
         n = ndef.ndefMaker()
         n.add_text(label or 'Partly signed PSBT')
         n.add_custom('bitcoin.org:sha256', psbt_sha)
-
         n.add_large_object('bitcoin.org:psbt', file_offset, psbt_len)
 
-        await self.share_start(n)
+        return await self.share_start(n)
         
     async def share_deposit_address(self, addr):
         n = ndef.ndefMaker()
         n.add_text('Deposit Address')
         n.add_custom('bitcoin.org:addr', addr.encode())
-        await self.share_start(n)
+        return await self.share_start(n)
 
     async def share_text(self, data):
         # share text from a list of values
@@ -213,32 +235,100 @@ class NFCHandler:
         n = ndef.ndefMaker()
         n.add_text(data)
 
-        await self.share_start(n)
+        return await self.share_start(n)
+
+    async def wait_ready(self):
+        # block until chip ready to continue (ACK happens)
+        # - especially after any flash write, which is very slow: 5.5ms per 16byte
+        while 1:
+            try:
+                self.i2c.readfrom_mem(I2C_ADDR_USER, 0, 0, addrsize=16)
+                return
+            except OSError:
+                await sleep_ms(3)
+
+    async def setup_gpio(self):
+        # setup GPIO (ED) signal for detecting activity
+        # - GPO1_CFG seems to be a flash cell, and takes time to write
+        want = 0x1 | 0x80 | 0x04  # enable, and RF_ACTIVITY_EN | RF_WRITE_EN
+
+        if self.read_config1(GPO1_CFG) != want:
+            self.write_config1(GPO1_CFG, want)
+            # not clear how much delay is needed, but need some
+            await self.wait_ready()
+
+        self.last_edge = 0
+        self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
+        self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
     async def ux_animation(self, write_mode):
+        # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
+        # - similar when "read" and then removed from field
+        # - return T if aborted by user
         from glob import dis
+        from graphics_mk4 import Graphics
 
+        await self.wait_ready()
         self.set_rf_disable(0)
-        dis.fullscreen("NFC", line2="Tap phone onto 8")
-        dis.busy_bar(1)
+        await self.setup_gpio()
 
-        # TODO: detect when we are written, or key to exit
-        ch = await ux_wait_keyup()
-        dis.busy_bar(0)
+        frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
+
+        aborted = True
+        phase = -1
+        last_activity = None
+        while 1:
+            phase = (phase + 1) % 4
+            dis.clear()
+            dis.icon(0, 8, frames[phase])
+            dis.show()
+            await sleep_ms(250)
+
+            if self.last_edge:
+                self.last_edge = 0
+
+                # detect various types of RF activity, so we can clear screen automatically
+                await self.wait_ready()
+                events = self.read_dyn(IT_STS_Dyn)
+
+                #print('e=%02x' % events)
+
+                if write_mode:
+                    # in write mode, ignore simple read/scan activity: wait for write
+                    if events & 0x80:
+                        last_activity = utime.ticks_ms()
+                else:
+                    if events & 0x02:
+                        last_activity = utime.ticks_ms()
+
+            if last_activity is not None \
+                    and utime.ticks_diff(utime.ticks_ms(), last_activity) > POST_SCAN_DELAY:
+                # They acheived a read/write and then nothing for some time. We are done w/ success.
+                aborted = False
+                break
+
+            # X or OK to quit, with slightly different meanings
+            ch = ux_poll_cancel()
+            if ch and ch in 'xy': 
+                aborted = (ch == 'x')
+                break
+
         self.set_rf_disable(1)
 
-        return ch
+        return aborted
 
-    async def share_start(self, obj):
+    async def share_start(self, ndef_obj):
         # do the UX while we are sharing a value over NFC
         # - assumpting is people know what they are scanning
-        # - any key to quit
-        # - maybe add a timeout for safety reasons?
-        from glob import dis
+        # - x key to abort early, but also self-clears
 
-        self.big_write(obj.bytes())
+        await self.big_write(ndef_obj.bytes())
 
-        await self.ux_animation(False)
+        rv = await self.ux_animation(False)
+
+        # TODO: wipe chip contents?
+
+        return rv
 
     async def start_nfc_rx(self):
         # pretend to be a big warm empty tag ready to be stuffed with data
@@ -247,8 +337,10 @@ class NFCHandler:
         from ux import abort_and_goto
         from sffile import SFFile
 
-        self.big_write(ndef.CC_WR_FILE)
-        await self.ux_animation(True)
+        await self.big_write(ndef.CC_WR_FILE)
+        aborted = await self.ux_animation(True)
+
+        if aborted: return
 
         taste = self.read(0, 16)
         st, ll, _, _ = ndef.ccfile_decode(taste)
@@ -331,6 +423,63 @@ class NFCHandler:
         # ? show txid on screen ?
         # thank them?
 
+    @classmethod
+    async def selftest(cls):
+        # check for chip present, field present? .. and works
+        n = cls()
+        n.setup()
+        assert n.uid
 
+        aborted = await n.share_text("NFC is working?")
+        assert not aborted, "Aborted"
+
+    
+    async def share_file(self):
+        # Pick file from SD card and share over NFC...
+        from actions import file_picker
+        from ubinascii import unhexlify as a2b_hex
+        from files import CardSlot, CardMissingError
+        import ngu
+
+        def is_suitable(fname):
+            f = fname.lower()
+            return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
+
+        msg = "Lists PSBT, text, and TXN files on MicroSD. Select to share contents over NFC."
+
+        while 1:
+            fn = await file_picker(msg, min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
+            if not fn: return
+
+            basename = fn.split('/')[-1]
+            ctype = fn.split('.')[-1].lower()
+
+            try:
+                with CardSlot() as card:
+                    with open(fn, 'rb') as fp:
+                        data = fp.read(MAX_NFC_SIZE)
+
+            except CardMissingError:
+                await needs_microsd()
+                return
+
+            if data[2:6] == b'000000' and ctype == 'txn':
+                # it's a txn, and we wrote as hex
+                data = a2b_hex(data)
+
+            if ctype == 'psbt':
+                sha = ngu.hash.sha256s(data)
+                await self.share_psbt(data, len(data), sha, label="PSBT file: " + basename)
+            elif ctype == 'txn':
+                sha = ngu.hash.sha256s(data)
+                txid = basename[0:64]
+                if len(txid) != 64:
+                    # maybe some other txn file?
+                    txid = None
+                await self.share_signed_txn(txid, data, len(data), sha)
+            elif ctype == 'txt':
+                await self.share_text(data.decode())
+            else:
+                raise ValueError(ctype)
 
 # EOF

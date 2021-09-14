@@ -95,27 +95,22 @@ async def ux_wait_keyup(expected=None):
 
         armed = ch
 
-def ux_poll_once(expected='x'):
-    # non-blocking check if key is pressed
+def ux_poll_cancel():
+    # non-blocking check if cancel key is pressed
     # - ignore and suppress any key not in expected
     # - responds to key down only
     # - eats any existing key presses
     from glob import numpad
 
-    while 1:
-        try:
-            ch = numpad.key_pressed
-            while not ch:
-                ch = numpad.get_nowait()
+    try:
+        ch = numpad.get_nowait()
 
-                if ch == numpad.ABORT_KEY:
-                    raise AbortInteraction()
-        except QueueEmpty:
-            return None
+        if ch == numpad.ABORT_KEY:
+            raise AbortInteraction()
+    except QueueEmpty:
+        return None
 
-        for c in ch:
-            if c in expected:
-                return c
+    return ch
 
 class PressRelease:
     def __init__(self, need_release='xy'):

@@ -6,7 +6,7 @@ import ckcc
 from uasyncio import sleep_ms
 from glob import dis
 from display import FontLarge
-from ux import ux_wait_keyup, ux_clear_keys, ux_poll_once
+from ux import ux_wait_keyup, ux_clear_keys, ux_poll_cancel
 from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
@@ -113,6 +113,12 @@ async def test_sd_active():
         k = await ux_wait_keyup('xy')
         assert k == 'y'     # "SD Active LED bust"
 
+async def test_nfc():
+    # Mk4: NFC chip and field
+    if version.mk_num < 3: return
+    from nfc import NFCHandler
+    await NFCHandler.selftest()
+    
 async def test_psram():
     if not version.has_psram: return
 
@@ -217,7 +223,7 @@ async def test_microsd():
         while 1:
             if want == sd.present(): return
             await sleep_ms(100)
-            if ux_poll_once():
+            if ux_poll_cancel():
                 raise RuntimeError("MicroSD test aborted")
 
     try:
@@ -233,7 +239,7 @@ async def test_microsd():
                 # debounce
                 await sleep_ms(100)
                 if sd.present(): break
-                if ux_poll_once():
+                if ux_poll_cancel():
                     raise RuntimeError("MicroSD test aborted")
 
         dis.clear()
@@ -275,9 +281,10 @@ async def test_microsd():
 async def start_selftest():
 
     try:
-        await test_psram()
-        await test_sflash()
         await test_oled()
+        await test_psram()
+        await test_nfc()
+        await test_sflash()
         await test_microsd()
         await test_numpad()
         await test_secure_element()

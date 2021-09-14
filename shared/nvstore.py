@@ -50,7 +50,7 @@ from glob import PSRAM
 #   rz = (int) display value resolution/units: 8=BTC 5=mBTC 2=bits 0=sats
 #   tp = (complex) trick pins' config on Mk4
 #   kbtn = (1 char) '1'-'9' that will wipe seed during login process (mk4+)
-#   nfc = (bool) if set, enable the NFC feature; default is OFF+DISABLED (mk4+)
+#   nfc = (bool) if set, enable the NFC feature; default is OFF=>DISABLED (mk4+)
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)

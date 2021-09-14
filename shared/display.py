@@ -48,8 +48,11 @@ class Display:
             return sum(font.lookup(ord(ch)).w for ch in msg)
 
     def icon(self, x, y, name, invert=0):
-        # see graphics.py (auto generated file) for names
-        w,h, bw, wbits, data = getattr(Graphics, name)
+        if isinstance(name, tuple):
+            w,h, bw, wbits, data = name
+        else:
+            # see graphics.py (auto generated file) for names
+            w,h, bw, wbits, data = getattr(Graphics, name)
 
         if wbits:
             data = uzlib.decompress(data, wbits)

@@ -6,5 +6,6 @@ freeze_as_mpy('', [
 	'nfc.py',
 	'ndef.py',
 	'trick_pins.py',
+	'graphics_mk4.py',
 ], opt=0)
 
