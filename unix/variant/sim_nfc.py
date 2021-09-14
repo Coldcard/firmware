@@ -4,6 +4,9 @@ from nfc import NFCHandler
 global TAG_DATA
 TAG_DATA = bytearray(8196)
 
+# unix/working/nfc-dump.ndef
+DATA_FILE = 'nfc-dump.ndef'
+
 class SimulatedNFCHandler(NFCHandler):
     def __init__(self):
         self.rf_on = False
@@ -18,10 +21,15 @@ class SimulatedNFCHandler(NFCHandler):
     def write(self, offset, data):
         TAG_DATA[offset:offset+len(data)] = data
 
-    def big_write(self, data):
+    async def big_write(self, data):
+        import os
         self.write(0, data)
-        n = open('nfc-dump.ndef', 'wb').write(self.dump_ndef())
-        print("%d bytes of NDEF written to work/nfc-dump.ndef" % n)
+        #n = open('nfc-dump.ndef', 'wb').write(self.dump_ndef())
+        n = open(DATA_FILE, 'wb').write(data)
+        atime, mtime, ctime = os.stat(DATA_FILE)[-3:]
+        self._mtime = mtime
+        self._atime = atime
+        print("%d bytes of NDEF written to work/nfc-dump.ndef .. touch or read that file to simulate taps" % n)
 
     def is_rf_disabled(self):
         # not checking if disable/sleep vs. off
@@ -38,6 +46,28 @@ class SimulatedNFCHandler(NFCHandler):
     def setup(self):
         # check if present, alive
         print("simNFC: setup")
+
+    def read_dyn(self, reg):
+        IT_STS_Dyn = 0x2005   # Interrupt Status
+        if reg == IT_STS_Dyn:
+            import os
+            # polled during wait for NFC
+            self.last_edge = 1      # force come-back
+            atime, mtime, ctime = os.stat(DATA_FILE)[-3:]
+            if mtime != self._mtime:
+                self._mtime = mtime
+                return 0x80        # written
+            if atime != self._atime:
+                self._atime = atime
+                return 0x02        # read
+        return 0
+
+    async def wait_ready(self):
+        pass
+
+    async def setup_gpio(self):
+        self.last_edge = 1
+        return
         
 
 # close door behind ourselves

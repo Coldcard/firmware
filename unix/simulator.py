@@ -293,6 +293,7 @@ def start():
   - Control-Q to quit
   - Z to snapshot screen.
   - S/E to start/end movie recording
+  - N to capture NFC data (tap it)
 ''')
     sdl2.ext.init()
 
@@ -429,6 +430,18 @@ def start():
                     # control-Q
                     running = False
                     break
+
+                if ch == 'n':
+                    if event.type == sdl2.SDL_KEYDOWN:
+                        # see sim_nfc.py
+                        try:
+                            nfc = open('nfc-dump.ndef', 'rb').read()
+                            fn = time.strftime('../nfc-%j-%H%M%S.bin')
+                            open(fn, 'wb').write(nfc)
+                            print(f"Simulated NFC read: {len(nfc)} bytes into {fn}")
+                        except FileNotFoundError:
+                            print("NFC not ready")
+                    continue
 
                 if ch in 'zse':
                     if event.type == sdl2.SDL_KEYDOWN:
