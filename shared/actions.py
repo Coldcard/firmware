@@ -5,7 +5,7 @@
 # Every function here is called directly by a menu item. They should all be async.
 #
 import ckcc, pyb, version
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_number
 from utils import imported, pretty_short_delay, problem_file_line
 import uasyncio
@@ -1204,55 +1204,9 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
 
 async def nfc_share_file(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.
-    # XXX waste of space on mk3
-    MAX_SIZE = 9000
-
-    def is_suitable(fname):
-        f = fname.lower()
-        return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
-
     from glob import NFC
-    if not NFC: return
-
-    from ubinascii import unhexlify as a2b_hex
-    import ngu
-
-    msg = "Lists PSBT, Text, and TXN files on MicroSD. Select one and contents will be shared over NFC."
-
-    while 1:
-        fn = await file_picker(msg, min_size=10, max_size=MAX_SIZE, taster=is_suitable)
-        if not fn: return
-
-        basename = fn.split('/')[-1]
-        ctype = fn.split('.')[-1].lower()
-
-        try:
-            with CardSlot() as card:
-                with open(fn, 'rb') as fp:
-                    data = fp.read(MAX_SIZE)
-
-        except CardMissingError:
-            await needs_microsd()
-            return
-
-        if data[2:6] == b'000000' and ctype == 'txn':
-            # it's a txn, and we wrote as hex
-            data = a2b_hex(data)
-
-        if ctype == 'psbt':
-            sha = ngu.hash.sha256s(data)
-            await NFC.share_psbt(data, len(data), sha, label="PSBT file: " + basename)
-        elif ctype == 'txn':
-            sha = ngu.hash.sha256s(data)
-            txid = basename[0:64]
-            if len(txid) != 64:
-                # maybe some other txn file?
-                txid = None
-            await NFC.share_signed_txn(txid, data, len(data), sha)
-        elif ctype == 'txt':
-            await NFC.share_text(data.decode())
-        else:
-            raise ValueError(ctype)
+    if NFC: 
+        await NFC.share_file()
 
 
 async def list_files(*A):
