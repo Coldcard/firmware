@@ -244,20 +244,20 @@ class TrickPinMenu(MenuSystem):
 
         has_wrong = False
         if not tricks:
-            rv = [MenuItem('(none yet)', f=self.add_new)]
+            rv = [MenuItem('(no tricks yet)', f=self.add_new)]
         else:
             rv = []
             for pin in tricks:
                 if pin == WRONG_PIN_CODE:
                     has_wrong = True
-                    rv.append(MenuItem('(wrong PIN)', menu=self.pin_submenu, arg=pin))
+                    rv.append(MenuItem('(when wrong)', menu=self.pin_submenu, arg=pin))
                 else:
                     rv.append(MenuItem(pin, menu=self.pin_submenu, arg=pin))
 
             rv.append(MenuItem('Clear All', f=self.clear_all))
 
         if not has_wrong:
-            rv.append(MenuItem('On Wrong PIN', f=self.set_any_wrong))
+            rv.append(MenuItem('If Wrong PIN...', f=self.set_any_wrong))
         rv.append(MenuItem('Add New', f=self.add_new))
 
         return rv
@@ -466,23 +466,27 @@ After %s wrong PIN, Coldcard should:
         self.update_contents()
 
     async def clear_all(self, m,l,item):
-        if not await ux_confirm("Removing all trick PIN codes and special wrong-pin handling. Be sure to move the funds on any duress wallets."):
+        if not await ux_confirm("Removing all trick PIN codes and special wrong-pin handling. Be sure to move the funds from any duress wallets."):
             return
         tp.clear_all()
         m.update_contents()
 
-    async def forget_pin(self, m,l, item):
+    async def hide_pin(self, m,l, item):
         pin, slot_num, flags = item.arg
 
         if flags & TC_DELTA_MODE:
             await ux_show_story('''Delta mode PIN will be hidden when this menu is shown \
 to attacker, and we need to update this record if the main PIN is changed, so we don't support \
-forgetting this item.''')
+hiding this item.''')
             return
 
-        msg = '''This will hide the PIN from the menus but it will still be in effect.
+        if pin != WRONG_PIN_CODE:
+            msg = '''This will hide the PIN from the menus but it will still be in effect.
 
 You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
+        else:
+            msg = "This will hide what happens with wrong PINs from the menus but it will still be in effect."
+
         if not await ux_confirm(msg): return
 
         # just a settings change
@@ -625,7 +629,6 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
 
         if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
             rv.append(MenuItem("- Duress Wallet", f=self.duress_details, arg=(pin, flags, arg)))
-            rv.append(MenuItem("- Activate", f=self.activate_wallet, arg=(pin, flags, arg)))
         elif flags & TC_BLANK_WALLET:
             rv.append(MenuItem("- Blank Wallet"))
         elif flags & TC_FAKE_OUT:
@@ -641,11 +644,17 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
             if flags & m:
                 rv.append(MenuItem(msg))
 
+        if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
+            rv.append(MenuItem("Activate Wallet", f=self.activate_wallet, arg=(pin, flags, arg)))
+
         rv.extend([
-            MenuItem('Forget PIN', f=self.forget_pin, arg=(pin, slot_num, flags)),
-            MenuItem('Delete PIN', f=self.delete_pin, arg=(pin, slot_num, flags)),
-            MenuItem('Change PIN', f=self.change_pin, arg=(pin, slot_num, flags)),
+            MenuItem('Hide Trick', f=self.hide_pin, arg=(pin, slot_num, flags)),
+            MenuItem('Delete Trick', f=self.delete_pin, arg=(pin, slot_num, flags)),
         ])
+        if pin != WRONG_PIN_CODE:
+            rv.append(
+                MenuItem('Change PIN', f=self.change_pin, arg=(pin, slot_num, flags)),
+            )
 
         return rv
 
