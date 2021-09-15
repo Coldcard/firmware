@@ -15,7 +15,7 @@ from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH, AF_P2WSH_P2SH
 from pprint import pprint
 
 @pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
-def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet, bitcoind_d_wallet):
+def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet, bitcoind_d_wallet, enter_number):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
@@ -35,12 +35,10 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
     if acct_num is not None:
         need_keypress('1')
         time.sleep(0.1)
-        for n in acct_num:
-            need_keypress(n)
+        enter_number(acct_num)
     else:
         acct_num = '0'
-
-    need_keypress('y')
+        need_keypress('y')
 
     time.sleep(0.1)
     title, story = cap_story()
@@ -198,7 +196,7 @@ def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need
         
 @pytest.mark.parametrize('mode', [ "Legacy (P2PKH)", "P2SH-Segwit", "Native Segwit"])
 @pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
-def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, use_mainnet):
     # lightly test electrum wallet export
 
     goto_home()
@@ -446,5 +444,71 @@ def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, 
                     raise ValueError(rhs)
 
             addr_vs_path(rhs, path=lhs, addr_fmt=f)
+
+
+@pytest.mark.qrcode
+@pytest.mark.parametrize('acct_num', [ None, 0, 99, 8989])
+def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number, cap_screen_qr, use_mainnet):
+    # XPUB's via QR
+
+    use_mainnet()
+
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Export XPUB')
+
+    top_items = cap_menu()
+    for m in top_items:
+        is_xfp = False
+        if '-84' in m:
+            expect = "m/84'/0'/{acct}'"
+        elif '-44' in m:
+            expect = "m/44'/0'/{acct}'"
+        elif '49' in m:
+            expect = "m/49'/0'/{acct}'"
+        elif 'Master' in m:
+            expect = "m"
+        elif 'XFP' in m:
+            is_xfp = True
+
+        pick_menu_item(m)
+        time.sleep(0.1)
+        if is_xfp:
+            got = cap_screen_qr().decode('ascii')
+            assert got == xfp2str(simulator_fixed_xfp).upper()
+            need_keypress('x')
+            continue
+
+        title, story = cap_story()
+        assert expect in story
+
+        if 'acct' in expect:
+            assert "Press 1 to select account" in story
+            if acct_num is not None:
+                need_keypress('1')
+                enter_number(acct_num)
+
+                time.sleep(0.1)
+                expect = expect.format(acct=acct_num)
+                title, story = cap_story()
+                assert expect in story
+                assert "Press 1 to select account" not in story
+
+        expect = expect.format(acct=0)
+
+        need_keypress('y')
+        got_pub = cap_screen_qr().decode('ascii')
+        if got_pub[0] not in 'xt':
+            got_pub,*_ = slip132undo(got_pub)
+
+        got = BIP32Node.from_wallet_key(got_pub)
+
+        wallet = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+        if expect != 'm':
+            wallet = wallet.subkey_for_path(expect[2:])
+        assert got.sec() == wallet.sec()
+
+        need_keypress('x')
+
 
 # EOF

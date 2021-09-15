@@ -904,6 +904,68 @@ that you will need to import other wallet software to track balance.''' + SENSIT
     import export
     await export.make_summary_file()
 
+async def export_xpub(label, _2, item):
+    # provide bare xpub in a QR/NFC for import into simple wallets.
+    import chains, glob, stash
+    from public_constants import AF_CLASSIC
+    from ux import show_qr_code
+
+    chain = chains.current_chain()
+    acct = 0
+
+    # decode menu code => standard derivation
+    mode = item.arg
+    if mode == -1:
+        # XFP shortcut
+        xfp = xfp2str(settings.get('xfp', 0))
+        await show_qr_code(xfp, True)
+        return 
+
+    elif mode == 0:
+        path = "m"
+        addr_fmt = AF_CLASSIC
+    else:
+        remap = {44:0, 49:1, 84:2}[mode]
+        _, path, addr_fmt = chains.CommonDerivations[remap]
+        path = path.format(account='{acct}', coin_type=chain.b44_cointype, change=0, idx=0)[:-4]
+
+    # always show SLIP-132 style, because defacto
+    show_slip132 = (addr_fmt != AF_CLASSIC)
+
+    while 1:
+        msg = '''Show QR of the XPUB for path:\n\n%s\n\n''' % path
+
+        if '{acct}' in path:
+            msg += "Press 1 to select account other than zero. "
+        #if glob.NFC:
+        #    msg = "Press 3 to share over NFC. "
+
+        ch = await ux_show_story(msg, escape='13')
+        if ch == 'x': return
+        if ch == '1':
+            acct = await ux_enter_number('Account Number:', 9999) or 0
+            path = path.format(acct=acct)
+            continue
+
+        # assume zero account if not picked
+        path = path.format(acct=acct)
+
+        # render xpub/ypub/zpub
+        with stash.SensitiveValues() as sv:
+            print(path)
+            node = sv.derive_path(path) if path != 'm' else sv.node
+            xpub = chain.serialize_public(node, addr_fmt)
+
+        #if ch == '3' and glob.NFC:
+        #    await glob.NFC.share_text(xpub)
+        #else:
+        if 1:
+            from ux import show_qr_code
+            await show_qr_code(xpub, False)
+
+        break
+        
+
 def electrum_export_story(background=False):
     # saves memory being in a function
     return ('''\
@@ -1453,6 +1515,7 @@ to consume all but the final PIN attempt.\
                 MenuItem('Countdown Time', chooser=cd_countdown_chooser),
                 MenuItem('Brick Mode', chooser=set_countdown_pin_mode),
             ]
+
 
 async def pin_changer(_1, _2, item):
     # Help them to change pins with appropriate warnings.
