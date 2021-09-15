@@ -193,10 +193,10 @@ def get_settings(sim_execfile):
 
 @pytest.fixture(scope='module')
 def get_setting(sim_execfile, sim_exec):
-    # get an indivudal setting
-    def doit(name):
+    # get an individual setting
+    def doit(name, default=None):
         from json import loads
-        sim_exec('import main; main.SKEY = %r; ' % name)
+        sim_exec('import main; main.SKEY = %r; main.DEFAULT=%r' % (name, default))
         resp = sim_execfile('devtest/get-setting.py')
         assert 'Traceback' not in resp
         return loads(resp)
@@ -1104,7 +1104,7 @@ def only_mk3(dev):
 def nfc_read(sim_exec):
     # READ data from NFC chip
     def doit():
-        rv = sim_exec('RV.write(glob.NFC.dump_ndef())', binary=True)
+        rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"")', binary=True)
         if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
         return rv
     return doit
@@ -1130,7 +1130,7 @@ def nfc_read_text(nfc_read):
 
 @pytest.fixture()
 def nfc_block4rf(sim_eval):
-    # wait until RF is enable and something to read (doesn't read it tho)
+    # wait until RF is enabled and something to read (doesn't read it tho)
     def doit(timeout=15):
         for i in range(timeout*4):
             rv = sim_eval('glob.NFC.rf_on')

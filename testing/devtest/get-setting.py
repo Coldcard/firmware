@@ -3,5 +3,5 @@
 import main
 from glob import settings
 from ujson import dumps
-RV.write(dumps(settings.get(main.SKEY)))
+RV.write(dumps(settings.get(main.SKEY, main.DEFAULT)))
 

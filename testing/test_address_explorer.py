@@ -265,7 +265,7 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
     "m/1'/2'/3'/4'/5'",
 ])
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check, is_mark4, nfc_read_text):
+def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check, is_mark4, nfc_read_text, get_setting):
 
     is_single = '{idx}' not in path
 
@@ -356,7 +356,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         else:
             assert qr == addr
 
-        if is_mark4:
+        if is_mark4 and get_setting('nfc', 0):
             need_keypress('3')
             time.sleep(.1)
             assert nfc_read_text() == addr
