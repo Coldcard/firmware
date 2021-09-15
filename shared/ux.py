@@ -264,20 +264,24 @@ async def idle_logout():
     from glob import settings
 
     while not glob.hsm_active:
-        await sleep_ms(250)
-
-        # they may have changed setting recently
-        timeout = settings.get('idle_to', DEFAULT_IDLE_TIMEOUT)*1000        # ms
-        if timeout == 0:
-            continue
-
-        now = utime.ticks_ms() 
+        await sleep_ms(5000)
 
         if not glob.numpad.last_event_time:
             continue
 
-        if now > glob.numpad.last_event_time + timeout:
-            # do a logout now.
+        now = utime.ticks_ms() 
+        dt = utime.ticks_diff(now, glob.numpad.last_event_time)
+
+        if dt > 120*1000:
+            # clear cached secrets after 2 minutes idle
+            from stash import SensitiveValues
+            SensitiveValues.clear_cache()
+
+        # they may have changed setting recently
+        timeout = settings.get('idle_to', DEFAULT_IDLE_TIMEOUT)*1000        # ms
+
+        if timeout and dt > timeout:
+            # do a logout now (optional)
             print("Idle!")
 
             from actions import logout_now

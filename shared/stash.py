@@ -27,13 +27,14 @@ def blank_object(item):
             buf[i] = 0
     elif isinstance(item, ngu.hdnode.HDNode):
         item.blank()
+    elif item is None:
+        pass
     else:
         raise TypeError(item)
 
-
 # Chip can hold 72-bytes as a secret: we need to store either
 # a list of seed words (packed), of various lengths, or maybe
-# a raw master secret, and so on
+# a raw master secret, and so on.
 
 class SecretStash:
 
@@ -95,6 +96,8 @@ class SecretStash:
 
             # make master secret, using the memonic words, and passphrase (or empty string)
             seed_bits = secret[1:1+ll]
+
+            # slow: 2+ seconds
             ms = bip39.master_secret(bip39.b2a_words(seed_bits), _bip39pw)
 
             hd.from_master(ms)
@@ -116,38 +119,84 @@ class SecretStash:
 bip39_passphrase = ''
 
 class SensitiveValues:
-    # be a context manager, and holder to secrets in-memory
+    # be a context manager, and holder of secrets in-memory
+
+    # class-level cache, key is bip39 pass
+    _cache = {}
+    _cache_secret = None
 
     def __init__(self, secret=None, bypass_pw=False):
-        if secret is None:
-            # fetch the secret from bootloader/atecc508a
-            from pincodes import pa
-
-            if pa.is_secret_blank():
-                raise ValueError('no secrets yet')
-
-            self.secret = pa.fetch()
-            self.spots = [ self.secret ]
-            self.deltamode = pa.is_deltamode()
-        else:
-            # sometimes we already know it
-            self.secret = secret
-            self.spots = []
-            self.deltamode = False
+        self.spots = []
 
         # backup during volatile bip39 encryption: do not use passphrase
         self._bip39pw = '' if bypass_pw else str(bip39_passphrase)
 
-    def __enter__(self):
-        import chains
+        if secret is not None:
+            # sometimes we already know the secret
+            self.secret = secret
+            self.deltamode = False
 
-        self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+            self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+        else:
+            # More typical: fetch the secret from bootloader and SE
+            # - but that's real slow, so avoid if possible
+            from pincodes import pa
 
-        self.spots.append(self.node)
+            if pa.is_secret_blank():
+                raise ValueError('no secrets yet')
+            self.deltamode = pa.is_deltamode()
+
+            if self._bip39pw in self._cache:
+                # cache hit
+                self.secret = bytearray(self._cache_secret)
+                self.mode, r, n = self._cache[self._bip39pw]
+                self.raw = bytearray(r)
+                self.node = n.copy()
+            else:
+                if self._cache_secret:
+                    # they are using new BIP39 passphrase; we already have raw secret
+                    self.secret = bytearray(self._cache_secret)
+                else:
+                    # slow, read from secure element(s)
+                    self.secret = pa.fetch()
+
+                # slow: do bip39 key stretching (typically)
+                self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+
+                self.save_to_cache()
+
+            self.spots.append(self.secret)
+
         self.spots.append(self.raw)
+        self.spots.append(self.node)
 
+        import chains
         self.chain = chains.current_chain()
 
+    @classmethod
+    def clear_cache(cls):
+        # clear cached secrets we have
+        # - call any time, certainly when main secret changes
+        # - will be called after 2 minutes of idle keypad
+        blank_object(cls._cache_secret)
+        cls._cache_secret = None
+
+        for _,raw,node in cls._cache.values():
+            blank_object(raw)
+            blank_object(node)
+
+        cls._cache.clear()
+
+    def save_to_cache(self):
+        # add to cache, must copy here to avoid wipe
+        if not self._cache_secret:
+            SensitiveValues._cache_secret = bytearray(self.secret)
+        else:
+            assert SensitiveValues._cache_secret == self.secret
+        SensitiveValues._cache[self._bip39pw] = ( self.mode, bytearray(self.raw), self.node.copy() )
+
+    def __enter__(self):
+        # complexity moved to __init__
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

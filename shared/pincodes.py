@@ -149,6 +149,8 @@ class PinAttempt:
         if new_secret is not None:
             change_flags |= CHANGE_SECRET if not is_duress else CHANGE_DURESS_SECRET
             assert len(new_secret) in (32, AE_SECRET_LEN)
+            import stash
+            stash.SensitiveValues.clear_cache()
         else:
             new_secret = bytes(AE_SECRET_LEN)
 
@@ -419,6 +421,7 @@ class PinAttempt:
         # and capture xfp/xpub
         from glob import settings
         import stash
+        stash.SensitiveValues.clear_cache()
 
         # capture values we have already
         old_values = dict(settings.current)
@@ -447,6 +450,7 @@ class PinAttempt:
         # Clear bip-39 secret, not applicable anymore.
         import stash
         stash.bip39_passphrase = ''
+        stash.SensitiveValues.clear_cache()
 
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
