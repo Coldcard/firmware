@@ -982,8 +982,8 @@ ae_fail:
 
 // pin_fetch_secret()
 //
-// To encourage not keeping the secret in memory, a way to fetch it after already
-// have proven you know the PIN.
+// To encourage not keeping the secret in memory, a way to fetch it after you've already
+// proven you know the PIN.
 //
     int
 pin_fetch_secret(pinAttempt_t *args)
