@@ -952,7 +952,6 @@ async def export_xpub(label, _2, item):
 
         # render xpub/ypub/zpub
         with stash.SensitiveValues() as sv:
-            print(path)
             node = sv.derive_path(path) if path != 'm' else sv.node
             xpub = chain.serialize_public(node, addr_fmt)
 
