@@ -32,11 +32,9 @@ class SimulatedNFCHandler(NFCHandler):
         print("%d bytes of NDEF written to work/nfc-dump.ndef .. touch or read that file to simulate taps" % n)
 
     def is_rf_disabled(self):
-        # not checking if disable/sleep vs. off
         return not self.rf_on
 
     def set_rf_disable(self, val):
-        # using stronger "off" rather than sleep/disable
         self.rf_on = not val
         
     def firsttime_setup(self):
