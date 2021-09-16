@@ -342,8 +342,12 @@ class NFCHandler:
 
         if aborted: return
 
-        taste = self.read(0, 16)
-        st, ll, _, _ = ndef.ccfile_decode(taste)
+        try:
+            taste = self.read(0, 16)
+            st, ll, _, _ = ndef.ccfile_decode(taste)
+        except:
+            # robustness
+            ll = None
 
         if not ll:
             # they wrote nothing / failed to do anything
@@ -354,25 +358,29 @@ class NFCHandler:
         data = self.read(st, ll)
         psbt_in = None
         psbt_sha = None
-        for urn, msg, meta in ndef.record_parser(data):
-            if len(msg) > 100:
-                # attempt to decode any large object, ignore type for max compat
-                try:
-                    decoder, output_encoder, psbt_len = \
-                        psbt_encoding_taster(msg[0:10], len(msg))
-                    psbt_in = msg
-                except ValueError:
-                    continue
+        try:
+            for urn, msg, meta in ndef.record_parser(data):
+                if len(msg) > 100:
+                    # attempt to decode any large object, ignore type for max compat
+                    try:
+                        decoder, output_encoder, psbt_len = \
+                            psbt_encoding_taster(msg[0:10], len(msg))
+                        psbt_in = msg
+                    except ValueError:
+                        continue
 
-            if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
-                # probably produced by another Coldcard: SHA256 over expected contents
-                psbt_sha = bytes(msg)
+                if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
+                    # probably produced by another Coldcard: SHA256 over expected contents
+                    psbt_sha = bytes(msg)
+        except:
+            # dont crash when given garbage
+            pass
 
         if psbt_in is None:
             await ux_show_story("Could not find PSBT", title="Sorry!")
             return
 
-        # Decode into PSRAM at start
+        # decode into PSRAM
         total = 0
         with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
             if not decoder:
