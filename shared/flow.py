@@ -91,6 +91,15 @@ SettingsMenu = [
     MenuItem('Display Units', chooser=value_resolution_chooser),
 ]
 
+XpubExportMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("Segwit (BIP-84)", f=export_xpub, arg=84),
+    MenuItem("Classic (BIP-44)", f=export_xpub, arg=44),
+    MenuItem("P2WPKH/P2SH (49)", f=export_xpub, arg=49),
+    MenuItem("Master XPUB", f=export_xpub, arg=0),
+    MenuItem("Current XFP", f=export_xpub, arg=-1),
+]
+
 WalletExportMenu = [  
     #         xxxxxxxxxxxxxxxx (alphabetical ordering)
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
@@ -98,6 +107,7 @@ WalletExportMenu = [
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained Capital", f=unchained_capital_export),
     MenuItem("Generic JSON", f=generic_skeleton),
+    MenuItem("Export XPUB", menu=XpubExportMenu),
 ]
 
 SDCardMenu = [
@@ -204,6 +214,7 @@ AdvancedNormalMenu = [
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem('Derive Entropy', f=drv_entro_start),
+    MenuItem("Export XPUB", menu=XpubExportMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 

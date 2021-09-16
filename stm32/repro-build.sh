@@ -24,7 +24,7 @@ if ! touch repro-build.sh ; then
     cd firmware/external
     git submodule update --init
     cd ../stm32
-    rsync -av /work/src/releases/*.dfu ../releases
+    rsync --ignore-missing-args -av /work/src/releases/*.dfu ../releases
 fi
 
 # need signit.py in path
@@ -34,7 +34,6 @@ python -m pip install --editable .
 cd ../stm32
 
 cd ../releases
-ls *.dfu
 if [ -f *-v$VERSION_STRING-coldcard.dfu ]; then
     echo "Using existing binary in ../releases, not downloading."
 else

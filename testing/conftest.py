@@ -150,6 +150,18 @@ def need_keypress(dev, request):
                 raise pytest.fail('need to provide keypresses')
 
     return doit
+
+@pytest.fixture(scope='module')
+def enter_number(need_keypress):
+    def doit(number):
+        number = str(number) if not isinstance(number, str) else number
+        for d in number:
+            need_keypress(d)
+        need_keypress('y')
+
+    return doit
+
+    
     
 @pytest.fixture(scope='module')
 def master_xpub(dev):

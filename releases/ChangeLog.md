@@ -4,6 +4,8 @@
   our current XFP value and try to sign the input (same for change outputs and change-fraud
   checks).  This makes building a workable PSBT file easier and could be used to preserve
   privacy of XFP value itself. A warning is shown when this happens.
+- Enhancement: "Advanced > Export XPUB" provides direct way to show XPUB (or ZPUB/YPUB) for
+  BIP-84 / BIP-44 / BIP-49 standard derivations, as a QR. Also can show XFP and master XPUB.
 
 ## 4.1.3 - Sep 2, 2021
 
