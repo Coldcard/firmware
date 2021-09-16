@@ -982,8 +982,8 @@ async def export_xpub(label, _2, item):
 
         if '{acct}' in path:
             msg += "Press 1 to select account other than zero. "
-        #if glob.NFC:
-        #    msg = "Press 3 to share over NFC. "
+        if glob.NFC:
+            msg += "Press 3 to share over NFC. "
 
         ch = await ux_show_story(msg, escape='13')
         if ch == 'x': return
@@ -995,16 +995,17 @@ async def export_xpub(label, _2, item):
         # assume zero account if not picked
         path = path.format(acct=acct)
 
+        from glob import dis
+        dis.fullscreen('Wait...')
+
         # render xpub/ypub/zpub
         with stash.SensitiveValues() as sv:
-            print(path)
             node = sv.derive_path(path) if path != 'm' else sv.node
             xpub = chain.serialize_public(node, addr_fmt)
 
-        #if ch == '3' and glob.NFC:
-        #    await glob.NFC.share_text(xpub)
-        #else:
-        if 1:
+        if ch == '3' and glob.NFC:
+            await glob.NFC.share_text(xpub)
+        else:
             from ux import show_qr_code
             await show_qr_code(xpub, False)
 
