@@ -21,6 +21,7 @@
 #include "py/runtime.h"
 #include "py/mperrno.h"
 #include "softtimer.h"
+#include "ulight.h"
 
 // Our storage, in quad-serial SPI PSRAM chip
 // - using top half of chip only
@@ -183,6 +184,8 @@ STATIC int8_t psram_msc_Init(uint8_t lun_in) {
 
 // Process SCSI INQUIRY command for the logical unit
 STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_out) {
+    ckcc_usb_active = true;
+
     if (params[1] & 1) {
         // EVPD set - return vital product data parameters
         uint8_t page_code = params[2];
@@ -217,6 +220,8 @@ STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_o
 // Get storage capacity of a logical unit
 STATIC int8_t psram_msc_GetCapacity(uint8_t lun, uint32_t *block_num, uint16_t *block_size)
 {
+    ckcc_usb_active = true;
+
     *block_num = BLOCK_COUNT;
     *block_size = BLOCK_SIZE;
 
@@ -249,6 +254,7 @@ STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
     printf("PSRAMdisk: started=%d\n", started);
     if (started) {
         lu_flag_set(lun, FLAGS_STARTED);
+        ckcc_usb_active = true;
     } else {
         lu_flag_clr(lun, FLAGS_STARTED);
     }
@@ -271,6 +277,7 @@ STATIC int8_t psram_msc_Read(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint1
     if (lun >= psram_msc_lu_num) {
         return -1;
     }
+    ckcc_usb_active = true;
 
     uint8_t *ptr = block_to_ptr(blk_addr, blk_len);
     if(!ptr) return -1;
@@ -285,6 +292,7 @@ STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint
     if (lun >= psram_msc_lu_num) {
         return -1;
     }
+    ckcc_usb_active = true;
 
     uint8_t *ptr = block_to_ptr(blk_addr, blk_len);
     if(!ptr) return -1;
@@ -299,6 +307,7 @@ STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint
 
 // Get the number of attached logical units
 STATIC int8_t psram_msc_GetMaxLun(void) {
+    ckcc_usb_active = true;
     return psram_msc_lu_num - 1;
 }
 
@@ -320,7 +329,7 @@ USBD_StorageTypeDef psramdisk_fops = {
 void psramdisk_USBD_MSC_RegisterStorage(int num_lun, usbd_cdc_msc_hid_state_t *usbd) {
     // equiv to usbdev/class/inc/usbd_cdc_msc_hid.h
     usbd->MSC_BOT_ClassData.bdev_ops = &psramdisk_fops;
-    mp_printf(&mp_plat_print, "PSRAMdisk: activated\n");
+    //mp_printf(&mp_plat_print, "PSRAMdisk: activated\n");
 }
 
 //

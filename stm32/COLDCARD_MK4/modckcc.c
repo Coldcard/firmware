@@ -17,6 +17,8 @@
 #include "py/mpstate.h"
 #include "py/stackctrl.h"
 #include "boardctrl.h"
+#include "softtimer.h"
+#include "ulight.h"
 
 #include "storage.h"
 #include "usb.h"
@@ -55,6 +57,7 @@ STATIC int callgate_lower(uint32_t method_num, uint32_t arg2, mp_buffer_info_t *
     // - also 0x100 aligned.
     assert((dest & 0xff) == 0x05);
 
+    ulight_off();
     mp_uint_t before = disable_irq();
 
     // XXX this doesn't work with compiler optimizations enabled (ie. -O0 only!!)
@@ -95,6 +98,7 @@ STATIC mp_obj_t sec_oneway_gate(mp_obj_t method_obj, mp_obj_t arg2_obj)
 
     pyb_usb_dev_deinit();
     storage_flush();
+    ulight_off();
 
     // NOTE: this may not work with compiler optimizations enabled (ie. -O0 only!!)
 
@@ -209,6 +213,16 @@ STATIC mp_obj_t stack_limit(mp_obj_t new_val)
 }
 MP_DEFINE_CONST_FUN_OBJ_1(stack_limit_obj, stack_limit);
 
+STATIC mp_obj_t usb_active(void)
+{
+    // something happened at the class-driver level of USB.
+    // - keep the light flashing
+    ckcc_usb_active = true;
+
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(usb_active_obj, usb_active);
+
 STATIC mp_obj_t wipe_fs(void)
 {
     // Erase and reformat flash filesystem
@@ -254,6 +268,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_breakpoint),          MP_ROM_PTR(&breakpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_watchpoint),          MP_ROM_PTR(&watchpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_stack_limit),         MP_ROM_PTR(&stack_limit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_usb_active),          MP_ROM_PTR(&usb_active_obj) },
     { MP_ROM_QSTR(MP_QSTR_PSRAM),               MP_ROM_PTR(&psram_type) },
 };
 
@@ -287,6 +302,9 @@ void ckcc_boardctrl_before_boot_py(boardctrl_state_t *state)
     // Clear PSRAM from previous cycles
     extern void psram_init(void);
     psram_init();
+
+    // setup USB activity light
+    ulight_setup();
 }
 void ckcc_boardctrl_after_boot_py(boardctrl_state_t *state)
 {

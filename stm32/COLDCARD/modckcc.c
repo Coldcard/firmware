@@ -252,6 +252,12 @@ STATIC mp_obj_t watchpoint(volatile mp_obj_t arg1)
 }
 MP_DEFINE_CONST_FUN_OBJ_1(watchpoint_obj, watchpoint);
 
+STATIC mp_obj_t usb_active(void)
+{
+    // NOP on mk3 but here for compatibility
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(usb_active_obj, usb_active);
 
 STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__),            MP_ROM_QSTR(MP_QSTR_ckcc) },
@@ -267,6 +273,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_breakpoint),          MP_ROM_PTR(&breakpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_watchpoint),          MP_ROM_PTR(&watchpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_stack_limit),         MP_ROM_PTR(&stack_limit_obj) },
+    { MP_ROM_QSTR(MP_QSTR_usb_active),          MP_ROM_PTR(&usb_active_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(ckcc_module_globals, ckcc_module_globals_table);

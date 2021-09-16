@@ -216,6 +216,9 @@ def watchpoint():
 def vcp_enabled(_):
     return True
 
+def usb_active():
+    pass
+
 def get_cpi_id():
     if ('--mk2' in sys.argv):
         return 0x2222       # don't know

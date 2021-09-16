@@ -105,7 +105,6 @@ class USBHandler:
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
 
-        #self.msg = bytearray(MAX_MSG_LEN)
         from sram2 import usb_buf
         self.msg = usb_buf
         assert len(self.msg) == MAX_MSG_LEN
@@ -120,6 +119,7 @@ class USBHandler:
         # read next packet (64 bytes) waiting on the wire. Unframe it and return
         # active part of packet, flags associated.
         buf = self.dev.recv(64, timeout=5000)
+        ckcc.usb_active()
 
         if not buf:
             raise FramingError('timeout')
@@ -282,6 +282,7 @@ class USBHandler:
             left -= here
             pos += here
 
+            ckcc.usb_active()
             for retries in range(100):
                 chk = self.dev.send(msg)
                 if chk == 64: break
