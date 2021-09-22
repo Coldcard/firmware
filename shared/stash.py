@@ -10,10 +10,10 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, gc, bip39
+import ngu, uctypes, gc, bip39, utime
 from uhashlib import sha256
 from pincodes import AE_SECRET_LEN
-from utils import swab32
+from utils import swab32, call_later_ms
 
 def blank_object(item):
     # Use/abuse uctypes to blank objects under python. Will likely
@@ -124,6 +124,7 @@ class SensitiveValues:
     # class-level cache, key is bip39 pass
     _cache = {}
     _cache_secret = None
+    _cache_used = None
 
     def __init__(self, secret=None, bypass_pw=False):
         self.spots = []
@@ -152,6 +153,7 @@ class SensitiveValues:
                 self.mode, r, n = self._cache[self._bip39pw]
                 self.raw = bytearray(r)
                 self.node = n.copy()
+                self.__class__._cache_used = utime.ticks_ms()
             else:
                 if self._cache_secret:
                     # they are using new BIP39 passphrase; we already have raw secret
@@ -186,6 +188,7 @@ class SensitiveValues:
             blank_object(node)
 
         cls._cache.clear()
+        cls._cache_used = None
 
     def save_to_cache(self):
         # add to cache, must copy here to avoid wipe
@@ -193,7 +196,28 @@ class SensitiveValues:
             SensitiveValues._cache_secret = bytearray(self.secret)
         else:
             assert SensitiveValues._cache_secret == self.secret
+
         SensitiveValues._cache[self._bip39pw] = ( self.mode, bytearray(self.raw), self.node.copy() )
+
+        self.__class__._cache_used = utime.ticks_ms()
+
+        call_later_ms(5000, self.cache_check)
+
+    async def cache_check(self):
+        # verify the cache has been used recently, else clear it.
+
+        if not self.__class__._cache_used:
+            # race w/ clear, ok
+            return
+
+        now = utime.ticks_ms() 
+        dt = utime.ticks_diff(now, self.__class__._cache_used)
+
+        if dt >= 60*1000:
+            # clear cached secrets after 1 minute if unused
+            self.clear_cache()
+        else:
+            call_later_ms(5000, self.cache_check)
 
     def __enter__(self):
         # complexity moved to __init__

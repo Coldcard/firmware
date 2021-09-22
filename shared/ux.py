@@ -272,16 +272,11 @@ async def idle_logout():
         now = utime.ticks_ms() 
         dt = utime.ticks_diff(now, glob.numpad.last_event_time)
 
-        if dt > 120*1000:
-            # clear cached secrets after 2 minutes idle
-            from stash import SensitiveValues
-            SensitiveValues.clear_cache()
-
         # they may have changed setting recently
         timeout = settings.get('idle_to', DEFAULT_IDLE_TIMEOUT)*1000        # ms
 
         if timeout and dt > timeout:
-            # do a logout now (optional)
+            # user has been idle for too long: do a logout
             print("Idle!")
 
             from actions import logout_now
