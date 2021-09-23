@@ -115,7 +115,7 @@ async def test_sd_active():
 
 async def test_nfc():
     # Mk4: NFC chip and field
-    if version.mk_num < 3: return
+    if not version.has_nfc: return
     from nfc import NFCHandler
     await NFCHandler.selftest()
     

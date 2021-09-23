@@ -243,22 +243,21 @@ class TrickPinMenu(MenuSystem):
             tricks.remove(self.current_pin)
 
         has_wrong = False
+        rv = [MenuItem('Add New Trick', f=self.add_new)]
+        has_wrong = any(pin == WRONG_PIN_CODE for pin in tricks)
+        if not has_wrong:
+            rv.append(MenuItem('Add If Wrong', f=self.set_any_wrong))
+
         if not tricks:
-            rv = [MenuItem('(no tricks yet)', f=self.add_new)]
+            rv.append(MenuItem(' -NONE YET-', f=self.add_new))
         else:
-            rv = []
             for pin in tricks:
                 if pin == WRONG_PIN_CODE:
-                    has_wrong = True
-                    rv.append(MenuItem('(when wrong)', menu=self.pin_submenu, arg=pin))
+                    rv.append(MenuItem(' WRONG PIN', menu=self.pin_submenu, arg=pin))
                 else:
-                    rv.append(MenuItem(pin, menu=self.pin_submenu, arg=pin))
+                    rv.append(MenuItem(' '+pin, menu=self.pin_submenu, arg=pin))
 
-            rv.append(MenuItem('Clear All', f=self.clear_all))
-
-        if not has_wrong:
-            rv.append(MenuItem('If Wrong PIN...', f=self.set_any_wrong))
-        rv.append(MenuItem('Add New', f=self.add_new))
+            rv.append(MenuItem('Delete All', f=self.clear_all))
 
         return rv
 
@@ -305,7 +304,7 @@ class TrickPinMenu(MenuSystem):
             if (len(right) != len(fake)) or (right[0:-4] != fake[0:-4]):
                 prob = '''\
 Trick PIN must be same length (%d) as true PIN and \
-Only up to last four digits can be different between true PIN and trick.''' % len(right)
+only up to last four digits can be different between true PIN and trick.''' % len(right)
                 await ux_show_story(prob, 'Sorry!')
                 return
 
@@ -398,6 +397,8 @@ Only up to last four digits can be different between true PIN and trick.''' % le
             #              xxxxxxxxxxxxxxxx
             StoryMenuItem('Wipe & Reboot', "Seed is wiped and Coldcard reboots without notice.",
                             flags=TC_WIPE|TC_REBOOT),
+            StoryMenuItem('Silent Wipe', "Seed is silently wiped and Coldcard acts as if PIN code was just wrong.",
+                            flags=TC_WIPE|TC_FAKE_OUT),
             StoryMenuItem('Wipe -> Wallet', "Seed is silently wiped, and Coldcard logs into a duress wallet. Select type of wallet on next menu.", menu=DuressOptions),
             StoryMenuItem('Say Wiped, Stop', "Seed is wiped and a message is shown.",
                             flags=TC_WIPE),
@@ -408,6 +409,8 @@ Only up to last four digits can be different between true PIN and trick.''' % le
             StoryMenuItem('Wipe Seed', "Wipe the seed and maybe do more. See next menu.",
                                             menu=self.WillWipeMenu),
             StoryMenuItem('Duress Wallet', "Goes directly to a specific duress wallet. No side effects.", menu=DuressOptions),
+            StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", flags=TC_BLANK_WALLET),
+            StoryMenuItem('Just Reboot', "Reboot when this PIN is entered. Doesn't do anything else.", flags=TC_REBOOT),
             StoryMenuItem('Delta Mode', '''\
 Advanced! Logs into REAL seed and allows attacker to do most things, \
 but will produce incorrect signatures when signing PSBT files. \
@@ -417,8 +420,6 @@ the seed phrase, but still a somewhat riskier mode.
 For this mode only, trick PIN must be same length as true PIN and \
 differ only in final 4 positions (ignoring dash).\
 ''', flags=TC_DELTA_MODE),
-            StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", flags=TC_BLANK_WALLET),
-            StoryMenuItem('Just Reboot', "Reboot when this PIN is entered. Doesn't do anything else.", flags=TC_REBOOT),
         ]
         m = MenuSystem(FirstMenu)
         the_ux.push(m)
@@ -506,6 +507,9 @@ You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
         new_pin = await self.get_new_pin(old_pin)
         if new_pin is None:
             return
+
+        # TODO XXX chcek if delta mode ... must apply rules to new PIN
+        #if flags & TC_DELTA_MODE:
 
         try:
             tp.update_slot(old_pin.encode(), new_pin=new_pin.encode())
@@ -607,9 +611,9 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
                 ch, pk = s.xdata[0:32], s.xdata[32:64]
                 node.from_chaincode_privkey(ch, pk)
 
-                msg = render_master_secrets('xprv', None, node)
+                msg, *_ = render_master_secrets('xprv', None, node)
             else:
-                msg = render_master_secrets('words', s.xdata[0:32], None)
+                msg, *_ = render_master_secrets('words', s.xdata[0:32], None)
 
         await ux_show_story(msg, sensitive=True)
         
@@ -623,23 +627,23 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         rv = []
 
         if pin != WRONG_PIN_CODE:
-            rv.append(MenuItem('"%s" =>' % pin))
+            rv.append(MenuItem('PIN:%s' % pin))
         else:
             rv.append(MenuItem("After %d wrong:" % arg))
 
         if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
-            rv.append(MenuItem("- Duress Wallet", f=self.duress_details, arg=(pin, flags, arg)))
+            rv.append(MenuItem("[Duress Wallet]", f=self.duress_details, arg=(pin, flags, arg)))
         elif flags & TC_BLANK_WALLET:
-            rv.append(MenuItem("- Blank Wallet"))
+            rv.append(MenuItem("[Blank Wallet]"))
         elif flags & TC_FAKE_OUT:
-            rv.append(MenuItem("- Pretends Wrong"))
+            rv.append(MenuItem("[Pretends Wrong]"))
         elif flags & TC_DELTA_MODE:
-            rv.append(MenuItem("- Delta Mode"))
+            rv.append(MenuItem("[Delta Mode]"))
 
         for m, msg in [
-            (TC_WIPE, '- Wipes seed'),
-            (TC_BRICK, '- Bricks CC'),
-            (TC_REBOOT, '- Reboots'),
+            (TC_WIPE,   '[Wipes seed]'),
+            (TC_BRICK,  '[Bricks CC]'),
+            (TC_REBOOT, '[Reboots]'),
         ]:
             if flags & m:
                 rv.append(MenuItem(msg))

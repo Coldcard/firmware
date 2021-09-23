@@ -109,36 +109,22 @@ def countdown_chooser():
 def cd_countdown_chooser():
     return real_countdown_chooser('cd_lgto', 1, 60)
 
+def set_countdown_pin_mode():
+    #   cd_mode = various harm levels
+    s = SettingsObject()
+    which = s.get('cd_mode', 0)     # default is brick
+    del s
 
-def chain_chooser():
-    # Pick Bitcoin or Testnet3 blockchains
-    from chains import AllChains
+    ch = ['Brick', 'Final PIN', 'Test Mode']
 
-    chain = settings.get('chain', 'BTC')
+    def set(idx, text):
+        # save it, but "outside" of login PIN
+        s = SettingsObject()
+        s.set('cd_mode', idx)
+        s.save()
+        del s
 
-    ch = [(i.ctype, i.menu_name or i.name) for i in AllChains ]
-
-    # find index of current choice
-    try:
-        which = [n for n, (k,v) in enumerate(ch) if k == chain][0]
-    except IndexError:
-        which = 0
-
-    def set_chain(idx, text):
-        val = ch[idx][0]
-        assert ch[idx][1] == text
-        settings.set('chain', val)
-
-        try:
-            # update xpub stored in settings
-            import stash
-            with stash.SensitiveValues() as sv:
-                sv.capture_xpub()
-        except ValueError:
-            # no secrets yet, not an error
-            pass
-
-    return which, [t for _,t in ch], set_chain
+    return which, ch, set
 
 def scramble_keypad_chooser():
     #   rngk = randomize keypad for PIN entry
@@ -180,75 +166,6 @@ def kill_key_chooser():
 
     return which, ch, set
 
-
-
-def set_countdown_pin_mode():
-    #   cd_mode = various harm levels
-    s = SettingsObject()
-    which = s.get('cd_mode', 0)     # default is brick
-    del s
-
-    ch = ['Brick', 'Final PIN', 'Test Mode']
-
-    def set(idx, text):
-        # save it, but "outside" of login PIN
-        s = SettingsObject()
-        s.set('cd_mode', idx)
-        s.save()
-        del s
-
-    return which, ch, set
-
-def disable_usb_chooser():
-    value = settings.get('du', 0)
-    ch = [ 'Normal', 'Disable USB']
-    def set_it(idx, text):
-        settings.set('du', idx)
-
-        import pyb
-        from usb import enable_usb, disable_usb
-        cur = pyb.usb_mode()
-        if cur and idx:
-            # usb enabled, but should not be now
-            disable_usb()
-        elif not cur and not idx:
-            # USB disabled, but now should be
-            enable_usb()
-
-    return value, ch, set_it
-
-def disable_nfc_chooser():
-    value = settings.get('nfc', 0)
-    ch = [ 'Normal', 'Enable NFC']
-    def set_it(idx, text):
-        if idx:
-            settings.set('nfc', 1)
-        else:
-            settings.remove_key('nfc')
-        enable = bool(idx)
-
-        import glob
-        from glob import NFC
-        import nfc
-
-        if not enable:
-            if glob.NFC:
-                glob.NFC.shutdown()
-        else:
-            nfc.NFCHandler.startup()
-
-    return value, ch, set_it
-
-def delete_inputs_chooser():
-    #   del = (int) 0=normal 1=overwrite+delete input PSBT's, rename outputs
-    del_psbt = settings.get('del', 0)
-
-    ch = [  'Normal', 'Delete PSBTs']
-
-    def set_del_psbt(idx, text):
-        settings.set('del', idx)
-
-    return del_psbt, ch, set_del_psbt
 
 
 # EOF

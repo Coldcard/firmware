@@ -54,8 +54,7 @@ class PSRAMWrapper:
         return
 
     def wipe_all(self):
-        from glob import dis
-        dis.fullscreen("Cleanup...")
+        # works, but code in bootrom is much faster and better (rng values used)
 
         z = bytes(16384)
         for pos in range(0, self.length, len(z)):

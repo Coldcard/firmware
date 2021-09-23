@@ -94,7 +94,7 @@ def serial_number():
 def probe_system():
     # run-once code to determine what hardware we are running on
     global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
-    global has_se2, mk_num
+    global has_se2, mk_num, has_nfc
 
     from sigheader import RAM_BOOT_FLAGS, RAM_BOOT_FLAGS_MK4, RBF_FACTORY_MODE
     import ckcc, callgate, stm
@@ -109,6 +109,7 @@ def probe_system():
     has_psram = False
     has_608 = True
     has_se2 = False
+    has_nfc = False         # hardware present; they might not be using it
     mk_num = 2
 
     cpuid = ckcc.get_cpu_id()
@@ -122,6 +123,9 @@ def probe_system():
         has_psram = True
         has_se2 = True
         mk_num = 4
+
+        from nfc import presence_check
+        has_nfc = presence_check()
     else:
         # mark 2
         has_608 = callgate.has_608()

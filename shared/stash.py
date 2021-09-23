@@ -32,11 +32,11 @@ def blank_object(item):
     else:
         raise TypeError(item)
 
-# Chip can hold 72-bytes as a secret: we need to store either
-# a list of seed words (packed), of various lengths, or maybe
-# a raw master secret, and so on.
 
 class SecretStash:
+    # Chip can hold 72-bytes as a secret: we need to store either
+    # a list of seed words (packed), of various lengths, or maybe
+    # a raw master secret, and so on.
 
     @staticmethod
     def encode(seed_phrase=None, master_secret=None, xprv=None):
@@ -118,6 +118,9 @@ class SecretStash:
 # optional global value: user-supplied passphrase to salt BIP-39 seed process
 bip39_passphrase = ''
 
+CACHE_CHECK_RATE = const(10*1000)   # 10 seconds
+CACHE_MAX_LIFE = const(60*1000)     # one minute
+
 class SensitiveValues:
     # be a context manager, and holder of secrets in-memory
 
@@ -198,26 +201,41 @@ class SensitiveValues:
             assert SensitiveValues._cache_secret == self.secret
 
         SensitiveValues._cache[self._bip39pw] = ( self.mode, bytearray(self.raw), self.node.copy() )
+        SensitiveValues._cache_used = utime.ticks_ms()
 
-        self.__class__._cache_used = utime.ticks_ms()
+        call_later_ms(CACHE_CHECK_RATE, self.cache_check)
 
-        call_later_ms(5000, self.cache_check)
+    @classmethod
+    def cache_secret(cls, main_secret):
+        # During login we learn the main secret so we can decrypt
+        # the settings, so want to catch that in cache since user is likely
+        # to do something useful immediately after login
+        SensitiveValues._cache_used = utime.ticks_ms()
 
-    async def cache_check(self):
+        if cls._cache_secret:
+            assert SensitiveValues._cache_secret == main_secret
+            return
+
+        SensitiveValues._cache_secret = bytearray(main_secret)
+        call_later_ms(CACHE_CHECK_RATE, cls.cache_check)
+
+    @classmethod
+    async def cache_check(cls):
         # verify the cache has been used recently, else clear it.
 
-        if not self.__class__._cache_used:
-            # race w/ clear, ok
+        if not cls._cache_used:
+            # called after already cleared
             return
 
         now = utime.ticks_ms() 
-        dt = utime.ticks_diff(now, self.__class__._cache_used)
+        dt = utime.ticks_diff(now, cls._cache_used)
 
-        if dt >= 60*1000:
+        if dt >= CACHE_MAX_LIFE:
             # clear cached secrets after 1 minute if unused
-            self.clear_cache()
+            cls.clear_cache()
         else:
-            call_later_ms(5000, self.cache_check)
+            # keep waiting
+            call_later_ms(CACHE_CHECK_RATE, cls.cache_check)
 
     def __enter__(self):
         # complexity moved to __init__

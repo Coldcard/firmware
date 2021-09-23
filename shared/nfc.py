@@ -67,7 +67,8 @@ class NFCHandler:
             n.setup()
             glob.NFC = n
         except BaseException as exc:
-            sys.print_exception(exc)        # debug only remove me
+            # i2c comms errors probably
+            #sys.print_exception(exc)        # debug only remove me
             print("NFC absent/disabled")
             del n
 
@@ -86,13 +87,27 @@ class NFCHandler:
 
     async def big_write(self, data):
         # write lots to start of flash (new ndef records)
-        #print('big write: ', end='')
         for pos in range(0, len(data), 256):
             here = memoryview(data)[pos:pos+256]
             self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
             # 6ms per 16 byte row, worst case, so ~100ms here!
             await self.wait_ready()
-        #print('Done')
+
+    async def wipe(self, full_wipe):
+        # Tag value is stored in flash cells, so want to clear
+        # once we're done in case it's sensitive. But too slow to
+        # clear entire chip most of time, just do first 512 bytes.
+        from glob import dis
+        here = bytes(256)
+        end = 8196
+        for pos in range(0, end, 256) :
+            self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
+            if pos == 256 and not full_wipe: break
+
+            # 6ms per 16 byte row, worst case, so ~100ms here!
+            if full_wipe:
+                dis.progress_bar_show(pos / end)
+            await self.wait_ready()
 
     # system config area (flash cells, but affect operation): table 12
     def read_config(self, offset, count):
@@ -141,6 +156,7 @@ class NFCHandler:
 
     def send_pw(self, pw=None):
         # show we know a password (but sent cleartext, very lame)
+        # - keeping as zeros for now, so pointless anyway
         pw = pw or bytes(8)
         assert len(pw) == 8
 
@@ -180,12 +196,12 @@ class NFCHandler:
         assert self.uid[-1] == 0xe0      # ST manu code
 
         # read size of memory
-        self.mem_size = (unpack('<H', self.read_config(0x14, 2))[0] + 1) * 4
+        mem_size = (unpack('<H', self.read_config(0x14, 2))[0] + 1) * 4
+        assert mem_size == 8192          # require 64kbit part
 
-        # chip revision, expect 0x11 perhaps "1.1"?
-        rev = self.read_config(0x20, 1)[0]
-
-        print("NFC: uid=%s size=%d rev=%x" % (self.get_uid(), self.mem_size, rev))
+        # chip revision, saw 0x11 perhaps means "1.1"?
+        #rev = self.read_config(0x20, 1)[0]
+        #print("NFC: uid=%s size=%d rev=%x" % (self.get_uid(), mem_size, rev))
 
         self.send_pw()
         
@@ -291,8 +307,6 @@ class NFCHandler:
                 await self.wait_ready()
                 events = self.read_dyn(IT_STS_Dyn)
 
-                #print('e=%02x' % events)
-
                 if write_mode:
                     # in write mode, ignore simple read/scan activity: wait for write
                     if events & 0x80:
@@ -314,6 +328,7 @@ class NFCHandler:
                 break
 
         self.set_rf_disable(1)
+        await self.wipe(False)
 
         return aborted
 
@@ -433,12 +448,12 @@ class NFCHandler:
 
     @classmethod
     async def selftest(cls):
-        # check for chip present, field present? .. and works
+        # check for chip present, field present .. and that it works
         n = cls()
         n.setup()
         assert n.uid
 
-        aborted = await n.share_text("NFC is working?")
+        aborted = await n.share_text("NFC is working: %s" % n.get_uid())
         assert not aborted, "Aborted"
 
     
@@ -489,5 +504,11 @@ class NFCHandler:
                 await self.share_text(data.decode())
             else:
                 raise ValueError(ctype)
+
+def presence_check():
+    # Does NFC hardware exist on this board?
+    # SDA/SCL will be tied low
+    from machine import Pin
+    return Pin('NFC_SDA', mode=Pin.IN).value() or Pin('NFC_SCL', mode=Pin.IN).value()
 
 # EOF

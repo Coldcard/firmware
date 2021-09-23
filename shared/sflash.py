@@ -118,7 +118,6 @@ class SPIFlash:
     def wipe_most(self):
         # erase everything except settings: takes 5 seconds at least
         from glob import dis
-        dis.fullscreen("Cleanup...")
 
         assert mk_num <= 3      # obsolete in mk4
 

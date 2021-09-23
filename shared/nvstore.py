@@ -51,6 +51,7 @@ from glob import PSRAM
 #   tp = (complex) trick pins' config on Mk4
 #   kbtn = (1 char) '1'-'9' that will wipe seed during login process (mk4+)
 #   nfc = (bool) if set, enable the NFC feature; default is OFF=>DISABLED (mk4+)
+#   vdsk = (bool) if set, enable the Virtual Disk features; default is OFF=>DISABLED (mk4+)
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
@@ -102,7 +103,7 @@ class SettingsObject:
         # key that is derived from main wallet secret. Call this method when the secret
         # is first loaded, or changes for some reason.
         from pincodes import pa
-        from stash import blank_object
+        from stash import blank_object, SensitiveValues
 
         key = None
         mine = False
@@ -110,11 +111,12 @@ class SettingsObject:
         if not new_secret:
             if not pa.is_successful() or pa.is_secret_blank():
                 # simple fixed key allows us to store a few things when logged out
-                key = b'\0'*32
+                key = bytes(32)
             else:
                 # read secret and use it.
                 new_secret = pa.fetch()
                 mine = True
+                SensitiveValues.cache_secret(new_secret)
 
         if new_secret:
             # hash up the secret... without decoding it or similar

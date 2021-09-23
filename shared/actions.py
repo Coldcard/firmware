@@ -477,31 +477,6 @@ async def pick_scramble(*a):
     from choosers import scramble_keypad_chooser
     start_chooser(scramble_keypad_chooser)
 
-async def confirm_testnet_mode(*a):
-    from choosers import chain_chooser
-    from chains import current_chain
-
-    if settings.get('chain') != 'XTN':
-        if not await ux_confirm("Testnet must only be used by developers because \
-correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."):
-            return
-
-    start_chooser(chain_chooser)
-
-async def pick_inputs_delete(*a):
-    # Setting: delete input PSBT
-    if await ux_show_story('''\
-PSBT files (on SDCard) will be blanked & deleted after they are used. \
-The signed transaction will be named <TXID>.txn, so the file name does not leak information.
-
-MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
-which take apart the flash chips of the SDCard may still be able to find the \
-data or filenames.''') != 'y':
-        return
-
-    from choosers import delete_inputs_chooser
-    start_chooser(delete_inputs_chooser)
-
 async def pick_nickname(*a):
     # from settings menu, enter a nickname
     from nvstore import SettingsObject
@@ -900,7 +875,7 @@ async def start_login_sequence():
         from usb import enable_usb
         enable_usb()
 
-    if version.mk_num >= 4:
+    if version.mk_num >= 4 and version.has_nfc:
         # Maybe allow NFC now
         if settings.get('nfc', 0):
             import nfc
@@ -1790,9 +1765,13 @@ async def show_version(*a):
     # exposed over USB interface:
     serial = version.serial_number()
 
-    # exposed over NFC interface, when enabled and in active use:
+    # UID is exposed over NFC interface, when enabled and in active use
     if NFC:
-        serial += '\n\nNFC UID:\n' + NFC.get_uid()
+        serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
+
+    hw = version.hw_label
+    if version.has_nfc:
+        hw += '+NFC'
 
     msg = '''\
 Coldcard Firmware
@@ -1816,7 +1795,7 @@ Secure Element{ses}:
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=serial, hw=version.hw_label,
+                            ser=serial, hw=hw, 
                 ses='s' if version.has_se2 else ''))
 
 async def ship_wo_bag(*a):
@@ -1917,5 +1896,47 @@ has occured in the detection logic.''')
     history.OutptValueCache.clear()
 
     await ux_dramatic_pause("Cleared.", 3)
+
+async def change_usb_disable(dis):
+    # user has disabled USB port (or re-enabled)
+    import pyb
+    cur = pyb.usb_mode()
+
+    from usb import enable_usb, disable_usb
+    if cur and dis:
+        # usb enabled, but should not be now
+        disable_usb()
+    elif not cur and not dis:
+        # USB disabled, but now should be
+        enable_usb()
+
+async def change_nfc_enable(enable):
+    # NFC enable / disable
+    import glob
+    from glob import NFC
+    import nfc
+
+    if not enable:
+        if glob.NFC:
+            glob.NFC.shutdown()
+    else:
+        nfc.NFCHandler.startup()
+
+async def change_virtdisk_enable(enable):
+    print("vdisk: %d" % enable)
+    pass
+
+
+async def change_which_chain(name):
+    # setting already changed, but reflect that value in other settings
+    try:
+        # update xpub stored in settings
+        import stash
+        with stash.SensitiveValues() as sv:
+            sv.capture_xpub()
+    except ValueError:
+        # no secrets yet, not an error
+        pass
+
 
 # EOF

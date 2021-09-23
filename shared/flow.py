@@ -2,7 +2,7 @@
 #
 # flow.py - Menu structure
 #
-from menu import MenuItem
+from menu import MenuItem, ToggleMenuItem
 import version
 from glob import settings
 
@@ -27,6 +27,12 @@ try:
 except:
     make_paper_wallet = None
 
+
+if version.mk_num >= 4:
+    from trick_pins import TrickPinMenu
+    trick_pin_menu = TrickPinMenu()
+else:
+    trick_pin_menu = None
 
 #
 # NOTE: "Always In Title Case"
@@ -55,11 +61,8 @@ if not version.has_608:
     ]
 
 async def which_pin_menu(_1,_2, item):
-    if version.mk_num >= 4:
-        # mk4 only
-        from trick_pins import TrickPinMenu
-        return TrickPinMenu()
-    elif version.has_608:
+    assert version.mk_num < 4
+    if version.has_608:
         # mk3
         return PinChangesMenu
     else:
@@ -75,20 +78,51 @@ def nfc_enabled():
     from glob import NFC
     return bool(NFC)
 
-SettingsMenu = [
+HWTogglesMenu = [
+    ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,
+        on_change=change_usb_disable, story='''\
+Blocks any data over USB port. Useful when your plan is air-gap usage.'''),
+    ToggleMenuItem('Virtual Disk', 'vdsk', ['Default Off', 'Enable', 'Enable & Auto'],
+        predicate=lambda: version.has_psram, on_change=change_virtdisk_enable, 
+        story='''Coldcard can emulate a virtual disk drive (4MB) where new PSBT files \
+can be saved. Signed PSBT files (transactions) will also be saved here. \n\
+In "auto" mode, selects PSBT as soon as written.'''),
+    ToggleMenuItem('NFC Sharing', 'nfc', ['Default Off', 'Enable NFC'], on_change=change_nfc_enable,
+        story='''\
+NFC (Near Field Communications) allows a phone to "tap" to send and receive data \
+with the Coldcard.''',
+        predicate=lambda: version.has_nfc),
+]
+
+# all pre-login values
+LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
-    MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('Max Network Fee', chooser=max_fee_chooser),
-    MenuItem('PIN Options', menu=which_pin_menu),
-    MenuItem('Multisig Wallets', menu=make_multisig_menu),
+    MenuItem('Change Main PIN', f=pin_changer, arg='main'),
+    MenuItem('PIN Options', predicate=lambda: not version.has_se2, menu=which_pin_menu),
+    MenuItem('Trick PINs', predicate=lambda: version.has_se2, menu=trick_pin_menu),
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Kill Key', f=pick_killkey, predicate=lambda: version.has_se2),
-    MenuItem('Delete PSBTs', f=pick_inputs_delete),
-    MenuItem('Disable USB', chooser=disable_usb_chooser),
-    MenuItem('Enable NFC', predicate=lambda: version.mk_num >= 4, chooser=disable_nfc_chooser),
+    MenuItem('Login Countdown', chooser=countdown_chooser),
+    MenuItem('Test Login Now', f=login_now, arg=1),
+]
+
+SettingsMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem('Login Settings', menu=LoginPrefsMenu),
+    MenuItem('Hardware On/Off', menu=HWTogglesMenu),
+    MenuItem('Multisig Wallets', menu=make_multisig_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
+    MenuItem('Max Network Fee', chooser=max_fee_chooser),
+    MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+    ToggleMenuItem('Delete PSBTs', 'del', ['Default Keep', 'Delete PSBTs'],
+        story='''\
+PSBT files (on SDCard) will be blanked & deleted after they are used. \
+The signed transaction will be named <TXID>.txn, so the file name does not leak information.
+
+MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
+which take apart the flash chips of the SDCard may still be able to find the \
+data or filenames.'''),
 ]
 
 XpubExportMenu = [
@@ -192,7 +226,10 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
-    MenuItem('Testnet Mode', f=confirm_testnet_mode),
+    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3'], 
+        value_map=['BTC', 'XTN'],
+        story="Testnet must only be used by developers because \
+correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
     MenuItem('Settings space', f=show_settings_space),
 ]
 

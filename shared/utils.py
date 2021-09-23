@@ -378,16 +378,23 @@ def check_firmware_hdr(hdr, binary_size):
 
 def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
-    # - mk4: SPI flash not used, except for firmware upgrades, but PSRAM holds data
-    import callgate, version
+    # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
+    # - bootrom wipes every byte of SRAM, so no need to repeat here
+    import callgate, version, uasyncio
 
     try:
+        from glob import dis
+        dis.fullscreen("Cleanup...")
+
         if not version.has_psram:
             from sflash import SF
             SF.wipe_most()
         else:
-            from glob import PSRAM
-            PSRAM.wipe_all()
+            from glob import NFC
+
+            if NFC:
+                uasyncio.run(NFC.wipe(True))
+                
     except: pass
 
     callgate.show_logout(style)
