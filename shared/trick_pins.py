@@ -108,8 +108,8 @@ class TrickPinMgmt:
         self.roundtrip(2)
 
     def get_available_slots(self):
-        # do an impossible search, so we can get block_slots field back
-        if ckcc.is_simulator():     # XXX
+        # do an impossible search, so we can get blank_slots field back
+        if ckcc.is_simulator():     # XXX FIXME
             return list(range(NUM_TRICKS))
 
         b, slot = make_slot()
@@ -225,6 +225,7 @@ class TrickPinMenu(MenuSystem):
     def __init__(self):
         from pincodes import pa
         self.current_pin = pa.pin.decode()
+        self.WillWipeMenu = None
 
         super().__init__(self.construct(avail=(not pa.tmp_value)))
 
@@ -243,20 +244,24 @@ class TrickPinMenu(MenuSystem):
             tricks.remove(self.current_pin)
 
         has_wrong = False
-        rv = [MenuItem('Add New Trick', f=self.add_new)]
+
+        rv = []
+
+        if tricks:
+            rv.append(MenuItem('Trick PINs:'))
+            for pin in tricks:
+                if pin == WRONG_PIN_CODE:
+                    rv.append(MenuItem('↳WRONG PIN', menu=self.pin_submenu, arg=pin))
+                else:
+                    rv.append(MenuItem('↳'+pin, menu=self.pin_submenu, arg=pin))
+
+
+        rv.append(MenuItem('Add New Trick', f=self.add_new))
         has_wrong = any(pin == WRONG_PIN_CODE for pin in tricks)
         if not has_wrong:
             rv.append(MenuItem('Add If Wrong', f=self.set_any_wrong))
 
-        if not tricks:
-            rv.append(MenuItem(' -NONE YET-', f=self.add_new))
-        else:
-            for pin in tricks:
-                if pin == WRONG_PIN_CODE:
-                    rv.append(MenuItem(' WRONG PIN', menu=self.pin_submenu, arg=pin))
-                else:
-                    rv.append(MenuItem(' '+pin, menu=self.pin_submenu, arg=pin))
-
+        if tricks:
             rv.append(MenuItem('Delete All', f=self.clear_all))
 
         return rv
@@ -268,14 +273,19 @@ class TrickPinMenu(MenuSystem):
     async def done_picking(self, item, parents):
         # done picking/drilling down tree.
         wants_wipe = (self.WillWipeMenu in parents)
-        msg = "%s => \n %s" % (self.proposed_pin, item.label)
+        self.WillWipeMenu = None        # memory free
 
         flags = item.flags
         tc_arg = item.arg
 
-        if wants_wipe:
-            msg += " (after wiping secret)"
-            flags |= TC_WIPE
+        if self.proposed_pin == WRONG_PIN_CODE:
+            msg = "%d Wrong PINs\n↳%s" % (tc_arg, item.label)
+        else:
+            msg = "PIN %s\n↳%s" % (self.proposed_pin, item.label)
+
+            if wants_wipe:
+                msg += " (after wiping secret)"
+                flags |= TC_WIPE
 
         msg += '\n\n'
 
@@ -404,7 +414,8 @@ only up to last four digits can be different between true PIN and trick.''' % le
                             flags=TC_WIPE),
         ])
         FirstMenu = [
-            MenuItem('"%s" =>' % self.proposed_pin),
+            #MenuItem('"%s" =>' % self.proposed_pin),
+            MenuItem('[%s]' % self.proposed_pin),
             StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK),
             StoryMenuItem('Wipe Seed', "Wipe the seed and maybe do more. See next menu.",
                                             menu=self.WillWipeMenu),
@@ -422,6 +433,7 @@ differ only in final 4 positions (ignoring dash).\
 ''', flags=TC_DELTA_MODE),
         ]
         m = MenuSystem(FirstMenu)
+        m.goto_idx(1)
         the_ux.push(m)
 
     async def set_any_wrong(self, *a):
@@ -431,40 +443,29 @@ the seed phrase, and/or brick the Coldcard. Regardless of this (or any other \
 setting) the Coldcard will always brick after 13 failed PIN attempts.''')
         if ch == 'x': return
 
+        self.proposed_pin = WRONG_PIN_CODE
         num = await ux_enter_number("#of wrong attempts", 12)
         if num is None: return
 
-        rel = ['', 'first', 'second', '3rd'][num] if num <= 3 else ('%dth' % num)
-        ch = await ux_show_story('''\
-After %s wrong PIN, Coldcard should:
+        rel = ['', '1st', '2nd', '3rd'][num] if num <= 3 else ('%dth' % num)
 
-1 => wipe seed
+        m = MenuSystem([
+            #              xxxxxxxxxxxxxxxx
+            MenuItem('[%s WRONG PIN]' % rel),
+            StoryMenuItem('Wipe, Stop', "Seed is wiped and a message is shown.",
+                arg=num, flags=TC_WIPE),
+            StoryMenuItem('Wipe & Reboot', "Seed is wiped and Coldcard reboots without notice.",
+                            arg=num, flags=TC_WIPE|TC_REBOOT),
+            StoryMenuItem('Silent Wipe', "Seed is silently wiped and Coldcard acts as if PIN code was just wrong.",
+                            arg=num, flags=TC_WIPE|TC_FAKE_OUT),
+            StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK),
+            StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.", arg=num, flags=TC_WIPE|TC_BRICK),
+            StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", arg=num, flags=TC_BLANK_WALLET),
+            StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.", arg=num, flags=TC_REBOOT),
+        ])
 
-2 => wipe seed, give one more try, and then brick
-
-3 => become a brick
-
-''' % rel, escape='123x')
-
-        if ch == 'x':
-            return await ux_aborted()
-
-        flags = 0
-        if ch == '1':
-            flags = TC_WIPE
-        elif ch == '2':
-            flags = TC_WIPE | TC_BRICK
-        elif ch == '3':
-            flags = TC_BRICK
-
-        try:
-            b, s = tp.update_slot(WRONG_PIN_CODE.encode(), new=True, tc_flags=flags, tc_arg=num)
-            await ux_dramatic_pause("Saved.", 1)
-        except BaseException as exc:
-            sys.print_exception(exc)
-            await ux_show_story("Failed.")
-
-        self.update_contents()
+        m.goto_idx(1)
+        the_ux.push(m)
 
     async def clear_all(self, m,l,item):
         if not await ux_confirm("Removing all trick PIN codes and special wrong-pin handling. Be sure to move the funds from any duress wallets."):
@@ -627,23 +628,23 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         rv = []
 
         if pin != WRONG_PIN_CODE:
-            rv.append(MenuItem('PIN:%s' % pin))
+            rv.append(MenuItem('PIN %s' % pin))
         else:
             rv.append(MenuItem("After %d wrong:" % arg))
 
         if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
-            rv.append(MenuItem("[Duress Wallet]", f=self.duress_details, arg=(pin, flags, arg)))
+            rv.append(MenuItem("↳Duress Wallet", f=self.duress_details, arg=(pin, flags, arg)))
         elif flags & TC_BLANK_WALLET:
-            rv.append(MenuItem("[Blank Wallet]"))
+            rv.append(MenuItem("↳Blank Wallet"))
         elif flags & TC_FAKE_OUT:
-            rv.append(MenuItem("[Pretends Wrong]"))
+            rv.append(MenuItem("↳Pretends Wrong"))
         elif flags & TC_DELTA_MODE:
-            rv.append(MenuItem("[Delta Mode]"))
+            rv.append(MenuItem("↳Delta Mode"))
 
         for m, msg in [
-            (TC_WIPE,   '[Wipes seed]'),
-            (TC_BRICK,  '[Bricks CC]'),
-            (TC_REBOOT, '[Reboots]'),
+            (TC_WIPE,   '↳Wipes seed'),
+            (TC_BRICK,  '↳Bricks CC'),
+            (TC_REBOOT, '↳Reboots'),
         ]:
             if flags & m:
                 rv.append(MenuItem(msg))
