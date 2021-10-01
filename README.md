@@ -20,7 +20,7 @@ has been automated using Docker. Steps are as follows:
 
 1. Install Docker and start it.
 2. Install [make (GNUMake)](https://www.gnu.org/software/make/) if you don't already have it.
-3. Checkout the code, and start the process.
+3. Check-out the code, and start the process.
 
     git clone https://github.com/Coldcard/firmware.git
     cd firmware/stm32
@@ -31,7 +31,7 @@ has been automated using Docker. Steps are as follows:
 
 ## Check-out and Setup
 
-Do a checkout, recursively to get all the submodules:
+Do a check-out, recursively to get all the submodules:
 
     git clone --recursive https://github.com/Coldcard/firmware.git
 
