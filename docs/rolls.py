@@ -3,7 +3,7 @@
 #   echo 123456123456 | python3 rolls.py
 #
 # - Requires python3 and nothing else!
-# - This file is <https://coldcardwallet.com/docs/rolls.py>
+# - This file is <https://coldcard.com/docs/rolls.py>
 # - Public domain.
 #
 from hashlib import sha256

@@ -43,7 +43,7 @@ else
         echo "Cannot determine release date / full file name. Stop."
         exit 1
     fi
-    wget -S https://coldcardwallet.com/downloads/$PUBLISHED_BIN
+    wget -S https://coldcard.com/downloads/$PUBLISHED_BIN
 fi
 cd ../stm32
 

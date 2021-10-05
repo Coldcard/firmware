@@ -1,11 +1,10 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Replace the lower-level parts of the simulator with actual hardware.
 #
 # - bootrom's callgate is the common interface point (ckcc.gate function)
 # - requires hardware to be controlled over USB serial emulation
-# - see simulator.py which adds '--metal' argument to setup and support this
+# - see simulator.py which adds '--metal' argument to setup to support this mode
 # - called early in startup by sim_boot.py
 # - quick test:    
 #       make && ./simulator --metal -q

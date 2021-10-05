@@ -61,8 +61,8 @@ By using this product, you are accepting our Terms of Sale and Use.
 Read the full document at:
 
 https://
-  coldcardwallet
-  .com/legal
+  coldcard.com
+  /legal
 
 Press OK to accept terms and continue.""", escape='7')
 
@@ -525,8 +525,7 @@ X = Cancel/Back
 
 More on our website:
 
- coldcardwallet
-           .com
+ coldcard.com
 """)
 
 async def start_seed_import(menu, label, item):
@@ -949,6 +948,9 @@ async def export_xpub(label, _2, item):
 
         # assume zero account if not picked
         path = path.format(acct=acct)
+
+        from glob import dis
+        dis.fullscreen('Wait...')
 
         # render xpub/ypub/zpub
         with stash.SensitiveValues() as sv:

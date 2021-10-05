@@ -6,6 +6,8 @@
   privacy of XFP value itself. A warning is shown when this happens.
 - Enhancement: "Advanced > Export XPUB" provides direct way to show XPUB (or ZPUB/YPUB) for
   BIP-84 / BIP-44 / BIP-49 standard derivations, as a QR. Also can show XFP and master XPUB.
+- Bugfix: Updated domain name from `coldcardwallet.com` to `coldcard.com` in docs and few
+  on-screen messages.
 
 ## 4.1.3 - Sep 2, 2021
 
