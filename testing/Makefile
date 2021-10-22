@@ -10,4 +10,7 @@ cont:
 tags:
 	ctags --python-kinds=-i -f .tags *.py */*.py
 
-.PHONY: all cont tags
+clean:
+	rm -f ../unix/work/hsm-policy.json
+
+.PHONY: all cont tags clean
