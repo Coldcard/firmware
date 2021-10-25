@@ -113,6 +113,25 @@ async def test_sd_active():
         k = await ux_wait_keyup('xy')
         assert k == 'y'     # "SD Active LED bust"
 
+async def test_usb_light():
+    # Mk4's new USB activity light (right by connector)
+
+    if version.mk_num < 4: return
+
+    from machine import Pin
+    p = Pin('USB_ACTIVE', Pin.OUT)
+
+    try:
+        p.value(1)
+        dis.clear()
+        dis.text(0,0, "USB light on? ^^")
+        dis.show()
+
+        k = await ux_wait_keyup('xy')
+        assert k == 'y'     # "USB Active LED bust"
+    finally:
+        p.value(0)
+
 async def test_nfc():
     # Mk4: NFC chip and field
     if not version.has_nfc: return
@@ -289,6 +308,7 @@ async def start_selftest():
         await test_numpad()
         await test_secure_element()
         await test_sd_active()
+        await test_usb_light()
 
         # add more tests here
 
