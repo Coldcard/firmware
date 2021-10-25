@@ -84,6 +84,11 @@ Used to be these were needed as well:
 
 You may need to reboot to avoid a `DISPLAY is not set` error.
 
+#### Big Sur Issues
+
+- `defaults write org.python.python ApplePersistenceIgnoreState NO` will supress a warning
+  about `Python[22580:10101559] ApplePersistenceIgnoreState: Existing state will not be touched. New state will be written to...` see <https://bugs.python.org/issue32909>
+
 ### Linux
 
 You'll probably need to install these (Ubuntu 16):
