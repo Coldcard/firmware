@@ -381,9 +381,14 @@ produced by various common wallet systems.
 Choose the address that your desktop or mobile wallet \
 has shown you as the first receive address.
 
-WARNING: Please understand that exceeding the gap limit \
+--- WARNING ---
+
+Exceeding the gap limit \
 of your wallet, or choosing the wrong address on the next screen \
 may make it very difficult to recover your funds.
+
+Additional info:
+coldcard.com/docs/address-explorer
 
 Press 4 to start or 6 to hide this message forever.''', escape='46')
 
