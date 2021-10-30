@@ -276,7 +276,7 @@ else
 	$(SIGNIT) check firmware-signed.bin
 	hexdump -C firmware-signed.bin | $(TRIM_SIG) > repro-got.txt
 	hexdump -C check-fw.bin | $(TRIM_SIG) > repro-want.txt
-	diff repro-got.txt repro-want.txt
+	git diff repro-got.txt repro-want.txt
 	@echo ""
 	@echo "SUCCESS. "
 	@echo ""
