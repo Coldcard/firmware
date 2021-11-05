@@ -38,12 +38,14 @@ def pin_stuff(submethod, buf_io):
                         PIN_ATTEMPT_SIZE_V1, CHANGE_LS_OFFSET,
                         PA_SUCCESSFUL, PA_IS_BLANK, PA_HAS_DURESS, PA_HAS_BRICKME,
                         CHANGE_WALLET_PIN, CHANGE_DURESS_PIN, CHANGE_BRICKME_PIN,
+                        AE_LONG_SECRET_LEN,
                         CHANGE_SECRET, CHANGE_DURESS_SECRET, CHANGE_SECONDARY_WALLET_PIN )
 
-    if len(buf_io) != (PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1):
+    if len(buf_io) < (PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1):
         return ERANGE
 
     global SECRETS
+    after_buf = None
 
     (magic, is_secondary,
             pin, pin_len,
@@ -243,6 +245,20 @@ def pin_stuff(submethod, buf_io):
         else:
             secret = SECRETS['ls'][off:off+32]
 
+    elif submethod == 7:
+        # pin_firmware_upgrade(args) process for mk4
+        if version.mk_num < 4:
+            return ENOENT
+
+        # not implemented in simulator
+        pass
+
+    elif submethod == 8:
+        # new mk4 api for long-secret
+        if version.mk_num < 4:
+            return ENOENT
+
+        buf_io[-AE_LONG_SECRET_LEN:] = SECRETS.get('ls', bytearray(416))
 
     else:
         # bogus submethod

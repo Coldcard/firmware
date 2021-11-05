@@ -445,10 +445,12 @@ def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, 
 
             addr_vs_path(rhs, path=lhs, addr_fmt=f)
 
+#def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('acct_num', [ None, 0, 99, 8989])
-def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number, cap_screen_qr, use_mainnet):
+@pytest.mark.parametrize('use_nfc', [False, True])
+def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number, cap_screen_qr, use_mainnet, nfc_read_text):
     # XPUB's via QR
 
     use_mainnet()
@@ -475,10 +477,13 @@ def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
         time.sleep(0.1)
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
+            if use_nfc:
+                need_keypress('3')
             assert got == xfp2str(simulator_fixed_xfp).upper()
             need_keypress('x')
             continue
 
+        time.sleep(0.1)
         title, story = cap_story()
         assert expect in story
 
@@ -496,8 +501,17 @@ def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
 
         expect = expect.format(acct=0)
 
-        need_keypress('y')
-        got_pub = cap_screen_qr().decode('ascii')
+        if not use_nfc:
+            need_keypress('y')
+            got_pub = cap_screen_qr().decode('ascii')
+        else:
+            assert 'Press 3' in story
+            assert 'NFC' in story
+            need_keypress('3')
+            got_pub = nfc_read_text()
+            time.sleep(0.1)
+            #need_keypress('y')
+
         if got_pub[0] not in 'xt':
             got_pub,*_ = slip132undo(got_pub)
 

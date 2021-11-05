@@ -63,6 +63,7 @@ def simulator(request):
 @pytest.fixture(scope='module')
 def sim_exec(dev):
     # run code in the simulator's interpretor
+    # - can work on real product too, if "debug build" is used.
 
     def doit(cmd, binary=False):
         s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'))
@@ -74,6 +75,7 @@ def sim_exec(dev):
 @pytest.fixture(scope='module')
 def sim_eval(dev):
     # eval an expression in the simulator's interpretor
+    # - can work on real product too, if "debug build" is used.
 
     def doit(cmd, timeout=None):
         return dev.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
@@ -83,6 +85,7 @@ def sim_eval(dev):
 @pytest.fixture(scope='module')
 def sim_execfile(simulator):
     # run a whole file in the simulator's interpretor
+    # - requires shared filesystem
     import os
 
     def doit(fname, timeout=None):
@@ -518,6 +521,7 @@ def microsd_path(simulator):
     # open a file from the simulated microsd
 
     def doit(fn):
+        # could use: ckcc.get_sim_root_dirs() here
         return '../unix/work/MicroSD/' + fn
 
     return doit
@@ -1122,11 +1126,12 @@ def nfc_read(sim_exec):
     return doit
 
 @pytest.fixture()
-def nfc_write(sim_exec):
+def nfc_write(sim_exec, need_keypress):
     # WRITE data into NFC "chip"
     def doit(ccfile):
-        rv = sim_exec('glob.NFC.big_write(%r)' % ccfile)
+        rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
         if 'Traceback' in rv: raise pytest.fail(rv)
+        need_keypress('y')      # to end the animation and have it check value immediately
     return doit
 
 @pytest.fixture()
@@ -1146,7 +1151,6 @@ def nfc_block4rf(sim_eval):
     def doit(timeout=15):
         for i in range(timeout*4):
             rv = sim_eval('glob.NFC.rf_on')
-            print('rv=%r' % rv)
             if rv: break
             sleep(0.250)
         else:

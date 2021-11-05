@@ -1,6 +1,6 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# psram.py -- access PSRAM chip on Mk4
+# sim_psram.py -- SIMULATED access PSRAM chip on Mk4
 #
 import version, psram
 

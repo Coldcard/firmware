@@ -161,22 +161,9 @@ system_startup(void)
     se2_probe();
     puts("done");
 
-
-#if 0
-    {   uint8_t config[128] = {0};
-        int x = ae_config_read(config);
-        if(x == 0) {
-            puts("config[128]:");
-            hex_dump(config, 128);
-        } else {
-            puts("config read fail");
-        }
-    }
-#endif
-
     // protect our flash, and/or check it's protected 
     // - and pick pairing secret if we don't already have one
-    // - may also do one-time setup of 508a
+    // - may also do one-time setup of the secure elements
     // - note: ae_setup must already be called, since it can talk to that
     flash_setup();
     //puts("Flash: setup done");

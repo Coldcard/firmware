@@ -28,6 +28,9 @@ extern const unsigned char screen_logout[];
 extern const unsigned char screen_devmode[];
 
 
+extern const unsigned char screen_red_light[];
+
+
 extern const unsigned char screen_upgrading[];
 
 

@@ -242,9 +242,10 @@ psram_wipe(void)
 {
     if(OCTOSPI1->CR == 0) return;       // PSRAM not enabled (yet?)
 
-    puts2("PSRAM Wipe: ");
+    // Fast! But real; maybe 150ms
+    //puts2("PSRAM Wipe: ");
     memset4((uint32_t *)PSRAM_BASE, rng_sample(), PSRAM_SIZE);
-    puts("done");
+    //puts("done");
 }
 
 // recover_from_psram()

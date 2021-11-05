@@ -77,6 +77,8 @@ def has_secrets():
 def nfc_enabled():
     from glob import NFC
     return bool(NFC)
+def vdisk_enabled():
+    return bool(settings.get('vdsk', 0))
 
 HWTogglesMenu = [
     ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,
@@ -155,7 +157,8 @@ SDCardMenu = [
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file),
-    MenuItem('Format Card', f=wipe_sd_card),
+    MenuItem('Format SD Card', f=wipe_sd_card),
+    MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
 ]
 
 UpgradeMenu = [
@@ -165,15 +168,26 @@ UpgradeMenu = [
     MenuItem('Bless Firmware', f=bless_flash),
 ]
 
-DevelopersMenu = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem("Normal USB Mode", f=dev_enable_protocol),
-    MenuItem("Enable USB REPL", f=dev_enable_vcp),
-    MenuItem("Enable USB Disk", f=dev_enable_disk),
-    MenuItem("Wipe Patch Area", f=wipe_filesystem),
-    MenuItem('Warm Reset', f=reset_self),
-    MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
-]
+if version.mk_num < 4:
+    DevelopersMenu = [
+        #         xxxxxxxxxxxxxxxx
+        MenuItem("Normal USB Mode", f=dev_enable_protocol),
+        MenuItem("Enable USB REPL", f=dev_enable_vcp),
+        MenuItem("Enable USB Disk", f=dev_enable_disk),
+        MenuItem("Wipe Patch Area", f=wipe_filesystem),         # needs better label
+        MenuItem('Warm Reset', f=reset_self),
+        MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
+    ]
+else:
+    # Mk4 and later
+    from mk4 import dev_enable_repl
+    DevelopersMenu = [
+        #         xxxxxxxxxxxxxxxx
+        MenuItem("Serial REPL", f=dev_enable_repl),
+        MenuItem("Wipe LFS", f=wipe_filesystem),                # kills settings, HSM stuff
+        MenuItem('Warm Reset', f=reset_self),
+        MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
+    ]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
@@ -221,7 +235,6 @@ DangerZoneMenu = [
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),       # actually harmless
     MenuItem("Seed Functions", menu=SeedFunctionsMenu),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
-    MenuItem("Wipe Patch Area", f=wipe_filesystem),             # needs better label
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),

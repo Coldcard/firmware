@@ -39,6 +39,7 @@ has_membrane = True
 has_fatram = True
 has_se2 = True
 has_psram = True
+has_nfc = True
 
 if  '--mk1' in sys.argv:
     # doubt this works still
@@ -48,6 +49,7 @@ if  '--mk1' in sys.argv:
     has_fatram = False
     has_se2 = False
     has_psram = False
+    has_nfc = False
 
 if  '--mk2' in sys.argv:
     hw_label = 'mk2'
@@ -55,6 +57,7 @@ if  '--mk2' in sys.argv:
     has_fatram = False
     has_se2 = False
     has_psram = False
+    has_nfc = False
 
 if  '--mk3' in sys.argv:
     hw_label = 'mk3'
@@ -62,5 +65,6 @@ if  '--mk3' in sys.argv:
     has_fatram = True
     has_se2 = False
     has_psram = False
+    has_nfc = False
 
 mk_num = int(hw_label[2:])

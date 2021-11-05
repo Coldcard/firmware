@@ -3,7 +3,7 @@
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
 import sys, stash, ujson, os, ngu
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 
 class PassphraseSaver:
     # Encrypts BIP-39 passphrase very carefully, and appends
@@ -46,7 +46,6 @@ class PassphraseSaver:
         # encrypt and save; always appends.
         from ux import ux_dramatic_pause
         from glob import dis
-        from actions import needs_microsd
 
         while 1:
             dis.fullscreen('Saving...')

@@ -51,7 +51,7 @@ hid_descp = bytes([
 HSM_WHITELIST = frozenset({
     'logo', 'ping', 'vers',     # harmless/boring
     'upld', 'sha2', 'dwld', 'stxn',     # up/download/sign PSBT needed
-    'mitm','ncry',              # maybe limited by policy tho
+    'mitm', 'ncry',             # maybe limited by policy tho
     'smsg',                     # limited by policy
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
@@ -67,6 +67,7 @@ handler = None
 
 def enable_usb():
     # We can't change it on the fly; must be disabled before here
+    # - only one combo of subclasses can be used during a single power-up cycle
     cur = pyb.usb_mode()
     if cur:
         print("USB already enabled: %s" % cur)
@@ -307,7 +308,7 @@ class USBHandler:
         except:
             raise FramingError('decode')
 
-        if cmd[0].isupper() and (is_simulator() or is_devmode):
+        if cmd[0].isupper() and is_devmode:
             # special hacky commands to support testing w/ the simulator
             try:
                 from usb_test_commands import do_usb_command

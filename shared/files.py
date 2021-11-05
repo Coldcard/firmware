@@ -2,8 +2,16 @@
 #
 # files.py - MicroSD and related functions.
 #
-import pyb, ckcc, os, sys, utime
+import pyb, ckcc, os, sys, utime, glob
 from uerrno import ENOENT
+
+async def needs_microsd():
+    # Standard msg shown if no SD card detected when we need one.
+    return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
+
+def _is_ejected():
+    sd = pyb.SDCard()
+    return not sd.present()
 
 def _try_microsd(bad_fs_ok=False):
     # Power up, mount the SD card, return False if we can't for some reason.
@@ -95,7 +103,9 @@ def wipe_microsd_card():
     sd = pyb.SDCard()
     assert sd
 
-    if not sd.present(): return
+    if not sd.present():
+
+        return
 
     # power cycle so card details (like size) are re-read from current card
     sd.power(0)
@@ -196,10 +206,17 @@ class CardSlot:
         from machine import Pin
         cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
-    def __init__(self):
-        self.active = False
+    def __init__(self, force_vdisk=False, readonly=False):
+        self.mountpt = None
+        self.force_vdisk = force_vdisk
+        self.readonly = readonly
 
     def __enter__(self):
+        # Mk4: maybe use our virtual disk in preference to SD Card
+        if glob.VD and (_is_ejected() or self.force_vdisk):
+            self.mountpt = glob.VD.mount(self.readonly)
+            return self
+
         # Get ready!
         self.active_led.on()
 
@@ -214,25 +231,29 @@ class CardSlot:
         ok = _try_microsd()
 
         if not ok:
-            self.recover()
+            self._recover()
 
             raise CardMissingError
 
-        self.active = True
+        self.mountpt = '/sd'
 
         return self
 
     def __exit__(self, *a):
-        self.recover()
+        if self.mountpt == '/sd':
+            self._recover()
+        else:
+            glob.VD.unmount()
+
+        self.mountpt = None
         return False
         
-    def recover(self):
+    def _recover(self):
         # done using the microSD -- unpower it
         self.active_led.off()
 
-        self.active = False
-
         try:
+            assert self.mountpt == '/sd'
             os.umount('/sd')
         except: pass
 
@@ -249,9 +270,9 @@ class CardSlot:
 
     def get_paths(self):
         # (full) paths to check on the card
-        root = self.get_sd_root()
-
-        return [root]
+        #root = self.get_sd_root()
+        #return [root]
+        return [self.mountpt]
 
     def get_id_hash(self):
         # hash over card config and serial # details
@@ -276,10 +297,10 @@ class CardSlot:
         # - no UI here please
         import ure
 
-        assert self.active      # used out of context mgr
+        assert self.mountpt      # used out of context mgr
 
-        # prefer SD card if we can
-        path = path or (self.get_sd_root() + '/')
+        # put it back where we found it
+        path = path or (self.mountpt + '/')
 
         assert '/' not in pattern
         assert '.' in pattern
@@ -314,19 +335,18 @@ class CardSlot:
 
         return fname, fname[len(path):]
 
-def securely_blank_file(full_path):
-    # input PSBT file no longer required; so delete it
-    # - blank with zeros
-    # - rename to garbage (to hide filename after undelete)
-    # - delete 
-    # - ok if file missing already (card maybe have been swapped)
-    #
-    # NOTE: we know the FAT filesystem code is simple, see 
-    #       ../external/micropython/extmod/vfs_fat.[ch]
+    def securely_blank_file(self, full_path):
+        # input PSBT file no longer required; so delete it
+        # - blank with zeros
+        # - rename to garbage (to hide filename after undelete)
+        # - delete 
+        # - ok if file missing already (card maybe have been swapped)
+        #
+        # NOTE: we know the FAT filesystem code is simple, see 
+        #       ../external/micropython/extmod/vfs_fat.[ch]
 
-    path, basename = full_path.rsplit('/', 1)
+        path, basename = full_path.rsplit('/', 1)
 
-    with CardSlot() as card:
         try:
             blk = bytes(64)
 

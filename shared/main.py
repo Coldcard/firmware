@@ -16,21 +16,19 @@ assert not glob.dis, "main reimport"
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
-if 1:
+if 0:
     # useful for debug: keep this stub!
     import ckcc
     ckcc.vcp_enabled(True)
     from h import *
-    #pyb.usb_mode('VCP+MSC')            # handy but annoying disk issues
-    #pyb.usb_mode('VCP')
 if 0:
     raise SystemExit
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2021.\n")
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2021.")
 
-from version import get_mpy_version
-datestamp,vers,_ = get_mpy_version()
-print("Version: " + vers + " / " + datestamp)
+import version
+datestamp,vers,_ = version.get_mpy_version()
+print("Version: %s / %s\n" % (vers, datestamp))
 
 # Setup OLED and get something onto it.
 from display import Display
@@ -39,7 +37,7 @@ dis.splash()
 glob.dis = dis
 
 # slowish imports, some with side-effects
-import version, ckcc, uasyncio
+import ckcc, uasyncio
 
 if version.mk_num == 4:
     # early setup code needed on Mk4
@@ -57,18 +55,6 @@ else:
     # Serial Flash memory
     from sflash import SF
 
-if version.is_devmode:
-    # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!
-    # - using relative paths here so works better on simulator
-    # - you must boot w/ non-production-signed firmware to get here
-    sys.path.insert(0, 'flash/lib')
-
-    # Give external devs a way to start stuff early
-    try:
-        import boot2
-    except: pass
-
-
 # Setup membrane numpad (mark 2+)
 from mempad import MembraneNumpad
 numpad = MembraneNumpad()
@@ -85,11 +71,6 @@ async def more_setup():
     # MAYBE: check if we're a brick and die again? Or show msg?
     
     try:
-        # Some background "tasks"
-        #
-        from dev_helper import monitor_usb
-        IMPT.start_task('vcp', monitor_usb())
-
         from files import CardSlot
         CardSlot.setup()
 
@@ -104,7 +85,7 @@ async def more_setup():
             print("factory mode")
             # in factory mode, turn on USB early to allow debug/setup
             from usb import enable_usb
-            enable_usb()
+            enable_usb(version.has_psram)
 
             # always start the self test.
             if not settings.get('tested', False):
@@ -153,9 +134,15 @@ def go():
         die_with_debug(exc)
 
 if version.is_devmode:
-    # Give external devs a way to start semi-early.
+    # Start some debug-only code.
     try:
-        import main2
+        import dev_helper
+        dev_helper.setup()
+    except: pass
+
+    # Simulator code
+    try:
+        import sim_quickstart
     except: pass
 
 uasyncio.create_task(more_setup())

@@ -6,7 +6,7 @@ import sys, uasyncio, ckcc
 
 def die_with_debug(exc):
     try:
-        is_debug = ckcc.vcp_enabled(None)
+        is_debug = ckcc.vcp_enabled(None) or ckcc.is_debug_build()
     except:
         # robustness
         is_debug = False

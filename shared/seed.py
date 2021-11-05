@@ -461,16 +461,20 @@ def set_seed_value(words=None, encoded=None):
         nv = encoded
 
     from glob import dis
-    dis.fullscreen('Applying...')
-    pa.change(new_secret=nv)
+    try:
+        dis.fullscreen('Applying...')
+        dis.busy_bar(True)
+        pa.change(new_secret=nv)
 
-    # re-read settings since key is now different
-    # - also captures xfp, xpub at this point
-    pa.new_main_secret(nv)
+        # re-read settings since key is now different
+        # - also captures xfp, xpub at this point
+        pa.new_main_secret(nv)
 
-    # check and reload secret
-    pa.reset()
-    pa.login()
+        # check and reload secret
+        pa.reset()
+        pa.login()
+    finally:
+        dis.busy_bar(False)
 
 def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
@@ -520,22 +524,28 @@ async def remember_bip39_passphrase():
 
 def clear_seed():
     from glob import dis
-    import utime
+    import utime, callgate
 
     dis.fullscreen('Clearing...')
+    dis.busy_bar(True)
 
     # clear settings associated with this key, since it will be no more
     settings.blank()
 
-    # save a blank secret (all zeros is a special case, detected by bootloader)
-    nv = bytes(AE_SECRET_LEN)
-    pa.change(new_secret=nv)
+    if version.mk_num >= 4:
+        callgate.fast_wipe(True)
+        # NOT REACHED
+    else:
+        # save a blank secret (all zeros is a special case, detected by bootloader)
+        nv = bytes(AE_SECRET_LEN)
+        pa.change(new_secret=nv)
 
-    if version.has_608:
-        # wipe the long secret too
-        nv = bytes(AE_LONG_SECRET_LEN)
-        pa.ls_change(nv)
+        if version.has_608:
+            # wipe the long secret too
+            nv = bytes(AE_LONG_SECRET_LEN)
+            pa.ls_change(nv)
 
+    dis.busy_bar(False)
     dis.fullscreen('Reboot...')
     utime.sleep(1)
 

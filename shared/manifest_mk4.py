@@ -8,4 +8,3 @@ freeze_as_mpy('', [
 	'trick_pins.py',
 	'graphics_mk4.py',
 ], opt=0)
-

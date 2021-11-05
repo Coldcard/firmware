@@ -29,7 +29,10 @@ class SimulatedNFCHandler(NFCHandler):
         atime, mtime, ctime = os.stat(DATA_FILE)[-3:]
         self._mtime = mtime
         self._atime = atime
-        print("%d bytes of NDEF written to work/nfc-dump.ndef .. touch or read that file to simulate taps" % n)
+        print("%d bytes of NDEF written to work/nfc-dump.ndef .. Press N or touch or read that file to simulate taps" % n)
+
+    async def wipe(self, full_wipe):
+        print("NFC chip wiped (full=%d)" % int(full_wipe))
 
     def is_rf_disabled(self):
         return not self.rf_on

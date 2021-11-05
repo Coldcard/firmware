@@ -15,16 +15,11 @@ def make_flash_fs():
     os.mount(fl, '/flash')
 
     open('/flash/README.txt', 'wt').write("LFS Virt disk")
-    os.mkdir('/flash/lib')
     os.mkdir('/flash/settings')
 
 def make_psram_fs():
-    # ALWAYS remake this, because PSRAM does not forget old state during quick
-    # resets and such.
-    print("Mount /psram")
-
-    # Lower level code has wiped and created filesystem already, but
-    # add some more files?
+    # Filesystem is wiped and rebuild on each boot before this point, but
+    # add some more files.
     ps = ckcc.PSRAM()
     os.mount(ps, '/psram')
 
@@ -32,14 +27,14 @@ def make_psram_fs():
     open('/psram/README.txt', 'wt').write('''
 COLDCARD Virtual Disk
 
-1) copy your PSBT file to be signed here.
-2) select from Coldcard menu, approve transaction.
-3) signed transaction file(s) will be created here.
+1) copy your PSBT file here.
+2) select from Coldcard menu & approve transaction.
+3) signed transaction file(s) will be saved here.
 
 '''.replace('\n', '\r\n'))
 
     date, ver, *_ = version.get_mpy_version()
-    open('/psram/version.txt', 'wt').write('\r\n'.join([ver, date, '']))
+    open('/psram/ident/version.txt', 'wt').write('\r\n'.join([ver, date, '']))
 
     # generally, leave it unmounted
     os.umount('/psram')
@@ -56,9 +51,15 @@ def init0():
     except BaseException as exc:
         sys.print_exception(exc)
 
-    # create singleton for Virtual Disk
-    import vdisk
-    vdisk.VirtDisk()
-    assert glob.VD
+async def dev_enable_repl(*a):
+    # Enable serial port connection. You'll have to break case open.
+    from ux import ux_show_story
+
+    # allow REPL access
+    ckcc.vcp_enabled(True)
+
+    print("REPL enabled.")
+    await ux_show_story("""\
+The serial port has now been enabled.\n\n3.3v TTL on Tx/Rx/Gnd pads @ 115,200 bps.""")
 
 # EOF

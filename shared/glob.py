@@ -20,6 +20,9 @@ settings = None
 # PSRAM (on Mk4 only)
 PSRAM = None
 
+# Virtual Disk (Mk4)
+VD = None
+
 # NFC interface (Mk4, and can be disabled)
 NFC = None
 

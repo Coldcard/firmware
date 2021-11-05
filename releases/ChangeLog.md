@@ -1,3 +1,10 @@
+## 5.0.0 - Nov ??, 2021
+
+Mk4 - New hardware
+
+- (mk3&4) Performance improved: some internal objects cached to reduce delays when
+  accessing master secret. Helps address explorer, many USB commands and signing.
+
 ## 4.1.4 - Sep ??, 2021
 
 - Enhancement: if an XFP of zero is seen in a PSBT file, assume that should be replaced by

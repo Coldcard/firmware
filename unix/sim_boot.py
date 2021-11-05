@@ -23,14 +23,11 @@ if '--sflash' not in sys.argv:
     #glob.settings.current = dict(sim_defaults)
 
 if 1:
-    # Mk4 hacks and workaround (no simulated PSRAM)
+    # Install Mk4 hacks and workarounds
     import mk4
-    def mff_noop():
-        print("Skip FS rebuild (simulator)")
-    mk4.make_flash_fs = mff_noop
-    mk4.make_psram_fs = mff_noop
-
-    import sim_psram as psram
+    import sim_mk4
+    import sim_psram
+    import sim_vdisk
 
 if sys.argv[-1] != '-q':
     import main     # must be last, does not return

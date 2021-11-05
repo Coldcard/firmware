@@ -189,7 +189,8 @@ results = [
     ( 'downgrade', 'Downgrade?', 'history', {} ),
     ( 'corrupt', 'Firmware?', 'lemon', {} ),
     ( 'logout', 'Logout Done', 'logout', {}),
-    ( 'devmode', 'Danger! Caution!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
+    ( 'devmode', 'Danger! Custom!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
+    ( 'red_light', 'Danger! Caution!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
     ( 'upgrading', 'Upgrading', 'graph-up', {}),
     ( 'replug', 'Replug', None, {}),        # visible in factory only
     ( 'search', 'Searching...', 'search-card', {}),

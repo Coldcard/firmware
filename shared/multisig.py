@@ -6,11 +6,10 @@ import stash, chains, ustruct, ure, uio, sys, ngu
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
-from actions import needs_microsd
 from exceptions import FatalPSBTIssue
 from glob import settings
 

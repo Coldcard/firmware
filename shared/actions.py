@@ -10,7 +10,7 @@ from ux import ux_enter_number
 from utils import imported, pretty_short_delay, problem_file_line
 import uasyncio
 from uasyncio import sleep_ms
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 from utils import xfp2str
 from glob import settings
 from pincodes import pa
@@ -31,10 +31,6 @@ async def start_selftest(*args):
 
     settings.save()
 
-
-async def needs_microsd():
-    # Standard msg shown if no SD card detected when we need one.
-    return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
 async def needs_primary():
     # Standard msg shown if action can't be done w/o main PIN
@@ -142,6 +138,7 @@ async def maybe_dev_menu(*a):
 
 async def dev_enable_vcp(*a):
     # Enable USB serial port emulation, for devs.
+    # Mk3 and earlier only.
     #
     from usb import is_vcp_active
 
@@ -164,6 +161,7 @@ The USB virtual serial port has now been enabled. Use a real computer to connect
 
 async def dev_enable_disk(*a):
     # Enable disk emulation, which allows them to change code.
+    # Mk3 and earlier only.
     #
     cur = pyb.usb_mode()
 
@@ -182,6 +180,7 @@ Keep tmp files and other junk out!""")
 
 async def dev_enable_protocol(*a):
     # Turn off disk emulation. Keep VCP enabled, since they are still devs.
+    # Mk3 and earlier
     cur = pyb.usb_mode()
     if cur and 'HID' in cur:
         await ux_show_story('Coldcard USB protocol is already enabled (HID mode)')
@@ -272,7 +271,7 @@ async def microsd_upgrade(*a):
                         pos += here
                 else:
                     # just read it to where we want it
-                    dest = PSRAM.write(0, size)
+                    dest = SF.write(0, size)
                     fp.readinto(dest)
 
     if failed:
@@ -837,8 +836,9 @@ async def start_login_sequence():
     IMPT.start_task('idle', idle_logout()) 
 
     # Do green-light set immediately after firmware upgrade
-    if not pa.is_secondary:
-        if version.is_fresh_version() and version.mk_num <=3:
+    # - mk4 doesn't work this way, light will already be green
+    if version.mk_num <= 3:
+        if version.is_fresh_version() and not pa.is_secondary:
             pa.greenlight_firmware()
             dis.show()
 
@@ -870,16 +870,21 @@ async def start_login_sequence():
                     await ar.interact()
         except: pass
 
+    if version.mk_num >= 4:
+        if version.has_nfc and settings.get('nfc', 0):
+            # Maybe allow NFC now
+            import nfc
+            nfc.NFCHandler.startup()
+
+        if settings.get('vdsk', 0):
+            # Maybe start virtual disk
+            import vdisk
+            vdisk.VirtDisk()
+
     # Allow USB protocol, now that we are auth'ed
     if not settings.get('du', 0):
         from usb import enable_usb
         enable_usb()
-
-    if version.mk_num >= 4 and version.has_nfc:
-        # Maybe allow NFC now
-        if settings.get('nfc', 0):
-            import nfc
-            nfc.NFCHandler.startup()
         
 def goto_top_menu():
     # Start/restart menu system
@@ -1223,13 +1228,21 @@ async def restore_everything_cleartext(*A):
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
-used for code patches. Does not affect funds, or seed words but may reset settings \
-used with other BIP39 passphrases. \
-Does not affect SD card, if any.'''):
+used for settings and HSM config file. Does not affect funds, or seed words but \
+will reset settings used with other BIP39 passphrases. \
+Does not affect MicroSD card, if any.'''):
         return
 
     from files import wipe_flash_filesystem
     wipe_flash_filesystem()
+
+async def wipe_vdisk(*A):
+    if not await ux_confirm('''\
+Erases and reformats shared RAM disk. This is a secure erase that blanks every byte.'''):
+        return
+
+    import glob
+    await glob.VD.wipe_disk()
 
 async def wipe_sd_card(*A):
     if not await ux_confirm('''\
@@ -1272,8 +1285,8 @@ async def list_files(*A):
     ch = await ux_show_story('''SHA256(%s)\n\n%s\n\nPress 6 to delete.''' % (basename, B2A(chk.digest())), escape='6')
 
     if ch == '6':
-        from files import securely_blank_file
-        securely_blank_file(fn)
+        with CardSlot() as card:
+            card.securely_blank_file(fn)
 
     return
 
@@ -1408,15 +1421,11 @@ async def bless_flash(*a):
 async def ready2sign(*a):
     # Top menu choice of top menu! Signing!
     # - check if any signable in SD card, if so do it
-    # - if nothing, then talk about USB connection
+    # - if no card, check virtual disk for PSBT
+    # - if still nothing, then talk about USB connection
     from public_constants import MAX_TXN_LEN
     import stash
     from glob import NFC
-    
-    if stash.bip39_passphrase:
-        title = '[%s]' % settings.get('xfp')
-    else:
-        title = None
 
     def is_psbt(filename):
         if '-signed' in filename.lower():
@@ -1435,6 +1444,11 @@ async def ready2sign(*a):
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
                             max_size=MAX_TXN_LEN, taster=is_psbt)
+    
+    if stash.bip39_passphrase:
+        title = '[%s]' % settings.get('xfp')
+    else:
+        title = None
 
     if not choices:
         msg = '''Coldcard is ready to sign spending transactions!
@@ -1923,9 +1937,24 @@ async def change_nfc_enable(enable):
         nfc.NFCHandler.startup()
 
 async def change_virtdisk_enable(enable):
-    print("vdisk: %d" % enable)
-    pass
+    import glob, vdisk
+    from usb import enable_usb, disable_usb
 
+    if bool(enable) == bool(glob.VD):
+        # not a change in state, do nothing
+        print("vdisk: no change")
+        return
+
+    print("vdisk: %d" % enable)
+
+    if enable:
+        # just showing up as new media is enough (MacOS) to make it show up
+        vdisk.VirtDisk()
+        assert glob.VD
+    else:
+        assert glob.VD
+        glob.VD.shutdown()
+        assert not glob.VD
 
 async def change_which_chain(name):
     # setting already changed, but reflect that value in other settings

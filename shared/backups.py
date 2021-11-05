@@ -323,8 +323,7 @@ async def verify_backup_file(fname_or_fd):
     # read 7z header, and measure checksums
     # - no password is wanted/required
     # - really just checking CRC32, but that's enough against truncated files
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
     prob = None
     fd = None
 
@@ -381,8 +380,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     # build password
     password = ' '.join(words)

@@ -734,9 +734,10 @@ def psbt_encoding_taster(taste, psbt_len):
 
     return decoder, output_encoder, psbt_len
     
-def sign_psbt_file(filename):
+async def sign_psbt_file(filename, force_vdisk=False):
     # sign a PSBT file found on a MicroSD card
-    from files import CardSlot, CardMissingError, securely_blank_file
+    # - or from VirtualDisk (mk4)
+    from files import CardSlot, CardMissingError
     from glob import dis
     from sram2 import tmp_buf
 
@@ -744,11 +745,10 @@ def sign_psbt_file(filename):
 
     #print("sign: %s" % filename)
 
-
     # copy file into our spiflash
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
-    with CardSlot() as card:
+    with CardSlot(force_vdisk, readonly=True) as card:
         with open(filename, 'rb') as fd:
             dis.fullscreen('Reading...')
 
@@ -814,7 +814,7 @@ def sign_psbt_file(filename):
 
             for path in [orig_path, None]:
                 try:
-                    with CardSlot() as card:
+                    with CardSlot(force_vdisk, readonly=True) as card:
                         out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
@@ -828,7 +828,7 @@ def sign_psbt_file(filename):
             else:
                 # attempt write-out
                 try:
-                    with CardSlot() as card:
+                    with CardSlot(force_vdisk) as card:
                         if is_comp and del_after:
                             # don't write signed PSBT if we'd just delete it anyway
                             out_fn = None
@@ -853,13 +853,13 @@ def sign_psbt_file(filename):
                                                             txid+'.txn', out_path, overwrite=True)
                                     os.rename(out2_full, after_full)
 
-                    if del_after:
-                        # this can do nothing if they swapped SDCard between steps, which is ok,
-                        # but if the original file is still there, this blows it away.
-                        # - if not yet final, the foo-part.psbt file stays
-                        try:
-                            securely_blank_file(filename)
-                        except: pass
+                        if del_after:
+                            # this can do nothing if they swapped SDCard between steps, which is ok,
+                            # but if the original file is still there, this blows it away.
+                            # - if not yet final, the foo-part.psbt file stays
+                            try:
+                                card.securely_blank_file(filename)
+                            except: pass
 
                     # success and done!
                     break
@@ -868,6 +868,10 @@ def sign_psbt_file(filename):
                     prob = 'Failed to write!\n\n%s\n\n' % exc
                     sys.print_exception(exc)
                     # fall thru to try again
+
+            if force_vdisk:
+                await ux_show_story(prob, title='Error')
+                return
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed transaction, "

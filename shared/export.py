@@ -118,8 +118,7 @@ be needed for different systems.
 async def write_text_file(fname_pattern, body, title, total_parts=72):
     # - total_parts does need not be precise
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     # choose a filename
     try:
@@ -412,8 +411,7 @@ async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     dis.fullscreen('Generating...')
 

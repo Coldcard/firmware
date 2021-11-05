@@ -183,9 +183,13 @@ class NFCHandler:
         print("NFC: first time")
         self.write_config1(I2C_CFG, 0x3a)
 
+        utime.sleep_ms(10)      # required
+
         # set to no RF when first powered up (so CC is quiet when system unpowered)
         # - side-effect: sets rf to sleep now too
         self.write_config1(RF_MNGT, 2)
+
+        utime.sleep_ms(10)      # might be needed?
 
         # XXX locking stuff?
 
@@ -504,11 +508,5 @@ class NFCHandler:
                 await self.share_text(data.decode())
             else:
                 raise ValueError(ctype)
-
-def presence_check():
-    # Does NFC hardware exist on this board?
-    # SDA/SCL will be tied low
-    from machine import Pin
-    return Pin('NFC_SDA', mode=Pin.IN).value() or Pin('NFC_SCL', mode=Pin.IN).value()
 
 # EOF

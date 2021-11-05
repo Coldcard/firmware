@@ -179,10 +179,10 @@ check_is_downgrade(const uint8_t timestamp[8], const char *version)
     return (memcmp(timestamp, min, 8) < 0);
 }
 
-// warn_bad_checksum()
+// warn_fishy_firmware()
 //
     void
-warn_bad_checksum(void)
+warn_fishy_firmware(const uint8_t *pixels)
 {
     // warn the victim about corrupted flash/ident info
 #if RELEASE
@@ -190,11 +190,9 @@ warn_bad_checksum(void)
 #else
     const int wait = 10;
 #endif
-
-    puts("WARN: Bad firmware");
     
     for(int i=0; i < wait; i++) {
-        oled_show_progress(screen_devmode, (i*100)/wait);
+        oled_show_progress(pixels, (i*100)/wait);
 
         delay_ms(250);
     }
@@ -337,11 +335,18 @@ verify_firmware(void)
 
     // show big/slow warning if light is not green
     if(not_green) {
-        warn_bad_checksum();
+        // When light is not green; some part of flash (not firmware area)
+        // is changed. these are typically false-positives, unfortunately.
+        puts("WARN: Red light");
+        warn_fishy_firmware(screen_red_light);
+    } else if(FW_HDR->pubkey_num == 0) {
+        // public signing key used; firmware not from Coinkite!
+        puts("WARN: Unsigned firmware");
+        warn_fishy_firmware(screen_devmode);
     } else {
-        puts("good firmware");
+        oled_show_progress(screen_verify, 100);
+        puts("Good firmware");
     }
-    oled_show_progress(screen_verify, 100);
 
     return true;
 

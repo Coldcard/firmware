@@ -49,17 +49,25 @@ def get_header_value(fld_name):
 
     return ustruct.unpack_from(FWH_PY_FORMAT, hdr)[idx]
 
+def nfc_presence_check():
+    # Does NFC hardware exist on this board?
+    # SDA/SCL will be tied low
+    from machine import Pin
+    return Pin('NFC_SDA', mode=Pin.IN).value() or Pin('NFC_SCL', mode=Pin.IN).value()
+
 def get_is_devmode():
     # what firmware signing key did we boot with? are we in dev mode?
+
+    if mk_num == 4:
+        # mk4 we are built differently
+        import ckcc
+        return ckcc.is_debug_build()
+
     from sigheader import RAM_HEADER_BASE, FWH_PK_NUM_OFFSET
     import stm
 
-    if mk_num == 4:
-        # mk4 we use flash header
-        kn = get_header_value('pubkey_num')
-    else:
-        # Important? Use the RAM version of this, not flash version!
-        kn = stm.mem32[RAM_HEADER_BASE + FWH_PK_NUM_OFFSET]
+    # Important? Use the RAM version of this, not flash version!
+    kn = stm.mem32[RAM_HEADER_BASE + FWH_PK_NUM_OFFSET]
 
     # For now, all keys are "production" except number zero, which will be made public
     # - some other keys may be de-authorized and so on in the future
@@ -123,9 +131,7 @@ def probe_system():
         has_psram = True
         has_se2 = True
         mk_num = 4
-
-        from nfc import presence_check
-        has_nfc = presence_check()
+        has_nfc = nfc_presence_check()
     else:
         # mark 2
         has_608 = callgate.has_608()

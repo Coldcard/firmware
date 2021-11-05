@@ -35,13 +35,11 @@ extern __IO uint32_t uwTick;
 
 STATIC mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self);
 STATIC const uint8_t psram_msc_lu_num = 1;
-STATIC uint16_t psram_msc_lu_flags;
 
 typedef struct _psram_obj_t {
     mp_obj_base_t base;
 
     uint32_t        host_write_time;
-    uint32_t        cc_write_time;
 } psram_obj_t;
 
 // singleton
@@ -50,13 +48,13 @@ psram_obj_t psram_obj = {
     { &psram_type },
 };
 
-#define HOST_WR_TIMEOUT     2000            // (ms)
+#define HOST_WR_TIMEOUT     750            // (ms)
 static soft_timer_entry_t  host_wr_done;
 
-// This flag is needed to support removal of the medium, so that the USB drive
-// can be unmounted and won't be remounted automatically.
-#define FLAGS_STARTED (0x01)
-#define FLAGS_READONLY (0x02)
+// we only have a single LUN, so flags can be simple
+// - note that "started" is more like inserted vs. ejected
+bool flag_STARTED = false;
+bool flag_READONLY = false;
 
 // psram_init()
 //
@@ -78,9 +76,12 @@ psram_init(void)
     static void
 reset_wr_timeout(void)
 {
+    // host has written something, reset/set a timeout to look at new change,
+    // assuming more is not written before the timeout expires.
 
-    // host has written something, reset/set a timeout to handle new change
     soft_timer_remove(&host_wr_done);
+
+    psram_obj.host_write_time = uwTick;
 
     if(host_wr_done.callback != MP_ROM_NONE) {
         host_wr_done.expiry_ms = uwTick + HOST_WR_TIMEOUT;
@@ -93,7 +94,12 @@ reset_wr_timeout(void)
     static void
 wr_timeout_now(void)
 {
+    // host did something that indicates it won't be writing anymore to
+    // the disk, and therefore ok to immediately look at contents.
+
     soft_timer_remove(&host_wr_done);
+
+    psram_obj.host_write_time = uwTick;
 
     if(host_wr_done.callback != MP_ROM_NONE) {
         mp_sched_schedule(host_wr_done.callback, MP_OBJ_FROM_PTR(&psram_obj));
@@ -104,23 +110,13 @@ static uint8_t *block_to_ptr(uint32_t blk, uint16_t num_blk)
 {
     // Range checking on incoming requests also done in SCSI_CheckAddressRange()
     // but this is an extra layer of safety, important since we might expose
-    // our address space otherwise.
+    // our address space otherwise!
+    // - note unsigned arguments
+
     if(blk >= BLOCK_COUNT) return NULL;
     if((blk+num_blk) > BLOCK_COUNT) return NULL;
 
     return &PSRAM_TOP_BASE[blk * BLOCK_SIZE];
-}
-
-static inline void lu_flag_set(uint8_t lun, uint8_t flag) {
-    psram_msc_lu_flags |= flag << (lun * 2);
-}
-
-static inline void lu_flag_clr(uint8_t lun, uint8_t flag) {
-    psram_msc_lu_flags &= ~(flag << (lun * 2));
-}
-
-static inline bool lu_flag_is_set(uint8_t lun, uint8_t flag) {
-    return psram_msc_lu_flags & (flag << (lun * 2));
 }
 
 // Sent in response to MODE SENSE(6) command
@@ -176,8 +172,10 @@ STATIC int8_t psram_msc_Init(uint8_t lun_in) {
     if (lun_in != 0) {
         return 0;
     }
-    lu_flag_set(0, FLAGS_STARTED);
-    lu_flag_clr(0, FLAGS_READONLY);
+
+    // don't change flag here, might have been set by python
+    //flags_STARTED = false;
+    //flags_READONLY = false;
 
     return 0;
 }
@@ -235,7 +233,9 @@ STATIC int8_t psram_msc_IsReady(uint8_t lun) {
     }
 
     // NOTE: called frequently, and must be T for MacOS to recognize at all
-    return lu_flag_is_set(lun, FLAGS_STARTED) ? 0 : -1;
+    // when F, macos keeps trying to work until it's ready again (freezing programs
+    // trying to work with the drive).
+    return flag_STARTED ? 0 : -1;
 }
 
 // Check if a logical unit is write protected
@@ -243,7 +243,7 @@ STATIC int8_t psram_msc_IsWriteProtected(uint8_t lun) {
     if (lun >= psram_msc_lu_num) {
         return -1;
     }
-    return lu_flag_is_set(lun, FLAGS_READONLY) ? 1 : 0;
+    return flag_READONLY ? 1 : 0;
 }
 
 // Start or stop a logical unit
@@ -251,21 +251,33 @@ STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
     if (lun >= psram_msc_lu_num) {
         return -1;
     }
-    printf("PSRAMdisk: started=%d\n", started);
+
+    // host is not allowed to change our ready status: always fail
+    printf("PSRAMdisk: started=%d tried\n", started);
+    ckcc_usb_active = true;
+
+    if(!started) {
+        // (macos) is trying to "eject" the disk. Note this event.
+        wr_timeout_now();
+    }
+
+    return -1;
+#if 0
     if (started) {
-        lu_flag_set(lun, FLAGS_STARTED);
+        flag_STARTED = true;
         ckcc_usb_active = true;
     } else {
-        lu_flag_clr(lun, FLAGS_STARTED);
+        flag_STARTED = false;
     }
     return 0;
+#endif
 }
 
 // Prepare a logical unit for possible removal
 STATIC int8_t psram_msc_PreventAllowMediumRemoval(uint8_t lun, uint8_t param) {
     printf("PSRAMdisk: prevallow=%d\n", param);
     if(param == 0) {
-        // allow removal == host is done (like unmount in MacOS)
+        // allow removal == host is done (like after umount in MacOS)
         wr_timeout_now();
     }
 
@@ -300,7 +312,6 @@ STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint
     memcpy(ptr, buf, blk_len*BLOCK_SIZE);
 
     reset_wr_timeout();
-    psram_obj.host_write_time = uwTick;
 
     return 0;
 }
@@ -308,6 +319,7 @@ STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint
 // Get the number of attached logical units
 STATIC int8_t psram_msc_GetMaxLun(void) {
     ckcc_usb_active = true;
+
     return psram_msc_lu_num - 1;
 }
 
@@ -415,8 +427,6 @@ int direct_psram_write_blocks(const uint8_t *src, uint32_t block_num, uint32_t n
 
     memcpy(ptr, src, num_blocks * BLOCK_SIZE);
 
-    psram_obj.cc_write_time = uwTick;
-
     return 0;
 }
 
@@ -425,9 +435,12 @@ STATIC mp_obj_t psram_ioctl(mp_obj_t self_in, mp_obj_t cmd_in, mp_obj_t arg_in) 
     mp_int_t cmd = mp_obj_get_int(cmd_in);
 
     switch (cmd) {
-        case MP_BLOCKDEV_IOCTL_INIT:
-        case MP_BLOCKDEV_IOCTL_DEINIT:
         case MP_BLOCKDEV_IOCTL_SYNC:
+            // umount() called; CC done w/ filesystem
+            return MP_OBJ_NEW_SMALL_INT(0);
+
+        case MP_BLOCKDEV_IOCTL_INIT:            // when mount() happens (even R/O)
+        case MP_BLOCKDEV_IOCTL_DEINIT:          // not observed
             // nothing to do
             return MP_OBJ_NEW_SMALL_INT(0);
 
@@ -482,7 +495,7 @@ mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self)
     memset(PSRAM_TOP_BASE, 0x21, BLOCK_SIZE * BLOCK_COUNT);
 
     // Build obj to handle blockdev protocol
-    fs_user_mount_t vfs;
+    fs_user_mount_t vfs = {0};
     psram_init_vfs(&vfs, false);
 
     // newfs:
@@ -492,13 +505,14 @@ mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self)
     uint8_t working_buf[FF_MAX_SS];
     FRESULT res = f_mkfs(&vfs.fatfs, FM_FAT|FM_SFD, BLOCK_SIZE, working_buf, sizeof(working_buf));
     if (res != FR_OK) {
-        mp_printf(&mp_plat_print, "PSRAM: can't create filesystem\n");
+        //mp_printf(&mp_plat_print, "PSRAM: can't create filesystem\n");
         goto fail;
     }
 
     // set volume label, which becomes mountpoint on MacOS
     // .. can't do this from python AFAIK
     f_setlabel(&vfs.fatfs, "COLDCARD");
+    f_mkdir(&vfs.fatfs, "ident");
 
     FIL fp;
     UINT n;
@@ -508,16 +522,17 @@ mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self)
     {   char    fname[80];
         const uint8_t *id = (const uint8_t *)MP_HAL_UNIQUE_ID_ADDRESS;     // 12 bytes, binary
         snprintf(fname, sizeof(fname),
-                "ckcc-%02X%02X%02X%02X%02X%02X.txt",
+                "ident/ckcc-%02X%02X%02X%02X%02X%02X.txt",
                 id[11], id[10] + id[2], id[9], id[8] + id[0], id[7], id[6]);
+        const char *serial = &fname[11];
 
         f_open(&vfs.fatfs, &fp, fname, FA_WRITE | FA_CREATE_ALWAYS);
-        f_write(&fp, fname+5, 12, &n);
+        f_write(&fp, serial, 12, &n);
         f_write(&fp, "\r\n", 2, &n);
         f_close(&fp);
 
-        f_open(&vfs.fatfs, &fp, "serial.txt", FA_WRITE | FA_CREATE_ALWAYS);
-        f_write(&fp, fname+5, 12, &n);
+        f_open(&vfs.fatfs, &fp, "ident/serial.txt", FA_WRITE | FA_CREATE_ALWAYS);
+        f_write(&fp, serial, 12, &n);
         f_write(&fp, "\r\n", 2, &n);
         f_close(&fp);
     }
@@ -551,7 +566,7 @@ mp_obj_t psram_mmap_file(mp_obj_t unused_self, mp_obj_t fname_in)
     const char *fname = mp_obj_str_get_str(fname_in);
 
     // Build obj to handle python protocol
-    fs_user_mount_t vfs;
+    fs_user_mount_t vfs = {0};
     psram_init_vfs(&vfs, true);
 
     FRESULT res = f_mount(&vfs.fatfs);
@@ -629,7 +644,7 @@ mp_obj_t psram_copy_file(mp_obj_t unused_self, mp_obj_t offset_in, mp_obj_t fnam
     const char *fname = mp_obj_str_get_str(fname_in);
 
     // Build obj to handle python protocol
-    fs_user_mount_t vfs;
+    fs_user_mount_t vfs = {0};
     psram_init_vfs(&vfs, true);
 
     FRESULT res = f_mount(&vfs.fatfs);
@@ -706,15 +721,35 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_3(psram_copy_file_obj, psram_copy_file);
 
 mp_obj_t psram_set_callback(mp_obj_t unused_self, mp_obj_t callback_in)
 {
-    if(callback_in != MP_ROM_NONE) {
-        soft_timer_remove(&host_wr_done);
+    // set or clear the callback, use None to disable
+    soft_timer_remove(&host_wr_done);
 
-        host_wr_done.callback = callback_in;
-    }
+    host_wr_done.callback = callback_in;
 
-    return host_wr_done.callback;
+    return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(psram_set_callback_obj, psram_set_callback);
+
+mp_obj_t psram_set_inserted(mp_obj_t unused_self, mp_obj_t enable_in)
+{
+    // set or clear insertion status (media started)
+    if(enable_in != MP_ROM_NONE) {
+        bool enable = !!mp_obj_get_int(enable_in);
+
+        flag_STARTED = enable;
+    }
+
+    return MP_OBJ_NEW_SMALL_INT(flag_STARTED);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(psram_set_inserted_obj, psram_set_inserted);
+
+mp_obj_t psram_get_time(mp_obj_t unused_self)
+{
+    // return time of last write from host
+
+    return mp_obj_new_int_from_uint(psram_obj.host_write_time);
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(psram_get_time_obj, psram_get_time);
 
 
 STATIC const mp_rom_map_elem_t psram_locals_dict_table[] = {
@@ -725,6 +760,8 @@ STATIC const mp_rom_map_elem_t psram_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_mmap), MP_ROM_PTR(&psram_mmap_file_obj) },
     { MP_ROM_QSTR(MP_QSTR_copy_file), MP_ROM_PTR(&psram_copy_file_obj) },
     { MP_ROM_QSTR(MP_QSTR_callback), MP_ROM_PTR(&psram_set_callback_obj) },
+    { MP_ROM_QSTR(MP_QSTR_set_inserted), MP_ROM_PTR(&psram_set_inserted_obj) },
+    { MP_ROM_QSTR(MP_QSTR_get_time), MP_ROM_PTR(&psram_get_time_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(psram_locals_dict, psram_locals_dict_table);

@@ -19,6 +19,7 @@
 #include "boardctrl.h"
 #include "softtimer.h"
 #include "ulight.h"
+#include "uart.h"
 
 #include "storage.h"
 #include "usb.h"
@@ -31,9 +32,6 @@
 
 // Presume genuine light is on, at start
 STATIC bool presumably_green_light = true;
-
-// see vcp_lockdown.c where this is used
-bool ckcc_vcp_enabled;
 
 MP_DECLARE_CONST_FUN_OBJ_0(pyb_rng_get_obj);
 MP_DECLARE_CONST_FUN_OBJ_1(pyb_rng_get_bytes_obj);
@@ -173,6 +171,12 @@ STATIC mp_obj_t is_simulator(void)
 }
 MP_DEFINE_CONST_FUN_OBJ_0(is_simulator_obj, is_simulator);
 
+STATIC mp_obj_t is_debug_build(void)
+{
+    return MP_OBJ_NEW_SMALL_INT(COLDCARD_DEBUG);
+}
+MP_DEFINE_CONST_FUN_OBJ_0(is_debug_build_obj, is_debug_build);
+
 STATIC mp_obj_t get_cpu_id(void)
 {
     // Are we running on a STM32L496RG6? If so, expect 0x461
@@ -183,6 +187,9 @@ MP_DEFINE_CONST_FUN_OBJ_0(get_cpu_id_obj, get_cpu_id);
 
 STATIC mp_obj_t vcp_enabled(mp_obj_t new_val)
 {
+    // see vcp_lockdown.c where this is used
+    extern bool ckcc_vcp_enabled;
+
     // Report/Control the VCP lockout. Call with None to readback.
     if(mp_obj_is_integer(new_val)) {
         ckcc_vcp_enabled = !!(mp_obj_get_int_truncated(new_val));
@@ -223,16 +230,6 @@ STATIC mp_obj_t usb_active(void)
 }
 MP_DEFINE_CONST_FUN_OBJ_0(usb_active_obj, usb_active);
 
-STATIC mp_obj_t wipe_fs(void)
-{
-    // Erase and reformat flash filesystem
-    // - not supported on Mk4
-    mp_raise_ValueError(NULL);
-
-    return mp_const_none;
-}
-MP_DEFINE_CONST_FUN_OBJ_0(wipe_fs_obj, wipe_fs);
-
 STATIC mp_obj_t breakpoint(void)
 {
     // drop into the debugger, if connected.
@@ -261,9 +258,9 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_gate),                MP_ROM_PTR(&sec_gate_obj) },
     { MP_ROM_QSTR(MP_QSTR_oneway),              MP_ROM_PTR(&sec_oneway_gate_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_simulator),        MP_ROM_PTR(&is_simulator_obj) },
+    { MP_ROM_QSTR(MP_QSTR_is_debug_build),      MP_ROM_PTR(&is_debug_build_obj) },
     { MP_ROM_QSTR(MP_QSTR_get_cpu_id),          MP_ROM_PTR(&get_cpu_id_obj) },
     { MP_ROM_QSTR(MP_QSTR_vcp_enabled),         MP_ROM_PTR(&vcp_enabled_obj) },
-    { MP_ROM_QSTR(MP_QSTR_wipe_fs),             MP_ROM_PTR(&wipe_fs_obj) },
     { MP_ROM_QSTR(MP_QSTR_presume_green),       MP_ROM_PTR(&presume_green_obj) },
     { MP_ROM_QSTR(MP_QSTR_breakpoint),          MP_ROM_PTR(&breakpoint_obj) },
     { MP_ROM_QSTR(MP_QSTR_watchpoint),          MP_ROM_PTR(&watchpoint_obj) },
@@ -285,14 +282,16 @@ void ckcc_early_init(void)
 {
     // Add system-wide init code here.
 
-    // Disable ^C to interrupt code.
-    // cannot find where this might be set by other code to ^C.
+    // Disable ^C to interrupt code... but see mp_hal_set_interrupt_char()
+    // for best disable code.
     mp_interrupt_char = -1;
 
     // Do the equivilent of "py.usb_mode(None)" in boot.py
     extern mp_uint_t pyb_usb_flags;
     pyb_usb_flags |= PYB_USB_FLAG_USB_MODE_CALLED;
 }
+
+
 
 void ckcc_boardctrl_before_boot_py(boardctrl_state_t *state)
 {
@@ -338,25 +337,6 @@ ckcc_heap_end(void)
     return rv;
 }
 
-#if 0
-// Add a wrapper to this flash_bdev_writeblock() so we
-// can detect when any change made to "green lit" firmware,
-// and therefore clear the light. It doesn't really matter to anything
-// but's a debug aid and (mostly?) prevents the case where user switches
-// off the Coldcard with green light on, but unverified changes in flash.
-//
-bool CKCC_flash_bdev_writeblock(const uint8_t *src, uint32_t block)
-{
-    if(presumably_green_light) {
-        callgate_lower(4, 1, NULL);
-
-        presumably_green_light = false;
-    }
-
-    return flash_bdev_writeblock(src, block);
-}
-#endif
-
 // There is no classical C heap in bare-metal ports, only Python
 // garbage-collected heap. For completeness, emulate C heap via
 // GC heap. Note that MicroPython core never uses malloc() and friends,
@@ -375,6 +355,5 @@ void *realloc(void *ptr, size_t size)
 {
     return m_realloc(ptr, size);
 }
-
 
 // EOF

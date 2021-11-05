@@ -11,7 +11,8 @@ MICROPY_VFS_LFS2 = 1
 MICROPY_VFS_FAT = 1
 
 # see py/mpconfig.h which uses this var if set
-#INC += -DMP_CONFIGFILE=\"boards/$(BOARD)/ckcc-port.h\"
+CFLAGS_EXTRA += -DMP_CONFIGFILE=\"boards/$(BOARD)/ckcc-port.h\"
+CFLAGS_EXTRA += -DCOLDCARD_DEBUG=$(DEBUG_BUILD)
 
 # obsolete
 # need the CDC inf file to be built before this file
@@ -77,6 +78,11 @@ build-COLDCARD_MK/boards/COLDCARD_MK4/modckcc.o: COPT = -O0 -DNDEBUG
 # bugfix: remove unwanted setup code called from ports/stm32/resethandler.s
 build-COLDCARD_MK4/lib/stm32lib/CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.o: \
 	CFLAGS += -DSystemInit=SystemInit_OMIT
+
+# bugfix: replace keyboard interrupt handling
+build-COLDCARD_MK4/lib/utils/interrupt_char.o: \
+	CFLAGS += -Dmp_hal_set_interrupt_char=mp_hal_set_interrupt_char_OMIT
+	
 
 files:
 	# SRC_C: $(SRC_C)

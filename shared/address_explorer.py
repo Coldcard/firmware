@@ -349,8 +349,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250):
     # write addresses into a text file on the MicroSD
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     # simple: always set number of addresses.
     # - takes 60 seconds to write 250 addresses on actual hardware

@@ -148,6 +148,7 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, nfc_read, nfc_write, nfc_block4rf):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
+    # XXX cap_story, pick_menu_item, goto_home => require simulator, bad.
 
     sim_exec('from pyb import SDCard; SDCard.ejected = True; import nfc; nfc.NFCHandler.startup()')
 
@@ -200,9 +201,8 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
         need_keypress('3')
         time.sleep(.1)
         nfc_write(ccfile)
-        need_keypress('y')
             
-        time.sleep(.1)
+        time.sleep(.5)
         
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
@@ -324,8 +324,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, try_sign, dev, settings_set):
-    # exercise the txn encode/decode from sdcard
+def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev, settings_set):
     xp = dev.master_xpub
 
     def hack(psbt):

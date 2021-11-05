@@ -4,9 +4,8 @@
 # paper.py - generate paper wallets, based on random values (not linked to wallet)
 #
 from utils import imported
-from actions import needs_microsd
 from ux import ux_show_story, ux_dramatic_pause
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 from actions import file_picker
 from menu import MenuSystem, MenuItem
 

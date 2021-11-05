@@ -13,4 +13,4 @@ zbar-py==1.0.4
 
 # NFC and NDEF handling
 nfcpy==1.0.3
-ndef==0.3.3
+ndef==0.2

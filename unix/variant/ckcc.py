@@ -68,6 +68,7 @@ def pin_prefix(pin, buf_out):
 
 def gate(method, buf_io, arg2):
     # the "callgate" into the bootloader
+    import version
 
     # - only spuratically implemented (say it like in _Clueless_)
     # - none of the error checking is repeated here
@@ -130,7 +131,7 @@ def gate(method, buf_io, arg2):
         return 0
 
     if method == 22:
-        # trick pin actions, just skip for now TODO
+        # trick pin actions
         global SE2_STATE
 
         from trick_pins import TRICK_SLOT_LAYOUT
@@ -140,6 +141,8 @@ def gate(method, buf_io, arg2):
         b = buf_io[PIN_ATTEMPT_SIZE:]
         slot = uctypes.struct(uctypes.addressof(b), TRICK_SLOT_LAYOUT)
         pc = slot.pin[0:slot.pin_len].decode()
+
+        # XXX untested/incomplete?
 
         if arg2 == 0:       # clear all
             SE2_STATE.clear()
@@ -163,11 +166,11 @@ def gate(method, buf_io, arg2):
             return ENOENT
         if arg2 == 0xBeef:
             # silent version, but does reset system
-            print("silent wipe of secret")
+            print("silent wipe of secret & reset")
         elif arg2 == 0xDead:
             # noisy, shows screen, halts
-            print("wipe of secret and die w/ screen")
-        return 0
+            print("wipes secret and die w/ screen: Seed Wiped")
+        return EPERM
 
     if method == 24:
         # fast brick -- locks up w/ message
@@ -177,11 +180,13 @@ def gate(method, buf_io, arg2):
             print("Fast brick")
             return 0
         else:
-            return EPERM;
+            return EPERM
 
     return ENOENT
 
 def oneway(method, arg2):
+
+    # TODO: capture method/arg2 into an object so unit tests can read it back while we are dead
 
     print("\n\nNOTE: One-way callgate into bootloader: method=%d arg2=%d\n\n" % (method, arg2))
     import time
@@ -189,6 +194,9 @@ def oneway(method, arg2):
         time.sleep(60)
 
 def is_simulator():
+    return True
+
+def is_debug_build():
     return True
 
 
@@ -229,6 +237,9 @@ def get_cpi_id():
 
     #default mk4
     return 0x470       # STM32L4S5
+
+def PSRAM():
+    return object()
 
 
 # EOF

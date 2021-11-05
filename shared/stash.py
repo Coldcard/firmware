@@ -159,10 +159,10 @@ class SensitiveValues:
                 self.__class__._cache_used = utime.ticks_ms()
             else:
                 if self._cache_secret:
-                    # they are using new BIP39 passphrase; we already have raw secret
+                    # they are using new BIP39 passphrase but we already have raw secret
                     self.secret = bytearray(self._cache_secret)
                 else:
-                    # slow, read from secure element(s)
+                    # slow: read from secure element(s)
                     self.secret = pa.fetch()
 
                 # slow: do bip39 key stretching (typically)
@@ -322,6 +322,7 @@ class SensitiveValues:
     def duress_root(self):
         # Return a bip32 node for the duress wallet linked to this wallet.
         # 0x80000000 - 0xCC10 = 2147431408
+        # Obsoleted in Mk4: use BIP-85 instead
         p = "m/2147431408'/0'/0'"
         dirty = self.derive_path(p)
 

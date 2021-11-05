@@ -48,7 +48,7 @@ fi
 cd ../stm32
 
 make setup
-make all
+make DEBUG_BUILD=0 all
 make $TARGETS
 
 if [ $PWD != '/work/src/stm32' ]; then

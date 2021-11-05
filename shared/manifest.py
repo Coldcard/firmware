@@ -19,7 +19,6 @@ freeze_as_mpy('', [
 	'files.py',
 	'flow.py',
 	'glob.py',
-	'h.py',
 	'history.py',
 	'hsm.py',
 	'hsm_ux.py',
@@ -61,3 +60,13 @@ freeze_as_mpy('', [
 	'zevvpeep.py',
 	'public_constants.py',
 ], opt=3)
+
+# Maybe include test code.
+import os
+if int(os.environ.get('DEBUG_BUILD', 0)):
+    freeze_as_mpy('', [
+        'h.py',
+        'dev_helper.py',
+        'usb_test_commands.py',
+    ], opt=0)
+
