@@ -1,0 +1,44 @@
+name: CCFW Reproducible Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: true
+        
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: "3.10"
+        
+    - name: Setup Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-none-eabi
+        python -m pip install virtualenv
+        virtualenv -p python3 ENV
+        source ENV/bin/activate
+        
+    - name: Build Firmware
+      run: |
+        cd $GITHUB_WORKSPACE/stm32
+        VERSION_STRING=$(awk -F ' = ' '/^VERSION_STRING = /{ print $2 }' Makefile)
+        chmod +x repro-build.sh
+        ./repro-build.sh $VERSION_STRING $GITHUB_WORKSPACE $GITHUB_WORKSPACE/built
+        
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v2.2.4
+      with:
+        name: ccfw-repro-build-artifacts
+        path: built/
+        retention-days: 0
