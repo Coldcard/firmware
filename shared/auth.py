@@ -263,7 +263,7 @@ def sign_txt_file(filename):
 
     # copy message into memory
     with CardSlot() as card:
-        with open(filename, 'rt') as fd:
+        with card.open(filename, 'rt') as fd:
             text = fd.readline().strip()
             subpath = fd.readline().strip()
 
@@ -312,7 +312,7 @@ def sign_txt_file(filename):
 
             for path in [orig_path, None]:
                 try:
-                    with CardSlot() as card:
+                    with CardSlot(readonly=True) as card:
                         out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
@@ -327,7 +327,7 @@ def sign_txt_file(filename):
                 # attempt write-out
                 try:
                     with CardSlot() as card:
-                        with open(out_full, 'wt') as fd:
+                        with card.open(out_full, 'wt') as fd:
                             # save in full RFC style
                             fd.write(RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
                                                 blockchain='BITCOIN', sig=sig))
@@ -695,7 +695,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         left = self.psbt.num_outputs - len(largest) - num_change
         if left > 0:
-            msg.write('.. plus %d more smaller output(s), not shown here, which total: ' % left)
+            msg.write('.. plus %d smaller output(s), not shown here, which total: ' % left)
 
             # calculate left over value
             mtot = self.psbt.total_value_out - sum(v for v,t in largest)
@@ -749,7 +749,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
     with CardSlot(force_vdisk, readonly=True) as card:
-        with open(filename, 'rb') as fd:
+        with card.open(filename, 'rb') as fd:
             dis.fullscreen('Reading...')
 
             # see how long it is
@@ -833,7 +833,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
                             # don't write signed PSBT if we'd just delete it anyway
                             out_fn = None
                         else:
-                            with output_encoder(open(out_full, 'wb')) as fd:
+                            with output_encoder(card.open(out_full, 'wb')) as fd:
                                 # save as updated PSBT
                                 psbt.serialize(fd)
 
@@ -843,7 +843,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
                                 base+'-final.txn' if not del_after else 'tmp.txn', out_path)
 
                             if out2_full:
-                                with HexWriter(open(out2_full, 'w+t')) as fd:
+                                with HexWriter(card.open(out2_full, 'w+t')) as fd:
                                     # save transaction, in hex
                                     txid = psbt.finalize(fd)
 

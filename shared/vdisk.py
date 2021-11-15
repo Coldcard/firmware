@@ -6,14 +6,10 @@
 import os, sys, pyb, ckcc, version, glob, uasyncio, utime
 from sigheader import FW_MIN_LENGTH
 from public_constants import MAX_UPLOAD_LEN
-from glob import settings
 from usb import enable_usb, disable_usb
 from uasyncio import sleep_ms
 
-# block device implemented on half the PSRAM
-VBLKDEV = ckcc.PSRAM()
-
-MAX_PSRAM_FILE = const(2<<20)           # 2 megs
+MAX_PSRAM_FILE = const(2<<20)   # 2 megs
 MIN_QUIET_TIME = 250            # (ms) delay after host writes disk, before we look at it.
 
 def _host_done_cb(_psram):
@@ -22,35 +18,41 @@ def _host_done_cb(_psram):
     if glob.VD:
         glob.VD.host_done_handler()
 
+# singleton: block device implemented on half of the PSRAM
+VBLKDEV = ckcc.PSRAM()
+
 class VirtDisk:
     def __init__(self):
         # Feature is enabled, altho USB might be off.
-        print("vdisk: init")
         glob.VD = self
 
         self.ignore = set()
         self.contents = self.sample()
 
+        assert ckcc.PSRAM
         VBLKDEV.callback(_host_done_cb)
         VBLKDEV.set_inserted(True)
-        print("vdisk: started")
 
     def shutdown(self):
         # we've been disabled, stop
-        print("vdisk: shutdown")
         VBLKDEV.set_inserted(False)
         VBLKDEV.callback(None)
         glob.VD = None
 
-    def unmount(self):
+    def unmount(self, written_files):
         # just unmount; ignore errors
         try:
             os.umount('/vdisk')
-            enable_usb()
         except:
             pass
 
+        # ignore the files we write ourselves
+        for fn in written_files:
+            if fn.startswith('/vdisk/'):
+                self.ignore.add(fn[7:])
+
         # allow host to change again
+        enable_usb()
         if glob.VD:
             VBLKDEV.set_inserted(True)
 
@@ -75,9 +77,10 @@ class VirtDisk:
             return '/vdisk'
         except OSError as exc:
             # corrupt or unformated?
-            # XXX incomlpete error handling here; needs work
+            # XXX incomplete error handling here; needs work
             VBLKDEV.set_inserted(True)
             sys.print_exception(exc)
+
             return None
 
     def sample(self):
@@ -87,7 +90,8 @@ class VirtDisk:
         try:
             os.mount(VBLKDEV, '/vdisk', readonly=True)
 
-            return list(sorted((fn, sz) for (fn,ty,_,sz) in os.ilistdir('/vdisk') if ty == 0x8000))
+            return list(sorted(('/vdisk/'+fn, sz) for (fn,ty,_,sz) in os.ilistdir('/vdisk') 
+                                                        if ty == 0x8000))
         except BaseException as exc:
             sys.print_exception(exc)
 
@@ -101,7 +105,7 @@ class VirtDisk:
 
         # I could not resist doing this in C... since we already have the
         # data in memory, why mess around with file concepts?
-        actual = VBLKDEV.copy_file(0, filename)
+        actual = VBLKDEV.copy_file(0, filename.split('/')[-1])
 
         assert actual == sz
 
@@ -109,9 +113,8 @@ class VirtDisk:
 
     def new_psbt(self, filename, sz):
         # New incoming PSBT has been detected, start to sign it.
-        print("new PSBT: " + filename)
         from auth import sign_psbt_file
-        uasyncio.create_task(sign_psbt_file('/vdisk/'+filename, force_vdisk=True))
+        uasyncio.create_task(sign_psbt_file(filename, force_vdisk=True))
 
     def new_firmware(self, filename, sz):
         # potential new firmware file detected
@@ -120,7 +123,7 @@ class VirtDisk:
         uasyncio.create_task(psram_upgrade(filename, sz))
 
     def host_done_handler(self):
-        print('host-wrote')
+        from glob import settings
 
         if settings.get('vdsk', 0) != 2:
             # auto mode not enabled, so ignore changes
@@ -130,7 +133,6 @@ class VirtDisk:
         if now == self.contents:
             # no-op change, common, ignore
             # - timestamp changes, hidden files, MacOS BS, etc.
-            print('no file change')
             return
 
         # clear ignored items once they are deleted
@@ -141,7 +143,6 @@ class VirtDisk:
         # Look for files we want to taste; assume they have
         # been fully written-out because we are called after a 
         # fairly long timeout
-        print('New files? %r' % now)
         for fn, sz in now:
 
             if fn in self.ignore:

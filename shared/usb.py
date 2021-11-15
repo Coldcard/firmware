@@ -14,7 +14,6 @@ import uselect as select
 from utils import problem_file_line, call_later_ms
 from version import has_fatram, is_devmode, has_psram
 from exceptions import FramingError, CCBusyError, HSMDenied
-from glob import settings
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -513,6 +512,7 @@ class USBHandler:
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
             from auth import start_bip39_passphrase
+            from glob import settings
 
             assert settings.get('words', True), 'no seed'
             assert len(args) < 400, 'too long'
@@ -629,6 +629,7 @@ class USBHandler:
         self.encrypt = ctr.cipher
         self.decrypt = ctr.copy().cipher
 
+        from glob import settings
         xfp = settings.get('xfp', 0)
         xpub = settings.get('xpub', '')
 
@@ -797,7 +798,7 @@ class USBHandler:
 
     def handle_bag_number(self, bag_num):
         import version, callgate
-        from glob import dis
+        from glob import dis, settings
         from pincodes import pa
 
         if version.is_factory_mode and bag_num:

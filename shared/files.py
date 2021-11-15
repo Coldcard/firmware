@@ -7,6 +7,7 @@ from uerrno import ENOENT
 
 async def needs_microsd():
     # Standard msg shown if no SD card detected when we need one.
+    from ux import ux_show_story
     return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
 def _is_ejected():
@@ -210,6 +211,7 @@ class CardSlot:
         self.mountpt = None
         self.force_vdisk = force_vdisk
         self.readonly = readonly
+        self.wrote_files = set()
 
     def __enter__(self):
         # Mk4: maybe use our virtual disk in preference to SD Card
@@ -243,10 +245,19 @@ class CardSlot:
         if self.mountpt == '/sd':
             self._recover()
         else:
-            glob.VD.unmount()
+            glob.VD.unmount(self.wrote_files)
 
         self.mountpt = None
         return False
+
+    def open(self, fname, mode='r', **kw):
+        # open a file for read/write
+        # - track new files for virtdisk case
+        if 'w' in mode:
+            assert not self.readonly
+            self.wrote_files.add(fname)
+
+        return open(fname, mode, **kw)
         
     def _recover(self):
         # done using the microSD -- unpower it
@@ -297,7 +308,7 @@ class CardSlot:
         # - no UI here please
         import ure
 
-        assert self.mountpt      # used out of context mgr
+        assert self.mountpt      # else: we got used out of context mgr
 
         # put it back where we found it
         path = path or (self.mountpt + '/')
@@ -344,6 +355,8 @@ class CardSlot:
         #
         # NOTE: we know the FAT filesystem code is simple, see 
         #       ../external/micropython/extmod/vfs_fat.[ch]
+
+        self.wrote_files.discard(full_path)
 
         path, basename = full_path.rsplit('/', 1)
 

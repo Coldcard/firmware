@@ -21,7 +21,7 @@
 import os, sys, ujson, ustruct, ckcc, gc, ngu, aes256ctr
 from uio import BytesIO
 from uhashlib import sha256
-from random import shuffle
+from random import shuffle, randbelow
 from utils import call_later_ms
 from version import mk_num
 from glob import PSRAM
@@ -66,12 +66,14 @@ from glob import PSRAM
 if mk_num <= 3:
     # where in SPI Flash we work (last 128k)
     SLOTS = range((1024-128)*1024, 1024*1024, 4096)
+    NUM_SLOTS = 32
 
     from sffile import SFFile
     from sflash import SF
 else:
     # work in LFS2 filesystem instead, but same terminology
     SLOTS = range(0, 64)
+    NUM_SLOTS = 64
 
     MK4_WORKDIR = '/flash/settings/'
 
@@ -287,6 +289,11 @@ class SettingsObject:
             
                 fd.write(aes(chk.digest()))
 
+    def _used_slots(self):
+        # mk4: faster list of slots in use; doesn't open them
+        files = os.listdir(MK4_WORKDIR)
+        return [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
+
     def _nonempty_slots(self, dis=None):
         # generate slots that are non-empty
         taste = bytearray(4)
@@ -307,12 +314,10 @@ class SettingsObject:
                 yield pos, taste
         else:
             # use directory listing
-            files = os.listdir(MK4_WORKDIR)
-            self.num_empty = len(SLOTS) - len(files)
+            files = self._used_slots()
+            self.num_empty = NUM_SLOTS - len(files)
 
-            for i, fn in enumerate(files):
-                if not fn.endswith('.aes'): continue
-                pos = int(fn[0:-4], 16)
+            for i, pos in enumerate(files):
                 if dis:
                     dis.progress_bar_show(i / len(files))
 
@@ -331,11 +336,13 @@ class SettingsObject:
         self.my_pos = None
         self.is_dirty = 0
         self.capacity = 0
+        nonempty = set()
 
         for pos, taste in self._nonempty_slots(dis):
             # check if first 2 bytes makes sense for JSON
             aes = self.get_aes(pos)
             chk = aes.copy().cipher(b'{"')
+            nonempty.add(pos)
 
             if chk != taste[0:2]:
                 # doesn't look like JSON meant for me
@@ -377,16 +384,15 @@ class SettingsObject:
         # nothing found, use defaults
         self.current = self.default_values()
 
-        # pick a random home
-        blks = list(SLOTS)
-        shuffle(blks)
-        self.my_pos = blks.pop()
+        # pick a (new) random home
+        self.my_pos = self.find_spot(-1)
         #print("NV: empty")
 
-        if self.num_empty == len(SLOTS):
+        if self.num_empty == NUM_SLOTS:
             # Whole thing is blank. Bad for plausible deniability. Write 3 slots
             # with white noise. They will be wasted space until it fills up.
-            for pos in blks[0:3]:
+            for _ in range(4):
+                pos = self.find_spot(-1)
                 self._deny_slot(pos)
 
     def get(self, kn, default=None):
@@ -442,23 +448,33 @@ class SettingsObject:
         # - check randomly and pick first blank one (wear leveling, deniability)
         # - we will write and then erase old slot
         # - if "full", blow away a random one
-        options = [s for s in SLOTS if s != not_here]
-        shuffle(options)
+        if mk_num <= 3:
+            options = [s for s in SLOTS if s != not_here]
+            shuffle(options)
 
-        buf = bytearray(4)
-        for pos in options:
-            if self._slot_is_blank(pos, buf):
-                # found a blank area
-                return pos
+            buf = bytearray(4)
+            for pos in options:
+                if self._slot_is_blank(pos, buf):
+                    # found a blank area
+                    return pos
 
-        # No where to write! (probably a bug because we have lots of slots)
-        # ... so pick a random slot and kill what it had
-        #print("ERROR: nvram full?")
+            # No-where to write! (probably a bug because we have lots of slots)
+            # ... so pick a random slot and kill what it had
+            victim = options[0]
+        else:
+            # on mk4, use the filesystem to see what's already taken
+            avail = set(SLOTS) - set(self._used_slots())
+            avail.discard(not_here)
 
-        victem = options[0]
-        self._wipe_slot(victem)
+            if avail:
+                return avail.pop()
 
-        return victem
+            victim = randbelow(NUM_SLOTS)
+
+        #print("ERROR: nvram full")
+        self._wipe_slot(victim)
+
+        return victim
 
     def save(self):
         # render as JSON, encrypt and write it.
