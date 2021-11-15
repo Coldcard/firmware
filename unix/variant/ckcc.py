@@ -238,8 +238,5 @@ def get_cpi_id():
     #default mk4
     return 0x470       # STM32L4S5
 
-def PSRAM():
-    return object()
-
 
 # EOF
