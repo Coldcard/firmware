@@ -35,7 +35,7 @@ bit-by-bit into a new phrase.
 The last word (in 24-word case, which is the only width we support) has
 8 bits of checksum. For the "parts" (sometimes called "shares") this checksum 
 is calculated as normal for BIP-39, but those final 8-bits are not used in
-the XOR process. But the checksums still protects the integrity of the
+the XOR process. But the checksums still protect the integrity of the
 individual parts.
 
 Useful properties of this approach:
