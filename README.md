@@ -22,7 +22,9 @@ has been automated using Docker. Steps are as follows:
 3. Checkout the code, and start the process.
 
     git clone https://github.com/Coldcard/firmware.git
+    
     cd firmware/stm32
+    
     make repro
 
 4. At the end of the process a clear confirmation message is shown, or the differences.
