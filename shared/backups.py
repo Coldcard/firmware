@@ -128,7 +128,6 @@ async def restore_from_dict(vals):
             check_xprv = chain.serialize_private(node)
             assert check_xprv == vals['xprv'], 'xprv mismatch'
 
-
     except Exception as e:
         return ('Unable to decode raw_secret and '
                                 'restore the seed value!\n\n\n'+str(e))
