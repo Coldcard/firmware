@@ -1251,9 +1251,8 @@ Binary checksum and signature will be further verified before any changes are ma
 
                     callgate.show_logout(2)
                 else:
-                    # Mk4 copies from PSRAM into SPI inside bootrom
-                    # - and does other stuff
-                    #print("offset=%d  len=%d" % (self.psram_offset, self.length))
+                    # Mk4 copies from PSRAM to flash inside bootrom, we have
+                    # nothing to do here except start that process.
                     from pincodes import pa
                     pa.firmware_upgrade(self.psram_offset, self.length)
                     # not reached, unless issue?

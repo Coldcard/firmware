@@ -217,7 +217,7 @@ async def microsd_upgrade(*a):
     failed = None
 
     with CardSlot() as card:
-        with open(fn, 'rb') as fp:
+        with card.open(fn, 'rb') as fp:
             from version import has_psram
             if has_psram:
                 from glob import PSRAM as SF
@@ -247,15 +247,17 @@ async def microsd_upgrade(*a):
 
                 dis.fullscreen("Loading...")
 
-                if not has_psram:
-                    buf = bytearray(256)
-                    pos = 0
-                    while pos < size:
-                        dis.progress_bar_show(pos/size)
+                buf = bytearray(256 if not has_psram else 0x20000)
+                pos = 0
+                while pos < size:
+                    dis.progress_bar_show(pos/size)
 
-                        here = fp.readinto(buf)
-                        if not here: break
+                    here = fp.readinto(buf)
+                    if not here: break
 
+                    if has_psram:
+                        SF.write(pos, buf)
+                    else:
                         if pos % 4096 == 0:
                             # erase here
                             SF.sector_erase(pos)
@@ -268,11 +270,7 @@ async def microsd_upgrade(*a):
                         while SF.is_busy():
                             await sleep_ms(1)
 
-                        pos += here
-                else:
-                    # just read it to where we want it
-                    dest = SF.write(0, size)
-                    fp.readinto(dest)
+                    pos += here
 
     if failed:
         await ux_show_story(failed, title='Sorry!')
@@ -280,7 +278,7 @@ async def microsd_upgrade(*a):
 
     # continue process...
     from auth import FirmwareUpgradeRequest
-    m = FirmwareUpgradeRequest(hdr, size)
+    m = FirmwareUpgradeRequest(hdr, size, psram_offset=(0 if has_psram else None))
     the_ux.push(m)
 
 async def start_dfu(*a):
