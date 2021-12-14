@@ -1,12 +1,11 @@
 name: CCFW Reproducible Build
 
 on:
-  push:
-    tags:        
-      - '*'
-
+  create
+  
 jobs:
   build:
+    if: ${{ (github.ref_type == 'tag') && (contains(github.ref, 'bootloader') == 'false') }}
     runs-on: ubuntu-latest
     
     steps:
