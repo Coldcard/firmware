@@ -237,14 +237,14 @@ class CardSlot:
 
             raise CardMissingError
 
-        self.mountpt = '/sd'
+        self.mountpt = self.get_sd_root()       # probably /sd
 
         return self
 
     def __exit__(self, *a):
         if self.mountpt == '/sd':
             self._recover()
-        else:
+        elif glob.VD:
             glob.VD.unmount(self.wrote_files)
 
         self.mountpt = None
@@ -268,7 +268,7 @@ class CardSlot:
             os.umount('/sd')
         except: pass
 
-        # important: turn off power so touch can work again
+        # previously important: turn off power so touch can work again (Mk1)
         sd = pyb.SDCard()
         sd.power(0)
 
