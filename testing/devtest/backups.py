@@ -20,7 +20,7 @@ if 1:
     blanks = 0
     checklist = set('mnemonic chain xprv xpub raw_secret fw_date fw_version fw_timestamp serial '
                 'setting.terms_ok setting.idle_to setting.chain'.split(' '))
-    optional = set('setting.pms setting.axi setting.nick setting.lgto setting.usr hsm_policy setting.words long_secret multisig setting.multisig setting.fee_limit'.split(' '))
+    optional = set('setting.pms setting.axi setting.nick setting.lgto setting.usr hsm_policy setting.words long_secret multisig setting.multisig setting.fee_limit setting.tp setting.check'.split(' '))
 
     for ln in render_backup_contents().split('\n'):
         ln = ln.strip()
@@ -50,7 +50,7 @@ async def test_7z():
     import ngu, version, uos
     from glob import numpad
     from pincodes import pa
-    from nvstore import settings
+    from glob import settings
 
     if version.has_fatram:
         import hsm
@@ -111,7 +111,7 @@ async def test_7z():
                             (settings.get('chain'), '!=',  chain)
 
                 if version.has_608:
-                    assert pa.ls_fetch() == ls
+                    assert pa.ls_fetch() == ls, repr([pa.ls_fetch(), ls])
 
             if had_policy:
                 assert had_policy == hsm.hsm_policy_available()
@@ -123,13 +123,20 @@ async def test_7z():
 
 
 import uasyncio
+print("Start")
 uasyncio.get_event_loop().run_until_complete(test_7z())
+print("done")
 
 
 # test recovery/reset
-from sflash import SF
-SF.chip_erase()
-settings.load()
+if version.mk_num <= 3:
+    from sflash import SF
+    SF.chip_erase()
+    settings.load()
+else:
+    settings.clear()
+    settings.save()
+    
 
 
 # EOF
