@@ -138,19 +138,8 @@ def need_keypress(dev, request):
             print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)
             input()
         else:
-            # simulator has special USB command, and can be used on real device w/ enuf setup
+            # simulator has special USB command, and can be used on real device in dev builds
             dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
-
-        if 0:
-            # try to use debug interface to simulate the press
-            # XXX for some reason, picocom must **already** be running for this to work.
-            # - otherwise, this locks up
-            devs = list(glob.glob('/dev/tty.usbmodem*'))
-            if len(devs) == 1:
-                with open(devs[0], 'wb', 0) as fd:
-                    fd.write(k.encode('ascii'))
-            else:
-                raise pytest.fail('need to provide keypresses')
 
     return doit
 
@@ -1107,14 +1096,14 @@ def only_mk4(dev):
     # better: ask it .. use USB version cmd
     v = dev.send_recv(CCProtocolPacker.version()).split()
     if v[4] != 'mk4':
-        raise pytest.xfail("Mk4 only")
+        raise pytest.skip("Mk4 only")
 
 @pytest.fixture(scope='session')
 def only_mk3(dev):
     # better: ask it .. use USB version cmd
     v = dev.send_recv(CCProtocolPacker.version()).split()
     if v[4] != 'mk3':
-        raise pytest.xfail("Mk3 only")
+        raise pytest.skip("Mk3 only")
 
 @pytest.fixture()
 def nfc_read(sim_exec):
