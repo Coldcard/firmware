@@ -1,11 +1,13 @@
 name: CCFW Reproducible Build
 
 on:
-  create
+  push:
+    tags:
+      - '**'
+      - '!**bootstrap*'
   
 jobs:
   build:
-    if: ${{ (github.ref_type == 'tag') && (contains(github.ref, 'bootloader') == 'false') }}
     runs-on: ubuntu-latest
     
     steps:
