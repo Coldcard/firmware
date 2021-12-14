@@ -241,8 +241,10 @@ def pin_stuff(submethod, buf_io):
             SECRETS['ls'] = bytearray(416)
 
         if (cf & CHANGE_SECRET):
-            SECRETS['ls'][off:off+32] = secret
+            # len(secret)==72 here, only using 32 bytes of it
+            SECRETS['ls'][off:off+32] = secret[0:32]
         else:
+            # Mk3 and earlier only will use this
             secret = SECRETS['ls'][off:off+32]
 
     elif submethod == 7:
@@ -254,11 +256,12 @@ def pin_stuff(submethod, buf_io):
         pass
 
     elif submethod == 8:
-        # new mk4 api for long-secret
+        # new mk4 api for long-secret fetch
         if version.mk_num < 4:
             return ENOENT
 
-        buf_io[-AE_LONG_SECRET_LEN:] = SECRETS.get('ls', bytearray(416))
+        assert len(buf_io) == PIN_ATTEMPT_SIZE + AE_LONG_SECRET_LEN, len(buf_io)
+        buf_io[-AE_LONG_SECRET_LEN:] = SECRETS.get('ls', bytes(AE_LONG_SECRET_LEN))
 
     else:
         # bogus submethod
