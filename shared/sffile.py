@@ -41,6 +41,7 @@ class SFFile:
         self.pos = 0
         self.length = length        # byte-wise length
         self.message = message
+        self.runt = False
 
         if max_size != None:
             # Write
@@ -55,7 +56,6 @@ class SFFile:
         else:
             # Read
             self.readonly = True
-            self.runt = False
 
     def tell(self):
         # where are we?
