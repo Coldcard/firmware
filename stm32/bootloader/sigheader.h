@@ -49,7 +49,7 @@ typedef struct {
 // practical limit for our-protocol USB upgrades: 786432 (or else settings damaged)
 #define FW_MAX_LENGTH        (0x100000 - 0x8000)
 
-// .. for Mk4: 2Mbytes, less bootrom of 128k. SPI flash not limiting factor
+// .. for Mk4: 2Mbytes, less bootrom of 128k.
 #define FW_MAX_LENGTH_MK4        (0x200000 - 0x20000)
 
 // Arguments to be used w/ python's struct module.
