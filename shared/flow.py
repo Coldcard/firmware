@@ -14,6 +14,7 @@ from users import make_users_menu
 from drv_entro import drv_entro_start
 from backups import clone_start, clone_write_data
 from xor_seed import xor_split_start, xor_restore_start
+from countdowns import countdown_pin_submenu, countdown_chooser
 
 # Optional feature: HSM
 if version.has_fatram:
@@ -39,6 +40,7 @@ else:
 #
 # - try to keep harmless things as first item: so double-tap of OK does no harm
 
+# Mk3 and earlier: see Trick Pins for Mk4
 PinChangesMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=pin_changer, arg='main'),
@@ -70,6 +72,10 @@ async def which_pin_menu(_1,_2, item):
         from pincodes import pa
         return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
+#
+# Predicates
+#
+
 def has_secrets():
     from pincodes import pa
     return not pa.is_secret_blank()
@@ -77,8 +83,10 @@ def has_secrets():
 def nfc_enabled():
     from glob import NFC
     return bool(NFC)
+
 def vdisk_enabled():
     return bool(settings.get('vdsk', 0))
+
 
 HWTogglesMenu = [
     ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,

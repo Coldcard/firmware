@@ -3,7 +3,7 @@
 # trick_pins.py - manage the "trick" PIN codes, which can do anything but let you in!
 #
 # - mk4+ only
-# - uses SE2 to storage PIN codes and actions to perform
+# - uses SE2 to store PIN codes (hashed) and what actions to perform for each
 # - replaces old "duress wallet" and "brickme" features 
 # - changes require knowledge of real PIN code (it is checked)
 # 
@@ -35,7 +35,8 @@ TC_DELTA_MODE   = const(0x0400)
 TC_REBOOT       = const(0x0200)
 TC_RFU          = const(0x0100)
 # for our use, not implemented in bootrom
-TC_BLANK_WALLET = const(0x0080)     
+TC_BLANK_WALLET = const(0x0080)
+TC_COUNTDOWN    = const(0x0040)         # tc_arg = minutes of delay
 
 # special "pin" used as catch-all for wrong pins
 WRONG_PIN_CODE = '!p'
@@ -52,12 +53,12 @@ class TrickPinMgmt:
 
     def reload(self):
         # we track known PINS as a dictionary:
-        # key=pin
-        # value=(slot_num, tc_flags, arg, ...)
+        #   pin (in ascii) => (slot_num, tc_flags, arg)
         from glob import settings
         self.tp = settings.get('tp', {})
 
-    def update_record(self):
+    def save_record(self):
+        # commit changes back to settings
         from glob import settings
         settings.set('tp', self.tp)
         settings.save()
@@ -83,12 +84,12 @@ class TrickPinMgmt:
         # get rid of them all
         self.roundtrip(0)
         self.tp = {}
-        self.update_record()
+        self.save_record()
 
     def forget_pin(self, pin):
         # forget about settings for a PIN
         self.tp.pop(pin, None)
-        self.update_record()
+        self.save_record()
 
     def restore_pin(self, new_pin):
         # remember/restore PIN that we "forgot", return T if worked
@@ -109,9 +110,6 @@ class TrickPinMgmt:
 
     def get_available_slots(self):
         # do an impossible search, so we can get blank_slots field back
-        if ckcc.is_simulator():     # XXX FIXME
-            return list(range(NUM_TRICKS))
-
         b, slot = make_slot()
         slot.pin_len = 1
         self.roundtrip(1, b)        # expects ENOENT=2
@@ -210,7 +208,7 @@ class TrickPinMgmt:
 
         # record key details.
         self.tp[pin.decode()] = record
-        self.update_record()
+        self.save_record()
 
         return b, slot
 
@@ -272,6 +270,7 @@ class TrickPinMenu(MenuSystem):
 
     async def done_picking(self, item, parents):
         # done picking/drilling down tree.
+        # - shows point-form summary and gets confirmation
         wants_wipe = (self.WillWipeMenu in parents)
         self.WillWipeMenu = None        # memory free
 
@@ -314,7 +313,7 @@ class TrickPinMenu(MenuSystem):
             if (len(right) != len(fake)) or (right[0:-4] != fake[0:-4]):
                 prob = '''\
 Trick PIN must be same length (%d) as true PIN and \
-only up to last four digits can be different between true PIN and trick.''' % len(right)
+up to last four digits can be different between true PIN and trick.''' % len(right)
                 await ux_show_story(prob, 'Sorry!')
                 return
 
@@ -326,8 +325,6 @@ only up to last four digits can be different between true PIN and trick.''' % le
                     a |= 0xf << (i*4)
                 else:
                     a |= (ord(right[-(1+i)]) - 0x30) << (i*4)
-
-            print("arg = 0x%04x" % a)
             tc_arg = a
 
         msg += "Ok?"
@@ -413,6 +410,19 @@ only up to last four digits can be different between true PIN and trick.''' % le
             StoryMenuItem('Say Wiped, Stop', "Seed is wiped and a message is shown.",
                             flags=TC_WIPE),
         ])
+
+        from glob import settings
+        from countdowns import lgto_map
+        def_to = settings.get('lgto', 0) or 60   # use 1hour or current countdown length as default
+        countdownMenu = MenuSystem([
+            #              xxxxxxxxxxxxxxxx
+            StoryMenuItem('Wipe & Countdown', "Seed is wiped at start of countdown.",
+                            flags=TC_WIPE|TC_COUNTDOWN, arg=def_to),
+            StoryMenuItem('Countdown & Brick', "Does the countdown, then system is bricked.",
+                            flags=TC_WIPE|TC_BRICK|TC_COUNTDOWN, arg=def_to),
+            StoryMenuItem('Just Countdown', "Shows countdown, has no effect on seed (test mode).",
+                            flags=TC_COUNTDOWN, arg=def_to),
+        ])
         FirstMenu = [
             #MenuItem('"%s" =>' % self.proposed_pin),
             MenuItem('[%s]' % self.proposed_pin),
@@ -420,6 +430,8 @@ only up to last four digits can be different between true PIN and trick.''' % le
             StoryMenuItem('Wipe Seed', "Wipe the seed and maybe do more. See next menu.",
                                             menu=self.WillWipeMenu),
             StoryMenuItem('Duress Wallet', "Goes directly to a specific duress wallet. No side effects.", menu=DuressOptions),
+            StoryMenuItem('Login Countdown', "Pretends a login countdown timer (%s) is in effect but wipes seed first. Resets system at end of countdown or bricks it." % lgto_map[def_to].strip(),
+                    menu=countdownMenu),
             StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", flags=TC_BLANK_WALLET),
             StoryMenuItem('Just Reboot', "Reboot when this PIN is entered. Doesn't do anything else.", flags=TC_REBOOT),
             StoryMenuItem('Delta Mode', '''\
@@ -585,6 +597,49 @@ normal operation.''')
         from actions import goto_top_menu
         goto_top_menu()
 
+    async def countdown_details(self, m, l, item):
+        # explain details of the countdown case
+        # - allow change of time period
+        from countdowns import lgto_map, lgto_va, lgto_ch
+        from menu import start_chooser
+
+        pin, flags, arg = item.arg
+
+        # arg can be out-of-date, if they edited timer value after parent was
+        # rendered, where arg was captured into item.arg
+        cd_val = tp.tp[pin][2]
+        if arg != cd_val:
+            print("gotcha")
+
+        msg = 'Shows login countdown (%s)' % lgto_map.get(cd_val, '???').strip()
+        if flags & TC_WIPE:
+            msg += ', wipes the seed'
+        else:
+            msg += ' and reboots at end of countdown'
+        if flags & TC_BRICK:
+            msg += ' and bricks system at end of countdown'
+
+        msg += '.\n\nPress 4 to change time.'
+        ch = await ux_show_story(msg, escape='4')
+        if ch != '4': return
+
+        def adjust_countdown_chooser():
+            # 'disabled' choice not appropriate for this case
+            ch = lgto_ch[1:]
+            va = lgto_va[1:]
+
+            def set_it(idx, text):
+                new_val = va[idx+1]
+                # save it
+                try:
+                    b, slot = tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)
+                except BaseException as exc:
+                    sys.print_exception(exc)
+
+            return va.index(cd_val), lgto_ch[1:], set_it
+
+        start_chooser(adjust_countdown_chooser)
+
     async def duress_details(self, m, l, item):
         # explain details of a duress wallet
         pin, flags, arg = item.arg
@@ -636,6 +691,8 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
             rv.append(MenuItem("↳Duress Wallet", f=self.duress_details, arg=(pin, flags, arg)))
         elif flags & TC_BLANK_WALLET:
             rv.append(MenuItem("↳Blank Wallet"))
+        elif flags & TC_COUNTDOWN:
+            rv.append(MenuItem("↳Countdown", f=self.countdown_details, arg=(pin, flags, arg)))
         elif flags & TC_FAKE_OUT:
             rv.append(MenuItem("↳Pretends Wrong"))
         elif flags & TC_DELTA_MODE:

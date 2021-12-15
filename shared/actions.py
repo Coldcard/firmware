@@ -754,6 +754,7 @@ async def start_login_sequence():
         return
 
     # Did they power down during a login countdown? If so continue it.
+    # - that was a bad idea: better is to start over since that's "more secure"=longer
     existing_delay = settings.get('delay_left', 0)
     if existing_delay:
         await login_countdown(existing_delay)
@@ -1504,65 +1505,6 @@ async def sign_message_on_sd(*a):
     # start the process
     from auth import sign_txt_file
     await sign_txt_file(fn)
-
-
-async def set_countdown_pin(_1, _2, menu_item):
-    # Accept a new PIN to be used to enable this feature
-    from login import LoginUX
-    from nvstore import SettingsObject
-
-    lll = LoginUX()
-    lll.reset()
-    lll.subtitle = "Countdown PIN"
-
-    pin = await lll.get_new_pin(None, allow_clear=True)     # a string
-
-    s = SettingsObject()
-
-    if pin == pa.pin.decode():
-        # can't compare to others like duress/brickme but will override them
-        await ux_show_story("Must be a unique PIN value!")
-        return
-    elif not pin:
-        # X on first screen does this (better than CLEAR_PIN thing)
-        s.remove_key('cd_pin')
-        msg = 'PIN Cleared.'
-        menu_item.label = "Enable Feature"
-    else:
-        s.set('cd_pin', pin)
-        msg = 'PIN Set.'
-        menu_item.label = "PIN is Set!"
-
-    s.save()
-
-    await ux_dramatic_pause(msg, 3)
-    
-
-async def countdown_pin_submenu(*a):
-    # Background and settings for duress-countdown pin
-    from nvstore import SettingsObject
-    s = SettingsObject()
-    pin_set = bool(s.get('cd_pin', 0))
-
-    if not pin_set:
-        ok = await ux_show_story('''\
-This special PIN will immediately and silently brick the Coldcard, \
-but as it does that, it shows a normal-looking countdown timer for login. \
-At the end of the countdown, the Coldcard crashes with a vague error. \
-
-Instead of complete brick, you may select a test mode (no harm done) or \
-to consume all but the final PIN attempt.\
-''')
-        if not ok: return
-
-    from menu import MenuItem
-
-    from choosers import cd_countdown_chooser, set_countdown_pin_mode
-    return [
-                MenuItem('PIN is Set!' if pin_set else 'Enable Feature', f=set_countdown_pin),
-                MenuItem('Countdown Time', chooser=cd_countdown_chooser),
-                MenuItem('Brick Mode', chooser=set_countdown_pin_mode),
-            ]
 
 
 async def pin_changer(_1, _2, item):
