@@ -1,3 +1,4 @@
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Replacement for modckcc.c and complexity of the bootloader.
 #
@@ -32,14 +33,12 @@ if 1:
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!
-# target, post boot: 25376 bytes
+# target, post boot: 25376 bytes [mk3]
 # - not entirely fair because our pointers may be 64bit
 # - heap for unix port defined (in unix/main.c) to be 1M * ptr size bytes
 # - arm version seems to be able to handle much lower heap size??
 # - unix is not freezing the main code, so those bytecodes take major memory
 #balloon = bytearray(700*1024)
-
-SE2_STATE = {}
 
 # patch in monitoring of text on screen
 if 1:
@@ -130,35 +129,10 @@ def gate(method, buf_io, arg2):
         buf_io[:] = b'\x01#\xbf\x0b\x00\x00`\x03CP,\xbf\xeeap\x00\xe1\x00a\x00\x00\x00\x8f-\x8f\x80\x8fC\xaf\x80\x00C\x00C\x8fG\xc3C\xc3C\xc7G\x00G\x00\x00\x8fM\x8fC\x00\x00\x00\x00\x1f\xff\x00\x1a\x00\x1a\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xea\xff\x02\x15\x00\x00\x00\x00<\x00\\\x00\xbc\x01\xfc\x01\xbc\x01\x9c\x01\x9c\x01\xfc\x01\xdc\x03\xdc\x03\xdc\x07\x9c\x01<\x00\xfc\x01\xdc\x01<\x00'
         return 0
 
-    if method == 22:
+    if method == 22 and version.has_se2:
         # trick pin actions
-        global SE2_STATE
-
-        from trick_pins import TRICK_SLOT_LAYOUT
-        from pincodes import PIN_ATTEMPT_SIZE
-        import uctypes
-
-        b = buf_io[PIN_ATTEMPT_SIZE:]
-        slot = uctypes.struct(uctypes.addressof(b), TRICK_SLOT_LAYOUT)
-        pc = slot.pin[0:slot.pin_len].decode()
-
-        # XXX untested/incomplete?
-
-        if arg2 == 0:       # clear all
-            SE2_STATE.clear()
-            return 0
-
-        elif arg2 == 1:     # get by pin
-            if pc in SE2_STATE:
-                buf_io[PIN_ATTEMPT_SIZE:] = SE2_STATE[pc]
-                return 0
-            else:
-                return ENOENT
-
-        elif arg2 == 2:     # update
-            SE2_STATE[pc] = bytes(b)
-
-        return 0
+        from sim_se2 import SE2
+        return SE2.callgate(buf_io, arg2)
 
     if method == 23:
         # fast wipe 

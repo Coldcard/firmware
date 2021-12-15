@@ -20,7 +20,14 @@ if '--sflash' not in sys.argv:
     # not best place for this
     nvstore.MK4_WORKDIR = './settings/'
     nvstore.SettingsObject._deny_slot = lambda *a:None
-    #glob.settings.current = dict(sim_defaults)
+
+    if '--eff' in sys.argv:
+        # ignore files ondisk from previous runs, and also dont write any
+        nvstore.SettingsObject.load = lambda *a:None
+        nvstore.SettingsObject.save = lambda *a:None
+        # limitation: pre-login values arent stored even during operation
+
+        #glob.settings.current = dict(sim_defaults)
 
 if 1:
     # Install Mk4 hacks and workarounds

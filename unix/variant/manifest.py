@@ -14,6 +14,7 @@ freeze_as_mpy('', [
 	'sim_psram.py',
 	'sim_quickstart.py',
 	'sim_secel.py',
+	'sim_se2.py',
 	'sim_settings.py',
 	'sim_vdisk.py',
 	'sram2.py',
