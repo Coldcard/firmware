@@ -70,6 +70,7 @@ class TrickPinMgmt:
             arg = slot_buf
         else:
             # use zeros
+            assert method_num == 0
             arg = bytes(uctypes.sizeof(TRICK_SLOT_LAYOUT))
 
         rc, data = pa.trick_request(method_num, arg)
@@ -106,7 +107,7 @@ class TrickPinMgmt:
         # remove some slots, not all
         b, slot = make_slot()
         slot.blank_slots = sum(1<<s for s in slot_nums)
-        self.roundtrip(2)
+        self.roundtrip(2, b)
 
     def get_available_slots(self):
         # do an impossible search, so we can get blank_slots field back
