@@ -693,7 +693,7 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, need_keypress, sim_e
 
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
-    # prints to console, more fun with headless.py
+    # saves to ../unix/work/menudump.txt
     sim_execfile('devtest/menu_dump.py')
 
 # EOF

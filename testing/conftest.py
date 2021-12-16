@@ -153,6 +153,20 @@ def enter_number(need_keypress):
 
     return doit
 
+@pytest.fixture(scope='module')
+def enter_pin(enter_number, cap_screen, need_keypress):
+    def doit(pin):
+        assert '-' in pin
+        a,b = pin.split('-')
+        enter_number(a)
+        # capture words?
+        words = cap_screen().split('\n')[2:4]
+        need_keypress('y')
+        enter_number(b)
+
+        return words
+
+    return doit
     
     
 @pytest.fixture(scope='module')
@@ -1090,6 +1104,13 @@ def is_mark3(dev):
 def is_mark4(dev):
     v = dev.send_recv(CCProtocolPacker.version()).split()
     return (v[4] == 'mk4')
+
+@pytest.fixture(scope='session')
+def mk_num(dev):
+    # return 1..4 as number (mark number)
+    v = dev.send_recv(CCProtocolPacker.version()).split()[4]
+    assert v[0:2] == 'mk'
+    return int(v[2:])
 
 @pytest.fixture(scope='session')
 def only_mk4(dev):
