@@ -1,6 +1,10 @@
 # run manually with:
 #   best inside 'headless.py -i' after a ^C
 #   execfile('../../testing/devtest/menu_dump.py')
+# - or use test case:
+#   py.test test_ux.py -k test_dump_menutree
+# - result in 
+#   ../unix/work/menudump.txt
 
 async def doit():
     async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0):
