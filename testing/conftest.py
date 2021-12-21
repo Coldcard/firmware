@@ -66,7 +66,7 @@ def sim_exec(dev):
     # - can work on real product too, if "debug build" is used.
 
     def doit(cmd, binary=False):
-        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'))
+        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
         if binary: return s
         return s.decode('utf-8') if not isinstance(s, str) else s
 
@@ -154,13 +154,15 @@ def enter_number(need_keypress):
     return doit
 
 @pytest.fixture(scope='module')
-def enter_pin(enter_number, cap_screen, need_keypress):
+def enter_pin(enter_number, need_keypress, cap_screen):
     def doit(pin):
         assert '-' in pin
         a,b = pin.split('-')
         enter_number(a)
-        # capture words?
+
+        # capture words? hard to know in general what they should be tho
         words = cap_screen().split('\n')[2:4]
+
         need_keypress('y')
         enter_number(b)
 
@@ -298,30 +300,33 @@ def capture_enabled(sim_eval):
     assert sim_eval("'sim_display' in sys.modules") == 'True'
 
 @pytest.fixture(scope='module')
-def cap_menu(sim_execfile):
+def cap_menu(sim_exec):
     "Return menu items as a list"
     def doit():
-        return sim_execfile('devtest/cap-menu.py').split('\n')
+        rv = sim_exec('from ux import the_ux; RV.write(repr('
+                            '[i.label for i in the_ux.top_of_stack().items]))')
+        return eval(rv)
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_screen(sim_execfile):
+def cap_screen(sim_exec):
     def doit():
-        return sim_execfile('devtest/cap-screen.py')
+        return sim_exec('RV.write(sim_display.full_contents)')
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_story(sim_execfile):
+def cap_story(sim_exec):
     # returns (title, body) of whatever story is being actively shown
     def doit():
-        return sim_execfile('devtest/cap-story.py').split('\0', 1)
+        rv = sim_exec("RV.write('\0'.join(sim_display.story or []))")
+        return rv.split('\0', 1) if rv else ('','')
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_image(sim_execfile):
+def cap_image(sim_exec):
 
     def flip(raw):
         reorg = bytearray(128*64)
@@ -337,7 +342,12 @@ def cap_image(sim_execfile):
     def doit():
         from PIL import Image
 
-        raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
+        #raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
+        raw = a2b_hex(sim_exec('''
+from glob import dis;
+from ubinascii import hexlify as b2a_hex;
+RV.write(b2a_hex(dis.dis.buffer))'''))
+
         assert len(raw) == (128*64//8)
         return Image.frombytes('L', (128,64), flip(raw), 'raw')
 
@@ -409,7 +419,6 @@ def cap_screen_qr(cap_image):
 
         orig_img = cap_image()
 
-
         # document it
         if x < 10:
             # removes dups: happen when same image samples for two different
@@ -436,10 +445,10 @@ def cap_screen_qr(cap_image):
     return doit
 
 @pytest.fixture(scope='module')
-def get_pp_sofar(sim_execfile):
+def get_pp_sofar(sim_exec):
     # get entry value for bip39 passphrase
     def doit():
-        resp = sim_execfile('devtest/get_pp_sofar.py')
+        resp = sim_exec('import seed; RV.write(seed.pp_sofar)')
         assert 'Error' not in resp
         return resp
 
@@ -476,16 +485,17 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
             time.sleep(.01)      # required
 
             # special case to get out of passphrase menu
-            if 'CANCEL' in cap_menu():
+            m = cap_menu()
+
+            if 'CANCEL' in m:
                 pick_menu_item('CANCEL')
                 time.sleep(.01)
                 need_keypress('y')
 
-        need_keypress('0')
-        
-        # check menu contents
-        m = cap_menu()
-        assert 'Ready To Sign' in m
+            if m[0] == 'Ready To Sign':
+                break
+        else:
+            raise pytest.fail("trapped in a menu")
 
     return doit
 
@@ -494,6 +504,7 @@ def pick_menu_item(cap_menu, need_keypress):
     WRAP_IF_OVER = 16       # see ../shared/menu.py
 
     def doit(text):
+        print(f"PICK menu item: {text}")
         need_keypress('0')
         m = cap_menu()
         if text not in m:

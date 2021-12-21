@@ -8,7 +8,6 @@ freeze_as_mpy('', [
 	'os.py',
 	'pyb.py',
 	'sflash.py',
-	'sim_display.py',
 	'sim_mk4.py',
 	'sim_nfc.py',
 	'sim_psram.py',

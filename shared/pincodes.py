@@ -472,13 +472,18 @@ class PinAttempt:
         return err, buf[PIN_ATTEMPT_SIZE:]
 
     def is_deltamode(self):
-        # (mk4 only) are we opperating w/ a slightly wrong PIN code?
+        # (mk4 only) are we operating w/ a slightly wrong PIN code?
         try:
             from trick_pins import TC_DELTA_MODE
         except ImportError:
             # <= mk3
             return False
         return bool(self.delay_required & TC_DELTA_MODE)
+
+    def get_tc_values(self):
+        # Mk4 only
+        # return (tc_flags, tc_arg)
+        return self.delay_required, self.delay_achieved
         
 
 # singleton

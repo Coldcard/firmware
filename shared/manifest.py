@@ -10,6 +10,7 @@ freeze_as_mpy('', [
 	'chains.py',
 	'choosers.py',
 	'compat7z.py',
+	'countdowns.py',
 	'descriptor.py',
 	'dev_helper.py',
 	'display.py',
@@ -68,5 +69,6 @@ if int(os.environ.get('DEBUG_BUILD', 0)):
         'h.py',
         'dev_helper.py',
         'usb_test_commands.py',
+        'sim_display.py',
     ], opt=0)
 

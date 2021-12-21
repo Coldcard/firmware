@@ -382,6 +382,10 @@ def clean_shutdown(style=0):
     # - bootrom wipes every byte of SRAM, so no need to repeat here
     import callgate, version, uasyncio
 
+    # save if anything pending
+    from glob import settings
+    settings.save_if_dirty()
+
     try:
         from glob import dis
         dis.fullscreen("Cleanup...")

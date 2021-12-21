@@ -90,12 +90,13 @@ def pin_stuff(submethod, buf_io):
                 attempts_left = 3
 
     elif submethod == 1:
-        # delay
+        # delay - mk2 concept, obsolete
         time.sleep(0.05)
         delay_achieved += 1
 
     elif submethod == 2:
         # Login
+        from sim_se2 import SE2
 
         expect = SECRETS.get(kk, '')
         if pin == expect:
@@ -103,29 +104,52 @@ def pin_stuff(submethod, buf_io):
 
             ts = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
 
-        elif pin == SECRETS.get(kk + '_duress', None):
-            state_flags = PA_SUCCESSFUL
+        elif version.mk_num >= 4:
 
-            ts = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
+            got = SE2.try_trick_login(pin, num_fails)
+            if got != None:
+                # good login, but it's a trick
+                ts = SE2.wallet
+                flags, arg = got
 
-        else:
-            if version.has_608:
+                delay_required = flags
+                delay_achieved = arg
+                state_flags = PA_SUCCESSFUL
+            else:
+                # failed both true PIN and trick pins (or so it seems, see FAKE_OUT)
                 num_fails += 1
                 attempts_left -= 1
-            else:
-                state_flags = 0
 
-            return EPIN_AUTH_FAIL
+                return EPIN_AUTH_FAIL
+            
+        else:
+            # obsolete paths
+            assert version.mk_num < 4
+            if pin == SECRETS.get(kk + '_duress', None):
+                state_flags = PA_SUCCESSFUL
+
+                ts = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
+
+            else:
+                if version.has_608:
+                    num_fails += 1
+                    attempts_left -= 1
+                else:
+                    state_flags = 0
+
+                return EPIN_AUTH_FAIL
 
         time.sleep(0.05)
 
-        if ts == b'\0'*72:
+        if ts == bytes(72):
             state_flags |= PA_ZERO_SECRET
 
-        if kk+'_duress' in SECRETS:
-            state_flags |= PA_HAS_DURESS
-        if kk+'_brickme' in SECRETS:
-            state_flags |= PA_HAS_BRICKME
+        if version.mk_num < 4:
+            # mk1-3 concepts
+            if kk+'_duress' in SECRETS:
+                state_flags |= PA_HAS_DURESS
+            if kk+'_brickme' in SECRETS:
+                state_flags |= PA_HAS_BRICKME
 
         del ts
 
@@ -200,11 +224,17 @@ def pin_stuff(submethod, buf_io):
 
     elif submethod == 4:
         # Fetch secrets
+        from sim_se2 import SE2
         duress_pin = SECRETS.get(kk+'_duress')
 
         secret = None
 
-        if pin == duress_pin:
+        if SE2.wallet:
+            if SE2.wallet == 'delta':
+                secret = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
+            else:
+                secret = SE2.wallet
+        elif pin == duress_pin:
             secret = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
         else:
             if change_flags & CHANGE_DURESS_SECRET:

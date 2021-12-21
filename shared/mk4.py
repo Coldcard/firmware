@@ -51,6 +51,12 @@ def init0():
     except BaseException as exc:
         sys.print_exception(exc)
 
+    if version.is_devmode:
+        try:
+            # need to import this early so it can monkey-patch itself in place
+            import sim_display
+        except: pass
+
 async def dev_enable_repl(*a):
     # Enable serial port connection. You'll have to break case open.
     from ux import ux_show_story

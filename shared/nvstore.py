@@ -23,7 +23,7 @@ from uio import BytesIO
 from uhashlib import sha256
 from random import shuffle, randbelow
 from utils import call_later_ms
-from version import mk_num
+from version import mk_num, is_devmode
 from glob import PSRAM
 
 # TODO fs.sync
@@ -56,11 +56,11 @@ from glob import PSRAM
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)
 #   rngk = randomize keypad for PIN entry
-#   delay_left = seconds remaining on login countdown, if defined
+#   delay_left = [REMOVED-obsolete] seconds remaining on login countdown, if defined
 #   lgto = (minutes) how long to wait for Login Countdown feature [in v4.0.2+]
-#   cd_lgto = minutes to show in countdown (in countdown-to-brick mode)
-#   cd_mode = set to enable some less-destructive modes
-#   cd_pin = pin code which enables "countdown to brick" mode
+#   cd_lgto = [<=mk3] minutes to show in countdown (in countdown-to-brick mode)
+#   cd_mode = [<=mk3] set to enable some less-destructive modes
+#   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
 
 
 if mk_num <= 3:
@@ -388,6 +388,9 @@ class SettingsObject:
         self.my_pos = self.find_spot(-1)
         #print("NV: empty")
 
+        if is_devmode:
+            self.current['chain'] = 'XTN'
+
         if self.num_empty == NUM_SLOTS:
             # Whole thing is blank. Bad for plausible deniability. Write 3 slots
             # with white noise. They will be wasted space until it fills up.
@@ -405,6 +408,11 @@ class SettingsObject:
         self.is_dirty += 1
         if self.is_dirty < 2:
             call_later_ms(250, self.write_out)
+
+    def save_if_dirty(self):
+        # call when system is about to stop
+        if self.is_dirty:
+            self.save()
 
     def put(self, kn, v):
         self.current[kn] = v

@@ -373,10 +373,6 @@ async def login_countdown(sec):
     from display import FontSmall, FontLarge
     from utime import ticks_ms, ticks_diff
 
-    # capture this before even drawing screen
-    settings.set('delay_left', sec)
-    settings.save()
-
     # pre-render fixed parts
     dis.clear()
     y = 0
@@ -393,32 +389,31 @@ async def login_countdown(sec):
         dis.show()
         dis.busy_bar(1)
 
-        # this should be more accurate, errors are accumulating
+        # this should be more accurate, errors were accumulating
         now = ticks_ms()
         dt = 1000 - ticks_diff(now, st)
         await sleep_ms(dt)
         st = ticks_ms()
 
-        if sec % 30 == 0:
-            settings.set('delay_left', sec)
-            settings.save()
-
         sec -= 1
 
     dis.busy_bar(0)
 
-    settings.remove_key('delay_left')
-    settings.save()
-
-async def block_until_login(rnd_keypad):
+async def block_until_login():
     #
     # Force user to enter a valid PIN.
-    # - or accept a bogus one and return T
+    # - or accept a bogus one and return T iff <mk4 and "countdown" pin used
     # 
     from login import LoginUX
     from ux import AbortInteraction
 
-    cd_pin = settings.get('cd_pin', None)
+    # mk4 does differently, as a "trick pin"
+    cd_pin = settings.get('cd_pin', None) if not version.has_se2 else None
+
+    # do they want a randomized (shuffled) keypad?
+    rnd_keypad = settings.get('rngk', 0)
+
+    # single key that "kills" self if pressed on "words" screen
     kill_btn = settings.get('kbtn', None)
 
     rv = None       # might already be logged-in if _skip_pin used
@@ -675,7 +670,8 @@ async def view_seed_words(*a):
 async def damage_myself():
     # called when it's time to disable ourselves due to various
     # features related to duress and so on
-    # - mk2 cannot do this, mk4 will be able to do this instantly
+    # - mk2 cannot do this
+    # - mk4 doesn't call this, done by bootrom
     mode = settings.get('cd_mode', 0)
     #['Brick', 'Final PIN', 'Test Mode']
 
@@ -715,7 +711,7 @@ async def version_migration():
     #   never know when a user might skip a bunch of intermetiate versions
 
     # Data migration issue: 
-    # - "login countdown" feature now stored elsewhere
+    # - "login countdown" feature now stored elsewhere [mk3]
     had_delay = settings.get('lgto', 0)
     if had_delay:
         from nvstore import SettingsObject
@@ -724,6 +720,13 @@ async def version_migration():
         s.set('lgto', had_delay)
         s.save()
         del s
+        
+async def version_migration_prelogin():
+    # same, but for setting before login
+    if version.has_se2:
+        # these have moved into SE2 for Mk4 and so can be removed
+        for n in [ 'cd_lgto', 'cd_mode', 'cd_pin' ]:
+            settings.remove_key(n)
 
 async def start_login_sequence():
     # Boot up login sequence here.
@@ -745,7 +748,7 @@ async def start_login_sequence():
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
 
-        # Do green-light set immediately after firmware upgrade
+        # Do green-light set immediately after firmware upgrade [not after mk3]
         if version.is_fresh_version() and version.mk_num <=3:
             pa.greenlight_firmware()
             dis.show()
@@ -753,18 +756,17 @@ async def start_login_sequence():
         goto_top_menu()
         return
 
-    # Did they power down during a login countdown? If so continue it.
-    # - that was a bad idea: better is to start over since that's "more secure"=longer
-    existing_delay = settings.get('delay_left', 0)
-    if existing_delay:
-        await login_countdown(existing_delay)
-    else:
-        # maybe show a nickname before we do anything
+    # data migration on settings that are used pre-login
+    try:
+        await version_migration_prelogin()
+    except: pass
+
+    # maybe show a nickname before we do anything
+    try:
         nickname = settings.get('nick', None)
         if nickname:
-            try:
-                await show_nickname(nickname)
-            except: pass
+            await show_nickname(nickname)
+    except: pass
 
     # Allow impatient devs and crazy people to skip the PIN
     guess = settings.get('_skip_pin', None)
@@ -775,47 +777,66 @@ async def start_login_sequence():
             pa.login()
         except: pass
 
-    # if that didn't work, or no skip defined, force
+    # If that didn't work, or no skip defined, force
     # them to login successfully.
 
-    # do they want a randomized (shuffled) keypad?
-    rnd_keypad = settings.get('rngk', 0)
+    try:
+        # Get a PIN and try to use it to login
+        # - does warnings about attempt usage counts
+        wants_countdown = await block_until_login()
 
-    # always get a PIN and login first
-    cd_login = await block_until_login(rnd_keypad)
+        # Do we need to do countdown delay? (real or otherwise)
+        delay = 0
+        if wants_countdown:
+            # Mk3 and earlier
+            await damage_myself()
+            delay = settings.get('cd_lgto', 60)
+        elif version.has_se2:
+            # Mk4 approach:
+            # - wiping has already occured if that was picked
+            # - delay is variable, stored in tc_arg
+            from trick_pins import tp
+            delay = tp.was_countdown_pin()
 
-    # Do we need to delay? (real or otherwise)
-    if cd_login:
-        await damage_myself()
-        delay = settings.get('cd_lgto', 60)
-    else:
-        # They do know the right PIN, do a delay tho, because they wanted that
-        if not existing_delay:
+        # Maybe they do know the right PIN, but do a delay anyway, because they wanted that
+        if not delay:
             delay = settings.get('lgto', 0)
-        else:
-            # except assume the continued power-up delay was enough to
-            # continue without more delay
-            delay = 0
 
-    if delay:
-        pa.reset()
+        if delay:
+            # kill some time, with countdown, and get "the" PIN again for real login
+            pa.reset()
+            await login_countdown(delay * (60 if not version.is_devmode else 1))
 
-        await login_countdown(delay*60)
+            if version.has_se2:
+                # keep it simple for Mk4+: just challenge again for any PIN
+                # - if it's the same countdown pin, it will be accepted and they
+                #   get in (as most trick pins would do)
+                await block_until_login()
+            else:
+                # second PIN challenge; but only if first one was actually legit
+                wants_countdown = await block_until_login()
 
-        # second PIN challenge; but only if first one was actually legit
-        if not cd_login:
-            cd_login = await block_until_login(rnd_keypad)
+                # whenever they use the countdown pin on second screen, kill ourselves
+                if wants_countdown:
+                    await damage_myself()
 
-            # If they did correct pin, waited for delay, and the do countdown-pin,
-            # skip any additional delay and just do the damage now.
-            if cd_login:
-                await damage_myself()
+                if wants_countdown:
+                    # crash
+                    dis.fullscreen("ERROR")
+                    callgate.show_logout(1)
 
-        if cd_login:
-            # crash
-            dis.fullscreen("ERROR")
-            callgate.show_logout(1)
+    except BaseException as exc:
+        # Robustness: any logic errors/bugs in above will brick the Coldcard
+        # even for legit owner, since they can't login. Try to recover, when it's
+        # safe to do so. Remember the bootrom checks PIN on every access to
+        # the secret, so "letting" them past this point is harmless if they don't know
+        # the true pin.
+        if not pa.is_successful():
+            raise
 
+        print("Bug recovery!")
+        import sys
+        sys.print_exception(exc)
 
     # Successful login...
 

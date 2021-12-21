@@ -155,7 +155,7 @@ def test_blank_slots(se2_gate):
             assert rc == 0
             assert got.slot_num == got.tc_flags == i
 
-def test_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress, enter_pin):
+def test_ux_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress):
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Login Settings')
@@ -192,7 +192,7 @@ def test_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress, enter_p
 
 
 @pytest.fixture(scope='function')
-def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin, se2_gate):
+def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin, se2_gate, is_simulator):
     # using menus and UX, setup a new trick PIN
     def doit(new_pin, op_mode, expect=None):
         goto_home()
@@ -233,12 +233,9 @@ def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story,
         pick_menu_item('Add New Trick')
         words = enter_pin(new_pin)
 
-        
-        if new_pin[0:3] == '11-':
-            # for simulator at least:
+        if is_simulator() and new_pin[0:3] == '11-':
+            # for simulator at least, we know this...
             assert words == ['quality', 'antique']
-        else:
-            print(f'{pin} => {words}')
 
         time.sleep(.1)
         m = cap_menu()
@@ -248,6 +245,7 @@ def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story,
 
         pick_menu_item(op_mode)
         
+        time.sleep(.1)
         _, story = cap_story()
         if expect:
             assert expect in story
@@ -276,7 +274,8 @@ def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
         rc, sl = se2_gate(1, make_slot(pin=new_pin.encode('ascii'), pin_len=len(new_pin)))
         assert rc == 0
         sl = decode_slot(sl)
-        assert sl.pin[0:sl.pin_len].decode('ascii') == new_pin
+        if sl.pin_len:
+            assert sl.pin[0:sl.pin_len].decode('ascii') == new_pin      # simulator only
         assert sl.tc_flags == xflags
         assert sl.tc_arg == xargs
 
@@ -291,23 +290,23 @@ def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
     ('11-88', 'Login Countdown', 'Pretends a login countdown', True, 0), 
     ('11-99', 'Delta Mode', 'Logs into REAL seed', True, 0), 
 ])
-def test_add_simple(new_pin, op_mode, expect, but_dont, xflags, 
-                new_trick_pin, new_pin_confirmed, goto_home, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin):
-
+def test_ux_add_simple(new_pin, op_mode, expect, but_dont, xflags, 
+                new_trick_pin, new_pin_confirmed, need_keypress, enter_pin
+):
+    # Do the simple ones, test the first level of the others
     new_trick_pin(new_pin, op_mode, expect)
 
     if but_dont:
         need_keypress('x')
-        return
-
-    new_pin_confirmed(new_pin, op_mode, xflags)
+    else:
+        new_pin_confirmed(new_pin, op_mode, xflags)
 
 @pytest.mark.parametrize('subchoice, expect, xflags', [
     ( 'Wipe & Reboot', 'wiped and Coldcard reboots', TC_WIPE|TC_REBOOT ),
     ( 'Silent Wipe', 'code was just wrong', TC_WIPE|TC_FAKE_OUT ),
     ( 'Say Wiped, Stop', 'message is shown', TC_WIPE ),
 ])
-def test_wipe_choices_1(subchoice, expect, xflags, 
+def test_ux_wipe_choices_1(subchoice, expect, xflags, 
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
 
     # first level only, see test_duress_choices() for wipe+duress/other choices
@@ -333,7 +332,7 @@ def test_wipe_choices_1(subchoice, expect, xflags,
     ( 'Legacy Wallet', 'fixed derivation', TC_WIPE|TC_XPRV_WALLET, 0 ),
     ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
-def test_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
+def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
@@ -361,5 +360,14 @@ def test_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
 
     new_pin_confirmed(new_pin, op_mode, xflags, xargs)
 
+
+# TODO
+# - duress wallet math is right, bip85 and legacy
+# - test apply wallet feature
+# - make trick and do login, check arrives right state?
+# - out of slots
+# - out of slots iff using wallet feature
+# - wrong PIN cases
+# - countdown menu, implementation
 
 # EOF

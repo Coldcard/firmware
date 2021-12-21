@@ -23,13 +23,6 @@ try:
 except:
     pass
 genuine_led = True
-
-if 1:
-    # remove pauses that lengthen test case times...
-    async def no_drama(msg, seconds):
-        print("Pause (%ds): %s" % (seconds, msg))
-    import ux
-    ux.ux_dramatic_pause = no_drama
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!
@@ -38,6 +31,7 @@ if 1:
 # - heap for unix port defined (in unix/main.c) to be 1M * ptr size bytes
 # - arm version seems to be able to handle much lower heap size??
 # - unix is not freezing the main code, so those bytecodes take major memory
+# - mk4: over 500k of space after boot anyway!!! Yeah!
 #balloon = bytearray(700*1024)
 
 # patch in monitoring of text on screen

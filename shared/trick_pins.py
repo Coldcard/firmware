@@ -217,6 +217,16 @@ class TrickPinMgmt:
         # put them in order, with "wrong" last
         return sorted(self.tp.keys(), key=lambda i: i if (i != WRONG_PIN_CODE) else 'Z')
 
+    def was_countdown_pin(self):
+        # was the trick pin just used? if so how much delay needed (or zero if not)
+        from pincodes import pa
+        tc_flags, tc_arg = pa.get_tc_values()
+
+        if tc_flags & TC_COUNTDOWN:
+            return tc_arg or 60
+        else:
+            return 0
+
 tp = TrickPinMgmt()
 
 class TrickPinMenu(MenuSystem):
@@ -279,7 +289,10 @@ class TrickPinMenu(MenuSystem):
         tc_arg = item.arg
 
         if self.proposed_pin == WRONG_PIN_CODE:
-            msg = "%d Wrong PINs\n↳%s" % (tc_arg, item.label)
+            if tc_arg == 0:
+                msg = "Any Wrong PIN\n↳%s" % item.label
+            else:
+                msg = "%d Wrong PINs\n↳%s" % (tc_arg, item.label)
         else:
             msg = "PIN %s\n↳%s" % (self.proposed_pin, item.label)
 
@@ -411,17 +424,17 @@ up to last four digits can be different between true PIN and trick.''' % len(rig
             StoryMenuItem('Say Wiped, Stop', "Seed is wiped and a message is shown.",
                             flags=TC_WIPE),
         ])
-
-        from glob import settings
         from countdowns import lgto_map
+        from glob import settings
         def_to = settings.get('lgto', 0) or 60   # use 1hour or current countdown length as default
-        countdownMenu = MenuSystem([
+
+        countdown_menu = MenuSystem([
             #              xxxxxxxxxxxxxxxx
             StoryMenuItem('Wipe & Countdown', "Seed is wiped at start of countdown.",
                             flags=TC_WIPE|TC_COUNTDOWN, arg=def_to),
             StoryMenuItem('Countdown & Brick', "Does the countdown, then system is bricked.",
                             flags=TC_WIPE|TC_BRICK|TC_COUNTDOWN, arg=def_to),
-            StoryMenuItem('Just Countdown', "Shows countdown, has no effect on seed (test mode).",
+            StoryMenuItem('Just Countdown', "Shows countdown, has no effect on seed.",
                             flags=TC_COUNTDOWN, arg=def_to),
         ])
         FirstMenu = [
@@ -432,7 +445,7 @@ up to last four digits can be different between true PIN and trick.''' % len(rig
                                             menu=self.WillWipeMenu),
             StoryMenuItem('Duress Wallet', "Goes directly to a specific duress wallet. No side effects.", menu=DuressOptions),
             StoryMenuItem('Login Countdown', "Pretends a login countdown timer (%s) is in effect but wipes seed first. Resets system at end of countdown or bricks it." % lgto_map[def_to].strip(),
-                    menu=countdownMenu),
+                    menu=countdown_menu),
             StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", flags=TC_BLANK_WALLET),
             StoryMenuItem('Just Reboot', "Reboot when this PIN is entered. Doesn't do anything else.", flags=TC_REBOOT),
             StoryMenuItem('Delta Mode', '''\
@@ -449,6 +462,9 @@ differ only in final 4 positions (ignoring dash).\
         m.goto_idx(1)
         the_ux.push(m)
 
+        
+
+
     async def set_any_wrong(self, *a):
         ch = await ux_show_story('''\
 After X incorrect PIN attempts, this feature will be triggered. It can wipe \
@@ -460,7 +476,12 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
         num = await ux_enter_number("#of wrong attempts", 12)
         if num is None: return
 
-        rel = ['', '1st', '2nd', '3rd'][num] if num <= 3 else ('%dth' % num)
+        # - can't do countdown here because of only one tc_arg value per slot
+        # - zero and one effectively the same
+        if num == 0:
+            num = 1
+
+        rel = ['', 'ANY', '2nd', '3rd'][num] if num <= 3 else ('%dth' % num)
 
         m = MenuSystem([
             #              xxxxxxxxxxxxxxxx

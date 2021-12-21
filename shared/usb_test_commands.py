@@ -3,6 +3,9 @@ import uio, sys, version, nvstore, glob
 try:
     from sflash import SF
 except: pass
+try:
+    import sim_display
+except: pass
 
 from glob import *
 

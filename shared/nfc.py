@@ -309,7 +309,11 @@ class NFCHandler:
 
                 # detect various types of RF activity, so we can clear screen automatically
                 await self.wait_ready()
-                events = self.read_dyn(IT_STS_Dyn)
+                try:
+                    events = self.read_dyn(IT_STS_Dyn)
+                except OSError:     # ENODEV
+                    print("r_dyn fail")
+                    events = 0
 
                 if write_mode:
                     # in write mode, ignore simple read/scan activity: wait for write

@@ -4,6 +4,7 @@
 #
 import machine, ssd1306, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
+from version import is_devmode
 import framebuf
 import uasyncio
 from uasyncio import sleep_ms
@@ -132,6 +133,12 @@ class Display:
         pos = min(int(mm*fraction), mm)
         self.dis.fill_rect(128-2, pos, 1, 8, 1)
 
+        if is_devmode and not ckcc.is_simulator():
+            self.dis.fill_rect(128-6, 20, 5, 21, 1)
+            self.text(-2, 21, 'D', font=FontTiny, invert=1)
+            self.text(-2, 28, 'E', font=FontTiny, invert=1)
+            self.text(-2, 35, 'V', font=FontTiny, invert=1)
+
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
         self.clear()
@@ -151,7 +158,7 @@ class Display:
         # display a splash screen with some version numbers
         self.clear()
         y = 4
-        self.text(None,    y, 'Coldcard', font=FontLarge)
+        self.text(None,    y, 'COLDCARD', font=FontLarge)
         self.text(None, y+20, 'Wallet', font=FontLarge)
 
         from version import get_mpy_version

@@ -4,6 +4,7 @@ Mk4 - New hardware
 
 - (mk3&4) Performance improved: some internal objects cached to reduce delays when
   accessing master secret. Helps address explorer, many USB commands and signing.
+- interrupting (ie. power down) the login countdown now resets the time delay to starting over
 
 ## 4.1.4 - Sep ??, 2021
 
