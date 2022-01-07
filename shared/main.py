@@ -24,7 +24,7 @@ if 0:
 if 0:
     raise SystemExit
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2021.")
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2022.")
 
 import version
 datestamp,vers,_ = version.get_mpy_version()
@@ -39,7 +39,7 @@ glob.dis = dis
 # slowish imports, some with side-effects
 import ckcc, uasyncio
 
-if version.mk_num == 4:
+if version.mk_num >= 4:
     # early setup code needed on Mk4
     try:
         import mk4
@@ -85,7 +85,7 @@ async def more_setup():
             print("factory mode")
             # in factory mode, turn on USB early to allow debug/setup
             from usb import enable_usb
-            enable_usb(version.has_psram)
+            enable_usb()
 
             # always start the self test.
             if not settings.get('tested', False):
