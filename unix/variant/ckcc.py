@@ -17,12 +17,10 @@ rng_fd = open('/dev/urandom', 'rb')
 # Emulate the red/green LED
 import sys
 global genuine_led
-try:
-    led_pipe = open(int(sys.argv[3]), 'wb')
-    led_pipe.write(b'\x01')
-except:
-    pass
 genuine_led = True
+
+led_pipe = open(int(sys.argv[3]), 'wb')
+led_pipe.write(b'\xf0')     # all off
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!
@@ -87,7 +85,11 @@ def gate(method, buf_io, arg2):
         if arg2 == 1:
             # clear it
             genuine_led = False
-            led_pipe.write(bytes([0x10]))
+            led_pipe.write(b'\x10')
+        if arg2 == 3:
+            # real code would do checksum then go green
+            genuine_led = True
+            led_pipe.write(b'\x11')
         return 1 if genuine_led else 0
 
     if method == 5:

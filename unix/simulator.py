@@ -3,11 +3,14 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Simulate the hardware of a Coldcard. Particularly the OLED display (128x32) and 
-# the numberpad. 
+# the number pad. 
 #
 # This is a normal python3 program, not micropython. It communicates with a running
 # instance of micropython that simulates the micropython that would be running in the main
 # chip.
+#
+# Limitations:
+# - USB light not fully implemented, because happens at irq level on real product
 #
 import os, sys, tty, pty, termios, time, pdb, tempfile
 import subprocess
@@ -22,7 +25,7 @@ MPY_UNIX = 'l-port/micropython'
 UNIX_SOCKET_PATH = '/tmp/ckcc-simulator.sock'
 
 # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
-OLED_ACTIVE = (50, 78)
+OLED_ACTIVE = (46, 85)
 
 # keypad touch buttons
 KEYPAD_LEFT = 52
@@ -47,7 +50,7 @@ class OLEDSimulator:
         self.mv = sdl2.ext.PixelView(self.sprite)
 
     def render(self, window, buf):
-        # take a full-screen update of the OLED contents and display
+        # do a full-screen update of the OLED contents and display
         assert len(buf) == 1024, len(buf)
 
         for y in range(0, 64, 8):
@@ -108,14 +111,14 @@ class OLEDSimulator:
 
 class BareMetal:
     #
-    # Use a real Coldcard device's bootrom and SE
+    # Use a real Coldcard device's bootrom and Secure Elements
     #
     def __init__(self, req_r, resp_w):
         self.open()
         self.request = open(req_r, 'rt', closefd=0)
         self.response = open(resp_w, 'wb', closefd=0, buffering=0)
 
-    def open(self, name='usbserial-FTD2MILQ'):
+    def open(self, name='usbserial-AQ00T1SJ'):
         # return a file-descriptor ready to be used for access to a real Coldcard's console I/O.
         # - assume only one coldcard
         import sys, serial
@@ -184,7 +187,7 @@ except:
 
     def read_sflash(self):
         # capture contents of SPI flash (settings area only: last 128k)
-        # XXX not working
+        # XXX not working, and not for Mk4
         self.sio.write(b'''\x05\
 busy(1)
 from main import sf
@@ -283,7 +286,9 @@ dis.fullscreen("BareMetal")
         assert not rv.startswith('===')
 
         if 1:
-            print(f"Callgate(method={method}, {len(buf_io) if buf_io else 0} bytes, arg2={arg2}) => rv={rv}")
+            # trace output
+            print(f"Callgate(method={method}, {len(buf_io) if buf_io else 0} bytes, "\
+                    f"arg2={arg2}) => rv={rv}")
 
         self.response.write(rv.encode('ascii') + b'\n')
     
@@ -301,10 +306,11 @@ def start():
     bg = factory.from_image("background.png")
     oled = OLEDSimulator(factory)
     
-    # for genuine/caution lights
+    # for genuine/caution lights and other LED's
     led_red = factory.from_image("led-red.png")
     led_green = factory.from_image("led-green.png")
     led_sdcard = factory.from_image("led-sd.png")
+    led_usb = factory.from_image("led-usb.png")
 
     window = sdl2.ext.Window("Coldcard Simulator", size=bg.size, position=(100, 100))
     window.show()
@@ -510,11 +516,16 @@ def start():
                     lset = c & 0xf
                     GEN_LED = 0x1
                     SD_LED = 0x2
+                    USB_LED = 0x4
+
+                    sd_active = usb_active = False
 
                     if mask & GEN_LED:
                         genuine_state = ((mask & lset) == GEN_LED)
                     if mask & SD_LED:
                         sd_active = ((mask & lset) == SD_LED)
+                    if mask & USB_LED:
+                        usb_active = ((mask & lset) == USB_LED)
 
                     #print("Genuine LED: %r" % genuine_state)
                     spriterenderer.render(bg)
@@ -522,6 +533,8 @@ def start():
                     spriterenderer.render(led_green if genuine_state else led_red)
                     if sd_active:
                         spriterenderer.render(led_sdcard)
+                    if usb_active:
+                        spriterenderer.render(led_usb)
 
                 window.refresh()
             else:
