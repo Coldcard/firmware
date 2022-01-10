@@ -153,7 +153,7 @@ but that's all.
 ## TXID Value
 
 When sharing a fully-signed transaction, the TXID, if known, will be
-shared in hex.
+shared in binary (32 bytes).
 
 Type: `urn:nfc:ext:bitcoin.org:txid`
 
