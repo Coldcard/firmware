@@ -33,7 +33,7 @@
     - however, each wallet must be of a single address type; cannot be mixed (their limitation)
     - the same Coldcard could be used in each of the three modes (we don't care about address format)
 - with Bitcoin Core (version 0.17?), we can do PSBT transactions, which support all address types
-- we don't support coinbase transactions, so don't mine directly into a Coldcard wallet
+- we don't support signing coinbase transactions, so don't mine directly into a Coldcard wallet
 
 # Max Transaction Size
 
@@ -41,8 +41,11 @@
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
-- we can handle transactions with up to 20 inputs to be signed at one time.
-- a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
+- mk3:
+    - we can handle transactions with up to 20 inputs to be signed at one time.
+    - a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
+- mk4:
+    - any number of inputs and outputs are supported, limited only by final transaction size (100k)
 
 
 # P2SH / Multisig
@@ -57,7 +60,7 @@
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
 - max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
-- we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
+- (mk3) we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
 - we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
