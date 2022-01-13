@@ -2,7 +2,7 @@
 #
 # Mk4 NFC feature related tests.
 #
-import pytest, glob
+import pytest, glob, pdb
 from helpers import B2A
 from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack
@@ -377,5 +377,24 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
             assert got.data == sha256(result).digest()
         else:
             raise ValueError(got.type)
+
+def test_rf_uid(rf_interface, cap_story, goto_home, pick_menu_item):
+    # read UID of NFC chip over the air
+    sw, ident = rf_interface.apdu(0xff, 0xca)       # PAPDU_GET_UID
+    assert sw == '0x9000'
+    assert ident[-2:] == b'\x02\xe0'        # ST vendor
+    assert len(ident) == 8
+    uid = ''.join('%02x'%i for i in reversed(ident))
+
+    # check UI is reporting same value
+    goto_home()
+    pick_menu_item('Advanced')
+    pick_menu_item('Upgrade')
+    pick_menu_item('Show Version')
+    _, story = cap_story()
+
+    assert uid in story
+    print(uid)
+
 
 # EOF

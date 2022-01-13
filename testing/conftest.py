@@ -1137,23 +1137,99 @@ def only_mk3(dev):
     if v[4] != 'mk3':
         raise pytest.skip("Mk3 only")
 
+@pytest.fixture(scope='module')
+def rf_interface(only_mk4, sim_exec):
+    # provide a read/write connection over NFC
+    # - requires pyscard module and NFC-V reader like HID OMNIKEY 5022CL
+    class RFHandler:
+        def __init__(self, want_atr=None):
+            from smartcard.System import readers as get_readers
+            from smartcard.Exceptions import CardConnectionException, NoCardException
+
+            readers = get_readers()
+            if not readers:
+                raise pytest.fail("no card readers found")
+
+            # search for our card
+            for r in readers:
+                try:
+                    conn = r.createConnection()
+                except:
+                    print(f"Fail: {r}");
+                    continue
+                
+                try:
+                    conn.connect()
+                    atr = conn.getATR()
+                except (CardConnectionException, NoCardException):
+                    print(f"Empty reader: {r}")
+                    continue
+
+                if want_atr and atr != want_atr:
+                    continue
+
+                # accept first suitable "card"
+                break
+            else:
+                raise pytest.fail("did not find NFC target")
+
+            self.conn = conn
+
+        def apdu(self, cls, ins, data=b'', p1=0, p2=0):
+            # send APDU
+            lst = [ cls, ins, p1, p2, len(data)] + list(data)
+            resp, sw1, sw2 = self.conn.transmit(lst)
+            resp = bytes(resp)
+            return hex((sw1 << 8) | sw2), resp
+            
+        # XXX not simple; Omnikey wants secure channel (AES) for this
+        def read_nfc(self):
+            return b'helllo'
+        def write_nfc(self, ccfile):
+            pass
+
+    # get the CC into NFC tap mode (but no UX)
+    sim_exec('glob.NFC.set_rf_disable(0)')
+
+    time.sleep(3)
+
+    yield RFHandler()
+
+    sim_exec('glob.NFC.set_rf_disable(1)')
+
 @pytest.fixture()
-def nfc_read(sim_exec):
+def nfc_read(request, only_mk4):
     # READ data from NFC chip
-    def doit():
+    # - perfer to do over NFC reader, but can work over USB too
+    def doit_usb():
+        sim_exec = request.getfixturevalue('sim_exec')
         rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"")', binary=True)
         if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
         return rv
-    return doit
+
+    try:
+        raise NotImplementedError
+        rf = request.getfixturevalue('rf_interface')
+        return rf.read_nfc
+    except:
+        return doit_usb
 
 @pytest.fixture()
-def nfc_write(sim_exec, need_keypress):
+def nfc_write(request, only_mk4):
     # WRITE data into NFC "chip"
-    def doit(ccfile):
+    def doit_usb(ccfile):
+        sim_exec = request.getfixturevalue('sim_exec')
+        need_keypress = request.getfixturevalue('need_keypress')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
         if 'Traceback' in rv: raise pytest.fail(rv)
         need_keypress('y')      # to end the animation and have it check value immediately
-    return doit
+
+    try:
+        raise NotImplementedError
+        rf = request.getfixturevalue('rf_interface')
+        return rf.write_nfc
+    except:
+        return doit_usb
 
 @pytest.fixture()
 def nfc_read_text(nfc_read):
