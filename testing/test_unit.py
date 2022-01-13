@@ -139,7 +139,7 @@ def test_decoding(unit_test):
 def test_hmac(sim_exec, msg, key, hasher):
     import hashlib, hmac
 
-    cmd = "import ngu; from h import b2a_hex; " + \
+    cmd = "import ngu; from ubinascii import hexlify as b2a_hex; " + \
                     f"RV.write(b2a_hex(ngu.hmac.hmac_{hasher}({key}, {msg})))"
     print(cmd)
 
@@ -179,7 +179,7 @@ def test_hmac_key(dev, sim_exec, count=10):
     for i in range(count):
         pw = ('test%09d' % i).encode('ascii')
         pw = pw[1:i] if i > 2 else pw
-        cmd = "from users import calc_hmac_key; from h import b2a_hex; " + \
+        cmd = "from users import calc_hmac_key; from ubinascii import hexlify as b2a_hex; " + \
                     f"RV.write(b2a_hex(calc_hmac_key({pw})))"
 
         got = sim_exec(cmd)

@@ -25,6 +25,11 @@ TC_COUNTDOWN    = const(0x0040)         # tc_arg = minutes of delay
 ENOENT = 2
 ALL_BLK = (1<<NUM_TRICKS)-1
 
+# everything in this file is mk4 only
+@pytest.fixture(autouse=True)
+def THIS_FILE_requires_mark4(only_mk4):
+    pass
+
 
 '''
 TRICK_SLOT_LAYOUT = {
