@@ -8,5 +8,5 @@
 #	make -f MK3-Makefile
 #
 
+DEBUG_BUILD=1
 include MK4-Makefile
-#include MK3-Makefile

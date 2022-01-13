@@ -23,10 +23,10 @@ NGU_NEEDS_CIFRA = 1
 USER_C_MODULES = boards/$(BOARD)/c-modules
 
 # the bulk of the COLDCARD-specific code
-FROZEN_MANIFEST +=  \
+# - do not want contents of stm32/boards/manifest.py
+FROZEN_MANIFEST =  \
 					boards/$(BOARD)/shared/manifest.py \
-					boards/$(BOARD)/shared/manifest_mk4.py \
-					boards/manifest.py
+					boards/$(BOARD)/shared/manifest_mk4.py
 
 # This will relocate things up by 128k=0x2_0000
 # see also ./layout.ld
