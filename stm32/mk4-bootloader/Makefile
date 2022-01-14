@@ -20,6 +20,9 @@ MPY_TOP = ../../external/micropython
 PYTHON_MAKE_DFU = $(MPY_TOP)/tools/dfu.py
 PYTHON_DO_DFU = $(MPY_TOP)/tools/pydfu.py
 
+# Headers for chip stuff (stm32 family)
+STM32LIB_PATH = ../../external/micropython/lib
+
 # Basename of all targets
 TARGET_NAME = bootloader
 
@@ -36,13 +39,8 @@ OBJS += stm32l4xx_hal_rcc.o stm32l4xx_hal_rcc_ex.o
 OBJS += stm32l4xx_hal_hash.o stm32l4xx_hal_ospi.o stm32l4xx_hal_i2c.o
 OBJS += stm32l4xx_hal_sd.o stm32l4xx_ll_sdmmc.o
 
-#OBJS = $(addsuffix .o, $(basename $(C_SRCS) $(ASM_SRCS)))
-
 # Turn off some suprious warnings
 micro-ecc/uECC.o: c_flags += -Wno-undef -Wno-redundant-decls
-
-# Headers for chip stuff (assumes STM32L476 chip)
-#STM32LIB_PATH = ../../external/micropython/lib
 
 # Where we will end up in the memory map (at start of flash)
 # - reserve last 8k flash page for other purposes
@@ -77,12 +75,9 @@ CFLAGS += -D BL_NVROM_BASE=$(BL_NVROM_BASE) -D BL_NVROM_SIZE=$(BL_NVROM_SIZE)
 CFLAGS += -D BL_SRAM_BASE=$(BL_SRAM_BASE) -D BL_SRAM_SIZE=$(BL_SRAM_SIZE) 
 
 # Header file search path
-#INC_PATHS = $(STM32LIB_PATH)/stm32lib/CMSIS/STM32L4xx/Include \
-#			$(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/Inc \
-#			$(STM32LIB_PATH)/cmsis/inc
-INC_PATHS = hal/Drivers/CMSIS/Device/ST/STM32L4xx/Include \
-			hal/Drivers/STM32L4xx_HAL_Driver/Inc \
-			hal/Drivers/CMSIS/Include
+INC_PATHS = $(STM32LIB_PATH)/stm32lib/CMSIS/STM32L4xx/Include \
+			$(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/Inc \
+			$(STM32LIB_PATH)/cmsis/inc
 
 CFLAGS += $(foreach INC,$(INC_PATHS),-I$(INC))
 

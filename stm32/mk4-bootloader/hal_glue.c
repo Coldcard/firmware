@@ -1,3 +1,11 @@
+/*
+ * (c) Copyright 2022 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+ *
+ * hal_glue.c
+ *
+ * Patches, work arounds and similar for HAL of STM32 library.
+ *
+ */
 #include "stm32l4xx_hal.h"
 
 // HAL support garbage
@@ -184,4 +192,4 @@ __weak void HAL_SDEx_DriveTransceiver_1_8V_Callback(FlagStatus status)
     // unused?
 }
 
-
+// EOF
