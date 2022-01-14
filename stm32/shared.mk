@@ -68,6 +68,7 @@ dev: dev.dfu
 
 $(BOARD)/file_time.c: make_filetime.py version.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
+	cp $(BOARD)/file_time.c .
 
 # Make a factory release: using key #1
 # - when executed in a repro w/o the required key, it defaults to key zero
