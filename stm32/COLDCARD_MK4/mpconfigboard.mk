@@ -74,6 +74,7 @@ COPT += -g
 
 # bugfix IIRC
 build-COLDCARD_MK/boards/COLDCARD_MK4/modckcc.o: COPT = -O0 -DNDEBUG
+build-COLDCARD_MK/dma.o: COPT=-Werror=unused-const-variable=0
 
 # bugfix: remove unwanted setup code called from ports/stm32/resethandler.s
 build-COLDCARD_MK4/lib/stm32lib/CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.o: \

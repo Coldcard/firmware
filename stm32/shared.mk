@@ -97,7 +97,7 @@ rc1:
 # file, stored in ../releases with appropriately dated file name.
 .PHONY: release-products
 release-products: NEW_VERSION = $(shell $(SIGNIT) version built/production.bin)
-release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-mk4-coldcard.dfu
+release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-mk$(MK_NUM)-coldcard.dfu
 release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c $(BOARD)/file_time.c
@@ -217,8 +217,6 @@ size:
 # one time setup, after repo checkout
 setup:
 	cd $(MPY_TOP) ; git submodule update --init lib/stm32lib
-	cd $(MPY_TOP)/lib/stm32lib ; sed -i.orig -e 's/#define VECT_TAB_OFFSET  0x00/    /' \
-				CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.c
 	cd ../external/libngu; make min-one-time
 	cd $(MPY_TOP)/mpy-cross ; make
 	-ln -s $(PORT_TOP) l-port
@@ -236,10 +234,10 @@ setup:
 DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				-v $(realpath built):/work/built:rw \
 				--privileged coldcard-build
-#XXXrepro: code-committed
+#XXX#repro: code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build
-	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh)
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(MK_NUM))
 
 # debug: shell into docker container
 shell:
@@ -248,7 +246,7 @@ shell:
 # debug: allow docker to write into source tree
 #DOCK_RUN_ARGS := -v $(realpath ..):/work/src:rw --privileged coldcard-build
 
-PUBLISHED_BIN = $(wildcard ../releases/*-v$(VERSION_STRING)-coldcard.dfu)
+PUBLISHED_BIN = $(wildcard ../releases/*-v$(VERSION_STRING)-mk$(MK_NUM)-coldcard.dfu)
 
 # final step in repro-building: check you got the right bytes
 # - but you don't have the production signing key, so that section is removed

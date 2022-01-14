@@ -6,11 +6,13 @@
 #
 set -ex
 
+# arguments
+VERSION_STRING=$1
+MK_NUM=$2
+
 TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf"
 
-BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt COLDCARD/file_time.c"
-
-VERSION_STRING=$1
+BYPRODUCTS="check-fw.bin check-bootrom.bin repro-got.txt repro-want.txt"
 
 cd /work/src/stm32
 
@@ -24,7 +26,7 @@ if ! touch repro-build.sh ; then
     cd firmware/external
     git submodule update --init
     cd ../stm32
-    rsync --ignore-missing-args -av /work/src/releases/*.dfu ../releases
+    rsync --ignore-missing-args -av /work/src/releases/20*.dfu ../releases
 fi
 
 # need signit.py in path
@@ -34,16 +36,17 @@ python -m pip install --editable .
 cd ../stm32
 
 cd ../releases
-if [ -f *-v$VERSION_STRING-coldcard.dfu ]; then
+if [ -f *-v$VERSION_STRING-mk$MK_NUM-coldcard.dfu ]; then
     echo "Using existing binary in ../releases, not downloading."
 else
     # fetch a copy of the required binary
-    PUBLISHED_BIN=`grep $VERSION_STRING signatures.txt | dd bs=66 skip=1`
+    PUBLISHED_BIN=`grep v$VERSION_STRING-mk$MK_NUM-coldcard.dfu signatures.txt | dd bs=66 skip=1`
     if [ -z "$PUBLISHED_BIN" ]; then
-        echo "Cannot determine release date / full file name. Stop."
-        exit 1
+        # may indicate first attempt to build this release
+        echo "Cannot determine release date / full file name."
+    else
+        wget -S https://coldcardwallet.com/downloads/$PUBLISHED_BIN
     fi
-    wget -S https://coldcardwallet.com/downloads/$PUBLISHED_BIN
 fi
 cd ../stm32
 
