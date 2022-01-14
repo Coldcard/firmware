@@ -367,7 +367,7 @@ def check_firmware_hdr(hdr, binary_size):
             ok = (hw_compat & MK_4_OK)
         
         if not ok:
-            return "New firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
+            return "That firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
 
     water = callgate.get_highwater()
     if water[0] and timestamp < water:

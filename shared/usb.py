@@ -5,14 +5,14 @@
 import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr
 from uasyncio import sleep_ms, core
 from uhashlib import sha256
-from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN, AFC_SCRIPT
+from public_constants import MAX_MSG_LEN, MAX_BLK_LEN, AFC_SCRIPT
 from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
 from ckcc import watchpoint, is_simulator
 import uselect as select
 from utils import problem_file_line, call_later_ms
-from version import has_fatram, is_devmode, has_psram
+from version import has_fatram, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied
 
 # Unofficial, unpermissioned... numbers
@@ -59,7 +59,6 @@ HSM_WHITELIST = frozenset({
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
-
 
 # singleton instance of USBHandler()
 handler = None
@@ -750,7 +749,7 @@ class USBHandler:
 
                 # but don't write it, instead offer user a chance to abort
                 from auth import authorize_upgrade
-                authorize_upgrade(self.is_fw_upgrade, pos)
+                authorize_upgrade(self.is_fw_upgrade, pos, psram_offset=0)
 
                 # pretend we wrote it, so ckcc-protocol or whatever gives normal feedback
                 return offset

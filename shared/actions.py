@@ -1443,7 +1443,7 @@ async def ready2sign(*a):
     # - check if any signable in SD card, if so do it
     # - if no card, check virtual disk for PSBT
     # - if still nothing, then talk about USB connection
-    from public_constants import MAX_TXN_LEN
+    from version import MAX_TXN_LEN
     import stash
     from glob import NFC
 
@@ -1740,7 +1740,7 @@ async def show_version(*a):
     # exposed over USB interface:
     serial = version.serial_number()
 
-    # UID is exposed over NFC interface, when enabled and in active use
+    # this UID is exposed over NFC interface, but only when enabled and in active use
     if NFC:
         serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
 

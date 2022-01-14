@@ -72,3 +72,4 @@ if int(os.environ.get('DEBUG_BUILD', 0)):
         'sim_display.py',
     ], opt=0)
 
+include("$(MPY_DIR)/extmod/uasyncio/manifest.py")

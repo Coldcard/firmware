@@ -347,11 +347,7 @@ class NFCHandler:
 
         await self.big_write(ndef_obj.bytes())
 
-        rv = await self.ux_animation(False)
-
-        # TODO: wipe chip contents?
-
-        return rv
+        return await self.ux_animation(False)
 
     async def start_nfc_rx(self):
         # pretend to be a big warm empty tag ready to be stuffed with data
@@ -426,7 +422,7 @@ class NFCHandler:
     async def signing_done(self, psbt):
         # User approved the PSBT, and signing worked... share result over NFC (only)
         from auth import TXN_OUTPUT_OFFSET
-        from public_constants import MAX_TXN_LEN
+        from version import MAX_TXN_LEN
         from sffile import SFFile
 
         txid = None
