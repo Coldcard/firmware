@@ -68,3 +68,13 @@ if  '--mk3' in sys.argv:
     has_nfc = False
 
 mk_num = int(hw_label[2:])
+
+from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
+from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4
+
+if has_psram:
+    # enbiggen for mk4
+    MAX_UPLOAD_LEN = MAX_UPLOAD_LEN_MK4 
+    MAX_TXN_LEN = MAX_TXN_LEN_MK4
+
+# EOF

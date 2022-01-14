@@ -4,7 +4,7 @@
 #
 # REMINDER: you must recompile coldcard-mpy if you change this file!
 #
-import ustruct
+import ustruct, sys
 from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
 #import utime as time
@@ -15,12 +15,11 @@ ERANGE = const(34)
 rng_fd = open('/dev/urandom', 'rb')
 
 # Emulate the red/green LED
-import sys
 global genuine_led
-genuine_led = True
 
 led_pipe = open(int(sys.argv[3]), 'wb')
-led_pipe.write(b'\xf0')     # all off
+led_pipe.write(b'\xf1')     # all off, except green
+genuine_led = True
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!
