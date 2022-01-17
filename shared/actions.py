@@ -124,6 +124,12 @@ async def show_settings_space(*a):
 
     await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.get_capacity() * 100))
 
+async def show_mcu_keys_left(*a):
+    import callgate
+    avail, used = callgate.mcu_key_usage()
+    await ux_show_story('MCU key slots remaining:\n\n    %d of 128' % avail)
+
+
 async def maybe_dev_menu(*a):
     from version import is_devmode
 
@@ -1422,7 +1428,7 @@ async def debug_except(*a):
 
 async def check_firewall_read(*a):
     import uctypes
-    ps = uctypes.bytes_at(0x7800, 32)
+    ps = uctypes.bytes_at(0x7800, 32)       # off the mark for mk4, but still valid test
     assert False        # should not be reached
 
 async def bless_flash(*a):

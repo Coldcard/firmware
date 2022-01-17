@@ -104,4 +104,11 @@ def fast_brick():
     # mk4: brick and reboot. Near instant. Shows brick screen.
     ckcc.oneway(24, 0xDead);
 
+def mcu_key_usage():
+    # mk4: avail/consumed stats (128 slots), one will be in use typically
+    from ustruct import unpack
+    arg = bytearray(8)
+    ckcc.gate(25, arg, 0);
+    return unpack('2I', arg)
+
 # EOF

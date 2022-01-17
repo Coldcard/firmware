@@ -151,6 +151,11 @@ def gate(method, buf_io, arg2):
         else:
             return EPERM
 
+    if method == 25:
+        # mcu_key_usage
+        ustruct.pack_into('2I', buf_io, 0,  126, 1)
+        return 0
+
     return ENOENT
 
 def oneway(method, arg2):

@@ -37,15 +37,16 @@
 
 # Max Transaction Size
 
-- we support transactions up to 384k-bytes in size when serialized into PSBT format
-- bitcoin limits transactions to 100k, but there could be large input transactions
-  inside the PSBT. Reduce this by using segwit signatures and provide only the
-  individual UTXO ("out points").
 - mk3:
+    - we support transactions up to 384k-bytes in size when serialized into PSBT format
     - we can handle transactions with up to 20 inputs to be signed at one time.
     - a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
 - mk4:
+    - we support PSBT files up to 2M bytes in size.
     - any number of inputs and outputs are supported, limited only by final transaction size (100k)
+- bitcoin limits transactions to 100k, but there could be large input transactions
+  inside the PSBT. Reduce this by using segwit signatures and provide only the
+  individual UTXO ("out points").
 
 
 # P2SH / Multisig
@@ -116,4 +117,8 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 - key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
 
 
+# NFC Feature (Mk4)
+
+- can share up to 8000 bytes of PSBT or signed transaction data.
+- NFC-V (ISO-15693) radio is common on mobile phones but rare on desktops
 

@@ -250,9 +250,9 @@ DangerZoneMenu = [
     ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3'], 
         value_map=['BTC', 'XTN'],
         story="Testnet must only be used by developers because \
-correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.",
-        predicate=lambda: not version.is_devmode),
-    MenuItem('Settings space', f=show_settings_space),
+correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
+    MenuItem('Settings Space', f=show_settings_space),
+    MenuItem('MCU Key Slots', predicate=lambda: version.has_se2, f=show_mcu_keys_left),
 ]
 
 BackupStuffMenu = [
