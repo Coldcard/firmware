@@ -13,6 +13,7 @@
 
 // Return T if all bytes are 0xff
 bool check_all_ones(const void *ptrV, int len);
+bool check_all_ones_raw(const void *ptrV, int len);         // excludes delay
 
 // Return T if all bytes are 0x00
 bool check_all_zeros(const void *ptrV, int len);

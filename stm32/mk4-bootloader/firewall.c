@@ -37,7 +37,7 @@ firewall_setup(void)
     // - when RDP=2, this protection still important or else python can read pairing secret
     // - in factory mode (RDP!=2), it's nice to have this disabled so we can debug still
     // - could look at RDP level here, but it would be harder to completely reset the bag number!
-    if(check_all_ones(rom_secrets->bag_number, sizeof(rom_secrets->bag_number))) {
+    if(check_all_ones_raw(rom_secrets->bag_number, sizeof(rom_secrets->bag_number))) {
         // ok. still virgin unit -- run w/o security
         return;
     }

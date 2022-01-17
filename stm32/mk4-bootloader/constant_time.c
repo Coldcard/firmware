@@ -8,12 +8,12 @@
 # define rng_delay()
 #endif
 
-// check_all_ones()
+// check_all_ones_raw()
 //
-// Return T if all bytes are 0xFF
+// Lower-level version, needed before RNG ready.
 //
 	bool
-check_all_ones(const void *ptrV, int len)
+check_all_ones_raw(const void *ptrV, int len)
 {
 	uint8_t rv = 0xff;
 	const uint8_t *ptr = (const uint8_t *)ptrV;
@@ -22,8 +22,21 @@ check_all_ones(const void *ptrV, int len)
 		rv &= *ptr;
 	}
 
-    rng_delay();
 	return (rv == 0xff);
+}
+
+// check_all_ones()
+//
+// Return T if all bytes are 0xFF
+//
+	bool
+check_all_ones(const void *ptrV, int len)
+{
+	bool rv = check_all_ones_raw(ptrV, len);
+
+    rng_delay();
+
+	return rv;
 }
 
 // check_all_zeros()
