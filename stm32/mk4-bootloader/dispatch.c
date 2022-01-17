@@ -558,6 +558,17 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             rv = EPERM;
             break;
 
+        case 25: {
+            // mk4: usage of mcu key slots
+            REQUIRE_OUT(8);
+
+            int *avail = (int *)(buf_io+0);
+            int *consumed = (int *)(buf_io+4);
+
+            mcu_key_usage(avail, consumed);
+            break;
+        }
+
 #if 0
         // p256r1 test code
         case 130: {      // verify signature

@@ -47,6 +47,7 @@ int record_highwater_version(const uint8_t timestamp[8]);
 const mcu_key_t *mcu_key_get(bool *valid);
 void mcu_key_clear(const mcu_key_t *cur);
 const mcu_key_t *mcu_key_pick(void);
+void mcu_key_usage(int *avail_out, int *consumed_out);
 
 void fast_brick(void);
 void fast_wipe(void);

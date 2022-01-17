@@ -647,6 +647,26 @@ mcu_key_clear(const mcu_key_t *cur)
     flash_lock();
 }
 
+// mcu_key_usage()
+//
+    void
+mcu_key_usage(int *avail_out, int *consumed_out)
+{
+    const mcu_key_t *ptr = rom_secrets->mcu_keys;
+    int avail = 0, used = 0;
+
+    for(int i=0; i<numberof(rom_secrets->mcu_keys); i++, ptr++) {
+        if(ptr->value[0] == 0xff) {
+            avail ++;
+        } else if(ptr->value[0] == 0x00) {
+            used ++;
+        }
+    }
+
+    *avail_out = avail;
+    *consumed_out = used;
+}
+
 // mcu_key_pick()
 //
     const mcu_key_t *
