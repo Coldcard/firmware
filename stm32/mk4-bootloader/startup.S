@@ -1,8 +1,17 @@
+/*
+ * (c) Copyright 2022 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+ *
+ * startup.S
+ *
+ * First few bytes that are executed
+ *
+ */
+    .syntax unified
+    .cpu cortex-m4
+    .thumb
+
 // starting value for the top of our stack.
 #define OUR_STACK      (BL_SRAM_BASE+BL_SRAM_SIZE)
-
-    .thumb
-    .syntax unified
 
     .text
     .section .entry_code
@@ -16,9 +25,9 @@
     // NOTE: Little attempt to support anything but reset vector here.
     //
 vector_table:
-    .word       OUR_STACK               // initial stack value: near top of SRAM2
+    .word       OUR_STACK               // initial stack value: near top of SRAM
     .word       reset_entry             // verify: must be odd, to indicate Thumb mode
-    .word       NMI_Handler             // placeholder / debug aid
+    .word       NMI_Handler             // placeholder / debug aids
     .word       HardFault_Handler
     .word       MemManage_Handler
     .word       BusFault_Handler
@@ -57,7 +66,7 @@ bootloader_info:
 
     .word       callgate_entry0         // start of callgate (expect 08000x05)
 my_version_code:
-    .word       0x100                   // callgate protcol version, in BDC, unused
+    .word       0x200                   // callgate protcol version, in BDC, unused
     .word       0                       // reserved words
     .word       0
     .word       0
