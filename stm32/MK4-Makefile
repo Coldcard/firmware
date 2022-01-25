@@ -11,7 +11,7 @@ FIRMWARE_BASE   = 0x08020000
 BOOTLOADER_BASE = 0x08000000
 MK_NUM = 4
 
-LATEST_RELEASE = `ls -t1 ../releases/*mk4*.dfu  head -1`
+LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
 
 # keep near top, because defined default target (all)
 include shared.mk
@@ -33,5 +33,18 @@ up: dev.dfu
 ocp-up: dev.dfu
 	echo 'load_image dev.dfu 0x08010000 bin; reset run' | nc localhost 4444
 
+# In another window: 
+#
+#		openocd -f openocd-mk4.cfg
+#
+# Can do:
+# - "load" which writes the flash (medium speed, lots of output on st-util)
+# - "cont" starts/continues system
+# - "br main" sets breakpoints
+# - "mon reset" to reset micro
+# - and so on
+#
+debug:
+	arm-none-eabi-gdb $(BUILD_DIR)/firmware.elf -x gogo-mk4.gdb
 
 # EOF

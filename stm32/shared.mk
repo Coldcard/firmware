@@ -184,20 +184,6 @@ PY_FILES = $(shell find ../shared -name \*.py)
 ALL_MPY_FILES = $(addprefix build/, $(PY_FILES:../shared/%.py=%.mpy))
 MPY_FILES = $(filter-out build/obsolete/%, $(ALL_MPY_FILES))
 
-# In another window: 
-#
-#		openocd -f openocd-mk4.cfg
-#
-# Can do:
-# - "load" which writes the flash (medium speed, lots of output on st-util)
-# - "cont" starts/continues system
-# - "br main" sets breakpoints
-# - "mon reset" to reset micro
-# - and so on
-#
-debug:
-	arm-none-eabi-gdb $(BUILD_DIR)/firmware.elf -x gogo-mk4.gdb
-
 # detailed listing, very handy
 OBJDUMP = arm-none-eabi-objdump
 firmware.lss: $(BUILD_DIR)/firmware.elf

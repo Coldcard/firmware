@@ -15,7 +15,7 @@ FILESYSTEM_BASE = 0x080e0000
 # This is release of the bootloader that will be built into the release firmware.
 BOOTLOADER_VERSION = 2.0.1
 
-LATEST_RELEASE = `ls -t1 ../releases/*.dfu | grep -v mk4 | head -1`
+LATEST_RELEASE = $(shell ls -t1 ../releases/*.dfu | grep -v mk4 | head -1)
 
 include shared.mk
 
@@ -24,3 +24,18 @@ up: dev.dfu
 	$(PYTHON_DO_DFU) -u dev.dfu
 
 
+# In another window: 
+#
+#		openocd -f openocd-mk3.cfg
+#
+# Can do:
+# - "load" which writes the flash (medium speed, lots of output on st-util)
+# - "cont" starts/continues system
+# - "br main" sets breakpoints
+# - "mon reset" to reset micro
+# - and so on
+#
+debug:
+	arm-none-eabi-gdb $(BUILD_DIR)/firmware.elf -x gogo-mk3.gdb
+
+# EOF
