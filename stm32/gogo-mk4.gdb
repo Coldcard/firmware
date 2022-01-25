@@ -12,7 +12,7 @@ set print repeats 128
 
 # Connect to the OpenOCD gdb server (needs to be already connected)
 #   
-#   openocd -f openocd_stm32l4x6.cfg
+#   openocd -f openocd-mk4.cfg
 #
 target extended-remote :3333
 
