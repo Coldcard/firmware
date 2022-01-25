@@ -427,6 +427,12 @@ int direct_psram_write_blocks(const uint8_t *src, uint32_t block_num, uint32_t n
 
     memcpy(ptr, src, num_blocks * BLOCK_SIZE);
 
+    // Need some recovery time here for PSRAM or QUADSPI module. Otherwise, lockup!
+    asm("nop");
+    asm("nop");
+    asm("nop");
+    asm("nop");
+
     return 0;
 }
 
