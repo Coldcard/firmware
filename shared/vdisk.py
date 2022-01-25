@@ -5,11 +5,10 @@
 #
 import os, sys, pyb, ckcc, version, glob, uasyncio, utime
 from sigheader import FW_MIN_LENGTH
-from public_constants import MAX_UPLOAD_LEN
+from version import MAX_UPLOAD_LEN
 from usb import enable_usb, disable_usb
 from uasyncio import sleep_ms
 
-MAX_PSRAM_FILE = const(2<<20)   # 2 megs
 MIN_QUIET_TIME = 250            # (ms) delay after host writes disk, before we look at it.
 
 def _host_done_cb(_psram):
@@ -101,7 +100,7 @@ class VirtDisk:
 
     def import_file(self, filename, sz):
         # copy file into another area of PSRAM where rest of system can use it
-        assert sz < MAX_PSRAM_FILE       # too big
+        assert sz <= MAX_UPLOAD_LEN       # too big
 
         # I could not resist doing this in C... since we already have the
         # data in memory, why mess around with file concepts?
@@ -151,7 +150,7 @@ class VirtDisk:
             if fn[0] == '.':
                 continue
 
-            if sz >= MAX_PSRAM_FILE: 
+            if sz > MAX_UPLOAD_LEN: 
                 print("%s: too big" % fn)
                 continue
 
