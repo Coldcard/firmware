@@ -184,7 +184,7 @@ check_is_downgrade(const uint8_t timestamp[8], const char *version)
     void
 warn_fishy_firmware(const uint8_t *pixels)
 {
-    // warn the victim about corrupted flash/ident info
+    // warn the victim about unsigned/weakly signed flash code
 #if RELEASE
     const int wait = 100;
 #else
@@ -333,14 +333,17 @@ verify_firmware(void)
 
     rng_delay();
 
-    // show big/slow warning if light is not green
-    if(not_green) {
+    if(!flash_is_security_level2() && not_green) {
+        // factory setup time, will have legit red because SE1 not yet programmed
+        oled_show_progress(screen_verify, 100);
+        puts("Factory boot");
+    } else if(not_green) {
         // When light is not green; some part of flash (not firmware area)
         // is changed. these are typically false-positives, unfortunately.
         puts("WARN: Red light");
         warn_fishy_firmware(screen_red_light);
     } else if(FW_HDR->pubkey_num == 0) {
-        // public signing key used; firmware not from Coinkite!
+        // Publically-shared signing key used; firmware is not from Coinkite!
         puts("WARN: Unsigned firmware");
         warn_fishy_firmware(screen_devmode);
     } else {
@@ -358,7 +361,6 @@ fail:
 blank:
     puts("no firmware");
     oled_show(screen_corrupt);
-    //enter_dfu();
 
     return false;
 }
