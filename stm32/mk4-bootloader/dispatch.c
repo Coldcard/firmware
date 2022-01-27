@@ -173,10 +173,10 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                         goto fail;
                     }
                     puts("Die: DFU");
-                    scr = screen_downgrade;         // was screen_dfu
+                    scr = screen_upgrading;     // was screen_dfu, but limited audience
                     break;
                 case 1:
-                    // in case some way for Micropython to detect it.
+                    // in case some way for Micropython to detect it. Unused?
                     scr = screen_downgrade;
                     puts("Die: Downgrade");
                     break;

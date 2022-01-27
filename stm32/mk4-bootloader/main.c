@@ -148,18 +148,17 @@ system_startup(void)
     // wipe all of SRAM (except our own memory, which was already wiped)
     wipe_all_sram();
 
-    puts2("SE1 setup: ");
 
     // secure elements setup
+    //puts2("SE1 setup: ");
     ae_setup();
     ae_set_gpio(0);         // turn light red
+    //puts("done");
 
-    puts("done");
-
-    puts2("SE2 setup: ");
+    //puts2("SE2 setup: ");
     se2_setup();
     se2_probe();
-    puts("done");
+    //puts("done");
 
     // protect our flash, and/or check it's protected 
     // - and pick pairing secret if we don't already have one
@@ -275,13 +274,16 @@ enter_dfu(void)
     // move system ROM into 0x0
     __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
 
+    // need this here?!
+    asm("nop; nop;nop;nop;");
+
     // simulate a reset vector
     __ASM volatile ("movs r0, #0\n"
                     "ldr r3, [r0, #0]\n"
                     "msr msp, r3\n"
                     "ldr r3, [r0, #4]\n"
                     "blx r3"
-        : : : "r0", "r3", "sp");
+        : : : "r0", "r3");
 
     // NOT-REACHED.
     __builtin_unreachable();
