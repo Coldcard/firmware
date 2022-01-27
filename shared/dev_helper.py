@@ -11,7 +11,7 @@ async def usb_keypad_emu():
     #
     # IMPORTANT: 
     # - code is **not** used in real product, but left here for devs to use
-    # - this code isn't even called; unless you add code to do so, see ../stm32/my_lib_boot2.py
+    # - this code isn't even included in the build normally
     #
     await sleep_ms(1000)        # avoid slowing the startup
 

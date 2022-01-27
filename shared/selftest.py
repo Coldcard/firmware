@@ -6,7 +6,7 @@ import ckcc
 from uasyncio import sleep_ms
 from glob import dis
 from display import FontLarge
-from ux import ux_wait_keyup, ux_clear_keys, ux_poll_cancel
+from ux import ux_wait_keyup, ux_clear_keys, ux_poll_key
 from ux import ux_show_story
 from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
@@ -242,7 +242,7 @@ async def test_microsd():
         while 1:
             if want == sd.present(): return
             await sleep_ms(100)
-            if ux_poll_cancel():
+            if ux_poll_key():
                 raise RuntimeError("MicroSD test aborted")
 
     try:
@@ -258,7 +258,7 @@ async def test_microsd():
                 # debounce
                 await sleep_ms(100)
                 if sd.present(): break
-                if ux_poll_cancel():
+                if ux_poll_key():
                     raise RuntimeError("MicroSD test aborted")
 
         dis.clear()
@@ -270,13 +270,16 @@ async def test_microsd():
         assert sd.present()     #, "SD not present?"
 
         # power up?
-        sd.power(1)
-        await sleep_ms(100)
+        await sleep_ms(100)     # required
+        ok = sd.power(1)
+        assert ok               #  "sd.power() fail"
+        await sleep_ms(100)     # prob'ly not required
 
         try:
             blks, bsize, *unused = sd.info()
             assert bsize == 512
         except:
+            # sd.info() returns None if problem
             assert 0        # , "card info"
 
         # just read it a bit, writing would prove little

@@ -13,7 +13,7 @@ from utils import B2A
 from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from ux import ux_wait_keyup, ux_show_story, ux_poll_cancel
+from ux import ux_wait_keyup, ux_show_story, ux_poll_key
 import ndef
 
 # practical limit for things to share: 8k part, minus overhead
@@ -330,7 +330,7 @@ class NFCHandler:
                 break
 
             # X or OK to quit, with slightly different meanings
-            ch = ux_poll_cancel()
+            ch = ux_poll_key()
             if ch and ch in 'xy': 
                 aborted = (ch == 'x')
                 break

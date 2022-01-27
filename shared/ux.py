@@ -95,11 +95,9 @@ async def ux_wait_keyup(expected=None):
 
         armed = ch
 
-def ux_poll_cancel():
-    # non-blocking check if cancel key is pressed
-    # - ignore and suppress any key not in expected
+def ux_poll_key():
+    # non-blocking check if any key is pressed
     # - responds to key down only
-    # - eats any existing key presses
     from glob import numpad
 
     try:

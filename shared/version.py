@@ -60,7 +60,7 @@ def get_is_devmode():
     # what firmware signing key did we boot with? are we in dev mode?
 
     if mk_num == 4:
-        # mk4: are are built differently?
+        # mk4: are we built differently?
         import ckcc
         return ckcc.is_debug_build()
 
