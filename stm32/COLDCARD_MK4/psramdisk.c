@@ -106,7 +106,10 @@ wr_timeout_now(void)
     }
 }
 
-static uint8_t *block_to_ptr(uint32_t blk, uint16_t num_blk)
+// block_to_ptr()
+//
+    static uint8_t *
+block_to_ptr(uint32_t blk, uint16_t num_blk)
 {
     // Range checking on incoming requests also done in SCSI_CheckAddressRange()
     // but this is an extra layer of safety, important since we might expose
@@ -253,7 +256,7 @@ STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
     }
 
     // host is not allowed to change our ready status: always fail
-    printf("PSRAMdisk: started=%d tried\n", started);
+    //printf("PSRAMdisk: started=%d tried\n", started);
     ckcc_usb_active = true;
 
     if(!started) {
@@ -275,7 +278,7 @@ STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
 
 // Prepare a logical unit for possible removal
 STATIC int8_t psram_msc_PreventAllowMediumRemoval(uint8_t lun, uint8_t param) {
-    printf("PSRAMdisk: prevallow=%d\n", param);
+    //printf("PSRAMdisk: prevallow=%d\n", param);
     if(param == 0) {
         // allow removal == host is done (like after umount in MacOS)
         wr_timeout_now();
