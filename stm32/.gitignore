@@ -9,6 +9,7 @@ firmware.lss
 firmware-signed.*
 firmware.elf
 file_time.c
+*-RC1-coldcard.dfu
 
 # somewhat useful binary snapshots
 mostly.dfu
@@ -22,3 +23,5 @@ check-fw.bin
 check-bootrom.bin
 repro-got.txt
 repro-want.txt
+
+C
