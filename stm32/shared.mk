@@ -9,6 +9,7 @@ include version.mk
 # These values used to make .DFU files. Flash memory locations.
 #FIRMWARE_BASE   = 0x08020000
 #BOOTLOADER_BASE = 0x08000000
+#BOOTLOADER_DIR = mk4-bootloader vs bootloader
 #MK_NUM = 4
 
 MPY_TOP = ../external/micropython
@@ -43,7 +44,7 @@ firmware.elf: $(BUILD_DIR)/firmware.elf
 #
 firmware-signed.bin: $(BUILD_DIR)/firmware0.bin $(BUILD_DIR)/firmware1.bin
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) -o $@
-firmware-signed.dfu: firmware-signed.bin Makefile
+firmware-signed.dfu: firmware-signed.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
 # make the DFU file which is shared for upgrades
@@ -76,23 +77,26 @@ $(BOARD)/file_time.c: make_filetime.py version.mk
 production.bin: firmware-signed.bin Makefile
 	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r firmware-signed.bin -k 1 -o $@
 
-# This is release of the bootloader that will be built into the release firmware.
-BOOTLOADER_VERSION = 3.0.0
+SUBMAKE = $(MAKE) -f MK$(MK_NUM)-Makefile
 
 .PHONY: release
 release: code-committed
-	$(MAKE) clean
-	$(MAKE) repro
+	$(SUBMAKE) clean
+	$(SUBMAKE) repro
 	test -f built/production.bin
-	$(MAKE) release-products
-	$(MAKE) tag-source
+	$(SUBMAKE) release-products
+	$(SUBMAKE) tag-source
 
 # Make a release-candidate, faster.
 .PHONY: rc1
 rc1: 
-	$(MAKE) repro
-	test -f built/production.bin
-	$(MAKE) release-products
+	$(SUBMAKE) clean 		# critical, or else you get a mix of debug/not
+	$(SUBMAKE) DEBUG_BUILD=0 all
+	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) -k 1 -o rc1.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
+		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
+		`signit version rc1.bin`-mk$(MK_NUM)-RC1-coldcard.dfu
+	ls -1 *-RC1-*
 
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
@@ -105,7 +109,7 @@ release-products: built/production.bin
 	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
 	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r built/production.bin -k 1 -o built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
-		-b $(BOOTLOADER_BASE):mk4-bootloader/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
+		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)
 	@echo
 	@echo 'Made release: ' $(RELEASE_FNAME)
@@ -153,10 +157,10 @@ tag-source: sign-release code-committed
 # DFU file of boot and main code
 # - bootloader is last so it can fail if already installed (maybe)
 #
-mostly.dfu: firmware-signed.bin mk4-bootloader/bootloader.bin Makefile
+mostly.dfu: firmware-signed.bin $(BOOTLOADER_DIR)/bootloader.bin Makefile
 	$(PYTHON_MAKE_DFU) \
 			-b $(FIRMWARE_BASE):firmware-signed.bin \
-			-b $(BOOTLOADER_BASE):mk4-bootloader/bootloader.bin $@
+			-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/bootloader.bin $@
 
 # send everything
 m-dfu: mostly.dfu

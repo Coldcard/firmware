@@ -11,6 +11,10 @@ FIRMWARE_BASE   = 0x08020000
 BOOTLOADER_BASE = 0x08000000
 MK_NUM = 4
 
+# This is release of the bootloader that will be built into the release firmware.
+BOOTLOADER_VERSION = 3.0.0
+BOOTLOADER_DIR = mk4-bootloader
+
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
 
 # keep near top, because defined default target (all)

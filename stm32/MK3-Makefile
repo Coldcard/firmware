@@ -14,6 +14,7 @@ FILESYSTEM_BASE = 0x080e0000
 
 # This is release of the bootloader that will be built into the release firmware.
 BOOTLOADER_VERSION = 2.0.1
+BOOTLOADER_DIR = bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*.dfu | grep -v mk4 | head -1)
 
