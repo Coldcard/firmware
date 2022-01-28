@@ -275,7 +275,7 @@ enter_dfu(void)
     __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
 
     // need this here?!
-    asm("nop; nop;n op; nop;");
+    asm("nop; nop; nop; nop;");
 
     // simulate a reset vector
     __ASM volatile ("movs r0, #0\n"
