@@ -60,7 +60,7 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
         return EPERM;
     }
 
-    if((x >= FIRMWARE_START) && (x - FIRMWARE_START) < FW_MAX_LENGTH) {
+    if((x >= FIRMWARE_START) && (x - FIRMWARE_START) < FW_MAX_LENGTH_MK4) {
         // inside flash of main firmware (happens for QSTR's)
         return 0;
     }

@@ -209,7 +209,7 @@ verify_header(const coldcardFirmwareHeader_t *hdr)
     if(hdr->version_string[0] == 0x0) goto fail;
     if(hdr->timestamp[0] >= 0x40) goto fail;        // 22 yr product lifetime
     if(hdr->firmware_length < FW_MIN_LENGTH) goto fail;
-    if(hdr->firmware_length > FW_MAX_LENGTH) goto fail;
+    if(hdr->firmware_length >= FW_MAX_LENGTH_MK4) goto fail;
     if(hdr->pubkey_num >= NUM_KNOWN_PUBKEYS) goto fail;
 
     return true;
