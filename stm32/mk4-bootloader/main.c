@@ -275,7 +275,7 @@ enter_dfu(void)
     __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
 
     // need this here?!
-    asm("nop; nop;nop;nop;");
+    asm("nop; nop;n op; nop;");
 
     // simulate a reset vector
     __ASM volatile ("movs r0, #0\n"
@@ -283,7 +283,7 @@ enter_dfu(void)
                     "msr msp, r3\n"
                     "ldr r3, [r0, #4]\n"
                     "blx r3"
-        : : : "r0", "r3");
+        : : : "r0", "r3");      // also SP
 
     // NOT-REACHED.
     __builtin_unreachable();
