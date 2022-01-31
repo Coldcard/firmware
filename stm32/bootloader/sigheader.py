@@ -29,8 +29,8 @@ FW_HEADER_MAGIC = 0xCC001234
 # arbitrary min size
 FW_MIN_LENGTH = (256*1024)
 
-# (mk1-3) absolute max size: 1MB flash - 32k for bootloader
-# practical limit for our-protocol USB upgrades: 786432 (or else settings damaged)
+# (mk1-3) absolute max size: 1MB flash - 32k for bootloader = 1,015,808
+# - but practical limit for our-protocol USB upgrades: 786432 (or else settings damaged)
 FW_MAX_LENGTH = (0x100000 - 0x8000)
 
 # .. for Mk4: 2Mbytes, less bootrom of 128k.
