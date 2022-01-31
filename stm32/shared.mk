@@ -53,13 +53,13 @@ dfu: firmware-signed.dfu
 # Build a binary, signed w/ production key
 # - always rebuild binary for this one
 .PHONY: dev.dfu
-dev.dfu: $(BUILD_DIR)/firmware?.bin
+dev.dfu: $(BUILD_DIR)/firmware0.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) -k 1 -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
 
-.PHONY: remake
-remake:
+.PHONY: relink
+relink:
 	rm -rf $(BUILD_DIR)/firmware?.bin $(BUILD_DIR)/frozen_mpy*
 
 # Slow, but works with unmod-ed board: use USB protocol to upgrade (2 minutes)
@@ -96,7 +96,7 @@ rc1:
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		`signit version rc1.bin`-mk$(MK_NUM)-RC1-coldcard.dfu
-	ls -1 *-RC1-*
+	ls -1 *-RC1-*.dfu
 
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
