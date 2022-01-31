@@ -55,11 +55,10 @@ MPY_FLASH_BASE = 0x08020000
 BL_NVROM_BASE = 0x0801e000		# = BL_FLASH_LAST
 BL_NVROM_SIZE = 0x2000			# = 8k
 
-# Bottom 8k of SRAM1 is reserved for us.
-# We wipe whole thing before and after using it. 
-# - highest 1k page set for write-protect (but not secret)
-BL_SRAM_BASE = 0x20000000
-BL_SRAM_SIZE = 0x00001c00
+# Top 8k of SRAM3 is reserved for us.
+# We wipe that area before and after using it. 
+BL_SRAM_BASE = 0x2009e000
+BL_SRAM_SIZE = 0x00002000
 
 # Compiler flags.
 CFLAGS = -I. -Wall --std=gnu99 -Os -g3 \
@@ -227,12 +226,8 @@ xxx:
 	@echo OBJS = $(OBJS)
 
 tags:
-	ctags -f .tags *.[ch] -R $(INC_PATHS) \
-		micro-ecc/*.[ch]
-
-# hal/Drivers/STM32L4xx_HAL_Driver/Src/*.c
-		
-
-	#$(STM32LIB_PATH)/stm32lib/STM32L4xx_HAL_Driver/*/*.h
+	ctags -f .tags *.[ch] micro-ecc/*.[ch] \
+		../../external/micropython/lib/stm32lib/CMSIS/STM32L4xx/Include/stm32l4s5xx.h
+# \ -R $(INC_PATHS)
 
 # EOF
