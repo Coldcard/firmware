@@ -27,9 +27,10 @@ Step 2: Export descriptor from Coldcard to Core
 - select your newly created descriptor wallet in the wallet pulldown (top left)
 - paste the `importdescriptor` command. It should respond with a success message
 
-NOTE: If you are importing an existing wallet this way, with UTXO on the blockchain,
-you may need to rescan and/or delete "timestamp=now" from the command. If the
-balance is zero this is why.
+NOTE: If you are importing an existing wallet this way, with UTXO
+already on the blockchain, you may need to rescan by changing
+"timestamp=now" to "timestamp=0" for enable a full rescan. If the balance
+is zero this is probably why.
 
 ### Bitcoin Core v0.19.0+
 
