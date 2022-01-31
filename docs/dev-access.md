@@ -1,4 +1,4 @@
-# Developers on Coldcard
+# Developing on COLDCARD
 
 Yes, external developers can modify COLDCARD and make their own versions!
 
@@ -17,27 +17,27 @@ Yes, external developers can modify COLDCARD and make their own versions!
 
 - in versions before the Mk4, if you had the green light set, via blessing the custom firmware,
   this delay/warning could be avoided, but that is no longer the case.
-- you can distrubute your DFU file to the world, but everyone who runs it will see above warning
+- you can distribute your DFU file to the world, but everyone who runs it will see above warning
 - remember the main PIN has to be set and provided correctly before new firmware can be installed
 - your COLDCARD will be bricked if your code crashes before it gets running "enough" that you
   can upload a corrected version. Bugs in the boot & login sequence are fatal in that sense.
 
 ### Medium Core
 
-- Develop your changes using the Simulator (see `../unix`)
-- Submit a PR (pull request) explaining your new feature or fix.
+- develop your changes using the Simulator (see `../unix`)
+- submit a PR (pull request) explaining your new feature or fix.
 - Coinkite team will review for security and other code-quality issues
 - your PR could get merged into the next Coinkite firmware release for all to use.
 
 ### Soft Core
 
-- Send an email to support asking for your improvements to be implemented.
-- Await reply patiently.
+- send an email to support asking for your improvements to be implemented.
+- await reply patiently.
 
 ## Corrupt Flash
 
 If the red/green light is red, this means some part of flash was
-changed without the secure checkum inside SE1 being first updated.
+changed without the secure checksum inside SE1 being first updated.
 The upgrade process does this correctly in Mk4, and there is no
 point time the checksum is wrong, so there should be no way to see this
 screen:
@@ -49,9 +49,9 @@ not match the checksum held in SE1, secured by the main PIN. This
 can be false positive, but in Mk4 we've worked hard to avoid those cases.
 
 A checksum error on the firmware itself (the main code) will always
-fail with a "corrupt firmware" (lemon) icon. The broken firmware is not
-started, but it's possible to recover the COLDCARD using a firmware from
-an SD Card.
+fail with a "(lemon icon) Firmware?" screen. The broken firmware is not
+started, but it's possible to recover the COLDCARD using a firmware loaded
+from an SD Card.
 
 You cannot load *new* code via the SD Card firmware recovery mode.
 It requires the new firmware (based on whatever is found on SD Card)
@@ -61,7 +61,7 @@ installed during the power-fail can be loaded, and not new code you
 may have written.
 
 
-## Shortcuts and Accerations
+## Shortcuts and Accelerations
 
 - You can access a micropython REPL if you are willing to break your case
   and attach to the test points along right edge of board, marked: G=Gnd, R=Rx, T=Tx.
