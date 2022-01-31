@@ -367,10 +367,9 @@ class PinAttempt:
 
     def fetch(self, duress_pin=None, spare_num=0):
         if self.tmp_value:
-            if spare_num:
-                return bytes(AE_SECRET_LEN)
-
             # must make a copy here, and must be mutable instance so not reused
+            if spare_num:
+                return bytearray(AE_SECRET_LEN)
             return bytearray(self.tmp_value)
 
         if duress_pin is None:
