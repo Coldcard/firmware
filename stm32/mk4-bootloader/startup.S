@@ -22,7 +22,7 @@
     .global     bootloader_info
     .global     my_version_code
 
-    // NOTE: Little attempt to support anything but reset vector here.
+    // NOTE: No attempt to support anything but reset vector here.
     //
 vector_table:
     .word       OUR_STACK               // initial stack value: near top of SRAM
