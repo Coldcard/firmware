@@ -20,7 +20,7 @@ def decode_firmware_header(hdr):
     return date, vers, ''.join(parts[:-2])
 
 def get_fw_header():
-    # located in our own flash, but could also use RAM version
+    # located in our own flash
     from sigheader import FLASH_HEADER_BASE, FLASH_HEADER_BASE_MK4, FW_HEADER_SIZE
     import uctypes
 
@@ -106,7 +106,7 @@ def probe_system():
     global has_se2, mk_num, has_nfc
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
-    from sigheader import RAM_BOOT_FLAGS, RAM_BOOT_FLAGS_MK4, RBF_FACTORY_MODE
+    from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
     import ckcc, callgate, stm
     from machine import Pin
 
@@ -139,10 +139,13 @@ def probe_system():
         has_608 = callgate.has_608()
 
     # Boot loader needs to tell us stuff about how we were booted, sometimes:
-    # - did we just install a new version, for example
+    # - did we just install a new version, for example (obsolete in mk4)
     # - are we running in "factory mode" with flash un-secured?
-    is_factory_mode = bool(stm.mem32[RAM_BOOT_FLAGS if mk_num<4 else RAM_BOOT_FLAGS_MK4] 
-                                        & RBF_FACTORY_MODE)
+    if mk_num < 4:
+        is_factory_mode = bool(stm.mem32[RAM_BOOT_FLAGS] & RBF_FACTORY_MODE)
+    else:
+        is_factory_mode = callgate.get_factory_mode()
+
     bn = callgate.get_bag_number()
     if bn:
         # this path supports testing/dev with RDP!=2, which normal production bootroms enforce

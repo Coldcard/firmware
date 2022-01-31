@@ -68,6 +68,12 @@ def set_rdp_level(n):
     assert n in {0,1,2}
     return ckcc.gate(19, None, 100+n)
 
+def get_factory_mode():
+    # are we in normal RDP=2 mode (else in factory setup time)
+    arg = bytearray(1)
+    ckcc.gate(19, arg, 2)
+    return (arg[0] != 2)
+
 def get_bag_number():
     arg = bytearray(32)
     ckcc.gate(19, arg, 0)
