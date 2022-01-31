@@ -45,14 +45,8 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
         if(len < minlen) return ERANGE;     // too small
     }
         
-    // mk4 is different
-    STATIC_ASSERT(SRAM1_BASE == BL_SRAM_BASE);
-
-    const uint32_t sram_start = BL_SRAM_BASE + BL_SRAM_SIZE;
-    const uint32_t sram_end = SRAM3_BASE + SRAM3_SIZE;
-
-    if((x >= sram_start) && ((x+len) <= sram_end)) {
-        // inside the 3 SRAM areas
+    if((x >= SRAM1_BASE) && ((x+len) <= BL_SRAM_BASE)) {
+        // ok: it's inside the SRAM areas, up to where we start
         return 0;
     }
 
@@ -72,7 +66,7 @@ good_addr(const uint8_t *b, int minlen, int len, bool readonly)
     The callgate into the firewall...
 
     From the reference manual:
-        The “call gate” is composed of 3 words located on the first three
+        The "call gate" is composed of 3 words located on the first three
         32-bit addresses of the base address of the code segment and of the
         Volatile data segment if it is declared as not shared (VDS = 0) and
         executable (VDE = 1).
@@ -100,11 +94,8 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
     int rv = 0;
 
-#if 1
-    // TODO: re-enable this; causing crash now.
     // in case the caller didn't already, but would just lead to a crash anyway
     __disable_irq();
-#endif
 
     // "1=any code executed outside the protected segment will close the Firewall"
     // "0=.. will reset the processor"
@@ -400,6 +391,12 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                     REQUIRE_IN_ONLY(32);
 
                     flash_save_bag_number(buf_io);
+                    break;
+
+                case 2:
+                    // read RDP=2 flag.. only in the factory will this be false
+                    REQUIRE_OUT(1);
+                    buf_io[0] = (flash_is_security_level2() ? 2 : 0xff);
                     break;
 
                 case 100:
