@@ -106,6 +106,9 @@ def gate(method, buf_io, arg2):
         if arg2 == 1:
             # not supported: write
             return buf_io
+        if arg2 == 2:
+            # in factory mode?
+            buf_io[0] = 0xff if ('-f' in sys.argv) else 2
 
     if method == 21:
         # high water mark
