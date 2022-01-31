@@ -91,6 +91,9 @@ enum {
     EPIN_SE2_FAIL           = -115,     // (mk4) some issue w/ SE2
 };
 
+// early setup
+void pin_setup0(void);
+
 // Get number of failed attempts on a PIN, since last success. Calculate
 // required delay, and setup initial struct for later attempts. Does not
 // attempt the PIN or return secrets if right.

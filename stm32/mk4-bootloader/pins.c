@@ -37,11 +37,36 @@
 #define PIN_PURPOSE_NORMAL          0x334d1858
 #define PIN_PURPOSE_WORDS           0x2e6d6773
 
-// See linker script; special read-only RAM memory (not secret)
-extern uint8_t      reboot_seed_base[32];        // constant per-boot
-
 // Hash up a PIN for indicated purpose.
 static void pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose);
+
+// early setup
+void pin_setup0(void)
+{
+    // Pick nonce for this power-up
+    //
+    // We want to block any cached PIN value from previous runs working 
+    // after a reboot, so we include a non-secret nonce that is picked at
+    // power up. Challenge is we don't have any non-volatile RAM space.
+
+    // Populate unused registers in CRC unit w/ some noise
+    __HAL_RCC_CRC_CLK_ENABLE();
+
+    CRC->INIT = rng_sample();
+    CRC->POL = rng_sample();
+}
+
+// reboot_nonce()
+//
+    static inline void
+reboot_nonce(SHA256_CTX *ctx)
+{
+    uint32_t    a = CRC->INIT;
+    sha256_update(ctx, (const uint8_t *)&a, 4);
+
+    a = CRC->POL;
+    sha256_update(ctx, (const uint8_t *)&a, 4);
+}
 
 // pin_is_blank()
 //
@@ -151,7 +176,7 @@ pin_cache_get_key(uint8_t key[32])
 	SHA256_CTX ctx;
 
     sha256_init(&ctx);
-    sha256_update(&ctx, reboot_seed_base, 32);
+    reboot_nonce(&ctx);
     sha256_update(&ctx, rom_secrets->hash_cache_secret, 32);
 
     sha256_final(&ctx, key);
@@ -329,7 +354,7 @@ _hmac_attempt(const pinAttempt_t *args, uint8_t result[32])
 
     sha256_init(&ctx);
     sha256_update(&ctx, rom_secrets->pairing_secret, 32);
-    sha256_update(&ctx, reboot_seed_base, 32);
+    reboot_nonce(&ctx);
     sha256_update(&ctx, (uint8_t *)args, offsetof(pinAttempt_t, hmac));
 
     if(args->magic_value == PA_MAGIC_V2) {
@@ -1283,7 +1308,7 @@ pin_firmware_upgrade(pinAttempt_t *args)
     rv = ae_encrypted_write(KEYNUM_firmware, KEYNUM_main_pin, digest, world_check, 32);
     if(rv) goto fail;
 
-    // turn on light? maybe not idk
+    // this turns on green light
     rv = ae_set_gpio_secure(world_check);
     if(rv) goto fail;
 

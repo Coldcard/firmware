@@ -3,7 +3,7 @@
  *
  * main.c
  *
- * Setup code and mainline.
+ * Setup code. See dispatch.c for mainline code.
  *
  */
 #include "basics.h"
@@ -33,41 +33,6 @@
 #include "assets/screens.h"
 #include "stm32l4xx_hal.h"
 
-// reboot_seed_setup()
-//
-// We need to know when we are rebooted, so write some noise
-// into SRAM and lock its value. Not secrets. One page = 1k bytes here.
-//
-// PROBLEM: 4S5 memory map puts SRAM2 in the middle of useful things, and
-// so protecting one page of it would be unworkable. Firewall doesn't
-// work due to an errata, so can't protect SRAM1 with that.
-//
-    static inline void
-reboot_seed_setup(void)
-{
-    extern uint8_t      reboot_seed_base[1024];      // see link-script.ld
-
-    // lots of manual memory alloc here...
-    uint8_t            *reboot_seed = &reboot_seed_base[0];  // 32 bytes
-
-    // populate seed w/ some noise
-    ASSERT(((uint32_t)reboot_seed) == 0x20001c00);
-    rng_buffer(reboot_seed, 32);
-
-    ASSERT((uint32_t)&shared_bootflags == RAM_BOOT_FLAGS_MK4);
-
-    // clear
-    shared_bootflags = 0;
-
-    // this value can also be checked at runtime, but historical
-    if(!flash_is_security_level2()) {
-#if RELEASE
-        shared_bootflags |= RBF_FACTORY_MODE;
-#else
-        shared_bootflags = 0;
-#endif
-    }
-}
 
 // wipe_all_sram()
 //
@@ -77,10 +42,11 @@ wipe_all_sram(void)
     const uint32_t noise = 0xdeadbeef;
 
     // wipe all of SRAM (except our own memory)
-    const uint32_t s1start = SRAM1_BASE + BL_SRAM_SIZE + 0x400;
-    memset4((void *)s1start, noise, SRAM1_BASE  + SRAM1_SIZE_MAX - s1start);
+    STATIC_ASSERT((SRAM3_BASE + SRAM3_SIZE) - BL_SRAM_BASE == 8192);
+
+    memset4((void *)SRAM1_BASE, noise, SRAM1_SIZE_MAX);
     memset4((void *)SRAM2_BASE, noise, SRAM2_SIZE);
-    memset4((void *)SRAM3_BASE, noise, SRAM3_SIZE);
+    memset4((void *)SRAM3_BASE, noise, SRAM3_SIZE - (BL_SRAM_BASE - SRAM3_BASE));
 }
 
 // system_startup()
@@ -117,15 +83,14 @@ system_startup(void)
     puts2("\r\n\nMk4 Bootloader: ");
     puts(version_string);
 
-    // setup some limited shared data space between mpy and ourselves
-    reboot_seed_setup();
+    pin_setup0();
     rng_delay();
 
 #ifndef RELEASE
     sha256_selftest();
     aes_selftest();
-#endif
     rng_delay();
+#endif
 
     // Workaround to get into DFU from micropython
     // LATER: none of this is useful with RDP=2, but okay in the office.
@@ -165,13 +130,11 @@ system_startup(void)
     // - may also do one-time setup of the secure elements
     // - note: ae_setup must already be called, since it can talk to that
     flash_setup();
-    //puts("Flash: setup done");
 
-    //puts("PSRAM setup");
+    // setup Quad SPI unit and PSRAM chip
     psram_setup();
 
-    // Check firmware is legit; else enter DFU
-    // - may die due to downgrade attack or badly signed image
+    // Check firmware has valid checksum and signature.
     puts2("Verify: ");
     bool main_ok = verify_firmware();
 
@@ -183,8 +146,7 @@ system_startup(void)
         return;
     }
 
-
-    // try to recover, from an image hanging around in PSRAM
+    // Try to recover, using an image hanging around in PSRAM
     // .. will reboot if it works; only helps w/ reset pulses, not power downs.
     psram_recover_firmware();
 

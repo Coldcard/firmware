@@ -4,7 +4,7 @@
  *  - limits itself to just part of the device
  *  - assumes only a small amount of ram is available.
  *  - reference: <https://sourceware.org/binutils/docs/ld/>
- *  - spaces actually matter in expression in this file
+ *  - spaces actually matter in expressions in this file
  *
  */
 
@@ -74,7 +74,7 @@ SECTIONS
         . = ALIGN(4);
         _srelocate = .;
         *(.ramfunc .ramfunc.*);
-        _pdg_hack = .;
+        _check_ro_hack = .;
         *(.data .data.*);
         . = ALIGN(4);
         _erelocate = .;
@@ -92,13 +92,10 @@ SECTIONS
     /* Some very manual linking! I've tried doing it right, and couldn't get it to work well */
     addr_rom_secrets = BL_NVROM_BASE;
 
-    reboot_seed_base = BL_SRAM_BASE + BL_SRAM_SIZE;
-    shared_bootflags = BL_SRAM_BASE + BL_SRAM_SIZE + 32;        /* one uint32_t */
-
 	/* if you initialize a global var to some non-zero value, then that data ends up
 		in .relocate as read-only data and used briefly at startup (when copied to RAM).
 		We don't want to support that, so we're checking here that hasn't happened. */
-	ASSERT(_pdg_hack == _erelocate, 
+	ASSERT(_check_ro_hack == _erelocate, 
 				"Sorry, no initialized data support! Set to zero or remove.")
 
     /* ensure binary fits */
