@@ -326,7 +326,7 @@ HAL_StatusTypeDef HAL_SPI_Init(SPI_HandleTypeDef *hspi)
     hspi->Lock = HAL_UNLOCKED;
 
     /* Init the low level hardware : GPIO, CLOCK, NVIC... */
-//PDG//    HAL_SPI_MspInit(hspi);
+//NOT WANTED//    HAL_SPI_MspInit(hspi);
   }
 
   hspi->State = HAL_SPI_STATE_BUSY;

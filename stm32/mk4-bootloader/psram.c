@@ -300,6 +300,7 @@ psram_recover_firmware(void)
 // psram_do_upgrade()
 //
 // Copy from PSRAM to real flash, at final executable location.
+// Takes just 15 seconds!
 //
 // NOTE: incoming start address is typically not aligned.
 //
