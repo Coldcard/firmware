@@ -22,7 +22,7 @@ rng_setup(void)
     __HAL_RCC_RNG_CLK_ENABLE();
 
     // Turn on feature.
-    RNG->CR |=  RNG_CR_RNGEN;
+    RNG->CR |= RNG_CR_RNGEN;
 
     // Sample twice to be sure that we have a 
     // valid RNG result.
