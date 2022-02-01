@@ -48,6 +48,7 @@ void pin_setup0(void)
     // We want to block any cached PIN value from previous runs working 
     // after a reboot, so we include a non-secret nonce that is picked at
     // power up. Challenge is we don't have any non-volatile RAM space.
+    // Ideally, this value would not be changable by mpy, but we don't have any of that.
 
     // Populate unused registers in CRC unit w/ some noise
     __HAL_RCC_CRC_CLK_ENABLE();

@@ -8,6 +8,14 @@
 #include "secrets.h"
 #include "stm32l4xx_hal.h"
 
+// ../../external/micropython/lib/stm32lib/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_flash.h
+// has 3 values, but 8k is right one for our setup. DBANK=0
+#undef FLASH_PAGE_SIZE
+#define FLASH_PAGE_SIZE                    ((uint32_t)0x2000)
+
+// but when erasing "pages" they are half as big, since only in one physical bank
+#define FLASH_ERASE_SIZE                    ((uint32_t)0x1000)
+
 // Details of the OTP area. 64-bit slots.
 #define OPT_FLASH_BASE     0x1FFF7000
 #define NUM_OPT_SLOTS      128
@@ -47,7 +55,7 @@ int record_highwater_version(const uint8_t timestamp[8]);
 const mcu_key_t *mcu_key_get(bool *valid);
 void mcu_key_clear(const mcu_key_t *cur);
 const mcu_key_t *mcu_key_pick(void);
-void mcu_key_usage(int *avail_out, int *consumed_out);
+void mcu_key_usage(int *avail_out, int *consumed_out, int *total_out);
 
 void fast_brick(void);
 void fast_wipe(void);

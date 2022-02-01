@@ -10,7 +10,6 @@
 //
 //
 #include "basics.h"
-#include "storage.h"
 #include "rng.h"
 #include "oled.h"
 #include "ae.h"
@@ -22,11 +21,13 @@
 #include "assets/screens.h"
 #include "stm32l4xx_hal.h"
 #include "constant_time.h"
+#include "storage.h"
 
 // Number of flash pages to write-protect (ie. our size in flash pages)
 // - written into FLASH->WRP1AR
 // - once done, can't change bootrom via DFU (no error given, but doesn't change)
-const uint32_t num_pages_locked = ((BL_FLASH_SIZE + BL_NVROM_SIZE) / FLASH_PAGE_SIZE)-1; // == 15
+// - MCU_KEYS area (page) says writable
+const uint32_t num_pages_locked = ((BL_FLASH_SIZE + FLASH_PAGE_SIZE) / FLASH_PAGE_SIZE)-1; // == 14
 
 // flash_setup0()
 //
@@ -43,6 +44,10 @@ flash_setup0(void)
 
     // turn on clock to flash registers
     __HAL_RCC_FLASH_CLK_ENABLE();
+
+    STATIC_ASSERT(FLASH_PAGE_SIZE == 0x2000);       // 8k pages, because DBANK=0
+    STATIC_ASSERT(num_pages_locked == 14);
+    STATIC_ASSERT((uint32_t)MCU_KEYS == BL_FLASH_BASE + BL_FLASH_SIZE + FLASH_PAGE_SIZE);
 }
 
 // _flash_wait_done()
@@ -184,7 +189,6 @@ flash_burn(uint32_t address, uint64_t val)
     *(__IO uint32_t *)(address+4) = (uint32_t)(val >> 32);
 
     rv = _flash_wait_done();
-    if(rv) return rv;
 
     // If the program operation is completed, disable the PG or FSTPG Bit
     CLEAR_BIT(FLASH->CR, FLASH_CR_PG);
@@ -193,7 +197,7 @@ flash_burn(uint32_t address, uint64_t val)
     __HAL_FLASH_DATA_CACHE_RESET();
     __HAL_FLASH_DATA_CACHE_ENABLE();
 
-    return 0;
+    return rv;
 }
 
 // flash_page_erase()
@@ -205,10 +209,10 @@ flash_burn(uint32_t address, uint64_t val)
     int
 flash_page_erase(uint32_t address)
 {
-    uint32_t    page_num = (address & 0x7ffffff) / FLASH_PAGE_SIZE;
+    uint32_t    page_num = (address & 0x7ffffff) / FLASH_ERASE_SIZE;
 
     // protect ourselves!
-    if(page_num < ((BL_FLASH_SIZE + BL_NVROM_SIZE) / FLASH_PAGE_SIZE)) {
+    if(page_num < ((BL_FLASH_SIZE + BL_NVROM_SIZE) / FLASH_ERASE_SIZE)) {
         return 1;
     }
 
@@ -238,7 +242,7 @@ flash_page_erase(uint32_t address)
     SET_BIT(FLASH->CR, FLASH_CR_STRT);
 
     // Wait til done
-    _flash_wait_done();
+    int rv = _flash_wait_done();
 
     // If the erase operation is completed, disable the PER Bit
     CLEAR_BIT(FLASH->CR, (FLASH_CR_PER | FLASH_CR_PNB));
@@ -247,7 +251,7 @@ flash_page_erase(uint32_t address)
     __HAL_FLASH_DATA_CACHE_RESET();
     __HAL_FLASH_DATA_CACHE_ENABLE();
 
-    return 0;
+    return rv;
 }
 
 
@@ -542,7 +546,7 @@ flash_lockdown_hard(uint8_t rdp_level_code)
     // see FLASH_OB_WRPConfig()
 
     flash_ob_lock(false);
-        // lock first 32k against any writes
+        // lock first 128k against any writes
         FLASH->WRP1AR = (num_pages_locked << 16);
         FLASH->WRP1BR = 0xff;      // unused.
         FLASH->WRP2AR = 0xff;      // unused.
@@ -602,9 +606,9 @@ mcu_key_get(bool *valid)
     // get current "mcu_key" value; first byte will never be 0x0 or 0xff
     // - except if no key set yet/recently wiped
     // - if none set, returns ptr to first available slot which will be all ones
-    const mcu_key_t *ptr = rom_secrets->mcu_keys, *avail=NULL;
+    const mcu_key_t *ptr = MCU_KEYS, *avail=NULL;
 
-    for(int i=0; i<numberof(rom_secrets->mcu_keys); i++, ptr++) {
+    for(int i=0; i<NUM_MCU_KEYS; i++, ptr++) {
         if(ptr->value[0] == 0xff) {
             if(!avail) {
                 avail = ptr;
@@ -633,8 +637,6 @@ mcu_key_clear(const mcu_key_t *cur)
         if(!valid) return;
     }
 
-    STATIC_ASSERT(offsetof(rom_secrets_t, mcu_keys) % 8 == 0);
-
     // no delays here since decision has been made, and don't 
     // want to give them more time to interrupt us
     flash_setup0();
@@ -650,12 +652,12 @@ mcu_key_clear(const mcu_key_t *cur)
 // mcu_key_usage()
 //
     void
-mcu_key_usage(int *avail_out, int *consumed_out)
+mcu_key_usage(int *avail_out, int *consumed_out, int *total_out)
 {
-    const mcu_key_t *ptr = rom_secrets->mcu_keys;
+    const mcu_key_t *ptr = MCU_KEYS;
     int avail = 0, used = 0;
 
-    for(int i=0; i<numberof(rom_secrets->mcu_keys); i++, ptr++) {
+    for(int i=0; i<NUM_MCU_KEYS; i++, ptr++) {
         if(ptr->value[0] == 0xff) {
             avail ++;
         } else if(ptr->value[0] == 0x00) {
@@ -665,6 +667,7 @@ mcu_key_usage(int *avail_out, int *consumed_out)
 
     *avail_out = avail;
     *consumed_out = used;
+    *total_out = NUM_MCU_KEYS;
 }
 
 // mcu_key_pick()
@@ -681,6 +684,7 @@ mcu_key_pick(void)
         sha256_single(n.value, 32, n.value);
     } while(n.value[0] == 0x0 || n.value[0] == 0xff);
 
+    int err = 0;
     const mcu_key_t *cur;
 
     do {
@@ -689,7 +693,7 @@ mcu_key_pick(void)
 
         if(!cur) {
             // no free slots. we are brick.
-            puts("mk full");
+            puts("mcu full");
             oled_show(screen_brick);
 
             LOCKUP_FOREVER();
@@ -716,17 +720,35 @@ mcu_key_pick(void)
             uint64_t v;
             memcpy(&v, fr, sizeof(v));
 
-            flash_burn(pos, v);
+            err = flash_burn(pos, v);
+            if(err) break;
         }
     flash_lock();
 
-#if 1
-    // check it
+    // NOTE: Errors not expected, but lets be graceful about them.
+
+    if(err) {
+        // what to do?
+        puts("burn fail: ");
+        puthex2(err);
+        putchar('\n');
+
+        return NULL;
+    }
+
+    // check it carefully
     bool valid = false; 
     const mcu_key_t *after = mcu_key_get(&valid);
-    ASSERT(valid);
-    ASSERT(after == cur);
-#endif
+
+    if(!valid) {
+        puts("!valid?");
+        return NULL;
+    }
+
+    if(after != cur || !check_equal(after->value, n.value, 32)) {
+        puts("bad val?");
+        return NULL;
+    }
 
     return cur;
 }

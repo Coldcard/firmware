@@ -3,6 +3,7 @@
 
 // This is what we're keeping secret... Kept in flash, written exactly once.
 // field groups must be **64-bit=8byte** aligned so they can be written independently.
+// - contents cannot be changed once unit is "bagged" and flash protection set
 typedef struct {
     // Pairing secret: picked once at factory when turned on
     // for the first time, along with most values here.
@@ -25,18 +26,20 @@ typedef struct {
         uint8_t  auth_pubkey[64];       // aka pubkey C (AUTH) in SE2, and privkey in SE1
     } se2;
 
-    // Replaceable MCU keys; can be overwritten; use first non zero/ones value.
-    struct _mcu_key_t {
-        uint8_t  value[32];
-    } mcu_keys[128];
-
-    // ... plus lots more space ...
+    // ... plus lots more unused space ...
 } rom_secrets_t;
 
-// This area is defined in linker script as last page of boot loader flash.
-#define rom_secrets         ((rom_secrets_t *)BL_NVROM_BASE)
+// Replaceable MCU keys; can be overwritten; use first non zero/ones value.
+typedef struct _mcu_key_t {
+    uint8_t  value[32];
+} mcu_key_t;
+
+// This area is defined in linker script as last 2 pages of boot loader flash.
+#define rom_secrets         ((const rom_secrets_t *)BL_NVROM_BASE)
+
+#define MCU_KEYS            ((mcu_key_t *)(BL_NVROM_BASE + 0x2000))
+#define NUM_MCU_KEYS        (0x2000 / 32)
 
 typedef struct _se2_secrets_t se2_secrets_t;
-typedef struct _mcu_key_t mcu_key_t;
 
 // EOF

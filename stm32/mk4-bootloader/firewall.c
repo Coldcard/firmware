@@ -31,6 +31,9 @@ firewall_setup(void)
         return;
     }
 
+#if 0
+enabled firewall, even debg
+
 #if RELEASE
     // REMINDERS: 
     // - cannot debug anything in boot loader w/ firewall enabled (no readback, no bkpt)
@@ -45,12 +48,14 @@ firewall_setup(void)
     // for debug builds, never enable firewall
     return;
 #endif
+#endif
 
     extern int firewall_starts;       // see startup.S ... aligned@256 (0x08000300)
     uint32_t    start = (uint32_t)&firewall_starts;
     uint32_t    len = BL_FLASH_SIZE - (start - BL_FLASH_BASE);
 
-#if 1
+#if 0
+    // passing fine
     ASSERT(start);
     ASSERT(!(start & 0xff));
     ASSERT(len>256);
@@ -64,12 +69,10 @@ firewall_setup(void)
     //
     // - many of the bits in these registers are not-implemented and are forced to zero
     // - that prevents the firewall being used for things like protecting OTP area
-    // - (Mk1-3) volatile data is SRAM1 only, so doesn't help us, since we're using SRAM2
-    // - (Mk4) we are in SRAM1, so we could protect all our RAM ... but errata 2.4.2 fucks that
     // - on-chip DFU will erase up to start (0x300), which borks the reset vector 
     //   but sensitive stuff is still there (which would allow bypass)
-    // - so it's important to enable option bytes to set write-protect on entire bootloader
-    // - to disable debug and complete protection, must enable write-protect "level 2"
+    // - so it's important to enable option bytes to set write-protect flash of entire bootloader
+    // - to disable debug and complete protection, must enable write-protect "level 2" (RDP=2)
     //
 
     FIREWALL_InitTypeDef init = {

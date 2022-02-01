@@ -91,6 +91,7 @@ SECTIONS
 
     /* Some very manual linking! I've tried doing it right, and couldn't get it to work well */
     addr_rom_secrets = BL_NVROM_BASE;
+    addr_mcu_keys = BL_NVROM_BASE + 0x2000;
 
 	/* if you initialize a global var to some non-zero value, then that data ends up
 		in .relocate as read-only data and used briefly at startup (when copied to RAM).

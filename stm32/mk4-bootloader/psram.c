@@ -327,19 +327,35 @@ psram_do_upgrade(const uint8_t *start, uint32_t size)
     for(uint32_t pos=0; pos < size; pos += 8) {
         uint32_t dest = FIRMWARE_START+pos;
 
-        if(dest % (4*FLASH_PAGE_SIZE) == 0) {
+        if(dest % (4*FLASH_ERASE_SIZE) == 0) {
             // show some progress
             oled_show_progress(screen_upgrading, pos*100/size);
         }
 
-        if(dest % FLASH_PAGE_SIZE == 0) {
+        if(dest % FLASH_ERASE_SIZE == 0) {
             // page erase as we go
             rv = flash_page_erase(dest);
+#if 1
+            if(rv) {
+                puts2("erase rv=");
+                puthex2(rv);
+                putchar('\n');
+            }
+#endif
             ASSERT(rv == 0);
         }
 
         memcpy(&tmp, start+pos, 8);
         rv = flash_burn(dest, tmp);
+#if 1
+        if(rv) {
+            puts2("burn rv=");
+            puthex2(rv);
+            puts2(" addr=");
+            puthex8(dest);
+            putchar('\n');
+        }
+#endif
         ASSERT(rv == 0);
     }
 

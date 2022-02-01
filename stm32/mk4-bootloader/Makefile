@@ -43,17 +43,18 @@ OBJS += stm32l4xx_hal_sd.o stm32l4xx_ll_sdmmc.o
 micro-ecc/uECC.o: c_flags += -Wno-undef -Wno-redundant-decls
 
 # Where we will end up in the memory map (at start of flash)
-# - reserve last 8k flash page for other purposes
+# - reserve last 2x 8k flash pages for other purposes
 BL_FLASH_BASE = 0x08000000
-BL_FLASH_SIZE = 0x1e000
-BL_FLASH_LAST = 0x0801e000
+BL_FLASH_SIZE = 0x1c000
+BL_FLASH_LAST = 0x0801c000
 
+# Where micropython ends up in flash.
 MPY_FLASH_BASE = 0x08020000
 
 # Final 8k bytes of flash reserved for secret data (not code)
 # - must be page-aligned, contains pairing secret
-BL_NVROM_BASE = 0x0801e000		# = BL_FLASH_LAST
-BL_NVROM_SIZE = 0x2000			# = 8k
+BL_NVROM_BASE = 0x0801c000		# = BL_FLASH_LAST
+BL_NVROM_SIZE = 0x4000			# = 16k
 
 # Top 8k of SRAM3 is reserved for us.
 # We wipe that area before and after using it. 

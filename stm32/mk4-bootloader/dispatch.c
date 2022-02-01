@@ -561,8 +561,9 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             int *avail = (int *)(buf_io+0);
             int *consumed = (int *)(buf_io+4);
+            int *total = (int *)(buf_io+8);
 
-            mcu_key_usage(avail, consumed);
+            mcu_key_usage(avail, consumed, total);
             break;
         }
 
