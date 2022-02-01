@@ -73,20 +73,17 @@ typedef struct {
 #define MK_5_OK                 0x10
 #define MK_6_OK                 0x20
 
-// There is a copy of the header at this location in RAM, copied by bootloader
+// (Mk1-3) There is a copy of the header at this location in RAM, copied by bootloader
 // **after** it has been verified. If you write to this memory area, you will be reset!
+// .. in mk4, no header copy anymore
 #define RAM_HEADER_BASE          0x10007c20
-
-// .. in mk4, no header copy anymore and new spot
-#define RAM_HEADER_BASE_MK4      0x20001c00
 
 // Original copy of header, as recorded in flash/firmware file.
 #define FLASH_HEADER_BASE        0x0800bf80
 #define FLASH_HEADER_BASE_MK4    0x08023f80
 
-// One 32-bit word of flags from bootloader about how we got here (in protected RAM)
+// (Mk1-3) One 32-bit word of flags from bootloader about how we got here (in protected RAM)
 #define RAM_BOOT_FLAGS           (RAM_HEADER_BASE + FW_HEADER_SIZE)
-#define RAM_BOOT_FLAGS_MK4       (RAM_HEADER_BASE_MK4 + 32)
 
 // Bitmask for RAM_BOOT_FLAGS
 // - we just did a firmware upgrade on this bootup
