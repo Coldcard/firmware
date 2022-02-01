@@ -156,7 +156,8 @@ def gate(method, buf_io, arg2):
 
     if method == 25:
         # mcu_key_usage
-        ustruct.pack_into('2I', buf_io, 0,  126, 1)
+        N = 256
+        ustruct.pack_into('3I', buf_io, 0,  N-5, 1, N)
         return 0
 
     return ENOENT

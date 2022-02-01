@@ -118,7 +118,7 @@ class BareMetal:
         self.request = open(req_r, 'rt', closefd=0)
         self.response = open(resp_w, 'wb', closefd=0, buffering=0)
 
-    def open(self, name='usbserial-AQ00T1SJ'):
+    def open(self, name='usbserial-AQ00T1RR'):
         # return a file-descriptor ready to be used for access to a real Coldcard's console I/O.
         # - assume only one coldcard
         import sys, serial

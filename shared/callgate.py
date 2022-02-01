@@ -111,10 +111,10 @@ def fast_brick():
     ckcc.oneway(24, 0xDead);
 
 def mcu_key_usage():
-    # mk4: avail/consumed stats (128 slots), one will be in use typically
+    # mk4: avail/consumed/total stats, one will be in use typically
     from ustruct import unpack
-    arg = bytearray(8)
+    arg = bytearray(3*4)
     ckcc.gate(25, arg, 0);
-    return unpack('2I', arg)
+    return unpack('3I', arg)
 
 # EOF

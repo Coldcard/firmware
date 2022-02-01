@@ -126,8 +126,8 @@ async def show_settings_space(*a):
 
 async def show_mcu_keys_left(*a):
     import callgate
-    avail, used = callgate.mcu_key_usage()
-    await ux_show_story('MCU key slots remaining:\n\n    %d of 128' % avail)
+    avail, used, total = callgate.mcu_key_usage()
+    await ux_show_story('MCU key slots remaining:\n\n    %d of %d' % (avail, total))
 
 
 async def maybe_dev_menu(*a):
