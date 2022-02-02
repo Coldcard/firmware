@@ -203,9 +203,8 @@ worth of space. They are protected with all the same measures as
 the main seed phrase.
 
 The "long secret" (416 bytes) is still supported although its API
-may have to change because fetching it in 32-byte blocks is very
-slow since the primary AES seed key has be reconstruted for each
-call.
+has changed because fetching it in 32-byte blocks is very slow since
+the primary AES seed key has be reconstruted for each call.
 
 ## Observations
 
