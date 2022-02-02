@@ -93,7 +93,7 @@ system_startup(void)
 #endif
 
     // Workaround to get into DFU from micropython
-    // LATER: none of this is useful with RDP=2, but okay in the office.
+    // LATER: none of this is useful with RDP=2, but okay in the office/factory
     if(memcmp(dfu_flag->magic, REBOOT_TO_DFU, sizeof(dfu_flag->magic)) == 0) {
         dfu_flag->magic[0] = 0;
 
@@ -112,7 +112,6 @@ system_startup(void)
 
     // wipe all of SRAM (except our own memory, which was already wiped)
     wipe_all_sram();
-
 
     // secure elements setup
     //puts2("SE1 setup: ");

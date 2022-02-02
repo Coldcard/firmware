@@ -1197,18 +1197,6 @@ ae_hmac(uint8_t keynum, const uint8_t *msg, uint16_t msg_len, uint8_t digest[32]
     int
 ae_hmac32(uint8_t keynum, const uint8_t msg[32], uint8_t digest[32])
 {
-#if FOR_508
-    // Load tempkey w/ message to be HMAC'ed
-	int rv = ae_load_nonce(msg);
-	RET_IF_BAD(rv);
-
-	// Ask for HMAC using specific key
-    ae_send(OP_HMAC, (1<<2) | (1<<6), keynum);
-
-    return ae_read_n(32, digest);
-#endif
-
-#if FOR_608
     // Start SHA w/ HMAC setup
 	ae_send(OP_SHA, 4, keynum);        // 4 = HMAC_Init
 
@@ -1221,7 +1209,6 @@ ae_hmac32(uint8_t keynum, const uint8_t msg[32], uint8_t digest[32])
     
     // read result
     return ae_read_n(32, digest);
-#endif
 }
 
 // ae_get_serial()
@@ -2089,6 +2076,34 @@ ae_mixin_key(uint8_t keynum, const uint8_t start[32], uint8_t end[32])
     sha256_final(&ctx, end);
 
     return 0;
+}
+
+// ae_brick_myself()
+//
+// Immediately destroy the pairing secret so that we become
+// a useless brick. Ignore errors but retry.
+//
+    void
+ae_brick_myself(void)
+{
+    for(int retry=0; retry<10; retry++) {
+        ae_reset_chip();
+
+        if(retry) rng_delay();
+
+        ae_pair_unlock();
+
+        // Concern: MitM could block this by trashing our write
+        // - but they have to do it without causing CRC or other comm error
+        // - ten times
+        int rv = ae_destroy_key(KEYNUM_pairing);
+        if(rv == 0) break;
+puts("retry");
+
+        rng_delay();
+    }
+
+    ae_reset_chip();
 }
 
 // EOF

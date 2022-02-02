@@ -6,9 +6,6 @@
 // Atmel ATECC508A and 608A related code. Trying to keep this able to handle both devices.
 //
 
-//#define FOR_508     1
-#define FOR_608     1
-
 // Opcodes from table 9-4, page 51
 //
 typedef enum {
@@ -17,15 +14,10 @@ typedef enum {
 	OP_Lock = 0x17, OP_MAC = 0x08, OP_Nonce = 0x16,
 	OP_PrivWrite = 0x46, OP_Random = 0x1B, OP_Read = 0x02, OP_Sign = 0x41,
 	OP_SHA = 0x47, OP_UpdateExtra = 0x20, OP_Verify = 0x45, OP_Write = 0x12,
-#if FOR_508
-    OP_HMAC = 0x11,
-    OP_Pause = 0x01,
-#elif FOR_608
     OP_AES = 0x51,
     OP_KDF = 0x56,
     OP_SecureBoot = 0x80,
     OP_SelftTest = 0x77,
-#endif
 } aeopcode_t;
 
 // Status/Error Codes that occur in 4-byte groups. See page 50, table 9-3.
@@ -182,7 +174,6 @@ int ae_read_config_word(int offset, uint8_t *dest);
 // Call this if possible mitm is detected.
 extern void fatal_mitm(void) __attribute__((noreturn));
 
-#if FOR_608
 // Update the match-counter with a new number.
 int ae_write_match_count(uint32_t count, const uint8_t *write_key);
 
@@ -192,6 +183,7 @@ int ae_stretch_iter(const uint8_t start[32], uint8_t end[32], int iterations);
 // Mix in (via HMAC) the contents of a specific key on the device.
 int ae_mixin_key(uint8_t keynum, const uint8_t start[32], uint8_t end[32]);
 
-#endif
+// Corrupt pairing secret in SE1
+void ae_brick_myself(void);
 
 // EOF

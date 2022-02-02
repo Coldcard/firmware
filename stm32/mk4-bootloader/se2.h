@@ -70,7 +70,7 @@ void ps256_ecdh(const uint8_t pubkey[64], const uint8_t privkey[32], uint8_t res
 
 // Encrypt the main wallet secret.
 // - will pick a new mcu_key if was blank before (during encrypt)
-// - during decrypt if we are missing MCU key, will be invalid, consider it zeros?
+// - during decrypt if we are missing MCU key, will be invalid, consider it zeros
 // - you'll need the hash of the main PIN
 // - if check_value not provided, won't be validated/produced.
 
@@ -81,7 +81,5 @@ bool se2_encrypt_secret(const uint8_t secret[], int secret_len, int offset,
 void se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
         const uint8_t main_slot[], const uint8_t *check_value,
         const uint8_t pin_digest[32], bool *is_valid);
-
-void se2_testcode(void);
 
 // EOF

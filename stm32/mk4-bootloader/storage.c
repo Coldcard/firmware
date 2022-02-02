@@ -546,7 +546,7 @@ flash_lockdown_hard(uint8_t rdp_level_code)
     // see FLASH_OB_WRPConfig()
 
     flash_ob_lock(false);
-        // lock first 128k against any writes
+        // lock first 128k-8k against any writes
         FLASH->WRP1AR = (num_pages_locked << 16);
         FLASH->WRP1BR = 0xff;      // unused.
         FLASH->WRP2AR = 0xff;      // unused.
@@ -758,19 +758,33 @@ mcu_key_pick(void)
     void
 fast_brick(void)
 {
+    // do a fast wipe of our key
+    mcu_key_clear(NULL);
+
+    // brick SE1 for future
+    ae_brick_myself();
+
+    // no going back from that -- but for privacy, wipe more stuff
+    oled_show(screen_brick);
+    puts2("fast brick... ");
+
+    // a bit slow (~10 seconds) but optional anyways
     flash_setup0();
     flash_unlock();
-        // simply erase all the critical secrets
-        flash_page_erase(BL_NVROM_BASE);
+        // wipe all pages that we are able to
 
-        // but then write zeros so it doesn't look like unprogrammed part
-        for(uint32_t  pos = BL_NVROM_BASE, i=0; i<64/8; i++, pos += 8) {
-            flash_burn(pos, 0);
+        // 1: mcu keys, already useless, but yeah
+        uint32_t bot = (uint32_t)MCU_KEYS;
+        flash_page_erase(bot);
+
+        // 2: LFS area first, since holds settings (AES'ed w/ lost key, but yeah)
+        // 3: the firmware, not a secret anyway
+        for(uint32_t pos=(FLASH_BASE + 0x200000 - FLASH_ERASE_SIZE); 
+                pos > bot; pos -= FLASH_ERASE_SIZE) {
+            flash_page_erase(pos);
         }
     flash_lock();
-    
-    puts("fast brck");
-    oled_show(screen_brick);
+    puts(" done");
 
     LOCKUP_FOREVER();
 }

@@ -175,7 +175,7 @@ def doit(partno, mk_num, ae, KEYNUM, fp):
     # unique keys per-device
     # - pairing key for linking AE and main micro together
     # - critical!
-    cc[KEYNUM.pairing].hash_key().lockable(False)
+    cc[KEYNUM.pairing].hash_key(roll_kn=KEYNUM.pairing).lockable(False)
 
     assert mk_num == 4
     assert partno == 6

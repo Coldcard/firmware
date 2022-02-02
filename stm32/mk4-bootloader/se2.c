@@ -1205,23 +1205,4 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
     aes_done(&ctx, secret, secret_len, aes_key, nonce);
 }
 
-#if 0
-void se2_testcode(void)
-{
-    uint8_t pin_digest[32] = { 0 };
-    uint8_t msg[72] = { 1,2,3};
-
-    uint8_t main_slot[72], check[32];
-
-    se2_encrypt_secret(msg, sizeof(msg), 0, main_slot, check, pin_digest);
-
-    uint8_t result[72];
-    bool is_valid = false;
-    se2_decrypt_secret(result, 72, 0, main_slot, check, pin_digest, &is_valid);
-
-    ASSERT(is_valid);
-    ASSERT(check_equal(result, msg, 72));
-}
-#endif
-
 // EOF

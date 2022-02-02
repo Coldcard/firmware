@@ -276,13 +276,8 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
 
         case 6:
-            // Do we have a ATECC608a and all that implies?
-            // NOTE: this number was unused in V1 bootroms, so return ENOENT
-            #if FOR_608
-                rv = 0;
-            #else
-                rv = ENOENT;
-            #endif
+            // Do we have a ATECC608 and all that implies? Always
+            rv = 0;
             break;
 
         case 12:

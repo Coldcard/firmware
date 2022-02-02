@@ -163,6 +163,16 @@ else:
     # full version for desktop... uses "namedlist" module to good effect
     from namedlist import namedlist
 
+    # monkeypatch until namedlist catches up to python3.10
+    # see <https://gitlab.com/ericvsmith/namedlist/-/merge_requests/1>
+    try:
+        from collections import Mapping as _
+    except ImportError:
+        import namedlist as nl
+        from collections import abc as _abc
+        nl._collections.Sequence = _abc.Sequence
+        nl._collections.Mapping = _abc.Mapping
+
     def make_bitmask(name, defs):
         '''
             Name a list of bit widths and names, and convert into a class.

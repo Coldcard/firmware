@@ -27,10 +27,6 @@
 // - solution: adjust both the target and counter (upwards)
 #define MAX_TARGET_ATTEMPTS     13
 
-#if FOR_508
-#error "only supports 608 now"
-#endif
-
 // Pretty sure it doesn't matter, but adding some salt into our PIN->bytes[32] code
 // based on the purpose of the PIN code.
 //
