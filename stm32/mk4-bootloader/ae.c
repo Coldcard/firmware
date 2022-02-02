@@ -2098,7 +2098,6 @@ ae_brick_myself(void)
         // - ten times
         int rv = ae_destroy_key(KEYNUM_pairing);
         if(rv == 0) break;
-puts("retry");
 
         rng_delay();
     }

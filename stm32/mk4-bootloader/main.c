@@ -133,6 +133,13 @@ system_startup(void)
     // setup Quad SPI unit and PSRAM chip
     psram_setup();
 
+    // broken pairing secret w/ SE1 means we've been fast-bricked
+    if(ae_pair_unlock() != 0) {
+        oled_show(screen_brick);
+
+        LOCKUP_FOREVER();
+    }
+
     // Check firmware has valid checksum and signature.
     puts2("Verify: ");
     bool main_ok = verify_firmware();
