@@ -55,16 +55,6 @@ Learn more about the [mk4 dual secure elements.](mk4-secure-elements.md)
 
 ## Trick PINs Implementation
 
->You pointed out this section would need more organization. The bulleted list summarizes all the mentions of Trick PIN options from the MP3s.
->
->The duress wallet info may need correction as I was unsure about the following quotes:
->
-> _"...Except now you can have quite a few different duress wallets. We support 3 and they're all based off of BIP-85 so they're 24-word seeds."_
->
-> _"And then there are the duress cases. It can implement a 24-word seed so a BIP-39 wallet same as regular COLDCARD mode. And it can also implement the Mark 3 and earlier duress wallets which were BIP-32 based._
->
-> _"So, there's 4 different ways to make a duress wallet, essentially. Because there's 3 different options.  So, you can look at it as 3 duress wallets supported on Mark 4 versus 1 on previous generations."_
-
 Mk4 introduces a new concept called "Trick PINs". These PIN codes
 are any PIN other than the "True PIN", and the user configures them
 to perform different functions in many different ways.
@@ -75,7 +65,7 @@ data. When a PIN is entered on a COLDCARD, the boot ROM checks all
 the Trick PINs first. If the PIN entered matches a set Trick PIN,
 the COLDCARD performs the trick.
 
-Find the Trick PIN settings under
+Find the Trick PIN settings under:
 _Settings > Login Settings > Trick PINS_
 
 
@@ -85,21 +75,65 @@ Using a Trick PIN can initiate one or more of the following options:
 
 - Wipe the seed
 - Mimic a blank device (appears to have wiped the seed)
-- Load a duress wallet (2 types supported):
-    - BIP-85 based, 24-word seed, behaves exactly like a normal wallet
-    - BIP-32 based, used on Mk3 and earlier, not recommended but included for backwards compatibility to use an existing UTXO
-    - up to 3 distinct BIP-85 derived duress wallets maybe linked to various Trick PINs
+- Load a duress wallet (2 types supported)
 - Brick the COLDCARD immediately.
-- Login countdown timer.
+- Start a login countdown timer (may include wipe/brick)
 - Pretend PIN is incorrect and perform additional tricks (such as wipe).
-- Display messages on the screen:
-    - Wiped seed message
-    - Bricked device message
-    - (but don't actually do it)
-- Trigger a trick with ANY wrong PIN (not assigned as a Trick or true PIN)
-- Delta Mode
-    - allows limited access to your actual true seed, but will sign transactions incorrectly
+- Display wiped message on the screen (but don't actually do it)
+- Just reboot the COLDCARD (no change to state)
+- Delta Mode: advanced duress with real seed.
+- You can trigger most types of tricks on ANY wrong PIN, in addition to specific values.
 
+#### Hidden Tricks
+
+Once defined, you may hide a trick PIN from the menu, so it is not
+visible but still in effect. Should you need to change it, you
+should pick "Add New Trick" and re-enter the trick PIN.  The COLDCARD
+will "remember" the Trick PIN and restore it to the menu.
+
+#### Duress Wallets
+
+Entering a trick pin that leads to a duress wallet operates as if
+the correct PIN was provided. However, the attacker will not stealing
+your main stash.
+
+The private key can be automatically derived using BIP-85 methods,
+based on account number 1001, 1002, or 1003.  Because this is BIP-85
+based and uses 24-word seed it behaves exactly like a normal wallet. You
+can even define a passphrase on top of that.
+
+To support older COLDCARD duress wallets and their UTXO on the blockchain, you can
+also create a compatible wallet easily.
+
+#### Brick Self
+
+A trick PIN can be used to brick (destroy) the COLDCARD.
+
+The brick effect is immediate and shown to the user as a "Bricked."
+screen. Subsequent reboots will also show "Bricked." and the COLDCARD
+is now e-waste.
+
+#### Wiping Seed
+
+A trick PIN can be used to wipe (forget your seed).  After wiping
+you can choose to:
+
+- reboot with no message
+- be silent and pretend the PIN code was wrong
+- proceed to a duress wallet
+- show a message saying seed is wiped, stop
+
+
+#### Look Blank
+
+Pretend we are a wiped COLDCARD, but don't wipe anything.
+
+
+#### Login Countdown
+
+This wipes the seed, and then pretends a login countdown is needed.
+At the end of the count down, you can config the COLDCARD to brick
+itself or just reset.
 
 #### Delta Mode
 
@@ -107,23 +141,98 @@ Delta Mode is the most advanced option and is not recommended for
 use by novices. This function is inspired by safes that allow the
 addition of one digit to the final number to act as a duress code.
 The safe will open, but a silent alarm is triggered (or poison gas
-is released). Delta Mode is activated by correctly entering all but
-the last four digits of the PIN, which are defined by the Trick PIN
-you define to trigger Delta Mode.
+is released). Delta Mode is activated by a Trick PIN that must
+differ from your True PIN by only the last four digits.
 
-Delta Mode will log into the secrets in SE1 using your the true PIN
-code. Nothing unusual can be detected externally; the COLDCARD
-behaves normally and it does have access to your actual seed words
-however, internally, the COLDCARD is operates in a special mode.
+Delta Mode will log into the secrets in SE1 using your True PIN
+code which is calculated from the Trick PIN and the contents of
+SE2.  Nothing unusual can be detected externally; the COLDCARD
+behaves normally and it does have access to your actual seed words.
+However, internally, the COLDCARD operates in a special mode.
 
-In Delta Mode, attempting to view the seed words wipes the seed.
-Anything that could reveal the secret, like accessing the Trick PIN
-menu to determine if a trick is in effect, wipes the seed. If these
-functions are avoided, a user (the attacker) could sign transactions
-in Delta Mode.  Checking the UTXO in Electrum, for example, will
-show a match. However, if the transaction is broadcast, it will be
-rejected because the signatures do not match.
+In "Delta Mode", attempting to view the seed words wipes the seed.
+Anything that could reveal the seed words, like accessing the Trick
+PIN menu to determine if a trick is in effect will wipe the seed.
+But if these menu functions are avoided, a user (the attacker) could
+sign transactions in Delta Mode.
 
+Transactions signed in Delta Mode do not have correct signatures
+so if the signed transaction is broadcast, it will be rejected by
+the network because the signatures do not verify.
+
+The value of Delta Mode is against a well-researched attacker who
+knows the XPUB or XFP of your true wallet. This could be learned
+from an Electrum wallet file being discovered on your personal
+computers, with a massive balance---obviously you control that
+wallet.  The UTXO which you are controlling are known, so providing
+a duress wallet won't be good enough. In delta mode, it appears the
+attacker has control over the right XPUB/XPRV and UTXO.
+
+## Other Mk4 Security-Related Improvements
+
+In addition to adding a new secure element in Mk4, COLDCARD gains
+several other security improvements.
+
+### Countdown to Login Feature
+
+This feature can be configured to incorporate Fast Wipe on the Mk4.
+Because it is implemented as a Trick PIN is gains protection residing
+inside SE2.
+
+The login delay is no longer continued after a power cycle. The
+delay, which can be up to 28 days long, begins again from zero after
+a power failure.  Since this policy change can only increase the
+waiting time, it seems prudent and was suggested by our customers.
+
+
+### Kill Key Feature
+
+This feature allows the user to execute a Fast Wipe when the
+anti-phishing words are displayed on the screen. This feature is
+turned off by default.
+
+The user sets a particular key number to trigger Fast Wipe. If that
+key is pressed while viewing the anti-phishing words, the seed is
+wiped immediately, and the login process continues. Nothing is shown
+to indicate the seed has been wiped.
+
+It is strongly recommended that the first digit of the second half
+of the True PIN is **not** used as the Kill Key. Missing a step
+would unintentionally wipe the seed.
+
+### SPI Serial Flash Removed
+
+The Mk3 and earlier had a dedicated, external chip which held
+settings and the PSBT during operation.  That chip is entirely
+removed in Mk4. The settings now reside inside the main MCU,
+increasing security. Settings are still AES-encrypted as before.
+
+The separate settings chip could be blanked externally or even
+removed/replaced. This might enable getting around security features
+that were not part of the secure element. Although the risk of that
+is not significant, Mk4 eliminates that risk entirely.
+
+In addition, the PSBT file now is held in an 8 MB pseudo-SRAM (PSRAM)
+chip during operation. It is word-addressed, not page-based, and
+there is nothing to erase. This makes signing transactions much
+faster and permits transaction sizes up to 1 MB (the network only
+accepts transactions up to 100 KB). This removes previous transaction
+size limits.
+
+
+### Virtual Debug Serial Port Removed
+
+Mk3 and earlier made a virtual serial port available over USB. As
+it was only useful to developers, it was disabled by default. Mk4
+uses a real universal asynchronous receiver-transmitter (UART)
+leading to physical pins. It is not only disabled by default, but
+it also cannot be accessed without breaking the case. A developer
+wanting to interact with the pins must be willing to damage the
+COLDCARD's case to do so, but the option is there if needed.
+
+---
+
+**seems I was repeating myself; I'd already documented this SE1/2 stuff better**
 
 ## SE1 and SE2 Binding, or Key Distribution
 
@@ -222,65 +331,3 @@ The complexity of the process raised performance concerns. Completing all the op
 
 The 72-byte secret is decrypted along with 32 bytes of checksum. The checksum, which is 0 bytes but encrypted, acts as a message authentication code (MAC). The MAC is necessary in case Fast Wipe is implemented. Fast Wipe changes the AES key, so garbage is decrypted and the checksum does not match. But an incorrect checksum is not treated as an error, it is treated as zero data due to the MAC value. This ensures the COLDCARD will be seen as a blank device after Fast Wipe. Writing to save the seed words also saves an updated checksum, a MAC value of zeroes that are encrypted. The 72 bytes are not lost but stored in a new slot in SE1.
 
-
-## Other Mk4 Improvements Affecting Security
-
-In addition to adding a new secure element in Mk4, COLDCARD gains
-several other security improvements.
-
-
-### Countdown to Login Feature
-
-This feature can be configured to incorporate Fast Wipe on the Mk4.
-
-The login delay is no longer enforced after a power cycle. The
-delay, which can be up to 28 days long, begins again after a restart.
-Since this policy change can only increase the waiting time, it is a
-prudent and was suggested by our customers.
-
-
-### Kill Key Feature
-
-This feature allows the user to execute a Fast Wipe when the
-anti-phishing words are displayed on the screen. This feature is
-turned off by default.
-
-The user sets a particular key number to trigger Fast Wipe. If that
-key is pressed while viewing the anti-phishing words, the seed is
-wiped immediately, and the login process continues. Nothing is shown
-to indicate the seed has been wiped.
-
-It is strongly recommended that the first digit of the second half
-of the True PIN is **not** used as the Kill Key. Missing a step
-would unintentionally wipe the seed.
-
-
-### Setting SPI Serial Flash Removed
-
-The Mk3 and earlier had a dedicated, external chip which held
-settings and the PSBT during operation.  That chip is entirely
-removed in Mk4. The settings now reside inside the main MCU,
-increasing security. Settings are still AES-encrypted as before.
-
-The previously separate settings chip could be blanked externally
-or even removed. This might enable getting around security features
-that were not part of the secure element. Although the risk of that
-is not significant, Mk4 eliminates that risk entirely.
-
-In addition, the PSBT file now is held in an 8 MB pseudo-SRAM (PSRAM)
-chip during operation. It is word-addressed, not page-based, and
-there is nothing to erase. This makes signing transactions much
-faster and permits transaction sizes up to 1 MB (the network only
-accepts transactions up to 100 KB). This removes previous transaction
-size limits.
-
-
-### Virtual Debug Serial Port Removed
-
-Mk3 and earlier made a virtual serial port available over USB. As
-it was only useful to developers, it was disabled by default. Mk4
-uses a real universal asynchronous receiver-transmitter (UART)
-leading to physical pins. It is not only disabled by default, but
-it also cannot be accessed without breaking the case. A developer
-wanting to interact with the pins must be willing to damage the
-COLDCARD's case to do so, but the option is there if needed.
