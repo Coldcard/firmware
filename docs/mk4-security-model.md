@@ -23,25 +23,17 @@ secrets. This secure element has 72 bytes of storage protected by
 a 4- to 12-digit PIN code.
 
 Mk4 adds a second secure element to the COLDCARD. The ATECC608B is
-used still, and we call it SE1 (Secure Element 1) and and new chip
-is SE2 (Secure Element 2): Maxim DS28C36B. The DS28C36B and has
-more memory with, 15 32-byte slots of secure storage. SE1 and SE2
-have different constraints and configurations to serve different
-security roles. Some of SE2's slots authenticate SE1, while others
-hold the new Trick PINs and their associated wallets.
+used still, and we now call it SE1 (Secure Element 1) and a new
+chip, the Maxim DS28C36B, is called SE2 (Secure Element 2).
+The DS28C36B (SE2) has more memory with 15, 32-byte slots of secure
+storage. The two chips are cryptographically linked together by
+requiring signed challenges with each other.
 
 The design goal for Mk4 is that both secure elements 1 and 2, and
 the main MCU  need to be fully compromised before seed words are
 leaked. It's no longer the case that an unanticipated issue with a
 secure element's chip design can allow seed words to escape the
 COLDCARD.
-
-Another feature implemented in Mk4 is "Fast Wipe". It quickly clears
-the contents of the two secure elements without entering the True
-PIN. A limitation in Mk3 and previous versions was that interaction
-with the secure element required authentication. The secure element
-was very limited read-only; clearing stored data required the True
-PIN.
 
 Encrypting values inside the secure element began with Mk2. Mk4
 distributes the encryption key among three components: the main
@@ -51,7 +43,7 @@ SE1. Fast Wipe performs a simple write to the main MCU without
 authentication data. This also allows Trick PIN configurations to
 include functions like wiping the seed.
 
-Learn more about the [mk4 dual secure elements.](mk4-secure-elements.md)
+Learn more about the [Mk4's dual secure elements.](mk4-secure-elements.md)
 
 ## Trick PINs Implementation
 
@@ -232,7 +224,10 @@ COLDCARD's case to do so, but the option is there if needed.
 
 ---
 
-**seems I was repeating myself; I'd already documented this SE1/2 stuff better**
+> seems I was repeating myself; I'd already documented this SE1/2 stuff better
+>
+> will delete below this point???
+>
 
 ## SE1 and SE2 Binding, or Key Distribution
 
