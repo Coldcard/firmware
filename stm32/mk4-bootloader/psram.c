@@ -302,7 +302,7 @@ psram_recover_firmware(void)
 // Copy from PSRAM to real flash, at final executable location.
 // Takes just 15 seconds!
 //
-// NOTE: incoming start address is typically not aligned.
+// NOTE: Incoming start address is typically not aligned.
 //
     void
 psram_do_upgrade(const uint8_t *start, uint32_t size)
