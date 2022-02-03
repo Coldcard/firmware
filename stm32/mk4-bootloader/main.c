@@ -83,6 +83,12 @@ system_startup(void)
     puts2("\r\n\nMk4 Bootloader: ");
     puts(version_string);
 
+    uint32_t reset_reason = RCC->CSR;
+    if(reset_reason & RCC_CSR_FWRSTF) {
+        puts(">FIREWALLED<");
+    }
+    SET_BIT(RCC->CSR, RCC_CSR_RMVF);
+
     pin_setup0();
     rng_delay();
 
@@ -136,6 +142,7 @@ system_startup(void)
     // broken pairing secret w/ SE1 means we've been fast-bricked
     if(ae_pair_unlock() != 0) {
         oled_show(screen_brick);
+        puts("pair-bricked");
 
         LOCKUP_FOREVER();
     }
