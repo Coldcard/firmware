@@ -360,7 +360,6 @@ confirm_pairing_secret(void)
     void
 flash_save_ae_serial(const uint8_t serial[9])
 {
-
     uint64_t    tmp[2];
     memset(&tmp, 0x0, sizeof(tmp));
     memcpy(&tmp, serial, 9);
@@ -385,9 +384,12 @@ flash_save_ae_serial(const uint8_t serial[9])
     void
 flash_save_bag_number(const uint8_t new_number[32])
 {
-
     uint32_t dest = (uint32_t)&rom_secrets->bag_number[0];
-    uint64_t *src = (uint64_t *)new_number;
+    uint64_t tmp[4] = { 0 };
+    uint64_t *src = tmp;
+
+    STATIC_ASSERT(sizeof(tmp) == 32);
+    memcpy(tmp, new_number, 32);
 
     flash_setup0();
     flash_unlock();
@@ -577,15 +579,14 @@ record_highwater_version(const uint8_t timestamp[8])
     ASSERT(timestamp[0] < 0x40);
     ASSERT(timestamp[0] >= 0x10);
 
+    uint64_t val = 0;
+    memcpy(&val, timestamp, 8);
+
     // just write to first blank slot we can find.
     for(int i=0; i<NUM_OPT_SLOTS; i++, otp+=8) {
         if(check_all_ones(otp, 8)) {
-            // here.
-            uint64_t val = 0;
-            memcpy(&val, timestamp, 8);
-
+            // write here.
             flash_setup0();
-
             flash_unlock();
                 flash_burn((uint32_t)otp, val);
             flash_lock();
