@@ -304,6 +304,9 @@ class PinAttempt:
         return rv
 
     def is_delay_needed(self):
+        # obsolete starting w/ mk3 and values re-used for other stuff
+        if version.has_608:
+            return False
         return self.delay_achieved < self.delay_required
 
     def is_blank(self):
@@ -318,6 +321,7 @@ class PinAttempt:
         assert self.state_flags & PA_SUCCESSFUL
         return bool(self.state_flags & PA_ZERO_SECRET)
 
+    # Mk1/2/3 concepts, not used in Mk4
     def has_duress_pin(self):
         return bool(self.state_flags & PA_HAS_DURESS)
     def has_brickme_pin(self):
@@ -337,7 +341,7 @@ class PinAttempt:
         return self.state_flags
 
     def delay(self):
-        # obsolete since Mk3
+        # obsolete since Mk3, but called from login.py
         self.roundtrip(1)
 
     def login(self):
@@ -405,7 +409,7 @@ class PinAttempt:
             self.roundtrip(6, ls_offset=n, new_secret=new_long_secret[n*32:(n*32)+32])
 
     def greenlight_firmware(self):
-        # hash all of flash and commit value to 508a/608a
+        # hash all of flash and commit value to SE1
         self.roundtrip(5)
         ckcc.presume_green()
 
@@ -473,11 +477,10 @@ class PinAttempt:
 
     def is_deltamode(self):
         # (mk4 only) are we operating w/ a slightly wrong PIN code?
-        try:
-            from trick_pins import TC_DELTA_MODE
-        except ImportError:
-            # <= mk3
+        if version.mk_num < 4:
             return False
+
+        from trick_pins import TC_DELTA_MODE
         return bool(self.delay_required & TC_DELTA_MODE)
 
     def get_tc_values(self):
