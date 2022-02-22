@@ -19,7 +19,7 @@
 #include "psram.h"
 
 // Number of iterations for KDF
-#define KDF_ITER_WORDS      12
+#define KDF_ITER_WORDS      6           // about 1.4s (measured)
 #define KDF_ITER_PIN        8          // about ? seconds (measured in-system)
 
 // We try to keep at least this many PIN attempts available to legit users
@@ -134,8 +134,6 @@ pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose)
 // pin_hash_attempt()
 //
 // Go from PIN to heavily hashed 32-byte value, suitable for testing against device.
-//
-// - call with target_kn == 0 to return a mid-state that can be used for both main and duress
 //
     static int
 pin_hash_attempt(const char *pin, int pin_len, uint8_t result[32])
