@@ -8,17 +8,19 @@ export MTOOLSRC=mtools.conf
 MFORMAT=mformat
 MCOPY=mcopy
 
-RELEASES = $(wildcard ../../releases/*-mk4-*.dfu)
+RELEASES = $(wildcard ../../releases/*-mk4-*.dfu) $(wildcard ../*-mk4-RC1*.dfu)
 
-all: output.img
+all: output.img.gz
 
-output.img: $(RELEASES) Makefile
+output.img output.img.gz: $(RELEASES) Makefile
 	dd if=/dev/zero of=output.img bs=1024 count=160
 	$(MFORMAT) -v MK4RECOVER -f 160 -N 2022 -C z:
 	ls -1 $(RELEASES) > flist.txt
 	cat internal-readme.txt flist.txt > tmp.txt
 	$(MCOPY) -bsmp tmp.txt z:README.TXT
-	for f in $(RELEASES); do echo $$f ; dd if=$$f bs=65536 >> output.img; done
+	for f in $(RELEASES); do echo $$f ; dd if=$$f obs=512 conv=osync >> output.img; done
+	gzip -v9 output.img
+	cat flist.txt
 	
 
 # EOF
