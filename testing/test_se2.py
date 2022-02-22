@@ -71,6 +71,7 @@ def se2_gate(sim_exec):
             buf = struct.pack(TRICK_FMT, *obj)
         elif not buf:
             buf = bytes(128)
+        assert b'Traceback' not in buf, buf
         assert len(buf) == 128
 
         cmd = 'from pincodes import pa; import struct; '\
@@ -200,7 +201,9 @@ def test_ux_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress):
 def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin, se2_gate, is_simulator):
     # using menus and UX, setup a new trick PIN
     def doit(new_pin, op_mode, expect=None):
-        goto_home()
+        m = goto_home()
+        if 'New Wallet' in m:
+            raise pytest.skip("need seed set first for these tests")
         pick_menu_item('Settings')
         pick_menu_item('Login Settings')
         pick_menu_item('Trick PINs')
@@ -238,9 +241,9 @@ def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story,
         pick_menu_item('Add New Trick')
         words = enter_pin(new_pin)
 
-        if is_simulator() and new_pin[0:3] == '11-':
-            # for simulator at least, we know this...
-            assert words == ['quality', 'antique']
+        # for simulator at least, we know this... but not when used in "bare metal" mode.
+        #if is_simulator() and new_pin[0:3] == '11-':
+        #    assert words == ['quality', 'antique']
 
         time.sleep(.1)
         m = cap_menu()

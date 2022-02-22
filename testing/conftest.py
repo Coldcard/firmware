@@ -492,10 +492,12 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
                 time.sleep(.01)
                 need_keypress('y')
 
-            if m[0] == 'Ready To Sign':
+            if m[0] in { 'New Wallet',  'Ready To Sign'}:
                 break
         else:
             raise pytest.fail("trapped in a menu")
+
+        return m
 
     return doit
 
