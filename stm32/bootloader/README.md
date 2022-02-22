@@ -1,4 +1,4 @@
-# Coldcard Bootloader
+# Coldcard Bootloader - Mk3 and Mk4
 
 We have a bootloader. It does the usual code signature checking, but also offers
 some security features used during runtime. Part of this is keeping some bytes
@@ -77,7 +77,7 @@ Mk1-3:
 
 Mk4:
 
-    dfu-util -d 0483:df11 -a 0 -s 0x0801e000:8192 -U pairing.bin
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
 
 - but that file is misleading, because all the unused mcu key slots are un-programmed-cells (ones)
 - will hit assert on new key attempt if you just write that back
@@ -86,7 +86,7 @@ Mk4:
 # Wiping Secrets
 
 Mk4:
-    flash erase_address 0x801e000 0x2000
+    flash erase_address 0x801c000 0x4000
 
 
 # Resources
@@ -99,4 +99,43 @@ Mk4:
 - HAL code for SPI should be removed and replaced with a few one-liners
 - GPIO code may be removed as well?
 
+
+## Bootloader upgrade 3.0.? to 3.0.2
+
+- capture pairing data:
+
+    dfu-util -d 0483:df11 -a 0 -s 0x0801e000:8192 -U pairing.bin
+
+- do the above unlock write-protect process, but don't erase any flash
+    - would only be required if "bag" operation done
+
+- then upload old pairing data
+
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -D pairing.bin
+
+- unit will boot w/ no seed
+
+- for cleanest result, wipe last flash page:
+
+    flash erase_address 0x0801e000 0x2000
+
+## Re-do Bag Number
+
+- cannot writes ones, and then change flash cells; have to remain unprogrammed
+
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
+
+- want 0..0x50 then 0x70 
+
+    dd if=pairing.bin of=p1.bin bs=80 count=1
+    dd if=pairing.bin of=p2.bin bs=112 skip=1
+
+- two burns:
+    => DFU does not work, each run erases other part of page
+    => same with "program" cmd in openocd
+    => these work tho:
+
+    flash erase_address 0x801c000 0x4000
+    flash write_image mk4-bootloader/p1.bin 0x0801c000
+    flash write_image mk4-bootloader/p2.bin 0x0801c070
 
