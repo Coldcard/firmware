@@ -191,17 +191,24 @@ sdcard_try_file(uint32_t blk_pos)
     oled_show(screen_verify);
 
     // read full possible file into PSRAM, assume continguous, and big enough
-    uint8_t *tmp = (uint8_t *)PSRAM_BASE;
+    uint8_t *ps = (uint8_t *)PSRAM_BASE;
+    uint8_t buf[512*8];      // half of all our SRAM 0x00002000
     
-    int rv = HAL_SD_ReadBlocks(&hsd, tmp, blk_pos, FW_MAX_LENGTH_MK4 / 512, 60000);
-    if(rv != HAL_OK) return;
+    for(uint32_t off = 0; off < FW_MAX_LENGTH_MK4; off += sizeof(buf)) {
+        int rv = HAL_SD_ReadBlocks(&hsd, buf, blk_pos+(off/512), sizeof(buf)/512, 60000);
+        if(rv != HAL_OK) {
+            puts("long read fail");
+            return;
+        }
+        memcpy(ps + off, buf, sizeof(buf));
+    }
 
     // work in psram now
 
     // skip DFU header and find length of firmware section
     uint32_t    len = 0;
-    const uint8_t *start = dfu_hdr_parse(tmp, &len);
-    if(!start) return;
+    const uint8_t *start = dfu_hdr_parse(ps, &len);
+    if(!start) return;          // error already shown
 
     uint8_t world_check[32];
     bool ok = verify_firmware_in_ram(start, len, world_check);
