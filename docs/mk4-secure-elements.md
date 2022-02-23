@@ -2,225 +2,247 @@
 
 ## Background
 
-The Mk4 COLDCARD has two secure elements. Each is made by a different vendor,
-so we know they will have different bugs and weaknesses.
+The Mk4 **COLDCARD<sup>&reg;</sup>** has two secure elements:  
 
-SE1 = ATECC608B from Microchip
-SE2 = DS28C36B from Maxim
+- SE1 (Secure Element 1): Microchip ATECC608B
+- SE2 (Secure Element 2): Maxim DS28C36B
 
-SE1 is the same part used on Mk3 but we are using it a little differently, while
-SE2 is completely new chip we haven't deployed before. Both use SECP256R1
-for Elliptic-curve Cryptography (ECC) and HMAC-SHA256.
+Because different vendors make them, they do not share bugs and weaknesses.
+
+Although Mk3 uses the SE1 chip, Mk4 uses it a little differently.
+SE2 is an entirely new chip, never previously deployed in a COLDCARD.
+Both chips use secp256r1 for Elliptic-curve Cryptography (ECC) and
+HMAC-SHA256.
 
 ## Design Goals
 
-There are 3 parties here which hold secrets: the main MCU
-(microcontroler), and the two secure elements. Our goal is that
-**all three** must be fully compromised to access the seed phrase.
-Thus if a vulnerability is identified in one of the parts, the
-COLDCARD as a whole is still secure. Additionally, knowledge of the
-correct PIN code will be required, even if all three devices have
-been cracked wide open. (But this is a last line of defense, and a
-brute force attack on all PIN combinations will breach it).
+### The Assumption
 
-We assume our attackers have physical access to your COLDCARD, have
-cracked open the case, and can probe on the bus connections between
-MCU and SE1 or SE. Attackers may even have desoldered the SE1 and
-SE2 from the board, and put active circuits between them and the
-MCU (an active MiTM attack). [Even so, on the Mk4, we have improved
-the goop on all three parts and all these critical signals run on
-internal layers of the PCB.]
+Assume attackers have physical access to a COLDCARD, have opened
+the case, and can probe the bus connections between the MCU and SE1
+or SE2. They may even desolder SE1 and SE2 from the board, and put
+active circuits between them and the MCU &mdash; an active MiTM
+attack. (The Mk4 has improved goop on all three parts and all these
+critical signals run on internal layers of the PCBA.)
 
-The Mk4 will also support new "trick PIN" codes that will have side
-effects such as wiping or bricking the COLDCARD or providing access
-to a decoy or duress wallet. Ideally, attackers will not be able
-to detect such a false PIN was given, even while probing the signals
-on the board.
+
+### The Solutions
+
+Three parties hold secrets in the Mk4: the main MCU (microcontroller)
+and the two secure elements. Our goal is that **all three** must
+be fully compromised to access the seed words. Thus, if one part
+has a vulnerability, the COLDCARD as a whole is still secure.
+Additionally, knowledge of the correct PIN code is required, even
+if all three devices are cracked wide open. (This is a last line
+of defence, a brute-force attack on all PIN combinations will breach
+it.)
+
+The Mk4 also supports new Trick PIN codes with side effects such
+as wiping or bricking the COLDCARD, or providing access to a decoy
+or duress wallet. Ideally, attackers will not detect using a false
+PIN, even while probing the signals on the board.
+
 
 ## MCU vs. SE1 and SE2
 
-As in Mk1 through Mk3 of the COLDCARD, the MCU has a "pairing secret"
-which is used to authenticate itself with SE1 and vice versa. This
-pairing secret (32 bytes) is held in flash memory in a protected
-area. Only the boot loader code can access this memory, and the
-micropython code cannot read this area of the chip. We use an internal
-"firewall" feature and PCROP (Proprietary code readout protection) to
-acheive this.
+As in Mk1 through Mk3 of the COLDCARD, the MCU has a Pairing Secret.
+The MCU uses the Pairing Secret to authenticate itself to SE1 and
+vice versa. Flash memory holds the 32-byte Pairing Secret in a
+protected area. Only the boot loader code can access this memory,
+and the MicroPython code cannot read this area of the chip. Using
+an internal firewall feature and PCROP (proprietary code readout
+protection) achieves this result.
 
-In Mk4, we will also have a shared secret between the SE2 and MCU.
-Just like SE1, this is used to authenticate the SE with MCU and to
-encrypt their mutal communications. The pairing secret for SE2
-will not be stored in SE1 and is unique from the other pairing
-secret used for SE1.
+Mk4 also shares a secret between SE2 and the MCU. Just like SE1,
+this authenticates SE2 to the MCU and encrypts their mutual
+communications. The Pairing Secret for SE2 is not stored in SE1 and
+is unique from the other Pairing Secret used for SE1.
 
-Probing on the electrical connections between the SE1 or SE2 and
-MCU is secured by way of these pairing secrets. In practise this
-means most commands and responses are XOR'ed with an HMAC-SHA256
-value where the HMAC key is the pairing secret and the message is
-a hash of the command arguments.
+These Pairing Secrets secure the electrical connections between
+SE1, SE2, and the MCU probing attempts. In practice, this means
+most commands and responses are XOR'ed with an HMAC-SHA256 value
+where the HMAC key is the Pairing Secret and the message is a hash
+of the command arguments.
 
-There are also some cases where an ECC signature and ECDH are used
-to establish a shared secret between devices.
+There are also cases where an ECC signature and ECDH establish a
+shared secret between devices.
+
 
 ## Seed Decryption
 
-SE1 will still hold your seed phrase, but that phrase is encrypted
-by AES and SE1 does not contain a key to decrypt it. The key to
-decrypt that is stored in the MCU and SE2. To access the AES key
-held in SE2, you need SE1 to perform a public key signature and
-ECDH setup which in turn requires the main PIN code. Of course the
-MCU will only provide its key if both SE1 and SE2 are satisfied.
+SE1 still holds the seed words, but they are AES-encrypted, and SE1
+does not contain a key to decrypt it. The MCU and SE2 store the
+seed word decryption key. To access the AES key held in SE2, SE1
+has to perform a public key signature and ECDH setup, which requires
+the main PIN code. The MCU will only provide its key if both SE1
+and SE2 are satisfied.
 
-In earlier COLDCARD versions, we XOR'ed the stored value with a
-secret in the micro (one time pad), but the new approach is more
-powerful because we are mixing in values from the SE2 and MCU using AES.
+Earlier COLDCARD versions XOR-ed the stored value with a secret in
+the MCU (one-time pad), but this new approach is more powerful
+because it mixes in values from the SE2 and MCU using AES; this
+increases flexibility and resistance to known plain text attacks.
 
-This gives much more flexibility and resistance to known plaintext
-attacks.
 
-## All The Keys
+## All the Keys
 
 | Symbol        | Chip's Name | Type | Holder   | Purpose
 |---------------|-------------|------|----------|----------
-| SE1 pairing   | slot 1      | HMAC | SE1, MCU | Protects communications between SE1 and MCU
-| SE2 pairing   | secret A    | HMAC | SE2, MCU | Pairing for SE2
-| SE2 comms     | keypair A   | ECC  | SE2      | MCU captures pubkey half, used in ECDH comms
-| SE joiner     | slot 7, pubkey C    | ECC  | SE1/SE2  | SE2 knows only public part, SE1 has privkey
-| pin stretch   | slot 2      | HMAC | SE1      | key stretching for PIN entry and anti-phish words
-| firmware      | slot 14     | SHA256d | SE1      | firmware checksum, controls green/red light
-| nonce/chksum | slot 10    | data | SE1        | AES Nonce and GMAC tag, protected by PIN
-| MCU seed key  | tbd         | AES  | MCU      | MCU's contribution to AES protecting seed
-| SE2 easy key  | page 15    | AES via HMAC  | SE2      | Another SE2 part of AES seed key; easy to wipe for self-blanking features
-| SE2 hard key  | page 14    | AES via ECC  | SE2      | SE2's part of AES seed key; ECC used to unlock
-| tpin key      | MCU       | HMAC(key) | MCU   | key for HMAC used to encrypt trick PINs
-| MCU pin check | tbd         | HMAC | MCU      | Used as HMAC key using hashed PIN as msg
-| trick PIN slots | pages 0-12 | HMAC | SE2     | Protect duress wallet seeds and pins (6 spots)
-| SE2 trash     | secret B    | HMAC | SE2      | used to destroy values (only SE2 knows the value)
-| hash cache secret | -       | XOR/AES | MCU   | in-memory encryption of actual PIN when unlocked
-| mcu hmac key     | -           | HMAC | MCU | used as hmac key to compress other keys
-| replacable mcu key       | MCU       | AES | MCU    | replacable MCU key (up to 32 times)
+| `SE1 pairing` | slot 1      | HMAC | SE1, MCU | Protects communications between SE1 and MCU
+| `SE2 pairing` | secret A    | HMAC | SE2, MCU | Pairing for SE2
+| `SE2 comms`   | keypair A   | ECC  | SE2      | MCU captures pubkey half, used in ECDH comms
+| `SE joiner`   | slot 7, pubkey C    | ECC  | SE1/SE2  | SE2 knows only public part, SE1 has privkey
+| `pin stretch` | slot 2      | HMAC | SE1      | Key stretching for PIN entry and anti-phish words
+| `firmware`    | slot 14     | SHA256d | SE1      | Firmware checksum, controls green/red LEDs
+| `nonce/chksum` | slot 10    | data | SE1        | AES nonce and GMAC tag, protected by PIN
+| `SE2 easy key` | page 15    | AES via HMAC  | SE2      | Another SE2 part of AES seed key
+| `SE2 hard key` | page 14    | AES via ECC  | SE2      | SE2's part of AES seed key; ECC used to unlock
+| `tpin key`      | `tpin_key` | HMAC(key) | MCU   | Key for HMAC used to encrypt trick PINs
+| `trick PIN slots` | pages 0-12 | HMAC | SE2     | Protect duress wallet seeds and pins (6 spots)
+| `SE2 trash`   | secret B    | HMAC | SE2      | Used to destroy values (only SE2 knows the value)
+| `hash cache secret` | `hash_cache_secret`  | XOR/AES | MCU   | In-memory encryption of actual PIN when unlocked
+| `mcu hmac key`     | `mcu_hmac_key` | HMAC | MCU | Used as HMAC key to compress other keys
+| `replaceable mcu key`       | `MCU_KEYS` | AES | MCU    | Replaceable MCU key (up to 256 times)
 
-All keys above are 32 bytes long and picked randomly using the hardware RNG.
+All keys listed are 32 bytes long and picked randomly using the hardware RNG.
 
-When a PIN code is entered, it gets hashed by the same process as
-in previous COLDCARD versions. This is quite involved, and uses a value in SE1 for key
-stretching purposes. The final hashed PIN value, would unlock a few
-slots from SE1, but first, the a hashed value is HMAC'ed using "MCU
-pin check" and that hashed PIN value is used to check for trick
-PINs which are stored in SE2. If none of the trick PIN's are decoded
-in SE2 memory, then we will try the PIN for real against SE1.
+An entered PIN code goes through the same hashing process as with
+previous COLDCARD versions. This involved process uses a value in
+SE1 for key stretching purposes. Before the final hashed PIN value
+unlocks a few slots in SE1, `MCU pin check` HMACs the hashed PIN
+value and uses the result to check for Trick PINs in SE2. If no
+Trick PINs decode in SE2's memory, the PIN is tested against SE1.
 
-If the PIN is correct, then the pin-attempt counter is reset to 13
-tries, and the "SE joiner" slot on SE1 is used to establish ECDH
-communication between the MCU and SE1, and to authorize a specific
-page on SE2 that holds "SE2 seed key". That value, the seed phrase
-from SE1 (unlocked by correct PIN) and the "MCU seed key" can now
-be used to decrypt the seed phrase.
+If the PIN is correct:
 
-Final seed decryption key is combined from all these sources:
+- The the PIN-attempt counter resets to 13 attempts remaining.
+- The `SE joiner` slot on SE1 establishes ECDH communication between the MCU and SE1.
+- `SE joiner` authorizes the page on SE2 holding `SE2 seed key`.
 
-k = HMAC-SHA256(key=(mcu hmac key), msg=(SE2 easy key + SE2 hard key + current replacable mcu key))
+The `SE2 seed key` value and the `MCU seed key` are now available
+to decrypt the seed words unlocked by the PIN.
+
+These sources combine to create the final seed decryption key:
+
+k = HMAC-SHA256 (key = (`mcu hmac key`), msg = (`SE2 easy key` + `SE2 hard key` + current `replaceable mcu key`))
 
 ### AES Details
 
-We are using AES-256 in
+COLDCARD uses AES-256 in
 [CTR mode](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)).
-For message authentication, we add 32 bytes of zeros past the
-end of the message and check those decode correctly.
+Message authentication involves adding 32 bytes of zeros to the
+end of the message and checking they decode correctly.
 
-A new keyslot (10) is used to store this MAC data, which is simply zeros, encrypted.
+A new keyslot, 10, stores the MAC data (encrypted zeros).
 
-A single fixed random value is used for nonce (IV), composed of the
-first 15 bytes of the "mcu hmac key", followed by a zero (counts
-up from there if more than 16 bytes are being en/decrypted).
+The startgin nonce for CTR mode is fixed random value composed of
+the first 15 bytes of the `mcu hmac key`, followed by a zero (this
+increments if more than 16 bytes are encrypted or decrypted).
 
-### MCU keys
 
-Two keys are stored in the MCU that affect the seed.
+### MCU Keys
 
-"mcu hmac key" is fixed at factory setup time. It acts as the "key" for
+There are two keys in the MCU that affect the seed, the `mcu hmac
+key`, and the `replaceable mcu key`.
+
+The `mcu hmac key` is fixed at factory setup time. It acts as the key for
 an HMAC operation that compresses the seed key.
 
-"replacable mcu keys" are picked at runtime and saved to flash.
-There is only one active at a time, but we have a few slots in flash for
-new ones.  When the COLDCARD "wipes" itself, it is clearing the
-current MCU replaceable key. That process is very fast, and does
-not have any external signals to betray that it's occuring. There
-is no need to clear the keys in SE2 or SE1, since without that the
-MCU replacable key, the actual AES key is still unknown.
+The `replaceable mcu keys` are picked at runtime and saved to flash.
+There is only one key active at a time, but there are a few slots
+in flash for new ones.  When the COLDCARD performs a wipe, it clears
+the current `mcu replaceable key`. That process is very fast and
+does not have any external signals to betray it's occurring. There
+is no need to clear the keys in SE2 or SE1 since without the `mcu
+replaceable key`, the actual AES key is still unknown.
 
-New COLDCARD's will ship from the factory with no key picked yet.
-Once the main PIN is set, and a wallet imported or created, then
-the first MCU replaceable secret will be picked.
+New COLDCARDs will ship from the factory with no key picked yet.
+Once the main PIN is set and a wallet imported or created, the
+first `mcu replaceable key` is picked.
 
-Each "wipe" operation consumes a replacable key, and there is a limited
-number of them available during the life of the COLDCARD.
+Each wipe operation consumes a replaceable key, and there are a limited
+number of them (256) available during the life of the COLDCARD.
+
 
 ### Captured values
 
-For values that are public or semi-public, the MCU captures them and does
-not allow them to change later. This includes:
+The MCU captures public and semi-public values and prohibits them
+from changing. These include:
 
-- serial number for SE1 and SE2 chips (used in most HMAC responses, fully public)
-- public key for: "SE joiner", and "SE2 comms" key pairs
+- SE1 and SE2 chip serial numbers (used in most HMAC responses, fully public)
+- The public key for `SE joiner` and `SE2 comms` key pairs
 
-Logically, these values could be read at runtime, but since they
-are not expected to change, we store them and thus assure they do
-not change when under attack, perhaps by substituting a different part.
+Logically, these values are potentially readable at runtime. Since
+they are not expected to change, storing them assures they will not
+change when under attack (perhaps by substituting a different part).
 
-We block these from read-back (out of the SE) where we can.
+Blocking the values from read-back out of the secure element is
+done where possible.
 
-## Trick PIN's
 
-To support specific COLDCARD features, we need to have a number of
-distinct PIN codes that have various side effects, such as unlocking
-a duress wallet, triggering a long login delay, bricking the COLDCARD,
-or blanking it.
+## Trick PINs
 
-These PIN's will be stored in even-numbered pages of SE2. The
-adjancent odd slot will hold the corresponding secret. The MCU will
-try each PIN the user enters against all the slots, and will silently
-do what is needed to support the trick features.  For duress wallets,
-we will store 32 bytes of seed phrase (generated via BIP-85 from
-the true seed). For the other cases, a short numeric code will be
-encoded, and provided to higher layers for implementing. A flag in
-that code can trigger the bootrom to wipe the "MCU seed key". Because
-this change is internal to the MCU it cannot be interrupted or
-monitored by external actors. Since it's just as critical as the
-other parts of the AES key for the seed phrase, being zero will
-make the seed completely inaccessible, forever.
+Supporting certain COLDCARD features requires several distinct PIN
+codes with various side effects, such as:
 
-The MCU code may continue to go through the motions of speaking to
-SE1 to complete the fraud, but in general, we will not be storing
-the duress wallet or brickme PIN on the SE1 any more. All those features
-in Mk4 are implemented in SE2 now.
+- Unlocking a duress wallet
+- Triggering a long login delay
+- Bricking the COLDCARD
+- Blanking the COLDCARD
+
+SE2's even-numbered pages store these PINs with the adjacent odd
+slot holding the corresponding secret. The MCU tries each PIN a
+user enters against all the slots and works silently to support the
+Trick features.
+
+The type of support depends on the type of Trick. Duress wallets
+require storing 32 bytes of seed words (generated from the true
+seed via BIP-85). Other cases dictate encoding a short numeric code
+provided to higher layers for implementation. For example, a flag
+in that code can trigger the boot ROM to wipe the `mcu seed key`.
+External actors cannot interrupt or monitor this change because it
+is internal to the MCU. The `mcu seed key` is as critical as the
+other parts of the AES key to access the seed words. The `mcu seed
+key` being zero makes the seed permanently inaccessible.
+
+The MCU code may continue speaking to SE1 to complete the fraud,
+but in general, SE1 will no longer store the duress wallet or Brick
+Me PINs. Mk4 implements those feature in SE2.
+
 
 ## Spare Slots
 
-With trick pins moving to the SE2, we have some free space inside
-SE1. We are calling this "spare secrets" and there are 3 x 72 bytes
-worth of space. They are protected with all the same measures as
-the main seed phrase.
+Moving the duress wallet and Brick Me PINs to SE2 left free storage
+inside SE1. This storage is called Spare Secrets. Spare Secrets has
+3 &times; 72 bytes of space, protected by the same measures as the
+seed words.
 
-The "long secret" (416 bytes) is still supported although its API
-has changed because fetching it in 32-byte blocks is very slow since
-the primary AES seed key has be reconstruted for each call.
+Mk4 still supports the Long Secret (416 bytes), but its API is
+changed. The slow speed of fetching the Long Secret in 32-byte
+blocks due to the reconstructing the primary AES Seed Key for each
+call necessitated the change.
+
 
 ## Observations
 
-It's important that the SE2 cannot be used to validate a PIN code.
-It does not have the rate limiting (or usage counter) that SE1 does,
-so brute forcing would be easy. For this reason, only trick pins
-are stored in SE2. Compromise of the MCU would be required to test
-against those, and the max attempt rate would be 6ms (due to SE2
-performance).  Doing that would be pointless, however, if you have
-control over the MCU... you would just NOP-out the trick PIN checking.
+It's essential that SE2 cannot validate a PIN code. Brute-forcing
+SE2 would be easy because it lacks SE1's rate limiting (or usage
+counter), so SE2 only stores Trick PINs. Testing against the Trick
+PINs would require compromising the MCU. Due to SE2's performance,
+the maximum attempt rate would be 6 ms. However, controlling the
+MCU makes that testing pointless to such an attacker; they could
+just NOP-out the Trick PIN checking.
 
-If your attackers are smart enough to crack open case, and monitor
-the buses involved, then you should provide a trick PIN that wipes
-the secrets and bricks the COLDCARD. Trick pins that continue
-operation (duress pins) will be detectable to those attackers, but
-not your average thugs.
+A user expecting attackers smart enough to crack open the case and
+monitor the buses should provide a Trick PIN that wipes the COLDCARD's
+secrets and bricks it. Sophisticated attackers could detect Trick
+PINs that continue operation (duress PINs), unlike the average thug.
 
 
+## Fast Brick
+
+On the Mk4, quickly bricking the system is done by rotating the SE1
+pairing secret by mixing in a random nonce via the chip's key
+rotation process. Only a knowledge of the old pairing secret is
+needed for this change. This is similar the to `brick_me` PIN
+and how that worked on previous products.
 
