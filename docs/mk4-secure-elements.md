@@ -209,6 +209,58 @@ but in general, SE1 will no longer store the duress wallet or Brick
 Me PINs. Mk4 implements those feature in SE2.
 
 
+### Trick PIN Operation
+
+When a PIN is entered, it is hashed through a series of operations
+that take a round trip to SE1. This is the same as the Mk3 using
+its secure element for key stretching. A 32-byte deterministic hash,
+dependent on secrets from the main MCU and SE1 and unique to each
+COLDCARD, is returned. The hash is compared against all 14 of the
+slots in SE2.
+
+A few least significant bits (LSB) are masked out of the hash. If
+the PIN entered matches one of the slots, the masked-out bits are
+checked. Based on the check, two values are taken: `tc_arg` and
+`tc_flags`. These two values implement flags and arguments
+required to implement the Trick PIN features.
+
+
+### Trick PIN slot data
+
+The flags are checked along with their corresponding arguments if
+a match is found while iterating through all the slots. Some flags
+are implemented directly in the boot loader before anything is sent
+to Micropython. Other flags are passed to Micropython for implementation
+or are implemented in both the boot ROM and Micropython.
+
+**Example 1** A flag is set for Fast Wipe and an attacker has control
+of the I2C-bus going to SE2 and the one-wire bus going to SE1. They
+can attempt to block the wipe in hopes of trying different PINs
+without damaging anything, but they will fail. If `tc_flags`, which
+is a bitmask, indicates a Fast Wipe, the seed wiping happens inside
+the main MCU. It clears data inside the main MCU extremely quickly
+and with no external signals &mdash; either before or after &mdash;
+to indicate it happened. This prevents blocking Fast Wipe.
+
+**Example 2** The login countdown feature allows specifying a Trick
+PIN. When the Trick PIN is entered, the COLDCARD will show a countdown
+timer and the time that must elapse before logging in is allowed.
+`tc_arg` encodes the number of minutes on the delay.
+
+**Example 3** Although SE2 holds the Trick PINs, it does not know
+the True PIN and Delta Mode will not reveal the full True PIN. The
+"Delta More" Trick PIN has its unique hash result, and an entry from SE1 is used
+to calculate the True PIN. This is accomplished by masking out the
+last four digits of the hash and substituting four digits from
+`tc_arg`. Limiting it to four digits enables a difference between
+the Delta PIN and the True PIN.
+
+This makes the True PIN unknowable without knowing the Delta Mode
+Trick PIN; SE2 cannot be searched for the True PIN and generating
+the PIN hashes for SE2 would only be possible after cracking SE1
+and the main MCU.
+
+
 ## Spare Slots
 
 Moving the duress wallet and Brick Me PINs to SE2 left free storage
