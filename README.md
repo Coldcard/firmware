@@ -45,14 +45,14 @@ Then:
 
 - `cd firmware`
 - `git submodule update --init` _(if needed?)_
-- `brew install autogen virtualenv`
+- `brew install automake autogen virtualenv`
 - `virtualenv -p python3 ENV` (Python > 3.5 is required)
 - `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
 - `pip install -r requirements.txt`
 
 Setup and Run the Desktop-based Coldcard simulator:
 
-- `cd unix; make setup && make; ./simulator.py`
+- `cd unix; make setup && make && ./simulator.py`
 
 Building the firmware:
 
