@@ -231,3 +231,28 @@ it also cannot be accessed without breaking the case. A developer
 wanting to interact with the pins must be willing to damage the
 COLDCARD's case to do so, but the option is there if needed.
 
+
+## SD Card Recovery Mode
+
+Mk4 bootloader is smart enough to be able to read an SD card. You
+will only be able to trigger the SD card loading code, if the
+COLDCARD was powered down during the upgrade process. At that point,
+the intended firmware image has been lost because it it held in
+PSRAM only during the flash writing process. The bootloader knows
+main flash (ie. Micropython code) is corrupt because it fails the
+checksum check (and/or signature check).
+
+The bootloader will only install an image of exactly the same version
+as was being installed when interrupted. This is done by verifying
+the checksum of the proposed firmware vs. a value held in SE1. The
+new firmware's expected checksum is recorded before any flash is
+erased.
+
+The SD card will be searched for all DFU files, and each is
+checked for valid factory signature, and that its checksum matches
+the anticipated version the user was attempting to install.
+
+If any other parts of flash---beyond the normal upgradable firmware
+area---have also been corrupted, this process will not work and the
+unit will be a brick.
+
