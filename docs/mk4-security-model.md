@@ -256,3 +256,25 @@ If any other parts of flash---beyond the normal upgradable firmware
 area---have also been corrupted, this process will not work and the
 unit will be a brick.
 
+
+## Flash ECC (Error Detection/Correction Codes)
+
+Flash memory cells in this MCU are protected by ECC bits. An
+additional 8 bits are calculated and stored alongside each 64-bit
+value. This allows detecting any 2-bits changing and correction of
+up to 1-bit error per 64 bits.
+
+When a corrupted flash memory word is detected, an NMI (non maskable
+interrupt) is caused which will crash the microprocessor. This
+typically happens during boot-up when the checksum over flash memory
+is performed.
+
+We know of no legitimate way for this to occur, so we will assume
+that it's an attack, such as exposing the bare die to targeted UV-C
+radiation.  If the attacker is able to flip 2 or more bits, then
+this will effectively brick the COLDCARD once the ECC error is detected.
+
+Critical flash cells, such as those that prevent both JTAG access,
+are not a single bit (it's a special bit pattern), and regardless
+are protected via ECC the same as other flash cells.
+
