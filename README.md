@@ -84,6 +84,8 @@ Used to be these were needed as well:
 
 You may need to reboot to avoid a `DISPLAY is not set` error.
 
+You may need to `brew upgrade gcc-arm-embedded` because we need 10.2 or higher.
+
 #### Big Sur Issues
 
 - `defaults write org.python.python ApplePersistenceIgnoreState NO` will supress a warning
