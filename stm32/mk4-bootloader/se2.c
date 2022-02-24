@@ -688,7 +688,7 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
         // 28 bytes are the PIN hash, last 4 bytes is our meta-data.
         // - xor to pin value to hide flag/arg values (impt for deltamode)
         // - following slot(s) may hold wallet data (32-64 bytes)
-        uint8_t     meta[4];
+        uint8_t     meta[4] = {0};
         xor_mixin(meta, &tpin_hash[28], 4);
         memcpy(&found_slot->tc_flags, &meta[0], 2);
         memcpy(&found_slot->tc_arg, &meta[2], 2);
