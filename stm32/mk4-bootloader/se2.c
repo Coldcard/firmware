@@ -686,9 +686,12 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
         found_slot->slot_num = found;
 
         // 28 bytes are the PIN hash, last 4 bytes is our meta-data.
-        // following slot(s) may hold wallet data (32-64 bytes)
-        memcpy(&found_slot->tc_flags, &slots[found][28], 2);
-        memcpy(&found_slot->tc_arg, &slots[found][30], 2);
+        // - xor to pin value to hide flag/arg values (impt for deltamode)
+        // - following slot(s) may hold wallet data (32-64 bytes)
+        uint8_t     meta[4];
+        xor_mixin(meta, &tpin_hash[28], 4);
+        memcpy(&found_slot->tc_flags, &meta[0], 2);
+        memcpy(&found_slot->tc_arg, &meta[2], 2);
 
         uint16_t todo = found_slot->tc_flags;
 
@@ -799,8 +802,11 @@ se2_save_trick(const trick_slot_t *config)
         uint8_t     tpin_digest[32];
         trick_pin_hash(config->pin, config->pin_len, tpin_digest);
 
-        memcpy(&tpin_digest[28], &config->tc_flags, 2);
-        memcpy(&tpin_digest[30], &config->tc_arg, 2);
+        // save meta data, xor'd with pin hash
+        uint8_t     meta[4];
+        memcpy(&meta[0], &config->tc_flags, 2);
+        memcpy(&meta[2], &config->tc_arg, 2);
+        xor_mixin(&tpin_digest[28], meta, 4);
 
         // write into SE2
         se2_write_encrypted(PGN_TRICK(config->slot_num), tpin_digest, 0, SE2_SECRETS->pairing);
