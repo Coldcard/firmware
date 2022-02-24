@@ -41,18 +41,6 @@ def set_genuine():
     # does checksum over firmware, and might set green
     return ckcc.gate(4, None, 3)
 
-def get_dfu_button():
-    # read current state
-    rv = bytearray(1)
-    ckcc.gate(12, rv, 0)
-    return (rv[0] == 1)
-
-def get_bl_rng():
-    # read 32 bytes of RNG (test)
-    rv = bytearray(32)
-    assert ckcc.gate(17, rv, 0) == 0
-    return rv
-
 def get_is_bricked():
     # see if we are a brick?
     return ckcc.gate(5, None, 0) != 0
