@@ -122,3 +122,7 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 - can share up to 8000 bytes of PSBT or signed transaction data.
 - NFC-V (ISO-15693) radio is common on mobile phones but rare on desktops
 
+# Fast Wipe (Mk4)
+
+- each use of "fast wipe" feature consumes a MCU key slot, of which there are 256.
+
