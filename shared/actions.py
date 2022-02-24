@@ -408,7 +408,7 @@ async def login_countdown(sec):
 async def block_until_login():
     #
     # Force user to enter a valid PIN.
-    # - or accept a bogus one and return T iff <mk4 and "countdown" pin used
+    # - or accept a bogus one and return T iff mk<4 and "countdown" pin used
     # 
     from login import LoginUX
     from ux import AbortInteraction
@@ -1751,8 +1751,8 @@ async def show_version(*a):
         serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
 
     hw = version.hw_label
-    if version.has_nfc:
-        hw += '+NFC'
+    if not version.has_nfc:
+        hw += ' (no NFC)'
 
     msg = '''\
 Coldcard Firmware
