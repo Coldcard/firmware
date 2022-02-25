@@ -2,6 +2,8 @@
 #
 # Mk4 SE2 (second secure element) test cases and fixtures.
 #
+# - use 'simulator.py --eff' for these?
+#
 import pytest, struct, time
 from helpers import B2A
 from binascii import b2a_hex, a2b_hex
@@ -172,10 +174,10 @@ def test_ux_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress):
         has_some = (menu[1][0] == '↳')
         if has_some:
             assert menu[0] == 'Trick PINs:'
-            assert 'Delete All' in menu
         else:
-            assert 'Delete All' not in menu
-            assert menu[-2] == 'Add New Trick'
+            assert menu[-3] == 'Add New Trick'
+
+        assert 'Delete All' in menu
 
         has_wrong = ('↳WRONG PIN' in menu)
         if not has_wrong:
@@ -184,7 +186,7 @@ def test_ux_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress):
             assert 'Add If Wrong' not in menu
 
         if not has_some and not has_wrong:
-            assert len(menu) == 2
+            assert len(menu) == 3
 
         if has_some:
             assert step == 0
@@ -265,6 +267,7 @@ def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story,
 def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
     # from Ok? screen, check it worked right
     def doit(new_pin, op_mode, xflags, xargs=0):
+        time.sleep(.1)
         _, story = cap_story()
         assert f'PIN {new_pin}' in story
         assert op_mode in story
@@ -369,6 +372,79 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     new_pin_confirmed(new_pin, op_mode, xflags, xargs)
 
 
+@pytest.mark.parametrize('true_pin, fake_pin, is_prob, expect_arg', [
+    ( '12-12', '23-23', False, 0x1212), 
+    ( '99-99', '23-23', False, 0x9999), 
+    ( '123-123', '44-44', True, 0), 
+    ( '123-123', '444-444', True, 0), 
+    ( '123-123', '443-123', True, 0), 
+    ( '443-123', '444-444', False, 0x3123), 
+    ( '123-121', '123-124', False, 0xfff1), 
+    ( '123-122', '123-144', False, 0xff22), 
+    ( '123-123', '123-444', False, 0xf123), 
+    ( '123-124', '124-444', False, 0x312f), 
+])
+def test_deltamode_validate(true_pin, fake_pin, is_prob, expect_arg, sim_exec):
+    # unit test: validate/calc delta mode values
+    # - all strings here, no bytes
+    cmd = f'from trick_pins import validate_delta_pin; '\
+            f'RV.write(str(validate_delta_pin({true_pin!r}, {fake_pin!r})))'
+    prob, tc_arg = eval(sim_exec(cmd))
+    assert bool(prob) == is_prob, prob
+    assert expect_arg == tc_arg, 'got 0x%04x' % tc_arg
+
+    if is_prob: return
+
+    # try it out, low-level
+    pin_b4 = sim_exec('from pincodes import pa; RV.write(pa.pin)')
+    assert isinstance(pin_b4, str) and 'b' not in pin_b4
+
+    try:
+        if pin_b4 != true_pin:
+            # change main pin
+            rv = sim_exec(f'from pincodes import pa; RV.write(repr(pa.change(new_pin=b{true_pin!r})))')
+            assert rv == 'None'
+            rv = sim_exec(f'from pincodes import pa; pa.setup(b{true_pin!r}); RV.write(repr(pa.login()))')
+            assert rv == 'True'
+
+        # save a slot w/ new delta-mode trick
+        cmd = f'from trick_pins import tp; '\
+                f'b, s = tp.update_slot(b{fake_pin!r}, new=1, tc_flags={TC_DELTA_MODE}, tc_arg={tc_arg}); RV.write(repr(s.slot_num))'
+        slot_num = eval(sim_exec(cmd))
+        
+        # try it out
+        sim_exec(f'from pincodes import pa; pa.setup(b{fake_pin!r}); pa.login()')
+        fl, ar = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.get_tc_values()))'))
+        assert fl & TC_DELTA_MODE
+        assert ar == 0      # gets blanked by bootrom
+
+        is_d = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.is_deltamode()))'))
+        assert is_d == True
+
+        # restore: login to real 
+        cmd = f'from pincodes import pa; pa.setup(b{true_pin!r}); RV.write(repr(pa.login()))'
+        ok = eval(sim_exec(cmd))
+        assert ok, 'couldnt get back to real login from delta'
+
+        is_d = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.is_deltamode()))'))
+        assert is_d == False
+
+        # delete slot
+        cmd = f'from trick_pins import tp; tp.clear_slots([{slot_num}])'
+        sim_exec(cmd)
+
+        # restore main pin
+        if pin_b4 != true_pin:
+            rv = sim_exec(f'from pincodes import pa; RV.write(repr(pa.change(new_pin=b{pin_b4!r})))')
+            assert rv == 'None'
+            rv = sim_exec(f'from pincodes import pa; pa.setup(b{pin_b4!r}); RV.write(repr(pa.login()))')
+            assert rv == 'True'
+
+    except:
+        # fix damage? hard to do
+        print("Should restart simulator!?")
+        raise
+
 # TODO
 # - duress wallet math is right, bip85 and legacy
 # - test apply wallet feature
@@ -377,5 +453,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
 # - out of slots iff using wallet feature
 # - wrong PIN cases
 # - countdown menu, implementation
+# Delta pin
+# - add / change enforce limitations in UI
 
 # EOF
