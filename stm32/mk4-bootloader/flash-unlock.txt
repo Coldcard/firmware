@@ -1,0 +1,28 @@
+## Send this to OpenOCD to unlock flash write protection, which will be set, even in 
+## debug version of bootloader, if you use the "bagged" menu item.
+##
+##     nc lh 4444 < flash-unlock.txt
+##
+
+halt
+# expect 0x40000000, if it's 0xc0000000, can't work; reboot w/ DFU pressed, to fix
+mdw 0x40022014
+# ignore warning about "power cycle" from this:
+stm32l4x unlock 0
+# expect 0 from this:
+mdw 0x40022014
+sleep 100
+# disable all write-protect (bank 1, A region)
+mww 0x4002202c 0xff00ffff
+sleep 100
+mww 0x40022030 0xff00ffff
+sleep 100
+# commit change
+mww 0x40022014 0x20000
+sleep 100
+# read back in OB (expect ff00ffff NOT ff0fff00)
+mdw 0x1FFF7818
+sleep 100
+# launch changes? (causes weird reset)
+mww 0x40022014 0x8000000
+sleep 100

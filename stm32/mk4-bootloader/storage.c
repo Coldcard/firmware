@@ -759,6 +759,10 @@ mcu_key_pick(void)
     void
 fast_brick(void)
 {
+#ifndef RELEASE
+    puts2("DISABLED fast brick... ");
+    oled_show(screen_brick);
+#else
     // do a fast wipe of our key
     mcu_key_clear(NULL);
 
@@ -786,8 +790,10 @@ fast_brick(void)
         }
     flash_lock();
     puts(" done");
+#endif
 
     LOCKUP_FOREVER();
+
 }
 
 // fast_wipe()
