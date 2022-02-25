@@ -64,7 +64,7 @@ def pin_stuff(submethod, buf_io):
 
     # NOTE: ignoring mk2 additions for now, we have no need for it.
 
-    # NOTE: using strings here, not bytes; real bootrom uses bytes
+    # NOTE: using strings here, not bytes; real bootrom & API, uses bytes
     pin = pin[0:pin_len].decode()
     old_pin = old_pin[0:old_pin_len].decode()
     new_pin = new_pin[0:new_pin_len].decode()
@@ -101,6 +101,7 @@ def pin_stuff(submethod, buf_io):
         expect = SECRETS.get(kk, '')
         if pin == expect:
             state_flags = PA_SUCCESSFUL
+            delay_required, delay_achieved = (0,0)
 
             ts = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
 
