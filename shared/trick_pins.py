@@ -40,6 +40,29 @@ TC_COUNTDOWN    = const(0x0040)         # tc_arg = minutes of delay
 
 # special "pin" used as catch-all for wrong pins
 WRONG_PIN_CODE = '!p'
+    
+def validate_delta_pin(true_pin, proposed_delta_pin):
+    # Check delta pin proposal works w/ limitations and
+    # provide error msg, and/or calc required tc_arg value.
+    right = true_pin.replace('-', '')
+    fake = proposed_delta_pin.replace('-', '')
+
+    if (len(right) != len(fake)) or (right[0:-4] != fake[0:-4]):
+        prob = '''\
+Trick PIN must be same length (%d) as true PIN and \
+up to last four digits can be different between true PIN and trick.''' % len(right)
+        return prob, 0
+
+    a = 0
+    for i in range(4):
+        dx = -(1+i)
+        if right[dx] == fake[dx]:
+            # no need to reveal this digit to SE2 hacker if same
+            a |= 0xf << (i*4)
+        else:
+            a |= (ord(right[-(1+i)]) - 0x30) << (i*4)
+
+    return None, a
 
 def make_slot():
     b = bytearray(uctypes.sizeof(TRICK_SLOT_LAYOUT))
@@ -100,6 +123,7 @@ class TrickPinMgmt:
         record = (slot.slot_num, slot.tc_flags, 
                         0xffff if slot.tc_flags & TC_DELTA_MODE else slot.tc_arg)
         self.tp[new_pin] = record
+        self.save_record()
 
         return True
 
@@ -169,7 +193,7 @@ class TrickPinMgmt:
             sn = self.find_empty_slots(1 if not secret else 1+(len(secret)//32))
             if sn == None:
                 # we are full
-                raise RuntimeError("no space")
+                raise RuntimeError("no space left")
 
             slot.slot_num = sn
 
@@ -199,7 +223,7 @@ class TrickPinMgmt:
                 slot.xdata[0:64] = secret
 
         # Save config for later
-        # - never document real pin digits
+        # - deltamode: don't document real pin digits
         record = (slot.slot_num, slot.tc_flags, 
                         0xffff if slot.tc_flags & TC_DELTA_MODE else slot.tc_arg)
 
@@ -270,8 +294,8 @@ class TrickPinMenu(MenuSystem):
         if not has_wrong:
             rv.append(MenuItem('Add If Wrong', f=self.set_any_wrong))
 
-        if tricks:
-            rv.append(MenuItem('Delete All', f=self.clear_all))
+        # even if menu "looks" empty, many times we need this anyway
+        rv.append(MenuItem('Delete All', f=self.clear_all))
 
         return rv
 
@@ -321,24 +345,10 @@ class TrickPinMenu(MenuSystem):
         if flags & TC_DELTA_MODE:
             # Calculate the value needed for args: BCD encoded final 4 digits
             # of the true PIN!
-            right = self.current_pin.replace('-', '')
-            fake = self.proposed_pin.replace('-', '')
-            prob = None
-            if (len(right) != len(fake)) or (right[0:-4] != fake[0:-4]):
-                prob = '''\
-Trick PIN must be same length (%d) as true PIN and \
-up to last four digits can be different between true PIN and trick.''' % len(right)
+            prob, a = validate_delta_pin(self.current_pin, self.proposed_pin)
+            if prob:
                 await ux_show_story(prob, 'Sorry!')
                 return
-
-            a = 0
-            for i in range(4):
-                dx = -(1+i)
-                if right[dx] == fake[dx]:
-                    # no need to reveal this digit to SE2 hacker if same
-                    a |= 0xf << (i*4)
-                else:
-                    a |= (ord(right[-(1+i)]) - 0x30) << (i*4)
             tc_arg = a
 
         msg += "Ok?"
@@ -353,9 +363,10 @@ up to last four digits can be different between true PIN and trick.''' % len(rig
             await ux_dramatic_pause("Saved.", 1)
         except BaseException as exc:
             sys.print_exception(exc)
-            await ux_show_story("Failed.")
+            await ux_show_story("Failed: %s" % exc)
 
         self.update_contents()
+
 
     async def get_new_pin(self, existing_pin=None):
         # get a new PIN code and check not a dup
@@ -384,7 +395,8 @@ up to last four digits can be different between true PIN and trick.''' % len(rig
             return
 
         # check if we "forgot" this pin, and read it back if we did.
-        # - important this is after the above checks so we don't reveal a deltamode pin in use
+        # - important this is after the above checks so we don't reveal any trick pin used
+        #   to get here
         if tp.restore_pin(new_pin):
             await ux_show_story("Hmm. I remember that PIN now.")
             self.update_contents()
@@ -462,8 +474,6 @@ differ only in final 4 positions (ignoring dash).\
         m.goto_idx(1)
         the_ux.push(m)
 
-        
-
 
     async def set_any_wrong(self, *a):
         ch = await ux_show_story('''\
@@ -511,7 +521,7 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
         pin, slot_num, flags = item.arg
 
         if flags & TC_DELTA_MODE:
-            await ux_show_story('''Delta mode PIN will be hidden when this menu is shown \
+            await ux_show_story('''Delta mode PIN will be hidden if trick PIN menu is shown \
 to attacker, and we need to update this record if the main PIN is changed, so we don't support \
 hiding this item.''')
             return
@@ -537,29 +547,34 @@ You can restore it by trying to re-add the same PIN (%s) again later.''' % pin
 
     async def change_pin(self, m,l, item):
         # Change existing PIN code.
-        old_pin, slot_num, flags = item.arg
+        old_pin, slot_num, flags, tc_arg = item.arg
 
         new_pin = await self.get_new_pin(old_pin)
         if new_pin is None:
             return
 
-        # TODO XXX chcek if delta mode ... must apply rules to new PIN
-        #if flags & TC_DELTA_MODE:
+        if flags & TC_DELTA_MODE:
+            # if delta mode ... must apply rules to new PIN
+            prob, a = validate_delta_pin(self.current_pin, new_pin)
+            if prob:
+                await ux_show_story(prob, 'Sorry!')
+                return
+            tc_arg = a
 
         try:
-            tp.update_slot(old_pin.encode(), new_pin=new_pin.encode())
+            tp.update_slot(old_pin.encode(), new_pin=new_pin.encode(), tc_arg=tc_arg)
             await ux_dramatic_pause("Changed.", 1)
 
             self.pop_submenu()      # too lazy to get redraw right
         except BaseException as exc:
             sys.print_exception(exc)
-            await ux_show_story("Failed.")
+            await ux_show_story("Failed: %s" % exc)
 
     async def delete_pin(self, m,l, item):
         pin, slot_num, flags = item.arg
 
         if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
-            if not await ux_confirm("The funds on this duress wallet have been moved already?"):
+            if not await ux_confirm("Any funds on this duress wallet have been moved already?"):
                 return
 
         if pin == WRONG_PIN_CODE:
@@ -627,11 +642,9 @@ normal operation.''')
 
         pin, flags, arg = item.arg
 
-        # arg can be out-of-date, if they edited timer value after parent was
-        # rendered, where arg was captured into item.arg
+        # "arg" can be out-of-date, if they edited timer value after parent was
+        # rendered, where arg was captured into item.arg ... so don't use it.
         cd_val = tp.tp[pin][2]
-        if arg != cd_val:
-            print("gotcha")
 
         msg = 'Shows login countdown (%s)' % lgto_map.get(cd_val, '???').strip()
         if flags & TC_WIPE:
@@ -737,7 +750,7 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         ])
         if pin != WRONG_PIN_CODE:
             rv.append(
-                MenuItem('Change PIN', f=self.change_pin, arg=(pin, slot_num, flags)),
+                MenuItem('Change PIN', f=self.change_pin, arg=(pin, slot_num, flags, arg)),
             )
 
         return rv
@@ -757,7 +770,7 @@ class StoryMenuItem(MenuItem):
             # drill down more
             return await super().activate(menu, idx)
 
-        # pop all, and note the path used
+        # pop some levels, and note the drill-down path that was used
         parents = []
         while 1:
             the_ux.pop()
