@@ -135,7 +135,7 @@ Mk4:
     => same with "program" cmd in openocd
     => these work tho:
 
-    flash erase_address 0x801c000 0x4000
+    flash erase_address 0x801c000 0x2000
     flash write_image mk4-bootloader/p1.bin 0x0801c000
     flash write_image mk4-bootloader/p2.bin 0x0801c070
 
