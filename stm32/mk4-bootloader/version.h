@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 // Public version number for humans. Lots more version data added by Makefile.
-#define RELEASE_VERSION     "3.0.4"
+#define RELEASE_VERSION     "3.1.0"
 
 extern const char version_string[];
 

@@ -61,6 +61,9 @@ void se2_save_auth_pubkey(const uint8_t pubkey[64]);
 // call if a completely unknown PIN is provided
 void se2_handle_bad_pin(int num_fails);
 
+// hash up a PIN code for login attempt: to tie it into SE2's contents
+void se2_pin_hash(uint8_t digest_io[32], uint32_t purpose);
+
 #if 0
 // secp256r1 curve functions.
 bool p256_verify(const uint8_t pubkey[64], const uint8_t digest[32], const uint8_t signature[64]);

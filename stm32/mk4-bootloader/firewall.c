@@ -31,9 +31,6 @@ firewall_setup(void)
         return;
     }
 
-#if 0
-enabled firewall, even debg
-
 #if RELEASE
     // REMINDERS: 
     // - cannot debug anything in boot loader w/ firewall enabled (no readback, no bkpt)
@@ -47,7 +44,6 @@ enabled firewall, even debg
 #else
     // for debug builds, never enable firewall
     return;
-#endif
 #endif
 
     extern int firewall_starts;       // see startup.S ... aligned@256 (0x08000300)

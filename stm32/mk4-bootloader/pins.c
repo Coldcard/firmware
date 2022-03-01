@@ -27,12 +27,6 @@
 // - solution: adjust both the target and counter (upwards)
 #define MAX_TARGET_ATTEMPTS     13
 
-// Pretty sure it doesn't matter, but adding some salt into our PIN->bytes[32] code
-// based on the purpose of the PIN code.
-//
-#define PIN_PURPOSE_NORMAL          0x334d1858
-#define PIN_PURPOSE_WORDS           0x2e6d6773
-
 // Hash up a PIN for indicated purpose.
 static void pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose);
 
@@ -120,12 +114,15 @@ pin_hash(const char *pin, int pin_len, uint8_t result[32], uint32_t purpose)
 	SHA256_CTX ctx;
     sha256_init(&ctx);
 
-    sha256_update(&ctx, rom_secrets->pairing_secret, 32);
+    sha256_update(&ctx, rom_secrets->hash_cache_secret, 32);
     sha256_update(&ctx, (uint8_t *)&purpose, 4);
     sha256_update(&ctx, (uint8_t *)pin, pin_len);
     sha256_update(&ctx, rom_secrets->pairing_secret, 32);
 
     sha256_final(&ctx, result);
+
+    // and run that thru SE2 as well
+    se2_pin_hash(result, purpose);
 
     // and a second-sha256 on that, just in case.
     sha256_single(result, 32, result);

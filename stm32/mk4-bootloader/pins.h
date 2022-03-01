@@ -91,6 +91,12 @@ enum {
     EPIN_SE2_FAIL           = -115,     // (mk4) some issue w/ SE2
 };
 
+// Pretty sure it doesn't matter, but adding some salt into our PIN->bytes[32] code
+// based on the purpose of the PIN code.
+//
+#define PIN_PURPOSE_NORMAL          0x334d1858
+#define PIN_PURPOSE_WORDS           0x2e6d6773
+
 // early setup
 void pin_setup0(void);
 

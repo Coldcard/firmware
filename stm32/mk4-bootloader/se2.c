@@ -462,6 +462,31 @@ se2_clear_volatile(void)
     CHECK_RIGHT(se2_read1() == RC_SUCCESS);
 }
 
+
+// se2_set_counter()
+//
+// Can only be done once. Trusted env.
+//
+    static void
+se2_set_counter(uint32_t val)
+{
+    uint8_t tmp[32];
+
+    se2_read_page(PGN_DEC_COUNTER, tmp, false);
+
+    // datasheet says will read as "random data" if not yet set, but
+    // observed 0xff, 0xff, 0xff, 0...0 (which is an illegal value, since only 17 bits)
+    if(tmp[2] == 0xff) {
+        tmp[0] = val & 0x0ff;
+        tmp[1] = (val >> 8) & 0x0ff;
+        tmp[2] = (val >> 16) & 0x01;
+
+        se2_write_page(PGN_DEC_COUNTER, tmp);
+    } else {
+        puts("ctr set?");        // not expected, but keep going
+    }
+}
+
 // se2_setup_config()
 //
 // One-time config and lockdown of the SE2 chip.
@@ -507,7 +532,7 @@ se2_setup_config(void)
 
     memcpy(_tbd.romid, tmp+24, 8);
 
-    // forget a secret - B (will not be used)
+    // forget a secret - B (will not be saved)
     rng_buffer(tmp, 32);
     se2_write_page(PGN_SECRET_B, tmp);
 
@@ -559,6 +584,9 @@ se2_setup_config(void)
     }
 
     se2_set_protection(PGN_ROM_OPTIONS, PROT_APH);       // not planning to change
+
+    // Need known value in counter, write once.
+    se2_set_counter(128);
 
     // NOTE: PGN_SE2_HARD_KEY and PUBKEY_C not yet known
 }
@@ -1212,6 +1240,54 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
     aes_init(&ctx);
     aes_add(&ctx, main_slot, secret_len);
     aes_done(&ctx, secret, secret_len, aes_key, nonce);
+}
+
+// se2_pin_hash()
+//
+// Hash up a PIN code for login attempt: to tie it into SE2's contents.
+//
+    void
+se2_pin_hash(uint8_t digest_io[32], uint32_t purpose)
+{
+    se2_setup();
+
+    if((setjmp(error_env))) {
+        oled_show(screen_se2_issue);
+
+        LOCKUP_FOREVER();
+    }
+
+    uint8_t     tmp[32];
+    HMAC_CTX ctx;
+
+    // HMAC(key=tpin_key, msg=given hash so far)
+    hmac_sha256_init(&ctx);
+    hmac_sha256_update(&ctx, digest_io, 32);
+    hmac_sha256_update(&ctx, (uint8_t *)&purpose, 4);
+    hmac_sha256_final(&ctx, SE2_SECRETS->tpin_key, tmp);
+
+    // NOTE: exposed as cleartext here
+    se2_write_buffer(tmp, 32);
+
+    // HMAC(key=secret-B (we dont know it, but set random), msg=pubkeyA+buffer+junk)
+    // - result put in secret-S (ram)
+    CALL_CHECK(se2_write2(0x3c, (2<<6) | (1<<4) | PGN_SECRET_B, 0));
+    CHECK_RIGHT(se2_read1() == RC_SUCCESS);
+
+    // .. HMAC(key=S, msg=counter), so we have something to read out
+    se2_write_buffer(tmp, 32);
+    CALL_CHECK(se2_write1(0xa5, (2<<5) | PGN_DEC_COUNTER));
+
+    uint8_t rx[34];
+    CHECK_RIGHT(se2_read_n(sizeof(rx), rx) == RC_SUCCESS);
+
+    CHECK_RIGHT(rx[1] == RC_SUCCESS);
+
+    memcpy(digest_io, rx+2, 32);
+
+    // 12-12 => 606ad30d10c4683b7478aa6ffd09c644e7de6091d2cdcfb58bb698c7cfa90934
+    //puts2("md: ");
+    //hex_dump(digest_io, 32);
 }
 
 // EOF

@@ -769,6 +769,9 @@ fast_brick(void)
     // brick SE1 for future
     ae_brick_myself();
 
+    // NOTE: could brick SE1 (somewhat) by dec'ing the counter, which will
+    // invalidate all PIN hashes
+
     // no going back from that -- but for privacy, wipe more stuff
     oled_show(screen_brick);
     puts2("fast brick... ");
