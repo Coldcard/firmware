@@ -413,7 +413,9 @@ def test_deltamode_validate(true_pin, fake_pin, is_prob, expect_arg, sim_exec):
         slot_num = eval(sim_exec(cmd))
         
         # try it out
-        sim_exec(f'from pincodes import pa; pa.setup(b{fake_pin!r}); pa.login()')
+        ok = eval(sim_exec(f'from pincodes import pa; pa.setup(b{fake_pin!r}); RV.write(repr(pa.login()))'))
+        assert ok, f'failed to login using: {fake_pin}'
+
         fl, ar = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.get_tc_values()))'))
         assert fl & TC_DELTA_MODE
         assert ar == 0      # gets blanked by bootrom
@@ -442,7 +444,7 @@ def test_deltamode_validate(true_pin, fake_pin, is_prob, expect_arg, sim_exec):
 
     except:
         # fix damage? hard to do
-        print("Should restart simulator!?")
+        print("REMINDER: Restart simulator to reset state!?")
         raise
 
 # TODO
