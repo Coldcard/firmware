@@ -85,10 +85,13 @@ static se2_secrets_t _tbd;
 #define PROT_ECH		0x40            // requires ECW too
 #define PROT_ECW		0x80
 
-#ifndef RELEASE
+// Debug output interferes with "--metal" testing mode.
+//#ifndef RELEASE
+#if 0
 # define DEBUG(s)        puts(s)
+# define DEBUG_OUTPUT    1
 #else
-# define DEBUG(s)        
+# define DEBUG(s)
 #endif
 
 // forward defs...
@@ -712,7 +715,7 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
         }
 
         if(!safety_mode && todo) {
-#ifndef RELEASE
+#ifdef DEBUG_OUTPUT
             puts2("Trick activated: ");
             puthex4(todo);
             putchar(' ');
@@ -1104,7 +1107,6 @@ se2_calc_seed_key(uint8_t aes_key[32], const mcu_key_t *mcu_key, const uint8_t p
     hmac_sha256_final(&ctx, rom_secrets->mcu_hmac_key, aes_key);
     hmac_sha256_init(&ctx);     // clear secrets
 
-    //puts2("aeskey="); hex_dump(aes_key, 32);
     return false;
 }
 
@@ -1174,7 +1176,6 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
     int line_num;
     if((line_num = setjmp(error_env))) {
         // internal failures / broken i2c buses will come here
-        //puts2("se2_decrypt_secret: se2.c:"); putdec4(line_num); putchar('\n');
         *is_valid = false;
         return;
     }

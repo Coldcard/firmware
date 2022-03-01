@@ -24,6 +24,7 @@ void se2_clear_volatile(void);  // not fast, and very visible on bus
 // other codes reserved for mpy, plus "tc_arg" field
 
 // these flags are masked-out from mpy so even it can't tell they happened
+// - not not deltamode, since mpy need to know
 #define TC_HIDDEN_MASK      0xf800
 
 typedef struct __PACKED {

@@ -239,7 +239,7 @@ get_is_trick(const pinAttempt_t *args, trick_slot_t *slot)
     memset(slot, 0, sizeof(trick_slot_t));
 
     if(args->delay_required & TC_DELTA_MODE) {
-        // in delta mode, we are using the cached_main_pin for real PIN (hashed)
+        // in delta mode, we are using the cached_main_pin for real PIN (hash)
         // so we cannot restore details
         slot->tc_flags = args->delay_required;
         slot->tc_arg = 0;           // unknown
@@ -291,10 +291,16 @@ set_is_trick(pinAttempt_t *args, const trick_slot_t *slot)
     // Hints for other mpy firmware to implement more trick features
     // impt detail: 
     // - duress wallet case, and many others will still read as zero here.
-    // - mpy does need to know about TC_DELTA_MODE case, but not direction & amount
-    uint16_t masked = (slot->tc_flags & ~TC_HIDDEN_MASK);
-    args->delay_required = masked;
-    args->delay_achieved = (slot->tc_flags & TC_DELTA_MODE) ? 0 : slot->tc_arg;
+    // - mpy *does* need to know about TC_DELTA_MODE case, but not PIN digit-details
+    args->delay_required = (slot->tc_flags & ~TC_HIDDEN_MASK);
+
+    if(slot->tc_flags & TC_DELTA_MODE) {
+        args->delay_achieved = 0;
+
+        return;
+    }
+
+    args->delay_achieved = slot->tc_arg;
 
     // save more detail into cache area, for our use only
     uint8_t     key[32];
@@ -802,7 +808,7 @@ real_login:
     // indicate what features already enabled/non-blank
     //      args->state_flags |= (PA_HAS_DURESS | PA_HAS_BRICKME);
     // - mk3 and earlier set these flags, but that's obsolete now
-    // - mk4 requires knowledge of the specific trick PIN to know what it does
+    // - mk4 requires knowledge of the specific trick PIN flags/args (censored lightly)
     if(!deltamode) {
         set_is_trick(args, NULL);
     }
