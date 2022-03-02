@@ -212,7 +212,7 @@ _flush_rx(void)
         }
     }
 
-    // We actualy need this delay here!
+    // We actually need this delay here!
     __NOP();
     __NOP();
     __NOP();
@@ -393,8 +393,6 @@ ae_setup(void)
     
     // mark it as ready
     ae_chip_is_setup = AE_CHIP_IS_SETUP;
-
-    rng_delay();
 }
 
 // ae_probe()
@@ -436,7 +434,6 @@ ae_keep_alive(void)
 
     // no need to wake: next transaction will do that 
 	//ae_wake();
-    rng_delay();
 }
 
 // Originally from Libraries/ecc108_library/ecc108_helper.c
@@ -751,8 +748,6 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
 	// so no choice in args to OP.Nonce here (due to ReqRandom).
 	ae_send_n(OP_Nonce, 0, 0, num_in, 20);
 
-    rng_delay();
-
 	// Nonce command returns the RNG result, but not contents of TempKey
 	uint8_t randout[32];
 	int rv = ae_read_n(32, randout);
@@ -773,8 +768,6 @@ ae_pick_nonce(const uint8_t num_in[20], uint8_t tempkey[32])
     sha256_update(&ctx, fixed, 3);
 
     sha256_final(&ctx, tempkey);
-
-    rng_delay();
 
 	return 0;
 }
