@@ -80,7 +80,7 @@ def bip85_derive(picked, index):
 
 async def drv_entro_step2(_1, picked, _2):
     from glob import dis
-    from files import CardSlot, CardMissingError
+    from files import CardSlot, CardMissingError, needs_microsd
 
     the_ux.pop()
 
