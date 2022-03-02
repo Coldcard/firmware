@@ -699,8 +699,34 @@ def settings_remove(sim_exec):
 
     return doit
 
-@pytest.fixture(scope='session')
-def repl(dev=None):
+@pytest.fixture(scope='module')
+def repl(request, is_mark4):
+    return request.getfixturevalue('mk4_repl' if is_mark4 else 'old_mk_repl')
+    
+
+@pytest.fixture(scope='module')
+def mk4_repl(sim_eval, sim_exec):
+    # Provide an interactive connection to the REPL, using the debug build USB commands
+
+    class Mk4USBRepl:
+        def eval(self, cmd, max_time=3):
+            # send a command, wait for it to finish
+            print("eval: %r" % cmd)
+            resp = sim_eval(cmd)
+            if 'Traceback' in resp:
+                raise RuntimeError(resp)
+            return eval(resp)
+
+        def exec(self, cmd, proc_time=1):
+            # send a (one line) command and read the one-line response
+            print("exec: %r" % cmd)
+
+            return sim_exec(cmd)
+
+    return Mk4USBRepl()
+
+@pytest.fixture(scope='module')
+def old_mk_repl(dev=None):
     # Provide an interactive connection to the REPL. Has to be real device, with
     # dev features enabled. Best really with unit in factory mode.
     import sys, serial
@@ -709,6 +735,7 @@ def repl(dev=None):
     # NOTE: 
     # - tested only on Mac, but might work elsewhere.
     # - board needs to be reset between runs, because USB protocol (not serial) is disabled by this
+    # - relies on virtual COM port present on Mk1-3 but not mk4
 
     class USBRepl:
         def __init__(self):
