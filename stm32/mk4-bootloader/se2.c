@@ -1242,6 +1242,14 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
     aes_done(&ctx, secret, secret_len, aes_key, nonce);
 }
 
+// Key-stretching iteration count. Targeting 1s to rate-limit pin attempts
+// 150 =>  881ms
+// 170 =>  999.2ms
+// 175 => 1028ms
+// 180 => 1058ms
+// 200 => 1175ms
+#define SE2_STRETCH_ITER        170
+
 // se2_pin_hash()
 //
 // Hash up a PIN code for login attempt: to tie it into SE2's contents.
@@ -1249,16 +1257,23 @@ se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
     void
 se2_pin_hash(uint8_t digest_io[32], uint32_t purpose)
 {
-    se2_setup();
+    if(purpose != PIN_PURPOSE_NORMAL) {
+        // do nothing except for real PIN case (ie. not for prefix words)
+        return;
+    }
 
+    se2_setup();
     if((setjmp(error_env))) {
         oled_show(screen_se2_issue);
 
         LOCKUP_FOREVER();
     }
 
+    uint8_t     rx[34];     // 2 bytes of len+status, then 32 bytes of data
     uint8_t     tmp[32];
-    HMAC_CTX ctx;
+    HMAC_CTX    ctx;
+
+//sdcard_light(true);
 
     // HMAC(key=tpin_key, msg=given hash so far)
     hmac_sha256_init(&ctx);
@@ -1269,25 +1284,38 @@ se2_pin_hash(uint8_t digest_io[32], uint32_t purpose)
     // NOTE: exposed as cleartext here
     se2_write_buffer(tmp, 32);
 
-    // HMAC(key=secret-B (we dont know it, but set random), msg=pubkeyA+buffer+junk)
-    // - result put in secret-S (ram)
-    CALL_CHECK(se2_write2(0x3c, (2<<6) | (1<<4) | PGN_SECRET_B, 0));
-    CHECK_RIGHT(se2_read1() == RC_SUCCESS);
+    for(int i=0; i<SE2_STRETCH_ITER; i++) {
+        if(i) {
+            se2_write_buffer(rx+2, 32);
+        }
 
-    // .. HMAC(key=S, msg=counter), so we have something to read out
-    se2_write_buffer(tmp, 32);
-    CALL_CHECK(se2_write1(0xa5, (2<<5) | PGN_DEC_COUNTER));
+        // HMAC(key=secret-B (we dont know it, but set random), msg=secret-B+buffer+junk)
+        // - result put in secret-S (ram)
+        CALL_CHECK(se2_write2(0x3c, (2<<6) | (1<<4) | PGN_SECRET_B, 0));
+        CHECK_RIGHT(se2_read1() == RC_SUCCESS);
 
-    uint8_t rx[34];
-    CHECK_RIGHT(se2_read_n(sizeof(rx), rx) == RC_SUCCESS);
+        // HMAC(key=S, msg=counter+junk), so we have something to read out
+        // - not clear what contents of 'buffer' are here, but seems to be deterministic
+        //   and probably unchanged from prev command
+        CALL_CHECK(se2_write1(0xa5, (2<<5) | PGN_DEC_COUNTER));
 
-    CHECK_RIGHT(rx[1] == RC_SUCCESS);
+        CHECK_RIGHT(se2_read_n(sizeof(rx), rx) == RC_SUCCESS);
+        CHECK_RIGHT(rx[1] == RC_SUCCESS);
+    }
 
-    memcpy(digest_io, rx+2, 32);
+    // one final HMAC because we had to read cleartext from bus
+    hmac_sha256_init(&ctx);
+    hmac_sha256_update(&ctx, rx+2, 32);
+    hmac_sha256_update(&ctx, digest_io, 32);
+    hmac_sha256_final(&ctx, SE2_SECRETS->tpin_key, digest_io);
+#if 0
+sdcard_light(false);
 
-    // 12-12 => 606ad30d10c4683b7478aa6ffd09c644e7de6091d2cdcfb58bb698c7cfa90934
-    //puts2("md: ");
-    //hex_dump(digest_io, 32);
+    puts2("md: ");
+    hex_dump(digest_io, 32);
+
+    memset(digest_io, 0x1, 32);
+#endif
 }
 
 // EOF
