@@ -8,7 +8,7 @@ from glob import dis
 from display import FontLarge
 from ux import ux_wait_keyup, ux_clear_keys, ux_poll_key
 from ux import ux_show_story
-from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
+from callgate import get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
 import version
 from glob import settings
