@@ -1,10 +1,13 @@
 # items imported here may be useful to EVAL and EXEC commands, which test cases depend on.
-import uio, sys, version, nvstore, glob
+import uio, sys, version, nvstore, glob, callgate
 try:
     from sflash import SF
 except: pass
 try:
     import sim_display
+except: pass
+try:
+    from pincodes import pa
 except: pass
 
 from glob import *
