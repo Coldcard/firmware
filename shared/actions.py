@@ -651,12 +651,17 @@ async def view_seed_words(*a):
     if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP-39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
         return
 
+    from glob import dis
+    dis.fullscreen("Wait...")
+    dis.busy_bar(True)
+
     with stash.SensitiveValues() as sv:
         if sv.deltamode:
             # give up and wipe self rather than show true seed values.
             import callgate
             callgate.fast_wipe()
 
+        dis.busy_bar(False)
         msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
 
         if version.has_fatram:
@@ -743,13 +748,14 @@ async def start_login_sequence():
     from glob import dis
     import callgate
 
-    try:
+    if version.mk_num < 4:
         # Block very obsolete versions.
-        MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
-        now = callgate.get_highwater()
-        if now < MIN_WATERMARK:
-            callgate.set_highwater(MIN_WATERMARK)
-    except: pass
+        try:
+            MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
+            now = callgate.get_highwater()
+            if now < MIN_WATERMARK:
+                callgate.set_highwater(MIN_WATERMARK)
+        except: pass
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
