@@ -58,8 +58,10 @@ def init0():
         except: pass
 
 async def dev_enable_repl(*a):
-    # Enable serial port connection. You'll have to break case open.
+    # Mk4: Enable serial port connection. You'll have to break case open.
     from ux import ux_show_story
+
+    wipe_if_deltamode()
 
     # allow REPL access
     ckcc.vcp_enabled(True)
@@ -67,5 +69,18 @@ async def dev_enable_repl(*a):
     print("REPL enabled.")
     await ux_show_story("""\
 The serial port has now been enabled.\n\n3.3v TTL on Tx/Rx/Gnd pads @ 115,200 bps.""")
+
+def wipe_if_deltamode():
+    # If in deltamode, give up and wipe self rather do
+    # a thing that might reveal true master secret...
+
+    from pincodes import pa
+    import callgate
+
+    if not pa.is_deltamode():
+        return
+
+    import callgate
+    callgate.fast_wipe()
 
 # EOF
