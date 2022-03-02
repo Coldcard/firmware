@@ -119,6 +119,11 @@ Mk4:
 
     flash erase_address 0x0801e000 0x2000
 
+## Bootloader upgrade 3.0.? to 3.1.?
+
+- clear main PIN before install, or else you won't be able to get back in!
+
+
 ## Re-do Bag Number
 
 - cannot writes ones, and then change flash cells; have to remain unprogrammed
@@ -138,4 +143,5 @@ Mk4:
     flash erase_address 0x801c000 0x2000
     flash write_image mk4-bootloader/p1.bin 0x0801c000
     flash write_image mk4-bootloader/p2.bin 0x0801c070
+
 
