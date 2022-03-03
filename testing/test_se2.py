@@ -76,7 +76,7 @@ def se2_gate(sim_exec):
         assert b'Traceback' not in buf, buf
         assert len(buf) == 128
 
-        cmd = 'from pincodes import pa; import struct; '\
+        cmd = 'import struct; '\
             f'rc,b = pa.trick_request({method_num}, {buf!r}); RV.write(struct.pack("I", rc) + b)'
         #print(cmd)
         rv = sim_exec(cmd, binary=1)
@@ -163,11 +163,33 @@ def test_blank_slots(se2_gate):
             assert rc == 0
             assert got.slot_num == got.tc_flags == i
 
-def test_ux_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress):
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Login Settings')
-    pick_menu_item('Trick PINs')
+@pytest.fixture
+def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
+    def doit():
+        menu = cap_menu()
+        if menu[0] in {'Trick PINs:', 'Add New Trick'}:
+            return
+        if 'New Wallet' in menu:
+            raise pytest.skip("need seed set first for these tests")
+
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Login Settings')
+        pick_menu_item('Trick PINs')
+
+    return doit
+
+@pytest.fixture
+def clear_all_tricks(goto_trick_menu, pick_menu_item, need_keypress):
+    def doit():
+        goto_trick_menu()
+        pick_menu_item('Delete All')
+        time.sleep(.1)
+        need_keypress('y')
+    return doit
+
+def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress):
+    goto_trick_menu()
 
     for step in range(2):
         menu = cap_menu()
@@ -200,15 +222,10 @@ def test_ux_trick_menus(goto_home, pick_menu_item, cap_menu, need_keypress):
 
 
 @pytest.fixture(scope='function')
-def new_trick_pin(goto_home, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin, se2_gate, is_simulator):
+def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin, se2_gate, is_simulator):
     # using menus and UX, setup a new trick PIN
     def doit(new_pin, op_mode, expect=None):
-        m = goto_home()
-        if 'New Wallet' in m:
-            raise pytest.skip("need seed set first for these tests")
-        pick_menu_item('Settings')
-        pick_menu_item('Login Settings')
-        pick_menu_item('Trick PINs')
+        goto_trick_menu()
 
         m = cap_menu()
         if f'↳{new_pin}' in m:
@@ -288,7 +305,9 @@ def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
         if sl.pin_len:
             assert sl.pin[0:sl.pin_len].decode('ascii') == new_pin      # simulator only
         assert sl.tc_flags == xflags
-        assert sl.tc_arg == xargs
+
+        if xargs is not None:
+            assert sl.tc_arg == xargs
 
     return doit
 
@@ -396,15 +415,15 @@ def test_deltamode_validate(true_pin, fake_pin, is_prob, expect_arg, sim_exec):
     if is_prob: return
 
     # try it out, low-level
-    pin_b4 = sim_exec('from pincodes import pa; RV.write(pa.pin)')
+    pin_b4 = sim_exec('RV.write(pa.pin)')
     assert isinstance(pin_b4, str) and 'b' not in pin_b4
 
     try:
         if pin_b4 != true_pin:
             # change main pin
-            rv = sim_exec(f'from pincodes import pa; RV.write(repr(pa.change(new_pin=b{true_pin!r})))')
+            rv = sim_exec(f'RV.write(repr(pa.change(new_pin=b{true_pin!r})))')
             assert rv == 'None'
-            rv = sim_exec(f'from pincodes import pa; pa.setup(b{true_pin!r}); RV.write(repr(pa.login()))')
+            rv = sim_exec(f'pa.setup(b{true_pin!r}); RV.write(repr(pa.login()))')
             assert rv == 'True'
 
         # save a slot w/ new delta-mode trick
@@ -413,22 +432,22 @@ def test_deltamode_validate(true_pin, fake_pin, is_prob, expect_arg, sim_exec):
         slot_num = eval(sim_exec(cmd))
         
         # try it out
-        ok = eval(sim_exec(f'from pincodes import pa; pa.setup(b{fake_pin!r}); RV.write(repr(pa.login()))'))
+        ok = eval(sim_exec(f'pa.setup(b{fake_pin!r}); RV.write(repr(pa.login()))'))
         assert ok, f'failed to login using: {fake_pin}'
 
-        fl, ar = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.get_tc_values()))'))
+        fl, ar = eval(sim_exec('RV.write(repr(pa.get_tc_values()))'))
         assert fl & TC_DELTA_MODE
         assert ar == 0      # gets blanked by bootrom
 
-        is_d = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.is_deltamode()))'))
+        is_d = eval(sim_exec('RV.write(repr(pa.is_deltamode()))'))
         assert is_d == True
 
         # restore: login to real 
-        cmd = f'from pincodes import pa; pa.setup(b{true_pin!r}); RV.write(repr(pa.login()))'
+        cmd = f'pa.setup(b{true_pin!r}); RV.write(repr(pa.login()))'
         ok = eval(sim_exec(cmd))
         assert ok, 'couldnt get back to real login from delta'
 
-        is_d = eval(sim_exec('from pincodes import pa; RV.write(repr(pa.is_deltamode()))'))
+        is_d = eval(sim_exec('RV.write(repr(pa.is_deltamode()))'))
         assert is_d == False
 
         # delete slot
@@ -437,15 +456,103 @@ def test_deltamode_validate(true_pin, fake_pin, is_prob, expect_arg, sim_exec):
 
         # restore main pin
         if pin_b4 != true_pin:
-            rv = sim_exec(f'from pincodes import pa; RV.write(repr(pa.change(new_pin=b{pin_b4!r})))')
+            rv = sim_exec(f'RV.write(repr(pa.change(new_pin=b{pin_b4!r})))')
             assert rv == 'None'
-            rv = sim_exec(f'from pincodes import pa; pa.setup(b{pin_b4!r}); RV.write(repr(pa.login()))')
+            rv = sim_exec(f'pa.setup(b{pin_b4!r}); RV.write(repr(pa.login()))')
             assert rv == 'True'
 
     except:
         # fix damage? hard to do
         print("REMINDER: Restart simulator to reset state!?")
         raise
+
+from test_change_pins import change_pin, goto_pin_options, my_enter_pin
+
+@pytest.fixture(scope='function')
+def force_main_pin(change_pin, goto_pin_options, pick_menu_item, repl):
+    # make main-pin match needs
+    def doit(want_pin, expect_fail=None):
+        pin_b4 = repl.eval('pa.pin').decode('ascii') 
+        if pin_b4 == want_pin:
+            assert not expect_fail
+            return
+        goto_pin_options()
+        pick_menu_item('Change Main PIN')
+        change_pin(pin_b4, want_pin, "Main PIN", expect_fail=expect_fail)
+        if not expect_fail:
+            assert repl.eval('pa.pin').decode('ascii') == want_pin
+        return pin_b4
+
+    yield doit
+
+    doit('12-12')
+
+@pytest.mark.parametrize('true_pin, fake_pin, is_prob, expect_arg', [
+    ( '12-12', '23-23', False, 0x1212), 
+    ( '99-99', '23-23', False, 0x9999), 
+    ( '123-123', '44-44', True, 0), 
+    ( '123-123', '444-444', True, 0), 
+    ( '123-123', '443-123', True, 0), 
+    ( '443-123', '444-444', False, 0x3123), 
+    ( '123-121', '123-124', False, 0xfff1), 
+    ( '123-122', '123-144', False, 0xff22), 
+    ( '123-123', '123-444', False, 0xf123), 
+    ( '123-124', '124-444', False, 0x312f), 
+])
+def test_ux_deltamode_wrong(true_pin, fake_pin, is_prob, expect_arg, repl,
+        force_main_pin,
+        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
+
+    force_main_pin(true_pin)
+
+    new_trick_pin(fake_pin, 'Delta Mode', 'somewhat riskier mode')
+
+    if is_prob:
+        _, story = cap_story()
+        assert 'must be' in story
+        need_keypress('x')
+
+    else:
+        new_pin_confirmed(fake_pin, 'Delta Mode', TC_DELTA_MODE, expect_arg)
+
+        pick_menu_item('Delete All')
+        time.sleep(.1)
+        need_keypress('y')
+
+@pytest.mark.parametrize('true_pin', ['12-12', '123456-123456'])
+def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
+        clear_all_tricks, new_trick_pin, new_pin_confirmed, pick_menu_item, need_keypress):
+
+    # main vs. tricks
+    force_main_pin(true_pin)
+
+    clear_all_tricks()
+
+    # make some delta pins
+    pl = len(true_pin)
+    if pl  == 5:
+        dmodes = ['23-23', '23-24', '44-44']
+    else:
+        dmodes = [true_pin[:-4]+'9999', true_pin[:-4]+'0000']
+
+    for dp in dmodes:
+        #dp = dp.encode('ascii')
+        new_trick_pin(dp, 'Delta Mode', 'somewhat riskier mode')
+        new_pin_confirmed(dp, 'Delta Mode', TC_DELTA_MODE, None)
+
+    for dp in dmodes:
+        force_main_pin(dp, expect_fail='already in use')
+
+    if pl == 5:
+        cases = ['5' + true_pin, '77777-77777']
+    else:
+        cases = ['7' + true_pin[1:], '000000-000000' ]
+
+    for case in cases:
+        force_main_pin(case, expect_fail='makes problems with a Delta Mode')
+
+    clear_all_tricks()
+
 
 # TODO
 # - duress wallet math is right, bip85 and legacy

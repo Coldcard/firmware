@@ -251,6 +251,32 @@ class TrickPinMgmt:
         else:
             return 0
 
+    def get_deltamode_pins(self):
+        # iterate over all delta-mode PIN's defined.
+        for k, (sn,flags,args) in self.tp.items():
+            if flags & TC_DELTA_MODE:
+                yield k
+
+    def check_new_main_pin(self, pin):
+        # user is trying to change main PIN to new value; check for issues
+        # - dups bad but also: delta mode pin might not work w/ longer main true pin
+        # - return error msg, or None
+        assert isinstance(pin, str)
+        if pin in self.tp:
+            return 'That PIN is already in use as a Trick PIN.'
+
+        for d_pin in self.get_deltamode_pins():
+            prob, _ = validate_delta_pin(pin, d_pin)
+            if prob:
+                return 'That PIN value makes problems with a Delta Mode Trick PIN.'
+
+    def main_pin_has_changed(self, new_main_pin):
+        # update any delta-mode entries we have
+        for d_pin in self.get_deltamode_pins():
+            prob, arg = validate_delta_pin(new_main_pin, d_pin)
+            assert not prob             # see check_new_main_pin() above
+            self.update_slot(d_pin.encode(), tc_arg=arg)
+
 tp = TrickPinMgmt()
 
 class TrickPinMenu(MenuSystem):

@@ -67,7 +67,7 @@ def goto_pin_options(pick_menu_item, goto_home):
     return doit
 
 @pytest.fixture
-def enter_pin(cap_screen, need_keypress):
+def my_enter_pin(cap_screen, need_keypress):
     def doit(pin):
         time.sleep(.01)      # required?
         scr = cap_screen().split('\n')
@@ -102,8 +102,8 @@ def enter_pin(cap_screen, need_keypress):
     return doit
 
 @pytest.fixture
-def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
-    def doit(old_pin, new_pin, hdr_text):
+def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
+    def doit(old_pin, new_pin, hdr_text, expect_fail=None):
         # use standard menus and UX to change a PIN 
         title, story = cap_story()
         assert title == hdr_text
@@ -116,19 +116,26 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
 
         # give old pin, if there was one
         if old_pin != None:
-            title, words = enter_pin(old_pin)
+            title, words = my_enter_pin(old_pin)
             assert title == 'Old '+hdr_text
 
-        title, words2 = enter_pin(new_pin)
+        title, words2 = my_enter_pin(new_pin)
         if old_pin == None and title == 'Old '+hdr_text:
             raise ValueError("PIN was set, but we though it wouldnt be")
         assert title == 'New '+hdr_text
 
         # confirm, if not clearing the PIN
         if new_pin != CLR_PIN:
-            title, words3 = enter_pin(new_pin)
+            title, words3 = my_enter_pin(new_pin)
             assert title == 'New '+hdr_text
             assert words2 == words3
+
+        if expect_fail:
+            title, story = cap_story()
+            assert title == 'Try Again'
+            assert expect_fail in story
+            need_keypress('x')
+            return
 
         # saving/verifying can take tens of seconds.
         time.sleep(3) 

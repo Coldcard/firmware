@@ -1544,7 +1544,7 @@ async def pin_changer(_1, _2, item):
     # Help them to change pins with appropriate warnings.
     # - forcing them to drill-down to get warning about secondary is on purpose
     # - the bootloader maybe lying to us about weather we are main vs. duress
-    # - there is a duress wallet for both main/sec pins, and you need to know main pin for that
+    # - there is a duress wallet for both main/sec pins, and you need to know main pin for that(mk3)
     # - what may look like just policy here, is in fact enforced by the bootrom code
     #
     from glob import dis
@@ -1552,6 +1552,8 @@ async def pin_changer(_1, _2, item):
     from pincodes import BootloaderError, EPIN_OLD_AUTH_FAIL
 
     mode = item.arg
+
+    # NOTE: for mk4, only "main" is applicable.
 
     warn = {'main': ('Main PIN',
                     'You will be changing the main PIN used to unlock your Coldcard. '
@@ -1676,6 +1678,13 @@ We strongly recommend all PIN codes used be unique between each other.
                                 title="Try Again")
             continue
 
+        if version.mk_num >= 4:
+            from trick_pins import tp
+            prob = tp.check_new_main_pin(pin)
+            if prob:
+                await ux_show_story(prob, title="Try Again")
+                continue
+
         break
 
     # install it.
@@ -1710,6 +1719,11 @@ We strongly recommend all PIN codes used be unique between each other.
             # typical: do need login, but if we just cleared the main PIN,
             # we cannot/need not login again
             pa.login()
+
+        if version.mk_num >= 4:
+            # Deltamode trick pins need to track main pin
+            from trick_pins import tp
+            tp.main_pin_has_changed(pa.pin.decode())
 
         if mode == 'duress':
             # program the duress secret now... it's derived from real wallet contents
@@ -1757,7 +1771,7 @@ async def show_version(*a):
         serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
 
     hw = version.hw_label
-    if not version.has_nfc:
+    if not version.has_nfc and version.mk_num >= 4:
         hw += ' (no NFC)'
 
     msg = '''\

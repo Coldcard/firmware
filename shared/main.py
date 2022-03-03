@@ -118,7 +118,7 @@ async def mainline():
     goto_top_menu()
 
     gc.collect()
-    print("Free mem: %d" % gc.mem_free())
+    #print("Free mem: %d" % gc.mem_free())      # 532656 on mk4!
 
     while 1:
         await the_ux.interact()

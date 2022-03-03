@@ -721,7 +721,8 @@ def mk4_repl(sim_eval, sim_exec):
             # send a (one line) command and read the one-line response
             print("exec: %r" % cmd)
 
-            return sim_exec(cmd)
+            resp = sim_exec(cmd)
+            return eval(resp) if resp else None
 
     return Mk4USBRepl()
 
