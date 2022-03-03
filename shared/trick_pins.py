@@ -257,10 +257,13 @@ class TrickPinMenu(MenuSystem):
 
     def __init__(self):
         from pincodes import pa
-        self.current_pin = pa.pin.decode()
         self.WillWipeMenu = None
-
         super().__init__(self.construct(avail=(not pa.tmp_value)))
+
+    @property
+    def current_pin(self):
+        from pincodes import pa
+        return pa.pin.decode()
 
     def construct(self, avail=True):
         # Dynamic menu with PIN codes as the items, plus a few static choices
