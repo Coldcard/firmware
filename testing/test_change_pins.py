@@ -62,7 +62,7 @@ def goto_pin_options(pick_menu_item, goto_home):
     def doit():
         goto_home()
         pick_menu_item('Settings')
-        pick_menu_item('PIN Options')
+        pick_menu_item('Login Settings')
 
     return doit
 
@@ -133,9 +133,9 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, enter_pin):
         # saving/verifying can take tens of seconds.
         time.sleep(3) 
         for retries in range(10):
-            if 'Login Now' in cap_menu():
+            if 'Test Login Now' in cap_menu():
                 break
-            time.sleep(2)
+            time.sleep(1)
         else:
             raise pytest.fail("Menu didn't come back")
 
@@ -164,7 +164,7 @@ def test_main_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_
     verify_pin_set(DEF_PIN)
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_duress_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, get_duress_secret, under_duress):
+def test_duress_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, get_duress_secret, under_duress, only_mk3):
     goto_pin_options()
 
 
@@ -196,7 +196,7 @@ def test_duress_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, nee
     assert zz == b'\0'*72
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login):
+def test_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login, only_mk3):
 
     if get_secondary_login():
         raise pytest.skip('not intended for use under secondary login')
@@ -221,7 +221,8 @@ def test_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, ca
     verify_pin_set('', secondary=1)
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_secondary_from_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login):
+def test_secondary_from_secondary_pin(is_mark3, goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login, only_mk3):
+    # XXX Obsolete now?
 
     # when logged into secondary wallet, you can't clear PIN, and we use a 23-23 as value
     if not get_secondary_login():
@@ -242,7 +243,7 @@ def test_secondary_from_secondary_pin(is_mark3, goto_pin_options, pick_menu_item
     verify_pin_set(ASSUME_PIN)
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_brickme_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login, under_duress):
+def test_brickme_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress, change_pin, new_pin, verify_pin_set, get_secondary_login, under_duress, only_mk3):
 
     goto_pin_options()
 
