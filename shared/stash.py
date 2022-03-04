@@ -104,6 +104,9 @@ class SecretStash:
 
             return 'words', seed_bits, hd
 
+        elif marker == 0x00:
+            # probably all zeros, which we don't normally store, and represents "no secret"
+            raise ValueError('actually zero secret')
         else:
             # variable-length master secret for BIP-32
             vlen = secret[0]
