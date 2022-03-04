@@ -2,13 +2,13 @@
 #
 # Mk4 SE2 (second secure element) test cases and fixtures.
 #
-# - use 'simulator.py --eff' for these?
+# - use 'simulator.py --eff' for these
 #
 import pytest, struct, time
 from helpers import B2A
 from binascii import b2a_hex, a2b_hex
 from collections import namedtuple
-
+from mnemonic import Mnemonic
 
 # see from mk4-bootloader/se2.h and/or shared/trick_pins.py
 const = lambda x: x
@@ -363,6 +363,7 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,
     ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
+        reset_seed_words, repl,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
@@ -389,6 +390,55 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         op_mode += ' (after wiping secret)'
 
     new_pin_confirmed(new_pin, op_mode, xflags, xargs)
+
+    if with_wipe or (TC_BLANK_WALLET & xflags):
+        return
+
+    # check saved wallet data is right
+    # - duress wallet math is right, bip85 and legacy
+    # - test apply wallet feature
+    pick_menu_item(f'↳{new_pin}')
+    m = cap_menu()
+    assert 'Activate Wallet' in m
+    pick_menu_item('↳Duress Wallet')
+    _, story = cap_story()
+    assert ('BIP-85 derived' in story) or ('The legacy' in story)
+    assert (f'#{xargs}' in story) or ('XPRV-based' in story)
+    assert 'Press 6 to view associated' in story
+    need_keypress('6')
+    time.sleep(.1)
+    _, story = cap_story()
+
+    from pycoin.key.BIP32Node import BIP32Node
+
+    if story[1:4] == 'prv':
+        assert TC_XPRV_WALLET & xflags
+        wallet = BIP32Node.from_wallet_key(story)
+    else:
+        ln = story.split('\n')
+        assert ln[0] == 'Seed words (24):'
+        words = [i[4:] for i in ln[1:25]]
+        seed = Mnemonic.to_seed(' '.join(words), passphrase='')
+        wallet = BIP32Node.from_master_secret(seed, netcode='XTN')      # dev might be BTC
+
+    need_keypress('x')
+    time.sleep(.1)
+
+    pick_menu_item('Activate Wallet')
+    time.sleep(.1)
+    _, story = cap_story()
+    assert 'This will temporarily load' in story
+
+    need_keypress('y')
+    time.sleep(.1)
+    _, story = cap_story()
+    assert 'New master key in effect' in story
+
+    xp = repl.eval("settings.get('xpub')")
+    assert xp == wallet.hwif(as_private=False)
+
+    # re-login to recover normal seed
+    repl.exec('pa.setup(pa.pin); pa.login()')
 
 
 @pytest.mark.parametrize('true_pin, fake_pin, is_prob, expect_arg', [
@@ -480,7 +530,10 @@ def force_main_pin(change_pin, goto_pin_options, pick_menu_item, repl):
         pick_menu_item('Change Main PIN')
         change_pin(pin_b4, want_pin, "Main PIN", expect_fail=expect_fail)
         if not expect_fail:
-            assert repl.eval('pa.pin').decode('ascii') == want_pin
+            got = repl.eval('pa.pin')
+            if isinstance(got, list):
+                got = repl.eval('pa.pin')       # real-dev bugfix/workaround
+            assert got.decode('ascii') == want_pin
         return pin_b4
 
     yield doit
@@ -555,14 +608,10 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
 
 
 # TODO
-# - duress wallet math is right, bip85 and legacy
-# - test apply wallet feature
 # - make trick and do login, check arrives right state?
 # - out of slots
 # - out of slots iff using wallet feature
 # - wrong PIN cases
 # - countdown menu, implementation
-# Delta pin
-# - add / change enforce limitations in UI
 
 # EOF

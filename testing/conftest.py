@@ -68,6 +68,7 @@ def sim_exec(dev):
     def doit(cmd, binary=False):
         s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
         if binary: return s
+        print(f'sim_exec: {cmd!r} -> {s!r}')
         return s.decode('utf-8') if not isinstance(s, str) else s
 
     return doit
@@ -312,6 +313,7 @@ def cap_menu(sim_exec):
 @pytest.fixture(scope='module')
 def cap_screen(sim_exec):
     def doit():
+        # capture text shown; 4 lines or so?
         return sim_exec('RV.write(sim_display.full_contents)')
 
     return doit
@@ -711,17 +713,16 @@ def mk4_repl(sim_eval, sim_exec):
     class Mk4USBRepl:
         def eval(self, cmd, max_time=3):
             # send a command, wait for it to finish
-            print("eval: %r" % cmd)
             resp = sim_eval(cmd)
+            print(f"eval: {cmd} => {resp}")
             if 'Traceback' in resp:
                 raise RuntimeError(resp)
             return eval(resp)
 
         def exec(self, cmd, proc_time=1):
             # send a (one line) command and read the one-line response
-            print("exec: %r" % cmd)
-
             resp = sim_exec(cmd)
+            print(f"exec: {cmd} => {resp}")
             return eval(resp) if resp else None
 
     return Mk4USBRepl()

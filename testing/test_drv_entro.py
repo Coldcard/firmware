@@ -189,7 +189,7 @@ HISTORY = set()
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
 def test_path_index(mode, pattern, index,
-        set_encoded_secret, dev, cap_menu, pick_menu_item,
+        dev, cap_menu, pick_menu_item,
         goto_home, cap_story, need_keypress, cap_screen_qr, qr_quality_check
 ):
     # Uses any key on Simulator; just checking for operation + entropy level

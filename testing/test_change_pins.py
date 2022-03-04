@@ -138,10 +138,14 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
             return
 
         # saving/verifying can take tens of seconds.
-        time.sleep(3) 
+        time.sleep(5) 
         for retries in range(10):
-            if 'Test Login Now' in cap_menu():
-                break
+            try:
+                if 'Test Login Now' in cap_menu():
+                    break
+            except:
+                # USB not ready when busy in bootloader code
+                pass
             time.sleep(1)
         else:
             raise pytest.fail("Menu didn't come back")
