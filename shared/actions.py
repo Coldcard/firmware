@@ -110,7 +110,7 @@ Extended Master Key:
         # can't support on mk2
         xpub = None
     if xpub:
-        msg += '\nPress 3 to show QR code for xpub.'
+        msg += '\nPress 3 to show QR code of xpub.'
 
     ch = await ux_show_story(msg, escape=('3' if xpub else None))
 
