@@ -817,7 +817,7 @@ real_login:
 
 // keynum_for_secret()
 //
-// Mk4 support additional secret storage: spares. Map to key number, or -1 if range error
+// Mk4 supports additional secret storage: spares. Map to key number, or -1 if range error
 //
     static int
 keynum_for_secret(const pinAttempt_t *args)
@@ -963,7 +963,7 @@ pin_change(pinAttempt_t *args)
     if(cf & CHANGE_SECRET) {
         // encrypt new secret... not simple!
         uint8_t     tmp[AE_SECRET_LEN];
-        uint8_t     check[AE_SECRET_LEN];
+        uint8_t     check[32];
 
         // what slot (key number) are updating? (probably: KEYNUM_secret)
         int         target_slot = keynum_for_secret(args);
@@ -1079,9 +1079,16 @@ pin_fetch_secret(pinAttempt_t *args)
 
         if(!(args->state_flags & PA_ZERO_SECRET)) {
             // we didn't know yet that we are blank, update that
+        mark_zero:
             args->state_flags |= PA_ZERO_SECRET;
 
             _sign_attempt(args);
+        }
+    } else {
+        // even if valid, stored all-zeros are not expected at higher
+        // levels, and it needs flag to be set correctly.
+        if(!args->secret[0] && check_all_zeros(args->secret, AE_SECRET_LEN)) {
+            goto mark_zero;
         }
     }
 
