@@ -712,7 +712,7 @@ normal operation.''')
 You probably created this on an older Mk2 or Mk3 Coldcard. \
 Wallet is XPRV-based and derived from a fixed path.''' % pin
         else:
-            msg = '''BIP85-derived wallet (24 words), with index #%d, is provided if '%s'.''' \
+            msg = '''BIP-85 derived wallet (24 words), with index #%d, is provided if '%s'.''' \
                         % (arg, pin)
 
         ch = await ux_show_story(msg + '\n\nPress 6 to view associated secrets.', escape='6')
