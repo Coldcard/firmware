@@ -379,7 +379,7 @@ class PinAttempt:
         if duress_pin is None:
             secret = self.roundtrip(4, spare_num=spare_num)
         else:
-            # obsolete: mk3 and earlier
+            # mk3 and earlier
             secret = self.roundtrip(4, old_pin=duress_pin, get_duress_secret=True)
 
         return secret
