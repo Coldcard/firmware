@@ -719,10 +719,11 @@ def mk4_repl(sim_eval, sim_exec):
                 raise RuntimeError(resp)
             return eval(resp)
 
-        def exec(self, cmd, proc_time=1):
+        def exec(self, cmd, proc_time=1, raw=False):
             # send a (one line) command and read the one-line response
             resp = sim_exec(cmd)
             print(f"exec: {cmd} => {resp}")
+            if raw: return resp
             return eval(resp) if resp else None
 
     return Mk4USBRepl()
