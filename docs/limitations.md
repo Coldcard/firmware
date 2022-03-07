@@ -126,3 +126,13 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 
 - each use of "fast wipe" feature consumes a MCU key slot, of which there are 256.
 
+# Trick Pins (Mk4)
+
+- "deltamode" PIN must be same length as true pin, and differ only in final 4 positions.
+- there are 14 trick "slots" 
+- duress wallets consume 2 slots (or 3 slots for legacy duress wallet)
+- when restoring trick pins from backup files, "forgotten" pins are not restored,
+  and any trick pin which matches the true PIN of the restored system will be dropped
+- deltamode PIN requirements are checked during wallet restore, and the new true PIN
+  is not compatible, the deltamode trick PIN is dropped and not restored
+
