@@ -61,17 +61,26 @@ def render_backup_contents():
         # BTW: everything is really a duplicate of this value
         ADD('raw_secret', b2a_hex(sv.secret).rstrip(b'0'))
 
-        # XXX mk4 a bit different
-        if pa.has_duress_pin():
-            COMMENT('Duress Wallet (informational)')
-            dpk, p = sv.duress_root()
-            COMMENT('path = %s' % p)
-            ADD('duress_xprv', chain.serialize_private(dpk))
-            ADD('duress_xpub', chain.serialize_public(dpk))
-
         if version.has_608:
             # save the so-called long-secret
             ADD('long_secret', b2a_hex(pa.ls_fetch()))
+
+        # Duress wallets (somewhat optional, since derived)
+        if version.mk_num <= 3:
+            if pa.has_duress_pin():
+                COMMENT('Duress Wallet (informational)')
+                dpk, p = sv.duress_root()
+                COMMENT('path = %s' % p)
+                ADD('duress_xprv', chain.serialize_private(dpk))
+                ADD('duress_xpub', chain.serialize_public(dpk))
+        else:
+            from trick_pins import tp
+            for label, path, pairs in tp.backup_duress_wallets(sv):
+                COMMENT()
+                COMMENT(label + ' (informational)')
+                COMMENT(path)
+                for k,v in pairs:
+                    ADD(k, v)
     
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
@@ -98,9 +107,10 @@ def render_backup_contents():
 
     return rv.getvalue()
 
-async def restore_from_dict(vals):
+def restore_from_dict_ll(vals):
     # Restore from a dict of values. Already JSON decoded.
-    # Reboot on success, return string on failure
+    # Need a Reboot on success, return string on failure
+    # - low-level version, factored out for better testing
     from glob import dis
 
     #print("Restoring from: %r" % vals)
@@ -169,6 +179,16 @@ async def restore_from_dict(vals):
 
         if k == 'xfp' or k == 'xpub': continue
 
+        if k == 'tp':
+            # restore trick pins, which may involve many ops
+            if version.mk_num >= 4:
+                from trick_pins import tp
+                try:
+                    tp.restore_backup(vals[k])
+                except Exception as exc:
+                    sys.print_exception(exc)
+            continue
+
         settings.set(k[8:], vals[k])
 
     # write out
@@ -177,6 +197,14 @@ async def restore_from_dict(vals):
     if version.has_fatram and ('hsm_policy' in vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
+
+
+async def restore_from_dict(vals):
+    # Restore from a dict of values. Already JSON decoded (ie. dict object).
+    # Need a Reboot on success, return string on failure
+
+    prob = restore_from_dict_ll(vals)
+    if prob: return prob
 
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '

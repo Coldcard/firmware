@@ -304,8 +304,9 @@ def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
         sl = decode_slot(sl)
         if sl.pin_len:
             assert sl.pin[0:sl.pin_len].decode('ascii') == new_pin      # simulator only
-        assert sl.tc_flags == xflags
 
+        if xflags is not None:
+            assert sl.tc_flags == xflags
         if xargs is not None:
             assert sl.tc_arg == xargs
 
@@ -651,6 +652,67 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
         force_main_pin(case, expect_fail='makes problems with a Delta Mode')
 
     clear_all_tricks()
+
+def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test, 
+        new_trick_pin, new_pin_confirmed, pick_menu_item, need_keypress):
+
+    clear_all_tricks()
+
+    # - make wallets of all duress types (x2 each)
+    # - plus a few simple ones
+    # - perform a backup and check result
+
+    for n in range(1 or 8):
+        goto_trick_menu()
+        pin = '123-%04d'%n
+        new_trick_pin(pin, 'Duress Wallet', None)
+        item = 'BIP-85 Wallet #%d' % (n%4) if (n%4 != 0) else 'Legacy Wallet'
+        pick_menu_item(item)
+        need_keypress('y')
+        new_pin_confirmed(pin, item, None, None)
+
+    for pin, op_mode, expect, _, xflags in [
+        ('11-33', 'Just Reboot', 'Reboot when this PIN', False, TC_REBOOT), 
+        ('11-55', 'Look Blank', 'Look and act like a freshly', False, TC_BLANK_WALLET), 
+    ]:
+        new_trick_pin(pin, op_mode, expect)
+        new_pin_confirmed(pin, op_mode, xflags)
+
+    # works, but not the best test
+    #unit_test('devtest/backups.py')
+
+    bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
+
+    assert 'Coldcard backup file' in bk
+
+    def decode_backup(txt):
+        import json
+        vals = dict()
+        for ln in txt.split('\n'):
+            if not ln: continue
+            if ln[0] == '#': continue
+
+            k,v = ln.split(' = ', 1)
+            if k.startswith('duress_'): continue
+            if k.startswith('fw_'): continue
+            vals[k] = json.loads(v)
+        return vals
+
+    # decode it
+    vals = decode_backup(bk)
+
+    unit_test('devtest/clear_seed.py')
+    
+    repl.exec(f'import backups; backups.restore_from_dict_ll({vals!r})')
+
+    # recover from recovery
+    repl.exec(f'import backups; pa.setup(pa.pin); pa.login(); from actions import goto_top_menu; goto_top_menu()')
+
+    bk2 = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
+    assert 'Traceback' not in bk2
+
+    vals2 = decode_backup(bk2)
+    assert vals == vals2
 
 
 # TODO

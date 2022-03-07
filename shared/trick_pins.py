@@ -7,7 +7,7 @@
 # - replaces old "duress wallet" and "brickme" features 
 # - changes require knowledge of real PIN code (it is checked)
 # 
-import version, uctypes, errno, ngu, sys, ckcc, stash
+import version, uctypes, errno, ngu, sys, ckcc, stash, bip39
 from ubinascii import hexlify as b2a_hex
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux, ux_aborted
@@ -63,6 +63,24 @@ up to last four digits can be different between true PIN and trick.''' % len(rig
             a |= (ord(right[-(1+i)]) - 0x30) << (i*4)
 
     return None, a
+
+def construct_duress_secret(flags, tc_arg):
+    # is duress wallet required and if so, what are the secret values (32 or 64 bytes)
+    if flags & TC_WORD_WALLET:
+        # derive the secret via BIP-85
+        new_secret, _, _, path = bip85_derive(2, tc_arg)
+        path = "BIP85(words=24, index=%d)" % tc_arg
+
+    elif flags & TC_XPRV_WALLET:
+        # use old method for duress wallets
+        with stash.SensitiveValues() as sv:
+            node, path = sv.duress_root()
+            new_secret = SecretStash.encode(xprv=node)[1:65]
+            assert len(new_secret) == 64
+    else:
+        return (None, None)
+
+    return path, new_secret
 
 def make_slot():
     b = bytearray(uctypes.sizeof(TRICK_SLOT_LAYOUT))
@@ -257,6 +275,12 @@ class TrickPinMgmt:
             if flags & TC_DELTA_MODE:
                 yield k
 
+    def get_deltamode_pins(self):
+        # iterate over all duress wallets
+        for k, (sn,flags,args) in self.tp.items():
+            if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
+                yield k
+
     def check_new_main_pin(self, pin):
         # user is trying to change main PIN to new value; check for issues
         # - dups bad but also: delta mode pin might not work w/ longer main true pin
@@ -276,6 +300,64 @@ class TrickPinMgmt:
             prob, arg = validate_delta_pin(new_main_pin, d_pin)
             assert not prob             # see check_new_main_pin() above
             self.update_slot(d_pin.encode(), tc_arg=arg)
+
+    def backup_duress_wallets(self, sv):
+        # for backup file, yield (label, path, pairs-of-data)
+        done = set()
+        for pin in self.get_deltamode_pins():
+            sn, flags, arg = self.tp[pin]
+
+            if (flags, arg) in done:
+                continue
+            done.add( (flags, arg) ) 
+
+            if flags & TC_WORD_WALLET:
+                label = "Duress: BIP-85 Derived wallet"
+                path = "BIP85(words=24, index=%d)" % arg
+                b, slot = tp.get_by_pin(pin)
+                words = bip39.b2a_words(slot.xdata[0:32])
+
+                d = [ ('duress_%d_words' % arg, words) ]
+            elif flags & TC_XPRV_WALLET:
+                label = "Duress: XPRV Wallet"
+                node, path = sv.duress_root()
+                path = 'path = ' + path
+                # backwards compat name, but skipping xpub this time
+                d = [ ('duress_xprv', sv.chain.serialize_private(node)) ]
+
+            yield (label, path, d)
+
+    def restore_backup(self, vals):
+        # restoring backup value
+        # - need to re-populate SE2 w/ these values, including duress wallets
+        # - being restored: vals=self.tp
+        # - CAUTION: new true-pin may not match old true-pin; skip any that would
+        #     not work w/ new pin (conflicting value, or deltamode issues)
+        from pincodes import pa
+        true_pin = pa.pin.decode()
+
+        for pin in vals:
+            (sn, flags, arg) = vals[pin]
+
+            if pin == true_pin:
+                # drop conflicting trick pin vs. (new) true pin
+                continue
+
+            if flags & TC_DELTA_MODE:
+                prob = validate_delta_pin(true_pin, pin)
+                if prob:
+                    # just forget it, no UI here to report issue
+                    continue           
+
+            try:
+                # might need to construct a BIP-85 or XPRV secret to match
+                path, new_secret = construct_duress_secret(flags, arg)
+
+                b, slot = tp.update_slot(pin.encode(), new=True,
+                                     tc_flags=flags, tc_arg=arg, secret=new_secret)
+            except Exception as exc:
+                sys.print_exception(exc)        # not visible
+            
 
 tp = TrickPinMgmt()
 
@@ -355,18 +437,8 @@ class TrickPinMenu(MenuSystem):
 
         msg += '\n\n'
 
-        path = None
-        new_secret = None
-        if flags & TC_WORD_WALLET:
-            # derive the secret via BIP-85
-            new_secret, _, _, path = bip85_derive(2, tc_arg)
-            path = "BIP85(words=24, index=%d)" % tc_arg
-        elif flags & TC_XPRV_WALLET:
-            # use old method for duress wallets
-            with stash.SensitiveValues() as sv:
-                node, path = sv.duress_root()
-                new_secret = SecretStash.encode(xprv=node)[1:65]
-                assert len(new_secret) == 64
+        path, new_secret = construct_duress_secret(flags, tc_arg)
+
 
         if path:
             msg += "Duress wallet will use path:\n\n%s\n\n" % path
