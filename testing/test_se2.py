@@ -331,6 +331,52 @@ def test_ux_add_simple(new_pin, op_mode, expect, but_dont, xflags,
     else:
         new_pin_confirmed(new_pin, op_mode, xflags)
 
+@pytest.mark.parametrize('num_wrong', [0, 1, 3, 9, 99])
+@pytest.mark.parametrize('op_mode, expect, xflags', [
+    ('Wipe, Stop', 'Seed is wiped and a message', TC_WIPE), 
+    ('Wipe & Reboot', 'Seed is wiped and Coldcard reboots', TC_WIPE|TC_BLANK_WALLET), 
+    ('Silent Wipe', 'Seed is silently wiped', TC_WIPE|TC_FAKE_OUT), 
+    ('Brick Self', 'Become a brick instantly', TC_BRICK),
+    ('Last Chance', 'Wipe seed, then give one more try', TC_WIPE|TC_BRICK),
+    ('Look Blank', 'Look and act like a freshly', TC_BLANK_WALLET), 
+    ('Just Reboot', 'Reboot when this ', TC_REBOOT), 
+])
+def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
+                cap_menu, pick_menu_item, cap_story,
+                goto_trick_menu, new_pin_confirmed, need_keypress, enter_pin):
+    # wrong pin choices, not implementation
+    goto_trick_menu()
+
+    pick_menu_item('Add If Wrong')
+    time.sleep(.1)
+    _, story = cap_story()
+    assert 'After X incorrect' in story
+
+    need_keypress('y')
+    enter_number(num_wrong)
+
+    time.sleep(.1)
+    m = cap_menu()
+
+    if num_wrong <= 1:
+        assert m[0] == '[ANY WRONG PIN]'
+    elif num_wrong >= 12:
+        assert m[0] == '[12th WRONG PIN]'
+    else:
+        assert m[0][0:2] == f'[{num_wrong}'
+        assert m[0].endswith(' WRONG PIN]')
+
+    pick_menu_item(op_mode)
+        
+    time.sleep(.1)
+    _, story = cap_story()
+    assert expect in story
+
+    time.sleep(.1)
+    need_keypress('x')
+    time.sleep(.1)
+    need_keypress('x')
+
 @pytest.mark.parametrize('subchoice, expect, xflags', [
     ( 'Wipe & Reboot', 'wiped and Coldcard reboots', TC_WIPE|TC_REBOOT ),
     ( 'Silent Wipe', 'code was just wrong', TC_WIPE|TC_FAKE_OUT ),
@@ -583,7 +629,7 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
 
     # make some delta pins
     pl = len(true_pin)
-    if pl  == 5:
+    if pl == 5:
         dmodes = ['23-23', '23-24', '44-44']
     else:
         dmodes = [true_pin[:-4]+'9999', true_pin[:-4]+'0000']
@@ -611,7 +657,6 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
 # - make trick and do login, check arrives right state?
 # - out of slots
 # - out of slots iff using wallet feature
-# - wrong PIN cases
-# - countdown menu, implementation
+# - countdown implementation?
 
 # EOF
