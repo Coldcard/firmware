@@ -275,7 +275,7 @@ class TrickPinMgmt:
             if flags & TC_DELTA_MODE:
                 yield k
 
-    def get_deltamode_pins(self):
+    def get_duress_pins(self):
         # iterate over all duress wallets
         for k, (sn,flags,args) in self.tp.items():
             if flags & (TC_WORD_WALLET | TC_XPRV_WALLET):
@@ -304,7 +304,7 @@ class TrickPinMgmt:
     def backup_duress_wallets(self, sv):
         # for backup file, yield (label, path, pairs-of-data)
         done = set()
-        for pin in self.get_deltamode_pins():
+        for pin in self.get_duress_pins():
             sn, flags, arg = self.tp[pin]
 
             if (flags, arg) in done:
@@ -615,6 +615,11 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
     async def clear_all(self, m,l,item):
         if not await ux_confirm("Removing all trick PIN codes and special wrong-pin handling. Be sure to move the funds from any duress wallets."):
             return
+
+        if any(tp.get_duress_pins()):
+            if not await ux_confirm("Any funds on the duress wallet(s) have been moved already?"):
+                return
+
         tp.clear_all()
         m.update_contents()
 

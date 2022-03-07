@@ -180,12 +180,18 @@ def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
     return doit
 
 @pytest.fixture
-def clear_all_tricks(goto_trick_menu, pick_menu_item, need_keypress):
+def clear_all_tricks(goto_trick_menu, pick_menu_item, need_keypress, cap_story):
     def doit():
         goto_trick_menu()
         pick_menu_item('Delete All')
         time.sleep(.1)
         need_keypress('y')
+        time.sleep(.1)
+        _, story = cap_story()
+        if 'duress wallet' in story:
+            time.sleep(.1)
+            need_keypress('y')
+
     return doit
 
 def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress):
@@ -662,7 +668,7 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     # - plus a few simple ones
     # - perform a backup and check result
 
-    for n in range(1 or 8):
+    for n in range(8):
         goto_trick_menu()
         pin = '123-%04d'%n
         new_trick_pin(pin, 'Duress Wallet', None)
@@ -688,18 +694,30 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     def decode_backup(txt):
         import json
         vals = dict()
+        trimmed = dict()
         for ln in txt.split('\n'):
             if not ln: continue
             if ln[0] == '#': continue
 
             k,v = ln.split(' = ', 1)
-            if k.startswith('duress_'): continue
-            if k.startswith('fw_'): continue
-            vals[k] = json.loads(v)
-        return vals
+
+            v = json.loads(v)
+
+            if k.startswith('duress_') or k.startswith('fw_'):
+                # no space in USB xfer for thesE!
+                trimmed[k] = v
+            else:
+                vals[k] = v
+
+        return vals, trimmed
 
     # decode it
-    vals = decode_backup(bk)
+    vals, trimmed = decode_backup(bk)
+
+    assert 'duress_xprv' in trimmed
+    assert 'duress_1001_words' in trimmed
+    assert 'duress_1002_words' in trimmed
+    assert 'duress_1003_words' in trimmed
 
     unit_test('devtest/clear_seed.py')
     
@@ -711,8 +729,11 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     bk2 = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
     assert 'Traceback' not in bk2
 
-    vals2 = decode_backup(bk2)
+    vals2, tr2 = decode_backup(bk2)
+
+    vals2.pop('setting.words')      # harmless
     assert vals == vals2
+    assert trimmed == tr2
 
 
 # TODO
