@@ -182,6 +182,7 @@ class PinAttempt:
         if ls_offset is not None:
             change_flags |= (ls_offset << 8)        # see CHANGE_LS_OFFSET
         if spare_num is not None:
+            assert 0 <= spare_num <= 3
             change_flags |= (spare_num << 8)        # useful for fetch/change secret on Mk4
 
         if fw_upgrade:
