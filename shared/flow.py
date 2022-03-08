@@ -28,7 +28,6 @@ try:
 except:
     make_paper_wallet = None
 
-
 if version.mk_num >= 4:
     from trick_pins import TrickPinMenu
     trick_pin_menu = TrickPinMenu()
@@ -154,14 +153,15 @@ WalletExportMenu = [
     MenuItem("Export XPUB", menu=XpubExportMenu),
 ]
 
-SDCardMenu = [
+# useful even if no secrets, may operate on VDisk or SDCard when inserted
+FileMgmtMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Verify Backup", f=verify_backup),
-    MenuItem("Backup System", f=backup_everything),
-    MenuItem("Dump Summary", f=dump_summary),
-    MenuItem('Export Wallet', menu=WalletExportMenu),
+    MenuItem("Backup System", predicate=has_secrets, f=backup_everything),
+    MenuItem("Dump Summary", predicate=has_secrets, f=dump_summary),
+    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
-    MenuItem('Upgrade From SD', f=microsd_upgrade),
+    MenuItem('Upgrade Firmware', f=microsd_upgrade),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file),
@@ -172,7 +172,7 @@ SDCardMenu = [
 UpgradeMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Show Version', f=show_version),
-    MenuItem('From MicroSD', f=microsd_upgrade),
+    MenuItem('From MicroSD', f=microsd_upgrade),        # mk4: misnomer, could be vdisk too
     MenuItem('Bless Firmware', f=bless_flash),
 ]
 
@@ -210,6 +210,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem("Upgrade", menu=UpgradeMenu),
+    MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
@@ -269,7 +270,7 @@ AdvancedNormalMenu = [
     MenuItem("View Identity", f=view_ident),
     MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
-    MenuItem("MicroSD Card", menu=SDCardMenu),
+    MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem('Derive Entropy', f=drv_entro_start),
