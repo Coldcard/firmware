@@ -5,7 +5,7 @@
 #
 import os, sys, pyb, ckcc, version, glob, uasyncio, utime
 from sigheader import FW_MIN_LENGTH
-from version import MAX_UPLOAD_LEN
+from version import MAX_UPLOAD_LEN, is_devmode
 from usb import enable_usb, disable_usb
 from uasyncio import sleep_ms
 
@@ -48,7 +48,7 @@ class VirtDisk:
         # ignore the files we write ourselves
         for fn in written_files:
             if fn.startswith('/vdisk/'):
-                self.ignore.add(fn[7:])
+                self.ignore.add(fn)
 
         # allow host to change again
         enable_usb()
@@ -147,11 +147,11 @@ class VirtDisk:
             if fn in self.ignore:
                 continue
 
-            if fn[0] == '.':
+            if fn[0] == '.' or not sz:
                 continue
 
-            if sz > MAX_UPLOAD_LEN: 
-                print("%s: too big" % fn)
+            if sz > MAX_UPLOAD_LEN:             # == MAX_UPLOAD_LEN_MK4, see version.py
+                #print("%s: too big" % fn)
                 continue
 
             lfn = fn.lower()
@@ -202,7 +202,7 @@ async def psram_upgrade(filename, size):
     # pull out firmware header
     hdr = PSRAM.read_at(offset+FW_HEADER_OFFSET, FW_HEADER_SIZE)
 
-    if filename == 'dev.dfu':
+    if filename == '/vdisk/dev.dfu' and is_devmode:
         # skip the checking and display for us devs and "just do it"
         # - the bootrom still does the checks, you just can't see useful errors
         from pincodes import pa
