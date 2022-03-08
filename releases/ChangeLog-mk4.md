@@ -2,7 +2,7 @@
 
 Mk4 - New hardware
 
-- (mk3&4) Performance improved: some internal objects cached to reduce delays when
+- (Mk3&Mk4) Performance improved: some internal objects cached to reduce delays when
   accessing master secret. Helps address explorer, many USB commands and signing.
 - Enhancement: Power-down during the login countdown now resets the time delay to force 
   attacker (or yourself) to start over with full delay time.
@@ -12,5 +12,4 @@ Mk4 - New hardware
   privacy of XFP value itself. A warning is shown when this happens.
 - Enhancement: "Advanced > Export XPUB" provides direct way to show XPUB (or ZPUB/YPUB) for
   BIP-84 / BIP-44 / BIP-49 standard derivations, as a QR. Also can show XFP and master XPUB.
-Mk4 changes
-- PSBT files up to 2 megabytes now supported
+- (Mk4) PSBT files up to 2 megabytes now supported
