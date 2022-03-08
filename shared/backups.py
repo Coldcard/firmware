@@ -309,7 +309,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_
                 fname, nice = card.pick_filename(fname_pattern)
 
                 # do actual write
-                with open(fname, 'wb') as fd:
+                with card.open(fname, 'wb') as fd:
                     if zz:
                         fd.write(hdr)
                         fd.write(zz.body)
@@ -346,7 +346,7 @@ Insert another SD card and press 2 to make another copy.''' % (nice)
 Press OK for another copy, or press X to stop.''' % (copy+1, nice), escape='2')
             if ch == 'x': break
 
-async def verify_backup_file(fname_or_fd):
+async def verify_backup_file(fname):
     # read 7z header, and measure checksums
     # - no password is wanted/required
     # - really just checking CRC32, but that's enough against truncated files
@@ -356,9 +356,9 @@ async def verify_backup_file(fname_or_fd):
 
     # filename already picked, open it.
     try:
-        with CardSlot() as card:
+        with CardSlot(readonly=True) as card:
             prob = 'Unable to open backup file.'
-            fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
+            fd = card.open(fname, 'rb')
 
             prob = 'Unable to read backup file headers. Might be truncated.'
             compat7z.check_file_headers(fd)
@@ -379,8 +379,12 @@ async def verify_backup_file(fname_or_fd):
         await ux_show_story(prob + '\n\nError: ' + str(e))
         return
     finally:
-        if fd:
-            fd.close()
+        if fd is not None:
+            try:
+                fd.close()
+            except OSError:
+                # might be already closed on vdisk case due to filesystem unmount/mount
+                pass
 
     await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
 
@@ -415,7 +419,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
     prob = None
 
     try:
-        with CardSlot() as card:
+        with CardSlot(readonly=True) as card:
             # filename already picked, taste it and maybe consider using its data.
             try:
                 fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
@@ -492,7 +496,7 @@ file with an ephemeral public key will be written.''')
         with CardSlot() as card:
             fname, nice = card.pick_filename('ccbk-start.json', overwrite=True)
 
-            with open(fname, 'wb') as fd:
+            with card.open(fname, 'wb') as fd:
                 fd.write(ujson.dumps(dict(pubkey=b2a_hex(my_pubkey))))
             
     except CardMissingError:
