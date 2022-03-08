@@ -284,7 +284,7 @@ class TrickPinMgmt:
     def check_new_main_pin(self, pin):
         # user is trying to change main PIN to new value; check for issues
         # - dups bad but also: delta mode pin might not work w/ longer main true pin
-        # - return error msg, or None
+        # - return error msg or None
         assert isinstance(pin, str)
         if pin in self.tp:
             return 'That PIN is already in use as a Trick PIN.'
@@ -613,7 +613,7 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
         the_ux.push(m)
 
     async def clear_all(self, m,l,item):
-        if not await ux_confirm("Removing all trick PIN codes and special wrong-pin handling. Be sure to move the funds from any duress wallets."):
+        if not await ux_confirm("Remove ALL TRICK PIN codes and special wrong-pin handling?"):
             return
 
         if any(tp.get_duress_pins()):
