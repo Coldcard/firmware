@@ -1219,7 +1219,7 @@ class FirmwareUpgradeRequest(UserAuthorizedAction):
                 await ux_show_story(failed, 'Sorry!')
 
                 UserAuthorizedAction.cleanup()
-                #self.pop_menu()
+                self.pop_menu()
                 return
 
         # Get informed consent to upgrade.
