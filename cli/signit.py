@@ -279,7 +279,7 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
 
     if hw_compat == 4:
         hw_compat = MK_4_OK
-    elif hw_compat is None:
+    elif hw_compat in {3, None}:
         hw_compat = MK_2_OK | MK_3_OK
     else:
         assert not "known"
