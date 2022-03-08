@@ -1145,9 +1145,11 @@ async def verify_backup(*A):
 
     fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=backups.MAX_BACKUP_FILE_SIZE)
 
-    if fn:
-        # do a limited CRC-check over encrypted file
-        await backups.verify_backup_file(fn)
+    if not fn:
+        return
+
+    # do a limited CRC-check over encrypted file
+    await backups.verify_backup_file(fn)
 
 def import_from_dice(*a):
     import seed
@@ -1294,7 +1296,7 @@ async def nfc_share_file(*A):
 
 async def list_files(*A):
     # list files, don't do anything with them?
-    fn = await file_picker('Lists all files on MicroSD. Select one and SHA256(file contents) will be shown.', min_size=0)
+    fn = await file_picker('Lists all files, select one and SHA256(file contents) will be shown.', min_size=0)
     if not fn: return
 
     from uhashlib import sha256
@@ -1303,7 +1305,7 @@ async def list_files(*A):
 
     try:
         with CardSlot() as card:
-            with open(fn, 'rb') as fp:
+            with card.open(fn, 'rb') as fp:
                 while 1:
                     data = fp.read(1024)
                     if not data: break
@@ -1924,15 +1926,13 @@ async def change_nfc_enable(enable):
         nfc.NFCHandler.startup()
 
 async def change_virtdisk_enable(enable):
+    # NOTE: enable can be 0,1,2
     import glob, vdisk
     from usb import enable_usb, disable_usb
 
     if bool(enable) == bool(glob.VD):
         # not a change in state, do nothing
-        print("vdisk: no change")
         return
-
-    print("vdisk: %d" % enable)
 
     if enable:
         # just showing up as new media is enough (MacOS) to make it show up
