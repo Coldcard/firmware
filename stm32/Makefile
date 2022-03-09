@@ -1,6 +1,7 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Placeholder for lazy devs. Builds debug version of Mk4.
+# Placeholder for lazy devs. Builds debug version of Mk4 by default. For a few specific
+# goals, will do it for both Mk3 and Mk4.
 #
 # Normally you should use:
 #
@@ -9,12 +10,12 @@
 #	make -f MK3-Makefile
 #
 
-.DEFAULT all:
-	$(MAKE) DEBUG_BUILD=1 -f MK4-Makefile
+.DEFAULT:
+	$(MAKE) DEBUG_BUILD=1 -f MK4-Makefile $(MAKECMDGOALS)
 
 
-release:
-	$(MAKE) -f MK4-Makefile release
-	$(MAKE) -f MK3-Makefile release
+release rc1 clean clobber repro:
+	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
+	$(MAKE) -f MK3-Makefile $(MAKECMDGOALS)
 
 # EOF

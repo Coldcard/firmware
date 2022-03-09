@@ -31,6 +31,9 @@ clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
 	git clean -xf built
 
+clobber: clean
+	rm -f *RC1*.dfu
+
 # These trigger the 'all' target when we haven't completed a successful build yet
 $(BUILD_DIR)/firmware.elf: all
 $(BUILD_DIR)/firmware0.bin: all
@@ -237,7 +240,7 @@ shell:
 # debug: allow docker to write into source tree
 #DOCK_RUN_ARGS := -v $(realpath ..):/work/src:rw --privileged coldcard-build
 
-PUBLISHED_BIN = $(wildcard ../releases/*-v$(VERSION_STRING)-mk$(MK_NUM)-coldcard.dfu)
+PUBLISHED_BIN ?= $(wildcard ../releases/*-v$(VERSION_STRING)-mk$(MK_NUM)-coldcard.dfu)
 
 # final step in repro-building: check you got the right bytes
 # - but you don't have the production signing key, so that section is removed

@@ -6,9 +6,11 @@
 #
 set -ex
 
-# arguments
+# arguments, all required
 VERSION_STRING=$1
 MK_NUM=$2
+
+MAKE="make -f MK$MK_NUM-Makefile"
 
 TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf"
 
@@ -50,9 +52,9 @@ else
 fi
 cd ../stm32
 
-make setup
-make DEBUG_BUILD=0 all
-make $TARGETS
+$MAKE setup
+$MAKE DEBUG_BUILD=0 all
+$MAKE $TARGETS
 
 if [ $PWD != '/work/src/stm32' ]; then
     # Copy back build products.
@@ -60,7 +62,7 @@ if [ $PWD != '/work/src/stm32' ]; then
 fi
 
 set +e
-make check-repro
+$MAKE PUBLISHED_BIN=/work/built/firmware-signed.dfu check-repro
 
 set +ex
 if [ $PWD != '/work/src/stm32' ]; then
