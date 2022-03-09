@@ -638,7 +638,7 @@ def render_master_secrets(mode, raw, node):
         from ubinascii import hexlify as b2a_hex
 
         msg = '%d bytes:\n\n' % len(raw)
-        qr = str(b2a_hex(sv.raw), 'ascii')
+        qr = str(b2a_hex(raw), 'ascii')
         msg += qr
     else:
         raise ValueError(mode)
