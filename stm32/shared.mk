@@ -228,7 +228,7 @@ setup:
 DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				-v $(realpath built):/work/built:rw \
 				--privileged coldcard-build
-#XXX#repro: code-committed
+repro: code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build
 	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(MK_NUM))
