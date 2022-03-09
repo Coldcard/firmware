@@ -68,7 +68,7 @@ def sim_exec(dev):
     def doit(cmd, binary=False):
         s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
         if binary: return s
-        print(f'sim_exec: {cmd!r} -> {s!r}')
+        #print(f'sim_exec: {cmd!r} -> {s!r}')
         return s.decode('utf-8') if not isinstance(s, str) else s
 
     return doit

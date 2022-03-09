@@ -696,4 +696,24 @@ def test_dump_menutree(sim_execfile):
     # saves to ../unix/work/menudump.txt
     sim_execfile('devtest/menu_dump.py')
 
+if 0:
+    # show what the final word can be (debug only)
+    def test_23_words(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
+        
+        unit_test('devtest/clear_seed.py')
+
+        m = cap_menu()
+        assert m[0] == 'New Wallet'    
+        pick_menu_item('Import Existing')
+
+        seed_words = 'silent toe meat possible chair blossom wait occur this worth option bag nurse find fish scene bench asthma bike wage world quit primary'
+
+        sw = seed_words.split(' ')
+        pick_menu_item('24 Words')
+
+        word_menu_entry(sw)
+
+        print('\n'.join(cap_menu()))
+
+
 # EOF

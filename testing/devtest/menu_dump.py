@@ -100,10 +100,10 @@ async def doit():
 
     with open('menudump.txt', 'wt') as fd:
         for nm, m in [
-            ('No PIN Set', VirginSystem),
-            ('Empty Wallet', EmptyWallet),
-            ('Normal', NormalSystem),
-            ('Factory Mode', FactoryMenu),
+            ('[IF NO PIN SET]', VirginSystem),
+            ('[IF BLANK WALLET]', EmptyWallet),
+            ('[NORMAL OPERATION]', NormalSystem),
+            ('[FACTORY MODE]', FactoryMenu),
         ]:
             await dump_menu(fd, m, nm, '')
             print('---\n', file=fd)
