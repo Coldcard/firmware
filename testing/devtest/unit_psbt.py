@@ -11,7 +11,7 @@ from ubinascii import unhexlify as a2b_hex
 
 import ustruct
 from glob import settings
-from public_constants import MAX_TXN_LEN
+from version import MAX_TXN_LEN
 
 # load PSBT into simulated SPI Flash
 from sffile import SFFile
@@ -47,13 +47,16 @@ from psbt import psbtObject, FatalPSBTIssue
 rd_fd = SFFile(0, tl)
 obj = psbtObject.read_psbt(rd_fd)
 
-# all these trival test cases now fail validation for various reasons...
+# Many of these trival PSBT test cases now fail validation for various reasons,
+# and that's correct thing to do.
 try:
     obj.validate()
-    print("should fail")
-except AssertionError:
+    print("parsed and validated ok")
+except AssertionError as exc:
+    print("hits assertion: %s" % exc)
     pass
-except FatalPSBTIssue:
+except FatalPSBTIssue as exc:
+    print("hits FatalPSBTIssue: %s" % exc)
     pass
 
 obj.serialize(out_fd)
