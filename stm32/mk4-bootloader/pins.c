@@ -1062,9 +1062,16 @@ pin_fetch_secret(pinAttempt_t *args)
     if(kn < 0) return EPIN_RANGE_ERR;
 
     // read out the secret that corresponds to pin
-    rv = ae_encrypted_read(kn, KEYNUM_main_pin, digest, tmp, AE_SECRET_LEN);
-    if(rv) goto fail;
-    rv = ae_encrypted_read32(KEYNUM_check_secret, 0, KEYNUM_main_pin, digest, check);
+    // - seeing occasional comms failures here, so retry
+    for(int retry=0; retry<3; retry++) {
+        rv = ae_encrypted_read(kn, KEYNUM_main_pin, digest, tmp, AE_SECRET_LEN);
+        if(rv) continue;
+
+        rv = ae_encrypted_read32(KEYNUM_check_secret, 0, KEYNUM_main_pin, digest, check);
+        if(rv) continue;
+
+        break;
+    }
     if(rv) goto fail;
 
     // decrypt via a complex process.

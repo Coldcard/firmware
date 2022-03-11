@@ -90,7 +90,7 @@ rng_buffer(uint8_t *result, int len)
     void
 rng_delay(void)
 {
-    uint32_t    r = rng_sample() % 20;
+    uint32_t    r = rng_sample() % 8;
     uint32_t    cnt = (1<<r);
 
     while(cnt) {
