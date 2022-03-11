@@ -18,6 +18,8 @@ def _init0():
     import sim_nfc
     sys.modules['nfc'] = sim_nfc
 
+    mk4.rng_seeding()
+
 mk4.init0 = _init0
 mk4.make_flash_fs = lambda: print("Would rebuild /flash")
 

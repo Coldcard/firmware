@@ -105,4 +105,13 @@ def mcu_key_usage():
     ckcc.gate(25, arg, 0);
     return unpack('3I', arg)
 
+def read_rng(source=2):
+    # return random bytes from a secure source
+    # - first byte is # of valid random bytes
+    arg = bytearray(33)
+    rv = ckcc.gate(26, arg, source);
+    assert not rv
+    return arg[1:1+arg[0]]
+    
+
 # EOF

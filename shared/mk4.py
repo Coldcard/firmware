@@ -39,6 +39,19 @@ COLDCARD Virtual Disk
     # generally, leave it unmounted
     os.umount('/psram')
 
+def rng_seeding():
+    # seed our RNG with entropy from secure elements
+    import callgate, ngu, ustruct
+
+    a = callgate.read_rng(1)        # SE1
+    b = callgate.read_rng(2)        # SE2
+
+    n = ngu.hash.sha256d(a+b)
+    n, = ustruct.unpack('I', n[0:4])
+
+    ngu.random.reseed(n)
+        
+
 def init0():
     # called very early
     try:
@@ -56,6 +69,9 @@ def init0():
             # need to import this early so it can monkey-patch itself in place
             import sim_display
         except: pass
+
+    # seed RNGs with entropy from secure elements
+    rng_seeding()
 
 async def dev_enable_repl(*a):
     # Mk4: Enable serial port connection. You'll have to break case open.

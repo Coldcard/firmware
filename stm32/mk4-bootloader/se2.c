@@ -1273,8 +1273,6 @@ se2_pin_hash(uint8_t digest_io[32], uint32_t purpose)
     uint8_t     tmp[32];
     HMAC_CTX    ctx;
 
-//sdcard_light(true);
-
     // HMAC(key=tpin_key, msg=given hash so far)
     hmac_sha256_init(&ctx);
     hmac_sha256_update(&ctx, digest_io, 32);
@@ -1308,14 +1306,24 @@ se2_pin_hash(uint8_t digest_io[32], uint32_t purpose)
     hmac_sha256_update(&ctx, rx+2, 32);
     hmac_sha256_update(&ctx, digest_io, 32);
     hmac_sha256_final(&ctx, SE2_SECRETS->tpin_key, digest_io);
-#if 0
-sdcard_light(false);
+}
 
-    puts2("md: ");
-    hex_dump(digest_io, 32);
+// se2_read_rng()
+//
+// Read some random bytes, which we know cannot be MitM'ed.
+//
+    void
+se2_read_rng(uint8_t value[8])
+{
+    // funny business means MitM here
+    se2_setup();
+    if(setjmp(error_env)) fatal_mitm();
 
-    memset(digest_io, 0x1, 32);
-#endif
+    // read a field with "RPS" bytes, and verify those were read true
+    uint8_t tmp[32];
+    se2_read_page(PGN_ROM_OPTIONS, tmp, true);
+
+    memcpy(value, &tmp[4], 8);
 }
 
 // EOF

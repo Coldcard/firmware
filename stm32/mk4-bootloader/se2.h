@@ -86,4 +86,7 @@ void se2_decrypt_secret(uint8_t secret[], int secret_len, int offset,
         const uint8_t main_slot[], const uint8_t *check_value,
         const uint8_t pin_digest[32], bool *is_valid);
 
+// Read some random bytes, which we know cannot be MitM'ed.
+void se2_read_rng(uint8_t value[8]);
+
 // EOF

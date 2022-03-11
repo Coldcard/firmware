@@ -160,6 +160,18 @@ def gate(method, buf_io, arg2):
         ustruct.pack_into('3I', buf_io, 0,  N-5, 1, N)
         return 0
 
+    if method == 26:
+        # read RNG (not) from SE (not)
+        if arg2 == 1:
+            buf_io[0] = 32
+            buf_io[1:1+32] = bytes(range(32))
+        elif arg2 == 2:
+            buf_io[0] = 8
+            buf_io[1:1+8] = bytes(range(8))
+        else:
+            return ERANGE;
+        return 0
+
     return ENOENT
 
 def oneway(method, arg2):

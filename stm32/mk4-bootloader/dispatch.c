@@ -562,6 +562,33 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
         }
 
+        case 26: {
+            // Read some random bytes from various sources, like SE's.
+            REQUIRE_OUT(33);
+
+            switch(arg2) {
+                case 1:         // for SE1
+                    // LIMITATION: this has no MitM protection, subject to tampering
+                    ae_setup();
+                    int rv = ae_secure_random(&buf_io[1]);
+                    if(rv) fatal_mitm();
+                    buf_io[0] = 32;
+                    break;
+
+                case 2:         // for SE2
+                    // secure, requires knowledge of pairing secret
+                    se2_read_rng(&buf_io[1]);
+                    buf_io[0] = 8;
+                    break;
+
+                default:
+                    rv = ERANGE;
+                    break;
+            }
+
+            break;
+        }
+
 #if 0
         // p256r1 test code
         case 130: {      // verify signature
