@@ -7,7 +7,7 @@
 # - random read, sequential write
 # - only a few of these are possible
 # - the offset is the file name
-# - last 64k of memory reserved for settings
+# - (<Mk3) last 64k of memory reserved for settings
 #
 from uasyncio import sleep_ms
 from uio import BytesIO
