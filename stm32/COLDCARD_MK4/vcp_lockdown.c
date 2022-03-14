@@ -33,16 +33,14 @@ mp_hal_stdin_rx_chr(void) {
 #endif
         }
 
+        // USB virtual comm port Rx support -- always disabled on Mk4 by design
 #if 0
-        // USB virtual comm port support
-#if COLDCARD_DEBUG
         int dupterm_c = mp_uos_dupterm_rx_chr();
         if (dupterm_c >= 0) {
             if(ckcc_vcp_enabled) {
                 return dupterm_c;
             }
         }
-#endif
 #endif
 
         MICROPY_EVENT_POLL_HOOK
