@@ -89,7 +89,7 @@ void ae_keep_alive(void);
 
 // Pick a fresh random number.
 //int ae_random(uint8_t randout[32]);
-int ae_secure_random(uint8_t randout[32]);
+void ae_secure_random(uint8_t randout[32]);
 
 // Pick a EC keypair and return public part; private saved.
 int ae_gen_ecc_key(uint8_t keynum, uint8_t pubkey_out[64]);

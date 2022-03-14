@@ -568,10 +568,9 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
             switch(arg2) {
                 case 1:         // for SE1
-                    // LIMITATION: this has no MitM protection, subject to tampering
+                    // secure, any MitM will be detected
                     ae_setup();
-                    int rv = ae_secure_random(&buf_io[1]);
-                    if(rv) fatal_mitm();
+                    ae_secure_random(&buf_io[1]);
                     buf_io[0] = 32;
                     break;
 

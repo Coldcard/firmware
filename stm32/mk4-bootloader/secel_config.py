@@ -393,6 +393,11 @@ class ComboConfig(object):
         self.kc.ReqRandom = 0
         return self
 
+    def require_rng(self):
+        # prevents replay attacks
+        self.kc.ReqRandom = 1
+        return self
+
     def require_auth(self, kn):
         # knowledge of another key will be required
         assert 0 <= kn <= 15

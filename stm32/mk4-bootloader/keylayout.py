@@ -202,8 +202,10 @@ def doit(partno, mk_num, ae, KEYNUM, fp):
     cc[KEYNUM.pin_stretch].hash_key().require_auth(KEYNUM.pairing).deterministic()
 
     # chip-enforced pin attempts: link keynum and enable "match count" feature
-    cc[KEYNUM.match_count].writeable_storage(main_pin).require_auth(KEYNUM.pairing)
+    cc[KEYNUM.match_count].writeable_storage(main_pin).require_auth(KEYNUM.pairing).require_rng()
     ae.counter_match(KEYNUM.match_count)
+
+    cc[KEYNUM.lastgood].require_rng()
 
     # ECC keypair; we hold privkey, pubkey enables things in SE2
     cc[KEYNUM.joiner_key].ec_key(limited_sign=False).no_pubkey().require_auth(main_pin)

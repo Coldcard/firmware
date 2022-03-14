@@ -17,7 +17,7 @@
 // bytes [90..128) of chip config area
 #define AE_CHIP_CONFIG_2 { \
 	0x02, 0x15, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x5c, 0x00,   \
-	0xbc, 0x01, 0xfc, 0x01, 0xbc, 0x01, 0x9c, 0x01, 0x9c, 0x01,   \
+	0xbc, 0x01, 0xfc, 0x01, 0xbc, 0x01, 0xdc, 0x01, 0xdc, 0x01,   \
 	0xd1, 0x03, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x03,   \
 	0xdc, 0x03, 0xdc, 0x03, 0xdc, 0x01, 0x3c, 0x00   \
 }
@@ -70,10 +70,10 @@ KeyConfig[3] = 0xfc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, R
 KeyConfig[4] = 0xbc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=1, ReqRandom=0, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x01bc
 
      Slot[5] = 0x0043 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=3, WriteConfig=4)=0x4300
-KeyConfig[5] = 0x9c01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=0, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x019c
+KeyConfig[5] = 0xdc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x01dc
 
      Slot[6] = 0x0043 = SlotConfig(ReadKey=0, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=0, WriteKey=3, WriteConfig=4)=0x4300
-KeyConfig[6] = 0x9c01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=0, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x019c
+KeyConfig[6] = 0xdc01 = KeyConfig(Private=0, PubInfo=0, KeyType=7, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=1, PersistentDisable=0, RFU=0, X509id=0)=0x01dc
 
      Slot[7] = 0x8320 = SlotConfig(ReadKey=3, NoMac=0, LimitedUse=0, EncryptRead=0, IsSecret=1, WriteKey=0, WriteConfig=2)=0x2083
 KeyConfig[7] = 0xd103 = KeyConfig(Private=1, PubInfo=0, KeyType=4, Lockable=0, ReqRandom=1, ReqAuth=1, AuthKey=3, PersistentDisable=0, RFU=0, X509id=0)=0x03d1
