@@ -120,11 +120,12 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 # NFC Feature (Mk4)
 
 - can share up to 8000 bytes of PSBT or signed transaction data.
-- NFC-V (ISO-15693) radio is common on mobile phones but rare on desktops
+- NFC-V (ISO-15693) radio/modulation is common on mobile phones but very rare on desktops
 
 # Fast Wipe (Mk4)
 
 - each use of "fast wipe" feature consumes a MCU key slot, of which there are 256.
+- use _Advanced > Danger Zone > MCU Key Slots_ to view usage
 
 # Trick Pins (Mk4)
 
@@ -133,6 +134,12 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 - duress wallets consume 2 slots (or 3 slots for legacy duress wallet)
 - when restoring trick pins from backup files, "forgotten" pins are not restored,
   and any trick pin which matches the true PIN of the restored system will be dropped
-- deltamode PIN requirements are checked during wallet restore, and the new true PIN
+- deltamode PIN requirements are checked during wallet restore, and if the new true PIN
   is not compatible, the deltamode trick PIN is dropped and not restored
+
+# Debug Serial Port (Mk4)
+
+- virtual USB serial port disabled completely by default, and even if enabled
+  in Danger Zone, only echos output, and does not accept any input
+- use hardware serial port for interactive REPL access (3.3v TTL levels)
 
