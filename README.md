@@ -40,6 +40,9 @@ Already checked-out and getting git errors? Do this:
     git fetch
     git reset --hard origin/master
 
+Do not use a path with any spaces in it. The Makefiles do not handle
+that well, and we're not planning to fix it.
+
 Then:
 
 - `cd firmware`
