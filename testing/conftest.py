@@ -588,12 +588,11 @@ def set_xfp(sim_exec, sim_execfile, simulator, reset_seed_words):
         import struct
         need_xfp, = struct.unpack("<I", a2b_hex(xfp))
 
-        sim_exec('from main import settings; settings.set("xfp", 0x%x);' % need_xfp)
+        sim_exec('from main import settings; settings.put_volatile("xfp", 0x%x);' % need_xfp)
 
     yield doit
 
-    # Important cleanup: restore normal key, because other tests assume that
-    reset_seed_words()
+    sim_exec('from main import settings; settings.overrides.clear();')
 
 @pytest.fixture(scope="function")
 def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):

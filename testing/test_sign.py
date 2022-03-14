@@ -997,11 +997,15 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     ("44'/1'/0'/3000/5", '2nd last component'),
     ("44'/1'/0'/3/5", '2nd last component'),
 ])
-def test_change_troublesome(start_sign, cap_story, try_path, expect):
+def test_change_troublesome(dev, start_sign, cap_story, try_path, expect):
     # NOTE: out#1 is change:
     # addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
     # path = (m=4369050F)/44'/1'/0'/1/5
     # pubkey = 03c80814536f8e801859fc7c2e5129895b261153f519d4f3418ffb322884a7d7e1
+
+    if dev.master_fingerprint != 0x4369050f:
+        # file relies on XFP=0F056943 value
+        raise pytest.skip('simulator only')
 
     psbt = open('data/example-change.psbt', 'rb').read()
     b4 = BasicPSBT().parse(psbt)
