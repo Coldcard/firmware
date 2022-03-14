@@ -172,6 +172,10 @@ def gate(method, buf_io, arg2):
             return ERANGE;
         return 0
 
+    if method == 27:
+        buf_io[:] = b'ATECC608B\nDS28C36B'
+        return 0
+
     return ENOENT
 
 def oneway(method, arg2):

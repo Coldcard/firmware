@@ -588,6 +588,14 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
         }
 
+        case 27:
+            // Get versions/parts installed in SE1/SE2
+            // - simple fact: we will be recompiling this code if/when 
+            //   part revision happen!
+            REQUIRE_OUT(80);
+            strcpy((char *)buf_io, "ATECC608B\nDS28C36B");
+            break;
+
 #if 0
         // p256r1 test code
         case 130: {      // verify signature

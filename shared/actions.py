@@ -593,6 +593,12 @@ async def clear_seed(*a):
         await ux_show_story('''Please empty the duress wallet, and clear the duress PIN before clearing main seed.''')
         return
 
+    if version.has_se2:
+        from trick_pins import tp
+        if any(tp.get_duress_pins()):
+            await ux_show_story('''You have one or more duress wallets defined under Trick PINs. Please empty them, and clear associated Trick PINs before clearing main seed.''')
+            return
+
     if not await ux_confirm('''Wipe seed words and reset wallet. All funds will be lost. You better have a backup of the seed words.'''):
         return await ux_aborted()
 
@@ -1757,13 +1763,14 @@ async def show_version(*a):
     bl = callgate.get_bl_version()[0]
     chk = str(b2a_hex(callgate.get_bl_checksum(0))[-8:], 'ascii')
 
-    if version.has_608:
-        se = '608B' if callgate.has_608b() else '608A'
-    else:
-        se = '508A'
-
     if version.has_se2:
-        se += '\n  DS28C36B'
+        se = '\n  '.join(callgate.get_se_parts())
+    else:
+        se = 'ATECC'
+        if version.has_608:
+            se += '608B' if callgate.has_608b() else '608A'
+        else:
+            se += '508A'
 
     # exposed over USB interface:
     serial = version.serial_number()
@@ -1794,7 +1801,7 @@ Hardware:
   {hw}
 
 Secure Element{ses}:
-  ATECC{se}
+  {se}
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,

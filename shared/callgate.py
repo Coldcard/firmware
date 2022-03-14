@@ -112,6 +112,17 @@ def read_rng(source=2):
     rv = ckcc.gate(26, arg, source);
     assert not rv
     return arg[1:1+arg[0]]
+
+def get_se_parts():
+    # mk4: report part names
+    # - gets a nul-terminated string, w/ newline between them
+    arg = bytearray(80)
+    rv = ckcc.gate(27, arg, 0);
+    if rv:
+        # happens w/ obsolete versions of bootrom that never left Toronto
+        return ['SE1', 'SE2']
+    ln = bytes(arg).find(b'\0')
+    return arg[0:ln].decode().split('\n')
     
 
 # EOF
