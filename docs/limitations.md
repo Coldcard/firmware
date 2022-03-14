@@ -44,6 +44,7 @@
 - mk4:
     - we support PSBT files up to 2M bytes in size.
     - any number of inputs and outputs are supported, limited only by final transaction size (100k)
+    - tested with: 250 inputs, 2000 outputs
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
