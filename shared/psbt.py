@@ -918,7 +918,8 @@ class psbtObject(psbtProxy):
         if self.total_value_out is None:
             self.total_value_out = total_out
         else:
-            assert self.total_value_out == total_out
+            assert self.total_value_out == total_out, \
+                '%s != %s' % (self.total_value_out, total_out)
 
     def parse_txn(self):
         # Need to semi-parse in unsigned transaction.
