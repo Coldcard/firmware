@@ -49,7 +49,6 @@ from glob import PSRAM
 #   du = (bool) if set, disable the USB port at all times
 #   rz = (int) display value resolution/units: 8=BTC 5=mBTC 2=bits 0=sats
 #   tp = (complex) trick pins' config on Mk4
-#   kbtn = (1 char) '1'-'9' that will wipe seed during login process (mk4+)
 #   nfc = (bool) if set, enable the NFC feature; default is OFF=>DISABLED (mk4+)
 #   vdsk = (bool) if set, enable the Virtual Disk features; default is OFF=>DISABLED (mk4+)
 # Stored w/ key=00 for access before login
@@ -61,6 +60,7 @@ from glob import PSRAM
 #   cd_lgto = [<=mk3] minutes to show in countdown (in countdown-to-brick mode)
 #   cd_mode = [<=mk3] set to enable some less-destructive modes
 #   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
+#   kbtn =  (1 char) '1'-'9' that will wipe seed during login process (mk4+)
 
 
 if mk_num <= 3:
