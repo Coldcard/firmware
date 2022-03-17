@@ -87,36 +87,17 @@ You may need to reboot to avoid a `DISPLAY is not set` error.
 
 ### Linux
 
-You'll need to install these (Ubuntu 20.04):
+You'll probably need to install these (Ubuntu 16):
 
-    apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi
+    apt install libudev-dev python-sdl2 gcc-arm-none-eabi
 
-Install and run simulator on Ubuntu 20.04
-```shell
-git clone --recursive https://github.com/Coldcard/firmware.git
-cd firmware
-# apply address patch
-git apply unix/unix_addr.patch
-# apply libngu patch
-pushd external/libngu
-git apply ../libngu.patch
-popd
-# create virtualenv and activate it
-python3 -m venv ENV  # or virtualenv -p python3 ENV
-source ENV/bin/activate
-# install dependencies
-pip install -U pip setuptools
-pip install -r requirements.txt
-# build simulator
-cd unix
-pushd ../external/micropython/mpy-cross/
-make  # mpy-cross
-popd
-make setup
-make ngu-setup
-make
-# below line runs the simulator
-./simulator.py
+If you get stuck on the "Skip PIN" screen after the startup, edit the `pyb.py` file located under `/unix/frozen-modules/` and follow the instructions from line 27 to line 31:
+```
+# If on linux, try commenting the following line
+addr = bytes([len(fn)+2, socket.AF_UNIX] + list(fn))
+# If on linux, try uncommenting the following two lines
+#import struct
+#addr = struct.pack('H108s', socket.AF_UNIX, fn)
 ```
 
 ## Code Organization
