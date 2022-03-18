@@ -97,10 +97,6 @@ git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 # apply address patch
 git apply unix/unix_addr.patch
-# apply libngu patch
-pushd external/libngu
-git apply ../libngu.patch
-popd
 # create virtualenv and activate it
 python3 -m venv ENV  # or virtualenv -p python3 ENV
 source ENV/bin/activate
