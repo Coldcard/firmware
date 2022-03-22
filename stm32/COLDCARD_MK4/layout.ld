@@ -17,8 +17,6 @@ MEMORY
     FLASH_TEXT (rx) : ORIGIN = 0x08024000, LENGTH = 1392K
     FLASH_FS (r)    : ORIGIN = 0x08180000, LENGTH = 512K
 
-    /* SRAM1,2, and 3 are continuous, first 0x2000 reserved for bootloader
-    RAM (xrw)       : ORIGIN = 0x20002000, LENGTH =  0x9e000   */
     /* SRAM1,2, and 3 are continuous, highest 0x2000 reserved for bootloader */
     RAM (xrw)       : ORIGIN = 0x20000000, LENGTH =  0x9e000   
 }

@@ -28,11 +28,12 @@
 
 // actual qty of bytes we check
 // - minus 64 because the firmware signature is skipped
+// - minus 8k because MCU keys flash page changes at runtime
 // - 0x400 of OTP area
 // - plus (0x28) twice for option bytes
 // - plus complete "system meory" area (STM boot rom containing DFU code)
 // - 12 bytes of device serial number
-#define TOTAL_CHECKSUM_LEN      (MAIN_FLASH_SIZE - 64 + 0x400 + (0x28 *2) + 0x7000 + 12)
+#define TOTAL_CHECKSUM_LEN      (MAIN_FLASH_SIZE - 64 - 8192 + 0x400 + (0x28 *2) + 0x7000 + 12)
 
 
 // checksum_more()
@@ -97,11 +98,11 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32], uint32_t fw_leng
     // .. and chain in what we have so far
     sha256_update(&ctx, fw_digest, 32);
 
-    // bootloader, including pairing secret area.
+    // Bootloader, including pairing secret area, but excluding MCU keys.
     const uint8_t *base = (const uint8_t *)BL_FLASH_BASE;
-    checksum_more(&ctx, &total_len, base, start-base);
+    checksum_more(&ctx, &total_len, base, ((uint8_t *)MCU_KEYS)-base);
 
-    // probably-blank area after firmware, and filesystem area
+    // Probably-blank area after firmware, and filesystem area
     const uint8_t *fs = start + fw_length;
     const uint8_t *last = base + MAIN_FLASH_SIZE;
     checksum_more(&ctx, &total_len, fs, last-fs);
