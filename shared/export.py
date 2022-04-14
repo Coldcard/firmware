@@ -410,15 +410,24 @@ def generate_electrum_wallet(addr_type, account_num=0):
 async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
-    from glob import dis
+    from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
 
     dis.fullscreen('Generating...')
 
     body = generator()
 
-    # choose a filename
-        
+    if NFC:
+        # Offer to share over NFC regardless of if card inserted, virtdisk active, etc.
+        ch = await ux_show_story('''Press (3) to share %s file over NFC. \
+Otherwise, OK to proceed normally.''' % label, escape='3')
+        if ch == '3':
+            await NFC.share_json(ujson.dumps(body))
+            return
+        if ch != 'y':
+            return
+
+    # choose a filename and save
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)

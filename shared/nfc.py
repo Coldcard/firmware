@@ -249,6 +249,13 @@ class NFCHandler:
         n.add_custom('bitcoin.org:addr', addr.encode())
         return await self.share_start(n)
 
+    async def share_json(self, json_data):
+        # a text file of JSON for programs to read
+        n = ndef.ndefMaker()
+        n.add_custom('application/json', json_data)
+
+        return await self.share_start(n)
+
     async def share_text(self, data):
         # share text from a list of values
         # - just a text file, no multiple records; max usability!
