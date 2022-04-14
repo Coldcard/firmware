@@ -1033,7 +1033,7 @@ async def export_xpub(label, _2, item):
 def electrum_export_story(background=False):
     # saves memory being in a function
     return ('''\
-This saves a skeleton Electrum wallet file onto the MicroSD card. \
+This saves a skeleton Electrum wallet file. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
 ''' 
         + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
@@ -1069,8 +1069,9 @@ async def bitcoin_core_skeleton(*A):
     # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
 
     ch = await ux_show_story('''\
-This saves a command onto the MicroSD card that includes the public keys. \
-You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
+This saves commands and instructions into a file, including the public keys (xpub). \
+You can then run the commands in Bitcoin Core's console window, \
+without ever connecting this Coldcard to a computer.\
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
 
     account_num = 0
@@ -1096,7 +1097,7 @@ async def generic_skeleton(*A):
     # basically all useful XPUB's in it.
 
     if await ux_show_story('''\
-Saves JSON file onto MicroSD card, with XPUB values that are needed to watch typical \
+Saves JSON file, with XPUB values that are needed to watch typical \
 single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
         return
 
@@ -1114,7 +1115,7 @@ async def wasabi_skeleton(*A):
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
 
     if await ux_show_story('''\
-This saves a skeleton Wasabi wallet file onto the MicroSD card. \
+This saves a skeleton Wasabi wallet file. \
 You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
 ''' + SENSITIVE_NOT_SECRET) != 'y':
         return
