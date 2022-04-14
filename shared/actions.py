@@ -559,9 +559,22 @@ X to go back. Or press 2 to hide this message forever.
     import seed
     return seed.PassphraseMenu()
 
-def pick_new_wallet(*a):
+
+def pick_new_seed_24(*a):
     import seed
-    return seed.make_new_wallet()
+    return seed.make_new_wallet(24)
+
+def pick_new_seed_12(*a):
+    import seed
+    return seed.make_new_wallet(12)
+
+def new_from_dice_24(*a):
+    import seed
+    return seed.new_from_dice(24)
+def new_from_dice_12(*a):
+    import seed
+    return seed.new_from_dice(12)
+
 
 async def convert_bip39_to_bip32(*a):
     import seed, stash
@@ -924,7 +937,7 @@ async def start_login_sequence():
         from usb import enable_usb
         enable_usb()
         
-def goto_top_menu():
+def goto_top_menu(first_time=False):
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
@@ -944,6 +957,11 @@ def goto_top_menu():
         m = MenuSystem(EmptyWallet if pa.is_secret_blank() else NormalSystem)
 
     the_ux.reset(m)
+
+    if first_time and not pa.is_secret_blank():
+        # guide new user thru some setup stuff
+        from ftux import FirstTimeUX
+        the_ux.push(FirstTimeUX())
 
     return m
 
@@ -1158,10 +1176,6 @@ async def verify_backup(*A):
     # do a limited CRC-check over encrypted file
     await backups.verify_backup_file(fn)
 
-def import_from_dice(*a):
-    import seed
-    return seed.import_from_dice()
-        
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
     import ngu, chains, ure
