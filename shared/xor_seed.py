@@ -209,7 +209,7 @@ any time and you will have a valid wallet.''')
 
     if not pa.is_secret_blank():
         msg = "Since you have a seed already on this Coldcard, the reconstructed XOR seed will be temporary and not saved. Wipe the seed first if you want to commit the new value into the secure element."
-        if settings.get('words', True):
+        if settings.get('words', 24) == 24:
             msg += '''\n
 Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to continue without.'''
 
@@ -221,7 +221,8 @@ Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to 
             with stash.SensitiveValues() as sv:
                 if sv.mode == 'words':
                     words = bip39.b2a_words(sv.raw).split(' ')
-                    import_xor_parts.append(words)
+                    if len(words) == 24:
+                        import_xor_parts.append(words)
 
     return XORWordNestMenu(num_words=24)
 
