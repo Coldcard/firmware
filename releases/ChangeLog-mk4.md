@@ -8,10 +8,11 @@
     - "Advanced" now "Advanced/Tools"
     - shuffled contents of Advanced menu
     - "New Wallet" renamed "New Seed Words"
-- Text changes to cover reality that writing "files" can happen to SD card or VirtDisk or NFC.
+- Text changes to match reality that writing "files" can happen to SD card or VirtDisk or NFC.
 - New users will see some prompts to help them get started, after seed is set.
 - 12 word seeds are now an option from the start, either by TRNG or Dice Roll
 - Dice rools (for new seed) moved from Import (a misnomer) to "New Seed Words"
+- Duress wallet (from trick pin) will be 12-words if your true seed is 12-words
 
 
 ## 5.0.1 - 2022-03-24
