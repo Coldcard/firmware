@@ -89,20 +89,34 @@ if '--mainnet' in sys.argv:
 
 if '--seed' in sys.argv:
     # --seed "word1 word2 ... word24" => import that seed phrase at start
-    from ustruct import unpack
-    from utils import xfp2str
-    from seed import set_seed_value
-    from main import pa
-    from glob import settings
+    import bip39
+    from ubinascii import hexlify as b2a_hex
 
     words = sys.argv[sys.argv.index('--seed') + 1].split(' ')
     assert len(words) in {12, 18, 24}, "Expected space-separated words: add some quotes"
-    pa.pin = b'12-12'
-    set_seed_value(words)
-    settings.set('terms_ok', 1)
-    settings.set('_skip_pin', '12-12')
-    settings.set('chain', 'XTN')
-    print("Seed phrase set, resulting XFP: " + xfp2str(settings.get('xfp')))
+
+    seed = bip39.a2b_words(words)
+    if len(seed) == 16:
+        raw = bytes([0x80]) + seed
+    elif len(seed) == 24:
+        raw = bytes([0x81]) + seed
+    elif len(seed) == 32:
+        raw = bytes([0x82]) + seed
+    raw += bytes(72 - len(raw))
+
+    SECRETS.update({
+        '_pin1_secret': b2a_hex(raw),
+    })
+
+    sim_defaults['terms_ok'] = 1
+    sim_defaults['_skip_pin'] = '12-12'
+    sim_defaults['chain'] = 'XTN'
+    sim_defaults['words'] = len(words)
+    sim_defaults.pop('xfp')
+    sim_defaults.pop('xpub')
+    print("Using seed phrase from argv!")
+
+    
 
 if '--secret' in sys.argv:
     # --secret 01a1a1a....   Set SE master secret directly. See SecretStash.encode
