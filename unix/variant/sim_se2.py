@@ -173,7 +173,10 @@ class SecondSecureElement:
 
         if tc_flags & TC_WORD_WALLET:
             print("TRICK PIN: word wallet")
-            self.wallet = bytes([0x82]) + xs.xdata[0:32] + bytes(72-33)
+            if xs.xdata[16:32] == bytes(16):
+                self.wallet = bytes([0x80]) + xs.xdata[0:16] + bytes(72-17)     # 12-words
+            else:
+                self.wallet = bytes([0x82]) + xs.xdata[0:32] + bytes(72-33)     # 24-words
 
         if tc_flags & TC_XPRV_WALLET:
             print("TRICK PIN: xprv wallet")
