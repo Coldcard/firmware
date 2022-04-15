@@ -730,7 +730,7 @@ se2_test_trick_pin(const char *pin, int pin_len, trick_slot_t *found_slot, bool 
 
         // hmm: don't need this data if safety is off.. but we have it anyway
         if(found_slot->tc_flags & TC_WORD_WALLET) {
-            // it's a 24-word BIP-39 seed phrase, un-encrypted.
+            // it's a 12/24-word BIP-39 seed phrase, un-encrypted.
             if(found+1 < NUM_TRICKS) {
                 memcpy(found_slot->xdata, &slots[found+1][0], 32);
             }
