@@ -32,6 +32,10 @@ def blank_object(item):
     else:
         raise TypeError(item)
 
+def len_to_numwords(vlen):
+    # map length of binary secret to number of BIP-39 seed words
+    assert vlen in [16, 24, 32]
+    return 6 * (vlen // 8)
 
 class SecretStash:
     # Chip can hold 72-bytes as a secret: we need to store either
@@ -272,7 +276,7 @@ class SensitiveValues:
         return True
 
     def capture_xpub(self):
-        # track my xpubkey fingerprint & value in settings (not sensitive really)
+        # track my xpubkey fingerprint & xpub value in settings (not sensitive really)
         # - we share these on any USB connection
         from glob import settings
 
@@ -290,7 +294,12 @@ class SensitiveValues:
             settings.put('xpub', xpub)
 
         settings.put('chain', self.chain.ctype)
-        settings.put('words', (self.mode == 'words'))
+
+        # calc num words in seed, or zero
+        nw = 0
+        if self.mode == 'words':
+            nw = len_to_numwords(len(self.raw))
+        settings.put('words', nw)
 
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
