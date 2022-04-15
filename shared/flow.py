@@ -30,7 +30,7 @@ except:
 
 if version.mk_num >= 4:
     from trick_pins import TrickPinMenu
-    trick_pin_menu = TrickPinMenu()
+    trick_pin_menu = TrickPinMenu.make_menu
 else:
     trick_pin_menu = None
 
