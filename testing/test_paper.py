@@ -23,7 +23,7 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
     mx = "Don't make PDF"
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     try:
         pick_menu_item('Paper Wallets')
     except:
@@ -47,11 +47,11 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
         assert mx in cap_menu()
         shutil.copy('../docs/paperwallet.pdf', microsd_path('paperwallet.pdf'))
         pick_menu_item(mx)
-        need_keypress('y')
 
-        time.sleep(0.1)
+        time.sleep(0.2)
         title, story = cap_story()
         assert 'Pick PDF' in story
+        need_keypress('y')
 
         pick_menu_item('paperwallet.pdf')
 
@@ -134,7 +134,7 @@ def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_stor
     # verify the math for dice rolling method
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     try:
         pick_menu_item('Paper Wallets')
     except:

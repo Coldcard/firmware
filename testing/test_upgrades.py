@@ -60,7 +60,7 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypr
         os.system(cmd)
 
         goto_home()
-        pick_menu_item('Advanced')
+        pick_menu_item('Advanced/Tools')
         pick_menu_item('Upgrade')
         pick_menu_item('From MicroSD')
 

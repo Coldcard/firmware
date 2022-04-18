@@ -388,7 +388,7 @@ def test_rf_uid(rf_interface, cap_story, goto_home, pick_menu_item):
 
     # check UI is reporting same value
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Upgrade')
     pick_menu_item('Show Version')
     _, story = cap_story()

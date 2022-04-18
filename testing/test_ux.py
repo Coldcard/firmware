@@ -9,30 +9,6 @@ def test_get_secrets(get_secrets, master_xpub):
     assert 'xpub' in v
     assert v['xpub'] == master_xpub
 
-@pytest.fixture
-def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
-    # seed was entered, FTUX happens, get to main menu
-    def doit():
-        # first time UX here
-        while is_ftux_screen():
-            _, story = cap_story()
-            if not story: 
-                break
-            if 'Enable NFC' in story:
-                need_keypress('x')
-            elif 'Enable USB' in story:
-                need_keypress('y')
-            elif 'Disable USB' in story:
-                need_keypress('x')
-            else:
-                raise ValueError(story)
-
-        m = cap_menu()
-        assert m[0] == 'Ready To Sign'
-
-    return doit
-
-
 def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypress):
 
     # get to top, force a redraw

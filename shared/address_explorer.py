@@ -210,7 +210,7 @@ Press 3 if you really understand and accept these risks.
             msg = ''
             if n > 1:
                 if start == 0:
-                    msg = "Press 1 to save to MicroSD."
+                    msg = "Press 1 to save into a file."
                     if version.has_fatram and not ms_wallet:
                         msg += " 2 to view QR Codes."
                     if NFC:
@@ -279,7 +279,7 @@ Press 3 if you really understand and accept these risks.
                 return
 
             elif ch == '1':
-                # save addresses to MicroSD signal
+                # save addresses to MicroSD/VirtDisk
                 await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num,
                                                             count=(250 if n!=1 else 1))
                 # .. continue on same screen in case they want to write to multiple cards
@@ -347,7 +347,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
         stash.blank_object(node)
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250):
-    # write addresses into a text file on the MicroSD
+    # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
 
