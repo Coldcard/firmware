@@ -1263,6 +1263,18 @@ def nfc_write(request, only_mk4):
         return doit_usb
 
 @pytest.fixture()
+def nfc_read_json(nfc_read):
+    def doit():
+        import ndef, json
+        got = list(ndef.message_decoder(nfc_read()))
+        assert len(got) == 1
+        got = got[0]
+        assert got.type == 'urn:nfc:ext:application/json'
+        return json.loads(got.data)
+
+    return doit
+
+@pytest.fixture()
 def nfc_read_text(nfc_read):
     def doit():
         import ndef
