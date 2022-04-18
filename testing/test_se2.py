@@ -169,7 +169,7 @@ def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
         menu = cap_menu()
         if menu[0] in {'Trick PINs:', 'Add New Trick'}:
             return
-        if 'New Wallet' in menu:
+        if 'New Seed Words' in menu:
             raise pytest.skip("need seed set first for these tests")
 
         goto_home()

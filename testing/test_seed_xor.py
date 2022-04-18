@@ -199,7 +199,7 @@ def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, n
     unit_test('devtest/clear_seed.py')
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
+    assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
     pick_menu_item('Seed XOR')
 

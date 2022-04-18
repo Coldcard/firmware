@@ -311,6 +311,16 @@ def cap_menu(sim_exec):
     return doit
 
 @pytest.fixture(scope='module')
+def is_ftux_screen(sim_exec):
+    "are we presenting a view from ftux.py"
+    def doit():
+        rv = sim_exec('from ux import the_ux; RV.write(repr('
+                            'type(the_ux.top_of_stack())))')
+        return 'FirstTimeUX' in rv
+
+    return doit
+
+@pytest.fixture(scope='module')
 def cap_screen(sim_exec):
     def doit():
         # capture text shown; 4 lines or so?
@@ -486,15 +496,15 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
             need_keypress('x')
             time.sleep(.1)      # required
 
-            # special case to get out of passphrase menu
             m = cap_menu()
 
             if 'CANCEL' in m:
+                # special case to get out of passphrase menu
                 pick_menu_item('CANCEL')
                 time.sleep(.01)
                 need_keypress('y')
 
-            if m[0] in { 'New Wallet',  'Ready To Sign'}:
+            if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break
         else:
             raise pytest.fail("trapped in a menu")
