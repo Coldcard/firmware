@@ -194,7 +194,8 @@ def clear_all_tricks(goto_trick_menu, pick_menu_item, need_keypress, cap_story):
 
     return doit
 
-def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress):
+def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_story):
+    # get there, and wipe any existing
     goto_trick_menu()
 
     for step in range(2):
@@ -216,14 +217,22 @@ def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress
         if not has_some and not has_wrong:
             assert len(menu) == 3
 
-        if has_some:
-            assert step == 0
-            pick_menu_item('Delete All')
+        if not has_some:
+            break
+
+        assert step == 0
+        pick_menu_item('Delete All')
+        time.sleep(.1)
+        need_keypress('y')
+        time.sleep(.1)
+        title, story = cap_story()
+
+        if 'SURE' in story:
             time.sleep(.1)
+            assert 'duress wallet' in story
             need_keypress('y')
             time.sleep(.1)
-        else:
-            break
+
     # all clear now
 
 
@@ -416,10 +425,11 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,
     ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
-        reset_seed_words, repl,
+        reset_seed_words, repl, clear_all_tricks, 
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
+    clear_all_tricks()
 
     new_pin = '11-234'
     if with_wipe:
@@ -491,7 +501,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     assert xp == wallet.hwif(as_private=False)
 
     # re-login to recover normal seed
-    repl.exec('pa.setup(pa.pin); pa.login()')
+    repl.exec('pa.tmp_value=False; pa.setup(pa.pin); pa.login()')
 
 
 @pytest.mark.parametrize('true_pin, fake_pin, is_prob, expect_arg', [
@@ -606,10 +616,12 @@ def force_main_pin(change_pin, goto_pin_options, pick_menu_item, repl):
     ( '123-124', '124-444', False, 0x312f), 
 ])
 def test_ux_deltamode_wrong(true_pin, fake_pin, is_prob, expect_arg, repl,
-        force_main_pin,
+        force_main_pin, clear_all_tricks,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
 
     force_main_pin(true_pin)
+
+    clear_all_tricks()
 
     new_trick_pin(fake_pin, 'Delta Mode', 'somewhat riskier mode')
 
@@ -731,7 +743,6 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
 
     vals2, tr2 = decode_backup(bk2)
 
-    vals2.pop('setting.words')      # harmless
     assert vals == vals2
     assert trimmed == tr2
 
