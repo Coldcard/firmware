@@ -394,6 +394,7 @@ class TrickPinMenu(MenuSystem):
         if bool(pa.tmp_value):
             return [MenuItem('Not Available')]
 
+        tp.reload()
         tricks = tp.all_tricks()
 
         if self.current_pin in tricks:
