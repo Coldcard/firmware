@@ -7,7 +7,7 @@
 #   ../unix/work/menudump.txt
 
 async def doit():
-    async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0):
+    async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0, whs=False):
         from menu import MenuItem, ToggleMenuItem
         from seed import WordNestMenu
         from multisig import MultisigMenu
@@ -55,7 +55,9 @@ async def doit():
 
                 pred = getattr(mi, 'predicate', False)
                 if pred == has_secrets:
-                    pass        #here += ' [WHEN SEED PRESENT]'
+                    #here += ' [IF SEED DEFINED]'
+                    if not whs:     # "would have secrets"
+                        continue
                 elif pred == nfc_enabled:
                     here += ' [IF NFC ENABLED]'
                 elif pred == vdisk_enabled:
@@ -74,7 +76,7 @@ async def doit():
                     try:
                         rv = await funct(m, menu_idx, mi)
                         if isinstance(rv, MenuSystem):
-                            await dump_menu(fd, rv, here, indent, menu_item=mi, menu_idx=menu_idx)
+                            await dump_menu(fd, rv, here, indent, menu_item=mi, menu_idx=menu_idx, whs=whs)
                     except:
                         pass
 
@@ -82,15 +84,15 @@ async def doit():
                 chooser = getattr(mi, 'chooser', None)
 
                 if next_menu:
-                    await dump_menu(fd, next_menu, here, indent, menu_item=mi, menu_idx=menu_idx)
+                    await dump_menu(fd, next_menu, here, indent, menu_item=mi, menu_idx=menu_idx, whs=whs)
                     continue
                 elif chooser:
                     mx = list(chooser())[1]
-                    await dump_menu(fd, mx, here, indent)
+                    await dump_menu(fd, mx, here, indent, whs=whs)
                     continue
 
                 if isinstance(mi, ToggleMenuItem):
-                    await dump_menu(fd, mi.choices, here, indent, menu_idx=menu_idx)
+                    await dump_menu(fd, mi.choices, here, indent, menu_idx=menu_idx, whs=whs)
                     continue
 
             print('%s%s' % (indent, here), file=fd)
@@ -105,7 +107,7 @@ async def doit():
             ('[NORMAL OPERATION]', NormalSystem),
             ('[FACTORY MODE]', FactoryMenu),
         ]:
-            await dump_menu(fd, m, nm, '')
+            await dump_menu(fd, m, nm, '', whs=(m == NormalSystem))
             print('---\n', file=fd)
 
     print("DONE: check menudump.txt file")

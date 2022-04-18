@@ -1,10 +1,11 @@
 [IF NO PIN SET]
   Choose PIN Code
-  Advanced
+  Advanced/Tools
     View Identity
-    Upgrade firmware
+    Upgrade Firmware
       Show Version
       From MicroSD
+      From VirtDisk [IF VIRTDISK ENABLED]
       Bless Firmware
     Paper Wallets
     Perform Selftest
@@ -14,7 +15,11 @@
 ---
 
 [IF BLANK WALLET]
-  New Wallet
+  New Seed Words
+    24 Word (default)
+    12 Word
+    24 Word Dice Roll
+    12 Word Dice Roll
   Import Existing
     24 Words
       [SEED WORD MENUS]
@@ -25,34 +30,17 @@
     Restore Backup
     Clone Coldcard
     Import XPRV
-    Dice Rolls
     Seed XOR
   Help
-  Advanced
+  Advanced/Tools
     View Identity
-    Upgrade
+    Upgrade Firmware
       Show Version
       From MicroSD
+      From VirtDisk [IF VIRTDISK ENABLED]
       Bless Firmware
     File Management
       Verify Backup
-      Backup System
-      Dump Summary
-      Export Wallet
-        Bitcoin Core
-        Electrum Wallet
-        Wasabi Wallet
-        Unchained Capital
-        Generic JSON
-        Export XPUB
-          Segwit (BIP-84)
-          Classic (BIP-44)
-          P2WPKH/P2SH (49)
-          Master XPUB
-          Current XFP
-      Sign Text File
-      Upgrade Firmware
-      Clone Coldcard
       List Files
       NFC File Share [IF NFC ENABLED]
       Format SD Card
@@ -70,6 +58,8 @@
       Change Main PIN
       PIN Options
       Trick PINs
+        Trick PINs:
+        ↳22-22
         Add New Trick
         Add If Wrong
         Delete All
@@ -139,22 +129,33 @@
   Start HSM Mode [IF HSM POLICY]
   Address Explorer
   Secure Logout
-  Advanced
-    View Identity
-    Upgrade
-      Show Version
-      From MicroSD
-      Bless Firmware
+  Advanced/Tools
     Backup
       Backup System
       Verify Backup
       Restore Backup
       Clone Coldcard
+    Export Wallet
+      Bitcoin Core
+      Electrum Wallet
+      Wasabi Wallet
+      Unchained Capital
+      Generic JSON
+      Export XPUB
+        Segwit (BIP-84)
+        Classic (BIP-44)
+        P2WPKH/P2SH (49)
+        Master XPUB
+        Current XFP
       Dump Summary
+    Upgrade Firmware
+      Show Version
+      From MicroSD
+      From VirtDisk [IF VIRTDISK ENABLED]
+      Bless Firmware
     File Management
       Verify Backup
       Backup System
-      Dump Summary
       Export Wallet
         Bitcoin Core
         Electrum Wallet
@@ -167,23 +168,18 @@
           P2WPKH/P2SH (49)
           Master XPUB
           Current XFP
+        Dump Summary
       Sign Text File
-      Upgrade Firmware
       Clone Coldcard
       List Files
       NFC File Share [IF NFC ENABLED]
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
+    Derive Seed B85
+    View Identity
     Paper Wallets
     User Management
       (no users yet)
-    Derive Entropy
-    Export XPUB
-      Segwit (BIP-84)
-      Classic (BIP-44)
-      P2WPKH/P2SH (49)
-      Master XPUB
-      Current XFP
     Danger Zone
       Debug Functions
       Seed Functions
@@ -212,6 +208,8 @@
       Change Main PIN
       PIN Options
       Trick PINs
+        Trick PINs:
+        ↳22-22
         Add New Trick
         Add If Wrong
         Delete All
