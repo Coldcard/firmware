@@ -47,8 +47,8 @@ def test_bip_vectors(mode, index, entropy, expect,
     settings_set('chain', 'BTC')
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('Derive Entropy')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Derive Seed B85')
 
     time.sleep(0.1)
     title, story = cap_story()
@@ -195,8 +195,8 @@ def test_path_index(mode, pattern, index,
     # Uses any key on Simulator; just checking for operation + entropy level
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('Derive Entropy')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Derive Seed B85')
 
     time.sleep(0.1)
     title, story = cap_story()
