@@ -2,6 +2,8 @@
 #
 # Exporting of wallet files and similar things.
 #
+# Start simulator with:   simulator.py --eff --set nfc=1
+#
 import pytest, time, struct, os
 from pycoin.key.BIP32Node import BIP32Node
 from base64 import b64encode
@@ -20,8 +22,8 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Bitcoin Core')
 
@@ -29,7 +31,7 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
     title, story = cap_story()
 
     assert 'This saves' in story
-    assert 'run that command' in story
+    assert 'including the public keys' in story
 
     assert 'Press 1 to' in story
     if acct_num is not None:
@@ -153,8 +155,8 @@ def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need
     # test UX and operation of the 'wasabi wallet export'
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Wasabi Wallet')
 
@@ -167,6 +169,12 @@ def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need
 
     time.sleep(0.1)
     title, story = cap_story()
+
+    # if NFC enabled, extra screen:
+    if 'Otherwise, OK to proceed normally' in story:
+        need_keypress('y')
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert 'wallet file written' in story
     fname = story.split('\n')[-1]
@@ -200,8 +208,8 @@ def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_hom
     # lightly test electrum wallet export
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Electrum Wallet')
 
@@ -224,6 +232,12 @@ def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_hom
 
     time.sleep(0.1)
     title, story = cap_story()
+
+    # if NFC enabled, extra screen:
+    if 'Otherwise, OK to proceed normally' in story:
+        need_keypress('y')
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert 'wallet file written' in story
     fname = story.split('\n')[-1]
@@ -264,8 +278,8 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
 
     # test UX and values produced.
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Generic JSON')
 
@@ -283,6 +297,12 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
 
     time.sleep(0.1)
     title, story = cap_story()
+
+    # if NFC enabled, extra screen:
+    if 'Otherwise, OK to proceed normally' in story:
+        need_keypress('y')
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert 'Generic Export file written' in story
     fname = story.split('\n')[-1]
@@ -347,8 +367,8 @@ def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, n
     # test UX and operation of the 'unchained capital export'
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Unchained Capital')
 
@@ -361,6 +381,12 @@ def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, n
 
     time.sleep(0.1)
     title, story = cap_story()
+
+    # if NFC enabled, extra screen:
+    if 'Otherwise, OK to proceed normally' in story:
+        need_keypress('y')
+        time.sleep(0.1)
+        title, story = cap_story()
 
     assert 'Unchained Capital file' in story
     fname = story.split('\n')[-1]
@@ -390,8 +416,9 @@ def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, 
 
     # test UX and values produced.
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Export Wallet')
     pick_menu_item('Dump Summary')
 
     time.sleep(0.1)
@@ -456,7 +483,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
     use_mainnet()
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Export Wallet')
     pick_menu_item('Export XPUB')
 
     top_items = cap_menu()
@@ -474,7 +502,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
             is_xfp = True
 
         pick_menu_item(m)
-        time.sleep(0.1)
+        time.sleep(0.3)
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
             if use_nfc:
@@ -483,7 +511,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
             need_keypress('x')
             continue
 
-        time.sleep(0.1)
+        time.sleep(0.3)
         title, story = cap_story()
         assert expect in story
 
@@ -508,6 +536,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
             assert 'Press 3' in story
             assert 'NFC' in story
             need_keypress('3')
+            time.sleep(0.2)
             got_pub = nfc_read_text()
             time.sleep(0.1)
             #need_keypress('y')

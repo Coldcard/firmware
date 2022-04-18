@@ -484,7 +484,7 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
         # get to top, force a redraw
         for i in range(10):
             need_keypress('x')
-            time.sleep(.01)      # required
+            time.sleep(.1)      # required
 
             # special case to get out of passphrase menu
             m = cap_menu()
