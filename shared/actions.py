@@ -976,7 +976,7 @@ PICK_ACCOUNT = '''\n\nPress 1 to enter a non-zero account number.'''
 async def dump_summary(*A):
     # save addresses, and some other public details into a file
     if not await ux_confirm('''\
-Saves a text file to MicroSD with a summary of the *public* details \
+Saves a text file with a summary of the *public* details \
 of your wallet. For example, this gives the XPUB (extended public key) \
 that you will need to import other wallet software to track balance.''' + SENSITIVE_NOT_SECRET):
         return
