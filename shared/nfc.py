@@ -96,7 +96,8 @@ class NFCHandler:
     async def wipe(self, full_wipe):
         # Tag value is stored in flash cells, so want to clear
         # once we're done in case it's sensitive. But too slow to
-        # clear entire chip most of time, just do first 512 bytes.
+        # clear entire chip most of time, just do first 512 bytes,
+        # and dont wait for last to complete
         from glob import dis
         here = bytes(256)
         end = 8196
@@ -104,7 +105,7 @@ class NFCHandler:
             self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
             if pos == 256 and not full_wipe: break
 
-            # 6ms per 16 byte row, worst case, so ~100ms here!
+            # 6ms per 16 byte row, worst case, so ~100ms here per iter! 3.2seconds total
             if full_wipe:
                 dis.progress_bar_show(pos / end)
             await self.wait_ready()
@@ -180,7 +181,6 @@ class NFCHandler:
         # always setup IC_RF_SWITCHOFF_EN bit in I2C_CFG register
         # - so we can module RF support with special i2c addresses
         # - keep default other bits: 0x1a (i2c base address)
-        print("NFC: first time")
         self.write_config1(I2C_CFG, 0x3a)
 
         utime.sleep_ms(10)      # required
@@ -319,7 +319,7 @@ class NFCHandler:
                 try:
                     events = self.read_dyn(IT_STS_Dyn)
                 except OSError:     # ENODEV
-                    print("r_dyn fail")
+                    #print("r_dyn fail")
                     events = 0
 
                 if write_mode:
@@ -343,7 +343,8 @@ class NFCHandler:
                 break
 
         self.set_rf_disable(1)
-        await self.wipe(False)
+        if not write_mode:
+            await self.wipe(False)
 
         return aborted
 
@@ -369,8 +370,9 @@ class NFCHandler:
             taste = self.read(0, 16)
             st, ll, _, _ = ndef.ccfile_decode(taste)
         except Exception as e:
+            # robustness; need to handle all failures here
             import sys; sys.print_exception(e)
-            # robustness
+            print("taste = " + B2A(taste))
             ll = None
 
         if not ll:
@@ -378,8 +380,10 @@ class NFCHandler:
             await ux_show_story("No tag data was written?\n\n" + B2A(taste), title="Sorry!")
             return
 
-        # copy to ram
-        return self.read(st, ll)
+        # copy to ram, wipe
+        rv = self.read(st, ll)
+        await self.wipe(False)
+        return rv
 
 
     async def start_psbt_rx(self):

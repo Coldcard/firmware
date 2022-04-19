@@ -1,4 +1,4 @@
-## 5.0.2 - 2022-04-??
+## 5.0.2 - 2022-04-19
 
 - Adds NFC support for exporting to all the various wallet-types.
 - Multisig wallet specs can be exported via NFC, and new multisig wallet can be imported over NFC.
@@ -16,6 +16,7 @@
 - Duress wallet (from trick pin) will be 12-words if your true seed is 12-words
 - Bugfix: allow sending to scripts that we cannot parse, with a warning, to support
   `OP_RETURN` and other outputs we don't understand well (yet).
+- Bugfix: sending NFC things into the Coldcard was not working, fixed.
 
 
 ## 5.0.1 - 2022-03-24
