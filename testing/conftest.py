@@ -1207,6 +1207,7 @@ def only_mk3(dev):
 def rf_interface(only_mk4, sim_exec):
     # provide a read/write connection over NFC
     # - requires pyscard module and NFC-V reader like HID OMNIKEY 5022CL
+    raise pytest.xfail('broken NFC-V challenges')
     class RFHandler:
         def __init__(self, want_atr=None):
             from smartcard.System import readers as get_readers
@@ -1304,7 +1305,7 @@ def nfc_read_json(nfc_read):
         got = list(ndef.message_decoder(nfc_read()))
         assert len(got) == 1
         got = got[0]
-        assert got.type == 'urn:nfc:ext:application/json'
+        assert got.type == 'application/json'
         return json.loads(got.data)
 
     return doit
