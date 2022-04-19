@@ -1483,7 +1483,7 @@ async def ready2sign(*a):
     from glob import NFC
 
     def is_psbt(filename):
-        if '-signed' in filename.lower():
+        if '-signed' in filename.lower():       # XXX problem: multi-signers?
             return False
 
         with open(filename, 'rb') as fd:
@@ -1521,7 +1521,7 @@ any signature is performed."
 
         ch = await ux_show_story(msg, title=title, escape='3')
         if ch == '3' and NFC:
-            await NFC.start_nfc_rx()
+            await NFC.start_psbt_rx()
 
         return
 
@@ -1869,35 +1869,6 @@ Rarely needed as critical security updates will set this automatically.''' % hav
     # add error display here? meh.
 
     assert rv == 0, "Failed: %r" % rv
-
-async def import_multisig(*a):
-    # pick text file from SD card, import as multisig setup file
-
-    def possible(filename):
-        with open(filename, 'rt') as fd:
-            for ln in fd:
-                if 'pub' in ln:
-                    return True
-
-    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible)
-    if not fn: return
-
-    try:
-        with CardSlot() as card:
-            with open(fn, 'rt') as fp:
-                data = fp.read()
-    except CardMissingError:
-        await needs_microsd()
-        return
-
-    from auth import maybe_enroll_xpub
-    try:
-        possible_name = (fn.split('/')[-1].split('.'))[0]
-        maybe_enroll_xpub(config=data, name=possible_name)
-    except Exception as e:
-        #import sys; sys.print_exception(e)
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def start_hsm_menu_item(*a):
     from hsm_ux import start_hsm_approval 

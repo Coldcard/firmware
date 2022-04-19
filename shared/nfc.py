@@ -9,7 +9,7 @@
 #
 import ngu, ckcc, utime
 from uasyncio import sleep_ms
-from utils import B2A
+from utils import B2A, problem_file_line
 from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -252,7 +252,7 @@ class NFCHandler:
     async def share_json(self, json_data):
         # a text file of JSON for programs to read
         n = ndef.ndefMaker()
-        n.add_custom('application/json', json_data)
+        n.add_mime_data('application/json', json_data)
 
         return await self.share_start(n)
 
@@ -357,31 +357,40 @@ class NFCHandler:
         return await self.ux_animation(False)
 
     async def start_nfc_rx(self):
-        # pretend to be a big warm empty tag ready to be stuffed with data
-        from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
-        from auth import UserAuthorizedAction, ApproveTransaction
-        from ux import abort_and_goto
-        from sffile import SFFile
-
+        # Pretend to be a big warm empty tag ready to be stuffed with data
         await self.big_write(ndef.CC_WR_FILE)
-        aborted = await self.ux_animation(True)
 
+        # wait until something is written
+        aborted = await self.ux_animation(True)
         if aborted: return
 
+        # read CCFILE area (header)
         try:
             taste = self.read(0, 16)
             st, ll, _, _ = ndef.ccfile_decode(taste)
-        except:
+        except Exception as e:
+            import sys; sys.print_exception(e)
             # robustness
             ll = None
 
         if not ll:
             # they wrote nothing / failed to do anything
-            await ux_show_story("No tag data was written?", title="Sorry!")
+            await ux_show_story("No tag data was written?\n\n" + B2A(taste), title="Sorry!")
             return
 
         # copy to ram
-        data = self.read(st, ll)
+        return self.read(st, ll)
+
+
+    async def start_psbt_rx(self):
+        from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
+        from auth import UserAuthorizedAction, ApproveTransaction
+        from ux import abort_and_goto
+        from sffile import SFFile
+
+        data = await self.start_nfc_rx()
+        if not data: return
+
         psbt_in = None
         psbt_sha = None
         try:
@@ -398,8 +407,9 @@ class NFCHandler:
                 if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
                     # probably produced by another Coldcard: SHA256 over expected contents
                     psbt_sha = bytes(msg)
-        except:
+        except Exception as e:
             # dont crash when given garbage
+            import sys; sys.print_exception(e)
             pass
 
         if psbt_in is None:
@@ -515,5 +525,31 @@ class NFCHandler:
                 await self.share_text(data.decode())
             else:
                 raise ValueError(ctype)
+
+    async def import_multisig_nfc(self, *a):
+        # user is pushing a file downloaded from another CC over NFC
+        # - would need an NFC app in between for the sneakernet step
+        # get some data
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            if len(msg) < 70: continue
+            msg = bytes(msg).decode()        # from memory view
+            if 'pub' in msg:
+                winner = msg
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        from auth import maybe_enroll_xpub
+        try:
+            maybe_enroll_xpub(config=winner)
+        except Exception as e:
+            #import sys; sys.print_exception(e)
+            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 # EOF
