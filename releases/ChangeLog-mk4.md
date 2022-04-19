@@ -1,6 +1,7 @@
 ## 5.0.2 - 2022-04-??
 
 - Adds NFC support for exporting to all the various wallet-types.
+- Multisig wallet specs can be exported via NFC, and new multisig wallet can be imported over NFC.
 - Menu re-org: 
     - "Export Wallet" now directly under Advanced Menu and
       duplicate link remains under File Management.
