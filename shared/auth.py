@@ -377,9 +377,19 @@ class ApproveTransaction(UserAuthorizedAction):
         # - gives user-visible string
         # 
         val = ' '.join(self.chain.render_value(o.nValue))
-        dest = self.chain.render_address(o.scriptPubKey)
+        try:
+            dest = self.chain.render_address(o.scriptPubKey)
 
-        return '%s\n - to address -\n%s\n' % (val, dest)
+            return '%s\n - to address -\n%s\n' % (val, dest)
+        except ValueError:
+            pass
+
+        # Handle future things better: allow them to happen at least.
+        self.psbt.warnings.append(
+            ('Output?', 'Sending to a script that is not well understood.'))
+        dest = B2A(o.scriptPubKey)
+
+        return '%s\n - to script -\n%s\n' % (val, dest)
 
 
     async def interact(self):
