@@ -9,7 +9,7 @@
 #
 import ngu, ckcc, utime
 from uasyncio import sleep_ms
-from utils import B2A
+from utils import B2A, problem_file_line
 from ustruct import pack, unpack
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -96,7 +96,8 @@ class NFCHandler:
     async def wipe(self, full_wipe):
         # Tag value is stored in flash cells, so want to clear
         # once we're done in case it's sensitive. But too slow to
-        # clear entire chip most of time, just do first 512 bytes.
+        # clear entire chip most of time, just do first 512 bytes,
+        # and dont wait for last to complete
         from glob import dis
         here = bytes(256)
         end = 8196
@@ -104,7 +105,7 @@ class NFCHandler:
             self.i2c.writeto_mem(I2C_ADDR_USER, pos, here, addrsize=16)
             if pos == 256 and not full_wipe: break
 
-            # 6ms per 16 byte row, worst case, so ~100ms here!
+            # 6ms per 16 byte row, worst case, so ~100ms here per iter! 3.2seconds total
             if full_wipe:
                 dis.progress_bar_show(pos / end)
             await self.wait_ready()
@@ -180,7 +181,6 @@ class NFCHandler:
         # always setup IC_RF_SWITCHOFF_EN bit in I2C_CFG register
         # - so we can module RF support with special i2c addresses
         # - keep default other bits: 0x1a (i2c base address)
-        print("NFC: first time")
         self.write_config1(I2C_CFG, 0x3a)
 
         utime.sleep_ms(10)      # required
@@ -249,6 +249,13 @@ class NFCHandler:
         n.add_custom('bitcoin.org:addr', addr.encode())
         return await self.share_start(n)
 
+    async def share_json(self, json_data):
+        # a text file of JSON for programs to read
+        n = ndef.ndefMaker()
+        n.add_mime_data('application/json', json_data)
+
+        return await self.share_start(n)
+
     async def share_text(self, data):
         # share text from a list of values
         # - just a text file, no multiple records; max usability!
@@ -312,7 +319,7 @@ class NFCHandler:
                 try:
                     events = self.read_dyn(IT_STS_Dyn)
                 except OSError:     # ENODEV
-                    print("r_dyn fail")
+                    #print("r_dyn fail")
                     events = 0
 
                 if write_mode:
@@ -336,7 +343,8 @@ class NFCHandler:
                 break
 
         self.set_rf_disable(1)
-        await self.wipe(False)
+        if not write_mode:
+            await self.wipe(False)
 
         return aborted
 
@@ -350,31 +358,43 @@ class NFCHandler:
         return await self.ux_animation(False)
 
     async def start_nfc_rx(self):
-        # pretend to be a big warm empty tag ready to be stuffed with data
+        # Pretend to be a big warm empty tag ready to be stuffed with data
+        await self.big_write(ndef.CC_WR_FILE)
+
+        # wait until something is written
+        aborted = await self.ux_animation(True)
+        if aborted: return
+
+        # read CCFILE area (header)
+        try:
+            taste = self.read(0, 16)
+            st, ll, _, _ = ndef.ccfile_decode(taste)
+        except Exception as e:
+            # robustness; need to handle all failures here
+            import sys; sys.print_exception(e)
+            print("taste = " + B2A(taste))
+            ll = None
+
+        if not ll:
+            # they wrote nothing / failed to do anything
+            await ux_show_story("No tag data was written?\n\n" + B2A(taste), title="Sorry!")
+            return
+
+        # copy to ram, wipe
+        rv = self.read(st, ll)
+        await self.wipe(False)
+        return rv
+
+
+    async def start_psbt_rx(self):
         from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
         from auth import UserAuthorizedAction, ApproveTransaction
         from ux import abort_and_goto
         from sffile import SFFile
 
-        await self.big_write(ndef.CC_WR_FILE)
-        aborted = await self.ux_animation(True)
+        data = await self.start_nfc_rx()
+        if not data: return
 
-        if aborted: return
-
-        try:
-            taste = self.read(0, 16)
-            st, ll, _, _ = ndef.ccfile_decode(taste)
-        except:
-            # robustness
-            ll = None
-
-        if not ll:
-            # they wrote nothing / failed to do anything
-            await ux_show_story("No tag data was written?", title="Sorry!")
-            return
-
-        # copy to ram
-        data = self.read(st, ll)
         psbt_in = None
         psbt_sha = None
         try:
@@ -391,8 +411,9 @@ class NFCHandler:
                 if urn == 'urn:nfc:ext:bitcoin.org:sha256' and len(msg) == 32:
                     # probably produced by another Coldcard: SHA256 over expected contents
                     psbt_sha = bytes(msg)
-        except:
+        except Exception as e:
             # dont crash when given garbage
+            import sys; sys.print_exception(e)
             pass
 
         if psbt_in is None:
@@ -508,5 +529,31 @@ class NFCHandler:
                 await self.share_text(data.decode())
             else:
                 raise ValueError(ctype)
+
+    async def import_multisig_nfc(self, *a):
+        # user is pushing a file downloaded from another CC over NFC
+        # - would need an NFC app in between for the sneakernet step
+        # get some data
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            if len(msg) < 70: continue
+            msg = bytes(msg).decode()        # from memory view
+            if 'pub' in msg:
+                winner = msg
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        from auth import maybe_enroll_xpub
+        try:
+            maybe_enroll_xpub(config=winner)
+        except Exception as e:
+            #import sys; sys.print_exception(e)
+            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 # EOF

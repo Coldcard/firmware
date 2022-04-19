@@ -1040,8 +1040,15 @@ pin_fetch_secret(pinAttempt_t *args)
         memset(args->secret, 0, AE_SECRET_LEN);
 
         if(slot.tc_flags & TC_WORD_WALLET) {
-            args->secret[0] = 0x82;         // 24 word phrase
-            memcpy(&args->secret[1], slot.xdata, 32);
+            if(check_all_zeros(&slot.xdata[16], 16)) {
+                // 2nd half is zeros, must be 12-word wallet
+                args->secret[0] = 0x80;         // 12 word phrase
+                memcpy(&args->secret[1], slot.xdata, 16);
+            } else {
+                // normal 24-word seed
+                args->secret[0] = 0x82;         // 24 word phrase
+                memcpy(&args->secret[1], slot.xdata, 32);
+            }
         } else if(slot.tc_flags & TC_XPRV_WALLET) {
             args->secret[0] = 0x01;         // XPRV mode
             memcpy(&args->secret[1], slot.xdata, 64);

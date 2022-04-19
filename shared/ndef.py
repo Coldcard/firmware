@@ -53,6 +53,10 @@ class ndefMaker:
         # "NFC Forum external Type" using bitcoin.org domain
         self.lst.append( (len(payload), 0x4, ext_type.encode(), payload) )
 
+    def add_mime_data(self, mime_type, payload):
+        # "image/png" or other RFC mime types, including application/json
+        self.lst.append( (len(payload), 0x2, mime_type.encode(), payload) )
+
     def bytes(self):
         # Walk list of records, and set various framing bits to first bytes of each
         # and concat.

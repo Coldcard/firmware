@@ -306,9 +306,46 @@ def cap_menu(sim_exec):
     def doit():
         rv = sim_exec('from ux import the_ux; RV.write(repr('
                             '[i.label for i in the_ux.top_of_stack().items]))')
+        if 'Traceback' in rv:
+            raise RuntimeError(rv)      # not looking at a menu, typically
         return eval(rv)
 
     return doit
+
+@pytest.fixture(scope='module')
+def is_ftux_screen(sim_exec):
+    "are we presenting a view from ftux.py"
+    def doit():
+        rv = sim_exec('from ux import the_ux; RV.write(repr('
+                            'type(the_ux.top_of_stack())))')
+        return 'FirstTimeUX' in rv
+
+    return doit
+
+@pytest.fixture
+def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
+    # seed was entered, FTUX happens, get to main menu
+    def doit():
+        # first time UX here
+        while is_ftux_screen():
+            _, story = cap_story()
+            if not story: 
+                break
+            # XXX test more here
+            if 'Enable NFC' in story:
+                need_keypress('x')
+            elif 'Enable USB' in story:
+                need_keypress('y')
+            elif 'Disable USB' in story:
+                need_keypress('x')
+            else:
+                raise ValueError(story)
+
+        m = cap_menu()
+        assert m[0] == 'Ready To Sign'
+
+    return doit
+
 
 @pytest.fixture(scope='module')
 def cap_screen(sim_exec):
@@ -484,17 +521,17 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
         # get to top, force a redraw
         for i in range(10):
             need_keypress('x')
-            time.sleep(.01)      # required
+            time.sleep(.1)      # required
 
-            # special case to get out of passphrase menu
             m = cap_menu()
 
             if 'CANCEL' in m:
+                # special case to get out of passphrase menu
                 pick_menu_item('CANCEL')
                 time.sleep(.01)
                 need_keypress('y')
 
-            if m[0] in { 'New Wallet',  'Ready To Sign'}:
+            if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break
         else:
             raise pytest.fail("trapped in a menu")
@@ -1172,6 +1209,7 @@ def only_mk3(dev):
 def rf_interface(only_mk4, sim_exec):
     # provide a read/write connection over NFC
     # - requires pyscard module and NFC-V reader like HID OMNIKEY 5022CL
+    raise pytest.xfail('broken NFC-V challenges')
     class RFHandler:
         def __init__(self, want_atr=None):
             from smartcard.System import readers as get_readers
@@ -1261,6 +1299,18 @@ def nfc_write(request, only_mk4):
         return rf.write_nfc
     except:
         return doit_usb
+
+@pytest.fixture()
+def nfc_read_json(nfc_read):
+    def doit():
+        import ndef, json
+        got = list(ndef.message_decoder(nfc_read()))
+        assert len(got) == 1
+        got = got[0]
+        assert got.type == 'application/json'
+        return json.loads(got.data)
+
+    return doit
 
 @pytest.fixture()
 def nfc_read_text(nfc_read):

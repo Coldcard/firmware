@@ -57,7 +57,9 @@ class SimulatedNFCHandler(NFCHandler):
             atime, mtime, ctime = os.stat(DATA_FILE)[-3:]
             if mtime != self._mtime:
                 self._mtime = mtime
-                return 0x80        # written
+                got = open(DATA_FILE, 'rb').read(8196)
+                TAG_DATA[:len(got)] = got
+                return 0x80        # written by outside process
             if atime != self._atime:
                 self._atime = atime
                 return 0x02        # read

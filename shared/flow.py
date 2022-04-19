@@ -30,7 +30,7 @@ except:
 
 if version.mk_num >= 4:
     from trick_pins import TrickPinMenu
-    trick_pin_menu = TrickPinMenu()
+    trick_pin_menu = TrickPinMenu.make_menu
 else:
     trick_pin_menu = None
 
@@ -151,6 +151,7 @@ WalletExportMenu = [
     MenuItem("Unchained Capital", f=unchained_capital_export),
     MenuItem("Generic JSON", f=generic_skeleton),
     MenuItem("Export XPUB", menu=XpubExportMenu),
+    MenuItem("Dump Summary", predicate=has_secrets, f=dump_summary),
 ]
 
 # useful even if no secrets, may operate on VDisk or SDCard when inserted
@@ -158,10 +159,9 @@ FileMgmtMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Backup System", predicate=has_secrets, f=backup_everything),
-    MenuItem("Dump Summary", predicate=has_secrets, f=dump_summary),
-    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),
+    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
-    MenuItem('Upgrade Firmware', f=microsd_upgrade),
+    #MenuItem('Upgrade Firmware', f=microsd_upgrade),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file),
@@ -173,6 +173,7 @@ UpgradeMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Show Version', f=show_version),
     MenuItem('From MicroSD', f=microsd_upgrade),        # mk4: misnomer, could be vdisk too
+    MenuItem('From VirtDisk', predicate=vdisk_enabled, f=microsd_upgrade), 
     MenuItem('Bless Firmware', f=bless_flash),
 ]
 
@@ -200,7 +201,7 @@ else:
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
-    MenuItem('Upgrade firmware', menu=UpgradeMenu),
+    MenuItem('Upgrade Firmware', menu=UpgradeMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem('Secure Logout', f=logout_now),
@@ -209,7 +210,7 @@ AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
 AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
-    MenuItem("Upgrade", menu=UpgradeMenu),
+    MenuItem("Upgrade Firmware", menu=UpgradeMenu),
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
@@ -262,19 +263,18 @@ BackupStuffMenu = [
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Restore Backup", f=restore_everything),   # just a redirect really
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
-    MenuItem("Dump Summary", f=dump_summary),
 ]
 
 AdvancedNormalMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("View Identity", f=view_ident),
-    MenuItem("Upgrade", menu=UpgradeMenu),
     MenuItem("Backup", menu=BackupStuffMenu),
+    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),  # also inside FileMgmt
+    MenuItem("Upgrade Firmware", menu=UpgradeMenu),
     MenuItem("File Management", menu=FileMgmtMenu),
+    MenuItem('Derive Seed B85', f=drv_entro_start),
+    MenuItem("View Identity", f=view_ident),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
-    MenuItem('Derive Entropy', f=drv_entro_start),
-    MenuItem("Export XPUB", menu=XpubExportMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -282,7 +282,7 @@ AdvancedNormalMenu = [
 VirginSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Choose PIN Code', f=initial_pin_setup),
-    MenuItem('Advanced', menu=AdvancedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedVirginMenu),
     MenuItem('Bag Number', f=show_bag_number),
     MenuItem('Help', f=virgin_help),
 ]
@@ -295,17 +295,25 @@ ImportWallet = [
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv),
-    MenuItem("Dice Rolls", f=import_from_dice),
     MenuItem("Seed XOR", f=xor_restore_start),
+]
+
+
+NewSeedMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("24 Word (default)", f=pick_new_seed_24),
+    MenuItem("12 Word", f=pick_new_seed_12),
+    MenuItem("24 Word Dice Roll", f=new_from_dice_24),
+    MenuItem("12 Word Dice Roll", f=new_from_dice_12),
 ]
 
 # has PIN, but no secret seed yet
 EmptyWallet = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem('New Wallet', f=pick_new_wallet),
+    MenuItem('New Seed Words', menu=NewSeedMenu),
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem('Help', f=virgin_help),
-    MenuItem('Advanced', menu=AdvancedPinnedVirginMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
 
@@ -318,7 +326,7 @@ NormalSystem = [
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem('Secure Logout', f=logout_now),
-    MenuItem('Advanced', menu=AdvancedNormalMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
 

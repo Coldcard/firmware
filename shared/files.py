@@ -207,6 +207,11 @@ class CardSlot:
         from machine import Pin
         cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
+    @classmethod
+    def is_inserted(cls):
+        # debounce?
+        return not _is_ejected()
+
     def __init__(self, force_vdisk=False, readonly=False):
         self.mountpt = None
         self.force_vdisk = force_vdisk

@@ -257,8 +257,6 @@ class UsersMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined user names
-        from actions import import_multisig
-
         async def no_users_yet(*a):
             # action for 'no wallets yet' menu item
             await ux_show_story("You don't have any user accounts defined yet. USB is used to define new users, and their associated secrets.")
@@ -270,9 +268,6 @@ class UsersMenu(MenuSystem):
             rv = [MenuItem('%d user%s:' % (len(users), 's' if len(users) != 1 else ''))]
             for u in users:
                 rv.append(MenuItem('"%s"' % u, menu=make_user_sub_menu, arg=u))
-
-        # other static items?
-        #rv.append(MenuItem('', f=import_multisig))
 
         return rv
 

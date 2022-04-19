@@ -187,6 +187,11 @@ When the Coldcard has signed and finalized a transaction, it can
 share it in this format. Typically the user will want to broadcast
 this new transaction on the Bitcoin P2P network.
 
+## JSON Files
+
+When exporting wallet details, we need to share a JSON file in most
+cases. These are marked as "application/json".
+
 # Examples
 
 This section will include a number of examples, with analysis of the content.

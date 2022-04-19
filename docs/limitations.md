@@ -137,6 +137,7 @@ We will hide transaction outputs if they are "change" back into same wallet, how
   and any trick pin which matches the true PIN of the restored system will be dropped
 - deltamode PIN requirements are checked during wallet restore, and if the new true PIN
   is not compatible, the deltamode trick PIN is dropped and not restored
+- duress wallets are supported when derived from 24- or 12-word seed phrases
 
 # Debug Serial Port (Mk4)
 

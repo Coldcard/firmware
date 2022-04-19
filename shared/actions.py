@@ -559,9 +559,22 @@ X to go back. Or press 2 to hide this message forever.
     import seed
     return seed.PassphraseMenu()
 
-def pick_new_wallet(*a):
+
+def pick_new_seed_24(*a):
     import seed
-    return seed.make_new_wallet()
+    return seed.make_new_wallet(24)
+
+def pick_new_seed_12(*a):
+    import seed
+    return seed.make_new_wallet(12)
+
+def new_from_dice_24(*a):
+    import seed
+    return seed.new_from_dice(24)
+def new_from_dice_12(*a):
+    import seed
+    return seed.new_from_dice(12)
+
 
 async def convert_bip39_to_bip32(*a):
     import seed, stash
@@ -924,7 +937,7 @@ async def start_login_sequence():
         from usb import enable_usb
         enable_usb()
         
-def goto_top_menu():
+def goto_top_menu(first_time=False):
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
@@ -945,6 +958,11 @@ def goto_top_menu():
 
     the_ux.reset(m)
 
+    if first_time and not pa.is_secret_blank():
+        # guide new user thru some setup stuff
+        from ftux import FirstTimeUX
+        the_ux.push(FirstTimeUX())
+
     return m
 
 SENSITIVE_NOT_SECRET = '''
@@ -958,7 +976,7 @@ PICK_ACCOUNT = '''\n\nPress 1 to enter a non-zero account number.'''
 async def dump_summary(*A):
     # save addresses, and some other public details into a file
     if not await ux_confirm('''\
-Saves a text file to MicroSD with a summary of the *public* details \
+Saves a text file with a summary of the *public* details \
 of your wallet. For example, this gives the XPUB (extended public key) \
 that you will need to import other wallet software to track balance.''' + SENSITIVE_NOT_SECRET):
         return
@@ -1033,7 +1051,7 @@ async def export_xpub(label, _2, item):
 def electrum_export_story(background=False):
     # saves memory being in a function
     return ('''\
-This saves a skeleton Electrum wallet file onto the MicroSD card. \
+This saves a skeleton Electrum wallet file. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
 ''' 
         + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
@@ -1069,8 +1087,9 @@ async def bitcoin_core_skeleton(*A):
     # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
 
     ch = await ux_show_story('''\
-This saves a command onto the MicroSD card that includes the public keys. \
-You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
+This saves commands and instructions into a file, including the public keys (xpub). \
+You can then run the commands in Bitcoin Core's console window, \
+without ever connecting this Coldcard to a computer.\
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
 
     account_num = 0
@@ -1096,7 +1115,7 @@ async def generic_skeleton(*A):
     # basically all useful XPUB's in it.
 
     if await ux_show_story('''\
-Saves JSON file onto MicroSD card, with XPUB values that are needed to watch typical \
+Saves JSON file, with XPUB values that are needed to watch typical \
 single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
         return
 
@@ -1114,7 +1133,7 @@ async def wasabi_skeleton(*A):
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
 
     if await ux_show_story('''\
-This saves a skeleton Wasabi wallet file onto the MicroSD card. \
+This saves a skeleton Wasabi wallet file. \
 You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
 ''' + SENSITIVE_NOT_SECRET) != 'y':
         return
@@ -1157,10 +1176,6 @@ async def verify_backup(*A):
     # do a limited CRC-check over encrypted file
     await backups.verify_backup_file(fn)
 
-def import_from_dice(*a):
-    import seed
-    return seed.import_from_dice()
-        
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
     import ngu, chains, ure
@@ -1468,7 +1483,7 @@ async def ready2sign(*a):
     from glob import NFC
 
     def is_psbt(filename):
-        if '-signed' in filename.lower():
+        if '-signed' in filename.lower():       # XXX problem: multi-signers?
             return False
 
         with open(filename, 'rb') as fd:
@@ -1506,7 +1521,7 @@ any signature is performed."
 
         ch = await ux_show_story(msg, title=title, escape='3')
         if ch == '3' and NFC:
-            await NFC.start_nfc_rx()
+            await NFC.start_psbt_rx()
 
         return
 
@@ -1854,35 +1869,6 @@ Rarely needed as critical security updates will set this automatically.''' % hav
     # add error display here? meh.
 
     assert rv == 0, "Failed: %r" % rv
-
-async def import_multisig(*a):
-    # pick text file from SD card, import as multisig setup file
-
-    def possible(filename):
-        with open(filename, 'rt') as fd:
-            for ln in fd:
-                if 'pub' in ln:
-                    return True
-
-    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible)
-    if not fn: return
-
-    try:
-        with CardSlot() as card:
-            with open(fn, 'rt') as fp:
-                data = fp.read()
-    except CardMissingError:
-        await needs_microsd()
-        return
-
-    from auth import maybe_enroll_xpub
-    try:
-        possible_name = (fn.split('/')[-1].split('.'))[0]
-        maybe_enroll_xpub(config=data, name=possible_name)
-    except Exception as e:
-        #import sys; sys.print_exception(e)
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def start_hsm_menu_item(*a):
     from hsm_ux import start_hsm_approval 

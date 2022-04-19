@@ -55,7 +55,7 @@ def parse_display_screen(cap_story, is_mark3):
         title, body = cap_story()
         lines = body.split('\n')
         if start == 0:
-            assert 'Press 1 to save to MicroSD.' in lines[0]
+            assert 'Press 1 to save into a file.' in lines[0]
             if is_mark3:
                 assert '2 to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
@@ -341,6 +341,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
     need_keypress('3')      # approve risk
 
     if is_single:
+        time.sleep(.2)
         title, body = cap_story()
         assert 'Showing single addr' in body
         assert path in body

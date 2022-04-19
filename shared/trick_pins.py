@@ -38,6 +38,9 @@ TC_RFU          = const(0x0100)
 TC_BLANK_WALLET = const(0x0080)
 TC_COUNTDOWN    = const(0x0040)         # tc_arg = minutes of delay
 
+# tc_args encoding:
+# TC_WORD_WALLET -> BIP-85 index, 1001..1003 for 24 words, 2001..2003 for 12-words
+
 # special "pin" used as catch-all for wrong pins
 WRONG_PIN_CODE = '!p'
     
@@ -68,8 +71,10 @@ def construct_duress_secret(flags, tc_arg):
     # is duress wallet required and if so, what are the secret values (32 or 64 bytes)
     if flags & TC_WORD_WALLET:
         # derive the secret via BIP-85
-        new_secret, _, _, path = bip85_derive(2, tc_arg)
-        path = "BIP85(words=24, index=%d)" % tc_arg
+        nwords = 24 if (tc_arg//1000 == 1) else 12
+        mmode = 0 if (nwords == 12) else 2          # weak: based on menu design
+        new_secret, _, _, path = bip85_derive(mmode, tc_arg)
+        path = "BIP85(words=%d, index=%d)" % (nwords, tc_arg)
 
     elif flags & TC_XPRV_WALLET:
         # use old method for duress wallets
@@ -232,13 +237,16 @@ class TrickPinMgmt:
 
         if secret is not None:
             # expecting an encoded secret
-            if len(secret) == 32:
+            if len(secret) <= 32:
+                # words.
                 assert slot.tc_flags & TC_WORD_WALLET
-                slot.xdata[0:32] = secret
+                slot.xdata[0:len(secret)] = secret
             elif len(secret) == 64:
                 # expecting 64 bytes encoded already
                 assert slot.tc_flags & TC_XPRV_WALLET
                 slot.xdata[0:64] = secret
+            else:
+                raise ValueError()
 
         # Save config for later
         # - deltamode: don't document real pin digits
@@ -313,9 +321,10 @@ class TrickPinMgmt:
 
             if flags & TC_WORD_WALLET:
                 label = "Duress: BIP-85 Derived wallet"
-                path = "BIP85(words=24, index=%d)" % arg
+                nwords = 12 if ((arg // 1000) == 2) else 24
+                path = "BIP85(words=%d, index=%d)" % (nwords, arg)
                 b, slot = tp.get_by_pin(pin)
-                words = bip39.b2a_words(slot.xdata[0:32])
+                words = bip39.b2a_words(slot.xdata[0:(32 if nwords==24 else 16)])
 
                 d = [ ('duress_%d_words' % arg, words) ]
             elif flags & TC_XPRV_WALLET:
@@ -364,21 +373,28 @@ tp = TrickPinMgmt()
 class TrickPinMenu(MenuSystem):
 
     def __init__(self):
-        from pincodes import pa
         self.WillWipeMenu = None
-        super().__init__(self.construct(avail=(not pa.tmp_value)))
+        super().__init__(self.construct())
+
+    @classmethod
+    async def make_menu(cls, *unused):
+        # used to build menu at runtime, in response to parent menu item
+        return cls()
 
     @property
     def current_pin(self):
         from pincodes import pa
         return pa.pin.decode()
 
-    def construct(self, avail=True):
+    def construct(self):
         # Dynamic menu with PIN codes as the items, plus a few static choices
 
-        if not avail:
-            return [MenuItem('Not available')]
+        # not going to work well if tmp secret in effect
+        from pincodes import pa
+        if bool(pa.tmp_value):
+            return [MenuItem('Not Available')]
 
+        tp.reload()
         tricks = tp.all_tricks()
 
         if self.current_pin in tricks:
@@ -508,6 +524,7 @@ class TrickPinMenu(MenuSystem):
     async def add_new(self, *a):
         # Add a new PIN code
         from pincodes import pa
+        from glob import settings
 
         if pa.is_secret_blank() or pa.is_blank() or not pa.pin:
             await ux_show_story("Please set true PIN and wallet seed before creating trick pins.")
@@ -516,14 +533,23 @@ class TrickPinMenu(MenuSystem):
         # get the new pin
         self.proposed_pin = await self.get_new_pin()
         if not self.proposed_pin: return
+        nwords = settings.get('words', 24)
+        if nwords == 12:
+            dbase = 2000
+        else:
+            # 24-word typical duress wallet
+            # - cannot handle 18-word seeds exactly, so map to 24
+            # - also XPRV -> duress word wallet will be 24-word type
+            dbase = 1000
 
-        b85 = "This PIN will lead to a functional 'duress' wallet using seed words produced by the standard BIP-85 process. Index number is 1001 / 1002 / 1003 for #1..#3 duress wallets."
+        b85 = "This PIN will lead to a functional 'duress' wallet using seed words produced by the standard BIP-85 process. Index number is %d...%d for #1..#3 duress wallets. Same number of seed words as your true seed." \
+                % (dbase+1, dbase+3)
 
         DuressOptions = [
             #              xxxxxxxxxxxxxxxx
-            StoryMenuItem('BIP-85 Wallet #1', b85, arg=1001, flags=TC_WORD_WALLET),
-            StoryMenuItem('BIP-85 Wallet #2', b85, arg=1002, flags=TC_WORD_WALLET),
-            StoryMenuItem('BIP-85 Wallet #3', b85, arg=1003, flags=TC_WORD_WALLET),
+            StoryMenuItem('BIP-85 Wallet #1', b85, arg=dbase+1, flags=TC_WORD_WALLET),
+            StoryMenuItem('BIP-85 Wallet #2', b85, arg=dbase+2, flags=TC_WORD_WALLET),
+            StoryMenuItem('BIP-85 Wallet #3', b85, arg=dbase+3, flags=TC_WORD_WALLET),
             StoryMenuItem('Legacy Wallet', "Uses duress wallet created on Mk3 Coldcard, using a fixed derivation.\n\nRecommended only for existing UTXO compatibility.", flags=TC_XPRV_WALLET),
             StoryMenuItem('Blank Coldcard', "Look and act like a freshly wiped Coldcard", flags=TC_BLANK_WALLET),
         ]
@@ -538,7 +564,6 @@ class TrickPinMenu(MenuSystem):
                             flags=TC_WIPE),
         ])
         from countdowns import lgto_map
-        from glob import settings
         def_to = settings.get('lgto', 0) or 60   # use 1hour or current countdown length as default
 
         countdown_menu = MenuSystem([
@@ -723,10 +748,12 @@ normal operation.''')
         # emulate stash.py encoding
         if flags & TC_XPRV_WALLET:
             encoded = b'\x01' + slot.xdata[0:64]
-        elif flags & TC_WORD_WALLET:
+        elif flags & TC_WORD_WALLET and (arg // 1000 == 1):
             encoded = b'\x82' + slot.xdata[0:32]
+        elif flags & TC_WORD_WALLET and (arg // 1000 == 2):
+            encoded = b'\x80' + slot.xdata[0:16]
         else:
-            raise ValueError(hex(flags))
+            raise ValueError('f=0x%x a=%d' % (flags, args))
 
         from glob import dis
 
@@ -788,9 +815,12 @@ normal operation.''')
             msg = '''The legacy duress wallet will be activated if '%s' is provded. \
 You probably created this on an older Mk2 or Mk3 Coldcard. \
 Wallet is XPRV-based and derived from a fixed path.''' % pin
+        elif flags & TC_WORD_WALLET:
+            nwords = 12 if (arg // 1000 == 2) else 24
+            msg = '''BIP-85 derived wallet (%d words), with index #%d, is provided if '%s'.''' \
+                        % (nwords, arg, pin)
         else:
-            msg = '''BIP-85 derived wallet (24 words), with index #%d, is provided if '%s'.''' \
-                        % (arg, pin)
+            raise ValueError(hex(flags))
 
         ch = await ux_show_story(msg + '\n\nPress 6 to view associated secrets.', escape='6')
         if ch != '6': return
@@ -809,8 +839,11 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
                 node.from_chaincode_privkey(ch, pk)
 
                 msg, *_ = render_master_secrets('xprv', None, node)
+            elif flags & TC_WORD_WALLET:
+                raw = s.xdata[0:(32 if nwords == 24 else 16)]
+                msg, *_ = render_master_secrets('words', raw, None)
             else:
-                msg, *_ = render_master_secrets('words', s.xdata[0:32], None)
+                raise ValueError(hex(flags))
 
         await ux_show_story(msg, sensitive=True)
         
