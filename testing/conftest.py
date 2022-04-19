@@ -306,6 +306,8 @@ def cap_menu(sim_exec):
     def doit():
         rv = sim_exec('from ux import the_ux; RV.write(repr('
                             '[i.label for i in the_ux.top_of_stack().items]))')
+        if 'Traceback' in rv:
+            raise RuntimeError(rv)      # not looking at a menu, typically
         return eval(rv)
 
     return doit
