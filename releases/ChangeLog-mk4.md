@@ -13,6 +13,8 @@
 - 12 word seeds are now an option from the start, either by TRNG or Dice Roll
 - Dice rools (for new seed) moved from Import (a misnomer) to "New Seed Words"
 - Duress wallet (from trick pin) will be 12-words if your true seed is 12-words
+- Bugfix: allow sending to scripts that we cannot parse, with a warning, to support
+  `OP_RETURN` and other outputs we don't understand well (yet).
 
 
 ## 5.0.1 - 2022-03-24
