@@ -10,17 +10,20 @@ MCOPY=mcopy
 
 RELEASES = $(wildcard ../../releases/*-mk4-*.dfu) $(wildcard ../*-mk4-RC1*.dfu)
 
-all: output.img.gz
+OUTPUT = mk4-recovery-$(shell date +%F).img.xz
 
-output.img output.img.gz: $(RELEASES) Makefile
+all: output.img
+
+output.img: $(RELEASES) Makefile
 	dd if=/dev/zero of=output.img bs=1024 count=160
 	$(MFORMAT) -v MK4RECOVER -f 160 -N 2022 -C z:
-	ls -1 $(RELEASES) > flist.txt
+	ls -1 $(RELEASES) | sort -n > flist.txt
 	cat internal-readme.txt flist.txt > tmp.txt
 	$(MCOPY) -bsmp tmp.txt z:README.TXT
 	for f in $(RELEASES); do echo $$f ; dd if=$$f obs=512 conv=osync >> output.img; done
-	gzip -v9 output.img
+	xz -cv9 < output.img > $(OUTPUT)
 	cat flist.txt
+	ls -l $(OUTPUT)
 	
 
 # EOF

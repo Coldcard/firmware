@@ -1,4 +1,4 @@
 tmp.txt
 flist.txt
 output.img
-output.img.gz
+*.img.xz
