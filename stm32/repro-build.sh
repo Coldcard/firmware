@@ -38,7 +38,7 @@ if [ -f *-v$VERSION_STRING-coldcard.dfu ]; then
     echo "Using existing binary in ../releases, not downloading."
 else
     # fetch a copy of the required binary
-    PUBLISHED_BIN=`grep $VERSION_STRING signatures.txt | dd bs=66 skip=1`
+    PUBLISHED_BIN=`grep -F $VERSION_STRING signatures.txt | dd bs=66 skip=1`
     if [ -z "$PUBLISHED_BIN" ]; then
         echo "Cannot determine release date / full file name. Stop."
         exit 1
