@@ -908,7 +908,7 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
         if dests:
             # check we got right destination address(es)
             for outn, expect_addr in dests:
-                assert decode['vout'][outn]['scriptPubKey']['addresses'][0] == expect_addr
+                assert decode['vout'][outn]['scriptPubKey']['address'] == expect_addr
 
         # leverage bitcoind's transaction decoding
         ex = dict(  lock_time = decode['locktime'],
@@ -918,7 +918,7 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
                     miner_fee = U2SAT(fee),
                     warnings_expected = num_warn,
                     total_value_out = sum(U2SAT(i['value']) for i in decode['vout']),
-                    destinations = [(U2SAT(i['value']), i['scriptPubKey']['addresses'][0])
+                    destinations = [(U2SAT(i['value']), i['scriptPubKey']['address'])
                                          for i in decode['vout']],
             )
 
