@@ -15,9 +15,14 @@ PSBT files for signing offline at the Coldcard.
 
 Step 1: Create a new descriptor-based wallet in Bitcoin Core
 
-- File -> Create Wallet ... 
+- File -> Create Wallet ...
 - give it a unique name
-- check "Descriptor Wallet"
+- check "Disable Private Keys" (this will auto-check "Make Blank Wallet") and "Descriptor Wallet"
+
+NOTE: Disable Private Keys sets the wallet in watch-only mode, only public keys can be imported into wallet.
+Therefore, this wallet is used to track transactions and generate PSBT transactions to be signed on the Coldcard.
+Make Blank Wallet means the wallet starts out with nothing in it. In Step 2 we will initialize the wallet with
+the `importdescriptor` command.
 
 Step 2: Export descriptor from Coldcard to Core
 
