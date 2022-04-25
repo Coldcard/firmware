@@ -208,7 +208,7 @@ def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3,
         shown = set()
         hidden = set()
         for i in decoded['vout']:
-            dest = i['scriptPubKey']['addresses'][0]
+            dest = i['scriptPubKey']['address']
             val = i['value']
             if dest in story:
                 shown.add((val, dest))
@@ -1292,18 +1292,18 @@ def test_wrong_xfp_multi(fake_txn, try_sign, segwit):
     # - but multiple wrong XFP values
 
     wrongs = set()
-    wrong_xfp = b'\x12\x34\x56\x78'
 
     def hack(psbt):
         # change all inputs to be "not ours" ... but with utxo details
         for idx, i in enumerate(psbt.inputs):
             for pubkey in i.bip32_paths:
-                here = struct.pack('<I', idx)
+                here = struct.pack('<I', idx+73)
                 i.bip32_paths[pubkey] = here + i.bip32_paths[pubkey][4:]
-                wrongs.add(xfp2str(idx))
+                wrongs.add(xfp2str(idx+73))
 
     psbt = fake_txn(7, 2, segwit_in=segwit, psbt_hacker=hack)
 
+    open('debug/wrong-xfp.psbt', 'wb').write(psbt)
     with pytest.raises(CCProtoError) as ee:
         orig, result = try_sign(psbt, accept=True)
 
