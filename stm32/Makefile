@@ -266,7 +266,7 @@ ifeq ($(PUBLISHED_BIN),)
 	@echo "Need published binary for: $(VERSION_STRING)"
 	@echo ""
 	@echo "Code in repro-build.sh should have placed it there already!?"
-	false
+	@echo ""
 else
 	@echo Comparing against: $(PUBLISHED_BIN)
 	test -n "$(PUBLISHED_BIN)" -a -f $(PUBLISHED_BIN)
