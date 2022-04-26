@@ -1,4 +1,4 @@
-## 4.1.4 - Apr 27, 2022
+## 4.1.4 - Apr 26, 2022
 
 - Enhancement: if an XFP of zero is seen in a PSBT file, assume that should be replaced by
   our current XFP value and try to sign the input (same for change outputs and change-fraud
