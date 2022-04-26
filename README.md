@@ -1,6 +1,5 @@
 # Coldcard Wallet
 
-
 Coldcard is a Cheap, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
 Get yours at [Coldcard.com](http://coldcard.com)
 
@@ -9,8 +8,7 @@ with the latest updates and security alerts.
 
 ![coldcard logo](https://coldcard.com/static/images/coldcard-logo-nav.png)
 
-![coldcard picture front](https://coldcard.com/static/images/coldcard-front.png)
-![coldcard picture back](https://coldcard.com/static/images/coldcard-back.png)
+![Mk4 coldcard picture front](https://coldcard.com/static/images/mk4.png)
 
 ## Reproducible Builds
 
@@ -30,6 +28,9 @@ has been automated using Docker. Steps are as follows:
 5. Build products can be found `firmware/stm32/built`.
 
 ## Check-out and Setup
+
+**NOTE** This is the `master` branch and covers the latest hardware (Mk4).
+See branch `v4-legacy` for firmware which supports only Mk3/Mk2 and earlier.
 
 Do a checkout, recursively to get all the submodules:
 
