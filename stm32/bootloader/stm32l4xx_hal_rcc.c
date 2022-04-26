@@ -263,7 +263,7 @@ static HAL_StatusTypeDef RCC_SetFlashLatencyFromMSIRange(uint32_t msirange);
   *            - LSI, LSE and RTC clocks
   * @retval None
   */
-void HAL_RCC_DeInit(void)
+HAL_StatusTypeDef HAL_RCC_DeInit(void)
 {
   /* Set MSION bit */
   SET_BIT(RCC->CR, RCC_CR_MSION);
@@ -312,6 +312,8 @@ void HAL_RCC_DeInit(void)
 
   /* Update the SystemCoreClock global variable */
   SystemCoreClock = MSI_VALUE;
+
+  return HAL_OK;
 }
 
 /**

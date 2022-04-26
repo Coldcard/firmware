@@ -9,7 +9,7 @@ from utils import xfp2str, swab32
 from ux import ux_show_story
 import version, ujson
 from uio import StringIO
-from nvstore import settings
+from glob import settings
 
 def generate_public_contents():
     # Generate public details about wallet.
@@ -118,8 +118,7 @@ be needed for different systems.
 async def write_text_file(fname_pattern, body, title, total_parts=72):
     # - total_parts does need not be precise
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     # choose a filename
     try:
@@ -411,16 +410,24 @@ def generate_electrum_wallet(addr_type, account_num=0):
 async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
-    from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from glob import dis, NFC
+    from files import CardSlot, CardMissingError, needs_microsd
 
     dis.fullscreen('Generating...')
 
     body = generator()
 
-    # choose a filename
-        
+    if NFC:
+        # Offer to share over NFC regardless of if card inserted, virtdisk active, etc.
+        ch = await ux_show_story('''Press (3) to share %s file over NFC. \
+Otherwise, OK to proceed normally.''' % label, escape='3')
+        if ch == '3':
+            await NFC.share_json(ujson.dumps(body))
+            return
+        if ch != 'y':
+            return
+
+    # choose a filename and save
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)

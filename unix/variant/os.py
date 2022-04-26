@@ -1,35 +1,11 @@
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # "uos" module on unix is even more limited compared to micropython version!
 #
 from uos import *
 
-def sync(): pass
-
-'''
-# lifted from https://github.com/micropython/micropython-lib/blob/master/os/os/__init__.py
-import ffilib, uctypes
-import ustruct as struct
-
-libc = ffilib.libc()
-opendir_ = libc.func("P", "opendir", "s")
-readdir_ = libc.func("P", "readdir", "P")
-
-
-def OBSOLETE_ilistdir(path="."):
-    dir = opendir_(path)
-    if not dir:
-        raise OSError(2)        # ENOENT
-    res = []
-    dirent_fmt = "IHBB256s"     # XXX darwin specific?
-    while True:
-        dirent = readdir_(dir)
-        if not dirent:
-            break
-        import uctypes
-        dirent = uctypes.bytes_at(dirent, struct.calcsize(dirent_fmt))
-        dirent = struct.unpack(dirent_fmt, dirent)
-        dirent = (dirent[-1].split(b'\0', 1)[0], dirent[-2], dirent[0])
-        yield dirent
-'''
+def sync():
+    pass
 
 def fsdecode(s):
     if type(s) is str:
@@ -50,3 +26,4 @@ def listdir(path="."):
 
     return res
 
+# EOF

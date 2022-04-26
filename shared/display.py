@@ -2,8 +2,9 @@
 #
 # display.py - OLED rendering
 #
-import machine, ssd1306, uzlib, ckcc
+import machine, ssd1306, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
+from version import is_devmode
 import framebuf
 import uasyncio
 from uasyncio import sleep_ms
@@ -31,7 +32,13 @@ class Display:
         dc_pin = Pin('PA8', Pin.OUT)
         cs_pin = Pin('PA4', Pin.OUT)
 
-        self.dis = SSD1306_SPI(128, 64, spi, dc_pin, reset_pin, cs_pin)
+        try:
+            self.dis = SSD1306_SPI(128, 64, spi, dc_pin, reset_pin, cs_pin)
+        except OSError:
+            print("OLED unplugged?")
+            raise
+
+        self.last_bar_update = 0
         self.clear()
         self.show()
 
@@ -42,8 +49,11 @@ class Display:
             return sum(font.lookup(ord(ch)).w for ch in msg)
 
     def icon(self, x, y, name, invert=0):
-        # see graphics.py (auto generated file) for names
-        w,h, bw, wbits, data = getattr(Graphics, name)
+        if isinstance(name, tuple):
+            w,h, bw, wbits, data = name
+        else:
+            # see graphics.py (auto generated file) for names
+            w,h, bw, wbits, data = getattr(Graphics, name)
 
         if wbits:
             data = uzlib.decompress(data, wbits)
@@ -123,6 +133,12 @@ class Display:
         pos = min(int(mm*fraction), mm)
         self.dis.fill_rect(128-2, pos, 1, 8, 1)
 
+        if is_devmode and not ckcc.is_simulator():
+            self.dis.fill_rect(128-6, 20, 5, 21, 1)
+            self.text(-2, 21, 'D', font=FontTiny, invert=1)
+            self.text(-2, 28, 'E', font=FontTiny, invert=1)
+            self.text(-2, 35, 'V', font=FontTiny, invert=1)
+
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
         self.clear()
@@ -142,7 +158,7 @@ class Display:
         # display a splash screen with some version numbers
         self.clear()
         y = 4
-        self.text(None,    y, 'Coldcard', font=FontLarge)
+        self.text(None,    y, 'COLDCARD', font=FontLarge)
         self.text(None, y+20, 'Wallet', font=FontLarge)
 
         from version import get_mpy_version
@@ -159,6 +175,14 @@ class Display:
         # takes 0.0 .. 1.0 as fraction of doneness
         percent = max(0, min(1.0, percent))
         self.dis.hline(0, self.HEIGHT-1, int(self.WIDTH * percent), 1)
+
+    def progress_sofar(self, done, total):
+        # Update progress bar, but only if it's been a while since last update
+        if utime.ticks_diff(utime.ticks_ms(), self.last_bar_update) < 100:
+            return
+        self.last_bar_update = utime.ticks_ms()
+        self.progress_bar(done / total)
+        self.show()
 
     def progress_bar_show(self, percent):
         # useful as a callback

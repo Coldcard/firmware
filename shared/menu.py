@@ -68,6 +68,71 @@ class MenuItem:
             if m:
                 the_ux.push(m)
 
+class ToggleMenuItem(MenuItem):
+    # Handle toggles: must use undefined (missing) as default
+    # - can remap values a little, but default is to store 0/1/2
+    def __init__(self, label, nvkey, choices, predicate=None, story=None, on_change=None, invert=False, value_map=None):
+        self.label = label
+        self.story = story
+        self.nvkey = nvkey
+        self.choices = choices          # list of strings, at least 2
+        self.on_change = on_change      # optional, since some are just settings
+        if invert:
+            self.invert = True
+        if value_map:
+            self.value_map = value_map
+        if predicate:
+            self.predicate = predicate
+
+    def is_chosen(self):
+        # should we show a check in parent menu?
+        from glob import settings
+        rv = bool(settings.get(self.nvkey, 0))
+        if getattr(self, 'invert', False):
+            rv = not rv
+        return rv
+    
+    async def activate(self, menu, idx):
+        from glob import settings
+        from ux import ux_show_story
+
+        # skip story if default value has been changed
+        if self.story and settings.get(self.nvkey, None) == None:
+            ch = await ux_show_story(self.story)
+            if ch == 'x': return
+
+        value = settings.get(self.nvkey, 0)
+        if hasattr(self, 'value_map'):
+            for n,v in enumerate(self.value_map):
+                if value == v:
+                    value = n
+                    break
+            else:
+                value = 0           # robustness
+
+        m = MenuSystem([MenuItem(c, f=self.picked) for c in self.choices], chosen=value)
+        the_ux.push(m)
+
+    async def picked(self, menu, picked, xx_self):
+        from glob import settings
+
+        menu.chosen = picked
+        menu.show()
+        await sleep_ms(100)     # visual feedback that we changed it
+
+        if picked == 0:
+            settings.remove_key(self.nvkey)
+        else:
+            if hasattr(self, 'value_map'):
+                picked = self.value_map[picked]     # want IndexError if wrong here
+            settings.set(self.nvkey, picked)
+
+        if self.on_change:
+            await self.on_change(picked)
+
+        the_ux.pop()
+
+
 class MenuSystem:
 
     def __init__(self, menu_items, chosen=None, should_cont=None, space_indicators=False):
@@ -125,7 +190,14 @@ class MenuSystem:
             if msg[0] == ' ' and self.space_indicators:
                 dis.icon(x-2, y+11, 'space', invert=is_sel)
 
-            if self.chosen is not None and (n+self.ypos) == self.chosen:
+            # show check?
+            checked = (self.chosen is not None and (n+self.ypos) == self.chosen)
+
+            fcn = getattr(self.items[n+self.ypos], 'is_chosen', None)
+            if fcn and fcn():
+                checked = True
+
+            if checked:
                 dis.icon(108, y, 'selected', invert=is_sel)
 
             y += h

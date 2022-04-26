@@ -4,9 +4,8 @@
 # paper.py - generate paper wallets, based on random values (not linked to wallet)
 #
 from utils import imported
-from actions import needs_microsd
 from ux import ux_show_story, ux_dramatic_pause
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 from actions import file_picker
 from menu import MenuSystem, MenuItem
 
@@ -138,7 +137,7 @@ class PaperWalletMaker:
                 fname, nice_txt = card.pick_filename(basename + 
                                         ('-note.txt' if self.template_fn else '.txt'))
 
-                with open(fname, 'wt') as fp:
+                with card.open(fname, 'wt') as fp:
                     self.make_txt(fp, addr, wif, privkey, qr_addr, qr_wif)
 
                 if self.template_fn:

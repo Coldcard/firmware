@@ -16,7 +16,7 @@ from serializations import ser_compact_size, deser_compact_size, hash160, hash25
 from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
 from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
 from serializations import ser_string
-from nvstore import settings
+from glob import settings
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -138,7 +138,7 @@ def get_hash256(fd, poslen, hasher=None):
 
     fd.seek(pos)
     while ll:
-        here = fd.read_into(psbt_tmp256)
+        here = fd.readinto(psbt_tmp256)
         if not here: break
         if here > ll:
             here = ll
@@ -228,7 +228,7 @@ class psbtProxy:
         self.fd.seek(pos)
         return self.fd.read(ll)
 
-    def parse_subpaths(self, my_xfp):
+    def parse_subpaths(self, my_xfp, warnings):
         # Reformat self.subpaths into a more useful form for us; return # of them
         # that are ours (and track that as self.num_our_keys)
         # - works in-place, on self.subpaths
@@ -258,6 +258,15 @@ class psbtProxy:
             # promote to a list of ints
             v = self.get(self.subpaths[pk])
             here = list(unpack_from('<%dI' % (vl//4), v))
+
+            # Tricky & Useful: if xfp of zero is observed in file, assume that's a 
+            # placeholder for my XFP value. Replace on the fly. Great when master
+            # XFP is unknown because PSBT built from derived XPUB only. Also privacy.
+            if here[0] == 0:
+                here[0] = my_xfp
+                if not any(True for k,_ in warnings if 'XFP' in k):
+                    warnings.append(('Zero XFP',
+                            'Assuming XFP of zero should be replaced by correct XFP'))
 
             # update in place
             self.subpaths[pk] = here
@@ -327,7 +336,7 @@ class psbtOutputProxy(psbtProxy):
             for k in self.unknown:
                 wr(k[0], self.unknown[k], k[1:])
 
-    def validate(self, out_idx, txo, my_xfp, active_multisig):
+    def validate(self, out_idx, txo, my_xfp, active_multisig, parent):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -339,7 +348,7 @@ class psbtOutputProxy(psbtProxy):
         # - we raise fraud alarms, since these are not innocent errors
         #
 
-        num_ours = self.parse_subpaths(my_xfp)
+        num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
         if num_ours == 0:
             # - not considered fraud because other signers looking at PSBT may have them
@@ -513,7 +522,7 @@ class psbtInputProxy(psbtProxy):
 
         self.parse(fd)
 
-    def validate(self, idx, txin, my_xfp):
+    def validate(self, idx, txin, my_xfp, parent):
         # Validate this txn input: given deserialized CTxIn and maybe witness
 
         # TODO: tighten these
@@ -525,7 +534,7 @@ class psbtInputProxy(psbtProxy):
         # require path for each addr, check some are ours
 
         # rework the pubkey => subpath mapping
-        self.parse_subpaths(my_xfp)
+        self.parse_subpaths(my_xfp, parent.warnings)
 
         # sighash, but we're probably going to ignore anyway.
         self.sighash = SIGHASH_ALL if self.sighash is None else self.sighash
@@ -909,7 +918,8 @@ class psbtObject(psbtProxy):
         if self.total_value_out is None:
             self.total_value_out = total_out
         else:
-            assert self.total_value_out == total_out
+            assert self.total_value_out == total_out, \
+                '%s != %s' % (self.total_value_out, total_out)
 
     def parse_txn(self):
         # Need to semi-parse in unsigned transaction.
@@ -1109,7 +1119,7 @@ class psbtObject(psbtProxy):
 
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
-            self.inputs[idx].validate(idx, txin, self.my_xfp)
+            self.inputs[idx].validate(idx, txin, self.my_xfp, self)
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
 
@@ -1132,7 +1142,7 @@ class psbtObject(psbtProxy):
         # - mark change outputs, so perhaps we don't show them to users
 
         for idx, txo in self.output_iter():
-            self.outputs[idx].validate(idx, txo, self.my_xfp, self.active_multisig)
+            self.outputs[idx].validate(idx, txo, self.my_xfp, self.active_multisig, self)
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?
@@ -1376,7 +1386,7 @@ class psbtObject(psbtProxy):
             # write out the ready-to-transmit txn
             # - means we are also a PSBT combiner in this case
             # - hard tho, due to variable length data.
-            # - XXX probably a bad idea, so disabled for now
+            # - probably a bad idea, so disabled for now
             out_fd.write(b'\x01\x00')       # keylength=1, key=b'', PSBT_GLOBAL_UNSIGNED_TX
 
             with SizerFile() as fd:
@@ -1485,6 +1495,12 @@ class psbtObject(psbtProxy):
                     # Hash the inputs and such in totally new ways, based on BIP-143
                     digest = self.make_txn_segwit_sighash(in_idx, txi,
                                     inp.amount, inp.scriptCode, inp.sighash)
+
+                if sv.deltamode:
+                    # Current user is actually a thug with a slightly wrong PIN, so we
+                    # do have access to the private keys and could sign txn, but we 
+                    # are going to silently corrupt our signatures.
+                    digest = bytes(range(32))
 
                 if inp.is_multisig:
                     # need to consider a set of possible keys, since xfp may not be unique

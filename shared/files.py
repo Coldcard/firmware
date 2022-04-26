@@ -2,8 +2,17 @@
 #
 # files.py - MicroSD and related functions.
 #
-import pyb, ckcc, os, sys, utime
+import pyb, ckcc, os, sys, utime, glob
 from uerrno import ENOENT
+
+async def needs_microsd():
+    # Standard msg shown if no SD card detected when we need one.
+    from ux import ux_show_story
+    return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
+
+def _is_ejected():
+    sd = pyb.SDCard()
+    return not sd.present()
 
 def _try_microsd(bad_fs_ok=False):
     # Power up, mount the SD card, return False if we can't for some reason.
@@ -38,11 +47,11 @@ def _try_microsd(bad_fs_ok=False):
         #sys.print_exception(exc)
         return False
 
-
 def wipe_flash_filesystem():
-    # erase and re-format the flash filesystem (/flash/)
+    # erase and re-format the flash filesystem (/flash/**)
     import ckcc, pyb
     from glob import dis
+    from version import mk_num
     
     dis.fullscreen('Erasing...')
     os.umount('/flash')
@@ -52,32 +61,35 @@ def wipe_flash_filesystem():
     BP_IOCTL_SEC_SIZE  = (5)
 
     # block-level erase
-    fl = pyb.Flash()
+    fl = pyb.Flash(start=0)         # start=0 does magic things
     bsize = fl.ioctl(BP_IOCTL_SEC_SIZE, 0)
     assert bsize == 512
     bcount = fl.ioctl(BP_IOCTL_SEC_COUNT, 0)
 
     blk = bytearray(bsize)
     ckcc.rng_bytes(blk)
-    
-    # trickiness: actual flash blocks are offset by 0x100 (FLASH_PART1_START_BLOCK)
-    # so fake MBR can be inserted. Count also inflated by 2X, but not from ioctl above.
-    for n in range(bcount):
-        fl.writeblocks(n + 0x100, blk)
-        ckcc.rng_bytes(blk)
 
-        dis.progress_bar_show(n*2/bcount)
+    for n in range(bcount):
+        fl.writeblocks(n, blk)
+        ckcc.rng_bytes(blk)
+        dis.progress_bar_show(n/bcount)
         
     # rebuild and mount /flash
     dis.fullscreen('Rebuilding...')
-    ckcc.wipe_fs()
+    
+    if mk_num == 4:
+        # no need to erase, we just put new FS on top
+        import mk4
+        mk4.make_flash_fs()
+    else:
+        ckcc.wipe_fs()
+
+        # remount it
+        os.mount(fl, '/flash')
 
     # re-store current settings
-    from nvstore import settings
+    from glob import settings
     settings.save()
-
-    # remount it
-    os.mount(fl, '/flash')
 
 def wipe_microsd_card():
     # Erase and re-format SD card. Not secure erase, because that is too slow.
@@ -92,7 +104,9 @@ def wipe_microsd_card():
     sd = pyb.SDCard()
     assert sd
 
-    if not sd.present(): return
+    if not sd.present():
+
+        return
 
     # power cycle so card details (like size) are re-read from current card
     sd.power(0)
@@ -193,10 +207,23 @@ class CardSlot:
         from machine import Pin
         cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
 
-    def __init__(self):
-        self.active = False
+    @classmethod
+    def is_inserted(cls):
+        # debounce?
+        return not _is_ejected()
+
+    def __init__(self, force_vdisk=False, readonly=False):
+        self.mountpt = None
+        self.force_vdisk = force_vdisk
+        self.readonly = readonly
+        self.wrote_files = set()
 
     def __enter__(self):
+        # Mk4: maybe use our virtual disk in preference to SD Card
+        if glob.VD and (_is_ejected() or self.force_vdisk):
+            self.mountpt = glob.VD.mount(self.readonly)
+            return self
+
         # Get ready!
         self.active_led.on()
 
@@ -211,29 +238,42 @@ class CardSlot:
         ok = _try_microsd()
 
         if not ok:
-            self.recover()
+            self._recover()
 
             raise CardMissingError
 
-        self.active = True
+        self.mountpt = self.get_sd_root()       # probably /sd
 
         return self
 
     def __exit__(self, *a):
-        self.recover()
+        if self.mountpt == '/sd':
+            self._recover()
+        elif glob.VD:
+            glob.VD.unmount(self.wrote_files)
+
+        self.mountpt = None
         return False
+
+    def open(self, fname, mode='r', **kw):
+        # open a file for read/write
+        # - track new files for virtdisk case
+        if 'w' in mode:
+            assert not self.readonly
+            self.wrote_files.add(fname)
+
+        return open(fname, mode, **kw)
         
-    def recover(self):
+    def _recover(self):
         # done using the microSD -- unpower it
         self.active_led.off()
 
-        self.active = False
-
         try:
+            assert self.mountpt == '/sd'
             os.umount('/sd')
         except: pass
 
-        # important: turn off power so touch can work again
+        # previously important: turn off power so touch can work again (Mk1)
         sd = pyb.SDCard()
         sd.power(0)
 
@@ -246,9 +286,9 @@ class CardSlot:
 
     def get_paths(self):
         # (full) paths to check on the card
-        root = self.get_sd_root()
-
-        return [root]
+        #root = self.get_sd_root()
+        #return [root]
+        return [self.mountpt]
 
     def get_id_hash(self):
         # hash over card config and serial # details
@@ -273,10 +313,10 @@ class CardSlot:
         # - no UI here please
         import ure
 
-        assert self.active      # used out of context mgr
+        assert self.mountpt      # else: we got used out of context mgr
 
-        # prefer SD card if we can
-        path = path or (self.get_sd_root() + '/')
+        # put it back where we found it
+        path = path or (self.mountpt + '/')
 
         assert '/' not in pattern
         assert '.' in pattern
@@ -311,19 +351,20 @@ class CardSlot:
 
         return fname, fname[len(path):]
 
-def securely_blank_file(full_path):
-    # input PSBT file no longer required; so delete it
-    # - blank with zeros
-    # - rename to garbage (to hide filename after undelete)
-    # - delete 
-    # - ok if file missing already (card maybe have been swapped)
-    #
-    # NOTE: we know the FAT filesystem code is simple, see 
-    #       ../external/micropython/extmod/vfs_fat.[ch]
+    def securely_blank_file(self, full_path):
+        # input PSBT file no longer required; so delete it
+        # - blank with zeros
+        # - rename to garbage (to hide filename after undelete)
+        # - delete 
+        # - ok if file missing already (card maybe have been swapped)
+        #
+        # NOTE: we know the FAT filesystem code is simple, see 
+        #       ../external/micropython/extmod/vfs_fat.[ch]
 
-    path, basename = full_path.rsplit('/', 1)
+        self.wrote_files.discard(full_path)
 
-    with CardSlot() as card:
+        path, basename = full_path.rsplit('/', 1)
+
         try:
             blk = bytes(64)
 

@@ -2,12 +2,12 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
-# NOTE: Mark3 hardware does not support secondary wallet concept.
+# NOTE: Mark3+ hardware does not support secondary wallet concept.
 #
 import pincodes, version, random
 from glob import dis
 from display import FontLarge, FontTiny
-from ux import PressRelease, ux_wait_keyup, ux_poll_once, ux_show_story
+from ux import PressRelease, ux_wait_keyup, ux_show_story
 from utils import pretty_delay
 from callgate import show_logout
 from pincodes import pa
@@ -18,10 +18,11 @@ MIN_PIN_PART_LEN = 2
 
 class LoginUX:
 
-    def __init__(self, randomize=False):
+    def __init__(self, randomize=False, kill_btn=None):
         self.is_setting = False
         self.is_repeat = False
         self.subtitle = False
+        self.kill_btn = kill_btn
         self.offer_second = not version.has_608
         self.reset()
         self.randomize = randomize
@@ -169,7 +170,7 @@ class LoginUX:
                     # X on blank first screen: stop
                     return None
                     
-                # do a delete-one
+                # do a backspace
                 if self.pin:
                     self.pin = self.pin[:-1]
                     self.show_pin()
@@ -185,7 +186,20 @@ class LoginUX:
 
                 self._show_words()
 
-                nxt = await ux_wait_keyup('xy2' if self.offer_second else 'xy')
+                pattern = 'xy'
+                if self.offer_second:
+                    pattern += '2'
+                if self.kill_btn:
+                    pattern += self.kill_btn
+
+                nxt = await ux_wait_keyup(pattern)
+
+                if not self.is_setting and nxt == self.kill_btn:
+                    # wipe the seed if they press a special key
+                    import callgate
+                    callgate.fast_wipe(False)
+                    # not reached
+
                 if nxt == 'y' or nxt == '2':
                     self.pin_prefix = self.pin
                     self.pin = ''
@@ -199,8 +213,7 @@ class LoginUX:
                 self.show_pin(True)
 
             else:
-                #assert ch in '0123456789' or ch == ''
-
+                # digit pressed
                 if self.randomize and ch:
                     ch = self.randomize[int(ch)]
 
@@ -353,7 +366,7 @@ suffix break point is correct.'''
         while 1:
             self.reset()
             second_pin = await self.interact()
-            if first_pin is None: return None
+            if second_pin is None: return None
 
             if first_pin == second_pin:
                 return first_pin

@@ -273,9 +273,11 @@ Here's what the warning screen looks like:
 - Dev signs binary release with private "zero key" published in our Github
 - Give firmware binary file to users (via web download probably)
 - They upgrade via normal process (copy to MicroSD, or USB upgrade)
-- On first reboot, big "unauthorized firmware" warning is shown, with delay
+- On first reboot, big "unauthorized firmware" warning is shown, with delay.
 - If they know the main PIN (since they are the owner), they follow process to set green light
-- Next reboot and following, as long as "genuine" mode is maintained, they boot without warnings
+- Next reboot and following, as long as "genuine" mode is maintained, they boot without
+  warnings (Mk3 and earlier)
+- Mk4 will always alert on boot-up when running code not approved by Coinkite.
 
 ### Benefits
 

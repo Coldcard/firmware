@@ -95,27 +95,20 @@ async def ux_wait_keyup(expected=None):
 
         armed = ch
 
-def ux_poll_once(expected='x'):
-    # non-blocking check if key is pressed
-    # - ignore and suppress any key not in expected
+def ux_poll_key():
+    # non-blocking check if any key is pressed
     # - responds to key down only
-    # - eats any existing key presses
     from glob import numpad
 
-    while 1:
-        try:
-            ch = numpad.key_pressed
-            while not ch:
-                ch = numpad.get_nowait()
+    try:
+        ch = numpad.get_nowait()
 
-                if ch == numpad.ABORT_KEY:
-                    raise AbortInteraction()
-        except QueueEmpty:
-            return None
+        if ch == numpad.ABORT_KEY:
+            raise AbortInteraction()
+    except QueueEmpty:
+        return None
 
-        for c in ch:
-            if c in expected:
-                return c
+    return ch
 
 class PressRelease:
     def __init__(self, need_release='xy'):
@@ -217,9 +210,6 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
 
     lines.append('EOT')
 
-    #print("story:\n\n\"" + '"\n"'.join(lines))
-    #lines[0] = '111111111121234567893'
-
     top = 0
     H = 5
     ch = None
@@ -269,23 +259,22 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
 
 async def idle_logout():
     import glob
-    from nvstore import settings
+    from glob import settings
 
     while not glob.hsm_active:
-        await sleep_ms(250)
-
-        # they may have changed setting recently
-        timeout = settings.get('idle_to', DEFAULT_IDLE_TIMEOUT)*1000        # ms
-        if timeout == 0:
-            continue
-
-        now = utime.ticks_ms() 
+        await sleep_ms(5000)
 
         if not glob.numpad.last_event_time:
             continue
 
-        if now > glob.numpad.last_event_time + timeout:
-            # do a logout now.
+        now = utime.ticks_ms() 
+        dt = utime.ticks_diff(now, glob.numpad.last_event_time)
+
+        # they may have changed setting recently
+        timeout = settings.get('idle_to', DEFAULT_IDLE_TIMEOUT)*1000        # ms
+
+        if timeout and dt > timeout:
+            # user has been idle for too long: do a logout
             print("Idle!")
 
             from actions import logout_now
@@ -425,6 +414,6 @@ async def ux_enter_number(prompt, max_value):
                 value += ch
 
             # cleanup leading zeros and such
-            value = str(int(value))
+            value = str(min(int(value), max_value))
 
 # EOF

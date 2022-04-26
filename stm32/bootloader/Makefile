@@ -123,7 +123,7 @@ $(TARGET_ELF): $(OBJS) $(LINKER_SCRIPT) Makefile
 # raw binary, forced to right size, pad w/ 0xff
 %.bin: $(TARGET_ELF)
 	$(OBJCOPY) -O binary --pad-to $(BL_FLASH_LAST) --gap-fill 0xff $< $@.tmp
-	dd bs=30720 count=1 if=$@.tmp of=$@
+	dd bs=$(shell printf "%d" $(BL_FLASH_SIZE)) count=1 if=$@.tmp of=$@
 
 # dfu packaged file
 %.dfu: %.bin

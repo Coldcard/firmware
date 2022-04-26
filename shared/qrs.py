@@ -133,6 +133,7 @@ class QRDisplaySingle(UserInteraction):
 
 
     async def interact_bare(self):
+        from glob import NFC
         self.redraw()
 
         while 1:
@@ -141,6 +142,11 @@ class QRDisplaySingle(UserInteraction):
             was = self.idx
             if ch == '1':
                 self.invert = not self.invert
+                self.redraw()
+                continue
+            elif NFC and ch == '3':
+                # Share any QR over NFC!
+                await NFC.share_text(self.addrs[self.idx])
                 self.redraw()
                 continue
             elif ch in 'xy':
@@ -164,6 +170,5 @@ class QRDisplaySingle(UserInteraction):
     async def interact(self):
         await self.interact_bare()
         the_ux.pop()
-
 
 # EOF

@@ -20,7 +20,7 @@ def pytest_addoption(parser):
     parser.addoption("--manual", action="store_true",
                      default=False, help="operator must press keys on real CC")
 
-    parser.addoption("--mk", default=3, help="Assume mark N hardware")
+    parser.addoption("--mk", default=4, help="Assume mark N hardware")
 
     parser.addoption("--duress", action="store_true",
                      default=False, help="assume logged-in with duress PIN")
@@ -63,9 +63,12 @@ def simulator(request):
 @pytest.fixture(scope='module')
 def sim_exec(dev):
     # run code in the simulator's interpretor
+    # - can work on real product too, if "debug build" is used.
 
-    def doit(cmd):
-        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'))
+    def doit(cmd, binary=False):
+        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
+        if binary: return s
+        #print(f'sim_exec: {cmd!r} -> {s!r}')
         return s.decode('utf-8') if not isinstance(s, str) else s
 
     return doit
@@ -73,6 +76,7 @@ def sim_exec(dev):
 @pytest.fixture(scope='module')
 def sim_eval(dev):
     # eval an expression in the simulator's interpretor
+    # - can work on real product too, if "debug build" is used.
 
     def doit(cmd, timeout=None):
         return dev.send_recv(b'EVAL' + cmd.encode('utf-8'), timeout=timeout).decode('utf-8')
@@ -82,6 +86,7 @@ def sim_eval(dev):
 @pytest.fixture(scope='module')
 def sim_execfile(simulator):
     # run a whole file in the simulator's interpretor
+    # - requires shared filesystem
     import os
 
     def doit(fname, timeout=None):
@@ -134,21 +139,38 @@ def need_keypress(dev, request):
             print("==> NOW, on the Coldcard, press key: %r (then enter here)" % k, file=sys.stderr)
             input()
         else:
-            # simulator has special USB command, and can be used on real device w/ enuf setup
+            # simulator has special USB command, and can be used on real device in dev builds
             dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
 
-        if 0:
-            # try to use debug interface to simulate the press
-            # XXX for some reason, picocom must **already** be running for this to work.
-            # - otherwise, this locks up
-            devs = list(glob.glob('/dev/tty.usbmodem*'))
-            if len(devs) == 1:
-                with open(devs[0], 'wb', 0) as fd:
-                    fd.write(k.encode('ascii'))
-            else:
-                raise pytest.fail('need to provide keypresses')
+    return doit
+
+@pytest.fixture(scope='module')
+def enter_number(need_keypress):
+    def doit(number):
+        number = str(number) if not isinstance(number, str) else number
+        for d in number:
+            need_keypress(d)
+        need_keypress('y')
 
     return doit
+
+@pytest.fixture(scope='module')
+def enter_pin(enter_number, need_keypress, cap_screen):
+    def doit(pin):
+        assert '-' in pin
+        a,b = pin.split('-')
+        enter_number(a)
+
+        # capture words? hard to know in general what they should be tho
+        words = cap_screen().split('\n')[2:4]
+
+        need_keypress('y')
+        enter_number(b)
+
+        return words
+
+    return doit
+    
     
 @pytest.fixture(scope='module')
 def master_xpub(dev):
@@ -192,10 +214,10 @@ def get_settings(sim_execfile):
 
 @pytest.fixture(scope='module')
 def get_setting(sim_execfile, sim_exec):
-    # get an indivudal setting
-    def doit(name):
+    # get an individual setting
+    def doit(name, default=None):
         from json import loads
-        sim_exec('import main; main.SKEY = %r; ' % name)
+        sim_exec('import main; main.SKEY = %r; main.DEFAULT=%r' % (name, default))
         resp = sim_execfile('devtest/get-setting.py')
         assert 'Traceback' not in resp
         return loads(resp)
@@ -279,30 +301,71 @@ def capture_enabled(sim_eval):
     assert sim_eval("'sim_display' in sys.modules") == 'True'
 
 @pytest.fixture(scope='module')
-def cap_menu(sim_execfile):
+def cap_menu(sim_exec):
     "Return menu items as a list"
     def doit():
-        return sim_execfile('devtest/cap-menu.py').split('\n')
+        rv = sim_exec('from ux import the_ux; RV.write(repr('
+                            '[i.label for i in the_ux.top_of_stack().items]))')
+        if 'Traceback' in rv:
+            raise RuntimeError(rv)      # not looking at a menu, typically
+        return eval(rv)
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_screen(sim_execfile):
+def is_ftux_screen(sim_exec):
+    "are we presenting a view from ftux.py"
     def doit():
-        return sim_execfile('devtest/cap-screen.py')
+        rv = sim_exec('from ux import the_ux; RV.write(repr('
+                            'type(the_ux.top_of_stack())))')
+        return 'FirstTimeUX' in rv
+
+    return doit
+
+@pytest.fixture
+def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
+    # seed was entered, FTUX happens, get to main menu
+    def doit():
+        # first time UX here
+        while is_ftux_screen():
+            _, story = cap_story()
+            if not story: 
+                break
+            # XXX test more here
+            if 'Enable NFC' in story:
+                need_keypress('x')
+            elif 'Enable USB' in story:
+                need_keypress('y')
+            elif 'Disable USB' in story:
+                need_keypress('x')
+            else:
+                raise ValueError(story)
+
+        m = cap_menu()
+        assert m[0] == 'Ready To Sign'
+
+    return doit
+
+
+@pytest.fixture(scope='module')
+def cap_screen(sim_exec):
+    def doit():
+        # capture text shown; 4 lines or so?
+        return sim_exec('RV.write(sim_display.full_contents)')
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_story(sim_execfile):
+def cap_story(sim_exec):
     # returns (title, body) of whatever story is being actively shown
     def doit():
-        return sim_execfile('devtest/cap-story.py').split('\0', 1)
+        rv = sim_exec("RV.write('\0'.join(sim_display.story or []))")
+        return rv.split('\0', 1) if rv else ('','')
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_image(sim_execfile):
+def cap_image(sim_exec):
 
     def flip(raw):
         reorg = bytearray(128*64)
@@ -318,7 +381,12 @@ def cap_image(sim_execfile):
     def doit():
         from PIL import Image
 
-        raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
+        #raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
+        raw = a2b_hex(sim_exec('''
+from glob import dis;
+from ubinascii import hexlify as b2a_hex;
+RV.write(b2a_hex(dis.dis.buffer))'''))
+
         assert len(raw) == (128*64//8)
         return Image.frombytes('L', (128,64), flip(raw), 'raw')
 
@@ -390,7 +458,6 @@ def cap_screen_qr(cap_image):
 
         orig_img = cap_image()
 
-
         # document it
         if x < 10:
             # removes dups: happen when same image samples for two different
@@ -417,10 +484,10 @@ def cap_screen_qr(cap_image):
     return doit
 
 @pytest.fixture(scope='module')
-def get_pp_sofar(sim_execfile):
+def get_pp_sofar(sim_exec):
     # get entry value for bip39 passphrase
     def doit():
-        resp = sim_execfile('devtest/get_pp_sofar.py')
+        resp = sim_exec('import seed; RV.write(seed.pp_sofar)')
         assert 'Error' not in resp
         return resp
 
@@ -454,19 +521,22 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
         # get to top, force a redraw
         for i in range(10):
             need_keypress('x')
-            time.sleep(.01)      # required
+            time.sleep(.1)      # required
 
-            # special case to get out of passphrase menu
-            if 'CANCEL' in cap_menu():
+            m = cap_menu()
+
+            if 'CANCEL' in m:
+                # special case to get out of passphrase menu
                 pick_menu_item('CANCEL')
                 time.sleep(.01)
                 need_keypress('y')
 
-        need_keypress('0')
-        
-        # check menu contents
-        m = cap_menu()
-        assert 'Ready To Sign' in m
+            if m[0] in { 'New Seed Words',  'Ready To Sign'}:
+                break
+        else:
+            raise pytest.fail("trapped in a menu")
+
+        return m
 
     return doit
 
@@ -475,6 +545,7 @@ def pick_menu_item(cap_menu, need_keypress):
     WRAP_IF_OVER = 16       # see ../shared/menu.py
 
     def doit(text):
+        print(f"PICK menu item: {text}")
         need_keypress('0')
         m = cap_menu()
         if text not in m:
@@ -505,6 +576,7 @@ def microsd_path(simulator):
     # open a file from the simulated microsd
 
     def doit(fn):
+        # could use: ckcc.get_sim_root_dirs() here
         return '../unix/work/MicroSD/' + fn
 
     return doit
@@ -553,12 +625,11 @@ def set_xfp(sim_exec, sim_execfile, simulator, reset_seed_words):
         import struct
         need_xfp, = struct.unpack("<I", a2b_hex(xfp))
 
-        sim_exec('from main import settings; settings.set("xfp", 0x%x);' % need_xfp)
+        sim_exec('from main import settings; settings.put_volatile("xfp", 0x%x);' % need_xfp)
 
     yield doit
 
-    # Important cleanup: restore normal key, because other tests assume that
-    reset_seed_words()
+    sim_exec('from main import settings; settings.overrides.clear();')
 
 @pytest.fixture(scope="function")
 def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):
@@ -641,7 +712,7 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 def settings_set(sim_exec):
 
     def doit(key, val):
-        x = sim_exec("nvstore.settings.set('%s', %r)" % (key, val))
+        x = sim_exec("settings.set('%s', %r)" % (key, val))
         assert x == ''
 
     return doit
@@ -650,7 +721,7 @@ def settings_set(sim_exec):
 def settings_get(sim_exec):
 
     def doit(key):
-        cmd = f"RV.write(repr(nvstore.settings.get('{key}')))"
+        cmd = f"RV.write(repr(settings.get('{key}')))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -661,13 +732,40 @@ def settings_get(sim_exec):
 def settings_remove(sim_exec):
 
     def doit(key):
-        x = sim_exec("nvstore.settings.remove_key('%s')" % key)
+        x = sim_exec("settings.remove_key('%s')" % key)
         assert x == ''
 
     return doit
 
-@pytest.fixture(scope='session')
-def repl(dev=None):
+@pytest.fixture(scope='module')
+def repl(request, is_mark4):
+    return request.getfixturevalue('mk4_repl' if is_mark4 else 'old_mk_repl')
+    
+
+@pytest.fixture(scope='module')
+def mk4_repl(sim_eval, sim_exec):
+    # Provide an interactive connection to the REPL, using the debug build USB commands
+
+    class Mk4USBRepl:
+        def eval(self, cmd, max_time=3):
+            # send a command, wait for it to finish
+            resp = sim_eval(cmd)
+            print(f"eval: {cmd} => {resp}")
+            if 'Traceback' in resp:
+                raise RuntimeError(resp)
+            return eval(resp)
+
+        def exec(self, cmd, proc_time=1, raw=False):
+            # send a (one line) command and read the one-line response
+            resp = sim_exec(cmd)
+            print(f"exec: {cmd} => {resp}")
+            if raw: return resp
+            return eval(resp) if resp else None
+
+    return Mk4USBRepl()
+
+@pytest.fixture(scope='module')
+def old_mk_repl(dev=None):
     # Provide an interactive connection to the REPL. Has to be real device, with
     # dev features enabled. Best really with unit in factory mode.
     import sys, serial
@@ -676,6 +774,7 @@ def repl(dev=None):
     # NOTE: 
     # - tested only on Mac, but might work elsewhere.
     # - board needs to be reset between runs, because USB protocol (not serial) is disabled by this
+    # - relies on virtual COM port present on Mk1-3 but not mk4
 
     class USBRepl:
         def __init__(self):
@@ -1076,8 +1175,178 @@ def is_mark2(request):
     return int(request.config.getoption('--mk')) == 2
 
 @pytest.fixture(scope='session')
-def is_mark3(request):
-    return int(request.config.getoption('--mk')) == 3
+def is_mark3(dev):
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    return (v[4] == 'mk3')
+
+@pytest.fixture(scope='session')
+def is_mark4(dev):
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    return (v[4] == 'mk4')
+
+@pytest.fixture(scope='session')
+def mk_num(dev):
+    # return 1..4 as number (mark number)
+    v = dev.send_recv(CCProtocolPacker.version()).split()[4]
+    assert v[0:2] == 'mk'
+    return int(v[2:])
+
+@pytest.fixture(scope='session')
+def only_mk4(dev):
+    # better: ask it .. use USB version cmd
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    if v[4] != 'mk4':
+        raise pytest.skip("Mk4 only")
+
+@pytest.fixture(scope='session')
+def only_mk3(dev):
+    # better: ask it .. use USB version cmd
+    v = dev.send_recv(CCProtocolPacker.version()).split()
+    if v[4] != 'mk3':
+        raise pytest.skip("Mk3 only")
+
+@pytest.fixture(scope='module')
+def rf_interface(only_mk4, sim_exec):
+    # provide a read/write connection over NFC
+    # - requires pyscard module and NFC-V reader like HID OMNIKEY 5022CL
+    raise pytest.xfail('broken NFC-V challenges')
+    class RFHandler:
+        def __init__(self, want_atr=None):
+            from smartcard.System import readers as get_readers
+            from smartcard.Exceptions import CardConnectionException, NoCardException
+
+            readers = get_readers()
+            if not readers:
+                raise pytest.fail("no card readers found")
+
+            # search for our card
+            for r in readers:
+                try:
+                    conn = r.createConnection()
+                except:
+                    print(f"Fail: {r}");
+                    continue
+                
+                try:
+                    conn.connect()
+                    atr = conn.getATR()
+                except (CardConnectionException, NoCardException):
+                    print(f"Empty reader: {r}")
+                    continue
+
+                if want_atr and atr != want_atr:
+                    continue
+
+                # accept first suitable "card"
+                break
+            else:
+                raise pytest.fail("did not find NFC target")
+
+            self.conn = conn
+
+        def apdu(self, cls, ins, data=b'', p1=0, p2=0):
+            # send APDU
+            lst = [ cls, ins, p1, p2, len(data)] + list(data)
+            resp, sw1, sw2 = self.conn.transmit(lst)
+            resp = bytes(resp)
+            return hex((sw1 << 8) | sw2), resp
+            
+        # XXX not simple; Omnikey wants secure channel (AES) for this
+        def read_nfc(self):
+            return b'helllo'
+        def write_nfc(self, ccfile):
+            pass
+
+    # get the CC into NFC tap mode (but no UX)
+    sim_exec('glob.NFC.set_rf_disable(0)')
+
+    time.sleep(3)
+
+    yield RFHandler()
+
+    sim_exec('glob.NFC.set_rf_disable(1)')
+
+@pytest.fixture()
+def nfc_read(request, only_mk4):
+    # READ data from NFC chip
+    # - perfer to do over NFC reader, but can work over USB too
+    def doit_usb():
+        sim_exec = request.getfixturevalue('sim_exec')
+        rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"")', binary=True)
+        if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
+        return rv
+
+    try:
+        raise NotImplementedError
+        rf = request.getfixturevalue('rf_interface')
+        return rf.read_nfc
+    except:
+        return doit_usb
+
+@pytest.fixture()
+def nfc_write(request, only_mk4):
+    # WRITE data into NFC "chip"
+    def doit_usb(ccfile):
+        sim_exec = request.getfixturevalue('sim_exec')
+        need_keypress = request.getfixturevalue('need_keypress')
+        rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
+        if 'Traceback' in rv: raise pytest.fail(rv)
+        need_keypress('y')      # to end the animation and have it check value immediately
+
+    try:
+        raise NotImplementedError
+        rf = request.getfixturevalue('rf_interface')
+        return rf.write_nfc
+    except:
+        return doit_usb
+
+@pytest.fixture()
+def nfc_read_json(nfc_read):
+    def doit():
+        import ndef, json
+        got = list(ndef.message_decoder(nfc_read()))
+        assert len(got) == 1
+        got = got[0]
+        assert got.type == 'application/json'
+        return json.loads(got.data)
+
+    return doit
+
+@pytest.fixture()
+def nfc_read_text(nfc_read):
+    def doit():
+        import ndef
+        got = list(ndef.message_decoder(nfc_read()))
+        assert len(got) == 1
+        got = got[0]
+        assert got.type == 'urn:nfc:wkt:T'
+        return got.text
+    return doit
+
+@pytest.fixture()
+def nfc_block4rf(sim_eval):
+    # wait until RF is enabled and something to read (doesn't read it tho)
+    def doit(timeout=15):
+        for i in range(timeout*4):
+            rv = sim_eval('glob.NFC.rf_on')
+            if rv: break
+            sleep(0.250)
+        else:
+            raise pytest.fail("NFC timeout")
+
+    return doit
+
+@pytest.fixture
+def load_shared_mod():
+    # load indicated file.py as a module
+    # from <https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path>
+    def doit(name, path):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    return doit
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,

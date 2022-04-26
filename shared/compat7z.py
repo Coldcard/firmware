@@ -107,7 +107,7 @@ def check_file_headers(f):
     sh = SectionHeader.read(f)
 
     if sh.actual_crc() != fh.crc:
-        print('act=%r expect=%r bits=%r' % (sh.actual_crc(), fh.crc, fh.bits))
+        #print('act=%r expect=%r bits=%r' % (sh.actual_crc(), fh.crc, fh.bits))
         raise ValueError("Second header has wrong CRC")
 
     if sh.size > 10000:

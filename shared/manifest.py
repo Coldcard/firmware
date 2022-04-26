@@ -1,4 +1,6 @@
-# freeze everything in this directoy
+# Freeze everything in this list.
+# - not optimized because we need asserts to work
+# - for mk3 vs mk4, see manifest_mk[34].py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
@@ -8,6 +10,7 @@ freeze_as_mpy('', [
 	'chains.py',
 	'choosers.py',
 	'compat7z.py',
+	'countdowns.py',
 	'descriptor.py',
 	'dev_helper.py',
 	'display.py',
@@ -17,7 +20,6 @@ freeze_as_mpy('', [
 	'files.py',
 	'flow.py',
 	'glob.py',
-	'h.py',
 	'history.py',
 	'hsm.py',
 	'hsm_ux.py',
@@ -41,7 +43,6 @@ freeze_as_mpy('', [
 	'selftest.py',
 	'serializations.py',
 	'sffile.py',
-	'sflash.py',
 	'sram2.py',
 	'ssd1306.py',
 	'stash.py',
@@ -51,12 +52,25 @@ freeze_as_mpy('', [
 	'ux.py',
 	'version.py',
 	'xor_seed.py',
+	'ftux.py',
 ], opt=0)
 
-# Data-like files, since no need to debug them
+# Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
 	'sigheader.py',
 	'graphics.py',
 	'zevvpeep.py',
 	'public_constants.py',
 ], opt=3)
+
+# Maybe include test code.
+import os
+if int(os.environ.get('DEBUG_BUILD', 0)):
+    freeze_as_mpy('', [
+        'h.py',
+        'dev_helper.py',
+        'usb_test_commands.py',
+        'sim_display.py',
+    ], opt=0)
+
+include("$(MPY_DIR)/extmod/uasyncio/manifest.py")

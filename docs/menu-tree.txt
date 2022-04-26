@@ -1,41 +1,115 @@
-
-No PIN Set
+[IF NO PIN SET]
   Choose PIN Code
-  Advanced
+  Advanced/Tools
     View Identity
-    Upgrade firmware
+    Upgrade Firmware
       Show Version
       From MicroSD
+      From VirtDisk [IF VIRTDISK ENABLED]
       Bless Firmware
-    Paper Wallets [MAYBE]
+    Paper Wallets
     Perform Selftest
     Secure Logout
   Bag Number
   Help
+---
 
-Empty Wallet
-  New Wallet
+[IF BLANK WALLET]
+  New Seed Words
+    24 Word (default)
+    12 Word
+    24 Word Dice Roll
+    12 Word Dice Roll
   Import Existing
     24 Words
+      [SEED WORD MENUS]
     18 Words
+      [SEED WORD MENUS]
     12 Words
+      [SEED WORD MENUS]
     Restore Backup
     Clone Coldcard
     Import XPRV
-    Dice Rolls
     Seed XOR
   Help
-  Advanced
+  Advanced/Tools
     View Identity
-    Upgrade
+    Upgrade Firmware
       Show Version
       From MicroSD
+      From VirtDisk [IF VIRTDISK ENABLED]
       Bless Firmware
-    Paper Wallets [MAYBE]
+    File Management
+      Verify Backup
+      List Files
+      NFC File Share [IF NFC ENABLED]
+      Format SD Card
+      Format RAM Disk [IF VIRTDISK ENABLED]
+    Paper Wallets
     Perform Selftest
     I Am Developer.
+      Serial REPL
+      Wipe LFS
+      Warm Reset
+      Restore Txt Bkup
     Secure Logout
   Settings
+    Login Settings
+      Change Main PIN
+      PIN Options
+      Trick PINs
+        Trick PINs:
+        ↳22-22
+        Add New Trick
+        Add If Wrong
+        Delete All
+      Set Nickname
+      Scramble Keypad
+      Kill Key
+      Login Countdown
+        Disabled
+        15 minutes
+        30 minutes
+         4 hours
+         1 hour
+         5 minutes
+         8 hours
+        12 hours
+         2 hours
+         3 days
+        48 hours
+         1 week
+        24 hours
+        28 days later
+      Test Login Now
+    Hardware On/Off
+      USB Port
+        Default On
+        Disable USB
+      Virtual Disk
+        Default Off
+        Enable
+        Enable & Auto
+      NFC Sharing
+        Default Off
+        Enable NFC
+    Multisig Wallets
+      (none setup yet)
+      Import from SD
+      Export XPUB
+      Create Airgapped
+      Trust PSBT?
+      Skip Checks?
+    Display Units
+      BTC
+      mBTC
+      bits
+      sats
+    Max Network Fee
+      10% (default)
+      25%
+      50%
+      no limit
     Idle Timeout
        2 minutes
        5 minutes
@@ -44,81 +118,70 @@ Empty Wallet
        4 hours
        8 hours
        Never
-    Login Countdown
-      Disabled
-       5 minutes
-      15 minutes
-      30 minutes
-       1 hour
-       2 hours
-       4 hours
-       8 hours
-      12 hours
-      24 hours
-      48 hours
-       3 days
-       1 week
-      28 days later
-    Max Network Fee
-      10% (default)
-      25%
-      50%
-      no limit
-    PIN Options
-    Multisig Wallets
-    Set Nickname
-    Scramble Keypad
     Delete PSBTs
-    Disable USB
-      Normal
-      Disable USB
-    Display Units
-      BTC
-      mBTC
-      bits
-      sats
+      Default Keep
+      Delete PSBTs
+---
 
-Normal
+[NORMAL OPERATION]
   Ready To Sign
-  Passphrase [MAYBE]
-  Start HSM Mode [MAYBE]
+  Passphrase
+  Start HSM Mode [IF HSM POLICY]
   Address Explorer
   Secure Logout
-  Advanced
-    View Identity
-    Upgrade
-      Show Version
-      From MicroSD
-      Bless Firmware
+  Advanced/Tools
     Backup
       Backup System
       Verify Backup
       Restore Backup
-      Clone Coldcard [MAYBE]
+      Clone Coldcard
+    Export Wallet
+      Bitcoin Core
+      Electrum Wallet
+      Wasabi Wallet
+      Unchained Capital
+      Generic JSON
+      Export XPUB
+        Segwit (BIP-84)
+        Classic (BIP-44)
+        P2WPKH/P2SH (49)
+        Master XPUB
+        Current XFP
       Dump Summary
-    MicroSD Card
+    Upgrade Firmware
+      Show Version
+      From MicroSD
+      From VirtDisk [IF VIRTDISK ENABLED]
+      Bless Firmware
+    File Management
       Verify Backup
       Backup System
-      Dump Summary
       Export Wallet
         Bitcoin Core
         Electrum Wallet
         Wasabi Wallet
+        Unchained Capital
         Generic JSON
-      Sign Text File [MAYBE]
-      Upgrade From SD
-      Clone Coldcard [MAYBE]
+        Export XPUB
+          Segwit (BIP-84)
+          Classic (BIP-44)
+          P2WPKH/P2SH (49)
+          Master XPUB
+          Current XFP
+        Dump Summary
+      Sign Text File
+      Clone Coldcard
       List Files
-      Format Card
-    Paper Wallets [MAYBE]
-    User Management [MAYBE]
-    Derive Entropy
+      NFC File Share [IF NFC ENABLED]
+      Format SD Card
+      Format RAM Disk [IF VIRTDISK ENABLED]
+    Derive Seed B85
+    View Identity
+    Paper Wallets
+    User Management
+      (no users yet)
     Danger Zone
       Debug Functions
-        Debug: assert
-        Debug: except
-        Check: BL FW
-        Warm Reset
       Seed Functions
         View Seed Words
         Seed XOR
@@ -127,14 +190,76 @@ Normal
         Destroy Seed
         Lock Down Seed
       I Am Developer.
-      Wipe Patch Area
+        Serial REPL
+        Wipe LFS
+        Warm Reset
+        Restore Txt Bkup
       Perform Selftest
       Set High-Water
-      Wipe HSM Policy [MAYBE]
+      Wipe HSM Policy [IF HSM POLICY]
       Clear OV cache
       Testnet Mode
-      Settings space
+        Bitcoin
+        Testnet3
+      Settings Space
+      MCU Key Slots
   Settings
+    Login Settings
+      Change Main PIN
+      PIN Options
+      Trick PINs
+        Trick PINs:
+        ↳22-22
+        Add New Trick
+        Add If Wrong
+        Delete All
+      Set Nickname
+      Scramble Keypad
+      Kill Key
+      Login Countdown
+        Disabled
+        15 minutes
+        30 minutes
+         4 hours
+         1 hour
+         5 minutes
+         8 hours
+        12 hours
+         2 hours
+         3 days
+        48 hours
+         1 week
+        24 hours
+        28 days later
+      Test Login Now
+    Hardware On/Off
+      USB Port
+        Default On
+        Disable USB
+      Virtual Disk
+        Default Off
+        Enable
+        Enable & Auto
+      NFC Sharing
+        Default Off
+        Enable NFC
+    Multisig Wallets
+      (none setup yet)
+      Import from SD
+      Export XPUB
+      Create Airgapped
+      Trust PSBT?
+      Skip Checks?
+    Display Units
+      BTC
+      mBTC
+      bits
+      sats
+    Max Network Fee
+      10% (default)
+      25%
+      50%
+      no limit
     Idle Timeout
        2 minutes
        5 minutes
@@ -143,51 +268,17 @@ Normal
        4 hours
        8 hours
        Never
-    Login Countdown
-      Disabled
-       5 minutes
-      15 minutes
-      30 minutes
-       1 hour
-       2 hours
-       4 hours
-       8 hours
-      12 hours
-      24 hours
-      48 hours
-       3 days
-       1 week
-      28 days later
-    Max Network Fee
-      10% (default)
-      25%
-      50%
-      no limit
-    PIN Options
-    Multisig Wallets
-    Set Nickname
-    Scramble Keypad
     Delete PSBTs
-    Disable USB
-      Normal
-      Disable USB
-    Display Units
-      BTC
-      mBTC
-      bits
-      sats
+      Default Keep
+      Delete PSBTs
+---
 
-Factory Mode
+[FACTORY MODE]
   Bag Me Now
   DFU Upgrade
   Show Version
   Ship W/O Bag
   Debug Functions
-    Debug: assert
-    Debug: except
-    Check: BL FW
-    Warm Reset
   Perform Selftest
-
-
+---
 

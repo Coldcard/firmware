@@ -1,27 +1,47 @@
 from mock import Mock
 
-Pin = Mock
-Pin.ALT = None
-Pin.PULL_NONE = None
-Pin.PULL_UP = None
-Pin.OUT_OD = None
-Pin.AF8_UART4 = None
-Pin.IN = None
-Pin.IRQ_FALLING = 1
-Pin.IRQ_RISING = 2
-Pin.irq = lambda a,b,c: None
-Pin.on = lambda s: None
-Pin.off = lambda s: None
-Pin.value = lambda *s: 0
+class Pin:
+    def __init__(self, name, *a, **kw):
+        self.name = name
+        self.cur_value = 0
+
+    def on(self):
+        self.value(1)
+    def off(self):
+        self.value(0)
+
+    def value(self, n=None):
+        if n is None: return self.cur_value
+        self.cur_value = int(n)
+
+        bm = 0
+        if self.name == 'SD_ACTIVE':
+            bm = 0x02
+        elif self.name == 'USB_ACTIVE':
+            bm = 0x04
+
+        if bm:
+            from ckcc import led_pipe
+            led_pipe.write(bytes([(bm << 4) | (bm if n else 0)]))
+
+    ALT = None
+    PULL_NONE = None
+    PULL_UP = None
+    OUT_OD = None
+    OUT = None
+    AF8_UART4 = None
+    IN = None
+    IRQ_FALLING = 1
+    IRQ_RISING = 2
+    irq = lambda a,b,c: None
 
 SPI = Mock
-
 UART = Mock
 UART.OUT = None
 
 def _flush_data():
     try:
-        from nvstore import settings
+        from glob import settings
         settings.save()
     except: pass
 

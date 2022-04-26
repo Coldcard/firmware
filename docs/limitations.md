@@ -33,16 +33,21 @@
     - however, each wallet must be of a single address type; cannot be mixed (their limitation)
     - the same Coldcard could be used in each of the three modes (we don't care about address format)
 - with Bitcoin Core (version 0.17?), we can do PSBT transactions, which support all address types
-- we don't support coinbase transactions, so don't mine directly into a Coldcard wallet
+- we don't support signing coinbase transactions, so don't mine directly into a Coldcard wallet
 
 # Max Transaction Size
 
-- we support transactions up to 384k-bytes in size when serialized into PSBT format
+- mk3:
+    - we support transactions up to 384k-bytes in size when serialized into PSBT format
+    - we can handle transactions with up to 20 inputs to be signed at one time.
+    - a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
+- mk4:
+    - we support PSBT files up to 2M bytes in size.
+    - any number of inputs and outputs are supported, limited only by final transaction size (100k)
+    - tested with: 250 inputs, 2000 outputs
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
-- we can handle transactions with up to 20 inputs to be signed at one time.
-- a maximum of 250 outputs per transaction is supported (will attempt more if memory allows)
 
 
 # P2SH / Multisig
@@ -57,7 +62,7 @@
 - during USB "show address" for multisig, we limit subkey paths to
   16 levels deep (including master fingerprint)
 - max of 15 co-signers due to 520 byte script limitation in consensus layer with classic P2SH
-- we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
+- (mk3) we have space for up to 8 M-of-3 wallets, or a single M-of-15 wallet. YMMV
 - only a single multisig wallet can be involved in a PSBT; can't sign inputs from two different
     multisig wallets at the same time.
 - we always store xpubs in BIP32 format, although we can read SLIP132 format (Ypub/Zpub/etc)
@@ -113,4 +118,30 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 - key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
 
 
+# NFC Feature (Mk4)
+
+- can share up to 8000 bytes of PSBT or signed transaction data.
+- NFC-V (ISO-15693) radio/modulation is common on mobile phones but very rare on desktops
+
+# Fast Wipe (Mk4)
+
+- each use of "fast wipe" feature consumes a MCU key slot, of which there are 256.
+- use _Advanced > Danger Zone > MCU Key Slots_ to view usage
+
+# Trick Pins (Mk4)
+
+- "deltamode" PIN must be same length as true pin, and differ only in final 4 positions.
+- there are 14 trick "slots" 
+- duress wallets consume 2 slots (or 3 slots for legacy duress wallet)
+- when restoring trick pins from backup files, "forgotten" pins are not restored,
+  and any trick pin which matches the true PIN of the restored system will be dropped
+- deltamode PIN requirements are checked during wallet restore, and if the new true PIN
+  is not compatible, the deltamode trick PIN is dropped and not restored
+- duress wallets are supported when derived from 24- or 12-word seed phrases
+
+# Debug Serial Port (Mk4)
+
+- virtual USB serial port disabled completely by default, and even if enabled
+  in Danger Zone, only echos output, and does not accept any input
+- use hardware serial port for interactive REPL access (3.3v TTL levels)
 

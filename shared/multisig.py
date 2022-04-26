@@ -6,13 +6,12 @@ import stash, chains, ustruct, ure, uio, sys, ngu
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
-from actions import needs_microsd
 from exceptions import FatalPSBTIssue
-from nvstore import settings
+from glob import settings
 
 # Bitcoin limitation: max number of signatures in CHECK_MULTISIG
 # - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
@@ -804,9 +803,26 @@ class MultisigWallet:
 
     async def export_wallet_file(self, mode="exported from", extra_msg=None):
         # create a text file with the details; ready for import to next Coldcard
+        from glob import NFC
+
         my_xfp = xfp2str(settings.get('xfp'))
 
         fname_pattern = self.make_fname('export')
+        hdr = '%s %s' % (mode, my_xfp)
+
+        if NFC:
+            # Offer to share over NFC regardless of if card inserted, virtdisk active, etc.
+            ch = await ux_show_story('''Press (3) to share file over NFC. \
+Otherwise, OK to proceed normally.''', escape='3')
+            if ch == '3':
+                with uio.StringIO() as fp:
+                    self.render_export(fp, hdr_comment=hdr)
+                    await NFC.share_text(fp.getvalue())
+
+                return
+
+            if ch != 'y':
+                return
 
         try:
             with CardSlot() as card:
@@ -814,8 +830,7 @@ class MultisigWallet:
 
                 # do actual write
                 with open(fname, 'wt') as fp:
-                    print("# Coldcard Multisig setup file (%s %s)\n#" % (mode, my_xfp), file=fp)
-                    self.render_export(fp)
+                    self.render_export(fp, hdr_comment=hdr)
 
             msg = '''Coldcard multisig setup file written:\n\n%s''' % nice
             if extra_msg:
@@ -830,7 +845,10 @@ class MultisigWallet:
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
 
-    def render_export(self, fp):
+    def render_export(self, fp, hdr_comment=None):
+        if hdr_comment:
+            print("# Coldcard Multisig setup file (%s)\n#" % hdr_comment, file=fp)
+
         print("Name: %s\nPolicy: %d of %d" % (self.name, self.M, self.N), file=fp)
 
         if self.addr_fmt != AF_P2SH:
@@ -1141,8 +1159,6 @@ class MultisigMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
-        #from menu import MenuSystem, MenuItem
-        from actions import import_multisig
 
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
@@ -1152,7 +1168,7 @@ class MultisigMenu(MenuSystem):
                 rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
 
-        rv.append(MenuItem('Import from SD', f=import_multisig))
+        rv.append(MenuItem('Import from File', f=import_multisig))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
@@ -1259,8 +1275,10 @@ async def export_multisig_xpubs(*a):
     # NOW: Export JSON with one xpub per useful address type and semi-standard derivation path
     #
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
-    # - however some 3rd parts are making use of it as well.
+    # - however some 3rd parties are making use of it as well.
     #
+    from glob import NFC
+
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
     
@@ -1278,11 +1296,13 @@ P2SH-P2WSH:
 P2WSH:
    m/48'/{coin}'/acct'/2'
 
-OK to continue. X to abort.
-'''.format(coin = chain.b44_cointype)
+OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
 
-    resp = await ux_show_story(msg)
-    if resp != 'y': return
+    if NFC:
+        msg += ' Press 3 to share over NFC.'
+
+    ch = await ux_show_story(msg, escape='3')
+    if ch == 'x': return
 
     acct_num = await ux_enter_number('Account Number:', 9999)
 
@@ -1292,24 +1312,33 @@ OK to continue. X to abort.
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
     ]
 
+    def render(fp):
+        fp.write('{\n')
+        with stash.SensitiveValues() as sv:
+            for deriv, name, fmt in todo:
+                if fmt == AF_P2SH and acct_num:
+                    continue
+                dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
+                node = sv.derive_path(dd)
+                xp = chain.serialize_public(node, fmt)
+                fp.write('  "%s_deriv": "%s",\n' % (name, dd))
+                fp.write('  "%s": "%s",\n' % (name, xp))
+
+        fp.write('  "account": "%d",\n' % acct_num)
+        fp.write('  "xfp": "%s"\n}\n' % xfp)
+
+    if NFC and ch == '3':
+        with uio.StringIO() as fp:
+            render(fp)
+            await NFC.share_json(fp.getvalue())
+        return
+
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename(fname_pattern)
             # do actual write: manual JSON here so more human-readable.
             with open(fname, 'wt') as fp:
-                fp.write('{\n')
-                with stash.SensitiveValues() as sv:
-                    for deriv, name, fmt in todo:
-                        if fmt == AF_P2SH and acct_num:
-                            continue
-                        dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
-                        node = sv.derive_path(dd)
-                        xp = chain.serialize_public(node, fmt)
-                        fp.write('  "%s_deriv": "%s",\n' % (name, dd))
-                        fp.write('  "%s": "%s",\n' % (name, xp))
-
-                fp.write('  "account": "%d",\n' % acct_num)
-                fp.write('  "xfp": "%s"\n}\n' % xfp)
+                render(fp)
 
     except CardMissingError:
         await needs_microsd()
@@ -1506,5 +1535,43 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
 
     return await ondevice_multisig_create(n, f)
 
+async def import_multisig(*a):
+    # pick text file from SD card, import as multisig setup file
+    from actions import file_picker
+    from glob import NFC
+
+    if NFC and not CardSlot.is_inserted():
+        # prompt them use NFC?
+        ch = await ux_show_story("Press 3 to use NFC to send the multisig wallet file. Otherwise use file.", escape='3')
+        if ch == '3':
+            return await NFC.import_multisig_nfc()
+        if ch == 'x':
+            return
+
+    def possible(filename):
+        with open(filename, 'rt') as fd:
+            for ln in fd:
+                if 'pub' in ln:
+                    return True
+
+    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
+                                    min_size=100, max_size=20*200, taster=possible)
+    if not fn: return
+
+    try:
+        with CardSlot() as card:
+            with open(fn, 'rt') as fp:
+                data = fp.read()
+    except CardMissingError:
+        await needs_microsd()
+        return
+
+    from auth import maybe_enroll_xpub
+    try:
+        possible_name = (fn.split('/')[-1].split('.'))[0]
+        maybe_enroll_xpub(config=data, name=possible_name)
+    except Exception as e:
+        #import sys; sys.print_exception(e)
+        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 # EOF

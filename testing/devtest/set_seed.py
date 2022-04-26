@@ -5,7 +5,7 @@ from sim_settings import sim_defaults
 import stash, chains
 from h import b2a_hex
 from pincodes import pa
-from nvstore import settings
+from glob import settings
 import stash
 from seed import set_seed_value
 from utils import xfp2str

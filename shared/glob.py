@@ -14,5 +14,17 @@ numpad = None
 # global ptr to HSM policy, if any (supported on Mk3+ only)
 hsm_active = None
 
+# setup by main.py, expected to always be present
+settings = None
+
+# PSRAM (on Mk4 only)
+PSRAM = None
+
+# Virtual Disk (Mk4)
+VD = None
+
+# NFC interface (Mk4, and can be disabled)
+NFC = None
+
 
 # EOF

@@ -150,7 +150,7 @@ class ChainsBase:
         # convert nValue from a transaction into human form.
         # - always be precise
         # - return (string, units label)
-        from nvstore import settings
+        from glob import settings
         rz = settings.get('rz', 8)
 
         if rz == 8:
@@ -250,35 +250,28 @@ class BitcoinTestnet(BitcoinMain):
 
     b44_cointype = 1
 
-# Add to this list of all choices; keep testnet stuff near bottom
-# because this order matches UI as presented to users.
-#
-AllChains = [
-    BitcoinMain,
-    BitcoinTestnet,
-]
 
-
-def get_chain(short_name, btc_default=False):
-    # lookup 'LTC' for example
-
-    for c in AllChains:
-        if c.ctype == short_name:
-            return c
-
-    if btc_default:
+def get_chain(short_name):
+    # lookup object from name: 'BTC' or 'XTN'
+    if short_name == 'BTC':
         return BitcoinMain
+    elif short_name == 'XTN':
+        return BitcoinTestnet
     else:
         raise KeyError(short_name)
 
 def current_chain():
     # return chain matching current setting
-    from nvstore import settings
+    from glob import settings
 
-    chain = settings.get('chain', 'BTC')
+    chain = settings.get('chain', None)
+    if chain is None:
+        return BitcoinMain
 
     return get_chain(chain)
 
+# Overbuilt: will only be testnet and mainchain.
+AllChains = [BitcoinMain, BitcoinTestnet]
 
 def slip32_deserialize(xp):
     # .. and classify chain and addr-type, as implied by prefix
@@ -299,7 +292,6 @@ def slip32_deserialize(xp):
 # - single signer only
 CommonDerivations = [
     # name, path.format(), addr format
-    #Obsolete, removed: ( 'Electrum (not BIP-44)', "m/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP-44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
     ( 'BIP-49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses

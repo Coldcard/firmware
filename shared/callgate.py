@@ -41,18 +41,6 @@ def set_genuine():
     # does checksum over firmware, and might set green
     return ckcc.gate(4, None, 3)
 
-def get_dfu_button():
-    # read current state
-    rv = bytearray(1)
-    ckcc.gate(12, rv, 0)
-    return (rv[0] == 1)
-
-def get_bl_rng():
-    # read 32 bytes of RNG (test)
-    rv = bytearray(32)
-    assert ckcc.gate(17, rv, 0) == 0
-    return rv
-
 def get_is_bricked():
     # see if we are a brick?
     return ckcc.gate(5, None, 0) != 0
@@ -67,6 +55,12 @@ def set_rdp_level(n):
     # complex hardware rules around these changes.
     assert n in {0,1,2}
     return ckcc.gate(19, None, 100+n)
+
+def get_factory_mode():
+    # are we in normal RDP=2 mode (else in factory setup time)
+    arg = bytearray(1)
+    ckcc.gate(19, arg, 2)
+    return (arg[0] != 2)
 
 def get_bag_number():
     arg = bytearray(32)
@@ -95,5 +89,40 @@ def has_608b():
     config = bytearray(128)
     ckcc.gate(20, config, 0)
     return (config[7] >= 0x3)
+
+def fast_wipe(silent=True):
+    # mk4: wipe seed, also reboots immediately: can stop and show a screen or not
+    ckcc.oneway(23, 0xBeef if silent else 0xdead);
+
+def fast_brick():
+    # mk4: brick and reboot. Near instant. Shows brick screen.
+    ckcc.oneway(24, 0xDead);
+
+def mcu_key_usage():
+    # mk4: avail/consumed/total stats, one will be in use typically
+    from ustruct import unpack
+    arg = bytearray(3*4)
+    ckcc.gate(25, arg, 0);
+    return unpack('3I', arg)
+
+def read_rng(source=2):
+    # return random bytes from a secure source
+    # - first byte is # of valid random bytes
+    arg = bytearray(33)
+    rv = ckcc.gate(26, arg, source);
+    assert not rv
+    return arg[1:1+arg[0]]
+
+def get_se_parts():
+    # mk4: report part names
+    # - gets a nul-terminated string, w/ newline between them
+    arg = bytearray(80)
+    rv = ckcc.gate(27, arg, 0);
+    if rv:
+        # happens w/ obsolete versions of bootrom that never left Toronto
+        return ['SE1', 'SE2']
+    ln = bytes(arg).find(b'\0')
+    return arg[0:ln].decode().split('\n')
+    
 
 # EOF

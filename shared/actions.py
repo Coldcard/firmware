@@ -5,15 +5,16 @@
 # Every function here is called directly by a menu item. They should all be async.
 #
 import ckcc, pyb, version
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_poll_once, ux_aborted
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_number
 from utils import imported, pretty_short_delay, problem_file_line
 import uasyncio
 from uasyncio import sleep_ms
-from files import CardSlot, CardMissingError
+from files import CardSlot, CardMissingError, needs_microsd
 from utils import xfp2str
-from nvstore import settings
+from glob import settings
 from pincodes import pa
+from menu import start_chooser
 
 CLEAR_PIN = '999999-999999'
 
@@ -21,7 +22,8 @@ async def start_selftest(*args):
 
     if len(args) and not version.is_factory_mode:
         # called from inside menu, not directly
-        if not await ux_confirm('''Selftest destroys settings on other profiles (not seeds). Requires MicroSD card and might have other consequences. Recommended only for factory.'''):
+        # - mk4 doesn't damage settings, only earlier marks
+        if not await ux_confirm('''Selftest may destroy settings on other profiles (not seeds). Requires MicroSD card and might have other consequences. Recommended only for factory.'''):
             return await ux_aborted()
 
     with imported('selftest') as st:
@@ -29,10 +31,6 @@ async def start_selftest(*args):
 
     settings.save()
 
-
-async def needs_microsd():
-    # Standard msg shown if no SD card detected when we need one.
-    return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
 async def needs_primary():
     # Standard msg shown if action can't be done w/o main PIN
@@ -112,7 +110,7 @@ Extended Master Key:
         # can't support on mk2
         xpub = None
     if xpub:
-        msg += '\nPress 3 to show QR code for xpub.'
+        msg += '\nPress 3 to show QR code of xpub.'
 
     ch = await ux_show_story(msg, escape=('3' if xpub else None))
 
@@ -124,7 +122,13 @@ Extended Master Key:
 
 async def show_settings_space(*a):
 
-    await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.capacity * 100))
+    await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.get_capacity() * 100))
+
+async def show_mcu_keys_left(*a):
+    import callgate
+    avail, used, total = callgate.mcu_key_usage()
+    await ux_show_story('MCU key slots remaining:\n\n    %d of %d' % (avail, total))
+
 
 async def maybe_dev_menu(*a):
     from version import is_devmode
@@ -140,6 +144,7 @@ async def maybe_dev_menu(*a):
 
 async def dev_enable_vcp(*a):
     # Enable USB serial port emulation, for devs.
+    # Mk3 and earlier only.
     #
     from usb import is_vcp_active
 
@@ -162,6 +167,7 @@ The USB virtual serial port has now been enabled. Use a real computer to connect
 
 async def dev_enable_disk(*a):
     # Enable disk emulation, which allows them to change code.
+    # Mk3 and earlier only.
     #
     cur = pyb.usb_mode()
 
@@ -180,6 +186,7 @@ Keep tmp files and other junk out!""")
 
 async def dev_enable_protocol(*a):
     # Turn off disk emulation. Keep VCP enabled, since they are still devs.
+    # Mk3 and earlier
     cur = pyb.usb_mode()
     if cur and 'HID' in cur:
         await ux_show_story('Coldcard USB protocol is already enabled (HID mode)')
@@ -216,8 +223,12 @@ async def microsd_upgrade(*a):
     failed = None
 
     with CardSlot() as card:
-        with open(fn, 'rb') as fp:
-            from sflash import SF
+        with card.open(fn, 'rb') as fp:
+            from version import has_psram
+            if has_psram:
+                from glob import PSRAM as SF
+            else:
+                from sflash import SF
             from glob import dis
             from files import dfu_parse
             from utils import check_firmware_hdr
@@ -237,29 +248,33 @@ async def microsd_upgrade(*a):
             failed = check_firmware_hdr(hdr, size)
 
             if not failed:
-                # copy binary into serial flash
+                # copy binary into serial flash / PSRAM
                 fp.seek(offset)
 
-                buf = bytearray(256)        # must be flash page size
-                pos = 0
                 dis.fullscreen("Loading...")
+
+                buf = bytearray(256 if not has_psram else 0x20000)
+                pos = 0
                 while pos < size:
                     dis.progress_bar_show(pos/size)
 
                     here = fp.readinto(buf)
                     if not here: break
 
-                    if pos % 4096 == 0:
-                        # erase here
-                        SF.sector_erase(pos)
+                    if has_psram:
+                        SF.write(pos, buf)
+                    else:
+                        if pos % 4096 == 0:
+                            # erase here
+                            SF.sector_erase(pos)
+                            while SF.is_busy():
+                                await sleep_ms(10)
+
+                        SF.write(pos, buf)
+
+                        # full page write: 0.6 to 3ms
                         while SF.is_busy():
-                            await sleep_ms(10)
-
-                    SF.write(pos, buf)
-
-                    # full page write: 0.6 to 3ms
-                    while SF.is_busy():
-                        await sleep_ms(1)
+                            await sleep_ms(1)
 
                     pos += here
 
@@ -269,7 +284,7 @@ async def microsd_upgrade(*a):
 
     # continue process...
     from auth import FirmwareUpgradeRequest
-    m = FirmwareUpgradeRequest(hdr, size)
+    m = FirmwareUpgradeRequest(hdr, size, psram_offset=(0 if has_psram else None))
     the_ux.push(m)
 
 async def start_dfu(*a):
@@ -364,10 +379,6 @@ async def login_countdown(sec):
     from display import FontSmall, FontLarge
     from utime import ticks_ms, ticks_diff
 
-    # capture this before even drawing screen
-    settings.set('delay_left', sec)
-    settings.save()
-
     # pre-render fixed parts
     dis.clear()
     y = 0
@@ -384,37 +395,37 @@ async def login_countdown(sec):
         dis.show()
         dis.busy_bar(1)
 
-        # this should be more accurate, errors are accumulating
+        # this should be more accurate, errors were accumulating
         now = ticks_ms()
         dt = 1000 - ticks_diff(now, st)
         await sleep_ms(dt)
         st = ticks_ms()
 
-        if sec % 30 == 0:
-            settings.set('delay_left', sec)
-            settings.save()
-
         sec -= 1
 
     dis.busy_bar(0)
 
-    settings.remove_key('delay_left')
-    settings.save()
-
-async def block_until_login(rnd_keypad):
+async def block_until_login():
     #
     # Force user to enter a valid PIN.
-    # - or accept a bogus one and return T
+    # - or accept a bogus one and return T iff mk<4 and "countdown" pin used
     # 
     from login import LoginUX
     from ux import AbortInteraction
 
-    cd_pin = settings.get('cd_pin', None)
+    # mk4 does differently, as a "trick pin"
+    cd_pin = settings.get('cd_pin', None) if not version.has_se2 else None
+
+    # do they want a randomized (shuffled) keypad?
+    rnd_keypad = settings.get('rngk', 0)
+
+    # single key that "kills" self if pressed on "words" screen
+    kill_btn = settings.get('kbtn', None)
 
     rv = None       # might already be logged-in if _skip_pin used
 
     while not pa.is_successful():
-        lll = LoginUX(rnd_keypad)
+        lll = LoginUX(rnd_keypad, kill_btn)
 
         try:
             rv = await lll.try_login(bypass_pin=cd_pin)
@@ -443,6 +454,17 @@ async def show_nickname(nick):
 
     await ux_wait_keyup()
 
+async def pick_killkey(*a):
+    # Setting: kill seed sometimes (requires mk4)
+    if await ux_show_story('''\
+If you press this key while the anti- phishing words are shown during login, \
+your seed phrase will be immediately wiped.
+
+Best if this does not match the first number of the second half of your PIN.''') != 'y':
+        return
+
+    from choosers import kill_key_chooser
+    start_chooser(kill_key_chooser)
 
 async def pick_scramble(*a):
     # Setting: scrambled keypad or normal
@@ -451,35 +473,7 @@ async def pick_scramble(*a):
         return
 
     from choosers import scramble_keypad_chooser
-    from menu import start_chooser
     start_chooser(scramble_keypad_chooser)
-
-async def confirm_testnet_mode(*a):
-    from choosers import chain_chooser
-    from menu import start_chooser
-    from chains import current_chain
-
-    if settings.get('chain') != 'XTN':
-        if not await ux_confirm("Testnet must only be used by developers because \
-correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."):
-            return
-
-    start_chooser(chain_chooser)
-
-async def pick_inputs_delete(*a):
-    # Setting: delete input PSBT
-    if await ux_show_story('''\
-PSBT files (on SDCard) will be blanked & deleted after they are used. \
-The signed transaction will be named <TXID>.txn, so the file name does not leak information.
-
-MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
-which take apart the flash chips of the SDCard may still be able to find the \
-data or filenames.''') != 'y':
-        return
-
-    from choosers import delete_inputs_chooser
-    from menu import start_chooser
-    start_chooser(delete_inputs_chooser)
 
 async def pick_nickname(*a):
     # from settings menu, enter a nickname
@@ -565,9 +559,22 @@ X to go back. Or press 2 to hide this message forever.
     import seed
     return seed.PassphraseMenu()
 
-def pick_new_wallet(*a):
+
+def pick_new_seed_24(*a):
     import seed
-    return seed.make_new_wallet()
+    return seed.make_new_wallet(24)
+
+def pick_new_seed_12(*a):
+    import seed
+    return seed.make_new_wallet(12)
+
+def new_from_dice_24(*a):
+    import seed
+    return seed.new_from_dice(24)
+def new_from_dice_12(*a):
+    import seed
+    return seed.new_from_dice(12)
+
 
 async def convert_bip39_to_bip32(*a):
     import seed, stash
@@ -599,6 +606,12 @@ async def clear_seed(*a):
         await ux_show_story('''Please empty the duress wallet, and clear the duress PIN before clearing main seed.''')
         return
 
+    if version.has_se2:
+        from trick_pins import tp
+        if any(tp.get_duress_pins()):
+            await ux_show_story('''You have one or more duress wallets defined under Trick PINs. Please empty them, and clear associated Trick PINs before clearing main seed.''')
+            return
+
     if not await ux_confirm('''Wipe seed words and reset wallet. All funds will be lost. You better have a backup of the seed words.'''):
         return await ux_aborted()
 
@@ -613,39 +626,62 @@ consequences.''', escape='4')
     seed.clear_seed()
     # NOT REACHED -- reset happens
 
+
+def render_master_secrets(mode, raw, node):
+    # Render list of words, or XPRV / master secret to text.
+    import stash
+
+    qr_alnum = False
+
+    if mode == 'words':
+        import bip39
+        words = bip39.b2a_words(raw).split(' ')
+
+        # This optimization make the QR very nice, and space for
+        # all the words too
+        qr = ' '.join(w[0:4] for w in words)
+        qr_alnum = True
+
+        msg = 'Seed words (%d):\n' % len(words)
+        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+
+        pw = stash.bip39_passphrase
+        if pw:
+            msg += '\n\nBIP-39 Passphrase:\n%s' % stash.bip39_passphrase
+    elif mode == 'xprv':
+        import chains
+        msg = chains.current_chain().serialize_private(node)
+        qr = msg
+
+    elif mode == 'master':
+        from ubinascii import hexlify as b2a_hex
+
+        msg = '%d bytes:\n\n' % len(raw)
+        qr = str(b2a_hex(raw), 'ascii')
+        msg += qr
+    else:
+        raise ValueError(mode)
+
+    return msg, qr, qr_alnum
+
 async def view_seed_words(*a):
-    import stash, bip39
+    import stash
 
     if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP-39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
         return
 
+    from glob import dis
+    dis.fullscreen("Wait...")
+    dis.busy_bar(True)
+
     with stash.SensitiveValues() as sv:
-        qr_alnum = False
+        if sv.deltamode:
+            # give up and wipe self rather than show true seed values.
+            import callgate
+            callgate.fast_wipe()
 
-        if sv.mode == 'words':
-            words = bip39.b2a_words(sv.raw).split(' ')
-            qr = ' '.join(w[0:4] for w in words)
-            qr_alnum = True
-
-            msg = 'Seed words (%d):\n' % len(words)
-            msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
-
-            pw = stash.bip39_passphrase
-            if pw:
-                msg += '\n\nBIP-39 Passphrase:\n%s' % stash.bip39_passphrase
-        elif sv.mode == 'xprv':
-            import chains
-            msg = chains.current_chain().serialize_private(sv.node)
-            qr = msg
-
-        elif sv.mode == 'master':
-            from ubinascii import hexlify as b2a_hex
-
-            msg = '%d bytes:\n\n' % len(sv.raw)
-            qr = str(b2a_hex(sv.raw), 'ascii')
-            msg += qr
-        else:
-            raise ValueError(sv.mode)
+        dis.busy_bar(False)
+        msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
 
         if version.has_fatram:
             msg += '\n\nPress 1 to view as QR Code.'
@@ -664,7 +700,8 @@ async def view_seed_words(*a):
 async def damage_myself():
     # called when it's time to disable ourselves due to various
     # features related to duress and so on
-    # - mk2 cannot do this, mk4 will be able to do this instantly
+    # - mk2 cannot do this
+    # - mk4 doesn't call this, done by bootrom
     mode = settings.get('cd_mode', 0)
     #['Brick', 'Final PIN', 'Test Mode']
 
@@ -704,7 +741,7 @@ async def version_migration():
     #   never know when a user might skip a bunch of intermetiate versions
 
     # Data migration issue: 
-    # - "login countdown" feature now stored elsewhere
+    # - "login countdown" feature now stored elsewhere [mk3]
     had_delay = settings.get('lgto', 0)
     if had_delay:
         from nvstore import SettingsObject
@@ -713,6 +750,13 @@ async def version_migration():
         s.set('lgto', had_delay)
         s.save()
         del s
+        
+async def version_migration_prelogin():
+    # same, but for setting before login
+    if version.has_se2:
+        # these have moved into SE2 for Mk4 and so can be removed
+        for n in [ 'cd_lgto', 'cd_mode', 'cd_pin' ]:
+            settings.remove_key(n)
 
 async def start_login_sequence():
     # Boot up login sequence here.
@@ -723,36 +767,37 @@ async def start_login_sequence():
     from glob import dis
     import callgate
 
-    try:
+    if version.mk_num < 4:
         # Block very obsolete versions.
-        MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
-        now = callgate.get_highwater()
-        if now < MIN_WATERMARK:
-            callgate.set_highwater(MIN_WATERMARK)
-    except: pass
+        try:
+            MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
+            now = callgate.get_highwater()
+            if now < MIN_WATERMARK:
+                callgate.set_highwater(MIN_WATERMARK)
+        except: pass
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
 
-        # Do green-light set immediately after firmware upgrade
-        if version.is_fresh_version():
+        # Do green-light set immediately after firmware upgrade [not after mk3]
+        if version.is_fresh_version() and version.mk_num <=3:
             pa.greenlight_firmware()
             dis.show()
 
         goto_top_menu()
         return
 
-    # Did they power down during a login countdown? If so continue it.
-    existing_delay = settings.get('delay_left', 0)
-    if existing_delay:
-        await login_countdown(existing_delay)
-    else:
-        # maybe show a nickname before we do anything
+    # data migration on settings that are used pre-login
+    try:
+        await version_migration_prelogin()
+    except: pass
+
+    # maybe show a nickname before we do anything
+    try:
         nickname = settings.get('nick', None)
         if nickname:
-            try:
-                await show_nickname(nickname)
-            except: pass
+            await show_nickname(nickname)
+    except: pass
 
     # Allow impatient devs and crazy people to skip the PIN
     guess = settings.get('_skip_pin', None)
@@ -763,47 +808,66 @@ async def start_login_sequence():
             pa.login()
         except: pass
 
-    # if that didn't work, or no skip defined, force
+    # If that didn't work, or no skip defined, force
     # them to login successfully.
 
-    # do they want a randomized (shuffled) keypad?
-    rnd_keypad = settings.get('rngk', 0)
+    try:
+        # Get a PIN and try to use it to login
+        # - does warnings about attempt usage counts
+        wants_countdown = await block_until_login()
 
-    # always get a PIN and login first
-    cd_login = await block_until_login(rnd_keypad)
+        # Do we need to do countdown delay? (real or otherwise)
+        delay = 0
+        if wants_countdown:
+            # Mk3 and earlier
+            await damage_myself()
+            delay = settings.get('cd_lgto', 60)
+        elif version.has_se2:
+            # Mk4 approach:
+            # - wiping has already occured if that was picked
+            # - delay is variable, stored in tc_arg
+            from trick_pins import tp
+            delay = tp.was_countdown_pin()
 
-    # Do we need to delay? (real or otherwise)
-    if cd_login:
-        await damage_myself()
-        delay = settings.get('cd_lgto', 60)
-    else:
-        # They do know the right PIN, do a delay tho, because they wanted that
-        if not existing_delay:
+        # Maybe they do know the right PIN, but do a delay anyway, because they wanted that
+        if not delay:
             delay = settings.get('lgto', 0)
-        else:
-            # except assume the continued power-up delay was enough to
-            # continue without more delay
-            delay = 0
 
-    if delay:
-        pa.reset()
+        if delay:
+            # kill some time, with countdown, and get "the" PIN again for real login
+            pa.reset()
+            await login_countdown(delay * (60 if not version.is_devmode else 1))
 
-        await login_countdown(delay*60)
+            if version.has_se2:
+                # keep it simple for Mk4+: just challenge again for any PIN
+                # - if it's the same countdown pin, it will be accepted and they
+                #   get in (as most trick pins would do)
+                await block_until_login()
+            else:
+                # second PIN challenge; but only if first one was actually legit
+                wants_countdown = await block_until_login()
 
-        # second PIN challenge; but only if first one was actually legit
-        if not cd_login:
-            cd_login = await block_until_login(rnd_keypad)
+                # whenever they use the countdown pin on second screen, kill ourselves
+                if wants_countdown:
+                    await damage_myself()
 
-            # If they did correct pin, waited for delay, and the do countdown-pin,
-            # skip any additional delay and just do the damage now.
-            if cd_login:
-                await damage_myself()
+                if wants_countdown:
+                    # crash
+                    dis.fullscreen("ERROR")
+                    callgate.show_logout(1)
 
-        if cd_login:
-            # crash
-            dis.fullscreen("ERROR")
-            callgate.show_logout(1)
+    except BaseException as exc:
+        # Robustness: any logic errors/bugs in above will brick the Coldcard
+        # even for legit owner, since they can't login. Try to recover, when it's
+        # safe to do so. Remember the bootrom checks PIN on every access to
+        # the secret, so "letting" them past this point is harmless if they don't know
+        # the true pin.
+        if not pa.is_successful():
+            raise
 
+        print("Bug recovery!")
+        import sys
+        sys.print_exception(exc)
 
     # Successful login...
 
@@ -823,8 +887,9 @@ async def start_login_sequence():
     IMPT.start_task('idle', idle_logout()) 
 
     # Do green-light set immediately after firmware upgrade
-    if not pa.is_secondary:
-        if version.is_fresh_version():
+    # - mk4 doesn't work this way, light will already be green
+    if version.mk_num <= 3:
+        if version.is_fresh_version() and not pa.is_secondary:
             pa.greenlight_firmware()
             dis.show()
 
@@ -856,12 +921,23 @@ async def start_login_sequence():
                     await ar.interact()
         except: pass
 
+    if version.mk_num >= 4:
+        if version.has_nfc and settings.get('nfc', 0):
+            # Maybe allow NFC now
+            import nfc
+            nfc.NFCHandler.startup()
+
+        if settings.get('vdsk', 0):
+            # Maybe start virtual disk
+            import vdisk
+            vdisk.VirtDisk()
+
     # Allow USB protocol, now that we are auth'ed
     if not settings.get('du', 0):
         from usb import enable_usb
         enable_usb()
         
-def goto_top_menu():
+def goto_top_menu(first_time=False):
     # Start/restart menu system
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
@@ -882,6 +958,11 @@ def goto_top_menu():
 
     the_ux.reset(m)
 
+    if first_time and not pa.is_secret_blank():
+        # guide new user thru some setup stuff
+        from ftux import FirstTimeUX
+        the_ux.push(FirstTimeUX())
+
     return m
 
 SENSITIVE_NOT_SECRET = '''
@@ -895,7 +976,7 @@ PICK_ACCOUNT = '''\n\nPress 1 to enter a non-zero account number.'''
 async def dump_summary(*A):
     # save addresses, and some other public details into a file
     if not await ux_confirm('''\
-Saves a text file to MicroSD with a summary of the *public* details \
+Saves a text file with a summary of the *public* details \
 of your wallet. For example, this gives the XPUB (extended public key) \
 that you will need to import other wallet software to track balance.''' + SENSITIVE_NOT_SECRET):
         return
@@ -904,10 +985,73 @@ that you will need to import other wallet software to track balance.''' + SENSIT
     import export
     await export.make_summary_file()
 
+async def export_xpub(label, _2, item):
+    # provide bare xpub in a QR/NFC for import into simple wallets.
+    import chains, glob, stash
+    from public_constants import AF_CLASSIC
+    from ux import show_qr_code
+
+    chain = chains.current_chain()
+    acct = 0
+
+    # decode menu code => standard derivation
+    mode = item.arg
+    if mode == -1:
+        # XFP shortcut
+        xfp = xfp2str(settings.get('xfp', 0))
+        await show_qr_code(xfp, True)
+        return 
+
+    elif mode == 0:
+        path = "m"
+        addr_fmt = AF_CLASSIC
+    else:
+        remap = {44:0, 49:1, 84:2}[mode]
+        _, path, addr_fmt = chains.CommonDerivations[remap]
+        path = path.format(account='{acct}', coin_type=chain.b44_cointype, change=0, idx=0)[:-4]
+
+    # always show SLIP-132 style, because defacto
+    show_slip132 = (addr_fmt != AF_CLASSIC)
+
+    while 1:
+        msg = '''Show QR of the XPUB for path:\n\n%s\n\n''' % path
+
+        if '{acct}' in path:
+            msg += "Press 1 to select account other than zero. "
+        if glob.NFC:
+            msg += "Press 3 to share over NFC. "
+
+        ch = await ux_show_story(msg, escape='13')
+        if ch == 'x': return
+        if ch == '1':
+            acct = await ux_enter_number('Account Number:', 9999) or 0
+            path = path.format(acct=acct)
+            continue
+
+        # assume zero account if not picked
+        path = path.format(acct=acct)
+
+        from glob import dis
+        dis.fullscreen('Wait...')
+
+        # render xpub/ypub/zpub
+        with stash.SensitiveValues() as sv:
+            node = sv.derive_path(path) if path != 'm' else sv.node
+            xpub = chain.serialize_public(node, addr_fmt)
+
+        if ch == '3' and glob.NFC:
+            await glob.NFC.share_text(xpub)
+        else:
+            from ux import show_qr_code
+            await show_qr_code(xpub, False)
+
+        break
+        
+
 def electrum_export_story(background=False):
     # saves memory being in a function
     return ('''\
-This saves a skeleton Electrum wallet file onto the MicroSD card. \
+This saves a skeleton Electrum wallet file. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
 ''' 
         + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
@@ -943,8 +1087,9 @@ async def bitcoin_core_skeleton(*A):
     # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
 
     ch = await ux_show_story('''\
-This saves a command onto the MicroSD card that includes the public keys. \
-You can then run that command in Bitcoin Core without ever connecting this Coldcard to a computer.\
+This saves commands and instructions into a file, including the public keys (xpub). \
+You can then run the commands in Bitcoin Core's console window, \
+without ever connecting this Coldcard to a computer.\
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape='1')
 
     account_num = 0
@@ -970,7 +1115,7 @@ async def generic_skeleton(*A):
     # basically all useful XPUB's in it.
 
     if await ux_show_story('''\
-Saves JSON file onto MicroSD card, with XPUB values that are needed to watch typical \
+Saves JSON file, with XPUB values that are needed to watch typical \
 single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
         return
 
@@ -988,7 +1133,7 @@ async def wasabi_skeleton(*A):
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
 
     if await ux_show_story('''\
-This saves a skeleton Wasabi wallet file onto the MicroSD card. \
+This saves a skeleton Wasabi wallet file. \
 You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
 ''' + SENSITIVE_NOT_SECRET) != 'y':
         return
@@ -1025,14 +1170,12 @@ async def verify_backup(*A):
 
     fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=backups.MAX_BACKUP_FILE_SIZE)
 
-    if fn:
-        # do a limited CRC-check over encrypted file
-        await backups.verify_backup_file(fn)
+    if not fn:
+        return
 
-def import_from_dice(*a):
-    import seed
-    return seed.import_from_dice()
-        
+    # do a limited CRC-check over encrypted file
+    await backups.verify_backup_file(fn)
+
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
     import ngu, chains, ure
@@ -1140,13 +1283,21 @@ async def restore_everything_cleartext(*A):
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
-used for code patches. Does not affect funds, settings or seed words. \
-Does not affect SD card, if any.'''):
+used for settings and HSM config file. Does not affect funds, or seed words but \
+will reset settings used with other BIP39 passphrases. \
+Does not affect MicroSD card, if any.'''):
         return
 
     from files import wipe_flash_filesystem
-
     wipe_flash_filesystem()
+
+async def wipe_vdisk(*A):
+    if not await ux_confirm('''\
+Erases and reformats shared RAM disk. This is a secure erase that blanks every byte.'''):
+        return
+
+    import glob
+    await glob.VD.wipe_disk()
 
 async def wipe_sd_card(*A):
     if not await ux_confirm('''\
@@ -1157,9 +1308,16 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
     wipe_microsd_card()
 
 
+async def nfc_share_file(*A):
+    # Mk4: Share txt, txn and PSBT files over NFC.
+    from glob import NFC
+    if NFC: 
+        await NFC.share_file()
+
+
 async def list_files(*A):
     # list files, don't do anything with them?
-    fn = await file_picker('Lists all files on MicroSD. Select one and SHA256(file contents) will be shown.', min_size=0)
+    fn = await file_picker('Lists all files, select one and SHA256(file contents) will be shown.', min_size=0)
     if not fn: return
 
     from uhashlib import sha256
@@ -1168,7 +1326,7 @@ async def list_files(*A):
 
     try:
         with CardSlot() as card:
-            with open(fn, 'rb') as fp:
+            with card.open(fn, 'rb') as fp:
                 while 1:
                     data = fp.read(1024)
                     if not data: break
@@ -1182,8 +1340,8 @@ async def list_files(*A):
     ch = await ux_show_story('''SHA256(%s)\n\n%s\n\nPress 6 to delete.''' % (basename, B2A(chk.digest())), escape='6')
 
     if ch == '6':
-        from files import securely_blank_file
-        securely_blank_file(fn)
+        with CardSlot() as card:
+            card.securely_blank_file(fn)
 
     return
 
@@ -1299,7 +1457,7 @@ async def debug_except(*a):
 
 async def check_firewall_read(*a):
     import uctypes
-    ps = uctypes.bytes_at(0x7800, 32)
+    ps = uctypes.bytes_at(0x7800, 32)       # off the mark for mk4, but still valid test
     assert False        # should not be reached
 
 async def bless_flash(*a):
@@ -1318,17 +1476,14 @@ async def bless_flash(*a):
 async def ready2sign(*a):
     # Top menu choice of top menu! Signing!
     # - check if any signable in SD card, if so do it
-    # - if nothing, then talk about USB connection
-    from public_constants import MAX_TXN_LEN
+    # - if no card, check virtual disk for PSBT
+    # - if still nothing, then talk about USB connection
+    from version import MAX_TXN_LEN
     import stash
-    
-    if stash.bip39_passphrase:
-        title = '[%s]' % settings.get('xfp')
-    else:
-        title = None
+    from glob import NFC
 
     def is_psbt(filename):
-        if '-signed' in filename.lower():
+        if '-signed' in filename.lower():       # XXX problem: multi-signers?
             return False
 
         with open(filename, 'rb') as fd:
@@ -1344,18 +1499,30 @@ async def ready2sign(*a):
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
                             max_size=MAX_TXN_LEN, taster=is_psbt)
+    
+    if stash.bip39_passphrase:
+        title = '[%s]' % settings.get('xfp')
+    else:
+        title = None
 
     if not choices:
-        await ux_show_story("""\
-Coldcard is ready to sign spending transactions!
+        msg = '''Coldcard is ready to sign spending transactions!
 
 Put the proposed transaction onto MicroSD card \
 in PSBT format (Partially Signed Bitcoin Transaction) \
 or upload a transaction to be signed \
-from your wallet software (Electrum) or command line tools. \
+from your desktop wallet software or command line tools.\n\n'''
 
-You will always be prompted to confirm the details before any signature is performed.\
-""", title=title)
+        if NFC:
+            msg += 'Press 3 to send PSBT using NFC.\n\n'
+    
+        msg += "You will always be prompted to confirm the details before \
+any signature is performed."
+
+        ch = await ux_show_story(msg, title=title, escape='3')
+        if ch == '3' and NFC:
+            await NFC.start_psbt_rx()
+
         return
 
     if len(choices) == 1:
@@ -1396,69 +1563,11 @@ async def sign_message_on_sd(*a):
     await sign_txt_file(fn)
 
 
-async def set_countdown_pin(_1, _2, menu_item):
-    # Accept a new PIN to be used to enable this feature
-    from login import LoginUX
-    from nvstore import SettingsObject
-
-    lll = LoginUX()
-    lll.reset()
-    lll.subtitle = "Countdown PIN"
-
-    pin = await lll.get_new_pin(None, allow_clear=True)     # a string
-
-    s = SettingsObject()
-
-    if pin == pa.pin.decode():
-        # can't compare to others like duress/brickme but will override them
-        await ux_show_story("Must be a unique PIN value!")
-        return
-    elif not pin:
-        # X on first screen does this (better than CLEAR_PIN thing)
-        s.remove_key('cd_pin')
-        msg = 'PIN Cleared.'
-        menu_item.label = "Enable Feature"
-    else:
-        s.set('cd_pin', pin)
-        msg = 'PIN Set.'
-        menu_item.label = "PIN is Set!"
-
-    s.save()
-
-    await ux_dramatic_pause(msg, 3)
-    
-
-async def countdown_pin_submenu(*a):
-    # Background and settings for duress-countdown pin
-    from nvstore import SettingsObject
-    s = SettingsObject()
-    pin_set = bool(s.get('cd_pin', 0))
-
-    if not pin_set:
-        ok = await ux_show_story('''\
-This special PIN will immediately and silently brick the Coldcard, \
-but as it does that, it shows a normal-looking countdown timer for login. \
-At the end of the countdown, the Coldcard crashes with a vague error. \
-
-Instead of complete brick, you may select a test mode (no harm done) or \
-to consume all but the final PIN attempt.\
-''')
-        if not ok: return
-
-    from menu import MenuItem
-
-    from choosers import cd_countdown_chooser, set_countdown_pin_mode
-    return [
-                MenuItem('PIN is Set!' if pin_set else 'Enable Feature', f=set_countdown_pin),
-                MenuItem('Countdown Time', chooser=cd_countdown_chooser),
-                MenuItem('Brick Mode', chooser=set_countdown_pin_mode),
-            ]
-
 async def pin_changer(_1, _2, item):
     # Help them to change pins with appropriate warnings.
     # - forcing them to drill-down to get warning about secondary is on purpose
     # - the bootloader maybe lying to us about weather we are main vs. duress
-    # - there is a duress wallet for both main/sec pins, and you need to know main pin for that
+    # - there is a duress wallet for both main/sec pins, and you need to know main pin for that(mk3)
     # - what may look like just policy here, is in fact enforced by the bootrom code
     #
     from glob import dis
@@ -1466,6 +1575,8 @@ async def pin_changer(_1, _2, item):
     from pincodes import BootloaderError, EPIN_OLD_AUTH_FAIL
 
     mode = item.arg
+
+    # NOTE: for mk4, only "main" is applicable.
 
     warn = {'main': ('Main PIN',
                     'You will be changing the main PIN used to unlock your Coldcard. '
@@ -1590,6 +1701,13 @@ We strongly recommend all PIN codes used be unique between each other.
                                 title="Try Again")
             continue
 
+        if version.mk_num >= 4:
+            from trick_pins import tp
+            prob = tp.check_new_main_pin(pin)
+            if prob:
+                await ux_show_story(prob, title="Try Again")
+                continue
+
         break
 
     # install it.
@@ -1625,6 +1743,11 @@ We strongly recommend all PIN codes used be unique between each other.
             # we cannot/need not login again
             pa.login()
 
+        if version.mk_num >= 4:
+            # Deltamode trick pins need to track main pin
+            from trick_pins import tp
+            tp.main_pin_has_changed(pa.pin.decode())
+
         if mode == 'duress':
             # program the duress secret now... it's derived from real wallet contents
             from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
@@ -1635,7 +1758,7 @@ We strongly recommend all PIN codes used be unique between each other.
             else:
                 with SensitiveValues() as sv:
                     # derive required key
-                    node = sv.duress_root()
+                    node, _ = sv.duress_root()
                     d_secret = SecretStash.encode(xprv=node)
                     sv.register(d_secret)
         
@@ -1649,15 +1772,31 @@ async def show_version(*a):
     # show firmware, bootload versions.
     import callgate, version
     from ubinascii import hexlify as b2a_hex
+    from glob import NFC
 
     built, rel, *_ = version.get_mpy_version()
     bl = callgate.get_bl_version()[0]
     chk = str(b2a_hex(callgate.get_bl_checksum(0))[-8:], 'ascii')
 
-    if version.has_608:
-        se = '608B' if callgate.has_608b() else '608A'
+    if version.has_se2:
+        se = '\n  '.join(callgate.get_se_parts())
     else:
-        se = '508A'
+        se = 'ATECC'
+        if version.has_608:
+            se += '608B' if callgate.has_608b() else '608A'
+        else:
+            se += '508A'
+
+    # exposed over USB interface:
+    serial = version.serial_number()
+
+    # this UID is exposed over NFC interface, but only when enabled and in active use
+    if NFC:
+        serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
+
+    hw = version.hw_label
+    if not version.has_nfc and version.mk_num >= 4:
+        hw += ' (no NFC)'
 
     msg = '''\
 Coldcard Firmware
@@ -1676,12 +1815,13 @@ Serial:
 Hardware:
   {hw}
 
-Secure Element:
-  ATECC{se}
+Secure Element{ses}:
+  {se}
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=version.serial_number(), hw=version.hw_label))
+                            ser=serial, hw=hw, 
+                ses='s' if version.has_se2 else ''))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.
@@ -1730,35 +1870,6 @@ Rarely needed as critical security updates will set this automatically.''' % hav
 
     assert rv == 0, "Failed: %r" % rv
 
-async def import_multisig(*a):
-    # pick text file from SD card, import as multisig setup file
-
-    def possible(filename):
-        with open(filename, 'rt') as fd:
-            for ln in fd:
-                if 'pub' in ln:
-                    return True
-
-    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible)
-    if not fn: return
-
-    try:
-        with CardSlot() as card:
-            with open(fn, 'rt') as fp:
-                data = fp.read()
-    except CardMissingError:
-        await needs_microsd()
-        return
-
-    from auth import maybe_enroll_xpub
-    try:
-        possible_name = (fn.split('/')[-1].split('.'))[0]
-        maybe_enroll_xpub(config=data, name=possible_name)
-    except Exception as e:
-        #import sys; sys.print_exception(e)
-        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
-
 async def start_hsm_menu_item(*a):
     from hsm_ux import start_hsm_approval 
     await start_hsm_approval(sf_len=0, usb_mode=False)
@@ -1781,5 +1892,60 @@ has occured in the detection logic.''')
     history.OutptValueCache.clear()
 
     await ux_dramatic_pause("Cleared.", 3)
+
+async def change_usb_disable(dis):
+    # user has disabled USB port (or re-enabled)
+    import pyb
+    cur = pyb.usb_mode()
+
+    from usb import enable_usb, disable_usb
+    if cur and dis:
+        # usb enabled, but should not be now
+        disable_usb()
+    elif not cur and not dis:
+        # USB disabled, but now should be
+        enable_usb()
+
+async def change_nfc_enable(enable):
+    # NFC enable / disable
+    import glob
+    from glob import NFC
+    import nfc
+
+    if not enable:
+        if glob.NFC:
+            glob.NFC.shutdown()
+    else:
+        nfc.NFCHandler.startup()
+
+async def change_virtdisk_enable(enable):
+    # NOTE: enable can be 0,1,2
+    import glob, vdisk
+    from usb import enable_usb, disable_usb
+
+    if bool(enable) == bool(glob.VD):
+        # not a change in state, do nothing
+        return
+
+    if enable:
+        # just showing up as new media is enough (MacOS) to make it show up
+        vdisk.VirtDisk()
+        assert glob.VD
+    else:
+        assert glob.VD
+        glob.VD.shutdown()
+        assert not glob.VD
+
+async def change_which_chain(name):
+    # setting already changed, but reflect that value in other settings
+    try:
+        # update xpub stored in settings
+        import stash
+        with stash.SensitiveValues() as sv:
+            sv.capture_xpub()
+    except ValueError:
+        # no secrets yet, not an error
+        pass
+
 
 # EOF

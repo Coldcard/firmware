@@ -47,8 +47,8 @@ def test_bip_vectors(mode, index, entropy, expect,
     settings_set('chain', 'BTC')
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('Derive Entropy')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Derive Seed B85')
 
     time.sleep(0.1)
     title, story = cap_story()
@@ -189,14 +189,14 @@ HISTORY = set()
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
 def test_path_index(mode, pattern, index,
-        set_encoded_secret, dev, cap_menu, pick_menu_item,
+        dev, cap_menu, pick_menu_item,
         goto_home, cap_story, need_keypress, cap_screen_qr, qr_quality_check
 ):
     # Uses any key on Simulator; just checking for operation + entropy level
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('Derive Entropy')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Derive Seed B85')
 
     time.sleep(0.1)
     title, story = cap_story()

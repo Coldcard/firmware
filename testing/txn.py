@@ -56,7 +56,7 @@ def simple_fake_txn():
     return doit
 
 @pytest.fixture()
-def fake_txn():
+def fake_txn(dev):
     # make various size txn's ... completely fake and pointless values
     # - but has UTXO's to match needs
     # - input total = num_inputs * 1BTC
@@ -71,7 +71,7 @@ def fake_txn():
                 change_outputs=[], capture_scripts=None, add_xpub=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
-        master_xpub = master_xpub or simulator_fixed_xprv
+        master_xpub = master_xpub or dev.master_xpub or simulator_fixed_xprv
         
         # we have a key; use it to provide "plausible" value inputs
         mk = BIP32Node.from_wallet_key(master_xpub)

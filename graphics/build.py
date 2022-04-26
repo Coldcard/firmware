@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 #
-# (c) Copyright 2018 by Coinkite Inc. This file is part of Coldcard <coldcardwallet.com>
-# and is covered by GPLv3 license found in COPYING.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 import os, sys, pdb
 from PIL import Image, ImageOps
@@ -66,6 +65,8 @@ def crunch(n):
 
 def doit(outfname, fnames):
 
+    assert outfname.endswith('.py')
+    assert outfname != 'build.py'
     assert fnames, "need some files"
 
     fp = open(outfname, 'wt')
@@ -108,4 +109,4 @@ class Graphics:
     fp.write("\n# EOF\n")
 
 if 1:
-    doit('graphics.py', sys.argv[1:])
+    doit(sys.argv[1], sys.argv[2:])

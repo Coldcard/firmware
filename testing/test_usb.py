@@ -102,11 +102,14 @@ def test_version(dev):
     # read the version, yawn.
     v = dev.send_recv(CCProtocolPacker.version())
     assert '\n' in v
-    date, label, bl, *extras = v.split('\n')
+    date, label, bl, build_date, hw_label, *extras = v.split('\n')
     assert '-' in date
     assert '.' in label
     assert '.' in bl
+    assert 'mk' in hw_label
     print("date=%s" % date)
+    assert build_date.startswith(date[2:].replace('-', ''))
+    assert not extras
 
 @pytest.mark.parametrize('data_len', [1, 24, 60, 61, 62, 63, 64, 1000])
 def test_upload_short(dev, data_len):
@@ -201,8 +204,12 @@ def test_remote_upload(dev):
     dev.upload_file(b'testing')
     dev.upload_file(os.urandom(3000))
 
-@pytest.mark.parametrize('f_len', [256, 1024, 2048, 8196, 384*1024])
-def test_remote_up_download(f_len, dev):
+@pytest.mark.veryslow
+@pytest.mark.parametrize('f_len', [256, 1024, 2048, 8196, 384*1024, 2*1024*1024])
+def test_remote_up_download(f_len, dev, mk_num):
+    if f_len > (384*1024) and mk_num <= 3:
+        raise pytest.skip('mk4+ only case')
+
     import os
     data = os.urandom(f_len)
     ll, sha = dev.upload_file(data, verify=True)

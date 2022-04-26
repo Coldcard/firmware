@@ -40,6 +40,9 @@ Already checked-out and getting git errors? Do this:
     git fetch
     git reset --hard origin/master
 
+Do not use a path with any spaces in it. The Makefiles do not handle
+that well, and we're not planning to fix it.
+
 Then:
 
 - `cd firmware`
@@ -83,6 +86,13 @@ Used to be these were needed as well:
     brew install px4/px4/gcc-arm-none-eabi-80 (latest gcc-arm-none-eabi-XX, currently 80)
 
 You may need to reboot to avoid a `DISPLAY is not set` error.
+
+You may need to `brew upgrade gcc-arm-embedded` because we need 10.2 or higher.
+
+#### Big Sur Issues
+
+- `defaults write org.python.python ApplePersistenceIgnoreState NO` will supress a warning
+  about `Python[22580:10101559] ApplePersistenceIgnoreState: Existing state will not be touched. New state will be written to...` see <https://bugs.python.org/issue32909>
 
 ### Linux
 

@@ -123,7 +123,10 @@ class SSD1306_SPI(SSD1306):
         self.cs(1)
         self.dc(0)
         self.cs(0)
-        self.spi.write(bytearray([cmd]))
+        try:
+            self.spi.write(bytearray([cmd]))
+        except:
+            print("SPI[cmd]: %r" % self.spi)
         self.cs(1)
 
     def write_data(self, buf):
@@ -131,5 +134,8 @@ class SSD1306_SPI(SSD1306):
         self.cs(1)
         self.dc(1)
         self.cs(0)
-        self.spi.write(buf)
+        try:
+            self.spi.write(buf)
+        except:
+            print("SPI[data]: %r" % self.spi)
         self.cs(1)

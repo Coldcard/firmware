@@ -158,3 +158,5 @@ if '--enter' in sys.argv:
 import hsm
 hsm.POLICY_FNAME = hsm.POLICY_FNAME.replace('/flash/', '')
 
+
+
