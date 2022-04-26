@@ -1,16 +1,16 @@
 # Coldcard Wallet
 
 
-Coldcard is a Cheap, Ultra-secure & Opensource Hardware Wallet for Bitcoin.
-Get yours at [ColdcardWallet.com](http://coldcardwallet.com)
+Coldcard is a Cheap, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
+Get yours at [Coldcard.com](http://coldcard.com)
 
 [Follow @COLDCARDwallet on Twitter](https://twitter.com/coldcardwallet) to keep up
 with the latest updates and security alerts. 
 
-![coldcard logo](https://coldcardwallet.com/static/images/coldcard-logo-nav.png)
+![coldcard logo](https://coldcard.com/static/images/coldcard-logo-nav.png)
 
-![coldcard picture front](https://coldcardwallet.com/static/images/coldcard-front.png)
-![coldcard picture back](https://coldcardwallet.com/static/images/coldcard-back.png)
+![coldcard picture front](https://coldcard.com/static/images/coldcard-front.png)
+![coldcard picture back](https://coldcard.com/static/images/coldcard-back.png)
 
 ## Reproducible Builds
 
@@ -47,7 +47,7 @@ Then:
 
 - `cd firmware`
 - `git submodule update --init` _(if needed?)_
-- `brew install autogen virtualenv`
+- `brew install automake autogen virtualenv`
 - `virtualenv -p python3 ENV` (Python > 3.5 is required)
 - `source ENV/bin/activate` (or `source ENV/bin/activate.csh` based on shell preference)
 - `pip install -r requirements.txt`
