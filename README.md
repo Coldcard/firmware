@@ -21,7 +21,9 @@ has been automated using Docker. Steps are as follows:
 3. Checkout the code, and start the process.
 
     git clone https://github.com/Coldcard/firmware.git
+
     cd firmware/stm32
+
     make repro
 
 4. At the end of the process a clear confirmation message is shown, or the differences.
@@ -55,7 +57,7 @@ Then:
 
 Setup and Run the Desktop-based Coldcard simulator:
 
-- `cd unix; make setup && make; ./simulator.py`
+- `cd unix; make setup && make && ./simulator.py`
 
 Building the firmware:
 
@@ -118,6 +120,8 @@ Top-level dirs:
 
 - shared code between desktop test version and real-deal
 - expected to be largely in python, and higher-level
+- new code found only on the Mk4 will be listed in `manifest_mk4.py` code exclusive
+  to earlier hardware is in `manifest_mk3.py`
 
 `unix`
 
@@ -131,25 +135,39 @@ Top-level dirs:
 
 `stm32`
 
-- embedded micro version, for actual product
+- embedded binaries (and building), for actual product hardware
 - final target is a binary file for loading onto hardware
 
 `external`
 
 - code from other projects, ie. the dreaded submodules
 
+`graphics`
+
+- images which ship as part of the final product (icons)
+
 `stm32/bootloader`
 
-- 32k of factory-set code that you cannot change
+- 32k of factory-set code that you cannot change (Mk3)
+- however, you can inspect what code is on your coldcard and compare to this.
+
+`stm32/mk4-bootloader`
+
+- 128k of factory-set code that you cannot change for Mk4
 - however, you can inspect what code is on your coldcard and compare to this.
 
 `hardware`
 
 - schematic and bill of materials for the Coldcard
 
-`unix/work/MicroSD`
+`unix/work/...`
 
-- files on "simulated" microSD card 
+- `/MicroSD/*` files on "simulated" microSD card 
+
+- `/VirtDisk/*` simulated emulated virtual Disk files.
+
+- `/settings/*.aes` persistant settings for Simulator
+
 
 
 ## Support
