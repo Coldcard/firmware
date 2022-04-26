@@ -13,7 +13,7 @@ from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start
 from backups import clone_start, clone_write_data
-from xor_seed import xor_split_start, xor_restore_start
+from xor_seed import xor_save_start, xor_split_start, xor_restore_start
 from countdowns import countdown_pin_submenu, countdown_chooser
 
 # Optional feature: HSM
@@ -230,7 +230,8 @@ DebugFunctionsMenu = [
 SeedXORMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Split Existing", f=xor_split_start),
-    MenuItem("Restore Seed XOR", f=xor_restore_start),
+    MenuItem("Restore Seed XOR", menu=xor_restore_start),
+    MenuItem("Create XOR file", menu=xor_save_start)
 ]
 
 SeedFunctionsMenu = [

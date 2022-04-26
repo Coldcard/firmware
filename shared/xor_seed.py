@@ -5,6 +5,8 @@
 # - for secret spliting on paper
 # - all combination of partial XOR seed phrases are working wallets
 #
+from menu import MenuItem, MenuSystem
+from xor_seedsave import XORSeedSaver
 import stash, ngu, chains, bip39, random
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
 from seed import word_quiz, WordNestMenu, set_seed_value
@@ -107,8 +109,10 @@ Otherwise, press OK to continue.'''.format(n=num_parts, t=num_parts*24), escape=
             continue
 
         for ws, part in enumerate(word_parts):
+            print('ws, part, %s, %s'%(ws, part))
             ch = await word_quiz(part, title='Word %s%%d is?' % chr(65+ws))
-            if ch == 'x': break
+            if ch == 'x': 
+                break
         else:
             break
 
@@ -153,7 +157,7 @@ class XORWordNestMenu(WordNestMenu):
             return None
         elif ch == '1':
             # do another list of words
-            nxt = XORWordNestMenu(num_words=24)
+            nxt = XORSourceMenu()
             the_ux.push(nxt)
         elif ch == '2':
             # done; import on temp basis, or be the main secret
@@ -169,6 +173,7 @@ class XORWordNestMenu(WordNestMenu):
             else:
                 pa.tmp_secret(enc)
                 await ux_show_story("New master key in effect until next power down.")
+                goto_top_menu()
 
         return None
 
@@ -176,6 +181,32 @@ class XORWordNestMenu(WordNestMenu):
         global import_xor_parts
         pn = len(import_xor_parts)
         return chr(65+pn) + ' Word' 
+
+
+
+
+class XORSourceMenu(MenuSystem):
+    def __init__(self):
+        items = [
+            MenuItem('Manually Enter', menu=self.manual_entry),
+            MenuItem('From SDCard', f=self.from_sdcard)
+        ]
+        
+        super(XORSourceMenu, self).__init__(items)
+
+    async def manual_entry(*a):
+        return XORWordNestMenu(num_words=24)
+
+    async def from_sdcard(*a):
+        new_words = await XORSeedSaver().read_from_card()
+        if not new_words:
+            return None
+
+        return await XORWordNestMenu.all_done(new_words)
+
+
+
+
 
 async def show_n_parts(parts, chk_word):
     num_parts = len(parts)
@@ -224,6 +255,30 @@ Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to 
                     if len(words) == 24:
                         import_xor_parts.append(words)
 
-    return XORWordNestMenu(num_words=24)
+    return XORSourceMenu()
+
+async def xor_save_start(*a):
+    from pincodes import pa 
+    if pa.has_tmp_seed():
+        ch = await ux_show_story('''\
+The current master key is a temporary one; the file will be encrypted with this key.
+
+Press OK to continue. X to cancel.
+''')
+        if ch == 'x': return
+
+    ch = await ux_show_story('''\
+Have your 24-word phrase ready. You will enter the 24 words which will then be encrypted using the master key and stored on your SDCard.
+
+Press OK to continue. X to cancel.
+''')
+    if ch == 'x': return
+
+
+    async def callback(new_words):
+        WordNestMenu.pop_all()
+        return await XORSeedSaver().save_to_card(new_words)
+
+    return WordNestMenu(num_words=24, done_cb=callback)
 
 # EOF
