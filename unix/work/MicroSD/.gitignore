@@ -6,4 +6,5 @@
 *.pdf
 *.dfu
 *.txn
+*.xor
 .tmp.tmp

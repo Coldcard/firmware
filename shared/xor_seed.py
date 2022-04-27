@@ -156,8 +156,10 @@ class XORWordNestMenu(WordNestMenu):
             import_xor_parts.clear()          # concern: we are contaminated w/ secrets
             return None
         elif ch == '1':
-            # do another list of words
-            nxt = XORSourceMenu()
+            # do another list of words. 
+            # fast-track to manual entry if no secret set yet.
+            from pincodes import pa
+            nxt = XORWordNestMenu(num_words=24) if pa.is_secret_blank() else XORSourceMenu()
             the_ux.push(nxt)
         elif ch == '2':
             # done; import on temp basis, or be the main secret
@@ -188,7 +190,7 @@ class XORWordNestMenu(WordNestMenu):
 class XORSourceMenu(MenuSystem):
     def __init__(self):
         items = [
-            MenuItem('Manually Enter', menu=self.manual_entry),
+            MenuItem('Enter Manually', menu=self.manual_entry),
             MenuItem('From SDCard', f=self.from_sdcard)
         ]
         
@@ -255,6 +257,10 @@ Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to 
                     if len(words) == 24:
                         import_xor_parts.append(words)
 
+    # fast-track to manual entry if no secret set yet.
+    if pa.is_secret_blank():
+        return XORWordNestMenu(num_words=24)
+    
     return XORSourceMenu()
 
 async def xor_save_start(*a):
