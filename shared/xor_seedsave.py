@@ -95,7 +95,7 @@ class XORSeedSaver:
 
         import pyb
         while not pyb.SDCard().present():
-            ch = await ux_show_story('Please insert an SDCard!')
+            ch = await ux_show_story('Please insert an SDCard!\n\nPress OK to continue, X to cancel')
             if ch == 'x': return
 
         from glob import dis
