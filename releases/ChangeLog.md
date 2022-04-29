@@ -1,3 +1,7 @@
+## 4.1.5 - May 5, 2022
+
+- Bugfix: Yikes error shown during BIP-85 operation
+
 ## 4.1.4 - Apr 26, 2022
 
 - Enhancement: if an XFP of zero is seen in a PSBT file, assume that should be replaced by

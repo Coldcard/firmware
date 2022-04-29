@@ -43,7 +43,8 @@ still backed-up.''')
 
 def drv_entro_step2(_1, picked, _2):
     from glob import dis
-    from files import CardSlot, CardMissingError, needs_microsd
+    from files import CardSlot, CardMissingError
+    from actions import needs_microsd
 
     the_ux.pop()
 
