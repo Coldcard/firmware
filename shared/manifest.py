@@ -53,6 +53,7 @@ freeze_as_mpy('', [
 	'version.py',
 	'xor_seed.py',
 	'ftux.py',
+	'xor_seedsave.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.
