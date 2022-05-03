@@ -13,7 +13,7 @@ from ckcc_protocol.constants import *
 from helpers import xfp2str
 import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
-from bech32 import bech32_decode, convertbits
+from bech32 import bech32_decode, convertbits, Encoding
 
 
 @pytest.mark.parametrize('mode', [ "classic", 'segwit'])
@@ -94,9 +94,10 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
                 if mode != 'segwit':
                     addr = Key.from_text(val)
                 else:
-                    hrp, data = bech32_decode(val)
-                    decoded = convertbits(data[1:], 5, 8, False)[-20:]
+                    hrp, data, enc = bech32_decode(val)
                     assert hrp in {'tb', 'bc' }
+                    assert enc == Encoding.BECH32
+                    decoded = convertbits(data[1:], 5, 8, False)[-20:]
                     addr = Key(hash160=bytes(decoded), is_compressed=True, netcode='XTN')
             elif hdr == 'Private key:':         # for QR case
                 assert val == wif
