@@ -201,9 +201,9 @@ class ChainsBase:
         if ll == 22 and script[0:2] == b'\x00\x14':
             return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
 
-        # P2WSH
-        if ll == 34 and script[0:2] == b'\x00\x20':
-            return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
+        # P2WSH, P2TR and later
+        if ll == 34 and script[0] <= 16 and script[1] == 0x20:
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
         raise ValueError('Unknown payment script', repr(script))
 
