@@ -229,7 +229,7 @@ def addr_vs_path(master_xpub):
     from pycoin.key.BIP32Node import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-    from bech32 import bech32_decode, convertbits
+    from bech32 import bech32_decode, convertbits, Encoding
     from pycoin.encoding import a2b_hashed_base58, hash160
     from  pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
@@ -254,7 +254,8 @@ def addr_vs_path(master_xpub):
             pkh = sk.hash160(use_uncompressed=False)
 
             if addr_fmt == AF_P2WPKH:
-                hrp, data = bech32_decode(given_addr)
+                hrp, data, enc = bech32_decode(given_addr)
+                assert enc == Encoding.BECH32
                 decoded = convertbits(data[1:], 5, 8, False)
                 assert hrp in {'tb', 'bc' }
                 assert bytes(decoded[-20:]) == pkh
@@ -273,7 +274,8 @@ def addr_vs_path(master_xpub):
                 assert hash160(script) == expect
 
             elif addr_fmt == AF_P2WSH:
-                hrp, data = bech32_decode(given_addr)
+                hrp, data, enc = bech32_decode(given_addr)
+                assert enc == Encoding.BECH32
                 assert hrp in {'tb', 'bc' }
                 decoded = convertbits(data[1:], 5, 8, False)
                 assert bytes(decoded[-32:]) == sha256(script).digest()
