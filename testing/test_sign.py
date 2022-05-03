@@ -99,7 +99,6 @@ def xxx_test_sign_truncated(dev):
 
 @pytest.mark.parametrize('fn', [
 	'data/2-of-2.psbt',
-	'data/dup_keys.psbt',
 	'data/filled_scriptsig.psbt',
 	'data/one-p2pkh-in.psbt',
 	'data/p2pkh+p2sh+outs.psbt',
