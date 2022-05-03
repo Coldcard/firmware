@@ -14,7 +14,7 @@ def open(name, maxver=10, extra=()):
     except KeyError:
         pass
     def libs():
-        if sys.platform == "linux":
+        if "unix" in sys.platform:
             yield '%s.so' % name
             for i in range(maxver, -1, -1):
                 yield '%s.so.%u' % (name, i)
