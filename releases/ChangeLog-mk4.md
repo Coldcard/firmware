@@ -1,3 +1,10 @@
+## 5.0.3 - 2022-05-04
+
+- Enhancement: Support P2TR outputs (pay to Taproot) outputs in PSBT files. Allows
+  on-screen verification of P2TR destination addresses (`bc1p..`) so you can sent your BTC
+  to them. However, does **not** support signing, so you cannot operate a Taproot wallet
+  with COLDCARD as the signing device... yet.
+
 ## 5.0.2 - 2022-04-19
 
 - Adds NFC support for exporting to all the various wallet-types.
