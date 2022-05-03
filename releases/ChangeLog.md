@@ -1,6 +1,10 @@
 ## 4.1.5 - May 5, 2022
 
-- Bugfix: Yikes error shown during BIP-85 operation
+- Enhancement: Support P2TR outputs (pay to Taproot) outputs in PSBT files. Allows
+  on-screen verification of P2TR destination addresses (`bc1p..`) so you can sent your BTC
+  to them. However, does **not** support signing, so you cannot operate a Taproot wallet
+  with COLDCARD as the signing device... yet.
+- Bugfix: Yikes error shown during BIP-85 menu operation.
 
 ## 4.1.4 - Apr 26, 2022
 
