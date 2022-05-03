@@ -1,10 +1,11 @@
-## 4.1.5 - May 5, 2022
+## 4.1.5 - May 4, 2022
 
-- Enhancement: Support P2TR outputs (pay to Taproot) outputs in PSBT files. Allows
-  on-screen verification of P2TR destination addresses (`bc1p..`) so you can sent your BTC
-  to them. However, does **not** support signing, so you cannot operate a Taproot wallet
-  with COLDCARD as the signing device... yet.
+- Enhancement: Support P2TR outputs (pay to Taproot) in PSBT files. Allows
+  on-screen verification of P2TR destination addresses (`bc1p..`) so you can send
+  your BTC to them. Does **not** support signing, so you cannot operate a Taproot
+  wallet with Mk3 COLDCARD as the signing device.
 - Bugfix: Yikes error shown during BIP-85 menu operation.
+- Enhancement: Rename "Derive Entropy" to "Derive Seed B85" to match Mk4 menus
 
 ## 4.1.4 - Apr 26, 2022
 

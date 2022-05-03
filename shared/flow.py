@@ -197,7 +197,7 @@ AdvancedNormalMenu = [
     MenuItem("MicroSD Card", menu=SDCardMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
-    MenuItem('Derive Entropy', f=drv_entro_start),
+    MenuItem('Derive Seed B85', f=drv_entro_start),
     MenuItem("Export XPUB", menu=XpubExportMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]

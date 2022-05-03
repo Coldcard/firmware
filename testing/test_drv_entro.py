@@ -48,7 +48,7 @@ def test_bip_vectors(mode, index, entropy, expect,
 
     goto_home()
     pick_menu_item('Advanced')
-    pick_menu_item('Derive Entropy')
+    pick_menu_item('Derive Seed B85')
 
     time.sleep(0.1)
     title, story = cap_story()
@@ -196,7 +196,7 @@ def test_path_index(mode, pattern, index,
 
     goto_home()
     pick_menu_item('Advanced')
-    pick_menu_item('Derive Entropy')
+    pick_menu_item('Derive Seed B85')
 
     time.sleep(0.1)
     title, story = cap_story()
