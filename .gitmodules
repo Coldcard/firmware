@@ -10,4 +10,4 @@
 	url = https://github.com/coinkite/mpy-qr.git
 [submodule "external/libngu"]
 	path = external/libngu
-	url = https://github.com/scgbckbone/libngu.git
+	url = https://github.com/switck/libngu.git
