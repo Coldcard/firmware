@@ -229,7 +229,7 @@ def addr_vs_path(master_xpub):
     from pycoin.key.BIP32Node import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-    from bech32 import bech32_decode, convertbits
+    from bech32 import bech32_decode, convertbits, Encoding
     from pycoin.encoding import a2b_hashed_base58, hash160
     from  pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
@@ -254,7 +254,8 @@ def addr_vs_path(master_xpub):
             pkh = sk.hash160(use_uncompressed=False)
 
             if addr_fmt == AF_P2WPKH:
-                hrp, data = bech32_decode(given_addr)
+                hrp, data, enc = bech32_decode(given_addr)
+                assert enc == Encoding.BECH32
                 decoded = convertbits(data[1:], 5, 8, False)
                 assert hrp in {'tb', 'bc' }
                 assert bytes(decoded[-20:]) == pkh
@@ -273,7 +274,8 @@ def addr_vs_path(master_xpub):
                 assert hash160(script) == expect
 
             elif addr_fmt == AF_P2WSH:
-                hrp, data = bech32_decode(given_addr)
+                hrp, data, enc = bech32_decode(given_addr)
+                assert enc == Encoding.BECH32
                 assert hrp in {'tb', 'bc' }
                 decoded = convertbits(data[1:], 5, 8, False)
                 assert bytes(decoded[-32:]) == sha256(script).digest()
@@ -906,7 +908,7 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
         if dests:
             # check we got right destination address(es)
             for outn, expect_addr in dests:
-                assert decode['vout'][outn]['scriptPubKey']['addresses'][0] == expect_addr
+                assert decode['vout'][outn]['scriptPubKey']['address'] == expect_addr
 
         # leverage bitcoind's transaction decoding
         ex = dict(  lock_time = decode['locktime'],
@@ -916,7 +918,7 @@ def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
                     miner_fee = U2SAT(fee),
                     warnings_expected = num_warn,
                     total_value_out = sum(U2SAT(i['value']) for i in decode['vout']),
-                    destinations = [(U2SAT(i['value']), i['scriptPubKey']['addresses'][0])
+                    destinations = [(U2SAT(i['value']), i['scriptPubKey']['address'])
                                          for i in decode['vout']],
             )
 
