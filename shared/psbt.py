@@ -1284,15 +1284,12 @@ class psbtObject(psbtProxy):
         # XXX scan witness data provided, and consider those ins signed if not multisig?
 
         if missing:
-            # Should probably be a fatal msg; so risky... but
             # - maybe we aren't expected to sign that input? (coinjoin)
-            # - assume for now, probably funny business so we should stop
-            raise FatalPSBTIssue('Missing UTXO(s). Cannot determine value being signed')
-            # self.warnings.append(('Missing UTXOs',
-            #        "We don't know enough about the inputs to this transaction to be sure "
-            #        "of their value. This means the network fee could be huge, or resulting "
-            #        "transaction's signatures invalid."))
-            #self.total_value_in = None
+            self.warnings.append(('Missing UTXOs',
+                    "We don't know enough about the inputs to this transaction to be sure "
+                    "of their value. This means the network fee could be huge, or resulting "
+                    "transaction's signatures invalid."))
+            self.total_value_in = None
         else:
             assert total_in > 0
             self.total_value_in = total_in
