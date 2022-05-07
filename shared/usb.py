@@ -110,6 +110,9 @@ class USBHandler:
 
         self.encrypted_req = False
 
+        # not bound to a specific crypto setup by default
+        self.bound = False
+
         # these will be objects later
         self.encrypt = None
         self.decrypt = None
@@ -167,6 +170,9 @@ class USBHandler:
 
                 if not(4 <= msg_len <= MAX_MSG_LEN):
                     raise FramingError('badsz')
+
+                if not is_encrypted and self.bound:
+                    raise FramingError('must encrypt')
 
                 if is_encrypted:
                     if self.decrypt is None:
@@ -607,8 +613,14 @@ class USBHandler:
     def handle_crypto_setup(self, version, his_pubkey):
         # pick a one-time key pair for myself, and return the pubkey for that
         # determine what the session key will be for this connection
-        assert version == 0x1
+        if version not in [0x1, 0x2]:
+            raise FramingError('bad ncry version')
         assert len(his_pubkey) == 64
+
+        if self.bound:
+            raise FramingError('crypto already set up')
+        if version == 0x2:
+            self.bound = True
 
         # pick a random key pair, just for this session
         pair = ngu.secp256k1.keypair()
