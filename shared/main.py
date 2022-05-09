@@ -20,11 +20,15 @@ if 0:
     # useful for debug: keep this stub!
     import ckcc
     ckcc.vcp_enabled(True)
-    #pyb.usb_mode('VCP+MSC')            # handy but annoying disk issues
-    pyb.usb_mode('VCP')
+    from h import *
+if 0:
     raise SystemExit
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2021.\n")
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2022.")
+
+import version
+datestamp,vers,_ = version.get_mpy_version()
+print("Version: %s / %s\n" % (vers, datestamp))
 
 # Setup OLED and get something onto it.
 from display import Display
@@ -33,29 +37,33 @@ dis.splash()
 glob.dis = dis
 
 # slowish imports, some with side-effects
-import version, ckcc, uasyncio
+import ckcc, uasyncio
 
-if version.is_devmode:
-    # For devs only: allow code in this directory to overide compiled-in stuff. Dangerous!
-    # - using relative paths here so works better on simulator
-    # - you must boot w/ non-production-signed firmware to get here
-    sys.path.insert(0, 'flash/lib')
-
-    # Give external devs a way to start stuff early
+if version.mk_num >= 4:
+    # early setup code needed on Mk4
     try:
-        import boot2
-    except: pass
+        import mk4
+        mk4.init0()
+
+        from psram import PSRAMWrapper
+        glob.PSRAM = PSRAMWrapper()
+
+    except BaseException as exc:
+        sys.print_exception(exc)
+        # continue tho
+else:
+    # Serial Flash memory
+    from sflash import SF
 
 # Setup membrane numpad (mark 2+)
 from mempad import MembraneNumpad
 numpad = MembraneNumpad()
 glob.numpad = numpad
 
-# Serial Flash memory
-from sflash import SF
-
 # NV settings
-from nvstore import settings
+from nvstore import SettingsObject
+settings = SettingsObject(glob.dis)
+glob.settings = settings
 
 async def more_setup():
     # Boot up code; splash screen is being shown
@@ -63,11 +71,6 @@ async def more_setup():
     # MAYBE: check if we're a brick and die again? Or show msg?
     
     try:
-        # Some background "tasks"
-        #
-        from dev_helper import monitor_usb
-        IMPT.start_task('vcp', monitor_usb())
-
         from files import CardSlot
         CardSlot.setup()
 
@@ -79,6 +82,7 @@ async def more_setup():
             print("Problem: %r" % e)
 
         if version.is_factory_mode:
+            print("factory mode")
             # in factory mode, turn on USB early to allow debug/setup
             from usb import enable_usb
             enable_usb()
@@ -114,7 +118,7 @@ async def mainline():
     goto_top_menu()
 
     gc.collect()
-    #print("Free mem: %d" % gc.mem_free())
+    #print("Free mem: %d" % gc.mem_free())      # 532656 on mk4!
 
     while 1:
         await the_ux.interact()
@@ -130,9 +134,15 @@ def go():
         die_with_debug(exc)
 
 if version.is_devmode:
-    # Give external devs a way to start semi-early.
+    # Start some debug-only code.
     try:
-        import main2
+        import dev_helper
+        dev_helper.setup()
+    except: pass
+
+    # Simulator code
+    try:
+        import sim_quickstart
     except: pass
 
 uasyncio.create_task(more_setup())

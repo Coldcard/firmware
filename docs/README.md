@@ -13,5 +13,4 @@ wants to understand why it's safe to put your moneys into Coldcard.
 - [`paperwallet.pdf`](paperwallet.pdf) Example paper wallet template file.
 - [`seed-xor.md`](seed-xor.md) More about _Seed XOR_ feature, including fully worked Seed XOR example, and useful XOR lookup chart.
 - [`menu-tree.txt`](menu-tree.txt) Dump of the menu system. Incomplete, may be out of date.
-- [`nfc-coldcard.md`](https://github.com/Coldcard/firmware/blob/master/docs/nfc-coldcard.md) NFC Specification for COLDCARD interoperability.
 

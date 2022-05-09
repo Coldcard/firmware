@@ -4,7 +4,7 @@
 #
 # - bootrom's callgate is the common interface point (ckcc.gate function)
 # - requires hardware to be controlled over USB serial emulation
-# - see simulator.py which adds '--metal' argument to setup to support this mode
+# - see simulator.py which adds '--metal' argument to setup and support this
 # - called early in startup by sim_boot.py
 # - quick test:    
 #       make && ./simulator --metal -q

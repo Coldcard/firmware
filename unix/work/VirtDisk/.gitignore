@@ -1,0 +1,9 @@
+*.7z
+*.txt
+*.json
+*.psbt
+*.csv
+*.pdf
+*.dfu
+*.txn
+.tmp.tmp

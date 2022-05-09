@@ -11,7 +11,7 @@ from ubinascii import unhexlify as a2b_hex
 
 import ustruct
 from sflash import SF
-from nvstore import SLOTS, settings
+from glob import SLOTS, settings
 
 # reset whatever's there
 SF.chip_erase()

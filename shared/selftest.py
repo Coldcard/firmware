@@ -6,12 +6,12 @@ import ckcc
 from uasyncio import sleep_ms
 from glob import dis
 from display import FontLarge
-from ux import ux_wait_keyup, ux_clear_keys, ux_poll_once
+from ux import ux_wait_keyup, ux_clear_keys, ux_poll_key
 from ux import ux_show_story
-from callgate import get_dfu_button, get_is_bricked, get_genuine, clear_genuine
-from utils import imported
+from callgate import get_is_bricked, get_genuine, clear_genuine
+from utils import problem_file_line
 import version
-from nvstore import settings
+from glob import settings
 
 async def test_numpad():
     # do an interactive self test
@@ -56,13 +56,11 @@ async def test_secure_element():
     assert not get_is_bricked()         # bricked already
 
     # test right chips installed
-    is_fat = ckcc.is_stm32l496()
-    if is_fat:
-        assert version.has_608          # expect 608a
-        assert version.hw_label == 'mk3'
+    if version.has_fatram:
+        assert version.has_608          # expect 608
     else:
         assert not version.has_608      # expect 508a
-        assert version.hw_label != 'mk3'
+        assert version.hw_label == 'mk2'
 
     if ckcc.is_simulator(): return
 
@@ -115,7 +113,64 @@ async def test_sd_active():
         k = await ux_wait_keyup('xy')
         assert k == 'y'     # "SD Active LED bust"
 
+async def test_usb_light():
+    # Mk4's new USB activity light (right by connector)
+
+    if version.mk_num < 4: return
+
+    from machine import Pin
+    p = Pin('USB_ACTIVE', Pin.OUT)
+
+    try:
+        p.value(1)
+        dis.clear()
+        dis.text(0,0, "USB light on? ^^")
+        dis.show()
+
+        k = await ux_wait_keyup('xy')
+        assert k == 'y'     # "USB Active LED bust"
+    finally:
+        p.value(0)
+
+async def test_nfc():
+    # Mk4: NFC chip and field
+    if not version.has_nfc: return
+    from nfc import NFCHandler
+    await NFCHandler.selftest()
+    
+async def test_psram():
+    if not version.has_psram: return
+
+    from glob import PSRAM
+    from ustruct import pack
+    import ngu
+
+    dis.clear()
+    dis.text(None, 18, 'PSRAM Test')
+    dis.show()
+
+    test_len = PSRAM.length * 2
+    chk = bytearray(32)
+    spots = set()
+    for pos in range(0, PSRAM.length, 800 * 17):
+        if pos >= PSRAM.length: break
+        rnd = ngu.hash.sha256s(pack('I', pos))
+
+        PSRAM.write(pos, rnd)
+        PSRAM.read(pos, chk)
+        assert chk == rnd, "bad @ 0x%x" % pos
+        dis.progress_bar_show(pos / test_len)
+        spots.add(pos)
+
+    for pos in spots:
+        rnd = ngu.hash.sha256s(pack('I', pos))
+        PSRAM.read(pos, chk)
+        assert chk == rnd, "RB bad @ 0x%x" % pos
+        dis.progress_bar_show((PSRAM.length + pos) / test_len)
+
 async def test_sflash():
+    if version.has_psram: return
+
     dis.clear()
     dis.text(None, 18, 'Serial Flash')
     dis.show()
@@ -148,6 +203,7 @@ async def test_sflash():
 
             rnd = ngu.hash.sha256s(pack('I', addr))
             SF.write(addr, rnd)
+            SF.wait_done()
             SF.read(addr, buf)
             assert buf == rnd           #  "write failed"
 
@@ -186,7 +242,7 @@ async def test_microsd():
         while 1:
             if want == sd.present(): return
             await sleep_ms(100)
-            if ux_poll_once():
+            if ux_poll_key():
                 raise RuntimeError("MicroSD test aborted")
 
     try:
@@ -202,7 +258,7 @@ async def test_microsd():
                 # debounce
                 await sleep_ms(100)
                 if sd.present(): break
-                if ux_poll_once():
+                if ux_poll_key():
                     raise RuntimeError("MicroSD test aborted")
 
         dis.clear()
@@ -214,13 +270,16 @@ async def test_microsd():
         assert sd.present()     #, "SD not present?"
 
         # power up?
-        sd.power(1)
-        await sleep_ms(100)
+        await sleep_ms(100)     # required
+        ok = sd.power(1)
+        assert ok               #  "sd.power() fail"
+        await sleep_ms(100)     # prob'ly not required
 
         try:
             blks, bsize, *unused = sd.info()
             assert bsize == 512
         except:
+            # sd.info() returns None if problem
             assert 0        # , "card info"
 
         # just read it a bit, writing would prove little
@@ -245,11 +304,14 @@ async def start_selftest():
 
     try:
         await test_oled()
+        await test_psram()
+        await test_nfc()
+        await test_sflash()
         await test_microsd()
         await test_numpad()
-        await test_sflash()
         await test_secure_element()
         await test_sd_active()
+        await test_usb_light()
 
         # add more tests here
 
@@ -257,6 +319,7 @@ async def start_selftest():
         await ux_show_story("Selftest complete", 'PASS')
 
     except (RuntimeError, AssertionError) as e:
+        e = str(e) or problem_file_line(e)
         await ux_show_story("Test failed:\n" + str(e), 'FAIL')
         
     

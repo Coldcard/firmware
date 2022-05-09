@@ -10,10 +10,10 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, gc, bip39
+import ngu, uctypes, gc, bip39, utime
 from uhashlib import sha256
 from pincodes import AE_SECRET_LEN
-from utils import swab32
+from utils import swab32, call_later_ms
 
 def blank_object(item):
     # Use/abuse uctypes to blank objects under python. Will likely
@@ -27,15 +27,20 @@ def blank_object(item):
             buf[i] = 0
     elif isinstance(item, ngu.hdnode.HDNode):
         item.blank()
+    elif item is None:
+        pass
     else:
         raise TypeError(item)
 
-
-# Chip can hold 72-bytes as a secret: we need to store either
-# a list of seed words (packed), of various lengths, or maybe
-# a raw master secret, and so on
+def len_to_numwords(vlen):
+    # map length of binary secret to number of BIP-39 seed words
+    assert vlen in [16, 24, 32]
+    return 6 * (vlen // 8)
 
 class SecretStash:
+    # Chip can hold 72-bytes as a secret: we need to store either
+    # a list of seed words (packed), of various lengths, or maybe
+    # a raw master secret, and so on.
 
     @staticmethod
     def encode(seed_phrase=None, master_secret=None, xprv=None):
@@ -95,12 +100,17 @@ class SecretStash:
 
             # make master secret, using the memonic words, and passphrase (or empty string)
             seed_bits = secret[1:1+ll]
+
+            # slow: 2+ seconds
             ms = bip39.master_secret(bip39.b2a_words(seed_bits), _bip39pw)
 
             hd.from_master(ms)
 
             return 'words', seed_bits, hd
 
+        elif marker == 0x00:
+            # probably all zeros, which we don't normally store, and represents "no secret"
+            raise ValueError('actually zero secret')
         else:
             # variable-length master secret for BIP-32
             vlen = secret[0]
@@ -115,38 +125,127 @@ class SecretStash:
 # optional global value: user-supplied passphrase to salt BIP-39 seed process
 bip39_passphrase = ''
 
+CACHE_CHECK_RATE = const(10*1000)   # 10 seconds
+CACHE_MAX_LIFE = const(60*1000)     # one minute
+
 class SensitiveValues:
-    # be a context manager, and holder to secrets in-memory
+    # be a context manager, and holder of secrets in-memory
+
+    # class-level cache, key is bip39 pass
+    _cache = {}
+    _cache_secret = None
+    _cache_used = None
 
     def __init__(self, secret=None, bypass_pw=False):
-        if secret is None:
-            # fetch the secret from bootloader/atecc508a
-            from pincodes import pa
-
-            if pa.is_secret_blank():
-                raise ValueError('no secrets yet')
-
-            self.secret = pa.fetch()
-            self.spots = [ self.secret ]
-        else:
-            # sometimes we already know it
-            #assert set(secret) != {0}
-            self.secret = secret
-            self.spots = []
+        self.spots = []
 
         # backup during volatile bip39 encryption: do not use passphrase
         self._bip39pw = '' if bypass_pw else str(bip39_passphrase)
 
-    def __enter__(self):
-        import chains
+        if secret is not None:
+            # sometimes we already know the secret
+            self.secret = secret
+            self.deltamode = False
 
-        self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+            self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+        else:
+            # More typical: fetch the secret from bootloader and SE
+            # - but that's real slow, so avoid if possible
+            from pincodes import pa
 
-        self.spots.append(self.node)
+            if pa.is_secret_blank():
+                raise ValueError('no secrets yet')
+            self.deltamode = pa.is_deltamode()
+
+            if self._bip39pw in self._cache:
+                # cache hit
+                self.secret = bytearray(self._cache_secret)
+                self.mode, r, n = self._cache[self._bip39pw]
+                self.raw = bytearray(r)
+                self.node = n.copy()
+                self.__class__._cache_used = utime.ticks_ms()
+            else:
+                if self._cache_secret:
+                    # they are using new BIP39 passphrase but we already have raw secret
+                    self.secret = bytearray(self._cache_secret)
+                else:
+                    # slow: read from secure element(s)
+                    self.secret = pa.fetch()
+
+                # slow: do bip39 key stretching (typically)
+                self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+
+                self.save_to_cache()
+
+            self.spots.append(self.secret)
+
         self.spots.append(self.raw)
+        self.spots.append(self.node)
 
+        import chains
         self.chain = chains.current_chain()
 
+    @classmethod
+    def clear_cache(cls):
+        # clear cached secrets we have
+        # - call any time, certainly when main secret changes
+        # - will be called after 2 minutes of idle keypad
+        blank_object(cls._cache_secret)
+        cls._cache_secret = None
+
+        for _,raw,node in cls._cache.values():
+            blank_object(raw)
+            blank_object(node)
+
+        cls._cache.clear()
+        cls._cache_used = None
+
+    def save_to_cache(self):
+        # add to cache, must copy here to avoid wipe
+        if not self._cache_secret:
+            SensitiveValues._cache_secret = bytearray(self.secret)
+        else:
+            assert SensitiveValues._cache_secret == self.secret
+
+        SensitiveValues._cache[self._bip39pw] = ( self.mode, bytearray(self.raw), self.node.copy() )
+        SensitiveValues._cache_used = utime.ticks_ms()
+
+        call_later_ms(CACHE_CHECK_RATE, self.cache_check)
+
+    @classmethod
+    def cache_secret(cls, main_secret):
+        # During login we learn the main secret so we can decrypt
+        # the settings, so want to catch that in cache since user is likely
+        # to do something useful immediately after login
+        SensitiveValues._cache_used = utime.ticks_ms()
+
+        if cls._cache_secret:
+            assert SensitiveValues._cache_secret == main_secret
+            return
+
+        SensitiveValues._cache_secret = bytearray(main_secret)
+        call_later_ms(CACHE_CHECK_RATE, cls.cache_check)
+
+    @classmethod
+    async def cache_check(cls):
+        # verify the cache has been used recently, else clear it.
+
+        if not cls._cache_used:
+            # called after already cleared
+            return
+
+        now = utime.ticks_ms() 
+        dt = utime.ticks_diff(now, cls._cache_used)
+
+        if dt >= CACHE_MAX_LIFE:
+            # clear cached secrets after 1 minute if unused
+            cls.clear_cache()
+        else:
+            # keep waiting
+            call_later_ms(CACHE_CHECK_RATE, cls.cache_check)
+
+    def __enter__(self):
+        # complexity moved to __init__
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -177,9 +276,9 @@ class SensitiveValues:
         return True
 
     def capture_xpub(self):
-        # track my xpubkey fingerprint & value in settings (not sensitive really)
+        # track my xpubkey fingerprint & xpub value in settings (not sensitive really)
         # - we share these on any USB connection
-        from nvstore import settings
+        from glob import settings
 
         # Implicit in the values is the BIP-39 encryption passphrase,
         # which we might not want to actually store.
@@ -195,7 +294,12 @@ class SensitiveValues:
             settings.put('xpub', xpub)
 
         settings.put('chain', self.chain.ctype)
-        settings.put('words', (self.mode == 'words'))
+
+        # calc num words in seed, or zero
+        nw = 0
+        if self.mode == 'words':
+            nw = len_to_numwords(len(self.raw))
+        settings.put('words', nw)
 
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
@@ -230,7 +334,9 @@ class SensitiveValues:
     def duress_root(self):
         # Return a bip32 node for the duress wallet linked to this wallet.
         # 0x80000000 - 0xCC10 = 2147431408
-        dirty = self.derive_path("m/2147431408'/0'/0'")
+        # Obsoleted in Mk4: use BIP-85 instead
+        p = "m/2147431408'/0'/0'"
+        dirty = self.derive_path(p)
 
         # clear the parent linkage by rebuilding it.
         cc, pk = dirty.chain_code(), dirty.privkey()
@@ -241,7 +347,7 @@ class SensitiveValues:
         rv.from_chaincode_privkey(cc, pk)
         self.register(rv)
 
-        return rv
+        return rv, p
 
     def encryption_key(self, salt):
         # Return a 32-byte derived secret to be used for our own internal encryption purposes

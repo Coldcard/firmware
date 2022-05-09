@@ -1,4 +1,4 @@
-## 4.1.4 - Sep ??, 2021
+## 4.1.4 - Apr 26, 2022
 
 - Enhancement: if an XFP of zero is seen in a PSBT file, assume that should be replaced by
   our current XFP value and try to sign the input (same for change outputs and change-fraud
@@ -8,6 +8,8 @@
   BIP-84 / BIP-44 / BIP-49 standard derivations, as a QR. Also can show XFP and master XPUB.
 - Bugfix: Updated domain name from `coldcardwallet.com` to `coldcard.com` in docs and few
   on-screen messages.
+- Bugfix: allow sending to scripts that we cannot parse, with a warning, to support
+  `OP_RETURN` and other outputs we don't understand well (yet).
 
 ## 4.1.3 - Sep 2, 2021
 

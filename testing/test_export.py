@@ -2,6 +2,8 @@
 #
 # Exporting of wallet files and similar things.
 #
+# Start simulator with:   simulator.py --eff --set nfc=1
+#
 import pytest, time, struct, os
 from pycoin.key.BIP32Node import BIP32Node
 from base64 import b64encode
@@ -20,8 +22,8 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Bitcoin Core')
 
@@ -29,7 +31,7 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
     title, story = cap_story()
 
     assert 'This saves' in story
-    assert 'run that command' in story
+    assert 'including the public keys' in story
 
     assert 'Press 1 to' in story
     if acct_num is not None:
@@ -149,12 +151,13 @@ def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
         assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
         #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
-def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+@pytest.mark.parametrize('use_nfc', [False, True])
+def test_export_wasabi(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, nfc_read_json):
     # test UX and operation of the 'wasabi wallet export'
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Wasabi Wallet')
 
@@ -168,40 +171,56 @@ def test_export_wasabi(dev, cap_menu, pick_menu_item, goto_home, cap_story, need
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'wallet file written' in story
-    fname = story.split('\n')[-1]
-
-    need_keypress('y')
-
-    path = microsd_path(fname)
-    with open(path, 'rt') as fp:
-        obj = json.load(fp)
-
-        assert 'MasterFingerprint' in obj
-        assert 'ExtPubKey' in obj
-        assert 'ColdCardFirmwareVersion' in obj
+    if use_nfc:
+        assert 'ress (3)' in story
+        assert 'Otherwise, OK to proceed normally' in story
+        need_keypress('3')
+        time.sleep(0.2)
+        obj = nfc_read_json()
+        time.sleep(0.1)
         
-        xpub = obj['ExtPubKey']
-        assert xpub.startswith('xpub')      # even for testnet
+    else:
+        # if NFC enabled, extra screen:
+        if 'Otherwise, OK to proceed normally' in story:
+            need_keypress('y')
+            time.sleep(0.1)
+            title, story = cap_story()
 
-        assert obj['MasterFingerprint'] == xfp2str(simulator_fixed_xfp)
+        assert 'wallet file written' in story
+        fname = story.split('\n')[-1]
 
-        got = BIP32Node.from_wallet_key(xpub)
-        expect = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path("84'/0'/0'.pub")
+        need_keypress('y')
 
-        assert got.sec() == expect.sec()
+        path = microsd_path(fname)
+        with open(path, 'rt') as fp:
+            obj = json.load(fp)
+        os.unlink(path)
 
-    os.unlink(path)
+    assert 'MasterFingerprint' in obj
+    assert 'ExtPubKey' in obj
+    assert 'ColdCardFirmwareVersion' in obj
+    
+    xpub = obj['ExtPubKey']
+    assert xpub.startswith('xpub')      # even for testnet
+
+    assert obj['MasterFingerprint'] == xfp2str(simulator_fixed_xfp)
+
+    got = BIP32Node.from_wallet_key(xpub)
+    expect = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path("84'/0'/0'.pub")
+
+    assert got.sec() == expect.sec()
+
 
         
 @pytest.mark.parametrize('mode', [ "Legacy (P2PKH)", "P2SH-Segwit", "Native Segwit"])
 @pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
-def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, use_mainnet):
+@pytest.mark.parametrize('use_nfc', [ False, True])
+def test_export_electrum(use_nfc, mode, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, use_mainnet, nfc_read_json):
     # lightly test electrum wallet export
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Electrum Wallet')
 
@@ -225,47 +244,63 @@ def test_export_electrum(mode, acct_num, dev, cap_menu, pick_menu_item, goto_hom
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'wallet file written' in story
-    fname = story.split('\n')[-1]
+    if use_nfc:
+        assert 'ress (3)' in story
+        assert 'Otherwise, OK to proceed normally' in story
+        need_keypress('3')
+        time.sleep(0.2)
+        obj = nfc_read_json()
+        time.sleep(0.1)
+        
+    else:
+        # if NFC enabled, extra screen:
+        if 'Otherwise, OK to proceed normally' in story:
+            need_keypress('y')
+            time.sleep(0.1)
+            title, story = cap_story()
 
-    need_keypress('y')
+        assert 'wallet file written' in story
+        fname = story.split('\n')[-1]
 
-    path = microsd_path(fname)
-    with open(path, 'rt') as fp:
-        obj = json.load(fp)
+        need_keypress('y')
 
-        ks = obj['keystore']
-        assert ks['ckcc_xfp'] == simulator_fixed_xfp
+        path = microsd_path(fname)
+        with open(path, 'rt') as fp:
+            obj = json.load(fp)
+        os.unlink(path)
 
-        assert ks['hw_type'] == 'coldcard'
-        assert ks['type'] == 'hardware'
+    ks = obj['keystore']
+    assert ks['ckcc_xfp'] == simulator_fixed_xfp
 
-        deriv = ks['derivation']
-        assert deriv.startswith('m/')
-        assert int(deriv.split("/")[1][:-1]) in {44, 84, 49}        # weak
-        assert deriv.split("/")[3] == (acct_num or '0')+"'"
+    assert ks['hw_type'] == 'coldcard'
+    assert ks['type'] == 'hardware'
 
-        xpub = ks['xpub']
-        assert xpub[1:4] == 'pub'
+    deriv = ks['derivation']
+    assert deriv.startswith('m/')
+    assert int(deriv.split("/")[1][:-1]) in {44, 84, 49}        # weak
+    assert deriv.split("/")[3] == (acct_num or '0')+"'"
 
-        if xpub[0] in 'tx': 
-            # no slip132 here
+    xpub = ks['xpub']
+    assert xpub[1:4] == 'pub'
 
-            got = BIP32Node.from_wallet_key(xpub)
-            expect = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(deriv[2:])
+    if xpub[0] in 'tx': 
+        # no slip132 here
 
-            assert got.sec() == expect.sec()
+        got = BIP32Node.from_wallet_key(xpub)
+        expect = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(deriv[2:])
 
-    os.unlink(path)
+        assert got.sec() == expect.sec()
+
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '123'])
-def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path):
+@pytest.mark.parametrize('use_nfc', [ False, True])
+def test_export_coldcard(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path, nfc_read_json):
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
     # test UX and values produced.
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Generic JSON')
 
@@ -284,71 +319,86 @@ def test_export_coldcard(acct_num, dev, cap_menu, pick_menu_item, goto_home, cap
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'Generic Export file written' in story
-    fname = story.split('\n')[-1]
+    if use_nfc:
+        assert 'ress (3)' in story
+        assert 'Otherwise, OK to proceed normally' in story
+        need_keypress('3')
+        time.sleep(0.2)
+        obj = nfc_read_json()
+        time.sleep(0.1)
+        
+    else:
+        # if NFC enabled, extra screen:
+        if 'Otherwise, OK to proceed normally' in story:
+            need_keypress('y')
+            time.sleep(0.1)
+            title, story = cap_story()
 
-    need_keypress('y')
+        assert 'Generic Export file written' in story
+        fname = story.split('\n')[-1]
 
-    path = microsd_path(fname)
-    with open(path, 'rt') as fp:
-        obj = json.load(fp)
+        need_keypress('y')
 
-        for fn in ['xfp', 'xpub', 'chain']:
-            assert fn in obj
-            assert obj[fn]
-        assert obj['account'] == int(acct_num or 0)
+        path = microsd_path(fname)
+        with open(path, 'rt') as fp:
+            obj = json.load(fp)
 
-        for fn in ['bip44', 'bip49', 'bip84', 'bip48_1', 'bip48_2', 'bip45']:
-            if obj['account'] and fn == 'bip45':
-                assert fn not in obj
-                continue
+    for fn in ['xfp', 'xpub', 'chain']:
+        assert fn in obj
+        assert obj[fn]
+    assert obj['account'] == int(acct_num or 0)
 
-            assert fn in obj
-            v = obj[fn]
-            assert all([i in v for i in ['deriv', 'name', 'xpub', 'xfp']])
+    for fn in ['bip44', 'bip49', 'bip84', 'bip48_1', 'bip48_2', 'bip45']:
+        if obj['account'] and fn == 'bip45':
+            assert fn not in obj
+            continue
 
-            if fn == 'bip45':
-                assert v['deriv'] == "m/45'"
-            elif 'bip48' not in fn:
-                assert v['deriv'].endswith(f"'/{acct_num}'")
+        assert fn in obj
+        v = obj[fn]
+        assert all([i in v for i in ['deriv', 'name', 'xpub', 'xfp']])
+
+        if fn == 'bip45':
+            assert v['deriv'] == "m/45'"
+        elif 'bip48' not in fn:
+            assert v['deriv'].endswith(f"'/{acct_num}'")
+        else:
+            b48n = fn[-1]
+            assert v['deriv'].endswith(f"'/{acct_num}'/{b48n}'")
+
+        node = BIP32Node.from_wallet_key(v['xpub'])
+        assert v['xpub'] == node.hwif(as_private=False)
+        first = node.subkey_for_path('0/0')
+        addr = v.get('first', None)
+
+        if fn == 'bip44':
+            assert first.address() == v['first']
+            addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC)
+        elif ('bip48_' in fn) or (fn == 'bip45'):
+            # multisig: cant do addrs
+            assert addr == None
+        else:
+            assert v['_pub'][1:4] == 'pub'
+            assert slip132undo(v['_pub'])[0] == v['xpub']
+
+            h20 = first.hash160()
+            if fn == 'bip84':
+                assert addr == sw_encode(addr[0:2], 0, h20)
+                addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH)
+            elif fn == 'bip49':
+                # don't have test logic for verifying these addrs
+                # - need to make script, and bleh
+                assert addr[0] in '23'
+                #addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WSH_P2SH, script=)
             else:
-                b48n = fn[-1]
-                assert v['deriv'].endswith(f"'/{acct_num}'/{b48n}'")
+                assert False
 
-            node = BIP32Node.from_wallet_key(v['xpub'])
-            assert v['xpub'] == node.hwif(as_private=False)
-            first = node.subkey_for_path('0/0')
-            addr = v.get('first', None)
-
-            if fn == 'bip44':
-                assert first.address() == v['first']
-                addr_vs_path(addr, v['deriv'] + '/0/0', AF_CLASSIC)
-            elif ('bip48_' in fn) or (fn == 'bip45'):
-                # multisig: cant do addrs
-                assert addr == None
-            else:
-                assert v['_pub'][1:4] == 'pub'
-                assert slip132undo(v['_pub'])[0] == v['xpub']
-
-                h20 = first.hash160()
-                if fn == 'bip84':
-                    assert addr == sw_encode(addr[0:2], 0, h20)
-                    addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WPKH)
-                elif fn == 'bip49':
-                    # don't have test logic for verifying these addrs
-                    # - need to make script, and bleh
-                    assert addr[0] in '23'
-                    #addr_vs_path(addr, v['deriv'] + '/0/0', AF_P2WSH_P2SH, script=)
-                else:
-                    assert False
-
-
-def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+@pytest.mark.parametrize('use_nfc', [ False, True])
+def test_export_unchained(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, nfc_read_json):
     # test UX and operation of the 'unchained capital export'
 
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
     pick_menu_item('Unchained Capital')
 
@@ -362,36 +412,53 @@ def test_export_unchained(dev, cap_menu, pick_menu_item, goto_home, cap_story, n
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'Unchained Capital file' in story
-    fname = story.split('\n')[-1]
-    assert 'unchained' in fname
+    if use_nfc:
+        assert 'ress (3)' in story
+        assert 'Otherwise, OK to proceed normally' in story
+        need_keypress('3')
+        time.sleep(0.2)
+        obj = nfc_read_json()
+        time.sleep(0.1)
+        
+    else:
 
-    need_keypress('y')
+        # if NFC enabled, extra screen:
+        if 'Otherwise, OK to proceed normally' in story:
+            need_keypress('y')
+            time.sleep(0.1)
+            title, story = cap_story()
+
+        assert 'Unchained Capital file' in story
+        fname = story.split('\n')[-1]
+        assert 'unchained' in fname
+
+        need_keypress('y')
+
+        path = microsd_path(fname)
+        with open(path, 'rt') as fp:
+            obj = json.load(fp)
 
     root = BIP32Node.from_wallet_key(simulator_fixed_xprv)
-    path = microsd_path(fname)
-    with open(path, 'rt') as fp:
-        obj = json.load(fp)
+    assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
+    assert obj['account'] == 0
 
-        assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
-        assert obj['account'] == 0
-
-        assert obj['p2sh_deriv'] == "m/45'"
-        for k in ['p2sh_p2wsh', 'p2sh', 'p2wsh']:
-            xpub = slip132undo(obj[k])[0] if k != 'p2sh' else obj[k]
-            node = BIP32Node.from_wallet_key(xpub)
-            assert xpub == node.hwif(as_private=False)
-            sk = root.subkey_for_path(obj[f'{k}_deriv'][2:] + '.pub')
-            #assert node.chain_code() == sk.chain_code()
-            assert node.hwif() == sk.hwif()
+    assert obj['p2sh_deriv'] == "m/45'"
+    for k in ['p2sh_p2wsh', 'p2sh', 'p2wsh']:
+        xpub = slip132undo(obj[k])[0] if k != 'p2sh' else obj[k]
+        node = BIP32Node.from_wallet_key(xpub)
+        assert xpub == node.hwif(as_private=False)
+        sk = root.subkey_for_path(obj[f'{k}_deriv'][2:] + '.pub')
+        #assert node.chain_code() == sk.chain_code()
+        assert node.hwif() == sk.hwif()
 
 def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path):
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
     # test UX and values produced.
     goto_home()
-    pick_menu_item('Advanced')
-    pick_menu_item('MicroSD Card')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('File Management')
+    pick_menu_item('Export Wallet')
     pick_menu_item('Dump Summary')
 
     time.sleep(0.1)
@@ -445,16 +512,19 @@ def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, 
 
             addr_vs_path(rhs, path=lhs, addr_fmt=f)
 
+#def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('acct_num', [ None, 0, 99, 8989])
-def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number, cap_screen_qr, use_mainnet):
+@pytest.mark.parametrize('use_nfc', [False, True])
+def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number, cap_screen_qr, use_mainnet, nfc_read_text):
     # XPUB's via QR
 
     use_mainnet()
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Export Wallet')
     pick_menu_item('Export XPUB')
 
     top_items = cap_menu()
@@ -472,13 +542,16 @@ def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
             is_xfp = True
 
         pick_menu_item(m)
-        time.sleep(0.1)
+        time.sleep(0.3)
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
+            if use_nfc:
+                need_keypress('3')
             assert got == xfp2str(simulator_fixed_xfp).upper()
             need_keypress('x')
             continue
 
+        time.sleep(0.3)
         title, story = cap_story()
         assert expect in story
 
@@ -496,8 +569,18 @@ def test_export_xpub(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_sto
 
         expect = expect.format(acct=0)
 
-        need_keypress('y')
-        got_pub = cap_screen_qr().decode('ascii')
+        if not use_nfc:
+            need_keypress('y')
+            got_pub = cap_screen_qr().decode('ascii')
+        else:
+            assert 'Press 3' in story
+            assert 'NFC' in story
+            need_keypress('3')
+            time.sleep(0.2)
+            got_pub = nfc_read_text()
+            time.sleep(0.1)
+            #need_keypress('y')
+
         if got_pub[0] not in 'xt':
             got_pub,*_ = slip132undo(got_pub)
 

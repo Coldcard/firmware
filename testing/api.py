@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Access a local bitcoin-Qt/bitcoind on testnet
+# Access a local bitcoin-Qt/bitcoind on testnet (must be v22 or higher)
 #
 # Must have these lines in the bitcoin.conf file:
 #
@@ -11,7 +11,7 @@ import pytest, os
 from bitcoinrpc.authproxy import AuthServiceProxy
 from base64 import b64encode, b64decode
 
-URL = '127.0.0.1:18332'
+URL = '127.0.0.1:18332/wallet/'
 
 def get_cookie():
     # read local bitcoind cookie .. highly mac-only
@@ -34,6 +34,7 @@ def bitcoind():
     conn = AuthServiceProxy('http://' + cookie + '@' + URL)
 
     assert conn.getblockchaininfo()['chain'] == 'test'
+    assert conn.getnetworkinfo()['version'] >= 220000, "we require >= 22.0 of Core"
 
     return conn
 

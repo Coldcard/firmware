@@ -33,7 +33,7 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
         set_seed_words(parts[0])
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
     pick_menu_item('Seed XOR')
@@ -89,7 +89,7 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
 def test_xor_split(qty, trng, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, pass_word_quiz):
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
     pick_menu_item('Seed XOR')
@@ -152,7 +152,7 @@ def test_import_zero_set(goto_home, pick_menu_item, cap_story, need_keypress, ca
 
     # look for a warning
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
     pick_menu_item('Seed XOR')
@@ -193,13 +193,13 @@ def test_import_zero_set(goto_home, pick_menu_item, cap_story, need_keypress, ca
         'vault nominee cradle silk own frown throw leg cactus recall talent worry gadget surface shy planet purpose coffee drip few seven term squeeze educate',],
     'silent toe meat possible chair blossom wait occur this worth option bag nurse find fish scene bench asthma bike wage world quit primary indoor'),
 ])
-def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, reset_seed_words, unit_test):
+def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, reset_seed_words, unit_test, expect_ftux):
 
     # test import when wallet empty
     unit_test('devtest/clear_seed.py')
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
+    assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
     pick_menu_item('Seed XOR')
 
@@ -231,12 +231,9 @@ def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, n
     need_keypress('2')
 
     time.sleep(0.01)
-    title, body = cap_story()
-    assert 'New master key in effect' not in body
-    assert body == ''
 
     # main menu should be "ready to sign" now
-    assert cap_menu()[0] == 'Ready To Sign' 
+    expect_ftux()
 
     assert get_secrets()['mnemonic'] == expect
     reset_seed_words()

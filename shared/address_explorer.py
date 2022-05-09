@@ -11,7 +11,7 @@ from menu import MenuSystem, MenuItem, start_chooser
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
-from nvstore import settings
+from glob import settings
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -203,24 +203,29 @@ Press 3 if you really understand and accept these risks.
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
         # - or multisig case
-        from glob import dis
+        from glob import dis, NFC
         import version
 
         def make_msg():
             msg = ''
             if n > 1:
                 if start == 0:
-                    msg = "Press 1 to save to MicroSD."
+                    msg = "Press 1 to save into a file."
                     if version.has_fatram and not ms_wallet:
-                        msg += " 4 to view QR Codes."
+                        msg += " 2 to view QR Codes."
+                    if NFC:
+                        msg += " Press 3 to share over NFC."
                     msg += '\n\n'
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
                 msg += "Showing single address."
                 if version.has_fatram:
-                    msg += " Press 4 to view QR Codes."
+                    msg += " Press 2 to view QR Codes."
+                if NFC:
+                    msg += " Press 3 to share over NFC."
                 msg += '\n\n'
+
 
             addrs = []
             chain = chains.current_chain()
@@ -268,19 +273,19 @@ Press 3 if you really understand and accept these risks.
         msg, addrs = make_msg()
 
         while 1:
-            ch = await ux_show_story(msg, escape='1479')
+            ch = await ux_show_story(msg, escape='12379')
 
-            if ch == '1':
-                # save addresses to MicroSD signal
+            if ch == 'x':
+                return
+
+            elif ch == '1':
+                # save addresses to MicroSD/VirtDisk
                 await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num,
                                                             count=(250 if n!=1 else 1))
                 # .. continue on same screen in case they want to write to multiple cards
                 continue
 
-            if ch == 'x':
-                return
-
-            if ch == '4':
+            elif ch == '2':
                 # switch into a mode that shows them as QR codes
                 if not version.has_fatram or ms_wallet:
                     # requires mk3 and not multisig
@@ -290,12 +295,22 @@ Press 3 if you really understand and accept these risks.
                 await show_qr_codes(addrs, bool(addr_fmt & AFC_BECH32), start)
                 continue
 
-            if ch == '7' and start>0:
+            elif ch == '3' and NFC:
+                # share table over NFC
+                if n > 1:
+                    await NFC.share_text('\n'.join(addrs))
+                else:
+                    await NFC.share_deposit_address(addrs[self.idx])
+                continue
+
+            elif ch == '7' and start>0:
                 # go backwards in explorer
                 start -= n
             elif ch == '9':
                 # go forwards
                 start += n
+            else:
+                continue        # 3 in non-NFC mode
 
             msg, addrs = make_msg()
 
@@ -332,10 +347,9 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
         stash.blank_object(node)
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250):
-    # write addresses into a text file on the MicroSD
+    # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     # simple: always set number of addresses.
     # - takes 60 seconds to write 250 addresses on actual hardware

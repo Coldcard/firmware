@@ -16,7 +16,7 @@ from serializations import ser_compact_size, deser_compact_size, hash160, hash25
 from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
 from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
 from serializations import ser_string
-from nvstore import settings
+from glob import settings
 
 from public_constants import (
     PSBT_GLOBAL_UNSIGNED_TX, PSBT_GLOBAL_XPUB, PSBT_IN_NON_WITNESS_UTXO, PSBT_IN_WITNESS_UTXO,
@@ -138,7 +138,7 @@ def get_hash256(fd, poslen, hasher=None):
 
     fd.seek(pos)
     while ll:
-        here = fd.read_into(psbt_tmp256)
+        here = fd.readinto(psbt_tmp256)
         if not here: break
         if here > ll:
             here = ll
@@ -918,7 +918,8 @@ class psbtObject(psbtProxy):
         if self.total_value_out is None:
             self.total_value_out = total_out
         else:
-            assert self.total_value_out == total_out
+            assert self.total_value_out == total_out, \
+                '%s != %s' % (self.total_value_out, total_out)
 
     def parse_txn(self):
         # Need to semi-parse in unsigned transaction.
@@ -1385,7 +1386,7 @@ class psbtObject(psbtProxy):
             # write out the ready-to-transmit txn
             # - means we are also a PSBT combiner in this case
             # - hard tho, due to variable length data.
-            # - XXX probably a bad idea, so disabled for now
+            # - probably a bad idea, so disabled for now
             out_fd.write(b'\x01\x00')       # keylength=1, key=b'', PSBT_GLOBAL_UNSIGNED_TX
 
             with SizerFile() as fd:
@@ -1494,6 +1495,12 @@ class psbtObject(psbtProxy):
                     # Hash the inputs and such in totally new ways, based on BIP-143
                     digest = self.make_txn_segwit_sighash(in_idx, txi,
                                     inp.amount, inp.scriptCode, inp.sighash)
+
+                if sv.deltamode:
+                    # Current user is actually a thug with a slightly wrong PIN, so we
+                    # do have access to the private keys and could sign txn, but we 
+                    # are going to silently corrupt our signatures.
+                    digest = bytes(range(32))
 
                 if inp.is_multisig:
                     # need to consider a set of possible keys, since xfp may not be unique

@@ -16,6 +16,6 @@
 
 ## Looking for Firmware Binaries?
 
-[Go to our website for the latest binaries.](https://coldcard.com/docs/upgrade)
+[Go to our website for the latest binaries.](https://coldcardwallet.com/docs/upgrade)
 
 Please do check the signatures using the files here.

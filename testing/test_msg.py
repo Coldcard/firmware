@@ -103,8 +103,8 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
                 sd.write(subpath + '\n')
 
         goto_home()
-        pick_menu_item('Advanced')
-        pick_menu_item('MicroSD Card')
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('File Management')
         pick_menu_item('Sign Text File')
 
         time.sleep(.1)

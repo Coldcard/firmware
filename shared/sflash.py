@@ -15,6 +15,7 @@
 # During firmware updates, entire flash, starting at zero may be used.
 #
 import machine
+from version import mk_num
 
 CMD_WRSR        = const(0x01)
 CMD_WRITE       = const(0x02)
@@ -39,7 +40,11 @@ class SPIFlash:
     def __init__(self):
         from machine import Pin
 
-        self.spi = machine.SPI(2, baudrate=8000000)
+        # chip can do 80Mhz, but very limited prescaler-only baudrate generation, so
+        # sysclk/2 or /4 will happen depending on Mk3 vs. 4
+        # - Mk4: 120Mhz => 60Mhz result (div 2)
+        # - Mk3: 80Mhz => 40Mhz result (div 2)
+        self.spi = machine.SPI(2, baudrate=80_000_000)
         self.cs = Pin('SF_CS', Pin.OUT)
 
     def cmd(self, cmd, addr=None, complete=True, pad=False):
@@ -112,11 +117,12 @@ class SPIFlash:
 
     def wipe_most(self):
         # erase everything except settings: takes 5 seconds at least
+        from glob import dis
+
+        assert mk_num <= 3      # obsolete in mk4
+
         from nvstore import SLOTS
         end = SLOTS[0]
-
-        from glob import dis
-        dis.fullscreen("Cleanup...")
 
         for addr in range(0, end, self.BLOCK_SIZE):
             self.block_erase(addr)

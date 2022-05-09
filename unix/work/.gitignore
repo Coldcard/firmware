@@ -1,0 +1,3 @@
+# this simulator, or test cases produce these files.
+nfc-dump.ndef
+readback.psbt

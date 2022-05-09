@@ -128,7 +128,7 @@ class HexWriter:
         self.pos += len(b)//2
         return a2b_hex(b)
 
-    def read_into(self, buf):
+    def readinto(self, buf):
         b = self.read(len(buf))
         buf[0:len(b)] = b
         return len(b)
@@ -336,7 +336,7 @@ def check_firmware_hdr(hdr, binary_size):
     # - hdr must be a bytearray(FW_HEADER_SIZE+more)
 
     from sigheader import FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
-    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK
+    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, MK_4_OK
     from ustruct import unpack_from
     from version import hw_label
     import callgate
@@ -363,9 +363,11 @@ def check_firmware_hdr(hdr, binary_size):
             ok = (hw_compat & MK_2_OK)
         elif hw_label == 'mk3':
             ok = (hw_compat & MK_3_OK)
+        elif hw_label == 'mk4':
+            ok = (hw_compat & MK_4_OK)
         
         if not ok:
-            return "New firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
+            return "That firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
 
     water = callgate.get_highwater()
     if water[0] and timestamp < water:
@@ -376,11 +378,27 @@ def check_firmware_hdr(hdr, binary_size):
 
 def clean_shutdown(style=0):
     # wipe SPI flash and shutdown (wiping main memory)
-    import callgate
-    from sflash import SF
+    # - mk4: SPI flash not used, but NFC may hold data (PSRAM cleared by bootrom)
+    # - bootrom wipes every byte of SRAM, so no need to repeat here
+    import callgate, version, uasyncio
+
+    # save if anything pending
+    from glob import settings
+    settings.save_if_dirty()
 
     try:
-        SF.wipe_most()
+        from glob import dis
+        dis.fullscreen("Cleanup...")
+
+        if not version.has_psram:
+            from sflash import SF
+            SF.wipe_most()
+        else:
+            from glob import NFC
+
+            if NFC:
+                uasyncio.run(NFC.wipe(True))
+                
     except: pass
 
     callgate.show_logout(style)

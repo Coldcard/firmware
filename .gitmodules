@@ -11,3 +11,6 @@
 [submodule "external/libngu"]
 	path = external/libngu
 	url = https://github.com/switck/libngu.git
+[submodule "stm32/mk4-bootloader/hal"]
+	path = stm32/mk4-bootloader/hal
+	url = https://github.com/STMicroelectronics/STM32CubeL4.git

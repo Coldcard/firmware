@@ -56,7 +56,7 @@ def simple_fake_txn():
     return doit
 
 @pytest.fixture()
-def fake_txn():
+def fake_txn(dev):
     # make various size txn's ... completely fake and pointless values
     # - but has UTXO's to match needs
     # - input total = num_inputs * 1BTC
@@ -71,7 +71,7 @@ def fake_txn():
                 change_outputs=[], capture_scripts=None, add_xpub=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
-        master_xpub = master_xpub or simulator_fixed_xprv
+        master_xpub = master_xpub or dev.master_xpub or simulator_fixed_xprv
         
         # we have a key; use it to provide "plausible" value inputs
         mk = BIP32Node.from_wallet_key(master_xpub)
@@ -168,7 +168,7 @@ def render_address(script, testnet=True):
     # take a scriptPubKey (part of the TxOut) and convert into conventional human-readable
     # string... aka: the "payment address"
     from pycoin.encoding import b2a_hashed_base58
-    from pycoin.contrib.segwit_addr import encode as bech32_encode
+    from bech32 import encode as bech32_encode
 
     ll = len(script)
 
@@ -195,9 +195,9 @@ def render_address(script, testnet=True):
     if ll == 22 and script[0:2] == b'\x00\x14':
         return bech32_encode(bech32_hrp, 0, script[2:])
 
-    # P2WSH
-    if ll == 34 and script[0:2] == b'\x00\x20':
-        return bech32_encode(bech32_hrp, 0, script[2:])
+    # P2WSH, P2TR and later
+    if ll == 34 and script[0] <= 16 and script[1] == 0x20:
+        return bech32_encode(bech32_hrp, script[0], script[2:])
 
     raise ValueError('Unknown payment script', repr(script))
 

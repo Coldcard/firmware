@@ -9,7 +9,6 @@ def test_get_secrets(get_secrets, master_xpub):
     assert 'xpub' in v
     assert v['xpub'] == master_xpub
 
-
 def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypress):
 
     # get to top, force a redraw
@@ -24,7 +23,7 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
     assert 'Ready To Sign' in m
     assert 'Secure Logout' in m
     assert 'Address Explorer' in m
-    assert 'Advanced' in m
+    assert 'Advanced/Tools' in m
     assert 'Settings' in m
     if len(m) == 6:
         assert 'Passphrase' in m
@@ -126,7 +125,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         assert len(get_setting('multisig')) == 1
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Backup')
     pick_menu_item('Backup System')
 
@@ -176,7 +175,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     # Check on-device verify UX works.
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Backup')
     pick_menu_item('Verify Backup')
     time.sleep(0.1)
@@ -215,7 +214,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     unit_test('devtest/clear_seed.py')
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
+    assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
     pick_menu_item('Restore Backup')
 
@@ -246,12 +245,12 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     ( 'abandon ' * 23 + 'art', 0x24d73654 ),
     ( "wife shiver author away frog air rough vanish fantasy frozen noodle athlete pioneer citizen symptom firm much faith extend rare axis garment kiwi clarify", 0x4369050f),
     ])
-def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, seed_words, xfp, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
+def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, seed_words, xfp, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check, expect_ftux):
     
     unit_test('devtest/clear_seed.py')
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
+    assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
 
     sw = seed_words.split(' ')
@@ -259,10 +258,9 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
 
     word_menu_entry(sw)
 
-    m = cap_menu()
-    assert m[0] == 'Ready To Sign'
+    expect_ftux()
 
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('View Identity')
 
     title, body = cap_story()
@@ -283,7 +281,7 @@ wordlist = None
 
 @pytest.mark.veryslow           # 40 minutes realtime, skp with "-m not\ veryslow" on cmd line
 @pytest.mark.parametrize('pos', range(0, 0x800, 23))
-def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words):
+def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, expect_ftux):
     global wordlist
     if not wordlist:
         from mnemonic import Mnemonic
@@ -293,7 +291,7 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypres
     unit_test('devtest/clear_seed.py')
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
+    assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
 
     sw = []
@@ -315,8 +313,7 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypres
 
     print("Words: %r" % sw)
 
-    m = cap_menu()
-    assert m[0] == 'Ready To Sign'
+    expect_ftux()
 
     v = get_secrets()
     assert v['mnemonic'] == ' '.join(sw)
@@ -325,16 +322,16 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypres
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('count', [20, 51, 99, 104])
-def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen, cap_screen_qr, qr_quality_check):
+@pytest.mark.parametrize('nwords', [12, 24])
+def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen, cap_screen_qr, qr_quality_check, expect_ftux):
     import random
     from hashlib import sha256
     
     unit_test('devtest/clear_seed.py')
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
-    pick_menu_item('Import Existing')
-    pick_menu_item('Dice Rolls')
+    pick_menu_item('New Seed Words')
+    pick_menu_item(f'{nwords} Word Dice Roll')
 
     gave = ''
     for i in range(count):
@@ -363,7 +360,7 @@ def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keyp
         time.sleep(0.1)
         title, body = cap_story()
 
-    assert 'Record these 24' in body
+    assert f'Record these {nwords}' in body
 
     assert '1 to view as QR Code' in body
     words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
@@ -382,36 +379,44 @@ def test_import_from_dice(count, goto_home, pick_menu_item, cap_story, need_keyp
     v = get_secrets()
 
     rs = v['raw_secret']
-    if len(rs) == 65:
+    if len(rs)%2 == 1:
         rs += '0'
 
-    assert rs == '82' + sha256(gave.encode('ascii')).hexdigest()
+    if nwords == 24:
+        assert rs == '82' + sha256(gave.encode('ascii')).hexdigest()
+    elif nwords == 12:
+        assert rs == '80' + sha256(gave.encode('ascii')).hexdigest()[0:32]
+    else:
+        raise ValueError(nwords)
+
+    expect_ftux()
 
 @pytest.mark.parametrize('multiple_runs', range(3))
-def test_new_wallet(goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs, reset_seed_words):
+@pytest.mark.parametrize('nwords', [12, 24])
+def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs, reset_seed_words, expect_ftux):
     # generate a random wallet, and check seeds are what's shown to user, etc
     
     unit_test('devtest/clear_seed.py')
     m = cap_menu()
-    pick_menu_item('New Wallet')
+    pick_menu_item('New Seed Words')
+    pick_menu_item('24 Word (default)' if nwords == 24 else f'{nwords} Word')
 
     title, body = cap_story()
     assert title == 'NO-TITLE'
-    assert 'Record these 24 secret words!' in body
+    assert f'Record these {nwords} secret words!' in body
 
 
     words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
-    assert len(words) == 24
+    assert len(words) == nwords
 
     print("Words: %r" % words)
 
     count, _, _ = pass_word_quiz(words)
-    assert count == 24
+    assert count == nwords
 
     time.sleep(1)
 
-    m = cap_menu()
-    assert m[0] == 'Ready To Sign'
+    expect_ftux()
 
     v = get_secrets()
     assert v['mnemonic'].split(' ') == words
@@ -433,7 +438,7 @@ def test_import_prv(goto_home, pick_menu_item, cap_story, need_keypress, unit_te
     print("Created: %s" % path)
 
     m = cap_menu()
-    assert m[0] == 'New Wallet'    
+    assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
     pick_menu_item('Import XPRV')
 
@@ -621,10 +626,12 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
             set_encoded_secret(b'\x20' + prandom(32))
             v = get_secrets()
             expect = v['raw_secret'][2:2+64]
+            if len(expect) % 2 == 1:
+                expect += '0'
         
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
     pick_menu_item('View Seed Words')
@@ -672,7 +679,7 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, need_keypress, sim_e
     #words = v['mnemonic'].split(' ')
 
     goto_home()
-    pick_menu_item('Advanced')
+    pick_menu_item('Advanced/Tools')
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
     pick_menu_item('Destroy Seed')
@@ -693,7 +700,27 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, need_keypress, sim_e
 
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
-    # prints to console, more fun with headless.py
+    # saves to ../unix/work/menudump.txt
     sim_execfile('devtest/menu_dump.py')
+
+if 0:
+    # show what the final word can be (debug only)
+    def test_23_words(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen_qr, qr_quality_check):
+        
+        unit_test('devtest/clear_seed.py')
+
+        m = cap_menu()
+        assert m[0] == 'New Seed Words'    
+        pick_menu_item('Import Existing')
+
+        seed_words = 'silent toe meat possible chair blossom wait occur this worth option bag nurse find fish scene bench asthma bike wage world quit primary'
+
+        sw = seed_words.split(' ')
+        pick_menu_item('24 Words')
+
+        word_menu_entry(sw)
+
+        print('\n'.join(cap_menu()))
+
 
 # EOF

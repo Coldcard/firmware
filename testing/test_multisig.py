@@ -653,7 +653,7 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
         goto_home()
         pick_menu_item('Settings')
         pick_menu_item('Multisig Wallets')
-        pick_menu_item('Import from SD')
+        pick_menu_item('Import from File')
 
         time.sleep(.1)
         _, story = cap_story()
@@ -703,6 +703,13 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
 
     time.sleep(.1)
     title, story = cap_story()
+
+    if 'to share file over NFC' in story:
+        # skip offer of NFC, when NFC enabled
+        need_keypress('y')
+        time.sleep(.1)
+        title, story = cap_story()
+
     fname = story.split('\n')[-1]
     assert fname, story
     fname = microsd_path(fname)
@@ -768,7 +775,7 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
 
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
+def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story, mk_num):
     clear_ms()
     M = N
     name = 'a'*20       # longest possible
@@ -783,13 +790,17 @@ def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story):
         title, story = cap_story()
         if title or story:
             print(f'Failed with {count} @ {N} keys each')
+            assert mk_num < 4
             assert 'No space left' in story
             break
 
-    if N == 3:
-        assert count == 9, "Expect fail at 9"
-    if N == 15:
-        assert count == 2, "Expect fail at 2"
+    if mk_num >= 4:
+        assert count == 9           # unlimited now
+    else:
+        if N == 3:
+            assert count == 9, "Expect fail at 9"
+        if N == 15:
+            assert count == 2, "Expect fail at 2"
 
     need_keypress('y')
     clear_ms()
@@ -1205,7 +1216,7 @@ def test_ms_sign_simple(N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_
 def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
 
-    # IMPORTANT: wont work if you start simulator with -m flag. Use no args
+    # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
 
     all_out_styles = list(unmap_addr_fmt.keys())
     num_outs = len(all_out_styles)
@@ -1346,6 +1357,12 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
     # writes out ckcc config file, then electrum wallet
     time.sleep(.1)
     title, story = cap_story()
+    if 'file over NFC' in story:
+        # skip offer of NFC, when NFC enabled
+        need_keypress('y')
+        time.sleep(.1)
+        title, story = cap_story()
+
     print(repr(story))
     assert 'Coldcard' in story
     assert 'that file onto the other Coldcards involved' in story
@@ -1360,6 +1377,13 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
     need_keypress('y')
     time.sleep(.1)
     title, story = cap_story()
+
+    if 'file over NFC' in story:
+        # skip offer of NFC, when NFC enabled
+        need_keypress('y')
+        time.sleep(.1)
+        title, story = cap_story()
+
     fname = story.split('\n')[-1]
     assert fname.startswith('el-')
     assert fname.endswith('.json')
@@ -1388,7 +1412,7 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
-    pick_menu_item('Import from SD')
+    pick_menu_item('Import from File')
     time.sleep(.05)
     need_keypress('y')
     time.sleep(.05)
@@ -1622,12 +1646,12 @@ def test_ms_sign_bitrot(num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_ms_
 
     start_sign(psbt)
     with pytest.raises(Exception) as ee:
-        signed = end_sign(True)
+        signed = end_sign(accept=None)
     assert 'Output#0:' in str(ee)
     assert 'change output script' in str(ee)
 
     # Check error details are shown
-    time.sleep(.5)
+    time.sleep(.01)
     title, story = cap_story()
     assert story.strip() in str(ee)
     assert len(story.split(':')[-1].strip()), story
@@ -1790,6 +1814,11 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
 
     time.sleep(.1)
     title, story = cap_story()
+    if 'file over NFC' in story:
+        # skip offer of NFC, when NFC enabled
+        need_keypress('y')
+        time.sleep(.1)
+        title, story = cap_story()
     fname = story.split('\n')[-1]
     assert fname, story
     need_keypress('y')
@@ -1809,6 +1838,12 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
 
     time.sleep(.25)
     title, story = cap_story()
+    if 'file over NFC' in story:
+        # skip offer of NFC, when NFC enabled
+        need_keypress('y')
+        time.sleep(.1)
+        title, story = cap_story()
+
     fname2 = story.split('\n')[-1]
     assert fname2, story
     need_keypress('y')

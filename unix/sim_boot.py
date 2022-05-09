@@ -16,7 +16,25 @@ if '--sflash' not in sys.argv:
     import nvstore
     from sim_settings import sim_defaults
     nvstore.SettingsObject.default_values = lambda _: dict(sim_defaults)
-    nvstore.settings.current = dict(sim_defaults)
+
+    # not best place for this
+    nvstore.MK4_WORKDIR = './settings/'
+    nvstore.SettingsObject._deny_slot = lambda *a:None
+
+    if '--eff' in sys.argv:
+        # ignore files ondisk from previous runs, and also dont write any
+        nvstore.SettingsObject.load = lambda *a:None
+        nvstore.SettingsObject.save = lambda *a:None
+        # limitation: pre-login values arent stored even during operation
+
+        #glob.settings.current = dict(sim_defaults)
+
+if 1:
+    # Install Mk4 hacks and workarounds
+    import mk4
+    import sim_mk4
+    import sim_psram
+    import sim_vdisk
 
 if sys.argv[-1] != '-q':
     import main     # must be last, does not return

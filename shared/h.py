@@ -5,3 +5,6 @@
 
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
+
+import uasyncio
+arun = uasyncio.run

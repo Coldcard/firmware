@@ -10,7 +10,7 @@ from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 import version, ujson
 from uio import StringIO
 import seed
-from nvstore import settings
+from glob import settings
 from pincodes import pa, AE_SECRET_LEN
 
 # we make passwords with this number of words
@@ -43,6 +43,10 @@ def render_backup_contents():
     COMMENT('Private key details: ' + chain.name)
 
     with stash.SensitiveValues(bypass_pw=True) as sv:
+        if sv.deltamode:
+            # die rather than give up our secrets
+            import callgate
+            callgate.fast_wipe()
 
         if sv.mode == 'words':
             ADD('mnemonic', bip39.b2a_words(sv.raw))
@@ -57,15 +61,26 @@ def render_backup_contents():
         # BTW: everything is really a duplicate of this value
         ADD('raw_secret', b2a_hex(sv.secret).rstrip(b'0'))
 
-        if pa.has_duress_pin():
-            COMMENT('Duress Wallet (informational)')
-            dpk = sv.duress_root()
-            ADD('duress_xprv', chain.serialize_private(dpk))
-            ADD('duress_xpub', chain.serialize_public(dpk))
-
         if version.has_608:
             # save the so-called long-secret
             ADD('long_secret', b2a_hex(pa.ls_fetch()))
+
+        # Duress wallets (somewhat optional, since derived)
+        if version.mk_num <= 3:
+            if pa.has_duress_pin():
+                COMMENT('Duress Wallet (informational)')
+                dpk, p = sv.duress_root()
+                COMMENT('path = %s' % p)
+                ADD('duress_xprv', chain.serialize_private(dpk))
+                ADD('duress_xpub', chain.serialize_public(dpk))
+        else:
+            from trick_pins import tp
+            for label, path, pairs in tp.backup_duress_wallets(sv):
+                COMMENT()
+                COMMENT(label + ' (informational)')
+                COMMENT(path)
+                for k,v in pairs:
+                    ADD(k, v)
     
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
@@ -92,9 +107,10 @@ def render_backup_contents():
 
     return rv.getvalue()
 
-async def restore_from_dict(vals):
+def restore_from_dict_ll(vals):
     # Restore from a dict of values. Already JSON decoded.
-    # Reboot on success, return string on failure
+    # Need a Reboot on success, return string on failure
+    # - low-level version, factored out for better testing
     from glob import dis
 
     #print("Restoring from: %r" % vals)
@@ -121,7 +137,6 @@ async def restore_from_dict(vals):
         if 'xprv' in vals:
             check_xprv = chain.serialize_private(node)
             assert check_xprv == vals['xprv'], 'xprv mismatch'
-
 
     except Exception as e:
         return ('Unable to decode raw_secret and '
@@ -164,6 +179,16 @@ async def restore_from_dict(vals):
 
         if k == 'xfp' or k == 'xpub': continue
 
+        if k == 'tp':
+            # restore trick pins, which may involve many ops
+            if version.mk_num >= 4:
+                from trick_pins import tp
+                try:
+                    tp.restore_backup(vals[k])
+                except Exception as exc:
+                    sys.print_exception(exc)
+            continue
+
         settings.set(k[8:], vals[k])
 
     # write out
@@ -172,6 +197,14 @@ async def restore_from_dict(vals):
     if version.has_fatram and ('hsm_policy' in vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
+
+
+async def restore_from_dict(vals):
+    # Restore from a dict of values. Already JSON decoded (ie. dict object).
+    # Need a Reboot on success, return string on failure
+
+    prob = restore_from_dict_ll(vals)
+    if prob: return prob
 
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '
@@ -276,7 +309,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_
                 fname, nice = card.pick_filename(fname_pattern)
 
                 # do actual write
-                with open(fname, 'wb') as fd:
+                with card.open(fname, 'wb') as fd:
                     if zz:
                         fd.write(hdr)
                         fd.write(zz.body)
@@ -313,20 +346,19 @@ Insert another SD card and press 2 to make another copy.''' % (nice)
 Press OK for another copy, or press X to stop.''' % (copy+1, nice), escape='2')
             if ch == 'x': break
 
-async def verify_backup_file(fname_or_fd):
+async def verify_backup_file(fname):
     # read 7z header, and measure checksums
     # - no password is wanted/required
     # - really just checking CRC32, but that's enough against truncated files
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
     prob = None
     fd = None
 
     # filename already picked, open it.
     try:
-        with CardSlot() as card:
+        with CardSlot(readonly=True) as card:
             prob = 'Unable to open backup file.'
-            fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
+            fd = card.open(fname, 'rb')
 
             prob = 'Unable to read backup file headers. Might be truncated.'
             compat7z.check_file_headers(fd)
@@ -347,8 +379,12 @@ async def verify_backup_file(fname_or_fd):
         await ux_show_story(prob + '\n\nError: ' + str(e))
         return
     finally:
-        if fd:
-            fd.close()
+        if fd is not None:
+            try:
+                fd.close()
+            except OSError:
+                # might be already closed on vdisk case due to filesystem unmount/mount
+                pass
 
     await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
 
@@ -375,8 +411,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
     from glob import dis
-    from files import CardSlot, CardMissingError
-    from actions import needs_microsd
+    from files import CardSlot, CardMissingError, needs_microsd
 
     # build password
     password = ' '.join(words)
@@ -384,7 +419,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
     prob = None
 
     try:
-        with CardSlot() as card:
+        with CardSlot(readonly=True) as card:
             # filename already picked, taste it and maybe consider using its data.
             try:
                 fd = open(fname_or_fd, 'rb') if isinstance(fname_or_fd, str) else fname_or_fd
@@ -461,7 +496,7 @@ file with an ephemeral public key will be written.''')
         with CardSlot() as card:
             fname, nice = card.pick_filename('ccbk-start.json', overwrite=True)
 
-            with open(fname, 'wb') as fd:
+            with card.open(fname, 'wb') as fd:
                 fd.write(ujson.dumps(dict(pubkey=b2a_hex(my_pubkey))))
             
     except CardMissingError:

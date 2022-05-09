@@ -9,7 +9,7 @@ from ustruct import pack, unpack
 from exceptions import IncorrectUTXOAmount
 from ubinascii import b2a_base64, a2b_base64
 from serializations import COutPoint, uint256_from_str
-from nvstore import settings
+from glob import settings
 
 # Very limited space in serial flash, so we compress as much as possible:
 # - would be bad for privacy to store these **UTXO amounts** in plaintext

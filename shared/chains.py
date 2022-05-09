@@ -150,7 +150,7 @@ class ChainsBase:
         # convert nValue from a transaction into human form.
         # - always be precise
         # - return (string, units label)
-        from nvstore import settings
+        from glob import settings
         rz = settings.get('rz', 8)
 
         if rz == 8:
@@ -201,9 +201,9 @@ class ChainsBase:
         if ll == 22 and script[0:2] == b'\x00\x14':
             return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
 
-        # P2WSH
-        if ll == 34 and script[0:2] == b'\x00\x20':
-            return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
+        # P2WSH, P2TR and later
+        if ll == 34 and script[0] <= 16 and script[1] == 0x20:
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
         raise ValueError('Unknown payment script', repr(script))
 
@@ -250,35 +250,28 @@ class BitcoinTestnet(BitcoinMain):
 
     b44_cointype = 1
 
-# Add to this list of all choices; keep testnet stuff near bottom
-# because this order matches UI as presented to users.
-#
-AllChains = [
-    BitcoinMain,
-    BitcoinTestnet,
-]
 
-
-def get_chain(short_name, btc_default=False):
-    # lookup 'LTC' for example
-
-    for c in AllChains:
-        if c.ctype == short_name:
-            return c
-
-    if btc_default:
+def get_chain(short_name):
+    # lookup object from name: 'BTC' or 'XTN'
+    if short_name == 'BTC':
         return BitcoinMain
+    elif short_name == 'XTN':
+        return BitcoinTestnet
     else:
         raise KeyError(short_name)
 
 def current_chain():
     # return chain matching current setting
-    from nvstore import settings
+    from glob import settings
 
-    chain = settings.get('chain', 'BTC')
+    chain = settings.get('chain', None)
+    if chain is None:
+        return BitcoinMain
 
     return get_chain(chain)
 
+# Overbuilt: will only be testnet and mainchain.
+AllChains = [BitcoinMain, BitcoinTestnet]
 
 def slip32_deserialize(xp):
     # .. and classify chain and addr-type, as implied by prefix

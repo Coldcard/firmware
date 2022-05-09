@@ -1,3 +1,4 @@
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Fake PIN login stuff
 #
@@ -38,12 +39,14 @@ def pin_stuff(submethod, buf_io):
                         PIN_ATTEMPT_SIZE_V1, CHANGE_LS_OFFSET,
                         PA_SUCCESSFUL, PA_IS_BLANK, PA_HAS_DURESS, PA_HAS_BRICKME,
                         CHANGE_WALLET_PIN, CHANGE_DURESS_PIN, CHANGE_BRICKME_PIN,
+                        AE_LONG_SECRET_LEN,
                         CHANGE_SECRET, CHANGE_DURESS_SECRET, CHANGE_SECONDARY_WALLET_PIN )
 
-    if len(buf_io) != (PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1):
+    if len(buf_io) < (PIN_ATTEMPT_SIZE if version.has_608 else PIN_ATTEMPT_SIZE_V1):
         return ERANGE
 
     global SECRETS
+    after_buf = None
 
     (magic, is_secondary,
             pin, pin_len,
@@ -61,7 +64,7 @@ def pin_stuff(submethod, buf_io):
 
     # NOTE: ignoring mk2 additions for now, we have no need for it.
 
-    # NOTE: using strings here, not bytes; real bootrom uses bytes
+    # NOTE: using strings here, not bytes; real bootrom & API, uses bytes
     pin = pin[0:pin_len].decode()
     old_pin = old_pin[0:old_pin_len].decode()
     new_pin = new_pin[0:new_pin_len].decode()
@@ -87,42 +90,67 @@ def pin_stuff(submethod, buf_io):
                 attempts_left = 3
 
     elif submethod == 1:
-        # delay
+        # delay - mk2 concept, obsolete
         time.sleep(0.05)
         delay_achieved += 1
 
     elif submethod == 2:
         # Login
+        from sim_se2 import SE2
 
         expect = SECRETS.get(kk, '')
         if pin == expect:
             state_flags = PA_SUCCESSFUL
+            delay_required, delay_achieved = (0,0)
 
             ts = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
 
-        elif pin == SECRETS.get(kk + '_duress', None):
-            state_flags = PA_SUCCESSFUL
+        elif version.mk_num >= 4:
 
-            ts = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
+            got = SE2.try_trick_login(pin, num_fails)
+            if got != None:
+                # good login, but it's a trick
+                ts = SE2.wallet
+                flags, arg = got
 
-        else:
-            if version.has_608:
+                delay_required = flags
+                delay_achieved = arg
+                state_flags = PA_SUCCESSFUL
+            else:
+                # failed both true PIN and trick pins (or so it seems, see FAKE_OUT)
                 num_fails += 1
                 attempts_left -= 1
-            else:
-                state_flags = 0
 
-            return EPIN_AUTH_FAIL
+                return EPIN_AUTH_FAIL
+            
+        else:
+            # obsolete paths
+            assert version.mk_num < 4
+            if pin == SECRETS.get(kk + '_duress', None):
+                state_flags = PA_SUCCESSFUL
+
+                ts = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
+
+            else:
+                if version.has_608:
+                    num_fails += 1
+                    attempts_left -= 1
+                else:
+                    state_flags = 0
+
+                return EPIN_AUTH_FAIL
 
         time.sleep(0.05)
 
-        if ts == b'\0'*72:
+        if ts == bytes(72):
             state_flags |= PA_ZERO_SECRET
 
-        if kk+'_duress' in SECRETS:
-            state_flags |= PA_HAS_DURESS
-        if kk+'_brickme' in SECRETS:
-            state_flags |= PA_HAS_BRICKME
+        if version.mk_num < 4:
+            # mk1-3 concepts
+            if kk+'_duress' in SECRETS:
+                state_flags |= PA_HAS_DURESS
+            if kk+'_brickme' in SECRETS:
+                state_flags |= PA_HAS_BRICKME
 
         del ts
 
@@ -197,11 +225,17 @@ def pin_stuff(submethod, buf_io):
 
     elif submethod == 4:
         # Fetch secrets
+        from sim_se2 import SE2
         duress_pin = SECRETS.get(kk+'_duress')
 
         secret = None
 
-        if pin == duress_pin:
+        if SE2.wallet:
+            if SE2.wallet == 'delta':
+                secret = a2b_hex(SECRETS.get(kk+'_secret', '00'*72))
+            else:
+                secret = SE2.wallet
+        elif pin == duress_pin:
             secret = a2b_hex(SECRETS.get(kk+'_duress_secret', '00'*72))
         else:
             if change_flags & CHANGE_DURESS_SECRET:
@@ -239,9 +273,27 @@ def pin_stuff(submethod, buf_io):
             SECRETS['ls'] = bytearray(416)
 
         if (cf & CHANGE_SECRET):
-            SECRETS['ls'][off:off+32] = secret
+            # len(secret)==72 here, only using 32 bytes of it
+            SECRETS['ls'][off:off+32] = secret[0:32]
         else:
+            # Mk3 and earlier only will use this
             secret = SECRETS['ls'][off:off+32]
+
+    elif submethod == 7:
+        # pin_firmware_upgrade(args) process for mk4
+        if version.mk_num < 4:
+            return ENOENT
+
+        # not implemented in simulator
+        pass
+
+    elif submethod == 8:
+        # new mk4 api for long-secret fetch
+        if version.mk_num < 4:
+            return ENOENT
+
+        assert len(buf_io) == PIN_ATTEMPT_SIZE + AE_LONG_SECRET_LEN, len(buf_io)
+        buf_io[-AE_LONG_SECRET_LEN:] = SECRETS.get('ls', bytes(AE_LONG_SECRET_LEN))
 
     else:
         # bogus submethod

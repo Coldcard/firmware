@@ -21,7 +21,7 @@ from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver
-from nvstore import settings
+from glob import settings
 from pincodes import pa
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -225,7 +225,7 @@ class WordNestMenu(MenuSystem):
         set_seed_value(new_words)
         
         # clear menu stack
-        goto_top_menu()
+        goto_top_menu(first_time=True)
 
         return None
 
@@ -347,7 +347,7 @@ for 256-bits of security, 99 rolls.''' % count)
 
     return count, seed
 
-async def import_from_dice():
+async def new_from_dice(nwords):
     # Use lots of (D6) dice rolls to create seed entropy.
     # Note: only 2.585 bits of entropy per roll, so need lots!
     # 50 => 128bits, 99 => 256bits
@@ -359,32 +359,34 @@ async def import_from_dice():
 
     if count == 0: return
 
-    await approve_word_list(seed)
+    await approve_word_list(seed, nwords)
 
-async def make_new_wallet():
+async def make_new_wallet(nwords):
     # Pick a new random seed.
 
-    await ux_dramatic_pause('Generating...', 4)
+    await ux_dramatic_pause('Generating...', 3)
 
-    # always full 24-word (256 bit) entropy
+    # starting point
     seed = random.bytes(32)
-
     assert len(set(seed)) > 4       # TRNG failure
 
     # hash to mitigate possible bias in TRNG
     seed = ngu.hash.sha256s(seed)
 
-    await approve_word_list(seed)
+    await approve_word_list(seed, nwords)
 
-async def approve_word_list(seed):
+async def approve_word_list(seed, nwords):
     # Force the user to write the seeds words down, give a quiz, then save them.
 
     # LESSON LEARNED: if the user is writting down the words, as we have
     # vividly instructed, then it's a big deal to lose those words and have to start
     # over. So confirm that action, and don't volunteer it.
 
+    if nwords == 12:
+        seed = seed[0:16]
+
     words = bip39.b2a_words(seed).split(' ')
-    assert len(words) == 24
+    assert len(words) == nwords
 
     while 1:
         # show the seed words
@@ -402,7 +404,7 @@ async def approve_word_list(seed):
             # dice roll mode
             count, new_seed = await add_dice_rolls(0, seed, False)
             if count:
-                seed = new_seed
+                seed = new_seed[0:16] if nwords == 12 else new_seed
                 words = bip39.b2a_words(seed).split(' ')
 
             continue
@@ -430,7 +432,7 @@ async def approve_word_list(seed):
     set_seed_value(words)
 
     # send them to home menu, now with a wallet enabled
-    goto_top_menu()
+    goto_top_menu(first_time=True)
 
 def set_seed_value(words=None, encoded=None):
     # Save the seed words into secure element, and reboot. BIP-39 password
@@ -461,16 +463,20 @@ def set_seed_value(words=None, encoded=None):
         nv = encoded
 
     from glob import dis
-    dis.fullscreen('Applying...')
-    pa.change(new_secret=nv)
+    try:
+        dis.fullscreen('Applying...')
+        dis.busy_bar(True)
+        pa.change(new_secret=nv)
 
-    # re-read settings since key is now different
-    # - also captures xfp, xpub at this point
-    pa.new_main_secret(nv)
+        # re-read settings since key is now different
+        # - also captures xfp, xpub at this point
+        pa.new_main_secret(nv)
 
-    # check and reload secret
-    pa.reset()
-    pa.login()
+        # check and reload secret
+        pa.reset()
+        pa.login()
+    finally:
+        dis.busy_bar(False)
 
 def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
@@ -520,22 +526,28 @@ async def remember_bip39_passphrase():
 
 def clear_seed():
     from glob import dis
-    import utime
+    import utime, callgate
 
     dis.fullscreen('Clearing...')
+    dis.busy_bar(True)
 
     # clear settings associated with this key, since it will be no more
     settings.blank()
 
-    # save a blank secret (all zeros is a special case, detected by bootloader)
-    nv = bytes(AE_SECRET_LEN)
-    pa.change(new_secret=nv)
+    if version.mk_num >= 4:
+        callgate.fast_wipe(True)
+        # NOT REACHED
+    else:
+        # save a blank secret (all zeros is a special case, detected by bootloader)
+        nv = bytes(AE_SECRET_LEN)
+        pa.change(new_secret=nv)
 
-    if version.has_608:
-        # wipe the long secret too
-        nv = bytes(AE_LONG_SECRET_LEN)
-        pa.ls_change(nv)
+        if version.has_608:
+            # wipe the long secret too
+            nv = bytes(AE_LONG_SECRET_LEN)
+            pa.ls_change(nv)
 
+    dis.busy_bar(False)
     dis.fullscreen('Reboot...')
     utime.sleep(1)
 

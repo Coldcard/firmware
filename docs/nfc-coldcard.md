@@ -153,7 +153,7 @@ but that's all.
 ## TXID Value
 
 When sharing a fully-signed transaction, the TXID, if known, will be
-shared in binary (32 bytes).
+shared in hex.
 
 Type: `urn:nfc:ext:bitcoin.org:txid`
 
@@ -186,6 +186,11 @@ Body: Binary, variable length. First four bytes will typically be
 When the Coldcard has signed and finalized a transaction, it can
 share it in this format. Typically the user will want to broadcast
 this new transaction on the Bitcoin P2P network.
+
+## JSON Files
+
+When exporting wallet details, we need to share a JSON file in most
+cases. These are marked as "application/json".
 
 # Examples
 

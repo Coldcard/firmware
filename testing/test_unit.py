@@ -86,13 +86,19 @@ def test_public(sim_execfile):
     assert count > 12
 
 
-def test_nvram(unit_test):
-    # exercise nvram simulation
+def test_nvram(unit_test, only_mk3):
+    # exercise nvram simulation: not mk4
     unit_test('devtest/nvram.py')
+
+def test_nvram_mk4(unit_test, only_mk4):
+    # exercise nvram simulation: only mk4
+    unit_test('devtest/nvram_mk4.py')
 
 @pytest.mark.parametrize('mode', ['simple', 'blankish'])
 def test_backups(unit_test, mode, set_seed_words):
     # exercise dump of pub data
+    # - (bug) mk4 can only run this test in isolation from other test in this file.
+
     if mode == 'blankish':
         # want a zero in last byte of hex representation of raw secret...
         '''
@@ -133,7 +139,7 @@ def test_decoding(unit_test):
 def test_hmac(sim_exec, msg, key, hasher):
     import hashlib, hmac
 
-    cmd = "import ngu; from h import b2a_hex; " + \
+    cmd = "import ngu; from ubinascii import hexlify as b2a_hex; " + \
                     f"RV.write(b2a_hex(ngu.hmac.hmac_{hasher}({key}, {msg})))"
     print(cmd)
 
@@ -173,7 +179,7 @@ def test_hmac_key(dev, sim_exec, count=10):
     for i in range(count):
         pw = ('test%09d' % i).encode('ascii')
         pw = pw[1:i] if i > 2 else pw
-        cmd = "from users import calc_hmac_key; from h import b2a_hex; " + \
+        cmd = "from users import calc_hmac_key; from ubinascii import hexlify as b2a_hex; " + \
                     f"RV.write(b2a_hex(calc_hmac_key({pw})))"
 
         got = sim_exec(cmd)

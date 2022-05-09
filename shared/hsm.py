@@ -820,8 +820,7 @@ def hsm_status_report():
     # Return a JSON-able object. Documented and external programs
     # rely on this output... and yet, don't overshare either.
     from auth import UserAuthorizedAction
-    from glob import hsm_active
-    from nvstore import settings
+    from glob import hsm_active, settings
     from hsm_ux import ApproveHSMPolicy
 
     rv = dict()

@@ -28,8 +28,8 @@ h, m, _ = [int(x) for x in version.split('b')[0].split('.')]
 value |= (h << 11) | (m << 5)
 
 with open(out_fname, 'wt') as fd:
-    fd.write('''
-// (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+    fd.write('''\
+// (c) Copyright 2020-2022 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 //
 // AUTO-generated.
 //

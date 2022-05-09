@@ -14,7 +14,7 @@ class NumpadBase:
 
     def __init__(self):
         # once pressed, and released; keys show up in this queue
-        self._changes = Queue(24)
+        self._changes = Queue(64)
         self.key_pressed = ''
 
         self.debug = 0                # 0..2

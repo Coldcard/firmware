@@ -4,7 +4,7 @@
 # and signing bitcoin transactions.
 #
 import stash, ure, ux, chains, sys, gc, uio, version, ngu
-from public_constants import MAX_TXN_LEN, MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
+from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
@@ -14,8 +14,9 @@ from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
+from version import has_psram, has_fatram, MAX_TXN_LEN
 
-# Where in SPI flash the two transactions are (in and out)
+# Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
 TXN_OUTPUT_OFFSET = MAX_TXN_LEN
 
@@ -262,7 +263,7 @@ def sign_txt_file(filename):
 
     # copy message into memory
     with CardSlot() as card:
-        with open(filename, 'rt') as fd:
+        with card.open(filename, 'rt') as fd:
             text = fd.readline().strip()
             subpath = fd.readline().strip()
 
@@ -311,7 +312,7 @@ def sign_txt_file(filename):
 
             for path in [orig_path, None]:
                 try:
-                    with CardSlot() as card:
+                    with CardSlot(readonly=True) as card:
                         out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
@@ -326,7 +327,7 @@ def sign_txt_file(filename):
                 # attempt write-out
                 try:
                     with CardSlot() as card:
-                        with open(out_full, 'wt') as fd:
+                        with card.open(out_full, 'wt') as fd:
                             # save in full RFC style
                             fd.write(RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
                                                 blockchain='BITCOIN', sig=sig))
@@ -377,10 +378,19 @@ class ApproveTransaction(UserAuthorizedAction):
         # - gives user-visible string
         # 
         val = ' '.join(self.chain.render_value(o.nValue))
-        dest = self.chain.render_address(o.scriptPubKey)
+        try:
+            dest = self.chain.render_address(o.scriptPubKey)
 
-        return '%s\n - to address -\n%s\n' % (val, dest)
+            return '%s\n - to address -\n%s\n' % (val, dest)
+        except ValueError:
+            pass
 
+        # Handle future things better: allow them to happen at least.
+        self.psbt.warnings.append(
+            ('Output?', 'Sending to a script that is not well understood.'))
+        dest = B2A(o.scriptPubKey)
+
+        return '%s\n - to script -\n%s\n' % (val, dest)
 
     async def interact(self):
         # Prompt user w/ details and get approval
@@ -389,8 +399,8 @@ class ApproveTransaction(UserAuthorizedAction):
         # step 1: parse PSBT from sflash into in-memory objects.
 
         try:
-            dis.fullscreen("Reading...")
-            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len) as fd:
+            with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len, message='Reading...') as fd:
+                # NOTE: psbtObject captures the file descriptor and uses it later
                 self.psbt = psbtObject.read_psbt(fd)
         except BaseException as exc:
             if isinstance(exc, MemoryError):
@@ -407,8 +417,14 @@ class ApproveTransaction(UserAuthorizedAction):
         try:
             await self.psbt.validate()      # might do UX: accept multisig import
             self.psbt.consider_inputs()
+
+            dis.fullscreen("Validating...", percent=0.33)
             self.psbt.consider_keys()
+
+            dis.progress_bar(0.66)
             self.psbt.consider_outputs()
+
+            dis.progress_bar(0.85)
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
@@ -505,7 +521,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # do the actual signing.
         try:
             dis.fullscreen('Wait...')
-            gc.collect()           # visible delay causes by this but also sign_it() below
+            gc.collect()           # visible delay caused by this but also sign_it() below
             self.psbt.sign_it()
         except FraudulentChangeOutput as exc:
             return await self.failure(exc.args[0], title='Change Fraud')
@@ -532,6 +548,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 else:
                     self.psbt.serialize(fd)
 
+                fd.close()
                 self.result = (fd.tell(), fd.checksum.digest())
 
             self.done(redraw=(not txid))
@@ -539,18 +556,34 @@ class ApproveTransaction(UserAuthorizedAction):
         except BaseException as exc:
             return await self.failure("PSBT output failed", exc)
 
+        from glob import NFC
+
         if self.do_finalize and txid and not hsm_active:
-            # Show txid when we can; advisory
-            # - maybe even as QR, hex-encoded in alnum mode
-            tmsg = txid
+            while 1:
+                # Show txid when we can; advisory
+                # - maybe even as QR, hex-encoded in alnum mode
+                tmsg = txid + '\n\n'
 
-            if version.has_fatram:
-                tmsg += '\n\nPress 1 for QR Code of TXID.'
+                if has_fatram:
+                    tmsg += 'Press 1 for QR Code of TXID. '
+                if NFC:
+                    tmsg += 'Press 3 to share signed txn over NFC.'
 
-            ch = await ux_show_story(tmsg, "Final TXID", escape='1')
+                ch = await ux_show_story(tmsg, "Final TXID", escape='13')
 
-            if version.has_fatram and ch=='1':
-                await show_qr_code(txid, True)
+                if ch=='1' and has_fatram:
+                    await show_qr_code(txid, True)
+                    continue
+
+                if ch == '3' and NFC:
+                    await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
+                                                            self.result[0], self.result[1])
+                    continue
+                break
+
+        # TODO ofter to share / or auto-share over NFC if that seems appropraite
+        #if NFC:
+            #NFC.share_signed_psbt(TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
 
     def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
@@ -672,7 +705,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         left = self.psbt.num_outputs - len(largest) - num_change
         if left > 0:
-            msg.write('.. plus %d more smaller output(s), not shown here, which total: ' % left)
+            msg.write('.. plus %d smaller output(s), not shown here, which total: ' % left)
 
             # calculate left over value
             mtot = self.psbt.total_value_out - sum(v for v,t in largest)
@@ -683,31 +716,50 @@ class ApproveTransaction(UserAuthorizedAction):
 
 
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
-    # transaction (binary) loaded into sflash already, checksum checked
+    # transaction (binary) loaded into sflash/PSRAM already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, flags, psbt_sha=psbt_sha)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
 
+def psbt_encoding_taster(taste, psbt_len):
+    # look at first 10 bytes, and detect file encoding (binary, hex, base64)
+    # - return len is upper bound on size because of unknown whitespace
+    from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
+
+    if taste[0:5] == b'psbt\xff':
+        decoder = None
+        output_encoder = lambda x: x
+    elif taste[0:10] == b'70736274ff' or taste[0:10] == b'70736274FF':
+        decoder = HexStreamer()
+        output_encoder = HexWriter
+        psbt_len //= 2
+    elif taste[0:6] == b'cHNidP':
+        decoder = Base64Streamer()
+        output_encoder = Base64Writer
+        psbt_len = (psbt_len * 3 // 4) + 10
+    else:
+        raise ValueError("not psbt")
+
+    return decoder, output_encoder, psbt_len
     
-def sign_psbt_file(filename):
+async def sign_psbt_file(filename, force_vdisk=False):
     # sign a PSBT file found on a MicroSD card
-    from files import CardSlot, CardMissingError, securely_blank_file
+    # - or from VirtualDisk (mk4)
+    from files import CardSlot, CardMissingError
     from glob import dis
     from sram2 import tmp_buf
-    from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
 
     UserAuthorizedAction.cleanup()
 
     #print("sign: %s" % filename)
 
-
     # copy file into our spiflash
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
-    with CardSlot() as card:
-        with open(filename, 'rb') as fd:
+    with CardSlot(force_vdisk, readonly=True) as card:
+        with card.open(filename, 'rb') as fd:
             dis.fullscreen('Reading...')
 
             # see how long it is
@@ -718,17 +770,7 @@ def sign_psbt_file(filename):
             taste = fd.read(10)
             fd.seek(0)
 
-            if taste[0:5] == b'psbt\xff':
-                decoder = None
-                output_encoder = lambda x: x
-            elif taste[0:10] == b'70736274ff':
-                decoder = HexStreamer()
-                output_encoder = HexWriter
-                psbt_len //= 2
-            elif taste[0:6] == b'cHNidP':
-                decoder = Base64Streamer()
-                output_encoder = Base64Writer
-                psbt_len = (psbt_len * 3 // 4) + 10
+            decoder, output_encoder, psbt_len = psbt_encoding_taster(taste, psbt_len)
 
             total = 0
             with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
@@ -766,7 +808,7 @@ def sign_psbt_file(filename):
         out_fn = None
         txid = None
 
-        from nvstore import settings
+        from glob import settings
         import os
         del_after = settings.get('del', 0)
 
@@ -782,7 +824,7 @@ def sign_psbt_file(filename):
 
             for path in [orig_path, None]:
                 try:
-                    with CardSlot() as card:
+                    with CardSlot(force_vdisk, readonly=True) as card:
                         out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
@@ -796,12 +838,12 @@ def sign_psbt_file(filename):
             else:
                 # attempt write-out
                 try:
-                    with CardSlot() as card:
+                    with CardSlot(force_vdisk) as card:
                         if is_comp and del_after:
                             # don't write signed PSBT if we'd just delete it anyway
                             out_fn = None
                         else:
-                            with output_encoder(open(out_full, 'wb')) as fd:
+                            with output_encoder(card.open(out_full, 'wb')) as fd:
                                 # save as updated PSBT
                                 psbt.serialize(fd)
 
@@ -811,7 +853,7 @@ def sign_psbt_file(filename):
                                 base+'-final.txn' if not del_after else 'tmp.txn', out_path)
 
                             if out2_full:
-                                with HexWriter(open(out2_full, 'w+t')) as fd:
+                                with HexWriter(card.open(out2_full, 'w+t')) as fd:
                                     # save transaction, in hex
                                     txid = psbt.finalize(fd)
 
@@ -821,13 +863,13 @@ def sign_psbt_file(filename):
                                                             txid+'.txn', out_path, overwrite=True)
                                     os.rename(out2_full, after_full)
 
-                    if del_after:
-                        # this can do nothing if they swapped SDCard between steps, which is ok,
-                        # but if the original file is still there, this blows it away.
-                        # - if not yet final, the foo-part.psbt file stays
-                        try:
-                            securely_blank_file(filename)
-                        except: pass
+                        if del_after:
+                            # this can do nothing if they swapped SDCard between steps, which is ok,
+                            # but if the original file is still there, this blows it away.
+                            # - if not yet final, the foo-part.psbt file stays
+                            try:
+                                card.securely_blank_file(filename)
+                            except: pass
 
                     # success and done!
                     break
@@ -836,6 +878,10 @@ def sign_psbt_file(filename):
                     prob = 'Failed to write!\n\n%s\n\n' % exc
                     sys.print_exception(exc)
                     # fall thru to try again
+
+            if force_vdisk:
+                await ux_show_story(prob, title='Error')
+                return
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed transaction, "
@@ -912,7 +958,7 @@ class NewPassphrase(UserAuthorizedAction):
 
     async def interact(self):
         # prompt them
-        from nvstore import settings
+        from glob import settings
 
         showit = False
         while 1:
@@ -985,13 +1031,13 @@ class ShowAddressBase(UserAuthorizedAction):
         if not hsm_active:
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
-            if version.has_fatram:
+            if has_fatram:
                 msg += ' Press 4 to view QR Code.'
 
             while 1:
                 ch = await ux_show_story(msg, title=self.title, escape='4')
 
-                if ch == '4' and version.has_fatram:
+                if ch == '4' and has_fatram:
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
 
@@ -1163,15 +1209,30 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
         the_ux.push(UserAuthorizedAction.active_request)
 
 class FirmwareUpgradeRequest(UserAuthorizedAction):
-    def __init__(self, hdr, length):
+    def __init__(self, hdr, length, hdr_check=False, psram_offset=None):
         super().__init__()
         self.hdr = hdr
         self.length = length
+        self.hdr_check = hdr_check
+        self.psram_offset = psram_offset
 
     async def interact(self):
         from version import decode_firmware_header
-        from sflash import SF
+        from utils import check_firmware_hdr
 
+        # check header values
+        if self.hdr_check:
+            # when coming in via USB, this part already done
+            # so the error can be sent back over USB port
+            failed = check_firmware_hdr(self.hdr, self.length)
+            if failed:
+                await ux_show_story(failed, 'Sorry!')
+
+                UserAuthorizedAction.cleanup()
+                self.pop_menu()
+                return
+
+        # Get informed consent to upgrade.
         date, version, _ = decode_firmware_header(self.hdr)
 
         msg = '''\
@@ -1191,16 +1252,27 @@ Binary checksum and signature will be further verified before any changes are ma
                 # - write final file header, so bootloader will see it
                 # - reboot to start process
                 from glob import dis
-                import callgate
-                SF.write(self.length, self.hdr)
-
                 dis.fullscreen('Upgrading...', percent=1)
 
-                callgate.show_logout(2)
+                if not has_psram:
+                    from sflash import SF
+                    import callgate
+                    SF.write(self.length, self.hdr)
+
+                    callgate.show_logout(2)
+                else:
+                    # Mk4 copies from PSRAM to flash inside bootrom, we have
+                    # nothing to do here except start that process.
+                    from pincodes import pa
+                    pa.firmware_upgrade(self.psram_offset, self.length)
+                    # not reached, unless issue?
+                    raise RuntimeError("bootrom fail")
             else:
                 # they don't want to!
                 self.refused = True
-                SF.block_erase(0)           # just in case, but not required
+                if not has_psram:
+                    from sflash import SF
+                    SF.block_erase(0)           # just in case, but not required
                 await ux_dramatic_pause("Refused.", 2)
 
         except BaseException as exc:
@@ -1210,12 +1282,12 @@ Binary checksum and signature will be further verified before any changes are ma
             UserAuthorizedAction.cleanup()      # because no results to store
             self.pop_menu()
 
-def authorize_upgrade(hdr, length):
+def authorize_upgrade(hdr, length, **kws):
     # final USB write has come in, get buy-in
 
     # Do some verification before we even show to the local user
     UserAuthorizedAction.check_busy()
-    UserAuthorizedAction.active_request = FirmwareUpgradeRequest(hdr, length)
+    UserAuthorizedAction.active_request = FirmwareUpgradeRequest(hdr, length, **kws)
 
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)

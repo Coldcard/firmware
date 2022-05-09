@@ -5,16 +5,15 @@
 import ckcc, pyb, callgate, sys, ux, ngu, stash, aes256ctr
 from uasyncio import sleep_ms, core
 from uhashlib import sha256
-from public_constants import MAX_MSG_LEN, MAX_TXN_LEN, MAX_BLK_LEN, MAX_UPLOAD_LEN, AFC_SCRIPT
+from public_constants import MAX_MSG_LEN, MAX_BLK_LEN, AFC_SCRIPT
 from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ubinascii import hexlify as b2a_hex
 from ckcc import watchpoint, is_simulator
 import uselect as select
 from utils import problem_file_line, call_later_ms
-from version import has_fatram, is_devmode
+from version import has_fatram, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied
-from nvstore import settings
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -51,7 +50,7 @@ hid_descp = bytes([
 HSM_WHITELIST = frozenset({
     'logo', 'ping', 'vers',     # harmless/boring
     'upld', 'sha2', 'dwld', 'stxn',     # up/download/sign PSBT needed
-    'mitm','ncry',              # maybe limited by policy tho
+    'mitm', 'ncry',             # maybe limited by policy tho
     'smsg',                     # limited by policy
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
@@ -61,20 +60,20 @@ HSM_WHITELIST = frozenset({
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
 
-
-
 # singleton instance of USBHandler()
 handler = None
 
 def enable_usb():
     # We can't change it on the fly; must be disabled before here
+    # - only one combo of subclasses can be used during a single power-up cycle
     cur = pyb.usb_mode()
     if cur:
         print("USB already enabled: %s" % cur)
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
         hid_info = (0x0, 0x0, 64, 5, hid_descp )
-        pyb.usb_mode('VCP+HID', vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
+        classes = 'VCP+HID' if not has_psram else 'VCP+MSC+HID'
+        pyb.usb_mode(classes, vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler
     if not handler:
@@ -105,7 +104,6 @@ class USBHandler:
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
 
-        #self.msg = bytearray(MAX_MSG_LEN)
         from sram2 import usb_buf
         self.msg = usb_buf
         assert len(self.msg) == MAX_MSG_LEN
@@ -120,6 +118,7 @@ class USBHandler:
         # read next packet (64 bytes) waiting on the wire. Unframe it and return
         # active part of packet, flags associated.
         buf = self.dev.recv(64, timeout=5000)
+        ckcc.usb_active()
 
         if not buf:
             raise FramingError('timeout')
@@ -282,6 +281,7 @@ class USBHandler:
             left -= here
             pos += here
 
+            ckcc.usb_active()
             for retries in range(100):
                 chk = self.dev.send(msg)
                 if chk == 64: break
@@ -306,7 +306,7 @@ class USBHandler:
         except:
             raise FramingError('decode')
 
-        if cmd[0].isupper() and (is_simulator() or is_devmode):
+        if cmd[0].isupper() and is_devmode:
             # special hacky commands to support testing w/ the simulator
             try:
                 from usb_test_commands import do_usb_command
@@ -511,6 +511,7 @@ class USBHandler:
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
             from auth import start_bip39_passphrase
+            from glob import settings
 
             assert settings.get('words', True), 'no seed'
             assert len(args) < 400, 'too long'
@@ -627,6 +628,7 @@ class USBHandler:
         self.encrypt = ctr.cipher
         self.decrypt = ctr.copy().cipher
 
+        from glob import settings
         xfp = settings.get('xfp', 0)
         xpub = settings.get('xpub', '')
 
@@ -654,7 +656,6 @@ class USBHandler:
     async def handle_download(self, offset, length, file_number):
         # let them read from where we store the signed txn
         # - filenumber can be 0 or 1: uploaded txn, or result
-        from sflash import SF
 
         # limiting memory use here, should be MAX_BLK_LEN really
         length = min(length, MAX_BLK_LEN)
@@ -667,18 +668,28 @@ class USBHandler:
         if offset == 0:
             self.file_checksum = sha256()
 
-        pos = (MAX_TXN_LEN * file_number) + offset
-
         resp = bytearray(4 + length)
         resp[0:4] = b'biny'
-        SF.read(pos, memoryview(resp)[4:])
+        buf = memoryview(resp)[4:]
 
-        self.file_checksum.update(memoryview(resp)[4:])
+        pos = (MAX_TXN_LEN * file_number) + offset
+        
+        if has_psram:
+            from glob import PSRAM
+            PSRAM.read(pos, buf)
+        else:
+            from sflash import SF
+            SF.read(pos, buf)
+
+        self.file_checksum.update(buf)
 
         return resp
 
     async def handle_upload(self, offset, total_size, data):
-        from sflash import SF
+        if has_psram:
+            from glob import PSRAM
+        else:
+            from sflash import SF
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
@@ -699,15 +710,16 @@ class USBHandler:
 
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
-                # erase here
                 dis.fullscreen("Receiving...", offset/total_size)
 
-                SF.sector_erase(pos)
+                if not has_psram:
+                    # erase here
+                    SF.sector_erase(pos)
 
-                # expect 10-22 ms delay here
-                await sleep_ms(12)
-                while SF.is_busy():
-                    await sleep_ms(2)
+                    # expect 10-22 ms delay here
+                    await sleep_ms(12)
+                    while SF.is_busy():
+                        await sleep_ms(2)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
@@ -724,11 +736,10 @@ class USBHandler:
                 hdr = memoryview(here)[-128:]
                 magic, = unpack_from('<I', hdr[0:4])
                 if magic == FW_HEADER_MAGIC:
-                    self.is_fw_upgrade = bytes(hdr)
-
                     prob = check_firmware_hdr(hdr, total_size)
                     if prob:
                         raise ValueError(prob)
+                    self.is_fw_upgrade = bytes(hdr)
 
             if is_trailer and self.is_fw_upgrade:
                 # expect the trailer to exactly match the original one
@@ -738,17 +749,20 @@ class USBHandler:
 
                 # but don't write it, instead offer user a chance to abort
                 from auth import authorize_upgrade
-                authorize_upgrade(self.is_fw_upgrade, pos)
+                authorize_upgrade(self.is_fw_upgrade, pos, psram_offset=0)
 
                 # pretend we wrote it, so ckcc-protocol or whatever gives normal feedback
                 return offset
 
-            SF.write(pos, here)
+            # write to SPI Flash / PSRAM
+            if has_psram:
+                PSRAM.write(pos, here)
+            else:
+                SF.write(pos, here)
 
-            # full page write: 0.6 to 3ms
-            while SF.is_busy():
-                await sleep_ms(1)
-
+                # full page write: 0.6 to 3ms
+                while SF.is_busy():
+                    await sleep_ms(1)
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done
@@ -783,7 +797,7 @@ class USBHandler:
 
     def handle_bag_number(self, bag_num):
         import version, callgate
-        from glob import dis
+        from glob import dis, settings
         from pincodes import pa
 
         if version.is_factory_mode and bag_num:

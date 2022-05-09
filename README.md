@@ -8,8 +8,7 @@ with the latest updates and security alerts.
 
 ![coldcard logo](https://coldcard.com/static/images/coldcard-logo-nav.png)
 
-![coldcard picture front](https://coldcard.com/static/images/coldcard-front.png)
-![coldcard picture back](https://coldcard.com/static/images/coldcard-back.png)
+![Mk4 coldcard picture front](https://coldcard.com/static/images/mk4.png)
 
 ## Reproducible Builds
 
@@ -22,15 +21,18 @@ has been automated using Docker. Steps are as follows:
 3. Checkout the code, and start the process.
 
     git clone https://github.com/Coldcard/firmware.git
-    
+
     cd firmware/stm32
-    
+
     make repro
 
 4. At the end of the process a clear confirmation message is shown, or the differences.
 5. Build products can be found `firmware/stm32/built`.
 
 ## Check-out and Setup
+
+**NOTE** This is the `master` branch and covers the latest hardware (Mk4).
+See branch `v4-legacy` for firmware which supports only Mk3/Mk2 and earlier.
 
 Do a checkout, recursively to get all the submodules:
 
@@ -40,6 +42,9 @@ Already checked-out and getting git errors? Do this:
 
     git fetch
     git reset --hard origin/master
+
+Do not use a path with any spaces in it. The Makefiles do not handle
+that well, and we're not planning to fix it.
 
 Then:
 
@@ -85,6 +90,13 @@ Used to be these were needed as well:
 
 You may need to reboot to avoid a `DISPLAY is not set` error.
 
+You may need to `brew upgrade gcc-arm-embedded` because we need 10.2 or higher.
+
+#### Big Sur Issues
+
+- `defaults write org.python.python ApplePersistenceIgnoreState NO` will supress a warning
+  about `Python[22580:10101559] ApplePersistenceIgnoreState: Existing state will not be touched. New state will be written to...` see <https://bugs.python.org/issue32909>
+
 ### Linux
 
 You'll probably need to install these (Ubuntu 16):
@@ -108,6 +120,8 @@ Top-level dirs:
 
 - shared code between desktop test version and real-deal
 - expected to be largely in python, and higher-level
+- new code found only on the Mk4 will be listed in `manifest_mk4.py` code exclusive
+  to earlier hardware is in `manifest_mk3.py`
 
 `unix`
 
@@ -121,25 +135,39 @@ Top-level dirs:
 
 `stm32`
 
-- embedded micro version, for actual product
+- embedded binaries (and building), for actual product hardware
 - final target is a binary file for loading onto hardware
 
 `external`
 
 - code from other projects, ie. the dreaded submodules
 
+`graphics`
+
+- images which ship as part of the final product (icons)
+
 `stm32/bootloader`
 
-- 32k of factory-set code that you cannot change
+- 32k of factory-set code that you cannot change (Mk3)
+- however, you can inspect what code is on your coldcard and compare to this.
+
+`stm32/mk4-bootloader`
+
+- 128k of factory-set code that you cannot change for Mk4
 - however, you can inspect what code is on your coldcard and compare to this.
 
 `hardware`
 
 - schematic and bill of materials for the Coldcard
 
-`unix/work/MicroSD`
+`unix/work/...`
 
-- files on "simulated" microSD card 
+- `/MicroSD/*` files on "simulated" microSD card 
+
+- `/VirtDisk/*` simulated emulated virtual Disk files.
+
+- `/settings/*.aes` persistant settings for Simulator
+
 
 
 ## Support

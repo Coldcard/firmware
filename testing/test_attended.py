@@ -1,6 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Tests that need a person there... mostly when not run on simulator
+# - with mk4 these are unattended
 #
 import time, pytest
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
@@ -30,9 +31,8 @@ def test_backup_accept(dev, need_keypress):
     need_keypress('y')
 
     while 1:
-        if dev.is_simulator:
-            # work our way thru the password quiz... eventually pressing '1' will work.
-            need_keypress('1')
+        # work our way thru the password quiz... eventually pressing '1' will work.
+        need_keypress('1')
 
         time.sleep(0.10)
         done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)

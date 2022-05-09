@@ -1,25 +1,37 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# sffile.py - file-like objects stored in SPI Flash
+# sffile.py - file-like objects stored in SPI Flash (Mk1-3) or PSRAM (Mk4+)
 #
 # - implements stream IO protoccol
 # - does erasing for you
 # - random read, sequential write
 # - only a few of these are possible
 # - the offset is the file name
-# - last 64k of memory reserved for settings
+# - (<Mk3) last 64k of memory reserved for settings
 #
 from uasyncio import sleep_ms
 from uio import BytesIO
 from uhashlib import sha256
-from sflash import SF
+from version import has_psram
 
-# this code works on large "blocks" defined by the chip as 64k
-blksize = const(65536)
+if not has_psram:
+    # Use SPI flash chip
+    from sflash import SF
 
-def PADOUT(n):
-    # rounds up
-    return (n + blksize - 1) & ~(blksize-1)
+    # this code works on large "blocks" defined by the chip as 64k
+    blksize = 65536
+
+    def PADOUT(n):
+        # rounds up
+        return (n + blksize - 1) & ~(blksize-1)
+else:
+    # Use PSRAM chip
+    from glob import PSRAM
+    blksize = 4
+    PADOUT = lambda n: n
+
+    def ALIGN4(n):
+         return n & ~0x3
 
 class SFFile:
     def __init__(self, start, length=0, max_size=None, message=None, pre_erased=False):
@@ -29,12 +41,20 @@ class SFFile:
         self.pos = 0
         self.length = length        # byte-wise length
         self.message = message
+        self.runt = False
 
         if max_size != None:
+            # Write
             self.max_size = PADOUT(max_size) if not pre_erased else max_size
             self.readonly = False
             self.checksum = sha256()
+
+            if has_psram:
+                # up to 3 bytes that haven't been written-out yet
+                self.runt = bytearray()
+                self._pos = 0
         else:
+            # Read
             self.readonly = True
 
     def tell(self):
@@ -70,6 +90,8 @@ class SFFile:
         assert not self.readonly
         assert self.length == 0 # 'already wrote?'
 
+        if has_psram: return
+
         for i in range(0, self.max_size, blksize):
             SF.block_erase(self.start + i)
 
@@ -88,6 +110,8 @@ class SFFile:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
         if self.message:
             from glob import dis
             dis.progress_bar_show(1)
@@ -95,49 +119,83 @@ class SFFile:
         return False
 
     def wait_writable(self):
-        # TODO: timeouts here
+        if has_psram: return
+
         while SF.is_busy():
             pass
+
+    def close(self):
+        # PSRAM might leave a little behind
+        if self.runt:
+            # write final runt, might be up to 3 bytes (padding w/ zeros)
+            assert len(self.runt) <= 3      # , 'rl=%d'%len(self.runt)
+            assert self._pos + len(self.runt) == self.pos
+            self.runt.extend(bytes(4-len(self.runt)))
+            PSRAM.write(self.start + self._pos, self.runt)
+
+            self.runt = None
+            self._pos = self.pos
 
     def write(self, b):
         # immediate write, no buffering
         assert not self.readonly
-        assert self.pos == self.length # "can only append"
-        assert self.pos + len(b) <= self.max_size # "past end: %r" % [self.pos, len(b), self.max_size]
+        assert self.pos == self.length              # "can only append"
+        assert self.pos + len(b) <= self.max_size   # "past end"
 
         left = len(b)
-    
-        # must perform page-aligned (256) writes, but can start
-        # anywhere in the page, and can write just one byte
-        sofar = 0
 
-        while left:
-            if (self.pos + sofar) % 256 != 0:
-                # start is unaligned, do a partial write to align
-                assert sofar == 0 #, (sofar, (self.pos+sofar))       # can only happen on first page
-                runt = min(left, 256 - (self.pos % 256))
-                here = memoryview(b)[0:runt]
-                assert len(here) == runt
-            else:
-                # write full pages, or final runt
-                here = memoryview(b)[sofar:sofar+256]
-                assert 1 <= len(here) <= 256
+        if has_psram: 
+            # Mk4: memory-mapped, but can only do word-aligned writes
+            self.checksum.update(b)
 
-            self.wait_writable()
+            self.runt.extend(b)
+            here = ALIGN4(len(self.runt))
+            if here:
+                PSRAM.write(self.start + self._pos, self.runt[0:here])
+                self._pos += here
+                self.runt = self.runt[here:]
 
-            SF.write(self.start + self.pos + sofar, here)
 
-            left -= len(here)
-            sofar += len(here)
-            self.checksum.update(here)
+            self.pos += left
+            self.length = self.pos
 
-            assert left >= 0
+            if self.message:
+                from glob import dis
+                dis.progress_sofar(self.pos, self.length)
 
-        assert sofar == len(b)
-        self.pos += sofar
-        self.length = self.pos
+            return left
 
-        return sofar
+        else:
+            # must perform page-aligned (256) writes, but can start
+            # anywhere in the page, and can write just one byte
+            sofar = 0
+
+            while left:
+                if (self.pos + sofar) % 256 != 0:
+                    # start is unaligned, do a partial write to align
+                    assert sofar == 0 #, (sofar, (self.pos+sofar))       # can only happen on first page
+                    runt = min(left, 256 - (self.pos % 256))
+                    here = memoryview(b)[0:runt]
+                    assert len(here) == runt
+                else:
+                    # write full pages, or final runt
+                    here = memoryview(b)[sofar:sofar+256]
+                    assert 1 <= len(here) <= 256
+
+                self.wait_writable()
+
+                SF.write(self.start + self.pos + sofar, here)
+
+                left -= len(here)
+                sofar += len(here)
+                self.checksum.update(here)
+
+                assert left >= 0
+
+            assert sofar == len(b)
+            self.pos += sofar
+            self.length = self.pos
+            return sofar
 
     def read(self, ll=None):
         if ll == 0:
@@ -152,32 +210,32 @@ class SFFile:
             return b''
 
         rv = bytearray(ll)
-        SF.read(self.start + self.pos, rv)
+        if has_psram:
+            PSRAM.read(self.start + self.pos, rv)
+        else:
+            SF.read(self.start + self.pos, rv)
 
         self.pos += ll
-
-        if self.message and ll > 1:
-            from glob import dis
-            dis.progress_bar_show(self.pos / self.length)
 
         # altho tempting to return a bytearray (which we already have) many
         # callers expect return to be bytes and have those methods, like "find"
         return bytes(rv)
 
-    def read_into(self, b):
+    def readinto(self, b):
         # limitation: this will read past end of file, but not tell the caller
         actual = min(self.length - self.pos, len(b))
         if actual <= 0:
             return 0
 
-        SF.read(self.start + self.pos, b)
+        if has_psram:
+            PSRAM.read(self.start + self.pos, b)
+        else:
+            SF.read(self.start + self.pos, b)
 
         self.pos += actual
 
         return actual
 
-    def close(self):
-        pass
 
 class SizerFile(SFFile):
     # looks like a file, but forgets everything except file position
@@ -211,7 +269,7 @@ class SizerFile(SFFile):
     def read(self, ll=None):
         raise ValueError
 
-    def read_into(self, b):
+    def readinto(self, b):
         raise ValueError
 
     def close(self):

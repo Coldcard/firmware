@@ -4,8 +4,8 @@ from uasyncio import StreamReader
 
 class Touch:
 
-    # XXX doesn't do key repeat well
-    # XXX emulating a membrane now, not a touch interface
+    # Misnomer: emulating a membrane now, not a touch interface
+    # NOTE: doesn't do key repeat well
 
     def __init__(self, *a, **kw):
 
