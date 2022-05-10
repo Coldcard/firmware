@@ -418,7 +418,7 @@ def qr_quality_check():
     scale=3
     rv = Image.new('RGB', (w*scale, ((h*scale)+TH)*count), color=(64,64,64))
     y = 0
-    fnt = ImageFont.truetype('Courier', size=10)
+    fnt = ImageFont.load_default()
     dr = ImageDraw.Draw(rv)
     mw = int((w*scale) / dr.textsize('M', fnt)[0])
 
