@@ -57,7 +57,7 @@ def hsm_reset(dev, sim_exec):
         # make sure we can setup an HSM now; often need to restart simulator tho
 
         # clear defined config
-        cmd = 'import uos, hsm; uos.unlink(hsm.POLICY_FNAME)'
+        cmd = 'import uos, hsm; uos.remove(hsm.POLICY_FNAME)'
         sim_exec(cmd)
 
         # reset HSM code, to clear previous HSM setup
@@ -74,7 +74,7 @@ def hsm_reset(dev, sim_exec):
     yield doit
 
     try:
-        cmd = 'import uos, hsm; uos.unlink(hsm.POLICY_FNAME)'
+        cmd = 'import uos, hsm; uos.remove(hsm.POLICY_FNAME)'
         sim_exec(cmd)
     except:
         pass
