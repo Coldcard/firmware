@@ -2,7 +2,6 @@
 #
 # Build micropython for stm32 (an ARM processor). Also handles signing of resulting firmware images.
 #
-include version.mk
 
 BOARD = COLDCARD
 MK_NUM = 3
@@ -19,6 +18,8 @@ BOOTLOADER_DIR = bootloader
 LATEST_RELEASE = $(shell ls -t1 ../releases/*.dfu | grep -v mk4 | head -1)
 
 include shared.mk
+# MK3 and MK4 version differ - need to evrwrite here
+VERSION_STRING = 4.1.5
 
 # This is fast for Coinkite devs, but no DFU support in the wild.
 up: dev.dfu
