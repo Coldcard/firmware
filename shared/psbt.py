@@ -623,7 +623,6 @@ class psbtInputProxy(psbtProxy):
 
         return utxo
 
-
     def determine_my_signing_key(self, my_idx, utxo, my_xfp, psbt):
         # See what it takes to sign this particular input
         # - type of script
@@ -1249,7 +1248,7 @@ class psbtObject(psbtProxy):
         # Look an the UTXO's that we are spending. Do we have them? Do the
         # hashes match, and what values are we getting?
         # Important: parse incoming UTXO to build total input value
-        missing = 0
+        foreign = 0
         total_in = 0
 
         for i, txi in self.input_iter():
@@ -1258,9 +1257,13 @@ class psbtObject(psbtProxy):
                 self.presigned_inputs.add(i)
 
             if not inp.has_utxo():
-                # maybe they didn't provide the UTXO
-                missing += 1
-                continue
+                if inp.subpaths and not inp.fully_signed:
+                    # we cannot proceed if the input is ours and there is no UTXO
+                    raise FatalPSBTIssue('Missing own UTXO(s). Cannot determine value being signed')
+                else:
+                    # input clearly not ours
+                    foreign += 1
+                    continue
 
             # pull out just the CTXOut object (expensive)
             utxo = inp.get_utxo(txi.prevout.n)
@@ -1282,17 +1285,14 @@ class psbtObject(psbtProxy):
             del utxo
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
-
-        if missing:
-            # - maybe we aren't expected to sign that input? (coinjoin)
-            self.warnings.append(('Missing UTXOs',
-                    "We don't know enough about the inputs to this transaction to be sure "
-                    "of their value. This means the network fee could be huge, or resulting "
-                    "transaction's signatures invalid."))
-            self.total_value_in = None
-        else:
+        if not foreign:
+            # no foreign inputs, we can calculate the total input value
             assert total_in > 0
             self.total_value_in = total_in
+        else:
+            # 1+ inputs don't belong to us, we can't calculate the total input value
+            # OK for multi-party transactions (coinjoin etc.)
+            self.total_value_in = None
 
         if len(self.presigned_inputs) == self.num_inputs:
             # Maybe wrong for multisig cases? Maybe they want to add their
