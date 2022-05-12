@@ -603,6 +603,11 @@ class USBHandler:
 
         #print("USB garbage: %s +[%d]" % (cmd, len(args)))
 
+        # Force logout if bound and unknown command received
+        if self.bound:
+            from utils import clean_shutdown, call_later_ms
+            call_later_ms(250, clean_shutdown)
+
         return b'err_Unknown cmd'
 
 
