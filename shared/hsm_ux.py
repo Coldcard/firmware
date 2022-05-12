@@ -234,7 +234,7 @@ class hsmUxInteraction:
 
         # 3 statistics; see draw_background for X positions
         y = 28+1
-        for x, val in [ (14, str(hsm_active.approvals)),
+        for x, val in [ (14, str(hsm_active.approvals % 10000)),
                         (51, str(hsm_active.refusals)),
                         (98, left)]:
             tw = 7*len(val)     # = dis.width(val, FontSmall)
