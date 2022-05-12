@@ -1,3 +1,8 @@
+
+## 5.0.4 - 2022-05-24
+
+- Bugfix: Yikes error if clone (receiving end) started without first inserting SD card.
+
 ## 5.0.3 - 2022-05-04
 
 - Enhancement: Support P2TR outputs (pay to Taproot) in PSBT files. Allows
