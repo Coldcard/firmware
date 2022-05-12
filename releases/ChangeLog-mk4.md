@@ -2,6 +2,10 @@
 ## 5.0.4 - 2022-05-24
 
 - Bugfix: Yikes error if clone (receiving end) started without first inserting SD card.
+- Enhancement: In HSM mode, when more than 1k approvals, handle overflow in display,
+  thanks to [@straylight-orbit](https://github.com/straylight-orbit)
+- Corrects obsolete domain name (`coldcardwallet.com`) in repro build script, thanks to
+  [@xavierfiechter](https://github.com/xavierfiechter)
 
 ## 5.0.3 - 2022-05-04
 
