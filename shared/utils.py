@@ -102,7 +102,7 @@ class HexWriter:
         return self
 
     def __exit__(self, *a, **k):
-        self.fd.seek(0, 3)          # go to end
+        self.fd.seek(0, 2)          # go to end
         self.fd.write(b'\r\n')
         return self.fd.__exit__(*a, **k)
 
