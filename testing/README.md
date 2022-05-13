@@ -3,6 +3,9 @@
 
 None of this code ships on the product itself, but it does get used for testing purposes.
 
+## Dependencies
+* 7z
+
 ## Background
 
 - pytest is used to track test cases and fixtures, etc

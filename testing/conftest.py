@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, glob, time, sys, random, re
+import pytest, glob, time, sys, random, re, ndef
 from pprint import pprint
 from ckcc.protocol import CCProtocolPacker, CCProtoError
 from helpers import B2A, U2SAT, prandom
@@ -418,7 +418,10 @@ def qr_quality_check():
     scale=3
     rv = Image.new('RGB', (w*scale, ((h*scale)+TH)*count), color=(64,64,64))
     y = 0
-    fnt = ImageFont.truetype('Courier', size=10)
+    try:
+        fnt = ImageFont.truetype('Courier', size=10)
+    except:
+        fnt = ImageFont.load_default()
     dr = ImageDraw.Draw(rv)
     mw = int((w*scale) / dr.textsize('M', fnt)[0])
 
@@ -866,7 +869,6 @@ def decode_with_bitcoind(bitcoind):
     def doit(raw_txn):
         # verify our understanding of a TXN (and esp its outputs) matches
         # the same values as what bitcoind generates
-
         try:
             return bitcoind.decoderawtransaction(B2A(raw_txn))
         except ConnectionResetError:
@@ -947,7 +949,6 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
     # like "try_sign" but use "air gapped" file transfer via microSD
 
     def doit(f_or_data, accept=True, finalize=False, accept_ms_import=False, complete=False, encoding='binary', del_after=0):
-
         if f_or_data[0:5] == b'psbt\xff':
             ip = f_or_data
             filename = 'memory'
@@ -965,7 +966,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         pat = microsd_path(psbtname+'*.psbt')
         for f in glob(pat):
             assert 'psbt' in f
-            os.unlink(f)
+            os.remove(f)
 
         if encoding == 'hex':
             ip = b2a_hex(ip)
@@ -986,8 +987,7 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         if 'Choose PSBT file' in story:
             need_keypress('y')
             time.sleep(.1)
-            
-        pick_menu_item(psbtname+'.psbt')
+            pick_menu_item(psbtname+'.psbt')
 
         time.sleep(.1)
         
@@ -1305,7 +1305,7 @@ def nfc_write(request, only_mk4):
 @pytest.fixture()
 def nfc_read_json(nfc_read):
     def doit():
-        import ndef, json
+        import json
         got = list(ndef.message_decoder(nfc_read()))
         assert len(got) == 1
         got = got[0]
@@ -1317,7 +1317,6 @@ def nfc_read_json(nfc_read):
 @pytest.fixture()
 def nfc_read_text(nfc_read):
     def doit():
-        import ndef
         got = list(ndef.message_decoder(nfc_read()))
         assert len(got) == 1
         got = got[0]

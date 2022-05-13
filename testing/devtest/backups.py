@@ -98,7 +98,7 @@ async def test_7z():
 
             if had_policy:
                 from hsm import POLICY_FNAME
-                uos.unlink(POLICY_FNAME)
+                uos.remove(POLICY_FNAME)
                 assert not hsm.hsm_policy_available()
 
             with SFFile(0, ll) as fd:

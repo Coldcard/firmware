@@ -464,7 +464,7 @@ def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, 
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'Saves a text file to' in story
+    assert 'Saves a text file' in story
     need_keypress('y')
 
     time.sleep(0.1)
