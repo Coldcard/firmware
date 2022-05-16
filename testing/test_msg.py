@@ -89,7 +89,6 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
     # sign a file on the microSD card
 
     def doit(msg, subpath=None, expect_fail=False):
-
         fname = 't-msgsign.txt'
         result_fname = 't-msgsign-signed.txt'
 
@@ -213,13 +212,13 @@ def test_sign_msg_microsd_fails(dev, sign_on_microsd, msg, concern, no_file, tra
             dev.send_recv(CCProtocolPacker.sign_message(msg.encode('ascii'), path), timeout=None)
         story = ee.value.args[0]
     else:
-        story = sign_on_microsd(msg, path, expect_fail=True)
-
-        if no_file:
-            assert story == 'NO-FILE'
-            return
-        assert story.startswith('Problem: ')
-
+        try:
+            story = sign_on_microsd(msg, path, expect_fail=True)
+            assert story.startswith('Problem: ')
+        except AssertionError as e:
+            if no_file:
+                assert "No suitable files found" in str(e)
+                return
     assert concern in story
 
 @pytest.mark.parametrize('msg,num_iter,expect', [ 
