@@ -47,7 +47,7 @@ else
         # may indicate first attempt to build this release
         echo "Cannot determine release date / full file name."
     else
-        wget -S https://coldcardwallet.com/downloads/$PUBLISHED_BIN
+        wget -S https://coldcard.com/downloads/$PUBLISHED_BIN
     fi
 fi
 cd ../stm32

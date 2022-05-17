@@ -481,7 +481,7 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
 
 async def clone_start(*a):
     # Begins cloning process, on target device.
-    from files import CardSlot, CardMissingError
+    from files import CardSlot, CardMissingError, needs_microsd
 
     ch = await ux_show_story('''Insert a MicroSD card and press OK to start. A small \
 file with an ephemeral public key will be written.''')
