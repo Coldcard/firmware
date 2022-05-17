@@ -2,18 +2,15 @@
 #
 # test Seed XOR features
 #
-import pytest, time, os, re, pdb
-from binascii import a2b_hex, b2a_hex
-from helpers import B2A
-from pycoin.key.BIP32Node import BIP32Node
-from pycoin.key.Key import Key
+import time
+import pytest
 from mnemonic import Mnemonic
 from test_ux import word_menu_entry, pass_word_quiz
 
 wordlist = Mnemonic('english').wordlist
 
-zero32 = ' '.join('abandon' for i in range(23)) + ' art'
-ones32 = ' '.join('zoo' for i in range(23)) + ' vote'
+zero32 = ' '.join('abandon' for _ in range(23)) + ' art'
+ones32 = ' '.join('zoo' for _ in range(23)) + ' vote'
 
 @pytest.mark.parametrize('incl_self', [False, True])
 @pytest.mark.parametrize('parts, expect', [
@@ -38,11 +35,11 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
     pick_menu_item('Seed Functions')
     pick_menu_item('Seed XOR')
     pick_menu_item('Restore Seed XOR')
-    time.sleep(.01); 
+    time.sleep(.01)
     title, body = cap_story()
 
     assert 'all the parts' in body
-    need_keypress('y');    
+    need_keypress('y')
     time.sleep(0.01)
 
     title, body = cap_story()
@@ -94,7 +91,7 @@ def test_xor_split(qty, trng, goto_home, pick_menu_item, cap_story, need_keypres
     pick_menu_item('Seed Functions')
     pick_menu_item('Seed XOR')
     pick_menu_item('Split Existing')
-    time.sleep(.01); 
+    time.sleep(.01)
     title, body = cap_story()
 
     assert 'Seed XOR Split' in body
@@ -103,13 +100,13 @@ def test_xor_split(qty, trng, goto_home, pick_menu_item, cap_story, need_keypres
     assert str(qty) in body
     need_keypress(str(qty))
 
-    time.sleep(.01); 
+    time.sleep(.01)
     title, body = cap_story()
     assert f"Split Into {qty} Parts" in body
     assert f"{qty*24} words" in body
 
     need_keypress('2' if trng else 'y')
-    time.sleep(.01); 
+    time.sleep(.01)
     title, body = cap_story()
 
     assert f'Record these {qty} lists of 24-words' in body
@@ -157,11 +154,11 @@ def test_import_zero_set(goto_home, pick_menu_item, cap_story, need_keypress, ca
     pick_menu_item('Seed Functions')
     pick_menu_item('Seed XOR')
     pick_menu_item('Restore Seed XOR')
-    time.sleep(.01); 
+    time.sleep(.01)
     title, body = cap_story()
 
     assert 'all the parts' in body
-    need_keypress('y');    
+    need_keypress('y')
     time.sleep(0.01)
 
     title, body = cap_story()
@@ -206,7 +203,7 @@ def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, n
     time.sleep(0.01)
     title, body = cap_story()
     assert 'all the parts' in body
-    need_keypress('y');    
+    need_keypress('y')
     time.sleep(0.01)
 
     for n, part in enumerate(parts):
