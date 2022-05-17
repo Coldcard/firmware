@@ -5,9 +5,7 @@
 # - many test "sync" issues here; case is right but gets outs of sync with DUT
 # - use `./simulator.py --eff --set nfc=1`
 #
-import pytest, glob, pdb
-from helpers import B2A
-from binascii import b2a_hex, a2b_hex
+import pytest
 from struct import pack, unpack
 import ndef
 from hashlib import sha256
@@ -143,7 +141,6 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
             assert meta['lang'] == 'en'
             if txt_msg:
                 assert data == txt_msg.encode('utf-8')
-
 
 
 @pytest.fixture
@@ -321,25 +318,6 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
     # cleanup / restore
     sim_exec('from pyb import SDCard; SDCard.ejected = False')
 
-
-@pytest.mark.unfinalized            # iff partial=1
-@pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
-@pytest.mark.parametrize('num_outs', [1,2])
-@pytest.mark.parametrize('partial', [1, 0])
-def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev, settings_set):
-    xp = dev.master_xpub
-
-    def hack(psbt):
-        if partial:
-            # change first input to not be ours
-            pk = list(psbt.inputs[0].bip32_paths.keys())[0]
-            pp = psbt.inputs[0].bip32_paths[pk]
-            psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
-
-    psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
-
-    _, txn, txid = try_sign_nfc(psbt, expect_finalize=not partial, encoding=encoding)
-
 @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
 def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
     # Read signing result (transaction) over NFC, decode it.
@@ -379,6 +357,24 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
             assert got.data == sha256(result).digest()
         else:
             raise ValueError(got.type)
+
+@pytest.mark.unfinalized            # iff partial=1
+@pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
+@pytest.mark.parametrize('num_outs', [1,2])
+@pytest.mark.parametrize('partial', [1, 0])
+def test_nfc_signing(encoding, num_outs, partial, try_sign_nfc, fake_txn, dev, settings_set):
+    xp = dev.master_xpub
+
+    def hack(psbt):
+        if partial:
+            # change first input to not be ours
+            pk = list(psbt.inputs[0].bip32_paths.keys())[0]
+            pp = psbt.inputs[0].bip32_paths[pk]
+            psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
+
+    psbt = fake_txn(2, num_outs, xp, segwit_in=True, psbt_hacker=hack)
+
+    _, txn, txid = try_sign_nfc(psbt, expect_finalize=not partial, encoding=encoding)
 
 def test_rf_uid(rf_interface, cap_story, goto_home, pick_menu_item):
     # read UID of NFC chip over the air
