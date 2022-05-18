@@ -55,6 +55,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
 
         assert qr == addr or qr == addr.upper()
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('example_addr', [
         '2N2VBntgcoY4wN7H6VfrhH8an1BwieRMZCF', '2N551pf65tPS7VthC1rvwFDbLA1EUDYkTg9'])
 def test_addr_vs_bitcoind(bitcoind, match_key, need_keypress, example_addr, dev):

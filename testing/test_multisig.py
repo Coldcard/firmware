@@ -407,6 +407,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
     return doit
     
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(1,3), (2,3), (3,3), (3,6), (10, 15), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
@@ -425,6 +426,7 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
     finally:
         clear_ms()
 
+@pytest.mark.bitcoind
 @pytest.mark.ms_danger
 def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks):
     # detect when pubkeys are not in order in the redeem script
@@ -442,6 +444,7 @@ def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
         clear_ms()
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('which_pubkey', [0, 1, 14])
 def test_bad_pubkey(has_ms_checks, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
     # give incorrect pubkey inside redeem script
@@ -461,6 +464,8 @@ def test_bad_pubkey(has_ms_checks, clear_ms, import_ms_wallet, need_keypress, te
     finally:
         clear_ms()
 
+
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_zero_depth(clear_ms, addr_fmt, import_ms_wallet, need_keypress, test_ms_show_addr, make_multisig):
     # test having a co-signer with "m" only key ... ie. depth=0
@@ -487,6 +492,7 @@ def test_zero_depth(clear_ms, addr_fmt, import_ms_wallet, need_keypress, test_ms
 
 @pytest.mark.parametrize('mode', ['wrong-xfp', 'long-path', 'short-path', 'zero-path'])
 @pytest.mark.ms_danger
+@pytest.mark.bitcoind
 def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks, request):
     # give incorrect xfp+path args during show_address
 
@@ -534,6 +540,7 @@ def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
     "m/",
     "m/1/2/3/4/5/6/7/8/9/10/11/12/13",          # assuming MAX_PATH_DEPTH==12
 ])
+@pytest.mark.bitcoind
 def test_bad_common_prefix(cpp, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
     # give some incorrect path values as the common prefix derivation
 
@@ -932,6 +939,7 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import, need_
     clear_ms()
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 def test_import_dup_xfp_fails(m_of_n, addr_fmt, clear_ms, make_multisig, import_ms_wallet, need_keypress, test_ms_show_addr):
@@ -1209,6 +1217,7 @@ def test_ms_sign_simple(N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_
         try_sign(psbt)
 
 @pytest.mark.unfinalized
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 15 ])
 @pytest.mark.parametrize('M', [ 2, 4, 1])
 @pytest.mark.parametrize('segwit', [True, False])

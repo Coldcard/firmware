@@ -183,6 +183,7 @@ if 0:
         open('debug/mega.txn', 'wb').write(txn)
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES)
 def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
@@ -256,7 +257,8 @@ def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
             assert len(shown) + len(hidden) == len(decoded['vout'])
             assert max(v for v,d in hidden) >= min(v for v,d in shown)
     
-    
+
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('segwit', [True, False])
 def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitcoind):
@@ -277,6 +279,7 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitc
     assert len(decoded['vin']) == num_ins
     if segwit:
         assert all(x['txinwitness'] for x in decoded['vin'])
+
 
 @pytest.mark.unfinalized        # iff we_finalize=F
 @pytest.mark.parametrize('we_finalize', [ False, True ])
@@ -417,6 +420,7 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     #assert 'require subpaths to be spec' in str(ee)
 
+@pytest.mark.bitcoind
 @pytest.mark.unfinalized
 def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
     # Check we can finalize p2sh_p2wpkh inputs right.
@@ -452,6 +456,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     assert network == signed
 
+@pytest.mark.bitcoind
 @pytest.mark.unfinalized
 def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind, offer_ms_import, need_keypress, clear_ms):
     # Use the private key given in BIP 174 and do similar signing
@@ -529,6 +534,7 @@ def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, d
                 return float(round(o, 8))
             raise TypeError
         json.dump(decode, open('debug/core-decode.json', 'wt'), indent=2, default=EncodeDecimal)
+
 
 @pytest.mark.bitcoind
 def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):

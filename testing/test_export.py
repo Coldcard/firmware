@@ -16,6 +16,7 @@ from conftest import simulator_fixed_xfp, simulator_fixed_xprv
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH, AF_P2WSH_P2SH
 from pprint import pprint
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
 def test_export_core(dev, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet, bitcoind_d_wallet, enter_number):
     # test UX and operation of the 'bitcoin core' wallet export
