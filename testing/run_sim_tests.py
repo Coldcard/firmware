@@ -4,17 +4,25 @@ it will try to re-run those failed test with fresh simulator. has to be run from
 Do not forget to comment/uncomment line in pytest.ini.
 
 . ENV/bin/activate
-python run_sim_tests.py
-python run_sim_tests.py --veryslow                             # also run very slow tests
-python run_sim_tests.py --onetime                              # also run onetime tests (each will get its own simulator)
-python run_sim_tests.py --onetime --veryslow                   # run all but manual tests
+python run_sim_tests.py --help
+python run_sim_tests.py --veryslow                             # run ONLY very slow tests
+python run_sim_tests.py --onetime                              # run ONLY onetime tests (each will get its own simulator)
+python run_sim_tests.py --onetime --veryslow                   # run both onetime and very slow
 python run_sim_tests.py -m test_nfc.py                         # run only nfc tests
-python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run only nfc tests
+python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run nfc and hsm tests
+python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow
+python run_sim_tests.py -m all --onetime --veryslow            # run all test (most useful - grab coffee and wait)
 
 
 Onetime/veryslow tests are completely separated form the rest of the test suite.
 When using -m/--module do not expect the --onetime/--veryslow to apply. If --onetime/--veryslow
-is specified, these test will run at the end.
+is specified, these test will run at the end or alone.
+
+python run_sim_tests.py --collect onetime                      # just print all onetime tests to stdout
+python run_sim_tests.py --collect veryslow                     # just print all veryslow tests to stdout
+python run_sim_tests.py --collect manual                       # just print all manual tests to stdout
+
+Make sure to run manual test if you want to state that your changes passed all the tests.
 """
 
 import os
@@ -193,6 +201,8 @@ def main():
 
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
     if args.module is None:
+        test_modules = []
+    elif len(args.module) == 1 and args.module[0].lower() == "all":
         test_modules = sorted(glob.glob("test_*.py"))
     else:
         for fn in args.module:
