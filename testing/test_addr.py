@@ -56,25 +56,19 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
         assert qr == addr or qr == addr.upper()
 
 @pytest.mark.bitcoind
-@pytest.mark.parametrize('example_addr', [
-        '2N2VBntgcoY4wN7H6VfrhH8an1BwieRMZCF', '2N551pf65tPS7VthC1rvwFDbLA1EUDYkTg9'])
-def test_addr_vs_bitcoind(bitcoind, match_key, need_keypress, example_addr, dev):
+def test_addr_vs_bitcoind(use_regtest, match_key, need_keypress, dev, bitcoind_d_sim):
     # check our p2wpkh wrapped in p2sh is right
-    
-    # PROBLEM: your bitcoind probably needs same transaction history as mine, so it knows
-    # about this address and its contents/key path.
+    use_regtest()
+    for i in range(5):
+        core_addr = bitcoind_d_sim.getnewaddress(f"{i}-addr", "p2sh-segwit")
+        assert core_addr[0] == '2'
+        resp = bitcoind_d_sim.getaddressinfo(core_addr)
+        assert resp['embedded']['iswitness'] == True
+        assert resp['isscript'] == True
+        path = resp['hdkeypath']
 
-    assert example_addr[0] == '2'
-    resp = bitcoind.getaddressinfo(example_addr)
-
-    assert resp['embedded']['iswitness'] == True
-    assert resp['isscript'] == True
-    path = resp['hdkeypath']
-
-    addr = dev.send_recv(CCProtocolPacker.show_address(path, AF_P2WPKH_P2SH), timeout=None)
-    need_keypress('y')
-
-    assert addr == example_addr
-        
+        addr = dev.send_recv(CCProtocolPacker.show_address(path, AF_P2WPKH_P2SH), timeout=None)
+        need_keypress('y')
+        assert addr == core_addr
 
 # EOF

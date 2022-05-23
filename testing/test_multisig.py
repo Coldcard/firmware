@@ -6,6 +6,7 @@
 #
 #       py.test test_multisig.py -m ms_danger --ms-danger
 #
+import base64
 import time, pytest, os, random, json, shutil, pdb
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
 from ckcc.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
@@ -71,10 +72,10 @@ def bitcoind_p2sh(bitcoind):
         }[fmt]
 
         try:
-            rv = bitcoind.createmultisig(M, [B2A(i) for i in pubkeys], fmt)
+            rv = bitcoind.rpc.createmultisig(M, [B2A(i) for i in pubkeys], fmt)
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
-            rv = bitcoind.createmultisig(M, [B2A(i) for i in pubkeys], fmt)
+            rv = bitcoind.rpc.createmultisig(M, [B2A(i) for i in pubkeys], fmt)
 
         return rv['address'], rv['redeemScript']
 
@@ -410,8 +411,8 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(1,3), (2,3), (3,3), (3,6), (10, 15), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
-
+def test_import_ranges(m_of_n, use_regtest, addr_fmt, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+    use_regtest()
     M, N = m_of_n
 
     keys = import_ms_wallet(M, N, addr_fmt, accept=1)
@@ -428,7 +429,7 @@ def test_import_ranges(m_of_n, addr_fmt, clear_ms, import_ms_wallet, need_keypre
 
 @pytest.mark.bitcoind
 @pytest.mark.ms_danger
-def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks):
+def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks):
     # detect when pubkeys are not in order in the redeem script
     M, N = 1, 15
 
@@ -446,7 +447,7 @@ def test_violate_bip67(clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('which_pubkey', [0, 1, 14])
-def test_bad_pubkey(has_ms_checks, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
+def test_bad_pubkey(has_ms_checks, use_regtest, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
     # give incorrect pubkey inside redeem script
     M, N = 1, 15
     keys = import_ms_wallet(M, N, accept=1)
@@ -467,7 +468,7 @@ def test_bad_pubkey(has_ms_checks, clear_ms, import_ms_wallet, need_keypress, te
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-def test_zero_depth(clear_ms, addr_fmt, import_ms_wallet, need_keypress, test_ms_show_addr, make_multisig):
+def test_zero_depth(clear_ms, use_regtest, addr_fmt, import_ms_wallet, need_keypress, test_ms_show_addr, make_multisig):
     # test having a co-signer with "m" only key ... ie. depth=0
 
     M, N = 1, 2
@@ -493,7 +494,7 @@ def test_zero_depth(clear_ms, addr_fmt, import_ms_wallet, need_keypress, test_ms
 @pytest.mark.parametrize('mode', ['wrong-xfp', 'long-path', 'short-path', 'zero-path'])
 @pytest.mark.ms_danger
 @pytest.mark.bitcoind
-def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks, request):
+def test_bad_xfp(mode, clear_ms, use_regtest, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks, request):
     # give incorrect xfp+path args during show_address
 
     if has_ms_checks and (mode in {'zero-path', 'wrong-xfp'}):
@@ -541,7 +542,7 @@ def test_bad_xfp(mode, clear_ms, import_ms_wallet, need_keypress, test_ms_show_a
     "m/1/2/3/4/5/6/7/8/9/10/11/12/13",          # assuming MAX_PATH_DEPTH==12
 ])
 @pytest.mark.bitcoind
-def test_bad_common_prefix(cpp, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+def test_bad_common_prefix(cpp, use_regtest, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
     # give some incorrect path values as the common prefix derivation
 
     M, N = 1, 15
@@ -942,7 +943,7 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import, need_
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-def test_import_dup_xfp_fails(m_of_n, addr_fmt, clear_ms, make_multisig, import_ms_wallet, need_keypress, test_ms_show_addr):
+def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms, make_multisig, import_ms_wallet, need_keypress, test_ms_show_addr):
 
     M, N = m_of_n
 
@@ -1222,7 +1223,7 @@ def test_ms_sign_simple(N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, import_
 @pytest.mark.parametrize('M', [ 2, 4, 1])
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
-def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
+def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
@@ -1231,6 +1232,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
     num_outs = len(all_out_styles)
 
     clear_ms()
+    use_regtest()
 
     # create a wallet, with 3 bip39 pw's
     keys, select_wallet = make_myself_wallet(M, do_import=(not incl_xpubs))
@@ -1240,14 +1242,14 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
-    open(f'debug/myself-before.psbt', 'wb').write(psbt)
+    open(f'debug/myself-before.psbt', 'w').write(base64.b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
         _, updated = try_sign(psbt, accept_ms_import=(incl_xpubs and (idx==0)))
-        open(f'debug/myself-after.psbt', 'wb').write(updated)
+        open(f'debug/myself-after.psbt', 'w').write(base64.b64encode(updated).decode())
         assert updated != psbt
 
-        aft = BasicPSBT().parse(updated)
+        aft = BasicPSBT().parse(updated)  # TODO something is off here xpub is longer than 79 - core returs error
 
         # check all inputs gained a signature
         assert all(len(i.part_sigs)==(idx+1) for i in aft.inputs)
@@ -1255,15 +1257,14 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
         psbt = updated
 
     # should be fully signed now.
-    anal = bitcoind_analyze(aft.as_bytes())
-
+    anal = bitcoind_analyze(psbt)
     try:
         assert not any(inp.get('missing') for inp in anal['inputs']), "missing sigs: %r" % anal
         assert all(inp['next'] in {'finalizer','updater'} for inp in anal['inputs']), "other issue: %r" % anal
     except:
         # XXX seems to be a bug in analyzepsbt function ... not fully studied
         pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
-        decode = bitcoind_decode(aft.as_bytes())
+        decode = bitcoind_decode(psbt)
         pprint(decode, stream=open('debug/decoded.txt', 'wt'))
     
         if M==N or segwit:
@@ -1273,7 +1274,7 @@ def test_ms_sign_myself(M, make_myself_wallet, segwit, num_ins, dev, clear_ms,
             print("ignoring bug in bitcoind")
 
     if 0:
-        # why doesn't this work?
+        # why doesn't this work? # TODO produced PSBT is invalid, cannot finalize (both core and us)
         extracted_psbt, txn, is_complete = bitcoind_finalizer(aft.as_bytes(), extract=True)
 
         ex = BasicPSBT().parse(extracted_psbt)
@@ -1447,7 +1448,7 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
-def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style):
+def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style, use_regtest):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
@@ -1455,8 +1456,7 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
     # - before starting this test, have some funds already deposited to bitcoind testnet wallet
     from pycoin.encoding import sec_to_public_pair
     from binascii import a2b_hex
-    import re
-
+    use_regtest()
     if addr_style == 'legacy':
         addr_fmt = AF_P2SH
     elif addr_style == 'p2sh-segwit':
@@ -1464,13 +1464,10 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
     elif addr_style == 'bech32':
         addr_fmt = AF_P2WSH
     
-    try:
-        addr, = bitcoind.getaddressesbylabel("sim-cosign").keys()
-    except:
-        addr = bitcoind.getnewaddress("sim-cosign")
 
-    info = bitcoind.getaddressinfo(addr)
-    #pprint(info)
+    addr = bitcoind.supply_wallet.getnewaddress("sim-cosign")
+
+    info = bitcoind.supply_wallet.getaddressinfo(addr)
 
     assert info['address'] == addr
     bc_xfp = swab32(int(info['hdmasterfingerprint'], 16))
@@ -1500,7 +1497,7 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
     
 
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
-    resp = bitcoind.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
+    resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
                                                 'shared-addr-'+addr_style, addr_style)
     ms_addr = resp['address']
     bc_redeem = a2b_hex(resp['redeemScript'])
@@ -1529,42 +1526,12 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
                             '2N1hZJ5mazTX524GQTPKkCT4UFZn5Fqwdz6',
                             'tb1qpcv2rkc003p5v8lrglrr6lhz2jg8g4qa9vgtrgkt0p5rteae5xtqn6njw9')
 
-    # Need some UTXO to sign
-    #
-    # - but bitcoind can't give me that (using listunspent) because it's only a watched addr??
-    #
-    did_fund = False
-    while 1:
-        rr = explora('address', ms_addr, 'utxo')
-        pprint(rr)
-
-        avail = []
-        amt = 0
-        for i in rr:
-            txn = i['txid']
-            vout = i['vout']
-            avail.append( (txn, vout) )
-            amt += i['value']
-
-            # just use first UTXO available; save other for later tests
-            break
-
-        else:
-            # doesn't need to confirm, but does need to reach public testnet/blockstream
-            assert not amt and not avail
-
-            if not did_fund:
-                print(f"Sending some XTN to {ms_addr}  (wait)")
-                bitcoind.sendtoaddress(ms_addr, 0.0001, 'fund testing')
-                did_fund = True
-            else:
-                print(f"Still waiting ...")
-
-            time.sleep(2)
-
-        if amt: break
-
-    ret_addr = bitcoind.getrawchangeaddress()
+    # fund multisig address
+    bitcoind.supply_wallet.importaddress(ms_addr, 'shared-addr-'+addr_style, True)
+    bitcoind.supply_wallet.sendtoaddress(address=ms_addr, amount=5)
+    bitcoind.supply_wallet.generatetoaddress(101, bitcoind.supply_wallet.getnewaddress())  # mining
+    unspent = bitcoind.supply_wallet.listunspent(addresses=[ms_addr])
+    ret_addr = bitcoind.supply_wallet.getrawchangeaddress()
 
     ''' If you get insufficent funds, even tho we provide the UTXO (!!), do this:
 
@@ -1574,11 +1541,13 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
         got from non-multisig to multisig on same bitcoin-qt instance).
         -> Now doing that, automated, above.
     '''
-    resp = bitcoind.walletcreatefundedpsbt([dict(txid=t, vout=o) for t,o in avail],
-               [{ret_addr: amt/1E8}], 0,
+    resp = bitcoind.supply_wallet.walletcreatefundedpsbt([dict(txid=unspent[0]["txid"], vout=unspent[0]["vout"])],
+               [{ret_addr: 2}], 0,
                 {'subtractFeeFromOutputs': [0], 'includeWatching': True}, True)
 
-    assert resp['changepos'] == -1
+    resp = bitcoind.supply_wallet.walletprocesspsbt(resp["psbt"])
+
+    # assert resp['changepos'] == -1
     psbt = b64decode(resp['psbt'])
 
     open('debug/funded.psbt', 'wb').write(psbt)
@@ -1598,19 +1567,21 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, 
 
     open('debug/cc-updated.psbt', 'wb').write(updated)
 
-    # have bitcoind do the rest of the signing
-    rr = bitcoind.walletprocesspsbt(b64encode(updated).decode('ascii'))
-    pprint(rr)
-
-    open('debug/bc-processed.psbt', 'wt').write(rr['psbt'])
-    assert rr['complete']
+    # # have bitcoind do the rest of the signing
+    # rr = bitcoind.supply_wallet.walletprocesspsbt(b64encode(updated).decode('ascii'))
+    # pprint(rr)
+    #
+    # open('debug/bc-processed.psbt', 'wt').write(rr['psbt'])
+    # assert rr['complete']
+    # TODO I have moved this up - so that bitcoind signs first, if it signed second it failed with
+    # TODO "Specified sighash value does not match value stored in PSBT"
 
     # finalize and send
-    rr = bitcoind.finalizepsbt(rr['psbt'], True)
+    rr = bitcoind.supply_wallet.finalizepsbt(b64encode(updated).decode('ascii'), True)
     open('debug/bc-final-txn.txn', 'wt').write(rr['hex'])
     assert rr['complete']
 
-    txn_id = bitcoind.sendrawtransaction(rr['hex'])
+    txn_id = bitcoind.supply_wallet.sendrawtransaction(rr['hex'])
     print(txn_id)
 
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH] )

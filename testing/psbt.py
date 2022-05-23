@@ -230,7 +230,7 @@ class BasicPSBT:
             raw = a2b_hex(raw.strip())
         if raw[0:6] == b'cHNidP':
             raw = b64decode(raw)
-        assert raw[0:5] == b'psbt\xff', "bad magic"
+        assert raw[0:5] == b'psbt\xff', "bad magic {}".format(raw[0:5])
 
         with io.BytesIO(raw[5:]) as fd:
             

@@ -712,7 +712,8 @@ class MultisigWallet:
             assert node.privkey() == None       # 'no privkeys plz'
         except ValueError:
             pass
-        assert chain.ctype == expect_chain      # 'wrong chain'
+        # HACK but there is no difference extended_keys - just bech32 hrp
+        assert chain.ctype == expect_chain or expect_chain == "XRT" and chain.ctype == "XTN"      # 'wrong chain'
 
         depth = node.depth()
 

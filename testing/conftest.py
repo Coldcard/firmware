@@ -1,11 +1,10 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, glob, time, sys, random, re, ndef
-from pprint import pprint
-from ckcc.protocol import CCProtocolPacker, CCProtoError
+import pytest, time, sys, random, re, ndef
+from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode, explora
-from api import bitcoind_wallet, bitcoind_d_wallet
+from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim
 from binascii import b2a_hex, a2b_hex
 from constants import *
 
@@ -257,7 +256,7 @@ def addr_vs_path(master_xpub):
                 hrp, data, enc = bech32_decode(given_addr)
                 assert enc == Encoding.BECH32
                 decoded = convertbits(data[1:], 5, 8, False)
-                assert hrp in {'tb', 'bc' }
+                assert hrp in {'tb', 'bc' , 'bcrt'}
                 assert bytes(decoded[-20:]) == pkh
             else:
                 assert addr_fmt == AF_P2WPKH_P2SH
@@ -276,7 +275,7 @@ def addr_vs_path(master_xpub):
             elif addr_fmt == AF_P2WSH:
                 hrp, data, enc = bech32_decode(given_addr)
                 assert enc == Encoding.BECH32
-                assert hrp in {'tb', 'bc' }
+                assert hrp in {'tb', 'bc' , 'bcrt'}
                 decoded = convertbits(data[1:], 5, 8, False)
                 assert bytes(decoded[-32:]) == sha256(script).digest()
 
@@ -669,6 +668,15 @@ def use_mainnet(settings_set):
     yield doit
     settings_set('chain', 'XTN')
 
+
+@pytest.fixture(scope="function")
+def use_regtest(settings_set):
+    def doit():
+        settings_set('chain', 'XRT')
+    yield doit
+    settings_set('chain', 'XTN')
+
+
 @pytest.fixture(scope="function")
 def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific bip32 master key
@@ -870,7 +878,7 @@ def decode_with_bitcoind(bitcoind):
         # verify our understanding of a TXN (and esp its outputs) matches
         # the same values as what bitcoind generates
         try:
-            return bitcoind.decoderawtransaction(B2A(raw_txn))
+            return bitcoind.rpc.decoderawtransaction(B2A(raw_txn))
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
             return bitcoind.decoderawtransaction(B2A(raw_txn))
@@ -893,17 +901,17 @@ def decode_psbt_with_bitcoind(bitcoind):
     return doit
 
 @pytest.fixture()
-def check_against_bitcoind(bitcoind, sim_exec, sim_execfile):
+def check_against_bitcoind(bitcoind, use_regtest, sim_exec, sim_execfile):
 
     def doit(hex_txn, fee, num_warn=0, change_outs=None, dests=[]):
         # verify our understanding of a TXN (and esp its outputs) matches
         # the same values as what bitcoind generates
 
         try:
-            decode = bitcoind.decoderawtransaction(hex_txn)
+            decode = bitcoind.rpc.decoderawtransaction(hex_txn)
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
-            decode = bitcoind.decoderawtransaction(hex_txn)
+            decode = bitcoind.rpc.decoderawtransaction(hex_txn)
 
         #print("Bitcoin code says:", end=''); pprint(decode)
 
