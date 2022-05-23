@@ -1448,7 +1448,7 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
-def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, explora, try_sign, need_keypress, addr_style, use_regtest):
+def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, try_sign, need_keypress, addr_style, use_regtest):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>

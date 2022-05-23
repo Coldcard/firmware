@@ -1,13 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Access a local bitcoin-Qt/bitcoind on testnet (must be v22 or higher)
-#
-# Must have these lines in the bitcoin.conf file:
-#
-#   testnet=1
-#   server=1
-#   rpcservertimeout=2000  # for test_sign.py::test_io_size
-#
+# needs local bitcoind in PATH
 
 import os
 import time
@@ -20,16 +13,12 @@ import tempfile
 import subprocess
 from authproxy import AuthServiceProxy, JSONRPCException
 from base64 import b64encode, b64decode
-from constants import simulator_fixed_words
-
-URL = '127.0.0.1:18332/wallet/'
 
 
 # stolen from HWI test suite and slightly modified
 class Bitcoind:
-    def __init__(self, bitcoind_path, signer="/home/more/PycharmProjects/HWI/venv/lib/python3.8/site-packages/hwi.py"):
+    def __init__(self, bitcoind_path):
         self.bitcoind_path = bitcoind_path
-        self.signer = signer
         self.datadir = tempfile.mkdtemp()
         self.rpc = None
         self.bitcoind_proc = None
@@ -53,7 +42,6 @@ class Bitcoind:
             [
                 self.bitcoind_path,
                 "-regtest",
-                f"-signer={self.signer}",
                 f"-datadir={self.datadir}",
                 "-noprinttoconsole",
                 "-fallbackfee=0.0002",
@@ -188,18 +176,6 @@ def bitcoind_decode(bitcoind):
 
     def doit(psbt):
         return bitcoind.rpc.decodepsbt(b64encode(psbt).decode('ascii'))
-
-    return doit
-
-
-@pytest.fixture
-def explora():
-    def doit(*parts):
-        import urllib.request
-        import json
-        url = 'https://blockstream.info/testnet/api/' + '/'.join(parts)
-        with urllib.request.urlopen(url) as response:
-           return json.load(response)
 
     return doit
 
