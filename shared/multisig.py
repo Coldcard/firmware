@@ -259,7 +259,7 @@ class MultisigWallet:
     @classmethod
     def find_candidates(cls, xfp_paths, addr_fmt=None, M=None):
         # Return a list of matching wallets for various M values.
-        # - xpfs_paths hsould already be sorted
+        # - xpfs_paths should already be sorted
         # - returns set of matches, of any M value
 
         # we know N, but not M at this point.

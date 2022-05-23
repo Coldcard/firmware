@@ -343,7 +343,8 @@ def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **
     script, pubkeys, xfp_paths = make_redeem(M, keys, **make_redeem_args)
 
     if addr_fmt == AF_P2WSH:
-        hrp = ['bc', 'tb'][testnet]
+        # testnet=2 --> regtest
+        hrp = ['bc', 'tb', 'bcrt'][testnet]
         data = sha256(script).digest()
         addr = bech32.encode(hrp, 0, data)
         scriptPubKey = bytes([0x0, 0x20]) + data

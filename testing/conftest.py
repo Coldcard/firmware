@@ -420,7 +420,11 @@ def qr_quality_check():
     try:
         fnt = ImageFont.truetype('Courier', size=10)
     except:
-        fnt = ImageFont.load_default()
+        try:
+            fnt = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', size=10)
+        except:
+            fnt = ImageFont.load_default()
+
     dr = ImageDraw.Draw(rv)
     mw = int((w*scale) / dr.textsize('M', fnt)[0])
 
