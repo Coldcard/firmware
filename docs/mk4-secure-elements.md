@@ -85,23 +85,23 @@ increases flexibility and resistance to known plain text attacks.
 
 ## All the Keys
 
-| Symbol        | Chip's Name | Type | Holder   | Purpose
-|---------------|-------------|------|----------|----------
-| `SE1 pairing` | slot 1      | HMAC | SE1, MCU | Protects communications between SE1 and MCU
-| `SE2 pairing` | secret A    | HMAC | SE2, MCU | Pairing for SE2
-| `SE2 comms`   | keypair A   | ECC  | SE2      | MCU captures pubkey half, used in ECDH comms
-| `SE joiner`   | slot 7, pubkey C    | ECC  | SE1/SE2  | SE2 knows only public part, SE1 has privkey
-| `pin stretch` | slot 2      | HMAC | SE1      | Key stretching for PIN entry and anti-phish words
-| `firmware`    | slot 14     | SHA256d | SE1      | Firmware checksum, controls green/red LEDs
-| `nonce/chksum` | slot 10    | data | SE1        | AES nonce and GMAC tag, protected by PIN
-| `SE2 easy key` | page 15    | AES via HMAC  | SE2      | Another SE2 part of AES seed key
-| `SE2 hard key` | page 14    | AES via ECC  | SE2      | SE2's part of AES seed key; ECC used to unlock
-| `tpin key`      | `tpin_key` | HMAC(key) | MCU   | Key for HMAC used to encrypt trick PINs
-| `trick PIN slots` | pages 0-12 | HMAC | SE2     | Protect duress wallet seeds and pins (6 spots)
-| `SE2 trash`   | secret B    | HMAC | SE2      | Used to destroy values (only SE2 knows the value)
-| `hash cache secret` | `hash_cache_secret`  | XOR/AES | MCU   | In-memory encryption of actual PIN when unlocked
-| `mcu hmac key`     | `mcu_hmac_key` | HMAC | MCU | Used as HMAC key to compress other keys
-| `replaceable mcu key`       | `MCU_KEYS` | AES | MCU    | Replaceable MCU key (up to 256 times)
+| Symbol                | Chip's Name         | Type         | Holder   | Purpose
+|-----------------------|---------------------|--------------|----------|----------
+| `SE1 pairing`         | slot 1              | HMAC         | SE1, MCU | Protects communications between SE1 and MCU
+| `SE2 pairing`         | secret A            | HMAC         | SE2, MCU | Pairing for SE2
+| `SE2 comms`           | keypair A           | ECC          | SE2      | MCU captures pubkey half, used in ECDH comms
+| `SE joiner`           | slot 7, pubkey C    | ECC          | SE1/SE2  | SE2 knows only public part, SE1 has privkey
+| `pin stretch`         | slot 2              | HMAC         | SE1      | Key stretching for PIN entry and anti-phish words
+| `firmware`            | slot 14             | SHA256d      | SE1      | Firmware checksum, controls green/red LEDs
+| `nonce/chksum`        | slot 10             | data         | SE1      | AES nonce and GMAC tag, protected by PIN
+| `SE2 easy key`        | page 15             | AES via HMAC | SE2      | Another SE2 part of AES seed key
+| `SE2 hard key`        | page 14             | AES via ECC  | SE2      | SE2's part of AES seed key; ECC used to unlock
+| `tpin key`            | `tpin_key`          | HMAC(key)    | MCU      | Key for HMAC used to encrypt trick PINs
+| `trick PIN slots`     | pages 0-12          | HMAC         | SE2      | Protect duress wallet seeds and pins (6 spots)
+| `SE2 trash`           | secret B            | HMAC         | SE2      | Used to destroy values (only SE2 knows the value)
+| `hash cache secret`   | `hash_cache_secret` | XOR/AES      | MCU      | In-memory encryption of actual PIN when unlocked
+| `mcu hmac key`        | `mcu_hmac_key`      | HMAC         | MCU      | Used as HMAC key to compress other keys
+| `replaceable mcu key` | `MCU_KEYS`          | AES          | MCU      | Replaceable MCU key (up to 256 times)
 
 All keys listed are 32 bytes long and picked randomly using the hardware RNG.
 
@@ -134,7 +134,7 @@ end of the message and checking they decode correctly.
 
 A new keyslot, 10, stores the MAC data (encrypted zeros).
 
-The startgin nonce for CTR mode is fixed random value composed of
+The starting nonce for CTR mode is fixed random value composed of
 the first 15 bytes of the `mcu hmac key`, followed by a zero (this
 increments if more than 16 bytes are encrypted or decrypted).
 
@@ -249,7 +249,7 @@ timer and the time that must elapse before logging in is allowed.
 
 **Example 3** Although SE2 holds the Trick PINs, it does not know
 the True PIN and Delta Mode will not reveal the full True PIN. The
-"Delta More" Trick PIN has its unique hash result, and an entry from SE1 is used
+"Delta Mode" Trick PIN has its unique hash result, and an entry from SE1 is used
 to calculate the True PIN. This is accomplished by masking out the
 last four digits of the hash and substituting four digits from
 `tc_arg`. Limiting it to four digits enables a difference between
