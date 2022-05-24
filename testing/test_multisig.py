@@ -1190,6 +1190,7 @@ def fake_ms_txn():
 
     return doit
 
+@pytest.mark.veryslow
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('addr_fmt', [AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH] )
 @pytest.mark.parametrize('num_ins', [ 2, 15 ])
@@ -1726,7 +1727,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     tp = BasicPSBT().parse(psbt_b4)
     (hdr_xpub, hdr_path), = [(v,k) for v,k in tp.xpubs if k[0:4] == pack('<I', expect_xfp)]
     from pycoin.encoding import b2a_hashed_base58
-    assert expect_xpub == b2a_hashed_base58(hdr_xpub[1:])
+    assert expect_xpub == b2a_hashed_base58(hdr_xpub)
     assert derivation == path_to_str(unpack('<%dI' % (len(hdr_path) // 4),hdr_path))
 
     # sign a multisig, with xpubs in globals

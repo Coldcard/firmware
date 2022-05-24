@@ -2,15 +2,7 @@
 #
 # needs local bitcoind in PATH
 
-import os
-import time
-import uuid
-import atexit
-import socket
-import shutil
-import pytest
-import tempfile
-import subprocess
+import os, time, uuid, atexit, socket, shutil, pytest, tempfile, subprocess
 from authproxy import AuthServiceProxy, JSONRPCException
 from base64 import b64encode, b64decode
 
