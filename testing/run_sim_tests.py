@@ -10,8 +10,8 @@ python run_sim_tests.py --onetime                              # run ONLY onetim
 python run_sim_tests.py --onetime --veryslow                   # run both onetime and very slow
 python run_sim_tests.py -m test_nfc.py                         # run only nfc tests
 python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run nfc and hsm tests
-python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow
-python run_sim_tests.py -m all --onetime --veryslow            # run all test (most useful - grab coffee and wait)
+python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 90 minutes)
+python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 235 minutes)
 
 
 Onetime/veryslow tests are completely separated form the rest of the test suite.
