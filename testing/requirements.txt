@@ -12,8 +12,6 @@ zbar-py==1.0.4
 
 # NFC and NDEF handling
 nfcpy==1.0.3
-# commentt out below dependency 'ndef==0.2' if on debian based OS
-#ndef==0.2
 
 # optional, and only helpful if you have a desktop NFC-V capable reader
 pyscard==2.0.2
