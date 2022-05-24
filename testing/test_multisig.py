@@ -1250,12 +1250,11 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         open(f'debug/myself-after.psbt', 'w').write(base64.b64encode(updated).decode())
         assert updated != psbt
 
-        aft = BasicPSBT().parse(updated)  # TODO something is off here xpub is longer than 79 - core returs error
-
+        aft = BasicPSBT().parse(updated)
         # check all inputs gained a signature
         assert all(len(i.part_sigs)==(idx+1) for i in aft.inputs)
 
-        psbt = updated
+        psbt = aft.as_bytes()
 
     # should be fully signed now.
     anal = bitcoind_analyze(psbt)
@@ -1275,12 +1274,18 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
             print("ignoring bug in bitcoind")
 
     if 0:
-        # why doesn't this work? # TODO produced PSBT is invalid, cannot finalize (both core and us)
-        extracted_psbt, txn, is_complete = bitcoind_finalizer(aft.as_bytes(), extract=True)
-
-        ex = BasicPSBT().parse(extracted_psbt)
+        # why doesn't this work?
+        # TODO this does NOT work only if parameter segwit is True
+        # TODO I have debuged bitcoin core to see why we're still in updater phase, not in desired finalizer
+        # relevant comment from core code:
+        #     When we're taking our information from a witness UTXO, we can't verify it is actually data from
+        #     the output being spent. This is safe in case a witness signature is produced (which includes this
+        #     information directly in the hash), but not for non-witness signatures. Remember that we require
+        #     a witness signature in this situation.
+        #
+        # In our case, witness signature was not produced (but was required)
+        _, txn, is_complete = bitcoind_finalizer(aft.as_bytes(), extract=True)
         assert is_complete
-        assert ex != aft
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
 @pytest.mark.parametrize('acct_num', [ 0, 99, 4321])
