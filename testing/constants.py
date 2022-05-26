@@ -14,7 +14,7 @@ simulator_fixed_xfp = 0x4369050f
 
 simulator_serial_number = 'F1F1F1F1F1F1'
 
-from ckcc_protocol.constants import AF_P2WSH, AFC_SCRIPT, AF_P2SH, AF_P2WSH_P2SH
+from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH
 
 unmap_addr_fmt = {
     'p2sh': AF_P2SH,

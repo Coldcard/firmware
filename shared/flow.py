@@ -249,8 +249,8 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
-    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3'], 
-        value_map=['BTC', 'XTN'],
+    ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3', 'Regtest'],
+        value_map=['BTC', 'XTN', 'XRT'],
         story="Testnet must only be used by developers because \
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
     MenuItem('Settings Space', f=show_settings_space),

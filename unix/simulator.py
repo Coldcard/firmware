@@ -337,9 +337,9 @@ def start():
     # manage unix socket cleanup for client
     def sock_cleanup():
         import os
-        fp = '/tmp/ckcc-simulator.sock'
+        fp = UNIX_SOCKET_PATH
         if os.path.exists(fp):
-            os.unlink(fp)
+            os.remove(fp)
     sock_cleanup()
     import atexit
     atexit.register(sock_cleanup)

@@ -2,7 +2,7 @@
 #
 # Various firmware upgrade things.
 #
-import pytest, os, struct, time
+import pytest, os, struct, time, hashlib, subprocess
 from sigheader import *
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 from collections import namedtuple
@@ -17,21 +17,30 @@ def parse_hdr(hdr):
 @pytest.fixture()
 def upload_file(dev):
     def doit(data, pkt_len=2048):
-        
-        from hashlib import sha256
-        import os
-
         for pos in range(0, len(data), pkt_len):
             v = dev.send_recv(CCProtocolPacker.upload(pos, len(data), data[pos:pos+pkt_len]))
             assert v == pos
             chk = dev.send_recv(CCProtocolPacker.sha256())
-            assert chk == sha256(data[0:pos+pkt_len]).digest(), 'bad hash'
+            assert chk == hashlib.sha256(data[0:pos+pkt_len]).digest(), 'bad hash'
     return doit
 
 @pytest.fixture()
 def make_firmware():
     def doit(hw_compat, fname='../stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
-        os.system(f'signit sign 3.0.99 --keydir ../stm32/keys -r {fname} -o {outname} --force-hw-compat=0x{hw_compat:02x}')
+        # os.system(f'signit sign 3.0.99 --keydir ../stm32/keys -r {fname} -o {outname} --hw-compat=0x{hw_compat:02x}')
+        p = subprocess.run(
+            [
+                'signit', 'sign', '3.0.99',
+                 '--keydir', '../stm32/keys',
+                 '-r', f'{fname}',
+                 '-o', f'{outname}',
+                 f'--hw-compat={hw_compat}'
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if p.stderr:
+            raise RuntimeError(p.stderr)
 
         rv = open(outname, 'rb').read()
 
@@ -61,7 +70,10 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypr
 
         goto_home()
         pick_menu_item('Advanced/Tools')
-        pick_menu_item('Upgrade')
+        try:
+            pick_menu_item('Upgrade')
+        except KeyError:
+            pick_menu_item('Upgrade Firmware')
         pick_menu_item('From MicroSD')
 
         time.sleep(.1)
@@ -81,9 +93,9 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypr
     return doit
 
 
-@pytest.mark.parametrize('mode', ['nocheck', 'compat', 'incompat'])
+@pytest.mark.parametrize('mode', ['compat', 'incompat'])
 @pytest.mark.parametrize('transport', ['sd', 'usb'])
-def test_hacky_upgrade(mode, transport, dev, sim_exec, make_firmware, upload_file, sim_eval, upgrade_by_sd):
+def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware, upload_file, sim_eval, upgrade_by_sd):
 
     # manually: run this test on all Mark1 thru 3 simulators
     hw_label = eval(sim_eval('version.hw_label'))
@@ -92,12 +104,13 @@ def test_hacky_upgrade(mode, transport, dev, sim_exec, make_firmware, upload_fil
 
     print(f"Simulator is {hw_label}")
 
-    if mode == 'nocheck':
-        data = make_firmware(0x00)
-    elif mode == 'compat':
-        data = make_firmware(1 << (mkn-1))
+    if mode == 'compat':
+        data = make_firmware(mkn)
     elif mode == 'incompat':
-        data = make_firmware(0xf ^ (1 << (mkn-1)))
+        with pytest.raises(RuntimeError) as err:
+            make_firmware(mkn-1)
+        assert "too big for our USB upgrades" in str(err)
+        return
 
     hdr = data[FW_HEADER_OFFSET:FW_HEADER_OFFSET+FW_HEADER_SIZE]
 
@@ -122,13 +135,17 @@ def test_hacky_upgrade(mode, transport, dev, sim_exec, make_firmware, upload_fil
     else:
         upgrade_by_sd(data)
 
+    _, story = cap_story()
+    assert "Install this new firmware?" in story
     # check data was uploaded verbatim (VERY SLOW)
-    for pos in range(0, cooked.firmware_length + 128, 128):
-        a = eval(sim_eval(f'SF.array[{pos}:{pos+128}]'))
-        if pos in [ FW_HEADER_OFFSET, cooked.firmware_length]:
-            assert a == hdr, f"wrong @ {pos}"
-        else:
-            assert a == data[pos:pos+128], repr(pos)
+    # for pos in range(0, cooked.firmware_length + 128, 128):
+    #     to_eval = f'from sflash import SF;SF.array[{pos}:{pos+128}]'
+    #     x = sim_exec(to_eval)
+    #     a = eval(x)
+    #     if pos in [ FW_HEADER_OFFSET, cooked.firmware_length]:
+    #         assert a == hdr, f"wrong @ {pos}"
+    #     else:
+    #         assert a == data[pos:pos+128], repr(pos)
     
 
 # EOF

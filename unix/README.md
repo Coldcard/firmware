@@ -73,7 +73,7 @@ See `variant/sim_settings.py` for the details of settings-related options.
 
 # Other OS
 
-- sorry we haven't gotten around to that yet, but certainly would be possible to build
-  this on Linux or FreeBSD... but not Windows.
+- linux supported (only tested on debian based Ubuntu 20.04), please check main README.md
+- no Windows
 
 

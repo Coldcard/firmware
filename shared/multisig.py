@@ -4,7 +4,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu
 #from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath
+from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
 from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
@@ -259,7 +259,7 @@ class MultisigWallet:
     @classmethod
     def find_candidates(cls, xfp_paths, addr_fmt=None, M=None):
         # Return a list of matching wallets for various M values.
-        # - xpfs_paths hsould already be sorted
+        # - xpfs_paths should already be sorted
         # - returns set of matches, of any M value
 
         # we know N, but not M at this point.
@@ -712,7 +712,12 @@ class MultisigWallet:
             assert node.privkey() == None       # 'no privkeys plz'
         except ValueError:
             pass
-        assert chain.ctype == expect_chain      # 'wrong chain'
+
+        if expect_chain == "XRT":
+            # HACK but there is no difference extended_keys - just bech32 hrp
+            assert chain.ctype == "XTN"
+        else:
+            assert chain.ctype == expect_chain      # 'wrong chain'
 
         depth = node.depth()
 

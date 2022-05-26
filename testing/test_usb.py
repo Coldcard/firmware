@@ -9,6 +9,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from binascii import b2a_hex, a2b_hex
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 
+@pytest.mark.skip
 def test_usb_fuzz(dev):
     # test framing logic
     # - expect a few console errors
