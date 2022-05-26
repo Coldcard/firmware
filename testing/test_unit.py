@@ -94,18 +94,23 @@ def test_nvram_mk4(unit_test, only_mk4):
     # exercise nvram simulation: only mk4
     unit_test('devtest/nvram_mk4.py')
 
-@pytest.mark.parametrize('mode', ['simple', 'blankish'])
-def test_backups(unit_test, mode, set_seed_words):
+@pytest.mark.manual
+def test_backups_simple(unit_test, set_seed_words):
+    # exercise dump of pub data
+    # - (bug) mk4 can only run this test in isolation from other test in this file.
+    unit_test('devtest/backups.py')
+
+@pytest.mark.manual
+def test_backups_blankish(unit_test, set_seed_words):
     # exercise dump of pub data
     # - (bug) mk4 can only run this test in isolation from other test in this file.
 
-    if mode == 'blankish':
-        # want a zero in last byte of hex representation of raw secret...
-        '''
+    # want a zero in last byte of hex representation of raw secret...
+    '''
         >>> tcc.bip39.from_data(bytes([0x10]*32))
         'avoid letter advice cage ... absurd amount doctor blanket'
-        '''
-        set_seed_words('avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor blanket')
+    '''
+    set_seed_words('avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor blanket')
 
     unit_test('devtest/backups.py')
 

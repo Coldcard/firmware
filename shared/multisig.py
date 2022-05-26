@@ -259,7 +259,7 @@ class MultisigWallet:
     @classmethod
     def find_candidates(cls, xfp_paths, addr_fmt=None, M=None):
         # Return a list of matching wallets for various M values.
-        # - xpfs_paths hsould already be sorted
+        # - xpfs_paths should already be sorted
         # - returns set of matches, of any M value
 
         # we know N, but not M at this point.
@@ -712,7 +712,12 @@ class MultisigWallet:
             assert node.privkey() == None       # 'no privkeys plz'
         except ValueError:
             pass
-        assert chain.ctype == expect_chain      # 'wrong chain'
+
+        if expect_chain == "XRT":
+            # HACK but there is no difference extended_keys - just bech32 hrp
+            assert chain.ctype == "XTN"
+        else:
+            assert chain.ctype == expect_chain      # 'wrong chain'
 
         depth = node.depth()
 

@@ -37,11 +37,11 @@ def virtdisk_wipe(dev, only_mk4, virtdisk_path):
         for fn in glob.glob(virtdisk_path('*')):
             if os.path.isdir(fn): continue
             if 'readme' in fn.lower(): continue
-            if fn[0] == '.': continue
+            if 'gitignore' in fn: continue
 
             assert fn.lower().rsplit('.', 1)[1] in { 'txt', 'psbt', 'txn' }
             print(f'RM {fn}')
-            os.unlink(fn)
+            os.remove(fn)
     return doit
 
 def test_vd_basics(dev, virtdisk_path, is_simulator):
@@ -62,7 +62,7 @@ def test_vd_basics(dev, virtdisk_path, is_simulator):
     assert os.path.isfile(virtdisk_path(f'ident/ckcc-{sn}.txt'))
 
 @pytest.fixture
-def try_sign_virtdisk(need_keypress, virtdisk_path, virtdisk_wipe):
+def try_sign_virtdisk(need_keypress, virtdisk_path, cap_story, virtdisk_wipe):
 
     # like "try_sign" but use Virtual Disk to send/receive PSBT/results
     # - on real dev, need user to manually say yes ... alot
@@ -115,6 +115,9 @@ def try_sign_virtdisk(need_keypress, virtdisk_path, virtdisk_wipe):
             return ip, None, None
 
         # wait for it to finish signing
+        title, story = cap_story()
+        if "OK TO SEND" in title or "PSBT Signed" in title:
+            need_keypress('y')
 
         result_fn = xfn.replace('.psbt', '-*.psbt')
         result_txn = xfn.replace('.psbt', '.txn')
@@ -125,7 +128,8 @@ def try_sign_virtdisk(need_keypress, virtdisk_path, virtdisk_wipe):
         for i in range(15):
             try:
                 got_txn = open(result_txn, 'rb').read()
-            except FileNotFoundError:
+            except FileNotFoundError as e:
+                print(e)
                 pass
 
             lst = glob.glob(result_fn)

@@ -183,9 +183,11 @@ if 0:
         open('debug/mega.txn', 'wb').write(txn)
 
 
+@pytest.mark.bitcoind
+@pytest.mark.veryslow
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('out_style', ADDR_STYLES)
-def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
+def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
                     start_sign, end_sign, dev, segwit, out_style, accept = True):
 
     # try a bunch of different bigger sized txns
@@ -197,6 +199,9 @@ def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
     # - only mk3 can do full amounts
     # - time on mk3, v4.0.0 firmware: 13 minutes
 
+    # for this test you need to configure core `repcservertimeout` to something big
+    # in bitcoin.conf `rpcservertimeout=2000` should do the trick
+    use_regtest()
     num_in = 10
     num_out = 10
 
@@ -256,10 +261,11 @@ def test_io_size(request, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
             assert len(shown) + len(hidden) == len(decoded['vout'])
             assert max(v for v,d in hidden) >= min(v for v,d in shown)
     
-    
+
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('num_ins', [ 2, 7, 15 ])
 @pytest.mark.parametrize('segwit', [True, False])
-def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitcoind):
+def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins, segwit, decode_with_bitcoind):
     # create a TXN using actual addresses that are correct for DUT
     xp = dev.master_xpub
 
@@ -278,15 +284,16 @@ def test_real_signing(fake_txn, try_sign, dev, num_ins, segwit, decode_with_bitc
     if segwit:
         assert all(x['txinwitness'] for x in decoded['vin'])
 
+
 @pytest.mark.unfinalized        # iff we_finalize=F
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
-def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, we_finalize, num_dests):
+def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, start_sign, end_sign, we_finalize, num_dests):
 
     wallet_xfp = match_key()
-
-    bal = bitcoind.getbalance()
+    use_regtest()
+    bal = bitcoind.supply_wallet.getbalance()
     assert bal > 0, "need some play money; drink from a faucet"
 
     amt = round((bal/4)/num_dests, 6)
@@ -294,8 +301,8 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
     args = {}
 
     for no in range(num_dests):
-        dest = bitcoind.getrawchangeaddress()
-        assert dest[0] in '2mn' or dest.startswith('tb1'), dest
+        dest = bitcoind.supply_wallet.getrawchangeaddress()
+        assert dest.startswith('bcrt1'), dest
 
         args[dest] = amt
 
@@ -303,11 +310,11 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         # old approach: fundraw + convert to psbt
 
         # working with hex strings here
-        txn = bitcoind.createrawtransaction([], args)
+        txn = bitcoind.supply_wallet.createrawtransaction([], args)
         assert txn[0:2] == '02'
         #print(txn)
 
-        resp = bitcoind.fundrawtransaction(txn)
+        resp = bitcoind.supply_wallet.fundrawtransaction(txn)
         txn2 = resp['hex']
         fee = resp['fee']
         chg_pos = resp['changepos']
@@ -315,11 +322,11 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
 
         print("Sending %.8f XTN to %s (Change back in position: %d)" % (amt, dest, chg_pos))
 
-        psbt = b64decode(bitcoind.converttopsbt(txn2, True))
+        psbt = b64decode(bitcoind.supply_wallet.converttopsbt(txn2, True))
 
     # use walletcreatefundedpsbt
     # - updated/validated against 0.17.1
-    resp = bitcoind.walletcreatefundedpsbt([], args, 0, {
+    resp = bitcoind.supply_wallet.walletcreatefundedpsbt([], args, 0, {
                 'subtractFeeFromOutputs': list(range(num_dests)),
                 'feeRate': 0.00001500}, True)
 
@@ -367,7 +374,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         assert b4 != aft, "signing didn't change anything?"
 
         open('debug/signed.psbt', 'wb').write(signed)
-        resp = bitcoind.finalizepsbt(str(b64encode(signed), 'ascii'), True)
+        resp = bitcoind.supply_wallet.finalizepsbt(str(b64encode(signed), 'ascii'), True)
 
         #combined_psbt = b64decode(resp['psbt'])
         #open('debug/combined.psbt', 'wb').write(combined_psbt)
@@ -381,7 +388,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         open('debug/finalized-by-btcd.txn', 'wb').write(network)
 
         # try to send it
-        txed = bitcoind.sendrawtransaction(B2A(network))
+        txed = bitcoind.supply_wallet.sendrawtransaction(B2A(network))
         print("Final txn hash: %r" % txed)
 
     else:
@@ -389,7 +396,7 @@ def test_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, en
         #print("Final txn: %s" % B2A(signed))
         open('debug/finalized-by-cc.txn', 'wb').write(signed)
 
-        txed = bitcoind.sendrawtransaction(B2A(signed))
+        txed = bitcoind.supply_wallet.sendrawtransaction(B2A(signed))
         print("Final txn hash: %r" % txed)
 
 def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
@@ -417,8 +424,9 @@ def test_sign_example(set_master_key, sim_execfile, start_sign, end_sign):
 
     #assert 'require subpaths to be spec' in str(ee)
 
+@pytest.mark.bitcoind
 @pytest.mark.unfinalized
-def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
+def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind):
     # Check we can finalize p2sh_p2wpkh inputs right.
 
     # TODO fix this
@@ -443,7 +451,7 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     # use bitcoind to combine
     open('debug/signed.psbt', 'wb').write(signed_psbt)
-    resp = bitcoind.finalizepsbt(str(b64encode(signed_psbt), 'ascii'), True)
+    resp = bitcoind.rpc.finalizepsbt(str(b64encode(signed_psbt), 'ascii'), True)
 
     assert resp['complete'] == True, "bitcoind wasn't able to finalize it"
     network = a2b_hex(resp['hex'])
@@ -452,8 +460,9 @@ def test_sign_p2sh_p2wpkh(match_key, start_sign, end_sign, bitcoind):
 
     assert network == signed
 
+@pytest.mark.bitcoind
 @pytest.mark.unfinalized
-def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind, offer_ms_import, need_keypress, clear_ms):
+def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind, offer_ms_import, need_keypress, clear_ms):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
 
@@ -530,8 +539,9 @@ def test_sign_p2sh_example(set_master_key, sim_execfile, start_sign, end_sign, d
             raise TypeError
         json.dump(decode, open('debug/core-decode.json', 'wt'), indent=2, default=EncodeDecimal)
 
+
 @pytest.mark.bitcoind
-def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
+def test_change_case(start_sign, use_regtest, end_sign, check_against_bitcoind, cap_story):
     # is change shown/hidden at right times. no fraud checks 
 
     # NOTE: out#1 is change:
@@ -575,7 +585,7 @@ def test_change_case(start_sign, end_sign, check_against_bitcoind, cap_story):
 
 @pytest.mark.parametrize('case', [ 1, 2])
 @pytest.mark.bitcoind
-def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, cap_story):
+def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_against_bitcoind, cap_story):
     # fraud: BIP-32 path of output doesn't lead to pubkey indicated
 
     # NOTE: out#1 is change:
@@ -619,7 +629,7 @@ def test_change_fraud_path(start_sign, end_sign, case, check_against_bitcoind, c
         signed = end_sign(True)
 
 @pytest.mark.bitcoind
-def test_change_fraud_addr(start_sign, end_sign, check_against_bitcoind, cap_story):
+def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitcoind, cap_story):
     # fraud: BIP-32 path of output doesn't match TXO address
     from pycoin.tx.Tx import Tx
     from pycoin.tx.TxOut import TxOut
@@ -653,11 +663,10 @@ def test_change_fraud_addr(start_sign, end_sign, check_against_bitcoind, cap_sto
 
 @pytest.mark.parametrize('case', [ 'p2wpkh', 'p2sh'])
 @pytest.mark.bitcoind
-def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_story, case):
+def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_regtest, cap_story, case):
     # not fraud: output address encoded in various equiv forms
     from pycoin.tx.Tx import Tx
-    from pycoin.tx.TxOut import TxOut
-
+    use_regtest()
     # NOTE: out#1 is change:
     #chg_addr = 'mvBGHpVtTyjmcfSsy6f715nbTGvwgbgbwo'
 
@@ -672,7 +681,7 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, cap_st
         t.txs_out[1].script = bytes([0, 20]) + bytes(pkh)
 
         from bech32 import encode
-        expect_addr = encode('tb', 0, pkh)
+        expect_addr = encode('bcrt', 0, pkh)
 
     elif case == 'p2sh':
 
@@ -910,12 +919,13 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
-def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
+def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
     # Compare how we finalize vs bitcoind ... should be exactly the same txn
-
     wallet_xfp = match_key()
+    # has to be after match key
+    use_regtest()
 
-    bal = bitcoind.getbalance()
+    bal = bitcoind.supply_wallet.getbalance()
     assert bal > 0, "need some play money; drink from a faucet"
 
     amt = round((bal/4)/num_dests, 6)
@@ -923,14 +933,14 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     args = {}
 
     for no in range(num_dests):
-        dest = bitcoind.getrawchangeaddress()
-        assert dest[0] in '2mn' or dest.startswith('tb1'), dest
+        dest = bitcoind.supply_wallet.getrawchangeaddress()
+        assert dest.startswith('bcrt1q'), dest
 
         args[dest] = amt
 
     # use walletcreatefundedpsbt
     # - updated/validated against 0.17.1
-    resp = bitcoind.walletcreatefundedpsbt([], args, 0, {
+    resp = bitcoind.supply_wallet.walletcreatefundedpsbt([], args, 0, {
                 'subtractFeeFromOutputs': list(range(num_dests)),
                 'feeRate': 0.00001500}, True)
 
@@ -952,9 +962,7 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
 
     # pull out included txn
     txn2 = B2A(mine.txn)
-
     start_sign(psbt, finalize=True)
-
     # verify against how bitcoind reads it
     check_against_bitcoind(txn2, fee)
 
@@ -969,7 +977,7 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     open('debug/vs-signed-unfin.psbt', 'wb').write(signed)
 
     # Use bitcoind to finalize it this time.
-    resp = bitcoind.finalizepsbt(str(b64encode(signed), 'ascii'), True)
+    resp = bitcoind.supply_wallet.finalizepsbt(str(b64encode(signed), 'ascii'), True)
     assert resp['complete'] == True, "bitcoind wasn't able to finalize it"
 
     network = a2b_hex(resp['hex'])
@@ -981,7 +989,7 @@ def test_finalization_vs_bitcoind(match_key, check_against_bitcoind, bitcoind, s
     assert network == signed_final, "Finalized differently"
 
     # try to send it
-    txed = bitcoind.sendrawtransaction(B2A(network))
+    txed = bitcoind.supply_wallet.sendrawtransaction(B2A(network))
     print("Final txn hash: %r" % txed)
 
 

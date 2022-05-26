@@ -2,7 +2,7 @@
 #
 # unit test for address decoding for multisig
 from h import a2b_hex, b2a_hex
-from chains import BitcoinMain, BitcoinTestnet
+from chains import BitcoinMain, BitcoinTestnet, BitcoinRegtest
 from multisig import disassemble_multisig
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
@@ -27,7 +27,12 @@ if 1:
     addr = BitcoinMain.p2sh_address(AF_P2SH, script)
     assert addr[0] == '3'
     assert addr == '3Kt6KxjirrFS7GexJiXLLhmuaMzSbjp275'
+
     addr = BitcoinTestnet.p2sh_address(AF_P2SH, script)
+    assert addr[0] == '2'
+    assert addr == '2NBSJPhfkUJknK4HVyr9CxemAniCcRfhqp4'
+
+    addr = BitcoinRegtest.p2sh_address(AF_P2SH, script)
     assert addr[0] == '2'
     assert addr == '2NBSJPhfkUJknK4HVyr9CxemAniCcRfhqp4'
 
@@ -40,6 +45,12 @@ if 1:
     assert addr[0:4] == 'tb1q', addr
     assert len(addr) >= 62
     assert addr == 'tb1qnjw7wy4e9tf4kkqaf43n2cyjwug0ystugum08c5j5hwhfncc4mkq7r26gv'
+
+    addr = BitcoinRegtest.p2sh_address(AF_P2WSH, script)
+    print(addr)
+    assert addr[0:6] == 'bcrt1q', addr
+    assert len(addr) >= 64
+    assert addr == 'bcrt1qnjw7wy4e9tf4kkqaf43n2cyjwug0ystugum08c5j5hwhfncc4mkqn6quak'
 
 
 if 1:

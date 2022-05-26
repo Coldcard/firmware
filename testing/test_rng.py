@@ -5,7 +5,7 @@
 # - needs "dieharder" installed, see 
 #   <https://webhome.phy.duke.edu/~rgb/General/dieharder.php>
 # - on mac: "brew install dieharder"
-#
+# - on ubuntu20: "sudo apt-get install dieharder"
 import pytest, subprocess, os
 from helpers import B2A
 

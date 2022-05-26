@@ -230,8 +230,7 @@ class BasicPSBT:
             raw = a2b_hex(raw.strip())
         if raw[0:6] == b'cHNidP':
             raw = b64decode(raw)
-        assert raw[0:5] == b'psbt\xff', "bad magic"
-
+        assert raw[0:5] == b'psbt\xff', "bad magic {}".format(raw[0:5])
         with io.BytesIO(raw[5:]) as fd:
             
             # globals
@@ -254,7 +253,8 @@ class BasicPSBT:
                     num_outs = len(t.txs_out)
                 elif kt == PSBT_GLOBAL_XPUB:
                     # key=(xpub) => val=(path)
-                    self.xpubs.append( (key, val) )
+                    # ignore PSBT_GLOBAL_XPUB on 0th index (should not be part of parsed key)
+                    self.xpubs.append((key[1:], val))
                 else:
                     raise ValueError('unknown global key type: 0x%02x' % kt)
 
@@ -271,8 +271,9 @@ class BasicPSBT:
     def serialize(self, fd):
 
         def wr(ktype, val, key=b''):
-            fd.write(ser_compact_size(1 + len(key)))
-            fd.write(bytes([ktype]) + key)
+            ktype_plus_key = bytes([ktype]) + key
+            fd.write(ser_compact_size(len(ktype_plus_key)))
+            fd.write(ktype_plus_key)
             fd.write(ser_compact_size(len(val)))
             fd.write(val)
 

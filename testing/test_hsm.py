@@ -57,7 +57,7 @@ def hsm_reset(dev, sim_exec):
         # make sure we can setup an HSM now; often need to restart simulator tho
 
         # clear defined config
-        cmd = 'import uos, hsm; uos.unlink(hsm.POLICY_FNAME)'
+        cmd = 'import uos, hsm; uos.remove(hsm.POLICY_FNAME)'
         sim_exec(cmd)
 
         # reset HSM code, to clear previous HSM setup
@@ -74,7 +74,7 @@ def hsm_reset(dev, sim_exec):
     yield doit
 
     try:
-        cmd = 'import uos, hsm; uos.unlink(hsm.POLICY_FNAME)'
+        cmd = 'import uos, hsm; uos.remove(hsm.POLICY_FNAME)'
         sim_exec(cmd)
     except:
         pass
@@ -1111,22 +1111,6 @@ def test_worst_policy(start_hsm, load_hsm_users):
     load_hsm_users(users)
     start_hsm(policy)
 
-@pytest.mark.parametrize('case', ['simple', 'worst'])
-def test_backup_policy(case, unit_test, start_hsm, load_hsm_users):
-    # exercise dump of backup data
-    # XXX run once/by itself
-
-    if case == 'simple':
-        policy = DICT(rules=[dict()])
-        load_hsm_users()
-    elif case == 'worst':
-        users, policy = worst_case_policy()
-        load_hsm_users(users)
-
-    start_hsm(policy)
-
-    unit_test('devtest/backups.py')
-
 def test_boot_to_hsm_unlock(start_hsm, hsm_status, enter_local_code):
     # also uptime
     s = start_hsm(dict(boot_to_hsm='123123'))
@@ -1143,9 +1127,11 @@ def test_boot_to_hsm_unlock(start_hsm, hsm_status, enter_local_code):
     enter_local_code('123123')
     time.sleep(.5)
     assert hsm_status().active == False
-    assert hsm_status().policy_available == False
+    assert hsm_status().policy_available == True  # we haven't removed anythong why shoudl it be not available?
 
-def test_boot_to_hsm_too_late(start_hsm, hsm_status, enter_local_code):
+def test_boot_to_hsm_too_late(dev, start_hsm, hsm_status, enter_local_code):
+    if dev.is_simulator:
+        raise pytest.skip("needs real device")
     # also uptime
     s = start_hsm(dict(boot_to_hsm='123123'))
     assert 'Boot to HSM' in s.summary
@@ -1201,6 +1187,22 @@ def test_max_refusals(attempt_msg_sign, start_hsm, hsm_status, threshold=100):
         attempt_msg_sign('signing not permitted', b'msg here', 'm/73', timeout=1000)
     assert ('timeout' in str(ee)) or ('read error' in str(ee))
 
+@pytest.mark.manual
+def test_backup_policy_simple(unit_test, start_hsm, load_hsm_users):
+    # exercise dump of backup data
+    # XXX run once/by itself
+    policy = DICT(rules=[dict()])
+    load_hsm_users()
+    start_hsm(policy)
+    unit_test('devtest/backups.py')
 
-    
+@pytest.mark.manual
+def test_backup_policy_worst(unit_test, start_hsm, load_hsm_users):
+    # exercise dump of backup data
+    # XXX run once/by itself
+    users, policy = worst_case_policy()
+    load_hsm_users(users)
+    start_hsm(policy)
+    unit_test('devtest/backups.py')
+
 # EOF

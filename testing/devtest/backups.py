@@ -20,7 +20,7 @@ if 1:
     blanks = 0
     checklist = set('mnemonic chain xprv xpub raw_secret fw_date fw_version fw_timestamp serial '
                 'setting.terms_ok setting.idle_to setting.chain'.split(' '))
-    optional = set('setting.pms setting.axi setting.nick setting.lgto setting.usr hsm_policy setting.words long_secret multisig setting.multisig setting.fee_limit setting.tp setting.check duress_xprv duress_xpub duress_1001_words duress_1002_words duress_1003_words'.split(' '))
+    optional = set('setting.nfc setting.pms setting.axi setting.nick setting.lgto setting.usr hsm_policy setting.words long_secret multisig setting.multisig setting.fee_limit setting.tp setting.check duress_xprv duress_xpub duress_1001_words duress_1002_words duress_1003_words'.split(' '))
 
     for ln in render_backup_contents().split('\n'):
         ln = ln.strip()
@@ -98,7 +98,7 @@ async def test_7z():
 
             if had_policy:
                 from hsm import POLICY_FNAME
-                uos.unlink(POLICY_FNAME)
+                uos.remove(POLICY_FNAME)
                 assert not hsm.hsm_policy_available()
 
             with SFFile(0, ll) as fd:

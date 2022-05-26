@@ -39,7 +39,7 @@ Yes, external developers can modify COLDCARD and make their own versions!
 If the red/green light is red, this means some part of flash was
 changed without the secure checksum inside SE1 being first updated.
 The upgrade process does this correctly in Mk4, and there is no
-point time the checksum is wrong, so there should be no way to see this
+point in time the checksum is wrong, so there should be no way to see this
 screen:
 
 ![warning screen](dev-warning.png)

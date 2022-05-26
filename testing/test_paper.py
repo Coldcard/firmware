@@ -95,7 +95,7 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
                     addr = Key.from_text(val)
                 else:
                     hrp, data, enc = bech32_decode(val)
-                    assert hrp in {'tb', 'bc' }
+                    assert hrp in {'tb', 'bc', 'bcrt'}
                     assert enc == Encoding.BECH32
                     decoded = convertbits(data[1:], 5, 8, False)[-20:]
                     addr = Key(hash160=bytes(decoded), is_compressed=True, netcode='XTN')
