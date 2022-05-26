@@ -43,14 +43,6 @@ def pushd(new_dir):
         os.chdir(previous_dir)
 
 
-def in_testing_dir() -> bool:
-    cwd = os.getcwd()
-    pth, dir = os.path.split(cwd)
-    testing_ok = dir == "testing"
-    rest, base = os.path.split(pth)
-    firmware_ok = base == "firmware"
-    return testing_ok and firmware_ok
-
 
 def remove_client_sockets():
     with pushd("/tmp"):
@@ -179,8 +171,6 @@ class ColdcardSimulator:
 
 
 def main():
-    if not in_testing_dir():
-        raise RuntimeError("Not in firmware/testing")
     parser = argparse.ArgumentParser(description="Run tests against simulated Coldcard")
     parser.add_argument("-m", "--module", action="append", help="Choose only n modules to run")
     parser.add_argument("--onetime", action="store_true", default=False, help="run tests marked as 'onetime'")
@@ -197,6 +187,7 @@ def main():
         test_modules = []
     elif len(args.module) == 1 and args.module[0].lower() == "all":
         test_modules = sorted(glob.glob("test_*.py"))
+        assert test_modules, "please run in ../testing subdir"
     else:
         for fn in args.module:
             if not os.path.exists(fn):
