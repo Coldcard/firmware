@@ -1,3 +1,9 @@
+## 5.0.6 - TODO
+- Enhancement: Support import of multisig wallet from descriptor (only sortedmulti allowed BIP64).
+  Support export of multsig wallet as descriptor.
+- new tutorial: 2of2 multisig with bitcoind `docs/bitcoin-core2of2desc.md`
+- new tutorial: 2of2 multisig with 2x Coldcard signing device `docs/bitcoin-core2of2desc.md`
+
 ## 5.0.5 - 2022-06-21
 
 - Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing.
