@@ -25,16 +25,7 @@ python run_sim_tests.py --collect manual                       # just print all 
 Make sure to run manual test if you want to state that your changes passed all the tests.
 """
 
-import os
-import time
-import glob
-import json
-import pytest
-import atexit
-import signal
-import argparse
-import subprocess
-import contextlib
+import os, time, glob, json, pytest, atexit, signal, argparse, subprocess, contextlib
 from typing import List
 
 from pytest import ExitCode
