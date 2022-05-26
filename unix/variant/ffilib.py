@@ -13,16 +13,20 @@ def open(name, maxver=10, extra=()):
         return _cache[name]
     except KeyError:
         pass
+
     def libs():
-        if sys.platform in ["linux", "linux2", "coldcard-unix"]:
-            yield '%s.so' % name
-            for i in range(maxver, -1, -1):
-                yield '%s.so.%u' % (name, i)
-        else:
-            for ext in ('dylib', 'dll'):
-                yield '%s.%s' % (name, ext)
+        # for linux systems:
+        yield '%s.so' % name
+        for i in range(maxver, -1, -1):
+            yield '%s.so.%u' % (name, i)
+
+        # for Darwin and Windows, need these too:
+        for ext in ('dylib', 'dll'):
+            yield '%s.%s' % (name, ext)
+
         for n in extra:
             yield n
+
     err = None
     for n in libs():
         try:
