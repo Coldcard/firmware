@@ -7,6 +7,7 @@ import stash, chains, ustruct, ure, uio, sys, ngu
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
 from files import CardSlot, CardMissingError, needs_microsd
+from descriptor import descriptor_checksum
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_PATH_DEPTH
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
@@ -571,38 +572,22 @@ class MultisigWallet:
         return subpath_help
 
     @classmethod
-    def from_file(cls, config, name=None):
-        # Given a simple text file, parse contents and create instance (unsaved).
-        # format is:         label: value
-        # where label is:
-        #       name: nameforwallet
-        #       policy: M of N
-        #       format: p2sh  (+etc)
-        #       derivation: m/45'/0     (common prefix)
-        #       (8digithex): xpub of cosigner
-        # 
-        # quick checks:
-        # - name: 1-20 ascii chars
-        # - M of N line (assume N of N if not spec'd)
-        # - xpub: any bip32 serialization we understand, but be consistent
-        #
-        my_xfp = settings.get('xfp')
-        deriv = None
-        xpubs = []
-        M, N = -1, -1
+    def from_simple_text(cls, lines):
+        # standard multisig file format - more than one line
         has_mine = 0
+        M, N = -1, -1
+        deriv = None
+        name =None
+        xpubs = []
         addr_fmt = AF_P2SH
-        expect_chain = chains.current_chain().ctype
-
-        lines = config.split('\n')
-
+        my_xfp = settings.get('xfp')
         for ln in lines:
             # remove comments
             comm = ln.find('#')
             if comm == 0:
                 continue
             if comm != -1:
-                if not ln[comm+1:comm+2].isdigit():
+                if not ln[comm + 1:comm + 2].isdigit():
                     ln = ln[0:comm]
 
             ln = ln.strip()
@@ -610,11 +595,11 @@ class MultisigWallet:
             if ':' not in ln:
                 if 'pub' in ln:
                     # pointless optimization: allow bare xpub if we can calc xfp
-                    label = '0'*8
+                    label = '0' * 8
                     value = ln
                 else:
                     # complain?
-                    #if ln: print("no colon: " + ln)
+                    # if ln: print("no colon: " + ln)
                     continue
             else:
                 label, value = ln.split(':', 1)
@@ -657,13 +642,86 @@ class MultisigWallet:
                     xfp = str2xfp(label)
                 except:
                     # complain?
-                    #print("Bad xfp: " + ln)
+                    # print("Bad xfp: " + ln)
                     continue
 
                 # deserialize, update list and lots of checks
-                is_mine = cls.check_xpub(xfp, value, deriv, expect_chain, my_xfp, xpubs)
+                is_mine = cls.check_xpub(xfp, value, deriv, chains.current_chain().ctype, my_xfp, xpubs)
                 if is_mine:
                     has_mine += 1
+        return name, addr_fmt, xpubs, has_mine, M, N
+
+    @classmethod
+    def from_descriptor(cls, descriptor: str):
+        # excpect descriptor here if only one line, normal multisig file requires more lines
+        # only support sortedmulti sh-wsh and wsh
+        has_mine = 0
+        my_xfp = settings.get('xfp')
+        xpubs = []
+        wrapped = "sh(wsh(sortedmulti("
+        native = "wsh(sortedmulti("
+        desc_w_checksum = descriptor.strip()
+        desc, checksum = desc_w_checksum.split("#")
+        assert descriptor_checksum(desc) == checksum, "wrong descriptor checksum"
+        if desc.startswith(wrapped):
+            addr_fmt = AF_P2WSH_P2SH
+            tmp_desc = desc.replace(wrapped, "")
+            tmp_desc = tmp_desc.rstrip(")))")
+        elif desc.startswith(native):
+            addr_fmt = AF_P2WSH
+            tmp_desc = desc.replace(native, "")
+            tmp_desc = tmp_desc.rstrip("))")
+        else:
+            # segwit v0 only
+            raise RuntimeError("Unsupported descriptor type, MUST be wsh(sortedmulti(  or  sh(wsh(sortedmulti(")
+        splitted = tmp_desc.split(",")
+        M, keys = int(splitted[0]), splitted[1:]
+        N = int(len(keys))
+        DVX = "/0/*"
+        for desc_key in keys:
+            assert desc_key.endswith(DVX)  # for now, only allow non-hardened derivation of depth 2 after xpub
+            tmp_desc_key = desc_key.replace(DVX, "")
+            assert tmp_desc_key[0] == "[", "key origin info is required"
+            index = tmp_desc_key.find("]")
+            assert index != -1, "bad descriptor"
+            key_orig_info, xpub = tmp_desc_key[:index + 1], tmp_desc_key[index + 1:]
+            xfp = str2xfp(key_orig_info[1:9])  # get rid of [
+            deriv = cleanup_deriv_path("m" + key_orig_info[9:-1])  # get rid of ]
+            is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
+            if is_mine:
+                has_mine += 1
+        return None, addr_fmt, xpubs, has_mine, M, N
+
+    @classmethod
+    def from_file(cls, config, name=None):
+        # Given a simple text file, parse contents and create instance (unsaved).
+        # format is:         label: value
+        # where label is:
+        #       name: nameforwallet
+        #       policy: M of N
+        #       format: p2sh  (+etc)
+        #       derivation: m/45'/0     (common prefix)
+        #       (8digithex): xpub of cosigner
+        #
+        # Descriptor support
+        #    * single line text file containing multisig descriptor
+        #
+        # quick checks:
+        # - name: 1-20 ascii chars
+        # - M of N line (assume N of N if not spec'd)
+        # - xpub: any bip32 serialization we understand, but be consistent
+        #
+        expect_chain = chains.current_chain().ctype
+
+        lines = [line for line in config.split('\n') if line]  # remove empty lines
+        print(lines)
+        if len(lines) == 1:
+            # assume descriptor, classic config cannot have only single line
+            # ignore name
+            _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(lines[0])
+        else:
+            # oldschool
+            name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
 
         assert len(xpubs), 'need xpubs'
 
@@ -894,11 +952,9 @@ Otherwise, OK to proceed normally.''', escape='3')
             if last == 2:
                 return AF_P2WSH
 
-            
-
     @classmethod
     def import_from_psbt(cls, M, N, xpubs_list):
-        # given the raw data fro PSBT global header, offer the user
+        # given the raw data from PSBT global header, offer the user
         # the details, and/or bypass that all and just trust the data.
         # - xpubs_list is a list of (xfp+path, binary BIP-32 xpub)
         # - already know not in our records.
@@ -1328,6 +1384,15 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
                 xp = chain.serialize_public(node, fmt)
                 fp.write('  "%s_deriv": "%s",\n' % (name, dd))
                 fp.write('  "%s": "%s",\n' % (name, xp))
+                if fmt != AF_P2SH:
+                    # ignore p2sh -> obsolete
+                    key_exp = "[%s%s]%s/0/*" % (xfp, dd.replace("m", ''), chain.serialize_public(node))
+                    if fmt == AF_P2WSH_P2SH:
+                        descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
+                    else:
+                        descriptor_template = "wsh(sortedmulti(M,%s,...))"
+                    descriptor_template = descriptor_template % (key_exp)
+                    fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
 
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)
