@@ -7,10 +7,24 @@ from authproxy import AuthServiceProxy, JSONRPCException
 from base64 import b64encode, b64decode
 
 
+def find_bitcoind():
+    # search for the binary we need
+    # - should be in the path really
+    easy = shutil.which('bitcoind')
+    if easy:
+        return easy
+    
+    # - default landing spot for MacOS .dmg from bitcoin.org
+    mac_default = '/Applications/Bitcoin-Qt.app/Contents/MacOS/Bitcoin-Qt'
+    if os.path.exists(mac_default):
+        return mac_default
+
+    raise RuntimeError("Need a binary for bitcoin core. Check path?")
+
 # stolen from HWI test suite and slightly modified
 class Bitcoind:
-    def __init__(self, bitcoind_path):
-        self.bitcoind_path = bitcoind_path
+    def __init__(self):
+        self.bitcoind_path = find_bitcoind()
         self.datadir = tempfile.mkdtemp()
         self.rpc = None
         self.bitcoind_proc = None
@@ -37,6 +51,7 @@ class Bitcoind:
                 f"-datadir={self.datadir}",
                 "-noprinttoconsole",
                 "-fallbackfee=0.0002",
+                "-server=1",
                 "-keypool=1",
                 f"-port={self.p2p_port}",
                 f"-rpcport={self.rpc_port}"
@@ -105,7 +120,7 @@ class Bitcoind:
 def bitcoind():
     # JSON-RPC connection to a bitcoind instance
     # this assumes that you have bitcoind in path somewhere
-    bitcoin_d = Bitcoind.create("bitcoind")
+    bitcoin_d = Bitcoind.create()
     return bitcoin_d
 
 
