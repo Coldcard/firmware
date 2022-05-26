@@ -40,6 +40,7 @@ cd ../stm32
 cd ../releases
 if [ -f *-v$VERSION_STRING-mk$MK_NUM-coldcard.dfu ]; then
     echo "Using existing binary in ../releases, not downloading."
+    PUBLISHED_BIN=`realpath *-v$VERSION_STRING-mk$MK_NUM-coldcard.dfu`
 else
     # fetch a copy of the required binary
     PUBLISHED_BIN=`grep -F v$VERSION_STRING-mk$MK_NUM-coldcard.dfu signatures.txt | dd bs=66 skip=1`
@@ -48,9 +49,15 @@ else
         echo "Cannot determine release date / full file name."
     else
         wget -S https://coldcard.com/downloads/$PUBLISHED_BIN
+        PUBLISHED_BIN=`realpath "$PUBLISHED_BIN"`
     fi
 fi
 cd ../stm32
+
+if [ -z "$SOURCE_DATE_EPOCH" ]; then
+    TAG=$(basename $PUBLISHED_BIN | cut -d "-" -f1,2,3,4)
+    export SOURCE_DATE_EPOCH=$(git show -s --format=%at $TAG | tail -n1)
+fi
 
 $MAKE setup
 $MAKE DEBUG_BUILD=0 all
@@ -62,7 +69,7 @@ if [ $PWD != '/work/src/stm32' ]; then
 fi
 
 set +e
-$MAKE PUBLISHED_BIN=/work/built/firmware-signed.dfu check-repro
+$MAKE "PUBLISHED_BIN=$PUBLISHED_BIN" check-repro
 
 set +ex
 if [ $PWD != '/work/src/stm32' ]; then
