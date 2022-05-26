@@ -12,6 +12,7 @@
   [@xavierfiechter](https://github.com/xavierfiechter)
 - Documentation: Secure element related fixes from [@lucasmoten](https://github.com/lucasmoten)
 - Bugfix: Error if clone (receiving end) started without first inserting SD card, fixed.
+- Bugfix: Reproducible build issues corrected, thanks to [@Ademan](https://github.com/Ademan)
 
 ## 5.0.3 - 2022-05-04
 
