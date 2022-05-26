@@ -1,17 +1,17 @@
 ## 5.0.4 - 2022-05-??
 
-- Enhancement: Adds support for "Regtest" which are testnet coins on an isolated blockchain.
-  It's only useful for developers, and should not be used otherwise.
-- Enhancement: Major rework of test setup to use BitcoinCore on regtest and support Linux devs.
 - Enhancement: Optional USB protocol change which binds the (ephemeral ECDH) encryption 
   keys more tightly. Best used in HSM mode where a single long-term USB connection is
   expected. Thanks to [@DON-MAC-256](https://github.com/DON-MAC-256) for this feature.
 - Enhancement: In HSM mode, when more than 1k approvals, handle overflow in display,
   thanks to [@straylight-orbit](https://github.com/straylight-orbit)
+- Enhancement: Adds support for "Regtest" which are testnet coins on an isolated blockchain.
+  It's only useful for developers, and should not be used otherwise.
+- Enhancement: Major rework of test setup to use BitcoinCore on regtest and support Linux devs.
 - Corrects obsolete domain name (`coldcardwallet.com`) in repro build script, thanks to
   [@xavierfiechter](https://github.com/xavierfiechter)
 - Documentation: Secure element related fixes from [@lucasmoten](https://github.com/lucasmoten)
-- Bugfix: Yikes error if clone (receiving end) started without first inserting SD card.
+- Bugfix: Error if clone (receiving end) started without first inserting SD card, fixed.
 
 ## 5.0.3 - 2022-05-04
 
