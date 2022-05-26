@@ -1,3 +1,5 @@
+# (c) Copyright 2022 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+
 """
 Run conveniently tests against simulator. Tests are run module after module. If any tests fail,
 it will try to re-run those failed test with fresh simulator. Has to be run from firmware/testing directory.
