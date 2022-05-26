@@ -1,6 +1,6 @@
 """
 Run conveniently tests against simulator. Tests are run module after module. If any tests fail,
-it will try to re-run those failed test with fresh simulator. has to be run from firmware/testing directory.
+it will try to re-run those failed test with fresh simulator. Has to be run from firmware/testing directory.
 Do not forget to comment/uncomment line in pytest.ini.
 
 . ENV/bin/activate
@@ -10,7 +10,7 @@ python run_sim_tests.py --onetime                              # run ONLY onetim
 python run_sim_tests.py --onetime --veryslow                   # run both onetime and very slow
 python run_sim_tests.py -m test_nfc.py                         # run only nfc tests
 python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run nfc and hsm tests
-python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 90 minutes)
+python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 40 minutes) - most useful
 python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 235 minutes)
 
 
