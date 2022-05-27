@@ -19,9 +19,6 @@ import ndef
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = const(8000)
 
-# (ms) How long to wait after RF field comes and goes (or tag is written)
-POST_SCAN_DELAY = const(1000)
-
 # i2c address (7-bits) is not simple...
 # - assume defaults of E0=1 and I2C_DEVICE_CODE=0xa 
 # - also 0x2d which isn't documented and no idea what it is
@@ -304,6 +301,11 @@ class NFCHandler:
         aborted = True
         phase = -1
         last_activity = None
+
+        # (ms) How long to wait after RF field comes and goes
+        # - user can press OK during this period if they know they are done
+        min_delay = (3000 if write_mode else 1000)
+
         while 1:
             phase = (phase + 1) % 4
             dis.clear()
@@ -322,25 +324,23 @@ class NFCHandler:
                     #print("r_dyn fail")
                     events = 0
 
-                if write_mode:
-                    # in write mode, ignore simple read/scan activity: wait for write
-                    if events & 0x80:
-                        last_activity = utime.ticks_ms()
-                else:
-                    if events & 0x02:
-                        last_activity = utime.ticks_ms()
-
-            if last_activity is not None \
-                    and utime.ticks_diff(utime.ticks_ms(), last_activity) > POST_SCAN_DELAY:
-                # They acheived a read/write and then nothing for some time. We are done w/ success.
-                aborted = False
-                break
+                if events & 0x02:
+                    # 0x2 = RF activity
+                    last_activity = utime.ticks_ms()
 
             # X or OK to quit, with slightly different meanings
             ch = ux_poll_key()
             if ch and ch in 'xy': 
                 aborted = (ch == 'x')
                 break
+
+            if last_activity:
+                dt = utime.ticks_diff(utime.ticks_ms(), last_activity)
+                if dt >= min_delay:
+                    # They acheived some RF activity and then nothing for some time, so
+                    # we are done w/ success.
+                    aborted = False
+                    break
 
         self.set_rf_disable(1)
         if not write_mode:
@@ -366,18 +366,23 @@ class NFCHandler:
         if aborted: return
 
         # read CCFILE area (header)
+        prob = taste = ''
         try:
             taste = self.read(0, 16)
             st, ll, _, _ = ndef.ccfile_decode(taste)
         except Exception as e:
             # robustness; need to handle all failures here
-            import sys; sys.print_exception(e)
-            print("taste = " + B2A(taste))
+            prob = str(e)
             ll = None
 
-        if not ll:
-            # they wrote nothing / failed to do anything
-            await ux_show_story("No tag data was written?\n\n" + B2A(taste), title="Sorry!")
+        if not ll or prob:
+            # they wrote nothing / failed write something we could parse
+            msg = "No tag data was written?"
+            if taste:
+                msg += '\n\n' + B2A(taste)
+            if prob:
+                msg += '\n\n' + prob
+            await ux_show_story(msg, title="Sorry!")
             return
 
         # copy to ram, wipe
@@ -417,7 +422,7 @@ class NFCHandler:
             pass
 
         if psbt_in is None:
-            await ux_show_story("Could not find PSBT", title="Sorry!")
+            await ux_show_story("Could not find PSBT in what was written.", title="Sorry!")
             return
 
         # decode into PSRAM
