@@ -12,7 +12,8 @@ python run_sim_tests.py --onetime                              # run ONLY onetim
 python run_sim_tests.py --onetime --veryslow                   # run both onetime and very slow
 python run_sim_tests.py -m test_nfc.py                         # run only nfc tests
 python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run nfc and hsm tests
-python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 40 minutes) - most useful
+python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 40 minutes)
+python run_sim_tests.py                                        # same as with '-m all' above --> most useful
 python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 235 minutes)
 
 
@@ -41,7 +42,6 @@ def pushd(new_dir):
         yield
     finally:
         os.chdir(previous_dir)
-
 
 
 def remove_client_sockets():
@@ -181,7 +181,8 @@ def main():
         # when collect is in argument - do just collect and exit
         print(collect_marked_tests(args.collect))
         return
-
+    if args.module is None and (args.onetime is False and args.veryslow is False):
+        args.module = ["all"]
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
     if args.module is None:
         test_modules = []
@@ -196,11 +197,12 @@ def main():
     result = []
     for test_module in test_modules:
         test_args = DEFAULT_SIMULATOR_ARGS
-        print("Started", test_module)
         if test_module in ["test_rng.py", "test_pincodes.py"]:
             # test_pincodes.py can only be run against real device
             # test_rng.py not needed when using simulator
+            print("Skipped", test_module)
             continue
+        print("Started", test_module)
         if test_module == "test_vdisk.py":
             test_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vdsk=1"]
         if test_module == "test_bip39pw.py":
