@@ -108,7 +108,7 @@ Install and run simulator on Ubuntu 20.04
 git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
 # apply address patch
-git apply unix/unix_addr.patch
+git apply unix/linux_addr.patch
 # create virtualenv and activate it
 python3 -m venv ENV  # or virtualenv -p python3 ENV
 source ENV/bin/activate
