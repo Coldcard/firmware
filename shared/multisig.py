@@ -577,7 +577,7 @@ class MultisigWallet:
         has_mine = 0
         M, N = -1, -1
         deriv = None
-        name =None
+        name = None
         xpubs = []
         addr_fmt = AF_P2SH
         my_xfp = settings.get('xfp')
@@ -714,14 +714,16 @@ class MultisigWallet:
         expect_chain = chains.current_chain().ctype
 
         lines = [line for line in config.split('\n') if line]  # remove empty lines
-        print(lines)
         if len(lines) == 1:
             # assume descriptor, classic config cannot have only single line
             # ignore name
             _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(lines[0])
         else:
             # oldschool
-            name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
+            parsed_name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
+            if parsed_name:
+                # if name provided in file, use that instead of name inferred from filename
+                name = parsed_name
 
         assert len(xpubs), 'need xpubs'
 
