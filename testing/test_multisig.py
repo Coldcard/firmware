@@ -6,6 +6,9 @@
 #
 #       py.test test_multisig.py -m ms_danger --ms-danger
 #
+import sys
+sys.path.append("../shared")
+from descriptor import MultisigDescriptor, append_checksum
 import base64
 import time, pytest, os, random, json, shutil, pdb
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -154,32 +157,46 @@ def offer_ms_import(cap_story, dev, need_keypress):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
-    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None):
+    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None,
+             descriptor=False, sortedmulti=True, sub_deriv=None):
         keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None))
+        name = name or f'test-{M}-{N}'
 
         if not do_import:
             return keys
 
-        # render as a file for import
-        name = name or f'test-{M}-{N}'
-        config = f"name: {name}\npolicy: {M} / {N}\n\n"
+        if descriptor:
+            if not derivs:
+                if not common:
+                    common = "m/45'"
+                key_list = [(xfp, common, dd.hwif(as_private=False), []) for xfp, m, dd in keys]
+            else:
+                assert len(derivs) == N
+                key_list = [(xfp, derivs[idx], dd.hwif(as_private=False), []) for idx, (xfp, m, dd) in keys]
 
-        if addr_fmt:
-            config += f'format: {addr_fmt.title()}\n'
-
-        # not good enuf anymore, but maybe in some cases, just need one at top
-        if common:
-            config += f'derivation: {common}\n'
-
-        if not derivs:
-            config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False)) 
-                                            for xfp, m, dd in keys)
+            desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=addr_fmt, sortedmulti=sortedmulti)
+            desc_str = desc.serialize()
+            config = "%s\n" % desc_str
         else:
-            # for cases where derivation of each leg is not same/simple
-            assert not common and len(derivs) == N
-            for idx, (xfp, m, dd) in enumerate(keys):
-                config += 'Derivation: %s\n%s: %s\n\n' % (derivs[idx],
-                                        xfp2str(xfp), dd.hwif(as_private=False)) 
+            # render as a file for import
+            config = f"name: {name}\npolicy: {M} / {N}\n\n"
+
+            if addr_fmt:
+                config += f'format: {addr_fmt.title()}\n'
+
+            # not good enuf anymore, but maybe in some cases, just need one at top
+            if common:
+                config += f'derivation: {common}\n'
+
+            if not derivs:
+                config += '\n'.join('%s: %s' % (xfp2str(xfp), dd.hwif(as_private=False))
+                                                for xfp, m, dd in keys)
+            else:
+                # for cases where derivation of each leg is not same/simple
+                assert not common and len(derivs) == N
+                for idx, (xfp, m, dd) in enumerate(keys):
+                    config += 'Derivation: %s\n%s: %s\n\n' % (derivs[idx],
+                                            xfp2str(xfp), dd.hwif(as_private=False))
 
         #print(config)
         open('debug/last-ms.txt', 'wt').write(config)
@@ -189,7 +206,9 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
         assert 'Create new multisig' in story \
                 or 'Update existing multisig wallet' in story \
                 or 'new wallet is similar to' in story
-        assert name in story
+        if descriptor is False:
+            # descriptors wallet does not have a name
+            assert name in story
         assert f'Policy: {M} of {N}\n' in story
 
         if accept:
@@ -1963,5 +1982,35 @@ def test_dup_ms_wallet_bug(goto_home, cap_story, pick_menu_item, cap_menu, need_
     need_keypress('y')
 
     clear_ms()
+
+@pytest.mark.parametrize("sortedmulti", [True, False])
+@pytest.mark.parametrize('M_N', [(2, 3), (2, 2), (3, 5), (6, 10), (15, 15)])
+@pytest.mark.parametrize('addr_fmt', [ AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH ])
+def test_import_desciptor(sortedmulti, M_N, addr_fmt, offer_ms_import, import_ms_wallet, goto_home, pick_menu_item, clear_ms, need_keypress, cap_story, microsd_path):
+    clear_ms()
+    M, N = M_N
+    import_ms_wallet(M, N, addr_fmt=addr_fmt, accept=1, descriptor=True, sortedmulti=sortedmulti)
+    goto_home()
+    pick_menu_item('Settings')
+
+    pick_menu_item('Multisig Wallets')
+    need_keypress('y')  # only one enrolled multisig - choose it
+    pick_menu_item('Descriptor Export')
+    need_keypress('y')  # yes - export
+    title, story = cap_story()
+    assert "Coldcard multisig setup file written" in story
+    f_name = story.split("\n\n")[1]
+    f_path = microsd_path(f_name)
+    with open(f_path, "r") as f:
+        desc_export = f.read().strip()
+    with open("debug/last-ms.txt", "r") as f:
+        desc_import = f.read().strip()
+    assert desc_import == desc_export
+    starts_with = MultisigDescriptor.FMT_TO_SCRIPT[addr_fmt].split("%")[0]
+    assert desc_export.startswith(starts_with)
+    if sortedmulti:
+        assert "sortedmulti(" in desc_export
+    else:
+        assert "multi(" in desc_export
 
 # EOF
