@@ -6,13 +6,7 @@
 #  <https://blog.feabhas.com/2017/12/introduction-docker-embedded-developers-part-4-reducing-docker-image-size/>
 #
 
-# PROBLEM: alpine has `gcc-arm-none-eabi` but it's not in main repo, instead its part of "edge"?
-#
-# - for firmware v4.0.2, I used alphine:3.13.2 as base, but that doesn't work now for
-#   some random reason, and I don't care to debug why.
-#
-#FROM alpine:3.13.2
-FROM alpine:edge
+FROM alpine:3.16.0
 
 WORKDIR /work
 
