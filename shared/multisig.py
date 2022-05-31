@@ -460,10 +460,11 @@ class MultisigWallet:
         for xfp, deriv, xpub in self.xpubs:
             # load bip32 node for each cosigner, derive /0/ based on change idx
             node = ch.deserialize_node(xpub, AF_P2SH)
-            to_derive = self.desc_sub_derivs.get(xfp, [str(change_idx), "*"])
+            to_derive = self.desc_sub_derivs.get(xfp, [])
+            if not to_derive:
+                to_derive = [str(change_idx), "*"]
             assert to_derive[-1] == "*"
             to_derive = to_derive[:-1]  # remove *
-            print("after", to_derive)
             to_derive_str = "/".join(to_derive)
             for i in to_derive:  # *
                 node.derive(int(i), False)
@@ -1403,15 +1404,17 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
                 xp = chain.serialize_public(node, fmt)
                 fp.write('  "%s_deriv": "%s",\n' % (name, dd))
                 fp.write('  "%s": "%s",\n' % (name, xp))
-                if fmt != AF_P2SH:
-                    # ignore p2sh -> obsolete
-                    key_exp = "[%s%s]%s/0/*" % (xfp, dd.replace("m", ''), chain.serialize_public(node))
-                    if fmt == AF_P2WSH_P2SH:
-                        descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
-                    else:
-                        descriptor_template = "wsh(sortedmulti(M,%s,...))"
+                key_exp = "[%s%s]%s/0/*" % (xfp.lower(), dd.replace("m", ''), chain.serialize_public(node))
+                if fmt == AF_P2WSH_P2SH:
+                    descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
                     descriptor_template = descriptor_template % (key_exp)
                     fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
+                elif fmt == AF_P2WSH:
+                    descriptor_template = "wsh(sortedmulti(M,%s,...))"
+                    descriptor_template = descriptor_template % (key_exp)
+                    fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
+                else:
+                    continue
 
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)

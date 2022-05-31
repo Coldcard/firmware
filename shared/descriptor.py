@@ -84,6 +84,10 @@ class MultisigDescriptor:
         AF_P2WSH_P2SH: "sh(wsh(%s))",
         AF_P2WSH: "wsh(%s)",
         None: "wsh(%s)",
+        # hack for tests
+        "p2sh": "sh(%s)",
+        "p2sh-p2wsh": "sh(wsh(%s))",
+        "p2wsh": "wsh(%s)",
     }
 
     def __init__(self, M, N, keys, addr_fmt, sortedmulti=True, xfp_subderiv=None):
@@ -139,7 +143,7 @@ class MultisigDescriptor:
         for tup in self.keys:
             if len(tup) == 3:
                 xfp, deriv, xpub = tup
-                sub_deriv = None
+                sub_deriv = ["0", "*"]
             else:
                 assert len(tup) == 4
                 xfp, deriv, xpub, sub_deriv = tup
@@ -148,7 +152,7 @@ class MultisigDescriptor:
                 deriv = deriv[1:]
             koi = xfp2str(xfp) + deriv
             key_str = "[%s]%s" % (koi.lower(), xpub)
-            sub_deriv = sub_deriv if sub_deriv is not None else self.xfp_subderiv.get(xfp, None)
+            sub_deriv = sub_deriv if sub_deriv else self.xfp_subderiv.get(xfp, ["0", "*"])
             key_str = key_str + "/" + "/".join(sub_deriv) if sub_deriv else key_str
             result.append(key_str)
         return result

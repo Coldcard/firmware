@@ -32,7 +32,7 @@ bitcoin-cli -regtest  createwallet "watch_only" true true "" false true
 6. Above descriptor template needs to be filled with information form other signers (in our case only bitcoind). Specifically one must add all extended keys with key origin info and substitute `M` with treshold value.
 7. Bitcoin (unfortunately) does not support deriving xpubs at will, so we will use legacy derivations path which we can get from `listdescriptors`
 ```shell
-$ bitcoin-cli -regtest -rpcwallet="signer"
+$ bitcoin-cli -regtest -rpcwallet="signer" listdescriptors
 {
   "wallet_name": "signer",
   "descriptors": [
@@ -85,7 +85,7 @@ $ bitcoin-cli -regtest getdescriptorinfo "wsh(sortedmulti(2,[0F056943/48'/1'/0'/
 # mind the quoting
 bitcoin-cli -regtest -rpcwallet=watch_only importdescriptors '[{ "desc": "wsh(sortedmulti(2,[0f056943/48'\''/1'\''/0'\''/2'\'']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[64366408/44'\''/1'\''/0'\'']tpubDCXQ3To3NsuzoTL2VsEFEGohQqnWFRHjno6axLhJf2HASarkm3ckwiBZoeo2Fg1iD6eLeEZ4eSnrteJzNsvR2xAZ3tm4mPottVvsnxrxGWk/0/*))#u9kn5t5z", "timestamp": "now", "active": true}]'
 ```
-15. Get address adn get some fund
+15. Get address and get some funds
 ```shell
 $ bitcoin-cli -regtest -rpcwallet=watch_only  getnewaddress
 bcrt1qxztjwu7ellu9c3ec3vxp2t6uw0z8dugha3tcfmz8nhhvmluk2ljshae587
