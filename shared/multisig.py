@@ -88,7 +88,7 @@ def disassemble_multisig(redeem_script):
 
 def make_redeem_script(M, nodes, subkey_idx, sortedmulti=True):
     # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
-    # a standard M-of-N redeem script for that. Always applies BIP-67 sorting.
+    # a standard M-of-N redeem script for that. Applies BIP-67 sorting based on parameter sortedmulti.
     N = len(nodes)
     assert 1 <= M <= N <= MAX_SIGNERS
 
@@ -131,7 +131,7 @@ class MultisigWallet:
     # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC', desc_sub_derivs=None, sortedmulti=True):
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC', xfp_subderiv=None, sortedmulti=True):
         self.storage_idx = -1
 
         self.name = name
@@ -141,7 +141,8 @@ class MultisigWallet:
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
-        self.desc_sub_derivs = desc_sub_derivs if desc_sub_derivs is not None else {}
+        # subderivation paths for xpubs (for descriptor compatibility)
+        self.xfp_subderiv = xfp_subderiv if xfp_subderiv else {}
         self.sortedmulti = sortedmulti
 
         # calc useful cache value: numeric xfp+subpath, with lookup
@@ -193,12 +194,18 @@ class MultisigWallet:
             # allow for distinct deriv paths on each leg
             opts['d'] = pp
             xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
+        sp = list(set(sub_d for _, sub_d in self.xfp_subderiv.items()))
+        if len(sp) == 0:
+            # no sub derivations, no need to store anything
+            pass
+        elif len(sp) == 1:
+            # store common subderivation in sp
+            opts["sp"] = sp[0]
+        else:
+            # add sub derivations to xp as last element
+            xp = [(xfp, deriv, xpub, self.xfp_subderiv[xfp]) for xfp,deriv,xpub in xp]
 
-        if self.desc_sub_derivs:
-            # need to store subpaths
-            opts['dsd'] = self.desc_sub_derivs
-        if self.sortedmulti:
-            opts['sm'] = self.sortedmulti
+        opts['sm'] = self.sortedmulti
 
         return (self.name, (self.M, self.N), xp, opts)
 
@@ -206,6 +213,26 @@ class MultisigWallet:
     def deserialize(cls, vals, idx=-1):
         # take json object, make instance.
         name, m_of_n, xpubs, opts = vals
+
+        xfp_subderiv = None
+
+        if "sp" in opts and opts["sp"]:
+            # in case all subderivations are the same - create xfp_subderiv mapping with common sub derivation
+            xfp_subderiv = {}
+            common = opts.get("sp")
+            for tup in xpubs:
+                xfp_subderiv[tup[0]] = common
+
+        if len(xpubs[0]) == 4:
+            # new descriptor type with sub derivations
+            # remove subderivation from xpubs and create xfp_subderiv mapping
+            new_xpubs = []
+            xfp_subderiv = {}
+            for xfp, deriv, xpub, sub_d in xpubs:
+                new_xpubs.append((xfp, deriv, xpub))
+                xfp_subderiv[xfp] = sub_d
+            xpubs = new_xpubs
+            assert len(xpubs[0]) == 3
 
         if len(xpubs[0]) == 2:
             # promote from old format to new: assume common prefix is the derivation
@@ -223,8 +250,8 @@ class MultisigWallet:
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                 chain_type=opts.get('ch', 'BTC'), desc_sub_derivs=opts.get("dsd", None),
-                 sortedmulti=opts.get('sm', False))
+                 chain_type=opts.get('ch', 'BTC'), xfp_subderiv=xfp_subderiv,
+                 sortedmulti=opts.get('sm', True))
         rv.storage_idx = idx
 
         return rv
@@ -460,10 +487,10 @@ class MultisigWallet:
         for xfp, deriv, xpub in self.xpubs:
             # load bip32 node for each cosigner, derive /0/ based on change idx
             node = ch.deserialize_node(xpub, AF_P2SH)
-            to_derive = self.desc_sub_derivs.get(xfp, [])
-            if not to_derive:
+            to_derive = self.xfp_subderiv.get(xfp, None)
+            if to_derive is None:
                 to_derive = [str(change_idx), "*"]
-            assert to_derive[-1] == "*"
+            assert to_derive[-1] == "*", "Not a range descriptor"
             to_derive = to_derive[:-1]  # remove *
             to_derive_str = "/".join(to_derive)
             for i in to_derive:  # *
@@ -477,7 +504,7 @@ class MultisigWallet:
         idx = start_idx
         while count:
             # make the redeem script, convert into address
-            script = make_redeem_script(self.M, nodes, idx)
+            script = make_redeem_script(self.M, nodes, idx, self.sortedmulti)
             addr = ch.p2sh_address(self.addr_fmt, script)
             addr = addr[0:12] + '___' + addr[12+3:]
 
@@ -676,15 +703,13 @@ class MultisigWallet:
         has_mine = 0
         my_xfp = settings.get('xfp')
         xpubs = []
-        sub_derivs = {}
         desc = MultisigDescriptor.parse(descriptor)
-        for xfp, deriv, xpub, sub_deriv in desc.keys:
+        for xfp, deriv, xpub in desc.keys:
             deriv = cleanup_deriv_path(deriv)
             is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
             if is_mine:
                 has_mine += 1
-            sub_derivs[xfp] = sub_deriv
-        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, sub_derivs, desc.sortedmulti
+        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, desc.xfp_subderiv, desc.sortedmulti
 
     @classmethod
     def from_file(cls, config, name=None):
@@ -711,7 +736,7 @@ class MultisigWallet:
         if len(lines) == 1:
             # assume descriptor, classic config cannot have only single line
             # ignore name
-            _, addr_fmt, xpubs, has_mine, M, N, sub_derivs, is_sorted = cls.from_descriptor(lines[0])
+            _, addr_fmt, xpubs, has_mine, M, N, sub_derivs, sortedmulti = cls.from_descriptor(lines[0])
         else:
             # oldschool
             parsed_name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
@@ -719,7 +744,7 @@ class MultisigWallet:
                 # if name provided in file, use that instead of name inferred from filename
                 name = parsed_name
             sub_derivs = None
-            is_sorted = True
+            sortedmulti = True
 
         assert len(xpubs), 'need xpubs'
 
@@ -748,7 +773,7 @@ class MultisigWallet:
 
         # done. have all the parts
         return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain,
-                   desc_sub_derivs=sub_derivs, sortedmulti=is_sorted)
+                   xfp_subderiv=sub_derivs, sortedmulti=sortedmulti)
 
     @classmethod
     def check_xpub(cls, xfp, xpub, deriv, expect_chain, my_xfp, xpubs):
@@ -911,14 +936,11 @@ Otherwise, OK to proceed normally.''', escape='3')
         if descriptor:
             # serialize descriptor
             # add subpaths if exists
-            adjust_keys = [
-                (xfp, deriv, xpub, self.desc_sub_derivs.get(xfp, []))
-                for xfp, deriv, xpub in self.xpubs
-            ]
             desc = MultisigDescriptor(
                 M=self.M, N=self.N,
-                keys=adjust_keys,
+                keys=self.xpubs,
                 addr_fmt=self.addr_fmt,
+                xfp_subderiv=self.xfp_subderiv,
                 sortedmulti=self.sortedmulti
             ).serialize()
             print("%s\n" % desc, file=fp)
@@ -1643,6 +1665,9 @@ async def import_multisig(*a):
     def possible(filename):
         with open(filename, 'rt') as fd:
             for ln in fd:
+                if "sh(" in ln or "wsh(" in ln:
+                    # descriptor import
+                    return True
                 if 'pub' in ln:
                     return True
 

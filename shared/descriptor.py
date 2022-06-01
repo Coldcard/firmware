@@ -96,7 +96,7 @@ class MultisigDescriptor:
         self.keys = keys
         self.addr_fmt = addr_fmt
         self.sortedmulti = sortedmulti
-        if xfp_subderiv is None:
+        if not xfp_subderiv:
             self.xfp_subderiv = {}
         else:
             self.xfp_subderiv = xfp_subderiv
@@ -108,7 +108,10 @@ class MultisigDescriptor:
 
     @staticmethod
     def checksum_check(desc_w_checksum: str):
-        desc, checksum = desc_w_checksum.split("#")
+        try:
+            desc, checksum = desc_w_checksum.split("#")
+        except ValueError:
+            raise ValueError("Missing descriptor checksum")
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
             raise ValueError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
@@ -122,37 +125,31 @@ class MultisigDescriptor:
             raise ValueError("Key origin info is required for %s" % (key))
         key_orig_info = key[1:close_index]  # remove brackets
         key = key[close_index + 1:]
+        assert "/" in key_orig_info, "Malformed key derivation info"
         return key_orig_info, key
 
     @staticmethod
     def parse_key_derivation_info(key: str):
         slash_split = key.split("/")
-        if len(slash_split) == 1:
-            return key, []
+        assert len(slash_split) > 1, "Only range descriptors are allowed, missing '*'"
+        if all(["h" not in elem and "'" not in elem for elem in slash_split[1:]]):
+            assert slash_split[-1] == "*", "Only range descriptors are allowed, missing '*'"
+            return slash_split[0], tuple(slash_split[1:])
         else:
-            if all(["h" not in elem and "'" not in elem for elem in slash_split[1:]]):
-                return slash_split[0], slash_split[1:]
-            else:
-                raise ValueError("Cannot use hardened subderivation path")
+            raise ValueError("Cannot use hardened sub derivation path")
 
     def checksum(self):
         return descriptor_checksum(self._serialize())
 
     def serialize_keys(self):
         result = []
-        for tup in self.keys:
-            if len(tup) == 3:
-                xfp, deriv, xpub = tup
-                sub_deriv = ["0", "*"]
-            else:
-                assert len(tup) == 4
-                xfp, deriv, xpub, sub_deriv = tup
+        for xfp, deriv, xpub in self.keys:
             if deriv[0] == "m":
                 # get rid of 'm'
                 deriv = deriv[1:]
             koi = xfp2str(xfp) + deriv
             key_str = "[%s]%s" % (koi.lower(), xpub)
-            sub_deriv = sub_deriv if sub_deriv else self.xfp_subderiv.get(xfp, ["0", "*"])
+            sub_deriv = self.xfp_subderiv.get(xfp, ["0", "*"])
             key_str = key_str + "/" + "/".join(sub_deriv) if sub_deriv else key_str
             result.append(key_str)
         return result
@@ -203,15 +200,18 @@ class MultisigDescriptor:
         N = int(len(keys))
 
         res_keys = []
+        xfp_subderiv = {}
         for key in keys:
             koi, key = cls.parse_key_orig_info(key)
             if key[0:4] not in ["tpub", "xpub"]:
                 raise ValueError("Only extended public keys are supported")
             xpub, sub_deriv = cls.parse_key_derivation_info(key)
             xfp = str2xfp(koi[:8])
+            if sub_deriv:
+                xfp_subderiv[xfp] = sub_deriv
             origin_deriv = "m" + koi[8:]
-            res_keys.append((xfp, origin_deriv, xpub, sub_deriv))
-        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt, sortedmulti=sortedmulti)
+            res_keys.append((xfp, origin_deriv, xpub))
+        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt, sortedmulti=sortedmulti, xfp_subderiv=xfp_subderiv)
 
     def _serialize(self) -> str:
         """Serialize without checksum"""
