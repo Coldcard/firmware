@@ -2198,15 +2198,19 @@ def test_bitcoind_2of2_tutorial(sub_deriv, desc_type, clear_ms, goto_home, need_
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(0.5)
-    # need_keypress("y")
-    try:
-        pick_menu_item(name)
-    except:
-        time.sleep(0.5)
-        need_keypress("y")
-        pick_menu_item(name)
-    time.sleep(0.5)
-    title, story = cap_story()
+    title, _ = cap_story()
+    if "OK TO SEND?" in title:
+        # multiple files
+        pass
+    else:
+        try:
+            pick_menu_item(name)
+        except:
+            time.sleep(0.5)
+            need_keypress("y")
+            pick_menu_item(name)
+            time.sleep(0.5)
+            title, story = cap_story()
     assert title == "OK TO SEND?"
     need_keypress("y")  # confirm signing
     time.sleep(0.5)
