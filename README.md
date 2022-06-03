@@ -81,6 +81,7 @@ You'll probably need to install at least these packages:
     brew install --cask xquartz
     brew install sdl2 xterm
     brew install --cask gcc-arm-embedded
+    brew install swig
 
 Used to be these were needed as well:
 
