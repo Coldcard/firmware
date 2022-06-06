@@ -1,0 +1,284 @@
+[IF NO PIN SET]
+  Elija el Código PIN
+  Herramientas Avanzadas
+    Ver Identidad
+    Actualización de Firmware
+      Mostrar versión
+      Desde MicroSD
+      Desde VirtDisk [IF VIRTDISK ENABLED]
+      Aprobar Firmware
+    Wallets de Papel
+    Realizar Selftest
+    Logout Seguro
+  Número de Bolsa
+  Ayuda
+---
+
+[IF BLANK WALLET]
+  Nuevas Palabras Semilla
+    24 Palabras (default)
+    12 Palabra
+    Tirada de Dados de 24 Palabras
+    Tirada de Dados de 12 Palabras
+  Importar existente
+    24 Palabras
+      [SEED WORD MENUS]
+    18 Palabras
+      [SEED WORD MENUS]
+    12 Palabras
+      [SEED WORD MENUS]
+    Restaurar Backup
+    Clonar Coldcard
+    Importar XPRV
+    Semilla XOR
+  Ayuda
+  Herramientas Avanzadas
+    Ver Identidad
+    Actualización de Firmware
+      Mostrar versión
+      Desde MicroSD
+      Desde VirtDisk [IF VIRTDISK ENABLED]
+      Aprobar Firmware
+    Gestión de Archivos
+      Verificar Backup
+      Listar Archivos
+      Archivos Compartidos de NFC [IF NFC ENABLED]
+      Formatear Tarjeta SD
+      Formatear Disco RAM [IF VIRTDISK ENABLED]
+    Wallets de Papel
+    Realizar Selftest
+    Soy Desarrollador.
+      REPL serie
+      Limpiar LFS
+      Reset Tibio
+      Restaurar Txt Bkup
+    Logout Seguro
+  Ajustes
+    Configuración de Login
+      Cambiar PIN Principal
+      Opciones de PIN
+      PIN de Truco
+        PIN de Truco:
+        ↳22-22
+        Agregar Nuevo Truco
+        Agregar si Está Mal
+        Eliminar Todo
+      Establecer Apodo
+      Teclado Codificable
+      Eliminar Clave
+      Cuenta Regresiva de Login
+        Desactivado
+        15 minutos
+        30 minutos
+         4 horas
+         1 hora
+         5 minutos
+         8 horas
+        12 horas
+         2 horas
+         3 días
+        48 horas
+         1 semana
+        24 horas
+        28 días después
+      Test Login Ahora
+    Hardware On/Off
+      Puerto USB
+        Default On
+        Deshabilitar USB
+      Disco Virtual
+        Default Off
+        Habilitar
+        Habilitar y Auto
+      Uso Compartido de NFC
+        Default Off
+        Habilitar NFC
+    Multisig Wallets
+      (ninguna configurado todavía)
+      Importar Desde SD
+      Exportar XPUB
+      Crear Airgapped
+      ¿Confía en PSBT?
+      ¿Omitir Controles?
+    Unidades de Conteo
+      BTC
+      mBTC
+      bits
+      sats
+    Tarifa de Red Máxima
+      10% (default)
+      25%
+      50%
+      sin límite
+    Tiempo de Inactividad
+       2 minutos
+       5 minutos
+      15 minutos
+       1 hora
+       4 horas
+       8 horas
+       Nunca
+    Eliminar PSBT
+      Conservar Default
+      Eliminar PSBT
+---
+
+[NORMAL OPERATION]
+  Listo Para Firmar
+  Frase de Contraseña
+  Iniciar Modo HSM [IF HSM POLICY]
+  Explorador de Direcciones
+  Logout Seguro
+  Herramientas Avanzadas
+   Backup
+      Backup del Sistema
+      Verificar Backup
+      Restaurar Backup
+      Clonar Coldcard
+    Exportar Wallet
+      Bitcoin Core
+      Electrum Wallet
+      Wasabi Wallet
+      Unchained Capital
+      Generic JSON
+      Exportar XPUB
+        Segwit (BIP-84)
+        Classic (BIP-44)
+        P2WPKH/P2SH (49)
+        Master XPUB
+        Current XFP
+      Resumen Completo
+    Actualización de Firmware
+      Mostrar versión
+      Desde MicroSD
+      Desde VirtDisk [IF VIRTDISK ENABLED]
+      Aprobar Firmware
+     Gestión de Archivos
+      Verificar Backup
+      Backup del Sistema
+      Exportar Wallet
+        Bitcoin Core
+      	Electrum Wallet
+     	Wasabi Wallet
+      	Unchained Capital
+      	Generic JSON
+      	Exportar XPUB
+          Segwit (BIP-84)
+          Classic (BIP-44)
+          P2WPKH/P2SH (49)
+          Master XPUB
+          Current XFP
+        Resumen Completo
+      Firmar Archivo de Texto
+      Clonar Coldcard
+      Listar Archivos
+      Archivos Compartidos de NFC [IF NFC ENABLED]
+      Formatear Tarjeta SD
+      Formatear Disco RAM [IF VIRTDISK ENABLED]
+    Derivar Semilla B85
+    Ver Identidad
+    Wallets de Papel
+    Gestión de Usuarios
+      (todavía no hay usuarios)
+    Zona Peligrosa
+      Funciones de Debug
+      Funciones de Semilla
+        Ver Palabras Semilla
+        Semilla XOR
+          Dividir Existente
+          Restaurar Semilla XOR
+        Destruir Semilla
+        Bloqueo de Semilla
+      Soy Desarrollador.
+        REPL Serie
+        Limpiar LFS
+        Reset Tibio
+        Reset Txt Bkup
+      Realizar Selftest
+      Establecer High-Water
+      Limpiar política de HSM [IF HSM POLICY]
+      Borrar Caché de OV
+      Modo de Testnet
+        Bitcoin
+        Testnet3
+      Espacio de Configuración
+      MCU Key Slots
+  Ajustes
+    Configuración de Login
+      Cambiar PIN Principal
+      Opciones de PIN
+      PIN de Truco
+        PIN de Truco:
+        ↳22-22
+        Agregar Nuevo Truco
+        Agregar si Está Mal
+        Eliminar Todo
+      Establecer Apodo
+      Teclado Codificable
+      Eliminar Clave
+      Cuenta Regresiva de Login
+        Desactivado
+        15 minutos
+        30 minutos
+         4 horas
+         1 hora
+         5 minutos
+         8 horas
+        12 horas
+         2 horas
+         3 días
+        48 horas
+         1 semana
+        24 horas
+        28 días después
+     Test Login Ahora
+    Hardware On/Off
+      Puerto USB
+        Default On
+        Deshabilitar USB
+      Disco Virtual
+        Default Off
+        Habilitar
+        Habilitar y Auto
+      Uso Compartido de NFC
+        Default Off
+        Habilitar NFC
+    Multisig Wallets
+      (ninguno configurado todavía)
+      Importar Desde SD
+      Exportar XPUB
+      Crear Airgapped
+      ¿Confía en PSBT?
+      ¿Omitir Controles?
+    Unidades de Conteo
+      BTC
+      mBTC
+      bits
+      sats
+    Tarifa de Red Máxima
+      10% (default)
+      25%
+      50%
+      sin límite
+     Tiempo de Inactividad
+        2 minutos
+        5 minutos
+       15 minutos
+        1 hora
+        4 horas
+        8 horas
+        Nunca
+     Eliminar PSBT
+       Conservar Default
+       Eliminar PSBT
+---
+
+[FACTORY MODE]
+   Empacame Ahora
+   Actualización de DFU
+   Mostrar Vversión
+   Enviar Sin Bolsa
+   Funciones de Debug
+   Realizar Selftest
+---
+
