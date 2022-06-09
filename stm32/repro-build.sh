@@ -54,9 +54,9 @@ else
 fi
 cd ../stm32
 
-if [ -z "$SOURCE_DATE_EPOCH" ]; then
-    TAG=$(basename $PUBLISHED_BIN | cut -d "-" -f1,2,3,4)
-    export SOURCE_DATE_EPOCH=$(git show -s --format=%at $TAG | tail -n1)
+if [ -z "$SOURCE_DATE_EPOCH" ] && [ -n "$PUBLISHED_BIN" ]; then
+    DT=$(basename $PUBLISHED_BIN | cut -d "-" -f1,2,3)
+    export SOURCE_DATE_EPOCH=$(python -c 'import datetime, sys; sys.stdout.write(str(int(datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H%M").timestamp())))' "$DT")
 fi
 
 $MAKE setup
