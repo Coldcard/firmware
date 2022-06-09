@@ -1964,4 +1964,27 @@ def test_dup_ms_wallet_bug(goto_home, cap_story, pick_menu_item, cap_menu, need_
 
     clear_ms()
 
+def test_ms_wallet_ordering(clear_ms, import_ms_wallet, try_sign_microsd, fake_ms_txn):
+    clear_ms()
+    all_out_styles = list(unmap_addr_fmt.keys())
+    index = all_out_styles.index("p2sh-p2wsh")
+    all_out_styles[index] = "p2wsh-p2sh"
+    # create two wallets from same master seed (same extended keys and paths, different length (N))
+    # 1. 3of6
+    # 2. 3of5  (import in this order, import one with more keys first)
+    # create PSBT for wallet with less keys
+    # sign it
+    # WHY: as we store wallets in list, they are ordered by their addition/import. Iterating over
+    # wallet candindates in psbt.py M are equal N differs --> assertion error
+    name = f'ms1'
+    import_ms_wallet(3, 6, name=name, accept=1, do_import=True, addr_fmt="p2wsh")
+    name = f'ms2'
+    keys3 = import_ms_wallet(3, 5, name=name, accept=1, do_import=True, addr_fmt="p2wsh")
+
+    psbt = fake_ms_txn(5, 5, 3, keys3, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
+
+    open('debug/last.psbt', 'wb').write(psbt)
+
+    try_sign_microsd(psbt, encoding='base64')
+
 # EOF

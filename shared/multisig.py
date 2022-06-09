@@ -277,6 +277,10 @@ class MultisigWallet:
         # the same prefix path per-each xfp, as indicated 
         # xfp_paths (unordered)?
         # - could also check non-prefix part is all non-hardened
+        if len(xfp_paths) != len(self.xfp_paths):
+            # cannot be the same if  len(w0.N) != len(w1.N)
+            # maybe check duplicates first?
+            return False
         for x in xfp_paths:
             if x[0] not in self.xfp_paths:
                 return False

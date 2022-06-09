@@ -1069,13 +1069,15 @@ class psbtObject(psbtProxy):
                 # - too slow to re-derive it here, so nothing more to validate at this point
                 return
 
-            assert N == len(xfp_paths) 
+            assert N == len(xfp_paths)
 
             for c in candidates:
-                if c.M == M:
-                    assert c.N == N
+                if c.M == M and c.N == N:
                     self.active_multisig = c
                     break
+            # if not active_multisig set in this loop
+            # appropriate candidate was not found
+            # --> continue to import from psbt prompt
 
         del candidates
 
