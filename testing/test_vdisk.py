@@ -2,7 +2,7 @@
 #
 # Mk4 Virtual Disk related tests.
 #
-import pytest, glob, sys, os, pdb, re
+import pytest, glob, sys, os, pdb, re, time
 from helpers import B2A
 from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack

@@ -215,8 +215,31 @@ def bitcoind_d_wallet_w_sk(bitcoind):
 
 
 @pytest.fixture
-def bitcoind_d_sim(bitcoind):
-    # Use bitcoind to create a clone of simulator wallet
+def bitcoind_d_sim_watch(bitcoind):
+    # watch only descriptor wallet simulator
+    w_name = 'ckcc-test-desc-wallet-sim-%s' % uuid.uuid4()
+    conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=True, blank=True,
+                                  passphrase=None, avoid_reuse=False, descriptors=True)
+    descriptors = [
+        {
+            "timestamp": "now",
+            "label": "Coldcard 0f056943",
+            "active": True,
+            "desc": "wpkh([0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/0/*)#erexmnep",
+            "internal": False},
+        {
+            "desc": "wpkh([0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/1/*)#ghu8xxfe",
+            "active": True,
+            "internal": True,
+            "timestamp": "now"
+        }
+    ]
+    conn.importdescriptors(descriptors)
+    return conn
+
+@pytest.fixture
+def bitcoind_d_sim_sign(bitcoind):
+    # Use bitcoind to create a clone of simulator wallet with private keys
     w_name = 'ckcc-test-desc-wallet-sim-%s' % uuid.uuid4()
     conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=False, blank=True,
                                   passphrase=None, avoid_reuse=False, descriptors=True)

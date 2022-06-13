@@ -2,16 +2,13 @@
 #
 # Creating fake transactions. Not simple.
 #
-import time, pytest, os
+import pytest, os
 from ckcc_protocol.protocol import MAX_TXN_LEN
-from binascii import b2a_hex, a2b_hex
-from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
+from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from io import BytesIO
-from pprint import pprint, pformat
-from decimal import Decimal
 from helpers import fake_dest_addr, make_change_addr
 from pycoin.key.BIP32Node import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, simulator_fixed_xprv
+from constants import ADDR_STYLES, simulator_fixed_xprv
 
 @pytest.fixture()
 def simple_fake_txn():
@@ -19,7 +16,6 @@ def simple_fake_txn():
     from pycoin.tx.Tx import Tx
     from pycoin.tx.TxIn import TxIn
     from pycoin.tx.TxOut import TxOut
-    from pycoin.serialize import h2b_rev
     from struct import pack
 
     def doit(num_ins, num_outs, fat=0):
@@ -63,7 +59,6 @@ def fake_txn(dev):
     from pycoin.tx.Tx import Tx
     from pycoin.tx.TxIn import TxIn
     from pycoin.tx.TxOut import TxOut
-    from pycoin.serialize import h2b_rev
     from struct import pack
 
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,

@@ -1,3 +1,7 @@
+## 5.0.5 - YYYY-MM-DD
+- Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing
+  from [@straylight-orbit ](https://github.com/straylight-orbit)
+
 ## 5.0.4 - 2022-05-27
 
 - Enhancement: Optional USB protocol change which binds the ephemeral ECDH encryption 

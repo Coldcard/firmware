@@ -5,7 +5,8 @@
 # - many test "sync" issues here; case is right but gets outs of sync with DUT
 # - use `./simulator.py --eff --set nfc=1`
 #
-import pytest
+import pytest, time
+from binascii import b2a_hex, a2b_hex
 from struct import pack, unpack
 import ndef
 from hashlib import sha256
