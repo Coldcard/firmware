@@ -1,4 +1,4 @@
-## 5.0.5 - YYYY-MM-DD
+## 5.0.5 - 2022-06-16
 - Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing
   from [@straylight-orbit ](https://github.com/straylight-orbit)
 - Bugfix: order of multisig wallet registration does NOT matter.
