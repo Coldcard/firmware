@@ -1,7 +1,7 @@
-
-## 5.0.5 - 2022-06-XXX
-
-- Bugfix: Order of multisig wallet registration should not matter.
+## 5.0.5 - 2022-06-16
+- Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing
+  from [@straylight-orbit ](https://github.com/straylight-orbit)
+- Bugfix: order of multisig wallet registration does NOT matter.
 
 ## 5.0.4 - 2022-05-27
 

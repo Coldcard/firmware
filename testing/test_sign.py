@@ -2,6 +2,7 @@
 #
 # Transaction Signing. Important.
 #
+import base64
 import time, pytest, os, random, pdb, struct
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
@@ -1586,5 +1587,97 @@ def test_simple_p2tr(dev, start_sign, fake_txn, cap_story):
     assert 'warning' not in story.lower()
 
     assert 'tb1pvskwx3zmdfczewxwzeqdp5xcd7z75jwa3dcrausu5g7n48h3wtwqmrzp7y' in story
+
+@pytest.mark.parametrize("segwit_in", [True, False])
+@pytest.mark.parametrize('num_not_ours', [1, 3, 4])
+def test_foreign_utxo_missing(segwit_in, num_not_ours, dev, fake_txn, start_sign, cap_story, end_sign):
+    def hack(psbt):
+        # change first input to not be ours
+        for i in range(num_not_ours):
+            pk = list(psbt.inputs[i].bip32_paths.keys())[0]
+            pp = psbt.inputs[i].bip32_paths[pk]
+            psbt.inputs[i].bip32_paths[pk] = b'what' + pp[4:]
+            # no utxo provided for foreign inputs
+            psbt.inputs[i].utxo = None
+            psbt.inputs[i].witness_utxo = None
+
+    psbt = fake_txn(5, 2, dev.master_xpub, segwit_in=segwit_in, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    _, story = cap_story()
+    no = ", ".join(str(i) for i in list(range(num_not_ours)))
+    assert "warnings" in story
+    assert f"Limited Signing: We are not signing these inputs, because we do not know the key: {no}" in story
+    assert f"Unable to calculate fee: Some input(s) haven't provided UTXO(s): {no}" in story
+    signed = end_sign(accept=True)
+    assert signed != psbt
+
+@pytest.mark.parametrize("segwit_in", [True, False])
+@pytest.mark.parametrize("num_missing", [1, 3, 4])
+def test_own_utxo_missing(segwit_in, num_missing, dev, fake_txn, start_sign, cap_story, end_sign, need_keypress):
+    def hack(psbt):
+        for i in range(num_missing):
+            # no utxo provided for our input
+            psbt.inputs[i].utxo = None
+            psbt.inputs[i].witness_utxo = None
+
+    psbt = fake_txn(5, 2, dev.master_xpub, segwit_in=segwit_in, psbt_hacker=hack)
+    start_sign(psbt)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "Failure"
+    assert "Missing own UTXO(s)" in story
+    need_keypress("x")
+
+@pytest.mark.bitcoind
+def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_path, try_sign):
+    # batch tx created from three different psbts (using joinpsbts)
+    # they all pay one destination address...
+    # good thing is that if bitcoin core one day decides that they no longer support missing UTXO for foreign inputs
+    # we will know about it
+    dest_address = bitcoind.supply_wallet.getnewaddress()
+    alice = bitcoind.create_wallet(wallet_name="alice")
+    bob = bitcoind.create_wallet(wallet_name="bob")
+    cc = bitcoind_d_sim_watch
+    alice_addr = alice.getnewaddress()
+    alice_pubkey = alice.getaddressinfo(alice_addr)["pubkey"]
+    bob_addr = bob.getnewaddress()
+    bob_pubkey = bob.getaddressinfo(bob_addr)["pubkey"]
+    cc_addr = cc.getnewaddress()
+    cc_pubkey = cc.getaddressinfo(cc_addr)["pubkey"]
+    # fund all addresses
+    for addr in (alice_addr, bob_addr, cc_addr):
+        bitcoind.supply_wallet.generatetoaddress(101, addr)
+    psbt_list = []
+    for w in (alice, bob, cc):
+        assert w.listunspent()
+        psbt = w.walletcreatefundedpsbt([], [{dest_address: 1.0}], 0, {"fee_rate": 20})["psbt"]
+        psbt_list.append(psbt)
+    # join PSBTs to one
+    the_psbt = bitcoind.supply_wallet.joinpsbts(psbt_list)
+    the_psbt_obj = BasicPSBT().parse(the_psbt.encode())
+    # remove utxos for bob and alice and let coldcard sign
+    for inp in the_psbt_obj.inputs:
+        for pk, _ in inp.bip32_paths.items():
+            if pk.hex() == cc_pubkey:
+                continue
+            assert pk.hex() in (alice_pubkey, bob_pubkey)
+            inp.utxo = None
+            inp.witness_utxo = None
+
+    psbt0 = the_psbt_obj.as_bytes()
+    orig, res = try_sign(psbt0, accept=True)
+    assert orig != res  # coldcard signs no problem - only our UTXO matters for signing
+    # now alice and bob UTXOs are still missing but bitcoind does not care either
+    # lets sign with bob first - bobs wallet will ignore missing alice UTXO but will supply his UTXO
+    psbt1 = bob.walletprocesspsbt(base64.b64encode(res).decode())["psbt"]
+    # finally sign with alice
+    res = alice.walletprocesspsbt(psbt1)
+    psbt2 = res["psbt"]
+    assert res["complete"] is True
+    tx = alice.finalizepsbt(psbt2)["hex"]
+    assert alice.testmempoolaccept([tx])[0]["allowed"] is True
+    tx_id = alice.sendrawtransaction(tx)
+    assert isinstance(tx_id, str) and len(tx_id) == 64
 
 # EOF
