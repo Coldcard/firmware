@@ -1,6 +1,8 @@
-## 5.0.5 - 2022-06-16
-- Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing
-  from [@straylight-orbit ](https://github.com/straylight-orbit)
+## 5.0.5 - 2022-06-21
+
+- Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing.
+  Only applies to cases where partial signatures are being added.
+  Thanks to [@straylight-orbit](https://github.com/straylight-orbit)
 - Bugfix: order of multisig wallet registration does NOT matter.
 
 ## 5.0.4 - 2022-05-27
