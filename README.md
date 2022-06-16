@@ -81,6 +81,7 @@ You'll probably need to install at least these packages:
     brew install --cask xquartz
     brew install sdl2 xterm
     brew install --cask gcc-arm-embedded
+    brew install swig
 
 Used to be these were needed as well:
 
@@ -101,7 +102,7 @@ You may need to `brew upgrade gcc-arm-embedded` because we need 10.2 or higher.
 
 You'll need to install these (Ubuntu 20.04):
 
-    apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi
+    apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3
 
 Install and run simulator on Ubuntu 20.04
 ```shell
