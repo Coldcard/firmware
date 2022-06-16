@@ -1071,8 +1071,7 @@ class psbtObject(psbtProxy):
             assert N == len(xfp_paths) 
 
             for c in candidates:
-                if c.M == M:
-                    assert c.N == N
+                if c.M == M and c.N == N:
                     self.active_multisig = c
                     break
 
