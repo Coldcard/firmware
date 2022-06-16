@@ -1,5 +1,7 @@
-## 5.0.5 - June X, 2022
-- Bugfix: order of multisig wallet registration does NOT matter.
+
+## 5.0.5 - 2022-06-XXX
+
+- Bugfix: Order of multisig wallet registration should not matter.
 
 ## 5.0.4 - 2022-05-27
 
