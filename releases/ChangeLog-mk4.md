@@ -1,3 +1,6 @@
+## 5.0.5 - June X, 2022
+- Bugfix: order of multisig wallet registration does NOT matter.
+
 ## 5.0.4 - 2022-05-27
 
 - Enhancement: Optional USB protocol change which binds the ephemeral ECDH encryption 
