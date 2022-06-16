@@ -56,13 +56,13 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
         assert qr == addr or qr == addr.upper()
 
 @pytest.mark.bitcoind
-def test_addr_vs_bitcoind(use_regtest, match_key, need_keypress, dev, bitcoind_d_sim):
+def test_addr_vs_bitcoind(use_regtest, match_key, need_keypress, dev, bitcoind_d_sim_sign):
     # check our p2wpkh wrapped in p2sh is right
     use_regtest()
     for i in range(5):
-        core_addr = bitcoind_d_sim.getnewaddress(f"{i}-addr", "p2sh-segwit")
+        core_addr = bitcoind_d_sim_sign.getnewaddress(f"{i}-addr", "p2sh-segwit")
         assert core_addr[0] == '2'
-        resp = bitcoind_d_sim.getaddressinfo(core_addr)
+        resp = bitcoind_d_sim_sign.getaddressinfo(core_addr)
         assert resp['embedded']['iswitness'] == True
         assert resp['isscript'] == True
         path = resp['hdkeypath']
