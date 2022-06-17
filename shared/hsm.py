@@ -759,7 +759,10 @@ class HSMPolicy:
                 for idx, tx_out in psbt.output_iter():
                     if not psbt.outputs[idx].is_change:
                         total_out += tx_out.nValue
-                        dests.append(chain.render_address(tx_out.scriptPubKey))
+                        try:
+                            dests.append(chain.render_address(tx_out.scriptPubKey))
+                        except ValueError:
+                            dests.append(str(b2a_hex(tx_out.scriptPubKey), 'ascii'))
 
                 # Pick a rule to apply to this specific txn
                 reasons = []

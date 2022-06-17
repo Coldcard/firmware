@@ -2,8 +2,8 @@
 #
 # Transaction Signing. Important.
 #
-import base64
-import time, pytest, os, random, pdb, struct
+
+import time, pytest, os, random, pdb, struct, base64, binascii
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -1678,6 +1678,39 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     tx = alice.finalizepsbt(psbt2)["hex"]
     assert alice.testmempoolaccept([tx])[0]["allowed"] is True
     tx_id = alice.sendrawtransaction(tx)
+    assert isinstance(tx_id, str) and len(tx_id) == 64
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("op_return_data", [
+    b"Coldcard is the best signing device",  # to test with both pushdata opcodes
+    b"Coldcard, the best signing deviceaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # len 80 max
+    b"\x80" * 80,
+    "££££££££££".encode("utf-8"),
+    bytes.fromhex("aa21a9ed68512d3c6b0514b18fbc9f0c540d5bec8f4ae62da4bf6c9b16f90b655f9f4210"),
+    b"$$$$$$$$$$$$$$ Bitcoin",
+    b"\xeb\x97\xf7\xb7\xf78\x9a';\x90F_\xfc\xe2b\xa4\x93)\xea\xac\xacR\xff\x9c\xbe\x1c\xf1\xad\xe9!\xee\xd9t1\x1f\x92\x83\x97\xb3\x98/\xff\xc8\xff\xc1\xc0\xdd\x1et\x00L\x13\xe0\xe3\x90\xe4\xd4\xf2x:\xf7Ab\x04\x91\x1e\xa8R\x92\xd3\x96OK\xc6I\x06\x9e\xce=\xb3",
+])
+def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, bitcoind, start_sign, end_sign, cap_story):
+    cc = bitcoind_d_sim_watch
+    dest_address = cc.getnewaddress()
+    bitcoind.supply_wallet.generatetoaddress(101, dest_address)
+    psbt = cc.walletcreatefundedpsbt([], [{dest_address: 1.0}, {"data": op_return_data.hex()}], 0, {"fee_rate": 20})["psbt"]
+    start_sign(base64.b64decode(psbt))
+    time.sleep(.1)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    # in older implementations, one would seen a warning for OP_RETURN --> not now
+    assert "warning" not in story
+    assert "OP_RETURN" in story
+    try:
+        expect = op_return_data.decode("ascii")
+    except:
+        expect = binascii.hexlify(op_return_data).decode()
+    assert expect in story
+    signed = end_sign(accept=True)
+    tx = cc.finalizepsbt(base64.b64encode(signed).decode())["hex"]
+    assert cc.testmempoolaccept([tx])[0]["allowed"] is True
+    tx_id = cc.sendrawtransaction(tx)
     assert isinstance(tx_id, str) and len(tx_id) == 64
 
 # EOF
