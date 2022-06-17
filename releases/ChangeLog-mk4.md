@@ -4,6 +4,8 @@
   Only applies to cases where partial signatures are being added.
   Thanks to [@straylight-orbit](https://github.com/straylight-orbit)
 - Bugfix: order of multisig wallet registration does NOT matter.
+- Bugfix: allow unknown scripts in HSM mode
+- Enhancement: OP_RETURN is now a known script and is displayed in ascii if possible
 
 ## 5.0.4 - 2022-05-27
 

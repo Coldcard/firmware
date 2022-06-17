@@ -4,11 +4,12 @@
 #
 import ngu
 from uhashlib import sha256
+from ubinascii import hexlify as b2a_hex
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
-from serializations import hash160, ser_compact_size
+from serializations import hash160, ser_compact_size, disassemble
 from ucollections import namedtuple
-from opcodes import OP_CHECKMULTISIG
+from opcodes import OP_CHECKMULTISIG, OP_RETURN
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
@@ -206,6 +207,23 @@ class ChainsBase:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
 
         raise ValueError('Unknown payment script', repr(script))
+
+    @classmethod
+    def op_return(cls, script):
+        """Returns decoded string op return data if script is op return otherwise None"""
+        gen = disassemble(script)
+        script_type = next(gen)
+        if OP_RETURN in script_type:
+            data = next(gen)[0]
+            data_hex = b2a_hex(data).decode()
+            data_ascii = None
+            if min(data) >= 32 and max(data) < 127:  # printable
+                try:
+                    data_ascii = data.decode("ascii")
+                except:
+                    pass
+            return data_hex, data_ascii
+        return None
 
 class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>
