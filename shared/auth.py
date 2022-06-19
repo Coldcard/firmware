@@ -384,6 +384,15 @@ class ApproveTransaction(UserAuthorizedAction):
         except ValueError:
             pass
 
+        # check for OP_RETURN
+        data = self.chain.op_return(o.scriptPubKey)
+        if data:
+            data_hex, data_ascii = data
+            to_ret = '%s\n - OP_RETURN -\n%s' % (val, data_hex)
+            if data_ascii:
+                return to_ret + " (ascii: %s)\n" % data_ascii
+            return to_ret + "\n"
+
         # Handle future things better: allow them to happen at least.
         self.psbt.warnings.append(
             ('Output?', 'Sending to a script that is not well understood.'))

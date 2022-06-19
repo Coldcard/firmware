@@ -1,5 +1,7 @@
-## 4.1.6 - June 6, 2022
+## 4.1.6 - June 21, 2022
 - Bugfix: order of multisig wallet registration does NOT matter in PSBT signing
+- Bugfix: allow unknown scripts in HSM mode
+- Enhancement: OP_RETURN is now a known script and is displayed in ascii if possible
 
 ## 4.1.5 - May 4, 2022
 
