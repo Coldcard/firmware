@@ -197,16 +197,16 @@ Press 3 if you really understand and accept these risks.
         if ch != '3': return
 
         n = 10 if 'idx' in path else 1
-        await self.show_n_addresses(path, addr_fmt, None, n=n)
+        await self.show_n_addresses(path, addr_fmt, None, n=n, allow_change=False)
 
-    async def show_n_addresses(self, path, addr_fmt, ms_wallet, start=0, n=10):
+    async def show_n_addresses(self, path, addr_fmt, ms_wallet, start=0, n=10, allow_change=True):
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
         # - or multisig case
         from glob import dis, NFC
         import version
 
-        def make_msg():
+        def make_msg(change=0):
             msg = ''
             if n > 1:
                 if start == 0:
@@ -215,6 +215,8 @@ Press 3 if you really understand and accept these risks.
                         msg += " 2 to view QR Codes."
                     if NFC:
                         msg += " Press 3 to share over NFC."
+                    if allow_change and change == 0:
+                        msg += " Press 4 to show change addresses."
                     msg += '\n\n'
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
@@ -224,8 +226,9 @@ Press 3 if you really understand and accept these risks.
                     msg += " Press 2 to view QR Codes."
                 if NFC:
                     msg += " Press 3 to share over NFC."
+                if allow_change and change == 0:
+                    msg += " Press 4 to show change address."
                 msg += '\n\n'
-
 
             addrs = []
             chain = chains.current_chain()
@@ -238,11 +241,11 @@ Press 3 if you really understand and accept these risks.
                 # - makes a redeem script
                 # - converts into addr
                 # - assumes 0/0 is first address.
-                for (i, paths, addr, script) in ms_wallet.yield_addresses(start, n):
+                for (i, paths, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
                     if i == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
-                        msg += '.../0/%d =>\n' % i
+                        msg += '.../%d/%d =>\n' % (change, i)
 
                     addrs.append(addr)
                     msg += truncate_address(addr) + '\n\n'
@@ -254,7 +257,7 @@ Press 3 if you really understand and accept these risks.
                 with stash.SensitiveValues() as sv:
 
                     for idx in range(start, start + n):
-                        deriv = path.format(account=self.account_num, change=0, idx=idx)
+                        deriv = path.format(account=self.account_num, change=change, idx=idx)
                         node = sv.derive_path(deriv, register=False)
                         addr = chain.address(node, addr_fmt)
                         addrs.append(addr)
@@ -271,9 +274,9 @@ Press 3 if you really understand and accept these risks.
             return msg, addrs
 
         msg, addrs = make_msg()
-
+        change = 0
         while 1:
-            ch = await ux_show_story(msg, escape='12379')
+            ch = await ux_show_story(msg, escape='123479')
 
             if ch == 'x':
                 return
@@ -281,7 +284,7 @@ Press 3 if you really understand and accept these risks.
             elif ch == '1':
                 # save addresses to MicroSD/VirtDisk
                 await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num,
-                                                            count=(250 if n!=1 else 1))
+                                                count=(250 if n!=1 else 1), change=change)
                 # .. continue on same screen in case they want to write to multiple cards
                 continue
 
@@ -303,6 +306,9 @@ Press 3 if you really understand and accept these risks.
                     await NFC.share_deposit_address(addrs[self.idx])
                 continue
 
+            elif ch == '4' and allow_change:
+                change = 1
+
             elif ch == '7' and start>0:
                 # go backwards in explorer
                 start -= n
@@ -312,9 +318,9 @@ Press 3 if you really understand and accept these risks.
             else:
                 continue        # 3 in non-NFC mode
 
-            msg, addrs = make_msg()
+            msg, addrs = make_msg(change)
 
-def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
+def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, change=0):
     # Produce CSV file contents as a generator
 
     if ms_wallet:
@@ -325,7 +331,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
                                     'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)] 
                                     + (['Derivation'] * ms_wallet.N)) + '"\n'
 
-        for (idx, derivs, addr, script) in ms_wallet.yield_addresses(start, n):
+        for (idx, derivs, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
             ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
             ln += '","'.join(derivs)
             ln += '"\n'
@@ -346,7 +352,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0):
 
         stash.blank_object(node)
 
-async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250):
+async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250, change=0):
     # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
@@ -358,7 +364,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, coun
     fname_pattern='addresses.csv'
 
     # generator function
-    body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count)
+    body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count, change=change)
 
     # pick filename and write
     try:

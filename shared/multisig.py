@@ -2,7 +2,7 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio, sys, ngu
+import stash, chains, ustruct, ure, uio, sys, ngu, ujson
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
@@ -130,7 +130,7 @@ class MultisigWallet:
     # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC', xfp_subderiv=None):
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC'):
         self.storage_idx = -1
 
         self.name = name
@@ -140,8 +140,6 @@ class MultisigWallet:
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
-        # subderivation paths for xpubs (for descriptor compatibility)
-        self.xfp_subderiv = xfp_subderiv if xfp_subderiv else {}
 
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
@@ -192,16 +190,6 @@ class MultisigWallet:
             # allow for distinct deriv paths on each leg
             opts['d'] = pp
             xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
-        sp = list(set(sub_d for _, sub_d in self.xfp_subderiv.items()))
-        if len(sp) == 0:
-            # no sub derivations, no need to store anything
-            pass
-        elif len(sp) == 1:
-            # store common subderivation in sp
-            opts["sp"] = sp[0]
-        else:
-            # add sub derivations to xp as last element
-            xp = [(xfp, deriv, xpub, self.xfp_subderiv[xfp]) for xfp,deriv,xpub in xp]
 
         return (self.name, (self.M, self.N), xp, opts)
 
@@ -209,26 +197,6 @@ class MultisigWallet:
     def deserialize(cls, vals, idx=-1):
         # take json object, make instance.
         name, m_of_n, xpubs, opts = vals
-
-        xfp_subderiv = None
-
-        if "sp" in opts and opts["sp"]:
-            # in case all subderivations are the same - create xfp_subderiv mapping with common sub derivation
-            xfp_subderiv = {}
-            common = opts.get("sp")
-            for tup in xpubs:
-                xfp_subderiv[tup[0]] = common
-
-        if len(xpubs[0]) == 4:
-            # new descriptor type with sub derivations
-            # remove subderivation from xpubs and create xfp_subderiv mapping
-            new_xpubs = []
-            xfp_subderiv = {}
-            for xfp, deriv, xpub, sub_d in xpubs:
-                new_xpubs.append((xfp, deriv, xpub))
-                xfp_subderiv[xfp] = sub_d
-            xpubs = new_xpubs
-            assert len(xpubs[0]) == 3
 
         if len(xpubs[0]) == 2:
             # promote from old format to new: assume common prefix is the derivation
@@ -246,7 +214,7 @@ class MultisigWallet:
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                 chain_type=opts.get('ch', 'BTC'), xfp_subderiv=xfp_subderiv)
+                 chain_type=opts.get('ch', 'BTC'))
         rv.storage_idx = idx
 
         return rv
@@ -484,19 +452,11 @@ class MultisigWallet:
         nodes = []
         paths = []
         for xfp, deriv, xpub in self.xpubs:
-            # load bip32 node for each cosigner, derive /0/ based on change idx
+            # load bip32 node for each cosigner
             node = ch.deserialize_node(xpub, AF_P2SH)
-            to_derive = self.xfp_subderiv.get(xfp, None)
-            if to_derive is None:
-                to_derive = [str(change_idx), "*"]
-            assert to_derive[-1] == "*", "Not a range descriptor"
-            to_derive = to_derive[:-1]  # remove *
-            to_derive_str = "/".join(to_derive)
-            for i in to_derive:  # *
-                node.derive(int(i), False)
+            node.derive(change_idx, False)
             # indicate path used (for UX)
-            path = "(m=%s)/%s/%s/{idx}" % (xfp2str(xfp), deriv, to_derive_str)
-
+            path = "(m=%s)/%s/%d/{idx}" % (xfp2str(xfp), deriv, change_idx)
             nodes.append(node)
             paths.append(path)
 
@@ -702,13 +662,21 @@ class MultisigWallet:
         has_mine = 0
         my_xfp = settings.get('xfp')
         xpubs = []
+
         desc = MultisigDescriptor.parse(descriptor)
         for xfp, deriv, xpub in desc.keys:
             deriv = cleanup_deriv_path(deriv)
             is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
             if is_mine:
                 has_mine += 1
-        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, desc.xfp_subderiv
+        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N
+
+    def to_descriptor(self):
+        return MultisigDescriptor(
+            M=self.M, N=self.N,
+            keys=self.xpubs,
+            addr_fmt=self.addr_fmt,
+        )
 
     @classmethod
     def from_file(cls, config, name=None):
@@ -722,7 +690,7 @@ class MultisigWallet:
         #       (8digithex): xpub of cosigner
         #
         # Descriptor support
-        #    * single line text file containing multisig descriptor
+        #    * text file containing multisig descriptor
         #
         # quick checks:
         # - name: 1-20 ascii chars
@@ -730,19 +698,17 @@ class MultisigWallet:
         # - xpub: any bip32 serialization we understand, but be consistent
         #
         expect_chain = chains.current_chain().ctype
-
-        lines = [line for line in config.split('\n') if line]  # remove empty lines
-        if len(lines) == 1:
-            # assume descriptor, classic config cannot have only single line
+        if "sortedmulti(" in config or MultisigDescriptor.is_descriptor(config):
+            # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
             # ignore name
-            _, addr_fmt, xpubs, has_mine, M, N, sub_derivs = cls.from_descriptor(lines[0])
+            _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(config)
         else:
             # oldschool
+            lines = [line for line in config.split('\n') if line]  # remove empty lines
             parsed_name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
             if parsed_name:
                 # if name provided in file, use that instead of name inferred from filename
                 name = parsed_name
-            sub_derivs = None
 
         assert len(xpubs), 'need xpubs'
 
@@ -767,10 +733,11 @@ class MultisigWallet:
         # check we're included... do not insert ourselves, even tho we
         # have enough info, simply because other signers need to know my xpubkey anyway
         assert has_mine != 0, 'my key not included'
-        assert has_mine == 1    # 'my key included more than once'
+        # here we oonly check xfp - sae keys are alllwed with bad xfp
+        assert has_mine == 1, 'my key included more than once'
 
         # done. have all the parts
-        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain, xfp_subderiv=sub_derivs)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
 
     @classmethod
     def check_xpub(cls, xfp, xpub, deriv, expect_chain, my_xfp, xpubs):
@@ -885,13 +852,16 @@ class MultisigWallet:
         await make_json_wallet('Electrum multisig wallet', doit,
                                     fname_pattern=self.make_fname('el', 'json'))
 
-    async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False):
+    async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
+                                 core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
         from glob import NFC
 
         my_xfp = xfp2str(settings.get('xfp'))
-
-        fname_pattern = self.make_fname('export')
+        if core:
+            fname_pattern = self.make_fname('bitcoin-core')
+        else:
+            fname_pattern = self.make_fname('export')
         hdr = '%s %s' % (mode, my_xfp)
 
         if NFC:
@@ -900,7 +870,8 @@ class MultisigWallet:
 Otherwise, OK to proceed normally.''', escape='3')
             if ch == '3':
                 with uio.StringIO() as fp:
-                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor)
+                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
+                                       core=core, desc_pretty=desc_pretty)
                     await NFC.share_text(fp.getvalue())
 
                 return
@@ -914,7 +885,8 @@ Otherwise, OK to proceed normally.''', escape='3')
 
                 # do actual write
                 with open(fname, 'wt') as fp:
-                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor)
+                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
+                                       core=core, desc_pretty=desc_pretty)
 
             msg = '''Coldcard multisig setup file written:\n\n%s''' % nice
             if extra_msg:
@@ -929,17 +901,20 @@ Otherwise, OK to proceed normally.''', escape='3')
             await ux_show_story('Failed to write!\n\n\n'+str(e))
             return
 
-    def render_export(self, fp, hdr_comment=None, descriptor=False):
+    def render_export(self, fp, hdr_comment=None, descriptor=False, core=False, desc_pretty=True):
         if descriptor:
             # serialize descriptor
-            # add subpaths if exists
-            desc = MultisigDescriptor(
-                M=self.M, N=self.N,
-                keys=self.xpubs,
-                addr_fmt=self.addr_fmt,
-                xfp_subderiv=self.xfp_subderiv,
-            ).serialize()
-            print("%s\n" % desc, file=fp)
+            desc_obj = self.to_descriptor()
+            if core:
+                core_obj = desc_obj.bitcoin_core_serialize()
+                core_str = ujson.dumps(core_obj)
+                print("importdescriptors '%s'\n" % core_str, file=fp)
+            else:
+                if desc_pretty:
+                    desc = desc_obj.pretty_serialize()
+                else:
+                    desc = desc_obj.serialize()
+                print("%s\n" % desc, file=fp)
         else:
             if hdr_comment:
                 print("# Coldcard Multisig setup file (%s)\n#" % hdr_comment, file=fp)
@@ -1297,11 +1272,23 @@ async def make_ms_wallet_menu(menu, label, item):
         MenuItem('View Details', f=ms_wallet_detail, arg=ms),
 
         MenuItem('Delete', f=ms_wallet_delete, arg=ms),
-        MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=ms),
-        MenuItem('Descriptor Export', f=ms_wallet_ckcc_export_descriptor, arg=ms),
+        MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
+        MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms),
         MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
     ]
+    return rv
 
+async def make_ms_wallet_descriptor_menu(menu, label, item):
+    # descriptor menu
+    ms = item.arg
+    if not ms:
+        return
+
+    rv = [
+        MenuItem('View Descriptor', f=ms_wallet_show_descriptor, arg=ms),
+        MenuItem('Export', f=ms_wallet_ckcc_export, arg=(ms, {"descriptor": True, "desc_pretty": False})),
+        MenuItem('Bitcoin Core', f=ms_wallet_ckcc_export, arg=(ms, {"descriptor": True, "core": True})),
+    ]
     return rv
 
 async def ms_wallet_delete(menu, label, item):
@@ -1328,13 +1315,17 @@ async def ms_wallet_delete(menu, label, item):
 
 async def ms_wallet_ckcc_export(menu, label, item):
     # create a text file with the details; ready for import to next Coldcard
-    ms = item.arg
-    await ms.export_wallet_file()
+    ms = item.arg[0]
+    kwargs = item.arg[1]
+    await ms.export_wallet_file(**kwargs)
 
-async def ms_wallet_ckcc_export_descriptor(menu, label, item):
-    # create a text file with the details; ready for import to next Coldcard
+async def ms_wallet_show_descriptor(menu, label, item):
     ms = item.arg
-    await ms.export_wallet_file(descriptor=True)
+    desc = ms.to_descriptor()
+    desc_str = desc.serialize()
+    ch = await ux_show_story("Press 1 to export in pretty human readable format.\n\n" + desc_str, escape="1")
+    if ch == "1":
+        await ms.export_wallet_file(descriptor=True, desc_pretty=True)
 
 async def ms_wallet_electrum_export(menu, label, item):
     # create a JSON file that Electrum can use. Challenges:

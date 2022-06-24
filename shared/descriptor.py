@@ -17,6 +17,9 @@ FMT_TO_SCRIPT = {
     "p2wsh": "wsh(%s)",
 }
 
+INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
+CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
 try:
     from utils import xfp2str, str2xfp
 except ModuleNotFoundError:
@@ -51,9 +54,6 @@ def polymod(c, val):
     return c
 
 def descriptor_checksum(desc):
-    INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
-    CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
-
     c = 1
     cls = 0
     clscount = 0
@@ -86,6 +86,18 @@ def append_checksum(desc):
     return desc + "#" + descriptor_checksum(desc)
 
 
+def parse_desc_str(string):
+    """Remove comments, empty lines and strip line. Produce single line string"""
+    res = ""
+    for l in string.split("\n"):
+        strip_l = l.strip()
+        if not strip_l:
+            continue
+        if strip_l.startswith("#"):
+            continue
+        res += strip_l
+    return res
+
 class MultisigDescriptor:
     # only supprt with key derivation info
     # only xpubs
@@ -95,23 +107,13 @@ class MultisigDescriptor:
         "N",
         "keys",
         "addr_fmt",
-        "xfp_subderiv",
     )
 
-    def __init__(self, M, N, keys, addr_fmt, xfp_subderiv=None):
+    def __init__(self, M, N, keys, addr_fmt):
         self.M = M
         self.N = N
         self.keys = keys
         self.addr_fmt = addr_fmt
-        if not xfp_subderiv:
-            self.xfp_subderiv = {}
-        else:
-            self.xfp_subderiv = xfp_subderiv
-
-    @classmethod
-    def subpath2str(cls, subpath: list) -> str:
-        assert subpath[-1] == "*"
-        return subpath[:].join("/")
 
     @staticmethod
     def checksum_check(desc_w_checksum: str):
@@ -137,32 +139,35 @@ class MultisigDescriptor:
 
     @staticmethod
     def parse_key_derivation_info(key: str):
+        invalid_subderiv_msg = "Invalid subderivation path - only 0/* allowed"
         slash_split = key.split("/")
-        assert len(slash_split) > 1, "Only range descriptors are allowed, missing '*'"
+        assert len(slash_split) > 1, invalid_subderiv_msg
         if all(["h" not in elem and "'" not in elem for elem in slash_split[1:]]):
-            assert slash_split[-1] == "*", "Only range descriptors are allowed, missing '*'"
-            return slash_split[0], tuple(slash_split[1:])
+            assert slash_split[1:] == ["0", "*"], invalid_subderiv_msg
+            return slash_split[0]
         else:
             raise ValueError("Cannot use hardened sub derivation path")
 
     def checksum(self):
         return descriptor_checksum(self._serialize())
 
-    def serialize_keys(self):
+    def serialize_keys(self, internal=False):
         result = []
         for xfp, deriv, xpub in self.keys:
             if deriv[0] == "m":
                 # get rid of 'm'
                 deriv = deriv[1:]
             koi = xfp2str(xfp) + deriv
+            # normalize xpub to use h for hardened instead of '
             key_str = "[%s]%s" % (koi.lower(), xpub)
-            sub_deriv = self.xfp_subderiv.get(xfp, ["0", "*"])
-            key_str = key_str + "/" + "/".join(sub_deriv) if sub_deriv else key_str
-            result.append(key_str)
+            key_str = key_str + "/" + "/".join(["1", "*"] if internal else ["0", "*"])
+            result.append(key_str.replace("'", "h"))
         return result
 
     @classmethod
     def parse(cls, desc_w_checksum: str) -> "MultisigDescriptor":
+        # remove garbage
+        desc_w_checksum = parse_desc_str(desc_w_checksum)
         # check correct checksum
         desc, checksum = cls.checksum_check(desc_w_checksum)
         # legacy
@@ -194,29 +199,83 @@ class MultisigDescriptor:
                              "threshold is %d but only %d keys specified" % (M, N))
 
         res_keys = []
-        xfp_subderiv = {}
         for key in keys:
             koi, key = cls.parse_key_orig_info(key)
             if key[0:4] not in ["tpub", "xpub"]:
                 raise ValueError("Only extended public keys are supported")
-            xpub, sub_deriv = cls.parse_key_derivation_info(key)
+            xpub = cls.parse_key_derivation_info(key)
             xfp = str2xfp(koi[:8])
-            if sub_deriv:
-                xfp_subderiv[xfp] = sub_deriv
             origin_deriv = "m" + koi[8:]
             res_keys.append((xfp, origin_deriv, xpub))
-        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt, xfp_subderiv=xfp_subderiv)
+        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt)
 
-    def _serialize(self) -> str:
+    def _serialize(self, internal=False) -> str:
         """Serialize without checksum"""
         desc_base = FMT_TO_SCRIPT[self.addr_fmt]
         desc_base = desc_base % ("sortedmulti(%s)")
         assert len(self.keys) == self.N, "invalid descriptor object"
-        inner = str(self.M) + "," + ",".join(self.serialize_keys())
+        inner = str(self.M) + "," + ",".join(self.serialize_keys(internal=internal))
         return desc_base % (inner)
 
-    def serialize(self) -> str:
+    def pretty_serialize(self) -> str:
+        """Serialize in pretty and human readable format"""
+        res = "# Coldcard descriptor export\n"
+        res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP67)\n"
+        desc_base = FMT_TO_SCRIPT[self.addr_fmt]
+        if self.addr_fmt == AF_P2SH:
+            res += "# bare multisig - p2sh\n"
+            res += "sh(sortedmulti(\n%s\n))"
+        # native segwit
+        elif self.addr_fmt == AF_P2WSH:
+            res += "# native segwit - p2wsh\n"
+            res += "wsh(sortedmulti(\n%s\n))"
+
+        # wrapped segwit
+        elif self.addr_fmt == AF_P2WSH_P2SH:
+            res += "# wrapped segwit - p2sh-p2wsh\n"
+            res += "sh(wsh(sortedmulti(\n%s\n)))"
+        else:
+            raise ValueError("Malformed descriptor")
+
+        assert len(self.keys) == self.N, "invalid descriptor object"
+        inner = "\t" + "# %d of %d (%s)\n" % (self.M, self.N, "requires all participants to sign" if self.M == self.N else "threshold")
+        inner += "\t" + str(self.M) + ",\n"
+        ser_keys = self.serialize_keys()
+        for i, key_str in enumerate(ser_keys, start=1):
+            if i == self.N:
+                inner += "\t" + key_str
+            else:
+                inner += "\t" + key_str + ",\n"
+        checksum = self.serialize().split("#")[1]
+        return res % (inner) + "#" + checksum
+
+    def serialize(self, internal=False) -> str:
         """Serialize with checksum"""
-        return append_checksum(self._serialize())
+        return append_checksum(self._serialize(internal=internal))
+
+    def bitcoin_core_serialize(self):
+        res = []
+        for internal in [True, False]:
+            desc_obj = {
+                "desc": self.serialize(internal=internal),
+                "active": True,
+                "timestamp": "now",
+                "internal": internal,
+                "range": [0, 100],
+            }
+            res.append(desc_obj)
+        return res
+
+    @classmethod
+    def is_descriptor(cls, desc_str):
+        """Method to guess whether this can be a descriptor"""
+        temp = parse_desc_str(desc_str)
+        try:
+            desc, checksum = temp.split("#")
+        except:
+            return False
+        if desc[-1] == ")":
+            return True
+        return False
 
 # EOF

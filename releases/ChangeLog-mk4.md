@@ -1,15 +1,14 @@
-## 5.0.6 - TODO
-- Enhancement: Support import of multisig wallet from descriptor (only sortedmulti allowed BIP64).
-  Support export of multsig wallet as descriptor.
-- new tutorial: 2of2 multisig with bitcoind `docs/bitcoin-core2of2desc.md`
-- new tutorial: 2of2 multisig with 2x Coldcard signing device `docs/bitcoin-core2of2desc.md`
-
-## 5.0.5 - 2022-06-21
+## 5.0.5 - 2022-06-28
 
 - Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing.
   Only applies to cases where partial signatures are being added.
   Thanks to [@straylight-orbit](https://github.com/straylight-orbit)
 - Bugfix: order of multisig wallet registration does NOT matter.
+- Enhancement: Support import of multisig wallet from descriptor (only sortedmulti allowed BIP64).
+  Support export of multsig wallet as descriptor.
+- Enhancement: Address explorer can show change addresses for standard derivation paths for both single and multisig wallet.
+- new tutorial: 2of2 multisig with bitcoind `docs/bitcoin-core2of2desc.md`
+- new tutorial: 2of2 multisig with 2x Coldcard signing device and bitcoin-qt as coordinator `docs/bitcoin-core2of2desc.md`
 
 ## 5.0.4 - 2022-05-27
 
