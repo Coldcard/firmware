@@ -165,7 +165,7 @@ class AddressListMenu(MenuSystem):
         self.replace_items(items)
 
     async def change_account(self, *a):
-        self.account_num = await ux_enter_number('Account Number:', 9999)
+        self.account_num = await ux_enter_number('Account Number:', 9999) or 0
         await self.render()
 
     async def pick_single(self, _1, menu_idx, item):

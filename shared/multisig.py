@@ -1313,7 +1313,7 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
     ch = await ux_show_story(msg, escape='3')
     if ch == 'x': return
 
-    acct_num = await ux_enter_number('Account Number:', 9999)
+    acct_num = await ux_enter_number('Account Number:', 9999) or 0
 
     todo = [
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
