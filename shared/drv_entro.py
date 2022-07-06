@@ -6,11 +6,14 @@
 # Using the system's BIP-32 master key, safely derive seeds phrases/entropy for other
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
-import stash, ngu, chains, bip39, version
-from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm
+import stash, ngu, chains, bip39, version, glob
+from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
+from ubinascii import b2a_base64
 from serializations import hash160
+
+BIP85_PWD_LEN = 21
 
 def drv_entro_start(*a):
 
@@ -36,7 +39,7 @@ still backed-up.''')
             return
 
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
-                'XPRV (BIP-32)', '32-bytes hex', '64-bytes hex']
+                'XPRV (BIP-32)', '32-bytes hex', '64-bytes hex', 'Passwords']
 
     m = MenuSystem([MenuItem(c, f=drv_entro_step2) for c in choices])
     the_ux.push(m)
@@ -64,6 +67,12 @@ def bip85_derive(picked, index):
         width = 32 if picked == 5 else 64
         path = "m/83696968'/128169'/{width}'/{index}'".format(width=width, index=index)
         s_mode = 'hex'
+    elif picked == 7:
+        width = 64
+        # hardcoded width for now
+        # b"pwd".hex() --> 707764
+        path = "m/83696968'/707764'/{pwd_len}'/{index}'".format(pwd_len=BIP85_PWD_LEN, index=index)
+        s_mode = 'pw'
     else:
         raise ValueError(picked)
 
@@ -78,13 +87,34 @@ def bip85_derive(picked, index):
             
     return new_secret, width, s_mode, path
 
+
+def bip85_pwd(secret):
+    # Convert raw secret (64 bytes) into type-able password text.
+
+    # See BIP85 specification.
+    #   path --> m/83696968'/707764'/{pwd_len}'/{index}'
+    #
+    # Base64 encode whole 64 bytes of entropy.
+    # Slice pwd_len from base64 encoded string [0:pwd_len]
+    # we use hardcoded pwd_len=21, which has cca 126 bits of entropy
+
+    # python bas64 puts newline at the end - strip
+    assert len(secret) == 64
+    secret_b64 = b2a_base64(secret).decode().strip()
+    return secret_b64[:BIP85_PWD_LEN]
+
 async def drv_entro_step2(_1, picked, _2):
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
 
     the_ux.pop()
-
-    index = await ux_enter_number("Index Number?", 9999)
+    msg = "Index Number?"
+    if picked == 7:
+        # Passwords
+        msg = "Password Index?"
+    index = await ux_enter_number(msg, 9999)
+    if index is None:
+        return
 
     dis.fullscreen("Working...")
     new_secret, width, s_mode, path = bip85_derive(picked, index)
@@ -95,7 +125,12 @@ async def drv_entro_step2(_1, picked, _2):
     qr = None
     qr_alnum = False
 
-    if s_mode == 'words':
+    if s_mode == "pw":
+        pw = bip85_pwd(new_secret)
+        qr = pw
+        msg = 'Password:\n' + pw
+
+    elif s_mode == 'words':
         # BIP-39 seed phrase, various lengths
         words = bip39.b2a_words(new_secret).split(' ')
 
@@ -150,11 +185,17 @@ async def drv_entro_step2(_1, picked, _2):
     prompt = '\n\nPress 1 to save to MicroSD card'
     if encoded is not None:
         prompt += ', 2 to switch to derived secret'
+    elif s_mode == 'pw':
+        prompt += ', 2 to type password over USB'
     if (qr is not None) and version.has_fatram:
-        prompt += ', 3 to view as QR code.'
+        prompt += ', 3 to view as QR code'
+        if glob.NFC:
+            prompt += ', 4 to send by NFC'
+
+    prompt += '.'
 
     while 1:
-        ch = await ux_show_story(msg+prompt, sensitive=True, escape='123')
+        ch = await ux_show_story(msg+prompt, sensitive=True, escape='1234')
 
         if ch == '1':
             # write to SD card: simple text file
@@ -177,6 +218,14 @@ async def drv_entro_step2(_1, picked, _2):
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum)
             continue
+        elif ch == '2' and s_mode == 'pw':
+            # gets confirmation then types it
+            await single_send_keystrokes(qr, path)
+            continue
+        elif ch == '4' and glob.NFC and qr:
+            # Share any of these over NFC
+            await glob.NFC.share_text(qr)
+            continue
         else:
             break
 
@@ -197,5 +246,61 @@ async def drv_entro_step2(_1, picked, _2):
 
     if encoded is not None:
         stash.blank_object(encoded)
+
+
+async def password_entry(*args, **kwargs):
+    from glob import dis
+    from usb import EmulatedKeyboard
+
+    # TODO: maybe a way to kill this info dialog w/ a setting
+    ch = await ux_show_story('''\
+Type Passwords (BIP-85)
+
+This feature derives a deterministic password according BIP-85, from the seed. \
+The password will be sent as keystrokes via USB to the host computer.''')
+    if ch != 'y':
+        return
+
+    with EmulatedKeyboard() as kbd:
+        if await kbd.connect(): return
+
+        while True:
+            the_ux.pop()
+            index = await ux_enter_number("Password Index?", 9999, can_cancel=True)
+            if index is None:
+                break
+
+            dis.fullscreen("Working...")
+            new_secret, _, _, path = bip85_derive(7, index)
+            pw = bip85_pwd(new_secret)
+
+            await send_keystrokes(kbd, pw, path)
+
+    the_ux.pop()        # WHY?
+
+async def send_keystrokes(kbd, password, path):
+    ch = await ux_show_story(
+        "Place mouse at required password prompt, then press OK to send keystrokes.\n\n"
+        "Password:\n%s\n\n"
+        "Path:\n%s" % (password, path),
+    )
+
+    if ch == 'y':
+        await kbd.send_keystrokes(password + '\r')
+
+        await ux_dramatic_pause("Sent.", 0.250)
+        return True
+
+    await ux_dramatic_pause("Aborted.", 1)
+
+    return False
+
+async def single_send_keystrokes(password, path):
+    # switches to USB mode required, then does send
+    from usb import EmulatedKeyboard
+
+    with EmulatedKeyboard() as kbd:
+        if await kbd.connect(): return
+        await send_keystrokes(kbd, password, path)
 
 # EOF

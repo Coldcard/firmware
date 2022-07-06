@@ -1670,9 +1670,9 @@ def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_p
     assert orig != res  # coldcard signs no problem - only our UTXO matters for signing
     # now alice and bob UTXOs are still missing but bitcoind does not care either
     # lets sign with bob first - bobs wallet will ignore missing alice UTXO but will supply his UTXO
-    psbt1 = bob.walletprocesspsbt(base64.b64encode(res).decode())["psbt"]
+    psbt1 = bob.walletprocesspsbt(base64.b64encode(res).decode(), True, "ALL")["psbt"]
     # finally sign with alice
-    res = alice.walletprocesspsbt(psbt1)
+    res = alice.walletprocesspsbt(psbt1, True, "ALL")
     psbt2 = res["psbt"]
     assert res["complete"] is True
     tx = alice.finalizepsbt(psbt2)["hex"]

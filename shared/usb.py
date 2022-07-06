@@ -8,9 +8,7 @@ from uhashlib import sha256
 from public_constants import MAX_MSG_LEN, MAX_BLK_LEN, AFC_SCRIPT
 from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
-from ubinascii import hexlify as b2a_hex
 from ckcc import watchpoint, is_simulator
-import uselect as select
 from utils import problem_file_line, call_later_ms
 from version import has_fatram, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied
@@ -63,6 +61,16 @@ HSM_WHITELIST = frozenset({
 # singleton instance of USBHandler()
 handler = None
 
+def enable_keyboard_emulation():
+    if is_simulator():
+        enable_usb()
+    else:
+        # real device
+        pyb.usb_mode('VCP+HID', hid=pyb.hid_keyboard)
+        global handler
+        if not handler:
+            handler = USBHandler()
+
 def enable_usb():
     # We can't change it on the fly; must be disabled before here
     # - only one combo of subclasses can be used during a single power-up cycle
@@ -71,17 +79,24 @@ def enable_usb():
         print("USB already enabled: %s" % cur)
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
-        hid_info = (0x0, 0x0, 64, 5, hid_descp )
+        hid_info = (0x0, 0x0, 64, 5, hid_descp)
         classes = 'VCP+HID' if not has_psram else 'VCP+MSC+HID'
         pyb.usb_mode(classes, vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler
     if not handler:
         handler = USBHandler()
-        from imptask import IMPT
+    from imptask import IMPT
+    if "USB" not in IMPT.tasks:
         IMPT.start_task('USB', handler.usb_hid_recv())
 
 def disable_usb():
+    from imptask import IMPT
+
+    task_usb = IMPT.tasks.pop("USB", None)
+    if task_usb:
+        task_usb.cancel()
+
     # pull the plug
     pyb.usb_mode(None)
 
@@ -837,5 +852,132 @@ class USBHandler:
         val = callgate.get_bag_number() or b''
 
         return b'asci' + val
+
+class EmulatedKeyboard:
+    # be a context manager, used during kbd emulation
+
+    def __enter__(self):
+        return self
+
+    async def connect(self):
+        # can be slow; needs to wait until host has enumerated us
+        # - does UX for that
+        # - can fail when host doesn't want to enumerate us, shows msg
+        # - returns T if problem
+        from glob import dis
+
+        dis.fullscreen("Switching...")
+
+        if is_simulator(): return
+
+        # if USB was enabled, reset is needed
+        disable_usb()
+        enable_keyboard_emulation()
+
+        # wait for emeration, with timeout
+        self.dev = pyb.USB_HID()
+
+        for retry in range(100):
+            rv = self.dev.send(bytes(8))
+            if rv == 8: break
+            await sleep_ms(10)
+
+        # macOS at least: need twice to be sure
+        for retry in range(100):
+            rv = self.dev.send(bytes(8))
+            if rv == 8: return
+            await sleep_ms(10)
+
+        # if we are connected to a COLDPOWER, for example, this will happen.
+        from ux import ux_show_story
+        ux_show_story("USB Host computer is not enumerating us.", title="FAILED")
+            
+        return True
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # disable keyboard emulation mode (all USB)
+        from glob import settings
+
+        disable_usb()
+
+        if not settings.get("du"):
+            # enable usb only if it was previously enabled, otherwise keep disabled
+            enable_usb()
+
+    async def send_keystrokes(self, keystroke_string):
+        # Send keystrokes to enter a password... only expected to support Base64 charset
+        if is_simulator():
+            print("Simulating keystrokes: " + repr(keystroke_string))
+            return
+
+        # <https://usb.org/sites/default/files/hut1_3_0.pdf> page 88+
+        char_map = {
+            "a": 0x04,
+            "b": 0x05,
+            "c": 0x06,
+            "d": 0x07,
+            "e": 0x08,
+            "f": 0x09,
+            "g": 0x0A,
+            "h": 0x0B,
+            "i": 0x0C,
+            "j": 0x0D,
+            "k": 0x0E,
+            "l": 0x0F,
+            "m": 0x10,
+            "n": 0x11,
+            "o": 0x12,
+            "p": 0x13,
+            "q": 0x14,
+            "r": 0x15,
+            "s": 0x16,
+            "t": 0x17,
+            "u": 0x18,
+            "v": 0x19,
+            "w": 0x1A,
+            "x": 0x1B,
+            "y": 0x1C,  # qwerty
+            "z": 0x1D,
+            # numbers (keypad)
+            "1": 0x59,
+            "2": 0x5A,
+            "3": 0x5B,
+            "4": 0x5C,
+            "5": 0x5D,
+            "6": 0x5E,
+            "7": 0x5F,
+            "8": 0x60,
+            "9": 0x61,
+            "0": 0x62,
+            # only symbols required for b64 without padding
+            "+": 0x57,  # Keypad
+            "/": 0x54,  # Keypad
+            # Keyboard Enter
+            "\r": 0x28,
+        }
+        buf = bytearray(8)
+
+        for ch in keystroke_string:
+            cap = False
+            if ch in char_map:
+                to_press = char_map[ch]
+            else:
+                cap = True
+                to_press = char_map[ch.lower()]
+
+            buf[2] = to_press
+            if cap:
+                # set LEFT SHIFT for capital letters
+                buf[0] = 0x02  
+
+            while self.dev.send(buf) == 0:
+                await sleep_ms(5)
+
+            # all keys up
+            buf[2] = 0x00
+            buf[0] = 0x00
+
+            while self.dev.send(buf) == 0:
+                await sleep_ms(5)
 
 # EOF 
