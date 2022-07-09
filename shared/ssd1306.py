@@ -57,7 +57,7 @@ class SSD1306(framebuf.FrameBuffer):
             SET_DISP_OFFSET, 0x00,
             SET_COM_PIN_CFG, 0x02 if self.height == 32 else 0x12,
             # timing and driving scheme
-            SET_DISP_CLK_DIV, 0x80,
+            SET_DISP_CLK_DIV, 0xF0,
             SET_PRECHARGE, 0x22 if self.external_vcc else 0xf1,
             SET_VCOM_DESEL, 0x30, # 0.83*Vcc
             # display
