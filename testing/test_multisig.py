@@ -1455,7 +1455,8 @@ def test_make_airgapped(addr_fmt, acct_num, goto_home, cap_story, pick_menu_item
 @pytest.mark.unfinalized
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
-def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, try_sign, need_keypress, addr_style, use_regtest):
+@pytest.mark.parametrize('cc_sign_first', [True, False])
+def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clear_ms, try_sign, need_keypress, addr_style, use_regtest):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
@@ -1501,8 +1502,6 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, try_sign,
     cc_deriv = "m/45'/55"
     cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(cc_deriv[2:]).sec())
 
-    
-
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
     resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
                                                 'shared-addr-'+addr_style, addr_style)
@@ -1540,19 +1539,13 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, try_sign,
     unspent = bitcoind.supply_wallet.listunspent(addresses=[ms_addr])
     ret_addr = bitcoind.supply_wallet.getrawchangeaddress()
 
-    ''' If you get insufficent funds, even tho we provide the UTXO (!!), do this:
-
-            bitcoin-cli importaddress "2NDT3ymKZc8iMfbWqsNd1kmZckcuhixT5U4" true true
-
-        Better method: always fund addresses for testing here from same wallet (ie.
-        got from non-multisig to multisig on same bitcoin-qt instance).
-        -> Now doing that, automated, above.
-    '''
     resp = bitcoind.supply_wallet.walletcreatefundedpsbt([dict(txid=unspent[0]["txid"], vout=unspent[0]["vout"])],
                [{ret_addr: 2}], 0,
                 {'subtractFeeFromOutputs': [0], 'includeWatching': True}, True)
 
-    resp = bitcoind.supply_wallet.walletprocesspsbt(resp["psbt"])
+    if not cc_sign_first:
+        # signing first with bitcoind
+        resp = bitcoind.supply_wallet.walletprocesspsbt(resp["psbt"])
 
     # assert resp['changepos'] == -1
     psbt = b64decode(resp['psbt'])
@@ -1574,17 +1567,16 @@ def test_bitcoind_cosigning(dev, bitcoind, import_ms_wallet, clear_ms, try_sign,
 
     open('debug/cc-updated.psbt', 'wb').write(updated)
 
-    # # have bitcoind do the rest of the signing
-    # rr = bitcoind.supply_wallet.walletprocesspsbt(b64encode(updated).decode('ascii'))
-    # pprint(rr)
-    #
-    # open('debug/bc-processed.psbt', 'wt').write(rr['psbt'])
-    # assert rr['complete']
-    # TODO I have moved this up - so that bitcoind signs first, if it signed second it failed with
-    # TODO "Specified sighash value does not match value stored in PSBT"
+    if cc_sign_first:
+        # cc signed first - bitcoind is now second
+        rr = bitcoind.supply_wallet.walletprocesspsbt(b64encode(updated).decode('ascii'), True, "ALL")
+        assert rr["complete"]
+        both_signed = rr["psbt"]
+    else:
+        both_signed = b64encode(updated).decode('ascii')
 
     # finalize and send
-    rr = bitcoind.supply_wallet.finalizepsbt(b64encode(updated).decode('ascii'), True)
+    rr = bitcoind.supply_wallet.finalizepsbt(both_signed, True)
     open('debug/bc-final-txn.txn', 'wt').write(rr['hex'])
     assert rr['complete']
 
