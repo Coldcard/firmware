@@ -1,5 +1,12 @@
-## 5.0.5 - 2022-06-28
 
+## 5.0.5 - 2022-07-14
+
+- Enhancement: BIP-85 derived passwords. Pick an index number, and COLDCARD will derive
+  a deterministic, strong (136 bit) password for you, it will even type the password by
+  emulating a USB keyboard. See new areas: Settings > Keyboard EMU and
+  Settings > Derive Seed B85 > Passwords.
+- Documentation: added `docs/bip85-passwords.md` documenting new BIP-85 passwords and keyboard emulation.
+- Enhancement: BIP-85 derived values can now be exported via NFC in addition to QR code.
 - Enhancement: Allow signing transaction where foreign UTXO(s) is/are missing.
   Only applies to cases where partial signatures are being added.
   Thanks to [@straylight-orbit](https://github.com/straylight-orbit)
@@ -9,6 +16,8 @@
 - Enhancement: Address explorer can show change addresses for standard derivation paths for both single and multisig wallet.
 - new tutorial: 2of2 multisig with bitcoind `docs/bitcoin-core2of2desc.md`
 - new tutorial: 2of2 multisig with 2x Coldcard signing device and bitcoin-qt as coordinator `docs/bitcoin-core2of2desc.md`
+- Bugfix: allow unknown scripts in HSM mode
+- Enhancement: OP_RETURN is now a known script and is displayed in ascii if possible
 
 ## 5.0.4 - 2022-05-27
 

@@ -936,9 +936,8 @@ async def start_login_sequence():
     if not settings.get('du', 0):
         from usb import enable_usb
         enable_usb()
-        
-def goto_top_menu(first_time=False):
-    # Start/restart menu system
+
+def make_top_menu():
     from menu import MenuSystem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
     from glob import hsm_active
@@ -955,7 +954,11 @@ def goto_top_menu(first_time=False):
         assert pa.is_successful(), "nonblank but wrong pin"
 
         m = MenuSystem(EmptyWallet if pa.is_secret_blank() else NormalSystem)
+    return m
 
+def goto_top_menu(first_time=False):
+    # Start/restart menu system
+    m = make_top_menu()
     the_ux.reset(m)
 
     if first_time and not pa.is_secret_blank():
@@ -1064,7 +1067,7 @@ async def electrum_skeleton(*a):
 
     account_num = 0
     if ch == '1':
-        account_num = await ux_enter_number('Account Number:', 9999)
+        account_num = await ux_enter_number('Account Number:', 9999) or 0
     elif ch != 'y':
         return
 
@@ -1094,7 +1097,7 @@ without ever connecting this Coldcard to a computer.\
 
     account_num = 0
     if ch == '1':
-        account_num = await ux_enter_number('Account Number:', 9999)
+        account_num = await ux_enter_number('Account Number:', 9999) or 0
     elif ch != 'y':
         return
 
@@ -1119,7 +1122,7 @@ Saves JSON file, with XPUB values that are needed to watch typical \
 single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
         return
 
-    account_num = await ux_enter_number('Account Number:', 9999)
+    account_num = await ux_enter_number('Account Number:', 9999) or 0
 
     # no choices to be made, just do it.
     import export
@@ -1905,6 +1908,13 @@ async def change_usb_disable(dis):
     elif not cur and not dis:
         # USB disabled, but now should be
         enable_usb()
+
+async def usb_keyboard_emulation(enable):
+    # just sets emu flag on and adds Entry Password into top menu
+    # no USB switching at this point
+    # - need to force reload of main menu, so it shows/hides
+    new_top_menu = make_top_menu()
+    the_ux.stack[0] = new_top_menu  # top menu is always element 0
 
 async def change_nfc_enable(enable):
     # NFC enable / disable

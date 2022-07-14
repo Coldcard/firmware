@@ -9,7 +9,8 @@
 # - command line: py.test test_hsm.py --dev -s --ff
 # - no microSD card installed
 #
-import pytest, time, struct, os, itertools
+
+import pytest, time, struct, os, itertools, base64
 from binascii import b2a_hex, a2b_hex
 from hashlib import sha256
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
@@ -1127,7 +1128,7 @@ def test_boot_to_hsm_unlock(start_hsm, hsm_status, enter_local_code):
     enter_local_code('123123')
     time.sleep(.5)
     assert hsm_status().active == False
-    assert hsm_status().policy_available == True  # we haven't removed anythong why shoudl it be not available?
+    assert hsm_status().policy_available == True  # we haven't removed anything why should it be not available?
 
 def test_boot_to_hsm_too_late(dev, start_hsm, hsm_status, enter_local_code):
     if dev.is_simulator:
@@ -1166,7 +1167,23 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
     s = quick_start_hsm(dict(priv_over_ux=False))
     assert all((f in s) for f in flds)
 
-
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("op_return_data", [
+    b"Coldcard is the best signing device",  # to test with both pushdata opcodes
+    b"Coldcard, the best signing deviceaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # len 80 max
+])
+def test_op_return_output(op_return_data, start_hsm, attempt_psbt, bitcoind_d_sim_watch, bitcoind, hsm_reset):
+    cc = bitcoind_d_sim_watch
+    dest_address = cc.getnewaddress()
+    bitcoind.supply_wallet.generatetoaddress(101, dest_address)
+    psbt = cc.walletcreatefundedpsbt([], [{dest_address: 1.0}, {"data": op_return_data.hex()}], 0, {"fee_rate": 20})["psbt"]
+    policy = DICT(rules=[dict(max_amount=10)])
+    start_hsm(policy)
+    attempt_psbt(base64.b64decode(psbt))
+    policy = DICT(rules=[dict(whitelist=['131CnJGaDyPaJsb5P4NHFxcRi29zo3ZXw'])])
+    hsm_reset()
+    start_hsm(policy)
+    attempt_psbt(base64.b64decode(psbt), refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN
 
 # KEEP LAST -- can only be run once, will crash device
 @pytest.mark.onetime

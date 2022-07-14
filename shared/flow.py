@@ -11,7 +11,7 @@ from choosers import *
 from multisig import make_multisig_menu
 from address_explorer import address_explore
 from users import make_users_menu
-from drv_entro import drv_entro_start
+from drv_entro import drv_entro_start, password_entry
 from backups import clone_start, clone_write_data
 from xor_seed import xor_split_start, xor_restore_start
 from countdowns import countdown_pin_submenu, countdown_chooser
@@ -132,6 +132,12 @@ The signed transaction will be named <TXID>.txn, so the file name does not leak 
 MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forensic tools \
 which take apart the flash chips of the SDCard may still be able to find the \
 data or filenames.'''),
+    ToggleMenuItem('Keyboard EMU', 'emu', ['Default Off', 'Enable'],
+           on_change=usb_keyboard_emulation,
+           predicate=has_secrets,  # cannot generate BIP85 passwords without secret
+           story='''This mode adds a top-level menu item for typing \
+deterministically-generated passwords (BIP-85), directly into an \
+attached USB computer (as an emulated keyboard).'''),
 ]
 
 XpubExportMenu = [
@@ -325,6 +331,7 @@ NormalSystem = [
     MenuItem('Passphrase', f=start_b39_pw, predicate=lambda: settings.get('words', True)),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
+    MenuItem('Type Passwords', f=password_entry, predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),

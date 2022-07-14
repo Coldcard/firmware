@@ -36,6 +36,10 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
     ('64-bytes hex', 0,
         None,
         '492db4698cf3b73a5a24998aa3e9d7fa96275d85724a91e71aa2d645442f878555d078fd1f1f67e368976f04137b1f7a0d19232136ca50c44614af72b5582a5c'),
+
+    ('Passwords', 0,
+     None,
+     "dKLoepugzdVJvdL56ogNV"),
 ])
 def test_bip_vectors(mode, index, entropy, expect,
         set_encoded_secret, dev, cap_menu, pick_menu_item,
@@ -80,7 +84,7 @@ def test_bip_vectors(mode, index, entropy, expect,
 
     do_import = False
 
-    if 'words' in mode:
+    if ' words' in mode:
         num_words = int(mode.split()[0])
         assert f'Seed words ({num_words}):' in story
         assert f"m/83696968'/39'/0'/{num_words}'/{index}'" in story
@@ -107,6 +111,12 @@ def test_bip_vectors(mode, index, entropy, expect,
         assert f'Hex ({width} bytes):' in story
         assert f"m/83696968'/128169'/{width}'/{index}'" in story
         assert expect in story
+
+    elif 'Passwords' == mode:
+        assert "Password:" in story
+        assert f"m/83696968'/707764'/21'/{index}'" in story
+        assert expect in story
+        assert "2 to type password over USB" in story
 
     else:
         raise ValueError(mode)
@@ -260,6 +270,53 @@ def test_path_index(mode, pattern, index,
 
         elif 'WIF' in mode:
             assert qr == got
-    
+
+
+def test_type_passwords(dev, cap_menu, pick_menu_item,
+        goto_home, cap_story, need_keypress, cap_screen
+):
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Keyboard EMU')
+    _, story = cap_story()
+    story1 = "This mode adds a top-level menu item for typing deterministically-generated passwords (BIP-85), directly into an attached USB computer (as an emulated keyboard)."
+    assert story1 == story
+    need_keypress("y")
+    pick_menu_item('Enable')
+    time.sleep(0.3)
+    goto_home()
+    menu = cap_menu()
+    assert "Type Passwords" in menu
+    pick_menu_item("Type Passwords")
+    time.sleep(1)
+    _, story = cap_story()
+    story2 = 'Type Passwords (BIP-85)\n\nThis feature derives a deterministic password according BIP-85, from the seed. The password will be sent as keystrokes via USB to the host computer.'
+    assert story == story2
+    need_keypress("y")
+    time.sleep(0.5)
+    # here we accessed index loop and can derive
+    for index in [0, 10, 100, 1000, 9999]:
+        time.sleep(0.5)
+        for n in str(index):
+            need_keypress(n)
+        need_keypress("y")
+        time.sleep(1)
+        _, story = cap_story()
+        assert "Place mouse at required password prompt, then press OK to send keystrokes." in story
+        split_story = story.split("\n\n")
+        _, pwd = split_story[1].split("\n")
+        _, path = split_story[2].split("\n")
+        assert path == f"m/83696968'/707764'/21'/{index}'"
+        assert len(pwd) == 21
+        assert "=" not in pwd
+        need_keypress("y")  # does nothing on simulator
+        time.sleep(0.2)
+    # exit Enter Password menu
+    need_keypress("x")
+    pick_menu_item('Settings')
+    pick_menu_item('Keyboard EMU')
+    pick_menu_item('Default Off')
+    menu = cap_menu()
+    assert "Type Passwords" not in menu
 
 # EOF

@@ -363,7 +363,7 @@ async def show_qr_code(data, is_alnum):
     o = QRDisplaySingle([data], is_alnum)
     await o.interact_bare()
 
-async def ux_enter_number(prompt, max_value):
+async def ux_enter_number(prompt, max_value, can_cancel=False):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
@@ -380,7 +380,8 @@ async def ux_enter_number(prompt, max_value):
 
     dis.clear()
     dis.text(0, 0, prompt)
-    dis.text(None, -1, "X to DELETE, or OK when DONE.", FontTiny)
+    dis.text(None, -1, ("X to CANCEL, or OK when DONE." if can_cancel else 
+                        "X to DELETE, or OK when DONE."), FontTiny)
     dis.save()
 
     while 1:
@@ -404,9 +405,9 @@ async def ux_enter_number(prompt, max_value):
         elif ch == 'x':
             if value:
                 value = value[0:-1]
-            else:
+            elif can_cancel:
                 # quit if they press X on empty screen
-                return 0
+                return None
         else:
             if len(value) == max_w:
                 value = value[0:-1] + ch
