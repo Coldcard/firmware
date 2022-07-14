@@ -14,7 +14,7 @@ python run_sim_tests.py -m test_nfc.py                         # run only nfc te
 python run_sim_tests.py -m test_nfc.py -m test_hsm.py          # run nfc and hsm tests
 python run_sim_tests.py -m all                                 # run all tests but not onetime and not very slow (cca 40 minutes)
 python run_sim_tests.py                                        # same as with '-m all' above --> most useful
-python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 235 minutes)
+python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 252 minutes)
 python run_sim_tests.py -m test_multisig.py -k cosigning       # run only tests that match expression from test_multisig.py
 
 

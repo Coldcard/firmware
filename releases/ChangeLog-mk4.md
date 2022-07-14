@@ -1,3 +1,4 @@
+
 ## 5.0.5 - 2022-07-14
 
 - Enhancement: BIP-85 derived passwords. Pick an index number, and COLDCARD will derive
@@ -10,6 +11,11 @@
   Only applies to cases where partial signatures are being added.
   Thanks to [@straylight-orbit](https://github.com/straylight-orbit)
 - Bugfix: order of multisig wallet registration does NOT matter.
+- Enhancement: Support import of multisig wallet from descriptor (only sortedmulti allowed BIP64).
+  Support export of multsig wallet as descriptor.
+- Enhancement: Address explorer can show change addresses for standard derivation paths for both single and multisig wallet.
+- new tutorial: 2of2 multisig with bitcoind `docs/bitcoin-core2of2desc.md`
+- new tutorial: 2of2 multisig with 2x Coldcard signing device and bitcoin-qt as coordinator `docs/bitcoin-core2of2desc.md`
 - Bugfix: allow unknown scripts in HSM mode
 - Enhancement: OP_RETURN is now a known script and is displayed in ascii if possible
 

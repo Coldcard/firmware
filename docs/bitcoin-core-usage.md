@@ -17,11 +17,14 @@ Step 1: Create a new descriptor-based wallet in Bitcoin Core
 
 - File -> Create Wallet ... 
 - give it a unique name
+- check "Disable Private Keys"
+- check "Make Blank Wallet"
 - check "Descriptor Wallet"
 
 Step 2: Export descriptor from Coldcard to Core
 
-- on Coldcard, go to Advanced -> MicroSD card -> Export Wallet -> Bitcoin Core
+- (singlesig) on Coldcard, go to Advanced -> MicroSD card -> Export Wallet -> Bitcoin Core
+- (multisig) on Coldcard, go to Settings -> Multisig Wallets -> Choose desired multisig wallet -> Descriptors -> Bitcoin Core
 - on your computer, open `bitcoin-core-XX.txt`, copy the `importdescriptor` command line
 - in Bitcoin Core, go to Windows -> Console
 - select your newly created descriptor wallet in the wallet pulldown (top left)
