@@ -11,7 +11,8 @@ In addition to deriving up to 10,000 distinct secure passwords, the Coldcard Mk4
 can also type them into a computer by emulating a USB keyboard, and simulating the
 keystrokes needed to type the password.
 
-#### Requirements:
+#### Requirements
+
 * Coldcard Mk4 with version 5.0.5 or newer
 * USB-C with data link (won't work with power only cable from Coinkite)
 
@@ -64,7 +65,7 @@ However, BIP-85 won't be respected in this case.
 ## Coldcard Specifics
 
 Check [BIP-85](https://github.com/scgbckbone/bips/blob/passwords/bip-0085.mediawiki)
-for complete specification of the new addtion to BIP-85.
+for complete specification of the new addition to BIP-85.
 
 Coldcard does not allow you to specify password length - we always
 use length of **21**. Passwords of this length generated according
@@ -99,6 +100,6 @@ Although the Coldcard is emulating a keyboard at the lowest possible level,
 for some reason occasionally high-level applications have
 trouble with our high-speed typing.
 
-- KeePass 2.45 (under Ubuntu). Capitol letters may be lost.
+- KeePass 2.45 (under Ubuntu). Capital letters may be lost.
 
 
