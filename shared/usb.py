@@ -909,6 +909,7 @@ class EmulatedKeyboard:
             enable_usb()
 
     async def send_keystrokes(self, keystroke_string):
+        from glob import dis
         # Send keystrokes to enter a password... only expected to support Base64 charset
         if is_simulator():
             print("Simulating keystrokes: " + repr(keystroke_string))
@@ -960,8 +961,10 @@ class EmulatedKeyboard:
             "\r": 0x28,
         }
         buf = bytearray(8)
+        pwd_len = len(keystroke_string)
+        dis.fullscreen('Typing...')
 
-        for ch in keystroke_string:
+        for i, ch in enumerate(keystroke_string, start=1):
             cap = False
             if ch in char_map:
                 to_press = char_map[ch]
@@ -984,4 +987,5 @@ class EmulatedKeyboard:
             while self.dev.send(buf) == 0:
                 await sleep_ms(5)
 
+            dis.progress_bar_show(i/pwd_len)
 # EOF 
