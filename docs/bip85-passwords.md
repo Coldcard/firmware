@@ -7,7 +7,7 @@ according to [BIP-85](https://github.com/bitcoin/bips/blob/master/bip-0085.media
 Generated passwords can be sent as keystrokes via USB to the host computer,
 effectively using Coldcard as specialized password manager.
 
-In addition to deriving up to 1,0000 distinct and secure passwords, the Coldcard Mk4
+In addition to deriving up to 10,000 distinct secure passwords, the Coldcard Mk4
 can also type them into a computer by emulating a USB keyboard, and simulating the
 keystrokes needed to type the password.
 
