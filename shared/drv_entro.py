@@ -252,6 +252,10 @@ async def password_entry(*args, **kwargs):
     from glob import dis
     from usb import EmulatedKeyboard
 
+    # cache of length of 1
+    # (index, path, password)
+    cache = tuple()
+
     # TODO: maybe a way to kill this info dialog w/ a setting
     ch = await ux_show_story('''\
 Type Passwords (BIP-85)
@@ -270,9 +274,13 @@ The password will be sent as keystrokes via USB to the host computer.''')
             if index is None:
                 break
 
-            dis.fullscreen("Working...")
-            new_secret, _, _, path = bip85_derive(7, index)
-            pw = bip85_pwd(new_secret)
+            if cache and index == cache[0]:
+                path, pw = cache[1:]
+            else:
+                dis.fullscreen("Working...")
+                new_secret, _, _, path = bip85_derive(7, index)
+                pw = bip85_pwd(new_secret)
+                cache = (index, path, pw)
 
             await send_keystrokes(kbd, pw, path)
 

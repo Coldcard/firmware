@@ -100,6 +100,6 @@ Although the Coldcard is emulating a keyboard at the lowest possible level,
 for some reason occasionally high-level applications have
 trouble with our high-speed typing.
 
-- KeePass 2.45 (under Ubuntu). Capital letters may be lost.
+- KeePass2 2.45 (under Ubuntu). Capital/lowercase letters may be incorrectly typed. Use KeePassXC instead.
 
 
