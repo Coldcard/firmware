@@ -877,20 +877,24 @@ class EmulatedKeyboard:
         # wait for emeration, with timeout
         self.dev = pyb.USB_HID()
 
-        for retry in range(100):
-            rv = self.dev.send(bytes(8))
-            if rv == 8: break
-            await sleep_ms(10)
+        # macOS at least: need twice to be sure, maybe more!
+        all_up = bytes(8)        # harmless "all keys are up" keyboard report
+        fails = 0
+        for keyups in range(3):
+            for retry in range(100):
+                rv = self.dev.send(all_up)
+                if rv == 8: break
+                await sleep_ms(5)
+            else:
+                fails += 1
 
-        # macOS at least: need twice to be sure
-        for retry in range(100):
-            rv = self.dev.send(bytes(8))
-            if rv == 8: return
-            await sleep_ms(10)
-
+        if fails < 3:
+            return False
+        
         # if we are connected to a COLDPOWER, for example, this will happen.
         from ux import ux_show_story
-        ux_show_story("USB Host computer is not enumerating us.", title="FAILED")
+        await ux_show_story("USB Host computer, if any, is not communicating with us.",
+                                title="FAILED")
             
         return True
 
