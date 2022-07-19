@@ -943,17 +943,17 @@ class EmulatedKeyboard:
             "x": 0x1B,
             "y": 0x1C,  # qwerty
             "z": 0x1D,
-            # numbers (keypad)
-            "1": 0x59,
-            "2": 0x5A,
-            "3": 0x5B,
-            "4": 0x5C,
-            "5": 0x5D,
-            "6": 0x5E,
-            "7": 0x5F,
-            "8": 0x60,
-            "9": 0x61,
-            "0": 0x62,
+            # numbers (top row - USA centric)
+            "1": 0x1e,
+            "2": 0x1f,
+            "3": 0x20,
+            "4": 0x21,
+            "5": 0x22,
+            "6": 0x23,
+            "7": 0x24,
+            "8": 0x25,
+            "9": 0x26,
+            "0": 0x27,
             # only symbols required for b64 without padding
             "+": 0x57,  # Keypad
             "/": 0x54,  # Keypad
