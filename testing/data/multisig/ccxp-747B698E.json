@@ -3,8 +3,10 @@
   "p2sh": "tpubD97nVL37v5tWyMf9ofh5rznwhh1593WMRg6FT4o6MRJkKWANtwAMHYLrcJFsFmPfYbY1TE1LLQ4KBb84LBPt1ubvFwoosvMkcWJtMwvXgSc",
   "p2sh_p2wsh_deriv": "m/48'/1'/0'/1'",
   "p2sh_p2wsh": "Upub5SzPmFgatRMeLd6ADjvTiG9gnHoXXJy3qu8RNapLymh3GtHDeogzgy2nGtH1P7gPYF4zW9f4R8UYMCoUqUjSpSSZb8NWVKpbesbtP21e6Z4",
+  "p2sh_p2wsh_desc": "sh(wsh(sortedmulti(M,[747b698e/48'/1'/0'/1']tpubDExj5FnaUnPAjjgzELoSiNRkuXJG8Cm1pbdiA4Hc5vkAZHphibeVcUp6mqH5LuNVKbtLVZxVSzyja5X26Cfmx6pzRH6gXBUJAH7MiqwNyuM/0/*,...)))",
   "p2wsh_deriv": "m/48'/1'/0'/2'",
   "p2wsh": "Vpub5mpf4vMW36u8EJTa6EYq3Bs2xY1zRN3JfaU283VYs592nQVHhatepJ8cYs7f9kZwrZtXpxJAtDTvcbxn9PuqMBLR1DvrgfFhdJSR3Fb5yob",
+  "p2wsh_desc": "wsh(sortedmulti(M,[747b698e/48'/1'/0'/2']tpubDExj5FnaUnPAn7sHGUeBqD3buoNH5dqmjAT6884vbDpH1iDYWigb7kFo2cA97dc8EHb54u13TRcZxC4kgRS9gc3Ey2xc8c5urytEzTcp3ac/0/*,...))",
   "account": "0",
   "xfp": "747B698E"
 }
