@@ -45,7 +45,15 @@ to exit. Exiting from "Type Passwords" will cause Coldcard to turn off keyboard 
 Emulated Keystrokes are mapped to specific characters based on your host PC keyboard
 language settings. For Coldcard to be able to type the correct BIP-85
 password your host computer MUST use language settings that
-corresponds to a [QWERTY](https://simple.wikipedia.org/wiki/QWERTY) key layout.
+corresponds to a [QWERTY](https://simple.wikipedia.org/wiki/QWERTY) key layout,
+including number row directly above QWERTY:
+
+```
+1 2 3 4 5 6 7 8 9 0 - =
+ Q W E R T Y U I O P [ ] \
+  A S D F G H J K L ; '
+   Z X C V B N M , . /
+```
 
 Passwords generated and shown on Coldcard will always be correct
 with respect to BIP-85. However, when sending keystrokes, for example
