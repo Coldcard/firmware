@@ -733,7 +733,6 @@ class MultisigWallet:
         # check we're included... do not insert ourselves, even tho we
         # have enough info, simply because other signers need to know my xpubkey anyway
         assert has_mine != 0, 'my key not included'
-        # here we oonly check xfp - sae keys are alllwed with bad xfp
         assert has_mine == 1, 'my key included more than once'
 
         # done. have all the parts
