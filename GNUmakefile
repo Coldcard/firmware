@@ -280,7 +280,7 @@ all: init## 	all
 venv:## 	create python3 virtualenv .venv
 	test -d .venv || $(PYTHON3) -m virtualenv .venv
 	( \
-	   source .venv/bin/activate; pip install -r requirements.txt; \
+       virtualenv -p python3 ENV \
 	);
 	@echo "To activate (venv)"
 	@echo "try:"
