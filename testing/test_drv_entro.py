@@ -196,6 +196,7 @@ HISTORY = set()
     ('12 words', r'[a-f0-9]{32}'),
     ('18 words', r'[a-f0-9]{48}'),
     ('24 words', r'[a-f0-9]{64}'),
+    ('Passwords', r'[a-zA-Z0-9+/]{21}'),
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
 def test_path_index(mode, pattern, index,
@@ -241,7 +242,12 @@ def test_path_index(mode, pattern, index,
     assert got not in HISTORY
     HISTORY.add(got)
 
-    if 'words' in mode:
+    if mode == "Passwords":
+        from base64 import b64encode
+        raw = re.findall(r'[a-f0-9]{64}', story)[0]
+        exp = b64encode(a2b_hex(raw)).decode('ascii')[0:21]
+        assert exp == got
+    elif 'words' in mode:
         exp = Mnemonic('english').to_mnemonic(a2b_hex(got)).split()
         assert '\n'.join(f'{n+1:2d}: {w}' for n, w in enumerate(exp)) in story
     elif 'XPRV' in mode:
@@ -258,7 +264,9 @@ def test_path_index(mode, pattern, index,
 
         qr = cap_screen_qr().decode('ascii')
 
-        if 'words' in mode:
+        if mode == "Passwords":
+            assert qr == exp == got
+        elif 'words' in mode:
             gw = qr.lower().split()
             assert gw == [i[0:4] for i in exp]
 
