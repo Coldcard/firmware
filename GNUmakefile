@@ -278,20 +278,26 @@ export TARGET_DIR
 .PHONY: all venv test-venv init
 all: init## 	all
 venv:## 	create python3 virtualenv .venv
-	test -d .venv || $(PYTHON3) -m virtualenv .venv
+	test -d .venv || $(PYTHON3) -m virtualenv ENV
 	( \
-       virtualenv -p python3 ENV \
+       virtualenv -p python3 ENV; \
+       . ENV/bin/activate; \
+       pip install -r requirements.txt; \
+       pip install -r testing/requirements.txt; \
 	);
-	@echo "To activate (venv)"
+	@echo "To activate (ENV)"
 	@echo "try:"
-	@echo ". .venv/bin/activate"
+	@echo ". ENV/bin/activate"
 	@echo "or:"
 	@echo "make test-venv"
 test-venv:## 	test virutalenv .venv
 	# insert test commands here
-	test -d .venv || $(PYTHON3) -m virtualenv .venv
+	test -d .venv || $(PYTHON3) -m virtualenv ENV
 	( \
-	   source .venv/bin/activate; pip install -r requirements.txt; \
+       virtualenv -p python3 ENV; \
+       . ENV/bin/activate; \
+       pip install -r testing/requirements.txt; \
+       pytest testing/. \
 	);
 .PHONY: init
 init: venv## 	basic setup
