@@ -29,7 +29,7 @@ static uint8_t *PSRAM_TOP_BASE = (uint8_t *)0x90400000;    // OCTOSPI mapping, t
 static uint8_t *PSRAM_BOT_BASE = (uint8_t *)0x90000000;    // OCTOSPI mapping, bot half
 static const uint32_t PSRAM_SIZE = 0x400000;           // 4 megs (half)
 static const uint32_t BLOCK_SIZE = 512;
-static const uint32_t BLOCK_COUNT = 8196;           // =PSRAM_SIZE / BLOCK_SIZE
+static const uint32_t BLOCK_COUNT = PSRAM_SIZE / BLOCK_SIZE;    // = 8192
 
 extern __IO uint32_t uwTick;
 
