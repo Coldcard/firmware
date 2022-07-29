@@ -33,6 +33,9 @@ static const uint32_t BLOCK_COUNT = PSRAM_SIZE / BLOCK_SIZE;    // = 8192
 
 extern __IO uint32_t uwTick;
 
+// this code will always be the first LUN
+static const uint8_t MY_LUN = 0;
+
 STATIC mp_obj_t psram_wipe_and_setup(mp_obj_t unused_self);
 STATIC const uint8_t psram_msc_lu_num = 1;
 
@@ -171,10 +174,9 @@ STATIC const int8_t psram_msc_inquiry_data[36] = {
 };
 
 // Initialise all logical units (it's only ever called once, with lun_in=0)
-STATIC int8_t psram_msc_Init(uint8_t lun_in) {
-    if (lun_in != 0) {
-        return 0;
-    }
+STATIC int8_t psram_msc_Init(uint8_t lun_in)
+{
+    if(lun_in != MY_LUN) return -1;
 
     // don't change flag here, might have been set by python
     //flags_STARTED = false;
@@ -184,7 +186,10 @@ STATIC int8_t psram_msc_Init(uint8_t lun_in) {
 }
 
 // Process SCSI INQUIRY command for the logical unit
-STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_out) {
+STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_out)
+{
+    if(lun != MY_LUN) return -1;
+
     ckcc_usb_active = true;
 
     if (params[1] & 1) {
@@ -206,11 +211,6 @@ STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_o
     }
 
     // A standard inquiry
-
-    if (lun >= psram_msc_lu_num) {
-        return -1;
-    }
-
     uint8_t alloc_len = params[3] << 8 | params[4];
     int len = MIN(sizeof(psram_msc_inquiry_data), alloc_len);
     memcpy(data_out, psram_msc_inquiry_data, len);
@@ -221,6 +221,9 @@ STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_o
 // Get storage capacity of a logical unit
 STATIC int8_t psram_msc_GetCapacity(uint8_t lun, uint32_t *block_num, uint16_t *block_size)
 {
+    // might be important not to write to pointers if unexpected LUN
+    if(lun != MY_LUN) return -1;
+
     ckcc_usb_active = true;
 
     *block_num = BLOCK_COUNT;
@@ -230,10 +233,9 @@ STATIC int8_t psram_msc_GetCapacity(uint8_t lun, uint32_t *block_num, uint16_t *
 }
 
 // Check if a logical unit is ready
-STATIC int8_t psram_msc_IsReady(uint8_t lun) {
-    if (lun >= psram_msc_lu_num) {
-        return -1;
-    }
+STATIC int8_t psram_msc_IsReady(uint8_t lun)
+{
+    if(lun != MY_LUN) return -1;
 
     // NOTE: called frequently, and must be T for MacOS to recognize at all
     // when F, macos keeps trying to work until it's ready again (freezing programs
@@ -242,18 +244,17 @@ STATIC int8_t psram_msc_IsReady(uint8_t lun) {
 }
 
 // Check if a logical unit is write protected
-STATIC int8_t psram_msc_IsWriteProtected(uint8_t lun) {
-    if (lun >= psram_msc_lu_num) {
-        return -1;
-    }
+STATIC int8_t psram_msc_IsWriteProtected(uint8_t lun)
+{
+    if(lun != MY_LUN) return -1;
+
     return flag_READONLY ? 1 : 0;
 }
 
 // Start or stop a logical unit
-STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
-    if (lun >= psram_msc_lu_num) {
-        return -1;
-    }
+STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started)
+{
+    if(lun != MY_LUN) return -1;
 
     // host is not allowed to change our ready status: always fail
     //printf("PSRAMdisk: started=%d tried\n", started);
@@ -277,7 +278,10 @@ STATIC int8_t psram_msc_StartStopUnit(uint8_t lun, uint8_t started) {
 }
 
 // Prepare a logical unit for possible removal
-STATIC int8_t psram_msc_PreventAllowMediumRemoval(uint8_t lun, uint8_t param) {
+STATIC int8_t psram_msc_PreventAllowMediumRemoval(uint8_t lun, uint8_t param)
+{
+    if(lun != MY_LUN) return -1;
+
     //printf("PSRAMdisk: prevallow=%d\n", param);
     if(param == 0) {
         // allow removal == host is done (like after umount in MacOS)
@@ -288,10 +292,10 @@ STATIC int8_t psram_msc_PreventAllowMediumRemoval(uint8_t lun, uint8_t param) {
 }
 
 // Read data from a logical unit
-STATIC int8_t psram_msc_Read(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len) {
-    if (lun >= psram_msc_lu_num) {
-        return -1;
-    }
+STATIC int8_t psram_msc_Read(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
+{
+    if(lun != MY_LUN) return -1;
+
     ckcc_usb_active = true;
 
     uint8_t *ptr = block_to_ptr(blk_addr, blk_len);
@@ -303,10 +307,10 @@ STATIC int8_t psram_msc_Read(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint1
 }
 
 // Write data to a logical unit
-STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len) {
-    if (lun >= psram_msc_lu_num) {
-        return -1;
-    }
+STATIC int8_t psram_msc_Write(uint8_t lun, uint8_t *buf, uint32_t blk_addr, uint16_t blk_len)
+{
+    if(lun != MY_LUN) return -1;
+
     ckcc_usb_active = true;
 
     uint8_t *ptr = block_to_ptr(blk_addr, blk_len);
