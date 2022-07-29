@@ -261,4 +261,25 @@ if 0:
             else:
                 raise ValueError(got.type)
 
+def test_macos_detection():
+    # not a portable test...  at all.
+    import platform, subprocess, plistlib
+
+    if not platform.platform().startswith('macOS-11'):
+        raise pytest.xfail("requires MacOS")
+
+    if not os.path.isdir('/Volumes/COLDCARD'):
+        raise pytest.xfail("needs COLDCARD mounted in usual spot")
+
+    cmd = ['diskutil', 'info', '-plist', '/Volumes/COLDCARD']
+    pl = subprocess.check_output(cmd)
+
+    pl = plistlib.loads(pl)
+
+    assert pl['VolumeName'] == 'COLDCARD'
+    assert pl['BusProtocol'] == 'USB'
+    assert pl['FilesystemName'] == 'MS-DOS FAT16'
+    assert pl['VolumeAllocationBlockSize'] == 512
+    assert pl['IOKitSize'] == 4194304           # requires 5.0.6
+
 # EOF
