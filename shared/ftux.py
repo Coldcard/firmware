@@ -27,7 +27,9 @@ transfer data easily via NFC.''' + COMMON
                 await change_nfc_enable(1)
                 await ux_dramatic_pause('Enabled.', 1)
                 
-        if version.has_psram and not settings.get('vdsk', 0):
+        # Disabled for now, because limited audience and
+        # extra barrier to "just getting started"
+        if 0:       #  version.has_psram and not settings.get('vdsk', 0):
             msg = '''Enable USB Drive?\n\n\
 Connect your COLDCARD directly as a USB flash drive \
 to your phone or desktop. You will be able to drag-n-drop or \
