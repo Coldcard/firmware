@@ -84,14 +84,14 @@ def nfc_enabled():
     return bool(NFC)
 
 def vdisk_enabled():
-    return bool(settings.get('vdsk', 0))
+    return bool(settings.get('vidsk', 0))
 
 
 HWTogglesMenu = [
     ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,
         on_change=change_usb_disable, story='''\
 Blocks any data over USB port. Useful when your plan is air-gap usage.'''),
-    ToggleMenuItem('Virtual Disk', 'vdsk', ['Default Off', 'Enable', 'Enable & Auto'],
+    ToggleMenuItem('Virtual Disk', 'vidsk', ['Default Off', 'Enable', 'Enable & Auto'],
         predicate=lambda: version.has_psram, on_change=change_virtdisk_enable, 
         story='''Coldcard can emulate a virtual disk drive (4MB) where new PSBT files \
 can be saved. Signed PSBT files (transactions) will also be saved here. \n\

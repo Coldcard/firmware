@@ -738,7 +738,7 @@ async def damage_myself():
 async def version_migration():
     # Handle changes between upgrades, and allow downgrades when possible.
     # - long term we generally cannot delete code from here, because we
-    #   never know when a user might skip a bunch of intermetiate versions
+    #   never know when a user might skip a bunch of intermediate versions
 
     # Data migration issue: 
     # - "login countdown" feature now stored elsewhere [mk3]
@@ -750,6 +750,10 @@ async def version_migration():
         s.set('lgto', had_delay)
         s.save()
         del s
+
+    # Disable vdisk so it is off by default until re-enabled, after 
+    # version 5.0.6 is installed
+    settings.remove_key('vdsk')
         
 async def version_migration_prelogin():
     # same, but for setting before login
@@ -927,7 +931,7 @@ async def start_login_sequence():
             import nfc
             nfc.NFCHandler.startup()
 
-        if settings.get('vdsk', 0):
+        if settings.get('vidsk', 0):
             # Maybe start virtual disk
             import vdisk
             vdisk.VirtDisk()

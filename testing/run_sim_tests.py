@@ -216,7 +216,7 @@ def main():
             continue
         print("Started", test_module)
         if test_module == "test_vdisk.py":
-            test_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vdsk=1"]
+            test_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_bip39pw.py":
             test_args = []
         if test_module == "test_unit.py":

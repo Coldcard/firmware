@@ -29,7 +29,7 @@ transfer data easily via NFC.''' + COMMON
                 
         # Disabled for now, because limited audience and
         # extra barrier to "just getting started"
-        if 0:       #  version.has_psram and not settings.get('vdsk', 0):
+        if 0:       #  version.has_psram and not settings.get('vidsk', 0):
             msg = '''Enable USB Drive?\n\n\
 Connect your COLDCARD directly as a USB flash drive \
 to your phone or desktop. You will be able to drag-n-drop or \
@@ -37,11 +37,11 @@ save PSBT files like other drives/volumes.''' + COMMON
             ch = await ux_show_story(msg)
             if ch == 'y':
                 # put them into full-auto mode: 2
-                settings.set('vdsk', 2)
+                settings.set('vidsk', 2)
                 await change_virtdisk_enable(2)
                 await ux_dramatic_pause('Enabled.', 1)
                 
-        if not settings.get('vdsk', 0) and not settings.get('du', 0):
+        if not settings.get('vidsk', 0) and not settings.get('du', 0):
             msg = '''Disable USB port?\n\n\
 If you intend to operate in Air-Gap mode, where this COLDCARD \
 is never connected to anything but power, then this will disable the USB port.''' + COMMON

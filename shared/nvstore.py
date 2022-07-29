@@ -50,7 +50,8 @@ from glob import PSRAM
 #   rz = (int) display value resolution/units: 8=BTC 5=mBTC 2=bits 0=sats
 #   tp = (complex) trick pins' config on Mk4
 #   nfc = (bool) if set, enable the NFC feature; default is OFF=>DISABLED (mk4+)
-#   vdsk = (bool) if set, enable the Virtual Disk features; default is OFF=>DISABLED (mk4+)
+#   vdsk = (bool) if set, enable the Virtual Disk features in pre 5.0.6 version; [OBSOLETE]
+#   vidsk = (bool) if set, enable the Virtual Disk features after v5.0.6
 #   emu = (bool) if set, enables the USB Keyboard emulation (BIP-85 password entry)
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

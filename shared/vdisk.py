@@ -124,7 +124,7 @@ class VirtDisk:
     def host_done_handler(self):
         from glob import settings
 
-        if settings.get('vdsk', 0) != 2:
+        if settings.get('vidsk', 0) != 2:
             # auto mode not enabled, so ignore changes
             return
 
