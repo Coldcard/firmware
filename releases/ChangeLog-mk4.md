@@ -1,3 +1,7 @@
+## 5.0.6 - 2022-07-29
+
+- Security release: Virtual Disk feature updated with bugfix to address potential security
+  concerns and new security hardening changes. Upgrade strongly recommended.
 
 ## 5.0.5 - 2022-07-20
 
