@@ -211,7 +211,7 @@ STATIC int psram_msc_Inquiry(uint8_t lun, const uint8_t *params, uint8_t *data_o
     }
 
     // A standard inquiry
-    uint8_t alloc_len = params[3] << 8 | params[4];
+    uint16_t alloc_len = params[3] << 8 | params[4];
     int len = MIN(sizeof(psram_msc_inquiry_data), alloc_len);
     memcpy(data_out, psram_msc_inquiry_data, len);
 
