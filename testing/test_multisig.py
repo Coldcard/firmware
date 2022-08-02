@@ -2365,6 +2365,30 @@ def test_ms_wallet_ordering(clear_ms, import_ms_wallet, try_sign_microsd, fake_m
     try_sign_microsd(psbt, encoding='base64')
 
 
+@pytest.mark.parametrize("descriptor", [True, False])
+@pytest.mark.parametrize("m_n", [(2, 3), (3, 5), (5, 10)])
+def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wallet, try_sign_microsd, fake_ms_txn):
+    import itertools
+    clear_ms()
+    M, N = m_n
+    all_out_styles = list(unmap_addr_fmt.keys())
+    index = all_out_styles.index("p2sh-p2wsh")
+    all_out_styles[index] = "p2wsh-p2sh"
+    name = f'ms1'
+    keys = make_multisig(M, N)
+    all_options = list(itertools.combinations(keys, len(keys)))
+    for opt in all_options:
+        import_ms_wallet(M, N, keys=opt, name=name, accept=1, do_import=True, addr_fmt="p2wsh", descriptor=descriptor)
+        psbt = fake_ms_txn(5, 5, M, opt, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
+        open('debug/last.psbt', 'wb').write(psbt)
+        try_sign_microsd(psbt, encoding='base64')
+        for opt_1 in all_options:
+            # create PSBT with original keys order
+            psbt = fake_ms_txn(5, 5, M, opt_1, outstyles=all_out_styles, segwit_in=True, incl_xpubs=True)
+            open('debug/last.psbt', 'wb').write(psbt)
+            try_sign_microsd(psbt, encoding='base64')
+
+
 @pytest.mark.parametrize('cmn_pth_from_root', [True, False])
 @pytest.mark.parametrize('nfc', [True, False])
 @pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
