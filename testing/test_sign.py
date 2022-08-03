@@ -1699,7 +1699,7 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
     time.sleep(.1)
     title, story = cap_story()
     assert title == "OK TO SEND?"
-    # in older implementations, one would seen a warning for OP_RETURN --> not now
+    # in older implementations, one would see a warning for OP_RETURN --> not now
     assert "warning" not in story
     assert "OP_RETURN" in story
     try:
@@ -1712,5 +1712,69 @@ def test_op_return_signing(op_return_data, dev, fake_txn, bitcoind_d_sim_watch, 
     assert cc.testmempoolaccept([tx])[0]["allowed"] is True
     tx_id = cc.sendrawtransaction(tx)
     assert isinstance(tx_id, str) and len(tx_id) == 64
+
+@pytest.mark.parametrize("unknowns", [
+    # tuples (unknown_global, unknown_ins, unknown_outs)
+    ({b"x" * 16: b"y" * 16}, {b"q": b"p"}, {b"w" * 5: b"z" * 22}),
+    ({b"x": b"y", b"cccccc": b"oooooooooooooooooooooooooo", b"a": b"a"}, {b"q" * 2: b"p" * 16}, {b"w" * 64: b"z"}),
+    ({b"x" * 64: b"y"}, {b"q" * 45: b"p"}, {b"w": b"z" * 64}),
+    ({b"x": b"y" * 64}, {b"q": b"p" * 64}, {b"w" * 16: b"z" * 64}),
+    ({b"x" * 64: b"y" * 64}, {b"q" * 71: b"p" * 22}, {b"w" * 71: b"z" * 128, b"keyp": 32 * b"\x00"}),
+    ({b"x" * 64: b"y" * 128}, {b"q" * 64: b"p" * 128}, {b"w" * 90: b"z" * 256}),
+    ({b"x" * 32: b"y" * 256}, {b"q" * 32: b"p" * 256, b"f" * 15: 32 * b"\x01"}, {b"w": b"z"}),
+])
+def test_unknow_values_in_psbt(unknowns, dev, start_sign, end_sign, fake_txn):
+    unknown_global, unknown_ins, unknown_outs = unknowns
+    def hack(psbt):
+        psbt.unknown = unknown_global
+        for i in psbt.inputs:
+            i.unknown = unknown_ins
+        for o in psbt.outputs:
+            o.unknown = unknown_outs
+
+    psbt = fake_txn(5, 5, dev.master_xpub, segwit_in=True, psbt_hacker=hack)
+    open('debug/last.psbt', 'wb').write(psbt)
+    psbt_o = BasicPSBT().parse(psbt)
+    assert psbt_o.unknown == unknown_global
+    for inp in psbt_o.inputs:
+        assert inp.unknown == unknown_ins
+    for out in psbt_o.outputs:
+        assert out.unknown == unknown_outs
+    start_sign(psbt)
+    signed = end_sign()
+    assert signed != psbt
+    res = BasicPSBT().parse(signed)
+    assert res.unknown == unknown_global
+    for inp in res.inputs:
+        assert inp.unknown == unknown_ins
+    for out in res.outputs:
+        assert out.unknown == unknown_outs
+
+def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
+    # duplicate keys for global unknowns
+    def hack(psbt):
+        psbt.unknown = [(b"xxx", 32 * b"\x00"), (b"xxx", 32 * b"\x01")]
+    psbt = fake_txn(5, 5, dev.master_xpub, segwit_in=True, psbt_hacker=hack)
+    start_sign(psbt)
+    with pytest.raises(Exception):
+        end_sign()
+
+    # duplicate keys for input unknowns
+    def hack(psbt):
+        for i in psbt.inputs:
+            i.unknown = [(b"xxx", 32 * b"\x00"), (b"xxx", 32 * b"\x01")]
+    psbt = fake_txn(5, 5, dev.master_xpub, segwit_in=True, psbt_hacker=hack)
+    start_sign(psbt)
+    with pytest.raises(Exception):
+        end_sign()
+
+    # duplicate keys for output unknown
+    def hack(psbt):
+        for o in psbt.outputs:
+            o.unknown = [(b"xxx", 32 * b"\x00"), (b"xxx", 32 * b"\x01")]
+    psbt = fake_txn(5, 5, dev.master_xpub, segwit_in=True, psbt_hacker=hack)
+    start_sign(psbt)
+    with pytest.raises(Exception):
+        end_sign()
 
 # EOF

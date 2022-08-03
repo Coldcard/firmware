@@ -4,13 +4,10 @@
 #
 import io, struct
 from binascii import b2a_hex as _b2a_hex
-from binascii import a2b_hex as _a2b_hex
-from collections import namedtuple
-from base64 import b64encode
 from pycoin.tx.Tx import Tx
 from pycoin.tx.script.check_signature import parse_signature_blob
-from binascii import b2a_hex, a2b_hex
-from base64 import b64decode
+from binascii import a2b_hex
+from base64 import b64decode, b64encode
 
 b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 
@@ -104,6 +101,7 @@ class BasicPSBTInput(PSBTSection):
         self.redeem_script = None
         self.witness_script = None
         self.others = {}
+        self.unknown = {}
 
     def __eq__(a, b):
         if a.sighash != b.sighash:
@@ -116,7 +114,8 @@ class BasicPSBTInput(PSBTSection):
                 a.witness_script == b.witness_script and \
                 a.my_index == b.my_index and \
                 a.bip32_paths == b.bip32_paths and \
-                sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys())
+                sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys()) and \
+                a.unknown == b.unknown
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
             #       and some maybe understanding of R/S values on curve that I don't have.
@@ -152,7 +151,7 @@ class BasicPSBTInput(PSBTSection):
             assert not key
             self.others[kt] = val
         else:
-            raise KeyError(kt)
+            self.unknown[bytes([kt]) + key] = val
 
     def serialize_kvs(self, wr):
         if self.utxo:
@@ -171,18 +170,28 @@ class BasicPSBTInput(PSBTSection):
             wr(PSBT_IN_BIP32_DERIVATION, self.bip32_paths[k], k)
         for k in self.others:
             wr(k, self.others[k])
+        if isinstance(self.unknown, list):
+            # just so I can test duplicate unknown values
+            # list of tuples [(key0, val0), (key1, val1)]
+            for key, val in self.unknown:
+                wr(key[0], val, key[1:])
+        else:
+            for key, val in self.unknown.items():
+                wr(key[0], val, key[1:])
 
 class BasicPSBTOutput(PSBTSection):
     def defaults(self):
         self.redeem_script = None
         self.witness_script = None
         self.bip32_paths = {}
+        self.unknown = {}
 
     def __eq__(a, b):
         return  a.redeem_script == b.redeem_script and \
                 a.witness_script == b.witness_script and \
                 a.my_index == b.my_index and \
-                a.bip32_paths == b.bip32_paths
+                a.bip32_paths == b.bip32_paths and \
+                a.unknown == b.unknown
 
     def parse_kv(self, kt, key, val):
         if kt == PSBT_OUT_REDEEM_SCRIPT:
@@ -194,7 +203,7 @@ class BasicPSBTOutput(PSBTSection):
         elif kt == PSBT_OUT_BIP32_DERIVATION:
             self.bip32_paths[key] = val
         else:
-            raise ValueError(kt)
+            self.unknown[bytes([kt]) + key] = val
 
     def serialize_kvs(self, wr):
         if self.redeem_script:
@@ -203,6 +212,14 @@ class BasicPSBTOutput(PSBTSection):
             wr(PSBT_OUT_WITNESS_SCRIPT, self.witness_script)
         for k in self.bip32_paths:
             wr(PSBT_OUT_BIP32_DERIVATION, self.bip32_paths[k], k)
+        if isinstance(self.unknown, list):
+            # just so I can test duplicate unknown values
+            # list of tuples [(key0, val0), (key1, val1)]
+            for key, val in self.unknown:
+                wr(key[0], val, key[1:])
+        else:
+            for key, val in self.unknown.items():
+                wr(key[0], val, key[1:])
 
 
 class BasicPSBT:
@@ -216,13 +233,16 @@ class BasicPSBT:
         self.inputs = []
         self.outputs = []
 
+        self.unknown = {}
+
     def __eq__(a, b):
         return a.txn == b.txn and \
             len(a.inputs) == len(b.inputs) and \
             len(a.outputs) == len(b.outputs) and \
             all(a.inputs[i] == b.inputs[i] for i in range(len(a.inputs))) and \
             all(a.outputs[i] == b.outputs[i] for i in range(len(a.outputs))) and \
-            sorted(a.xpubs) == sorted(b.xpubs)
+            sorted(a.xpubs) == sorted(b.xpubs) and \
+            a.unknown == b.unknown
 
     def parse(self, raw):
         # auto-detect and decode Base64 and Hex.
@@ -256,7 +276,7 @@ class BasicPSBT:
                     # ignore PSBT_GLOBAL_XPUB on 0th index (should not be part of parsed key)
                     self.xpubs.append((key[1:], val))
                 else:
-                    raise ValueError('unknown global key type: 0x%02x' % kt)
+                    self.unknown[key] = val
 
             assert self.txn, 'missing reqd section'
 
@@ -284,6 +304,15 @@ class BasicPSBT:
         for k,v in self.xpubs:
             wr(PSBT_GLOBAL_XPUB, v, key=k)
 
+        if isinstance(self.unknown, list):
+            # just so I can test duplicate unknown values
+            # list of tuples [(key0, val0), (key1, val1)]
+            for key, val in self.unknown:
+                wr(key[0], val, key[1:])
+        else:
+            for key, val in self.unknown.items():
+                wr(key[0], val, key[1:])
+
         # sep
         fd.write(b'\0')
 
@@ -297,6 +326,9 @@ class BasicPSBT:
         with io.BytesIO() as fd:
             self.serialize(fd)
             return fd.getvalue()
+
+    def as_b64_str(self):
+        return b64encode(self.as_bytes()).decode()
 
 
 def test_my_psbt():
