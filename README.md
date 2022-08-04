@@ -93,7 +93,12 @@ Then:
 brew install automake autogen virtualenv
 virtualenv -p python3 ENV
 source ENV/bin/activate (or source ENV/bin/activate.csh based on shell preference)
+pip install -U pip
 pip install -r requirements.txt
+# apply micropython patch
+pushd external/micropython
+git apply ../../macos-mpy.patch
+popd
 make -C external/micropython/mpy-cross
 cd unix; make setup && make ngu-setup && make && ./simulator.py
 ```
