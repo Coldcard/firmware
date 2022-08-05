@@ -1,3 +1,9 @@
+## 5.0.7 - 2022-08-XX
+
+- Enhancement: multisig NFC import not offered if MicroSD card is installed. Now separate
+  option provided Settings -> Multisig Wallets -> Import via NFC. NFC has to be enabled
+  for this option to be visible.
+
 ## 5.0.6 - 2022-07-29
 
 - Security release: Virtual Disk feature updated with bugfix to address potential security
