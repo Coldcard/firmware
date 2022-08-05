@@ -1226,7 +1226,6 @@ class MultisigMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
-
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
         else:
@@ -1234,8 +1233,9 @@ class MultisigMenu(MenuSystem):
             for ms in MultisigWallet.get_all():
                 rv.append(MenuItem('%d/%d: %s' % (ms.M, ms.N, ms.name),
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
-
+        from glob import NFC
         rv.append(MenuItem('Import from File', f=import_multisig))
+        rv.append(MenuItem('Import via NFC', f=import_multisig_nfc, predicate=lambda: NFC is not None))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
@@ -1635,18 +1635,16 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
 
     return await ondevice_multisig_create(n, f)
 
+
+async def import_multisig_nfc(*a):
+    from glob import NFC
+    # this menu option should not be available if NFC is disabled
+    return await NFC.import_multisig_nfc()
+
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file
     from actions import file_picker
-    from glob import NFC
 
-    if NFC and not CardSlot.is_inserted():
-        # prompt them use NFC?
-        ch = await ux_show_story("Press 3 to use NFC to send the multisig wallet file. Otherwise use file.", escape='3')
-        if ch == '3':
-            return await NFC.import_multisig_nfc()
-        if ch == 'x':
-            return
 
     def possible(filename):
         with open(filename, 'rt') as fd:
