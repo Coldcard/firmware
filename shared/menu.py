@@ -211,22 +211,34 @@ class MenuSystem:
 
         dis.show()
 
+    def get_wrap_length(self):
+        from glob import settings
+        # wa is boolean value from config
+        # True --> wrap around all menus with length greater than 1
+        # False --> wrap around is active only for menus with length > WRAP_IF_OVER
+        wrap = settings.get("wa", 0)
+        return 1 if wrap else WRAP_IF_OVER
+
     def down(self):
         if self.cursor < self.count-1:
             self.cursor += 1
 
             if self.cursor - self.ypos >= (PER_M-1):
                 self.ypos += 1
-        elif self.count > WRAP_IF_OVER:
-            self.goto_idx(0)
+        else:
+            wrap_length = self.get_wrap_length()
+            if self.count > wrap_length:
+                self.goto_idx(0)
 
     def up(self):
         if self.cursor > 0:
             self.cursor -= 1
             if self.cursor < self.ypos:
                 self.ypos -= 1
-        elif self.count > WRAP_IF_OVER:
-            self.goto_idx(self.count-1)
+        else:
+            wrap_length = self.get_wrap_length()
+            if self.count > wrap_length:
+                self.goto_idx(self.count - 1)
 
     def top(self):
         self.cursor = 0

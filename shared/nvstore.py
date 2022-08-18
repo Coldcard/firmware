@@ -53,6 +53,7 @@ from glob import PSRAM
 #   vdsk = (bool) if set, enable the Virtual Disk features in pre 5.0.6 version; [OBSOLETE]
 #   vidsk = (bool) if set, enable the Virtual Disk features after v5.0.6
 #   emu = (bool) if set, enables the USB Keyboard emulation (BIP-85 password entry)
+#   wa = (bool) if set, enables menu wraparound
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)

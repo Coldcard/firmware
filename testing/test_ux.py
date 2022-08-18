@@ -698,6 +698,60 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, need_keypress, sim_e
     time.sleep(0.01)
 
 
+def test_menu_wrapping(goto_home, pick_menu_item, cap_story, need_keypress, cap_menu):
+    UP = "5"
+    DOWN = "8"
+
+    goto_home()
+    # first try that infinite scroll is turned off
+    # home
+    for i in range(10):  # settings on 5th in home (10 is way past that)
+        need_keypress(DOWN)
+    need_keypress("y")
+    menu = cap_menu()
+    # assert we are in settings, meaning we found bottom of home menu
+    assert "Login Settings" in menu
+
+    for i in range(10):
+        need_keypress(UP)
+    need_keypress("y")
+    menu = cap_menu()
+    # assert we are in Login settings, meaning we found top of settings menu
+    assert "Change Main PIN" in menu
+    need_keypress("x")  # back to settings
+    pick_menu_item("Menu Wrapping")
+    need_keypress("y")
+    pick_menu_item("Enable")
+    # back in settings on InfiniteScroll
+    # go 2 positions down and should be on top on Login settings
+    time.sleep(1)
+    for i in range(2):
+        need_keypress(DOWN)
+    need_keypress("y")
+    menu = cap_menu()
+    assert "Change Main PIN" in menu
+    need_keypress("x")  # back to settings - on login settings
+    # now go over top and back to Login settings from bottom
+    for i in range(9):
+        need_keypress(UP)
+    need_keypress("y")
+    menu = cap_menu()
+    assert "Change Main PIN" in menu
+    # disable infinite scroll
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Menu Wrapping")
+    pick_menu_item("Default Off")
+    time.sleep(1)
+    # cannot scroll over top now - will land in Login Settings
+    for i in range(15):
+        need_keypress(UP)
+    need_keypress("y")
+    menu = cap_menu()
+    assert "Change Main PIN" in menu
+    goto_home()
+
+
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
     # saves to ../unix/work/menudump.txt
