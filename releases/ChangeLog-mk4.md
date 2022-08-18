@@ -3,6 +3,8 @@
 - Enhancement: multisig NFC import not offered if MicroSD card is installed. Now separate
   option provided Settings -> Multisig Wallets -> Import via NFC. NFC has to be enabled
   for this option to be visible.
+- Enhancement: New menu wraparound settings which allow you to scroll over top and bottom.
+- Bugfix: correct parsing of unknown fields in PSBT
 - Bugfix: share single address over NFC from address explorer menu
 
 ## 5.0.6 - 2022-07-29
