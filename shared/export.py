@@ -186,6 +186,8 @@ in Bitcoin Core, or using bitcoin-cli:
 
 importdescriptors '{imp_desc}'
 
+> **NOTE** If your UTXO was created before running the previous `importdescriptors` command, you need to run `rescanblockchain` for the transaction to show in Bitcoin Core.
+
 ### Bitcoin Core before v0.21.0 
 
 This command can be used on older versions, but it is not as robust
