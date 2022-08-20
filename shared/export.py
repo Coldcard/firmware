@@ -186,7 +186,9 @@ in Bitcoin Core, or using bitcoin-cli:
 
 importdescriptors '{imp_desc}'
 
-> **NOTE** If your UTXO was created before running the previous `importdescriptors` command, you need to run `rescanblockchain` for the transaction to show in Bitcoin Core.
+> **NOTE** If your UTXO was created before generating `importdescriptors` command, you should adjust the value of `timestamp` before executing command in bitcoin core. 
+  By default it is set to `now` meaning do not rescan the blockchain. If approximate time of UTXO creation is known - adjust `timestamp` from `now` to UNIX epoch time.
+  0 can be specified to scan the entire blockchain. Alternatively `rescanblockchain` command can be used after executing importdescriptors command.
 
 ### Bitcoin Core before v0.21.0 
 
