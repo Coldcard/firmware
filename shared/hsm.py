@@ -31,6 +31,13 @@ ABSOLUTE_MAX_REFUSALS = const(100)
 # mode, if you enable the boot_to_hsm feature
 BOOT_LOCKOUT_TIME = const(60)
 
+# valid transaction patterns and their explanations
+TX_PATTERNS = {
+    "EQ_NUM_INS_OUTS": "the number of inputs and outputs must be equal",
+    "EQ_NUM_OWN_INS_OUTS": "the number of OWN inputs and outputs must be equal",
+    "EQ_OUT_AMOUNTS": "all outputs must have equal amounts"
+}
+
 def hsm_policy_available():
     # Is there an HSM policy ready to go? Offer the menu item then.
     try:
@@ -101,6 +108,16 @@ def pop_int(j, fld_name, mn=0, mx=1000):
     assert mn <= v <= mx, "%s: must be in range: [%d..%d]" % (fld_name, mn, mx)
     return v
 
+def pop_float(j, fld_name, mn=0, mx=1000000):
+    # returns a float or None. Also range check.
+    v = j.pop(fld_name, None)
+    if v is None: return v
+    assert float(v) == v, "%s: must be float" % fld_name
+    v = float(v)
+    assert mn <= mx, '%s: cannot be specified' % fld_name
+    assert mn <= v <= mx, "%s: must be in range: [%d..%d]" % (fld_name, mn, mx)
+    return v
+
 def pop_bool(j, fld_name, default=False):
     # return a bool, but accept 1/0 and True/False
     return bool(j.pop(fld_name, default))
@@ -142,6 +159,11 @@ class ApprovalRule:
     # - min_users: how many of those are needed to approve
     # - local_conf: local user must also confirm w/ code
     # - wallet: which multisig wallet to restrict to, or '1' for single signer only
+    # - min_pct_self_transfer: minimum percentage of own input value that must go back to self
+    # - patterns: list of transaction patterns to check for. Valid values:
+    #       * EQ_NUM_INS_OUTS:      the number of inputs and outputs must be equal
+    #       * EQ_NUM_OWN_INS_OUTS:  the number of **own** inputs and outputs must be equal
+    #       * EQ_OUT_AMOUNTS:       all outputs must have equal amounts
 
     def __init__(self, j, idx):
         # read json dict provided
@@ -160,6 +182,8 @@ class ApprovalRule:
         self.min_users = pop_int(j, 'min_users', 1, len(self.users))
         self.local_conf = pop_bool(j, 'local_conf')
         self.wallet = pop_string(j, 'wallet', 1, 20)
+        self.min_pct_self_transfer = pop_float(j, 'min_pct_self_transfer', 0, 100.0)
+        self.patterns = pop_list(j, 'patterns')
 
         assert sorted(set(self.users)) == sorted(self.users), 'dup users'
 
@@ -175,6 +199,10 @@ class ApprovalRule:
             names = [ms.name for ms in MultisigWallet.get_all()]
             assert self.wallet in names, "unknown MS wallet: "+self.wallet
 
+        # patterns must be valid
+        for p in patterns:
+            assert p in TX_PATTERNS, "unknown pattern: " + p
+
         assert_empty_dict(j)
 
     @property
@@ -185,7 +213,7 @@ class ApprovalRule:
         # remote users need to know what's happening, and we save this
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
-                    'local_conf', 'whitelist', 'wallet' ]
+                    'local_conf', 'whitelist', 'wallet', 'min_pct_self_transfer' 'patterns' ]
         return dict((f, getattr(self, f, None)) for f in flds)
 
 
@@ -230,6 +258,14 @@ class ApprovalRule:
         if self.local_conf:
             rv += ' if local user confirms'
 
+        if self.min_pct_self_transfer:
+            rv += ' if self-transfer percentage is at least %.2f' % self.min_pct_own_to_self
+
+        if self.patterns:
+            rv += ' with the following patterns: '
+            for p in self.patterns:
+                rv += TX_PATTERNS[p] + '; '
+
         return rv
 
     def matches_transaction(self, psbt, users, total_out, dests, local_oked):
@@ -265,6 +301,28 @@ class ApprovalRule:
         if self.per_period is not None:
             # check this txn would not exceed the velocity limit
             assert self.spent_so_far + total_out <= self.per_period, 'would exceed period spending'
+
+        # check the self-transfer percentage
+        if self.min_pct_self_transfer:
+            own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys > 0])
+            own_out_value = sum([o.amount for o in psbt.outputs if o.num_our_keys > 0])
+            ratio = float(own_out_value) / own_in_value
+            assert ratio >= self.min_pct_self_transfer, 'does not meet self transfer threshold'
+
+        # check various patterns
+
+        if "EQ_NUM_INS_OUTS" in self.patterns:
+            assert len(psbt.inputs) == len(psbt.outputs), 'unequal number of inputs and outputs'
+
+        if "EQ_NUM_OWN_INS_OUTS" in self.patterns:
+            own_ins = sum([1 for i in psbt.inputs if i.num_our_keys > 0])
+            own_outs = sum([1 for o in psbt.outputs if o.num_our_keys > 0])
+            assert own_ins == own_outs, 'unequal number of own inputs and outputs'
+
+        if "EQ_OUT_AMOUNTS" in self.patterns:
+            wanted = psbt.outputs[0].amount
+            for o in psbt.outputs:
+                assert o.amount == wanted, 'not all output amounts are equal'
 
         return True
 
