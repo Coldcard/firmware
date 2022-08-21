@@ -287,7 +287,7 @@ class psbtProxy:
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
-                    'is_change', 'num_our_keys')
+                    'is_change', 'num_our_keys', 'amount')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -347,6 +347,9 @@ class psbtOutputProxy(psbtProxy):
         # - full key derivation and validation is done during signing, and critical.
         # - we raise fraud alarms, since these are not innocent errors
         #
+
+        # assign output amount
+        self.amount = txo.nValue
 
         num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
