@@ -358,6 +358,13 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
             assert qr == addr
 
         if is_mark4 and get_setting('nfc', 0):
+            # this is actually testing NFC export in qr code menu
+            need_keypress('3')
+            time.sleep(.1)
+            assert nfc_read_text() == addr
+            need_keypress("x")  # leave NFC animation
+            need_keypress("x")  # leave QR code display
+            # test NFC export in address explorer
             need_keypress('3')
             time.sleep(.1)
             assert nfc_read_text() == addr
