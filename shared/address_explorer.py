@@ -302,8 +302,8 @@ Press 3 if you really understand and accept these risks.
                 # share table over NFC
                 if n > 1:
                     await NFC.share_text('\n'.join(addrs))
-                else:
-                    await NFC.share_deposit_address(addrs[self.idx])
+                elif n == 1:
+                    await NFC.share_deposit_address(addrs[0])
                 continue
 
             elif ch == '4' and allow_change:
