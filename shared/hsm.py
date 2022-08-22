@@ -114,7 +114,6 @@ def pop_float(j, fld_name, mn=0, mx=1000000):
     if v is None: return v
     assert float(v) == v, "%s: must be float" % fld_name
     v = float(v)
-    assert mn <= mx, '%s: cannot be specified' % fld_name
     assert mn <= v <= mx, "%s: must be in range: [%d..%d]" % (fld_name, mn, mx)
     return v
 
@@ -306,8 +305,8 @@ class ApprovalRule:
         if self.min_pct_self_transfer:
             own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys > 0])
             own_out_value = sum([o.amount for o in psbt.outputs if o.num_our_keys > 0])
-            ratio = float(own_out_value) / own_in_value
-            assert ratio >= self.min_pct_self_transfer, 'does not meet self transfer threshold'
+            percentage = (float(own_out_value) / own_in_value) * 100.0
+            assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
 
         # check various patterns
 
