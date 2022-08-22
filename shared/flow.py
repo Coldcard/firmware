@@ -8,7 +8,7 @@ from glob import settings
 
 from actions import *
 from choosers import *
-from multisig import make_multisig_menu
+from multisig import make_multisig_menu, import_multisig_nfc
 from seed import make_ephemeral_seed_menu
 from address_explorer import address_explore
 from users import make_users_menu
@@ -277,6 +277,13 @@ BackupStuffMenu = [
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
 ]
 
+NFCToolsMenu = [
+    MenuItem('Show Address', f=nfc_show_address),
+    MenuItem('Sign Message', f=nfc_sign_msg),
+    MenuItem('File Share', f=nfc_share_file),
+    MenuItem('Import Multisig', f=import_multisig_nfc),
+]
+
 AdvancedNormalMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup", menu=BackupStuffMenu),
@@ -292,6 +299,7 @@ AdvancedNormalMenu = [
 By default these commands are disabled.",
                    predicate=lambda: version.has_fatram),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
+    MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 

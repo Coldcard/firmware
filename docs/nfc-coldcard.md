@@ -66,7 +66,7 @@ The NFC traffic is not encrypted and is subject to eavesdropping.
 While the NFC feature is active, your Coldcard can be uniquely
 identified because the NFC protocol requires a unique ID (64 bits)
 that is defined by the NFC tag chip and shared automatically as
-part of the anti-collion protocol. Again, that happens only during
+part of the anti-collision protocol. Again, that happens only during
 active transfers, not when idle.
 
 ## Desktop Testing

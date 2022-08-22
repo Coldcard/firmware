@@ -466,12 +466,10 @@ class USBHandler:
 
         if cmd == 'show':
             # simple cases, older code: text subpath
-            from auth import start_show_address
+            from auth import usb_show_address
 
             addr_fmt, = unpack_from('<I', args)
-            assert not (addr_fmt & AFC_SCRIPT)
-
-            return b'asci' + start_show_address(addr_fmt, subpath=args[4:])
+            return b'asci' + usb_show_address(addr_fmt, subpath=args[4:])
 
         if cmd == 'enrl':
             # Enroll new xpubkey to be involved in multisigs.
