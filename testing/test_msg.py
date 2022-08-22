@@ -3,11 +3,11 @@
 # Message signing.
 #
 import pytest, time, os
-from pycoin.contrib.msg_signing import verify_message
+from pycoin.contrib.msg_signing import verify_message, parse_signed_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
-from constants import simulator_fixed_xprv
+from constants import msg_sign_unmap_addr_fmt
 
 @pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
@@ -263,5 +263,77 @@ def test_low_R_cases(msg, num_iter, expect, dev, set_seed_words, use_mainnet, ne
         raise pytest.xfail('no code')
 
     assert sig == expect
+
+@pytest.mark.parametrize("body", [
+    "coinkite\nm\np2wsh",  # invalid address format
+    "coinkite\nm\np2sh-p2wsh",  # invalid address format
+    "coinkite\nm\np2tr",  # invalid address format
+    "coinkite\nm/0/0/0/0/0/0/0/0/0/0/0/0/0\np2pkh",  # invalid path
+    "coinkite\nm/0/0/0/0/0/q/0/0/0\np2pkh",  # invalid path
+    "coinkite    yes!\nm\np2pkh",  # invalid msg - too many spaces
+    "c\nm\np2pkh",  # invalid msg - too short
+    "coinkite \nm\np2pkh",  # invalid msg - trailing space
+    " coinkite\nm\np2pkh",  # invalid msg - leading space
+])
+def test_nfc_msg_signing_invalid(body, goto_home, pick_menu_item, nfc_write_text, cap_story):
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('NFC Tools')
+    pick_menu_item('Sign Message')
+    nfc_write_text(body)
+    time.sleep(0.5)
+    _, story = cap_story()
+    assert "Problem" in story
+
+@pytest.mark.parametrize("msg", ["coinkite", "Coldcard Signing Device!", 200 * "a"])
+@pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800'", "m/0/0/0/0/1/1/1"])
+@pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
+def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item, goto_home, cap_story,
+                         need_keypress, addr_vs_path):
+    # import pdb;pdb.set_trace()
+    for _ in range(5):
+        # need to wait for ApproveMessageSign to be popped from ux stack
+        try:
+            goto_home()
+            break
+        except:
+            time.sleep(0.5)
+
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('NFC Tools')
+    pick_menu_item('Sign Message')
+    if str_addr_fmt != "":
+        addr_fmt = msg_sign_unmap_addr_fmt[str_addr_fmt]
+        body = "\n".join([msg, path, str_addr_fmt])
+    else:
+        addr_fmt = AF_CLASSIC
+        body = "\n".join([msg, path])
+
+    nfc_write_text(body)
+    time.sleep(0.5)
+    _, story = cap_story()
+    assert "Ok to sign this?" in story
+    assert msg in story
+    assert path in story
+    need_keypress("y")
+    signed_msg = nfc_read_text()
+    if "BITCOIN SIGNED MESSAGE" not in signed_msg:
+        # missed it? again
+        signed_msg = nfc_read_text()
+    need_keypress("y")  # exit NFC animation
+    pmsg, addr, sig = parse_signed_message(signed_msg)
+    assert pmsg == msg
+    sk = addr_vs_path(addr, path, addr_fmt)
+    if addr_fmt == AF_CLASSIC:
+        assert verify_message(addr, sig, message=msg) is True
+        assert verify_message(sk, sig, message=msg) is True
+    time.sleep(0.5)
+    _, story = cap_story()
+    assert "Press Y to share again" in story
+    need_keypress("y")
+    signed_msg_again = nfc_read_text()
+    assert signed_msg == signed_msg_again
+    need_keypress("x")  # exit NFC animation
+    need_keypress("x")  # do not want to share again
 
 # EOF

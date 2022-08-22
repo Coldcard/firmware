@@ -14,6 +14,12 @@
   private key corresponding to the address specified in HSM policy. Attestation signature
   MUST be provided in PSBT in a new proprietary field. Thanks to
   [@straylight-orbit](https://github.com/straylight-orbit) for this powerful new feature.
+- Enhancement: add ability to specify address format in text file to be signed
+- Enhancement: NFC message signing (Advanced/Tools -> NFC Tools -> Sign Message). Send message
+  in same format as Sign Text File over NFC, approve signing on Coldcard and send signed armored
+  message back over NFC.
+- Enhancement: Show address over NFC (Advanced/Tools -> NFC Tools -> Show Address).
+- Bugfix: Improved NFC commands exception handling 
 - Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
 - Bugfix: Share single address over NFC from address explorer menu.
 - Bugfix: Using lots of trick pins (7+), could lead to a case where the Coldcard would
