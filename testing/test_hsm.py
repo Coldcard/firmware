@@ -154,9 +154,22 @@ def hsm_reset(dev, sim_exec):
     (DICT(rules=[dict(local_conf=True)]),
         'if local user confirms'),
 
+    # self transfer percentage
+    (DICT(rules=[dict(min_pct_self_transfer=50.0)]),
+        'if self-transfer percentage is at least 50.00'),
+
+    # patterns
+    (DICT(rules=[dict(patterns=["EQ_NUM_INS_OUTS"])]),
+        'the number of inputs and outputs must be equal'),
+    (DICT(rules=[dict(patterns=["EQ_NUM_OWN_INS_OUTS"])]),
+        'the number of OWN inputs and outputs must be equal'),
+    (DICT(rules=[dict(patterns=["EQ_OUT_AMOUNTS"])]),
+        'all outputs must have equal amounts'),
+
     # multiple rules
     (DICT(rules=[dict(local_conf=True), dict(max_amount=1E8)]),
         'Rule #2'),
+
 ])
 @pytest.mark.parametrize('converse', [False, True] )
 def test_policy_parsing(converse, sim_exec, policy, contains, load_hsm_users):
@@ -947,6 +960,52 @@ def test_velocity(dev, start_hsm, fake_txn, attempt_psbt, fast_forward, hsm_stat
     assert 90 <= s.period_ends <= 120
     assert s.has_spent == [int(amt*3)]
 
+def test_min_pct_self_transfer(dev, start_hsm, fake_txn, attempt_psbt):
+    policy = DICT(rules=[dict(min_pct_self_transfer=75.0)])
+
+    start_hsm(policy)
+
+    psbt = fake_txn(1, 2, invals = [1000], outvals = [500, 500], change_outputs = [], fee = 0)
+    attempt_psbt(psbt, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (75, 0))
+
+    psbt = fake_txn(1, 2, invals = [1000], outvals = [750, 250], change_outputs = [1], fee = 0)
+    attempt_psbt(psbt, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (75, 25))
+
+    psbt = fake_txn(1, 2, invals = [1000], outvals = [250, 750], change_outputs = [1], fee = 0)
+    attempt_psbt(psbt) # exact threshold
+
+    psbt = fake_txn(1, 2, invals = [1000], outvals = [1, 999], change_outputs = [1], fee = 0)
+    attempt_psbt(psbt) # exceeding the threshold
+
+@pytest.mark.parametrize('pattern', ['EQ_NUM_INS_OUTS', 'EQ_NUM_OWN_INS_OUTS', 'EQ_OUT_AMOUNTS'] )
+def test_patterns(pattern, dev, start_hsm, fake_txn, attempt_psbt):
+    policy = DICT(rules=[dict(patterns=[pattern])])
+
+    start_hsm(policy)
+
+    if pattern == 'EQ_NUM_INS_OUTS':
+        psbt = fake_txn(1, 2)
+        attempt_psbt(psbt, 'unequal number of inputs and outputs')
+
+        psbt = fake_txn(2, 2)
+        attempt_psbt(psbt) # equal number of ins and outs
+
+    if pattern == 'EQ_NUM_OWN_INS_OUTS':
+        psbt = fake_txn(2, 2)
+        attempt_psbt(psbt, 'unequal number of own inputs and outputs')
+
+        psbt = fake_txn(2, 2, change_outputs = [0])
+        attempt_psbt(psbt, 'unequal number of own inputs and outputs')
+
+        psbt = fake_txn(2, 2, change_outputs = [0, 1])
+        attempt_psbt(psbt) # equal number of own ins and outs
+
+    if pattern == 'EQ_OUT_AMOUNTS':
+        psbt = fake_txn(1, 2, invals = [1500], outvals = [1000, 500], fee = 0)
+        attempt_psbt(psbt, 'not all output amounts are equal')
+
+        psbt = fake_txn(1, 2, invals = [2000], outvals = [1000, 1000], fee = 0)
+        attempt_psbt(psbt) # all output amounts are equal
 
 def test_user_subset(dev, start_hsm, tweak_rule, load_hsm_users, fake_txn, attempt_psbt, auth_user):
     psbt = fake_txn(1,1, dev.master_xpub)
