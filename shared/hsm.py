@@ -199,7 +199,7 @@ class ApprovalRule:
             assert self.wallet in names, "unknown MS wallet: "+self.wallet
 
         # patterns must be valid
-        for p in patterns:
+        for p in self.patterns:
             assert p in TX_PATTERNS, "unknown pattern: " + p
 
         assert_empty_dict(j)
@@ -212,7 +212,7 @@ class ApprovalRule:
         # remote users need to know what's happening, and we save this
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
-                    'local_conf', 'whitelist', 'wallet', 'min_pct_self_transfer' 'patterns' ]
+                    'local_conf', 'whitelist', 'wallet', 'min_pct_self_transfer', 'patterns' ]
         return dict((f, getattr(self, f, None)) for f in flds)
 
 
@@ -258,7 +258,7 @@ class ApprovalRule:
             rv += ' if local user confirms'
 
         if self.min_pct_self_transfer:
-            rv += ' if self-transfer percentage is at least %.2f' % self.min_pct_own_to_self
+            rv += ' if self-transfer percentage is at least %.2f' % self.min_pct_self_transfer
 
         if self.patterns:
             rv += ' with the following patterns: '
@@ -303,8 +303,8 @@ class ApprovalRule:
 
         # check the self-transfer percentage
         if self.min_pct_self_transfer:
-            own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys > 0])
-            own_out_value = sum([o.amount for o in psbt.outputs if o.num_our_keys > 0])
+            own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
+            own_out_value = sum([o.amount for o in psbt.outputs if o.num_our_keys])
             percentage = (float(own_out_value) / own_in_value) * 100.0
             assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
 
@@ -314,8 +314,8 @@ class ApprovalRule:
             assert len(psbt.inputs) == len(psbt.outputs), 'unequal number of inputs and outputs'
 
         if "EQ_NUM_OWN_INS_OUTS" in self.patterns:
-            own_ins = sum([1 for i in psbt.inputs if i.num_our_keys > 0])
-            own_outs = sum([1 for o in psbt.outputs if o.num_our_keys > 0])
+            own_ins = sum([1 for i in psbt.inputs if i.num_our_keys])
+            own_outs = sum([1 for o in psbt.outputs if o.num_our_keys])
             assert own_ins == own_outs, 'unequal number of own inputs and outputs'
 
         if "EQ_OUT_AMOUNTS" in self.patterns:
