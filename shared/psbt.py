@@ -287,7 +287,7 @@ class psbtProxy:
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
-                    'is_change', 'num_our_keys', 'amount')
+                    'is_change', 'num_our_keys', 'amount', 'scriptpubkey')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -347,9 +347,6 @@ class psbtOutputProxy(psbtProxy):
         # - full key derivation and validation is done during signing, and critical.
         # - we raise fraud alarms, since these are not innocent errors
         #
-
-        # assign output amount
-        self.amount = txo.nValue
 
         num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
@@ -1151,7 +1148,13 @@ class psbtObject(psbtProxy):
         # - mark change outputs, so perhaps we don't show them to users
 
         for idx, txo in self.output_iter():
-            self.outputs[idx].validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            output = self.outputs[idx]
+            # perform output validation
+            output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            # cache inner tx output amount
+            output.amount = txo.nValue
+            # cache inner scriptpubkey
+            output.scriptpubkey = txo.scriptPubKey
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?

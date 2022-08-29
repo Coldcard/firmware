@@ -267,7 +267,9 @@ class ApprovalRule:
 
         return rv
 
-    def matches_transaction(self, psbt, users, total_out, dests, local_oked):
+    def matches_transaction(self, psbt, users, total_out, local_oked):
+        chain = chains.current_chain()
+
         # Does this rule apply to this PSBT file? 
         if self.wallet:
             # rule limited to one wallet
@@ -283,7 +285,15 @@ class ApprovalRule:
 
         # check all destinations are in the whitelist
         if self.whitelist:
-            diff = set(dests) - set(self.whitelist)
+            dests = set()
+            # no need to apply whitelisting to scripts that don't consume sats as they're harmless (e.g. 0-value OP_RETURN)
+            foreign_scripts = [o.scriptpubkey for o in psbt.outputs if o.amount > 0 and not o.is_change]
+            for s in foreign_scripts:
+                try:
+                    dests.add(chain.render_address(s))
+                except ValueError:
+                    dests.add(str(b2a_hex(s), 'ascii'))
+            diff = dests - set(self.whitelist)
             assert not diff, "non-whitelisted address: " + diff.pop()
 
         if self.local_conf:
@@ -810,23 +820,14 @@ class HSMPolicy:
                 if users:
                     log.info("These users gave correct auth codes: " + ', '.join(users))
 
-                # Where is it going?
-                total_out = 0
-                dests = []
-                for idx, tx_out in psbt.output_iter():
-                    if not psbt.outputs[idx].is_change:
-                        total_out += tx_out.nValue
-                        try:
-                            dests.append(chain.render_address(tx_out.scriptPubKey))
-                        except ValueError:
-                            dests.append(str(b2a_hex(tx_out.scriptPubKey), 'ascii'))
+                # Totals (applies to foreign)
+                total_out = sum(o.amount for o in psbt.outputs if not o.is_change)
 
                 # Pick a rule to apply to this specific txn
                 reasons = []
                 for rule in self.rules:
                     try:
-                        if rule.matches_transaction(psbt, users, total_out,
-                                                        dests, local_ok):
+                        if rule.matches_transaction(psbt, users, total_out, local_ok):
                             break
                     except BaseException as exc:
                         # let's not share these details, except for debug; since

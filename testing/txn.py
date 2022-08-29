@@ -63,7 +63,7 @@ def fake_txn(dev):
 
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
                 invals=None, outvals=None, segwit_in=False, outstyles=['p2pkh'], psbt_hacker=None,
-                change_outputs=[], capture_scripts=None, add_xpub=None):
+                change_outputs=[], capture_scripts=None, add_xpub=None, op_return = None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         master_xpub = master_xpub or dev.master_xpub or simulator_fixed_xprv
@@ -138,6 +138,21 @@ def fake_txn(dev):
 
             txn.txs_out.append(h)
 
+        # op_return is a tuple of (amount, data)
+        if op_return:
+            amount, data = op_return
+            op_return_size = len(data)
+            if op_return_size < 76:
+                script = bytes([106, op_return_size]) + data
+            else:
+                script = bytes([106, 76, op_return_size]) + data
+            op_return_out = TxOut(amount, script)
+            txn.txs_out.append(op_return_out)
+            psbt.outputs.append(BasicPSBTOutput(idx=len(psbt.outputs)))
+
+            if capture_scripts is not None:
+                capture_scripts.append(script)
+
         with BytesIO() as b:
             txn.stream(b)
             psbt.txn = b.getvalue()
@@ -164,6 +179,7 @@ def render_address(script, testnet=True):
     # string... aka: the "payment address"
     from pycoin.encoding import b2a_hashed_base58
     from bech32 import encode as bech32_encode
+    from binascii import hexlify
 
     ll = len(script)
 
@@ -193,6 +209,10 @@ def render_address(script, testnet=True):
     # P2WSH, P2TR and later
     if ll == 34 and script[0] <= 16 and script[1] == 0x20:
         return bech32_encode(bech32_hrp, script[0], script[2:])
+
+    # OP_RETURN
+    if script[0:1] == b'\x6a':
+        return hexlify(script)
 
     raise ValueError('Unknown payment script', repr(script))
 
