@@ -920,6 +920,7 @@ async def start_login_sequence():
             import hsm, hsm_ux
 
             if hsm.hsm_policy_available():
+                settings.put("hsmcmd", True)
                 ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
                 if ar:
                     await ar.interact()

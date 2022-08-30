@@ -19,7 +19,6 @@ from ckcc_protocol.protocol import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMA
 from ckcc_protocol.utils import calc_local_pincode
 
 import json
-from pprint import pprint
 from objstruct import ObjectStruct as DICT
 from txn import *
 from ckcc_protocol.constants import *
@@ -48,6 +47,14 @@ EXAMPLE_ADDRS = [ '1ByzQTr5TCkMW9RH1fkD7QtnMbErffDeUo', '2N4EDPkGYcZa5o6kFou2g9z
             'bc1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puqxn6udr',
             'tb1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puq3mvnhv',
 ]
+
+@pytest.fixture(autouse=True)
+def enable_hsm_commands(dev, sim_exec):
+    cmd = 'from glob import settings; settings.set("hsmcmd", 1)'
+    sim_exec(cmd)
+    yield
+    cmd = 'from glob import settings; settings.remove_key("hsmcmd")'
+    sim_exec(cmd)
 
 
 @pytest.fixture(scope='function')
@@ -243,7 +250,7 @@ def tweak_hsm_attr(sim_exec):
 def tweak_hsm_method(sim_exec):
     # reach under the skirt, and change and attr on hsm obj
     def doit(fcn_name, *args):
-        cmd = f"from glob import hsm_active; getattr(hsm_active, '{name}')({', '.join(args)})"
+        cmd = f"from glob import hsm_active; getattr(hsm_active, '{fcn_name}')({', '.join(args)})"
         sim_exec(cmd)
     return doit
 
@@ -1257,6 +1264,39 @@ def test_op_return_output_bitcoind(op_return_data, start_hsm, attempt_psbt, bitc
     hsm_reset()
     start_hsm(policy)
     attempt_psbt(base64.b64decode(psbt), refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN
+
+def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, need_keypress, hsm_reset, start_hsm,
+                               sim_exec, enable_hsm_commands):
+    dev.send_recv(CCProtocolPacker.create_user(b"xxx", 3, 32 * b"y"))
+    dev.send_recv(CCProtocolPacker.delete_user(b"xxx"))
+    s = start_hsm(dict(boot_to_hsm='123123'))
+    assert s
+    hsm_reset()
+    # disable HSM related commands (now enabled because module scope fixture 'enable_hsm_commands')
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Enable HSM")
+    pick_menu_item("Default Off")
+    goto_home()
+    try:
+        start_hsm(dict(boot_to_hsm='123123'))  # must fail
+        assert False
+    except CCProtoError as e:
+        assert e.args[1].decode() == 'HSM commands disabled'
+    try:
+        dev.send_recv(CCProtocolPacker.create_user(b"xxx", 3, 32 * b"y"))  # must fail
+        assert False
+    except CCProtoError as e:
+        assert e.args[1].decode() == 'HSM commands disabled'
+    try:
+        dev.send_recv(CCProtocolPacker.delete_user(b"xxx"))  # must fail
+        assert False
+    except CCProtoError as e:
+        assert e.args[1].decode() == 'HSM commands disabled'
+
+    # enable hsm commands at the end
+    cmd = 'from glob import settings; settings.set("hsmcmd", 1)'
+    sim_exec(cmd)
 
 # KEEP LAST -- can only be run once, will crash device
 @pytest.mark.onetime

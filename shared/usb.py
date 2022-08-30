@@ -11,7 +11,7 @@ from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
 from version import has_fatram, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
-from exceptions import FramingError, CCBusyError, HSMDenied
+from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
 
 # Unofficial, unpermissioned... numbers
 COINKITE_VID = 0xd13e
@@ -56,6 +56,16 @@ HSM_WHITELIST = frozenset({
     'p2sh', 'show',             # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
+})
+
+# HSM related commands that are not allowed if 'hsmcmd' is disabled.
+HSM_DISABLE_CMDS = frozenset({
+    "user",
+    "rmur",
+    "nwur",
+    "gslr",
+    "hsts",
+    "hsms",
 })
 
 # singleton instance of USBHandler()
@@ -211,6 +221,10 @@ class USBHandler:
                 except HSMDenied:
                     resp = b'err_Not allowed in HSM mode'
                     msg_len = 0
+                except HSMCMDDisabled:
+                    # do NOT change below error msg as other applications depend on it
+                    resp = b'err_HSM commands disabled'
+                    msg_len = 0
                 except (ValueError, AssertionError) as exc:
                     # some limited invalid args feedback
                     #print("USB request caused assert: ", end='')
@@ -320,7 +334,7 @@ class USBHandler:
 
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
-        from glob import hsm_active
+        from glob import hsm_active, settings
 
         try:
             cmd = bytes(cmd).decode()
@@ -339,6 +353,10 @@ class USBHandler:
             # only a few commands are allowed during HSM mode
             if cmd not in HSM_WHITELIST:
                 raise HSMDenied
+
+        if not settings.get('hsmcmd', False):
+            if cmd in HSM_DISABLE_CMDS:
+                raise HSMCMDDisabled
 
         if cmd == 'dfu_':
             # only useful in factory, undocumented.

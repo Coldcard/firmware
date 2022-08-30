@@ -283,6 +283,10 @@ AdvancedNormalMenu = [
     MenuItem('Derive Seed B85', f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
+    ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
+                   story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
+By default these commands are disabled.",
+                   predicate=lambda: version.has_fatram),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
