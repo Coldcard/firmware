@@ -20,6 +20,9 @@ class CCBusyError(RuntimeError):
 class HSMDenied(RuntimeError):
     pass
 
+class HSMCMDDisabled(RuntimeError):
+    pass
+
 # PSBT / transaction related
 class FatalPSBTIssue(RuntimeError):
     pass

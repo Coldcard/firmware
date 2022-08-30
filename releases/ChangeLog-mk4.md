@@ -6,6 +6,8 @@
 - Enhancement: New menu wraparound settings which allow you to scroll over top and bottom.
 - Bugfix: correct parsing of unknown fields in PSBT
 - Bugfix: share single address over NFC from address explorer menu
+- Enhancement: Block HSM (user management commands and HSM related commands) by default.
+  To enable and use HSM go to Advanced/Tools -> Enable HSM -> Enable.
 - Enhancement: Allow import of new descriptor type which specify both internal/external in single string
 
 ## 5.0.6 - 2022-07-29
