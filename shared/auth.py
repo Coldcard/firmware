@@ -628,12 +628,11 @@ class ApproveTransaction(UserAuthorizedAction):
 
         total = 0
         addrs = []
-        for idx, tx_out in self.psbt.output_iter():
-            outp = self.psbt.outputs[idx]
+        for outp in self.psbt.outputs:
             if not outp.is_change:
                 continue
-            total += tx_out.nValue
-            addrs.append(self.chain.render_address(tx_out.scriptPubKey))
+            total += outp.amount
+            addrs.append(outp.address)
 
         if not addrs:
             return

@@ -268,8 +268,6 @@ class ApprovalRule:
         return rv
 
     def matches_transaction(self, psbt, users, total_out, local_oked):
-        chain = chains.current_chain()
-
         # Does this rule apply to this PSBT file? 
         if self.wallet:
             # rule limited to one wallet
@@ -287,12 +285,9 @@ class ApprovalRule:
         if self.whitelist:
             dests = set()
             # no need to apply whitelisting to scripts that don't consume sats as they're harmless (e.g. 0-value OP_RETURN)
-            foreign_scripts = [o.scriptpubkey for o in psbt.outputs if o.amount > 0 and not o.is_change]
-            for s in foreign_scripts:
-                try:
-                    dests.add(chain.render_address(s))
-                except ValueError:
-                    dests.add(str(b2a_hex(s), 'ascii'))
+            for o in psbt.outputs:
+                if o.amount > 0 and not o.is_change:
+                    dests.add(o.address or str(b2a_hex(o.scriptpubkey), 'ascii'))
             diff = dests - set(self.whitelist)
             assert not diff, "non-whitelisted address: " + diff.pop()
 
