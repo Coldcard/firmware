@@ -5,7 +5,7 @@
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, problem_file_line
-import stash, gc, history, sys, ngu, ckcc
+import stash, gc, history, sys, ngu, ckcc, chains
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
@@ -287,7 +287,7 @@ class psbtProxy:
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
-                    'is_change', 'num_our_keys', 'amount', 'scriptpubkey')
+                    'is_change', 'num_our_keys', 'amount', 'address', 'scriptpubkey')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -1146,6 +1146,7 @@ class psbtObject(psbtProxy):
         # scan ouputs:
         # - is it a change address, defined by redeem script (p2sh) or key we know is ours
         # - mark change outputs, so perhaps we don't show them to users
+        chain = chains.current_chain()
 
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
@@ -1155,6 +1156,11 @@ class psbtObject(psbtProxy):
             output.amount = txo.nValue
             # cache inner scriptpubkey
             output.scriptpubkey = txo.scriptPubKey
+            # try to cache address, if the scriptpubkey is indeed an address
+            try:
+                output.address = chain.render_address(txo.scriptPubKey)
+            except ValueError:
+                pass # clearly not address
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?

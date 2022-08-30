@@ -1232,7 +1232,7 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
     b"Coldcard, the best signing deviceaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # len 80 max
 ])
 @pytest.mark.parametrize("amount", [0, 1]) # both no burn and burn
-def test_op_return_output(op_return_data, start_hsm, attempt_psbt, fake_txn, amount):
+def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn, amount):
     dests = []
     psbt = fake_txn(2, 2, invals = [1000, 1000], outvals = [1000, 1000 - amount], fee = 0,
                         op_return = (amount, op_return_data), capture_scripts=dests)
@@ -1245,6 +1245,24 @@ def test_op_return_output(op_return_data, start_hsm, attempt_psbt, fake_txn, amo
         attempt_psbt(psbt, refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN that burns sats
     else:
         attempt_psbt(psbt)
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("op_return_data", [
+    b"Coldcard is the best signing device",  # to test with both pushdata opcodes
+    b"Coldcard, the best signing deviceaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # len 80 max
+])
+def test_op_return_output_bitcoind(op_return_data, start_hsm, attempt_psbt, bitcoind_d_sim_watch, bitcoind, hsm_reset):
+    cc = bitcoind_d_sim_watch
+    dest_address = cc.getnewaddress()
+    bitcoind.supply_wallet.generatetoaddress(101, dest_address)
+    psbt = cc.walletcreatefundedpsbt([], [{dest_address: 1.0}, {"data": op_return_data.hex()}], 0, {"fee_rate": 20})["psbt"]
+    policy = DICT(rules=[dict(max_amount=10)])
+    start_hsm(policy)
+    attempt_psbt(base64.b64decode(psbt))
+    policy = DICT(rules=[dict(whitelist=['131CnJGaDyPaJsb5P4NHFxcRi29zo3ZXw'])])
+    hsm_reset()
+    start_hsm(policy)
+    attempt_psbt(base64.b64decode(psbt))
 
 # KEEP LAST -- can only be run once, will crash device
 @pytest.mark.onetime
