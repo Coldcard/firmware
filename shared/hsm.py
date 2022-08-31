@@ -284,9 +284,8 @@ class ApprovalRule:
         # check all destinations are in the whitelist
         if self.whitelist:
             dests = set()
-            # no need to apply whitelisting to scripts that don't consume sats as they're harmless (e.g. 0-value OP_RETURN)
             for o in psbt.outputs:
-                if o.amount > 0 and not o.is_change:
+                if not o.is_change:
                     dests.add(o.address or str(b2a_hex(o.scriptpubkey), 'ascii'))
             diff = dests - set(self.whitelist)
             assert not diff, "non-whitelisted address: " + diff.pop()
