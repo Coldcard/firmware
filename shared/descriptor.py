@@ -130,7 +130,7 @@ class MultisigDescriptor:
     def parse_key_orig_info(key: str):
         # key origin info is required for our MultisigWallet
         close_index = key.find("]")
-        if key[0] != "[" and close_index == -1:
+        if key[0] != "[" or close_index == -1:
             raise ValueError("Key origin info is required for %s" % (key))
         key_orig_info = key[1:close_index]  # remove brackets
         key = key[close_index + 1:]
@@ -139,11 +139,13 @@ class MultisigDescriptor:
 
     @staticmethod
     def parse_key_derivation_info(key: str):
-        invalid_subderiv_msg = "Invalid subderivation path - only 0/* allowed"
+        invalid_subderiv_msg = "Invalid subderivation path - only 0/* or <0;1>/* allowed"
         slash_split = key.split("/")
         assert len(slash_split) > 1, invalid_subderiv_msg
         if all(["h" not in elem and "'" not in elem for elem in slash_split[1:]]):
-            assert slash_split[1:] == ["0", "*"], invalid_subderiv_msg
+            assert slash_split[-1] == "*", invalid_subderiv_msg
+            assert slash_split[-2] in ["0", "<0;1>", "<1;0>"], invalid_subderiv_msg
+            assert len(slash_split[1:]) == 2, invalid_subderiv_msg
             return slash_split[0]
         else:
             raise ValueError("Cannot use hardened sub derivation path")
@@ -151,7 +153,7 @@ class MultisigDescriptor:
     def checksum(self):
         return descriptor_checksum(self._serialize())
 
-    def serialize_keys(self, internal=False):
+    def serialize_keys(self, internal=False, int_ext=False):
         result = []
         for xfp, deriv, xpub in self.keys:
             if deriv[0] == "m":
@@ -160,7 +162,10 @@ class MultisigDescriptor:
             koi = xfp2str(xfp) + deriv
             # normalize xpub to use h for hardened instead of '
             key_str = "[%s]%s" % (koi.lower(), xpub)
-            key_str = key_str + "/" + "/".join(["1", "*"] if internal else ["0", "*"])
+            if int_ext:
+                key_str = key_str + "/" + "<0;1>" + "/" + "*"
+            else:
+                key_str = key_str + "/" + "/".join(["1", "*"] if internal else ["0", "*"])
             result.append(key_str.replace("'", "h"))
         return result
 
@@ -209,12 +214,12 @@ class MultisigDescriptor:
             res_keys.append((xfp, origin_deriv, xpub))
         return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt)
 
-    def _serialize(self, internal=False) -> str:
+    def _serialize(self, internal=False, int_ext=False) -> str:
         """Serialize without checksum"""
         desc_base = FMT_TO_SCRIPT[self.addr_fmt]
         desc_base = desc_base % ("sortedmulti(%s)")
         assert len(self.keys) == self.N, "invalid descriptor object"
-        inner = str(self.M) + "," + ",".join(self.serialize_keys(internal=internal))
+        inner = str(self.M) + "," + ",".join(self.serialize_keys(internal=internal, int_ext=int_ext))
         return desc_base % (inner)
 
     def pretty_serialize(self) -> str:
@@ -249,9 +254,9 @@ class MultisigDescriptor:
         checksum = self.serialize().split("#")[1]
         return res % (inner) + "#" + checksum
 
-    def serialize(self, internal=False) -> str:
+    def serialize(self, internal=False, int_ext=False) -> str:
         """Serialize with checksum"""
-        return append_checksum(self._serialize(internal=internal))
+        return append_checksum(self._serialize(internal=internal, int_ext=int_ext))
 
     def bitcoin_core_serialize(self):
         res = []

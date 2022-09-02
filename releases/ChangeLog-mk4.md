@@ -4,6 +4,7 @@
   option provided Settings -> Multisig Wallets -> Import via NFC. NFC has to be enabled
   for this option to be visible.
 - Bugfix: share single address over NFC from address explorer menu
+- Enhancement: Allow import of new descriptor type which specify both internal/external in single string
 
 ## 5.0.6 - 2022-07-29
 
