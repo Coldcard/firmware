@@ -179,7 +179,7 @@ def render_address(script, testnet=True):
     # string... aka: the "payment address"
     from pycoin.encoding import b2a_hashed_base58
     from bech32 import encode as bech32_encode
-    from binascii import hexlify
+    from binascii import hexlify as b2a_hex
 
     ll = len(script)
 
@@ -212,7 +212,7 @@ def render_address(script, testnet=True):
 
     # OP_RETURN
     if script[0:1] == b'\x6a':
-        return hexlify(script)
+        return b2a_hex(script)
 
     raise ValueError('Unknown payment script', repr(script))
 
