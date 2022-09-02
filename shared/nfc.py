@@ -7,14 +7,13 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import ngu, ckcc, utime
+import ngu, ckcc, utime, ngu, ndef
 from uasyncio import sleep_ms
 from utils import B2A, problem_file_line
 from ustruct import pack, unpack
-from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from ux import ux_wait_keyup, ux_show_story, ux_poll_key
-import ndef
+from ux import ux_show_story, ux_poll_key
+
 
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = const(8000)
@@ -490,9 +489,7 @@ class NFCHandler:
     async def share_file(self):
         # Pick file from SD card and share over NFC...
         from actions import file_picker
-        from ubinascii import unhexlify as a2b_hex
-        from files import CardSlot, CardMissingError
-        import ngu
+        from files import CardSlot, CardMissingError, needs_microsd
 
         def is_suitable(fname):
             f = fname.lower()
