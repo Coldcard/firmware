@@ -93,6 +93,26 @@ class ChainsBase:
         return addr
 
     @classmethod
+    def pubkey_to_address(cls, pubkey, addr_fmt):
+        # - renders a pubkey to an address
+        # - works only with single-key addresses
+        assert not addr_fmt & AFC_SCRIPT
+
+        keyhash = ngu.hash.hash160(pubkey)
+        if addr_fmt == AF_CLASSIC:
+            script =  b'\x76\xA9\x14' + keyhash + b'\x88\xAC'
+        elif addr_fmt == AF_P2WPKH_P2SH:
+            redeem_script = b'\x00\x14' + keyhash
+            scripthash = ngu.hash.hash160(redeem_script)
+            script = b'\xA9\x14' + scripthash + b'\x87'
+        elif addr_fmt == AF_P2WPKH:
+            script = b'\x00\x14' + keyhash
+        else:
+            raise ValueError('bad address template: %s' % addr_fmt)
+
+        return cls.render_address(script)
+
+    @classmethod
     def address(cls, node, addr_fmt):
         # return a human-readable, properly formatted address
 

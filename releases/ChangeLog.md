@@ -15,6 +15,9 @@
   not accept the main pin, but trick pins continued to work. This release adds a
   workaround to avoid getting into that situation, and new units from the factory will
   ship with an updated bootrom (version 3.1.5).
+- Enhancement: HSM dynamic whitelisting. Foreign outputs can be attested by being signed with a
+  private key corresponding to the address specified in whitelist section. Attestation signature
+  MUST be provided in PSBT.
 
 ## 5.0.6 - 2022-07-29
 

@@ -5,7 +5,7 @@
 #
 import stash, ure, ux, chains, sys, gc, uio, version, ngu
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
@@ -132,6 +132,28 @@ RFC_SIGNATURE_TEMPLATE = '''\
 {sig}
 -----END {blockchain} SIGNED MESSAGE-----
 '''
+
+def verify_recover_pubkey(sig, digest):
+    # verifies a message digest against a signature and recovers
+    # the address type and public key that did the signing
+    if len(sig) != 65:
+        raise ValueError('signature length != 65')
+
+    v = sig[0]
+    if 27 <= v <= 34:
+        af = AF_CLASSIC
+    elif 35 <= v <= 38:
+        af = AF_P2WPKH_P2SH
+    elif 39 <= v <= 42:
+        af = AF_P2WPKH
+    else:
+        raise ValueError('unsupported recovery id v=%s' % v)
+
+    try:
+        sig = ngu.secp256k1.signature(sig)
+        return af, sig.verify_recover(digest).to_bytes()
+    except:
+        raise ValueError('invalid signature')
 
 def sign_message_digest(digest, subpath, prompt):
     # do the signature itself!

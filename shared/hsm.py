@@ -13,7 +13,10 @@ from users import Users, MAX_NUMBER_USERS, calc_local_pincode
 from public_constants import MAX_USERNAME_LEN
 from multisig import MultisigWallet
 from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
 from files import CardSlot, CardMissingError
+from serializations import CTxOut
+from auth import verify_recover_pubkey
 
 # where we save policy/config
 POLICY_FNAME = '/flash/hsm-policy.json'
@@ -128,6 +131,18 @@ def pop_string(j, fld_name, mn_len=0, mx_len=80):
     assert mn_len <= len(v) <= mx_len, '%s: length must be %d..%d' % (fld_name, mn_len, mx_len)
     return v
 
+def pop_dict(j, fld_name, must_exist, conv_fcn = None):
+    v = j.pop(fld_name, None)
+    if v is None:
+        if must_exist:
+            raise ValueError('missing item: %s' % fld_name)
+        return None
+    assert isinstance(v, dict), '%s: must be dict' % fld_name
+    if conv_fcn:
+        return conv_fcn(v)
+    else:
+        return v
+
 def assert_empty_dict(j):
     extra = set(j.keys())
     if extra:
@@ -149,9 +164,26 @@ def cleanup_whitelist_value(s):
 
     raise ValueError('bad whitelist value: ' + s)
 
+
+class WhitelistOpts:
+    # contains various options related to whitelisting
+    def __init__(self, from_dict):
+        mode = (pop_string(from_dict, 'mode') or "BASIC").upper()
+        assert mode in ('BASIC', 'ATTEST'), 'invalid whitelist mode: %s' % mode
+        allow_zeroval_outs = pop_bool(from_dict, 'allow_zeroval_outs')
+        self.mode = mode
+        self.basic = mode == "BASIC"
+        self.attest = mode == "ATTEST"
+        self.allow_zeroval_outs = allow_zeroval_outs
+
+    def to_json(self):
+        flds = [ 'mode', 'allow_zeroval_outs' ]
+        return dict((f, getattr(self, f, None)) for f in flds)
+
 class ApprovalRule:
     # A rule which describes transactions we are okay with approving. It documents:
     # - whitelist: list of destination addresses allowed (or None=any)
+    # - whitelist_opts: extra options for whitelisting, allowed only if whitelist present
     # - max_amount: txn output limit
     # - per_period: velocity limit in satoshis
     # - users: list of authorized users
@@ -178,6 +210,7 @@ class ApprovalRule:
         self.max_amount = pop_int(j, 'max_amount', 0, MAX_SATS)
         self.users = pop_list(j, 'users', check_user)
         self.whitelist = pop_list(j, 'whitelist', cleanup_whitelist_value)
+        self.whitelist_opts = pop_dict(j, 'whitelist_opts', False, WhitelistOpts)
         self.min_users = pop_int(j, 'min_users', 1, len(self.users))
         self.local_conf = pop_bool(j, 'local_conf')
         self.wallet = pop_string(j, 'wallet', 1, 20)
@@ -185,6 +218,10 @@ class ApprovalRule:
         self.patterns = pop_list(j, 'patterns')
 
         assert sorted(set(self.users)) == sorted(self.users), 'dup users'
+
+        # whitelist_opts must not be present if no whitelist
+        if self.whitelist_opts:
+            assert self.whitelist, 'whitelist options present with no whitelist'
 
         # usernames need to be correct and already known
         if self.min_users is None:
@@ -212,8 +249,11 @@ class ApprovalRule:
         # remote users need to know what's happening, and we save this
         # cleaned up data
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
-                    'local_conf', 'whitelist', 'wallet', 'min_pct_self_transfer', 'patterns' ]
-        return dict((f, getattr(self, f, None)) for f in flds)
+                    'local_conf', 'whitelist', 'wallet',
+                    'min_pct_self_transfer', 'patterns' ]
+        rv = dict((f, getattr(self, f, None)) for f in flds)
+        rv['whitelist_opts'] = self.whitelist_opts.to_json() if self.whitelist_opts else None
+        return rv
 
 
     def to_text(self):
@@ -252,7 +292,12 @@ class ApprovalRule:
             rv += ' will be approved'
 
         if self.whitelist:
-            rv += ' provided it goes to: ' + ', '.join(self.whitelist)
+            if self.whitelist_opts and self.whitelist_opts.attest:
+                rv += ' if outputs attested by one of: ' + ', '.join(self.whitelist)
+            else:
+                rv += ' provided it goes to: ' + ', '.join(self.whitelist)
+            if self.whitelist_opts and self.whitelist_opts.allow_zeroval_outs:
+                rv += ' while allowing outputs with zero value'
 
         if self.local_conf:
             rv += ' if local user confirms'
@@ -267,7 +312,7 @@ class ApprovalRule:
 
         return rv
 
-    def matches_transaction(self, psbt, users, total_out, local_oked):
+    def matches_transaction(self, psbt, users, total_out, local_oked, chain):
         # Does this rule apply to this PSBT file? 
         if self.wallet:
             # rule limited to one wallet
@@ -281,14 +326,32 @@ class ApprovalRule:
         if self.max_amount is not None:
             assert total_out <= self.max_amount, 'amount exceeded'
 
-        # check all destinations are in the whitelist
-        if self.whitelist:
+        attest_mode = self.whitelist_opts and self.whitelist_opts.attest
+        allow_zeroval = self.whitelist_opts and self.whitelist_opts.allow_zeroval_outs
+        # check all destinations are in the whitelist if mode is basic
+        if self.whitelist and not attest_mode:
             dests = set()
             for o in psbt.outputs:
-                if not o.is_change:
-                    dests.add(o.address or str(b2a_hex(o.scriptpubkey), 'ascii'))
+                if o.is_change or (o.amount == 0 and allow_zeroval):
+                    continue
+                dests.add(o.address or str(b2a_hex(o.scriptpubkey), 'ascii'))
             diff = dests - set(self.whitelist)
             assert not diff, "non-whitelisted address: " + diff.pop()
+
+        # check all foreign outputs are attested if mode is attest
+        if self.whitelist and attest_mode:
+            for idx, o in enumerate(psbt.outputs):
+                if o.is_change or (o.amount == 0 and allow_zeroval):
+                    continue
+                assert o.attestation, "missing attestation for output %i" % idx
+                # we are verifying the whole consensus-encoded txout
+                txo_bytes = CTxOut(o.amount, o.scriptpubkey).serialize()
+                digest = chain.hash_message(txo_bytes)
+                addr_fmt, pubkey = verify_recover_pubkey(o.attestation, digest)
+                # we have extracted a valid pubkey from the sig, but is it
+                # a whitelisted pubkey or something else?
+                ver_addr = chain.pubkey_to_address(pubkey, addr_fmt)
+                assert ver_addr in self.whitelist, 'non-whitelisted attestation key for output %i' % idx
 
         if self.local_conf:
             # local user must approve
@@ -821,7 +884,7 @@ class HSMPolicy:
                 reasons = []
                 for rule in self.rules:
                     try:
-                        if rule.matches_transaction(psbt, users, total_out, local_ok):
+                        if rule.matches_transaction(psbt, users, total_out, local_ok, chain):
                             break
                     except BaseException as exc:
                         # let's not share these details, except for debug; since
@@ -898,6 +961,6 @@ def hsm_status_report():
         hsm_active.status_report(rv)
 
     return rv
-        
+
 
 # EOF

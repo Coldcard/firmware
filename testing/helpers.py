@@ -162,7 +162,7 @@ def slip132undo(orig):
     # - preserve testnet vs. mainnet
     # - return addr fmt info
     from pycoin.encoding import a2b_hashed_base58, b2a_hashed_base58
-    from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
+    from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC
     from ckcc_protocol.constants import AF_P2WPKH
 
 
@@ -197,5 +197,39 @@ def slip132undo(orig):
                         testnet, addr_fmt, True
 
     raise RuntimeError("unknown prefix")
+
+def sign_msg(key, msg, addr_fmt, b64 = False):
+    from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
+
+    # signs some bytes Bitcoin style using pycoin
+    from pycoin.contrib.msg_signing import sign_message
+    from pycoin.key.key_from_text import key_from_text
+    from pycoin.encoding import from_bytes_32, double_sha256
+    from base64 import b64decode, b64encode
+    from psbt import ser_compact_size
+
+    preimage = b'\x18Bitcoin Signed Message:\n' + ser_compact_size(len(msg)) + msg
+    md = double_sha256(preimage)
+    md = from_bytes_32(md)
+    sig = sign_message(key_from_text(key), msg_hash=md)
+    sig = b64decode(sig)
+
+    # pycoin doesn't support segwit signing so we have to adjust the header
+    if addr_fmt == AF_CLASSIC:
+        adjust = 0
+    elif addr_fmt == AF_P2WPKH_P2SH:
+        adjust = 4
+    elif addr_fmt == AF_P2WPKH:
+        adjust = 8
+    else:
+        raise ValueError('unsupported address format for signing')
+
+    if adjust:
+        sig = bytes([sig[0] + adjust]) + sig[1:]
+
+    if b64:
+        return b64encode(sig)
+    else:
+        return sig
 
 # EOF

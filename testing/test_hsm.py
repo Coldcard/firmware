@@ -156,6 +156,16 @@ def hsm_reset(dev, sim_exec):
         'provided it goes to: 131CnJGaDyPaJsb5P4NHFxcRi29zo3ZXw'),
     (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS)]),
         'provided it goes to: '+ ', '.join(EXAMPLE_ADDRS)),
+    (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS, whitelist_opts=dict(mode="BASIC"))]),
+        'provided it goes to: '+ ', '.join(EXAMPLE_ADDRS)),
+    (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS, whitelist_opts=dict(mode="BASIC", allow_zeroval_outs=False))]),
+        'provided it goes to: '+ ', '.join(EXAMPLE_ADDRS)),
+    (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS, whitelist_opts=dict(mode="BASIC", allow_zeroval_outs=True))]),
+        'provided it goes to: '+ ', '.join(EXAMPLE_ADDRS) + ' while allowing outputs with zero value'),
+    (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS, whitelist_opts=dict(mode="ATTEST", allow_zeroval_outs=False))]),
+        'if outputs attested by one of: ' + ', '.join(EXAMPLE_ADDRS)),
+    (DICT(rules=[dict(whitelist=EXAMPLE_ADDRS, whitelist_opts=dict(mode="ATTEST", allow_zeroval_outs=True))]),
+        'if outputs attested by one of: ' + ', '.join(EXAMPLE_ADDRS) + ' while allowing outputs with zero value'),
 
     # if local user confirms
     (DICT(rules=[dict(local_conf=True)]),
@@ -496,10 +506,14 @@ def test_named_wallets(dev, start_hsm, tweak_rule, make_myself_wallet, hsm_statu
     tweak_rule(0, dict(wallet='1'))
     attempt_psbt(psbt, 'wrong wallet')
 
-
-def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amount=5E6):
+@pytest.mark.parametrize('with_whitelist_opts', [ False, True])
+def test_whitelist_single(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, with_whitelist_opts, amount=5E6):
     junk = EXAMPLE_ADDRS[0]
-    policy = DICT(rules=[dict(whitelist=[junk])])
+    # the outcomes have to be identical since BASIC == normal address whitelisting
+    if with_whitelist_opts:
+        policy = DICT(rules=[dict(whitelist=[junk], whitelist_opts=dict(mode="BASIC"))])
+    else:
+        policy = DICT(rules=[dict(whitelist=[junk])])
     started = False
 
     start_hsm(policy)
@@ -560,6 +574,69 @@ def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amo
         nwl = msg.rsplit(': ', 1)[1]
         assert nwl == dest
         assert nwl in dests
+
+def test_whitelist_invalid_attestation(start_hsm, attempt_psbt, fake_txn):
+    from psbt import ser_prop_key
+    ID = b"COINKITE"
+    SUBTYPE = 0
+
+    def attest_fake(psbt, fake_sig):
+        for o in psbt.outputs:
+            o.proprietary[(ser_prop_key(ID, SUBTYPE))] = fake_sig
+
+    policy = DICT(rules=[dict(whitelist=["147JiwyiM651zbF8FJeQBp7dxuQDb86z95"], whitelist_opts=dict(mode="ATTEST"))])
+    start_hsm(policy)
+
+    psbt = fake_txn(2, 2)
+    attempt_psbt(psbt, 'missing attestation for output 0')
+
+    psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest_fake(psbt, b"malformedsig"))
+    attempt_psbt(psbt, 'signature length != 65')
+
+    psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest_fake(psbt, b"a" * 65))
+    attempt_psbt(psbt, 'unsupported recovery id')
+
+    psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest_fake(psbt, bytes([27]) + (b"a" * 64)))
+    attempt_psbt(psbt, 'invalid signature')
+
+    psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest_fake(psbt, b"\x1f\xccl\x9e\t:\xa2\x91\xe0L\x06\xd1\\\r\xd9\x84\xce\x1b[\x14S0\x10m`3\xb8\xd3f\xaf2\xb7\x95\x19[FJ{pL\x08]\xf3\xe8y\xd5\xe4;\x1a\x06V\xd4$Cnwl\x86\xa8\x91\xa8\xc9\x18\xe9\t"))
+    attempt_psbt(psbt, 'non-whitelisted attestation key') # this is a valid sig for some message but it will produce the wrong pubkey in our case
+
+def test_whitelist_valid_attestation(start_hsm, attempt_psbt, fake_txn):
+    from psbt import ser_prop_key
+    from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
+
+    CK_ID = b"COINKITE"
+    ATTESTATION_SUBTYPE = 0
+
+    def attest(psbt, privkeys):
+        # generate valid sigs for our txouts
+        from io import BytesIO
+        from pycoin.tx.Tx import Tx
+        from pycoin.tx.TxOut import TxOut
+        from helpers import sign_msg
+        txn = Tx.from_bin(psbt.txn)
+        for idx, txout in enumerate(txn.txs_out):
+            fd = BytesIO()
+            txout.stream(fd)
+            fd.seek(0)
+            msg = fd.read()
+            for key, addr_fmt in privkeys:
+                sig = sign_msg(key, msg, addr_fmt)
+                psbt.outputs[idx].proprietary[(ser_prop_key(CK_ID, ATTESTATION_SUBTYPE))] = sig
+
+    # we are testing signing with the following address types: legacy, wrapped segwit, native segwit
+    whitelist = ["mxgE6pFVo9ob5dtLhVZTMuZWwgYxWjqWvr", "2MwZkXTNYmBz5tsRLesLVubxf81TJseHMpZ", "tb1qetnxp3hgajcnvdzg5u6u7jg0av9e3gv2848fq7"]
+    attesters = [("cRvMu9BCaC1YX3XsEvURvjGVfSoxTJ1doJMrMbsSedniFYYfcTYC", AF_CLASSIC),
+                    ("cVwmTYzFfQSR1XiEHeB3sDWBYyKJFGZSuARXpnxsQW59ucUj6nw4", AF_P2WPKH_P2SH),
+                    ("cTLgBv9qechEAted1VwMwKdqHbfL51X5JN2WBS7JMU6v4EdErset", AF_P2WPKH)]
+
+    policy = DICT(rules=[dict(whitelist=whitelist, whitelist_opts=dict(mode="ATTEST"))])
+    start_hsm(policy)
+
+    for attester in attesters:
+        psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest(psbt, [attester]))
+        attempt_psbt(psbt)
 
 @pytest.mark.parametrize('warnings_ok', [ False, True])
 def test_huge_fee(warnings_ok, dev, quick_start_hsm, hsm_status, tweak_hsm_attr, attempt_psbt, fake_txn, amount=5E6):
@@ -1233,19 +1310,23 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
     s = quick_start_hsm(dict(priv_over_ux=False))
     assert all((f in s) for f in flds)
 
-@pytest.mark.bitcoind
 @pytest.mark.parametrize("op_return_data", [
     b"Coldcard is the best signing device",  # to test with both pushdata opcodes
     b"Coldcard, the best signing deviceaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # len 80 max
 ])
-def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn):
+@pytest.mark.parametrize("allow_op_return", [False, True])
+def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn, allow_op_return):
     dests = []
     psbt = fake_txn(2, 2, op_return = (0, op_return_data), capture_scripts=dests)
-    # whitelist all output addresses but not the OP_RETURN
-    policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]])])
-    start_hsm(policy)
-
-    attempt_psbt(psbt, refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN
+    if allow_op_return:
+        policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]],
+            whitelist_opts=dict(allow_zeroval_outs=True))])
+        start_hsm(policy)
+        attempt_psbt(psbt)
+    else:
+        policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]])])
+        start_hsm(policy)
+        attempt_psbt(psbt, refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("op_return_data", [

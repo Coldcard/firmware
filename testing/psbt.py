@@ -30,6 +30,9 @@ PSBT_OUT_REDEEM_SCRIPT 	    = (0)
 PSBT_OUT_WITNESS_SCRIPT 	= (1)
 PSBT_OUT_BIP32_DERIVATION 	= (2)
 
+PSBT_PROPRIETARY        = (0xFC)
+
+PSBT_PROP_CK_ID = b"COINKITE"
 
 # Serialization/deserialization tools
 def ser_compact_size(l):
@@ -57,6 +60,15 @@ def deser_compact_size(f):
     elif nit == 255:
         nit = struct.unpack("<Q", f.read(8))[0]
     return nit
+
+def ser_prop_key(identifier, subtype, keydata = b''):
+    # arg types are: bytes, int (< 256), bytes
+    key = b""
+    key += ser_compact_size(len(identifier))
+    key += identifier
+    key += ser_compact_size(subtype)
+    key += keydata
+    return key
 
 
 class PSBTSection:
@@ -184,6 +196,7 @@ class BasicPSBTOutput(PSBTSection):
         self.redeem_script = None
         self.witness_script = None
         self.bip32_paths = {}
+        self.proprietary = {}
         self.unknown = {}
 
     def __eq__(a, b):
@@ -191,6 +204,7 @@ class BasicPSBTOutput(PSBTSection):
                 a.witness_script == b.witness_script and \
                 a.my_index == b.my_index and \
                 a.bip32_paths == b.bip32_paths and \
+                a.proprietary == b.proprietary and \
                 a.unknown == b.unknown
 
     def parse_kv(self, kt, key, val):
@@ -202,6 +216,8 @@ class BasicPSBTOutput(PSBTSection):
             assert not key
         elif kt == PSBT_OUT_BIP32_DERIVATION:
             self.bip32_paths[key] = val
+        elif kt == PSBT_PROPRIETARY:
+            self.proprietary[key] = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -212,6 +228,8 @@ class BasicPSBTOutput(PSBTSection):
             wr(PSBT_OUT_WITNESS_SCRIPT, self.witness_script)
         for k in self.bip32_paths:
             wr(PSBT_OUT_BIP32_DERIVATION, self.bip32_paths[k], k)
+        for k in self.proprietary:
+            wr(PSBT_PROPRIETARY, self.proprietary[k], k)
         if isinstance(self.unknown, list):
             # just so I can test duplicate unknown values
             # list of tuples [(key0, val0), (key1, val1)]
