@@ -26,6 +26,15 @@ from public_constants import (
     PSBT_OUT_BIP32_DERIVATION, MAX_PATH_DEPTH
 )
 
+# PSBT proprietary keytype
+PSBT_PROPRIETARY = const(0xFC)
+
+# PSBT proprietary identifier for Coinkite applications
+PSBT_PROP_CK_ID = b"COINKITE"
+
+# PSBT proprietary subtype for attestation entries
+PSBT_ATTESTATION_SUBTYPE = const(0)
+
 # Max miner's fee, as percentage of output value, that we will allow to be signed.
 # Amounts over 5% are warned regardless.
 DEFAULT_MAX_FEE_PERCENTAGE = const(10)
@@ -47,18 +56,6 @@ class HashNDump:
     def digest(self):
         print(' END')
         return self.rv.digest()
-
-def read_varint(v):
-    # read "compact sized" int from a few bytes.
-    assert not isinstance(v, tuple), v
-    nit = v[0]
-    if nit == 253:
-        return unpack_from("<H", v, 1)[0]
-    elif nit == 254:
-        return unpack_from("<I", v, 1)[0]
-    elif nit == 255:
-        return unpack_from("<Q", v, 1)[0]
-    return nit
 
 def seq_to_str(seq):
     # take a set or list of numbers and show a tidy list in order.
@@ -150,6 +147,26 @@ def get_hash256(fd, poslen, hasher=None):
 
     return ngu.hash.sha256s(rv.digest())
 
+def decode_prop_key(key):
+    # decodes a proprietary (0xFC) key and breaks it down into:
+    # - identifier
+    # - subtype
+    # - keydata
+    with BytesIO(key) as fd:
+        identifier_len = deser_compact_size(fd)
+        identifier = fd.read(identifier_len)
+        subtype = deser_compact_size(fd)
+        keydata = fd.read()
+        return identifier, subtype, keydata
+
+def encode_prop_key(identifier, subtype, keydata = b''):
+    # encodes a proprietary (0xFC) key into bytes
+    key = b''
+    key += ser_compact_size(len(identifier))
+    key += identifier
+    key += ser_compact_size(subtype)
+    key += keydata
+    return key
 
 class psbtProxy:
     # store offsets to values, but track the keys in-memory.
@@ -287,7 +304,8 @@ class psbtProxy:
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
-                    'is_change', 'num_our_keys', 'amount', 'address', 'scriptpubkey')
+                    'is_change', 'num_our_keys', 'amount', 'address', 'scriptpubkey',
+                    'attestation')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -304,6 +322,7 @@ class psbtOutputProxy(psbtProxy):
 
 
     def store(self, kt, key, val):
+        # do not forget that key[0] includes kt (type)
         if kt == PSBT_OUT_BIP32_DERIVATION:
             if not self.subpaths:
                 self.subpaths = {}
@@ -312,6 +331,14 @@ class psbtOutputProxy(psbtProxy):
             self.redeem_script = val
         elif kt == PSBT_OUT_WITNESS_SCRIPT:
             self.witness_script = val
+        elif kt == PSBT_PROPRIETARY:
+            prefix, subtype, keydata = decode_prop_key(key[1:])
+            # examine only Coinkite proprietary keys
+            if prefix == PSBT_PROP_CK_ID:
+                if subtype == PSBT_ATTESTATION_SUBTYPE:
+                    # prop key for attestation does not have keydata because the
+                    # value is a recoverable signature (already contains pubkey)
+                    self.attestation = self.get(val)
         else:
             self.unknown = self.unknown or {}
             if key in self.unknown:
@@ -331,6 +358,9 @@ class psbtOutputProxy(psbtProxy):
 
         if self.witness_script:
             wr(PSBT_OUT_WITNESS_SCRIPT, self.witness_script)
+
+        if self.attestation:
+            wr(PSBT_PROPRIETARY, self.attestation, encode_prop_key(PSBT_PROP_CK_ID, PSBT_ATTESTATION_SUBTYPE))
 
         if self.unknown:
             for k, v in self.unknown.items():

@@ -1750,6 +1750,25 @@ def test_unknow_values_in_psbt(unknowns, dev, start_sign, end_sign, fake_txn):
     for out in res.outputs:
         assert out.unknown == unknown_outs
 
+def test_read_write_prop_attestation_keys(try_sign, fake_txn):
+    from psbt import ser_prop_key, PSBT_PROP_CK_ID
+    def attach_attest_to_outs(psbt):
+        for idx, o in enumerate(psbt.outputs):
+            key = ser_prop_key(PSBT_PROP_CK_ID, 0)
+            value = b"fake attestation"
+            o.proprietary[key] = value
+
+    psbt = fake_txn(2, 2, psbt_hacker=attach_attest_to_outs)
+    open('debug/propkeys.psbt', 'wb').write(psbt)
+    orig, signed = try_sign(psbt)
+    res = BasicPSBT().parse(signed)
+
+    for o in res.outputs:
+        assert len(o.proprietary) == 1
+        for key, val in o.proprietary.items():
+            assert key == b'\x08COINKITE\x00' # generated using external lib just to be safe
+            assert val == b"fake attestation"
+
 def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
     # duplicate keys for global unknowns
     def hack(psbt):
