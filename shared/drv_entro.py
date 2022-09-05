@@ -6,12 +6,12 @@
 # Using the system's BIP-32 master key, safely derive seeds phrases/entropy for other
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
-import stash, ngu, chains, bip39, version, glob
+import stash, seed, ngu, chains, bip39, version, glob
 from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
-from serializations import hash160
+
 
 BIP85_PWD_LEN = 21
 
@@ -239,10 +239,7 @@ async def drv_entro_step2(_1, picked, _2):
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
-
-        pa.tmp_secret(encoded)
-
-        await ux_show_story("New master key in effect until next power down.")
+        await seed.set_ephemeral_seed(encoded)
 
     if encoded is not None:
         stash.blank_object(encoded)
