@@ -21,7 +21,7 @@ from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver
-from glob import settings
+from glob import settings, dis
 from pincodes import pa
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -267,10 +267,14 @@ individual words if you wish.''')
         dis.text(-18-(6 if count >= 10 else 0), y, self.tr_label(), FontTiny, invert=invert)
 
 
-async def show_words(words, prompt=None, escape=None, extra=''):
+async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False):
     msg = (prompt or 'Record these %d secret words!\n') % len(words)
-    msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
-    msg += '\n\nPlease check and double check your notes. There will be a test!' 
+    msg += '\n'.join('%2d: %s' % (i, w) for i, w in enumerate(words, start=1))
+    msg += '\n\nPlease check and double check your notes.'
+    if not ephemeral:
+        # user can skip quiz for ephemeral secrets
+        msg += " There will be a test!"
+
 
     if version.has_fatram:
         escape = (escape or '') + '1'
@@ -356,26 +360,73 @@ async def new_from_dice(nwords):
     count = 0
 
     count, seed = await add_dice_rolls(count, seed, True)
-
     if count == 0: return
 
-    await approve_word_list(seed, nwords)
+    words = await approve_word_list(seed, nwords)
+    if words:
+        set_seed_value(words)
+        # send them to home menu, now with a wallet enabled
+        goto_top_menu(first_time=True)
+
+async def set_ephemeral_seed(encoded):
+    pa.tmp_secret(encoded)
+    xfp = settings.get("xfp", "")
+    if xfp:
+        xfp = "[" + xfp2str(xfp) + "]\n"
+    await ux_show_story("%sNew ephemeral master key in effect until next power down.\n\nIt is NOT stored anywhere." % xfp)
+
+async def set_ephemeral_seed_words(words):
+    encoded = seed_words_to_encoded_secret(words)
+    await set_ephemeral_seed(encoded)
+    goto_top_menu()
+
+async def ephemeral_seed_generate_from_dice(nwords):
+    # Use lots of (D6) dice rolls to create seed entropy.
+    # Note: only 2.585 bits of entropy per roll, so need lots!
+    # 50 => 128bits, 99 => 256bits
+
+    seed = b''
+    count = 0
+
+    count, seed = await add_dice_rolls(count, seed, True)
+    if count == 0: return
+
+    words = await approve_word_list(seed, nwords, ephemeral=True)
+    if words:
+        await set_ephemeral_seed_words(words)
+
+def generate_seed():
+    seed = random.bytes(32)
+    assert len(set(seed)) > 4       # TRNG failure
+    # hash to mitigate possible bias in TRNG
+    seed = ngu.hash.sha256s(seed)
+    return seed
 
 async def make_new_wallet(nwords):
     # Pick a new random seed.
-
     await ux_dramatic_pause('Generating...', 3)
+    seed = generate_seed()
+    words = await approve_word_list(seed, nwords)
+    if words:
+        set_seed_value(words)
+        # send them to home menu, now with a wallet enabled
+        goto_top_menu(first_time=True)
 
-    # starting point
-    seed = random.bytes(32)
-    assert len(set(seed)) > 4       # TRNG failure
+async def ephemeral_seed_import_done_cb(words):
+    dis.fullscreen("Applying...")
+    await set_ephemeral_seed_words(words)
 
-    # hash to mitigate possible bias in TRNG
-    seed = ngu.hash.sha256s(seed)
+async def ephemeral_seed_import(nwords):
+    return WordNestMenu(nwords, done_cb=ephemeral_seed_import_done_cb)
 
-    await approve_word_list(seed, nwords)
+async def ephemeral_seed_generate(nwords):
+    await ux_dramatic_pause('Generating...', 3)
+    seed = generate_seed()
+    words = await approve_word_list(seed, nwords, ephemeral=True)
+    if words:
+        await set_ephemeral_seed_words(words)
 
-async def approve_word_list(seed, nwords):
+async def approve_word_list(seed, nwords, ephemeral=False):
     # Force the user to write the seeds words down, give a quiz, then save them.
 
     # LESSON LEARNED: if the user is writting down the words, as we have
@@ -387,12 +438,14 @@ async def approve_word_list(seed, nwords):
 
     words = bip39.b2a_words(seed).split(' ')
     assert len(words) == nwords
+    extra_msg = 'Press 4 to add some dice rolls into the mix. '
+    if ephemeral:
+        # document quiz skipping if generating ephemeral seed
+        extra_msg += "Press 6 to skip word quiz. "
 
     while 1:
         # show the seed words
-        ch = await show_words(words, escape='46',
-                        extra='Press 4 to add some dice rolls into the mix. ')
-
+        ch = await show_words(words, escape='46', extra=extra_msg, ephemeral=ephemeral)
         if ch == 'x': 
             # user abort, but confirm it!
             if await ux_confirm("Throw away those words and stop this process?"):
@@ -428,37 +481,20 @@ async def approve_word_list(seed, nwords):
         # quiz passed
         break
 
-    # Done!
-    set_seed_value(words)
+    return words
 
-    # send them to home menu, now with a wallet enabled
-    goto_top_menu(first_time=True)
+def seed_words_to_encoded_secret(words):
+    # seed without checksum
+    seed = bip39.a2b_words(words)  # checksum check
+    # encode it for our limited secret space
+    nv = SecretStash.encode(seed_phrase=seed)
+    return nv
 
 def set_seed_value(words=None, encoded=None):
     # Save the seed words into secure element, and reboot. BIP-39 password
     # is not set at this point (empty string)
     if words:
-        bip39.a2b_words(words)      # checksum check
-
-        # map words to bip39 wordlist indices
-        data = [bip39.wordlist_en.index(w) for w in words]
-
-        # map to packed binary representation.
-        val = 0
-        for v in data:
-            val <<= 11
-            val |= v
-
-        # remove the checksum part
-        vlen = (len(words) * 4) // 3
-        val >>= (len(words) // 3)
-
-        # convert to bytes
-        seed = val.to_bytes(vlen, 'big')
-        assert len(seed) == vlen
-
-        # encode it for our limited secret space
-        nv = SecretStash.encode(seed_phrase=seed)
+        nv = seed_words_to_encoded_secret(words)
     else:
         nv = encoded
 
@@ -615,6 +651,69 @@ async def word_quiz(words, limited=None, title='Word %d is?'):
             await ux_dramatic_pause('Wrong!', 2)
 
     return
+
+
+class EphemeralSeedMenu(MenuSystem):
+
+    @staticmethod
+    async def ephemeral_seed_import(menu, label, item):
+        return await ephemeral_seed_import(item.arg)
+
+    @staticmethod
+    async def ephemeral_seed_generate(menu, label, item):
+        return await ephemeral_seed_generate(item.arg)
+
+    @staticmethod
+    async def ephemeral_seed_generate_from_dice(menu, label, item):
+        return await ephemeral_seed_generate_from_dice(item.arg)
+
+    @classmethod
+    def construct(cls):
+        from glob import NFC, settings
+        from actions import nfc_recv_ephemeral
+
+        import_ephemeral_menu = [
+            MenuItem("12 Words", f=cls.ephemeral_seed_import, arg=12),
+            MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
+            MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
+            MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=lambda: NFC is not None),
+        ]
+        gen_ephemeral_menu = [
+            MenuItem("12 Words", f=cls.ephemeral_seed_generate, arg=12),
+            MenuItem("24 Words", f=cls.ephemeral_seed_generate, arg=24),
+            MenuItem("12 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=12),
+            MenuItem("24 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=24),
+        ]
+
+        rv = [
+            MenuItem("Generate Seed", menu=gen_ephemeral_menu),
+            MenuItem("Import Seed", menu=import_ephemeral_menu),
+        ]
+        if pa.tmp_value:
+            xfp = settings.get("xfp", "")
+            if xfp:
+                rv.insert(0, MenuItem("[%s]" % xfp2str(xfp)))
+            else:
+                rv.insert(0, MenuItem("[Active]"))
+
+        return rv
+
+async def make_ephemeral_seed_menu(*a):
+    if not pa.tmp_value:
+        # force a warning on them, unless they are already doing it.
+        ch = await ux_show_story(
+            "Ephemeral seed is a temporary secret stored solely in device RAM, persisted for only a single boot. "
+            "This defeats all of the benefits of Coldcard's secure element design."
+            "\n\nPress 4 to prove you read to the end of this message and accept all consequences.",
+            title="WARNING",
+            escape="4"
+        )
+        if ch != "4":
+            return
+
+    rv = EphemeralSeedMenu.construct()
+    return EphemeralSeedMenu(rv)
+
 
 pp_sofar = ''
 

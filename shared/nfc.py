@@ -7,7 +7,7 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import ngu, ckcc, utime, ngu, ndef
+import ngu, utime, ngu, ndef
 from uasyncio import sleep_ms
 from utils import B2A, problem_file_line
 from ustruct import pack, unpack
@@ -554,6 +554,32 @@ class NFCHandler:
         from auth import maybe_enroll_xpub
         try:
             maybe_enroll_xpub(config=winner)
+        except Exception as e:
+            #import sys; sys.print_exception(e)
+            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+
+    async def import_ephemeral_seed_words_nfc(self, *a):
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        try:
+            for urn, msg, meta in ndef.record_parser(data):
+                msg = bytes(msg).decode().strip()        # from memory view
+                split_msg = msg.split(" ")
+                if len(split_msg) in (12, 18, 24):
+                    winner = split_msg
+                    break
+        except Exception:
+            pass
+
+        if not winner:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        try:
+            from seed import set_ephemeral_seed_words
+            await set_ephemeral_seed_words(winner)
         except Exception as e:
             #import sys; sys.print_exception(e)
             await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))

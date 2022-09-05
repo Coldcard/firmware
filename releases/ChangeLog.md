@@ -1,5 +1,6 @@
-## 5.0.7 - 2022-09-1X
+## 5.0.7 - 2022-10-06
 
+- Enhancement: Ephemeral Seeds: Advanced/Tools > Ephemeral Seed (more info in `docs/ephemeral.md`)
 - Enhancement: In older versions, multisig NFC import not offered if a MicroSD card was
   inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
   to be enabled for this option to be visible in the menu.

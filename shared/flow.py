@@ -9,6 +9,7 @@ from glob import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu
+from seed import make_ephemeral_seed_menu
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start, password_entry
@@ -210,6 +211,7 @@ else:
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu),
     MenuItem('Upgrade Firmware', menu=UpgradeMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
@@ -219,6 +221,7 @@ AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
 AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Upgrade Firmware", menu=UpgradeMenu),
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
@@ -282,6 +285,7 @@ AdvancedNormalMenu = [
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Derive Seed B85', f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
@@ -314,10 +318,10 @@ ImportWallet = [
 
 NewSeedMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("24 Word (default)", f=pick_new_seed_24),
-    MenuItem("12 Word", f=pick_new_seed_12),
-    MenuItem("24 Word Dice Roll", f=new_from_dice_24),
-    MenuItem("12 Word Dice Roll", f=new_from_dice_12),
+    MenuItem("24 Word (default)", f=pick_new_seed, arg=24),
+    MenuItem("12 Word", f=pick_new_seed, arg=12),
+    MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
+    MenuItem("12 Word Dice Roll", f=new_from_dice, arg=12),
 ]
 
 # has PIN, but no secret seed yet
