@@ -102,6 +102,9 @@ Extended Master Key:
     if stash.bip39_passphrase:
         msg += '\nBIP-39 passphrase is in effect.\n'
 
+    if pa.tmp_value:
+        msg += '\nEphemeral seed is in effect.\n'
+
     bn = callgate.get_bag_number()
     if bn:
         msg += '\nShipping Bag:\n  %s\n' % bn
@@ -523,10 +526,6 @@ More on our website:
            .com
 """)
 
-async def start_seed_import(menu, label, item):
-    import seed
-    return seed.WordNestMenu(item.arg)
-
 async def start_b39_pw(menu, label, item):
     if not settings.get('b39skip', False):
         ch = await ux_show_story('''\
@@ -559,22 +558,17 @@ X to go back. Or press 2 to hide this message forever.
     import seed
     return seed.PassphraseMenu()
 
-
-def pick_new_seed_24(*a):
+async def start_seed_import(menu, label, item):
     import seed
-    return seed.make_new_wallet(24)
+    return seed.WordNestMenu(item.arg)
 
-def pick_new_seed_12(*a):
+def pick_new_seed(menu, label, item):
     import seed
-    return seed.make_new_wallet(12)
+    return seed.make_new_wallet(item.arg)
 
-def new_from_dice_24(*a):
+def new_from_dice(menu, label, item):
     import seed
-    return seed.new_from_dice(24)
-def new_from_dice_12(*a):
-    import seed
-    return seed.new_from_dice(12)
-
+    return seed.new_from_dice(item.arg)
 
 async def convert_bip39_to_bip32(*a):
     import seed, stash
@@ -647,7 +641,7 @@ def render_master_secrets(mode, raw, node):
 
         pw = stash.bip39_passphrase
         if pw:
-            msg += '\n\nBIP-39 Passphrase:\n%s' % stash.bip39_passphrase
+            msg += '\n\nBIP-39 Passphrase:\n%s' % pw
     elif mode == 'xprv':
         import chains
         msg = chains.current_chain().serialize_private(node)
@@ -1323,6 +1317,13 @@ async def nfc_share_file(*A):
     from glob import NFC
     if NFC: 
         await NFC.share_file()
+
+
+async def nfc_recv_ephemeral(*A):
+    # Mk4: Share txt, txn and PSBT files over NFC.
+    from glob import NFC
+    if NFC:
+        await NFC.import_ephemeral_seed_words_nfc()
 
 
 async def list_files(*A):
