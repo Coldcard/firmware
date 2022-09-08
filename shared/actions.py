@@ -916,15 +916,17 @@ async def start_login_sequence():
     # If HSM policy file is available, offer to start that,
     # **before** the USB is even enabled.
     if version.has_fatram:
-        try:
-            import hsm, hsm_ux
+        # do not offer HSM if wallet is blank -> HSM needs secret
+        if not pa.is_secret_blank():
+            try:
+                import hsm, hsm_ux
 
-            if hsm.hsm_policy_available():
-                settings.put("hsmcmd", True)
-                ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
-                if ar:
-                    await ar.interact()
-        except: pass
+                if hsm.hsm_policy_available():
+                    settings.put("hsmcmd", True)
+                    ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
+                    if ar:
+                        await ar.interact()
+            except: pass
 
     if version.mk_num >= 4:
         if version.has_nfc and settings.get('nfc', 0):
