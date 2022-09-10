@@ -2,6 +2,19 @@
 
 (Applies to Coldcard Mk4 only)
 
+## Usage
+
+Mk4 NFC antenna is centered under number `8` on the keypad. Before using NFC,
+it is important to locate the position of NFC antenna on your device and point it 
+correctly towards the Coldcard NFC antenna. Picture below shows an example with iPhone
+that has NFC antenna located at the top right edge. The NFC smartphone antenna 
+can be positioned almost anywhere on the device, but mostly on the top, middle, 
+or bottom of the back side of the phone, and it is rarely indicated on the phone case. 
+It is always best to look up your specific phone model on the internet to find 
+the exact antenna location.
+
+![iphone_nfc](iphone_nfc.jpeg)
+
 ## Standards Background
 
 NFC is a layer of protocols on top of ISO standards for short-range
