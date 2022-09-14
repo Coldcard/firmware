@@ -63,7 +63,7 @@ def fake_txn(dev):
 
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
                 invals=None, outvals=None, segwit_in=False, outstyles=['p2pkh'], psbt_hacker=None,
-                change_outputs=[], capture_scripts=None, add_xpub=None, op_return = None):
+                change_outputs=[], capture_scripts=None, add_xpub=None, op_return=None):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         master_xpub = master_xpub or dev.master_xpub or simulator_fixed_xprv
