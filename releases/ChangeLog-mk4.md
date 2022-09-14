@@ -1,14 +1,16 @@
-## 5.0.7 - 2022-08-XX
+## 5.0.7 - 2022-09-XX
 
-- Enhancement: multisig NFC import not offered if MicroSD card is installed. Now separate
-  option provided Settings -> Multisig Wallets -> Import via NFC. NFC has to be enabled
-  for this option to be visible.
-- Enhancement: New menu wraparound settings which allow you to scroll over top and bottom.
-- Bugfix: correct parsing of unknown fields in PSBT
-- Bugfix: share single address over NFC from address explorer menu
-- Enhancement: Block HSM (user management commands and HSM related commands) by default.
-  To enable and use HSM go to Advanced/Tools -> Enable HSM -> Enable.
-- Enhancement: Allow import of new descriptor type which specify both internal/external in single string
+- Enhancement: In older versions, multisig NFC import not offered if a MicroSD card was
+  inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
+  to be enabled for this option to be visible in the menu.
+- Enhancement: New menu wraparound settings which allow you to scroll past top and bottom of 
+  any menu (Settings > Menu Wrapping).
+- Enhancement: Allow import of new descriptor type which specify both internal/external
+  in single string (ie. `../<0;1>/..`). We still export in older format.
+- Enhancement: Ignore HSM command over USB, by default. To enable and use HSM features, go to 
+  Advanced/Tools > Enable HSM > Enable
+- Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
+- Bugfix: Share single address over NFC from address explorer menu.
 
 ## 5.0.6 - 2022-07-29
 
