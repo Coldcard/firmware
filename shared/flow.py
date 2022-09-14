@@ -133,8 +133,8 @@ MS-DOS tools should not be able to find the PSBT data (ie. undelete), but forens
 which take apart the flash chips of the SDCard may still be able to find the \
 data or filenames.'''),
     ToggleMenuItem('Menu Wrapping', 'wa', ['Default Off', 'Enable'],
-           story='''This mode, if enabled, allows to scroll past menu top/bottom. 
-By default, this is only possible in very large menus.'''),
+           story='''When enabled, allows scrolling past menu top/bottom \
+(wrap around). By default, this is only happens in very large menus.'''),
     ToggleMenuItem('Keyboard EMU', 'emu', ['Default Off', 'Enable'],
            on_change=usb_keyboard_emulation,
            predicate=has_secrets,  # cannot generate BIP85 passwords without secret
