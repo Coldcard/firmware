@@ -163,6 +163,10 @@ class TrickPinMgmt:
         self.roundtrip(1, b)        # expects ENOENT=2
 
         blk = slot.blank_slots
+
+        # bug workaround: don't use slot 10, in bootrom 3.1.4 and earlier
+        blk &= ~(1<<10)
+
         return [i for i in range(NUM_TRICKS) if (1<<i & blk)]
 
     def find_empty_slots(self, qty_needed):
