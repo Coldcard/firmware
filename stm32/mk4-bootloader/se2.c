@@ -1287,14 +1287,14 @@ se2_pin_hash(uint8_t digest_io[32], uint32_t purpose)
             se2_write_buffer(rx+2, 32);
         }
 
-        // HMAC(key=secret-B (we dont know it, but set random), msg=secret-B+buffer+junk)
+        // HMAC(key=secret-B, msg=consts+easy_key+buffer+consts)
         // - result put in secret-S (ram)
-        CALL_CHECK(se2_write2(0x3c, (2<<6) | (1<<4) | PGN_SECRET_B, 0));
+        CALL_CHECK(se2_write2(0x3c, (2<<6) | (1<<4) | PGN_SE2_EASY_KEY, 0));
         CHECK_RIGHT(se2_read1() == RC_SUCCESS);
 
         // HMAC(key=S, msg=counter+junk), so we have something to read out
-        // - not clear what contents of 'buffer' are here, but seems to be deterministic
-        //   and probably unchanged from prev command
+        // - not 100% clear what contents of 'buffer' are here, but seems
+        //   to be deterministic and unchanged from prev command
         CALL_CHECK(se2_write1(0xa5, (2<<5) | PGN_DEC_COUNTER));
 
         CHECK_RIGHT(se2_read_n(sizeof(rx), rx) == RC_SUCCESS);
