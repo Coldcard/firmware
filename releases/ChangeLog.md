@@ -1,4 +1,4 @@
-## 5.0.7 - 2022-09-XX
+## 5.0.7 - 2022-09-1X
 
 - Enhancement: In older versions, multisig NFC import not offered if a MicroSD card was
   inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
@@ -9,15 +9,16 @@
   in single string (ie. `../<0;1>/..`). We still export in older format.
 - Enhancement: Ignore HSM command over USB, by default. To enable and use HSM features, go to 
   Advanced/Tools > Enable HSM > Enable
+- Enhancement: Dynamic HSM Whitelisting. Foreign outputs can be attested-to by signing them with
+  private key corresponding to the address specified in HSM policy. Attestation signature
+  MUST be provided in PSBT in a new proprietary field. Thanks to
+  [@straylight-orbit](https://github.com/straylight-orbit) for this powerful new feature.
 - Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
 - Bugfix: Share single address over NFC from address explorer menu.
 - Bugfix: Using lots of trick pins (7+), could lead to a case where the Coldcard would
   not accept the main pin, but trick pins continued to work. This release adds a
   workaround to avoid getting into that situation, and new units from the factory will
   ship with an updated bootrom (version 3.1.5).
-- Enhancement: HSM dynamic whitelisting. Foreign outputs can be attested by being signed with a
-  private key corresponding to the address specified in whitelist section. Attestation signature
-  MUST be provided in PSBT.
 
 ## 5.0.6 - 2022-07-29
 
