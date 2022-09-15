@@ -16,7 +16,6 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from files import CardSlot, CardMissingError
 from serializations import CTxOut
-from auth import verify_recover_pubkey
 
 # where we save policy/config
 POLICY_FNAME = '/flash/hsm-policy.json'
@@ -347,7 +346,7 @@ class ApprovalRule:
                 # we are verifying the whole consensus-encoded txout
                 txo_bytes = CTxOut(o.amount, o.scriptpubkey).serialize()
                 digest = chain.hash_message(txo_bytes)
-                addr_fmt, pubkey = verify_recover_pubkey(o.attestation, digest)
+                addr_fmt, pubkey = chains.verify_recover_pubkey(o.attestation, digest)
                 # we have extracted a valid pubkey from the sig, but is it
                 # a whitelisted pubkey or something else?
                 ver_addr = chain.pubkey_to_address(pubkey, addr_fmt)

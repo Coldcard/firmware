@@ -133,28 +133,6 @@ RFC_SIGNATURE_TEMPLATE = '''\
 -----END {blockchain} SIGNED MESSAGE-----
 '''
 
-def verify_recover_pubkey(sig, digest):
-    # verifies a message digest against a signature and recovers
-    # the address type and public key that did the signing
-    if len(sig) != 65:
-        raise ValueError('signature length != 65')
-
-    v = sig[0]
-    if 27 <= v <= 34:
-        af = AF_CLASSIC
-    elif 35 <= v <= 38:
-        af = AF_P2WPKH_P2SH
-    elif 39 <= v <= 42:
-        af = AF_P2WPKH
-    else:
-        raise ValueError('unsupported recovery id v=%s' % v)
-
-    try:
-        sig = ngu.secp256k1.signature(sig)
-        return af, sig.verify_recover(digest).to_bytes()
-    except:
-        raise ValueError('invalid signature')
-
 def sign_message_digest(digest, subpath, prompt):
     # do the signature itself!
     from glob import dis

@@ -363,4 +363,26 @@ CommonDerivations = [
 ]
 
 
+def verify_recover_pubkey(sig, digest):
+    # verifies a message digest against a signature and recovers
+    # the address type and public key that did the signing
+    if len(sig) != 65:
+        raise ValueError('signature length')
+
+    v = sig[0]
+    if 27 <= v <= 34:
+        af = AF_CLASSIC
+    elif 35 <= v <= 38:
+        af = AF_P2WPKH_P2SH
+    elif 39 <= v <= 42:
+        af = AF_P2WPKH
+    else:
+        raise ValueError('unsupported recovery: %d' % v)
+
+    try:
+        sig = ngu.secp256k1.signature(sig)
+        return af, sig.verify_recover(digest).to_bytes()
+    except:
+        raise ValueError('invalid signature')
+
 # EOF
