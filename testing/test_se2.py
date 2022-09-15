@@ -27,6 +27,10 @@ TC_COUNTDOWN    = const(0x0040)         # tc_arg = minutes of delay
 ENOENT = 2
 ALL_BLK = (1<<NUM_TRICKS)-1
 
+# avoid using slot 10 due to bug141
+BUG_SLOT = 10
+SLOTS = [i for i in range(NUM_TRICKS) if i != BUG_SLOT]
+
 # everything in this file is mk4 only
 @pytest.fixture(autouse=True)
 def THIS_FILE_requires_mark4(only_mk4):
@@ -95,14 +99,15 @@ def test_se2_clear_n_set(se2_gate):
     rc, data = se2_gate(0)     # clear all
     assert rc == 0
 
+
     # fill it
-    for i in range(NUM_TRICKS):
+    for i in SLOTS:
         s = make_slot(slot_num=i, pin=('%02d'%i).encode(), pin_len=2, tc_flags=i)
         rc, data = se2_gate(2, s)
         assert rc == 0
 
     # read back
-    for i in range(NUM_TRICKS):
+    for i in SLOTS:
         xp = ('%02d'%i).encode()
         s = make_slot(pin=xp, pin_len=2)
         rc, data = se2_gate(1, s)
@@ -115,13 +120,14 @@ def test_se2_clear_n_set(se2_gate):
     assert rc == ENOENT
     got = decode_slot(data)
     assert got.slot_num == 0xffff_ffff
-    assert got.tc_flags == got.tc_arg == got.blank_slots == 0
+    assert got.tc_flags == got.tc_arg == 0
+    assert got.blank_slots in (0, (1<<BUG_SLOT))        # workaround in place
         
     rc, data = se2_gate(0)     # clear all
     assert rc == 0
 
     # test all cleared
-    for i in range(NUM_TRICKS):
+    for i in SLOTS:
         xp = ('%02d'%i).encode()
         s = make_slot(pin=xp, pin_len=2)
         rc, data = se2_gate(1, s)
@@ -138,12 +144,12 @@ def test_blank_slots(se2_gate):
     assert rc == 0
 
     # fill it
-    for i in range(NUM_TRICKS):
+    for i in SLOTS:
         s = make_slot(slot_num=i, pin=('%02d'%i).encode(), pin_len=2, tc_flags=i)
         rc, data = se2_gate(2, s)
         assert rc == 0
 
-    blanked = [ 2,3,  8, 12 ]
+    blanked = [ 2,3,  8, 12, BUG_SLOT ]
     bmask = sum(1<<n for n in blanked)
     s = make_slot(slot_num=0, pin=b'junk', pin_len=4, blank_slots=bmask)
     rc, data = se2_gate(2, s)
@@ -151,7 +157,7 @@ def test_blank_slots(se2_gate):
 
     # read back
     # - slot zero should be unaffected by the above
-    for i in range(NUM_TRICKS):
+    for i in SLOTS:
         xp = ('%02d'%i).encode()
         s = make_slot(pin=xp, pin_len=2)
         rc, data = se2_gate(1, s)
@@ -167,6 +173,7 @@ def test_blank_slots(se2_gate):
 def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
     def doit():
         menu = cap_menu()
+        menu = cap_menu()       # bugfix
         if menu[0] in {'Trick PINs:', 'Add New Trick'}:
             return
         if 'New Seed Words' in menu:
