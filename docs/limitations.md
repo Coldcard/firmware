@@ -94,7 +94,7 @@
 
 # Change Outputs
 
-We will hide transaction outputs if they are "change" back into same wallet, however:
+We will summarize transaction outputs as "change" back into same wallet, however:
 
 - PSBT must specify BIP32 path in corresponding output section for us to treat as change
 - for p2sh-wrapped segwit outputs, redeem script must be provided when needed
@@ -131,8 +131,8 @@ We will hide transaction outputs if they are "change" back into same wallet, how
 # Trick Pins (Mk4)
 
 - "deltamode" PIN must be same length as true pin, and differ only in final 4 positions.
-- there are 14 trick "slots" 
-- duress wallets consume 2 slots (or 3 slots for legacy duress wallet)
+- there are 14 trick "slots", but we avoid slot 10, so 13 available.
+- duress wallets consume 2 slots (or 3 slots for legacy duress wallet) which must be contiguous
 - when restoring trick pins from backup files, "forgotten" pins are not restored,
   and any trick pin which matches the true PIN of the restored system will be dropped
 - deltamode PIN requirements are checked during wallet restore, and if the new true PIN
