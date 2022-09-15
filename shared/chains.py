@@ -377,7 +377,7 @@ def verify_recover_pubkey(sig, digest):
     elif 39 <= v <= 42:
         af = AF_P2WPKH
     else:
-        raise ValueError('unsupported recovery: %d' % v)
+        raise ValueError('unsupported recovery id: %d' % v)
 
     try:
         sig = ngu.secp256k1.signature(sig)

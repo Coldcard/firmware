@@ -591,7 +591,7 @@ def test_whitelist_invalid_attestation(start_hsm, attempt_psbt, fake_txn):
     attempt_psbt(psbt, 'missing attestation for output 0')
 
     psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest_fake(psbt, b"malformedsig"))
-    attempt_psbt(psbt, 'signature length != 65')
+    attempt_psbt(psbt, 'signature length')
 
     psbt = fake_txn(2, 2, psbt_hacker=lambda psbt: attest_fake(psbt, b"a" * 65))
     attempt_psbt(psbt, 'unsupported recovery id')
