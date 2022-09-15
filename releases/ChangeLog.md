@@ -11,6 +11,10 @@
   Advanced/Tools > Enable HSM > Enable
 - Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
 - Bugfix: Share single address over NFC from address explorer menu.
+- Bugfix: Using lots of trick pins (7+), could lead to a case where the Coldcard would
+  not accept the main pin, but trick pins continued to work. This release adds a
+  workaround to avoid getting into that situation, and new units from the factory will
+  ship with an updated bootrom (version 3.1.5).
 
 ## 5.0.6 - 2022-07-29
 
