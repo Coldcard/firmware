@@ -14,6 +14,8 @@ from public_constants import MAX_USERNAME_LEN
 from multisig import MultisigWallet
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
+from uhashlib import sha256
+from ucollections import OrderedDict
 from files import CardSlot, CardMissingError
 from serializations import CTxOut
 
@@ -177,7 +179,12 @@ class WhitelistOpts:
 
     def to_json(self):
         flds = [ 'mode', 'allow_zeroval_outs' ]
-        return dict((f, getattr(self, f, None)) for f in flds)
+        rv = OrderedDict()
+        for f in flds:
+            val = getattr(self, f, None)
+            if val:
+                rv[f] = val
+        return rv
 
 class ApprovalRule:
     # A rule which describes transactions we are okay with approving. It documents:
@@ -250,10 +257,14 @@ class ApprovalRule:
         flds = [ 'per_period', 'max_amount', 'users', 'min_users',
                     'local_conf', 'whitelist', 'wallet',
                     'min_pct_self_transfer', 'patterns' ]
-        rv = dict((f, getattr(self, f, None)) for f in flds)
-        rv['whitelist_opts'] = self.whitelist_opts.to_json() if self.whitelist_opts else None
+        rv = OrderedDict()
+        for f in flds:
+            val = getattr(self, f, None)
+            if val:
+                rv[f] = val
+        if self.whitelist_opts:
+            rv['whitelist_opts'] = self.whitelist_opts.to_json()
         return rv
-
 
     def to_text(self):
         # Text for humans to read and approve.
@@ -459,6 +470,9 @@ class HSMPolicy:
         self.local_code_pending = ''
         self._new_local_code()
 
+        # storage locker value hash
+        self.sl_hash = None
+
     def load(self, j):
         # Decode json object provided: destructive
         # - attr name == json name if possible
@@ -491,6 +505,7 @@ class HSMPolicy:
         self.set_sl = pop_string(j, 'set_sl', 16, AE_LONG_SECRET_LEN-2)
         if self.set_sl:
             assert self.allow_sl, 'need allow_sl>=1'        # because pointless otherwise
+            self.sl_hash = b2a_hex(sha256(self.set_sl.encode() + b'pepper').digest()).decode()
 
         # do we force them into HSM on bootup?
         self.boot_to_hsm = pop_string(j, 'boot_to_hsm', 1, 6)
@@ -516,9 +531,11 @@ class HSMPolicy:
         # Create JSON document for next time.
         simple = ['must_log', 'never_log', 'msg_paths', 'share_xpubs', 'share_addrs',
                     'notes', 'period', 'allow_sl', 'warnings_ok', 'boot_to_hsm', 'priv_over_ux']
-        rv = dict()
+        rv = OrderedDict()
         for fn in simple:
-            rv[fn] = getattr(self, fn, None)
+            val = getattr(self, fn, None)
+            if val:
+                rv[fn] = val
 
         rv['rules'] = [i.to_json() for i in self.rules]
 
@@ -530,6 +547,15 @@ class HSMPolicy:
             assert 'set_sl' not in rv
 
         return rv
+
+    def hash(self):
+        # Hashes the policy using sha256 and returns the digest.
+        canonical = self.save()
+        canonical.pop("set_sl", None)
+        if self.sl_hash:
+            canonical["sl_hash"] = self.sl_hash
+        json_policy = ujson.dumps(canonical)
+        return b2a_hex(sha256(json_policy).digest()).decode()
 
     def explain(self, fd):
 
@@ -597,6 +623,9 @@ class HSMPolicy:
         if uses_lc:
             # The code the local user should enter, is calculated from this HMAC secret
             rv['next_local_code'] = self.next_local_code
+
+        # Harmless, always display
+        rv['policy_hash'] = self.hash()
 
         if not self.priv_over_ux:
             # Add some values we will share over USB during HSM operation
@@ -961,5 +990,9 @@ def hsm_status_report():
 
     return rv
 
+def hash_policy_field(hasher, value):
+    # Hash some primitive type if present.
+    if value:
+        hasher.update(str(value).encode())
 
 # EOF

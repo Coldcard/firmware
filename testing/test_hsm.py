@@ -10,7 +10,8 @@
 # - no microSD card installed
 #
 
-import pytest, time, struct, os, itertools, base64
+from typing import OrderedDict
+import pytest, time, struct, os, itertools, base64, re
 from binascii import b2a_hex, a2b_hex
 from hashlib import sha256
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
@@ -47,6 +48,62 @@ EXAMPLE_ADDRS = [ '1ByzQTr5TCkMW9RH1fkD7QtnMbErffDeUo', '2N4EDPkGYcZa5o6kFou2g9z
             'bc1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puqxn6udr',
             'tb1q0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0puq3mvnhv',
 ]
+
+def compute_policy_hash(policy):
+    # Computes a policy hash for comparison purposes.
+
+    class Deriv():
+        pass
+    class WhitelistOpts:
+        pass
+
+    def cleanup(type_, value):
+        rv = None
+        if value:
+            if type_ == Deriv:
+                rv = []
+                for orig in value or []:
+                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "'").replace('h', "'"))
+            elif type_ == WhitelistOpts:
+                rv = OrderedDict()
+                rv["mode"] =  value.get("mode", "BASIC")
+                if allow_zeroval_outs := value.get("allow_zeroval_outs"):
+                    rv["allow_zeroval_outs"] = allow_zeroval_outs
+            else:
+                rv = type_(value)
+        return rv
+
+    top_keys = [('must_log', bool), ('never_log', bool), ('msg_paths', Deriv), ('share_xpubs', Deriv), ('share_addrs', Deriv),
+                    ('notes', str), ('period', int), ('allow_sl', int), ('warnings_ok', bool), ('boot_to_hsm', str), ('priv_over_ux', bool)]
+
+    canonical = OrderedDict()
+    for key, type_ in top_keys:
+        value = policy.get(key, None)
+        if value := cleanup(type_, value):
+            canonical[key] = value
+
+    rules_keys = [ ('per_period', int), ('max_amount', int), ('users', list), ('min_users', int),
+                ('local_conf', bool), ('whitelist', list), ('wallet', str), ('min_pct_self_transfer', float),
+                ('patterns', list), ('whitelist_opts', WhitelistOpts) ]
+
+    canonical["rules"] = []
+    for rule in policy.get("rules", []):
+        # special adjustment
+        if len(rule.get("users", [])) > 0 and rule.get("min_users", None) is None:
+            rule["min_users"] = len(rule.get("users"))
+        rv = OrderedDict()
+        for key, type_ in rules_keys:
+            value = rule.get(key, None)
+            if value := cleanup(type_, value):
+                rv[key] = value
+        canonical["rules"].append(rv)
+
+    # this has to be last if present
+    if set_sl := policy.pop("set_sl", None):
+        canonical["sl_hash"] = b2a_hex(sha256(set_sl.encode() + b'pepper').digest()).decode()
+
+    json_ = json.dumps(canonical)
+    return b2a_hex(sha256(json_.encode()).digest()).decode()
 
 @pytest.fixture(autouse=True)
 def enable_hsm_commands(dev, sim_exec):
@@ -356,6 +413,7 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
 
             title, body2 = cap_story()
             assert 'Last chance' in body2
+            assert 'Policy hash:' in body2
             ll = body2.split('\n')[-1]
             assert ll.startswith("Press ")
             ch = ll[6]
@@ -367,6 +425,15 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
             assert j.active == True
             if 'summary' in j:
                 assert not body or j.summary in body
+
+            # verify that the policy hash checks out
+            policy_hash_match = re.search("[0-9a-fA-F]{64}", body2)
+            assert policy_hash_match
+            screen_policy_hash = body2[policy_hash_match.start(): policy_hash_match.end()]
+            status_policy_hash = j.policy_hash
+            expected_policy_hash = compute_policy_hash(policy)
+            assert expected_policy_hash == screen_policy_hash
+            assert expected_policy_hash == status_policy_hash
 
         else:
             # do keypresses blindly
@@ -450,7 +517,7 @@ def attempt_msg_sign(dev, hsm_status):
 @pytest.mark.parametrize('over', [ 1, 1000])
 def test_simple_limit(dev, amount, over, start_hsm, fake_txn, attempt_psbt, tweak_rule):
     # a policy which sets a hard limit
-    policy = DICT(rules=[dict(max_amount=amount)])
+    policy = DICT(rules=[dict(max_amount=int(amount))])
 
     stat = start_hsm(policy)
     assert ('Up to %g XTN per txn will be approved' % (amount/1E8)) in stat.summary
