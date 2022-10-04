@@ -318,7 +318,6 @@ ImportWallet = [
 
 NewSeedMenu = [
     #         xxxxxxxxxxxxxxxx
-    # TODO why 18 words is not supported here ?
     MenuItem("24 Word (default)", f=pick_new_seed, arg=24),
     MenuItem("12 Word", f=pick_new_seed, arg=12),
     MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
