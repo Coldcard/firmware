@@ -216,6 +216,10 @@ async def restore_from_dict(vals):
 
 async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
 
+    if pa.tmp_value:
+        if not await ux_confirm("An ephemeral seed is in effect, so backup will be of that seed."):
+            return
+
     # pick a password: like bip39 but no checksum word
     #
     b = bytearray(32)
