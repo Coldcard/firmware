@@ -673,16 +673,16 @@ class EphemeralSeedMenu(MenuSystem):
         from actions import nfc_recv_ephemeral
 
         import_ephemeral_menu = [
-            MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
-            MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
             MenuItem("12 Words", f=cls.ephemeral_seed_import, arg=12),
+            MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
+            MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
             MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=lambda: NFC is not None),
         ]
         gen_ephemeral_menu = [
-            MenuItem("24 Words", f=cls.ephemeral_seed_generate, arg=24),
             MenuItem("12 Words", f=cls.ephemeral_seed_generate, arg=12),
-            MenuItem("24 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=24),
+            MenuItem("24 Words", f=cls.ephemeral_seed_generate, arg=24),
             MenuItem("12 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=12),
+            MenuItem("24 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=24),
         ]
 
         rv = [
@@ -703,7 +703,7 @@ async def make_ephemeral_seed_menu(*a):
         # force a warning on them, unless they are already doing it.
         ch = await ux_show_story(
             "Ephemeral seed is a temporary secret stored solely in device RAM, persisted for only a single boot. "
-            "This defeats all of the benefits that Coldcard's secure element design provides."
+            "This defeats all of the benefits of Coldcard's secure element design."
             "\n\nPress 4 to prove you read to the end of this message and accept all consequences.",
             title="WARNING",
             escape="4"
