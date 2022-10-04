@@ -1,5 +1,6 @@
-## 5.0.7 - 2022-09-1X
+## 5.0.7 - 2022-10-06
 
+- Enhancement: Ephemeral Seeds: Advanced/Tools > Ephemeral Seed (more info in `docs/ephemeral.md`)
 - Enhancement: In older versions, multisig NFC import not offered if a MicroSD card was
   inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
   to be enabled for this option to be visible in the menu.
@@ -13,7 +14,6 @@
   private key corresponding to the address specified in HSM policy. Attestation signature
   MUST be provided in PSBT in a new proprietary field. Thanks to
   [@straylight-orbit](https://github.com/straylight-orbit) for this powerful new feature.
-- Enhancement: Ephemeral Seeds: Advanced/Tools -> Ephemeral Seed (more info in `docs/ephemeral.md`)
 - Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
 - Bugfix: Share single address over NFC from address explorer menu.
 - Bugfix: Using lots of trick pins (7+), could lead to a case where the Coldcard would
