@@ -100,10 +100,10 @@ Extended Master Key:
         msg += '\n(Secondary wallet)\n'
 
     if stash.bip39_passphrase:
-        msg += '\nBIP-39 passphrase is in effect.\n'
+        msg += '\nBIP-39 passphrase in effect.\n'
 
     if pa.tmp_value:
-        msg += '\nEphemeral seed is in effect\n'
+        msg += '\nEphemeral seed in effect.\n'
 
     bn = callgate.get_bag_number()
     if bn:

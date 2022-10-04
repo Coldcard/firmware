@@ -715,7 +715,7 @@ class EphemeralSeedMenu(MenuSystem):
             rv.append(MenuItem("CLEAR [%s]" % xfp, f=cls.clear_ephemeral_seed))
         return rv
 
-async def make_epehemeral_seed_menu(*a):
+async def make_ephemeral_seed_menu(*a):
     rv = EphemeralSeedMenu.construct()
     return EphemeralSeedMenu(rv)
 
