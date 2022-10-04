@@ -368,28 +368,12 @@ async def new_from_dice(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
-async def clear_ephemeral_seed():
-    ch = await ux_show_story("Clear ephemeral seed?")
-    if ch == "y":
-        pa.clear_tmp_secret()
-        goto_top_menu()
-
 async def set_ephemeral_seed(encoded):
-    ch = await ux_show_story(
-        "Ephemeral seed is a temporary secret stored solely in device RAM, persisted only single boot."
-        "Ephemeral seed defeats the most of the benefits that Coldcard secure element design provides."
-        "\n\nPress 4 to prove you read to the end of this message and accept all consequences.",
-        title="WARNING",
-        escape="4"
-    )
-    if ch != "4":
-        return
-
     pa.tmp_secret(encoded)
     xfp = settings.get("xfp", "")
     if xfp:
         xfp = "[" + xfp2str(xfp) + "]\n"
-    await ux_show_story("%sNew master key in effect until next power down." % xfp)
+    await ux_show_story("%sNew ephemeral master key in effect until next power down.\n\nIt is NOT stored anywhere." % xfp)
 
 async def set_ephemeral_seed_words(words):
     encoded = seed_words_to_encoded_secret(words)
@@ -670,9 +654,6 @@ async def word_quiz(words, limited=None, title='Word %d is?'):
 
 
 class EphemeralSeedMenu(MenuSystem):
-    @staticmethod
-    async def clear_ephemeral_seed(*a):
-        await clear_ephemeral_seed()
 
     @staticmethod
     async def ephemeral_seed_import(menu, label, item):
@@ -705,17 +686,31 @@ class EphemeralSeedMenu(MenuSystem):
         ]
 
         rv = [
-            MenuItem("Generate", menu=gen_ephemeral_menu),
-            MenuItem("Import", menu=import_ephemeral_menu),
+            MenuItem("Generate Seed", menu=gen_ephemeral_menu),
+            MenuItem("Import Seed", menu=import_ephemeral_menu),
         ]
         if pa.tmp_value:
             xfp = settings.get("xfp", "")
             if xfp:
-                xfp = xfp2str(xfp)
-            rv.append(MenuItem("CLEAR [%s]" % xfp, f=cls.clear_ephemeral_seed))
+                rv.insert(0, MenuItem("[%s]" % xfp2str(xfp)))
+            else:
+                rv.insert(0, MenuItem("[Active]"))
+
         return rv
 
 async def make_ephemeral_seed_menu(*a):
+    if not pa.tmp_value:
+        # force a warning on them, unless they are already doing it.
+        ch = await ux_show_story(
+            "Ephemeral seed is a temporary secret stored solely in device RAM, persisted for only a single boot. "
+            "This defeats all of the benefits that Coldcard's secure element design provides."
+            "\n\nPress 4 to prove you read to the end of this message and accept all consequences.",
+            title="WARNING",
+            escape="4"
+        )
+        if ch != "4":
+            return
+
     rv = EphemeralSeedMenu.construct()
     return EphemeralSeedMenu(rv)
 

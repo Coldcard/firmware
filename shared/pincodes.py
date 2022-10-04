@@ -461,15 +461,6 @@ class PinAttempt:
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value)
 
-    def clear_tmp_secret(self):
-        if self.tmp_value:
-            self.tmp_value = False
-            import stash
-            stash.bip39_passphrase = ''
-            stash.SensitiveValues.clear_cache()
-            with stash.SensitiveValues() as sv:
-                sv.capture_xpub()
-
     def trick_request(self, method_num, data):
         # send/recv a trick-pin related request (mk4 only)
         buf = bytearray(PIN_ATTEMPT_SIZE)
