@@ -1314,6 +1314,19 @@ def nfc_write(request, only_mk4):
     except:
         return doit_usb
 
+def ccfile_wrap(recs):
+    CC_FILE = bytes([0xE2, 0x43, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00,   0x03])
+    assert len(recs) < 255      # code limitation here
+    return CC_FILE + bytes([len(recs)]) + recs + b'\xfe'
+
+
+@pytest.fixture()
+def nfc_write_text(nfc_write):
+    def doit(text):
+        msg = b''.join(ndef.message_encoder([ndef.TextRecord(text), ]))
+        return nfc_write(ccfile_wrap(msg))
+    return doit
+
 @pytest.fixture()
 def nfc_read_json(nfc_read):
     def doit():
@@ -1366,4 +1379,4 @@ from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fak
                                 make_ms_address, clear_ms, make_myself_wallet)
 from test_bip39pw import set_bip39_pw, clear_bip39_pw
 
-#EOF
+# EOF

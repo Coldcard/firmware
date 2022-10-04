@@ -8,7 +8,7 @@ from constants import simulator_fixed_words, simulator_fixed_xfp, simulator_fixe
 from helpers import xfp2str
 from txn import fake_txn
 from ckcc.protocol import CCProtocolPacker
-
+from test_ux import word_menu_entry, pass_word_quiz
 
 def seed_story_to_words(story: str):
     # filter those that starts with space, number and colon --> actual words
@@ -64,7 +64,7 @@ def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
             need_keypress("4")  # understand consequences
     return doit
 
-@pytest.mark.parametrize("num_words", ["12", "24"])
+@pytest.mark.parametrize("num_words", [12, 24])
 @pytest.mark.parametrize("dice", [False, True])
 def test_ephemeral_seed_generate(num_words, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
                                  reset_seed_words, get_seed_value_ux, get_identity_story, fake_txn, dev, try_sign, goto_eph_seed_menu, dice):
@@ -91,7 +91,7 @@ def test_ephemeral_seed_generate(num_words, cap_menu, pick_menu_item, goto_home,
 
     # filter those that starts with space, number and colon --> actual words
     e_seed_words = seed_story_to_words(story)
-    assert len(e_seed_words) == int(num_words)
+    assert len(e_seed_words) == num_words
 
     need_keypress("6")  # skip quiz
     need_keypress("y")  # yes - I'm sure
@@ -132,5 +132,56 @@ def test_ephemeral_seed_generate(num_words, cap_menu, pick_menu_item, goto_home,
     goto_eph_seed_menu()
     menu = cap_menu()
     assert len(menu) == 2
+
+@pytest.mark.parametrize("num_words", [12, 18, 24])
+@pytest.mark.parametrize("nfc", [False, True])
+@pytest.mark.parametrize("truncated", [False,])     # needs libngu upgrade to bip39.py
+def test_ephemeral_seed_import(nfc, num_words, cap_menu, pick_menu_item, goto_home, cap_story,
+            need_keypress, reset_seed_words, get_seed_value_ux, get_identity_story, fake_txn,
+            dev, try_sign, goto_eph_seed_menu, word_menu_entry, nfc_write_text, truncated
+):
+    if truncated and not nfc: return
+
+    wordlists = {
+        12: ( 'abandon ' * 11 + 'about', 0x0adac573),
+        18: ( 'abandon ' * 17 + 'agent', 0xc38a8be0),
+        24: ( 'abandon ' * 23 + 'art', 0x24d73654 ),
+    }
+    words, expect_xfp = wordlists[num_words]
+
+    reset_seed_words()
+    goto_eph_seed_menu()
+
+    menu = cap_menu()
+
+    # no ephemeral seed chosen (yet)
+    assert len(menu) == 2
+    pick_menu_item("Import Seed")
+
+    if not nfc:
+        pick_menu_item(f"{num_words} Words")
+        time.sleep(0.1)
+
+        word_menu_entry(words.split())
+    else:
+        menu = cap_menu()
+        if 'Import via NFC' not in menu:
+            raise pytest.xfail("NFC not enabled")
+        pick_menu_item('Import via NFC')
+
+        if truncated:
+            words = ' '.join(w[0:4] for w in words.split())
+
+        nfc_write_text(words)
+
+    need_keypress("4")  # understand consequences
+
+    time.sleep(0.4)
+    title, story = cap_story()
+
+    in_effect_xfp = story[1:9]
+    assert "key in effect until next power down." in story
+    need_keypress("y")  # just confirm new master key message
+
 
 # EOF
