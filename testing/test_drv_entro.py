@@ -153,15 +153,16 @@ def test_bip_vectors(mode, index, entropy, expect,
             time.sleep(0.1)
             need_keypress('2')
 
-            time.sleep(0.1)
-            title, story = cap_story()
-            assert title == "WARNING"
-            assert 'Press 4 to prove you read to the end of this message and accept all consequences.' in story
-            need_keypress("4")
+            if 0:   # screen was removed
+                time.sleep(0.1)
+                title, story = cap_story()
+                assert title == "WARNING"
+                assert 'Press 4 to prove you read to the end of this message and accept all consequences.' in story
+                need_keypress("4")
 
             time.sleep(0.1)
             title, story = cap_story()
-            assert 'New master key in effect' in story
+            assert 'master key in effect' in story
 
             encoded = sim_exec('from pincodes import pa; RV.write(repr(pa.fetch()))')
             print(encoded)
