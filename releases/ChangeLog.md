@@ -13,6 +13,8 @@
   private key corresponding to the address specified in HSM policy. Attestation signature
   MUST be provided in PSBT in a new proprietary field. Thanks to
   [@straylight-orbit](https://github.com/straylight-orbit) for this powerful new feature.
+- Enhancement: HSM policy hash is now displayed during first activation and in the HSM status
+  response. This enables fast comparison against known policy hashes.
 - Enhancement: add ability to specify address format in text file to be signed (3rd line of file)
 - Enhancement: NFC message signing (Advanced/Tools > NFC Tools > Sign Message). Send message
   in same format as Sign Text File over NFC, approve signing on Coldcard and send signed
