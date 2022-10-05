@@ -25,7 +25,8 @@ class SimulatedNFCHandler(NFCHandler):
         import os
         self.write(0, data)
         #n = open('nfc-dump.ndef', 'wb').write(self.dump_ndef())
-        n = open(DATA_FILE, 'wb').write(data)
+        with open(DATA_FILE, 'wb') as ff:
+            n = ff.write(data)
         atime, mtime, ctime = os.stat(DATA_FILE)[-3:]
         self._mtime = mtime
         self._atime = atime
