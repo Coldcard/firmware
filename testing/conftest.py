@@ -244,7 +244,7 @@ def addr_vs_path(master_xpub):
                 sk = mk.subkey_for_path(path[2:])
 
 
-        if addr_fmt == AF_CLASSIC:
+        if addr_fmt in {None,  AF_CLASSIC}:
             # easy
             assert sk.address() == given_addr
 
@@ -1316,7 +1316,8 @@ def nfc_write(request, only_mk4):
 
 def ccfile_wrap(recs):
     CC_FILE = bytes([0xE2, 0x43, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00,   0x03])
-    assert len(recs) < 255      # code limitation here
+    if len(recs) >= 255:      # testing code limitation here FIXME
+        raise pytest.xfail('cant do NFC > 250 bytes yet in tests')
     return CC_FILE + bytes([len(recs)]) + recs + b'\xfe'
 
 

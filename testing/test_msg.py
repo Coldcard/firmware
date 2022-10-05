@@ -7,7 +7,7 @@ from pycoin.contrib.msg_signing import verify_message, parse_signed_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
-from constants import msg_sign_unmap_addr_fmt
+from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
 
 @pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
@@ -31,16 +31,12 @@ def test_sign_msg_good(dev, need_keypress, msg, path, addr_fmt, addr_vs_path):
 
     assert 40 <= len(raw) <= 65
 
-    if addr_fmt != AF_CLASSIC:
-        # TODO
-        # - need bech32 decoder here
-        # - pycoin can't do signature decode
-        if addr_fmt & AFC_BECH32:
-            assert '1' in addr
-        return
-
     # check expected addr was used
     sk = addr_vs_path(addr, path, addr_fmt)
+
+    if addr_fmt != AF_CLASSIC:
+        # - pycoin can't do signature decode XXX
+        return
     
     # verify signature
     assert verify_message(sk, sig, message=msg.decode('ascii')) == True
@@ -88,7 +84,7 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
 
     # sign a file on the microSD card
 
-    def doit(msg, subpath=None, expect_fail=False):
+    def doit(msg, subpath=None, addr_fmt=None, expect_fail=False):
         fname = 't-msgsign.txt'
         result_fname = 't-msgsign-signed.txt'
 
@@ -100,6 +96,8 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
             sd.write(msg + '\n')
             if subpath is not None:
                 sd.write(subpath + '\n')
+            if addr_fmt is not None:
+                sd.write(addr_fmt_names[addr_fmt] + '\n')
 
         goto_home()
         pick_menu_item('Advanced/Tools')
@@ -158,29 +156,31 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
     return doit
 
 @pytest.mark.parametrize('msg', [ 'ab', 'hello', 'abc def eght', "x"*140, 'a'*240])
-@pytest.mark.parametrize('path,addr_fmt', [
-        ( "m/84p/0'/22p", AF_P2WPKH),
-        (None, AF_CLASSIC),
-        ( 'm', AF_CLASSIC),
-        ( "m/1/2", AF_CLASSIC),
-        ( "m/1'/100'", AF_CLASSIC),
-        ( 'm/23H/22p', AF_CLASSIC),
+@pytest.mark.parametrize('path', [
+        "m/84p/0'/22p",
+        None,
+        'm',
+        "m/1/2",
+        "m/1'/100'",
+        'm/23H/22p',
+    ])
+@pytest.mark.parametrize('addr_fmt', [
+        None ,
+        AF_P2WPKH,
+        AF_CLASSIC,
+        AF_P2WPKH_P2SH,
     ])
 def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path, addr_fmt):
 
+    if (path is None) and (addr_fmt is not None):
+        # must give path if addr fmt is to be specified
+        return
+
     # cases we expect to work
-    sig, addr = sign_on_microsd(msg, path)
+    sig, addr = sign_on_microsd(msg, path, addr_fmt)
 
     raw = b64decode(sig)
     assert 40 <= len(raw) <= 65
-
-    if addr_fmt != AF_CLASSIC:
-        # TODO
-        # - need bech32 decoder here
-        # - pycoin can't do signature decode
-        if addr_fmt & AFC_BECH32:
-            assert '1' in addr
-        return
 
     if path is None:
         path = 'm'
@@ -188,11 +188,27 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path, addr_fm
     # check expected addr was used
     sk = addr_vs_path(addr, path, addr_fmt)
 
-    if addr_fmt == AF_P2WPKH:
-        assert addr.startswith('tb1q')
+    if addr_fmt != AF_CLASSIC:
+        # - pycoin can't do signature decode XXX
+        return
 
     # verify signature
     assert verify_message(sk, sig, message=msg) == True
+
+@pytest.fixture
+def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story):
+    def doit(body, expect_fail=True):
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Sign Message')
+        nfc_write_text(body)
+        time.sleep(0.5)
+        if expect_fail:
+            return cap_story()
+        raise NotImplementedError
+
+    return doit
 
 @pytest.mark.parametrize('msg,concern,no_file', [ 
     ('', 'too short', 0),         # zero length not supported
@@ -204,21 +220,27 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path, addr_fm
     ('hello%5sworld'%'', 'many spaces', 0),        # spaces
     ('test\ttest', "bad char: 0x09", 0),
     ])
-@pytest.mark.parametrize('transport', ['sd', 'usb'])
-def test_sign_msg_microsd_fails(dev, sign_on_microsd, msg, concern, no_file, transport, path='m/12/34'):
+@pytest.mark.parametrize('transport', ['sd', 'usb', 'nfc'])
+def test_sign_msg_fails(dev, sign_on_microsd, msg, concern, no_file, transport, sign_using_nfc, path='m/12/34'):
 
     if transport == 'usb':
         with pytest.raises(CCProtoError) as ee:
             dev.send_recv(CCProtocolPacker.sign_message(msg.encode('ascii'), path), timeout=None)
         story = ee.value.args[0]
-    else:
+    elif transport == 'sd':
         try:
             story = sign_on_microsd(msg, path, expect_fail=True)
             assert story.startswith('Problem: ')
         except AssertionError as e:
             if no_file:
-                assert "No suitable files found" in str(e)
+                assert ("No suitable files found" in str(e)) or story == 'NO-FILE'
                 return
+    elif transport == 'nfc':
+        title, story = sign_using_nfc(msg, expect_fail=True)
+        assert title == 'ERROR' or "Problem" in story
+    else:
+        raise ValueError(transport)
+
     assert concern in story
 
 @pytest.mark.parametrize('msg,num_iter,expect', [ 
@@ -282,8 +304,8 @@ def test_nfc_msg_signing_invalid(body, goto_home, pick_menu_item, nfc_write_text
     pick_menu_item('Sign Message')
     nfc_write_text(body)
     time.sleep(0.5)
-    _, story = cap_story()
-    assert "Problem" in story
+    title, story = cap_story()
+    assert title == 'ERROR' or "Problem" in story
 
 @pytest.mark.parametrize("msg", ["coinkite", "Coldcard Signing Device!", 200 * "a"])
 @pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800'", "m/0/0/0/0/1/1/1"])

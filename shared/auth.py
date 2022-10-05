@@ -6,13 +6,14 @@
 import stash, ure, ux, chains, sys, gc, uio, version, ngu
 from ubinascii import b2a_base64
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from ux import show_qr_code
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
+from utils import B2A, parse_addr_fmt_str
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 from version import has_psram, has_fatram, MAX_TXN_LEN
@@ -155,12 +156,45 @@ def sign_message_digest(digest, subpath, prompt):
 
     return rv
 
+def validate_text_for_signing(text):
+    # Check for some UX/UI traps in the message itself.
+    # - messages must be short and ascii only. Our charset is limited
+    # - too many spaces, leading/trailing can be an issue
+
+    MSG_CHARSET = range(32, 127)
+    MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
+
+    try:
+        result = str(text, 'ascii')
+    except UnicodeError:
+        raise AssertionError('must be ascii')
+
+    length = len(result)
+    assert length >= 2, "msg too short (min. 2)"
+    assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
+    run = 0
+    for ch in result:
+        assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x in msg" % ord(ch)
+
+        if ch == ' ':
+            run += 1
+            assert run < MSG_MAX_SPACES, 'too many spaces together in msg(max. 4)'
+        else:
+            run = 0
+
+    # other confusion w/ whitepace
+    assert result[0] != ' ', 'leading space(s) in msg'
+    assert result[-1] != ' ', 'trailing space(s) in msg'
+
+    # looks ok
+    return result
+
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None):
         super().__init__()
-        self.text = self.validate_text(text)
+        self.text = validate_text_for_signing(text)
         self.subpath = cleanup_deriv_path(subpath)
-        self.addr_fmt = self.parse_addr_fmt_str(addr_fmt)
+        self.addr_fmt = parse_addr_fmt_str(addr_fmt)
         self.approved_cb = approved_cb
 
         from glob import dis
@@ -171,20 +205,6 @@ class ApproveMessageSign(UserAuthorizedAction):
             self.address = sv.chain.address(node, self.addr_fmt)
 
         dis.progress_bar_show(1)
-
-    @staticmethod
-    def parse_addr_fmt_str(addr_fmt):
-        if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
-            return addr_fmt
-        if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
-            return AF_P2WPKH_P2SH
-        elif addr_fmt == "p2pkh":
-            return AF_CLASSIC
-        elif addr_fmt == "p2wpkh":
-            return AF_P2WPKH
-        else:
-            assert False, ('Invalid address format specified %s\n\n'
-                           'Choose from p2pkh, p2wpkh, p2sh-p2wpkh.' % addr_fmt)
 
     async def interact(self):
         # Prompt user w/ details and get approval
@@ -215,39 +235,6 @@ class ApproveMessageSign(UserAuthorizedAction):
             self.pop_menu()
         else:
             self.done()
-
-    @staticmethod
-    def validate_text(text):
-        # check for some UX/UI traps in the message itself.
-
-        # Messages must be short and ascii only. Our charset is limited
-        MSG_CHARSET = range(32, 127)
-        MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
-
-        try:
-            result = str(text, 'ascii')
-        except UnicodeError:
-            raise AssertionError('must be ascii')
-
-        length = len(result)
-        assert length >= 2, "msg too short (min. 2)"
-        assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
-        run = 0
-        for ch in result:
-            assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x in msg" % ord(ch)
-
-            if ch == ' ':
-                run += 1
-                assert run < MSG_MAX_SPACES, 'too many spaces together in msg(max. 4)'
-            else:
-                run = 0
-
-        # other confusion w/ whitepace
-        assert result[0] != ' ', 'leading space(s) in msg'
-        assert result[-1] != ' ', 'trailing space(s) in msg'
-
-        # looks ok
-        return result
     
 
 def sign_msg(text, subpath, addr_fmt):

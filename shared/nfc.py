@@ -14,7 +14,7 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64
 
 from ux import ux_show_story, ux_poll_key
-from utils import cleanup_deriv_path, B2A, problem_file_line
+from utils import cleanup_deriv_path, B2A, problem_file_line, parse_addr_fmt_str
 from public_constants import AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC
 
 
@@ -620,7 +620,7 @@ class NFCHandler:
         else:
             subpath, addr_fmt_str = winner
             try:
-                addr_fmt = ApproveMessageSign.parse_addr_fmt_str(addr_fmt_str)
+                addr_fmt = parse_addr_fmt_str(addr_fmt_str)
             except AssertionError as e:
                 await ux_show_story(str(e))
                 return

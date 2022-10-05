@@ -73,9 +73,9 @@ def test_addr_vs_bitcoind(use_regtest, match_key, need_keypress, dev, bitcoind_d
         assert addr == core_addr
 
 @pytest.mark.parametrize("body_err", [
-    ("m\np2wsh", "Invalid address format specified p2wsh"),
-    ("m\np2sh-p2wsh", "Invalid address format specified p2sh-p2wsh"),
-    ("m\np2tr", "Invalid address format specified p2tr"),
+    ("m\np2wsh", "Invalid address format: 'p2wsh'"),
+    ("m\np2sh-p2wsh", "Invalid address format: 'p2sh-p2wsh'"),
+    ("m\np2tr", "Invalid address format: 'p2tr'"),
     ("m/0/0/0/0/0/0/0/0/0/0/0/0/0\np2pkh", "too deep"),
     ("m/0/0/0/0/0/q/0/0/0\np2pkh", "invalid characters"),
 ])
