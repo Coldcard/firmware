@@ -351,7 +351,7 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
         assert verify_message(sk, sig, message=msg) is True
     time.sleep(0.5)
     _, story = cap_story()
-    assert "Press Y to share again" in story
+    assert "Press OK to share again" in story
     need_keypress("y")
     signed_msg_again = nfc_read_text()
     assert signed_msg == signed_msg_again
