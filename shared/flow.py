@@ -8,7 +8,8 @@ from glob import settings
 
 from actions import *
 from choosers import *
-from multisig import make_multisig_menu
+from multisig import make_multisig_menu, import_multisig_nfc
+from seed import make_ephemeral_seed_menu
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start, password_entry
@@ -210,6 +211,7 @@ else:
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu),
     MenuItem('Upgrade Firmware', menu=UpgradeMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
@@ -219,6 +221,7 @@ AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
 AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Upgrade Firmware", menu=UpgradeMenu),
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
@@ -274,6 +277,13 @@ BackupStuffMenu = [
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
 ]
 
+NFCToolsMenu = [
+    MenuItem('Show Address', f=nfc_show_address),
+    MenuItem('Sign Message', f=nfc_sign_msg),
+    MenuItem('File Share', f=nfc_share_file),
+    MenuItem('Import Multisig', f=import_multisig_nfc),
+]
+
 AdvancedNormalMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup", menu=BackupStuffMenu),
@@ -282,12 +292,14 @@ AdvancedNormalMenu = [
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Derive Seed B85', f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
+    MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
 By default these commands are disabled.",
                    predicate=lambda: version.has_fatram),
     MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
+    MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -314,10 +326,10 @@ ImportWallet = [
 
 NewSeedMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("24 Word (default)", f=pick_new_seed_24),
-    MenuItem("12 Word", f=pick_new_seed_12),
-    MenuItem("24 Word Dice Roll", f=new_from_dice_24),
-    MenuItem("12 Word Dice Roll", f=new_from_dice_12),
+    MenuItem("24 Word (default)", f=pick_new_seed, arg=24),
+    MenuItem("12 Word", f=pick_new_seed, arg=12),
+    MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
+    MenuItem("12 Word Dice Roll", f=new_from_dice, arg=12),
 ]
 
 # has PIN, but no secret seed yet

@@ -434,4 +434,22 @@ def word_wrap(ln, w):
 
         yield left
 
+def parse_addr_fmt_str(addr_fmt):
+    # accepts strings and also integers if already parsed
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+
+    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
+        return addr_fmt
+
+    addr_fmt = addr_fmt.lower()
+    if addr_fmt in ("p2sh-p2wpkh", "p2wpkh-p2sh"):
+        return AF_P2WPKH_P2SH
+    elif addr_fmt == "p2pkh":
+        return AF_CLASSIC
+    elif addr_fmt == "p2wpkh":
+        return AF_P2WPKH
+    else:
+        raise ValueError("Invalid address format: '%s'\n\n"
+                           "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
+
 # EOF

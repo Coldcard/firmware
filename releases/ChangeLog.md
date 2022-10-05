@@ -1,4 +1,4 @@
-## 5.0.7 - 2022-09-1X
+## 5.0.7 - 2022-10-06
 
 - Enhancement: In older versions, multisig NFC import not offered if a MicroSD card was
   inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
@@ -15,6 +15,13 @@
   [@straylight-orbit](https://github.com/straylight-orbit) for this powerful new feature.
 - Enhancement: HSM policy hash is now displayed during first activation and in the HSM status
   response. This enables fast comparison against known policy hashes.
+- Enhancement: add ability to specify address format in text file to be signed (3rd line of file)
+- Enhancement: NFC message signing (Advanced/Tools > NFC Tools > Sign Message). Send message
+  in same format as Sign Text File over NFC, approve signing on Coldcard and send signed
+  ASCII-armored message back over NFC.
+- Enhancement: Show address over NFC (Advanced/Tools > NFC Tools > Show Address).
+- Enhancement: Ephemeral Seeds: Advanced/Tools > Ephemeral Seed (more info in `docs/ephemeral.md`)
+- Bugfix: Improved NFC commands exception handling 
 - Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
 - Bugfix: Share single address over NFC from address explorer menu.
 - Bugfix: Using lots of trick pins (7+), could lead to a case where the Coldcard would

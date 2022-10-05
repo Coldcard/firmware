@@ -14,7 +14,7 @@ simulator_fixed_xfp = 0x4369050f
 
 simulator_serial_number = 'F1F1F1F1F1F1'
 
-from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH
+from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
 unmap_addr_fmt = {
     'p2sh': AF_P2SH,
@@ -22,6 +22,23 @@ unmap_addr_fmt = {
     'p2wsh-p2sh': AF_P2WSH_P2SH,
     'p2sh-p2wsh': AF_P2WSH_P2SH,
 }
+
+msg_sign_unmap_addr_fmt = {
+    'p2pkh': AF_CLASSIC,
+    'p2wpkh': AF_P2WPKH,
+    'p2sh-p2wpkh': AF_P2WPKH_P2SH,
+    'p2wpkh-p2sh': AF_P2WPKH_P2SH,
+}
+
+addr_fmt_names = {
+    AF_CLASSIC: 'p2pkh',
+    AF_P2SH: 'p2sh',
+    AF_P2WPKH: 'p2wpkh',
+    AF_P2WSH: 'p2wsh',
+    AF_P2WPKH_P2SH: 'p2wpkh-p2sh',
+    AF_P2WSH_P2SH: 'p2wsh-p2sh',
+}
+    
 
 # all possible addr types, including multisig/scripts
 ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']

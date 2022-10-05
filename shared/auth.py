@@ -4,14 +4,16 @@
 # and signing bitcoin transactions.
 #
 import stash, ure, ux, chains, sys, gc, uio, version, ngu
+from ubinascii import b2a_base64
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
 from ux import show_qr_code
 from usb import CCBusyError
-from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path, B2A
+from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
+from utils import B2A, parse_addr_fmt_str
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 from version import has_psram, has_fatram, MAX_TXN_LEN
@@ -154,19 +156,53 @@ def sign_message_digest(digest, subpath, prompt):
 
     return rv
 
+def validate_text_for_signing(text):
+    # Check for some UX/UI traps in the message itself.
+    # - messages must be short and ascii only. Our charset is limited
+    # - too many spaces, leading/trailing can be an issue
+
+    MSG_CHARSET = range(32, 127)
+    MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
+
+    try:
+        result = str(text, 'ascii')
+    except UnicodeError:
+        raise AssertionError('must be ascii')
+
+    length = len(result)
+    assert length >= 2, "msg too short (min. 2)"
+    assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
+    run = 0
+    for ch in result:
+        assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x in msg" % ord(ch)
+
+        if ch == ' ':
+            run += 1
+            assert run < MSG_MAX_SPACES, 'too many spaces together in msg(max. 4)'
+        else:
+            run = 0
+
+    # other confusion w/ whitepace
+    assert result[0] != ' ', 'leading space(s) in msg'
+    assert result[-1] != ' ', 'trailing space(s) in msg'
+
+    # looks ok
+    return result
+
 class ApproveMessageSign(UserAuthorizedAction):
     def __init__(self, text, subpath, addr_fmt, approved_cb=None):
         super().__init__()
-        self.text = text
-        self.subpath = subpath
+        self.text = validate_text_for_signing(text)
+        self.subpath = cleanup_deriv_path(subpath)
+        self.addr_fmt = parse_addr_fmt_str(addr_fmt)
         self.approved_cb = approved_cb
 
         from glob import dis
         dis.fullscreen('Wait...')
 
         with stash.SensitiveValues() as sv:
-            node = sv.derive_path(subpath)
-            self.address = sv.chain.address(node, addr_fmt)
+            node = sv.derive_path(self.subpath)
+            self.address = sv.chain.address(node, self.addr_fmt)
 
         dis.progress_bar_show(1)
 
@@ -191,7 +227,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 
             if self.approved_cb:
                 # for micro sd case
-                await self.approved_cb(self.result, self.address)
+                await self.approved_cb(self.result, self.address, self.text)
 
         if self.approved_cb:
             # don't kill menu depth for file case
@@ -199,105 +235,40 @@ class ApproveMessageSign(UserAuthorizedAction):
             self.pop_menu()
         else:
             self.done()
-
-    @staticmethod
-    def validate(text):
-        # check for some UX/UI traps in the message itself.
-
-        # Messages must be short and ascii only. Our charset is limited
-        MSG_CHARSET = range(32, 127)
-        MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
-
-        assert len(text) >= 2, "too short"
-        assert len(text) <= MSG_SIGNING_MAX_LENGTH, "too long"
-        run = 0
-        for ch in text:
-            assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x" % ord(ch)
-
-            if ch == ' ':
-                run += 1
-                assert run < MSG_MAX_SPACES, 'too many spaces together'
-            else:
-                run = 0
-
-        # other confusion w/ whitepace
-        assert text[0] != ' ', 'leading space(s)'
-        assert text[-1] != ' ', 'trailing space(s)'
-
-        # looks ok
-        return
     
 
 def sign_msg(text, subpath, addr_fmt):
-    # Convert to strings
-    try:
-        text = str(text, 'ascii')
-    except UnicodeError:
-        raise AssertionError('must be ascii')
-
     subpath = cleanup_deriv_path(subpath)
-
-    try:
-        assert addr_fmt in SUPPORTED_ADDR_FORMATS
-        assert not (addr_fmt & AFC_SCRIPT)
-    except:
-        raise AssertionError('Unknown/unsupported addr format')
-
-    # Do some verification before we even show to the local user
-    ApproveMessageSign.validate(text)
-
     UserAuthorizedAction.check_busy()
     UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt)
-
     # kill any menu stack, and put our thing at the top
     abort_and_goto(UserAuthorizedAction.active_request)
+
 
 def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from files import CardSlot, CardMissingError
-    from sram2 import tmp_buf
+    from ux import the_ux
 
     UserAuthorizedAction.cleanup()
-    addr_fmt = AF_CLASSIC
 
     # copy message into memory
     with CardSlot() as card:
         with card.open(filename, 'rt') as fd:
             text = fd.readline().strip()
             subpath = fd.readline().strip()
+            addr_fmt = fd.readline().strip()
 
-    if subpath:
-        try:
-            assert subpath[0:1] == 'm'
-            subpath = cleanup_deriv_path(subpath)
-        except:
-            await ux_show_story("Second line of file, if included, must specify a subkey path, like: m/44'/0/0")
-            return
-
-        # if they are following BIP-84 recommended derivation scheme,
-        # then they probably would prefer a segwit/bech32 formatted address
-        if subpath.startswith("m/84'/"):
-            addr_fmt = AF_P2WPKH
-            
-    else:
+    if not subpath:
         # default: top of wallet.
         subpath = 'm'
 
-    try:
-        try:
-            text = str(text, 'ascii')
-        except UnicodeError:
-            raise AssertionError('non-ascii characters')
+    if not addr_fmt:
+        addr_fmt = AF_CLASSIC
 
-        ApproveMessageSign.validate(text)
-    except AssertionError as exc:
-        await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
-        return
-
-    def done(signature, address):
+    def done(signature, address, text):
         # complete. write out result
-        from ubinascii import b2a_base64
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
         base = basename.rsplit('.', 1)[0]
@@ -338,7 +309,7 @@ def sign_txt_file(filename):
                 except OSError as exc:
                     prob = 'Failed to write!\n\n%s\n\n' % exc
                     sys.print_exception(exc)
-                    # fall thru to try again
+                    # fall through to try again
 
             # prompt them to input another card?
             ch = await ux_show_story(prob+"Please insert an SDCard to receive signed message, "
@@ -352,11 +323,13 @@ def sign_txt_file(filename):
         await ux_show_story(msg, title='File Signed')
 
     UserAuthorizedAction.check_busy()
-    UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt, approved_cb=done)
-
-    # do not kill the menu stack!
-    from ux import the_ux
-    the_ux.push(UserAuthorizedAction.active_request)
+    try:
+        UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt, approved_cb=done)
+        # do not kill the menu stack!
+        the_ux.push(UserAuthorizedAction.active_request)
+    except AssertionError as exc:
+        await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
+        return
 
 
 class ApproveTransaction(UserAuthorizedAction):
@@ -1022,7 +995,8 @@ def start_bip39_passphrase(pw):
 class ShowAddressBase(UserAuthorizedAction):
     title = 'Address:'
 
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
+        self.restore_menu = kwargs.get("restore_menu", False)
         super().__init__()
 
         from glob import dis
@@ -1033,27 +1007,33 @@ class ShowAddressBase(UserAuthorizedAction):
 
     async def interact(self):
         # Just show the address... no real confirmation needed.
-        from glob import hsm_active, dis
+        from glob import hsm_active, dis, NFC
 
         if not hsm_active:
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
+            if NFC:
+                msg += ' Press 3 to share over NFC.'
             if has_fatram:
                 msg += ' Press 4 to view QR Code.'
 
             while 1:
-                ch = await ux_show_story(msg, title=self.title, escape='4')
+                ch = await ux_show_story(msg, title=self.title, escape='34')
 
                 if ch == '4' and has_fatram:
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
-
+                if ch == '3' and NFC:
+                    await NFC.share_text(self.address)
+                    continue
                 break
         else:
             # finish the Wait...
             dis.progress_bar(1)     
-
-        self.done()
+        if self.restore_menu:
+            self.pop_menu()
+        else:
+            self.done()
         UserAuthorizedAction.cleanup()      # because no results to store
 
     
@@ -1130,7 +1110,7 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # provide the value back to attached desktop
     return UserAuthorizedAction.active_request.address
 
-def start_show_address(addr_format, subpath):
+def show_address(addr_format, subpath, restore_menu=False):
     try:
         assert addr_format in SUPPORTED_ADDR_FORMATS
         assert not (addr_format & AFC_SCRIPT)
@@ -1144,14 +1124,17 @@ def start_show_address(addr_format, subpath):
     if hsm_active and not hsm_active.approve_address_share(subpath):
         raise HSMDenied
 
+    UserAuthorizedAction.cleanup()
     UserAuthorizedAction.check_busy(ShowAddressBase)
-    UserAuthorizedAction.active_request = ShowPKHAddress(addr_format, subpath)
+    UserAuthorizedAction.active_request = ShowPKHAddress(addr_format, subpath, restore_menu=restore_menu)
+    return UserAuthorizedAction.active_request
 
+def usb_show_address(addr_format, subpath):
+    active_request = show_address(addr_format, subpath)
     # kill any menu stack, and put our thing at the top
-    abort_and_goto(UserAuthorizedAction.active_request)
-
+    abort_and_goto(active_request)
     # provide the value back to attached desktop
-    return UserAuthorizedAction.active_request.address
+    return active_request.address
 
 
 class NewEnrollRequest(UserAuthorizedAction):

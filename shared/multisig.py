@@ -1639,7 +1639,10 @@ Default is P2WSH addresses (segwit) or press (1) for P2SH-P2WSH.''', escape='1')
 async def import_multisig_nfc(*a):
     from glob import NFC
     # this menu option should not be available if NFC is disabled
-    return await NFC.import_multisig_nfc()
+    try:
+        return await NFC.import_multisig_nfc()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to import multisig. %s" % str(e))
 
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file

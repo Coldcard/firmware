@@ -4,7 +4,7 @@
 #
 # Unattended signing of transactions and messages, subject to a set of rules.
 #
-import stash, ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu
+import stash, ustruct, chains, sys, gc, uio, ujson, uos, utime, ckcc, ngu, version
 from sffile import SFFile
 from utils import problem_file_line, cleanup_deriv_path, match_deriv_path
 from pincodes import AE_LONG_SECRET_LEN
@@ -667,10 +667,11 @@ class HSMPolicy:
             with open(POLICY_FNAME, 'w+t') as f:
                 ujson.dump(self.save(), f)
 
-            # that changes the flash, so need to update
-            # the hash stored in SE
-            pa.greenlight_firmware()
-            dis.show()
+            if version.mk_num <= 3:
+                # that changes the flash, so need to update
+                # the hash stored in SE (Mk3 and earlier)
+                pa.greenlight_firmware()
+                dis.show()
 
         if self.set_sl:
             self.save_storage_locker()

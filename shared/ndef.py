@@ -157,8 +157,8 @@ def record_parser(msg):
         IL = hdr & 0x08
         TNF = hdr & 0x7
 
-        assert not CF                       # no chunks please
-        assert (pos == 0) == bool(MB)       # first one needs MB set
+        assert not CF, "no chunks please"
+        assert (pos == 0) == bool(MB), "first needs MB set"
 
         ty_len = msg[pos+1]
         pos += 2
@@ -182,7 +182,7 @@ def record_parser(msg):
         pos += ty_len
 
         if TNF == 0x0:      # empty
-            assert ty_len == pl_len == 0
+            assert ty_len == pl_len == 0, "ty_len = pl_len = 0"
             urn = None
         elif TNF == 0x1:        # WKT
             urn = 'urn:nfc:wkt:'
@@ -191,7 +191,7 @@ def record_parser(msg):
             if ty == b'T':
                 # unwrap Text
                 hdr2 = msg[pos]
-                assert hdr2 & 0xc0 == 0x00      # only UTF supported
+                assert hdr2 & 0xc0 == 0x00, "only UTF supported"
                 lang_len = hdr2 & 0x3f
 
                 meta['lang'] = msg[pos+1:pos+1 + lang_len].decode()
@@ -224,7 +224,7 @@ def record_parser(msg):
         if ME: return
 
         pos += pl_len
-        assert pos < len(msg)       # missing ME/truncated
+        assert pos < len(msg), "missing ME/truncated"
 
 
 # EOF

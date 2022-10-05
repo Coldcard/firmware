@@ -7,12 +7,15 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import ngu, ckcc, utime, ngu, ndef
+import ngu, utime, ngu, ndef
 from uasyncio import sleep_ms
-from utils import B2A, problem_file_line
 from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
+from ubinascii import b2a_base64
+
 from ux import ux_show_story, ux_poll_key
+from utils import cleanup_deriv_path, B2A, problem_file_line, parse_addr_fmt_str
+from public_constants import AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC
 
 
 # practical limit for things to share: 8k part, minus overhead
@@ -557,5 +560,125 @@ class NFCHandler:
         except Exception as e:
             #import sys; sys.print_exception(e)
             await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+
+    async def import_ephemeral_seed_words_nfc(self, *a):
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode().strip()        # from memory view
+            split_msg = msg.split(" ")
+            if len(split_msg) in (12, 18, 24):
+                winner = split_msg
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        try:
+            from seed import set_ephemeral_seed_words
+            await set_ephemeral_seed_words(winner)
+        except Exception as e:
+            #import sys; sys.print_exception(e)
+            await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+
+    async def confirm_share_loop(self, string):
+        while True:
+            # added loop here as NFC send can fail, or not send the data
+            # and in that case one would have to start from beginning (send us cmd, approve, etc.)
+            # => get chance to check if you received the data and if something went wrong - retry just send
+            await self.share_text(string)
+            ch = await ux_show_story(title="Shared", msg="Press Y to share again, otherwise X to stop.")
+            if ch != "y":
+                break
+
+    async def address_show_and_share(self):
+        from auth import show_address, ApproveMessageSign
+
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            split_msg = msg.split("\n")
+            if 1 <= len(split_msg) <= 2:
+                winner = split_msg
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        if len(winner) == 1:
+            subpath = winner[0]
+            addr_fmt = AF_CLASSIC
+        else:
+            subpath, addr_fmt_str = winner
+            try:
+                addr_fmt = parse_addr_fmt_str(addr_fmt_str)
+            except AssertionError as e:
+                await ux_show_story(str(e))
+                return
+
+        active_request = show_address(addr_fmt, subpath, restore_menu=True)
+        from ux import the_ux
+        the_ux.push(active_request)
+        await the_ux.interact()  # need this otherwise NFC animation takes over
+
+    async def start_msg_sign(self):
+        from auth import UserAuthorizedAction, ApproveMessageSign
+        from ux import the_ux
+
+        UserAuthorizedAction.cleanup()
+
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            split_msg = msg.split("\n")
+            if 1 <= len(split_msg) <= 3:
+                winner = split_msg
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        if len(winner) == 1:
+            text = winner[0]
+            subpath = "m"
+            addr_fmt = AF_CLASSIC
+        elif len(winner) == 2:
+            text, subpath = winner
+            addr_fmt = AF_CLASSIC  # maybe default to native segwit?
+        else:
+            # len(winner) == 3
+            text, subpath, addr_fmt = winner
+
+        UserAuthorizedAction.check_busy(ApproveMessageSign)
+        try:
+            UserAuthorizedAction.active_request = ApproveMessageSign(
+                text, subpath, addr_fmt, approved_cb=self.msg_sign_done
+            )
+            the_ux.push(UserAuthorizedAction.active_request)
+        except AssertionError as exc:
+            await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
+            return
+
+    async def msg_sign_done(self, signature, address, text):
+        from auth import RFC_SIGNATURE_TEMPLATE
+        sig = b2a_base64(signature).decode('ascii').strip()
+        armored_str = RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
+                                                    blockchain='BITCOIN', sig=sig)
+        await self.confirm_share_loop(armored_str)
 
 # EOF

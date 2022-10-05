@@ -4,19 +4,15 @@
 #
 # User experience related to the HSM. Ironic because there isn't a user present.
 #
-import ustruct, ux, chains, sys, gc, uio, ujson, uos, utime, ngu
-from ckcc import is_simulator
+import ustruct, sys, gc, uio, ujson, uos, utime, ngu
 from sffile import SFFile
-from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys, the_ux
+from ux import ux_show_story, abort_and_goto
 from ux import AbortInteraction
-from utils import problem_file_line, cleanup_deriv_path
+from utils import problem_file_line
 from auth import UserAuthorizedAction
 from queues import QueueEmpty
-from ubinascii import a2b_base64
-from users import Users, MAX_NUMBER_USERS
-from public_constants import MAX_USERNAME_LEN
 
-import hsm
+
 from hsm import HSMPolicy, POLICY_FNAME, LOCAL_PIN_LENGTH
 
 # see ../graphics/cylon.py
@@ -84,7 +80,7 @@ Press %s to save policy and enable HSM mode.''' % (self.policy.hash(), confirm_c
 
         # go into special HSM mode .. one-way trip
         self.policy.activate(self.new_file)
-        the_ux.reset(hsm_ux_obj)
+        abort_and_goto(hsm_ux_obj)
 
         return
 
@@ -143,6 +139,7 @@ async def start_hsm_approval(sf_len=0, usb_mode=False, startup_mode=False):
 
     # Boot-to-HSM feature: don't ask, just start policy immediately
     if startup_mode and policy.boot_to_hsm:
+        from ux import the_ux
         msg = uio.StringIO()
         policy.explain(msg)
         policy.activate(False)
@@ -308,7 +305,6 @@ class hsmUxInteraction:
     async def interact(self):
         import glob
         from glob import numpad
-        from actions import login_now
         from uasyncio import sleep_ms
 
         # Replace some drawing functions
@@ -320,7 +316,7 @@ class hsmUxInteraction:
         glob.dis.progress_bar_show = self.hack_progress_bar
 
         # get ready ourselves
-        glob.dis.set_brightness(0)        # dimest, but still readable
+        glob.dis.set_brightness(1)        # dimest, but still readable
         self.draw_background()
 
         # Kill time, waiting for user input
