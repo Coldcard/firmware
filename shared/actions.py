@@ -1315,20 +1315,18 @@ Erases and reformats MicroSD card. This is not a secure erase but more of a quic
 async def nfc_share_file(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.
     from glob import NFC
-    if NFC:
-        try:
-            await NFC.share_file()
-        except Exception as e:
-            await ux_show_story(title="ERROR", msg="Failed to share file. %s" % str(e))
+    try:
+        await NFC.share_file()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to share file. %s" % str(e))
 
 
 async def nfc_show_address(*A):
     from glob import NFC
-    if NFC:
-        try:
-            await NFC.address_show_and_share()
-        except Exception as e:
-            await ux_show_story(title="ERROR", msg="Failed to show address. %s" % str(e))
+    try:
+        await NFC.address_show_and_share()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to show address. %s" % str(e))
 
 
 async def nfc_sign_msg(*A):
@@ -1336,21 +1334,19 @@ async def nfc_sign_msg(*A):
     #      User approval on device
     #      Send signature RFC armored format back over NFC
     from glob import NFC
-    if NFC:
-        try:
-            await NFC.start_msg_sign()
-        except Exception as e:
-            await ux_show_story(title="ERROR", msg="Failed to sign message. %s" % str(e))
+    try:
+        await NFC.start_msg_sign()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to sign message. %s" % str(e))
 
 
 async def nfc_recv_ephemeral(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.
     from glob import NFC
-    if NFC:
-        try:
-            await NFC.import_ephemeral_seed_words_nfc()
-        except Exception as e:
-            await ux_show_story(title="ERROR", msg="Failed to import ephemeral seed via NFC. %s" % str(e))
+    try:
+        await NFC.import_ephemeral_seed_words_nfc()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to import ephemeral seed via NFC. %s" % str(e))
 
 
 async def list_files(*A):
