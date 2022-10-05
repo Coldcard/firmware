@@ -1,29 +1,31 @@
-## 5.0.7 - 2022-10-06
+## 5.0.7 - 2022-10-05
 
-- Enhancement: In older versions, multisig NFC import not offered if a MicroSD card was
-  inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
-  to be enabled for this option to be visible in the menu.
+- NFC Enhancements: 
+    - In older versions, multisig NFC import not offered if a MicroSD card was
+      inserted, now this option provided Settings > Multisig Wallets > Import via NFC. NFC has
+      to be enabled for this option to be visible in the menu.
+    - NFC message signing (Advanced/Tools > NFC Tools > Sign Message). Send message
+      in same format as Sign Text File over NFC, approve signing on Coldcard and send signed
+      ASCII-armored message back over NFC.
+    - Show address over NFC (Advanced/Tools > NFC Tools > Show Address).
+    - Bugfix: Improved NFC commands exception handling 
+    - Bugfix: Share single address over NFC from address explorer menu.
+- HSM Enhancements: 
+    - Dynamic HSM Whitelisting. Foreign outputs can be attested-to by signing them with
+      private key corresponding to the address specified in HSM policy. Attestation
+      signature MUST be provided in PSBT in a new proprietary field.
+    - HSM policy hash is now displayed during first activation and in the HSM status
+      response. This enables fast comparison against known policy hashes.
+    - Thanks to [@straylight-orbit](https://github.com/straylight-orbit) for above items!
+    - Now ignores HSM commands over USB, by default. To enable and use HSM features,
+      go to Advanced/Tools > Enable HSM > Enable
+- New Feature: Ephemeral Seeds: Advanced/Tools > Ephemeral Seed (more info in `docs/ephemeral.md`)
 - Enhancement: New menu wraparound settings which allow you to scroll past top and bottom of 
   any menu (Settings > Menu Wrapping).
 - Enhancement: Allow import of new descriptor type which specify both internal/external
   in single string (ie. `../<0;1>/..`). We still export in older format.
-- Enhancement: Ignore HSM command over USB, by default. To enable and use HSM features, go to 
-  Advanced/Tools > Enable HSM > Enable
-- Enhancement: Dynamic HSM Whitelisting. Foreign outputs can be attested-to by signing them with
-  private key corresponding to the address specified in HSM policy. Attestation signature
-  MUST be provided in PSBT in a new proprietary field. Thanks to
-  [@straylight-orbit](https://github.com/straylight-orbit) for this powerful new feature.
-- Enhancement: HSM policy hash is now displayed during first activation and in the HSM status
-  response. This enables fast comparison against known policy hashes.
 - Enhancement: add ability to specify address format in text file to be signed (3rd line of file)
-- Enhancement: NFC message signing (Advanced/Tools > NFC Tools > Sign Message). Send message
-  in same format as Sign Text File over NFC, approve signing on Coldcard and send signed
-  ASCII-armored message back over NFC.
-- Enhancement: Show address over NFC (Advanced/Tools > NFC Tools > Show Address).
-- Enhancement: Ephemeral Seeds: Advanced/Tools > Ephemeral Seed (more info in `docs/ephemeral.md`)
-- Bugfix: Improved NFC commands exception handling 
 - Bugfix: Correct parsing of unknown fields in PSBT: they are now passed through.
-- Bugfix: Share single address over NFC from address explorer menu.
 - Bugfix: Using lots of trick pins (7+), could lead to a case where the Coldcard would
   not accept the main pin, but trick pins continued to work. This release adds a
   workaround to avoid getting into that situation, and new units from the factory will
