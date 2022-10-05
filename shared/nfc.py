@@ -590,7 +590,7 @@ class NFCHandler:
             # and in that case one would have to start from beginning (send us cmd, approve, etc.)
             # => get chance to check if you received the data and if something went wrong - retry just send
             await self.share_text(string)
-            ch = await ux_show_story(title="Shared", msg="Press Y to share again, otherwise X to stop.")
+            ch = await ux_show_story(title="Shared", msg="Press OK to share again, otherwise X to stop.")
             if ch != "y":
                 break
 

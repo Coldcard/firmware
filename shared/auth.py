@@ -121,7 +121,7 @@ Using the key associated with address:
 {subpath} =>
 {addr}
 
-Press Y if OK, otherwise X to cancel.'''
+Press OK to continue, otherwise X to cancel.'''
 
 # RFC2440 <https://www.ietf.org/rfc/rfc2440.txt> style signatures, popular
 # since the genesis block, but not really part of any BIP as far as I know.
