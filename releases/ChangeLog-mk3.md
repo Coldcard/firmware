@@ -1,3 +1,18 @@
+## 4.1.6 - Oct 5, 2022
+
+- Bugfix: order of multisig wallet registration does NOT matter in PSBT signing
+- Bugfix: allow unknown scripts in HSM mode
+- Enhancement: `OP_RETURN` is now a known script and is displayed in ascii if possible
+
+## 4.1.5 - May 4, 2022
+
+- Enhancement: Support P2TR outputs (pay to Taproot) in PSBT files. Allows
+  on-screen verification of P2TR destination addresses (`bc1p..`) so you can send
+  your BTC to them. Does **not** support signing, so you cannot operate a Taproot
+  wallet with Mk3 COLDCARD as the signing device.
+- Bugfix: Yikes error shown during BIP-85 menu operation.
+- Enhancement: Rename "Derive Entropy" to "Derive Seed B85" to match Mk4 menus
+
 ## 4.1.4 - Apr 26, 2022
 
 - Enhancement: if an XFP of zero is seen in a PSBT file, assume that should be replaced by
