@@ -13,7 +13,7 @@ or bottom of the back side of the phone, and it is rarely indicated on the phone
 It is always best to look up your specific phone model on the internet to find 
 the exact antenna location.
 
-![iphone_nfc](iphone_nfc.jpeg)
+![iphone_nfc](iphone_nfc.jpg)
 
 ## Standards Background
 
