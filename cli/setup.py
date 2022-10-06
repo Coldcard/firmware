@@ -11,7 +11,7 @@ from setuptools import setup
 setup(
     name='signit',
     version='1.0',
-    #py_modules=['ckcc'],
+    py_modules=['signit'],
     install_requires=[
         'Click',
     ],
