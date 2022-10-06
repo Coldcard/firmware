@@ -4,11 +4,16 @@
 #
 import pytest, time, re
 
-from constants import simulator_fixed_words, simulator_fixed_xfp, simulator_fixed_xpub
-from helpers import xfp2str
-from txn import fake_txn
+from constants import simulator_fixed_xpub
 from ckcc.protocol import CCProtocolPacker
-from test_ux import word_menu_entry, pass_word_quiz
+from txn import fake_txn
+from test_ux import word_menu_entry
+
+
+def truncate_seed_words(words):
+    if isinstance(words, str):
+        words = words.split(" ")
+    return ' '.join(w[0:4] for w in words)
 
 def seed_story_to_words(story: str):
     # filter those that starts with space, number and colon --> actual words
@@ -20,8 +25,8 @@ def seed_story_to_words(story: str):
     return words
 
 @pytest.fixture
-def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story):
-    def doit():
+def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story, nfc_read_text):
+    def doit(nfc=False):
         goto_home()
         pick_menu_item("Advanced/Tools")
         pick_menu_item("Danger Zone")
@@ -34,6 +39,15 @@ def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story):
         need_keypress('y')  # skip warning
         time.sleep(0.01)
         title, story = cap_story()
+        if nfc:
+            need_keypress("1")  # show QR code
+            time.sleep(.1)
+            need_keypress("3")  # any QR can be exported via NFC
+            time.sleep(.1)
+            str_words = nfc_read_text()
+            time.sleep(.1)
+            need_keypress("y")  # exit NFC animation
+            return str_words.split(" ")  # always truncated
         words = seed_story_to_words(story)
         return words
     return doit
@@ -70,7 +84,11 @@ def test_ephemeral_seed_generate(num_words, cap_menu, pick_menu_item, goto_home,
                                  reset_seed_words, get_seed_value_ux, get_identity_story, fake_txn, dev, try_sign, goto_eph_seed_menu, dice):
 
     reset_seed_words()
-    goto_eph_seed_menu()
+    try:
+        goto_eph_seed_menu()
+    except:
+        time.sleep(.1)
+        goto_eph_seed_menu()
 
     menu = cap_menu()
 
@@ -135,7 +153,7 @@ def test_ephemeral_seed_generate(num_words, cap_menu, pick_menu_item, goto_home,
 
 @pytest.mark.parametrize("num_words", [12, 18, 24])
 @pytest.mark.parametrize("nfc", [False, True])
-@pytest.mark.parametrize("truncated", [False,])     # needs libngu upgrade to bip39.py
+@pytest.mark.parametrize("truncated", [False, True])
 def test_ephemeral_seed_import(nfc, num_words, cap_menu, pick_menu_item, goto_home, cap_story,
             need_keypress, reset_seed_words, get_seed_value_ux, get_identity_story, fake_txn,
             dev, try_sign, goto_eph_seed_menu, word_menu_entry, nfc_write_text, truncated
@@ -150,7 +168,11 @@ def test_ephemeral_seed_import(nfc, num_words, cap_menu, pick_menu_item, goto_ho
     words, expect_xfp = wordlists[num_words]
 
     reset_seed_words()
-    goto_eph_seed_menu()
+    try:
+        goto_eph_seed_menu()
+    except:
+        time.sleep(.1)
+        goto_eph_seed_menu()
 
     menu = cap_menu()
 
@@ -170,9 +192,10 @@ def test_ephemeral_seed_import(nfc, num_words, cap_menu, pick_menu_item, goto_ho
         pick_menu_item('Import via NFC')
 
         if truncated:
-            words = ' '.join(w[0:4] for w in words.split())
-
-        nfc_write_text(words)
+            truncated_words = truncate_seed_words(words)
+            nfc_write_text(truncated_words)
+        else:
+            nfc_write_text(words)
 
     need_keypress("4")  # understand consequences
 
@@ -183,5 +206,31 @@ def test_ephemeral_seed_import(nfc, num_words, cap_menu, pick_menu_item, goto_ho
     assert "key in effect until next power down." in story
     need_keypress("y")  # just confirm new master key message
 
+    menu = cap_menu()
+    assert menu[0] == "Ready To Sign"  # returned to main menu
+    seed_words = get_seed_value_ux()
+    assert words == " ".join(seed_words)
+
+    ident_story = get_identity_story()
+    assert "Ephemeral seed is in effect" in ident_story
+
+    ident_xfp = ident_story.split("\n\n")[1].strip()
+    assert ident_xfp == in_effect_xfp
+
+    e_master_xpub = dev.send_recv(CCProtocolPacker.get_xpub(), timeout=5000)
+    assert e_master_xpub != simulator_fixed_xpub
+    psbt = fake_txn(2, 2, master_xpub=e_master_xpub, segwit_in=True)
+    try_sign(psbt, accept=True, finalize=True)  # MUST NOT raise
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Ephemeral Seed")
+    menu = cap_menu()
+
+    # ephemeral seed chosen -> [xfp] will be visible
+    assert len(menu) == 3
+    assert menu[0] == f"[{ident_xfp}]"
+
+    nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
+    assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
 
 # EOF
