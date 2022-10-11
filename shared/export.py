@@ -145,14 +145,17 @@ async def write_text_file(fname_pattern, body, title, total_parts=72):
 
     # choose a filename
     try:
+        dis.fullscreen("Saving...")
         with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
             with open(fname, 'wb') as fd:
-                for idx, part in enumerate(body):
-                    dis.progress_bar_show(idx / total_parts)
-                    fd.write(part.encode())
+                body_len = len(body)
+                chunk = body_len // 10
+                for idx, i in enumerate(range(0, body_len, chunk)):
+                    dis.progress_bar_show(idx / 10)
+                    fd.write(body[i:i+chunk])
 
     except CardMissingError:
         await needs_microsd()
@@ -183,11 +186,7 @@ async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.tx
 
     # make the data
     examples = []
-    imp_multi = []
-    imp_desc = []
-    for a,b in generate_bitcoin_core_wallet(account_num, examples):
-        imp_multi.append(a)
-        imp_desc.append(b)
+    imp_multi, imp_desc = generate_bitcoin_core_wallet(account_num, examples)
 
     imp_multi = ujson.dumps(imp_multi)
     imp_desc = ujson.dumps(imp_desc)
@@ -232,7 +231,7 @@ importmulti '{imp_multi}'
 def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
-    from descriptor import append_checksum
+    from descriptor import Descriptor
 
     from public_constants import AF_P2WPKH
 
@@ -252,43 +251,24 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
 
     xfp = settings.get('xfp')
     txt_xfp = xfp2str(xfp).lower()
+    _, vers, _ = version.get_mpy_version()
 
-    chain = chains.current_chain()
-
-    _,vers,_ = version.get_mpy_version()
-
-    for internal in [False, True]:
-        desc = "wpkh([{fingerprint}/{derive}]{xpub}/{change}/*)".format(
-            derive=derive.replace("'", "h"),
-            fingerprint=txt_xfp,
-            coin_type=chain.b44_cointype,
-            account=0,
-            xpub=xpub,
-            change=(1 if internal else 0) )
-
-        desc = append_checksum(desc)
-
-        # for importmulti
-        imm = {
-            'desc': desc,
+    desc_obj = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=AF_P2WPKH)
+    # for importmulti
+    imm_list = [
+        {
+            'desc': desc_obj.serialize(internal=internal),
             'range': [0, 1000],
             'timestamp': 'now',
             'internal': internal,
             'keypool': True,
             'watchonly': True
         }
-
-        # for importdescriptors
-        imd = {
-            'desc': desc,
-            'active': True,
-            'timestamp': 'now',
-            'internal': internal,
-        }
-        if not internal:
-            imd['label'] = "Coldcard " + txt_xfp
-
-        yield (imm, imd)
+        for internal in [False, True]
+    ]
+    # for importdescriptors
+    imd_list = desc_obj.bitcoin_core_serialize(external_label="Coldcard %s" % txt_xfp)
+    return imm_list, imd_list
 
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
@@ -352,6 +332,7 @@ def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
     from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH
     from public_constants import AF_P2SH
+    from descriptor import Descriptor, multisig_descriptor_template
 
     chain = chains.current_chain()
 
@@ -376,9 +357,14 @@ def generate_generic_export(account_num=0):
 
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
             node = sv.derive_path(dd)
+            master_xfp = settings.get("xfp")
             xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
+            if is_ms:
+                desc = multisig_descriptor_template(xp, dd, xfp2str(master_xfp), fmt)
+            else:
+                desc = Descriptor(keys=[( master_xfp, dd, xp )], addr_fmt=fmt).serialize(int_ext=True)
 
             rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, name=atype)
 
@@ -389,6 +375,8 @@ def generate_generic_export(account_num=0):
 
             if zp:
                 rv[name]['_pub'] = zp
+            if desc:
+                rv[name]["desc"] = desc
 
     return rv
 
@@ -486,6 +474,47 @@ async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
 
     msg = '''%s file written:\n\n%s''' % (label, nice)
     await ux_show_story(msg)
+
+
+async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True):
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    from descriptor import Descriptor
+    from glob import dis
+
+    dis.fullscreen('Generating...')
+    chain = chains.current_chain()
+
+    xfp = settings.get('xfp')
+
+    if mode is None:
+        if addr_type == AF_CLASSIC:
+            mode = 44
+        elif addr_type == AF_P2WPKH:
+            mode = 84
+        elif addr_type == AF_P2WPKH_P2SH:
+            mode = 49
+        else:
+            raise ValueError(addr_type)
+
+    derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
+                                    account=account_num, coin_type=chain.b44_cointype)
+
+    with stash.SensitiveValues() as sv:
+        xpub = chain.serialize_public(sv.derive_path(derive))
+
+    desc = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=addr_type)
+    if int_ext:
+        #  with <0;1> notation
+        body = desc.serialize(int_ext=True)
+    else:
+        # external descriptor
+        # internal descriptor
+        body = "%s\n%s" % (
+            desc.serialize(internal=False),
+            desc.serialize(internal=True),
+        )
+
+    await write_text_file(fname_pattern="descriptor.txt", body=body, title="Descriptor")
 
 # EOF
 
