@@ -82,6 +82,9 @@ def validate_address():
         elif addr[0:3] in { 'bc1', 'tb1' }:
             h20 = sk.hash160()
             assert addr == sw_encode(addr[0:2], 0, h20)
+        elif addr[0:5] == "bcrt1":
+            h20 = sk.hash160()
+            assert addr == sw_encode(addr[0:4], 0, h20)
         elif addr[0] in '23':
             h20 = hash160(b'\x00\x14' + sk.hash160())
             assert h20 == a2b_hashed_base58(addr)[1:]
@@ -93,11 +96,13 @@ def validate_address():
 def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
-    def doit(click_idx=None, expected_qty=250, way="sd"):
+    def doit(click_idx=None, expected_qty=250, way="sd", change=False):
         if click_idx is not None:
             goto_address_explorer(click_idx=click_idx)
         time.sleep(.3)
         title, story = cap_story()
+        if change:
+            need_keypress("6")
         if way == "sd":
             need_keypress('1')
         elif way == "vdisk":
@@ -174,6 +179,44 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
+@pytest.mark.parametrize("chain", ["BTC", "XRT", "XTN"])
+@pytest.mark.parametrize("change", [True, False])
+@pytest.mark.parametrize("option", [
+    ("Pre-mix", "2147483645'"),
+    # ("Bad Bank", "2147483644'"),  not released yet
+    ("Post-mix", "2147483646'")
+])
+def test_applications_samourai(chain, change, option, goto_address_explorer, cap_menu, pick_menu_item, validate_address,
+                               parse_display_screen, sim_execfile, settings_set, need_keypress, generate_addresses_file):
+    menu_option, account_num = option
+    if chain in ["XTN", "XRT"]:
+        coin_type = "1'"
+    else:
+        coin_type = "0'"
+    settings_set('chain', chain)
+    node_prv = BIP32Node.from_wallet_key(
+        sim_execfile('devtest/dump_private.py').strip()
+    )
+    goto_address_explorer(click_idx=3)  # "applications" at index 3
+    menu = cap_menu()
+    assert "Samourai" in menu
+    pick_menu_item("Samourai")
+    menu = cap_menu()
+    assert menu_option in menu
+    pick_menu_item(menu_option)
+    if change:
+        need_keypress("6")  # change (internal)
+    screen_addrs = parse_display_screen(0, 10)
+    file_addr_gen = generate_addresses_file(None)
+    for subpath, addr in screen_addrs.items():
+        f_subpath, f_addr = next(file_addr_gen)
+        assert f_subpath == subpath
+        assert f_addr == addr
+        assert subpath.startswith(f"m/84'/{coin_type}/{account_num}/{1 if change else 0}")
+        # derive the subkey and validate the corresponding address
+        sk = node_prv.subkey_for_path(subpath[2:])
+        validate_address(addr, sk)
+
 @pytest.mark.parametrize('press_seq, expected_start, expected_n', [
     (['9', '9', '9', '7', '7', '9'], 20, 10), # forward backward forward
     ([], 0, 10), # initial
@@ -203,15 +246,18 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             validate_address(given_addr, sk)
 
 @pytest.mark.parametrize('click_idx', range(3))
+@pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_dump_addresses(way, generate_addresses_file, mk_common_derivations, sim_execfile, validate_address, click_idx):
+def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivations, sim_execfile, validate_address,
+                        click_idx):
     # Validate  addresses dumped to text file
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
     # Generate the addresses file and get each line in a list
-    for subpath, addr in generate_addresses_file(click_idx, way=way):
+    for subpath, addr in generate_addresses_file(click_idx, way=way, change=change):
         # derive the subkey and validate the corresponding address
+        assert subpath.split("/")[-2] == "1" if change else "0"
         sk = node_prv.subkey_for_path(subpath[2:])
         validate_address(addr, sk)
 

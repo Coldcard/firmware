@@ -4,9 +4,9 @@
 #
 # Based on: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 #
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH
 
-FMT_TO_SCRIPT = {
+MULTI_FMT_TO_SCRIPT = {
     AF_P2SH: "sh(%s)",
     AF_P2WSH_P2SH: "sh(wsh(%s))",
     AF_P2WSH: "wsh(%s)",
@@ -14,7 +14,19 @@ FMT_TO_SCRIPT = {
     # hack for tests
     "p2sh": "sh(%s)",
     "p2sh-p2wsh": "sh(wsh(%s))",
+    "p2wsh-p2sh": "sh(wsh(%s))",
     "p2wsh": "wsh(%s)",
+}
+
+SINGLE_FMT_TO_SCRIPT = {
+    AF_P2WPKH: "wpkh(%s)",
+    AF_CLASSIC: "pkh(%s)",
+    AF_P2WPKH_P2SH: "sh(wpkh(%s))",
+    None: "wpkh(%s)",
+    "p2pkh": "pkh(%s)",
+    "p2wpkh": "wpkh(%s)",
+    "p2sh-p2wpkh": "sh(wpkh(%s))",
+    "p2wpkh-p2sh": "sh(wpkh(%s))",
 }
 
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
@@ -98,20 +110,28 @@ def parse_desc_str(string):
         res += strip_l
     return res
 
-class MultisigDescriptor:
-    # only supprt with key derivation info
-    # only xpubs
-    # can be extended when needed
+
+def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
+    key_exp = "[%s%s]%s/0/*" % (xfp.lower(), path.replace("m", ''), xpub)
+    if addr_fmt == AF_P2WSH_P2SH:
+        descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
+    elif addr_fmt == AF_P2WSH:
+        descriptor_template = "wsh(sortedmulti(M,%s,...))"
+    elif addr_fmt == AF_P2SH:
+        descriptor_template = "sh(sortedmulti(M,%s,...))"
+    else:
+        return None
+    descriptor_template = descriptor_template % key_exp
+    return descriptor_template
+
+
+class Descriptor:
     __slots__ = (
-        "M",
-        "N",
         "keys",
         "addr_fmt",
     )
 
-    def __init__(self, M, N, keys, addr_fmt):
-        self.M = M
-        self.N = N
+    def __init__(self, keys, addr_fmt):
         self.keys = keys
         self.addr_fmt = addr_fmt
 
@@ -159,6 +179,9 @@ class MultisigDescriptor:
             if deriv[0] == "m":
                 # get rid of 'm'
                 deriv = deriv[1:]
+            elif deriv[0] != "/":
+                # input "84'/0'/0'" would lack slash separtor with xfp
+                deriv = "/" + deriv
             koi = xfp2str(xfp) + deriv
             # normalize xpub to use h for hardened instead of '
             key_str = "[%s]%s" % (koi.lower(), xpub)
@@ -168,6 +191,98 @@ class MultisigDescriptor:
                 key_str = key_str + "/" + "/".join(["1", "*"] if internal else ["0", "*"])
             result.append(key_str.replace("'", "h"))
         return result
+
+    def _serialize(self, internal=False, int_ext=False) -> str:
+        """Serialize without checksum"""
+        assert len(self.keys) == 1, "Multiple keys for single signature script"
+        desc_base = SINGLE_FMT_TO_SCRIPT[self.addr_fmt]
+        inner = self.serialize_keys(internal=internal, int_ext=int_ext)[0]
+        return desc_base % (inner)
+
+    def serialize(self, internal=False, int_ext=False) -> str:
+        """Serialize with checksum"""
+        return append_checksum(self._serialize(internal=internal, int_ext=int_ext))
+
+    @classmethod
+    def parse(cls, desc_w_checksum: str) -> "Descriptor":
+        # remove garbage
+        desc_w_checksum = parse_desc_str(desc_w_checksum)
+        # check correct checksum
+        desc, checksum = cls.checksum_check(desc_w_checksum)
+        # legacy
+        if desc.startswith("pkh("):
+            addr_fmt = AF_CLASSIC
+            tmp_desc = desc.replace("pkh(", "")
+            tmp_desc = tmp_desc.rstrip(")")
+
+        # native segwit
+        elif desc.startswith("wpkh("):
+            addr_fmt = AF_P2WPKH
+            tmp_desc = desc.replace("wpkh(", "")
+            tmp_desc = tmp_desc.rstrip(")")
+
+        # wrapped segwit
+        elif desc.startswith("sh(wpkh("):
+            addr_fmt = AF_P2WPKH_P2SH
+            tmp_desc = desc.replace("sh(wpkh(", "")
+            tmp_desc = tmp_desc.rstrip("))")
+
+        else:
+            raise ValueError("Unsupported descriptor. Supported: pkh(, wpkh(, sh(wpkh(.")
+
+        koi, key = cls.parse_key_orig_info(tmp_desc)
+        if key[0:4] not in ["tpub", "xpub"]:
+            raise ValueError("Only extended public keys are supported")
+        xpub = cls.parse_key_derivation_info(key)
+        xfp = str2xfp(koi[:8])
+        origin_deriv = "m" + koi[8:]
+        return cls(keys=[(xfp, origin_deriv, xpub)], addr_fmt=addr_fmt)
+
+    @classmethod
+    def is_descriptor(cls, desc_str):
+        """Method to guess whether this can be a descriptor"""
+        temp = parse_desc_str(desc_str)
+        try:
+            desc, checksum = temp.split("#")
+        except:
+            return False
+        if desc[-1] == ")":
+            return True
+        return False
+
+    def bitcoin_core_serialize(self, external_label=None):
+        # this will become legacy one day
+        # instead use <0;1> descriptor format
+        res = []
+        for internal in [False, True]:
+            desc_obj = {
+                "desc": self.serialize(internal=internal),
+                "active": True,
+                "timestamp": "now",
+                "internal": internal,
+                "range": [0, 100],
+            }
+            if internal is False and external_label:
+                desc_obj["label"] = external_label
+            res.append(desc_obj)
+        return res
+
+
+class MultisigDescriptor(Descriptor):
+    # only supprt with key derivation info
+    # only xpubs
+    # can be extended when needed
+    __slots__ = (
+        "M",
+        "N",
+        "keys",
+        "addr_fmt",
+    )
+
+    def __init__(self, M, N, keys, addr_fmt):
+        self.M = M
+        self.N = N
+        super().__init__(keys, addr_fmt)
 
     @classmethod
     def parse(cls, desc_w_checksum: str) -> "MultisigDescriptor":
@@ -216,17 +331,16 @@ class MultisigDescriptor:
 
     def _serialize(self, internal=False, int_ext=False) -> str:
         """Serialize without checksum"""
-        desc_base = FMT_TO_SCRIPT[self.addr_fmt]
+        desc_base = MULTI_FMT_TO_SCRIPT[self.addr_fmt]
         desc_base = desc_base % ("sortedmulti(%s)")
         assert len(self.keys) == self.N, "invalid descriptor object"
         inner = str(self.M) + "," + ",".join(self.serialize_keys(internal=internal, int_ext=int_ext))
         return desc_base % (inner)
 
     def pretty_serialize(self) -> str:
-        """Serialize in pretty and human readable format"""
+        """Serialize in pretty and human-readable format"""
         res = "# Coldcard descriptor export\n"
         res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP67)\n"
-        desc_base = FMT_TO_SCRIPT[self.addr_fmt]
         if self.addr_fmt == AF_P2SH:
             res += "# bare multisig - p2sh\n"
             res += "sh(sortedmulti(\n%s\n))"
@@ -253,34 +367,5 @@ class MultisigDescriptor:
                 inner += "\t" + key_str + ",\n"
         checksum = self.serialize().split("#")[1]
         return res % (inner) + "#" + checksum
-
-    def serialize(self, internal=False, int_ext=False) -> str:
-        """Serialize with checksum"""
-        return append_checksum(self._serialize(internal=internal, int_ext=int_ext))
-
-    def bitcoin_core_serialize(self):
-        res = []
-        for internal in [True, False]:
-            desc_obj = {
-                "desc": self.serialize(internal=internal),
-                "active": True,
-                "timestamp": "now",
-                "internal": internal,
-                "range": [0, 100],
-            }
-            res.append(desc_obj)
-        return res
-
-    @classmethod
-    def is_descriptor(cls, desc_str):
-        """Method to guess whether this can be a descriptor"""
-        temp = parse_desc_str(desc_str)
-        try:
-            desc, checksum = temp.split("#")
-        except:
-            return False
-        if desc[-1] == ")":
-            return True
-        return False
 
 # EOF

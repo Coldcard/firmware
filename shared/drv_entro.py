@@ -7,7 +7,7 @@
 # wallet systems, which may expect seed phrases, XPRV, or other entropy.
 #
 import stash, seed, ngu, chains, bip39, version, glob
-from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
+from ux import ux_show_story, ux_enter_bip32_index, the_ux, ux_confirm, ux_dramatic_pause
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
@@ -112,7 +112,7 @@ async def drv_entro_step2(_1, picked, _2):
     if picked == 7:
         # Passwords
         msg = "Password Index?"
-    index = await ux_enter_number(msg, 9999)
+    index = await ux_enter_bip32_index(msg)
     if index is None:
         return
 
@@ -273,7 +273,7 @@ The password will be sent as keystrokes via USB to the host computer.''')
 
         while True:
             the_ux.pop()
-            index = await ux_enter_number("Password Index?", 9999, can_cancel=True)
+            index = await ux_enter_bip32_index("Password Index?", can_cancel=True)
             if index is None:
                 break
 

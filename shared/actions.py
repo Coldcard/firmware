@@ -6,7 +6,7 @@
 #
 import ckcc, pyb, version, uasyncio
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_number
+from ux import ux_enter_bip32_index
 from utils import imported, pretty_short_delay, problem_file_line
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError, needs_microsd
@@ -1028,7 +1028,7 @@ async def export_xpub(label, _2, item):
         ch = await ux_show_story(msg, escape='13')
         if ch == 'x': return
         if ch == '1':
-            acct = await ux_enter_number('Account Number:', 9999) or 0
+            acct = await ux_enter_bip32_index('Account Number:') or 0
             path = path.format(acct=acct)
             continue
 
@@ -1068,7 +1068,7 @@ async def electrum_skeleton(*a):
 
     account_num = 0
     if ch == '1':
-        account_num = await ux_enter_number('Account Number:', 9999) or 0
+        account_num = await ux_enter_bip32_index('Account Number:') or 0
     elif ch != 'y':
         return
 
@@ -1086,6 +1086,79 @@ async def electrum_skeleton(*a):
 
     return MenuSystem(rv)
 
+def ss_descriptor_export_story(addition="", background=None):
+    # saves memory being in a function
+    return ('''\
+This saves a ranged xpub descriptor\
+'''
+        + addition + (background or '. Choose descriptor and address type for the wallet on next screens.'+ PICK_ACCOUNT)
+        + SENSITIVE_NOT_SECRET)
+
+async def ss_descriptor_skeleton(label, _, item):
+    ch = await ux_show_story(ss_descriptor_export_story(), escape='1')
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
+    elif ch != 'y':
+        return
+    int_ext = True
+    ch = await ux_show_story("To export receiving and change descriptors in one descriptor (<0;1> notation) press OK"
+                             ", press (1) to export receiving and change descriptors separately.", escape='1')
+    if ch == "1":
+        int_ext = False
+    elif ch != "y":
+        return
+
+    # pick segwit or classic derivation+such
+    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+    from menu import MenuSystem, MenuItem
+
+    # Ordering and terminology from similar screen in Electrum. I prefer
+    # 'classic' instead of 'legacy' personallly.
+    rv = []
+
+    rv.append(MenuItem("Legacy (P2PKH)", f=descriptor_skeleton_step2, arg=(AF_CLASSIC, account_num, int_ext)))
+    rv.append(MenuItem("P2SH-Segwit", f=descriptor_skeleton_step2, arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
+    rv.append(MenuItem("Native Segwit", f=descriptor_skeleton_step2, arg=(AF_P2WPKH, account_num, int_ext)))
+
+    return MenuSystem(rv)
+
+async def samourai_post_mix_descriptor_export(*a):
+    name = "POST-MIX"
+    post_mix_acct_num = 2147483646
+    await samourai_account_descriptor(name, post_mix_acct_num)
+
+async def samourai_pre_mix_descriptor_export(*a):
+    name = "PRE-MIX"
+    pre_mix_acct_num = 2147483645
+    await samourai_account_descriptor(name, pre_mix_acct_num)
+
+# async def samourai_bad_bank_descriptor_export(*a):
+#     name = "PRE-MIX"
+#     pre_mix_acct_num = 2147483644
+#     await samourai_account_descriptor(name, pre_mix_acct_num)
+
+async def samourai_account_descriptor(name, account_num):
+    import export
+    from public_constants import AF_P2WPKH
+
+    ch = await ux_show_story(
+        ss_descriptor_export_story(
+            addition=" for Samourai %s account" % name,
+            background="\n"),
+        escape='1'
+    )
+    if ch != 'y':
+        return
+    await export.make_descriptor_wallet_export(AF_P2WPKH, account_num)
+
+async def descriptor_skeleton_step2(_1, _2, item):
+    # pick a semi-random file name, render and save it.
+    import export
+    addr_fmt, account_num, int_ext = item.arg
+    await export.make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext)
+
+
 async def bitcoin_core_skeleton(*A):
     # save output descriptors into a file
     # - user has no choice, it's going to be bech32 with  m/84'/{coin_type}'/0' path
@@ -1098,7 +1171,7 @@ without ever connecting this Coldcard to a computer.\
 
     account_num = 0
     if ch == '1':
-        account_num = await ux_enter_number('Account Number:', 9999) or 0
+        account_num = await ux_enter_bip32_index('Account Number:') or 0
     elif ch != 'y':
         return
 
@@ -1123,7 +1196,7 @@ Saves JSON file, with XPUB values that are needed to watch typical \
 single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
         return
 
-    account_num = await ux_enter_number('Account Number:', 9999) or 0
+    account_num = await ux_enter_bip32_index('Account Number:') or 0
 
     # no choices to be made, just do it.
     import export

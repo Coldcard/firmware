@@ -5,9 +5,9 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, ujson
 #from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_number
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
-from descriptor import MultisigDescriptor
+from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
@@ -1408,7 +1408,7 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
         force_vdisk = True
     if ch == 'x': return
 
-    acct_num = await ux_enter_number('Account Number:', 9999) or 0
+    acct_num = await ux_enter_bip32_index('Account Number:') or 0
 
     todo = [
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
@@ -1427,17 +1427,11 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
                 xp = chain.serialize_public(node, fmt)
                 fp.write('  "%s_deriv": "%s",\n' % (name, dd))
                 fp.write('  "%s": "%s",\n' % (name, xp))
-                key_exp = "[%s%s]%s/0/*" % (xfp.lower(), dd.replace("m", ''), chain.serialize_public(node))
-                if fmt == AF_P2WSH_P2SH:
-                    descriptor_template = "sh(wsh(sortedmulti(M,%s,...)))"
-                    descriptor_template = descriptor_template % (key_exp)
-                    fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
-                elif fmt == AF_P2WSH:
-                    descriptor_template = "wsh(sortedmulti(M,%s,...))"
-                    descriptor_template = descriptor_template % (key_exp)
-                    fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
-                else:
+                xpub = chain.serialize_public(node)
+                descriptor_template = multisig_descriptor_template(xpub, dd, xfp, fmt)
+                if descriptor_template is None:
                     continue
+                fp.write('  "%s_desc": "%s",\n' % (name, descriptor_template))
 
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)
@@ -1522,7 +1516,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
                     # sigh, OS/filesystem variations
                     file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
 
-                    if not (0 <= file_size <= 1000):
+                    if not (0 <= file_size <= 1100):
                         # out of range size
                         continue
 

@@ -8,8 +8,8 @@
 #
 import sys
 sys.path.append("../shared")
-from descriptor import MultisigDescriptor, append_checksum, FMT_TO_SCRIPT, parse_desc_str
-import time, pytest, os, random, json, shutil, pdb, io, base64
+from descriptor import MultisigDescriptor, append_checksum, MULTI_FMT_TO_SCRIPT, parse_desc_str
+import time, pytest, os, random, json, shutil, pdb, io
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
@@ -1281,11 +1281,11 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
-    open(f'debug/myself-before.psbt', 'w').write(base64.b64encode(psbt).decode())
+    open(f'debug/myself-before.psbt', 'w').write(b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
         _, updated = try_sign(psbt, accept_ms_import=(incl_xpubs and (idx==0)))
-        open(f'debug/myself-after.psbt', 'w').write(base64.b64encode(updated).decode())
+        open(f'debug/myself-after.psbt', 'w').write(b64encode(updated).decode())
         assert updated != psbt
 
         aft = BasicPSBT().parse(updated)
@@ -1979,15 +1979,15 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
 
     time.sleep(.5)
     title, story = cap_story()
-    assert "Press (5)" in story
+    assert "Press (6)" in story
     assert "change addresses." in story
     if change:
-        need_keypress("5")
+        need_keypress("6")
         time.sleep(0.2)
         title, story = cap_story()
         # once change is selected - do not offer this option again
         assert "change addresses." not in story
-        assert "Press (5)" not in story
+        assert "Press (6)" not in story
     # unwrap text a bit
     if change:
         story = story.replace("=>\n", "=> ").replace('1/0\n =>', "1/0 =>")
@@ -2108,7 +2108,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
         assert desc_import.split("#")[0] == normalized.split("#")[0].replace("0/*", "<0;1>/*")
     else:
         assert desc_import == normalized
-    starts_with = FMT_TO_SCRIPT[addr_fmt].split("%")[0]
+    starts_with = MULTI_FMT_TO_SCRIPT[addr_fmt].split("%")[0]
     assert normalized.startswith(starts_with)
     assert "sortedmulti(" in desc_export
 
@@ -2154,15 +2154,15 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     time.sleep(0.5)
     title, story = cap_story()
     assert "Press (1) to save to file on SD Card" in story
-    assert "Press (5)" in story
+    assert "Press (6)" in story
     assert "change addresses." in story
     if change:
-        need_keypress("5")
+        need_keypress("6")
         time.sleep(0.2)
         title, story = cap_story()
         # once change is selected - do not offer this option again
         assert "change addresses." not in story
-        assert "Press (5)" not in story
+        assert "Press (6)" not in story
     need_keypress("1")
     time.sleep(0.5)
     title, story = cap_story()
@@ -2192,10 +2192,10 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
         core_desc_object = json.loads(text)
 
     if change:
-        # in descriptor.py we always append internal descriptor first
-        desc_export = core_desc_object[0]["desc"]
-    else:
+        # in descriptor.py we always append external descriptor first
         desc_export = core_desc_object[1]["desc"]
+    else:
+        desc_export = core_desc_object[0]["desc"]
 
     if descriptor:
             assert "sortedmulti(" in desc_export
@@ -2211,9 +2211,9 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (15, 15)])
-@pytest.mark.parametrize("desc_type", ["p2wsh_desc", "p2sh_p2wsh_desc"])#, "p2sh_desc"]) reenable when changes from other PR merged
-def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
-                                cap_story, microsd_path, bitcoind_d_wallet_w_sk, use_regtest, bitcoind, clean_microsd):
+@pytest.mark.parametrize("desc_type", ["p2wsh_desc", "p2sh_p2wsh_desc", "p2sh_desc"])
+def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu, cap_story,
+                                microsd_path, use_regtest, bitcoind, clean_microsd):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
     use_regtest()
@@ -2294,7 +2294,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
         assert f"{M} signatures, from {N} possible" in story
     if desc_type == "p2wsh_desc":
         assert "P2WSH" in story
-    elif desc_type == "p2sh":
+    elif desc_type == "p2sh_desc":
         assert "P2SH" in story
     else:
         assert "P2SH-P2WSH" in story
@@ -2326,7 +2326,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
         assert obj["success"], obj
     if desc_type == "p2wsh_desc":
         addr_type = "bech32"
-    elif desc_type == "p2sh":
+    elif desc_type == "p2sh_desc":
         addr_type = "legacy"
     else:
         addr_type = "p2sh-segwit"
@@ -2340,7 +2340,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     mined = bitcoind_watch_only.generatetoaddress(101, multi_addr)
     assert isinstance(mined, list) and len(mined) == 101
     # create funded PSBT
-    psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20})
+    psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20, "change_type": addr_type})
     psbt = psbt_resp.get("psbt")
     # sign with all bitcoind signers
     for signer in bitcoind_signers:

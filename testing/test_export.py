@@ -4,11 +4,15 @@
 #
 # Start simulator with:   simulator.py --eff --set nfc=1
 #
+import sys
+sys.path.append("../shared")
+from descriptor import Descriptor
+from mnemonic import Mnemonic
 import pytest, time, os, json, io
 from pycoin.key.BIP32Node import BIP32Node
 from ckcc_protocol.constants import *
 from helpers import xfp2str, slip132undo
-from conftest import simulator_fixed_xfp, simulator_fixed_xprv
+from conftest import simulator_fixed_xfp, simulator_fixed_xprv, simulator_fixed_words
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH
 from pprint import pprint
 
@@ -214,7 +218,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
             pytest.skip("Vdisk disabled")
         else:
             need_keypress("2")
-        
+
     if way == "nfc":
         obj = wasabi_export
     else:
@@ -694,5 +698,176 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
         need_keypress('x')
 
+@pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
+@pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
+@pytest.mark.parametrize("int_ext", [True, False])
+def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress, pick_menu_item,
+                                   way, cap_story, cap_menu, nfc_read_text, microsd_path, settings_get, virtdisk_path,
+                                   int_ext):
+    settings_set('chain', chain)
+    chain_num = 1 if chain in ["XTN", "XRT"] else 0
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Descriptor")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "This saves a ranged xpub descriptor" in story
+    assert "Choose an address type for the wallet on the next screen" in story
+    assert "Press (1) to enter a non-zero account number" in story
+    assert "sensitive--in terms of privacy" in story
+    assert "not compromise your funds directly" in story
+
+    if isinstance(acct_num, int):
+        need_keypress("1")        # chosse account number
+        for ch in str(acct_num):
+            need_keypress(ch)     # input num
+        need_keypress("y")        # confirm selection
+    else:
+        need_keypress("y")  # confirm story
+
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK" in story
+    assert "press (1) to export receiving and change descriptors separately" in story
+    if int_ext:
+        need_keypress("y")
+    else:
+        need_keypress("1")
+
+    menu = cap_menu()
+    if addr_fmt == AF_P2WPKH:
+        menu_item = "Native Segwit"
+        desc_prefix = "wpkh("
+        bip44_purpose = 84
+    elif addr_fmt == AF_P2WPKH_P2SH:
+        menu_item = "P2SH-Segwit"
+        desc_prefix = "sh(wpkh("
+        bip44_purpose = 49
+    else:
+        # addr_fmt == AF_CLASSIC:
+        menu_item = "Legacy (P2PKH)"
+        desc_prefix = "pkh("
+        bip44_purpose = 44
+
+    assert menu_item in menu
+    pick_menu_item(menu_item)
+
+    time.sleep(0.1)
+    title, story = cap_story()
+    if way == "sd":
+        if "Press (1) to save Descriptor file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            descriptor = nfc_read_text()
+            descriptor = descriptor.strip()
+            time.sleep(.2)
+            nfc_desc_again = nfc_read_text()
+            if descriptor != nfc_desc_again:
+                # getting old data?
+                descriptor = nfc_desc_again
+            need_keypress("y")  # escape NFC animation
+    else:
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+
+    if way != "nfc":
+        time.sleep(0.2)
+        _, story = cap_story()
+        assert 'Descriptor file written' in story
+        fname = story.split('\n')[-1]
+        need_keypress('y')
+        if way == "vdisk":
+            path = virtdisk_path(fname)
+        else:
+            path = microsd_path(fname)
+        with open(path, 'rt') as f:
+            descriptor = f.read().strip()
+
+    if int_ext is False:
+        descriptor = descriptor.split("\n")[0]  # external
+    assert descriptor.startswith(desc_prefix)
+    desc_obj = Descriptor.parse(descriptor)
+    assert desc_obj.serialize(int_ext=int_ext) == descriptor
+    assert desc_obj.addr_fmt == addr_fmt
+    assert len(desc_obj.keys) == 1
+    xfp, derive, xpub = desc_obj.keys[0]
+    assert xfp == settings_get("xfp")
+    assert derive == f"m/{bip44_purpose}h/{chain_num}h/{acct_num if acct_num is not None else 0}h"
+    seed = Mnemonic.to_seed(simulator_fixed_words)
+    node = BIP32Node.from_master_secret(
+        seed, netcode="BTC" if chain == "BTC" else "XTN"
+    ).subkey_for_path(derive[2:].replace("h", "H"))
+    xpub_target = node.hwif()
+    assert xpub_target in xpub
+
+
+@pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
+@pytest.mark.parametrize("account", ["Postmix", "Premix"])
+def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_home, need_keypress, cap_story,
+                             microsd_path, nfc_read_text):
+    if account == "Postmix":
+        acct_num = 2147483646
+        in_story = "Samourai POST-MIX"
+    else:
+        acct_num = 2147483645
+        in_story = "Samourai PRE-MIX"
+
+    settings_set('chain', chain)
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Descriptor")
+
+    need_keypress("1")
+    for ch in str(acct_num):
+        need_keypress(ch)
+    need_keypress("y")
+    need_keypress("y")  # int_ext <0;1>
+    pick_menu_item("Native Segwit")  #  both postmix and premix are p2wpkh only
+    time.sleep(0.1)
+    _, story = cap_story()
+    if "Press (1) to save Descriptor file to SD Card" in story:
+        need_keypress("1")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Descriptor file written:"
+    fname = story.split("\n\n")[1]
+    with open(microsd_path(fname)) as f:
+        file_desc_generic = f.read().strip()
+    need_keypress("y")  # file exported
+    need_keypress("x")  # go back to advanced
+    pick_menu_item("Export Wallet")
+    pick_menu_item(f"Samourai {account}")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "This saves a ranged xpub descriptor" in story
+    assert in_story in story
+    assert "Choose an address type for the wallet on the next screen" not in story  # NOT
+    assert "Press 1 to enter a non-zero account number" not in story  # NOT
+    assert "sensitive--in terms of privacy" in story
+    assert "not compromise your funds directly" in story
+    need_keypress("y")
+    time.sleep(.5)
+    _, story = cap_story()
+    if "Press (1) to save Descriptor file to SD Card" in story:
+        need_keypress("1")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Descriptor file written:"
+    fname = story.split("\n\n")[1]
+    with open(microsd_path(fname)) as f:
+        file_desc = f.read().strip()
+    assert file_desc == file_desc_generic
 
 # EOF

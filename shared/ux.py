@@ -363,6 +363,13 @@ async def show_qr_code(data, is_alnum):
     o = QRDisplaySingle([data], is_alnum)
     await o.interact_bare()
 
+async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
+    if unlimited:
+        max_value = (2 ** 31) - 1  # we handle hardened
+    else:
+        max_value = 9999
+    return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
+
 async def ux_enter_number(prompt, max_value, can_cancel=False):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero

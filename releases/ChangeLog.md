@@ -1,9 +1,17 @@
-## 5.0.8 - 2022-11-??
+## 5.0.8 - 2022-12-??
+
 - Enhancement: Add ability to import multisig wallet via Virtual Disk
 - Enhancement: Add ability to import extended private key via Virtual Disk and via NFC
-- Enhancement: Offer import/export from/to Virtual Disk in UI
+- Enhancement: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted
 - Enhancement: Ability to import seed in compact/truncated form (max 4 letters of each word)
-- Enhancement: Add 'rolls12.py' script for verifying dice rolls math for 12 word seeds
+- Enhancement: Add `rolls12.py` script for verifying dice rolls math for 12 word seeds
+- Enhancement: Application specific addresses/derivation paths in `Address Explorer -> Applications`
+- Enhancement: Single signature wallet generic descriptor export `Advanced/Tools -> Export Wallet -> Descriptor`.
+  Both new format with internal/external in one descriptor `<0;1>` and standard with two descriptors exported 
+  are supported.
+- Enhancement: Samourai POST-MIX and PRE-MIX descriptor export options added to `Export Wallet`
+- Enhancement: Add ability to export all supported wallets via NFC
+- Bugfix: Change value was ignored when generating addresses file from address explorer - fixed
 - Bugfix: allow export of Wasabi skeleton for Bitcoin Regtest
 
 ## 5.0.7 - 2022-10-05

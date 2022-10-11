@@ -5,9 +5,8 @@
 # Address Explorer menu functionality
 #
 import chains, stash
-from ux import ux_show_story, the_ux, ux_confirm, ux_enter_number
-from actions import goto_top_menu
-from menu import MenuSystem, MenuItem, start_chooser
+from ux import ux_show_story, the_ux, ux_enter_bip32_index
+from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
@@ -88,7 +87,7 @@ class KeypathMenu(MenuSystem):
         val = item.arg or item.label
         assert val.endswith('/..')
         cpath = val[:-3]
-        nl = await ux_enter_number('%s/' % cpath, 0x7fffffff)
+        nl = await ux_enter_bip32_index('%s/' % cpath, unlimited=True)
         return KeypathMenu(cpath, nl)
 
 class PickAddrFmtMenu(MenuSystem):
@@ -109,6 +108,32 @@ class PickAddrFmtMenu(MenuSystem):
         the_ux.pop()
         await self.parent.got_custom_path(*item.arg)
 
+
+class ApplicationsMenu(MenuSystem):
+    def __init__(self, parent):
+        self.parent = parent
+        items = [
+            MenuItem("Samourai", menu=SamouraiAppMenu(self)),
+        ]
+        super().__init__(items)
+
+
+class SamouraiAppMenu(MenuSystem):
+    def __init__(self, parent):
+        self.parent = parent
+        chain = chains.current_chain()
+        hardened_chain = str(chain.b44_cointype) + "'"
+        items = [
+            MenuItem("Post-mix", f=self.done, arg=("m/84'/" + hardened_chain + "/2147483646'/{change}/{idx}", AF_P2WPKH)),
+            MenuItem("Pre-mix", f=self.done, arg=("m/84'/" + hardened_chain + "/2147483645'/{change}/{idx}", AF_P2WPKH)),
+            # MenuItem("Bad Bank", f=self.done, arg=("m/84'/" + hardened_chain + "/2147483644'/{change}/{idx}", AF_P2WPKH)),  not released yet
+        ]
+        super().__init__(items)
+
+    def done(self, _1, _2, item):
+        path = item.arg[0]
+        addr_fmt = item.arg[1]
+        await self.parent.parent.show_n_addresses(path, addr_fmt, None, n=10, allow_change=True)
 
 class AddressListMenu(MenuSystem):
 
@@ -150,6 +175,7 @@ class AddressListMenu(MenuSystem):
 
         # some other choices
         if self.account_num == 0:
+            items.append(MenuItem("Applications", menu=ApplicationsMenu(self)))
             items.append(MenuItem("Account Number", f=self.change_account))
             items.append(MenuItem("Custom Path", menu=self.make_custom))
 
@@ -165,7 +191,7 @@ class AddressListMenu(MenuSystem):
         self.replace_items(items)
 
     async def change_account(self, *a):
-        self.account_num = await ux_enter_number('Account Number:', 9999) or 0
+        self.account_num = await ux_enter_bip32_index('Account Number:') or 0
         await self.render()
 
     async def pick_single(self, _1, menu_idx, item):
@@ -218,7 +244,7 @@ Press (3) if you really understand and accept these risks.
                     if VD:
                         msg += " Press (4) to save to file on Virtual Disk."
                     if allow_change and change == 0:
-                        msg += " Press (5) to show change addresses."
+                        msg += " Press (6) to show change addresses."  # 5 is needed to move up
                     msg += '\n\n'
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
@@ -232,7 +258,7 @@ Press (3) if you really understand and accept these risks.
                 if VD:
                     msg += " Press (4) to save to file on Virtual Disk."
                 if allow_change and change == 0:
-                    msg += " Press (5) to show change address."
+                    msg += " Press (6) to show change address."  # 5 is needed to move up
                 msg += '\n\n'
 
             addrs = []
@@ -281,7 +307,7 @@ Press (3) if you really understand and accept these risks.
         msg, addrs = make_msg()
         change = 0
         while 1:
-            ch = await ux_show_story(msg, escape='1234579')
+            ch = await ux_show_story(msg, escape='1234679')
 
             if ch == 'x':
                 return
@@ -315,7 +341,7 @@ Press (3) if you really understand and accept these risks.
                     await NFC.share_deposit_address(addrs[0])
                 continue
 
-            elif ch == '5' and allow_change:
+            elif ch == '6' and allow_change:
                 change = 1
 
             elif ch == '7' and start>0:
@@ -354,7 +380,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
 
     with stash.SensitiveValues() as sv:
         for idx in range(start, start+n):
-            deriv = path.format(account=account_num, change=0, idx=idx)
+            deriv = path.format(account=account_num, change=change, idx=idx)
             node = sv.derive_path(deriv, register=False)
 
             yield '%d,"%s","%s"\n' % (idx, ch.address(node, addr_fmt), deriv)
