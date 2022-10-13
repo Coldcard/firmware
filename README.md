@@ -28,6 +28,7 @@ has been automated using Docker. Steps are as follows:
 
 4. At the end of the process a clear confirmation message is shown, or the differences.
 5. Build products can be found `firmware/stm32/built`.
+6. If you do not trust the results of `make repro` refer to `docs/notes-on-repro.md` which breaks down the process.
 
 ## Check-out and Setup
 
