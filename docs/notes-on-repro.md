@@ -1,6 +1,6 @@
 # Notes on Reproducible Builds
 
-The following document aims to breakdown how reproducibility is verified in `make repro` build process.
+The following document aims to breakdown how reproducibility is verified in the `make repro` build step.
 
 ## stm32/shared.mk
 
@@ -23,7 +23,10 @@ Below are interesting sections from the docker logs that give an idea as to what
 + mount -t tmpfs tmpfs /tmp/checkout
 
 ...
+```
+We will pull the release from coldcard.com into the `/tmp/checkout` directory.
 
+```
 + git clone /work/src/.git firmware
 
 ...
@@ -128,7 +131,7 @@ signit check firmware-signed.bin
           future: 0000000000000000 ... 0000000000000000
        signature: deb643d0a140d89e ... c544f09cd80fa65c
 sha256^2: a46ddd6e599a49a573bf76054f438c9efe1ee031bfae74a00b0e7bbe76f516c3
- ECDSA Signature: CORRECT
+ECDSA Signature: CORRECT
 hexdump -C firmware-signed.bin | sed -e 's/^00003f[89abcdef]0 .*/(firmware signature here)/' > repro-got.txt
 hexdump -C check-fw.bin | sed -e 's/^00003f[89abcdef]0 .*/(firmware signature here)/' > repro-want.txt
 diff repro-got.txt repro-want.txt
@@ -170,11 +173,18 @@ endif
 
 To summarize `check-repro`:
 
-- At the final `check-repro` step, we have a locally built `firmware-signed.bin` and we want to check that it matches 
-the binary release provided by Coldcard.
+- At the final `check-repro` step, we have a locally built `firmware-signed.bin` and we want to check that it matches the binary release provided by Coinkite.
+
+- This step verifies the signature of the binary is valid, using either the Coinkite key factory key or the "debug" key zero which is public.
+
 - An identical checksum match will not be possible as is, since there is signature data embedded into into the binary, which must be removed.
+
 - The specific release of the version that is being built is fetched, and placed it under /tmp/checkout/firmware/releases/*.dfu
-- `split` (cli/signit.py: Line 153-175) is run against the release `*.dfu` resulting in a `check-fw.bin` and `check-bootrom.bin`
+
+- `split` (cli/signit.py: Line 153-175) is run against the release `*.dfu` resulting in a `check-fw.bin` and `check-bootrom.bin`. "This splits the DFU file into the two parts it contains: the main firmware (COLDCARD application) and the boot loader code."
+
 - `check` (cli/signit.py: Line 176-241) is run against each the release `check-fw.bin` and our built `firmware-signed.bin`.
-- a hexdump is taken of each the release `check-fw.bin` and our built `firmware-signed.bin` piped through $TRIM_SIG which removes the signature bytes and subsitutes it with a common string.
+
+- a hexdump is taken of each the release `check-fw.bin` and our built `firmware-signed.bin` piped through $TRIM_SIG which removes 64 bytes of signature data and subsitutes it with a common string.
+
 - Finally the diff of the two hexdumps are compared to prove reproducibility.
