@@ -886,10 +886,10 @@ class HSMPolicy:
 
                 # reject anything with warning, probably
                 if psbt.warnings:
-                    if self.warnings_ok:
-                        log.info("Txn has warnings, but policy is to accept anyway.")
-                    else:
-                        raise ValueError("has %d warning(s)" % len(psbt.warnings))
+                    # if self.warnings_ok:
+                    log.info("Txn has warnings, but policy is to accept anyway.")
+                    # else:
+                    #     raise ValueError("has %d warning(s)" % len(psbt.warnings))
 
                 # See who has entered creditials already (all must be valid).
                 users = []

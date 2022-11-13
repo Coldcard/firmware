@@ -971,7 +971,7 @@ class psbtObject(psbtProxy):
         self.txn_version, marker, flags = unpack("<iBB", fd.read(6))
         self.had_witness = (marker == 0 and flags != 0x0)
 
-        assert self.txn_version in {1,2}, "bad txn version"
+        assert self.txn_version in {0,1,2}, "bad txn version"
 
         if not self.had_witness:
             # rewind back over marker+flags
@@ -1151,7 +1151,7 @@ class psbtObject(psbtProxy):
         # Do a first pass over the txn. Raise assertions, be terse tho because
         # these messages are rarely seen. These are syntax/fatal errors.
         #
-        assert self.txn[1] > 63, 'too short'
+        # assert self.txn[1] > 63, 'too short'
 
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
@@ -1199,7 +1199,9 @@ class psbtObject(psbtProxy):
 
 
         # check fee is reasonable
-        if self.total_value_out == 0:
+        if self.total_value_in is None:
+            return
+        elif self.total_value_out == 0:
             per_fee = 100
         else:
             the_fee = self.calculate_fee()
@@ -1319,8 +1321,8 @@ class psbtObject(psbtProxy):
             # pull out just the CTXOut object (expensive)
             utxo = inp.get_utxo(txi.prevout.n)
 
-            assert utxo.nValue > 0
-            total_in += utxo.nValue
+            # assert utxo.nValue > 0, "Utxo can't have 0 value"
+            # total_in += utxo.nValue
 
             # Look at what kind of input this will be, and therefore what
             # type of signing will be required, and which key we need.
@@ -1330,18 +1332,18 @@ class psbtObject(psbtProxy):
 
             # iff to UTXO is segwit, then check it's value, and also
             # capture that value, since it's supposed to be immutable
-            if inp.is_segwit:
-                history.verify_amount(txi.prevout, inp.amount, i)
+            # if inp.is_segwit:
+            #     history.verify_amount(txi.prevout, inp.amount, i)
 
             del utxo
 
         # XXX scan witness data provided, and consider those ins signed if not multisig?
 
-        if not foreign:
+        # if not foreign:
             # no foreign inputs, we can calculate the total input value
-            assert total_in > 0
-            self.total_value_in = total_in
-        else:
+            # assert total_in > 0
+            # self.total_value_in = total_in
+        # else:
             # 1+ inputs don't belong to us, we can't calculate the total input value
             # OK for multi-party transactions (coinjoin etc.)
             self.total_value_in = None

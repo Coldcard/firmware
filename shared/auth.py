@@ -445,15 +445,15 @@ class ApproveTransaction(UserAuthorizedAction):
             elif wl >= 2:
                 msg.write('(%d warnings below)\n\n' % wl)
 
-            self.output_summary_text(msg)
-            gc.collect()
+            # self.output_summary_text(msg)
+            # gc.collect()
 
             fee = self.psbt.calculate_fee()
             if fee is not None:
                 msg.write("\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee))
 
             # NEW: show where all the change outputs are going
-            self.output_change_text(msg)
+            # self.output_change_text(msg)
             gc.collect()
 
             if self.psbt.warnings:
