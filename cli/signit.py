@@ -289,9 +289,9 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
 
     body_len = align_to(len(body), 512)
 
-    if (not resign_file) and (hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK)):
-        # bugfix: at least 128 bytes needed past last page boundary of flash during upgrade
-        if 4096 - (body_len % 4096) <= 128:
+    if hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK):
+        # bugfix: size must be non-page aligned, so extra bytes are erased past end
+        if (body_len % 4096) == 0:
             body_len += 512
 
     assert body_len % 512 == 0, body_len
@@ -300,10 +300,6 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     vectors = pad_to(vectors, FW_HEADER_OFFSET)
     body = pad_to(body, body_len)
     version = pad_to(version.encode('ascii'), 8, b'\0')
-
-    # check we will have space for trailing file header
-    if hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK):
-        assert body.endswith(b'\xff'*128), 'needs 128+ padding?'
 
     hdr = header(   magic_value=FW_HEADER_MAGIC,
                     version_string=version,
