@@ -21,6 +21,8 @@ DEBUG_BUILD ?= 0
 # aka ../cli/signit.py
 SIGNIT = signit
 
+PROD_KEYNUM = -k 1
+
 BUILD_DIR = l-port/build-$(BOARD)
 MAKE_ARGS = BOARD=$(BOARD) -j 4 EXCLUDE_NGU_TESTS=1 DEBUG_BUILD=$(DEBUG_BUILD)
 
@@ -58,7 +60,7 @@ dfu: firmware-signed.dfu
 .PHONY: dev.dfu
 dev.dfu: $(BUILD_DIR)/firmware0.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
-	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) -k 1 -o dev.bin
+	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) $(PROD_KEYNUM) -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
 
 .PHONY: relink
@@ -78,7 +80,7 @@ $(BOARD)/file_time.c: make_filetime.py version.mk
 # - when executed in a repro w/o the required key, it defaults to key zero
 # - and that's what happens inside the Docker build
 production.bin: firmware-signed.bin Makefile
-	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r firmware-signed.bin -k 1 -o $@
+	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r firmware-signed.bin $(PROD_KEYNUM) -o $@
 
 SUBMAKE = $(MAKE) -f MK$(MK_NUM)-Makefile
 
@@ -95,7 +97,7 @@ release: code-committed
 rc1: 
 	$(SUBMAKE) clean 		# critical, or else you get a mix of debug/not
 	$(SUBMAKE) DEBUG_BUILD=0 all
-	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) -k 1 -o rc1.bin
+	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		`signit version rc1.bin`-mk$(MK_NUM)-RC1-coldcard.dfu
@@ -110,7 +112,7 @@ release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c $(BOARD)/file_time.c
 	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
-	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r built/production.bin -k 1 -o built/production.bin
+	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		$(RELEASE_FNAME)

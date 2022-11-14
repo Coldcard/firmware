@@ -288,6 +288,12 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
     assert len(body) >= FW_MIN_LENGTH, "main firmware is too small: %d" % len(body)
 
     body_len = align_to(len(body), 512)
+
+    if hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK):
+        # bugfix: size must be non-page aligned, so extra bytes are erased past end
+        if (body_len % 4096) == 0:
+            body_len += 512
+
     assert body_len % 512 == 0, body_len
 
     # pad out 
