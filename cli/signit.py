@@ -302,7 +302,7 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
     version = pad_to(version.encode('ascii'), 8, b'\0')
 
     # check we will have space for trailing file header
-    if and hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK):
+    if hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK):
         assert body.endswith(b'\xff'*128), 'needs 128+ padding?'
 
     hdr = header(   magic_value=FW_HEADER_MAGIC,
