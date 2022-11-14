@@ -288,6 +288,13 @@ def doit(keydir, outfn=None, build_dir='l-port/build-COLDCARD', high_water=False
         hw_compat = CURRENT_HARDWARE
 
     body_len = align_to(len(body), 512)
+
+    if hw_compat & (MK_1_OK | MK_2_OK | MK_3_OK):
+        # bugfix: at least 128 bytes needed past last page boundary of flash during upgrade
+        if (body_len % 4096) <= 128:
+            body_len += 512
+        assert body_len > len(body) + 128, body_len
+
     assert body_len % 512 == 0, body_len
 
     # pad out 
