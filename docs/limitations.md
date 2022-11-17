@@ -1,8 +1,8 @@
 # BIP39 Import
 
-- there must be 12, 16 or 24 words in your mnemonic
+- there must be 12, 18 or 24 words in your mnemonic
 - we have only the English word list
-- ~~we do not support BIP39 passwords during import~~ (full support added in version 2.0.0)
+- we support BIP39 passwords during import
 
 # XPRV Import
 
@@ -81,7 +81,7 @@
 - we do not support U2F protocol, WebUSB or any other means for random websites to talk to us
 - only native desktop/mobile apps, or helpers for those, will be able to talk USB to Coldcard
 
-# Policy Stuff
+# Fee Limits / Warnings
 
 - Coldcard will, by default, reject any txn that pays a fee of more than 10% of its total
   value to miners. This limit is a setting: 10% (default), 25%, 50% or 'no limit'.
