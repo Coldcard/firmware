@@ -749,7 +749,7 @@ class MultisigWallet:
 
         try:
             # Note: addr fmt detected here via SLIP-132 isn't useful
-            node, chain, _ = import_xpub(xpub)
+            node, chain, _ = parse_extended_key(xpub)
         except:
             raise AssertionError('unable to parse xpub')
 
@@ -854,7 +854,7 @@ class MultisigWallet:
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
-        from glob import NFC
+        from glob import NFC, VD
 
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
@@ -863,23 +863,33 @@ class MultisigWallet:
             fname_pattern = self.make_fname('export')
         hdr = '%s %s' % (mode, my_xfp)
 
-        if NFC:
-            # Offer to share over NFC regardless of if card inserted, virtdisk active, etc.
-            ch = await ux_show_story('''Press (3) to share file over NFC. \
-Otherwise, OK to proceed normally.''', escape='3')
-            if ch == '3':
+        force_vdisk = False
+        if NFC or VD:
+            prompt = "Press (1) to export multisig wallet file to SD Card"
+            escape = "1"
+            if VD is not None:
+                prompt += ", press (2) to export to Virtual Disk"
+                escape += "2"
+            if NFC:
+                prompt += ", press (3) to share via NFC"
+                escape += "3"
+            prompt += "."
+            ch = await ux_show_story(prompt, escape=escape)
+            if ch == "3":
                 with uio.StringIO() as fp:
                     self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
                                        core=core, desc_pretty=desc_pretty)
                     await NFC.share_text(fp.getvalue())
-
                 return
-
-            if ch != 'y':
+            elif ch == "1":
+                force_vdisk = False
+            elif ch == "2":
+                force_vdisk = True
+            else:
                 return
 
         try:
-            with CardSlot() as card:
+            with CardSlot(force_vdisk=force_vdisk) as card:
                 fname, nice = card.pick_filename(fname_pattern)
 
                 # do actual write
@@ -1177,7 +1187,7 @@ not be accepted by network.
 
 This settings lasts only until power down.
 
-Press 4 to confirm entering this DANGEROUS mode. 
+Press (4) to confirm entering this DANGEROUS mode. 
 ''', escape='4')
 
         if ch != '4': return
@@ -1322,7 +1332,7 @@ async def ms_wallet_show_descriptor(menu, label, item):
     ms = item.arg
     desc = ms.to_descriptor()
     desc_str = desc.serialize()
-    ch = await ux_show_story("Press 1 to export in pretty human readable format.\n\n" + desc_str, escape="1")
+    ch = await ux_show_story("Press (1) to export in pretty human readable format.\n\n" + desc_str, escape="1")
     if ch == "1":
         await ms.export_wallet_file(descriptor=True, desc_pretty=True)
 
@@ -1366,7 +1376,7 @@ async def export_multisig_xpubs(*a):
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
     # - however some 3rd parties are making use of it as well.
     #
-    from glob import NFC
+    from glob import NFC, VD
 
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
@@ -1387,10 +1397,15 @@ P2WSH:
 
 OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
 
+    if VD:
+        msg += " Press (2) to save to Virtual Disk."
     if NFC:
-        msg += ' Press 3 to share over NFC.'
+        msg += ' Press (3) to share via NFC.'
 
-    ch = await ux_show_story(msg, escape='3')
+    force_vdisk = False
+    ch = await ux_show_story(msg, escape='23')
+    if ch == "2":
+        force_vdisk = True
     if ch == 'x': return
 
     acct_num = await ux_enter_number('Account Number:', 9999) or 0
@@ -1434,7 +1449,7 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
         return
 
     try:
-        with CardSlot() as card:
+        with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
             # do actual write: manual JSON here so more human-readable.
             with open(fname, 'wt') as fp:
@@ -1450,29 +1465,30 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
     msg = '''Multisig XPUB file written:\n\n%s''' % nice
     await ux_show_story(msg)
 
-def import_xpub(ln):
+def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
     # - can handle any garbage line
     # - returns (node, chain, addr_fmt)
     # - people are using SLIP132 so we need this
-    import chains, ure
+    ln = ln.strip()
+    node, chain, addr_fmt = None, None, None
+    if private:
+        rgx = r'.prv[A-Za-z0-9]+'
+    else:
+        rgx = r'.pub[A-Za-z0-9]+'
 
-    pat = ure.compile(r'.pub[A-Za-z0-9]+')
-
+    pat = ure.compile(rgx)
     found = pat.search(ln)
-    if not found:
-        return None
-
     # serialize, and note version code
     try:
-        node, chain, addr_fmt, _ = chains.slip32_deserialize(found.group(0))
+        node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
     except:
-        return None
+        pass
 
-    return (node, chain, addr_fmt)
+    return node, chain, addr_fmt
 
-async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
-    # collect all xpub- exports on current SD card (must be > 1) to make "air gapped" wallet
+async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=False):
+    # collect all xpub- exports on current SD card (must be >= 1) to make "air gapped" wallet
     # - ask for M value 
     # - create wallet, save and also export 
     # - also create electrum skel to go with that
@@ -1489,7 +1505,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH):
     has_mine = 0
     deriv = None
     try:
-        with CardSlot() as card:
+        with CardSlot(force_vdisk=force_vdisk) as card:
             for path in card.get_paths():
                 for fn, ftype, *var in uos.ilistdir(path):
                     if ftype == 0x4000:
@@ -1620,7 +1636,7 @@ async def create_ms_step1(*a):
     # Show story, have them pick address format.
 
     ch = await ux_show_story('''\
-Insert SD card with exported XPUB files from at least one other \
+Insert SD card (or eject SD card to use Virtual Disk) with exported XPUB files from at least one other \
 Coldcard. A multisig wallet will be constructed using those keys and \
 this device.
 
@@ -1647,7 +1663,23 @@ async def import_multisig_nfc(*a):
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file
     from actions import file_picker
+    from glob import VD
 
+    force_vdisk = False
+    if VD:
+        prompt = "Press (1) to import multisig wallet file from SD Card"
+        escape = "1"
+        if VD is not None:
+            prompt += ", press (2) to import from Virtual Disk"
+            escape += "2"
+        prompt += "."
+        ch = await ux_show_story(prompt, escape=escape)
+        if ch == "1":
+            force_vdisk=False
+        elif ch == "2":
+            force_vdisk = True
+        else:
+            return
 
     def possible(filename):
         with open(filename, 'rt') as fd:
@@ -1658,12 +1690,12 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt',
-                                    min_size=100, max_size=20*200, taster=possible)
+    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt', min_size=100,
+                           max_size=20*200, taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 
     try:
-        with CardSlot() as card:
+        with CardSlot(force_vdisk=force_vdisk) as card:
             with open(fn, 'rt') as fp:
                 data = fp.read()
     except CardMissingError:

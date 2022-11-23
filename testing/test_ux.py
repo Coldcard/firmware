@@ -269,7 +269,7 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
 
     v = get_secrets()
 
-    assert 'Press 3 to show QR code' in body
+    assert 'Press (3) to show QR code' in body
     need_keypress('3')
     qr = cap_screen_qr().decode('ascii')
     assert qr == v['xpub']
@@ -362,7 +362,7 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
 
     assert f'Record these {nwords}' in body
 
-    assert '1 to view as QR Code' in body
+    assert '(1) to view as QR Code' in body
     words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
     need_keypress('1')
     qr = cap_screen_qr()
@@ -425,28 +425,55 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress,
 
 
 @pytest.mark.parametrize('multiple_runs', range(3))
-def test_import_prv(goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, microsd_path, multiple_runs, reset_seed_words):
-    
+@pytest.mark.parametrize('nfc', [True, False])
+@pytest.mark.parametrize('testnet', [True, False])
+def test_import_prv(nfc, testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets,
+                    microsd_path, multiple_runs, reset_seed_words, nfc_write_text, settings_set):
+
+    if testnet:
+        netcode = "XTN"
+        settings_set('chain', 'XTN')
+    else:
+        netcode = "BTC"
+        settings_set('chain', 'XTN')
+
     unit_test('devtest/clear_seed.py')
 
-    fname = 'test-%d.txt' % os.getpid()
-    path = microsd_path(fname)
-
     from pycoin.key.BIP32Node import BIP32Node
-    node = BIP32Node.from_master_secret(os.urandom(32))
-    open(path, 'wt').write(node.hwif(as_private=True)+'\n')
-    print("Created: %s" % path)
+    node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
+    prv = node.hwif(as_private=True)+'\n'
+    if testnet:
+        assert "tprv" in prv
+    else:
+        assert "xprv" in prv
+
+    if not nfc:
+        fname = 'test-%d.txt' % os.getpid()
+        path = microsd_path(fname)
+        with open(path, 'wt') as f:
+            f.write(prv)
+        print("Created: %s" % path)
 
     m = cap_menu()
     assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
     pick_menu_item('Import XPRV')
-
     title, body = cap_story()
-    assert 'Select file' in body
-    need_keypress('y'); time.sleep(.01) 
+    assert "press (3) to import via NFC" in body
+    assert "Press (1) to import extended private key from SD Card" in body
+    if nfc:
+        need_keypress("3")
+        nfc_write_text(prv)
+        time.sleep(0.5)
+    else:
+        need_keypress("1")
+        time.sleep(0.2)
+        title, body = cap_story()
+        assert 'Select file' in body
+        need_keypress('y')
+        time.sleep(.01)
+        pick_menu_item(fname)
 
-    pick_menu_item(fname)
     unit_test('devtest/abort_ux.py')
 
     v = get_secrets()
@@ -663,7 +690,7 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
         assert expect in body
         qr_expect = expect
 
-    assert '1 to view as QR Code' in body
+    assert '(1) to view as QR Code' in body
     need_keypress('1')
     qr = cap_screen_qr().decode('ascii')
     assert qr == qr_expect

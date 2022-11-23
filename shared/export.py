@@ -117,12 +117,35 @@ be needed for different systems.
 
 async def write_text_file(fname_pattern, body, title, total_parts=72):
     # - total_parts does need not be precise
-    from glob import dis
+    from glob import dis, VD, NFC
     from files import CardSlot, CardMissingError, needs_microsd
+
+    force_vdisk = False
+    if NFC or VD:
+        # no need to spam with another prompt if VD and NFC not enabled
+        prompt = "Press (1) to save %s file to SD Card" % title
+        escape = "1"
+        if VD is not None:
+            prompt += ", press (2) to save to Virtual Disk"
+            escape += "2"
+        if NFC is not None:
+            prompt += ", press (3) to share file via NFC"
+            escape += "3"
+        prompt += "."
+        ch = await ux_show_story(prompt, escape=escape)
+        if ch == '3':
+            await NFC.share_text(body)
+            return
+        elif ch == "2":
+            force_vdisk = True
+        elif ch == '1':
+            force_vdisk = False
+        else:
+            return
 
     # choose a filename
     try:
-        with CardSlot() as card:
+        with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
@@ -148,13 +171,12 @@ async def make_summary_file(fname_pattern='public.txt'):
     dis.fullscreen('Generating...')
 
     # generator function:
-    body = generate_public_contents()
+    body = "".join(list(generate_public_contents()))
 
     await write_text_file(fname_pattern, body, 'Summary')
 
 async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
     from glob import dis
-    import ustruct
     xfp = xfp2str(settings.get('xfp'))
 
     dis.fullscreen('Generating...')
@@ -211,7 +233,6 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
     from descriptor import append_checksum
-    import ustruct
 
     from public_constants import AF_P2WPKH
 
@@ -271,7 +292,7 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
 
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
-    import ustruct, version
+    import version
 
     # bitcoin (xpub) is used, even for testnet case (ie. no tpub)
     # - altho, doesn't matter; the wallet operates based on it's own settings for test/mainnet
@@ -284,8 +305,12 @@ def generate_wasabi_wallet():
     xfp = settings.get('xfp')
     txt_xfp = xfp2str(xfp)
 
-    chain = chains.current_chain()
-    assert chain.ctype in {'BTC', 'XTN'}, "Only Bitcoin supported"
+    # chain = chains.current_chain()
+    # https://docs.wasabiwallet.io/using-wasabi/Testnet.html#activating-testnet-in-wasabi
+    # https://github.com/zkSNACKs/WalletWasabi/blob/master/WalletWasabi.Documentation/WasabiSetupRegtest.md
+    # as we do not shitcoin here - check is useless
+    # would yikes on XRT
+    # assert chain.ctype in {'BTC', 'XTN', 'XRT'}, "Only Bitcoin supported"
 
     _,vers,_ = version.get_mpy_version()
 
@@ -414,26 +439,38 @@ def generate_electrum_wallet(addr_type, account_num=0):
 async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
-    from glob import dis, NFC
+    from glob import dis, NFC, VD
     from files import CardSlot, CardMissingError, needs_microsd
 
     dis.fullscreen('Generating...')
 
     body = generator()
 
-    if NFC:
-        # Offer to share over NFC regardless of if card inserted, virtdisk active, etc.
-        ch = await ux_show_story('''Press (3) to share %s file over NFC. \
-Otherwise, OK to proceed normally.''' % label, escape='3')
+    force_vdisk = False
+    if NFC or VD:
+        prompt = "Press (1) to save %s file to SD Card" % label
+        escape = "1"
+        if VD is not None:
+            prompt += ", press (2) to save to Virtual Disk"
+            escape += "2"
+        if NFC is not None:
+            prompt += ", press (3) to share file via NFC"
+            escape += "3"
+        prompt += "."
+        ch = await ux_show_story(prompt, escape=escape)
         if ch == '3':
             await NFC.share_json(ujson.dumps(body))
             return
-        if ch != 'y':
+        elif ch == "2":
+            force_vdisk = True
+        elif ch == '1':
+            force_vdisk = False
+        else:
             return
 
     # choose a filename and save
     try:
-        with CardSlot() as card:
+        with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write

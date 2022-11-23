@@ -374,7 +374,7 @@ suffix break point is correct.'''
             ch = await ux_show_story('''\
 You gave two different PIN codes and they don't match.
 
-Press 2 to try the second one again, X or OK to give up for now.''',
+Press (2) to try the second one again, X or OK to give up for now.''',
                         title="PIN Mismatch", escape='2')
 
             if ch != '2':

@@ -474,7 +474,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     _, story = cap_story()
     assert ('BIP-85 derived' in story) or ('The legacy' in story)
     assert (f'#{xargs}' in story) or ('XPRV-based' in story)
-    assert 'Press 6 to view associated' in story
+    assert 'Press (6) to view associated' in story
     need_keypress('6')
     time.sleep(.1)
     _, story = cap_story()

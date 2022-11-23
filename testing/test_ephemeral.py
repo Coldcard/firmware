@@ -60,7 +60,7 @@ def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
         title, story = cap_story()
         if title == "WARNING":
             assert "temporary secret stored solely in device RAM" in story
-            assert "Press 4 to prove you read to the end of this message and accept all consequences." in story
+            assert "Press (4) to prove you read to the end of this message and accept all consequences." in story
             need_keypress("4")  # understand consequences
     return doit
 
@@ -87,7 +87,7 @@ def test_ephemeral_seed_generate(num_words, cap_menu, pick_menu_item, goto_home,
 
     title, story = cap_story()
     assert f"Record these {num_words} secret words!" in story
-    assert "Press 6 to skip word quiz" in story
+    assert "Press (6) to skip word quiz" in story
 
     # filter those that starts with space, number and colon --> actual words
     e_seed_words = seed_story_to_words(story)

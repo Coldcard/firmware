@@ -82,7 +82,7 @@ class PaperWalletMaker:
 
     async def doit(self, *a, have_key=None):
         # make the wallet.
-        from glob import dis
+        from glob import dis, VD
 
         try:
             import ngu
@@ -131,9 +131,23 @@ class PaperWalletMaker:
             # Use address as filename. clearly will be unique, but perhaps a bit
             # awkward to work with.
             basename = addr
-
+            force_vdisk = False
+            if VD:
+                prompt = "Press (1) to save paper wallet file to SD Card"
+                escape = "1"
+                if VD is not None:
+                    prompt += ", press (2) to save to VDisk"
+                    escape += "2"
+                prompt += "."
+                ch = await ux_show_story(prompt, escape=escape)
+                if ch == "2":
+                    force_vdisk = True
+                elif ch == '1':
+                    force_vdisk = False
+                else:
+                    return
             dis.fullscreen("Saving...")
-            with CardSlot() as card:
+            with CardSlot(force_vdisk=force_vdisk) as card:
                 fname, nice_txt = card.pick_filename(basename + 
                                         ('-note.txt' if self.template_fn else '.txt'))
 

@@ -278,7 +278,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
     if version.has_fatram:
         escape = (escape or '') + '1'
-        extra += 'Press 1 to view as QR Code. '
+        extra += 'Press (1) to view as QR Code. '
 
     if extra:
         msg += '\n\n'
@@ -438,10 +438,10 @@ async def approve_word_list(seed, nwords, ephemeral=False):
 
     words = bip39.b2a_words(seed).split(' ')
     assert len(words) == nwords
-    extra_msg = 'Press 4 to add some dice rolls into the mix. '
+    extra_msg = 'Press (4) to add some dice rolls into the mix. '
     if ephemeral:
         # document quiz skipping if generating ephemeral seed
-        extra_msg += "Press 6 to skip word quiz. "
+        extra_msg += "Press (6) to skip word quiz. "
 
     while 1:
         # show the seed words
@@ -704,7 +704,7 @@ async def make_ephemeral_seed_menu(*a):
         ch = await ux_show_story(
             "Ephemeral seed is a temporary secret stored solely in device RAM, persisted for only a single boot. "
             "This defeats all of the benefits of Coldcard's secure element design."
-            "\n\nPress 4 to prove you read to the end of this message and accept all consequences.",
+            "\n\nPress (4) to prove you read to the end of this message and accept all consequences.",
             title="WARNING",
             escape="4"
         )

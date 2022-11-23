@@ -9,8 +9,7 @@
 import sys
 sys.path.append("../shared")
 from descriptor import MultisigDescriptor, append_checksum, FMT_TO_SCRIPT, parse_desc_str
-import base64
-import time, pytest, os, random, json, shutil, pdb
+import time, pytest, os, random, json, shutil, pdb, io, base64
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
@@ -667,7 +666,9 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         # TODO add tests for descriptor template
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress, microsd_path, make_multisig):
+@pytest.mark.parametrize('vdisk', [True, False])
+def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item, need_keypress, microsd_path, make_multisig,
+                   virtdisk_path):
     # test menu-based UX for importing wallet file from SD
     M = N-1
 
@@ -676,7 +677,10 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
     config = f'policy: {M} of {N}\n'
     config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
 
-    fname = microsd_path(f'ms-{name}.txt')
+    if vdisk:
+        fname = virtdisk_path(f'ms-{name}.txt')
+    else:
+        fname = microsd_path(f'ms-{name}.txt')
     with open(fname, 'wt') as fp:
         fp.write(config)
 
@@ -685,6 +689,18 @@ def test_import_ux(N, goto_home, cap_story, pick_menu_item, cap_menu, need_keypr
         pick_menu_item('Settings')
         pick_menu_item('Multisig Wallets')
         pick_menu_item('Import from File')
+        time.sleep(0.5)
+        _, story = cap_story()
+        if vdisk and "Unable to find any suitable files for this operation" in story:
+            pytest.skip("Vdisk disabled")
+        if "Press (1) to import multisig wallet file from SD Card" in story:
+            if vdisk:
+                if "press (2) to import from Virtual Disk" not in story:
+                    pytest.skip("Vdisk disabled")
+                else:
+                    need_keypress("2")
+            else:
+                need_keypress("1")
 
         time.sleep(.1)
         _, story = cap_story()
@@ -734,10 +750,9 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
 
     time.sleep(.1)
     title, story = cap_story()
-
-    if 'to share file over NFC' in story:
+    if 'to share via NFC' in story:
         # skip offer of NFC, when NFC enabled
-        need_keypress('y')
+        need_keypress('1')
         time.sleep(.1)
         title, story = cap_story()
 
@@ -1398,9 +1413,9 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     # writes out ckcc config file, then electrum wallet
     time.sleep(.1)
     title, story = cap_story()
-    if 'file over NFC' in story:
+    if 'via NFC' in story:
         # skip offer of NFC, when NFC enabled
-        need_keypress('y')
+        need_keypress('1')
         time.sleep(.1)
         title, story = cap_story()
 
@@ -1418,11 +1433,10 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     need_keypress('y')
     time.sleep(.1)
     title, story = cap_story()
-
-    if 'file over NFC' in story:
+    if 'via NFC' in story:
         # skip offer of NFC, when NFC enabled
-        need_keypress('y')
-        time.sleep(.1)
+        need_keypress('1')
+        time.sleep(.2)
         title, story = cap_story()
 
     fname = story.split('\n')[-1]
@@ -1454,6 +1468,10 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
     pick_menu_item('Import from File')
+    time.sleep(0.5)
+    _, story = cap_story()
+    if "Press (1) to import multisig wallet file from SD Card" in story:
+        need_keypress("1")
     time.sleep(.05)
     need_keypress('y')
     time.sleep(.05)
@@ -1777,9 +1795,10 @@ def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import, n
 
 @pytest.mark.parametrize('N', [ 15])
 @pytest.mark.parametrize('M', [ 1, 15])
-def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, need_keypress,
-        goto_home, pick_menu_item, cap_story, microsd_path):
-    # try config file with many different derivation paths given, including None
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_import, need_keypress, goto_home,
+                               pick_menu_item, cap_story, microsd_path, virtdisk_path, nfc_read_text):
+    # try config file with different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
     actual = "m/48'/0'/0'/1'/0"
     derivs = [ actual, 'm', "m/45'/0'/99'", "m/45'/34/34'/34"]
@@ -1807,7 +1826,6 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
     assert f'  Varies ({len(set(derivs))})\n' in story
     need_keypress('y')
 
-
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
@@ -1815,19 +1833,46 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
 
     pick_menu_item('Coldcard Export')
 
-    time.sleep(.1)
+    time.sleep(0.1)
     title, story = cap_story()
-    if 'file over NFC' in story:
-        # skip offer of NFC, when NFC enabled
-        need_keypress('y')
-        time.sleep(.1)
-        title, story = cap_story()
-    fname = story.split('\n')[-1]
-    assert fname, story
-    need_keypress('y')
+    if way == "sd":
+        if "Press (1) to export multisig wallet file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            multi = nfc_read_text()
+            time.sleep(0.3)
+            need_keypress("y")
+    else:
+        # virtual disk
+        if "press (2) to export to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
 
-    with open(microsd_path(fname), 'rt') as fp:
-        lines = list(fp.readlines())
+    if way == "nfc":
+        lines = io.StringIO(multi).readlines()
+        fname = "nfc_fake"
+        fpath = microsd_path(fname)
+        with open(fpath, "w") as f:
+            f.write(multi)
+    else:
+        time.sleep(0.2)
+        _, story = cap_story()
+        fname = story.split('\n')[-1]
+        need_keypress('y')
+        if way == "vdisk":
+            path = virtdisk_path(fname)
+        else:
+            path = microsd_path(fname)
+        with open(path, 'rt') as f:
+            lines = f.readlines()
+
     for xfp,_,_ in keys:
         m = xfp2str(xfp)
         assert any(m in ln for ln in lines)
@@ -1841,9 +1886,9 @@ def test_ms_import_many_derivs(M, N, make_multisig, clear_ms, offer_ms_import, n
 
     time.sleep(.25)
     title, story = cap_story()
-    if 'file over NFC' in story:
+    if 'via NFC' in story:
         # skip offer of NFC, when NFC enabled
-        need_keypress('y')
+        need_keypress('1')
         time.sleep(.1)
         title, story = cap_story()
 
@@ -1934,15 +1979,15 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
 
     time.sleep(.5)
     title, story = cap_story()
-    assert "Press 4" in story
+    assert "Press (5)" in story
     assert "change addresses." in story
     if change:
-        need_keypress("4")
+        need_keypress("5")
         time.sleep(0.2)
         title, story = cap_story()
         # once change is selected - do not offer this option again
         assert "change addresses." not in story
-        assert "Press 4" not in story
+        assert "Press (5)" not in story
     # unwrap text a bit
     if change:
         story = story.replace("=>\n", "=> ").replace('1/0\n =>', "1/0 =>")
@@ -1973,6 +2018,7 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         trunc = expect[0:8] + "-" + expect[-7:]
         assert trunc == addr
 
+
 def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_wallet, clear_ms, M=2, N=3):
 
     deriv = ["m/48'/1'/0'/69'/1"]*N
@@ -2001,11 +2047,12 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_w
 
     clear_ms()
 
-@pytest.mark.parametrize('M_N', [(2, 3), (2, 2), (3, 5), (6, 10), (15, 15)])
+@pytest.mark.parametrize('M_N', [(2, 3), (2, 2), (3, 5), (15, 15)])
 @pytest.mark.parametrize('addr_fmt', [ AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH ])
 @pytest.mark.parametrize('int_ext_desc', [True, False])
-def test_import_descriptor(M_N, addr_fmt, int_ext_desc, import_ms_wallet, goto_home, pick_menu_item, clear_ms,
-                           need_keypress, cap_story, microsd_path):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, goto_home, pick_menu_item, need_keypress,
+                          clear_ms, cap_story, microsd_path, virtdisk_path, nfc_read_text):
     clear_ms()
     M, N = M_N
     import_ms_wallet(M, N, addr_fmt=addr_fmt, accept=1, descriptor=True, int_ext_desc=int_ext_desc)
@@ -2016,13 +2063,42 @@ def test_import_descriptor(M_N, addr_fmt, int_ext_desc, import_ms_wallet, goto_h
     need_keypress('y')  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item('Export')
-    need_keypress('y')  # yes - export
+    time.sleep(0.1)
     title, story = cap_story()
-    assert "Coldcard multisig setup file written" in story
-    f_name = story.split("\n\n")[1]
-    f_path = microsd_path(f_name)
-    with open(f_path, "r") as f:
-        desc_export = f.read().strip()
+    if way == "sd":
+        if "Press (1) to export multisig wallet file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            descriptor = nfc_read_text()
+            time.sleep(0.3)
+            need_keypress("y")  # remove animation
+    else:
+        # virtual disk
+        if "press (2) to export to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+
+    if way == "nfc":
+        desc_export = descriptor.strip()
+    else:
+        time.sleep(0.1)
+        title, story = cap_story()
+        assert "Coldcard multisig setup file written" in story
+        f_name = story.split("\n\n")[1]
+        if way == "sd":
+            f_path = microsd_path(f_name)
+        else:
+            f_path = virtdisk_path(f_name)
+        with open(f_path, "r") as f:
+            desc_export = f.read().strip()
+
     with open("debug/last-ms.txt", "r") as f:
         desc_import = f.read().strip()
     normalized = parse_desc_str(desc_export)
@@ -2077,16 +2153,16 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 
     time.sleep(0.5)
     title, story = cap_story()
-    assert "Press 1 to save into a file" in story
-    assert "Press 4" in story
+    assert "Press (1) to save to file on SD Card" in story
+    assert "Press (5)" in story
     assert "change addresses." in story
     if change:
-        need_keypress("4")
+        need_keypress("5")
         time.sleep(0.2)
         title, story = cap_story()
         # once change is selected - do not offer this option again
         assert "change addresses." not in story
-        assert "Press 4" not in story
+        assert "Press (5)" not in story
     need_keypress("1")
     time.sleep(0.5)
     title, story = cap_story()
@@ -2100,7 +2176,8 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     need_keypress('y')  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item("Bitcoin Core")
-    need_keypress('y')  # yes - export
+    need_keypress('1')  # SD card
+    time.sleep(0.2)
     title, story = cap_story()
     assert "multisig setup file written" in story
     f_name = story.split("\n\n")[1]
@@ -2199,6 +2276,11 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
     pick_menu_item('Import from File')
+    time.sleep(0.3)
+    _, story = cap_story()
+    if "Press (1) to import multisig wallet file from SD Card" in story:
+        # in case Vdisk is enabled
+        need_keypress("1")
     time.sleep(0.5)
     need_keypress("y")
     pick_menu_item(name)
@@ -2225,7 +2307,8 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
     pick_menu_item("Descriptors")
     pick_menu_item("Bitcoin Core")
-    need_keypress("y") # allow export
+    need_keypress("1")  # SD card
+    time.sleep(0.2)
     _, story = cap_story()
     assert "multisig setup file written" in story
     fname = story.split("\n")[-1]
@@ -2385,6 +2468,11 @@ def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_
     pick_menu_item('Multisig Wallets')
     pick_menu_item('Import from File')
     time.sleep(0.5)
+    _, story = cap_story()
+    if "Pick multisig wallet file to import" not in story:
+        assert "Press (1) to import multisig wallet file from SD Card" in story
+        need_keypress("1")
+    time.sleep(0.5)
     need_keypress("y")
     pick_menu_item(name)
     _, story = cap_story()
@@ -2475,7 +2563,8 @@ def test_multisig_descriptor_export(M_N, nfc, addr_fmt, cmn_pth_from_root, clear
         time.sleep(.1)
         bare_desc = nfc_read_text().strip()
     else:
-        need_keypress('y')
+        need_keypress('1')
+        time.sleep(0.2)
         _, story = cap_story()
         assert "multisig setup file written" in story
         fname = story.split("\n")[-1]
@@ -2492,7 +2581,7 @@ def test_multisig_descriptor_export(M_N, nfc, addr_fmt, cmn_pth_from_root, clear
         time.sleep(.1)
         pretty_desc = nfc_read_text().strip()
     else:
-        need_keypress('y')
+        need_keypress('1')
         time.sleep(0.2)
         _, story = cap_story()
         assert "multisig setup file written" in story
@@ -2509,7 +2598,8 @@ def test_multisig_descriptor_export(M_N, nfc, addr_fmt, cmn_pth_from_root, clear
         time.sleep(.1)
         core_desc_text = nfc_read_text()
     else:
-        need_keypress("y")
+        need_keypress("1")
+        time.sleep(0.2)
         _, story = cap_story()
         assert "multisig setup file written" in story
         fname = story.split("\n")[-1]

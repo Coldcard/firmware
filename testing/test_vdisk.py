@@ -2,47 +2,13 @@
 #
 # Mk4 Virtual Disk related tests.
 #
-import pytest, glob, sys, os, pdb, re, time
-from helpers import B2A
+import pytest, glob, re, time, random
 from binascii import b2a_hex, a2b_hex
-from struct import pack, unpack
 import ndef
 from hashlib import sha256
 from txn import *
 from base64 import b64encode, b64decode
-    
-@pytest.fixture(scope='module')
-def virtdisk_path(request, is_simulator, only_mk4):
-    # get a path to indicated filename on emulated/shared dir
 
-    def doit(fn):
-        # could use: ckcc.get_sim_root_dirs() here
-        if is_simulator():
-            assert os.path.isdir('../unix/work/VirtDisk')
-            return '../unix/work/VirtDisk/' + fn
-        elif sys.platform == 'darwin':
-
-            if not request.config.getoption("--manual"):
-                raise pytest.fail('must use --manual CLI option')
-
-            return '/Volumes/COLDCARD/' + fn
-        else:
-            raise pytest.fail('need to know where Mk4 gets mounted')
-
-    return doit
-
-@pytest.fixture(scope='module')
-def virtdisk_wipe(dev, only_mk4, virtdisk_path):
-    def doit():
-        for fn in glob.glob(virtdisk_path('*')):
-            if os.path.isdir(fn): continue
-            if 'readme' in fn.lower(): continue
-            if 'gitignore' in fn: continue
-
-            assert fn.lower().rsplit('.', 1)[1] in { 'txt', 'psbt', 'txn' }
-            print(f'RM {fn}')
-            os.remove(fn)
-    return doit
 
 def test_vd_basics(dev, virtdisk_path, is_simulator):
     # Check right files are in place.
@@ -236,7 +202,7 @@ if 0:
         title, story = cap_story()
         assert 'TXID' in title, story
         txid = a2b_hex(story.split()[0])
-        assert 'Press 3' in story
+        assert 'Press (3)' in story
         need_keypress('3')
 
         if too_big:
@@ -281,5 +247,56 @@ def test_macos_detection():
     assert pl['FilesystemName'] == 'MS-DOS FAT16'
     assert pl['VolumeAllocationBlockSize'] == 512
     assert pl['IOKitSize'] == 4194304           # requires 5.0.6
+
+
+@pytest.mark.parametrize('multiple_runs', range(3))
+@pytest.mark.parametrize('testnet', [True, False])
+def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, get_secrets,
+                    multiple_runs, reset_seed_words, virtdisk_path, virtdisk_wipe, settings_set):
+    # copied from test_ux as we need vdisk enabled and card ejected
+    if testnet:
+        netcode = "XTN"
+        settings_set('chain', 'XTN')
+    else:
+        netcode = "BTC"
+        settings_set('chain', 'XTN')
+    unit_test('devtest/clear_seed.py')
+
+    fname = 'test-%d.txt' % os.getpid()
+    path = virtdisk_path(fname)
+
+    from pycoin.key.BIP32Node import BIP32Node
+    node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
+    prv = node.hwif(as_private=True) + '\n'
+    if testnet:
+        assert "tprv" in prv
+    else:
+        assert "xprv" in prv
+    with open(path, 'wt') as f:
+        f.write(prv)
+    print("Created: %s" % path)
+
+    m = cap_menu()
+    assert m[0] == 'New Seed Words'
+    pick_menu_item('Import Existing')
+    pick_menu_item('Import XPRV')
+    title, body = cap_story()
+    assert "press (2) to import from Virtual Disk" in body
+    need_keypress("2")
+    time.sleep(0.2)
+    title, body = cap_story()
+    assert 'Select file' in body
+    need_keypress('y')
+    time.sleep(.01)
+
+    pick_menu_item(fname)
+    unit_test('devtest/abort_ux.py')
+
+    v = get_secrets()
+
+    assert v['xpub'] == node.hwif()
+    assert v['xprv'] == node.hwif(as_private=True)
+
+    reset_seed_words()
 
 # EOF
