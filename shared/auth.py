@@ -546,9 +546,9 @@ class ApproveTransaction(UserAuthorizedAction):
                 tmsg = txid + '\n\n'
 
                 if has_fatram:
-                    tmsg += 'Press 1 for QR Code of TXID. '
+                    tmsg += 'Press (1) for QR Code of TXID. '
                 if NFC:
-                    tmsg += 'Press 3 to share signed txn over NFC.'
+                    tmsg += 'Press (3) to share signed txn via NFC.'
 
                 ch = await ux_show_story(tmsg, "Final TXID", escape='13')
 
@@ -949,7 +949,7 @@ OK to continue, X to cancel.''' % self._pw, title="Passphrase")
             else:
                 ch = await ux_show_story('''BIP-39 passphrase (%d chars long) has been provided over USB connection. Should we switch to that wallet now?
 
-Press 2 to view the provided passphrase.\n\nOK to continue, X to cancel.''' % len(self._pw), title="Passphrase", escape='2')
+Press (2) to view the provided passphrase.\n\nOK to continue, X to cancel.''' % len(self._pw), title="Passphrase", escape='2')
 
             if ch == '2':
                 showit = True
@@ -1013,9 +1013,9 @@ class ShowAddressBase(UserAuthorizedAction):
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
             if NFC:
-                msg += ' Press 3 to share over NFC.'
+                msg += ' Press (3) to share via NFC.'
             if has_fatram:
-                msg += ' Press 4 to view QR Code.'
+                msg += ' Press (4) to view QR Code.'
 
             while 1:
                 ch = await ux_show_story(msg, title=self.title, escape='34')

@@ -4,21 +4,19 @@
 #
 # Start simulator with:   simulator.py --eff --set nfc=1
 #
-import pytest, time, struct, os
+import pytest, time, os, json, io
 from pycoin.key.BIP32Node import BIP32Node
-from base64 import b64encode
-from binascii import b2a_hex, a2b_hex
-from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from helpers import xfp2str, slip132undo
-import json
 from conftest import simulator_fixed_xfp, simulator_fixed_xprv
-from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH, AF_P2WSH_P2SH
+from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH
 from pprint import pprint
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
-def test_export_core(dev, use_regtest, acct_num, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, bitcoind_wallet, bitcoind_d_wallet, enter_number):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
+                     virtdisk_path, bitcoind_wallet, bitcoind_d_wallet, enter_number, nfc_read_text):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
     use_regtest()
@@ -34,7 +32,7 @@ def test_export_core(dev, use_regtest, acct_num, cap_menu, pick_menu_item, goto_
     assert 'This saves' in story
     assert 'including the public keys' in story
 
-    assert 'Press 1 to' in story
+    assert 'Press (1) to' in story
     if acct_num is not None:
         need_keypress('1')
         time.sleep(0.1)
@@ -45,37 +43,63 @@ def test_export_core(dev, use_regtest, acct_num, cap_menu, pick_menu_item, goto_
 
     time.sleep(0.1)
     title, story = cap_story()
+    if way == "sd":
+        if "Press (1) to save Bitcoin Core file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            core_export = nfc_read_text()
+            time.sleep(0.3)
+    else:
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
 
-    assert 'Bitcoin Core file written' in story
-    fname = story.split('\n')[-1]
+    if way == "nfc":
+        fp = io.StringIO(core_export).readlines()
+    else:
+        time.sleep(0.2)
+        _, story = cap_story()
+        assert 'Bitcoin Core file written' in story
+        fname = story.split('\n')[-1]
+        need_keypress('y')
+        if way == "vdisk":
+            path = virtdisk_path(fname)
+        else:
+            path = microsd_path(fname)
+        with open(path, 'rt') as f:
+            fp = f.readlines()
 
-    need_keypress('y')
-
-    path = microsd_path(fname)
     addrs = []
     imm_js = None
     imd_js = None
-    with open(path, 'rt') as fp:
-        for ln in fp:
-            if 'importmulti' in ln:
-                # PLAN: this will become obsolete
-                assert ln.startswith("importmulti '")
-                assert ln.endswith("'\n")
-                assert not imm_js, "dup importmulti lines"
-                imm_js = ln[13:-2]
-            elif "importdescriptors '" in ln:
-                assert ln.startswith("importdescriptors '")
-                assert ln.endswith("'\n")
-                assert not imd_js, "dup importdesc lines"
-                imd_js = ln[19:-2]
-            elif '=>' in ln:
-                path, addr = ln.strip().split(' => ', 1)
-                assert path.startswith(f"m/84'/1'/{acct_num}'/0")
-                assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
-                sk = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(path[2:])
-                h20 = sk.hash160()
-                assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
-                addrs.append(addr)
+    for ln in fp:
+        if 'importmulti' in ln:
+            # PLAN: this will become obsolete
+            assert ln.startswith("importmulti '")
+            assert ln.endswith("'\n")
+            assert not imm_js, "dup importmulti lines"
+            imm_js = ln[13:-2]
+        elif "importdescriptors '" in ln:
+            assert ln.startswith("importdescriptors '")
+            assert ln.endswith("'\n")
+            assert not imd_js, "dup importdesc lines"
+            imd_js = ln[19:-2]
+        elif '=>' in ln:
+            path, addr = ln.strip().split(' => ', 1)
+            assert path.startswith(f"m/84'/1'/{acct_num}'/0")
+            assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
+            sk = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(path[2:])
+            h20 = sk.hash160()
+            assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
+            addrs.append(addr)
 
     assert len(addrs) == 3
 
@@ -152,8 +176,9 @@ def test_export_core(dev, use_regtest, acct_num, cap_menu, pick_menu_item, goto_
         # assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
         #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
-@pytest.mark.parametrize('use_nfc', [False, True])
-def test_export_wasabi(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, nfc_read_json):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, nfc_read_json,
+                       virtdisk_path):
     # test UX and operation of the 'wasabi wallet export'
 
     goto_home()
@@ -171,28 +196,39 @@ def test_export_wasabi(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap_st
 
     time.sleep(0.1)
     title, story = cap_story()
-
-    if use_nfc:
-        assert 'ress (3)' in story
-        assert 'Otherwise, OK to proceed normally' in story
-        need_keypress('3')
-        time.sleep(0.2)
-        obj = nfc_read_json()
-        time.sleep(0.1)
-        
+    if way == "sd":
+        if "Press (1) to save Wasabi wallet file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            wasabi_export = nfc_read_json()
+            time.sleep(0.3)
     else:
-        # if NFC enabled, extra screen:
-        if 'Otherwise, OK to proceed normally' in story:
-            need_keypress('y')
-            time.sleep(0.1)
-            title, story = cap_story()
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+        
+    if way == "nfc":
+        obj = wasabi_export
+    else:
+        time.sleep(0.1)
+        title, story = cap_story()
 
         assert 'wallet file written' in story
         fname = story.split('\n')[-1]
 
         need_keypress('y')
-
-        path = microsd_path(fname)
+        if way == "sd":
+            path = microsd_path(fname)
+        else:
+            path = virtdisk_path(fname)
         with open(path, 'rt') as fp:
             obj = json.load(fp)
         os.unlink(path)
@@ -211,12 +247,12 @@ def test_export_wasabi(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap_st
 
     assert got.sec() == expect.sec()
 
-
         
 @pytest.mark.parametrize('mode', [ "Legacy (P2PKH)", "P2SH-Segwit", "Native Segwit"])
-@pytest.mark.parametrize('acct_num', [ None, '0', '99', '123'])
-@pytest.mark.parametrize('use_nfc', [ False, True])
-def test_export_electrum(use_nfc, mode, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, use_mainnet, nfc_read_json):
+@pytest.mark.parametrize('acct_num', [ None, '0', '9897'])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
+                         nfc_read_json, virtdisk_path):
     # lightly test electrum wallet export
 
     goto_home()
@@ -230,7 +266,7 @@ def test_export_electrum(use_nfc, mode, acct_num, dev, cap_menu, pick_menu_item,
 
     assert 'This saves a skeleton Electrum wallet' in story
 
-    assert 'Press 1 to' in story
+    assert 'Press (1) to' in story
     if acct_num is not None:
         need_keypress('1')
         time.sleep(0.1)
@@ -244,28 +280,39 @@ def test_export_electrum(use_nfc, mode, acct_num, dev, cap_menu, pick_menu_item,
 
     time.sleep(0.1)
     title, story = cap_story()
-
-    if use_nfc:
-        assert 'ress (3)' in story
-        assert 'Otherwise, OK to proceed normally' in story
-        need_keypress('3')
-        time.sleep(0.2)
-        obj = nfc_read_json()
-        time.sleep(0.1)
-        
+    if way == "sd":
+        if "Press (1) to save Electrum wallet file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            electrum_export = nfc_read_json()
+            time.sleep(0.3)
     else:
-        # if NFC enabled, extra screen:
-        if 'Otherwise, OK to proceed normally' in story:
-            need_keypress('y')
-            time.sleep(0.1)
-            title, story = cap_story()
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+
+    if way == "nfc":
+        obj = electrum_export
+    else:
+        time.sleep(0.1)
+        title, story = cap_story()
 
         assert 'wallet file written' in story
         fname = story.split('\n')[-1]
 
         need_keypress('y')
-
-        path = microsd_path(fname)
+        if way == "sd":
+            path = microsd_path(fname)
+        else:
+            path = virtdisk_path(fname)
         with open(path, 'rt') as fp:
             obj = json.load(fp)
         os.unlink(path)
@@ -294,8 +341,9 @@ def test_export_electrum(use_nfc, mode, acct_num, dev, cap_menu, pick_menu_item,
 
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '123'])
-@pytest.mark.parametrize('use_nfc', [ False, True])
-def test_export_coldcard(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path, nfc_read_json):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_export_coldcard(way, dev, acct_num, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
+                         nfc_read_json, virtdisk_path, addr_vs_path):
     from pycoin.contrib.segwit_addr import encode as sw_encode
 
     # test UX and values produced.
@@ -319,30 +367,42 @@ def test_export_coldcard(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_
 
     time.sleep(0.1)
     title, story = cap_story()
-
-    if use_nfc:
-        assert 'ress (3)' in story
-        assert 'Otherwise, OK to proceed normally' in story
-        need_keypress('3')
-        time.sleep(0.2)
-        obj = nfc_read_json()
-        time.sleep(0.1)
-        
+    if way == "sd":
+        if "Press (1) to save Generic Export file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            generic_export = nfc_read_json()
+            time.sleep(0.3)
     else:
-        # if NFC enabled, extra screen:
-        if 'Otherwise, OK to proceed normally' in story:
-            need_keypress('y')
-            time.sleep(0.1)
-            title, story = cap_story()
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+
+    if way == "nfc":
+        obj = generic_export
+    else:
+        time.sleep(0.1)
+        title, story = cap_story()
 
         assert 'Generic Export file written' in story
         fname = story.split('\n')[-1]
 
         need_keypress('y')
-
-        path = microsd_path(fname)
+        if way == "sd":
+            path = microsd_path(fname)
+        else:
+            path = virtdisk_path(fname)
         with open(path, 'rt') as fp:
             obj = json.load(fp)
+        os.unlink(path)
 
     for fn in ['xfp', 'xpub', 'chain']:
         assert fn in obj
@@ -393,8 +453,9 @@ def test_export_coldcard(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_
             else:
                 assert False
 
-@pytest.mark.parametrize('use_nfc', [ False, True])
-def test_export_unchained(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, nfc_read_json):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, nfc_read_json,
+                          virtdisk_path):
     # test UX and operation of the 'unchained capital export'
 
     goto_home()
@@ -412,32 +473,43 @@ def test_export_unchained(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap
 
     time.sleep(0.1)
     title, story = cap_story()
-
-    if use_nfc:
-        assert 'ress (3)' in story
-        assert 'Otherwise, OK to proceed normally' in story
-        need_keypress('3')
-        time.sleep(0.2)
-        obj = nfc_read_json()
-        time.sleep(0.1)
-        
+    if way == "sd":
+        if "Press (1) to save Unchained Capital file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            unchained_export = nfc_read_json()
+            time.sleep(0.3)
     else:
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
 
-        # if NFC enabled, extra screen:
-        if 'Otherwise, OK to proceed normally' in story:
-            need_keypress('y')
-            time.sleep(0.1)
-            title, story = cap_story()
+    if way == "nfc":
+        obj = unchained_export
+    else:
+        time.sleep(0.1)
+        title, story = cap_story()
 
         assert 'Unchained Capital file' in story
         fname = story.split('\n')[-1]
         assert 'unchained' in fname
 
         need_keypress('y')
-
-        path = microsd_path(fname)
+        if way == "sd":
+            path = microsd_path(fname)
+        else:
+            path = virtdisk_path(fname)
         with open(path, 'rt') as fp:
             obj = json.load(fp)
+        os.unlink(path)
 
     root = BIP32Node.from_wallet_key(simulator_fixed_xprv)
     assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
@@ -452,9 +524,10 @@ def test_export_unchained(use_nfc, dev, cap_menu, pick_menu_item, goto_home, cap
         #assert node.chain_code() == sk.chain_code()
         assert node.hwif() == sk.hwif()
 
-def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path):
-    from pycoin.contrib.segwit_addr import encode as sw_encode
 
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_export_public_txt(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path, addr_vs_path,
+                           virtdisk_path, nfc_read_text):
     # test UX and values produced.
     goto_home()
     pick_menu_item('Advanced/Tools')
@@ -470,55 +543,83 @@ def test_export_public_txt(dev, cap_menu, pick_menu_item, goto_home, cap_story, 
 
     time.sleep(0.1)
     title, story = cap_story()
+    if way == "sd":
+        if "Press (1) to save Summary file to SD Card" in story:
+            need_keypress("1")
+        # else no prompt if both NFC and vdisk disabled
+    elif way == "nfc":
+        if "press (3) to share file via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            public = nfc_read_text()
+            time.sleep(0.3)
+    else:
+        # virtual disk
+        if "press (2) to save to Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
 
-    assert 'Summary file' in story
-    fname = story.split('\n')[-1]
-    assert 'public' in fname
+    if way == "nfc":
+        fp = io.StringIO(public).readlines()
+    else:
+        time.sleep(0.2)
+        _, story = cap_story()
+        assert 'Summary file' in story
+        fname = story.split('\n')[-1]
+        assert 'public' in fname
+        need_keypress('y')
+        if way == "vdisk":
+            path = virtdisk_path(fname)
+        else:
+            path = microsd_path(fname)
+        with open(path, 'rt') as f:
+            fp = f.readlines()
 
     xfp = xfp2str(simulator_fixed_xfp).upper()
 
     root = BIP32Node.from_wallet_key(simulator_fixed_xprv)
-    path = microsd_path(fname)
-    with open(path, 'rt') as fp:
-        for ln in fp.readlines():
-            if 'fingerprint' in ln:
-                assert ln.strip().endswith(xfp)
+    for ln in fp:
+        if 'fingerprint' in ln:
+            assert ln.strip().endswith(xfp)
 
-            if '=>' not in ln:
-                continue
+        if '=>' not in ln:
+            continue
 
-            lhs, rhs = ln.strip().split(' => ')
-            assert lhs.startswith('m/')
-            rhs = rhs.split('#')[0].strip()
+        lhs, rhs = ln.strip().split(' => ')
+        assert lhs.startswith('m/')
+        rhs = rhs.split('#')[0].strip()
 
-            if 'SLIP-132' in ln:
-                rhs, _, f, _ = slip132undo(rhs)
+        if 'SLIP-132' in ln:
+            rhs, _, f, _ = slip132undo(rhs)
+        else:
+            f = None
+
+        if rhs[1:4] == 'pub':
+            expect = root.subkey_for_path(lhs[2:])
+            assert expect.hwif(as_private=False) == rhs
+            continue
+
+        if not f:
+            if rhs[0] in 'mn':
+                f = AF_CLASSIC
+            elif rhs[0:3] == 'tb1':
+                f = AF_P2WPKH
+            elif rhs[0] == '2':
+                f = AF_P2WPKH_P2SH
             else:
-                f = None
+                raise ValueError(rhs)
 
-            if rhs[1:4] == 'pub':
-                expect = root.subkey_for_path(lhs[2:])
-                assert expect.hwif(as_private=False) == rhs
-                continue
+        addr_vs_path(rhs, path=lhs, addr_fmt=f)
 
-            if not f:
-                if rhs[0] in 'mn':
-                    f = AF_CLASSIC
-                elif rhs[0:3] == 'tb1':
-                    f = AF_P2WPKH
-                elif rhs[0] == '2':
-                    f = AF_P2WPKH_P2SH
-                else:
-                    raise ValueError(rhs)
-
-            addr_vs_path(rhs, path=lhs, addr_fmt=f)
-
-#def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('acct_num', [ None, 0, 99, 8989])
 @pytest.mark.parametrize('use_nfc', [False, True])
-def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number, cap_screen_qr, use_mainnet, nfc_read_text):
+def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number,
+                     cap_screen_qr, use_mainnet, nfc_read_text):
     # XPUB's via QR
 
     use_mainnet()
@@ -557,7 +658,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         assert expect in story
 
         if 'acct' in expect:
-            assert "Press 1 to select account" in story
+            assert "Press (1) to select account" in story
             if acct_num is not None:
                 need_keypress('1')
                 enter_number(acct_num)
@@ -566,15 +667,14 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
                 expect = expect.format(acct=acct_num)
                 title, story = cap_story()
                 assert expect in story
-                assert "Press 1 to select account" not in story
+                assert "Press (1) to select account" not in story
 
         expect = expect.format(acct=0)
-
         if not use_nfc:
             need_keypress('y')
             got_pub = cap_screen_qr().decode('ascii')
         else:
-            assert 'Press 3' in story
+            assert 'Press (3)' in story
             assert 'NFC' in story
             need_keypress('3')
             time.sleep(0.2)

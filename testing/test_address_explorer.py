@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os
+import pytest, time, os, io, csv
 from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
@@ -55,9 +55,9 @@ def parse_display_screen(cap_story, is_mark3):
         title, body = cap_story()
         lines = body.split('\n')
         if start == 0:
-            assert 'Press 1 to save into a file.' in lines[0]
+            assert 'Press (1) to save to file on SD Card.' in lines[0]
             if is_mark3:
-                assert '2 to view QR Codes' in lines[0]
+                assert '(2) to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
             raw_addrs = lines[4:-1] # Remove header & last line
         else:
@@ -90,21 +90,44 @@ def validate_address():
     return doit
 
 @pytest.fixture
-def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, open_microsd):
+def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
-    def doit(click_idx=None, expected_qty=250):
+    def doit(click_idx=None, expected_qty=250, way="sd"):
         if click_idx is not None:
             goto_address_explorer(click_idx=click_idx)
-        need_keypress('1')
-        time.sleep(.5) # always long enough to write the file?
+        time.sleep(.3)
+        title, story = cap_story()
+        if way == "sd":
+            need_keypress('1')
+        elif way == "vdisk":
+            if "Press (4) to save to file on Virtual Disk." not in story:
+                pytest.skip("Vdisk disabled")
+            need_keypress("4")
+        else:
+            # NFC
+            if "Press (3) to share via NFC." not in story:
+                pytest.skip("NFC disabled")
+            need_keypress("3")
+            time.sleep(0.3)
+            addresses = nfc_read_text()
+            time.sleep(0.3)
+            need_keypress("y")
+            # nfc just returns 10 addresses
+            assert len(addresses.split("\n")) == 10
+            pytest.xfail("PASSED - different export format for NFC")
+
+
+        time.sleep(.5)  # always long enough to write the file?
         title, body = cap_story()
         header, fn = body.split("\n\n")
         assert header == "Address summary file written:"
+        if way == "vdisk":
+            path = virtdisk_path(fn.strip())
+        else:
+            path = microsd_path(fn.strip())
+        addr_dump = open(path, 'rt')
 
-        addr_dump = open_microsd(fn.strip(), 'rt')
-
-        import csv
         cc = csv.reader(addr_dump)
         hdr = next(cc)
         assert hdr == ['Index', 'Payment Address', 'Derivation']
@@ -118,7 +141,9 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, ope
 
     return doit
 
-def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations, parse_display_screen, validate_address):
+
+def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations,
+                   parse_display_screen, validate_address):
     # For a given wallet, ensure the explorer shows the correct stub addresses
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -178,22 +203,22 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             validate_address(given_addr, sk)
 
 @pytest.mark.parametrize('click_idx', range(3))
-def test_dump_addresses(generate_addresses_file, mk_common_derivations, sim_execfile, validate_address, click_idx):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_dump_addresses(way, generate_addresses_file, mk_common_derivations, sim_execfile, validate_address, click_idx):
     # Validate  addresses dumped to text file
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
-
-    common_derivs = mk_common_derivations(node_prv.netcode())
-
     # Generate the addresses file and get each line in a list
-    for subpath, addr in generate_addresses_file(click_idx):
+    for subpath, addr in generate_addresses_file(click_idx, way=way):
         # derive the subkey and validate the corresponding address
         sk = node_prv.subkey_for_path(subpath[2:])
         validate_address(addr, sk)
 
 @pytest.mark.parametrize('account_num', [ 34, 100, 9999, 1])
-def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations, parse_display_screen, validate_address, generate_addresses_file):
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_address_explorer, need_keypress, cap_menu,
+                      mk_common_derivations, parse_display_screen, validate_address, generate_addresses_file):
     # Try a few sub-accounts
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -246,7 +271,7 @@ def test_account_menu(account_num, sim_execfile, pick_menu_item, goto_address_ex
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
-        for subpath, addr in generate_addresses_file():
+        for subpath, addr in generate_addresses_file(way=way):
             assert subpath.split('/')[-3] == str(account_num)+"'"
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(addr, sk)

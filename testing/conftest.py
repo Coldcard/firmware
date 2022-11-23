@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, os, time, sys, random, re, ndef
+import pytest, time, sys, random, re, ndef, os, glob
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode
@@ -576,6 +576,38 @@ def pick_menu_item(cap_menu, need_keypress):
             need_keypress('y')
             time.sleep(.01)      # required
 
+    return doit
+
+
+@pytest.fixture(scope='module')
+def virtdisk_path(request, is_simulator, only_mk4):
+    # get a path to indicated filename on emulated/shared dir
+
+    def doit(fn):
+        # could use: ckcc.get_sim_root_dirs() here
+        if is_simulator():
+            assert os.path.isdir('../unix/work/VirtDisk')
+            return '../unix/work/VirtDisk/' + fn
+        elif sys.platform == 'darwin':
+
+            if not request.config.getoption("--manual"):
+                raise pytest.fail('must use --manual CLI option')
+
+            return '/Volumes/COLDCARD/' + fn
+        else:
+            raise pytest.fail('need to know where Mk4 gets mounted')
+
+    return doit
+
+@pytest.fixture(scope='module')
+def virtdisk_wipe(dev, only_mk4, virtdisk_path):
+    def doit():
+        for fn in glob.glob(virtdisk_path('*')):
+            if os.path.isdir(fn): continue
+            if 'readme' in fn.lower(): continue
+            if 'gitignore' in fn: continue
+            print(f'RM {fn}')
+            os.remove(fn)
     return doit
 
 

@@ -116,7 +116,7 @@ def test_bip_vectors(mode, index, entropy, expect,
         assert "Password:" in story
         assert f"m/83696968'/707764'/21'/{index}'" in story
         assert expect in story
-        assert "2 to type password over USB" in story
+        assert "(2) to type password over USB" in story
 
     else:
         raise ValueError(mode)
@@ -124,7 +124,7 @@ def test_bip_vectors(mode, index, entropy, expect,
     # write to SD
     msg = story.split('Press', 1)[0]
     if 1:
-        assert 'Press 1 to save' in story
+        assert 'Press (1) to save' in story
         need_keypress('1')
 
         time.sleep(0.1)
@@ -147,7 +147,7 @@ def test_bip_vectors(mode, index, entropy, expect,
 
 
     if do_import:
-        assert '2 to switch to derived secret' in story
+        assert '(2) to switch to derived secret' in story
 
         try:
             time.sleep(0.1)
@@ -157,7 +157,7 @@ def test_bip_vectors(mode, index, entropy, expect,
                 time.sleep(0.1)
                 title, story = cap_story()
                 assert title == "WARNING"
-                assert 'Press 4 to prove you read to the end of this message and accept all consequences.' in story
+                assert 'Press (4) to prove you read to the end of this message and accept all consequences.' in story
                 need_keypress("4")
 
             time.sleep(0.1)
@@ -188,7 +188,7 @@ def test_bip_vectors(mode, index, entropy, expect,
             reset_seed_words()
 
     else:
-        assert '3 to view as QR code' in story
+        assert '(3) to view as QR code' in story
 
     need_keypress('x')
 
@@ -266,7 +266,7 @@ def test_path_index(mode, pattern, index,
         assert hex(key.secret_exponent())[2:] in story
 
     if index == 0:
-        assert '3 to view as QR code' in story
+        assert '(3) to view as QR code' in story
         need_keypress('3')
 
         qr = cap_screen_qr().decode('ascii')

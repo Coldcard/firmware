@@ -4,14 +4,14 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb, version
+import ckcc, pyb, version, uasyncio
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_number
 from utils import imported, pretty_short_delay, problem_file_line
-import uasyncio
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError, needs_microsd
 from utils import xfp2str
+from multisig import parse_extended_key
 from glob import settings
 from pincodes import pa
 from menu import start_chooser
@@ -113,7 +113,7 @@ Extended Master Key:
         # can't support on mk2
         xpub = None
     if xpub:
-        msg += '\nPress 3 to show QR code of xpub.'
+        msg += '\nPress (3) to show QR code of xpub.'
 
     ch = await ux_show_story(msg, escape=('3' if xpub else None))
 
@@ -548,7 +548,7 @@ Limitations: 100 characters max length, ASCII \
 characters 32-126 (0x20-0x7e) only.
 
 OK to start.
-X to go back. Or press 2 to hide this message forever.
+X to go back. Or press (2) to hide this message forever.
 ''', escape='2')
         if ch == '2':
             settings.set('b39skip', True)
@@ -612,7 +612,7 @@ async def clear_seed(*a):
     ch = await ux_show_story('''Are you REALLY sure though???\n\n\
 This action will certainly cause you to lose all funds associated with this wallet, \
 unless you have a backup of the seed words and know how to import them into a \
-new wallet.\n\nPress 4 to prove you read to the end of this message and accept all \
+new wallet.\n\nPress (4) to prove you read to the end of this message and accept all \
 consequences.''', escape='4')
     if ch != '4': 
         return await ux_aborted()
@@ -678,7 +678,7 @@ async def view_seed_words(*a):
         msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
 
         if version.has_fatram:
-            msg += '\n\nPress 1 to view as QR Code.'
+            msg += '\n\nPress (1) to view as QR Code.'
 
         while 1:
             ch = await ux_show_story(msg, sensitive=True, escape='1')
@@ -974,7 +974,7 @@ SENSITIVE_NOT_SECRET = '''
 The file created is sensitive--in terms of privacy--but should not \
 compromise your funds directly.'''
 
-PICK_ACCOUNT = '''\n\nPress 1 to enter a non-zero account number.'''
+PICK_ACCOUNT = '''\n\nPress (1) to enter a non-zero account number.'''
 
 
 async def dump_summary(*A):
@@ -1021,9 +1021,9 @@ async def export_xpub(label, _2, item):
         msg = '''Show QR of the XPUB for path:\n\n%s\n\n''' % path
 
         if '{acct}' in path:
-            msg += "Press 1 to select account other than zero. "
+            msg += "Press (1) to select account other than zero. "
         if glob.NFC:
-            msg += "Press 3 to share over NFC. "
+            msg += "Press (3) to share via NFC. "
 
         ch = await ux_show_story(msg, escape='13')
         if ch == 'x': return
@@ -1184,6 +1184,7 @@ async def import_xprv(*A):
     # read an XPRV from a text file and use it.
     import ngu, chains, ure
     from stash import SecretStash
+    from glob import VD, NFC
     from ubinascii import hexlify as b2a_hex
     from backups import restore_from_dict
 
@@ -1201,36 +1202,47 @@ async def import_xprv(*A):
             # directories?
             return False
 
-    # pick a likely-looking file.
-    fn = await file_picker('Select file containing the XPRV to be imported.',
-                                min_size=50, max_size=2000, taster=contains_xprv)
+    prompt = "Press (1) to import extended private key from SD Card"
+    escape = "1"
+    if VD is not None:
+        prompt += ", press (2) to import from Virtual Disk"
+        escape += "2"
+    if NFC is not None:
+        prompt += ", or press (3) to import via NFC"
+        escape += "3"
+    prompt += "."
+    ch = await ux_show_story(prompt, escape=escape)
+    if ch == "3":
+        force_vdisk = None
+        extended_key = await NFC.read_extended_private_key()
+        node, chain, addr_fmt = parse_extended_key(extended_key, private=True)
+    elif ch == "2":
+        force_vdisk = True
+    elif ch == "1":
+        force_vdisk = False
+    else:
+        return
 
-    if not fn: return
+    if force_vdisk is not None:
+        # only get here if NFC was not chosen
+        # pick a likely-looking file.
+        fn = await file_picker('Select file containing the XPRV to be imported.', min_size=50, max_size=2000,
+                               taster=contains_xprv, force_vdisk=force_vdisk)
 
-    node, chain, addr_fmt = None, None, None
+        if not fn: return
 
-    # open file and do it
-    pat = ure.compile(r'.prv[A-Za-z0-9]+')
-    node = None
-    with CardSlot() as card:
-        with open(fn, 'rt') as fd:
-            for ln in fd.readlines():
-                if 'prv' not in ln: continue
-
-                found = pat.search(ln)
-                if not found: continue
-                found = found.group(0)
-
-                try:
-                    node, chain, addr_fmt, is_priv = chains.slip32_deserialize(found)
-                    break
-                except:
-                    continue
+        node = None
+        with CardSlot(force_vdisk=force_vdisk, readonly=True) as card:
+            with open(fn, 'rt') as fd:
+                for ln in fd.readlines():
+                    if 'prv' not in ln: continue
+                    node, chain, addr_fmt = parse_extended_key(ln, private=True)
+                    if node: break
 
     if not node:
         # unable
         await ux_show_story('''\
-Sorry, wasn't able to find an extended private key to import. It should be at \
+Sorry, wasn't able to find a valid extended private key to import. It should be at \
 the start of a line, and probably starts with "xprv".''', title="FAILED")
         return
 
@@ -1371,7 +1383,7 @@ async def list_files(*A):
 
     basename = fn.rsplit('/', 1)[-1]
 
-    ch = await ux_show_story('''SHA256(%s)\n\n%s\n\nPress 6 to delete.''' % (basename, B2A(chk.digest())), escape='6')
+    ch = await ux_show_story('''SHA256(%s)\n\n%s\n\nPress (6) to delete.''' % (basename, B2A(chk.digest())), escape='6')
 
     if ch == '6':
         with CardSlot() as card:
@@ -1379,7 +1391,8 @@ async def list_files(*A):
 
     return
 
-async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None, none_msg=None, title=None):
+async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None,
+                      none_msg=None, title=None, force_vdisk=False):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
@@ -1392,7 +1405,7 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     if choices is None:
         choices = []
         try:
-            with CardSlot() as card:
+            with CardSlot(force_vdisk=force_vdisk) as card:
                 sofar = set()
 
                 for path in card.get_paths():
@@ -1548,7 +1561,7 @@ or upload a transaction to be signed \
 from your desktop wallet software or command line tools.\n\n'''
 
         if NFC:
-            msg += 'Press 3 to send PSBT using NFC.\n\n'
+            msg += 'Press (3) to send PSBT using NFC.\n\n'
     
         msg += "You will always be prompted to confirm the details before \
 any signature is performed."
@@ -1584,10 +1597,9 @@ async def sign_message_on_sd(*a):
             lines = fd.readlines()
             return (1 <= len(lines) <= 5)
 
-    fn = await file_picker('Choose text file to be signed.',
-                            suffix='txt', min_size=2,
-                            max_size=500, taster=is_signable,
-            none_msg='No suitable files found. Must be one line of text, in a .TXT file, optionally followed by a subkey derivation path on a second line.')
+    fn = await file_picker('Choose text file to be signed.', suffix='txt', min_size=2, max_size=500, taster=is_signable,
+                           none_msg='No suitable files found. Must be one line of text, in a .TXT file, optionally '
+                                    'followed by a subkey derivation path on a second line.')
 
     if not fn:
         return

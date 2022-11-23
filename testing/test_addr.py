@@ -119,7 +119,7 @@ def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_m
     split_story = story.split("\n\n")
     story_addr = split_story[0]
     story_path = split_story[1][2:]  # remove "= "
-    assert "Press 3 to share over NFC" in story
+    assert "Press (3) to share via NFC" in story
     assert story_path == path
     need_keypress("3")  # share over NFC
     addr = nfc_read_text()

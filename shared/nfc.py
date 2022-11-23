@@ -217,7 +217,7 @@ class NFCHandler:
     async def share_signed_txn(self, txid, file_offset, txn_len, txn_sha):
         # we just signed something, share it over NFC
         if txn_len >= MAX_NFC_SIZE:
-            await ux_show_story("Transaction is too large to share over NFC")
+            await ux_show_story("Transaction is too large to share via NFC")
             return
 
         n = ndef.ndefMaker()
@@ -232,7 +232,7 @@ class NFCHandler:
     async def share_psbt(self, file_offset, psbt_len, psbt_sha, label=None):
         # we just signed something, share it over NFC
         if psbt_len >= MAX_NFC_SIZE:
-            await ux_show_story("PSBT is too large to share over NFC")
+            await ux_show_story("PSBT is too large to share via NFC")
             return
 
         n = ndef.ndefMaker()
@@ -498,7 +498,7 @@ class NFCHandler:
             f = fname.lower()
             return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
 
-        msg = "Lists PSBT, text, and TXN files on MicroSD. Select to share contents over NFC."
+        msg = "Lists PSBT, text, and TXN files on MicroSD. Select to share contents via NFC."
 
         while 1:
             fn = await file_picker(msg, min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
@@ -680,5 +680,24 @@ class NFCHandler:
         armored_str = RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
                                                     blockchain='BITCOIN', sig=sig)
         await self.confirm_share_loop(armored_str)
+
+    async def read_extended_private_key(self):
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            if "prv" in msg:
+                winner = msg.strip()
+                break
+
+        if not winner:
+            await ux_show_story('Unable to find extended private key in NDEF data')
+            return
+
+        return winner
 
 # EOF

@@ -1,5 +1,8 @@
 ## 5.0.8 - 2022-11-??
-- tbd
+- Enhancement: Add ability to import multisig wallet via Virtual Disk
+- Enhancement: Add ability to import extended private key via Virtual Disk and via NFC
+- Enhancement: Offer import/export from/to Virtual Disk in UI
+- Bugfix: allow export of Wasabi skeleton for Bitcoin Regtest
 
 ## 5.0.7 - 2022-10-05
 

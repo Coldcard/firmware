@@ -16,6 +16,7 @@ python run_sim_tests.py -m all                                 # run all tests b
 python run_sim_tests.py                                        # same as with '-m all' above --> most useful
 python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 252 minutes)
 python run_sim_tests.py -m test_multisig.py -k cosigning       # run only tests that match expression from test_multisig.py
+python run_sim_tests.py -m test_export.py --pdb                # run only export tests and attach debugger
 
 
 Onetime/veryslow tests are completely separated form the rest of the test suite.
@@ -215,6 +216,12 @@ def main():
             print("Skipped", test_module)
             continue
         print("Started", test_module)
+        if test_module == "test_address_explorer.py":
+            test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
+        if test_module == "test_export.py":
+            test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
+        if test_module == "test_multisig.py":
+            test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_vdisk.py":
             test_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_bip39pw.py":

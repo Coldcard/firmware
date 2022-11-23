@@ -791,7 +791,7 @@ normal operation.''')
         if flags & TC_BRICK:
             msg += ' and bricks system at end of countdown'
 
-        msg += '.\n\nPress 4 to change time.'
+        msg += '.\n\nPress (4) to change time.'
         ch = await ux_show_story(msg, escape='4')
         if ch != '4': return
 
@@ -826,7 +826,7 @@ Wallet is XPRV-based and derived from a fixed path.''' % pin
         else:
             raise ValueError(hex(flags))
 
-        ch = await ux_show_story(msg + '\n\nPress 6 to view associated secrets.', escape='6')
+        ch = await ux_show_story(msg + '\n\nPress (6) to view associated secrets.', escape='6')
         if ch != '6': return
 
         b, s = tp.get_by_pin(pin)

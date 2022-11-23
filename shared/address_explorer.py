@@ -191,7 +191,7 @@ DO NOT DEPOSIT to this address unless you are 100%% certain that some other soft
 be able to generate a valid PSBT for signing the UTXO, \
 and also that specific path details will not get lost.\n
 This is for gurus only! You may have created a Bitcoin blackhole.\n
-Press 3 if you really understand and accept these risks.
+Press (3) if you really understand and accept these risks.
 ''' % path, title='MUCH DANGER', escape='3')
 
         if ch != '3': return
@@ -203,31 +203,36 @@ Press 3 if you really understand and accept these risks.
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
         # - or multisig case
-        from glob import dis, NFC
+        from glob import dis, NFC, VD
         import version
 
         def make_msg(change=0):
             msg = ''
             if n > 1:
                 if start == 0:
-                    msg = "Press 1 to save into a file."
+                    msg = "Press (1) to save to file on SD Card."
                     if version.has_fatram and not ms_wallet:
-                        msg += " 2 to view QR Codes."
+                        msg += " (2) to view QR Codes."
                     if NFC:
-                        msg += " Press 3 to share over NFC."
+                        msg += " Press (3) to share via NFC."
+                    if VD:
+                        msg += " Press (4) to save to file on Virtual Disk."
                     if allow_change and change == 0:
-                        msg += " Press 4 to show change addresses."
+                        msg += " Press (5) to show change addresses."
                     msg += '\n\n'
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
-                msg += "Showing single address."
+                msg = "Showing single address."
+                msg += " Press (1) to save to file on SD Card."
                 if version.has_fatram:
-                    msg += " Press 2 to view QR Codes."
+                    msg += " Press (2) to view QR Codes."
                 if NFC:
-                    msg += " Press 3 to share over NFC."
+                    msg += " Press (3) to share via NFC."
+                if VD:
+                    msg += " Press (4) to save to file on Virtual Disk."
                 if allow_change and change == 0:
-                    msg += " Press 4 to show change address."
+                    msg += " Press (5) to show change address."
                 msg += '\n\n'
 
             addrs = []
@@ -269,22 +274,26 @@ Press 3 if you really understand and accept these risks.
                     stash.blank_object(node)
 
             if n > 1:
-                msg += "Press 9 to see next group, 7 to go back. X to quit."
+                msg += "Press (9) to see next group, (7) to go back. X to quit."
 
             return msg, addrs
 
         msg, addrs = make_msg()
         change = 0
         while 1:
-            ch = await ux_show_story(msg, escape='123479')
+            ch = await ux_show_story(msg, escape='1234579')
 
             if ch == 'x':
                 return
 
-            elif ch == '1':
+            elif ch in "14":
+                if ch == '1':
+                    force_vdisk = False
+                else:
+                    force_vdisk = True
                 # save addresses to MicroSD/VirtDisk
-                await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num,
-                                                count=(250 if n!=1 else 1), change=change)
+                await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num, count=(250 if n!=1 else 1),
+                                                change=change, force_vdisk=force_vdisk)
                 # .. continue on same screen in case they want to write to multiple cards
                 continue
 
@@ -306,7 +315,7 @@ Press 3 if you really understand and accept these risks.
                     await NFC.share_deposit_address(addrs[0])
                 continue
 
-            elif ch == '4' and allow_change:
+            elif ch == '5' and allow_change:
                 change = 1
 
             elif ch == '7' and start>0:
@@ -352,7 +361,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
 
         stash.blank_object(node)
 
-async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250, change=0):
+async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250, change=0, force_vdisk=False):
     # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
@@ -368,7 +377,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, coun
 
     # pick filename and write
     try:
-        with CardSlot() as card:
+        with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
@@ -405,7 +414,7 @@ WARNING: Please understand that exceeding the gap limit \
 of your wallet, or choosing the wrong address on the next screen \
 may make it very difficult to recover your funds.
 
-Press 4 to start or 6 to hide this message forever.''', escape='46')
+Press (4) to start or (6) to hide this message forever.''', escape='46')
 
         if ch == '4': break
         if ch == '6':

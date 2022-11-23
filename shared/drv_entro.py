@@ -182,25 +182,31 @@ async def drv_entro_step2(_1, picked, _2):
     if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
 
-    prompt = '\n\nPress 1 to save to MicroSD card'
+    prompt = '\n\nPress (1) to save to MicroSD card'
     if encoded is not None:
-        prompt += ', 2 to switch to derived secret'
+        prompt += ', (2) to switch to derived secret'
     elif s_mode == 'pw':
-        prompt += ', 2 to type password over USB'
+        prompt += ', (2) to type password over USB'
     if (qr is not None) and version.has_fatram:
-        prompt += ', 3 to view as QR code'
+        prompt += ', (3) to view as QR code'
         if glob.NFC:
-            prompt += ', 4 to send by NFC'
+            prompt += ', (4) to share via NFC'
+    if glob.VD:
+        prompt += ", (5) to save to Virtual Disk"
 
     prompt += '.'
 
     while 1:
-        ch = await ux_show_story(msg+prompt, sensitive=True, escape='1234')
+        ch = await ux_show_story(msg+prompt, sensitive=True, escape='12345')
 
-        if ch == '1':
-            # write to SD card: simple text file
+        if ch in "15":
+            # write to SD card or Virtual Disk: simple text file
+            if ch == "1":
+                force_vdisk = False
+            else:
+                force_vdisk = True
             try:
-                with CardSlot() as card:
+                with CardSlot(force_vdisk=force_vdisk) as card:
                     fname, out_fn = card.pick_filename('drv-%s-idx%d.txt' % (s_mode, index))
 
                     with open(fname, 'wt') as fp:

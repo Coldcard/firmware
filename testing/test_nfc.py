@@ -334,7 +334,7 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
     title, story = cap_story()
     assert 'TXID' in title, story
     txid = a2b_hex(story.split()[0])
-    assert 'Press 3' in story
+    assert 'Press (3)' in story
     need_keypress('3')
 
     if too_big:
