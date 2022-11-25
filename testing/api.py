@@ -109,6 +109,18 @@ class Bitcoind:
             self.bitcoind_proc.kill()
         shutil.rmtree(self.datadir)
 
+    def delete_wallet_files(self, pattern=None):
+        wallets_dir = os.path.join(self.datadir, "regtest/wallets")
+        wallet_files = os.listdir(wallets_dir)
+        for wf in wallet_files:
+            abs_path = os.path.join(wallets_dir, wf)
+            if pattern is None:
+                # remove all
+                shutil.rmtree(abs_path)
+            else:
+                if pattern in wf:
+                    shutil.rmtree(abs_path)
+
     @staticmethod
     def create(*args, **kwargs):
         c = Bitcoind(*args, **kwargs)

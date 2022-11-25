@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef
+import pytest, os, time, sys, random, re, ndef
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, prandom
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode
@@ -596,6 +596,17 @@ def open_microsd(simulator, microsd_path):
     def doit(fn, mode='rb'):
         return open(microsd_path(fn), mode)
 
+    return doit
+
+@pytest.fixture(scope="module")
+def clean_microsd(microsd_path):
+    def doit():
+        dir = microsd_path("")
+        ls = os.listdir(dir)
+        for fname in ls:
+            if fname in ["README.md", ".gitignore", "messages", "psbt"]:
+                continue
+            os.remove(dir + fname)
     return doit
 
 @pytest.fixture(scope="function")
