@@ -159,6 +159,7 @@ WalletExportMenu = [
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained Capital", f=unchained_capital_export),
+    MenuItem("Lily Wallet", f=lily_skeleton),
     MenuItem("Generic JSON", f=generic_skeleton),
     MenuItem("Export XPUB", menu=XpubExportMenu),
     MenuItem("Dump Summary", predicate=has_secrets, f=dump_summary),

@@ -1131,6 +1131,23 @@ single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 
                                     lambda: export.generate_generic_export(account_num),
                                     'coldcard-export.json')
 
+async def lily_skeleton(*A):
+    # make a single JSON file with basically all useful XPUB's in it.
+    # identical to generic_skeleton but with different story and filename.
+
+    if await ux_show_story('''\
+This saves a file onto MicroSD card to use with Lily Wallet. \
+Works for both single signature and multisig wallets. \
+''' + SENSITIVE_NOT_SECRET) != 'y':
+        return
+
+    account_num = await ux_enter_number('Account Number:', 9999)
+
+    # no choices to be made, just do it.
+    import export
+    await export.make_json_wallet('Generic Export',
+                                    lambda: export.generate_generic_export(account_num),
+                                    'lily-wallet-export.json')
 
 async def wasabi_skeleton(*A):
     # save xpub, and some other public details into a file
