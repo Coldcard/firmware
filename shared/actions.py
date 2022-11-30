@@ -1145,7 +1145,7 @@ Works for both single signature and multisig wallets. \
 
     # no choices to be made, just do it.
     import export
-    await export.make_json_wallet('Generic Export',
+    await export.make_json_wallet('Lily Wallet',
                                     lambda: export.generate_generic_export(account_num),
                                     'lily-wallet-export.json')
 
