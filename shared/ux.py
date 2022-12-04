@@ -424,4 +424,208 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             # cleanup leading zeros and such
             value = str(min(int(value), max_value))
 
+async def ux_input_numbers(val, validate_func):
+    # collect a series of digits
+    from glob import dis
+    from display import FontTiny
+
+    # allow key repeat on X only
+    press = PressRelease('1234567890y')
+
+    footer = "X to DELETE, or OK when DONE."
+    lx = 6
+    y = 16
+    here = ''
+
+    dis.clear()
+    dis.text(None, -1, footer, FontTiny)
+    dis.save()
+
+    while 1:
+        dis.restore()
+
+        # text centered
+        msg = here
+        by = y
+        bx = dis.text(lx, y, msg[0:16])
+        dis.text(lx, y - 9, str(val, 'ascii').replace(' ', '_'), FontTiny)
+
+        if len(msg) > 16:
+            # second line when needed (left just)
+            by += 15
+            bx = dis.text(lx, by, msg[16:])
+
+        if len(here) < 32:
+            dis.icon(bx, by - 2, 'sm_box')
+
+        dis.show()
+
+        ch = await press.wait()
+        if ch == 'y':
+            val += here
+            validate_func()
+            return val
+        elif ch == 'x':
+            if here:
+                here = here[0:-1]
+            else:
+                # quit if they press X on empty screen
+                return
+        else:
+            if len(here) < 32:
+                here += ch
+
+async def ux_spinner_edit(pw, confirm_exit=True):
+    # Allow them to pick each digit using "D-pad"
+    from glob import dis
+    from display import FontTiny, FontSmall
+
+    # Should allow full unicode, NKDN
+    # - but limited to what we can show in FontSmall
+    # - so really just ascii; not even latin-1
+    # - 8-bit codepoints only
+    my_rng = range(32, 127)  # FontSmall.code_range
+    symbols = b' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+    letters = b'abcdefghijklmnopqrstuvwxyz'
+    Letters = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    numbers = b'1234567890'
+    # assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
+
+    footer1 = "1=Letters  2=Numbers  3=Symbols"
+    footer2 = "4=SwapCase  0=HELP"
+    y = 20
+    pw = bytearray(pw or 'A')
+
+    pos = len(pw) - 1  # which part being changed
+    n_visible = const(9)
+    scroll_x = max(pos - n_visible, 0)
+
+    def cycle_set(which, direction=1):
+        # pick next item in set of choices
+        for n, s in enumerate(which):
+            if pw[pos] == s:
+                try:
+                    pw[pos] = which[n + direction]
+                except IndexError:
+                    pw[pos] = which[0 if direction == 1 else -1]
+                return
+        pw[pos] = which[0]
+
+    def change(dx):
+        # next/prev within the same subset of related chars
+        ch = pw[pos]
+        for subset in [symbols, letters, Letters, numbers]:
+            if ch in subset:
+                return cycle_set(subset, dx)
+
+        # probably unreachable code: numeric up/down
+        ch = pw[pos] + dx
+        if ch not in my_rng:
+            ch = (my_rng.stop - 1) if dx < 0 else my_rng.start
+            assert ch in my_rng
+        pw[pos] = ch
+
+    # pre-render the fixed stuff
+    dis.clear()
+    dis.text(None, -10, footer1, FontTiny)
+    dis.text(None, -1, footer2, FontTiny)
+    dis.save()
+
+    # no key-repeat on certain keys
+    press = PressRelease('4xy')
+    while 1:
+        dis.restore()
+
+        lr = pos - scroll_x  # left/right distance of cursor
+        if lr < 4 and scroll_x:
+            scroll_x -= 1
+        elif lr < 0:
+            scroll_x = pos
+        elif lr >= (n_visible - 1):
+            # past right edge
+            scroll_x += 1
+
+        for i in range(n_visible):
+            # calc abs position in string
+            ax = scroll_x + i
+            x = 4 + (13 * i)
+            try:
+                ch = pw[ax]
+            except IndexError:
+                continue
+
+            if ax == pos:
+                # draw cursor
+                if len(pw) < 2 * n_visible:
+                    dis.text(x - 4, y - 19, '0x%02X' % ch, FontTiny)
+                dis.icon(x - 2, y - 10, 'spin')
+
+            if ch == 0x20:
+                dis.icon(x, y + 11, 'space')
+            else:
+                dis.text(x, y, chr(ch) if ch in my_rng else chr(215), FontSmall)
+
+        if scroll_x > 0:
+            dis.text(2, y - 14, str(pw, 'ascii')[0:scroll_x].replace(' ', '_'), FontTiny)
+        if scroll_x + n_visible < len(pw):
+            dis.text(-1, 1, "MORE>", FontTiny)
+
+        dis.show()
+
+        ch = await press.wait()
+        if ch == 'y':
+            return str(pw, 'ascii')
+        elif ch == 'x':
+            if len(pw) > 1:
+                # delete current char
+                pw = pw[0:pos] + pw[pos + 1:]
+                if pos >= len(pw):
+                    pos = len(pw) - 1
+            else:
+                if confirm_exit:
+                    pp = await ux_show_story(
+                        "OK to leave without any changes? Or X to cancel leaving.")
+                    if pp == 'x': continue
+                return None
+
+        elif ch == '7':  # left
+            pos -= 1
+            if pos < 0: pos = 0
+        elif ch == '9':  # right
+            pos += 1
+            if pos >= len(pw):
+                if len(pw) < 100 and pw[-3:] != b'   ':
+                    pw += ' '  # expand with spaces
+                else:
+                    pos -= 1  # abort addition
+
+        elif ch == '5':  # up
+            change(1)
+        elif ch == '8':  # down
+            change(-1)
+        elif ch == '1':  # alpha
+            cycle_set(b'Aa')
+        elif ch == '4':  # toggle case
+            if (pw[pos] & ~0x20) in range(65, 91):
+                pw[pos] ^= 0x20
+        elif ch == '2':  # numbers
+            cycle_set(numbers)
+        elif ch == '3':  # symbols (all of them)
+            cycle_set(symbols)
+        elif ch == '0':  # help
+            help_msg = '''\
+Use arrow keys (5789) to select letter and move around. 
+
+1=Letters (Aa..)
+2=Numbers (12..)
+3=Symbols (!@#&*)
+4=Swap Case (q/Q)
+X=Delete char
+
+Add more characters by moving past end (right side).'''
+
+            if confirm_exit:
+                help_msg += '\nTo quit without changes, delete everything.'
+            await ux_show_story(help_msg)
+
 # EOF

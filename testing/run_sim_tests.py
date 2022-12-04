@@ -174,8 +174,7 @@ class ColdcardSimulator:
         if pp is None:
             os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
             os.waitpid(os.getpgid(self.proc.pid), 0)
-        else:
-            print("***********", pp)  # not sure what to expect here
+
         atexit.unregister(self.stop)
 
 
@@ -217,6 +216,8 @@ def main():
             print("Skipped", test_module)
             continue
         print("Started", test_module)
+        if test_module == "test_bsms.py":
+            test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_address_explorer.py":
             test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_export.py":

@@ -2,22 +2,20 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio, sys, ngu, ujson
-#from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line
+import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
+from utils import (
+    xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line,
+    export_prompt_builder
+)
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
 
-# Bitcoin limitation: max number of signatures in CHECK_MULTISIG
-# - 520 byte redeem script limit <= 15*34 bytes per pubkey == 510 bytes 
-# - serializations of M/N in redeem scripts assume this range
-MAX_SIGNERS = const(15)
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -864,16 +862,8 @@ class MultisigWallet:
         hdr = '%s %s' % (mode, my_xfp)
 
         force_vdisk = False
-        if NFC or VD:
-            prompt = "Press (1) to export multisig wallet file to SD Card"
-            escape = "1"
-            if VD is not None:
-                prompt += ", press (2) to export to Virtual Disk"
-                escape += "2"
-            if NFC:
-                prompt += ", press (3) to share via NFC"
-                escape += "3"
-            prompt += "."
+        prompt, escape = export_prompt_builder("multisig wallet file")
+        if prompt:
             ch = await ux_show_story(prompt, escape=escape)
             if ch == "3":
                 with uio.StringIO() as fp:
@@ -1236,6 +1226,8 @@ class MultisigMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
+        from bsms import make_ms_wallet_bsms_menu
+
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
         else:
@@ -1247,6 +1239,7 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Import from File', f=import_multisig))
         rv.append(MenuItem('Import via NFC', f=import_multisig_nfc, predicate=lambda: NFC is not None))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
+        rv.append(MenuItem('BSMS (BIP-129)', menu=make_ms_wallet_bsms_menu))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
@@ -1279,7 +1272,6 @@ async def make_ms_wallet_menu(menu, label, item):
     rv = [
         MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
         MenuItem('View Details', f=ms_wallet_detail, arg=ms),
-
         MenuItem('Delete', f=ms_wallet_delete, arg=ms),
         MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
         MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms),
@@ -1487,8 +1479,6 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
     # - create wallet, save and also export 
     # - also create electrum skel to go with that
     # - only expected to work with our ccxp-foo.json export files.
-    from actions import file_picker
-    import uos, ujson
     from utils import get_filesize
 
     chain = chains.current_chain()

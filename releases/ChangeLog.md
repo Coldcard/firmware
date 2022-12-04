@@ -1,5 +1,7 @@
 ## 5.0.8 - 2023-02-03
 
+- Enhancement: Support BIP-0129 Bitcoin Secure Multisig Setup (BSMS).
+  Both Coordinator and Signer roles are supported.
 - Enhancement: Add ability to import multisig wallet via Virtual Disk.
 - Enhancement: Add ability to import extended private key via Virtual Disk and via NFC.
 - Enhancement: Import seed in compact/truncated form (just 3-4 letters of each seed word).

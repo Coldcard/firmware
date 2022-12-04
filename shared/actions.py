@@ -5,9 +5,8 @@
 # Every function here is called directly by a menu item. They should all be async.
 #
 import ckcc, pyb, version, uasyncio
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index
-from utils import imported, pretty_short_delay, problem_file_line
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted, ux_enter_bip32_index, ux_spinner_edit
+from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError, needs_microsd
 from utils import xfp2str
@@ -492,8 +491,7 @@ async def pick_nickname(*a):
 You can give this Coldcard a nickname and it will be shown before login.''')
         if ch != 'y': return
 
-    from seed import spinner_edit
-    nn = await spinner_edit(nick, confirm_exit=False)
+    nn = await ux_spinner_edit(nick, confirm_exit=False)
 
     nn = nn.strip() if nn else None
     s.set('nick', nn)
@@ -1255,9 +1253,8 @@ async def verify_backup(*A):
 
 async def import_xprv(*A):
     # read an XPRV from a text file and use it.
-    import ngu, chains, ure
     from stash import SecretStash
-    from glob import VD, NFC
+    from glob import NFC
     from ubinascii import hexlify as b2a_hex
     from backups import restore_from_dict
 
@@ -1275,26 +1272,20 @@ async def import_xprv(*A):
             # directories?
             return False
 
-    prompt = "Press (1) to import extended private key from SD Card"
-    escape = "1"
-    if VD is not None:
-        prompt += ", press (2) to import from Virtual Disk"
-        escape += "2"
-    if NFC is not None:
-        prompt += ", or press (3) to import via NFC"
-        escape += "3"
-    prompt += "."
-    ch = await ux_show_story(prompt, escape=escape)
-    if ch == "3":
-        force_vdisk = None
-        extended_key = await NFC.read_extended_private_key()
-        node, chain, addr_fmt = parse_extended_key(extended_key, private=True)
-    elif ch == "2":
-        force_vdisk = True
-    elif ch == "1":
-        force_vdisk = False
-    else:
-        return
+    force_vdisk = False
+    prompt, escape = import_prompt_builder("extended private key file")
+    if prompt:
+        ch = await ux_show_story(prompt, escape=escape)
+        if ch == "3":
+            force_vdisk = None
+            extended_key = await NFC.read_extended_private_key()
+            node, chain, addr_fmt = parse_extended_key(extended_key, private=True)
+        elif ch == "2":
+            force_vdisk = True
+        elif ch == "1":
+            force_vdisk = False
+        else:
+            return
 
     if force_vdisk is not None:
         # only get here if NFC was not chosen

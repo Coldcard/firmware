@@ -464,7 +464,7 @@ def test_import_prv(nfc, testnet, pick_menu_item, cap_story, need_keypress, unit
     pick_menu_item('Import XPRV')
     title, body = cap_story()
     assert "press (3) to import via NFC" in body
-    assert "Press (1) to import extended private key from SD Card" in body
+    assert "Press (1) to import extended private key file from SD Card" in body
     if nfc:
         need_keypress("3")
         nfc_write_text(prv)
