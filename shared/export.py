@@ -5,7 +5,7 @@
 import stash, chains, sys
 #from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
-from utils import xfp2str, swab32
+from utils import xfp2str, swab32, export_prompt_builder
 from ux import ux_show_story
 import version, ujson
 from uio import StringIO
@@ -121,17 +121,8 @@ async def write_text_file(fname_pattern, body, title, total_parts=72):
     from files import CardSlot, CardMissingError, needs_microsd
 
     force_vdisk = False
-    if NFC or VD:
-        # no need to spam with another prompt if VD and NFC not enabled
-        prompt = "Press (1) to save %s file to SD Card" % title
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to save to Virtual Disk"
-            escape += "2"
-        if NFC is not None:
-            prompt += ", press (3) to share file via NFC"
-            escape += "3"
-        prompt += "."
+    prompt, escape = export_prompt_builder("%s file" % title)
+    if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == '3':
             await NFC.share_text(body)
@@ -435,16 +426,8 @@ async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
     body = generator()
 
     force_vdisk = False
-    if NFC or VD:
-        prompt = "Press (1) to save %s file to SD Card" % label
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to save to Virtual Disk"
-            escape += "2"
-        if NFC is not None:
-            prompt += ", press (3) to share file via NFC"
-            escape += "3"
-        prompt += "."
+    prompt, escape = export_prompt_builder("%s file" % label)
+    if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == '3':
             await NFC.share_json(ujson.dumps(body))

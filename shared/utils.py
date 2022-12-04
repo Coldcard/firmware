@@ -452,4 +452,37 @@ def parse_addr_fmt_str(addr_fmt):
         raise ValueError("Invalid address format: '%s'\n\n"
                            "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
 
+
+def import_prompt_builder(title):
+    from glob import NFC, VD
+    prompt, escape = None, None
+    if NFC or VD:
+        prompt = "Press (1) to import %s from SD Card" % title
+        escape = "1"
+        if VD is not None:
+            prompt += ", press (2) to import from Virtual Disk"
+            escape += "2"
+        if NFC is not None:
+            prompt += ", press (3) to import via NFC"
+            escape += "3"
+        prompt += "."
+    return prompt, escape
+
+
+def export_prompt_builder(title):
+    from glob import NFC, VD
+    prompt, escape = None, None
+    if NFC or VD:
+        # no need to spam with another prompt if VD and NFC not enabled
+        prompt = "Press (1) to save %s to SD Card" % title
+        escape = "1"
+        if VD is not None:
+            prompt += ", press (2) to save to Virtual Disk"
+            escape += "2"
+        if NFC is not None:
+            prompt += ", press (3) to share via NFC"
+            escape += "3"
+        prompt += "."
+    return prompt, escape
+
 # EOF

@@ -896,7 +896,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
 
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
-        assert len(menu) == 6 + num_wallets
+        assert len(menu) == 7 + num_wallets
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
@@ -1836,7 +1836,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
     time.sleep(0.1)
     title, story = cap_story()
     if way == "sd":
-        if "Press (1) to export multisig wallet file to SD Card" in story:
+        if "Press (1) to save multisig wallet file to SD Card" in story:
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
@@ -1850,7 +1850,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
             need_keypress("y")
     else:
         # virtual disk
-        if "press (2) to export to Virtual Disk" not in story:
+        if "press (2) to save to Virtual Disk" not in story:
             pytest.skip("Vdisk disabled")
         else:
             need_keypress("2")
@@ -2066,7 +2066,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
     time.sleep(0.1)
     title, story = cap_story()
     if way == "sd":
-        if "Press (1) to export multisig wallet file to SD Card" in story:
+        if "Press (1) to save multisig wallet file to SD Card" in story:
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
@@ -2080,7 +2080,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
             need_keypress("y")  # remove animation
     else:
         # virtual disk
-        if "press (2) to export to Virtual Disk" not in story:
+        if "press (2) to save to Virtual Disk" not in story:
             pytest.skip("Vdisk disabled")
         else:
             need_keypress("2")
@@ -2213,12 +2213,12 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("desc_type", ["p2wsh_desc", "p2sh_p2wsh_desc", "p2sh_desc"])
 def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu, cap_story,
-                                microsd_path, use_regtest, bitcoind, clean_microsd):
+                                microsd_path, use_regtest, bitcoind, microsd_wipe):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
     use_regtest()
     clear_ms()
-    clean_microsd()
+    microsd_wipe()
     # remova all wallet from datadir
     bitcoind.delete_wallet_files(pattern="bitcoind--signer")
     bitcoind.delete_wallet_files(pattern="watch_only_")

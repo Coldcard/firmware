@@ -14,6 +14,11 @@ def _is_ejected():
     sd = pyb.SDCard()
     return not sd.present()
 
+def is_dir(fname):
+    if os.stat(fname)[0] & 0x4000:
+        return True
+    return False
+
 def _try_microsd(bad_fs_ok=False):
     # Power up, mount the SD card, return False if we can't for some reason.
     #
@@ -289,6 +294,12 @@ class CardSlot:
         #root = self.get_sd_root()
         #return [root]
         return [self.mountpt]
+
+    def is_dir(self, fname):
+        return is_dir(self.abs_path(fname))
+
+    def abs_path(self, fname):
+        return self.mountpt + "/" + fname
 
     def get_id_hash(self):
         # hash over card config and serial # details

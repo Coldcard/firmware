@@ -621,17 +621,8 @@ def microsd_path(simulator):
 
     return doit
 
-@pytest.fixture(scope='module')
-def open_microsd(simulator, microsd_path):
-    # open a file from the simulated microsd
-
-    def doit(fn, mode='rb'):
-        return open(microsd_path(fn), mode)
-
-    return doit
-
-@pytest.fixture(scope="module")
-def clean_microsd(microsd_path):
+@pytest.fixture
+def microsd_wipe(microsd_path):
     def doit():
         dir = microsd_path("")
         ls = os.listdir(dir)
@@ -639,6 +630,15 @@ def clean_microsd(microsd_path):
             if fname in ["README.md", ".gitignore", "messages", "psbt"]:
                 continue
             os.remove(dir + fname)
+    return doit
+
+@pytest.fixture(scope='module')
+def open_microsd(simulator, microsd_path):
+    # open a file from the simulated microsd
+
+    def doit(fn, mode='rb'):
+        return open(microsd_path(fn), mode)
+
     return doit
 
 @pytest.fixture(scope="function")

@@ -2,9 +2,10 @@
 #
 # Run tests on the simulator itself, not here... these are basically "unit tests"
 #
-import pytest, glob
+
+import pytest, os, shutil
 from helpers import B2A
-from binascii import b2a_hex, a2b_hex
+
 
 def test_remote_exec(sim_exec):
     assert sim_exec("RV.write('testing123')") == 'testing123'
@@ -250,5 +251,25 @@ def test_match_deriv_path(patterns, paths, answers, sim_exec):
         cmd = f'from utils import match_deriv_path; RV.write(str(match_deriv_path({repr(patterns)}, {repr(path)})))'
         rv = sim_exec(cmd)
         assert rv == str(bool(ans))
+
+
+def test_is_dir(microsd_path, sim_exec):
+    dir = microsd_path("my_dir/my_inner_dir")
+    try:
+        os.makedirs(dir)
+    except FileExistsError: pass
+    with open(dir + "/nothing.txt", "w") as f:
+        f.write("ok")
+    cmd = 'import files; cs = files.CardSlot().__enter__(); RV.write(str(cs.is_dir("my_dir"))); cs.__exit__()'
+    rv = sim_exec(cmd)
+    assert rv == "True"
+    cmd = 'import files; cs = files.CardSlot().__enter__(); RV.write(str(cs.is_dir("my_dir/my_inner_dir"))); cs.__exit__()'
+    rv = sim_exec(cmd)
+    assert rv == "True"
+    cmd = 'import files; cs = files.CardSlot().__enter__(); RV.write(str(cs.is_dir("my_dir/my_inner_dir/nothing.txt"))); cs.__exit__()'
+    rv = sim_exec(cmd)
+    assert rv == "False"
+    shutil.rmtree(microsd_path("my_dir"))
+
 
 # EOF

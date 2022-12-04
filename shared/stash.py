@@ -318,7 +318,7 @@ class SensitiveValues:
             if i == 'm': continue
             if not i: continue      # trailing or duplicated slashes
 
-            if i[-1] == "'":
+            if i[-1] in "h'":
                 assert len(i) >= 2
                 is_hard = True
                 here = int(i[:-1])

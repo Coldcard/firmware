@@ -10,7 +10,7 @@ from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
 from sram2 import psbt_tmp256
-from multisig import MultisigWallet, MAX_SIGNERS, disassemble_multisig, disassemble_multisig_mn
+from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160, hash256
 from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
@@ -23,7 +23,7 @@ from public_constants import (
     PSBT_IN_PARTIAL_SIG, PSBT_IN_SIGHASH_TYPE, PSBT_IN_REDEEM_SCRIPT,
     PSBT_IN_WITNESS_SCRIPT, PSBT_IN_BIP32_DERIVATION, PSBT_IN_FINAL_SCRIPTSIG,
     PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT,
-    PSBT_OUT_BIP32_DERIVATION, MAX_PATH_DEPTH
+    PSBT_OUT_BIP32_DERIVATION, MAX_PATH_DEPTH, MAX_SIGNERS
 )
 
 # PSBT proprietary keytype

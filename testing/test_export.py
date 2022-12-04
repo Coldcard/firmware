@@ -52,7 +52,7 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")
@@ -205,7 +205,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")
@@ -289,7 +289,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")
@@ -376,7 +376,7 @@ def test_export_coldcard(way, dev, acct_num, pick_menu_item, goto_home, cap_stor
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")
@@ -482,7 +482,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")
@@ -552,7 +552,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, cap_story, need_
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")
@@ -715,7 +715,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
     time.sleep(.1)
     _, story = cap_story()
     assert "This saves a ranged xpub descriptor" in story
-    assert "Choose an address type for the wallet on the next screen" in story
+    assert "Choose descriptor and address type for the wallet on next screens" in story
     assert "Press (1) to enter a non-zero account number" in story
     assert "sensitive--in terms of privacy" in story
     assert "not compromise your funds directly" in story
@@ -762,7 +762,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
-        if "press (3) to share file via NFC" not in story:
+        if "press (3) to share via NFC" not in story:
             pytest.skip("NFC disabled")
         else:
             need_keypress("3")

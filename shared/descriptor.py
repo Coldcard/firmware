@@ -182,7 +182,9 @@ class Descriptor:
             elif deriv[0] != "/":
                 # input "84'/0'/0'" would lack slash separtor with xfp
                 deriv = "/" + deriv
-            koi = xfp2str(xfp) + deriv
+            if not isinstance(xfp, str):
+                xfp = xfp2str(xfp)
+            koi = xfp + deriv
             # normalize xpub to use h for hardened instead of '
             key_str = "[%s]%s" % (koi.lower(), xpub)
             if int_ext:
