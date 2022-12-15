@@ -3,6 +3,7 @@
 - Enhancement: Add ability to import extended private key via Virtual Disk and via NFC
 - Enhancement: Offer import/export from/to Virtual Disk in UI
 - Enhancement: Ability to import seed in compact/truncated form (max 4 letters of each word)
+- Enhancement: Add 'rolls12.py' script for verifying dice rolls math for 12 word seeds
 - Bugfix: allow export of Wasabi skeleton for Bitcoin Regtest
 
 ## 5.0.7 - 2022-10-05

@@ -1,9 +1,9 @@
 # Usage:
 #
-#   echo 123456123456 | python3 rolls.py
+#   echo 123456123456 | python3 rolls12.py
 #
 # - Requires python3 and nothing else!
-# - This file is <https://coldcardwallet.com/docs/rolls.py>
+# - This file is <https://coldcardwallet.com/docs/rolls12.py>
 # - Public domain.
 #
 from hashlib import sha256
@@ -183,17 +183,16 @@ wonder wood wool word work world worry worth wrap wreck wrestle wrist write
 wrong yard year yellow you young youth zebra zero zone zoo'''.split()
 
 
-def entropy_to_mnemonic24(entropy):
+def entropy_to_mnemonic12(entropy):
     # Apply BIP39 to convert entropy into seed words
-    assert len(entropy) == 32
-    v = int.from_bytes(entropy, 'big') << 8
+    assert len(entropy) == 16
+    v = int.from_bytes(entropy, 'big') << 4
     indexes = []
-    for i in range(24):
+    for i in range(12):
         v, m = divmod(v, 2048)
         indexes.insert(0, m)
-    assert not v
-    # final 8 bits are a checksum
-    indexes[-1] |= sha256(entropy).digest()[0]
+    # final 4 bits are a checksum
+    indexes[-1] += sha256(entropy).digest()[0] >> 4
     return [wl[i] for i in indexes]
 
 
@@ -201,21 +200,21 @@ def main():
     # Read input, remove whitespace around it
     r = input().strip()
     # Calc sha256
-    h = sha256(r.encode()).digest()
+    h = sha256(r.encode()).digest()[:16]
     # Show the hash
     print(h.hex())
     print()
     # Sanity check for empty input
-    empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    empty = "e3b0c44298fc1c149afbf4c8996fb924"
     if h.hex() == empty:
         print('WARNING: Input is empty. This is a known wallet\n')
     # Warnings for short length
-    if len(r) < 99:
+    if len(r) < 50:
         ae = 2.585 * len(r)
         print('WARNING: Input is only %d bits of entropy\n' % ae)
 
-    mnemonic = entropy_to_mnemonic24(h)
-    # Print index number and each word (24)
+    mnemonic = entropy_to_mnemonic12(h)
+    # Print index number and each word (12)
     print('\n'.join('%4d: %s' % (n + 1, word) for n, word in enumerate(mnemonic)))
 
 

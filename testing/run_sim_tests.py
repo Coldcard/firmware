@@ -210,9 +210,10 @@ def main():
     result = []
     for test_module in test_modules:
         test_args = DEFAULT_SIMULATOR_ARGS
-        if test_module in ["test_rng.py", "test_pincodes.py"]:
+        if test_module in ["test_rng.py", "test_pincodes.py", "test_rolls.py"]:
             # test_pincodes.py can only be run against real device
             # test_rng.py not needed when using simulator
+            # test_rolls.py should be run alone as it does not need simulator
             print("Skipped", test_module)
             continue
         print("Started", test_module)
