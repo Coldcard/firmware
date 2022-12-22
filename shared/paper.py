@@ -182,7 +182,7 @@ class PaperWalletMaker:
         # Use lots of (D6) dice rolls to create privkey entropy.
         privkey = b''
         with imported('seed') as seed:
-            count, privkey = await seed.add_dice_rolls(0, privkey, True)
+            count, privkey = await seed.add_dice_rolls(0, privkey, True, enforce=True)
             if count == 0: return
 
         if privkey >= SECP256K1_ORDER or privkey == bytes(32):
