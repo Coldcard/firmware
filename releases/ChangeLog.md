@@ -1,4 +1,4 @@
-## 5.0.8 - 2022-12-??
+## 5.0.8 - 2023-02-??
 
 - Enhancement: Add ability to import multisig wallet via Virtual Disk
 - Enhancement: Add ability to import extended private key via Virtual Disk and via NFC
@@ -12,6 +12,9 @@
 - Enhancement: Samourai POST-MIX and PRE-MIX descriptor export options added to `Export Wallet`
 - Enhancement: Add ability to export all supported wallets via NFC
 - Bugfix: Change value was ignored when generating addresses file from address explorer - fixed
+- Enhancement: Added dice rolls distribution check to prevent users from generating low entropy seeds
+- Enhancement: During main seed generation from dice, it is no longer allowed to use fewer dice rolls.
+               Must be at least 50 dice rolls for 12 word seeds and at least 99 dice rolls for 24 word seeds
 - Bugfix: allow export of Wasabi skeleton for Bitcoin Regtest
 
 ## 5.0.7 - 2022-10-05

@@ -11,7 +11,7 @@
 #    - 'abandon' * 11 + 'about'
 #
 from menu import MenuItem, MenuSystem
-from utils import pop_count, xfp2str
+from utils import xfp2str
 import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code
@@ -293,10 +293,26 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
     return ch
 
-async def add_dice_rolls(count, seed, judge_them):
+async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
     from glob import dis
     from display import FontTiny, FontLarge
 
+    low_entropy_msg = "You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy."
+    low_entropy_msg += " For %d-bit security"
+    if nwords is not None:
+        # do not add this if we generate private key in paper wallets
+        low_entropy_msg += ", which is considered the minimum for %d word seeds," % nwords
+    low_entropy_msg += " you need at least %d rolls."
+
+    # None is for papaer wallet private key - as it is 32 bytes of entropy we need 99 D6
+    if nwords in (24, None):
+        threshold = 99
+        sec_bit = 256
+    else:
+        threshold = 50
+        sec_bit = 128
+
+    counter = {}
     md = sha256(seed)
     pr = PressRelease()
 
@@ -322,6 +338,7 @@ async def add_dice_rolls(count, seed, judge_them):
 
         if ch in '123456':
             count += 1
+            counter[ch] = counter.get(ch, 0) + 1  # mimics defaultdict
 
             dis.restore()
             dis.text(None, 0, '%d rolls' % count, FontLarge)
@@ -336,14 +353,34 @@ async def add_dice_rolls(count, seed, judge_them):
             if count < 10 and judge_them:
                 return 0, seed
         elif ch == 'y':
-            if count < 99 and judge_them:
+            if count < threshold and judge_them:
                 if not count:
                     return 0, seed
-                ok = await ux_confirm('''\
-You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy. \
-For 128-bit security, which is considered the minimum, you need 50 rolls, and \
-for 256-bits of security, 99 rolls.''' % count)
-                if not ok: continue
+
+                story = low_entropy_msg % (count, sec_bit, threshold)
+                if enforce:
+                    ch = await ux_show_story("Not enough dice rolls!!!\n\n" + story +
+                                             "\n\nPress OK to add more dice rolls. X to exit")
+                    if ch == "y":
+                        continue
+                    else:
+                        return 0, seed
+                else:
+                    ok = await ux_confirm(story)
+                    if not ok:
+                        continue
+            if judge_them:
+                bad_dist = any((v / count) > 0.30 for _, v in counter.items())
+                if bad_dist:
+                    bad_dist_msg = ("Distribution of dice rolls is not random. "
+                                    "Some number/s occurred more than 30% of all attempts.")
+                    if enforce:
+                        await ux_show_story(bad_dist_msg)
+                        return 0, seed  # exit
+                    else:
+                        ok = await ux_confirm(bad_dist_msg)
+                        if not ok:
+                            continue
             break
 
     if count:
@@ -359,7 +396,7 @@ async def new_from_dice(nwords):
     seed = b''
     count = 0
 
-    count, seed = await add_dice_rolls(count, seed, True)
+    count, seed = await add_dice_rolls(count, seed, True, nwords, enforce=True)
     if count == 0: return
 
     words = await approve_word_list(seed, nwords)
@@ -388,7 +425,7 @@ async def ephemeral_seed_generate_from_dice(nwords):
     seed = b''
     count = 0
 
-    count, seed = await add_dice_rolls(count, seed, True)
+    count, seed = await add_dice_rolls(count, seed, True, nwords)
     if count == 0: return
 
     words = await approve_word_list(seed, nwords, ephemeral=True)

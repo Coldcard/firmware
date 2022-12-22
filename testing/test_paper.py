@@ -2,6 +2,8 @@
 #
 # Tests for paper-wallet feature
 #
+import random
+
 import pytest, time, struct, os, shutil, re
 from pycoin.key.Key import Key
 from pycoin.encoding import from_bytes_32
@@ -130,7 +132,80 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
 
         os.unlink(path)
 
-@pytest.mark.parametrize('rolls', [ '123123', '123'*30, '123456'*17] )
+@pytest.mark.parametrize('rolls', [ '123123', '123'*30] )
+def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
+                                            microsd_path):
+    # verify the math for dice rolling method
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    try:
+        pick_menu_item('Paper Wallets')
+    except:
+        raise pytest.skip('Feature absent')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'pick a random' in story
+    assert 'MANY RISKS' in story
+
+    need_keypress('y')
+
+    time.sleep(0.1)
+    pick_menu_item('Use Dice')
+
+    for ch in rolls:
+        time.sleep(0.01)
+        need_keypress(ch)
+
+    need_keypress('y')
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert 'Not enough dice rolls!!!' in story
+    assert 'For 256-bit security you need at least 99 rolls' in story
+    assert 'Press OK to add more dice rolls. X to exit' in story
+    need_keypress('x')
+
+@pytest.mark.parametrize('rolls', ['123'*34, "1"*99, "64"*50])
+def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
+                                            microsd_path):
+    # verify the math for dice rolling method
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    try:
+        pick_menu_item('Paper Wallets')
+    except:
+        raise pytest.skip('Feature absent')
+
+    time.sleep(0.1)
+    title, story = cap_story()
+
+    assert 'pick a random' in story
+    assert 'MANY RISKS' in story
+
+    need_keypress('y')
+
+    time.sleep(0.1)
+    pick_menu_item('Use Dice')
+
+    for ch in rolls:
+        time.sleep(0.01)
+        need_keypress(ch)
+
+    need_keypress('y')
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert 'Distribution of dice rolls is not random' in story
+    assert 'Some number/s occurred more than 30% of all attempts' in story
+    # exit
+
+@pytest.mark.parametrize('rolls', [
+    '123456'*17,
+    "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
+    "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
+])
 def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
     # verify the math for dice rolling method
 

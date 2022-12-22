@@ -321,7 +321,7 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, need_keypres
     reset_seed_words()
 
 @pytest.mark.qrcode
-@pytest.mark.parametrize('count', [20, 51, 99, 104])
+@pytest.mark.parametrize('count', [20, 40, 51, 99, 104])
 @pytest.mark.parametrize('nwords', [12, 24])
 def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words, cap_screen, cap_screen_qr, qr_quality_check, expect_ftux):
     import random
@@ -329,7 +329,6 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
     
     unit_test('devtest/clear_seed.py')
 
-    m = cap_menu()
     pick_menu_item('New Seed Words')
     pick_menu_item(f'{nwords} Word Dice Roll')
 
@@ -342,21 +341,26 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
         time.sleep(0.01)
         need_keypress(ch)
         gave += ch
-
-    title, body = cap_story()
         
     time.sleep(0.1)
     need_keypress('y')
 
     time.sleep(0.1)
     title, body = cap_story()
-    if count < 99:
-        assert 'Are you SURE' in body
+    threshold = 99 if nwords == 24 else 50
+    if count < threshold:
+        assert 'Not enough dice rolls' in body
         assert str(len(gave)) in body
 
         time.sleep(0.1)
-        need_keypress('y')
+        need_keypress('y')  # add more dice rolls
+        for i in range(threshold - count):
+            ch = chr(0x31 + (i % 6))
+            time.sleep(0.01)
+            need_keypress(ch)
+            gave += ch
 
+        need_keypress("y")
         time.sleep(0.1)
         title, body = cap_story()
 
