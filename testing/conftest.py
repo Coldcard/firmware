@@ -1,12 +1,14 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, bech32
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT
+from helpers import B2A, U2SAT, prandom, taptweak
 from msg import verify_message
 from api import bitcoind, match_key
 from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_sim_watch
 from binascii import b2a_hex, a2b_hex
+from pycoin.contrib.segwit_addr import encode as sw_encode
+from pycoin.encoding import a2b_hashed_base58, hash160
 from constants import *
 
 # lock down randomness
@@ -247,7 +249,7 @@ def addr_vs_path(master_xpub):
     from pycoin.key.BIP32Node import BIP32Node
     from ckcc_protocol.constants import AF_CLASSIC, AFC_PUBKEY, AF_P2WPKH, AFC_SCRIPT
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-    from bech32 import bech32_decode, convertbits, Encoding
+    from bech32 import bech32_decode, convertbits, Encoding, decode
     from pycoin.encoding import a2b_hashed_base58, hash160
     from  pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
@@ -266,7 +268,12 @@ def addr_vs_path(master_xpub):
                     mk._netcode = "BTC"
                 sk = mk.subkey_for_path(path[2:])
 
-        if addr_fmt in {None,  AF_CLASSIC}:
+        if addr_fmt == AF_P2TR:
+            tweaked_xonly = taptweak(sk.sec()[1:])
+            decoded = decode(given_addr[:2], given_addr)
+            assert not given_addr.startswith("bcrt")  # regtest
+            assert tweaked_xonly == bytes(decoded[1])
+        elif addr_fmt in {None,  AF_CLASSIC}:
             # easy
             assert sk.address() == given_addr
 
@@ -1215,7 +1222,7 @@ def end_sign(dev, need_keypress):
         else:
             done = None
             while done == None:
-                time.sleep(0.00)
+                time.sleep(0.050)
                 done = dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
 
         assert len(done) == 2
@@ -1375,6 +1382,9 @@ def nfc_read(request, only_mk4):
 def nfc_write(request, only_mk4):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
+        from ckcc.constants import MAX_MSG_LEN
+        if len(ccfile) >= MAX_MSG_LEN:
+            pytest.xfail("MAX_MSG_LEN")
         sim_exec = request.getfixturevalue('sim_exec')
         need_keypress = request.getfixturevalue('need_keypress')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
@@ -1441,7 +1451,7 @@ def nfc_block4rf(sim_eval):
         for i in range(timeout*4):
             rv = sim_eval('glob.NFC.rf_on')
             if rv: break
-            sleep(0.250)
+            time.sleep(0.250)
         else:
             raise pytest.fail("NFC timeout")
 
@@ -1547,37 +1557,39 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 load_export_and_verify_signature):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None):
+             fpattern=None, skip_query=False):
         key_map = {
             "sd": sd_key or "1",
             "vdisk": vdisk_key or "2",
             "nfc": nfc_key or "3",
         }
-        time.sleep(0.2)
-        title, story = cap_story()
-        if way == "sd":
-            if f"({key_map['sd']}) to save {label} file to SD Card" in story:
-                need_keypress(key_map['sd'])
+        if not skip_query:
+            time.sleep(0.2)
+            title, story = cap_story()
+            if way == "sd":
+                if f"({key_map['sd']}) to save {label} file to SD Card" in story:
+                    need_keypress(key_map['sd'])
 
-        elif way == "nfc":
-            if f"({key_map['nfc']}) to share via NFC" not in story:
-                pytest.skip("NFC disabled")
-            else:
-                need_keypress(key_map['nfc'])
-                time.sleep(0.2)
-                if is_json:
-                    nfc_export = nfc_read_json()
+            elif way == "nfc":
+                if f"({key_map['nfc']}) to share via NFC" not in story:
+                    pytest.skip("NFC disabled")
                 else:
-                    nfc_export = nfc_read_text()
-                time.sleep(0.3)
-                need_keypress("x")  # exit NFC animation
-                return nfc_export
-        else:
-            # virtual disk
-            if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
-                pytest.skip("Vdisk disabled")
+                    need_keypress(key_map['nfc'])
+                    time.sleep(0.2)
+                    if is_json:
+                        nfc_export = nfc_read_json()
+                    else:
+                        nfc_export = nfc_read_text()
+                    time.sleep(0.3)
+                    need_keypress("x")  # exit NFC animation
+                    return nfc_export
             else:
-                need_keypress(key_map['vdisk'])
+                # virtual disk
+                if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
+                    import pdb;pdb.set_trace()
+                    pytest.skip("Vdisk disabled")
+                else:
+                    need_keypress(key_map['vdisk'])
 
         time.sleep(0.2)
         title, story = cap_story()
@@ -1648,6 +1660,35 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
                 f.write(ciphertext)
         # in case of NFC fname is b64 encoded backup itself
         return fname, backup_key_hex, node
+    return doit
+
+
+@pytest.fixture
+def validate_address():
+    # Check whether an address is covered by the given subkey
+    def doit(addr, sk):
+        if addr[0] in '1mn':
+            assert addr == sk.address(False)
+        elif addr[0:4] in { 'bc1q', 'tb1q' } or addr[0:6] == "bcrt1q":
+            h20 = sk.hash160()
+            if addr[:4] == "bcrt":
+                hrp = addr[:4]
+            else:
+                hrp = addr[:2]
+            assert addr == sw_encode(hrp, 0, h20)
+        elif addr[0:4] in {'bc1p', 'tb1p'} or addr[0:6] == "bcrt1p":
+            if addr[:4] == "bcrt":
+                hrp = addr[:4]
+            else:
+                hrp = addr[:2]
+            tweaked_xonly = taptweak(sk.sec()[1:])
+            decoded = bech32.decode(hrp, addr)
+            assert tweaked_xonly == bytes(decoded[1])
+        elif addr[0] in '23':
+            h20 = hash160(b'\x00\x14' + sk.hash160())
+            assert h20 == a2b_hashed_base58(addr)[1:]
+        else:
+            raise ValueError(addr)
     return doit
 
 

@@ -2,11 +2,13 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure
+import gc, sys, ustruct, ngu, chains, ure, uos, uio
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_PATH_DEPTH
+
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -84,7 +86,6 @@ def pop_count(i):
 
 def get_filesize(fn):
     # like os.path.getsize()
-    import uos
     try:
         return uos.stat(fn)[6]
     except OSError:
@@ -177,8 +178,6 @@ def str2xfp(txt):
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
-    import uio, sys, ure
-
     tmp = uio.StringIO()
     sys.print_exception(exc, tmp)
     lines = tmp.getvalue().split('\n')[-3:]
@@ -208,8 +207,6 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
     # - if allow_star, then final position can be * or *' (wildcard)
-    import ure
-    from public_constants import MAX_PATH_DEPTH
     try:
         s = str(bin_path, 'ascii').lower()
     except UnicodeError:
@@ -295,6 +292,13 @@ def match_deriv_path(patterns, path):
                 return True
 
     return False
+
+def validate_derivation_path_length(length, allow_master=False):
+    # force them to use a derived key, never the master
+    if not allow_master:
+        assert length >= 4, 'too short key path'
+    assert (length % 4) == 0, 'corrupt key path'
+    assert (length // 4) <= MAX_PATH_DEPTH, 'too deep'
 
 class DecodeStreamer:
     def __init__(self):
@@ -436,9 +440,7 @@ def word_wrap(ln, w):
 
 def parse_addr_fmt_str(addr_fmt):
     # accepts strings and also integers if already parsed
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-
-    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC]:
+    if addr_fmt in [AF_P2WPKH_P2SH, AF_P2WPKH, AF_CLASSIC, AF_P2TR]:
         return addr_fmt
 
     addr_fmt = addr_fmt.lower()
@@ -448,9 +450,10 @@ def parse_addr_fmt_str(addr_fmt):
         return AF_CLASSIC
     elif addr_fmt == "p2wpkh":
         return AF_P2WPKH
+    elif addr_fmt == "p2tr":
+        return AF_P2TR
     else:
-        raise ValueError("Invalid address format: '%s'\n\n"
-                           "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
+        raise ValueError("Unsupported address format: '%s'" % addr_fmt)
 
 
 def parse_extended_key(ln, private=False):

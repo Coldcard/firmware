@@ -14,7 +14,7 @@ from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_CLASSIC, MAX_SIGNERS
 from utils import xfp2str, problem_file_line, import_prompt_builder, export_prompt_builder
 from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
-from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_numbers, ux_spinner_edit
+from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_numbers, ux_input_text
 from ux import the_ux
 from descriptor import MultisigDescriptor, append_checksum
 
@@ -671,6 +671,9 @@ async def bsms_coordinator_round2(menu, label, item):
 
                             break  # break from "second chance loop"
 
+    if not r1_data:
+        return
+
     keys = []
     nodes = []
     dis.fullscreen("Validating...")
@@ -811,7 +814,7 @@ async def bsms_signer_round1(*a):
             escape = "12"
             ch = await ux_show_story(prompt, escape=escape)
             if ch == "1":
-                token_hex = await ux_spinner_edit("", hex_only=True)
+                token_hex = await ux_input_text("", hex_only=True)
             elif ch == "2":
                 token_int = await ux_input_numbers("", lambda: True)
                 token_hex = hex(int(token_int))
@@ -875,7 +878,7 @@ async def bsms_signer_round1(*a):
 "\n\nPress (1) for custom key description." % key_description, escape="1")
 
     if ch == "1":
-        key_description = await ux_spinner_edit("", confirm_exit=False) or ""
+        key_description = await ux_input_text("", confirm_exit=False) or ""
 
     key_description_len = len(key_description)
     assert key_description_len <= 80, "Key Description: 80 char max (was %d)" % key_description_len
@@ -1021,14 +1024,11 @@ async def bsms_signer_round2(menu, label, item):
     assert pth_restrictions == ALLOWED_PATH_RESTRICTIONS, \
         "Only '%s' allowed as path restrictions. Got %s" % (
                             ALLOWED_PATH_RESTRICTIONS, pth_restrictions)
-    try:
-        # if checksum is provided we better verify it
-        MultisigDescriptor.checksum_check(desc_template)
-        # remove checksum as we need to replace /**
-        desc_template = desc_template.split("#")[0]
-    except ValueError:
-        # missing descriptor checksum - OK
-        pass
+
+    # if checksum is provided we better verify it
+    # remove checksum as we need to replace /**
+    desc_template, csum = MultisigDescriptor.checksum_check(desc_template)
+
     desc = desc_template.replace("/**", "/0/*")
 
     dis.progress_bar_show(0.1)

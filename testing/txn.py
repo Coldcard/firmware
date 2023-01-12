@@ -6,7 +6,7 @@ import pytest, os
 from ckcc_protocol.protocol import MAX_TXN_LEN
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from io import BytesIO
-from helpers import fake_dest_addr, make_change_addr
+from helpers import fake_dest_addr, make_change_addr, taptweak
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, simulator_fixed_xprv
 
@@ -63,7 +63,7 @@ def fake_txn(dev):
 
     def doit(num_ins, num_outs, master_xpub=None, subpath="0/%d", fee=10000,
                 invals=None, outvals=None, segwit_in=False, outstyles=['p2pkh'], psbt_hacker=None,
-                change_outputs=[], capture_scripts=None, add_xpub=None, op_return=None):
+                change_outputs=[], capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
         master_xpub = master_xpub or dev.master_xpub or simulator_fixed_xprv
@@ -78,25 +78,38 @@ def fake_txn(dev):
         for i in range(num_ins):
             # make a fake txn to supply each of the inputs
             # - each input is 1BTC
-
             # addr where the fake money will be stored.
             subkey = mk.subkey_for_path(subpath % i)
             sec = subkey.sec()
             assert len(sec) == 33, "expect compressed"
             assert subpath[0:2] == '0/'
 
-            psbt.inputs[i].bip32_paths[sec] = xfp + pack('<II', 0, i)
+            if taproot_in:
+                tweaked_xonly = taptweak(sec[1:])
+
+            if segwit_in and taproot_in:
+                # if both specified:
+                # even is segwit v0
+                # odd is segvit v1 (taproot)
+                if i % 2 == 0:
+                    psbt.inputs[i].bip32_paths[sec] = xfp + pack('<II', 0, i)
+                    scr = bytes([0x00, 0x14]) + subkey.hash160()
+                else:
+                    psbt.inputs[i].taproot_bip32_paths[sec[1:]] = b"\x00" + xfp + pack('<II', 0, i)
+                    scr = bytes([81, 32]) + tweaked_xonly
+
+            elif taproot_in:
+                psbt.inputs[i].taproot_bip32_paths[sec[1:]] = b"\x00" + xfp + pack('<II', 0, i)
+                scr = bytes([81, 32]) + tweaked_xonly
+            else:
+                psbt.inputs[i].bip32_paths[sec] = xfp + pack('<II', 0, i)
+                if segwit_in:
+                    scr = bytes([0x00, 0x14]) + subkey.hash160()
+                else:
+                    scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
             # UTXO that provides the funding for to-be-signed txn
             supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
-
-            if segwit_in:
-                # p2wpkh
-                scr = bytes([0x00, 0x14]) + subkey.hash160()
-            else:
-                # p2pkh
-                scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
-
             supply.txs_out.append(TxOut(1E8 if not invals else invals[i], scr))
 
             with BytesIO() as fd:

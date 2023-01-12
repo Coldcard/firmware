@@ -8,7 +8,7 @@ from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
@@ -310,6 +310,9 @@ class ApproveMessageSign(UserAuthorizedAction):
         self.text = validate_text_for_signing(text)
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = parse_addr_fmt_str(addr_fmt)
+        # temporary - no p2tr support
+        if self.addr_fmt == AF_P2TR:
+            raise ValueError("Unsupported address format: 'p2tr'")
         self.approved_cb = approved_cb
 
         from glob import dis

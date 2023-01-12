@@ -1403,7 +1403,8 @@ def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_tx
 def test_op_return_output_bitcoind(op_return_data, start_hsm, attempt_psbt, bitcoind_d_sim_watch, bitcoind, hsm_reset):
     cc = bitcoind_d_sim_watch
     dest_address = cc.getnewaddress()
-    bitcoind.supply_wallet.generatetoaddress(101, dest_address)
+    bitcoind.supply_wallet.sendtoaddress(dest_address, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
     psbt = cc.walletcreatefundedpsbt([], [{dest_address: 1.0}, {"data": op_return_data.hex()}], 0, {"fee_rate": 20})["psbt"]
     policy = DICT(rules=[dict(max_amount=10)])
     start_hsm(policy)

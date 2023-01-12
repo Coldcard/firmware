@@ -2,26 +2,24 @@
 #
 # Tests for paper-wallet feature
 #
-import random
 
-import pytest, time, struct, os, shutil, re
+import pytest, time, os, shutil, re, random, json
 from pycoin.key.Key import Key
 from pycoin.encoding import from_bytes_32
-from base64 import b64encode
-from binascii import b2a_hex, a2b_hex
+from binascii import a2b_hex
 from hashlib import sha256
-from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
-from helpers import xfp2str
-import json
-from conftest import simulator_fixed_xfp, simulator_fixed_xprv
-from bech32 import bech32_decode, convertbits, Encoding
 
 
-@pytest.mark.parametrize('mode', [ "classic", 'segwit'])
+@pytest.mark.bitcoind
+@pytest.mark.parametrize('mode', [ "classic", 'segwit', 'taproot'])
+@pytest.mark.parametrize('chain', [ "BTC", "XRT", "XTN"])
 @pytest.mark.parametrize('pdf', [ False, True])
-def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
-                  microsd_path, verify_detached_signature_file):
+def test_generate(mode, chain, pdf, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
+                  dev, microsd_path, verify_detached_signature_file, validate_address, bitcoind,
+                  settings_set):
+
+    settings_set("chain", chain)
     # test UX and operation of the 'bitcoin core' wallet export
     mx = "Don't make PDF"
 
@@ -46,6 +44,11 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
         pick_menu_item('Segwit/Bech32')
         time.sleep(0.5)
 
+    if mode == 'taproot':
+        pick_menu_item('Classic Address')
+        pick_menu_item('Taproot')
+        time.sleep(0.5)
+
     if pdf:
         assert mx in cap_menu()
         shutil.copy('../docs/paperwallet.pdf', microsd_path('paperwallet.pdf'))
@@ -61,28 +64,46 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
 
     pick_menu_item('GENERATE WALLET')
 
-    time.sleep(0.1)
+    time.sleep(0.2)
     title, story = cap_story()
+    if "Press (1)" in story:
+        need_keypress("1")
+        time.sleep(0.2)
+        title, story = cap_story()
 
     assert 'Created file' in story
 
     story = [i for i in story.split('\n') if i]
     sig_file = story[-1]
+
     if not pdf:
-        fname = story[-2]
-        fnames = [fname]
+        if mode == "taproot":
+            fname = story[-1]
+        else:
+            fname = story[-2]
+            fnames = [fname]
     else:
-        fname = story[-3]
-        pdf_name = story[-2]
-        fnames = [fname, pdf_name]
+        if mode == "taproot":
+            fname = story[-2]
+            pdf_name = story[-1]
+        else:
+            fname = story[-3]
+            pdf_name = story[-2]
+            fnames = [fname, pdf_name]
         assert pdf_name.endswith('.pdf')
 
     assert fname.endswith('.txt')
-    assert sig_file.endswith(".sig")
-    verify_detached_signature_file(fnames, sig_file, "sd",
-                                   addr_fmt=AF_CLASSIC if mode == "classic" else AF_P2WPKH)
+
+    if mode != 'taproot':
+        assert sig_file.endswith(".sig")
+        verify_detached_signature_file(fnames, sig_file, "sd",
+                                       addr_fmt=AF_CLASSIC if mode == "classic" else AF_P2WPKH)
 
     path = microsd_path(fname)
+    _wif = None
+    _sk = None
+    _addr = None
+    _idesc = None
     with open(path, 'rt') as fp:
         hdr = None
         for ln in fp:
@@ -99,34 +120,62 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
             val = ln.strip()
             if 'Deposit address' in hdr:
                 assert val == fname.split('.', 1)[0].split('-', 1)[0]
-                txt_addr = val
-                if mode != 'segwit':
-                    addr = Key.from_text(val)
-                else:
-                    hrp, data, enc = bech32_decode(val)
-                    assert hrp in {'tb', 'bc', 'bcrt'}
-                    assert enc == Encoding.BECH32
-                    decoded = convertbits(data[1:], 5, 8, False)[-20:]
-                    addr = Key(hash160=bytes(decoded), is_compressed=True, netcode='XTN')
+                _addr = val
             elif hdr == 'Private key:':         # for QR case
-                assert val == wif
+                assert val == _wif
             elif 'Private key' in hdr and 'WIF=Wallet' in hdr:
-                wif = val
-                k1 = Key.from_text(val)
+                _wif = val
             elif 'Private key' in hdr and 'Hex, 32 bytes' in hdr:
-                k2 = Key(secret_exponent=from_bytes_32(a2b_hex(val)), is_compressed=True)
+                _sk = val
             elif 'Bitcoin Core command':
-                assert wif in val
-                assert 'importmulti' in val or 'importprivkey' in val
+                assert _wif in val
+                if 'importdescriptors' in val:
+                    _idesc = val
+                assert 'importprivkey' in val or 'importdescriptors' in val
             else:
                 print(f'{hdr} => {val}')
                 raise ValueError(hdr)
 
-        assert k1.sec() == k2.sec()
-        assert k1.public_pair() == k2.public_pair()
-        assert addr.address() == k1.address()
+    os.unlink(path)
 
-        os.unlink(path)
+    if chain != "XRT":
+        k1 = Key.from_text(_wif)
+        k2 = Key(secret_exponent=from_bytes_32(a2b_hex(_sk)), is_compressed=True)
+        assert k2.secret_exponent() == k1.secret_exponent()
+        validate_address(_addr, k1)
+        # validate address is chain agnostic - which should be changed at some point
+        if mode == "segwit":
+            if chain == "BTC":
+                assert _addr.startswith("bc1q")
+            else:
+                assert _addr.startswith("tb1q")
+        elif mode == "taproot":
+            if chain == "BTC":
+                assert _addr.startswith("bc1p")
+            else:
+                assert _addr.startswith("tb1p")
+        else:
+            if chain == "BTC":
+                assert _addr.startswith("1")
+            else:
+                assert _addr[0] in "mn"
+    else:
+        if mode == "segwit":
+            assert _addr.startswith("bcrt1q")
+        elif mode == "taproot":
+            assert _addr.startswith("bcrt1p")
+        else:
+            assert _addr[0] in "mn"
+        # bitcoind on regtest
+        conn = bitcoind.create_wallet(wallet_name="paper", disable_private_keys=False, blank=True,
+                                      passphrase=None, avoid_reuse=False, descriptors=True)
+        desc_obj_s, desc_obj_e = _idesc.find("["), _idesc.find("]") + 1
+        desc_obj = json.loads(_idesc[desc_obj_s:desc_obj_e])
+        desc = desc_obj[0]["desc"]
+        res = conn.importdescriptors(desc_obj)
+        assert res[0]["success"]
+        assert _addr == conn.deriveaddresses(desc)[0]
+        bitcoind.delete_wallet_files()
 
     if not pdf: return
 
@@ -134,10 +183,11 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
     with open(path, 'rb') as fp:
 
         d = fp.read()
-        assert wif.encode('ascii') in d
-        assert txt_addr.encode('ascii') in d
+        assert _wif.encode('ascii') in d
+        assert _addr.encode('ascii') in d
 
-        os.unlink(path)
+    os.unlink(path)
+
 
 @pytest.mark.parametrize('rolls', [ '123123', '123'*30] )
 def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
@@ -249,6 +299,11 @@ def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_stor
     time.sleep(0.4)
 
     title, story = cap_story()
+    if "Press (1)" in story:
+        need_keypress("1")
+        time.sleep(0.2)
+        title, story = cap_story()
+
     assert 'Created file' in story
 
     story = [i for i in story.split('\n') if i]

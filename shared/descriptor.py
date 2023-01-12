@@ -4,12 +4,13 @@
 #
 # Based on: https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
 #
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2TR
 
 MULTI_FMT_TO_SCRIPT = {
     AF_P2SH: "sh(%s)",
     AF_P2WSH_P2SH: "sh(wsh(%s))",
     AF_P2WSH: "wsh(%s)",
+    AF_P2TR: "tr(%s)",
     None: "wsh(%s)",
     # hack for tests
     "p2sh": "sh(%s)",
@@ -22,18 +23,24 @@ SINGLE_FMT_TO_SCRIPT = {
     AF_P2WPKH: "wpkh(%s)",
     AF_CLASSIC: "pkh(%s)",
     AF_P2WPKH_P2SH: "sh(wpkh(%s))",
+    AF_P2TR: "tr(%s)",
     None: "wpkh(%s)",
     "p2pkh": "pkh(%s)",
     "p2wpkh": "wpkh(%s)",
     "p2sh-p2wpkh": "sh(wpkh(%s))",
     "p2wpkh-p2sh": "sh(wpkh(%s))",
+    "p2tr": "tr(%s)",
 }
 
+PROVABLY_UNSPENDABLE = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
 INPUT_CHARSET = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ "
 CHECKSUM_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
 try:
+    import ngu
     from utils import xfp2str, str2xfp
+    from ubinascii import unhexlify as a2b_hex
+    from ubinascii import hexlify as b2a_hex
 except ModuleNotFoundError:
     import struct
     from binascii import unhexlify as a2b_hex
@@ -123,6 +130,9 @@ def multisig_descriptor_template(xpub, path, xfp, addr_fmt):
         descriptor_template = "wsh(sortedmulti(M,%s,...))"
     elif addr_fmt == AF_P2SH:
         descriptor_template = "sh(sortedmulti(M,%s,...))"
+    elif addr_fmt == AF_P2TR:
+        # provably unspendable BIP-0341
+        descriptor_template = "tr(" + PROVABLY_UNSPENDABLE + ",sortedmulti_a(M,%s,...))"
     else:
         return None
     descriptor_template = descriptor_template % key_exp
@@ -140,11 +150,14 @@ class Descriptor:
         self.addr_fmt = addr_fmt
 
     @staticmethod
-    def checksum_check(desc_w_checksum: str):
+    def checksum_check(desc_w_checksum: str, csum_required=False):
         try:
             desc, checksum = desc_w_checksum.split("#")
         except ValueError:
-            raise ValueError("Missing descriptor checksum")
+            if csum_required:
+                raise ValueError("Missing descriptor checksum")
+            return desc_w_checksum, None
+
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
             raise WrongCheckSumError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
@@ -177,9 +190,10 @@ class Descriptor:
     def checksum(self):
         return descriptor_checksum(self._serialize())
 
-    def serialize_keys(self, internal=False, int_ext=False):
+    def serialize_keys(self, internal=False, int_ext=False, keys=None):
+        to_do = keys if keys is not None else self.keys
         result = []
-        for xfp, deriv, xpub in self.keys:
+        for xfp, deriv, xpub in to_do:
             if deriv[0] == "m":
                 # get rid of 'm'
                 deriv = deriv[1:]
@@ -233,6 +247,12 @@ class Descriptor:
             tmp_desc = desc.replace("sh(wpkh(", "")
             tmp_desc = tmp_desc.rstrip("))")
 
+        # wrapped segwit
+        elif desc.startswith("tr("):
+            addr_fmt = AF_P2TR
+            tmp_desc = desc.replace("tr(", "")
+            tmp_desc = tmp_desc.rstrip(")")
+
         else:
             raise ValueError("Unsupported descriptor. Supported: pkh(, wpkh(, sh(wpkh(.")
 
@@ -248,15 +268,17 @@ class Descriptor:
 
     @classmethod
     def is_descriptor(cls, desc_str):
-        """Method to guess whether this can be a descriptor"""
+        """Quick method to guess whether this is a descriptor"""
         try:
             temp = parse_desc_str(desc_str)
-            desc, checksum = temp.split("#")
-            assert desc[-1] == ")"
-
-            return True
         except:
             return False
+
+        for prefix in ("pk(", "pkh(", "wpkh(", "tr(", "addr(", "raw(", "rawtr(", "combo(",
+                       "sh(", "wsh(", "multi(", "sortedmulti(", "multi_a(", "sortedmulti_a("):
+            if temp.startswith(prefix):
+                return True
+        return False
 
     def bitcoin_core_serialize(self, external_label=None):
         # this will become legacy one day
@@ -284,17 +306,20 @@ class MultisigDescriptor(Descriptor):
     __slots__ = (
         "M",
         "N",
+        "internal_key",
         "keys",
         "addr_fmt",
     )
 
-    def __init__(self, M, N, keys, addr_fmt):
+    def __init__(self, M, N, keys, addr_fmt, internal_key=None):
         self.M = M
         self.N = N
+        self.internal_key = internal_key
         super().__init__(keys, addr_fmt)
 
     @classmethod
     def parse(cls, desc_w_checksum: str) -> "MultisigDescriptor":
+        internal_key = None  # taproot
         # remove garbage
         desc_w_checksum = parse_desc_str(desc_w_checksum)
         # check correct checksum
@@ -317,6 +342,46 @@ class MultisigDescriptor(Descriptor):
             tmp_desc = desc.replace("sh(wsh(sortedmulti(", "")
             tmp_desc = tmp_desc.rstrip(")))")
 
+        elif desc.startswith("tr("):
+            addr_fmt = AF_P2TR
+            tmp_desc = desc.replace("tr(", "")
+            tmp_desc = tmp_desc.rstrip(")")
+            internal_key, tmp_desc = tmp_desc.split(",", 1)
+            assert tmp_desc.startswith("sortedmulti_a("), "Only on sortedmulti_a allowed"
+            tmp_desc = tmp_desc.replace("sortedmulti_a(", "")
+            tmp_desc = tmp_desc.rstrip(")")
+
+            try:
+                koi, key = cls.parse_key_orig_info(internal_key)
+                if key[0:4] not in ["tpub", "xpub"]:
+                    raise ValueError("Only extended public keys are supported")
+                xpub = cls.parse_key_derivation_info(key)
+                xfp = str2xfp(koi[:8])
+                origin_deriv = "m" + koi[8:]
+                internal_key = (xfp, origin_deriv, xpub)
+            except ValueError:
+                # https://github.com/BlockstreamResearch/secp256k1-zkp/blob/11af7015de624b010424273be3d91f117f172c82/src/modules/rangeproof/main_impl.h#L16
+                # H = lift_x(0x0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0)
+                if internal_key == PROVABLY_UNSPENDABLE:
+                    # unspendable H as defined in BIP-0341
+                    pass
+                else:
+                    assert "r=" in internal_key
+                    _, r = internal_key.split("=")
+                    if r == "@":
+                        # pick a fresh integer r in the range 0...n-1 uniformly at random and use H + rG
+                        kp = ngu.secp256k1.keypair()
+                    else:
+                        # H + rG where r is provided from user
+                        r = a2b_hex(r)
+                        assert len(r) == 32, "r != 32"
+                        kp = ngu.secp256k1.keypair(r)
+
+                    H = a2b_hex(PROVABLY_UNSPENDABLE)
+                    H_xo = ngu.secp256k1.xonly_pubkey(H)
+                    internal_key = H_xo.tweak_add(kp.xonly_pubkey().to_bytes())
+                    internal_key = b2a_hex(internal_key.to_bytes()).decode()
+
         else:
             raise ValueError("Unsupported descriptor. Supported: sh(, sh(wsh(, wsh(. All have to be sortedmulti.")
 
@@ -337,20 +402,28 @@ class MultisigDescriptor(Descriptor):
             origin_deriv = "m" + koi[8:]
             res_keys.append((xfp, origin_deriv, xpub))
 
-        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt)
+        return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt, internal_key=internal_key)
 
     def _serialize(self, internal=False, int_ext=False) -> str:
         """Serialize without checksum"""
         desc_base = MULTI_FMT_TO_SCRIPT[self.addr_fmt]
-        desc_base = desc_base % ("sortedmulti(%s)")
+        if self.addr_fmt == AF_P2TR:
+            if isinstance(self.internal_key, str):
+                desc_base = desc_base % (self.internal_key + ",sortedmulti_a(%s)")
+            else:
+                ik_ser = self.serialize_keys(keys=[self.internal_key])[0]
+                desc_base = desc_base % (ik_ser + ",sortedmulti_a(%s)")
+        else:
+            desc_base = desc_base % "sortedmulti(%s)"
         assert len(self.keys) == self.N
         inner = str(self.M) + "," + ",".join(
                         self.serialize_keys(internal=internal, int_ext=int_ext))
 
-        return desc_base % (inner)
+        return desc_base % inner
 
     def pretty_serialize(self) -> str:
         """Serialize in pretty and human-readable format"""
+        inner_ident = 1
         res = "# Coldcard descriptor export\n"
         res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP-67)\n"
         if self.addr_fmt == AF_P2SH:
@@ -365,20 +438,34 @@ class MultisigDescriptor(Descriptor):
         elif self.addr_fmt == AF_P2WSH_P2SH:
             res += "# wrapped segwit - p2sh-p2wsh\n"
             res += "sh(wsh(sortedmulti(\n%s\n)))"
+
+        elif self.addr_fmt == AF_P2TR:
+            inner_ident = 2
+            res += "# taproot multisig - p2tr\n"
+            res += "tr(\n"
+            if isinstance(self.internal_key, str):
+                res += "\t" + "# internal key (provably unspendable)\n"
+                res += "\t" + self.internal_key + ",\n"
+                res += "\t" + "sortedmulti_a(\n%s\n))"
+            else:
+                ik_ser = self.serialize_keys(keys=[self.internal_key])[0]
+                res += "\t" + "# internal key\n"
+                res += "\t" + ik_ser + ",\n"
+                res += "\t" + "sortedmulti_a(\n%s\n))"
         else:
             raise ValueError("Malformed descriptor")
 
         assert len(self.keys) == self.N
-        inner = "\t" + "# %d of %d (%s)\n" % (
+        inner = ("\t" * inner_ident) + "# %d of %d (%s)\n" % (
                         self.M, self.N,
                         "requires all participants to sign" if self.M == self.N else "threshold")
-        inner += "\t" + str(self.M) + ",\n"
+        inner += ("\t" * inner_ident) + str(self.M) + ",\n"
         ser_keys = self.serialize_keys()
         for i, key_str in enumerate(ser_keys, start=1):
             if i == self.N:
-                inner += "\t" + key_str
+                inner += ("\t" * inner_ident) + key_str
             else:
-                inner += "\t" + key_str + ",\n"
+                inner += ("\t" * inner_ident) + key_str + ",\n"
 
         checksum = self.serialize().split("#")[1]
 

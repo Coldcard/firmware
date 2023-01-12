@@ -43,4 +43,5 @@ setup:
 ngu-setup:
 	cd ../external/libngu/libs/cifra; git submodule update --init .
 	cd ../external/libngu/libs/secp256k1; git submodule update --init .
+	cd ../external/libngu/libs/bech32; git apply ../../bech32.patch || true
 	cd ../external/libngu; make min-one-time

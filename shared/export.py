@@ -8,8 +8,9 @@ from ucollections import OrderedDict
 from utils import xfp2str, swab32, export_prompt_builder, chunk_writer
 from ux import ux_show_story
 from glob import settings
+from descriptor import Descriptor, multisig_descriptor_template
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2TR, AF_P2SH
 from auth import write_sig_file
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
 
 
 def generate_public_contents():
@@ -84,7 +85,7 @@ be needed for different systems.
 
                     node = sv.derive_path(hard_sub, register=False)
                     yield ("%s => %s\n" % (hard_sub, chain.serialize_public(node)))
-                    if show_slip132 and addr_fmt != AF_CLASSIC and (addr_fmt in chain.slip132):
+                    if show_slip132 and addr_fmt not in (AF_CLASSIC, AF_P2TR) and (addr_fmt in chain.slip132):
                         yield ("%s => %s   ##SLIP-132##\n" % (
                                     hard_sub, chain.serialize_public(node, addr_fmt)))
 
@@ -143,8 +144,10 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
             with open(fname, 'wb') as fd:
                 chunk_writer(fd, body)
 
-            h = ngu.hash.sha256s(body.encode())
-            sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
+            sig_nice = None
+            if addr_fmt != AF_P2TR:
+                h = ngu.hash.sha256s(body.encode())
+                sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
     except CardMissingError:
         await needs_microsd()
@@ -153,8 +156,9 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '%s file written:\n\n%s\n\n%s signature file written:\n\n%s' % (title, nice, title,
-                                                                          sig_nice)
+    msg = '%s file written:\n\n%s' % (title, nice)
+    if sig_nice:
+        msg += '\n\n%s signature file written:\n\n%s' % (title, sig_nice)
     await ux_show_story(msg)
 
 async def make_summary_file(fname_pattern='public.txt'):
@@ -177,10 +181,11 @@ async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.tx
 
     # make the data
     examples = []
-    imp_multi, imp_desc = generate_bitcoin_core_wallet(account_num, examples)
+    imp_multi, imp_desc, imp_desc_tr = generate_bitcoin_core_wallet(account_num, examples)
 
     imp_multi = ujson.dumps(imp_multi)
     imp_desc = ujson.dumps(imp_desc)
+    imp_desc_tr = ujson.dumps(imp_desc_tr)
 
     body = '''\
 # Bitcoin Core Wallet Import File
@@ -196,7 +201,11 @@ Wallet operates on blockchain: {nb}
 The following command can be entered after opening Window -> Console
 in Bitcoin Core, or using bitcoin-cli:
 
-importdescriptors '{imp_desc}'
+p2wpkh:
+  importdescriptors '{imp_desc}'
+
+p2tr:
+  importdescriptors '{imp_desc_tr}'
 
 > **NOTE** If your UTXO was created before generating `importdescriptors` command, you should adjust the value of `timestamp` before executing command in bitcoin core. 
   By default it is set to `now` meaning do not rescan the blockchain. If approximate time of UTXO creation is known - adjust `timestamp` from `now` to UNIX epoch time.
@@ -211,7 +220,8 @@ importmulti '{imp_multi}'
 
 ## Resulting Addresses (first 3)
 
-'''.format(imp_multi=imp_multi, imp_desc=imp_desc, xfp=xfp, nb=chains.current_chain().name)
+'''.format(imp_multi=imp_multi, imp_desc=imp_desc, imp_desc_tr=imp_desc_tr,
+           xfp=xfp, nb=chains.current_chain().name)
 
     body += '\n'.join('%s => %s' % t for t in examples)
 
@@ -224,31 +234,42 @@ importmulti '{imp_multi}'
 def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
-    from descriptor import Descriptor
 
     chain = chains.current_chain()
 
-    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=chain.b44_cointype)
+    derive_v0 = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=chain.b44_cointype)
+    derive_v1 = "86'/{coin_type}'/{account}'".format(account=account_num, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
-        prefix = sv.derive_path(derive)
-        xpub = chain.serialize_public(prefix)
+        prefix = sv.derive_path(derive_v0)
+        xpub_v0 = chain.serialize_public(prefix)
 
         for i in range(3):
             sp = '0/%d' % i
             node = sv.derive_path(sp, master=prefix)
             a = chain.address(node, AF_P2WPKH)
-            example_addrs.append( ('m/%s/%s' % (derive, sp), a) )
+            example_addrs.append(('m/%s/%s' % (derive_v0, sp), a))
+
+    with stash.SensitiveValues() as sv:
+        prefix = sv.derive_path(derive_v1)
+        xpub_v1 = chain.serialize_public(prefix)
+
+        for i in range(3):
+            sp = '0/%d' % i
+            node = sv.derive_path(sp, master=prefix)
+            a = chain.address(node, AF_P2TR)
+            example_addrs.append(('m/%s/%s' % (derive_v1, sp), a))
 
     xfp = settings.get('xfp')
     txt_xfp = xfp2str(xfp).lower()
     _, vers, _ = version.get_mpy_version()
 
-    desc_obj = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=AF_P2WPKH)
+    desc_v0 = Descriptor(keys=[(xfp, derive_v0, xpub_v0)], addr_fmt=AF_P2WPKH)
+    desc_v1 = Descriptor(keys=[(xfp, derive_v1, xpub_v1)], addr_fmt=AF_P2TR)
     # for importmulti
     imm_list = [
         {
-            'desc': desc_obj.serialize(internal=internal),
+            'desc': desc_v0.serialize(internal=internal),
             'range': [0, 1000],
             'timestamp': 'now',
             'internal': internal,
@@ -258,8 +279,9 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
         for internal in [False, True]
     ]
     # for importdescriptors
-    imd_list = desc_obj.bitcoin_core_serialize(external_label="Coldcard %s" % txt_xfp)
-    return imm_list, imd_list
+    imd_list = desc_v0.bitcoin_core_serialize()
+    imd_list_v1 = desc_v1.bitcoin_core_serialize()
+    return imm_list, imd_list, imd_list_v1
 
 def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
@@ -340,8 +362,10 @@ def generate_generic_export(account_num=0):
             ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh', False ),
             ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
             ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh', False ),
+            ( 'bip86', "m/86'/{ct}'/{acc}'", AF_P2TR, 'p2tr', False ),
             ( 'bip48_1', "m/48'/{ct}'/{acc}'/1'", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
             ( 'bip48_2', "m/48'/{ct}'/{acc}'/2'", AF_P2WSH, 'p2wsh', True ),
+            ( 'bip48_3', "m/48'/{ct}'/{acc}'/3'", AF_P2TR, 'p2tr', True ),
             ( 'bip45', "m/45'", AF_P2SH, 'p2sh', True ),
         ]:
             if fmt == AF_P2SH and account_num:
@@ -351,7 +375,7 @@ def generate_generic_export(account_num=0):
             node = sv.derive_path(dd)
             xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
-            zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
+            zp = chain.serialize_public(node, fmt) if fmt not in (AF_CLASSIC, AF_P2TR) else None
             if is_ms:
                 desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
             else:
@@ -472,7 +496,6 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
 
 async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True,
                                         fname_pattern="descriptor.txt"):
-    from descriptor import Descriptor
     from glob import dis
 
     dis.fullscreen('Generating...')
@@ -487,6 +510,8 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
             mode = 84
         elif addr_type == AF_P2WPKH_P2SH:
             mode = 49
+        elif addr_type == AF_P2TR:
+            mode = 86
         else:
             raise ValueError(addr_type)
 

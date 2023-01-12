@@ -7,6 +7,7 @@ pyserial
 python-secp256k1==0.2.0
 mnemonic==0.18
 onetimepass==1.0.1
+python-secp256k1==0.2.0
 
 # for QR scanning (pulls in numpy)
 zbar-py==1.0.4
