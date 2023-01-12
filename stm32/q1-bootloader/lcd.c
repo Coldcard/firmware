@@ -11,6 +11,7 @@
 #include "stm32l4xx_hal.h"
 #include <string.h>
 #include "misc.h"
+#include "assets/screens.h"
 
 // OLED pins block use of MCO for testing
 #undef DISABLE_LCD
@@ -19,6 +20,7 @@
 // LCD connections: 
 // - all on port A
 // - all push/pull outputs
+// - PB15: TEAR input
 //
 #define RESET_PIN       GPIO_PIN_6
 #define DC_PIN          GPIO_PIN_8
@@ -29,6 +31,15 @@
 const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
 const int NUM_PIXELS = (LCD_WIDTH*LCD_HEIGHT);
+
+// doing BGR565
+const uint16_t COLOUR_BLACK = 0;
+const uint16_t COLOUR_WHITE = ~0;
+const uint16_t COLOUR_BLUE = 0x1f<<11;
+const uint16_t COLOUR_RED = 0x1f;
+
+// track what we are showing so we never re-send same thing (too slow)
+static const uint8_t *last_screen;
 
 /*
 // Bytes to send before sending the 1024 bytes of pixel data.
@@ -43,8 +54,17 @@ static const uint8_t before_show[] = {
 static SPI_HandleTypeDef   spi_port;
 #endif
 
+static inline void wait_vsync(void) {
+    // PB15 is TEAR input: a positive pulse every 60Hz that
+    // corresponds to vertical blanking time
+    while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 0) {
+        ;
+    }
+}
+
 // forward refs
-void lcd_show_pattern(uint32_t pattern);
+void lcd_fill_solid(uint16_t pattern);
+void lcd_write_rows(int y, int num_rows, uint16_t *pixels);
 
 // write_bytes()
 //
@@ -126,9 +146,11 @@ lcd_spi_setup(void)
     spi_port.Init.CLKPolarity = SPI_POLARITY_LOW;
     spi_port.Init.CLKPhase = SPI_PHASE_1EDGE;
     spi_port.Init.NSS = SPI_NSS_SOFT;
-    // div16 => gives 124ns cycle < 150ns req'd but works
-    // div32 => gives 270ns, also works
-    spi_port.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+    // page 43: cycle > 66ns for WRITE mode, 15ns low/high times min
+    // div16 => gives 124ns 
+    // div32 => gives 270ns
+    // div2 => gives ~16ns and still works? 8/7ns high/low times!
+    spi_port.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
     spi_port.Init.FirstBit = SPI_FIRSTBIT_MSB;
     spi_port.Init.TIMode = SPI_TIMODE_DISABLED;
     spi_port.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLED;
@@ -202,7 +224,7 @@ oled_setup(void)
 
     //--display and color format setting
     lcd_write_cmd(0x36);            // MADCTL: memory addr ctrl, page 215
-    lcd_write_data1(0x70);          // MV=MX=MY=1 => horz mode, first byte=top-left corner
+    lcd_write_data1(0x60);          // MV=1 => horz mode, first byte=top-left corner, RGB order
 
     lcd_write_cmd(0x3a);            // COLMOD: pixel format
     lcd_write_data1(0x05);          // => 16bit/pixel
@@ -275,44 +297,43 @@ oled_setup(void)
     lcd_write_data1(0x1d); 
     lcd_write_data1(0x1e);
 
+    lcd_write_cmd(0x35);            // TEON - Tear signal on
+    lcd_write_data1(0x0);
+
+    // kill garbage on display before shown first time
+    lcd_fill_solid(COLOUR_BLACK);
+
     // finally
     lcd_write_cmd(0x21);            // INVON 
     lcd_write_cmd(0x29);            // DISPON
     delay_ms(50);
 
-    //test
-    lcd_show_pattern(~0);          //rng_sample());
+    last_screen = NULL;
 
     rng_delay();
+
+    for(int i=0; i<100; i++) {
+        oled_show_progress(screen_verify, i);
+        delay_ms(100);
+    }
 }
 
 // oled_show_raw()
 //
-// No decompression.
+// No decompression. Just used for factory show. 1k bytes
 //
     void
 oled_show_raw(uint32_t len, const uint8_t *pixels)
 {
-/*
-    oled_setup();
-
-    lcd_write_cmd_sequence(sizeof(before_show), before_show);
-
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
-    HAL_GPIO_WritePin(GPIOA, DC_PIN, 1);
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 0);
-
-    write_bytes(len, pixels);
-
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
-    rng_delay();
-*/
+    // 1024 / 2 = 512 / 320 = 1.6 => just one row!
+    lcd_write_rows(LCD_HEIGHT-3, 1, (uint16_t *)pixels);
+    lcd_write_rows(LCD_HEIGHT-2, 1, (uint16_t *)pixels);
 }
 
-// lcd_show_pattern()
+// lcd_fill_solid()
 //
     void
-lcd_show_pattern(uint32_t pattern)
+lcd_fill_solid(uint16_t pattern)
 {
     // note, MADCTL MV/MX/MY setting causes row vs. col swap here
     lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
@@ -321,13 +342,15 @@ lcd_show_pattern(uint32_t pattern)
     lcd_write_cmd(0x2c);            // RAMWR - memory write
 
     uint16_t    row[LCD_WIDTH];
-    memset(row, pattern, sizeof(row));
+    memset2(row, pattern, sizeof(row));
 
     for(int y=0; y<LCD_HEIGHT; y++) {
         lcd_write_data(sizeof(row), (uint8_t *)&row);
     }
 }
 
+// lcd_write_rows()
+//
     void
 lcd_write_rows(int y, int num_rows, uint16_t *pixels)
 {
@@ -336,32 +359,36 @@ lcd_write_rows(int y, int num_rows, uint16_t *pixels)
 
     lcd_write_cmd(0x2c);            // RAMWR - memory write
 
-    lcd_write_data(num_rows * 2 * LCD_WIDTH, (uint8_t *)&pixels);
+    lcd_write_data(num_rows * 2 * LCD_WIDTH, (uint8_t *)pixels);
 }
 
 // oled_show()
 //
-// Perform simple RLE decompression.
+// Perform simple RLE decompression, and pixel expansion.
 //
     void
 oled_show(const uint8_t *pixels)
 {
-/*
     oled_setup();
 
-    lcd_write_cmd_sequence(sizeof(before_show), before_show);
+    // we are not fast enough to send entire screen during the
+    // vblanking time, so either we show torn stuff, or we flash display off a little
+    wait_vsync();
+    lcd_write_cmd(0x28);            // DISPOFF
 
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
-    HAL_GPIO_WritePin(GPIOA, DC_PIN, 1);
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 0);
+    // always full update
+    lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
+    lcd_write_cmd4(0x2b, 0, LCD_HEIGHT-1);        // RASET - Row address set range (y)
 
     uint8_t         buf[127];
+    uint16_t        expand[sizeof(buf)*8];
     const uint8_t *p = pixels;
 
-    // NOTE: must also update code in oled_show_progress, which dups this heavily.
+    lcd_write_cmd(0x2c);            // RAMWR - memory write
+
     while(1) {
         uint8_t hdr = *(p++);
-        if(!hdr) break;
+        if(!hdr) break;         // end marker
 
         uint8_t len = hdr & 0x7f;
         if(hdr & 0x80) {
@@ -374,12 +401,25 @@ oled_show(const uint8_t *pixels)
             p++;
         }
 
-        write_bytes(len, buf);
+        // expand 'len' packed monochrom into BGR565 16-bit data: buf => expand
+        uint16_t *out = expand;
+        for(int i=0; i<len; i++) {
+            uint8_t packed = buf[i];
+            for(uint8_t mask = 0x80; mask; mask >>= 1, out++) {
+                if(packed & mask) {
+                    *out = 0xffff;
+                } else {
+                    *out = 0x0;
+                }
+            }
+        }
+        lcd_write_data(len*8*2, (uint8_t *)expand);
     }
 
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
+    lcd_write_cmd(0x29);            // DISPON
+
+    last_screen = pixels;
     rng_delay();
-*/
 }
 
 // oled_show_progress()
@@ -391,66 +431,27 @@ oled_show_progress(const uint8_t *pixels, int progress)
 {
     oled_setup();
 
-/*
-    lcd_write_cmd_sequence(sizeof(before_show), before_show);
-
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
-    HAL_GPIO_WritePin(GPIOA, DC_PIN, 1);
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 0);
-
-    uint8_t         buf[127];
-    const uint8_t *p = pixels;
-
-    const uint16_t p_start = 896;
-    uint32_t p_count = 1280 * progress / 1000;
-
-    if(p_count > 128) p_count = 128;
-    if(p_count < 0) p_count = 0;
-
-    bool last_line = false;
-
-    uint16_t offset = 0;
-    while(1) {
-        uint8_t hdr = *(p++);
-        if(hdr == 0) break;
-
-        uint8_t len = hdr & 0x7f;
-        if(hdr & 0x80) {
-            // random bytes follow
-            memcpy(buf, p, len);
-            p += len;
-        } else {
-            // repeat same byte
-            memset(buf, *p, len);
-            p++;
-        }
-
-        if(!last_line && (offset+len) >= p_start) {
-            last_line = true;
-
-            // adjust so we're aligned w/ last line
-            int h = p_start - offset;
-            if(h) {
-                write_bytes(h, buf);
-                memmove(buf, buf+h, len-h);
-                len -= h;
-                offset += h;
-            }
-        }
-
-        if(last_line) {
-            for(int j=0; (p_count > 0) && (j<len); j++, p_count--) {
-                buf[j] |= 0x80;
-            }
-        }
-
-        write_bytes(len, buf);
-        offset += len;
+    if(last_screen != pixels) {
+        oled_show(pixels);
     }
 
-    HAL_GPIO_WritePin(GPIOA, CS_PIN, 1);
+    uint32_t p_count = LCD_WIDTH * 10 * progress / 1000;
+    if(p_count > LCD_WIDTH) p_count = LCD_WIDTH-1;
+    if(p_count < 0) p_count = 0;
+
+    // draw just the progress bar
+    uint16_t row[LCD_WIDTH];
+    memset2(row, COLOUR_WHITE, 2*p_count);
+    memset2(&row[p_count], COLOUR_BLACK, 2*(LCD_WIDTH-p_count));
+
+    wait_vsync();
+
+const int PROGRESS_BAR_Y = (LCD_HEIGHT - 30);
+
+    lcd_write_rows(PROGRESS_BAR_Y+0, 1, row);
+    lcd_write_rows(PROGRESS_BAR_Y+1, 1, row);
+
     rng_delay();
-*/
 }
 
 #if 0
