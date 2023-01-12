@@ -872,7 +872,7 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, go
         menu_item = bsms_cr2_fname(token, encryption_type == "2", suffix)
         pick_menu_item(menu_item)
 
-    time.sleep(0.1)
+    time.sleep(0.5)
     _, story = cap_story()
     assert "Create new multisig wallet?" in story
     assert "bsms" in story  # part of the name

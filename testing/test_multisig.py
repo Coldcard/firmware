@@ -8,14 +8,14 @@
 #
 import sys
 sys.path.append("../shared")
-from descriptor import MultisigDescriptor, append_checksum, MULTI_FMT_TO_SCRIPT, parse_desc_str
+from descriptor import MultisigDescriptor, MULTI_FMT_TO_SCRIPT, parse_desc_str
 import time, pytest, os, random, json, shutil, pdb, io, base64
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
 from base64 import b64encode, b64decode
 from helpers import B2A, fake_dest_addr, swab32, xfp2str
-from helpers import path_to_str, str_to_path, slip132undo
+from helpers import str_to_path, slip132undo
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
@@ -883,7 +883,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
 
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
-        assert (len(menu) - num_wallets) in [5, 6]        # depending if NFC enabled or not
+        assert (len(menu) - num_wallets) in [6, 7]        # depending if NFC enabled or not
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
@@ -1725,7 +1725,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     assert xfp == expect_xfp
 
     # check Coldcard derives expected Upub
-    derivation = "m/48'/1'/0'/1'"       # part of devtest/unit_iss6743.py 
+    derivation = "m/48'/1'/0'/1'"       # part of devtest/unit_iss6743.py
     expect_xpub = 'Upub5SJWbuhs5tM4mkJST69tnpGGaf8dDTqByx3BLSocWFpq5YLh1fky4DQTFGQVG6nCSqZfUiAAeStdxSQteUcfMsWjDkhniZx4GdwpB18Tnbq'
 
     pub = sim_execfile('devtest/unit_iss6743.py')
@@ -1896,6 +1896,8 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
     title, story = cap_story()
     assert "Press (6)" in story
     assert "change addresses." in story
+    assert "Taproot internal key" not in story
+    assert "Taproot tree keys" not in story
     if change:
         need_keypress("6")
         time.sleep(0.2)
@@ -1905,9 +1907,9 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         assert "Press (6)" not in story
     # unwrap text a bit
     if change:
-        story = story.replace("=>\n", "=> ").replace('1/0]\n =>', "1/0 =>")
+        story = story.replace("=>\n", "=> ").replace('1/0]\n =>', "1/0] =>")
     else:
-        story = story.replace("=>\n", "=> ").replace('0/0]\n =>', "0/0 =>")
+        story = story.replace("=>\n", "=> ").replace('0/0]\n =>', "0/0] =>")
 
     maps = []
     for ln in story.split('\n'):
@@ -1927,7 +1929,8 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         expect, pubkey, script, _  = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
                                                         path_mapper=path_mapper)
 
-        assert int(subpath.split('/')[-1]) == idx
+        assert int(subpath.split('/')[-1][0]) == idx
+        assert int(subpath.split('/')[-2]) == chng_idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
 
         trunc = expect[0:8] + "-" + expect[-7:]
@@ -2039,6 +2042,8 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     title, story = cap_story()
     assert "Press (6)" in story
     assert "change addresses." in story
+    assert "Taproot internal key" not in story
+    assert "Taproot tree keys" not in story
     if change:
         need_keypress("6")
         time.sleep(0.2)
@@ -2088,6 +2093,153 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
         assert bitcoind_addrs[idx].startswith(_start)
         assert bitcoind_addrs[idx].endswith(_end)
 
+
+@pytest.fixture
+def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, load_export, pick_menu_item, goto_home,
+                      cap_menu, microsd_path, use_regtest):
+    def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True, r=None):
+        use_regtest()
+        H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"  # BIP-0341
+        bitcoind_signers = [
+            bitcoind.create_wallet(wallet_name=f"bitcoind--signer{i}", disable_private_keys=False, blank=False,
+                                   passphrase=None, avoid_reuse=False, descriptors=True)
+            for i in range(N - 1)
+        ]
+        for signer in bitcoind_signers:
+            signer.keypoolrefill(10)
+        # watch only wallet where multisig descriptor will be imported
+        ms = bitcoind.create_wallet(
+            wallet_name=f"watch_only_{script_type}_{M}of{N}", disable_private_keys=True,
+            blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+        )
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Export XPUB')
+        time.sleep(0.5)
+        title, story = cap_story()
+        assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
+        need_keypress("y")
+        need_keypress(str(cc_account))  # account
+        need_keypress("y")
+        xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
+        template = xpub_obj[script_type +"_desc"]
+        # get keys from bitcoind signers
+        bitcoind_signers_xpubs = []
+        for signer in bitcoind_signers:
+            target_desc = ""
+            bitcoind_descriptors = signer.listdescriptors()["descriptors"]
+            for desc in bitcoind_descriptors:
+                if desc["desc"].startswith("pkh(") and desc["internal"] is False:
+                    target_desc = desc["desc"]
+            core_desc, checksum = target_desc.split("#")
+            # remove pkh(....)
+            core_key = core_desc[4:-1]
+            bitcoind_signers_xpubs.append(core_key)
+        desc = template.replace("M", str(M), 1).replace("...", ",".join(bitcoind_signers_xpubs))
+        if internal_key:
+            desc = desc.replace(H, internal_key)
+        elif r:
+            desc = desc.replace(H, f"r={r}")
+
+        if script_type == 'p2wsh':
+            name = f"core{M}of{N}_native.txt"
+        elif script_type == "p2sh_p2wsh":
+            name = f"core{M}of{N}_wrapped.txt"
+        elif script_type == "p2tr":
+            name = f"core{M}of{N}_taproot.txt"
+        else:
+            name = f"core{M}of{N}_legacy.txt"
+        with open(microsd_path(name), "w") as f:
+            f.write(desc + "\n")
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        pick_menu_item('Import from File')
+        time.sleep(0.3)
+        _, story = cap_story()
+        if "Press (1) to import multisig wallet file from SD Card" in story:
+            # in case Vdisk is enabled
+            need_keypress("1")
+        time.sleep(0.5)
+        need_keypress("y")
+        pick_menu_item(name)
+        _, story = cap_story()
+        assert "Create new multisig wallet?" in story
+        assert name.split(".")[0] in story
+        assert f"{M} of {N}" in story
+        if M == N:
+            assert f"All {N} co-signers must approve spends" in story
+        else:
+            assert f"{M} signatures, from {N} possible" in story
+        if script_type == "p2wsh":
+            assert "P2WSH" in story
+        elif script_type == "p2sh":
+            assert "P2SH" in story
+        elif script_type == "p2tr":
+            assert "P2TR" in story
+        else:
+            assert "P2SH-P2WSH" in story
+        assert "Derivation:\n  Varies (2)" in story
+        need_keypress("y")  # approve multisig import
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        menu = cap_menu()
+        pick_menu_item(menu[0])  # pick imported descriptor multisig wallet
+        pick_menu_item("Descriptors")
+        pick_menu_item("Bitcoin Core")
+        text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+        text = text.replace("importdescriptors ", "").strip()
+        # remove junk
+        r1 = text.find("[")
+        r2 = text.find("]", -1, 0)
+        text = text[r1: r2]
+        core_desc_object = json.loads(text)
+        # import descriptors to watch only wallet
+        res = ms.importdescriptors(core_desc_object)
+        assert res[0]["success"]
+        assert res[1]["success"]
+
+        if r and r != "@":
+            from pysecp256k1.extrakeys import keypair_create, keypair_xonly_pub, xonly_pubkey_parse
+            from pysecp256k1.extrakeys import xonly_pubkey_tweak_add, xonly_pubkey_serialize, xonly_pubkey_from_pubkey
+            H_xo = xonly_pubkey_parse(bytes.fromhex(H))
+            r_bytes = bytes.fromhex(r)
+            kp = keypair_create(r_bytes)
+            kp_xo, kp_parity = keypair_xonly_pub(kp)
+            pk = xonly_pubkey_tweak_add(H_xo, xonly_pubkey_serialize(kp_xo))
+            xo, xo_parity = xonly_pubkey_from_pubkey(pk)
+            internal_key_bytes = xonly_pubkey_serialize(xo)
+            internal_key_hex = internal_key_bytes.hex()
+            assert internal_key_hex in core_desc_object[0]["desc"]
+            assert internal_key_hex in core_desc_object[1]["desc"]
+
+        if funded:
+            if script_type == "p2wsh":
+                addr_type = "bech32"
+            elif script_type == "p2tr":
+                addr_type = "bech32m"
+            elif script_type == "p2sh":
+                addr_type = "legacy"
+            else:
+                addr_type = "p2sh-segwit"
+
+            addr = ms.getnewaddress("", addr_type)
+            if script_type == "p2wsh":
+                sw = "bcrt1q"
+            elif script_type == "p2tr":
+                sw = "bcrt1p"
+            else:
+                sw = "2"
+            assert addr.startswith(sw)
+            # get some coins and fund above multisig address
+            bitcoind.supply_wallet.sendtoaddress(addr, 49)
+            bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())  # mine above
+
+        return ms, bitcoind_signers
+
+    return doit
 
 @pytest.mark.bitcoind
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
@@ -2196,133 +2348,32 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (15, 15)])
-@pytest.mark.parametrize("desc_type", ["p2wsh_desc", "p2sh_p2wsh_desc", "p2sh_desc"])
+@pytest.mark.parametrize("script_type", ["p2wsh", "p2sh_p2wsh", "p2sh", "p2tr"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
-def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item,
+def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, load_export, settings_set):
+                                microsd_wipe, load_export, settings_set, bitcoind_multisig):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
     settings_set("sighshchk", 1)  # disable checks
-    use_regtest()
     clear_ms()
     microsd_wipe()
-    # remova all wallet from datadir
-    bitcoind.delete_wallet_files(pattern="bitcoind--signer")
-    bitcoind.delete_wallet_files(pattern="watch_only_")
-    # create multiple bitcoin wallets (N-1) as one signer is CC
-    bitcoind_signers = [
-        bitcoind.create_wallet(wallet_name=f"bitcoind--signer{i}", disable_private_keys=False, blank=False,
-                               passphrase=None, avoid_reuse=False, descriptors=True)
-        for i in range(N-1)
-    ]
-    for signer in bitcoind_signers:
-        signer.keypoolrefill(100)
-    # watch only wallet where multisig descriptor will be imported
-    bitcoind_watch_only = bitcoind.create_wallet(
-        wallet_name=f"watch_only_{desc_type}_{M}of{N}", disable_private_keys=True,
-        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
-    )
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
-    pick_menu_item('Export XPUB')
-    time.sleep(0.5)
-    title, story = cap_story()
-    assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
-    need_keypress("y")
-    need_keypress("0")  # account
-    need_keypress("y")
-    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
-    template = xpub_obj[desc_type]
-    # get keys from bitcoind signers
-    bitcoind_signers_xpubs = []
-    for signer in bitcoind_signers:
-        target_desc = ""
-        bitcoind_descriptors = signer.listdescriptors()["descriptors"]
-        for desc in bitcoind_descriptors:
-            if desc["desc"].startswith("pkh(") and desc["internal"] is False:
-                target_desc = desc["desc"]
-        core_desc, checksum = target_desc.split("#")
-        # remove pkh(....)
-        core_key = core_desc[4:-1]
-        bitcoind_signers_xpubs.append(core_key)
-    desc = template.replace("M", str(M), 1).replace("...", ",".join(bitcoind_signers_xpubs))
-    desc_info = bitcoind_watch_only.getdescriptorinfo(desc)
-    desc_w_checksum = desc_info["descriptor"]  # with checksum
-    if desc_type == 'p2wsh_desc':
-        name = f"core{M}of{N}_native.txt"
-    elif desc_type == "p2sh_p2wsh_desc":
-        name = f"core{M}of{N}_wrapped.txt"
-    else:
-        name = f"core{M}of{N}_legacy.txt"
-    with open(microsd_path(name), "w") as f:
-        f.write(desc_w_checksum + "\n")
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
-    pick_menu_item('Import from File')
-    time.sleep(0.3)
-    _, story = cap_story()
-    if "Press (1) to import multisig wallet file from SD Card" in story:
-        # in case Vdisk is enabled
-        need_keypress("1")
-    time.sleep(0.5)
-    need_keypress("y")
-    pick_menu_item(name)
-    _, story = cap_story()
-    assert "Create new multisig wallet?" in story
-    assert name.split(".")[0] in story
-    assert f"{M} of {N}" in story
-    if M == N:
-        assert f"All {N} co-signers must approve spends" in story
-    else:
-        assert f"{M} signatures, from {N} possible" in story
-    if desc_type == "p2wsh_desc":
-        assert "P2WSH" in story
-    elif desc_type == "p2sh_desc":
-        assert "P2SH" in story
-    else:
-        assert "P2SH-P2WSH" in story
-    assert "Derivation:\n  Varies (2)" in story
-    need_keypress("y")  # approve multisig import
-    goto_home()
-    pick_menu_item('Settings')
-    pick_menu_item('Multisig Wallets')
-    menu = cap_menu()
-    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
-    pick_menu_item("Descriptors")
-    pick_menu_item("Bitcoin Core")
-    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
-    text = text.replace("importdescriptors ", "").strip()
-    # remove junk
-    r1 = text.find("[")
-    r2 = text.find("]", -1, 0)
-    text = text[r1: r2]
-    core_desc_object = json.loads(text)
-    # import descriptors to watch only wallet
-    res = bitcoind_watch_only.importdescriptors(core_desc_object)
-    for obj in res:
-        assert obj["success"], obj
-    if desc_type == "p2wsh_desc":
+    # create multisig with N-1 bitcoind signers + CC sim and register it
+    bitcoind_watch_only, bitcoind_signers = bitcoind_multisig(M, N, script_type)
+    if script_type == "p2wsh":
         addr_type = "bech32"
-    elif desc_type == "p2sh_desc":
+    elif script_type == "p2tr":
+        addr_type = "bech32m"
+    elif script_type == "p2sh":
         addr_type = "legacy"
     else:
         addr_type = "p2sh-segwit"
-    multi_addr = bitcoind_watch_only.getnewaddress("", addr_type)
-    dest_addr = bitcoind_watch_only.getnewaddress("", addr_type)
-    if desc_type == "p2wsh_desc":
-        assert all([addr.startswith("bcrt1q") for addr in [multi_addr, dest_addr]])
-    else:
-        assert all([addr.startswith("2") for addr in [multi_addr, dest_addr]])
-    # mine some coins and fund above multisig address
-    mined = bitcoind_watch_only.generatetoaddress(101, multi_addr)
-    assert isinstance(mined, list) and len(mined) == 101
     # create funded PSBT
     all_of_it = bitcoind_watch_only.getbalance()
+    dest_addr = bitcoind_watch_only.getnewaddress("", addr_type)
+    # creates two utxos
     psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt(
-        [], [{dest_addr: all_of_it}], 0, {"fee_rate": 20, "change_type": addr_type,
+        [], [{dest_addr: all_of_it - 1}], 0, {"fee_rate": 20, "change_type": addr_type,
                                           "subtractFeeFromOutputs": [0]}
     )
     psbt = psbt_resp.get("psbt")
@@ -2334,7 +2385,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     for signer in bitcoind_signers:
         half_signed_psbt = signer.walletprocesspsbt(psbt, True, sighash, True, False)  # do not finalize
         psbt = half_signed_psbt["psbt"]
-    name = f"hsc_{M}of{N}_{desc_type}.psbt"
+    name = f"hsc_{M}of{N}_{script_type}.psbt"
     with open(microsd_path(name), "w") as f:
         f.write(psbt)
     goto_home()
@@ -2381,10 +2432,8 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     res = bitcoind_watch_only.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
 
-    #  try to sign change - do a consolidation transaction which spends all inputs
-    addr_a = bitcoind_watch_only.getnewaddress("", addr_type)
+
     consolidate = bitcoind_watch_only.getnewaddress("", addr_type)
-    bitcoind_watch_only.generatetoaddress(1, addr_a)  # need to mine above tx
     balance = bitcoind_watch_only.getbalance()
     unspent = bitcoind_watch_only.listunspent()
     psbt_outs = [{consolidate: balance}]
@@ -2395,7 +2444,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     for idx, i in enumerate(x.inputs):
         i.sighash = SIGHASH_MAP[sighash]
     psbt = x.as_b64_str()
-    name = f"change_{M}of{N}_{desc_type}.psbt"
+    name = f"change_{M}of{N}_{script_type}.psbt"
     with open(microsd_path(name), "w") as f:
         f.write(psbt)
     goto_home()
@@ -2445,11 +2494,167 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     res = bitcoind_watch_only.sendrawtransaction(tx_hex)
     assert len(res) == 64  # tx id
     bitcoind_signers[0].generatetoaddress(1, bitcoind_signers[0].getnewaddress())  # mine block
-    assert len(bitcoind_watch_only.listunspent()) == 2  # (merged all inputs to one + one newly spendable from mining)
+    assert len(bitcoind_watch_only.listunspent()) == 1
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("cc_first", [True, False])
+@pytest.mark.parametrize("m_n", [(2,2), (3, 5), (32, 32)])
+@pytest.mark.parametrize("internal_key_spendable", [True, False, "77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76", "@"])
+def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu, clear_ms,
+                            need_keypress, pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev,
+                            bitcoind_multisig):
+    M, N = m_n
+    clear_ms()
+    microsd_wipe()
+    internal_key = None
+    r = None
+    if internal_key_spendable is True:
+        path = "86h/0h/3h"
+        master_xfp_str = pack('<I', dev.master_fingerprint).hex()
+        xpub = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
+        internal_key = f"[{master_xfp_str}/{path}]{xpub}/0/*"
+    elif isinstance(internal_key_spendable, str) and len(internal_key_spendable) == 64:
+        r = internal_key_spendable
+    elif internal_key_spendable == "@":
+        r = "@"
+
+    tapscript_wo, bitcoind_signers = bitcoind_multisig(M, N, "p2tr", internal_key=internal_key, r=r)
+
+    dest_addr = tapscript_wo.getnewaddress("", "bech32m")
+    psbt = tapscript_wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20})["psbt"]
+    fname = "tapscript.psbt"
+    if not cc_first:
+        # bitcoind cosigner sigs first
+        for i in range(M - 1):
+            signer = bitcoind_signers[i]
+            psbt = signer.walletprocesspsbt(psbt, True, "DEFAULT", True)["psbt"]
+    with open(microsd_path(fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    # bug in goto_home ?
+    need_keypress("x")
+    time.sleep(0.1)
+    # CC signing
+    need_keypress("y")
+    time.sleep(0.1)
+    title, story = cap_story()
+    if "Choose" in story:
+        need_keypress("y")
+        pick_menu_item(fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert title == "OK TO SEND?"
+    need_keypress("y")
+    time.sleep(0.1)
+    title, story = cap_story()
+    split_story = story.split("\n\n")
+    cc_tx_id = None
+    if "(ready for broadcast)" in story:
+        signed_fname = split_story[1]
+        signed_txn_fname = split_story[-2]
+        cc_tx_id = split_story[-1].split("\n")[-1]
+        with open(microsd_path(signed_txn_fname), "r") as f:
+            signed_txn = f.read().strip()
+    else:
+        signed_fname = split_story[-1]
+
+    with open(microsd_path(signed_fname), "r") as f:
+        signed_psbt = f.read().strip()
+
+    if cc_first:
+        for signer in bitcoind_signers:
+            signed_psbt = signer.walletprocesspsbt(signed_psbt, True, "DEFAULT", True)["psbt"]
+    res = tapscript_wo.finalizepsbt(signed_psbt, True)
+    assert res['complete']
+    tx_hex = res["hex"]
+    res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
+    if cc_tx_id:
+        assert tx_hex == signed_txn
+        assert txn_id == cc_tx_id
+    assert len(txn_id) == 64
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("change", [True, False])
+@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+def test_bitcoind_taproot_ms_address(change, M_N, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
+                                     cap_story, make_multisig, import_ms_wallet, microsd_path, bitcoind_multisig,
+                                     use_regtest, load_export, way):
+    use_regtest()
+    clear_ms()
+    M, N = M_N
+
+    ms_wo, _ = bitcoind_multisig(M, N, "p2tr", funded=False)
+
+    goto_home()
+    pick_menu_item("Address Explorer")
+    need_keypress('4')  # warning
+    m = cap_menu()
+    wal_name = m[-1]
+    pick_menu_item(wal_name)
+
+    time.sleep(0.2)
+    title, story = cap_story()
+    assert "Press (6)" in story
+    assert "change addresses." in story
+    assert "Taproot internal key" in story
+    if N <= 4:
+        assert "Taproot tree keys" in story
+    else:
+        assert "Taproot tree keys" not in story
+    if change:
+        need_keypress("6")
+        time.sleep(0.2)
+        title, story = cap_story()
+        # once change is selected - do not offer this option again
+        assert "change addresses." not in story
+        assert "Press (6)" not in story
+
+    contents = load_export(way, label="Address summary", is_json=False, sig_check=False, vdisk_key="4")
+    addr_cont = contents.strip()
+
+    if way == "nfc":
+        addr_range = [0, 9]
+        cc_addrs = addr_cont.split("\n")
+        part_addr_index = 0
+    else:
+        addr_range = [0, 249]
+        cc_addrs_split = addr_cont.split("\n")
+        # header is different for taproot
+        assert "Taproot Internal Key" in cc_addrs_split[0]
+        assert "Leaf Script" in cc_addrs_split[0]
+        cc_addrs = cc_addrs_split[1:]
+        part_addr_index = 1
+
+    internal_desc = None
+    external_desc = None
+    descriptors = ms_wo.listdescriptors()["descriptors"]
+    for desc in descriptors:
+        if desc["internal"]:
+            internal_desc = desc["desc"]
+        else:
+            external_desc = desc["desc"]
+
+    desc_export = internal_desc if change else external_desc
+    bitcoind_addrs = ms_wo.deriveaddresses(desc_export, addr_range)
+
+    for idx, cc_item in enumerate(cc_addrs):
+        cc_item = cc_item.split(",")
+        partial_address = cc_item[part_addr_index]
+        _start, _end = partial_address.split("___")
+        if way != "nfc":
+            _start, _end = _start[1:], _end[:-1]
+        assert bitcoind_addrs[idx].startswith(_start)
+        assert bitcoind_addrs[idx].endswith(_end)
 
 
 @pytest.mark.parametrize("desc", [
-    ("Missing descriptor checksum", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))"),
+    # lack of checksum is now legal
+    # ("Missing descriptor checksum", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))"),
     ("Wrong checksum", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#gs2fqgl7"),
     ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/1/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#sj7lxn0l"),
     ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#fy9mm8dt"),

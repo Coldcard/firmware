@@ -14,7 +14,7 @@ simulator_fixed_xfp = 0x4369050f
 
 simulator_serial_number = 'F1F1F1F1F1F1'
 
-from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 
 unmap_addr_fmt = {
     'p2sh': AF_P2SH,
@@ -28,6 +28,7 @@ msg_sign_unmap_addr_fmt = {
     'p2wpkh': AF_P2WPKH,
     'p2sh-p2wpkh': AF_P2WPKH_P2SH,
     'p2wpkh-p2sh': AF_P2WPKH_P2SH,
+    'p2tr': AF_P2TR,
 }
 
 addr_fmt_names = {
@@ -37,14 +38,15 @@ addr_fmt_names = {
     AF_P2WSH: 'p2wsh',
     AF_P2WPKH_P2SH: 'p2wpkh-p2sh',
     AF_P2WSH_P2SH: 'p2wsh-p2sh',
+    AF_P2TR: 'p2tr',
 }
     
 
 # all possible addr types, including multisig/scripts
-ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh']
+ADDR_STYLES = ['p2wpkh', 'p2wsh', 'p2sh', 'p2pkh', 'p2wsh-p2sh', 'p2wpkh-p2sh', 'p2tr']
 
 # single-signer
-ADDR_STYLES_SINGLE = ['p2wpkh', 'p2pkh', 'p2wpkh-p2sh']
+ADDR_STYLES_SINGLE = ['p2wpkh', 'p2pkh', 'p2wpkh-p2sh', 'p2tr']
 
 # multi signer
 ADDR_STYLES_MS = ['p2sh', 'p2wsh', 'p2wsh-p2sh']

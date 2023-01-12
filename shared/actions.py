@@ -16,7 +16,7 @@ from export import make_json_wallet, make_summary_file, make_descriptor_wallet_e
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from glob import settings
 from pincodes import pa
 from menu import start_chooser
@@ -1028,12 +1028,9 @@ async def export_xpub(label, _2, item):
         path = "m"
         addr_fmt = AF_CLASSIC
     else:
-        remap = {44:0, 49:1, 84:2}[mode]
+        remap = {44:0, 49:1, 84:2, 86:3}[mode]
         _, path, addr_fmt = chains.CommonDerivations[remap]
         path = path.format(account='{acct}', coin_type=chain.b44_cointype, change=0, idx=0)[:-4]
-
-    # always show SLIP-132 style, because defacto
-    show_slip132 = (addr_fmt != AF_CLASSIC)
 
     while 1:
         msg = '''Show QR of the XPUB for path:\n\n%s\n\n''' % path
@@ -1137,11 +1134,14 @@ async def ss_descriptor_skeleton(label, _, item):
     rv = []
 
     rv.append(MenuItem("Legacy (P2PKH)", f=descriptor_skeleton_step2,
-                            arg=(AF_CLASSIC, account_num, int_ext)))
+                       arg=(AF_CLASSIC, account_num, int_ext)))
     rv.append(MenuItem("P2SH-Segwit", f=descriptor_skeleton_step2,
-                            arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
+                       arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
     rv.append(MenuItem("Native Segwit", f=descriptor_skeleton_step2,
-                            arg=(AF_P2WPKH, account_num, int_ext)))
+                       arg=(AF_P2WPKH, account_num, int_ext)))
+    rv.append(MenuItem("Taproot (P2TR)", f=descriptor_skeleton_step2,
+                       arg=(AF_P2TR, account_num, int_ext)))
+
 
     return MenuSystem(rv)
 
@@ -1755,7 +1755,7 @@ any signature is performed."
         input_psbt = path + '/' + fn
     else:
         input_psbt = await file_picker('Choose PSBT file to be signed.',
-                                            choices=choices, title=title)
+                                       choices=choices, title=title)
         if not input_psbt:
             return
 
@@ -2066,7 +2066,7 @@ Secure Element{ses}:
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=serial, hw=hw, ses='s' if version.has_se2 else ''))
+                                   ser=serial, hw=hw, ses='s' if version.has_se2 else ''))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.
@@ -2202,7 +2202,7 @@ async def change_which_chain(*a):
 async def microsd_2fa(*a):
     # Feature: enforce special MicroSD being inserted at login time (a 2FA)
     from pwsave import MicroSD2FA
-    
+
     if not settings.get('sd2fa'):
         ch = await ux_show_story('''When enabled, this feature requires a specially prepared MicroSD card to be inserted during login process. After correct PIN is provided, if card slot is empty or unknown card present, the seed is wiped.''')
 

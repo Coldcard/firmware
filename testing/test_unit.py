@@ -2,9 +2,8 @@
 #
 # Run tests on the simulator itself, not here... these are basically "unit tests"
 #
-
 import pytest, os, shutil
-from helpers import B2A
+from helpers import B2A, taptweak
 
 
 def test_remote_exec(sim_exec):
@@ -71,9 +70,13 @@ def test_public(sim_execfile):
                 assert sk.hwif(as_private=False) == result
             elif result[0] in '1mn':
                 assert result == sk.address(False)
-            elif result[0:3] in { 'bc1', 'tb1' }:
+            elif result[0:4] in { 'bc1q', 'tb1q' }:
                 h20 = sk.hash160()
                 assert result == sw_encode(result[0:2], 0, h20)
+            elif result[0:4] in {'bc1p', 'tb1p'}:
+                from bech32 import encode
+                tweked_xonly = taptweak(sk.sec()[1:])
+                assert result == encode(result[:2], 1, tweked_xonly)
             elif result[0] in '23':
                 h20 = hash160(b'\x00\x14' + sk.hash160())
                 assert h20 == a2b_hashed_base58(result)[1:]
@@ -82,7 +85,6 @@ def test_public(sim_execfile):
 
             count += 1
             print("OK: %s" % ln)
-            
 
     assert count > 12
 

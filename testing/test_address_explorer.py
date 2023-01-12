@@ -1,11 +1,8 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, io, csv, hashlib
+import pytest, time, io, csv
 from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node
-from pycoin.contrib.segwit_addr import encode as sw_encode
-from pycoin.encoding import a2b_hashed_base58, hash160
-from msg import verify_message
 
 
 @pytest.fixture
@@ -22,13 +19,14 @@ def mk_common_derivations():
             #( "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
             ( "m/44'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_CLASSIC ),
             ( "m/49'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH_P2SH ),
-            ( "m/84'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH )
+            ( "m/84'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH ),
+            ( "m/86'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2TR ),
         ]
     return doit
 
 @pytest.fixture
-def goto_address_explorer(goto_home, pick_menu_item, need_keypress):
-    def doit(click_idx=None):
+def goto_address_explorer(goto_home, pick_menu_item, need_keypress, enter_number):
+    def doit(click_idx=None, acct_num=None):
         goto_home()
         pick_menu_item('Address Explorer')
 
@@ -39,6 +37,13 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress):
             for _ in range(2): # top of menu (requires two left clicks)
                 need_keypress('7')
                 time.sleep(0.01)
+
+            if acct_num:
+                for _ in range(5):  # goto account number
+                    need_keypress('8')
+                need_keypress("y")
+                enter_number(acct_num)
+                # now we are back at the top
 
             for _ in range(click_idx): # iterate down
                 need_keypress('8')
@@ -76,38 +81,21 @@ def parse_display_screen(cap_story, is_mark3):
     return doit
 
 @pytest.fixture
-def validate_address():
-    # Check whether an address is covered by the given subkey
-    def doit(addr, sk):
-        if addr[0] in '1mn':
-            assert addr == sk.address(False)
-        elif addr[0:3] in { 'bc1', 'tb1' }:
-            h20 = sk.hash160()
-            assert addr == sw_encode(addr[0:2], 0, h20)
-        elif addr[0:5] == "bcrt1":
-            h20 = sk.hash160()
-            assert addr == sw_encode(addr[0:4], 0, h20)
-        elif addr[0] in '23':
-            h20 = hash160(b'\x00\x14' + sk.hash160())
-            assert h20 == a2b_hashed_base58(addr)[1:]
-        else:
-            raise ValueError(addr)
-    return doit
-
-@pytest.fixture
 def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path,
-                            virtdisk_path, nfc_read_text, load_export_and_verify_signature):
+                            virtdisk_path, nfc_read_text, load_export_and_verify_signature,
+                            load_export):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
-    def doit(click_idx=None, expected_qty=250, way="sd", change=False):
+    def doit(click_idx=None, expected_qty=250, way="sd", change=False, acct_num=None, is_p2tr=False):
         if click_idx is not None:
-            goto_address_explorer(click_idx=click_idx)
+            goto_address_explorer(click_idx=click_idx, acct_num=acct_num)
         time.sleep(.3)
         title, story = cap_story()
         if change:
             need_keypress("6")
         if way == "sd":
-            need_keypress('1')
+            if "Press (1)" in story:
+                need_keypress('1')
         elif way == "vdisk":
             if "Press (4) to save to Virtual Disk." not in story:
                 pytest.skip("Vdisk disabled")
@@ -127,7 +115,14 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
 
         time.sleep(.5)  # always long enough to write the file?
         title, body = cap_story()
-        contents, sig_addr = load_export_and_verify_signature(body, way, label="Address summary")
+        if click_idx == 3 or is_p2tr:
+            # p2tr - no signature file
+            contents = load_export(way, label="Address summary", is_json=False, sig_check=False,
+                                   skip_query=True)
+            sig_addr = None
+        else:
+            contents, sig_addr = load_export_and_verify_signature(body, way, label="Address summary")
+
         addr_dump = io.StringIO(contents)
         cc = csv.reader(addr_dump)
         hdr = next(cc)
@@ -135,7 +130,8 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
         for n, (idx, addr, deriv) in enumerate(cc):
             assert int(idx) == n
             if n == 0:
-                assert sig_addr == addr
+                if sig_addr:
+                    assert sig_addr == addr
             assert ('/%s' % idx) in deriv
 
             yield deriv, addr
@@ -195,7 +191,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
-    goto_address_explorer(click_idx=3)  # "applications" at index 3
+    goto_address_explorer(click_idx=4)  # "applications" at index 3
     menu = cap_menu()
     assert "Samourai" in menu
     pick_menu_item("Samourai")
@@ -243,7 +239,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(given_addr, sk)
 
-@pytest.mark.parametrize('click_idx', range(3))
+@pytest.mark.parametrize('click_idx', range(4))
 @pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivations, sim_execfile, validate_address,
@@ -315,7 +311,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
-        for subpath, addr in generate_addresses_file(way=way):
+        for subpath, addr in generate_addresses_file(way=way, is_p2tr=addr_format == AF_P2TR):
             assert subpath.split('/')[-3] == str(account_num)+"'"
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(addr, sk)
@@ -333,7 +329,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
     "m/1/2/3/4/5",
     "m/1'/2'/3'/4'/5'",
 ])
-@pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
+@pytest.mark.parametrize('which_fmt', [AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR])
 def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check, is_mark4, nfc_read_text, get_setting):
 
     is_single = '{idx}' not in path
@@ -393,11 +389,13 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
     assert m[0] == 'Classic P2PKH'
     assert m[1] == 'Segwit P2WPKH'
     assert m[2] == 'P2SH-P2WPKH'
-        
+    assert m[3] == 'Taproot P2TR'
+
     fmts = {
         AF_CLASSIC: 'Classic P2PKH', 
         AF_P2WPKH: 'Segwit P2WPKH', 
-        AF_P2WPKH_P2SH: 'P2SH-P2WPKH', 
+        AF_P2TR: 'Taproot P2TR',
+        AF_P2WPKH_P2SH: 'P2SH-P2WPKH',
     }
 
     pick_menu_item(fmts[which_fmt])
@@ -421,7 +419,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
 
         need_keypress('2')
         qr = cap_screen_qr().decode('ascii')
-        if which_fmt == AF_P2WPKH:
+        if which_fmt in (AF_P2WPKH, AF_P2TR):
             assert qr == addr.upper()
         else:
             assert qr == addr
@@ -437,6 +435,8 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
             need_keypress('3')
             time.sleep(.1)
             assert nfc_read_text() == addr
+            time.sleep(0.1)
+            need_keypress("y")  # exit simulation
 
     else:
         n = 10
@@ -445,5 +445,78 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
             p = path.format(idx=i)
             assert p in addr_dict
             addr_vs_path(addr_dict[p], p, addr_fmt=which_fmt)
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC, AF_P2TR])
+@pytest.mark.parametrize("acct_num", [None, "999"])
+def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pick_menu_item, cap_story,
+                                     use_regtest, need_keypress, microsd_path, generate_addresses_file,
+                                     bitcoind_d_wallet_w_sk, load_export):
+    # export single sig descriptors (external, internal)
+    # export addressses from address explorer
+    # derive addresses from descriptor with bitcoind
+    # compare bitcoind derived addressses with those exported from address explorer
+    bitcoind = bitcoind_d_wallet_w_sk
+    use_regtest()
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Descriptor")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "This saves a ranged xpub descriptor" in story
+    assert "Choose descriptor and address type for the wallet on next screens" in story
+    assert "Press (1) to enter a non-zero account number" in story
+    assert "sensitive--in terms of privacy" in story
+    assert "not compromise your funds directly" in story
+
+    if isinstance(acct_num, str):
+        need_keypress("1")        # chosse account number
+        for ch in acct_num:
+            need_keypress(ch)     # input num
+        need_keypress("y")        # confirm selection
+    else:
+        need_keypress("y")  # confirm story
+
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "press (1) to export receiving and change descriptors separately" in story
+    need_keypress("1")
+
+    sig_check = True
+    if addr_fmt == AF_P2WPKH:
+        menu_item = "Native Segwit"
+        desc_prefix = "wpkh("
+        click_idx = 2
+    elif addr_fmt == AF_P2WPKH_P2SH:
+        menu_item = "P2SH-Segwit"
+        desc_prefix = "sh(wpkh("
+        click_idx = 1
+    elif addr_fmt == AF_P2TR:
+        menu_item = "Taproot (P2TR)"
+        desc_prefix = "tr("
+        click_idx = 3
+        sig_check = False
+    else:
+        # addr_fmt == AF_CLASSIC:
+        menu_item = "Legacy (P2PKH)"
+        desc_prefix = "pkh("
+        click_idx = 0
+
+    pick_menu_item(menu_item)
+    contents = load_export("sd", label="Descriptor", is_json=False, addr_fmt=addr_fmt,
+                           sig_check=sig_check)
+    descriptors = contents.strip()
+    ext_desc, int_desc = descriptors.split("\n")
+    assert ext_desc.startswith(desc_prefix)
+    assert int_desc.startswith(desc_prefix)
+    # check both external and internal
+    for chng in [False, True]:
+        desc = int_desc if chng else ext_desc
+        cc_addrs_gen = generate_addresses_file(click_idx, acct_num=acct_num, change=chng)
+        cc_addrs = [addr for deriv, addr in cc_addrs_gen]
+        bitcoind_addrs = bitcoind.deriveaddresses(desc, [0, 249])
+        assert cc_addrs == bitcoind_addrs
 
 # EOF

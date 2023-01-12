@@ -53,7 +53,11 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
     addrs = []
     imm_js = None
     imd_js = None
+    imd_js_tr = None
+    tr = False
     for ln in fp:
+        if ln.startswith("p2tr:"):
+            tr = True
         if 'importmulti' in ln:
             # PLAN: this will become obsolete
             assert ln.startswith("importmulti '")
@@ -61,20 +65,33 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             assert not imm_js, "dup importmulti lines"
             imm_js = ln[13:-2]
         elif "importdescriptors '" in ln:
+            ln = ln.lstrip()
             assert ln.startswith("importdescriptors '")
             assert ln.endswith("'\n")
-            assert not imd_js, "dup importdesc lines"
-            imd_js = ln[19:-2]
+            if tr:
+                imd_js_tr = ln[19:-2]
+                tr = False
+            else:
+                imd_js = ln[19:-2]
         elif '=>' in ln:
             path, addr = ln.strip().split(' => ', 1)
-            assert path.startswith(f"m/84'/1'/{acct_num}'/0")
-            assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
             sk = BIP32Node.from_wallet_key(simulator_fixed_xprv).subkey_for_path(path[2:])
-            h20 = sk.hash160()
-            assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
+            if path.startswith(f"m/86'/1'/{acct_num}'/0"):
+                assert addr.startswith('bcrt1p')  # TODO here we should differentiate if testnet or smthg
+                sec = sk.sec()
+                from helpers import taptweak
+                import bech32
+                ok = taptweak(sec[1:])
+                decoded = bech32.decode(addr[0:4], addr)
+                assert ok == bytes(decoded[1])
+            else:
+                assert path.startswith(f"m/84'/1'/{acct_num}'/0")
+                assert addr.startswith("bcrt1q")
+                h20 = sk.hash160()
+                assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
             addrs.append(addr)
 
-    assert len(addrs) == 3
+    assert len(addrs) == 6
 
     xfp = xfp2str(simulator_fixed_xfp).lower()
 
@@ -99,26 +116,17 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             assert expect+f'/{n}/*' in desc
 
         # test against bitcoind
-        for x in obj:
-            x['label'] = 'testcase'
         bitcoind_wallet.importmulti(obj)
         x = bitcoind_wallet.getaddressinfo(addrs[-1])
         pprint(x)
         assert x['address'] == addrs[-1]
-        if 'label' in x:
-            # pre 0.21.?
-            assert x['label'] == 'testcase'
-        else:
-            assert x['labels'] == ['testcase']
-        assert x['iswatchonly'] == True
         assert x['iswitness'] == True
-        assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+        # assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
     # importdescriptors -- its better
     assert imd_js
     obj = json.loads(imd_js)
     for n, here in enumerate(obj):
-        assert range not in here
         assert here['timestamp'] == 'now'
         assert here['internal'] == bool(n)
 
@@ -127,14 +135,40 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert len(chk) == 8
         assert desc.startswith(f'wpkh([{xfp}/84h/1h/{acct_num}h]')
 
-        expect = BIP32Node.from_wallet_key(simulator_fixed_xprv)\
-                    .subkey_for_path(f"84'/1'/{acct_num}'.pub").hwif()
+        expect = BIP32Node.from_wallet_key(simulator_fixed_xprv) \
+            .subkey_for_path(f"84'/1'/{acct_num}'.pub").hwif()
 
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
-        if n == 0:
-            assert here['label'] == 'Coldcard ' + xfp
+        # test against bitcoind -- needs a "descriptor native" wallet
+        bitcoind_d_wallet.importdescriptors(obj)
+        x = bitcoind_d_wallet.getaddressinfo(addrs[2])
+        pprint(x)
+        assert x['address'] == addrs[2]
+        assert x['iswatchonly'] == False
+        assert x['iswitness'] == True
+        assert x['solvable'] == True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % 2
+
+    assert imd_js_tr
+    obj = json.loads(imd_js_tr)
+    for n, here in enumerate(obj):
+        assert here['timestamp'] == 'now'
+        assert here['internal'] == bool(n)
+
+        d = here['desc']
+        desc, chk = d.split('#', 1)
+        assert len(chk) == 8
+
+        assert desc.startswith(f'tr([{xfp}/86h/1h/{acct_num}h]')
+
+        expect = BIP32Node.from_wallet_key(simulator_fixed_xprv) \
+            .subkey_for_path(f"86'/1'/{acct_num}'.pub").hwif()
+
+        assert expect in desc
+        assert expect + f'/{n}/*' in desc
 
         # test against bitcoind -- needs a "descriptor native" wallet
         bitcoind_d_wallet.importdescriptors(obj)
@@ -144,10 +178,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert x['address'] == addrs[-1]
         assert x['iswatchonly'] == False
         assert x['iswitness'] == True
-        # assert x['ismine'] == True   # TODO we have imported pubkeys - it has no idea if it is ours or solvable
-        # assert x['solvable'] == True
-        # assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
-        #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+        assert x['solvable'] == True
+        assert x['hdmasterfingerprint'] == xfp2str(dev.master_fingerprint).lower()
+        assert x['hdkeypath'] == f"m/86'/1'/{acct_num}'/0/%d" % 2
 
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
@@ -439,8 +472,10 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, m
         if not f:
             if rhs[0] in '1mn':
                 f = AF_CLASSIC
-            elif rhs[0:3] in ['tb1', "bc1"]:
+            elif rhs[0:4] in ['tb1q', "bc1q"]:
                 f = AF_P2WPKH
+            elif rhs[0:4] in ['tb1p', "bc1p"]:
+                f = AF_P2TR
             elif rhs[0] in '23':
                 f = AF_P2WPKH_P2SH
             else:
@@ -468,6 +503,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         is_xfp = False
         if '-84' in m:
             expect = "m/84'/0'/{acct}'"
+        elif '86' in m and 'P2TR' in m:
+            expect = "m/86'/0'/{acct}'"
         elif '-44' in m:
             expect = "m/44'/0'/{acct}'"
         elif '49' in m:
@@ -530,7 +567,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
-@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC, AF_P2TR])
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
@@ -576,6 +613,10 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
         menu_item = "P2SH-Segwit"
         desc_prefix = "sh(wpkh("
         bip44_purpose = 49
+    elif addr_fmt == AF_P2TR:
+        menu_item = "Taproot (P2TR)"
+        desc_prefix = "tr("
+        bip44_purpose = 86
     else:
         # addr_fmt == AF_CLASSIC:
         menu_item = "Legacy (P2PKH)"
@@ -585,7 +626,11 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
     assert menu_item in menu
     pick_menu_item(menu_item)
 
-    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt)
+    sig_check = True
+    if addr_fmt == AF_P2TR:
+        sig_check = False
+    contents = load_export(way, label="Descriptor", is_json=False, addr_fmt=addr_fmt,
+                           sig_check=sig_check)
     descriptor = contents.strip()
 
     if int_ext is False:

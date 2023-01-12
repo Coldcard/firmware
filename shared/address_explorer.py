@@ -7,7 +7,7 @@
 import chains, stash
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
@@ -27,14 +27,15 @@ class KeypathMenu(MenuSystem):
         if path is None:
             # Top level menu; useful shortcuts, and special case just "m"
             items = [
-                     MenuItem("m/..", f=self.deeper),
-                     MenuItem("m/49'/..", f=self.deeper),
-                     MenuItem("m/84'/..", f=self.deeper),
-                     MenuItem("m/44'/..", f=self.deeper),
-                     MenuItem("m/0/{idx}", menu=self.done),
-                     MenuItem("m/{idx}", menu=self.done),
-                     MenuItem("m", f=self.done),
-                    ]
+                MenuItem("m/..", f=self.deeper),
+                MenuItem("m/44'/..", f=self.deeper),
+                MenuItem("m/49'/..", f=self.deeper),
+                MenuItem("m/84'/..", f=self.deeper),
+                MenuItem("m/86'/..", f=self.deeper),
+                MenuItem("m/0/{idx}", menu=self.done),
+                MenuItem("m/{idx}", menu=self.done),
+                MenuItem("m", f=self.done),
+            ]
         else:
             # drill down one layer: (nl) is the current leaf
             # - hardened choice first
@@ -100,6 +101,7 @@ class PickAddrFmtMenu(MenuSystem):
             MenuItem("Classic P2PKH", f=self.done, arg=(path, AF_CLASSIC)), 
             MenuItem("Segwit P2WPKH", f=self.done, arg=(path, AF_P2WPKH)), 
             MenuItem("P2SH-P2WPKH", f=self.done, arg=(path, AF_P2WPKH_P2SH)), 
+            MenuItem("Taproot P2TR", f=self.done, arg=(path, AF_P2TR)),
         ]
         super().__init__(items)
         if path.startswith("m/84'"):
@@ -274,7 +276,17 @@ Press (3) if you really understand and accept these risks.
                 # - makes a redeem script
                 # - converts into addr
                 # - assumes 0/0 is first address.
-                for (i, paths, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+                for (i, paths, addr, script, ik, ikp) in ms_wallet.yield_addresses(start, n, change_idx=change):
+                    if i == 0 and ik:
+                        msg += "Taproot internal key:\n\n"
+                        if ikp:
+                            msg += ikp + "\n\n"
+                        else:
+                            msg += '%s (provably unspendable)\n\n' % ik
+
+                        if ms_wallet.N <= 4:
+                            msg += "Taproot tree keys:\n\n"
+
                     if i == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
@@ -363,12 +375,20 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     if ms_wallet:
         # For multisig, include redeem script and derivation for each signer
         yield '"' + '","'.join(['Index', 'Payment Address',
-                                    'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)] 
-                                    + (['Derivation'] * ms_wallet.N)) + '"\n'
+                                '%s (%d of %d)' % (
+                                    "Leaf Script" if ms_wallet.internal_key else "Redeem Script",
+                                    ms_wallet.M, ms_wallet.N
+                                )]
+                               + (['Derivation'] * ms_wallet.N)
+                               + ["Taproot Internal Key"] if ms_wallet.internal_key else []
+                               ) + '"\n'
 
-        for (idx, derivs, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+        for (idx, derivs, addr, script, ik, ikp) in ms_wallet.yield_addresses(start, n, change_idx=change):
             ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
             ln += '","'.join(derivs)
+            if ik:
+                # internal xonly key with its derivation (if any)
+                ln += '","%s' % (ikp + ik)
             ln += '"\n'
 
             yield ln
@@ -420,7 +440,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                         dis.progress_bar_show(idx / count)
 
             sig_nice = None
-            if not ms_wallet:
+            if not ms_wallet and addr_fmt != AF_P2TR:
                 derive = path.format(account=account_num, change=change, idx=0)  # first addr
                 sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
 

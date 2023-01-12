@@ -8,11 +8,14 @@ from utils import str_to_keypath, problem_file_line, export_prompt_builder, pars
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
 from menu import MenuSystem, MenuItem
-from opcodes import OP_CHECKMULTISIG
+from opcodes import OP_CHECKMULTISIG, OP_CHECKSIG, OP_NUMEQUAL, OP_CHECKSIGADD
 from exceptions import FatalPSBTIssue
 from glob import settings
+from ubinascii import unhexlify as a2b_hex
+from ubinascii import hexlify as b2a_hex
+from serializations import ser_string, disassemble
 
 
 # PSBT Xpub trust policies
@@ -27,7 +30,6 @@ class MultisigOutOfSpace(RuntimeError):
 def disassemble_multisig_mn(redeem_script):
     # pull out just M and N from script. Simple, faster, no memory.
 
-    assert MAX_SIGNERS == 15
     assert redeem_script[-1] == OP_CHECKMULTISIG, 'need CHECKMULTISIG'
 
     M = redeem_script[0] - 80
@@ -35,13 +37,47 @@ def disassemble_multisig_mn(redeem_script):
 
     return M, N
 
+
+def disassemble_multisig_mn_tr(script):
+    # pull out just M and N from script. Simple, faster, no memory.
+    # more validation is done in next steps
+    assert script[-1] == OP_NUMEQUAL, 'need OP_NUMEQUAL'
+    num_cs = 0
+    num_csa = 0
+
+    gen = disassemble(script)
+    while True:
+        try:
+            bt = next(gen)
+        except StopIteration:
+            break
+        if bt[1] == OP_CHECKSIG:
+            num_cs += 1
+        elif bt[1] == OP_CHECKSIGADD:
+            num_csa += 1
+        elif bt[0]:
+            if isinstance(bt[0], int):
+                last = next(gen)[1]
+                assert last == OP_NUMEQUAL
+                M = bt[0]
+            else:
+                if len(bt[0]) == 32:
+                    # xonly pubkey
+                    continue
+                else:
+                    last = next(gen)[1]
+                    assert last == OP_NUMEQUAL
+                    M = int.from_bytes(bt[0], "little")
+    assert M
+    N = num_cs + num_csa
+    return M, N
+
 def disassemble_multisig(redeem_script):
     # Take apart a standard multisig's redeem/witness script, and return M/N and public keys
     # - only for multisig scripts, not general purpose
     # - expect OP_1 (pk1) (pk2) (pk3) OP_3 OP_CHECKMULTISIG for 1 of 3 case
     # - returns M, N, (list of pubkeys)
-    # - for very unlikely/impossible asserts, dont document reason; otherwise do.
-    from serializations import disassemble
+    # - for very unlikely/impossible asserts, don't document reason; otherwise do.
 
     M, N = disassemble_multisig_mn(redeem_script)
     assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
@@ -104,6 +140,44 @@ def make_redeem_script(M, nodes, subkey_idx):
 
     return b''.join(pubkeys)
 
+
+def make_redeem_script_tr(M, nodes, subkey_idx):
+    # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
+    # a taproot M-of-N redeem script for that. Always applies BIP-67 sorting.
+    N = len(nodes)
+    # TODO this is artificial limit for tapscript and should be something bigger
+    # MAX_SIGNERS is actually old P2SH limit
+    # limit for segwit v0 multisig is 20 (OP_CHECKMULTISIG limit)
+    # tapscript multisig does not use OP_CHECKMULTISIG and therefore limit is much higher (998of999 was tried)
+    # double current limit
+    assert 1 <= M <= N <= 32
+
+    pubkeys = []
+    for n in nodes:
+        copy = n.copy()
+        copy.derive(subkey_idx, False)
+        # 0x20 = 32 = len(pubkey) = OP_PUSHDATA(32)
+        pubkeys.append(b'\x20' + copy.pubkey()[1:])
+        del copy
+
+    pubkeys.sort()
+
+    script = b''
+    for i, pk in enumerate(pubkeys):
+        script += pk
+        if i == 0:
+            script += bytes([OP_CHECKSIG])
+        else:
+            script += bytes([OP_CHECKSIGADD])
+
+    if M <= 16:
+        script += bytes([80 + M, OP_NUMEQUAL])
+    else:
+        # up to 127
+        script += bytes([0x01, M, OP_NUMEQUAL])
+
+    return script
+
 class MultisigWallet:
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
@@ -119,13 +193,14 @@ class MultisigWallet:
         (AF_P2SH, 'p2sh'),
         (AF_P2WSH, 'p2wsh'),
         (AF_P2WSH_P2SH, 'p2sh-p2wsh'),      # preferred
+        (AF_P2TR, 'p2tr'),
         (AF_P2WSH_P2SH, 'p2wsh-p2sh'),      # obsolete (now an alias)
     ]
 
     # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC'):
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC', internal_key=None):
         self.storage_idx = -1
 
         self.name = name
@@ -135,6 +210,7 @@ class MultisigWallet:
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
+        self.internal_key = internal_key
 
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
@@ -186,12 +262,19 @@ class MultisigWallet:
             opts['d'] = pp
             xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
 
+        if self.internal_key is not None:
+            opts["ik"] = self.internal_key
+
         return (self.name, (self.M, self.N), xp, opts)
 
     @classmethod
     def deserialize(cls, vals, idx=-1):
         # take json object, make instance.
         name, m_of_n, xpubs, opts = vals
+
+        internal_key = None
+        if "ik" in opts and opts["ik"]:
+            internal_key = opts["ik"]
 
         if len(xpubs[0]) == 2:
             # promote from old format to new: assume common prefix is the derivation
@@ -209,7 +292,7 @@ class MultisigWallet:
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                 chain_type=opts.get('ch', 'BTC'))
+                 chain_type=opts.get('ch', 'BTC'), internal_key=internal_key)
         rv.storage_idx = idx
 
         return rv
@@ -455,17 +538,96 @@ class MultisigWallet:
             nodes.append(node)
             paths.append(path)
 
+        internal = None
+        internal_key = ""
+        internal_path = ""
+        if self.internal_key and isinstance(self.internal_key, tuple):
+            xfp, deriv, xpub = self.internal_key
+            internal = ch.deserialize_node(xpub, AF_P2SH)
+            internal.derive(change_idx, False)
+            internal_path = "[%s/%s/%d/{idx}]" % (xfp2str(xfp), deriv, change_idx)
+
         idx = start_idx
         while count:
-            # make the redeem script, convert into address
-            script = make_redeem_script(self.M, nodes, idx)
-            addr = ch.p2sh_address(self.addr_fmt, script)
+            if self.internal_key is None:
+                # make the redeem script, convert into address
+                script = make_redeem_script(self.M, nodes, idx)
+                addr = ch.p2sh_address(self.addr_fmt, script)
+            else:
+                # p2tr
+                script = make_redeem_script_tr(self.M, nodes, idx)
+                # leaf hash is also a merkle root in tree of depth 0 (only allowed now) - aka taptweak
+                leaf_hash = ngu.secp256k1.tagged_sha256(b"TapLeaf", bytes([0xc0]) + ser_string(script))
+
+                if isinstance(self.internal_key, str):
+                    internal_key_bytes = a2b_hex(self.internal_key)
+                    internal_key = self.internal_key
+                else:
+                    internal.derive(idx, False)
+                    internal_key_bytes = internal.pubkey()[1:]
+                    internal_key = b2a_hex(internal_key_bytes).decode()
+
+                output_key = chains.taptweak(internal_key_bytes, leaf_hash)
+                addr = ch.render_address(b'\x51\x20' + output_key)
+
             addr = addr[0:12] + '___' + addr[12+3:]
 
-            yield idx, [p.format(idx=idx) for p in paths], addr, script
+            yield idx, [p.format(idx=idx) for p in paths], addr, script, internal_key, internal_path.format(idx=idx)
 
             idx += 1
             count -= 1
+
+    def validate_tr_internal_key(self, taproot_subpaths):
+        ch = chains.current_chain()
+        internal_key = None
+        xfp_deriv = None
+        for key, lhs_path in taproot_subpaths.items():
+            if not lhs_path[0]:
+                internal_key = key
+                xfp_deriv = lhs_path[1:]
+                break
+        else:
+            assert False, "Internal key missing in taproot subpaths"
+
+        if len(xfp_deriv) < 2:
+            assert a2b_hex(self.internal_key) == internal_key
+        else:
+            node = ch.deserialize_node(self.internal_key[2], AF_P2SH)
+            change_idx, idx = xfp_deriv[-2], xfp_deriv[-1]
+            node.derive(change_idx, False)
+            node.derive(idx, False)
+            assert node.pubkey()[1:] == internal_key
+
+        return internal_key
+
+    def make_multisig_tr(self, taproot_subpaths):
+        ch = chains.current_chain()
+        index = None
+        nodes = []
+        for xfp, deriv, xpub in self.xpubs:
+            # load bip32 node for each cosigner
+            node = ch.deserialize_node(xpub, AF_P2SH)
+            for xo, lhs_path in taproot_subpaths.items():
+                lhs, pth = lhs_path[0], lhs_path[1:]
+                # ignore internal key - does not have lhs (leaf hashes)
+                if xfp == pth[0] and lhs:
+                    path = pth
+                    break
+            else:
+                assert False
+
+            change_idx, idx = path[-2], path[-1]
+            if index is not None:
+                assert index == idx
+            else:
+                index = idx
+
+            node.derive(change_idx, False)
+            nodes.append(node)
+
+        # this assumes we have same index for all keys
+        script = make_redeem_script_tr(self.M, nodes, index)
+        return script
 
     def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
         # Check we can generate all pubkeys in the redeem script, raise on errors.
@@ -664,13 +826,14 @@ class MultisigWallet:
             is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
             if is_mine:
                 has_mine += 1
-        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N
+        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, desc.internal_key
 
     def to_descriptor(self):
         return MultisigDescriptor(
             M=self.M, N=self.N,
             keys=self.xpubs,
             addr_fmt=self.addr_fmt,
+            internal_key=self.internal_key,
         )
 
     @classmethod
@@ -693,12 +856,13 @@ class MultisigWallet:
         # - xpub: any bip32 serialization we understand, but be consistent
         #
         expect_chain = chains.current_chain().ctype
-        if "sortedmulti(" in config or MultisigDescriptor.is_descriptor(config):
-            # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
+        if MultisigDescriptor.is_descriptor(config):
+            # assume descriptor
             # ignore name
-            _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(config)
+            _, addr_fmt, xpubs, has_mine, M, N, internal_key = cls.from_descriptor(config)
         else:
             # oldschool
+            internal_key = None
             lines = [line for line in config.split('\n') if line]  # remove empty lines
             parsed_name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
             if parsed_name:
@@ -721,9 +885,12 @@ class MultisigWallet:
         except:
             raise AssertionError('name must be ascii, 1..20 long')
 
-        assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
+
         assert N == len(xpubs), 'wrong # of xpubs, expect %d' % N
-        assert addr_fmt & AFC_SCRIPT, 'script style addr fmt'
+        if addr_fmt != AF_P2TR:
+            assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
+            # there is no difference between script and keypath in taproot (huge privacy win)
+            assert addr_fmt & AFC_SCRIPT, 'script style addr fmt'
 
         # check we're included... do not insert ourselves, even tho we
         # have enough info, simply because other signers need to know my xpubkey anyway
@@ -731,7 +898,7 @@ class MultisigWallet:
         assert has_mine == 1, 'my key included more than once'
 
         # done. have all the parts
-        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain, internal_key=internal_key)
 
     @classmethod
     def check_xpub(cls, xfp, xpub, deriv, expect_chain, my_xfp, xpubs):
@@ -1145,6 +1312,16 @@ Addresses:
   {at}\n\n'''.format(M=self.M, N=self.N, ctype=self.chain_type,
             at=self.render_addr_fmt(self.addr_fmt)))
 
+        if self.internal_key:
+            msg.write("Taproot internal key:\n\n")
+            if isinstance(self.internal_key, tuple):
+                xfp, deriv, xpub = self.internal_key
+                msg.write('%s:\n  %s\n\n%s\n\n' % (xfp2str(xfp), deriv, xpub))
+            else:
+                msg.write('%s (provably unspendable)\n\n' % self.internal_key)
+
+            msg.write("Taproot tree keys:\n\n")
+
         # concern: the order of keys here is non-deterministic
         for idx, (xfp, deriv, xpub) in enumerate(self.xpubs):
             if idx:
@@ -1152,7 +1329,7 @@ Addresses:
 
             msg.write('%s:\n  %s\n\n%s\n' % (xfp2str(xfp), deriv, xpub))
 
-            if self.addr_fmt != AF_P2SH:
+            if self.addr_fmt not in (AF_P2SH, AF_P2TR):
                 # SLIP-132 format [yz]pubs here when not p2sh mode.
                 # - has same info as proper bitcoin serialization, but looks much different
                 node = self.chain.deserialize_node(xpub, AF_P2SH)
@@ -1284,12 +1461,19 @@ async def make_ms_wallet_menu(menu, label, item):
     rv = [
         MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
         MenuItem('View Details', f=ms_wallet_detail, arg=ms),
-        MenuItem('Delete', f=ms_wallet_delete, arg=ms),
-        MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
         MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms),
+        MenuItem('Delete', f=ms_wallet_delete, arg=ms),
+    ]
+    if ms.internal_key:
+        # internal key is defined -> Taproot
+        # do not provide legacy CC export or electrum export
+        # only descriptor export allowed (bitcoind object or plain descriptor)
+        return rv
+
+    return rv + [
+        MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
         MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
     ]
-    return rv
 
 async def make_ms_wallet_descriptor_menu(menu, label, item):
     # descriptor menu
@@ -1420,6 +1604,7 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
         ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
+        ( "m/48'/{coin}'/{acct_num}'/3'", 'p2tr', AF_P2TR ),
     ]
 
     def render(fp):
@@ -1505,7 +1690,7 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
                     # sigh, OS/filesystem variations
                     file_size = var[1] if len(var) == 2 else get_filesize(full_fname)
 
-                    if not (0 <= file_size <= 1100):
+                    if not (0 <= file_size <= 1500):
                         # out of range size
                         continue
 
@@ -1674,7 +1859,7 @@ async def import_multisig(*a):
                     return True
 
     fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt', min_size=100,
-                           max_size=20*200, taster=possible, force_vdisk=force_vdisk)
+                           max_size=350*200, taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 
     try:
