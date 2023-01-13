@@ -5,6 +5,7 @@
 
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
+from callgate import enter_dfu as dfu
 
 import uasyncio
 arun = uasyncio.run

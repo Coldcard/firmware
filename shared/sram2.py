@@ -8,7 +8,7 @@
 #   - top page of that is specially marked to cause reset if any attempt to change
 # - 2k at bottom reserved for code in `flashbdev.c` to use as cache data for flash writing
 # - keep this file in sync with simulated version 
-# - none of the above is true anymore on mk4
+# - none of the above is true anymore on mk4 and later!
 #
 import uctypes, ckcc
 from version import mk_num

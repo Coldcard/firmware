@@ -1,1 +1,1 @@
-../stm32/bootloader/sigheader.py
+../stm32/sigheader.py

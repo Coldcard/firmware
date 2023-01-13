@@ -103,7 +103,7 @@ def serial_number():
 def probe_system():
     # run-once code to determine what hardware we are running on
     global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
-    global has_se2, mk_num, has_nfc
+    global has_se2, mk_num, has_nfc, has_qr, num_sd_slots
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
@@ -120,6 +120,8 @@ def probe_system():
     has_608 = True
     has_se2 = False
     has_nfc = False         # hardware present; they might not be using it
+    has_qr = False          # QR scanner
+    num_sd_slots = 1        # might have dual slots on Q1
     mk_num = 2
 
     cpuid = ckcc.get_cpu_id()
@@ -133,10 +135,19 @@ def probe_system():
         has_psram = True
         has_se2 = True
         mk_num = 4
-        has_nfc = nfc_presence_check()
     else:
         # mark 2
         has_608 = callgate.has_608()
+
+    # detect Q1 based on pins.csv
+    try:
+        Pin('LCD_TEAR')     # only on Q1 build, will error otherwise
+        has_qr = True
+        num_sd_slots = 2
+        hw_label = 'q1'
+        # but, still mk_num = 4
+    except:
+        pass
 
     # Boot loader needs to tell us stuff about how we were booted, sometimes:
     # - did we just install a new version, for example (obsolete in mk4)

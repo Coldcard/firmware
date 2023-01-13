@@ -199,6 +199,7 @@ class CardSlot:
         # - this is called a few seconds after system startup
 
         from pyb import Pin, ExtInt
+        from version import num_sd_slots
 
         def card_change(_):
             # Careful: these can come fast and furious!
@@ -206,11 +207,16 @@ class CardSlot:
 
         cls.last_change = utime.ticks_ms()
 
-        cls.irq = ExtInt(Pin('SD_SW'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
+        #XXX conflict w/ PB13 vs. PD13 ... same irq number
+        if num_sd_slots == 2:
+            cls.irq = None
+        else:
+            cls.irq = ExtInt(Pin('SD_DETECT'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
         # mark 2+ boards have a light for SD activity.
         from machine import Pin
         cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+
 
     @classmethod
     def is_inserted(cls):

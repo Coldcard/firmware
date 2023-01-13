@@ -24,14 +24,19 @@ if 0:
 if 0:
     raise SystemExit
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2022.")
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2023.")
 
 import version
 datestamp,vers,_ = version.get_mpy_version()
 print("Version: %s / %s\n" % (vers, datestamp))
 
 # Setup OLED and get something onto it.
-from display import Display
+try:
+    from display import Display
+except ImportError:
+    # for Q1
+    from lcd_display import Display
+
 dis = Display()
 dis.splash()
 glob.dis = dis
@@ -42,8 +47,12 @@ import ckcc, uasyncio
 if version.mk_num >= 4:
     # early setup code needed on Mk4
     try:
-        import mk4
-        mk4.init0()
+        if version.hw_label == 'q1':
+            import q1
+            q1.init0()
+        else:
+            import mk4
+            mk4.init0()
 
         from psram import PSRAMWrapper
         glob.PSRAM = PSRAMWrapper()
@@ -55,10 +64,15 @@ else:
     # Serial Flash memory
     from sflash import SF
 
-# Setup membrane numpad (mark 2+)
-from mempad import MembraneNumpad
-numpad = MembraneNumpad()
-glob.numpad = numpad
+# Setup keypad/keyboard
+if version.hw_label == 'q1':
+    from keyboard import FullKeyboard
+    numpad = FullKeyboard()
+    glob.numpad = numpad
+else:
+    from mempad import MembraneNumpad
+    numpad = MembraneNumpad()
+    glob.numpad = numpad
 
 # NV settings
 from nvstore import SettingsObject
