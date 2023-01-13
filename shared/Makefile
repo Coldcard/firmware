@@ -8,6 +8,9 @@ all:
 dfu:
 	(cd ../stm32; make && make dfu)
 
+q1:
+	(cd ../stm32; make dfu-up)
+
 # Find any python files newer than the last firmware DFU file, and copy
 # them onto the flash filesystem of the device. They will replace the
 # frozen versions of the same name.

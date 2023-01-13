@@ -366,6 +366,8 @@ def check_firmware_hdr(hdr, binary_size):
             ok = (hw_compat & MK_3_OK)
         elif hw_label == 'mk4':
             ok = (hw_compat & MK_4_OK)
+        elif hw_label == 'q1':
+            ok = (hw_compat & MK_Q1_OK)
         
         if not ok:
             return "That firmware doesn't support this version of Coldcard hardware (%s)."%hw_label

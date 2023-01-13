@@ -1,6 +1,6 @@
 # Freeze everything in this list.
 # - not optimized because we need asserts to work
-# - for mk3 vs mk4, see manifest_mk[34].py
+# - for specific boards, see manifest_mk[34].py and manifest_q1.py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
@@ -27,7 +27,6 @@ freeze_as_mpy('', [
 	'imptask.py',
 	'login.py',
 	'main.py',
-	'mempad.py',
 	'menu.py',
 	'multisig.py',
 	'numpad.py',
