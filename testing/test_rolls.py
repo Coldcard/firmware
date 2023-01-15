@@ -1,3 +1,5 @@
+import sys
+sys.path.append("..")
 from docs.rolls import entropy_to_mnemonic24
 from docs.rolls12 import entropy_to_mnemonic12
 
