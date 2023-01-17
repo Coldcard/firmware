@@ -21,6 +21,8 @@ if 0:
     import ckcc
     ckcc.vcp_enabled(True)
     from h import *
+if 1:
+    from h import dfu
 if 0:
     raise SystemExit
 

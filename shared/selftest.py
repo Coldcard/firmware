@@ -185,8 +185,7 @@ async def test_sflash():
     for phase in [0, 1]:
         steps = 7*4
         for i in range(steps):
-            dis.progress_bar(i/steps)
-            dis.show()
+            dis.progress_bar_show(i/steps)
             await sleep_ms(250)
             if not SF.is_busy(): break
 
