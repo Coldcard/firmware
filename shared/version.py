@@ -135,6 +135,7 @@ def probe_system():
         has_psram = True
         has_se2 = True
         mk_num = 4
+        has_nfc = nfc_presence_check()
     else:
         # mark 2
         has_608 = callgate.has_608()
