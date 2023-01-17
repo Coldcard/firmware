@@ -233,8 +233,7 @@ class LoginUX:
         dis.text(None, 40, "(%d failures)" % pa.num_fails)
 
         while pa.is_delay_needed():
-            dis.progress_bar(pa.delay_achieved / pa.delay_required)
-            dis.show()
+            dis.progress_bar_show(pa.delay_achieved / pa.delay_required)
 
             pa.delay()
 

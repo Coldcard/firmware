@@ -102,7 +102,7 @@ class UserAuthorizedAction:
 
         # do nothing more for HSM case: msg will be available over USB
         if hsm_active:
-            dis.progress_bar(1)     # finish the Validating... or whatever was up
+            dis.progress_bar_show(1)     # finish the Validating... or whatever was up
             return
 
         # may be a user-abort waiting, but we want to see error msg; so clear it
@@ -660,6 +660,7 @@ class ApproveTransaction(UserAuthorizedAction):
             dis.progress_bar_show(0.66)
             self.psbt.consider_outputs()
             self.psbt.consider_dangerous_sighash()
+
             dis.progress_bar_show(0.85)
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
@@ -731,6 +732,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 ch = await ux_show_story(msg, title="OK TO SEND?")
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
+                dis.progress_bar_show(1)     # finish the Validating...
 
         except MemoryError:
             # recovery? maybe.
@@ -1295,7 +1297,7 @@ class ShowAddressBase(UserAuthorizedAction):
                 break
         else:
             # finish the Wait...
-            dis.progress_bar(1)     
+            dis.progress_bar_show(1)     
         if self.restore_menu:
             self.pop_menu()
         else:

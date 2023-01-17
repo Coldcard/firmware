@@ -180,8 +180,7 @@ class Display:
         if utime.ticks_diff(utime.ticks_ms(), self.last_bar_update) < 100:
             return
         self.last_bar_update = utime.ticks_ms()
-        self.progress_bar(done / total)
-        self.show()
+        self.progress_bar_show(done / total)
 
     def progress_bar_show(self, percent):
         # useful as a callback

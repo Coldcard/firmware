@@ -4,6 +4,7 @@ freeze_as_mpy('', [
 	'mk4.py',
 	'q1.py',
 	'keyboard.py',
+	'scanner.py',
 	'lcd_display.py',
 	'vdisk.py',
 	'nfc.py',
