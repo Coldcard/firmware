@@ -25,6 +25,9 @@ extern const unsigned char screen_corrupt[];
 extern const unsigned char screen_logout[];
 
 
+extern const unsigned char screen_poweroff[];
+
+
 extern const unsigned char screen_devmode[];
 
 

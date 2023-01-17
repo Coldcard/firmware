@@ -30,7 +30,7 @@ STM32LIB_PATH = ../../external/micropython/lib
 TARGET_NAME = bootloader
 
 # Source files. Important: Add them also to link-script.ld to control placement.
-OBJS += startup.o assets/screens.o
+OBJS += startup.o assets/q1_screens.o
 OBJS += firewall.o main.o dispatch.o verify.o clocks.o storage.o constant_time.o rng.o ae.o
 OBJS += delay.o gpio.o pins.o version.o console.o psram.o sdcard.o lcd.o
 OBJS += faster_sha256.o micro-ecc/uECC.o hal_glue.o se2.o aes.o
@@ -138,7 +138,7 @@ $(TARGET_ELF): $(OBJS) $(LINKER_SCRIPT) Makefile
 %.dfu: %.bin %.lss
 	$(PYTHON_MAKE_DFU) -b $(BL_FLASH_BASE):$< $@
 
-assets/screens.c: assets/Makefile assets/*.png assets/convert.py
+assets/q1_screens.c: assets/Makefile assets/*.png assets/convert.py
 	(cd assets; $(MAKE))
 
 
