@@ -2,7 +2,7 @@
 #
 # keyboard.py - Full keyboard found on the Q1 product.
 #
-import array, utime, pyb
+import array, utime, pyb, sys
 from ucollections import deque
 from machine import Pin
 from random import shuffle
@@ -19,7 +19,7 @@ Q_CHECK_RATE = const(5)         # (ms) how fast to check event Q
 KEY_NFC = '\x0e'        # ctrl-N
 KEY_QR = '\x11'         # ctrl-Q
 KEY_TAB = '\t'          # tab = ctrl-I
-KEY_SELECT = '\n'       # = CR
+KEY_SELECT = '\r'       # = CR
 KEY_CANCEL = '\x1b'     # ESC = Cancel
 KEY_LEFT = '\x15'           # ^U = left (incompatible)
 KEY_UP = '\x0b'             # ^K = up on ADM-3A
@@ -49,9 +49,6 @@ class FullKeyboard(NumpadBase):
     def __init__(self):
         super().__init__()
 
-        # No idea how to pick a safe timer number.
-        self.timer = pyb.Timer(7)
-
         self.cols = [Pin('Q1_COL%d' % i, Pin.IN, pull=Pin.PULL_UP) for i in range(NUM_COLS)]
         self.rows = [Pin('Q1_ROW%d' % i, Pin.OUT_OD, value=0) for i in range(NUM_ROWS)]
 
@@ -60,13 +57,12 @@ class FullKeyboard(NumpadBase):
         # - complete scan is done before acting on what was measured
         self.scan_order = array.array('b', list(range(NUM_ROWS)))
 
-        # each full scan is pushed onto this, only last one kept if overflow
-        self.scans = deque((), 50, 0)
+        # after full scan, these flags are set for each key
+        self.is_pressed = bytearray(NUM_ROWS * NUM_COLS)
 
-        # internal to timer irq handler
-        self._history = None        # see _start_scan
+        # internal to irq handler
+        self._history = bytearray(NUM_ROWS * NUM_COLS)
         self._scan_count = 0
-        self._cycle = 0
 
         self.waiting_for_any = True
 
@@ -74,9 +70,32 @@ class FullKeyboard(NumpadBase):
         self.lp_time = 0
 
         for c in self.cols:
+            if c.pin() == 15: continue     # D15 conflicts with LCD_TEAR's irq pin
             c.irq(self.anypress_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
 
+        # power btn
+        self.pwr_btn = Pin('PWR_BTN', Pin.IN, pull=Pin.PULL_UP)
+        self.pwr_btn.irq(self.power_press, Pin.IRQ_FALLING)
+
+        # LCD generates a nice 61Hz signal we can use
+        self.lcd_tear = Pin('LCD_TEAR', Pin.IN)
+        self.lcd_tear.irq(self._measure_irq, trigger=Pin.IRQ_RISING, hard=False)
+
         # ready to start 
+
+    def power_press(self, pin):
+        # power btn has been pressed, probably by accident but maybe not?
+        # - enforce some hold-down time, but not much
+        call_later_ms(250, self.power_press_held)
+
+    async def power_press_held(self):
+        if self.pwr_btn() == 1:
+            # released in time: cancel
+            return
+
+        # shutdown now.
+        import callgate
+        callgate.show_logout(3)
 
     def anypress_irq(self, pin):
         # come here for any change, high or low
@@ -90,31 +109,25 @@ class FullKeyboard(NumpadBase):
 
     def _wait_any(self):
         # wait for any press.
-        self.timer.deinit()
+        #self.timer.deinit()
+        self.waiting_for_any = True
 
         for r in self.rows:
             r.off()
-        self.waiting_for_any = True
 
     def _start_scan(self):
         # reset and re-start scanning keys
-        self.waiting_for_any = False
         self.lp_time = utime.ticks_ms()
         shuffle(self.scan_order)
 
         self._scan_count = 0
-        self._history = bytearray(NUM_ROWS * NUM_COLS)
-
-        self.timer.init(freq=SAMPLE_FREQ, callback=self._measure_irq)
-        call_later_ms(Q_CHECK_RATE, self._finish_scan)
+        self.waiting_for_any = False
 
     def _measure_irq(self, _timer):
         # CHALLENGE: Called at high rate, and cannot do memory alloc.
         # - sample all keys once, record any that are pressed
-
         if self.waiting_for_any:
-            # stop
-            _timer.deinit()
+            # do nothing in that mode
             return
 
         for i in range(NUM_ROWS):
@@ -126,54 +139,43 @@ class FullKeyboard(NumpadBase):
             # sample the column values
             for c in range(NUM_COLS):
                 if self.cols[c].value() == 0:
-                    col = c
-                    break
-            else:
-                continue
-
-            # track any press observed
-            self._history[(row * NUM_COLS) + col] += 1
+                    self._history[(row * NUM_COLS) + c] += 1
 
         self._scan_count += 1
-        if self._scan_count == NUM_SAMPLES:
-            self._scan_count = 0
+        if self._scan_count != NUM_SAMPLES:
+            return
 
-            # handle debounce, which happens in both directions: press and release
-            # - all samples must be in agreement to count as either up or down
-            # - only handling single key-down at a time.
-            if sum(self._history) == 0:
-                # all are up, and debounced as such
-                self.scans.append(0xff)
+        # collect results
+        self._scan_count = 0
 
-            for i in range(NUM_ROWS * NUM_COLS):
-                if self._history[i] == NUM_SAMPLES:
-                    # down
-                    self.scans.append(i)
+        # handle debounce, which happens in both directions: press and release
+        # - all samples must be in agreement to count as either up or down
+        for kn in range(NUM_ROWS * NUM_COLS):
+            if self._history[kn] == NUM_SAMPLES:
+                self.is_pressed[kn] = 1
+            elif self._history[i] == 0:
+                self.is_pressed[kn] = 0
+            self._history[kn] = 0
 
-                self._history[i] = 0
-
-    async def _finish_scan(self):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
         # - not trying to support multiple presses, just one
-        while self.scans:
-            event = self.scans.popleft()
-
-            if event == 0xff:
-                # all keys are now up
-                if self.key_pressed:
-                    self._key_event('')
-            else:
-                # indicated key was found to be down
-                key = DECODER[event]
-                print("KEY: event=%d => %c=0x%x" % (event, key, ord(key)))
-                self._key_event(key)
+        for kn in range(NUM_ROWS * NUM_COLS):
+            if self.is_pressed[kn]:
+                # indicated key was found to be down and then back up
+                key = DECODER[kn]
+                if key != self.key_pressed:
+                    print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
+                    self._key_event(key)
 
                 self.lp_time = utime.ticks_ms()
 
-        if not self.key_pressed and utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
-            # stop scanning now... nothing happening
-            self._wait_any()
-        else:
-            call_later_ms(Q_CHECK_RATE, self._finish_scan)
+        none_active = (sum(self.is_pressed) == 0)
+        if none_active:
+            if self.key_pressed:
+                self._key_event('')
+
+            if utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
+                # stop scanning now... nothing happening
+                self._wait_any()
     
 # EOF
