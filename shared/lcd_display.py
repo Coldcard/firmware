@@ -1,21 +1,33 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+# (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # lcd_display.py - LCD rendering for Q1's 320x240 pixel *colour* display!
 #
-import machine, uzlib, ckcc, utime
+import machine, uzlib, ckcc, utime, struct, array, sys
 from version import is_devmode
 import framebuf
 import uasyncio
 from uasyncio import sleep_ms
 from graphics import Graphics
-from sram2 import display2_buf, display_buf
-import struct
+import sram2
+from ckcc import lcd_blast
 
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
 FontFixed = object()    # ugly 8x8 PET font
 
-SPI_RATE = const(40000000)        # max chip can do, just past legal range for display
+# free unused screen buffers, we will make bigger ones
+del sram2.display_buf
+del sram2.display2_buf
+
+# one byte per pixel
+display_buf = bytearray(320 * 240)
+display2_buf = bytearray(320 * 240)
+
+# BGR565 colours
+COL_WHITE = 0xffff
+COL_BLACK = 0x0000
+
+SPI_RATE = const(60_000_000)        # max chip can do, just past legal range for display
 
 # few key commands
 CASET = const(0x2a)
@@ -36,12 +48,10 @@ class ST7788(framebuf.FrameBuffer):
         # for framebuf.FrameBuffer
         self.width = width
         self.height = height
-        self.pages = self.height // 8
-        self.buffer = display_buf
+        self.buffer = bytearray(320*240)
 
-        assert len(self.buffer) == self.pages * self.width
-
-        super().__init__(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
+        #super().__init__(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
+        super().__init__(self.buffer, self.width, self.height, framebuf.GS8)
 
     def write_cmd(self, cmd, args=None):
         # send a command byte and a number of arguments
@@ -73,6 +83,17 @@ class ST7788(framebuf.FrameBuffer):
             print("SPI[data]: %r" % self.spi)
         self.cs(1)
 
+    def write_pixel_data(self, buf):
+        # lcd_blast expands 1-byte per pixel to BGR565
+        self.cs(1)
+        self.dc(1)
+        self.cs(0)
+        try:
+            lcd_blast(self.spi, buf)
+        except Exception as exc:
+            sys.print_exception(exc)
+        self.cs(1)
+
 
     def _set_window(self, x, y, w=320, h=240):
         #self.write_cmd(0x2a, 0, LCD_WIDTH-1)         # CASET - Column address set range (x)
@@ -83,11 +104,40 @@ class ST7788(framebuf.FrameBuffer):
         a = struct.pack('>HH', y, y+h-1)
         self.write_cmd(RASET, a)
 
+        self.write_cmd(RAMWR)            # RAMWR - memory write
+        # .. follow with w*h*2 bytes of pixel data
+
+    def show_partial(self, y, h):
+        assert h >= 1
+        self._set_window(0, y, h=h)
+        rows = memoryview(self.buffer)[320*y:320*(y+h)]
+        self.write_pixel_data(rows)
+
     def show(self):
+        self._set_window(0, 0)
+        self.write_pixel_data(self.buffer)
+
+    def junk():
+        if 0:
+            # TODO: move to C, larger buffers, max SPI clock, etc.
+            if 0:
+                row = array.array('H', range(320))
+                for y in range(240):
+                    pos = y*320
+                    for x, b in enumerate(self.buffer[pos:pos+320]):
+                        row[x] = 0xffff if b else 0x0
+                    self.write_data(row)
+            else:
+                scr = array.array('H')
+                for b in self.buffer:
+                    scr.append(0xffff if b else 0x0)
+                self.write_data(scr)
+
+    def show_1bit(self):
         # send self.buffer to display now
+        #super().__init__(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
         # - compat mode: each pixel becomes 2x3 spot, centered in available space
         self._set_window(32, 24, 128*2, 64*3)
-        self.write_cmd(RAMWR)            # RAMWR - memory write
 
         row = bytearray(128*2*2)
         for row_start in range(0, 1024, 128//8):
@@ -109,8 +159,8 @@ class ST7788(framebuf.FrameBuffer):
 
 class Display:
 
-    WIDTH = 128
-    HEIGHT = 64
+    WIDTH = 320
+    HEIGHT = 240
 
     # use these negative X values for auto layout features
     CENTER = -2
@@ -124,7 +174,7 @@ class Display:
         dc_pin = Pin('PA8', Pin.OUT)
         cs_pin = Pin('PA4', Pin.OUT)
 
-        self.dis = ST7788(128, 64, spi, dc_pin, cs_pin)
+        self.dis = ST7788(self.WIDTH, self.HEIGHT, spi, dc_pin, cs_pin)
 
         self.last_bar_update = 0
         self.clear()
@@ -150,7 +200,7 @@ class Display:
             data = bytearray(i^0xff for i in data)
 
         gly = framebuf.FrameBuffer(bytearray(data), w, h, framebuf.MONO_HLSB)
-        self.dis.blit(gly, x, y, invert)
+        self.dis.blit(gly, x, y, COL_WHITE if invert else COL_BLACK)
 
         return (w, h)
 
@@ -188,7 +238,7 @@ class Display:
             if invert:
                 bits = bytearray(i^0xff for i in bits)
             gly = framebuf.FrameBuffer(bits, fn.w, fn.h, framebuf.MONO_HLSB)
-            self.dis.blit(gly, x, y, invert)
+            self.dis.blit(gly, x, y, COL_WHITE if invert else COL_BLACK)
             x += fn.w
 
         return x
@@ -209,20 +259,20 @@ class Display:
         self.dis.buffer[:] = display2_buf
 
     def hline(self, y):
-        self.dis.line(0, y, 128, y, 1)
+        self.dis.line(0, y, self.WIDTH, y, 1)
     def vline(self, x):
-        self.dis.line(x, 0, x, 64, 1)
+        self.dis.line(x, 0, x, self.HEIGHT, 1)
 
     def scroll_bar(self, fraction):
         # along right edge
-        self.dis.fill_rect(128-5, 0, 5, 64, 0)
-        self.icon(128-3, 1, 'scroll');
-        mm = 64-6
+        self.dis.fill_rect(self.WIDTH-5, 0, 5, self.HEIGHT, 0)
+        self.icon(self.WIDTH-3, 1, 'scroll');
+        mm = self.HEIGHT-6
         pos = min(int(mm*fraction), mm)
-        self.dis.fill_rect(128-2, pos, 1, 8, 1)
+        self.dis.fill_rect(self.WIDTH-2, pos, 1, 8, 1)
 
         if is_devmode and not ckcc.is_simulator():
-            self.dis.fill_rect(128-6, 20, 5, 21, 1)
+            self.dis.fill_rect(self.WIDTH-6, 20, 5, 21, 1)
             self.text(-2, 21, 'D', font=FontTiny, invert=1)
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
             self.text(-2, 35, 'V', font=FontTiny, invert=1)
@@ -269,13 +319,12 @@ class Display:
         if utime.ticks_diff(utime.ticks_ms(), self.last_bar_update) < 100:
             return
         self.last_bar_update = utime.ticks_ms()
-        self.progress_bar(done / total)
-        self.show()
+        self.progress_bar_show(done / total)
 
     def progress_bar_show(self, percent):
         # useful as a callback
         self.progress_bar(percent)
-        self.show()
+        self.dis.show_partial(self.HEIGHT-1, 1)
 
     def mark_sensitive(self, from_y, to_y):
         wx = self.WIDTH-4       # avoid scroll bar
@@ -284,7 +333,7 @@ class Display:
             self.dis.line(wx-ln, y, wx, y, 1)
 
     def busy_bar(self, enable, speed_code=5):
-        print("busy_bar")       # XXX TODO
+        print("busy_bar")       # XXX TODO not obvious
         return
         # Render a continuous activity (not progress) bar in lower 8 lines of display
         # - using OLED itself to do the animation, so smooth and CPU free
