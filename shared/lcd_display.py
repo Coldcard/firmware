@@ -19,38 +19,40 @@ FontFixed = object()    # ugly 8x8 PET font
 del sram2.display_buf
 del sram2.display2_buf
 
-# one byte per pixel
+# one byte per pixel; fixed palette maps to BGR565 in C code
 display_buf = bytearray(320 * 240)
 display2_buf = bytearray(320 * 240)
 
-# BGR565 colours
-COL_WHITE = 0xffff
-COL_BLACK = 0x0000
-
-SPI_RATE = const(60_000_000)        # max chip can do, just past legal range for display
-
-# few key commands
+# few key commands for this display
 CASET = const(0x2a)
 RASET = const(0x2b)
 RAMWR = const(0x2c)
 
 class ST7788(framebuf.FrameBuffer):
-    def __init__(self, width, height, spi, dc, cs):
+    def __init__(self):
         # assume the Bootrom setup the interface and LCD correctly already
         # - its fairly slow, complex and no need to change
-        dc.init(dc.OUT, value=0)
-        cs.init(cs.OUT, value=1)
-        spi.init(baudrate=SPI_RATE, polarity=0, phase=0)
-        self.spi = spi
-        self.dc = dc
-        self.cs = cs
+        from machine import Pin
+        from pyb import Timer       # not from machine
+
+        self.spi = machine.SPI(1, baudrate=60_000_000, polarity=0, phase=0)
+        #reset_pin = Pin('PA6', Pin.OUT)        # not using
+        self.dc = Pin('PA8', Pin.OUT, value=0)
+        self.cs = Pin('PA4', Pin.OUT, value=1)
+
+        if 0:
+            # BUST - just fades away
+            # backlight control - will not see display with it off!
+            self.bl_enable = Pin('BL_ENABLE', Pin.OUT, value=1)
+            t = Timer(3, freq=100_000)
+            # must be channel 3 because BL_ENABLE=>PE3?
+            self.dimmer = t.channel(3, Timer.PWM, pin=self.bl_enable)
 
         # for framebuf.FrameBuffer
-        self.width = width
-        self.height = height
+        self.width = 320
+        self.height = 240
         self.buffer = bytearray(320*240)
 
-        #super().__init__(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
         super().__init__(self.buffer, self.width, self.height, framebuf.GS8)
 
     def write_cmd(self, cmd, args=None):
@@ -58,17 +60,11 @@ class ST7788(framebuf.FrameBuffer):
         self.cs(1)
         self.dc(0)
         self.cs(0)
-        try:
-            self.spi.write(bytes([cmd]))
-        except:
-            print("SPI[cmd]: %r" % self.spi)
+        self.spi.write(bytes([cmd]))
 
         if args:
             self.dc(1)
-            try:
-                self.spi.write(args)
-            except:
-                print("SPI[arg]: %r" % self.spi)
+            self.spi.write(args)
 
         self.cs(1)
 
@@ -77,10 +73,7 @@ class ST7788(framebuf.FrameBuffer):
         self.cs(1)
         self.dc(1)
         self.cs(0)
-        try:
-            self.spi.write(buf)
-        except:
-            print("SPI[data]: %r" % self.spi)
+        self.spi.write(buf)
         self.cs(1)
 
     def write_pixel_data(self, buf):
@@ -90,8 +83,8 @@ class ST7788(framebuf.FrameBuffer):
         self.cs(0)
         try:
             lcd_blast(self.spi, buf)
-        except Exception as exc:
-            sys.print_exception(exc)
+        except:
+            print('lcd_blast fail')
         self.cs(1)
 
 
@@ -105,57 +98,20 @@ class ST7788(framebuf.FrameBuffer):
         self.write_cmd(RASET, a)
 
         self.write_cmd(RAMWR)            # RAMWR - memory write
+
         # .. follow with w*h*2 bytes of pixel data
 
     def show_partial(self, y, h):
+        # update just a few rows of the display
         assert h >= 1
         self._set_window(0, y, h=h)
         rows = memoryview(self.buffer)[320*y:320*(y+h)]
         self.write_pixel_data(rows)
 
     def show(self):
+        # send entire frame buffer
         self._set_window(0, 0)
         self.write_pixel_data(self.buffer)
-
-    def junk():
-        if 0:
-            # TODO: move to C, larger buffers, max SPI clock, etc.
-            if 0:
-                row = array.array('H', range(320))
-                for y in range(240):
-                    pos = y*320
-                    for x, b in enumerate(self.buffer[pos:pos+320]):
-                        row[x] = 0xffff if b else 0x0
-                    self.write_data(row)
-            else:
-                scr = array.array('H')
-                for b in self.buffer:
-                    scr.append(0xffff if b else 0x0)
-                self.write_data(scr)
-
-    def show_1bit(self):
-        # send self.buffer to display now
-        #super().__init__(self.buffer, self.width, self.height, framebuf.MONO_HLSB)
-        # - compat mode: each pixel becomes 2x3 spot, centered in available space
-        self._set_window(32, 24, 128*2, 64*3)
-
-        row = bytearray(128*2*2)
-        for row_start in range(0, 1024, 128//8):
-            pos = 0
-            for x in range(128//8):
-                b = self.buffer[row_start + x]
-                mask = 0x80
-                while mask:
-                    col = 0xff if (b & mask) else 0x00
-                    for i in range(4):
-                        row[pos+i] = col
-                    pos += 4
-                    mask >>= 1
-
-            # output a triple row
-            self.write_data(row)
-            self.write_data(row)
-            self.write_data(row)
 
 class Display:
 
@@ -167,14 +123,7 @@ class Display:
     RJUST = -1
 
     def __init__(self):
-        from machine import Pin
-
-        spi = machine.SPI(1)
-        #reset_pin = Pin('PA6', Pin.OUT)        # not using
-        dc_pin = Pin('PA8', Pin.OUT)
-        cs_pin = Pin('PA4', Pin.OUT)
-
-        self.dis = ST7788(self.WIDTH, self.HEIGHT, spi, dc_pin, cs_pin)
+        self.dis = ST7788()
 
         self.last_bar_update = 0
         self.clear()
@@ -200,7 +149,7 @@ class Display:
             data = bytearray(i^0xff for i in data)
 
         gly = framebuf.FrameBuffer(bytearray(data), w, h, framebuf.MONO_HLSB)
-        self.dis.blit(gly, x, y, COL_WHITE if invert else COL_BLACK)
+        self.dis.blit(gly, x, y, invert)
 
         return (w, h)
 
@@ -238,7 +187,7 @@ class Display:
             if invert:
                 bits = bytearray(i^0xff for i in bits)
             gly = framebuf.FrameBuffer(bits, fn.w, fn.h, framebuf.MONO_HLSB)
-            self.dis.blit(gly, x, y, COL_WHITE if invert else COL_BLACK)
+            self.dis.blit(gly, x, y, invert)
             x += fn.w
 
         return x
