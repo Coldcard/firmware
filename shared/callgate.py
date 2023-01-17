@@ -31,6 +31,7 @@ def show_logout(dont_clear=0):
     # wipe memory and die, shows standard message
     # dont_clear=1 => don't clear OLED
     # 2=> restart system after wipe
+    # 3=> Q1: power down after wipe
     ckcc.oneway(3, dont_clear)
 
 def get_genuine():
