@@ -36,7 +36,7 @@
 #define MICROPY_HW_UART4_TX     (pin_A0)
 #define MICROPY_HW_UART4_RX     (pin_A0)
 #define MICROPY_HW_UART2_TX     (pin_A2)
-#define MICROPY_HW_UART2_RX     (pin_A2)
+#define MICROPY_HW_UART2_RX     (pin_A3)
 #define MICROPY_HW_UART1_TX     (pin_A9)
 #define MICROPY_HW_UART1_RX     (pin_A10)
 
