@@ -78,21 +78,23 @@ gpio_setup(void)
     // Port C - Outputs
     // SD1 active LED: PC7
     // USB active LED: PC6
+    // TURN OFF: PC0
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_7 | GPIO_PIN_6,
+            .Pin = GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_0,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);               // stay on!
         HAL_GPIO_Init(GPIOC, &setup);
 
         HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|GPIO_PIN_6, 0);    // turn LEDs off
     }
 
     // Port C - Inputs
-    // SD card detect switch: PC13
+    // SD card detect switch: PC13, PC1 battery/not
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_13,
+            .Pin = GPIO_PIN_13 | GPIO_PIN_1,
             .Mode = GPIO_MODE_INPUT,
             .Pull = GPIO_PULLUP,
             .Speed = GPIO_SPEED_FREQ_LOW,
@@ -152,5 +154,18 @@ gpio_setup(void)
 #endif
 }
 
+// turn_power_off()
+//
+// kill system power; instant
+//
+    void
+turn_power_off(void)
+{
+    gpio_setup();
+
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
+
+    LOCKUP_FOREVER();
+}
 
 // EOF
