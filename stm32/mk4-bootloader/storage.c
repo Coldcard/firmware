@@ -18,7 +18,8 @@
 #include "faster_sha256.h"
 #include <string.h>
 #include <errno.h>
-#include "assets/screens.h"
+#include "config.h"
+#include SCREENS_H
 #include "stm32l4xx_hal.h"
 #include "constant_time.h"
 #include "storage.h"

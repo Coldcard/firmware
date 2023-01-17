@@ -15,7 +15,7 @@
 #include "psram.h"
 #include "faster_sha256.h"
 #include "oled.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "console.h"
 #include "constant_time.h"
 #include "misc.h"
