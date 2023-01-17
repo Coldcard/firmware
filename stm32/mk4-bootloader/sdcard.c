@@ -9,7 +9,7 @@
 #include "sigheader.h"
 #include "ae.h"
 #include "ae_config.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include <string.h>
 #include "delay.h"
 #include "rng.h"

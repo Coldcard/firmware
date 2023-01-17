@@ -30,7 +30,7 @@
 #include "sdcard.h"
 #include "dispatch.h"
 #include "constant_time.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "stm32l4xx_hal.h"
 
 

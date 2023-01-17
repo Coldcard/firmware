@@ -8,7 +8,7 @@
 #include "verify.h"
 #include "psram.h"
 #include "faster_sha256.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "oled.h"
 #include "console.h"
 #include "misc.h"
