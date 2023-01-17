@@ -52,6 +52,12 @@ class NFCHandler:
         self.last_edge = 0
         self.pin_ed = Pin('NFC_ED', mode=Pin.IN, pull=Pin.PULL_UP)
 
+        try:
+            # Q1 and maybe later Mk4's have a light
+            self.active_led = Pin('NFC_ACTIVE', mode=Pin.OUT, value=0)
+        except ValueError:
+            self.active_led = lambda n: None
+
         # track time of last edge
         def _irq(x):
             self.last_edge = utime.ticks_ms()
@@ -134,6 +140,9 @@ class NFCHandler:
         return (self.read_dyn(RF_MNGT_Dyn) != 0)
 
     def set_rf_disable(self, val):
+        # set light to match state
+        self.active_led(not val)
+
         # using stronger "off" rather than sleep/disable
         if val:
             self.i2c.writeto(I2C_ADDR_RF_OFF, b'')
