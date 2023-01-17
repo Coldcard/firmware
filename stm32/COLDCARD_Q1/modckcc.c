@@ -20,6 +20,7 @@
 #include "softtimer.h"
 #include "ulight.h"
 #include "uart.h"
+#include "spi.h"
 
 #include "storage.h"
 #include "usb.h"
@@ -248,6 +249,68 @@ STATIC mp_obj_t watchpoint(volatile mp_obj_t arg1)
 }
 MP_DEFINE_CONST_FUN_OBJ_1(watchpoint_obj, watchpoint);
 
+#define SWAB16(n)     (( ((n)>>8) | ((n) << 8) )&0xffff)
+#define GREY(n)       SWAB16( (n<<11) | (n<<6) | n)
+
+// BGR565 values, but wrong endian, so green split weird
+static uint16_t palette[16] = {
+    0x0000,         // 0 => black
+    0xffff,         // 1 => white
+
+    SWAB16(0xf800),         // 2 => red
+    SWAB16(0x07e0),         // 3 => green
+    SWAB16(0x00f8),         // 4 => blue
+
+    // some greys: 5 .. 12
+    GREY(5), GREY(9), GREY(13), GREY(17), GREY(21), GREY(25), GREY(29),
+
+    0x2000,         // tbd
+    0x4000,         // tbd
+    0x8000,         // tbd
+
+    // Coinkite brand colour? ie. orange rgb(241, 100, 34) => rgb(.945, .392, .133)
+    // XXX needs work -- too red
+    SWAB16((29 << 11) | (25<<5) | 4),
+};
+
+STATIC mp_obj_t lcd_blast(mp_obj_t spi_arg,  mp_obj_t buf_arg)
+{
+    // Just send a bunch of bytes, expanded via fixed palette to the LCD
+    // over SPI. CS/CMD_vs_DATA must already be set correctly, and cleared
+    // at end... we are just reformatting and sending the pixel data.
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(buf_arg, &buf, MP_BUFFER_READ);
+
+    const spi_t *spi = spi_from_mp_obj(spi_arg);
+
+    int len = buf.len;
+    if((len < 1) || (len > 320*240)) {
+        mp_raise_ValueError(NULL);
+    }
+
+    const uint8_t *pixels = buf.buf;
+
+    // working buffer
+    const int max_rows = 30;
+    uint16_t fb[max_rows * 320];         // largish: 19.2k
+
+    while(len) {
+        uint32_t here = 0;
+
+        for(; len && here < (sizeof(fb)/2); len--, here++, pixels++) {
+            fb[here] = palette[(*pixels) & 0xf];
+        }
+
+        if(!here) break;
+
+        // send what we have
+        spi_transfer(spi, here*2, (const uint8_t *)fb, NULL, SPI_TRANSFER_TIMEOUT(here*2));
+    }
+
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(lcd_blast_obj, lcd_blast);
+
 // See psram.c
 extern const mp_obj_type_t psram_type;
 
@@ -267,6 +330,7 @@ STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_stack_limit),         MP_ROM_PTR(&stack_limit_obj) },
     { MP_ROM_QSTR(MP_QSTR_usb_active),          MP_ROM_PTR(&usb_active_obj) },
     { MP_ROM_QSTR(MP_QSTR_PSRAM),               MP_ROM_PTR(&psram_type) },
+    { MP_ROM_QSTR(MP_QSTR_lcd_blast),           MP_ROM_PTR(&lcd_blast_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(ckcc_module_globals, ckcc_module_globals_table);
