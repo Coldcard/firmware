@@ -29,7 +29,7 @@
 #include "se2.h"
 #include "dispatch.h"
 #include "constant_time.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "stm32l4xx_hal.h"
 
 
@@ -214,6 +214,11 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                 case 2:
                     oled_show(screen_logout);
                     break;
+#ifdef FOR_Q1_ONLY
+                case 3:
+                    oled_show(screen_poweroff);
+                    break;
+#endif
                 case 1:
                     // leave screen untouched
                     break;
@@ -222,6 +227,15 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             wipe_all_sram();
             psram_wipe();
 
+#ifdef FOR_Q1_ONLY
+            if(arg2 == 3) {
+                // need some time to show OLED contents
+                delay_ms(100);
+
+                // pulse a one to TURN_OFF pin: PC0
+                turn_power_off();
+            }
+#endif
             if(arg2 == 2) {
                 // need some time to show OLED contents
                 delay_ms(100);
