@@ -9,6 +9,10 @@
 
     make && ./simulator.py
 
+OR
+
+    make && ./simulator.py --q1
+
 
 ## Other Startup Flags
 
@@ -28,6 +32,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--mk2` => emulate mark2 hardware (older micro, etc), default is current-gen (mark4)
 - `--mk3` => emulate mark3 hardware
 - `--mk4` => emulate mark4 hardware
+- `--q1` => emulate Q1 hardware
 - `-g` => don't skip login sequence
 - `--addr` => go to the address explorer at startup
 - `--xw` => go to the wallet export submenu

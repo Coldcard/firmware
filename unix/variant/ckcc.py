@@ -228,6 +228,8 @@ def get_cpi_id():
         return 0x461       # STM32L496RG6
     if ('--mk4' in sys.argv):
         return 0x470       # STM32L4S5
+    if ('--q1' in sys.argv):
+        return 0x470       # STM32L4S5
 
     #default mk4
     return 0x470       # STM32L4S5

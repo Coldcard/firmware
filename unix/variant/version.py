@@ -32,7 +32,7 @@ def get_header_value(fld_name):
         return b'\x18\x07\x11\x19S\x08\x00\x00'
     return 0
 
-# default is latest hardware
+# default is Mk4 hardware
 hw_label = 'mk4'
 has_608 = True
 has_membrane = True
@@ -40,6 +40,8 @@ has_fatram = True
 has_se2 = True
 has_psram = True
 has_nfc = True
+has_qr = False
+num_sd_slots = 1
 
 if  '--mk1' in sys.argv:
     # doubt this works still
@@ -66,6 +68,11 @@ if  '--mk3' in sys.argv:
     has_se2 = False
     has_psram = False
     has_nfc = False
+
+if '--q1' in sys.argv:
+    hw_label = 'q1'
+    has_qr = True
+    num_sd_slots = 2
 
 mk_num = int(hw_label[2:])
 
