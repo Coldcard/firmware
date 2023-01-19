@@ -18,6 +18,7 @@ freeze_as_mpy('', [
 	'sim_vdisk.py',
 	'sram2.py',
 	'ssd1306.py',
+	'st7788.py',
 	'stm.py',
 	'struct.py',
 	'touch.py',

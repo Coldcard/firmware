@@ -145,7 +145,7 @@ class ExtInt:
 
 class Timer:
     def __init__(self, n):
-        # hack in the fake "touch" for mark 2 boards.
+        # hack in the fake "touch" for mark 2-4 boards.
         assert n == 7
         from touch import Touch
         Touch()

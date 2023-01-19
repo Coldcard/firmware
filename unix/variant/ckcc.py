@@ -234,5 +234,8 @@ def get_cpi_id():
     #default mk4
     return 0x470       # STM32L4S5
 
+def lcd_blast(buf):
+    # sends to LCD
+    return
 
 # EOF

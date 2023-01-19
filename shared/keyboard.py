@@ -8,41 +8,11 @@ from machine import Pin
 from random import shuffle
 from numpad import NumpadBase
 from utils import call_later_ms
+from charcodes import *
 
-NUM_ROWS = const(6)
-NUM_COLS = const(10)
 SAMPLE_FREQ = const(60)         # (Hz) how fast to do each scan
 NUM_SAMPLES = const(3)          # this many matching samples required for debounce
-Q_CHECK_RATE = const(5)         # (ms) how fast to check event Q
 
-# ascii key codes;
-KEY_NFC = '\x0e'        # ctrl-N
-KEY_QR = '\x11'         # ctrl-Q
-KEY_TAB = '\t'          # tab = ctrl-I
-KEY_SELECT = '\r'       # = CR
-KEY_CANCEL = '\x1b'     # ESC = Cancel
-KEY_LEFT = '\x15'           # ^U = left (incompatible)
-KEY_UP = '\x0b'             # ^K = up on ADM-3A
-KEY_RIGHT = '\x0c'          # ^L = right on ADM-3A
-KEY_DOWN = '\x0a'           # ^J = LF = down on ADM-3A
-
-# these meta keys might not be visible to higher layers:
-KEY_LIGHT = '\x07'           # BELL = ^G
-KEY_SHIFT = '\x01'
-KEY_SPACE = ' '
-KEY_SYMBOL = '\x01'
-KEY_BS = '\x08'           # ^H = backspace
-
-# (row, col) => keycode
-# - unused spots are \0
-# - these are unshifted values
-DECODER = (KEY_NFC + KEY_QR + KEY_TAB 
-            + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_SELECT + KEY_CANCEL + '\0'
-    + '1234567890'
-    + 'qwertyuiop'
-    + 'asdfghjkl`'
-    + 'zxcvbnm,./'
-    + KEY_LIGHT + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_BS + '\0\0\0\0\0')
 
 class FullKeyboard(NumpadBase):
 
