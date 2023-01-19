@@ -42,6 +42,8 @@ has_psram = True
 has_nfc = True
 has_qr = False
 num_sd_slots = 1
+has_battery = False
+has_qwerty = False
 
 if  '--mk1' in sys.argv:
     # doubt this works still
@@ -75,6 +77,8 @@ if '--q1' in sys.argv:
     hw_label = 'q1'
     has_qr = True
     num_sd_slots = 2
+    has_battery = True
+    has_qwerty = True
 
 from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
 from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4
