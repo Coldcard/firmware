@@ -30,6 +30,7 @@ freeze_as_mpy('', [
 	'menu.py',
 	'multisig.py',
 	'numpad.py',
+	'charcodes.py',
 	'nvstore.py',
 	'opcodes.py',
 	'paper.py',
