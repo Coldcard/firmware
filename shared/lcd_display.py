@@ -124,10 +124,10 @@ class Display:
     def scroll_bar(self, fraction):
         # along right edge
         self.dis.fill_rect(self.WIDTH-5, 0, 5, self.HEIGHT, 0)
-        self.icon(self.WIDTH-3, 1, 'scroll');
+        #self.icon(self.WIDTH-3, 1, 'scroll');      // dots + arrow
         mm = self.HEIGHT-6
         pos = min(int(mm*fraction), mm)
-        self.dis.fill_rect(self.WIDTH-2, pos, 1, 8, 1)
+        self.dis.fill_rect(self.WIDTH-2, pos, 1, 16, 1)
 
         if is_devmode and not ckcc.is_simulator():
             self.dis.fill_rect(self.WIDTH-6, 20, 5, 21, 1)
@@ -135,17 +135,11 @@ class Display:
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
             self.text(-2, 35, 'V', font=FontTiny, invert=1)
 
-    def fullscreen(self, msg, percent=None, line2=None):
+    def fullscreen(self, msg, percent=None):
         # show a simple message "fullscreen". 
         self.clear()
-        if line2:
-            y = 10
-            self.text(None, y, msg, font=FontLarge)
-            y += 24
-            self.text(None, y, line2, font=FontSmall)
-        else:
-            y = 14
-            self.text(None, y, msg, font=FontLarge)
+        y = 60
+        self.text(None, y, msg, font=FontLarge)
         if percent is not None:
             self.progress_bar(percent)
         self.show()
@@ -153,8 +147,8 @@ class Display:
     def splash(self):
         # display a splash screen with some version numbers
         self.clear()
-        y = 4
-        self.text(None,    y, 'COLDCARD', font=FontLarge)
+        y = 40
+        self.text(None,    y, 'COLDCARD Q1', font=FontLarge)
         self.text(None, y+20, 'Wallet', font=FontLarge)
 
         from version import get_mpy_version
@@ -191,63 +185,14 @@ class Display:
             self.dis.line(wx-ln, y, wx, y, 1)
 
     def busy_bar(self, enable, speed_code=5):
-        print("busy_bar")       # XXX TODO not obvious
-        return
-        # Render a continuous activity (not progress) bar in lower 8 lines of display
-        # - using OLED itself to do the animation, so smooth and CPU free
-        # - cannot preserve bottom 8 lines, since we have to destructively write there
-        # - assumes normal horz addr mode: 0x20, 0x00
-        # - speed_code=>framedelay: 0=5fr, 1=64fr, 2=128, 3=256, 4=3, 5=4, 6=25, 7=2frames
-        assert 0 <= speed_code <= 7
-
-        setup = bytes([
-            0x21, 0x00, 0x7f,       # setup column address range (start, end): 0-127
-            0x22, 7, 7,             # setup page start/end address: page 7=last 8 lines
-        ])
-        animate = bytes([ 
-            0x2e,               # stop animations in progress
-            0x26,               # scroll leftwards (stock ticker mode)
-                0,              # placeholder
-                7,              # start 'page' (vertical)
-                speed_code,     # scroll speed: 7=fastest, but no order to it
-                7,              # end 'page'
-                0, 0xff,        # placeholders
-            0x2f                # start
-        ])
-
-        cleanup = bytes([
-            0x2e,               # stop animation
-            0x20, 0x00,         # horz addr-ing mode
-            0x21, 0x00, 0x7f,   # setup column address range (start, end): 0-127
-            0x22, 7, 7,         # setup page start/end address: page 7=last 8 lines
-        ])
-
+        print("busy_bar")       # XXX TODO not obvious how to do on this platform
         if not enable:
-            # stop animation, and redraw old (new) screen
-            self.write_cmds(cleanup)
             self.show()
-        else:
-
-            # a pattern that repeats nicely mod 128
-            # - each byte here is a vertical column, 8 pixels tall, MSB at bottom
-            data = bytes(0x80 if (x%4)<2 else 0x0 for x in range(128))
-
-            if ckcc.is_simulator():
-                # just show as static pattern
-                t = self.dis.buffer[:-128] + data
-                self.dis.write_data(t)
-            else:
-                self.write_cmds(setup)
-                self.dis.write_data(data)
-                self.write_cmds(animate)
-
-    def write_cmds(self, cmds):
-        print('wr cmds?')
-        return 
+        return
 
     def set_brightness(self, val):
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
-        # XXX control BL_ENABLE timing
+        # XXX maybe control BL_ENABLE timing
         return 
 
 # EOF

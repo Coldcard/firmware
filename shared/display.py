@@ -139,17 +139,12 @@ class Display:
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
             self.text(-2, 35, 'V', font=FontTiny, invert=1)
 
-    def fullscreen(self, msg, percent=None, line2=None):
+    def fullscreen(self, msg, percent=None):
         # show a simple message "fullscreen". 
         self.clear()
-        if line2:
-            y = 10
-            self.text(None, y, msg, font=FontLarge)
-            y += 24
-            self.text(None, y, line2, font=FontSmall)
-        else:
-            y = 14
-            self.text(None, y, msg, font=FontLarge)
+        y = 14
+        self.text(None, y, msg, font=FontLarge)
+
         if percent is not None:
             self.progress_bar(percent)
         self.show()
