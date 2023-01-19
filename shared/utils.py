@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure
+import gc, sys, ustruct, ngu, chains, ure, time
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -551,5 +551,40 @@ def pad_raw_secret(raw_sec_str):
     x = a2b_hex(raw_sec_str)
     raw[0:len(x)] = x
     return raw
+
+def seconds2human_readable(s):
+    days = s // (3600 * 24)
+    hours = s % (3600 * 24) // 3600
+    minutes = (s % 3600) // 60
+    seconds = (s % 3600) % 60
+    msg = []
+    if days:
+        msg.append("%dd" % days)
+    if hours:
+        msg.append("%dh" % hours)
+    if minutes:
+        msg.append("%dm" % minutes)
+    if seconds:
+        msg.append("%ds" % seconds)
+
+    return " ".join(msg)
+
+def datetime_from_timestamp(ts):
+    gm_t = time.gmtime(0)
+    if gm_t[0] == 1970:
+        # unix
+        epoch_sub = 0
+    elif gm_t[0] == 2000:
+        # stm32
+        epoch_sub = 946684800
+    else:
+        assert False
+
+    return time.gmtime(ts - epoch_sub)
+
+def datetime_to_str(dt, fmt="%d-%02d-%02d %02d:%02d:%02d"):
+    y, mo, d, h, mi, s = dt[:6]
+    dts = fmt % (y, mo, d, h, mi, s)
+    return dts + " UTC"
 
 # EOF

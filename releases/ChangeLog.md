@@ -2,6 +2,10 @@
 
 - New Feature: Temporary Seed from COLDCARD encrypted backup.
 - New Feature: Export seed as SeedQR
+- New Feature: Provide user with info about transaction level timelocks 
+  ([nLockTime](https://en.bitcoin.it/wiki/NLockTime),
+  [nSequence](https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki))
+  when signing
 - Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
   If current seed is temporary and not saved yet, `Add current tmp` menu item is 
   shown in Seed Vault menu.

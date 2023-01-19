@@ -10,6 +10,7 @@ from sim_settings import sim_defaults
 if not pa.is_secret_blank():
     # clear settings associated with this key, since it will be no more
     settings.current = dict(sim_defaults)
+    settings.nvram_key = bytes(32)
     pa.tmp_value = None
 
     # save a blank secret (all zeros is a special case, detected by bootloader)
@@ -21,7 +22,10 @@ if not pa.is_secret_blank():
     pa.login()
 
     assert pa.is_secret_blank()
+    settings.blank()
 
+settings.master_sv_data = {}
+settings.master_nvram_key = None
 # reset top menu and go there
 from actions import goto_top_menu
 goto_top_menu()
