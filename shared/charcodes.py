@@ -36,7 +36,7 @@ KEY_LAMP = '\x07'           # BELL = ^G
 KEY_SHIFT = '\x01'
 KEY_SPACE = ' '
 KEY_SYMBOL = '\x02'
-KEY_BS = '\x08'           # ^H = backspace
+KEY_DELETE = '\x08'           # ^H = backspace
 
 # function keys, filling gaps, running out of space!
 KEY_F1 = '\x0f'
@@ -56,7 +56,7 @@ DECODER = (KEY_NFC + KEY_QR + KEY_TAB
     + 'qwertyuiop'
     + 'asdfghjkl`'
     + 'zxcvbnm,./'
-    + KEY_LAMP + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_BS + '\0\0\0\0\0')
+    + KEY_LAMP + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_DELETE + '\0\0\0\0\0')
 
 # - same when shift is down
 # - make some unmarked combos dead (like shift+UP)
@@ -76,7 +76,7 @@ DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB
     + 'QWERTYUIOP'
     + "ASDFGHJKL'"
     + 'ZXCVBNM,./'
-    + KEY_LAMP + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_BS + '\0\0\0\0\0')
+    + KEY_LAMP + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_DELETE + '\0\0\0\0\0')
 
 # - same w/ SYMBOL pressed
 # - be nice and allow number+symbol == number + shift
