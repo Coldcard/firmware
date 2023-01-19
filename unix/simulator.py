@@ -12,14 +12,15 @@
 # Limitations:
 # - USB light not fully implemented, because happens at irq level on real product
 #
-import os, sys, tty, pty, termios, time, pdb, tempfile
+import os, sys, tty, pty, termios, time, pdb, tempfile, struct
 import subprocess
 import sdl2.ext
-from PIL import Image
+from PIL import Image, ImageSequence
 from select import select
 import fcntl
 from binascii import b2a_hex, a2b_hex
 from bare import BareMetal
+from sdl2.scancode import *     # SDL_SCANCODE_F1.. etc
 
 MPY_UNIX = 'l-port/micropython'
 
@@ -47,7 +48,6 @@ class SimulatedScreen:
 
     def movie_end(self):
         fn = time.strftime('../movie-%j-%H%M%S.gif')
-        from PIL import Image, ImageSequence
 
         if not self.movie: return
 
@@ -61,8 +61,6 @@ class SimulatedScreen:
         self.movie = None
 
     def new_frame(self):
-        from PIL import Image
-
         dt = int((time.time() - self.last_frame) * 1000)
         self.last_frame = time.time()
 
@@ -74,7 +72,82 @@ class SimulatedScreen:
             self.movie.append((dt, img))
 
 class LCDSimulator(SimulatedScreen):
-    pass
+    # where the simulated screen is, relative to fixed background
+    TOPLEFT = (65, 60)
+    background_img = 'q1-images/background.png'
+
+    # see stm32/COLDCARD_Q1/modckcc.c where this pallet is defined.
+    palette_colours = [
+            '#000', '#fff',  # black/white, must be 0/1
+            '#f00', '#0f0', '#00f',     # RGB demos
+            # some greys: 5 .. 12
+            '#555', '#999', '#ddd', '#111111', '#151515', '#191919', '#1d1d1d',
+            # tbd/unused
+            '#200', '#400', '#800',
+            # #15: Coinkite brand
+            '#f16422'
+        ]
+
+    def __init__(self, factory):
+        self.movie = None
+
+        self.sprite = s = factory.create_software_sprite( (320,240), bpp=32)
+        s.x, s.y = self.TOPLEFT
+        s.depth = 100
+
+        self.palette = [sdl2.ext.prepare_color(code, s) for code in self.palette_colours]
+        assert len(self.palette) == 16
+
+        sdl2.ext.fill(s, self.palette[0])
+
+        self.mv = sdl2.ext.PixelView(self.sprite)
+    
+        # for any LED's .. no position implied
+        self.led_red = factory.from_image("q1-images/led-red.png")
+        self.led_green = factory.from_image("q1-images/led-green.png")
+
+    def new_contents(self, readable):
+        # got bytes for new update. expect a header and packed pixels
+        while 1:
+            prefix = readable.read(8)
+            if not prefix: return
+            X,Y, w, h = struct.unpack('<4H', prefix)
+
+            assert X>=0 and Y>=0
+            assert X+w <= 320
+            assert Y+h <= 240
+
+            sz = w*h
+            here = readable.read(sz)
+            assert len(here) == sz
+
+            pos = 0
+            for y in range(Y, Y+h):
+                for x in range(X, X+w):
+                    val = here[pos]
+                    pos += 1
+                    self.mv[y][x] = self.palette[val & 0xf]
+
+        if self.movie is not None:
+            self.new_frame()
+
+    def click_to_key(self, x, y):
+        # take a click on image => keypad key if valid
+        # - not planning to support, tedious
+        return None
+
+    def draw_leds(self, spriterenderer, active_set=0):
+        # always draw SE led, since one is always on
+        GEN_LED = 0x1
+        SD_LED = 0x2
+        USB_LED = 0x4
+
+        spriterenderer.render(self.led_green if (active_set & GEN_LED) else self.led_red)
+
+        if active_set & SD_LED:
+            spriterenderer.render(self.led_sdcard)
+        if active_set & USB_LED:
+            spriterenderer.render(self.led_usb)
 
 class OLEDSimulator(SimulatedScreen):
     # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
@@ -107,8 +180,14 @@ class OLEDSimulator(SimulatedScreen):
         self.led_sdcard = factory.from_image("mk4-images/led-sd.png")
         self.led_usb = factory.from_image("mk4-images/led-usb.png")
 
-    def new_contents(self, buf):
+    def new_contents(self, readable):
         # got bytes for new update.
+
+        # Must be bigger than a full screen update.
+        buf = readable.read(1024*1000)
+        if not buf:
+            return
+
         buf = buf[-1024:]       # ignore backlogs, get final state
         assert len(buf) == 1024, len(buf)
 
@@ -148,6 +227,68 @@ class OLEDSimulator(SimulatedScreen):
         if active_set & USB_LED:
             spriterenderer.render(self.led_usb)
 
+def shift_up(ch):
+    # what ascii code for ascii key, ch, when shift also pressed?
+    # IMPORTANT: this has nothing to do with Q1's keyboard layout
+    if 'a' <= ch <= 'z':
+        return ch.upper()
+
+    f,t = '1234567890-=\`[];\',./', \
+          '!@#$%^&*()_+|~{}:"<>?'
+
+    idx = f.find(ch)
+    return t[idx] if idx != -1 else ch
+
+def load_shared_mod(name, path):
+    # load indicated file.py as a module
+    # from <https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path>
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+q1_charmap = load_shared_mod('charcodes', '../shared/charcodes.py')
+
+def scancode_remap(sc):
+    # return an ACSII (non standard) char to represent arrows and other similar
+    # special keys on Q1 only.
+    # - see ENV/lib/python3.10/site-packages/sdl2/scancode.py
+    # - select/cancel/tab/bs all handled already 
+    # - NFC, lamp, QR buttons in alt_up()
+
+    m = {
+        SDL_SCANCODE_RIGHT: q1_charmap.KEY_RIGHT,
+        SDL_SCANCODE_LEFT: q1_charmap.KEY_LEFT,
+        SDL_SCANCODE_DOWN: q1_charmap.KEY_DOWN,
+        SDL_SCANCODE_UP: q1_charmap.KEY_UP,
+        SDL_SCANCODE_HOME: q1_charmap.KEY_HOME,
+        SDL_SCANCODE_END: q1_charmap.KEY_END,
+        SDL_SCANCODE_PAGEDOWN: q1_charmap.KEY_PAGE_DOWN,
+        SDL_SCANCODE_PAGEUP: q1_charmap.KEY_PAGE_UP,
+
+        SDL_SCANCODE_F1: q1_charmap.KEY_F1,
+        SDL_SCANCODE_F2: q1_charmap.KEY_F2,
+        SDL_SCANCODE_F3: q1_charmap.KEY_F3,
+        SDL_SCANCODE_F4: q1_charmap.KEY_F4,
+        SDL_SCANCODE_F5: q1_charmap.KEY_F5,
+        SDL_SCANCODE_F6: q1_charmap.KEY_F6,
+    }
+
+    return m[sc] if sc in m else None
+
+def alt_up(ch):
+    # ALT+(ch) => special needs of Q1
+    print(f"Alt: {ch}")
+    if ch == 'n':
+        return q1_charmap.KEY_NFC
+    if ch == 'q':
+        return q1_charmap.KEY_QR
+    if ch == 'l':
+        return q1_charmap.KEY_LAMP
+
+    return None
+
 
 def start():
     print('''\nColdcard Simulator: Commands (over simulated window):
@@ -162,7 +303,7 @@ def start():
     is_q1 = ('--q1' in sys.argv)
 
     factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
-    simdis = OLEDSimulator(factory)
+    simdis = (OLEDSimulator if not is_q1 else LCDSimulator)(factory)
     bg = factory.from_image(simdis.background_img)
 
     window = sdl2.ext.Window("Coldcard Simulator", size=bg.size, position=(100, 100))
@@ -224,7 +365,7 @@ def start():
                         str(display_w), str(numpad_r), str(led_w)] \
                         + metal_args + sys.argv[1:]
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',
-                                '-geom', '132x40+450+40', '-e'] + cc_cmd,
+                                '-geom', '132x40+650+40', '-e'] + cc_cmd,
                                 env=env,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                 pass_fds=pass_fds, shell=False)
@@ -248,15 +389,15 @@ def start():
     pressed = set()
 
     def send_event(ch, is_down):
-        before = len(pressed)
-
+        #print(f'{ch} down={is_down}')
         if is_down:
-            pressed.add(ch)
+            if ch not in pressed:
+                numpad_tx.write(ch.encode())
+                pressed.add(ch)
         else:
             pressed.discard(ch)
-
-        if len(pressed) != before:
-            numpad_tx.write(b''.join(pressed) + b'\n')
+            if not pressed:
+                numpad_tx.write(b'\0')      # all up signal
 
 
     while running:
@@ -269,17 +410,27 @@ def start():
             if event.type == sdl2.SDL_KEYUP or event.type == sdl2.SDL_KEYDOWN:
                 try:
                     ch = chr(event.key.keysym.sym)
-                    #print('0x%0x => %s  mod=0x%x'%(event.key.keysym.sym, ch, event.key.keysym.mod))
+                    #print('0x%0x => chr %s  mod=0x%x'%(event.key.keysym.sym, ch, event.key.keysym.mod))
+                    if event.key.keysym.mod & 0x3:      # left or right shift
+                        ch = shift_up(ch)
+                    if event.key.keysym.mod & 0x300:      # left or right ALT
+                        ch = alt_up(ch)
                 except:
-                    # things like 'shift' by itself
-                    #print('0x%0x' % event.key.keysym.sym)
-                    if 0x4000004f <= event.key.keysym.sym <= 0x40000052:
-                        # arrow keys
-                        ch = '9785'[event.key.keysym.sym - 0x4000004f]
-                    else:
-                        ch = '\0'
+                    # things like 'shift' by itself and anything not really ascii
 
-                # control+KEY
+                    scancode = event.key.keysym.sym & 0xffff
+                    #print(f'keysym=0x%0x => {scancode}' % event.key.keysym.sym)
+                    if is_q1:
+                        ch = scancode_remap(scancode)
+                        if not ch: continue
+                    elif SDL_SCANCODE_RIGHT <= scancode <= SDL_SCANCODE_UP:
+                        # arrow keys remap for Mk4
+                        ch = '9785'[scancode - SDL_SCANCODE_RIGHT]
+                    else:
+                        print('Ignore: 0x%0x' % event.key.keysym.sym)
+                        continue
+
+                # control+KEY => for our use
                 if event.key.keysym.mod == 0x40 and event.type == sdl2.SDL_KEYDOWN:
                     if ch == 'q':
                         # control-Q
@@ -329,14 +480,13 @@ def start():
                         continue
                     
                 # need this to kill key-repeat
-                ch = ch.encode('ascii')
                 send_event(ch, event.type == sdl2.SDL_KEYDOWN)
 
             if event.type == sdl2.SDL_MOUSEBUTTONDOWN:
                 #print('xy = %d, %d' % (event.button.x, event.button.y))
                 ch = simdis.click_to_key(event.button.x, event.button.y)
                 if ch is not None:
-                    send_event(ch.encode('ascii'), True)
+                    send_event(ch, True)
 
             if event.type == sdl2.SDL_MOUSEBUTTONUP:
                 for ch in list(pressed):
@@ -348,20 +498,19 @@ def start():
             if bare_metal and r == bare_metal.request:
                 bare_metal.readable()
                 continue
-
-            # Must be bigger than a full screen update.
-            buf = r.read(1024*1000)
-            if not buf:
-                break
         
             if r is display_rx:
-                simdis.new_contents(buf)
+                simdis.new_contents(r)
                 spriterenderer.render(simdis.sprite)
                 window.refresh()
             elif r is led_rx:
-
                 # XXX 8+8 bits
-                for c in buf:
+                c = r.read(1)
+                if not c:
+                    break
+
+                c = c[0]
+                if 1:
                     #print("LED change: 0x%02x" % c[0])
 
                     mask = (c >> 4) & 0xf

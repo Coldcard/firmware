@@ -69,12 +69,12 @@ if  '--mk3' in sys.argv:
     has_psram = False
     has_nfc = False
 
+mk_num = int(hw_label[2:])
+
 if '--q1' in sys.argv:
     hw_label = 'q1'
     has_qr = True
     num_sd_slots = 2
-
-mk_num = int(hw_label[2:])
 
 from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
 from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4

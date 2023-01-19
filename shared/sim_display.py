@@ -3,7 +3,7 @@
 # DEBUG ONLY -- only installed for debug builds
 # Hack to monitor screen contents, as text.
 # Import this file to install the hacks.
-import ux
+import ux, version
 
 global contents, full_contents, story
 
@@ -16,8 +16,10 @@ full_contents = ''
 # copy of the story being shown
 story = None
 
-
-from display import Display
+if version.hw_label == 'q1':
+    from lcd_display import Display
+else:
+    from display import Display
 
 orig_text = Display.text
 orig_clear = Display.clear

@@ -24,6 +24,17 @@ class Pin:
             from ckcc import led_pipe
             led_pipe.write(bytes([(bm << 4) | (bm if n else 0)]))
 
+    def pin(self):
+        # ? pin number
+        return 99
+
+    def irq(self, *a, **k):
+        # hack in the keyboard system
+        if self.name == 'LCD_TEAR':
+            from touch import Touch
+            Touch()
+        pass
+
     ALT = None
     PULL_NONE = None
     PULL_UP = None
@@ -33,7 +44,6 @@ class Pin:
     IN = None
     IRQ_FALLING = 1
     IRQ_RISING = 2
-    irq = lambda a,b,c: None
 
 SPI = Mock
 UART = Mock

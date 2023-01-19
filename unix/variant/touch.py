@@ -23,14 +23,16 @@ class Touch:
         s = StreamReader(self.pipe)
 
         # hack!
-        from main import numpad
+        from glob import numpad
 
         while 1:
-            ln = await s.readline()
-
-            key = ln[:-1].decode()
-            #numpad.key_pressed = key if key else ''
-            await numpad._changes.put(key)
+            # rx's any key that is pressed and now released
+            key = await s.read(1)
+            print("Sim: %s" % key)
+            if key == b'\0':
+                await numpad._changes.put('')       # all up
+            else:
+                await numpad._changes.put(key.decode())
 
     def discharge(self):
         pass
