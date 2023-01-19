@@ -398,6 +398,11 @@ def clean_shutdown(style=0):
                 
     except: pass
 
+    # on Q1, must power down because annoying to do power cycle
+    # when micro is stopped
+    if style != 2 and version.has_battery:
+        style = 3
+
     callgate.show_logout(style)
 
 def call_later_ms(delay, cb, *args):
