@@ -207,9 +207,11 @@ class CardSlot:
 
         cls.last_change = utime.ticks_ms()
 
-        #XXX conflict w/ PB13 vs. PD13 ... same irq number
         if num_sd_slots == 2:
+            #XXX SD_DETECT w/ PB13 vs. PD13 ... same irq number
             cls.irq = None
+            cls.mux = Pin('SD_MUX')
+            cls.mux(0)      # top slot = A
         else:
             cls.irq = ExtInt(Pin('SD_DETECT'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
