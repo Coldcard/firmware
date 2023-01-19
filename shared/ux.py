@@ -4,10 +4,21 @@
 #
 from uasyncio import sleep_ms
 from queues import QueueEmpty
-import utime, gc
+import utime, gc, version
 from utils import word_wrap
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
+
+# How many characters can we fit on each line? How many lines?
+# (using FontSmall)
+if version.hw_label == 'q1':
+    CH_PER_W = 45
+    STORY_H = 17
+else:
+    CH_PER_W = 17
+    STORY_H = 5
 
 # This signals the need to switch from current
 # menu (or whatever) to show something new. The
@@ -169,10 +180,6 @@ class PressRelease:
                 self.last_key = ch
                 return ch
 
-# how many characters can we fit on each line?
-# (using FontSmall)
-CH_PER_W = const(17)
-
 async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
@@ -184,9 +191,11 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     lines = []
     if title:
         # kinda weak rendering but it works.
+        # LATER: rarely used
         lines.append('\x01' + title)
 
     if hasattr(msg, 'readline'):
+        # coming from in-memory file for larger messages
         msg.seek(0)
         for ln in msg:
             if ln[-1] == '\n': 
@@ -203,6 +212,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         del msg
         gc.collect()
     else:
+        # simple string
         for ln in msg.split('\n'):
             if len(ln) > CH_PER_W:
                 lines.extend(word_wrap(ln, CH_PER_W))
@@ -217,7 +227,6 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     lines.append('EOT')
 
     top = 0
-    H = 5
     ch = None
     pr = PressRelease()
     while 1:
@@ -225,7 +234,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         dis.clear()
 
         y=0
-        for ln in lines[top:top+H]:
+        for ln in lines[top:top+STORY_H]:
             if ln == 'EOT':
                 dis.hline(y+3)
             elif ln and ln[0] == '\x01':
@@ -247,18 +256,26 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         if escape and (ch == escape or ch in escape):
             # allow another way out for some usages
             return ch
+        elif ch == KEY_SELECT:
+            if not strict_escape:
+                return 'y'      # translate for Mk4 code
+        elif ch == KEY_CANCEL:
+            if not strict_escape:
+                return 'x'      # translate for Mk4 code
         elif ch in 'xy':
             if not strict_escape:
                 return ch
-        elif ch == '0':
+        elif ch == KEY_END:
+            top = max(0, len(lines)-(STORY_H//2))
+        elif ch == '0' or ch == KEY_HOME:
             top = 0
-        elif ch == '7':     # page up
-            top = max(0, top-H)
-        elif ch == '9':     # page dn
-            top = min(len(lines)-2, top+H)
-        elif ch == '5':     # scroll up
+        elif ch == '7' or ch == KEY_PAGE_UP:
+            top = max(0, top-STORY_H)
+        elif ch == '9' or ch == KEY_PAGE_DOWN:
+            top = min(len(lines)-2, top+STORY_H)
+        elif ch == '5' or ch == KEY_UP:
             top = max(0, top-1)
-        elif ch == '8':     # scroll dn
+        elif ch == '8' or ch == KEY_DOWN:
             top = min(len(lines)-2, top+1)
 
         
@@ -410,12 +427,12 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
         dis.show()
 
         ch = await press.wait()
-        if ch == 'y':
+        if ch == 'y' or ch == KEY_SELECT:
 
             if not value: return 0
             return min(max_value, int(value))
 
-        elif ch == 'x':
+        elif ch == 'x' or ch == KEY_CANCEL:
             if value:
                 value = value[0:-1]
             elif can_cancel:
