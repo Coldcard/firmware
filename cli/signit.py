@@ -208,7 +208,8 @@ def readback(fname):
             if v & MK_2_OK: d.append('Mk2')
             if v & MK_3_OK: d.append('Mk3')
             if v & MK_4_OK: d.append('Mk4')
-            if v & ~(MK_1_OK | MK_2_OK | MK_3_OK | MK_4_OK):
+            if v & MK_Q1_OK: d.append('Q1')
+            if v & ~(MK_1_OK | MK_2_OK | MK_3_OK | MK_4_OK | MK_Q1_OK):
                 d.append('?other?')
             v = nv + '+'.join(d)
         elif fld == 'timestamp':
@@ -244,7 +245,7 @@ def readback(fname):
 @click.option('--pubkey-num', '-k', type=int, help='Which key # to use for signing', default=0)
 @click.option('--high_water', '-h', is_flag=True, help='Mark version as new highwater mark (no downgrades below this version)')
 @click.option('--verbose', '-v', default=False, is_flag=True, help='Show numbers related to signature')
-@click.option('--hw-compat', '-m', type=int, metavar='BITMASK', help="Set HW compat field (mk number)")
+@click.option('--hw-compat', '-m', type=str, metavar='Mk4', help="Set HW compat field (hw_label value)")
 @click.option('--backdate', type=int, metavar='DAYS',
                             help='Make downgrade attack test version', default=0)
 @click.option('--build_dir', '-b', default='l-port/build-COLDCARD')
@@ -277,9 +278,11 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
         vectors = open(build_dir + '/firmware0.bin', 'rb').read()
         body = open(build_dir + '/firmware1.bin', 'rb').read()
 
-    if hw_compat == 4:
+    if hw_compat in { 'mk4', '4'}:
         hw_compat = MK_4_OK
-    elif hw_compat in {3, None}:
+    elif hw_compat == 'q1':
+        hw_compat = MK_Q1_OK
+    elif hw_compat in { 'mk3', '3'}:
         hw_compat = MK_2_OK | MK_3_OK
     else:
         assert not "known"
@@ -318,12 +321,12 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
 
     assert FW_MIN_LENGTH <= hdr.firmware_length <= FW_MAX_LENGTH, hdr.firmware_length
 
-    if hw_compat & MK_4_OK:
-        # new value for Mk4: limited only by final binary size, not SPI flash
-        USB_MAX_LEN = 1472 * 1024
-    else:
+    if hw_compat & MK_3_OK:
         # actual file length limited by size of SPI flash area reserved to txn data/uploads
         USB_MAX_LEN = (786432-128)
+    else:
+        # new value for Mk4: limited only by final binary size, not SPI flash
+        USB_MAX_LEN = 1472 * 1024
 
     assert hdr.firmware_length <= USB_MAX_LEN, \
         "too big for our USB upgrades: %d = %d bytes too big" % (
