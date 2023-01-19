@@ -28,7 +28,7 @@ class Touch:
         while 1:
             # rx's any key that is pressed and now released
             key = await s.read(1)
-            print("Sim: %s" % key)
+            #print("Sim: %s" % key)
             if key == b'\0':
                 await numpad._changes.put('')       # all up
             else:
