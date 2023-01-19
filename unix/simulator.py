@@ -72,13 +72,16 @@ class SimulatedScreen:
             self.movie.append((dt, img))
 
 class LCDSimulator(SimulatedScreen):
+    # Simulate the LCD found on the Q1: 320x240xBGR565
+
+    background_img = 'q1-images/background.png'
+
     # where the simulated screen is, relative to fixed background
     TOPLEFT = (65, 60)
-    background_img = 'q1-images/background.png'
 
     # see stm32/COLDCARD_Q1/modckcc.c where this pallet is defined.
     palette_colours = [
-            '#000', '#fff',  # black/white, must be 0/1
+            '#000', '#fff',             # black/white, must be 0/1
             '#f00', '#0f0', '#00f',     # RGB demos
             # some greys: 5 .. 12
             '#555', '#999', '#ddd', '#111111', '#151515', '#191919', '#1d1d1d',
@@ -100,7 +103,7 @@ class LCDSimulator(SimulatedScreen):
 
         sdl2.ext.fill(s, self.palette[0])
 
-        self.mv = sdl2.ext.PixelView(self.sprite)
+        self.mv = sdl2.ext.pixels2d(self.sprite)
     
         # for any LED's .. no position implied
         self.led_red = factory.from_image("q1-images/led-red.png")
@@ -126,7 +129,7 @@ class LCDSimulator(SimulatedScreen):
                 for x in range(X, X+w):
                     val = here[pos]
                     pos += 1
-                    self.mv[y][x] = self.palette[val & 0xf]
+                    self.mv[x][y] = self.palette[val & 0xf]
 
         if self.movie is not None:
             self.new_frame()
@@ -145,9 +148,9 @@ class LCDSimulator(SimulatedScreen):
         spriterenderer.render(self.led_green if (active_set & GEN_LED) else self.led_red)
 
         if active_set & SD_LED:
-            spriterenderer.render(self.led_sdcard)
+            spriterenderer.render(self.led_green)       # XXX reposition
         if active_set & USB_LED:
-            spriterenderer.render(self.led_usb)
+            spriterenderer.render(self.led_green)       # XXX reposition
 
 class OLEDSimulator(SimulatedScreen):
     # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
@@ -172,7 +175,7 @@ class OLEDSimulator(SimulatedScreen):
         self.bg = sdl2.ext.prepare_color('#111', s)
         sdl2.ext.fill(s, self.bg)
 
-        self.mv = sdl2.ext.PixelView(self.sprite)
+        self.mv = sdl2.ext.pixels2d(self.sprite, transpose=False)
     
         # for genuine/caution lights and other LED's
         self.led_red = factory.from_image("mk4-images/led-red.png")
