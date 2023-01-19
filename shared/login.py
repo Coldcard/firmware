@@ -2,8 +2,6 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
-# NOTE: Mark3+ hardware does not support secondary wallet concept.
-#
 import pincodes, version, random
 from glob import dis
 from display import FontLarge, FontTiny
@@ -12,9 +10,15 @@ from utils import pretty_delay
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
+from charcodes import KEY_DELETE, KEY_SELECT, KEY_CANCEL
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
+
+if not version.has_qwerty:
+    KEY_SELECT = 'y'
+    KEY_CANCEL = 'x'
+    KEY_DELETE = 'x'
 
 class LoginUX:
 
@@ -23,7 +27,6 @@ class LoginUX:
         self.is_repeat = False
         self.subtitle = False
         self.kill_btn = kill_btn
-        self.offer_second = not version.has_608
         self.reset()
         self.randomize = randomize
 
@@ -36,7 +39,6 @@ class LoginUX:
         self.pin = ''       # just the part we're showing
         self.pin_prefix = None
         self.words_ok = False
-        self.is_secondary = False
         self.footer = None
 
     def show_pin_randomized(self, force_draw):
@@ -121,7 +123,7 @@ class LoginUX:
 
         dis.show()
 
-    def _show_words(self, has_secondary=False):
+    def _show_words(self):
 
         dis.clear()
         dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
@@ -136,10 +138,7 @@ class LoginUX:
         dis.text(x, y,    words[0], FontLarge)
         dis.text(x, y+18, words[1], FontLarge)
 
-        if self.offer_second:
-            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
-        else:
-            dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
+        dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
 
         dis.busy_bar(False)     # includes a dis.show()
         #dis.show()
@@ -159,7 +158,11 @@ class LoginUX:
         while 1:
             ch = await pr.wait()
 
-            if ch == 'x':
+            if ch == KEY_DELETE:
+                if self.pin:
+                    self.pin = self.pin[:-1]
+                    self.show_pin()
+            elif ch == KEY_CANCEL:
                 if not self.pin and self.pin_prefix:
                     # cancel on empty 2nd-stage: start over
                     self.reset()
@@ -170,12 +173,13 @@ class LoginUX:
                     # X on blank first screen: stop
                     return None
                     
-                # do a backspace
-                if self.pin:
-                    self.pin = self.pin[:-1]
-                    self.show_pin()
+                if KEY_CANCEL == KEY_DELETE:
+                    # do a backspace
+                    if self.pin:
+                        self.pin = self.pin[:-1]
+                        self.show_pin()
 
-            elif ch == 'y':
+            elif ch == KEY_SELECT:
                 if len(self.pin) < MIN_PIN_PART_LEN:
                     # they haven't given enough yet
                     continue
@@ -186,9 +190,7 @@ class LoginUX:
 
                 self._show_words()
 
-                pattern = 'xy'
-                if self.offer_second:
-                    pattern += '2'
+                pattern = KEY_SELECT + KEY_CANCEL
                 if self.kill_btn:
                     pattern += self.kill_btn
 
@@ -200,19 +202,18 @@ class LoginUX:
                     callgate.fast_wipe(False)
                     # not reached
 
-                if nxt == 'y' or nxt == '2':
+                if nxt == 'y' or nxt == KEY_SELECT:
                     self.pin_prefix = self.pin
                     self.pin = ''
-                    self.is_secondary = (nxt == '2')
 
                     if self.randomize:
                         self.shuffle_keys()
-                elif nxt == 'x':
+                elif nxt == 'x' or nxt == KEY_CANCEL:
                     self.reset()
 
                 self.show_pin(True)
 
-            else:
+            elif '0' <= ch <= '9':
                 # digit pressed
                 if self.randomize and ch:
                     ch = self.randomize[int(ch)]
@@ -223,6 +224,10 @@ class LoginUX:
                     self.pin += ch
 
                 self.show_pin()
+            else:
+                # XXX other key on Q1? Ignore for now, but we will need to support
+                # passwords in future.
+                pass
 
     async def do_delay(self):
         # show # of failures and implement the delay, which could be 
@@ -284,7 +289,7 @@ Press OK to continue, X to stop for now.
                 continue
             
             dis.fullscreen("Wait...")
-            pa.setup(pin, self.is_secondary)
+            pa.setup(pin)
 
             if version.has_608 and pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
@@ -344,7 +349,6 @@ suffix break point is correct.'''
     async def get_new_pin(self, title, story=None, allow_clear=False):
         # Do UX flow to get new (or change) PIN. Always does the double-entry thing
         self.is_setting = True
-        self.offer_second = False
 
         if story:
             # give them background
