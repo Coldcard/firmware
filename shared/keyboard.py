@@ -134,7 +134,7 @@ class FullKeyboard(NumpadBase):
                 # indicated key was found to be down and then back up
                 key = DECODER[kn]
                 if key != self.key_pressed:
-                    print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
+                    #print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
                     self._key_event(key)
 
                 self.lp_time = utime.ticks_ms()
