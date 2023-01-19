@@ -3,7 +3,7 @@
 # Transaction Signing. Important.
 #
 
-import time, pytest, os, random, pdb, struct, base64, binascii, itertools
+import time, pytest, os, random, pdb, struct, base64, binascii, itertools, datetime
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -12,11 +12,14 @@ from pprint import pprint, pformat
 from decimal import Decimal
 from base64 import b64encode, b64decode
 from helpers import B2A, fake_dest_addr, parse_change_back
-from helpers import xfp2str
+from helpers import xfp2str, seconds2human_readable
 from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
 from txn import *
 from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
+
+
+SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
 
 
 @pytest.mark.parametrize('finalize', [ False, True ])
@@ -634,8 +637,7 @@ def test_change_fraud_path(start_sign, use_regtest, end_sign, case, check_agains
         _, story = cap_story()
         assert chg_addr in story
         assert 'Change back:' not in story
-
-        signed = end_sign(True)
+        end_sign(True)
 
 @pytest.mark.bitcoind
 def test_change_fraud_addr(start_sign, end_sign, use_regtest, check_against_bitcoind, cap_story):
@@ -720,8 +722,7 @@ def test_change_p2sh_p2wpkh(start_sign, end_sign, check_against_bitcoind, use_re
     #print(story)
     assert expect_addr in story
     assert parse_change_back(story) == (Decimal('1.09997082'), [expect_addr])
-
-    signed = end_sign(True)
+    end_sign(True)
 
 def test_sign_multisig_partial_fail(start_sign, end_sign):
 
@@ -2523,5 +2524,530 @@ def test_psbt_v2_global_quantities(way, fake_txn, start_sign, end_sign, cap_stor
     start_sign(psbt)
     title, story = cap_story()
     assert "failed" in story or "Invalid PSBT" in story or "Network fee bigger" in story
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("locktime", [
+    0,  # zero default
+    False,  # current block height
+    800000,
+    1513209600,  # 2017-12-14 00:00:00
+    1387324800,  # 2013-12-18 00:00:00
+    1294790399,  # 2011-11-01 23:59:59
+    1748671747,  # 2025-05-31 07:09:07
+])
+def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
+                     microsd_path, cap_story, goto_home, need_keypress,
+                     pick_menu_item, bitcoind, locktime):
+    use_regtest()
+    sim = bitcoind_d_sim_watch
+    addr = sim.getnewaddress()
+    bitcoind.supply_wallet.sendtoaddress(addr, 2)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    bi = sim.getblockchaininfo()
+    blocks = bi["blocks"]
+
+    success = True
+    if locktime is False:
+        # current height - allowed
+        locktime = blocks
+
+    if locktime < 500000000:
+        # blocks
+        if locktime > blocks:
+            success = False
+    else:
+        # MTP
+        if locktime > datetime.datetime.utcnow().timestamp():
+            success = False
+
+    dest_addr = sim.getnewaddress()  # self-spend
+    psbt_resp = sim.walletcreatefundedpsbt([], [{dest_addr: 1.0}], locktime, {"fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "locktime.psbt"
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+
+    assert "WARNING" not in story
+    if locktime != 0:
+        assert "LOCKTIMES" in story
+        assert "Abs Locktime" in story
+        if locktime < 500000000:
+            assert f"This tx can only be spent after block height of {locktime}" in story
+        else:
+            dt = datetime.datetime.utcfromtimestamp(locktime)
+            ux_dt = dt.strftime("%Y-%m-%d %H:%M:%S")
+            assert f"This tx can only be spent after {ux_dt} UTC (MTP)" in story
+            # assert f"This tx can only be spent after {locktime} (unix timestamp)" in story
+    else:
+        assert "LOCKTIMES" not in story
+
+    need_keypress("y")  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is success
+    assert signed_txn == bitcoind_signed_txn
+    if success:
+        txid = sim.sendrawtransaction(signed_txn)
+    else:
+        with pytest.raises(Exception):
+            sim.sendrawtransaction(signed_txn)
+        txid = accept_res["txid"]
+    assert len(txid) == 64
+    assert txid == story_txid
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("num_ins", [1, 4, 11])
+@pytest.mark.parametrize("differ", [True, False])
+@pytest.mark.parametrize("sequence", [0, 1, 50, 65534])
+def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitcoind_d_sim_watch,
+                                                    start_sign, end_sign, microsd_path, cap_story,
+                                                    goto_home, need_keypress, pick_menu_item,
+                                                    bitcoind, num_ins, differ):
+    if differ and (sequence == 0):
+        # this case makes no sense
+        return
+
+    use_regtest()
+    sim = bitcoind_d_sim_watch
+    sim.keypoolrefill(20)
+    for i in range(num_ins):
+        addr = sim.getnewaddress()
+        bitcoind.supply_wallet.sendtoaddress(addr, 1)
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    dest_addr = sim.getnewaddress()  # self-spend
+    utxos = sim.listunspent()
+    assert len(utxos) == num_ins
+
+    ins = []
+    num_ins_locked = 0
+    locks = []
+    for i, utxo in enumerate(utxos):
+        confirmations = utxo["confirmations"]
+        lock = (confirmations + sequence) if sequence else 0
+        if i and differ:
+            # not first one (0th) as it should have sequence provided via parametrize
+            # all others decremented by iteration count
+            nSeq = lock - i
+            if nSeq < 0:
+                nSeq = 0
+        else:
+            nSeq = lock
+
+        if nSeq > 0:
+            num_ins_locked += 1
+            locks.append(nSeq)
+
+        # block height based RTL
+        inp = {
+            "txid": utxo["txid"],
+            "vout": utxo["vout"],
+            "sequence": nSeq,
+        }
+        ins.append(inp)
+
+    psbt_resp = sim.walletcreatefundedpsbt(ins, [{dest_addr: (num_ins - 0.1)}], 0, {"fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "rtl-blockheight.psbt"
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+
+    assert "WARNING" not in story
+    if sequence:
+        assert "TX LOCKTIMES" in story
+        assert "Block height RTL" in story
+        if num_ins_locked == 1:
+            assert ("has relative block height timelock of %d" % lock) in story
+        else:
+            if differ:
+                assert ("%d inputs have relative block height timelock." % num_ins_locked) in story
+                for i in range(num_ins_locked):
+                    if not (("%d.  " % i) in story):
+                        assert "only 10 with highest values" in story
+            else:
+                assert ("%d inputs have relative block height timelock of %d" % (num_ins_locked, lock)) in story
+    else:
+        assert "TX LOCKTIMES" not in story
+
+    need_keypress("y")  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    if sequence == 0:
+        assert accept_res["allowed"]
+        return
+
+    assert accept_res["allowed"] is False
+    assert accept_res["reject-reason"] == 'non-BIP68-final'
+    if sequence > 50:
+        # not gonna mine 65k blocks
+        return
+    sim.generatetoaddress(sequence, bitcoind.supply_wallet.getnewaddress())  # mine N blocks
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+
+@pytest.mark.bitcoind
+@pytest.mark.veryslow
+@pytest.mark.parametrize("num_ins", [1, 4, 11])
+@pytest.mark.parametrize("differ", [True, False])
+@pytest.mark.parametrize("seconds", [512, 10000, 1000000, 33554431])
+def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind_d_sim_watch, start_sign,
+                                                  microsd_path, cap_story, goto_home, need_keypress,
+                                                  pick_menu_item, bitcoind, end_sign, num_ins, differ):
+    sequence = SEQUENCE_LOCKTIME_TYPE_FLAG | (seconds >> 9)
+    use_regtest()
+    sim = bitcoind_d_sim_watch
+    sim.keypoolrefill(20)
+    for i in range(num_ins):
+        addr = sim.getnewaddress()
+        bitcoind.supply_wallet.sendtoaddress(addr, 1)
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    dest_addr = sim.getnewaddress()  # self-spend
+    utxos = sim.listunspent()
+    assert len(utxos) == num_ins
+
+    bi = sim.getblockchaininfo()
+
+    ins = []
+    num_ins_locked = 0
+    for i, utxo in enumerate(utxos):
+        # time-based RTL
+        if i and differ:
+            nSeq = sequence - (sequence * i)
+            if nSeq < 0:
+                nSeq = 0
+
+        else:
+            nSeq = sequence
+
+        if nSeq > 0:
+            num_ins_locked += 1
+
+        inp = {
+            "txid": utxo["txid"],
+            "vout": utxo["vout"],
+            "sequence": nSeq,
+        }
+        ins.append(inp)
+
+    psbt_resp = sim.walletcreatefundedpsbt(ins, [{dest_addr: (num_ins - 0.1)}], 0, {"fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "rtl-time.psbt"
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+
+    assert "WARNING" not in story
+    assert "TX LOCKTIMES" in story
+    assert "Time-based RTL" in story
+    t_from_seq = (sequence & 0x0000ffff) << 9
+    base_msg = "relative time-based timelock of:\n %s" % seconds2human_readable(t_from_seq)
+    if num_ins_locked == 1:
+        assert ("has " + base_msg) in story
+    else:
+        if differ:
+            assert ("%d inputs have relative time-based timelock." % num_ins_locked) in story
+            for i in range(num_ins_locked):
+                assert ("%d.  " % i) in story
+        else:
+            msg1 = "%d inputs have " % num_ins_locked
+            assert (msg1 + base_msg) in story
+
+    need_keypress("y")  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is False
+    assert accept_res["reject-reason"] == 'non-BIP68-final'
+    if seconds > 512:
+        # not gonna wait for it
+        return
+    # mine blocks - mining increases the timestamp but somehow randomly
+    while True:
+        sim.generatetoaddress(5, bitcoind.supply_wallet.getnewaddress())
+        t = sim.getblockchaininfo()["time"]
+        if (t - bi["time"]) > 600:
+            break
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+
+@pytest.mark.bitcoind
+@pytest.mark.veryslow
+@pytest.mark.parametrize("abs_lock", [True, False])
+@pytest.mark.parametrize("num_rtl", [(2,3),(4,7),(8,3),(6,7)])
+def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
+                             microsd_path, cap_story, goto_home, need_keypress,
+                             pick_menu_item, bitcoind, end_sign, abs_lock):
+    tb, bb = num_rtl
+    num_ins = tb + bb
+    sequence = SEQUENCE_LOCKTIME_TYPE_FLAG | (512 >> 9)
+    use_regtest()
+    sim = bitcoind_d_sim_watch
+    sim.keypoolrefill(20)
+    for i in range(num_ins):
+        addr = sim.getnewaddress()
+        bitcoind.supply_wallet.sendtoaddress(addr, 1)
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+    dest_addr = sim.getnewaddress()  # self-spend
+    utxos = sim.listunspent()
+    assert len(utxos) == num_ins
+
+    bi = sim.getblockchaininfo()
+    blocks = bi["blocks"]
+    if abs_lock:
+        # absolute locktime smaller then relative
+        locktime = blocks + 10
+    else:
+        locktime = 0
+
+    ins = []
+    for i, utxo in enumerate(utxos):
+        # time-based RTL
+        if i < tb:
+            nSeq = sequence
+        else:
+            confirmations = utxo["confirmations"]
+            nSeq = confirmations + 20  # blocks
+
+        inp = {
+            "txid": utxo["txid"],
+            "vout": utxo["vout"],
+            "sequence": nSeq,
+        }
+        ins.append(inp)
+
+    psbt_resp = sim.walletcreatefundedpsbt(ins, [{dest_addr: (num_ins - 0.1)}], locktime, {"fee_rate": 20})
+    psbt = psbt_resp.get("psbt")
+    psbt_fname = "rtl-mixin-time.psbt"
+    with open(microsd_path(psbt_fname), "w") as f:
+        f.write(psbt)
+    goto_home()
+    pick_menu_item('Ready To Sign')
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        pick_menu_item(psbt_fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+
+    assert "WARNING" not in story
+    assert "TX LOCKTIMES" in story
+    assert "Time-based RTL" in story
+    t_from_seq = (sequence & 0x0000ffff) << 9
+    base_msg = "relative time-based timelock of:\n %s" % seconds2human_readable(t_from_seq)
+    msg1 = "%d inputs have " % tb
+    assert (msg1 + base_msg) in story
+    assert "Block height RTL" in story
+    assert ("%d inputs have relative block height timelock of %d" % (bb, 21)) in story
+
+    if abs_lock:
+        assert "Abs Locktime" in story
+        assert f"This tx can only be spent after block height of {locktime}" in story
+    else:
+        assert "Abs Locktime" not in story
+
+    need_keypress("y")  # confirm signing
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == 'PSBT Signed'
+    assert "Updated PSBT is:" in story
+    assert "Finalized transaction (ready for broadcast)" in story
+    assert "TXID" in story
+    split_story = story.split("\n\n")
+    story_txid = split_story[-1].split("\n")[-1]
+    signed_psbt_fname = split_story[1]
+    with open(microsd_path(signed_psbt_fname), "r") as f:
+        signed_psbt = f.read().strip()
+    signed_txn_fname = split_story[3]
+    with open(microsd_path(signed_txn_fname), "r") as f:
+        signed_txn = f.read().strip()
+    assert signed_psbt != psbt
+    finalize_res = sim.finalizepsbt(signed_psbt)
+    bitcoind_signed_txn = finalize_res["hex"]
+    assert finalize_res["complete"] is True
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is False
+
+    if abs_lock:
+        assert accept_res["reject-reason"] == 'non-final'
+    else:
+        assert accept_res["reject-reason"] == 'non-BIP68-final'
+
+    # try to mine 21 blocks - which should unlock height based inpputs
+    # and also absolute timelock which is smaller than relative
+    # but tx must be still unspendable as time based are still locked
+    sim.generatetoaddress(21, bitcoind.supply_wallet.getnewaddress())
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is False
+    assert accept_res["reject-reason"] == 'non-BIP68-final'
+
+    # mine blocks - mining increases the timestamp but somehow randomly
+    while True:
+        sim.generatetoaddress(5, bitcoind.supply_wallet.getnewaddress())
+        t = sim.getblockchaininfo()["time"]
+        if (t - bi["time"]) > 600:
+            break
+    accept_res = sim.testmempoolaccept([bitcoind_signed_txn])[0]
+    assert accept_res["allowed"] is True
+    assert signed_txn == bitcoind_signed_txn
+    txid = sim.sendrawtransaction(signed_txn)
+    assert len(txid) == 64
+    assert txid == story_txid
+
+def random_nLockTime_test_cases(num=10):
+    res = []
+    now = datetime.datetime.utcnow()
+    for i in range(num):
+        td = datetime.timedelta(days=i, hours=i+i, seconds=7**i)
+        var = now + td
+        var = var.replace(tzinfo=datetime.timezone.utc)
+        res.append((int(var.timestamp()), var.strftime("%Y-%m-%d %H:%M:%S")))
+    return res
+
+
+@pytest.mark.parametrize("nLockTime", [
+    (1513209600, "2017-12-14 00:00:00"),
+    (1387324800, "2013-12-18 00:00:00"),
+    (1294790399, "2011-01-11 23:59:59"),
+    (1748671747, "2025-05-31 06:09:07"),
+    *random_nLockTime_test_cases()
+])
+def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
+                             bitcoind_d_sim_watch, nLockTime):
+        # - works on simulator and connected USB real-device
+        nLockTime, expect_ux = nLockTime
+        num_ins = 10
+        use_regtest()
+        bitcoind_d_sim_watch.keypoolrefill(20)
+        for i in range(num_ins):
+            addr = bitcoind_d_sim_watch.getnewaddress()
+            bitcoind.supply_wallet.sendtoaddress(addr, 1)
+
+        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+        dest_addr = bitcoind_d_sim_watch.getnewaddress()  # self-spend
+        utxos = bitcoind_d_sim_watch.listunspent()
+        assert len(utxos) == num_ins
+
+        ins = []
+        for i, utxo in enumerate(utxos):
+            if i % 2 == 0:
+                nSeq = (SEQUENCE_LOCKTIME_TYPE_FLAG | i)
+            else:
+                confirmations = utxo["confirmations"]
+                nSeq = confirmations + (20*i)
+
+            inp = {
+                "txid": utxo["txid"],
+                "vout": utxo["vout"],
+                "sequence": nSeq,
+            }
+            ins.append(inp)
+
+        psbt_resp = bitcoind_d_sim_watch.walletcreatefundedpsbt(
+            ins, [{dest_addr: (num_ins - 0.1)}],
+            nLockTime, {"fee_rate": 20}
+        )
+        psbt = base64.b64decode(psbt_resp.get("psbt"))
+
+        open('debug/locktimes.psbt', 'wb').write(psbt)
+
+        # should be able to sign, but get warning
+
+        # use new feature to have Coldcard return the 'visualization' of transaction
+        start_sign(psbt, False, stxn_flags=STXN_VISUALIZE)
+        story = end_sign(accept=None, expect_txn=False)
+
+        story = story.decode('ascii')
+        assert datetime.datetime.utcfromtimestamp(nLockTime).strftime("%Y-%m-%d %H:%M:%S") == expect_ux
+        assert f"Abs Locktime: This tx can only be spent after {expect_ux} UTC (MTP)" in story
+        assert "Block height RTL: 5 inputs have relative block height timelock" in story
+        # when i=0 in loop time based RTL is zero
+        assert "Time-based RTL: 4 inputs have relative time-based timelock" in story
 
 # EOF
