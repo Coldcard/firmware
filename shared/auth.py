@@ -712,6 +712,13 @@ class ApproveTransaction(UserAuthorizedAction):
             self.output_change_text(msg)
             gc.collect()
 
+            if self.psbt.ux_notes:
+                # currently we only have locktimes in ux_notes
+                msg.write('\nTX LOCKTIMES\n\n')
+
+                for label, m in self.psbt.ux_notes:
+                    msg.write('- %s: %s\n\n' % (label, m))
+
             if self.psbt.warnings:
                 msg.write('\n---WARNING---\n\n')
 

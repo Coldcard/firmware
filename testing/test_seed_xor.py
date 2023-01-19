@@ -52,7 +52,8 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      choose_by_word_length, need_keypress, get_secrets,
                      word_menu_entry, verify_ephemeral_secret_ui,
                      confirm_tmp_seed, seed_vault_enable):
-    def doit(parts, expect, incl_self=False, save_to_vault=False):
+    def doit(parts, expect, incl_self=False, save_to_vault=False,
+             is_master_tmp_fail=False):
         if expect is None:
             parts, expect = prepare_test_pairs(*parts)
 
@@ -111,7 +112,15 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                     assert 'ZERO WARNING' in body
 
         need_keypress('2')
-        confirm_tmp_seed(seedvault=save_to_vault)
+        try:
+            confirm_tmp_seed(seedvault=save_to_vault)
+        except AssertionError as e:
+            if is_master_tmp_fail:
+                assert "Cannot use master seed as temporary" in str(e)
+                return
+            else:
+                raise
+
         verify_ephemeral_secret_ui(mnemonic=expect.split(" "),
                                    seed_vault=save_to_vault)
         assert get_secrets()['mnemonic'] == expect
@@ -136,20 +145,29 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
       'save saddle indicate embrace detail weasel spread life staff mushroom bicycle light',
       'unlock damp injury tape enhance pause sheriff onion valley panic finger moon'],
      'drama jeans craft mixture filter lamp invest suggest vacant neutral history swim'),
-    ([zero32]*2, zero32),
-    ([zero24]*2, zero24),
-    ([zero16]*2, zero16),
-    ([ones32]*7, ones32),
-    ([ones24]*7, ones24),
-    ([ones16]*7, ones16),
-    ([ones32]*4, zero32),
-    ([ones24]*4, zero24),
-    ([ones16]*4, zero16),
     # random generated
     *random_test_cases()
 ])
 def test_import_xor(seed_vault, incl_self, parts, expect, restore_seed_xor):
     restore_seed_xor(parts, expect, incl_self, seed_vault)
+
+
+@pytest.mark.parametrize('incl_self', [False, True])
+@pytest.mark.parametrize("parts, expect", [
+    ([zero32] * 2, zero32),
+    ([zero24] * 2, zero24),
+    ([zero16] * 2, zero16),
+    ([ones32] * 7, ones32),
+    ([ones24] * 7, ones24),
+    ([ones16] * 7, ones16),
+    ([ones32] * 4, zero32),
+    ([ones24] * 4, zero24),
+    ([ones16] * 4, zero16),
+])
+def test_import_xor_zeros_ones(incl_self, parts, expect, restore_seed_xor):
+    restore_seed_xor(parts, expect, incl_self, False,
+                     is_master_tmp_fail=True if incl_self else False)
+
 
 
 @pytest.mark.parametrize('num_words', [12, 18, 24])
