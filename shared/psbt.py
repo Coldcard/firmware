@@ -6,6 +6,8 @@ from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
 from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line
 import stash, gc, history, sys, ngu, ckcc
+from utils import seconds2human_readable, datetime_from_timestamp, datetime_to_str
+import stash, gc, history, sys, ngu, ckcc, chains
 from uhashlib import sha256
 from uio import BytesIO
 from chains import taptweak, tapleaf_hash
@@ -743,6 +745,32 @@ class psbtInputProxy(psbtProxy):
             parsed_taproot_scripts[leaf_script].add(key)
         self.taproot_scripts = parsed_taproot_scripts
 
+    def has_relative_timelock(self, txin):
+        # https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki
+        SEQUENCE_LOCKTIME_DISABLE_FLAG = (1 << 31)
+        SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
+        SEQUENCE_LOCKTIME_MASK = 0x0000ffff
+        SEQUENCE_LOCKTIME_GRANULARITY = 9
+        is_timebased = False
+
+        if txin.nSequence & SEQUENCE_LOCKTIME_DISABLE_FLAG:
+            # RTL disabled
+            return
+        if txin.nSequence & SEQUENCE_LOCKTIME_TYPE_FLAG:
+            # Time-based relative lock-time
+            is_timebased = True
+            res = (txin.nSequence & SEQUENCE_LOCKTIME_MASK) << SEQUENCE_LOCKTIME_GRANULARITY
+        else:
+            # Block height relative lock-time
+            res = txin.nSequence & SEQUENCE_LOCKTIME_MASK
+
+        if res == 0:
+            # any locktime that is zero, regardless of MPT or blocks
+            # is always immediately spendable
+            return
+
+        return is_timebased, res
+
     def validate(self, idx, txin, my_xfp, parent):
         # Validate this txn input: given deserialized CTxIn and maybe witness
 
@@ -1261,6 +1289,9 @@ class psbtObject(psbtProxy):
         self.active_miniscript = None
 
         self.warnings = []
+        # not a warning just more info about tx
+        # presented in UX on confirm tx screen before warnings
+        self.ux_notes = []
 
         # v1 vs v2 validation
         self.is_v2 = False
@@ -1538,6 +1569,74 @@ class psbtObject(psbtProxy):
             # we should not reach this point (ie. raise something to abort signing)
             return
 
+    def ux_relative_timelocks(self, tb, bb):
+        # visualize 10 largest timelock to user
+        # when signing a tx
+        MAX_SHOW = 10
+        num_tb = len(tb)
+        num_bb = len(bb)
+
+        if (num_tb + num_bb) > MAX_SHOW:
+            # 10 from each is enough for us to have in memory
+            tb = sorted(tb, key=lambda item: item[1], reverse=True)[:10]
+            bb = sorted(bb, key=lambda item: item[1], reverse=True)[:10]
+            if (num_tb >= 5) and (num_bb >= 5):
+                # 5 biggest from each
+                tb = tb[:5]
+                bb = bb[:5]
+            else:
+                if num_tb < num_bb:
+                    tb = tb[:num_tb]
+                    bb = bb[:(MAX_SHOW - num_tb)]
+                else:
+                    bb = bb[:num_bb]
+                    tb = tb[:(MAX_SHOW - num_bb)]
+
+        if num_bb:
+            # Block height relative lock-time
+            if num_bb == 1:
+                idx, val = bb[0]
+                msg = "Input %d. has relative block height timelock of %d blocks" % (
+                        idx, val
+                    )
+            elif all(bb[0][1] == i[1] for i in bb):
+                msg = "%d inputs have relative block height timelock of %d blocks" % (
+                        num_bb, bb[0][1]
+                    )
+            else:
+                msg = "%d inputs have relative block height timelock." % num_bb
+                if num_bb > len(bb):
+                    msg += " Showing only %d with highest values." % len(bb)
+                msg += "\n\n"
+                for idx, num_blocks in bb:
+                    msg += " %d.  %d blocks\n" % (idx, num_blocks)
+                msg += "\n"
+
+            self.ux_notes.append(("Block height RTL", msg))
+
+        if num_tb:
+            # Block height relative lock-time
+            if num_tb == 1:
+                idx, val = tb[0]
+                val = seconds2human_readable(val)
+                msg = "Input %d. has relative time-based timelock of:\n %s" % (
+                    idx, val
+                )
+            elif all(tb[0][1] == i[1] for i in tb):
+                msg = "%d inputs have relative time-based timelock of:\n %s" % (
+                        num_tb, seconds2human_readable(tb[0][1])
+                    )
+            else:
+                msg = "%d inputs have relative time-based timelock." % num_tb
+                if num_tb > len(tb):
+                    msg += " Showing only %d with highest values." % len(tb)
+                msg += "\n\n"
+                for idx, seconds in tb:
+                    hr = seconds2human_readable(seconds)
+                    msg += " %d.  %s\n" % (idx, hr)
+                msg += "\n"
+
+            self.ux_notes.append(("Time-based RTL", msg))
 
     async def validate(self):
         # Do a first pass over the txn. Raise assertions, be terse tho because
@@ -1578,6 +1677,11 @@ class psbtObject(psbtProxy):
                 assert out.amount is None
                 assert out.script is None
 
+        # time based relative locks
+        tb_rel_locks = []
+        # block height based relative locks
+        bb_rel_locks = []
+        smallest_nsequence = 0xffffffff
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
             inp = self.inputs[idx]
@@ -1598,6 +1702,39 @@ class psbtObject(psbtProxy):
                 assert inp.req_height_locktime is None
 
             self.inputs[idx].validate(idx, txin, self.my_xfp, self)
+            if self.txn_version >= 2:
+                has_rtl = self.inputs[idx].has_relative_timelock(txin)
+                if has_rtl:
+                    if has_rtl[0]:
+                        tb_rel_locks.append((idx, has_rtl[1]))
+                    else:
+                        bb_rel_locks.append((idx, has_rtl[1]))
+
+            if txin.nSequence < smallest_nsequence:
+                smallest_nsequence = txin.nSequence
+
+        if isinstance(self.lock_time, int) and self.lock_time > 0:
+            if smallest_nsequence == 0xffffffff:
+                self.warnings.append((
+                    "Bad Locktime",
+                    "Locktime has no effect! None of the nSequences decremented."
+                ))
+            else:
+                msg = "This tx can only be spent after "
+                if self.lock_time < 500000000:
+                    msg += "block height of %d" % self.lock_time
+                else:
+                    try:
+                        dt = datetime_from_timestamp(self.lock_time)
+                        msg += datetime_to_str(dt)
+                    except:
+                        msg += "%d (unix timestamp)" % self.lock_time
+
+                    msg += " (MTP)"  # median time past
+                self.ux_notes.append(("Abs Locktime", msg))
+
+        # create UX for users about tx level relative timelocks (nSequence)
+        self.ux_relative_timelocks(tb_rel_locks, bb_rel_locks)
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
 

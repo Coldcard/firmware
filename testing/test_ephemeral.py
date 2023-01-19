@@ -1292,7 +1292,6 @@ def test_tmp_upgrade_disabled(reset_seed_words, need_keypress, pick_menu_item,
     m = cap_menu()
     assert "Upgrade Firmware" in m
     node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
-    xfp = node.fingerprint().hex().upper()
     k0 = node.hwif(as_private=True)
     import_ephemeral_xprv("sd", extended_key=k0, seed_vault=True, from_main=True)
     goto_home()
