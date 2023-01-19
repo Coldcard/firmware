@@ -3,12 +3,17 @@
 # menu.py - Implement an interactive menu system.
 #
 import gc
-from display import FontLarge, FontTiny
+from display import FontLarge, FontTiny, Display
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 
-# number of full lines per screen
-PER_M = const(4)
+# number of full text lines per screen
+if Display.HEIGHT == 64:
+    PER_M = 4       # const(4)
+else:
+    PER_M = Display.HEIGHT / 16
 
 # do wrap-around, but only for mega menus like seed words
 WRAP_IF_OVER = const(16)
@@ -216,7 +221,7 @@ class MenuSystem:
                 dis.icon(108, y, 'selected', invert=is_sel)
 
             y += h
-            if y > 128: break
+            if y > Display.HEIGHT: break
 
         # subclass hook
         self.late_draw(dis)
@@ -329,25 +334,25 @@ class MenuSystem:
 
             if not key:
                 continue
-            if key == '5':
+            if key == '5' or key == KEY_UP:
                 self.up()
-            elif key == '8':
+            elif key == '8' or key == KEY_DOWN:
                 self.down()
-            elif key == '7':
+            elif key == '7' or key == KEY_PAGE_UP:
                 self.page(-1)       # maybe should back out of nested menus?
-            elif key == '9':
+            elif key == '9' or key == KEY_END:
                 self.page(1)
-            elif key == '0':
+            elif key == '0' or key == KEY_HOME:
                 # zip to top, no selection
                 self.cursor = 0
                 self.ypos = 0
             elif key in '1234':
                 # jump down, based on screen postion
                 self.goto_n(ord(key)-ord('1'))
-            elif key == 'y':
+            elif key == 'y' or key == KEY_SELECT:
                 # selected
                 return self.cursor
-            elif key == 'x':
+            elif key == 'x' or key == KEY_CANCEL:
                 # abort/nothing selected/back out?
                 return None
 

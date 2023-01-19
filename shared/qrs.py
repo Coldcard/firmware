@@ -7,6 +7,8 @@ from ux import UserInteraction, ux_wait_keyup, the_ux
 from utils import word_wrap
 from version import has_fatram
 from ubinascii import hexlify as b2a_hex
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 
 class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
@@ -140,25 +142,29 @@ class QRDisplaySingle(UserInteraction):
             ch = await ux_wait_keyup()
 
             was = self.idx
-            if ch == '1':
+            if ch == '1' or ch == 'i':
                 self.invert = not self.invert
                 self.redraw()
                 continue
-            elif NFC and ch == '3':
+            elif NFC and (ch == '3' or ch == KEY_NFC):
                 # Share any QR over NFC!
                 await NFC.share_text(self.addrs[self.idx])
                 self.redraw()
                 continue
-            elif ch in 'xy':
+            elif ch in 'xy'+KEY_SELECT+KEY_CANCEL:
                 break
             elif len(self.addrs) == 1:
                 continue
-            elif ch == '5' or ch == '7':
+            elif ch == '5' or ch == '7' or ch == KEY_UP:
                 if self.idx > 0:
                     self.idx -= 1
-            elif ch == '8' or ch == '9':
+            elif ch == '8' or ch == '9' or ch == KEY_DOWN:
                 if self.idx != len(self.addrs)-1:
                     self.idx += 1
+            elif ch == KEY_HOME:
+                self.idx = 0
+            elif ch == KEY_END:
+                self.idx = len(self.addrs)-1
             else:
                 continue
 
