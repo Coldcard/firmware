@@ -258,4 +258,22 @@ def detruncate_address(s):
     start, end = s.split('⋯')
     return start, end
 
+def seconds2human_readable(s):
+    # duplicate from shared/utils.py - needed for tests
+    days = s // (3600 * 24)
+    hours = s % (3600 * 24) // 3600
+    minutes = (s % 3600) // 60
+    seconds = (s % 3600) % 60
+    msg = ""
+    if days:
+        msg += "%dd" % days
+    if hours:
+        msg += " %dh" % hours
+    if minutes:
+        msg += " %dm" % minutes
+    if seconds:
+        msg += " %ds" % seconds
+
+    return msg
+
 # EOF
