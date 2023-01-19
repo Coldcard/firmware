@@ -201,7 +201,7 @@ class MenuSystem:
             msg = self.items[n+self.ypos].label
             is_sel = (self.cursor == n+self.ypos)
             if is_sel:
-                dis.dis.fill_rect(0, y, 128, h-1, 1)
+                dis.dis.fill_rect(0, y, Display.WIDTH, h-1, 1)
                 dis.icon(2, y, 'wedge', invert=1)
                 dis.text(x, y, msg, invert=1)
             else:
