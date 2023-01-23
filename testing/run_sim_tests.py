@@ -36,6 +36,9 @@ from typing import List
 from pytest import ExitCode
 
 
+SIM_INIT_WAIT = 2  # 2 seconds, can be tweaked via cmdline arguments ( -w 6 )
+
+
 @contextlib.contextmanager
 def pushd(new_dir):
     previous_dir = os.getcwd()
@@ -166,7 +169,7 @@ class ColdcardSimulator:
             cwd="../unix",
             preexec_fn=os.setsid
         )
-        time.sleep(2)
+        time.sleep(SIM_INIT_WAIT)
         atexit.register(self.stop)
 
     def stop(self):
@@ -180,6 +183,7 @@ class ColdcardSimulator:
 
 def main():
     parser = argparse.ArgumentParser(description="Run tests against simulated Coldcard")
+    parser.add_argument("-w", "--sim-init-wait", type=int, help="Choose how much to sleep after simulator is started")
     parser.add_argument("-m", "--module", action="append", help="Choose only n modules to run")
     parser.add_argument("--pdb", action="store_true", help="Go to debugger on failure")
     parser.add_argument("--ff", action="store_true", help="Run the last failures first")
@@ -188,6 +192,10 @@ def main():
     parser.add_argument("--collect", type=str, metavar="MARK", help="Collect marked test and print them to stdout")
     parser.add_argument("-k", "--pytest-k", type=str, metavar="EXPRESSION", default=None, help="only run tests which match the given substring expression")
     args = parser.parse_args()
+
+    if args.sim_init_wait:
+        global SIM_INIT_WAIT
+        SIM_INIT_WAIT = args.sim_init_wait
 
     if args.collect:
         # when collect is in argument - do just collect and exit
