@@ -1,21 +1,21 @@
-## 5.0.8 - 2023-02-??
+## 5.0.8 - 2023-02-03
 
-- Enhancement: Add ability to import multisig wallet via Virtual Disk
-- Enhancement: Add ability to import extended private key via Virtual Disk and via NFC
-- Enhancement: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted
-- Enhancement: Ability to import seed in compact/truncated form (max 4 letters of each word)
-- Enhancement: Add `rolls12.py` script for verifying dice rolls math for 12 word seeds
-- Enhancement: Application specific addresses/derivation paths in `Address Explorer -> Applications`
-- Enhancement: Single signature wallet generic descriptor export `Advanced/Tools -> Export Wallet -> Descriptor`.
-  Both new format with internal/external in one descriptor `<0;1>` and standard with two descriptors exported 
-  are supported.
+- Enhancement: Add ability to import multisig wallet via Virtual Disk.
+- Enhancement: Add ability to import extended private key via Virtual Disk and via NFC.
+- Enhancement: Import seed in compact/truncated form (just 3-4 letters of each seed word).
+- Enhancement: Application-specific address/derivation paths in `Address Explorer -> Applications`
+- Enhancement: Single signature wallet generic descriptor export
+  `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
+  in one descriptor `<0;1>` and standard with two descriptors are supported.
 - Enhancement: Samourai POST-MIX and PRE-MIX descriptor export options added to `Export Wallet`
-- Enhancement: Add ability to export all supported wallets via NFC
-- Bugfix: Change value was ignored when generating addresses file from address explorer - fixed
-- Enhancement: Added dice rolls distribution check to prevent users from generating low entropy seeds
-- Enhancement: During main seed generation from dice, it is no longer allowed to use fewer dice rolls.
-               Must be at least 50 dice rolls for 12 word seeds and at least 99 dice rolls for 24 word seeds
-- Bugfix: allow export of Wasabi skeleton for Bitcoin Regtest
+- Enhancement: Add ability to export all supported wallets via NFC (instead of SD card only)
+- Bugfix: Change value was ignored when generating addresses file from address explorer.
+- Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
+  for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
+  added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
+- Bugfix: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted.
+- Bugfix: Allow export of Wasabi skeleton for Bitcoin Regtest.
+- Docs: Add `docs/rolls12.py` script for verifying dice rolls math for 12 word seeds.
 
 ## 5.0.7 - 2022-10-05
 
