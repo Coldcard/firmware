@@ -4,4 +4,4 @@
 #
 PySDL2
 Pillow
-
+pysdl2-dll
