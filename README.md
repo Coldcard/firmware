@@ -135,27 +135,33 @@ See <https://bugs.python.org/issue32909>
 
 ### Linux
 
-You'll need to install these (Ubuntu 20.04):
+All steps you need to install and run the Coldcard simulator on Ubuntu 20.04:
+
 
 ```shell
-apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3 autoconf libtool
-```
+# Install (system) requirements, tools and libraries
+apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3 autoconf libtool python3-venv
 
-Install and run simulator on Ubuntu 20.04
+# Install all in home directory (optional but useful later)
+cd ~
 
-```shell
+# Get sources, this takes a long time (because of external libraries), then open
 git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
-# apply address patch
-git apply unix/linux_addr.patch
-# create virtualenv and activate it
+
+# Apply address patch
+git apply unix/linux_addr.patch 
+
+# Create Python virtual environment and activate it
 python3 -m venv ENV  # or virtualenv -p python3 ENV
 source ENV/bin/activate
-# install dependencies
+
+# Install dependencies
 pip install -U pip setuptools
 pip install -r requirements.txt #general requirements
 pip install pysdl2-dll # Ubuntu needs this dependency
-# build simulator
+
+# Build the Coldcard simulator
 cd unix
 pushd ../external/micropython/mpy-cross/
 make  # mpy-cross
@@ -163,8 +169,13 @@ popd
 make setup
 make ngu-setup
 make
-# below line runs the simulator
+
+# Run the simulator in the active virtualenv
 ./simulator.py
+
+# Later, if you want to run it (after a reboot):
+cd ~/firmware/unix/
+~/firmware/ENV/bin/python3 ./simulator.py
 ```
 
 Also make sure that you have your python3 symlinked to python.
