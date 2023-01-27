@@ -142,9 +142,6 @@ All steps you need to install and run the Coldcard simulator on Ubuntu 20.04:
 # Install (system) requirements, tools and libraries
 apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3 autoconf libtool python3-venv
 
-# Install all in home directory (optional but useful later)
-cd ~
-
 # Get sources, this takes a long time (because of external libraries), then open
 git clone --recursive https://github.com/Coldcard/firmware.git
 cd firmware
@@ -173,9 +170,11 @@ make
 # Run the simulator in the active virtualenv
 ./simulator.py
 
-# Later, if you want to run it (after a reboot):
-cd ~/firmware/unix/
-~/firmware/ENV/bin/python3 ./simulator.py
+# Later, if you want to run it (after a reboot). This assumes you extracted the git repo in ~ (home)
+cd ~/firmware
+source ENV/bin/activate
+cd unix
+./simulator.py
 ```
 
 Also make sure that you have your python3 symlinked to python.
