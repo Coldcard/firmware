@@ -138,7 +138,7 @@ See <https://bugs.python.org/issue32909>
 You'll need to install these (Ubuntu 20.04):
 
 ```shell
-apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3
+apt install build-essential git python3 python3-pip libudev-dev gcc-arm-none-eabi libffi-dev xterm swig libpcsclite-dev python-is-python3 autoconf libtool
 ```
 
 Install and run simulator on Ubuntu 20.04
@@ -153,7 +153,8 @@ python3 -m venv ENV  # or virtualenv -p python3 ENV
 source ENV/bin/activate
 # install dependencies
 pip install -U pip setuptools
-pip install -r requirements.txt
+pip install -r requirements.txt #general requirements
+pip install pysdl2-dll # Ubuntu needs this dependency
 # build simulator
 cd unix
 pushd ../external/micropython/mpy-cross/
