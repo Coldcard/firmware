@@ -15,6 +15,7 @@
 - Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
   added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
+- Enhancement: Change electrum export file name from 'new-wallet.json' to 'new-electrum.json'
 - Bugfix: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted.
 - Bugfix: Allow export of Wasabi skeleton for Bitcoin Regtest.
 - Docs: Add `docs/rolls12.py` script for verifying dice rolls math for 12 word seeds.
