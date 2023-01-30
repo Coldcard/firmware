@@ -1183,7 +1183,8 @@ async def electrum_skeleton_step2(_1, _2, item):
     import export
     addr_fmt, account_num = item.arg
     await export.make_json_wallet('Electrum wallet',
-                                    lambda: export.generate_electrum_wallet(addr_fmt, account_num))
+                                  lambda: export.generate_electrum_wallet(addr_fmt, account_num),
+                                  "new-electrum.json")
 
 async def generic_skeleton(*A):
     # like the Multisig export, make a single JSON file with

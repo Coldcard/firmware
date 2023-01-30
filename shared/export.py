@@ -2,14 +2,13 @@
 #
 # export.py - Export and share various semi-public data
 #
-import stash, chains, sys
-#from ubinascii import hexlify as b2a_hex
-#from ubinascii import unhexlify as a2b_hex
+import stash, chains, version, ujson
+from uio import StringIO
+from ucollections import OrderedDict
 from utils import xfp2str, swab32, export_prompt_builder
 from ux import ux_show_story
-import version, ujson
-from uio import StringIO
 from glob import settings
+
 
 def generate_public_contents():
     # Generate public details about wallet.
@@ -104,7 +103,6 @@ be needed for different systems.
     from multisig import MultisigWallet
     if MultisigWallet.exists():
         yield '\n# Your Multisig Wallets\n\n'
-        from uio import StringIO
 
         for ms in MultisigWallet.get_all():
             fp = StringIO()
@@ -285,9 +283,9 @@ def generate_wasabi_wallet():
 
     _,vers,_ = version.get_mpy_version()
 
-    return dict(MasterFingerprint=txt_xfp,
-                ColdCardFirmwareVersion=vers,
-                ExtPubKey=xpub)
+    return OrderedDict(ColdCardFirmwareVersion=vers,
+                       MasterFingerprint=txt_xfp,
+                       ExtPubKey=xpub)
 
 def generate_unchained_export(acct_num=0):
     # They used to rely on our airgapped export file, so this is same style
@@ -298,13 +296,13 @@ def generate_unchained_export(acct_num=0):
 
     chain = chains.current_chain()
     todo = [
-        ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
-        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
+        ("m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        ("m/45'", 'p2sh', AF_P2SH),  # iff acct_num == 0
     ]
 
     xfp = xfp2str(settings.get('xfp', 0))
-    rv = dict(account=acct_num, xfp=xfp)
+    rv = OrderedDict(xfp=xfp, account=acct_num)
 
     with stash.SensitiveValues() as sv:
         for deriv, name, fmt in todo:
@@ -326,12 +324,13 @@ def generate_generic_export(account_num=0):
     from descriptor import Descriptor, multisig_descriptor_template
 
     chain = chains.current_chain()
+    master_xfp = settings.get("xfp")
+    master_xfp_str = xfp2str(master_xfp)
 
-    rv = dict(chain=chain.ctype,
-                xpub = settings.get('xpub'),
-                xfp = xfp2str(settings.get('xfp')),
-                account = account_num,
-            )
+    rv = OrderedDict(chain=chain.ctype,
+                     xfp=master_xfp_str,
+                     account=account_num,
+                     xpub=settings.get('xpub'))
 
     with stash.SensitiveValues() as sv:
         # each of these paths would have /{change}/{idx} in usage (not hardened)
@@ -348,26 +347,27 @@ def generate_generic_export(account_num=0):
 
             dd = deriv.format(ct=chain.b44_cointype, acc=account_num)
             node = sv.derive_path(dd)
-            master_xfp = settings.get("xfp")
             xfp = xfp2str(swab32(node.my_fp()))
             xp = chain.serialize_public(node, AF_CLASSIC)
             zp = chain.serialize_public(node, fmt) if fmt != AF_CLASSIC else None
             if is_ms:
-                desc = multisig_descriptor_template(xp, dd, xfp2str(master_xfp), fmt)
+                desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
             else:
-                desc = Descriptor(keys=[( master_xfp, dd, xp )], addr_fmt=fmt).serialize(int_ext=True)
+                desc = Descriptor(keys=[(master_xfp, dd, xp)], addr_fmt=fmt).serialize(int_ext=True)
 
-            rv[name] = dict(deriv=dd, xpub=xp, xfp=xfp, name=atype)
+            rv[name] = OrderedDict(name=atype,
+                                   xfp=xfp,
+                                   deriv=dd,
+                                   xpub=xp,
+                                   desc=desc)
+
+            if zp and zp != xp:
+                rv[name]['_pub'] = zp
 
             if not is_ms:
                 # bonus/check: first non-change address: 0/0
                 node.derive(0, False).derive(0, False)
                 rv[name]['first'] = chain.address(node, fmt)
-
-            if zp:
-                rv[name]['_pub'] = zp
-            if desc:
-                rv[name]["desc"] = desc
 
     return rv
 
@@ -401,17 +401,20 @@ def generate_electrum_wallet(addr_type, account_num=0):
     # most values are nicely defaulted, and for max forward compat, don't want to set
     # anything more than I need to
 
-    rv = dict(seed_version=17, use_encryption=False, wallet_type='standard')
+    rv = OrderedDict(seed_version=17, use_encryption=False, wallet_type='standard')
 
     lab = 'Coldcard Import %s' % xfp2str(xfp)
     if account_num:
         lab += ' Acct#%d' % account_num
 
     # the important stuff.
-    rv['keystore'] = dict(  ckcc_xfp=xfp,
-                            ckcc_xpub=settings.get('xpub'),
-                            hw_type='coldcard', type='hardware',
-                            label=lab, derivation=derive, xpub=top)
+    rv['keystore'] = OrderedDict(type='hardware',
+                                 hw_type='coldcard',
+                                 label=lab,
+                                 ckcc_xfp=xfp,
+                                 ckcc_xpub=settings.get('xpub'),
+                                 derivation=derive,
+                                 xpub=top)
         
     return rv
 
