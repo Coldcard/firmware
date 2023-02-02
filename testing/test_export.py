@@ -346,20 +346,21 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '123'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_export_coldcard(way, dev, acct_num, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
+@pytest.mark.parametrize('app', [("Generic JSON", "Generic Export"), ("Lily Wallet", "Lily Wallet")])
+def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
                          nfc_read_json, virtdisk_path, addr_vs_path):
     from pycoin.contrib.segwit_addr import encode as sw_encode
-
+    export_mi, app_f_name = app
     # test UX and values produced.
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
-    pick_menu_item('Generic JSON')
+    pick_menu_item(export_mi)
 
     time.sleep(0.1)
     title, story = cap_story()
-    assert 'Saves JSON file' in story
+    assert 'JSON file' in story
 
     need_keypress('y')
     if acct_num:
@@ -372,7 +373,7 @@ def test_export_coldcard(way, dev, acct_num, pick_menu_item, goto_home, cap_stor
     time.sleep(0.1)
     title, story = cap_story()
     if way == "sd":
-        if "Press (1) to save Generic Export file to SD Card" in story:
+        if f"Press (1) to save {app_f_name} file to SD Card" in story:
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
@@ -396,7 +397,7 @@ def test_export_coldcard(way, dev, acct_num, pick_menu_item, goto_home, cap_stor
         time.sleep(0.1)
         title, story = cap_story()
 
-        assert 'Generic Export file written' in story
+        assert f'{app_f_name} file written' in story
         fname = story.split('\n')[-1]
 
         need_keypress('y')
