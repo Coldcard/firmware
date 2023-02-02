@@ -1181,10 +1181,10 @@ class NewEnrollRequest(UserAuthorizedAction):
                 from multisig import MultisigMenu
                 while 1:
                     top = the_ux.top_of_stack()
+                    if not top: break
                     if not isinstance(top, MultisigMenu):
                         the_ux.pop()
                         continue
-                    assert isinstance(top, MultisigMenu)
                     break
                 restore_menu()
             else:
