@@ -1,4 +1,4 @@
-## 5.0.8 - 2023-02-03
+## 5.1.0 - 2023-02-03
 
 - Enhancement: Support BIP-0129 Bitcoin Secure Multisig Setup (BSMS).
   Both Coordinator and Signer roles are supported.
@@ -11,11 +11,11 @@
   in one descriptor `<0;1>` and standard with two descriptors are supported.
 - Enhancement: Samourai POST-MIX and PRE-MIX descriptor export options added to `Export Wallet`
 - Enhancement: Add ability to export all supported wallets via NFC (instead of SD card only)
-- Bugfix: Change value was ignored when generating addresses file from address explorer.
 - Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
   added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
 - Enhancement: Change electrum export file name from 'new-wallet.json' to 'new-electrum.json'
+- Bugfix: Change value was ignored when generating addresses file from address explorer.
 - Bugfix: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted.
 - Bugfix: Allow export of Wasabi skeleton for Bitcoin Regtest.
 - Docs: Add `docs/rolls12.py` script for verifying dice rolls math for 12 word seeds.
