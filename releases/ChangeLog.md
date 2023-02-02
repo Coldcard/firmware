@@ -2,14 +2,15 @@
 
 - New Feature: Support BIP-0129 Bitcoin Secure Multisig Setup (BSMS).
   Both Coordinator and Signer roles are supported.
+- New Feature: Single signature wallet generic descriptor export
+  `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
+  in one descriptor `<0;1>` and standard with two descriptors are supported.
 - Enhancement: Add ability to import multisig wallet via Virtual Disk.
 - Enhancement: Add ability to import extended private key via Virtual Disk and via NFC.
 - Enhancement: Import seed in compact/truncated form (just 3-4 letters of each seed word).
 - Enhancement: Application-specific address/derivation paths in `Address Explorer -> Applications`
-- Enhancement: Single signature wallet generic descriptor export
-  `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
-  in one descriptor `<0;1>` and standard with two descriptors are supported.
 - Enhancement: Samourai POST-MIX and PRE-MIX descriptor export options added to `Export Wallet`
+- Enhancement: Lily Wallet export option added to `Export Wallet`
 - Enhancement: Add ability to export all supported wallets via NFC (instead of SD card only)
 - Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check

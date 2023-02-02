@@ -159,6 +159,7 @@ WalletExportMenu = [
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained Capital", f=unchained_capital_export),
+    MenuItem("Lily Wallet", f=lily_skeleton),
     MenuItem("Samourai Postmix", f=samourai_post_mix_descriptor_export),
     MenuItem("Samourai Premix", f=samourai_pre_mix_descriptor_export),
     # MenuItem("Samourai BadBank", f=samourai_bad_bank_descriptor_export),  # not released yet
