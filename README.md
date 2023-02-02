@@ -59,9 +59,20 @@ git submodule update --init --recursive
 Do not use a path with any spaces in it. The Makefiles do not handle
 that well, and we're not planning to fix it.
 
+Keep in mind that python requirements may change between versions,
+so at the top level, do this command:
+
+```shell
+pip install -r requirements.txt
+```
+
 ### macOS
 
 [Python 3.5 or higher](https://www.python.org) and [Homebrew](https://brew.sh) is required.
+
+If working on an ARM-based MacOS system, you may want to create a
+new shell with `arch -x86_64 bash` before starting, or continuing
+to work on this source tree.
 
 #### Setup and run the desktop simulator
 
