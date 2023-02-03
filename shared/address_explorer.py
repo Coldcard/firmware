@@ -124,9 +124,12 @@ class SamouraiAppMenu(MenuSystem):
         chain = chains.current_chain()
         hardened_chain = str(chain.b44_cointype) + "'"
         items = [
-            MenuItem("Post-mix", f=self.done, arg=("m/84'/" + hardened_chain + "/2147483646'/{change}/{idx}", AF_P2WPKH)),
-            MenuItem("Pre-mix", f=self.done, arg=("m/84'/" + hardened_chain + "/2147483645'/{change}/{idx}", AF_P2WPKH)),
-            # MenuItem("Bad Bank", f=self.done, arg=("m/84'/" + hardened_chain + "/2147483644'/{change}/{idx}", AF_P2WPKH)),  not released yet
+            MenuItem("Post-mix", f=self.done,
+                     arg=("m/84'/" + hardened_chain + "/2147483646'/{change}/{idx}", AF_P2WPKH)),
+            MenuItem("Pre-mix", f=self.done,
+                     arg=("m/84'/" + hardened_chain + "/2147483645'/{change}/{idx}", AF_P2WPKH)),
+            # MenuItem("Bad Bank", f=self.done,         # not released yet
+            #          arg=("m/84'/" + hardened_chain + "/2147483644'/{change}/{idx}", AF_P2WPKH)),
         ]
         super().__init__(items)
 
@@ -318,8 +321,9 @@ Press (3) if you really understand and accept these risks.
                 else:
                     force_vdisk = True
                 # save addresses to MicroSD/VirtDisk
-                await make_address_summary_file(path, addr_fmt, ms_wallet, self.account_num, count=(250 if n!=1 else 1),
-                                                change=change, force_vdisk=force_vdisk)
+                await make_address_summary_file(path, addr_fmt, ms_wallet,
+                                        self.account_num, count=(250 if n!=1 else 1),
+                                        change=change, force_vdisk=force_vdisk)
                 # .. continue on same screen in case they want to write to multiple cards
                 continue
 
@@ -387,7 +391,9 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
 
         stash.blank_object(node)
 
-async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num, count=250, change=0, force_vdisk=False):
+async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
+                                        count=250, change=0, force_vdisk=False):
+
     # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
