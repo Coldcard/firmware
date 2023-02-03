@@ -8,7 +8,6 @@ from ucollections import OrderedDict
 from utils import xfp2str, swab32, export_prompt_builder, chunk_writer
 from ux import ux_show_story
 from glob import settings
-from descriptor import Descriptor, multisig_descriptor_template
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2TR, AF_P2SH
 from auth import write_sig_file
 
@@ -234,6 +233,7 @@ importmulti '{imp_multi}'
 def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
+    from descriptor import Descriptor, Key
 
     chain = chains.current_chain()
 
@@ -261,22 +261,24 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
             example_addrs.append(('m/%s/%s' % (derive_v1, sp), a))
 
     xfp = settings.get('xfp')
-    txt_xfp = xfp2str(xfp).lower()
-    _, vers, _ = version.get_mpy_version()
+    key0 = Key.from_cc_data(xfp, derive_v0, xpub_v0)
+    desc_v0 = Descriptor(key=key0)
+    desc_v0.set_from_addr_fmt(AF_P2WPKH)
 
-    desc_v0 = Descriptor(keys=[(xfp, derive_v0, xpub_v0)], addr_fmt=AF_P2WPKH)
-    desc_v1 = Descriptor(keys=[(xfp, derive_v1, xpub_v1)], addr_fmt=AF_P2TR)
+    key1 = Key.from_cc_data(xfp, derive_v1, xpub_v1)
+    desc_v1 = Descriptor(key=key1)
+    desc_v1.set_from_addr_fmt(AF_P2TR)
     # for importmulti
     imm_list = [
         {
-            'desc': desc_v0.serialize(internal=internal),
+            'desc': desc_v0.to_string(external, internal),
             'range': [0, 1000],
             'timestamp': 'now',
             'internal': internal,
             'keypool': True,
             'watchonly': True
         }
-        for internal in [False, True]
+        for external, internal in [(True, False), (False, True)]
     ]
     # for importdescriptors
     imd_list = desc_v0.bitcoin_core_serialize()
@@ -345,6 +347,8 @@ def generate_unchained_export(account_num=0):
 
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
+    from descriptor import Descriptor, Key
+    from desc_utils import multisig_descriptor_template
 
     chain = chains.current_chain()
     master_xfp = settings.get("xfp")
@@ -378,7 +382,10 @@ def generate_generic_export(account_num=0):
             if is_ms:
                 desc = multisig_descriptor_template(xp, dd, master_xfp_str, fmt)
             else:
-                desc = Descriptor(keys=[(master_xfp, dd, xp)], addr_fmt=fmt).serialize(int_ext=True)
+                key = Key.from_cc_data(master_xfp, dd, xp)
+                desc_obj = Descriptor(key=key)
+                desc_obj.set_from_addr_fmt(fmt)
+                desc = desc_obj.to_string()
 
             rv[name] = OrderedDict(name=atype,
                                    xfp=xfp,
@@ -495,6 +502,7 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
 
 async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True,
                                         fname_pattern="descriptor.txt"):
+    from descriptor import Descriptor, Key
     from glob import dis
 
     dis.fullscreen('Generating...')
@@ -515,24 +523,27 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
             raise ValueError(addr_type)
 
     derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
-                                    account=account_num, coin_type=chain.b44_cointype)
+                                                        account=account_num,
+                                                        coin_type=chain.b44_cointype)
     dis.progress_bar_show(0.2)
     with stash.SensitiveValues() as sv:
         dis.progress_bar_show(0.3)
         xpub = chain.serialize_public(sv.derive_path(derive))
 
     dis.progress_bar_show(0.7)
-    desc = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=addr_type)
+    key = Key.from_cc_data(xfp, derive, xpub)
+    desc = Descriptor(key=key)
+    desc.set_from_addr_fmt(addr_type)
     dis.progress_bar_show(0.8)
     if int_ext:
         #  with <0;1> notation
-        body = desc.serialize(int_ext=True)
+        body = desc.to_string()
     else:
         # external descriptor
         # internal descriptor
         body = "%s\n%s" % (
-            desc.serialize(internal=False),
-            desc.serialize(internal=True),
+            desc.to_string(internal=False),
+            desc.to_string(external=False),
         )
 
     dis.progress_bar_show(1)

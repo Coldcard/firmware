@@ -552,6 +552,12 @@ def get_secrets(sim_execfile):
     return doit
 
 @pytest.fixture
+def clear_miniscript(unit_test):
+    def doit():
+        unit_test('devtest/wipe_miniscript.py')
+    return doit
+
+@pytest.fixture
 def goto_home(cap_menu, need_keypress, pick_menu_item):
 
     def doit():

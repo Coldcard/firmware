@@ -4,18 +4,19 @@
 #
 from ustruct import unpack_from, unpack, pack
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length
+from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length, problem_file_line
 import stash, gc, history, sys, ngu, ckcc
 from uhashlib import sha256
 from uio import BytesIO
 from chains import taptweak, tapleaf_hash
 from sffile import SizerFile
 from sram2 import psbt_tmp256
-from multisig import MultisigWallet, disassemble_multisig_mn, disassemble_multisig_mn_tr
+from multisig import MultisigWallet, disassemble_multisig_mn
+from miniscript import MiniScriptWallet
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
-from serializations import ser_compact_size, deser_compact_size, hash160, hash256
-from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256
-from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
+from serializations import ser_compact_size, deser_compact_size, hash160
+from serializations import CTxIn, CTxInWitness, CTxOut, ser_string
+from serializations import ser_sig_der, ser_push_data, uint256_from_str
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY, SIGHASH_DEFAULT
 from serializations import ALL_SIGHASH_FLAGS
 from glob import settings
@@ -458,7 +459,7 @@ class psbtOutputProxy(psbtProxy):
             for k, v in self.unknown.items():
                 wr(k[0], v, k[1:])
 
-    def validate(self, out_idx, txo, my_xfp, active_multisig, parent):
+    def validate(self, out_idx, txo, my_xfp, active_multisig, active_miniscript, parent):
         # Do things make sense for this output?
     
         # NOTE: We might think it's a change output just because the PSBT
@@ -512,9 +513,25 @@ class psbtOutputProxy(psbtProxy):
             witness_script = self.get(self.witness_script) if self.witness_script else None
 
             if not redeem_script and not witness_script:
-                # Perhaps an omission, so let's not call fraud on it
-                # But definately required, else we don't know what script we're sending to.
-                raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
+                if active_miniscript:
+                    # TODO
+                    # this should be also acceptable for any other script type, we do not need
+                    # redeem/witness script
+                    # scriptPubkey can be compared against script that we build - if exact match change
+                    # if not not change - definitely not FatalPSBTIssue
+                    #
+                    # without this I cannot sign with liana as they do not provide witness/redeem
+                    try:
+                        active_miniscript.validate_script_pubkey(txo.scriptPubKey,
+                                                                 list(self.subpaths.values()))
+                        self.is_change = True
+                        return
+                    except Exception as e:
+                        raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
+                else:
+                    # Perhaps an omission, so let's not call fraud on it
+                    # But definately required, else we don't know what script we're sending to.
+                    raise FatalPSBTIssue("Missing redeem/witness script for output #%d" % out_idx)
 
             if not is_segwit and redeem_script and \
                     len(redeem_script) == 22 and \
@@ -525,37 +542,43 @@ class psbtOutputProxy(psbtProxy):
                 expect_pkh = hash160(expect_pubkey)
 
             else:
-                # Multisig change output, for wallet we're supposed to be a part of.
-                # - our key must be part of it
-                # - must look like input side redeem script (same fingerprints)
-                # - assert M/N structure of output to match any inputs we have signed in PSBT!
-                # - assert all provided pubkeys are in redeem script, not just ours
-                # - we get all of that by re-constructing the script from our wallet details
-
-                # it cannot be change if it doesn't precisely match our multisig setup
-                if not active_multisig:
-                    # - might be a p2sh output for another wallet that isn't us
+                if not active_multisig and not active_miniscript:
+                    # - might be output for another wallet that isn't us
                     # - not fraud, just an output with more details than we need.
-                    self.is_change = False
+                    self.is_change =False
                     return
-
-                if MultisigWallet.disable_checks:
-                    # Without validation, we have to assume all outputs
-                    # will be taken from us, and are not really change.
-                    self.is_change = False
-                    return
-
-                # redeem script must be exactly what we expect
-                # - pubkeys will be reconstructed from derived paths here
-                # - BIP-45, BIP-67 rules applied
-                # - p2sh-p2wsh needs witness script here, not redeem script value
-                # - if details provided in output section, must our match multisig wallet
-                try:
-                    active_multisig.validate_script(witness_script or redeem_script,
-                                                            subpaths=self.subpaths)
-                except BaseException as exc:
-                    raise FraudulentChangeOutput(out_idx, 
-                                "P2WSH or P2SH change output script: %s" % exc)
+                if active_multisig:
+                    # Multisig change output, for wallet we're supposed to be a part of.
+                    # - our key must be part of it
+                    # - must look like input side redeem script (same fingerprints)
+                    # - assert M/N structure of output to match any inputs we have signed in PSBT!
+                    # - assert all provided pubkeys are in redeem script, not just ours
+                    # - we get all of that by re-constructing the script from our wallet details
+                    if MultisigWallet.disable_checks:
+                        # Without validation, we have to assume all outputs
+                        # will be taken from us, and are not really change.
+                        self.is_change = False
+                        return
+                    # redeem script must be exactly what we expect
+                    # - pubkeys will be reconstructed from derived paths here
+                    # - BIP-45, BIP-67 rules applied
+                    # - p2sh-p2wsh needs witness script here, not redeem script value
+                    # - if details provided in output section, must our match multisig wallet
+                    try:
+                        active_multisig.validate_script(witness_script or redeem_script,
+                                                                subpaths=self.subpaths)
+                    except BaseException as exc:
+                        raise FraudulentChangeOutput(out_idx,
+                                    "P2WSH or P2SH change output script: %s" % exc)
+                else:
+                    # active miniscript
+                    try:
+                        active_miniscript.validate_script(witness_script or redeem_script,
+                                                          list(self.subpaths.values()),
+                                                          script_pubkey=txo.scriptPubKey)
+                    except BaseException as exc:
+                        raise FraudulentChangeOutput(out_idx,
+                                    "P2WSH or P2SH change output script: %s" % exc)
 
                 if is_segwit:
                     # p2wsh case
@@ -589,30 +612,17 @@ class psbtOutputProxy(psbtProxy):
             expect_pkh = hash160(expect_pubkey)
         elif addr_type == "p2tr":
             if expect_pubkey is None and len(self.taproot_subpaths) > 1:
-                # tapscript
-                if not active_multisig:
-                    # - might be a p2sh output for another wallet that isn't us
-                    # - not fraud, just an output with more details than we need.
-                    self.is_change = False
-                    return
-
-                if MultisigWallet.disable_checks:
-                    # Without validation, we have to assume all outputs
-                    # will be taken from us, and are not really change.
-                    self.is_change = False
-                    return
-
-                internal_key = active_multisig.validate_tr_internal_key(self.taproot_subpaths)
-                if internal_key != self.get(self.taproot_internal_key):
-                    raise FraudulentChangeOutput(out_idx, "Internal key from PSBT does not match registered key")
-                parsed_tree = self.parse_taproot_tree()
-                assert len(parsed_tree) == 1, "Taproot tree too complex"
-                depth, leaf_version, script = parsed_tree[0]
-                target = active_multisig.make_multisig_tr(self.taproot_subpaths)
-                if target != script:
-                    raise FraudulentChangeOutput(out_idx, "Taproot leaf script does not match")
-                h = tapleaf_hash(script, leaf_version)
-                expect_pkh = taptweak(internal_key, h)
+                if active_miniscript:
+                    try:
+                        active_miniscript.validate_script_pubkey(
+                            b"\x51\x20" + pkh,
+                            [v[1:] for v in self.taproot_subpaths.values() if v[0]]
+                        )
+                        self.is_change = True
+                        return
+                    except Exception as e:
+                        raise FraudulentChangeOutput(out_idx, "Change output scriptPubkey: %s" % e)
+                expect_pkh = None
             else:
                 expect_pkh = taptweak(expect_pubkey)
         else:
@@ -640,8 +650,8 @@ class psbtInputProxy(psbtProxy):
 
     blank_flds = ('unknown', 'part_sig', 'subpaths', 'taproot_subpaths', 'taproot_internal_key', 'utxo', 'witness_utxo',
                   'sighash', 'redeem_script', 'witness_script', 'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh',
-                  'num_our_keys', 'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig', 'taproot_key_sig',
-                  'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "tapscript")
+                  'num_our_keys', 'required_key', 'scriptSig', 'amount', 'scriptCode', 'taproot_key_sig',
+                  'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "use_keypath")
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -671,7 +681,6 @@ class psbtInputProxy(psbtProxy):
         #self.scriptCode = None      # only expected for segwit inputs
 
         # after signing, we'll have a signature to add to output PSBT
-        # self.added_sig = None
 
         # self.taproot_subpaths = {}                # will be empty if non-taproot
         # self.taproot_internal_key = None          # will be empty if non-taproot
@@ -738,8 +747,6 @@ class psbtInputProxy(psbtProxy):
             # - could also look at pubkey needed vs. sig provided
             # - could consider structure of MofN in p2sh cases
             self.fully_signed = len(self.part_sig) >= len(self.subpaths)
-        elif self.taproot_script_sigs:
-            self.fully_signed = len(self.taproot_script_sigs) >= len(self.taproot_subpaths)
         else:
             # No signatures at all yet for this input (typical non multisig)
             self.fully_signed = False
@@ -833,7 +840,7 @@ class psbtInputProxy(psbtProxy):
         # - which pubkey needed
         # - scriptSig value
         # - also validates redeem_script when present
-
+        merkle_root = None
         self.amount = utxo.nValue
 
         if (not self.subpaths and not self.taproot_subpaths) or self.fully_signed:
@@ -844,6 +851,7 @@ class psbtInputProxy(psbtProxy):
             return
 
         self.is_multisig = False
+        self.is_miniscript = False
         self.is_p2sh = False
         which_key = None
 
@@ -893,9 +901,13 @@ class psbtInputProxy(psbtProxy):
                 self.is_segwit = True
             else:
                 # multiple keys involved, we probably can't do the finalize step
-                self.is_multisig = True
+                M, N = disassemble_multisig_mn(redeem_script)
+                if M is None and N is None:
+                    self.is_miniscript = True
+                else:
+                    self.is_multisig = True
 
-            if self.witness_script and not self.is_segwit and self.is_multisig:
+            if self.witness_script and not self.is_segwit and (self.is_miniscript or self.is_multisig):
                 # bugfix
                 addr_type = 'p2sh-p2wsh'
                 self.is_segwit = True
@@ -928,7 +940,8 @@ class psbtInputProxy(psbtProxy):
                     if output_key == pubkey:
                         which_key = xonly_pubkey
             else:
-                # tapscript
+                # tapscript (is always miniscript wallet)
+                self.is_miniscript = True
                 for xonly_pubkey, lhs_path in self.taproot_subpaths.items():
                     lhs, path = lhs_path[0], lhs_path[1:]  # meh - should be a tuple
                     # ignore keys that does not have correct xfp specified in PSBT
@@ -938,55 +951,17 @@ class psbtInputProxy(psbtProxy):
                             output_key = taptweak(xonly_pubkey, merkle_root)
                             if output_key == pubkey:
                                 which_key = xonly_pubkey
-                                self.tapscript = False
-                                self.is_multisig = False
                                 # if we find a possibiity to spend keypath (internal_key) - we do keypath
                                 # even though script path is available
+                                self.use_keypath = True
                                 break
                         else:
-                            self.tapscript = True
-                            self.is_multisig = True  # can be multisig but we need to check the script
                             internal_key = self.get(self.taproot_internal_key)
                             output_pubkey = taptweak(internal_key, merkle_root)
                             if not which_key:
                                 which_key = set()
                             if pubkey == output_pubkey:
                                 which_key.add(xonly_pubkey)
-
-                if which_key:
-                    # for now we only support depth 0 - one script
-                    assert len(self.taproot_scripts) == 1, "Multiple tapleafs"
-                    script, leaf_ver = list(self.taproot_scripts.keys())[0]
-                    M, N = disassemble_multisig_mn_tr(script)
-                    xfp_paths = [val[1:] for val in self.taproot_subpaths.values() if val[0]]  # filter out internal
-                    xfp_paths.sort()
-
-                    if not psbt.active_multisig:
-                        # search for multisig wallet
-                        wal = MultisigWallet.find_match(M, N, xfp_paths)
-                        if not wal:
-                            raise FatalPSBTIssue('Unknown multisig wallet')
-
-                        psbt.active_multisig = wal
-                    else:
-                        # check consistent w/ already selected wallet
-                        psbt.active_multisig.assert_matching(M, N, xfp_paths)
-
-                    internal_key = psbt.active_multisig.validate_tr_internal_key(self.taproot_subpaths)
-                    if internal_key != self.get(self.taproot_internal_key):
-                        raise FraudulentChangeOutput(my_idx, "Internal key from PSBT does not match registered key")
-                    # now that we have active multisig, we can just build the script and check if equal
-                    # not sure if it is more expensive than what 'validate_script' does
-                    target = psbt.active_multisig.make_multisig_tr(self.taproot_subpaths)
-                    if target != script:
-                        raise FatalPSBTIssue('Input #%d: %s' % (my_idx, "Script does not match registered multisig descriptor"))
-                    # as we only allow one script (tree depth 0) - meaning our script is also merkle root (when hashed)
-                    # EXTREMELY IMPORTANT merkle root needs to be verified so that we are sure that we know all the
-                    # possible scripts in it - otherwise we can get rugged by unknown scriptpath - do not trust PSBT with merkle root
-                    if tapleaf_hash(script, leaf_ver) != merkle_root:
-                        raise FatalPSBTIssue('Input #%d: %s' % (my_idx, "Merkle root does not match"))
-                    self.required_key = which_key
-                    return
 
         elif addr_type == 'p2pk':
             # input is single public key (less common)
@@ -1010,7 +985,6 @@ class psbtInputProxy(psbtProxy):
             # - check it's the right M/N to match redeem script
 
             #print("redeem: %s" % b2a_hex(redeem_script))
-            M, N = disassemble_multisig_mn(redeem_script)
             xfp_paths = list(self.subpaths.values())
             xfp_paths.sort()
 
@@ -1031,6 +1005,27 @@ class psbtInputProxy(psbtProxy):
             except BaseException as exc:
                 sys.print_exception(exc)
                 raise FatalPSBTIssue('Input #%d: %s' % (my_idx, exc))
+
+        if self.is_miniscript and which_key:
+            try:
+                xfp_paths = [item[1:] for item in self.taproot_subpaths.values() if item[0]]
+            except AttributeError:
+                xfp_paths = list(self.subpaths.values())
+
+            xfp_paths.sort()
+            if not psbt.active_miniscript:
+                wal = MiniScriptWallet.find_match(xfp_paths)
+                if not wal:
+                    raise FatalPSBTIssue('Unknown miniscript wallet')
+                psbt.active_miniscript = wal
+
+            assert psbt.active_miniscript
+            try:
+                # contains PSBT merkle root verification
+                psbt.active_miniscript.validate_script_pubkey(utxo.scriptPubKey,
+                                                              xfp_paths, merkle_root)
+            except BaseException as e:
+                raise FatalPSBTIssue('Input #%d: %s\n\n' % (my_idx, e) + problem_file_line(e))
 
         if not which_key and DEBUG:
             print("no key: input #%d: type=%s segwit=%d a_or_pk=%s scriptPubKey=%s" % (
@@ -1123,10 +1118,6 @@ class psbtInputProxy(psbtProxy):
             for pk in self.part_sig:
                 wr(PSBT_IN_PARTIAL_SIG, self.part_sig[pk], pk)
 
-        if self.added_sig:
-            pubkey, sig = self.added_sig
-            wr(PSBT_IN_PARTIAL_SIG, sig, pubkey)
-
         if self.taproot_key_sig:
             wr(PSBT_IN_TAP_KEY_SIG, self.taproot_key_sig)
 
@@ -1215,6 +1206,7 @@ class psbtObject(psbtProxy):
         # this points to a MS wallet, during operation
         # - we are only supporting a single multisig wallet during signing
         self.active_multisig = None
+        self.active_miniscript = None
 
         self.warnings = []
 
@@ -1487,7 +1479,7 @@ class psbtObject(psbtProxy):
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
-            output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            output.validate(idx, txo, self.my_xfp, self.active_multisig, self.active_miniscript, self)
             if output.is_change:
                 self.num_change_outputs += 1
 
@@ -1929,43 +1921,56 @@ class psbtObject(psbtProxy):
                 txi.scriptSig = inp.scriptSig
 
                 schnorrsig = False
-                taproot_script = None
-                leaf_ver = None
+                tr_sh = []
                 inp.handle_none_sighash()
-                if inp.is_multisig or inp.tapscript:
+                to_sign = []
+                if isinstance(inp.required_key, set) and (inp.is_multisig or inp.is_miniscript):
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
                         # get node required
-                        if inp.tapscript:  # this can be set to False even if we haev script ready, but can send keypath
+                        if inp.taproot_subpaths:  # this can be set to False even if we haev script ready, but can send keypath
                             # tapscript
                             schnorrsig = True
-                            skp = keypath_to_str(inp.taproot_subpaths[which_key][1:])
+                            xfp_paths = [item[1:] for item in inp.taproot_subpaths.values() if item[0]]
+                            int_path = inp.taproot_subpaths[which_key][1:]
+                            skp = keypath_to_str(int_path)
                         else:
-                            skp = keypath_to_str(inp.subpaths[which_key])
+                            xfp_paths = list(inp.subpaths.values())
+                            int_path = inp.subpaths[which_key]
+                            skp = keypath_to_str(int_path)
 
                         node = sv.derive_path(skp, register=False)
 
                         # expensive test, but works... and important
                         pu = node.pubkey()
                         if pu == which_key:
-                            break
+                            to_sign.append(node)
                         if len(which_key) == 32 and pu[1:] == which_key:
                             # get the script
-                            # only one script supported and already verified
+                            inner_tr_sh = []
+                            assert self.active_miniscript
+                            der_d = self.active_miniscript.derive_desc(xfp_paths)
                             for (script, lv), cb in inp.taproot_scripts.items():
-                                if which_key in script:
-                                    taproot_script = script
-                                    leaf_ver = lv
-                                    assert leaf_ver == TAPROOT_LEAF_TAPSCRIPT, "tapleaf ver"
-                                    break
-                            break
-                    else:
-                        raise AssertionError("Input #%d needs pubkey I dont have" % in_idx)
+                                target_leaf = None
+                                # always exact check/match the script, if we would generate such
+                                for leaf in der_d.tapscript.iter_leaves(der_d.tapscript.tree):
+                                    sc = leaf.compile()
+                                    if sc == script:
+                                        target_leaf = leaf
+                                        break
+                                else:
+                                    continue
+
+                                if which_key in [k.key_bytes() for k in target_leaf.keys]:
+                                    inner_tr_sh.append((script, lv))
+
+                            to_sign.append(node)
+                            tr_sh.append(inner_tr_sh)
 
                 else:
                     # single pubkey <=> single key
                     which_key = inp.required_key
-                    assert not inp.added_sig, "already done??"
+                    assert not inp.part_sig, "already done??"
                     assert not inp.taproot_key_sig, "already done taproot??"
 
                     if inp.subpaths and inp.subpaths.get(which_key) and inp.subpaths[which_key][0] == self.my_xfp:
@@ -1989,6 +1994,7 @@ class psbtObject(psbtProxy):
                         continue
 
                     assert pu == which_key, "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+                    to_sign.append(node)
 
                 if sv.deltamode:
                     # Current user is actually a thug with a slightly wrong PIN, so we
@@ -2003,89 +2009,100 @@ class psbtObject(psbtProxy):
                         # Hash the inputs and such in totally new ways, based on BIP-143
                         if not inp.taproot_subpaths:
                             digest = self.make_txn_segwit_sighash(in_idx, txi, inp.amount, inp.scriptCode, inp.sighash)
-                        elif taproot_script:
-                            digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash, scriptpath=True,
-                                                                   script=taproot_script, leaf_ver=leaf_ver)
+                        elif tr_sh:
+                            pass  # later (
                         else:
                             digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash)
 
                 # The precious private key we need
-                pk = node.privkey()
+                if not inp.taproot_script_sigs:
+                    inp.taproot_script_sigs = {}
 
-                #print("privkey %s" % b2a_hex(pk).decode('ascii'))
-                #print(" pubkey %s" % b2a_hex(which_key).decode('ascii'))
-                #print(" digest %s" % b2a_hex(digest).decode('ascii'))
+                if not inp.part_sig:
+                    inp.part_sig = {}
 
-                # Do the ACTUAL signature ... finally!!!
-                if schnorrsig:
-                    if taproot_script:
-                        # in tapscript keys are not tweaked, just sign with the key in the script
-                        sig = ngu.secp256k1.sign_schnorr(pk, digest, ngu.random.bytes(32))
+                for i, node in enumerate(to_sign):
+                    sk = node.privkey()
+                    kp = ngu.secp256k1.keypair(sk)
+                    pk = node.pubkey()
+                    xonly_pk = kp.xonly_pubkey().to_bytes()
+
+                    #print("privkey %s" % b2a_hex(sk).decode('ascii'))
+                    #print(" pubkey %s" % b2a_hex(pk).decode('ascii'))
+                    #print(" digest %s" % b2a_hex(digest).decode('ascii'))
+
+                    # Do the ACTUAL signature ... finally!!!
+                    if schnorrsig:
+                        if tr_sh:
+                            # in tapscript keys are not tweaked, just sign with the key in the script
+                            for taproot_script, leaf_ver in tr_sh[i]:
+                                _key = (xonly_pk, tapleaf_hash(taproot_script, leaf_ver))
+                                if _key in inp.taproot_script_sigs:
+                                    continue
+
+                                digest = self.make_txn_taproot_sighash(in_idx, hash_type=inp.sighash,
+                                                                       scriptpath=True,
+                                                                       script=taproot_script, leaf_ver=leaf_ver)
+                                sig = ngu.secp256k1.sign_schnorr(sk, digest, ngu.random.bytes(32))
+                                if inp.sighash != SIGHASH_DEFAULT:
+                                    sig += bytes([inp.sighash])
+                                # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
+                                # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
+                                inp.taproot_script_sigs[_key] = sig
+                        else:
+                            # BIP 341 states: "If the spending conditions do not require a script path,
+                            # the output key should commit to an unspendable script path instead of having no script path.
+                            # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
+                            internal_key = xonly_pk
+                            tweak = internal_key
+                            if inp.taproot_merkle_root is not None:
+                                # we have a script path but internal key is spendable by us
+                                # merkle root needs to be added to tweak with internal key
+                                # merkle root was already verified against registered script in determine_my_signing_key
+                                tweak += self.get(inp.taproot_merkle_root)
+                            tweak = ngu.secp256k1.tagged_sha256(b"TapTweak", tweak)
+                            kpt = kp.xonly_tweak_add(tweak)
+                            sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
+                            if inp.sighash != SIGHASH_DEFAULT:
+                                sig += bytes([inp.sighash])
+                            # in the common case of SIGHASH_DEFAULT, encoded as '0x00', a space optimization MUST be made by
+                            # 'omitting' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
+                            inp.taproot_key_sig = sig
                     else:
-                        # BIP 341 states: "If the spending conditions do not require a script path,
-                        # the output key should commit to an unspendable script path instead of having no script path.
-                        # This can be achieved by computing the output key point as Q = P + int(hashTapTweak(bytes(P)))G."
-                        kp = ngu.secp256k1.keypair(pk)
-                        internal_key = kp.xonly_pubkey().to_bytes()
-                        tweak = internal_key
-                        if inp.taproot_merkle_root is not None:
-                            # we have a script path but internal key is spendable by us
-                            # merkle root needs to be added to tweak with internal key
-                            # merkle root was already verified against registered script in determine_my_signing_key
-                            tweak += self.get(inp.taproot_merkle_root)
-                        tweak = ngu.secp256k1.tagged_sha256(b"TapTweak", tweak)
-                        kpt = kp.xonly_tweak_add(tweak)
-                        sig = ngu.secp256k1.sign_schnorr(kpt, digest, ngu.random.bytes(32))
-                else:
-                    # We need to grind sometimes to get a positive R
-                    # value that will encode (after DER) into a shorter string.
-                    # - saves on miner's fee (which might be expected/required)
-                    # - blends in with Bitcoin Core signatures which do this
-                    for retry in range(10):
-                        result = ngu.secp256k1.sign(pk, digest, retry).to_bytes()
+                        # We need to grind sometimes to get a positive R
+                        # value that will encode (after DER) into a shorter string.
+                        # - saves on miner's fee (which might be expected/required)
+                        # - blends in with Bitcoin Core signatures which do this
+                        for retry in range(10):
+                            result = ngu.secp256k1.sign(sk, digest, retry).to_bytes()
 
-                        # convert signature to DER format
-                        #assert len(result) == 65
-                        r = result[1:33]
-                        s = result[33:65]
-                        sig = ser_sig_der(r, s, inp.sighash)
+                            # convert signature to DER format
+                            #assert len(result) == 65
+                            r = result[1:33]
+                            s = result[33:65]
+                            sig = ser_sig_der(r, s, inp.sighash)
 
-                        if len(sig) <= 71:
-                            # odds of needing retry: just under 50% I think
-                            break
+                            if len(sig) <= 71:
+                                # odds of needing retry: just under 50% I think
+                                break
 
-                    # memory cleanup
-                    del result, r, s
+                        # add to psbt
+                        inp.part_sig[pk] = sig
+                        # memory cleanup
+                        del result, r, s
 
-                # private key no longer required
-                stash.blank_object(pk)
-                stash.blank_object(node)
-                del pk, node, pu, skp
+                    # private key no longer required
+                    stash.blank_object(sk)
+                    stash.blank_object(node)
+                    del sk, node
 
-                if schnorrsig:
-                    if inp.sighash != SIGHASH_DEFAULT:
-                        sig += bytes([inp.sighash])
-                    # in the common case of SIGHASH_DEFAULT, encoded as ''0x00'', a space optimization MUST be made by
-                    # ''omitting'' the sighash byte, resulting in a 64-byte signature with SIGHASH_DEFAULT assumed
-                    if taproot_script:
-                        if not inp.taproot_script_sigs:
-                            inp.taproot_script_sigs = {}
-                        # in current implementation only one leaf script is allowed and that is a also a merkle root
-                        # save cpu cycles by not hashing cript again
-                        # merkle root was already verified
-                        inp.taproot_script_sigs[(which_key, self.get(inp.taproot_merkle_root))] = sig
-                    else:
-                        inp.taproot_key_sig = sig
-                else:
-                    inp.added_sig = (which_key, sig)
+                    # Could remove sighash from input object - it is not required, takes space,
+                    # and is already in signature or is implicit by not being part of the
+                    # signature (taproot SIGHASH_DEFAULT)
+                    ## inp.sighash = None
 
-                # Could remove sighash from input object - it is not required, takes space,
-                # and is already in signature or is implicit by not being part of the
-                # signature (taproot SIGHASH_DEFAULT)
-                ## inp.sighash = None
-
-                success.add(in_idx)
-                gc.collect()
+                    success.add(in_idx)
+                    gc.collect()
 
         # done.
         dis.progress_bar_show(1)
@@ -2348,10 +2365,11 @@ class psbtObject(psbtProxy):
 
         # plus we added some signatures
         for inp in self.inputs:
-            if inp.is_multisig:
-                # but we can't combine/finalize multisig stuff, so will never't be 'final'
+            if inp.is_multisig or (inp.is_miniscript and not inp.use_keypath):
+                # but we can't combine/finalize multisig/miniscript stuff, so will never be 'final'
+                # we could tho
                 return False
-            if inp.added_sig:
+            if inp.part_sig and len(inp.part_sig) == len(inp.subpaths):
                 signed += 1
             if inp.taproot_key_sig:
                 signed += 1
@@ -2396,10 +2414,11 @@ class psbtObject(psbtProxy):
 
             else:
                 # insert the new signature(s), assuming fully signed txn.
-                assert inp.added_sig, 'No signature on input #%d'%in_idx
+                assert inp.part_sig, 'No signature on input #%d' % in_idx
+                assert len(inp.part_sig) < 2, 'More signatures on input #%d' % in_idx
                 assert not inp.is_multisig, 'Multisig PSBT combine not supported'
 
-                pubkey, der_sig = inp.added_sig
+                pubkey, der_sig = list(inp.part_sig.items())[0]
 
                 s = b''
                 s += ser_push_data(der_sig)
@@ -2426,7 +2445,7 @@ class psbtObject(psbtProxy):
             for in_idx, wit in self.input_witness_iter():
                 inp = self.inputs[in_idx]
 
-                if inp.is_segwit and (inp.added_sig or inp.taproot_key_sig):
+                if inp.is_segwit and (inp.part_sig or inp.taproot_key_sig):
                     # put in new sig: wit is a CTxInWitness
                     assert not wit.scriptWitness.stack, 'replacing non-empty?'
                     assert not inp.is_multisig, 'Multisig PSBT combine not supported'
@@ -2438,7 +2457,7 @@ class psbtObject(psbtProxy):
                         wit.scriptWitness.stack = [inp.taproot_key_sig]
                     else:
                         # segwit v0
-                        pubkey, der_sig = inp.added_sig
+                        pubkey, der_sig = list(inp.part_sig.items())[0]
                         assert pubkey[0] in {0x02, 0x03} and len(pubkey) == 33, "bad v0 pubkey"
                         wit.scriptWitness.stack = [der_sig, pubkey]
 

@@ -9,6 +9,7 @@ from glob import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu, import_multisig_nfc
+from miniscript import make_miniscript_menu
 from seed import make_ephemeral_seed_menu
 from address_explorer import address_explore
 from users import make_users_menu
@@ -127,6 +128,7 @@ SettingsMenu = [
     MenuItem('Login Settings', menu=LoginPrefsMenu),
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
     MenuItem('Multisig Wallets', menu=make_multisig_menu),
+    MenuItem('Miniscript', menu=make_miniscript_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),

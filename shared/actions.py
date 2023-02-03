@@ -769,7 +769,7 @@ async def start_login_sequence():
     #
     from ux import idle_logout
     from glob import dis
-    import callgate
+    import callgate, version
 
     if version.mk_num < 4:
         # Block very obsolete versions.

@@ -175,7 +175,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         validate_address(expected_addr, sk)
 
         # validate that stub is correct
-        [start, end] = m[_id].split('-')
+        [start, end] = m[_id][1:6], m[_id][7:]
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
@@ -317,7 +317,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
         validate_address(expected_addr, sk)
 
         # validate that stub is correct
-        [start, end] = m[_id].split('-')
+        [start, end] = m[_id][1:6], m[_id][7:]
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 

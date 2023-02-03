@@ -683,7 +683,8 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
             assert expect in story
             nfc_write_text(data.hex() if isinstance(data, bytes) else data)
             time.sleep(0.1)
-            # TODO pytest.skip here as length of data is more than 250
+            need_keypress("y")  # exit animation
+            time.sleep(0.2)
     else:
         suffix = ".txt" if encryption_type == "3" else ".dat"
         time.sleep(0.1)
@@ -860,7 +861,8 @@ def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, go
         time.sleep(0.1)
         nfc_write_text(desc_template.hex() if isinstance(desc_template, bytes) else desc_template)
         time.sleep(0.1)
-        # TODO pytest.skip here as length of data is more than 250
+        need_keypress("y")  # exit animation
+        time.sleep(0.2)
     else:
         suffix = ".txt" if encryption_type == "3" else ".dat"
         time.sleep(0.1)
@@ -1033,7 +1035,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     assert title == "FAILURE"
     assert "BSMS coordinator round2 failed" in story
     if failure == "slip":
-        failure_msg = "Expected tpub"
+        failure_msg = "tpub required"
     elif failure == "wrong_sig":
         failure_msg = "Recovered key from signature does not equal key provided. Wrong signature?"
     else:
@@ -1135,7 +1137,7 @@ def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_m
         failure_msg = "Incompatible BSMS version. Need BSMS 1.0 got BSMS 2.0"
     elif failure == "sortedmulti":
         kws = {failure: False}
-        failure_msg = "Unsupported descriptor. Supported: sh(, sh(wsh(, wsh(. All have to be sortedmulti."
+        failure_msg = "Unsupported descriptor. Supported: sh(, sh(wsh(, wsh(. MUST be sortedmulti."
     elif failure == "has_ours":
         kws = {failure: False}
         failure_msg = "My key 0F056943 missing in descriptor."
@@ -1144,7 +1146,7 @@ def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_m
         failure_msg = "Multiple 0F056943 keys in descriptor (2)"
     elif failure == "wrong_chain":
         kws = {failure: True}
-        failure_msg = "Expected tpub"
+        failure_msg = "tpub required"
     elif failure == "wrong_checksum":
         kws = {failure: True}
         failure_msg = "Wrong checksum"

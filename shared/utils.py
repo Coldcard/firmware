@@ -8,6 +8,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR, MAX_PATH_DEPTH
+from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
@@ -237,7 +238,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
             # - star or star' can be last only (checked by regex above)
             assert p == '*' or p == "*'", "bad wildcard"
             continue
-        if p[-1] == "'":
+        if p[-1] in "'h":
             p = p[0:-1]
         try:
             ip = int(p, 10)
@@ -263,7 +264,7 @@ def str_to_keypath(xfp, path):
         if i == 'm': continue
         if not i: continue      # trailing or duplicated slashes
 
-        if i[-1] == "'":
+        if i[-1] in "'h":
             here = int(i[:-1]) | 0x80000000
         else:
             here = int(i)
@@ -544,7 +545,90 @@ def addr_fmt_label(addr_fmt):
         AF_CLASSIC: "Classic P2PKH",
         AF_P2WPKH_P2SH: "P2SH-Segwit",
         AF_P2WPKH: "Segwit P2WPKH",
-        AF_P2TR: "Taproot P2TR"
+        AF_P2TR: "Taproot P2TR",
+        AF_P2WSH: "Segwit P2WSH",
+        AF_P2WSH_P2SH: "P2SH-P2WSH"
     }[addr_fmt]
+
+def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
+    # Shared code: consider an xpub for inclusion into a wallet
+    # return T if it's our own key and parsed details in form (xfp, deriv, xpub)
+    # - deriv can be None, and in very limited cases can recover derivation path
+    # - could enforce all same depth, and/or all depth >= 1, but
+    #   seems like more restrictive than needed, so "m" is allowed
+    import stash
+    from public_constants import AF_P2SH
+    try:
+        # Note: addr fmt detected here via SLIP-132 isn't useful
+        node, chain, _ = parse_extended_key(xpub)
+    except:
+        raise AssertionError('unable to parse xpub')
+
+    try:
+        assert node.privkey() == None       # 'no privkeys plz'
+    except ValueError:
+        pass
+
+    if expect_chain == "XRT":
+        # HACK but there is no difference extended_keys - just bech32 hrp
+        assert chain.ctype == "XTN"
+    else:
+        assert chain.ctype == expect_chain      # 'wrong chain'
+
+    depth = node.depth()
+
+    if depth == 1:
+        if not xfp:
+            # allow a shortcut: zero/omit xfp => use observed parent value
+            xfp = swab32(node.parent_fp())
+        else:
+            # generally cannot check fingerprint values, but if we can, do so.
+            if not disable_checks:
+                assert swab32(node.parent_fp()) == xfp, 'xfp depth=1 wrong'
+
+    assert xfp, 'need fingerprint'          # happens if bare xpub given
+
+    # In most cases, we cannot verify the derivation path because it's hardened
+    # and we know none of the private keys involved.
+    if depth == 1:
+        # but derivation is implied at depth==1
+        kn, is_hard = node.child_number()
+        if is_hard: kn |= 0x80000000
+        guess = keypath_to_str([kn], skip=0)
+
+        if deriv:
+            if not disable_checks:
+                assert guess == deriv, '%s != %s' % (guess, deriv)
+        else:
+            deriv = guess           # reachable? doubt it
+
+    assert deriv, 'empty deriv'         # or force to be 'm'?
+    assert deriv[0] == 'm'
+
+    # path length of derivation given needs to match xpub's depth
+    if not disable_checks:
+        p_len = deriv.count('/')
+        assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
+                                    p_len, depth, xfp2str(xfp))
+
+        if xfp == my_xfp:
+            # its supposed to be my key, so I should be able to generate pubkey
+            # - might indicate collision on xfp value between co-signers,
+            #   and that's not supported
+            with stash.SensitiveValues() as sv:
+                chk_node = sv.derive_path(deriv)
+                assert node.pubkey() == chk_node.pubkey(), \
+                            "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
+
+    # serialize xpub w/ BIP-32 standard now.
+    # - this has effect of stripping SLIP-132 confusion away
+    return xfp == my_xfp, (xfp, deriv, chain.serialize_public(node, AF_P2SH))
+
+def truncate_address(addr):
+    # Truncates address to width of screen, replacing middle chars
+    # - 16 chars screen width
+    # - but 2 lost at left (menu arrow, corner arrow)
+    # - want to show not truncated on right side
+    return addr[0:5] + '⋯' + addr[-6:]
 
 # EOF

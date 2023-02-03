@@ -1391,17 +1391,15 @@ def usb_show_address(addr_format, subpath):
     return active_request.address
 
 
-class NewEnrollRequest(UserAuthorizedAction):
-    def __init__(self, ms, auto_export=False, bsms_index=None):
+class NewMiniscriptEnrollRequest(UserAuthorizedAction):
+    def __init__(self, msc, auto_export=False, bsms_index=None):
         super().__init__()
-        self.wallet = ms
+        self.wallet = msc
         self.auto_export = auto_export
         self.bsms_index = bsms_index
 
-        # self.result ... will be re-serialized xpub
-
     async def interact(self):
-        from multisig import MultisigOutOfSpace
+        from wallet_base import WalletOutOfSpace
 
         ms = self.wallet
         try:
@@ -1413,9 +1411,9 @@ class NewEnrollRequest(UserAuthorizedAction):
                     from bsms import BSMSSettings
                     BSMSSettings.signer_delete(self.bsms_index)
                 if self.auto_export:
-                    # save cosigner details now too 
-                    await ms.export_wallet_file('created on', 
-    "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
+                    # save cosigner details now too
+                    await ms.export_wallet_file('created on',
+                                                "\n\nImport that file onto the other Coldcards involved with this multisig wallet.")
                     await ms.export_electrum()
 
             else:
@@ -1423,13 +1421,13 @@ class NewEnrollRequest(UserAuthorizedAction):
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 2)
 
-        except MultisigOutOfSpace:
+        except WalletOutOfSpace:
             return await self.failure('No space left')
         except BaseException as exc:
             self.failed = "Exception"
             sys.print_exception(exc)
         finally:
-            UserAuthorizedAction.cleanup()      # because no results to store
+            UserAuthorizedAction.cleanup()  # because no results to store
             if self.bsms_index is not None:
                 # bsms special case, get him back to multisig menu
                 from ux import the_ux, restore_menu
@@ -1445,9 +1443,10 @@ class NewEnrollRequest(UserAuthorizedAction):
             else:
                 self.pop_menu()
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None):
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None, miniscript=False):
     # Offer to import (enroll) a new multisig wallet. Allow reject by user.
     from multisig import MultisigWallet
+    from miniscript import MiniScriptWallet
 
     UserAuthorizedAction.cleanup()
 
@@ -1457,9 +1456,12 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
 
     # this call will raise on parsing errors, so let them rise up
     # and be shown on screen/over usb
-    ms = MultisigWallet.from_file(config, name=name)
+    if miniscript:
+        msc = MiniScriptWallet.from_file(config, name=name)
+    else:
+        msc = MultisigWallet.from_file(config, name=name)
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms, bsms_index=bsms_index)
+    UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(msc, bsms_index=bsms_index)
 
     if ux_reset:
         # for USB case, and import from PSBT

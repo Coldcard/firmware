@@ -16,7 +16,8 @@ from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_numbers, ux_input_text
 from ux import the_ux
-from descriptor import MultisigDescriptor, append_checksum
+from descriptor import Descriptor, Key, append_checksum
+from miniscript import Sortedmulti, Number
 
 
 BSMS_VERSION = "BSMS 1.0"
@@ -500,8 +501,6 @@ async def bsms_coordinator_round2(menu, label, item):
     bsms_settings_index = item.arg
     chain = chains.current_chain()
 
-    # or xpub or tpub as we use descriptors (no SLIP-132 allowed)
-    ext_key_prefix = "%spub" % chain.slip132[AF_CLASSIC].hint
     force_vdisk = False
 
     # this can be RAM intensive (max 15 F mapped to keys) 
@@ -675,7 +674,6 @@ async def bsms_coordinator_round2(menu, label, item):
         return
 
     keys = []
-    nodes = []
     dis.fullscreen("Validating...")
     for i, data in enumerate(r1_data):
         # divided in the loop with number of in-loop occurences of 'dis.progress_bar_show' (currently 5)
@@ -686,38 +684,34 @@ async def bsms_coordinator_round2(menu, label, item):
         )
         version, tok, key_exp, description, sig = data.strip().split("\n")
         assert tok == token, "Token mismatch saved %s, received from signer %s" % (token, tok)
-        koi, ext_key = MultisigDescriptor.parse_key_orig_info(key_exp)
-        dis.progress_bar_show(i_div_N / 5)
-        xfp_str, derivation = koi[:8], "m" + koi[8:]
-        assert ext_key.startswith(ext_key_prefix), "Expected %s, got %s" % (
-            ext_key_prefix, ext_key[:4]
-        )
-        node = ngu.hdnode.HDNode()
-        node.deserialize(ext_key)
+        key = Key.from_string(key_exp)
         dis.progress_bar_show(i_div_N / 4)
         msg = signer_data_round1(token, key_exp, description)
         digest = chain.hash_message(msg.encode())
         dis.progress_bar_show(i_div_N / 3)
         _, recovered_pk = chains.verify_recover_pubkey(a2b_base64(sig), digest)
-        assert node.pubkey() == recovered_pk, "Recovered key from signature does not equal key provided. Wrong signature?"
+        assert key.node.pubkey() == recovered_pk, "Recovered key from signature does not equal key provided. Wrong signature?"
         dis.progress_bar_show(i_div_N / 2)
-        keys.append((xfp_str, derivation, ext_key))
-        nodes.append(node)
+        keys.append(key)
         dis.progress_bar_show(i_div_N / 1)
 
     dis.fullscreen("Generating...")
-    desc_obj = MultisigDescriptor(M=M, N=N, keys=keys, addr_fmt=addr_fmt)
-    desc = desc_obj._serialize(int_ext=True)
+    miniscript = Sortedmulti(Number(M), *keys)
+    desc_obj = Descriptor(miniscript=miniscript)
+    desc_obj.set_from_addr_fmt(addr_fmt)
+    desc = desc_obj.to_string(checksum=False)
     desc = desc.replace("<0;1>/*", "**")
     if not is_encrypted:
         # append checksum for unencrypted BSMS
         desc = append_checksum(desc)
-    for i, node in enumerate(nodes):
-        node.derive(0, False)  # external is always first our coordinating "0/*,1/*"
+    for i, ko in enumerate(keys):
+        ko.node.derive(0, False)  # external is always first our coordinating "0/*,1/*"
         dis.progress_bar_show(i / N)
 
-    script = make_redeem_script(M, nodes, 0)  # first address
+    # TODO this can be done with .script_pubkey
+    script = make_redeem_script(M, [k.node for k in keys], 0)  # first address
     addr = chain.p2sh_address(addr_fmt, script)
+    # ==
     r2_data = coordinator_data_round2(desc, addr)
     dis.progress_bar_show(1)
 
@@ -1027,8 +1021,7 @@ async def bsms_signer_round2(menu, label, item):
 
     # if checksum is provided we better verify it
     # remove checksum as we need to replace /**
-    desc_template, csum = MultisigDescriptor.checksum_check(desc_template)
-
+    desc_template, csum = Descriptor.checksum_check(desc_template)
     desc = desc_template.replace("/**", "/0/*")
 
     dis.progress_bar_show(0.1)
@@ -1036,8 +1029,8 @@ async def bsms_signer_round2(menu, label, item):
 
     ms_name = "bsms_" + desc[-4:]  
 
-    # will raise ValueError if not "sortedmulti" descriptor script type
-    desc_obj = MultisigDescriptor.parse(desc)
+    desc_obj = Descriptor.from_string(desc)
+    desc_obj.legacy_ms_compat()
 
     dis.progress_bar_show(0.2)
 
@@ -1046,15 +1039,11 @@ async def bsms_signer_round2(menu, label, item):
     nodes = []
     progress_counter = 0.2  # last displayed progress
     # (desired value after loop - last displayed progress) / N
-    progress_chunk = (0.5 - progress_counter) / desc_obj.N
-    for xfp, deriv_path, ext_key in desc_obj.keys:
-        assert ext_key.startswith(ext_key_prefix), \
-                        "Expected %s, got %s" % (ext_key_prefix, ext_key[:4])
-        node = ngu.hdnode.HDNode()
-        node.deserialize(ext_key)
-        if xfp == my_xfp:
-            my_keys.append((deriv_path, ext_key))
-        nodes.append(node)
+    progress_chunk = (0.5 - progress_counter) / len(desc_obj.miniscript.keys)
+    for key in desc_obj.keys:
+        if key.origin.cc_fp == my_xfp:
+            my_keys.append(key)
+        nodes.append(key.node)
         progress_counter += progress_chunk
         dis.progress_bar_show(progress_counter)
 
@@ -1062,24 +1051,24 @@ async def bsms_signer_round2(menu, label, item):
     assert num_my_keys <= 1, "Multiple %s keys in descriptor (%d)" % (xfp2str(my_xfp), num_my_keys)
     assert num_my_keys == 1, "My key %s missing in descriptor." % xfp2str(my_xfp)
 
-    deriv_path, desc_ext_key = my_keys[0]
     with stash.SensitiveValues() as sv:
-        node = sv.derive_path(deriv_path)
+        node = sv.derive_path(my_keys[0].origin.str_derivation())
         ext_key = chain.serialize_public(node)
-        assert ext_key == desc_ext_key, "My key %s missing in descriptor." % ext_key
+        assert ext_key == my_keys[0].extended_public_key(), "My key %s missing in descriptor." % ext_key
 
     dis.progress_bar_show(0.55)
 
     # check address is correct
     progress_counter = 0.55  # last displayed progress
     # (desired value after loop - last displayed progress) / N
-    progress_chunk = (0.9 - progress_counter) / desc_obj.N
+    M, N = desc_obj.miniscript.m_n()
+    progress_chunk = (0.9 - progress_counter) / N
     for node in nodes:
         node.derive(0, False)  # external is always first in our allowed path restrictions
         progress_counter += progress_chunk
         dis.progress_bar_show(progress_counter)
 
-    script = make_redeem_script(desc_obj.M, nodes, 0)  # first address
+    script = make_redeem_script(M, nodes, 0)  # first address
     dis.progress_bar_show(0.95)
     calc_addr = chain.p2sh_address(desc_obj.addr_fmt, script)
 
