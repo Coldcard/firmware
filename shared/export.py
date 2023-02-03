@@ -297,8 +297,8 @@ def generate_unchained_export(acct_num=0):
     chain = chains.current_chain()
     todo = [
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
-        ("m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        ("m/45'", 'p2sh', AF_P2SH),  # iff acct_num == 0
+        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        ( "m/45'", 'p2sh', AF_P2SH),  # iff acct_num == 0
     ]
 
     xfp = xfp2str(settings.get('xfp', 0))
@@ -435,7 +435,7 @@ async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
         if ch == '3':
             await NFC.share_json(ujson.dumps(body))
             return
-        elif ch == "2":
+        elif ch == '2':
             force_vdisk = True
         elif ch == '1':
             force_vdisk = False
