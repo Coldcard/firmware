@@ -370,11 +370,12 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
                     ok = await ux_confirm(story)
                     if not ok:
                         continue
+
             if judge_them:
                 bad_dist = any((v / count) > 0.30 for _, v in counter.items())
                 if bad_dist:
                     bad_dist_msg = ("Distribution of dice rolls is not random. "
-                                    "Some number/s occurred more than 30% of all attempts.")
+                                    "Some numbers occurred more than 30% of the time.")
                     if enforce:
                         await ux_show_story(bad_dist_msg)
                         return 0, seed  # exit
