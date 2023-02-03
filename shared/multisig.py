@@ -3,19 +3,21 @@
 # multisig.py - support code for multisig signing and p2sh in general.
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
-from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str
-from utils import str_to_keypath, problem_file_line, export_prompt_builder, parse_extended_key
+from ubinascii import hexlify as b2a_hex
+from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, truncate_address
+from utils import str_to_keypath, problem_file_line, export_prompt_builder, check_xpub
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
-from descriptor import MultisigDescriptor, multisig_descriptor_template
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
-from public_constants import MAX_TR_SIGNERS, AF_P2TR
+from descriptor import Descriptor
+from miniscript import Key, Sortedmulti, Number
+from desc_utils import multisig_descriptor_template
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, AF_P2TR
+from public_constants import MAX_SIGNERS
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG, OP_CHECKSIG, OP_NUMEQUAL, OP_CHECKSIGADD
 from exceptions import FatalPSBTIssue
 from glob import settings
-from ubinascii import unhexlify as a2b_hex
-from ubinascii import hexlify as b2a_hex
+from wallet_base import BaseWallet
 from serializations import disassemble
 
 
@@ -25,54 +27,15 @@ TRUST_OFFER = const(1)
 TRUST_PSBT = const(2)
 
 
-class MultisigOutOfSpace(RuntimeError):
-    pass
-
 def disassemble_multisig_mn(redeem_script):
     # Pull out just M and N from script. Simple, faster, no memory.
 
-    assert redeem_script[-1] == OP_CHECKMULTISIG, 'need CHECKMULTISIG'
+    if redeem_script[-1] != OP_CHECKMULTISIG:
+        return None, None
 
     M = redeem_script[0] - 80
     N = redeem_script[-2] - 80
 
-    return M, N
-
-
-def disassemble_multisig_mn_tr(script):
-    # Pull out just M and N from taproot script.
-    # - more validation is done in following steps
-    assert script[-1] == OP_NUMEQUAL, 'need OP_NUMEQUAL'
-    num_cs = 0
-    num_csa = 0
-
-    gen = disassemble(script)
-    while True:
-        try:
-            bt = next(gen)
-        except StopIteration:
-            break
-        if bt[1] == OP_CHECKSIG:
-            num_cs += 1
-        elif bt[1] == OP_CHECKSIGADD:
-            num_csa += 1
-        elif bt[0]:
-            if isinstance(bt[0], int):
-                last = next(gen)[1]
-                assert last == OP_NUMEQUAL
-                M = bt[0]
-            else:
-                if len(bt[0]) == 32:
-                    # xonly pubkey
-                    continue
-                else:
-                    last = next(gen)[1]
-                    assert last == OP_NUMEQUAL
-                    assert len(bt[0]) == 1, "M>32"
-                    M = ustruct.unpack("B", bt[0])[0]
-
-    assert M
-    N = num_cs + num_csa
     return M, N
 
 def disassemble_multisig(redeem_script):
@@ -144,44 +107,7 @@ def make_redeem_script(M, nodes, subkey_idx):
     return b''.join(pubkeys)
 
 
-def make_redeem_script_tr(M, nodes, subkey_idx):
-    # Take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
-    # a taproot M-of-N redeem script for that. Always applies BIP-67 sorting.
-    # - tapscript multisig does not use OP_CHECKMULTISIG and therefore limit is
-    #   much higher (998 of 999 was demonstrated)
-    # - for now, MAX_TR_SIGNERS is 32, but this is artificial limit for tapscript
-    #   and could be something bigger
-
-    N = len(nodes)
-    assert 1 <= M <= N <= MAX_TR_SIGNERS
-
-    pubkeys = []
-    for n in nodes:
-        copy = n.copy()
-        copy.derive(subkey_idx, False)
-        # 0x20 = 32 = len(pubkey) = OP_PUSHDATA(32)
-        pubkeys.append(b'\x20' + copy.pubkey()[1:])
-        del copy
-
-    pubkeys.sort()
-
-    script = b''
-    for i, pk in enumerate(pubkeys):
-        script += pk
-        if i == 0:
-            script += bytes([OP_CHECKSIG])
-        else:
-            script += bytes([OP_CHECKSIGADD])
-
-    if M <= 16:
-        script += bytes([80 + M, OP_NUMEQUAL])
-    else:
-        assert M < 128
-        script += bytes([0x01, M, OP_NUMEQUAL])
-
-    return script
-
-class MultisigWallet:
+class MultisigWallet(BaseWallet):
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
     # - can be saved to nvram
@@ -202,10 +128,10 @@ class MultisigWallet:
 
     # optional: user can short-circuit many checks (system wide, one power-cycle only)
     disable_checks = False
+    key_name = "multisig"
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC', internal_key=None):
-        self.storage_idx = -1
-
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC'):
+        super().__init__()
         self.name = name
         assert len(m_of_n) == 2
         self.M, self.N = m_of_n
@@ -213,7 +139,6 @@ class MultisigWallet:
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
-        self.internal_key = internal_key
 
         # calc useful cache value: numeric xfp+subpath, with lookup
         self.xfp_paths = {}
@@ -265,19 +190,12 @@ class MultisigWallet:
             opts['d'] = pp
             xp = [(a, pp.index(deriv),c) for a,deriv,c in self.xpubs]
 
-        if self.internal_key is not None:
-            opts["ik"] = self.internal_key
-
         return (self.name, (self.M, self.N), xp, opts)
 
     @classmethod
     def deserialize(cls, vals, idx=-1):
         # take json object, make instance.
         name, m_of_n, xpubs, opts = vals
-
-        internal_key = None
-        if "ik" in opts and opts["ik"]:
-            internal_key = opts["ik"]
 
         if len(xpubs[0]) == 2:
             # promote from old format to new: assume common prefix is the derivation
@@ -295,22 +213,18 @@ class MultisigWallet:
                 xpubs = [(a, derivs[b], c) for a,b,c in xpubs]
 
         rv = cls(name, m_of_n, xpubs, addr_fmt=opts.get('ft', AF_P2SH),
-                 chain_type=opts.get('ch', 'BTC'), internal_key=internal_key)
+                 chain_type=opts.get('ch', 'BTC'))
         rv.storage_idx = idx
 
         return rv
 
     @classmethod
-    def iter_wallets(cls, M=None, N=None, not_idx=None, addr_fmt=None):
+    def iter_wallets(cls, M=None, N=None, addr_fmt=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
-        lst = settings.get('multisig', [])
+        lst = settings.get(cls.key_name, [])
 
         for idx, rec in enumerate(lst):
-            if idx == not_idx:
-                # ignore one by index
-                continue
-
             if M or N:
                 # peek at M/N
                 has_m, has_n = tuple(rec[1])
@@ -405,57 +319,6 @@ class MultisigWallet:
 
         return False
 
-    @classmethod
-    def get_all(cls):
-        # return them all, as a generator
-        return cls.iter_wallets()
-
-    @classmethod
-    def exists(cls):
-        # are there any wallets defined?
-        return bool(settings.get('multisig', False))
-
-    @classmethod
-    def get_by_idx(cls, nth):
-        # instance from index number (used in menu)
-        lst = settings.get('multisig', [])
-        try:
-            obj = lst[nth]
-        except IndexError:
-            return None
-
-        return cls.deserialize(obj, nth)
-
-    def commit(self):
-        # data to save
-        # - important that this fails immediately when nvram overflows
-        obj = self.serialize()
-
-        v = settings.get('multisig', [])
-        orig = v.copy()
-        if not v or self.storage_idx == -1:
-            # create
-            self.storage_idx = len(v)
-            v.append(obj)
-        else:
-            # update in place
-            v[self.storage_idx] = obj
-
-        settings.set('multisig', v)
-
-        # save now, rather than in background, so we can recover
-        # from out-of-space situation
-        try:
-            settings.save()
-        except:
-            # back out change; no longer sure of NVRAM state
-            try:
-                settings.set('multisig', orig)
-                settings.save()
-            except: pass        # give up on recovery
-
-            raise MultisigOutOfSpace
-
     def has_similar(self):
         # check if we already have a saved duplicate to this proposed wallet
         # - return (name_change, diff_items, count_similar) where:
@@ -507,9 +370,9 @@ class MultisigWallet:
         else:
             raise IndexError        # consistency bug
 
-        lst = settings.get('multisig', [])
+        lst = settings.get(self.key_name, [])
         del lst[self.storage_idx]
-        settings.set('multisig', lst)
+        settings.set(self.key_name, lst)
         settings.save()
 
         self.storage_idx = -1
@@ -523,7 +386,7 @@ class MultisigWallet:
         # Assuming a suffix of /0/0 on the defined prefix's, yield
         # possible deposit addresses for this wallet. Never show
         # user the resulting addresses because we cannot be certain
-        # they are valid and could be signed. And yet, dont blank too many
+        # they are valid and could be signed. And yet, don't blank too many
         # spots or else an attacker could grid out a suitable replacement.
         ch = self.chain
 
@@ -541,97 +404,47 @@ class MultisigWallet:
             nodes.append(node)
             paths.append(path)
 
-        internal = None
-        internal_key = ""
-        internal_path = ""
-        if self.internal_key and isinstance(self.internal_key, tuple):
-            xfp, deriv, xpub = self.internal_key
-            internal = ch.deserialize_node(xpub, AF_P2SH)
-            internal.derive(change_idx, False)
-            internal_path = "[%s/%s/%d/{idx}]" % (xfp2str(xfp), deriv, change_idx)
-
         idx = start_idx
         while count:
-            if self.internal_key is None:
-                # make the redeem script, convert into address
-                script = make_redeem_script(self.M, nodes, idx)
-                addr = ch.p2sh_address(self.addr_fmt, script)
-            else:
-                # p2tr
-                script = make_redeem_script_tr(self.M, nodes, idx)
-                # leaf hash is also a merkle root in tree of depth 0 (only allowed now) - aka taptweak
-                leaf_hash = chains.tapleaf_hash(script)
-
-                if isinstance(self.internal_key, str):
-                    internal_key_bytes = a2b_hex(self.internal_key)
-                    internal_key = self.internal_key
-                else:
-                    internal.derive(idx, False)
-                    internal_key_bytes = internal.pubkey()[1:]
-                    internal_key = b2a_hex(internal_key_bytes).decode()
-
-                output_key = chains.taptweak(internal_key_bytes, leaf_hash)
-                addr = ch.render_address(b'\x51\x20' + output_key)
+            # make the redeem script, convert into address
+            script = make_redeem_script(self.M, nodes, idx)
+            addr = ch.p2sh_address(self.addr_fmt, script)
 
             addr = addr[0:12] + '___' + addr[12+3:]
 
-            yield idx, [p.format(idx=idx) for p in paths], addr, script, internal_key, internal_path.format(idx=idx)
+            yield idx, [p.format(idx=idx) for p in paths], addr, script
 
             idx += 1
             count -= 1
 
-    def validate_tr_internal_key(self, taproot_subpaths):
-        ch = chains.current_chain()
-        internal_key = None
-        xfp_deriv = None
+    def make_addresses_msg(self, msg, start, n, change=0):
+        from glob import dis
 
-        for key, lhs_path in taproot_subpaths.items():
-            if not lhs_path[0]:
-                internal_key = key
-                xfp_deriv = lhs_path[1:]
-                break
-        else:
-            assert False, "Internal key missing in taproot subpaths"
+        addrs = []
 
-        if len(xfp_deriv) < 2:
-            assert a2b_hex(self.internal_key) == internal_key
-        else:
-            node = ch.deserialize_node(self.internal_key[2], AF_P2SH)
-            change_idx, idx = xfp_deriv[-2], xfp_deriv[-1]
-            node.derive(change_idx, False)
-            node.derive(idx, False)
-            assert node.pubkey()[1:] == internal_key
-
-        return internal_key
-
-    def make_multisig_tr(self, taproot_subpaths):
-        # Make the redeem script for leafs
-        ch = chains.current_chain()
-        index = None
-        nodes = []
-        for xfp, deriv, xpub in self.xpubs:
-            # load bip32 node for each cosigner
-            node = ch.deserialize_node(xpub, AF_P2SH)
-            for xo, lhs_path in taproot_subpaths.items():
-                lhs, pth = lhs_path[0], lhs_path[1:]
-                # ignore internal key - does not have lhs (leaf hashes)
-                if xfp == pth[0] and lhs:
-                    path = pth
-                    break
+        for (i, paths, addr, script) in self.yield_addresses(start, n, change_idx=change):
+            if i == 0 and self.N <= 4:
+                msg += '\n'.join(paths) + '\n =>\n'
             else:
-                assert False
+                msg += '.../%d/%d =>\n' % (change, i)
 
-            change_idx, idx = path[-2], path[-1]
-            if index is not None:
-                assert index == idx
-            else:
-                index = idx
+            addrs.append(addr)
+            msg += truncate_address(addr) + '\n\n'
+            dis.progress_bar_show(i / n)
 
-            node.derive(change_idx, False)
-            nodes.append(node)
+        return msg, addrs
 
-        # this assumes we have same index for all keys
-        return make_redeem_script_tr(self.M, nodes, index)
+    def generate_address_csv(self, start, n, change):
+        yield '"' + '","'.join(['Index', 'Payment Address',
+                                'Redeem Script (%d of %d)' % (self.M, self.N)]
+                                + (['Derivation'] * self.N)) + '"\n'
+
+        for (idx, derivs, addr, script) in self.yield_addresses(start, n, change_idx=change):
+            ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
+            ln += '","'.join(derivs)
+            ln += '"\n'
+
+            yield ln
 
     def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
         # Check we can generate all pubkeys in the redeem script, raise on errors.
@@ -702,7 +515,7 @@ class MultisigWallet:
                 found_pk = node.pubkey()
 
                 # Document path(s) used. Not sure this is useful info to user tho.
-                # - Do not show what we can't verify: we don't really know the hardeneded
+                # - Do not show what we can't verify: we don't really know the hardened
                 #   part of the path from fingerprint to here.
                 here = '[%s]' % xfp2str(xfp)
                 if dp != len(path):
@@ -814,7 +627,9 @@ class MultisigWallet:
                     continue
 
                 # deserialize, update list and lots of checks
-                is_mine = cls.check_xpub(xfp, value, deriv, chains.current_chain().ctype, my_xfp, xpubs)
+                is_mine, item = check_xpub(xfp, value, deriv, chains.current_chain().ctype,
+                                           my_xfp, cls.disable_checks)
+                xpubs.append(item)
                 if is_mine:
                     has_mine += 1
 
@@ -827,22 +642,34 @@ class MultisigWallet:
         my_xfp = settings.get('xfp')
         xpubs = []
 
-        desc = MultisigDescriptor.parse(descriptor)
-        for xfp, deriv, xpub in desc.keys:
+        descriptor = Descriptor.from_string(descriptor)
+        descriptor.legacy_ms_compat()  # raises
+        addr_fmt = descriptor.addr_fmt
+
+        M, N = descriptor.miniscript.m_n()
+        for key in descriptor.miniscript.keys:
+            assert key.derivation.is_external, "Invalid subderivation path - only 0/* or <0;1>/* allowed"
+            xfp = key.origin.cc_fp
+            deriv = key.origin.str_derivation()
+            xpub = key.extended_public_key()
             deriv = cleanup_deriv_path(deriv)
-            is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
+            is_mine, item = check_xpub(xfp, xpub, deriv, chains.current_chain().ctype,
+                                       my_xfp, cls.disable_checks)
+            xpubs.append(item)
             if is_mine:
                 has_mine += 1
 
-        return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, desc.internal_key
+        return None, addr_fmt, xpubs, has_mine, M, N
 
     def to_descriptor(self):
-        return MultisigDescriptor(
-            M=self.M, N=self.N,
-            keys=self.xpubs,
-            addr_fmt=self.addr_fmt,
-            internal_key=self.internal_key,
-        )
+        keys = [
+            Key.from_cc_data(xfp, deriv, xpub)
+            for xfp, deriv, xpub in self.xpubs
+        ]
+        miniscript = Sortedmulti(Number(self.M), *keys)
+        desc = Descriptor(miniscript=miniscript)
+        desc.set_from_addr_fmt(self.addr_fmt)
+        return desc
 
     @classmethod
     def from_file(cls, config, name=None):
@@ -864,13 +691,12 @@ class MultisigWallet:
         # - xpub: any bip32 serialization we understand, but be consistent
         #
         expect_chain = chains.current_chain().ctype
-        if MultisigDescriptor.is_descriptor(config):
-            # assume descriptor
+        if Descriptor.is_descriptor(config):
+            # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
             # ignore name
-            _, addr_fmt, xpubs, has_mine, M, N, internal_key = cls.from_descriptor(config)
+            _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(config)
         else:
             # oldschool
-            internal_key = None
             lines = [line for line in config.split('\n') if line]  # remove empty lines
             parsed_name, addr_fmt, xpubs, has_mine, M, N = cls.from_simple_text(lines)
             if parsed_name:
@@ -893,12 +719,7 @@ class MultisigWallet:
         except:
             raise AssertionError('name must be ascii, 1..20 long')
 
-
         assert N == len(xpubs), 'wrong # of xpubs, expect %d' % N
-        if addr_fmt != AF_P2TR:
-            assert 1 <= M <= N <= MAX_SIGNERS, 'M/N range'
-            # there is no difference between script and keypath in taproot (huge privacy win)
-            assert addr_fmt & AFC_SCRIPT, 'script style addr fmt'
 
         # check we're included... do not insert ourselves, even tho we
         # have enough info, simply because other signers need to know my xpubkey anyway
@@ -906,84 +727,7 @@ class MultisigWallet:
         assert has_mine == 1, 'my key included more than once'
 
         # done. have all the parts
-        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain, internal_key=internal_key)
-
-    @classmethod
-    def check_xpub(cls, xfp, xpub, deriv, expect_chain, my_xfp, xpubs):
-        # Shared code: consider an xpub for inclusion into a wallet, if ok, append
-        # to list: xpubs with a tuple: (xfp, deriv, xpub)
-        # return T if it's our own key
-        # - deriv can be None, and in very limited cases can recover derivation path
-        # - could enforce all same depth, and/or all depth >= 1, but
-        #   seems like more restrictive than needed, so "m" is allowed
-
-        try:
-            # Note: addr fmt detected here via SLIP-132 isn't useful
-            node, chain, _ = parse_extended_key(xpub)
-        except:
-            raise AssertionError('unable to parse xpub')
-
-        try:
-            assert node.privkey() == None       # 'no privkeys plz'
-        except ValueError:
-            pass
-
-        if expect_chain == "XRT":
-            # HACK but there is no difference extended_keys - just bech32 hrp
-            assert chain.ctype == "XTN"
-        else:
-            assert chain.ctype == expect_chain      # 'wrong chain'
-
-        depth = node.depth()
-
-        if depth == 1:
-            if not xfp:
-                # allow a shortcut: zero/omit xfp => use observed parent value
-                xfp = swab32(node.parent_fp())
-            else:
-                # generally cannot check fingerprint values, but if we can, do so.
-                if not cls.disable_checks:
-                    assert swab32(node.parent_fp()) == xfp, 'xfp depth=1 wrong'
-
-        assert xfp, 'need fingerprint'          # happens if bare xpub given
-
-        # In most cases, we cannot verify the derivation path because it's hardened
-        # and we know none of the private keys involved.
-        if depth == 1:
-            # but derivation is implied at depth==1
-            kn, is_hard = node.child_number()
-            if is_hard: kn |= 0x80000000
-            guess = keypath_to_str([kn], skip=0)
-
-            if deriv:
-                if not cls.disable_checks:
-                    assert guess == deriv, '%s != %s' % (guess, deriv)
-            else:
-                deriv = guess           # reachable? doubt it
-
-        assert deriv, 'empty deriv'         # or force to be 'm'?
-        assert deriv[0] == 'm'
-
-        # path length of derivation given needs to match xpub's depth
-        if not cls.disable_checks:
-            p_len = deriv.count('/')
-            assert p_len == depth, 'deriv %d != %d xpub depth (xfp=%s)' % (
-                                        p_len, depth, xfp2str(xfp))
-
-            if xfp == my_xfp:
-                # its supposed to be my key, so I should be able to generate pubkey
-                # - might indicate collision on xfp value between co-signers,
-                #   and that's not supported
-                with stash.SensitiveValues() as sv:
-                    chk_node = sv.derive_path(deriv)
-                    assert node.pubkey() == chk_node.pubkey(), \
-                                "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
-
-        # serialize xpub w/ BIP-32 standard now.
-        # - this has effect of stripping SLIP-132 confusion away
-        xpubs.append((xfp, deriv, chain.serialize_public(node, AF_P2SH)))
-
-        return (xfp == my_xfp)
+        return cls(name, (M, N), xpubs, addr_fmt=addr_fmt, chain_type=expect_chain)
 
     def make_fname(self, prefix, suffix='txt'):
         rv = '%s-%s.%s' % (prefix, self.name, suffix)
@@ -1084,7 +828,7 @@ class MultisigWallet:
             await needs_microsd()
             return
         except Exception as e:
-            await ux_show_story('Failed to write!\n\n\n'+str(e))
+            await ux_show_story('Failed to write!\n\n%s\n%s' % (e, problem_file_line(e)))
             return
 
     def render_export(self, fp, hdr_comment=None, descriptor=False, core=False, desc_pretty=True):
@@ -1097,9 +841,10 @@ class MultisigWallet:
                 print("importdescriptors '%s'\n" % core_str, file=fp)
             else:
                 if desc_pretty:
-                    desc = desc_obj.pretty_serialize()
+                    # TODO pretty serialize
+                    desc = desc_obj.to_string(internal=False)
                 else:
-                    desc = desc_obj.serialize()
+                    desc = desc_obj.to_string(internal=False)
                 print("%s\n" % desc, file=fp)
         else:
             if hdr_comment:
@@ -1171,8 +916,9 @@ class MultisigWallet:
         for k, v in xpubs_list:
             xfp, *path = ustruct.unpack_from('<%dI' % (len(k)//4), k, 0)
             xpub = ngu.codecs.b58_encode(v)
-            is_mine = cls.check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
-                                                        expect_chain, my_xfp, xpubs)
+            is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
+                                       expect_chain, my_xfp, cls.disable_checks)
+            xpubs.append(item)
             if is_mine:
                 has_mine += 1
                 addr_fmt = cls.guess_addr_fmt(path)
@@ -1180,7 +926,7 @@ class MultisigWallet:
         assert has_mine == 1         # 'my key not included'
 
         name = 'PSBT-%d-of-%d' % (M, N)
-        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH)
+        ms = cls(name, (M, N), xpubs, chain_type=expect_chain, addr_fmt=addr_fmt or AF_P2SH)  # TODO why legacy
 
         # may just keep just in-memory version, no approval required, if we are
         # trusting PSBT's today, otherwise caller will need to handle UX w.r.t new wallet
@@ -1204,7 +950,9 @@ class MultisigWallet:
 
             # cleanup and normalize xpub
             tmp = []
-            self.check_xpub(xfp, xpub, keypath_to_str(path, skip=0), self.chain_type, 0, tmp)
+            is_mine, item = check_xpub(xfp, xpub, keypath_to_str(path, skip=0),
+                                       self.chain_type, 0, self.disable_checks)
+            tmp.append(item)
             (_, deriv, xpub_reserialized) = tmp[0]
             assert deriv            # because given as arg
 
@@ -1297,7 +1045,7 @@ Press (1) to see extended public keys, '''.format(M=M, N=N, name=self.name, exp=
                 continue
 
             if ch == 'y' and not is_dup:
-                # save to nvram, may raise MultisigOutOfSpace
+                # save to nvram, may raise WalletOutOfSpace
                 if name_change:
                     name_change.delete()
 
@@ -1320,16 +1068,9 @@ Addresses:
   {at}\n\n'''.format(M=self.M, N=self.N, ctype=self.chain_type,
             at=self.render_addr_fmt(self.addr_fmt)))
 
-        if self.internal_key:
-            msg.write("Taproot internal key:\n\n")
-            if isinstance(self.internal_key, tuple):
-                xfp, deriv, xpub = self.internal_key
-                msg.write('%s:\n  %s\n\n%s\n\n' % (xfp2str(xfp), deriv, xpub))
-            else:
-                msg.write('%s (provably unspendable)\n\n' % self.internal_key)
-
-            msg.write("Taproot tree keys:\n\n")
-
+        # concern: the order of keys here is non-deterministic
+        # or order is taken from descriptor order (multi) but we do not support it
+        # or order is determined by BIP (sortedmulti)
         # concern: the order of keys here is non-deterministic
         for idx, (xfp, deriv, xpub) in enumerate(self.xpubs):
             if idx:
@@ -1466,19 +1207,11 @@ async def make_ms_wallet_menu(menu, label, item):
     ms = MultisigWallet.get_by_idx(item.arg)
     if not ms: return
 
-    rv = [
+    return [
         MenuItem('"%s"' % ms.name, f=ms_wallet_detail, arg=ms),
         MenuItem('View Details', f=ms_wallet_detail, arg=ms),
         MenuItem('Descriptors', menu=make_ms_wallet_descriptor_menu, arg=ms),
         MenuItem('Delete', f=ms_wallet_delete, arg=ms),
-    ]
-    if ms.internal_key:
-        # internal key is defined -> Taproot
-        # do not provide legacy CC export or electrum export
-        # only descriptor export allowed (bitcoind object or plain descriptor)
-        return rv
-
-    return rv + [
         MenuItem('Coldcard Export', f=ms_wallet_ckcc_export, arg=(ms, {})),
         MenuItem('Electrum Wallet', f=ms_wallet_electrum_export, arg=ms),
     ]
@@ -1527,7 +1260,7 @@ async def ms_wallet_ckcc_export(menu, label, item):
 async def ms_wallet_show_descriptor(menu, label, item):
     ms = item.arg
     desc = ms.to_descriptor()
-    desc_str = desc.serialize()
+    desc_str = desc.to_string(internal=False)
     ch = await ux_show_story("Press (1) to export in pretty human readable format.\n\n" + desc_str, escape="1")
     if ch == "1":
         await ms.export_wallet_file(descriptor=True, desc_pretty=True)
@@ -1591,6 +1324,8 @@ P2SH-P2WSH:
    m/48'/{coin}'/acct'/1'
 P2WSH:
    m/48'/{coin}'/acct'/2'
+P2TR:
+   m/48'/{coin}'/acct'/3'
 
 OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
@@ -1716,8 +1451,9 @@ async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=
                             assert deriv == vals[mode+'_deriv'], "wrong derivation: %s != %s"%(
                                             deriv, vals[mode+'_deriv'])
 
-                        is_mine = MultisigWallet.check_xpub(xfp, ln, deriv,
-                                                    chain.ctype, my_xfp, xpubs)
+                        is_mine, item = check_xpub(xfp, ln, deriv, chain.ctype,
+                                                   my_xfp, MultisigWallet.disable_checks)
+                        xpubs.append(item)
                         if is_mine:
                             has_mine += 1
 
@@ -1800,9 +1536,9 @@ Coldcard multisig setup file and an Electrum wallet file will be created automat
     name = 'CC-%d-of-%d' % (M, N)
     ms = MultisigWallet(name, (M, N), xpubs, chain_type=chain.ctype, addr_fmt=addr_fmt)
 
-    from auth import NewEnrollRequest, UserAuthorizedAction
+    from auth import NewMiniscriptEnrollRequest, UserAuthorizedAction
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms, auto_export=True)
+    UserAuthorizedAction.active_request = NewMiniscriptEnrollRequest(ms, auto_export=True)
 
     # menu item case: add to stack
     from ux import the_ux
@@ -1832,14 +1568,14 @@ async def import_multisig_nfc(*a):
     from glob import NFC
     # this menu option should not be available if NFC is disabled
     try:
-        return await NFC.import_multisig_nfc()
+        return await NFC.import_miniscript_nfc(legacy_multisig=True)
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to import multisig. %s" % str(e))
 
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file
     from actions import file_picker
-    from glob import VD
+    from glob import VD, dis
 
     force_vdisk = False
     if VD:
@@ -1878,6 +1614,7 @@ async def import_multisig(*a):
         await needs_microsd()
         return
 
+    dis.fullscreen('Wait...')
     from auth import maybe_enroll_xpub
     try:
         possible_name = (fn.split('/')[-1].split('.'))[0]

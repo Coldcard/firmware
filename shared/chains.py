@@ -38,11 +38,14 @@ def taptweak(internal_key, tweak=None):
     xo_pubkey_tweaked = xo_pubkey.tweak_add(tweak)
     return xo_pubkey_tweaked.to_bytes()
 
-def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
-    # Tapleaf hash requires one to provide version, version consists
-    # of 7 msb
+def tapscript_serialize(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
+    # leaf version is only 7 msb
     lv = leaf_version % TAPROOT_LEAF_MASK
-    return ngu.secp256k1.tagged_sha256(b"TapLeaf", bytes([lv]) + ser_string(script))
+    return bytes([lv]) + ser_string(script)
+
+def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
+    return ngu.secp256k1.tagged_sha256(b"TapLeaf",
+                                       tapscript_serialize(script, leaf_version))
 
 
 class ChainsBase:

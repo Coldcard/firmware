@@ -1,0 +1,24 @@
+# Miniscript
+
+**COLDCARD<sup>&reg;</sup>** Mk4 experimental `EDGE` versions
+support Miniscript and MiniTapscript.
+
+## Import/Export
+
+* `Settings` -> `Miniscript` -> `Import from file`
+* only [descriptors](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) allowed for import
+* `Settings` -> `Miniscript` -> `<name>` -> `Descriptors`
+* only [descriptors](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) are exported
+
+## Address Explorer
+
+Same as with basic multisig. After miniscript wallet is imported, 
+item with `<name>` is added to `Address Explorer` menu.
+
+
+## Limitations
+* no duplicate keys in miniscript (at least account in origin derivation has to be different)
+* subderivation must be `<0;1>/*` (may be omitted during the import - is implied)
+* only keys with key origin info `[xfp/p/a/t/h]xpub`
+* maximum number of keys allowed in segwit v0 miniscript is 20
+* check MiniTapscript limitations in `docs/taproot.md`

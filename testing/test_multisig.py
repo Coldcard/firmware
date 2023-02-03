@@ -6,14 +6,10 @@
 #
 #       py.test test_multisig.py -m ms_danger --ms-danger
 #
-import sys
-sys.path.append("../shared")
-from descriptor import MultisigDescriptor, MULTI_FMT_TO_SCRIPT, parse_desc_str
 import time, pytest, os, random, json, shutil, pdb, io, base64
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
-from base64 import b64encode, b64decode
 from helpers import B2A, fake_dest_addr, swab32, xfp2str
 from helpers import str_to_path, slip132undo
 from struct import unpack, pack
@@ -22,6 +18,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.tx import Tx
 from io import BytesIO
 from hashlib import sha256
+from descriptor import MULTI_FMT_TO_SCRIPT, MultisigDescriptor, parse_desc_str
 
 
 def HARD(n=0):
@@ -157,7 +154,7 @@ def offer_ms_import(cap_story, dev, need_keypress):
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None,
-             descriptor=False, int_ext_desc=False, internal_key=None):
+             descriptor=False, int_ext_desc=False):
         keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None))
         name = name or f'test-{M}-{N}'
 
@@ -173,10 +170,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
                 assert len(derivs) == N
                 key_list = [(xfp, derivs[idx], dd.hwif(as_private=False)) for idx, (xfp, m, dd) in enumerate(keys)]
 
-            if addr_fmt == "p2tr" and internal_key is None:
-                internal_key = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
-                addr_fmt = AF_P2TR
-            desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=addr_fmt, internal_key=internal_key)
+            desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=addr_fmt)
             if int_ext_desc:
                 desc_str = desc.serialize(int_ext=True)
             else:
@@ -1275,11 +1269,11 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
     psbt = fake_ms_txn(num_ins, num_outs, M, keys, segwit_in=segwit, incl_xpubs=incl_xpubs, 
                         outstyles=all_out_styles, change_outputs=list(range(1,num_outs)))
 
-    open(f'debug/myself-before.psbt', 'w').write(b64encode(psbt).decode())
+    open(f'debug/myself-before.psbt', 'w').write(base64.b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
         _, updated = try_sign(psbt, accept_ms_import=(incl_xpubs and (idx==0)))
-        open(f'debug/myself-after.psbt', 'w').write(b64encode(updated).decode())
+        open(f'debug/myself-after.psbt', 'w').write(base64.b64encode(updated).decode())
         assert updated != psbt
 
         aft = BasicPSBT().parse(updated)
@@ -1289,14 +1283,14 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         psbt = aft.as_bytes()
 
     # should be fully signed now.
-    anal = bitcoind.rpc.analyzepsbt(b64encode(psbt).decode('ascii'))
+    anal = bitcoind.rpc.analyzepsbt(base64.b64encode(psbt).decode('ascii'))
     try:
         assert not any(inp.get('missing') for inp in anal['inputs']), "missing sigs: %r" % anal
         assert all(inp['next'] in {'finalizer','updater'} for inp in anal['inputs']), "other issue: %r" % anal
     except:
         # XXX seems to be a bug in analyzepsbt function ... not fully studied
         pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
-        decode = bitcoind.rpc.decodepsbt(b64encode(psbt).decode('ascii'))
+        decode = bitcoind.rpc.decodepsbt(base64.b64encode(psbt).decode('ascii'))
         pprint(decode, stream=open('debug/decoded.txt', 'wt'))
     
         if M==N or segwit:
@@ -1563,7 +1557,7 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
         resp = bitcoind.supply_wallet.walletprocesspsbt(resp["psbt"])
 
     # assert resp['changepos'] == -1
-    psbt = b64decode(resp['psbt'])
+    psbt = base64.b64decode(resp['psbt'])
 
     open('debug/funded.psbt', 'wb').write(psbt)
 
@@ -1585,11 +1579,11 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
 
     if cc_sign_first:
         # cc signed first - bitcoind is now second
-        rr = bitcoind.supply_wallet.walletprocesspsbt(b64encode(updated).decode('ascii'), True, "ALL")
+        rr = bitcoind.supply_wallet.walletprocesspsbt(base64.b64encode(updated).decode('ascii'), True, "ALL")
         assert rr["complete"]
         both_signed = rr["psbt"]
     else:
-        both_signed = b64encode(updated).decode('ascii')
+        both_signed = base64.b64encode(updated).decode('ascii')
 
     # finalize and send
     rr = bitcoind.supply_wallet.finalizepsbt(both_signed, True)
@@ -1863,8 +1857,6 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
     title, story = cap_story()
     assert "Press (6)" in story
     assert "change addresses." in story
-    assert "Taproot internal key" not in story
-    assert "Taproot tree keys" not in story
     if change:
         need_keypress("6")
         time.sleep(0.2)
@@ -1893,15 +1885,15 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         chng_idx = 1 if change else 0
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
-        expect, pubkey, script, _  = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
+        expect, pubkey, script, _ = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
                                                         path_mapper=path_mapper)
 
         assert int(subpath.split('/')[-1][0]) == idx
         assert int(subpath.split('/')[-2]) == chng_idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
 
-        trunc = expect[0:8] + "-" + expect[-7:]
-        assert trunc == addr
+        assert addr[:5] == expect[:5]
+        assert addr[-6:] == expect[-6:]
 
 
 def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_wallet, clear_ms, M=2, N=3):
@@ -2009,12 +2001,6 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     title, story = cap_story()
     assert "Press (6)" in story
     assert "change addresses." in story
-    if addr_fmt == AF_P2TR:
-        assert "Taproot internal key" in story
-        assert "Taproot tree keys" in story
-    else:
-        assert "Taproot internal key" not in story
-        assert "Taproot tree keys" not in story
     if change:
         need_keypress("6")
         time.sleep(0.2)
@@ -2068,9 +2054,8 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 @pytest.fixture
 def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, load_export, pick_menu_item, goto_home,
                       cap_menu, microsd_path, use_regtest):
-    def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True, r=None):
+    def doit(M, N, script_type, cc_account=0, funded=True):
         use_regtest()
-        H = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"  # BIP-0341
         bitcoind_signers = [
             bitcoind.create_wallet(wallet_name=f"bitcoind--signer{i}", disable_private_keys=False, blank=False,
                                    passphrase=None, avoid_reuse=False, descriptors=True)
@@ -2108,17 +2093,11 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
             core_key = core_desc[4:-1]
             bitcoind_signers_xpubs.append(core_key)
         desc = template.replace("M", str(M), 1).replace("...", ",".join(bitcoind_signers_xpubs))
-        if internal_key:
-            desc = desc.replace(H, internal_key)
-        elif r:
-            desc = desc.replace(H, f"r={r}")
 
         if script_type == 'p2wsh':
             name = f"core{M}of{N}_native.txt"
         elif script_type == "p2sh_p2wsh":
             name = f"core{M}of{N}_wrapped.txt"
-        elif script_type == "p2tr":
-            name = f"core{M}of{N}_taproot.txt"
         else:
             name = f"core{M}of{N}_legacy.txt"
         with open(microsd_path(name), "w") as f:
@@ -2147,8 +2126,6 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
             assert "P2WSH" in story
         elif script_type == "p2sh":
             assert "P2SH" in story
-        elif script_type == "p2tr":
-            assert "P2TR" in story
         else:
             assert "P2SH-P2WSH" in story
         assert "Derivation:\n  Varies (2)" in story
@@ -2171,20 +2148,6 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
         res = ms.importdescriptors(core_desc_object)
         assert res[0]["success"]
         assert res[1]["success"]
-
-        if r and r != "@":
-            from pysecp256k1.extrakeys import keypair_create, keypair_xonly_pub, xonly_pubkey_parse
-            from pysecp256k1.extrakeys import xonly_pubkey_tweak_add, xonly_pubkey_serialize, xonly_pubkey_from_pubkey
-            H_xo = xonly_pubkey_parse(bytes.fromhex(H))
-            r_bytes = bytes.fromhex(r)
-            kp = keypair_create(r_bytes)
-            kp_xo, kp_parity = keypair_xonly_pub(kp)
-            pk = xonly_pubkey_tweak_add(H_xo, xonly_pubkey_serialize(kp_xo))
-            xo, xo_parity = xonly_pubkey_from_pubkey(pk)
-            internal_key_bytes = xonly_pubkey_serialize(xo)
-            internal_key_hex = internal_key_bytes.hex()
-            assert internal_key_hex in core_desc_object[0]["desc"]
-            assert internal_key_hex in core_desc_object[1]["desc"]
 
         if funded:
             if script_type == "p2wsh":
@@ -2319,7 +2282,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (15, 15)])
-@pytest.mark.parametrize("script_type", ["p2wsh", "p2sh_p2wsh", "p2sh", "p2tr"])
+@pytest.mark.parametrize("script_type", ["p2wsh", "p2sh_p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
 def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
@@ -2468,174 +2431,16 @@ def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keyp
     assert len(bitcoind_watch_only.listunspent()) == 1
 
 
-@pytest.mark.bitcoind
-@pytest.mark.parametrize("cc_first", [True, False])
-@pytest.mark.parametrize("m_n", [(2,2), (3, 5), (32, 32)])
-@pytest.mark.parametrize("internal_key_spendable", [True, False, "77ec0c0fdb9733e6a3c753b1374c4a465cba80dff52fc196972640a26dd08b76", "@"])
-def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, bitcoind, goto_home, cap_menu, clear_ms,
-                            need_keypress, pick_menu_item, cap_story, microsd_path, load_export, microsd_wipe, dev,
-                            bitcoind_multisig):
-    M, N = m_n
-    clear_ms()
-    microsd_wipe()
-    internal_key = None
-    r = None
-    if internal_key_spendable is True:
-        path = "86h/0h/3h"
-        master_xfp_str = pack('<I', dev.master_fingerprint).hex()
-        xpub = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
-        internal_key = f"[{master_xfp_str}/{path}]{xpub}/0/*"
-    elif isinstance(internal_key_spendable, str) and len(internal_key_spendable) == 64:
-        r = internal_key_spendable
-    elif internal_key_spendable == "@":
-        r = "@"
-
-    tapscript_wo, bitcoind_signers = bitcoind_multisig(M, N, "p2tr", internal_key=internal_key, r=r)
-
-    dest_addr = tapscript_wo.getnewaddress("", "bech32m")
-    psbt = tapscript_wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20})["psbt"]
-    fname = "tapscript.psbt"
-    if not cc_first:
-        # bitcoind cosigner sigs first
-        for i in range(M - 1):
-            signer = bitcoind_signers[i]
-            psbt = signer.walletprocesspsbt(psbt, True, "DEFAULT", True)["psbt"]
-    with open(microsd_path(fname), "w") as f:
-        f.write(psbt)
-    goto_home()
-    # bug in goto_home ?
-    need_keypress("x")
-    time.sleep(0.1)
-    # CC signing
-    need_keypress("y")
-    time.sleep(0.1)
-    title, story = cap_story()
-    if "Choose" in story:
-        need_keypress("y")
-        pick_menu_item(fname)
-        time.sleep(0.1)
-        title, story = cap_story()
-    assert title == "OK TO SEND?"
-    need_keypress("y")
-    time.sleep(0.1)
-    title, story = cap_story()
-    split_story = story.split("\n\n")
-    cc_tx_id = None
-    if "(ready for broadcast)" in story:
-        signed_fname = split_story[1]
-        signed_txn_fname = split_story[-2]
-        cc_tx_id = split_story[-1].split("\n")[-1]
-        with open(microsd_path(signed_txn_fname), "r") as f:
-            signed_txn = f.read().strip()
-    else:
-        signed_fname = split_story[-1]
-
-    with open(microsd_path(signed_fname), "r") as f:
-        signed_psbt = f.read().strip()
-
-    if cc_first:
-        for signer in bitcoind_signers:
-            signed_psbt = signer.walletprocesspsbt(signed_psbt, True, "DEFAULT", True)["psbt"]
-    res = tapscript_wo.finalizepsbt(signed_psbt, True)
-    assert res['complete']
-    tx_hex = res["hex"]
-    res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
-    assert res[0]["allowed"]
-    txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
-    if cc_tx_id:
-        assert tx_hex == signed_txn
-        assert txn_id == cc_tx_id
-    assert len(txn_id) == 64
-
-
-@pytest.mark.bitcoind
-@pytest.mark.parametrize("change", [True, False])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (32, 32)])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_bitcoind_taproot_ms_address(change, M_N, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
-                                     cap_story, make_multisig, import_ms_wallet, microsd_path, bitcoind_multisig,
-                                     use_regtest, load_export, way):
-    use_regtest()
-    clear_ms()
-    M, N = M_N
-
-    ms_wo, _ = bitcoind_multisig(M, N, "p2tr", funded=False)
-
-    goto_home()
-    pick_menu_item("Address Explorer")
-    need_keypress('4')  # warning
-    m = cap_menu()
-    wal_name = m[-1]
-    pick_menu_item(wal_name)
-
-    time.sleep(0.2)
-    title, story = cap_story()
-    assert "Press (6)" in story
-    assert "change addresses." in story
-    assert "Taproot internal key" in story
-    if N <= 4:
-        assert "Taproot tree keys" in story
-    else:
-        assert "Taproot tree keys" not in story
-    if change:
-        need_keypress("6")
-        time.sleep(0.2)
-        title, story = cap_story()
-        # once change is selected - do not offer this option again
-        assert "change addresses." not in story
-        assert "Press (6)" not in story
-
-    contents = load_export(way, label="Address summary", is_json=False, sig_check=False, vdisk_key="4")
-    addr_cont = contents.strip()
-
-    if way == "nfc":
-        addr_range = [0, 9]
-        cc_addrs = addr_cont.split("\n")
-        part_addr_index = 0
-    else:
-        addr_range = [0, 249]
-        cc_addrs_split = addr_cont.split("\n")
-        # header is different for taproot
-        assert "Taproot Internal Key" in cc_addrs_split[0]
-        assert "Leaf Script" in cc_addrs_split[0]
-        cc_addrs = cc_addrs_split[1:]
-        part_addr_index = 1
-
-    internal_desc = None
-    external_desc = None
-    descriptors = ms_wo.listdescriptors()["descriptors"]
-    for desc in descriptors:
-        if desc["internal"]:
-            internal_desc = desc["desc"]
-        else:
-            external_desc = desc["desc"]
-
-    desc_export = internal_desc if change else external_desc
-    bitcoind_addrs = ms_wo.deriveaddresses(desc_export, addr_range)
-
-    for idx, cc_item in enumerate(cc_addrs):
-        cc_item = cc_item.split(",")
-        partial_address = cc_item[part_addr_index]
-        _start, _end = partial_address.split("___")
-        if way != "nfc":
-            _start, _end = _start[1:], _end[:-1]
-        assert bitcoind_addrs[idx].startswith(_start)
-        assert bitcoind_addrs[idx].endswith(_end)
-
-
 @pytest.mark.parametrize("desc", [
     # lack of checksum is now legal
     # ("Missing descriptor checksum", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))"),
     ("Wrong checksum", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#gs2fqgl7"),
     ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/1/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#sj7lxn0l"),
-    ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#fy9mm8dt"),
+    ("Key derivation too long", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#fy9mm8dt"),
     ("Key origin info is required", "wsh(sortedmulti(2,tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#ypuy22nw"),
-    ("Malformed key derivation info", "wsh(sortedmulti(2,[0f056943]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#nhjvt4wd"),
-    ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#gs2fqgl6"),
-    ("Invalid subderivation path - only 0/* or <0;1>/* allowed", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0))#s487stua"),
+    ("xpub depth", "wsh(sortedmulti(2,[0f056943]tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M))#nhjvt4wd"),
+    ("Key derivation too long", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0))#s487stua"),
     ("Cannot use hardened sub derivation path", "wsh(sortedmulti(2,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0'/*))#3w6hpha3"),
-    ("Unsupported descriptor", "wsh(multi(1,xpub661MyMwAqRbcFW31YEwpkMuc5THy2PSt5bDMsktWQcFF8syAmRUapSCGu8ED9W6oDMSgv6Zz8idoc4a6mr8BDzTJY47LJhkJ8UB7WEGuduB/1/0/*,xpub69H7F5d8KSRgmmdJg2KhpAK8SR3DjMwAdkxj3ZuxV27CprR9LgpeyGmXUbC6wb7ERfvrnKZjXoUmmDznezpbZb7ap6r1D3tgFxHmwMkQTPH/0/0/*))#t2zpj2eu"),
-    ("Unsupported descriptor", "pkh([d34db33f/44'/0'/0']xpub6ERApfZwUNrhLCkDtcHTcxd75RbzS1ed54G1LkBUHQVHQKqhMkhgbmJbZRkrgZw4koxb5JaHWkY4ALHY2grBGRjaDMzQLcgJvLJuZZvRcEL/1/*)#ml40v0wf"),
     ("M must be <= N", "wsh(sortedmulti(3,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#uueddtsy"),
 ])
 def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu, cap_story, make_multisig,
@@ -2714,8 +2519,8 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
 
 @pytest.mark.parametrize('cmn_pth_from_root', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('M_N', [(3, 5), (2, 3), (15, 15), (32, 32)])
-@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_P2TR])
+@pytest.mark.parametrize('M_N', [(3, 5), (2, 3), (15, 15)])
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
 def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear_ms, make_multisig,
                                     import_ms_wallet, goto_home, pick_menu_item, cap_menu,
                                     nfc_read_text, microsd_path, cap_story, need_keypress,
@@ -2733,7 +2538,6 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
 
     dd = {
         AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2TR: ("m/48'/1'/0'/3'/{idx}", 'p2tr'),
         AF_P2SH: ("m/45'/{idx}", 'p2sh'),
         AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
     }
@@ -2742,16 +2546,10 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     derivs = [deriv.format(idx=i) for i in range(N)]
     clear_ms()
 
-    try:
-        import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name,
-                         derivs=None if cmn_pth_from_root else derivs,
-                         addr_fmt=text_a_fmt, descriptor=True,
-                         common="m/45'" if cmn_pth_from_root else None)
-    except Exception as e:
-        assert addr_fmt != AF_P2TR
-        assert M == N == 32
-        assert str(e) == 'Coldcard Error: M/N range'
-        return
+    import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name,
+                     derivs=None if cmn_pth_from_root else derivs,
+                     addr_fmt=text_a_fmt, descriptor=True,
+                     common="m/45'" if cmn_pth_from_root else None)
 
     # get bare descriptor
     choose_multisig_wallet()

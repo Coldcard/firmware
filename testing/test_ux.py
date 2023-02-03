@@ -34,8 +34,18 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
 
     # check 4 lines of menu are shown right
     scr = cap_screen()
-    chk = '\n'.join(m[0:5])
-    assert scr == chk
+    maybe_edge = []
+    scr_menu_items = []
+    for item in scr.split("\n"):
+        if len(item) == 1:
+            maybe_edge.append(item)
+        else:
+            scr_menu_items.append(item)
+
+    if maybe_edge:
+        assert "EDGE" == "".join(maybe_edge)
+
+    assert scr_menu_items == m[:len(scr_menu_items)]
 
     # pick first item, expect a story
     need_keypress('0')
@@ -873,7 +883,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, need_keypress, cap_
     assert "Change Main PIN" in menu
     need_keypress("x")  # back to settings - on login settings
     # now go over top and back to Login settings from bottom
-    for i in range(9):
+    for i in range(10):
         need_keypress(UP)
     need_keypress("y")
     menu = cap_menu()

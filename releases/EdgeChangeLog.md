@@ -7,7 +7,9 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
-## 6.0.1X - 2023-0?-??
+## 6.1.0X - 2023-06-19
+- New Feature: Miniscript and MiniTapscript support (`docs/miniscript.md`)
+- Enhancement: Tapscript up to 8 leafs
 - Address explorer display refined slightly (cosmetic)
 
 ## 6.0.0X - 2023-05-12

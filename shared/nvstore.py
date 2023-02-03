@@ -39,6 +39,7 @@ from glob import PSRAM
 #   terms_ok = customer has signed-off on the terms of sale
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
+#   miniscript = list of defined miniscript wallets (complex)
 #   pms = trust/import/distrust xpubs found in PSBT files
 #   axi = index of last selected address in explorer
 #   lgto = (minutes) how long to wait for Login Countdown feature [pre v4.0.2]

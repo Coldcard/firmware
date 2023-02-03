@@ -2316,14 +2316,4 @@ def test_invalid_output_tapproot_psbt(fake_txn, start_sign, cap_story, dev):
     # error messages are disabled to save some space - problem file line is still included
     # assert "PSBT_IN_TAP_BIP32_DERIVATION xonly-pubkey length != 32" in story
 
-
-def test_taproot_too_complex(try_sign):
-    # tree of depth 2 - not allowed yet
-    for _file in ["data/taproot/taptree.psbt", "data/taproot/taptree-sig.psbt"]:
-        with open(_file, "r") as f:
-            psbt = base64.b64decode(f.read())
-        with pytest.raises(Exception) as e:
-            try_sign(psbt)
-        assert e.value.args[0] == "Coldcard Error: Invalid PSBT"
-
 # EOF

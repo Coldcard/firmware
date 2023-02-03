@@ -9,19 +9,14 @@ from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from multisig import MultisigWallet
+from miniscript import MiniScriptWallet
 from uasyncio import sleep_ms
+from ucollections import OrderedDict
 from uhashlib import sha256
-from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
-from utils import addr_fmt_label
+from utils import addr_fmt_label, truncate_address
 
-def truncate_address(addr):
-    # Truncates address to width of screen, replacing middle chars
-    # - 16 chars screen width
-    # - but 2 lost at left (menu arrow, corner arrow)
-    # - want to show not truncated on right side
-    return addr[0:5] + '⋯' + addr[-6:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -201,7 +196,11 @@ class AddressListMenu(MenuSystem):
             # if they have MS wallets, add those next
             for ms in MultisigWallet.iter_wallets():
                 if not ms.addr_fmt: continue
-                items.append(MenuItem(ms.name, f=self.pick_multisig, arg=ms))
+                items.append(MenuItem(ms.name, f=self.pick_miniscript, arg=ms))
+
+            # if they have miniscript wallets, add those next
+            for msc in MiniScriptWallet.iter_wallets():
+                items.append(MenuItem(msc.name, f=self.pick_miniscript, arg=msc))
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 
@@ -223,10 +222,10 @@ class AddressListMenu(MenuSystem):
         settings.put('axi', axi)  # update last clicked address
         await self.show_n_addresses(path, addr_fmt, None)
 
-    async def pick_multisig(self, _1, _2, item):
-        ms_wallet = item.arg
+    async def pick_miniscript(self, _1, _2, item):
+        msc_wallet = item.arg
         settings.put('axi', item.label)       # update last clicked address
-        await self.show_n_addresses(None, None, ms_wallet)
+        await self.show_n_addresses(None, None, msc_wallet)
 
     async def make_custom(self, *a):
         # picking a custom derivation path: makes a tree of menus, with chance
@@ -256,7 +255,15 @@ Press (3) if you really understand and accept these risks.
         from glob import dis, NFC, VD
         import version
 
-        def make_msg(change=0):
+        # speed up UI (do not recalculate addresses in while loop)
+        # cache can only have 2 values external, internal (0,1)
+        _cache = OrderedDict()
+
+        def make_msg(change=0, start=start, n=n):
+            nonlocal _cache
+            if (change, start, n) in _cache:
+                return _cache[(change, start, n)]
+
             export_msg = "Press (1) to save Address summary file to SD Card."
             if version.has_fatram and not ms_wallet:
                 export_msg += " Press (2) to view QR Codes."
@@ -288,26 +295,8 @@ Press (3) if you really understand and accept these risks.
                 # but show enough they can verify addrs shown elsewhere.
                 # - makes a redeem script
                 # - converts into addr
-                # - assumes 0/0 is first address.
-                for (i, paths, addr, script, ik, ikp) in ms_wallet.yield_addresses(start, n, change_idx=change):
-                    if i == 0 and ik:
-                        msg += "Taproot internal key:\n\n"
-                        if ikp:
-                            msg += ikp + "\n\n"
-                        else:
-                            msg += '%s (provably unspendable)\n\n' % ik
-
-                        if ms_wallet.N <= 4:
-                            msg += "Taproot tree keys:\n\n"
-
-                    if i == 0 and ms_wallet.N <= 4:
-                        msg += '\n'.join(paths) + '\n =>\n'
-                    else:
-                        msg += '.../%d/%d =>\n' % (change, i)
-
-                    addrs.append(addr)
-                    msg += truncate_address(addr) + '\n\n'
-                    dis.progress_bar_show(i/n)
+                # - assumes <0;1>/0 is first address.
+                msg, addrs = ms_wallet.make_addresses_msg(msg, start, n, change)
 
             else:
                 # single-singer wallets
@@ -329,10 +318,15 @@ Press (3) if you really understand and accept these risks.
             if n > 1:
                 msg += "Press (9) to see next group, (7) to go back. X to quit."
 
+            if len(_cache) < 4:
+                _cache[(change, start, n)] = (msg, addrs)
+            else:
+                # LIFO
+                _cache = OrderedDict(list(_cache.items())[:-1])
             return msg, addrs
 
-        msg, addrs = make_msg()
         change = 0
+        msg, addrs = make_msg(change, start)
         while 1:
             ch = await ux_show_story(msg, escape='1234679')
 
@@ -380,31 +374,13 @@ Press (3) if you really understand and accept these risks.
             else:
                 continue        # 3 in non-NFC mode
 
-            msg, addrs = make_msg(change)
+            msg, addrs = make_msg(change, start, n)
 
 def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, change=0):
     # Produce CSV file contents as a generator
-
     if ms_wallet:
-        # For multisig, include redeem script and derivation for each signer
-        yield '"' + '","'.join(['Index', 'Payment Address',
-                                '%s (%d of %d)' % (
-                                    "Leaf Script" if ms_wallet.internal_key else "Redeem Script",
-                                    ms_wallet.M, ms_wallet.N
-                                )]
-                               + (['Derivation'] * ms_wallet.N)
-                               + ["Taproot Internal Key"] if ms_wallet.internal_key else []
-                               ) + '"\n'
-
-        for (idx, derivs, addr, script, ik, ikp) in ms_wallet.yield_addresses(start, n, change_idx=change):
-            ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
-            ln += '","'.join(derivs)
-            if ik:
-                # internal xonly key with its derivation (if any)
-                ln += '","%s' % (ikp + ik)
-            ln += '"\n'
-
-            yield ln
+        for line in ms_wallet.generate_address_csv(start, n, change):
+            yield line
 
         return
 
