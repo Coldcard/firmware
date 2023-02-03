@@ -320,8 +320,9 @@ async def make_ms_wallet_bsms_menu(menu, label, item):
         await ux_show_story("You must have wallet seed before creating multisig wallets.")
         return
 
-    await ux_show_story("Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely. "
-                        "On next screen you can choose if you want to act as 'Coordinator' or 'Signer'.")
+    await ux_show_story(
+"Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely set up multisig wallets. "
+"On the next screen you choose your role in this process.")
     rv = [
         MenuItem('Signer', menu=make_bsms_signer_menu),
         MenuItem('Coordinator', menu=make_bsms_coordinator_menu),
@@ -353,7 +354,7 @@ async def bsms_coordinator_round1(*a):
     from glob import NFC, dis
     # M/N
     N = await ux_enter_number('No. of signers?(N)', 15)
-    assert 2 <= N <= MAX_SIGNERS, "Number of signers must be in open interval (2..15)"
+    assert 2 <= N <= MAX_SIGNERS, "Number of signers must be 2-15"
 
     M = await ux_enter_number("Threshold? (M)", 15)
     assert 1 <= M <= N, "M cannot be bigger than N (%d) or smaller than 1" % N
