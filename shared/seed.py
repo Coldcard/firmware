@@ -14,9 +14,8 @@ from menu import MenuItem, MenuSystem
 from utils import xfp2str
 import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
-from ux import (
-    ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code, PressRelease, ux_input_numbers, ux_spinner_edit
-)
+from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code
+from ux import PressRelease, ux_input_numbers, ux_spinner_edit
 from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
