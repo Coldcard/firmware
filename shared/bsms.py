@@ -1,8 +1,10 @@
 # (c) Copyright 2022 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# bsms.py - Bitcoin Secure Multisig Setup ( BIP-0129 )
+# bsms.py - Bitcoin Secure Multisig Setup: BIP-129
 #
-
+# For faster testing...
+#   ./simulator.py --seq 99y3y4y
+#
 import ngu, os, stash, chains
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import unhexlify as a2b_hex
@@ -23,7 +25,7 @@ ALLOWED_PATH_RESTRICTIONS = "/0/*,/1/*"
 ENCRYPTION_TYPES = {
     "1": "STANDARD",
     "2": "EXTENDED",
-    "3": "NO_ENCRYPTION"
+    "3": "NO ENCRYPTION"
 }
 
 class RejectAutoCollection(BaseException):
@@ -39,7 +41,7 @@ def exceptions_handler(f):
         try:
             await f(*args)
         except BaseException as e:
-            await ux_show_story(title="FAILURE", msg='%s failed.\n\n%s\n\n%s' % (nice_name, e, problem_file_line(e)))
+            await ux_show_story(title="FAILURE", msg='%s\n\n%s failed\n%s' % (e, nice_name, problem_file_line(e)))
     return new_func
 
 
@@ -123,22 +125,22 @@ def coordinator_data_round2(desc_template, addr, path_restrictions=ALLOWED_PATH_
     return result
 
 
-def summary_tokens(tokens):
+def token_summary(tokens):
+    if len(tokens) == 1:
+        return tokens[0]
+
     numbered_tokens = ["%d. %s" % (i, token) for i, token in enumerate(tokens, start=1)]
     return "\n\n".join(numbered_tokens)
 
 
 def coordinator_summary(M, N, addr_fmt, et, tokens):
     addr_fmt_str = "p2wsh" if addr_fmt == AF_P2WSH else "p2sh-p2wsh"
-    et_str = ENCRYPTION_TYPES[et]
-    token_summary = summary_tokens(tokens)
     summary = "%d of %d\n\n" % (M, N)
     summary += "Address format:\n%s\n\n" % addr_fmt_str
-    summary += "Encryption type:\n%s\n\n" % et_str
-    summary += token_summary
+    summary += "Encryption type:\n%s\n\n" % ENCRYPTION_TYPES[et]
 
     if tokens:
-        summary += "\n\n"
+        summary += "Tokens:\n" + token_summary(tokens) + "\n\n"
 
     return summary
 
@@ -269,7 +271,7 @@ class BSMSSignerMenu(BSMSMenu):
         signers = BSMSSettings.get_signers()
         if signers:
             for i, token_hex in enumerate(signers):
-                label = "%d   %s" % (i + 1, token_hex[:4])
+                label = "%d   %s" % (i+1, token_hex[:4])
                 rv.append(MenuItem('%s' % label, menu=make_bsms_signer_r2_menu, arg=i))
         rv.append(MenuItem('Round 1', f=bsms_signer_round1))
 
@@ -306,9 +308,9 @@ class BSMSCoordinatorMenu(BSMSMenu):
                     af_str = "native"
                 else:
                     af_str = "nested"
-                label = "%d %dof%d_%s_%s" % (i + 1, M, N, af_str, et)
+                label = "%d %dof%d_%s_%s" % (i+1, M, N, af_str, et)
                 rv.append(MenuItem('%s' % label, menu=make_bsms_coord_r2_menu, arg=i))
-        rv.append(MenuItem('Round 1', f=bsms_coordinator_round1))
+        rv.append(MenuItem('Create BSMS', f=bsms_coordinator_start))
 
         return rv
 
@@ -321,7 +323,7 @@ async def make_ms_wallet_bsms_menu(menu, label, item):
         return
 
     await ux_show_story(
-"Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely set up multisig wallets. "
+"Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets. "
 "On the next screen you choose your role in this process.")
     rv = [
         MenuItem('Signer', menu=make_bsms_signer_menu),
@@ -350,29 +352,32 @@ async def decrypt_nfc_data(key, data):
         return
 
 @exceptions_handler
-async def bsms_coordinator_round1(*a):
+async def bsms_coordinator_start(*a):
     from glob import NFC, dis
     # M/N
     N = await ux_enter_number('No. of signers?(N)', 15)
-    assert 2 <= N <= MAX_SIGNERS, "Number of signers must be 2-15"
+    assert 2 <= N <= MAX_SIGNERS, "Number of co-signers must be 2-15"
 
     M = await ux_enter_number("Threshold? (M)", 15)
-    assert 1 <= M <= N, "M cannot be bigger than N (%d) or smaller than 1" % N
+    assert 1 <= M <= N, "M cannot be bigger than N (N=%d)" % N
 
-    ch = await ux_show_story("Choose address format. Default is P2WSH addresses. Press (1) for P2SH-P2WSH.", escape='1')
+    ch = await ux_show_story("Default address format is P2WSH.\n\n"
+                                "Press (2) for P2SH-P2WSH instead.", escape='2')
     if ch == 'y':
         addr_fmt = AF_P2WSH
-    elif ch == '1':
+    elif ch == '2':
         addr_fmt = AF_P2WSH_P2SH
     else:
         return
 
-    encryption_type = await ux_show_story(
-        "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED,"
-        " and (3) for NO_ENCRYPTION", escape="123")
+    while 1:
+        encryption_type = await ux_show_story(
+            "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED,"
+            " and (3) for no encryption", escape="123")
 
-    if encryption_type not in "123":
-        return
+        if encryption_type == 'x': return
+        if encryption_type in "123":
+            break
 
     tokens = []
     if encryption_type == "2":
@@ -396,7 +401,7 @@ async def bsms_coordinator_round1(*a):
         ch = await ux_show_story(prompt, escape=escape)
         if ch == '3' and tokens:
             force_vdisk = None
-            await NFC.share_text(summary_tokens(tokens))
+            await NFC.share_text(token_summary(tokens))
         elif ch == "2":
             force_vdisk = True
         elif ch == '1':
@@ -464,24 +469,26 @@ async def bsms_coordinator_round2(menu, label, item):
     is_encrypted = et in "12" and tokens
     suffix = ".dat" if is_encrypted else ".txt"
     mode = "rb" if is_encrypted else "rt"
-    prompt, escape = import_prompt_builder("signer round 1 files")
+    prompt, escape = import_prompt_builder("co-signer round 1 files")
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == '3':
+            # TODO: this should be own function
             force_vdisk = None
             r1_data = []
             for i in range(N):
                 token = get_token(i)
                 for attempt in range(2):
-                    ch = await ux_show_story("Share %d. signer round 1 data for token starting with %s" % (i + 1, token[:4]))
+                    ch = await ux_show_story("Share co-signer #%d round-1 data for token starting with %s" % (i+1, token[:4]))
                     if ch != "y":
                         return
+
                     data = await NFC.read_bsms_data()
                     if is_encrypted:
                         encryption_key = key_derivation_function(token)
                         data = await decrypt_nfc_data(encryption_key, data)
                         if not data:
-                            fail_msg = "Decryption failed for signer %d with token %s." % (i + 1, token[:4])
+                            fail_msg = "Decryption failed for co-signer #%d with token %s." % (i+1, token[:4])
                             ch = await ux_show_story(title="FAILURE",
                                                      msg=fail_msg + " Try again?" if attempt == 0 else fail_msg)  # second chance
                             if ch == "y" and attempt == 0:
@@ -489,6 +496,7 @@ async def bsms_coordinator_round2(menu, label, item):
                             else:
                                 return
                         token_key_map[token] = encryption_key
+
                     r1_data.append(data)
                     break  # exit "second chance" loop
         else:
@@ -502,14 +510,14 @@ async def bsms_coordinator_round2(menu, label, item):
         r1_data = []
         try:
             f_pattern = "bsms_sr1"
-            auto_msg = "Press OK to pick signer round 1 files manually, or press (1) to attempt auto-collection."
+            auto_msg = "Press OK to pick co-signer round 1 files manually, or press (1) to attempt auto-collection."
             auto_msg += " For auto-collection to succeed all filenames have to start with '%s'" % f_pattern
             auto_msg += " and end with extension '%s'." % suffix
             if et == "2":  # EXTENDED
                 auto_msg += (" In addition for EXTENDED encryption all files must contain first four characters of"
                              " respective token. For example '%s_af9f%s'." % (f_pattern, suffix))
             elif et == "3":  # NO_ENCRYPTION
-                auto_msg += (" In addition for NO_ENCRYPTION cases, number of files with above mentioned"
+                auto_msg += (" In addition for NO ENCRYPTION cases, number of files with above mentioned"
                              " pattern and suffix must equal number of signers (N).")
             auto_msg += " If above is not respected auto-collection fails and defaults to manual selection of files."
             ch = await ux_show_story(auto_msg, escape="1")
@@ -528,11 +536,13 @@ async def bsms_coordinator_round2(menu, label, item):
             file_names_len = len(file_names)
             dis.fullscreen("Validating...")
             if et == "1":
-                # can have multiple of these files - we will try to decrypt all that have above pattern
-                # those that fail will be ignored and at the end we check if we have correct num of files (num==N)
-                token = get_token(0)  # STANDARD encryption just one token
+                # can have multiple of these files - we will try to decrypt all that
+                # have above pattern. Those that fail will be ignored and at the end
+                # we check if we have correct num of files (num==N)
+                token = get_token(0)  # STANDARD encryption has just one token
                 encryption_key = key_derivation_function(token)
                 token_key_map[token] = encryption_key
+
                 with CardSlot(force_vdisk=force_vdisk) as card:
                     for i, fname in enumerate(file_names, start=1):
                         with open(card.abs_path(fname), mode) as f:
@@ -540,9 +550,11 @@ async def bsms_coordinator_round2(menu, label, item):
                         data = bsms_decrypt(encryption_key, data)
                         if not data:
                             continue
+
                         assert data.startswith("BSMS"), "Failure - not BSMS file?"
                         r1_data.append(data)
                         dis.progress_bar_show(i / file_names_len)
+
             elif et == "2":
                 with CardSlot(force_vdisk=force_vdisk) as card:
                     for i in range(N):
@@ -553,16 +565,21 @@ async def bsms_coordinator_round2(menu, label, item):
                                     data = f.read()
                                 encryption_key = key_derivation_function(token)
                                 data = bsms_decrypt(encryption_key, data)
+
                                 assert data, "Failed to decrypt %s with token %s" % (fname, token)
                                 assert data.startswith("BSMS"), "Failure - not BSMS file?"
                                 token_key_map[token] = encryption_key
                                 r1_data.append(data)
+
                                 break
                         else:
                             assert False, "haven't find file for token %s" % token
+
                         dis.progress_bar_show(i / N)
             else:
-                assert file_names_len == N, "Need same number of files(%d) as signers(N=%d)" % (file_names_len, N)
+                assert file_names_len == N, "Need same number of files (%d) as co-signers(N=%d)"\
+                                                             % (file_names_len, N)
+
                 with CardSlot(force_vdisk=force_vdisk) as card:
                     for i, fname in enumerate(file_names, start=1):
                         with open(card.abs_path(fname), mode) as f:
@@ -571,7 +588,8 @@ async def bsms_coordinator_round2(menu, label, item):
                         r1_data.append(data)
                         dis.progress_bar_show(i / file_names_len)
 
-            assert len(r1_data) == N, "No. of signer round 1 data auto-collected does not equal number of signers (N)"
+            assert len(r1_data) == N, "No. of signer round 1 data auto-collected "\
+                                        "does not equal number of signers (N)"
         except BaseException as e:
             if isinstance(e, RejectAutoCollection):
                 # raised when user manually chooses not to use auto-collection
@@ -580,11 +598,15 @@ async def bsms_coordinator_round2(menu, label, item):
                 msg_prefix = "Auto-collection failed. Defaulting to manual selection of files. "
             for i in range(N):
                 token = get_token(i)
-                f_pick_msg = (msg_prefix + 'Select %d. file containing signer round 1 data for token starting with %s. '
-                              'File extension has to be "%s"'% (i + 1, token[:4], suffix))
+                f_pick_msg = (msg_prefix +
+                    'Select co-signer #%d file containing round 1 data for token starting with %s. '
+                    'File extension has to be "%s"' % (i+1, token[:4], suffix))
                 for attempt in range(2):  # two chances to succeed
-                    fn = await file_picker(f_pick_msg, min_size=220, max_size=500, suffix=suffix, force_vdisk=force_vdisk)
+
+                    fn = await file_picker(f_pick_msg, min_size=220, max_size=500,
+                                                suffix=suffix, force_vdisk=force_vdisk)
                     if not fn: return
+
                     dis.fullscreen("Wait...")
                     with CardSlot(force_vdisk=force_vdisk) as card:
                         dis.progress_bar_show(0.1)
@@ -596,28 +618,33 @@ async def bsms_coordinator_round2(menu, label, item):
                                 dis.progress_bar_show(0.6)
                                 data = bsms_decrypt(encryption_key, data)
                                 if not data:
-                                    fail_msg = "Decryption failed for signer %d with token %s." % (i + 1, token[:4])
-                                    ch = await ux_show_story(title="FAILURE",
-                                                             msg=fail_msg + " Try again?" if attempt == 0 else fail_msg)
+                                    fail_msg = "Decryption failed for co-signer #%d with token %s."\
+                                                        % (i+1, token[:4])
+                                    ch = await ux_show_story(title="FAILURE", msg=fail_msg + 
+                                                    (" Try again?" if attempt == 0 else fail_msg))
+
                                     if ch == "y" and attempt == 0:
                                         continue
                                     else:
                                         return
+
                                 dis.progress_bar_show(0.9)
                                 token_key_map[token] = encryption_key
+
                             r1_data.append(data)
                             dis.progress_bar_show(1)
+
                             break  # break from "second chance loop"
 
     keys = []
     nodes = []
     dis.fullscreen("Validating...")
     for i, data in enumerate(r1_data):
-        i_div_N = (i + 1) / N  # divided in the loop with number of in-loop occurences of 'dis.progress_bar_show' (currently 5)
+        i_div_N = (i+1) / N  # divided in the loop with number of in-loop occurences of 'dis.progress_bar_show' (currently 5)
         token = get_token(i)
         assert data.startswith(BSMS_VERSION), "Incompatible BSMS version. Need %s got %s" % (BSMS_VERSION, data[:9])
         version, tok, key_exp, description, sig = data.strip().split("\n")
-        assert tok == token, "Token missmatch saved %s, received from signer %s" % (token, tok)
+        assert tok == token, "Token mismatch saved %s, received from signer %s" % (token, tok)
         koi, ext_key = MultisigDescriptor.parse_key_orig_info(key_exp)
         dis.progress_bar_show(i_div_N / 5)
         xfp_str, derivation = koi[:8], "m" + koi[8:]
@@ -656,7 +683,8 @@ async def bsms_coordinator_round2(menu, label, item):
         if ch == '3':
             if et == "2":
                 for i, token in enumerate(tokens, start=1):
-                    ch = await ux_show_story("Exporting data for signer %d. with token %s" % (i, token[:4]))
+                    ch = await ux_show_story("Exporting data for co-signer #%d with token %s"
+                                                    % (i+1, token[:4]))
                     if ch != "y":
                         return
                     data = bsms_encrypt(token_key_map[token], token, r2_data)
@@ -793,10 +821,10 @@ async def bsms_signer_round1(*a):
     acct_num = await ux_enter_number('Account Number:', 9999) or 0
 
     # textual key description
-    key_description = "ColdCard signer%s account %d" % (af_str, acct_num)
+    key_description = "Coldcard signer%s account %d" % (af_str, acct_num)
     ch = await ux_show_story(
-"Choose key description. To continue with default, generated description: '%s' press OK. "
-"Press (1) for custom key description." % key_description, escape="1")
+"Choose key description. To continue with default, generated description: '%s' press OK."
+"\n\nPress (1) for custom key description." % key_description, escape="1")
 
     if ch == "1":
         key_description = await ux_spinner_edit("", confirm_exit=False) or ""
