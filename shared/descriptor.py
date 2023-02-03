@@ -235,22 +235,24 @@ class Descriptor:
         koi, key = cls.parse_key_orig_info(tmp_desc)
         if key[0:4] not in ["tpub", "xpub"]:
             raise ValueError("Only extended public keys are supported")
+
         xpub = cls.parse_key_derivation_info(key)
         xfp = str2xfp(koi[:8])
         origin_deriv = "m" + koi[8:]
+
         return cls(keys=[(xfp, origin_deriv, xpub)], addr_fmt=addr_fmt)
 
     @classmethod
     def is_descriptor(cls, desc_str):
         """Method to guess whether this can be a descriptor"""
-        temp = parse_desc_str(desc_str)
         try:
+            temp = parse_desc_str(desc_str)
             desc, checksum = temp.split("#")
+            assert desc[-1] == ")"
+
+            return True
         except:
             return False
-        if desc[-1] == ")":
-            return True
-        return False
 
     def bitcoin_core_serialize(self, external_label=None):
         # this will become legacy one day
@@ -267,6 +269,7 @@ class Descriptor:
             if internal is False and external_label:
                 desc_obj["label"] = external_label
             res.append(desc_obj)
+
         return res
 
 
@@ -317,32 +320,35 @@ class MultisigDescriptor(Descriptor):
         M, keys = int(splitted[0]), splitted[1:]
         N = int(len(keys))
         if M > N:
-            raise ValueError("Multisig threshold cannot be larger than the number of keys; "
-                             "threshold is %d but only %d keys specified" % (M, N))
+            raise ValueError("M must be <= N: got M=%d and N=%d" % (M, N))
 
         res_keys = []
         for key in keys:
             koi, key = cls.parse_key_orig_info(key)
             if key[0:4] not in ["tpub", "xpub"]:
                 raise ValueError("Only extended public keys are supported")
+
             xpub = cls.parse_key_derivation_info(key)
             xfp = str2xfp(koi[:8])
             origin_deriv = "m" + koi[8:]
             res_keys.append((xfp, origin_deriv, xpub))
+
         return cls(M=M, N=N, keys=res_keys, addr_fmt=addr_fmt)
 
     def _serialize(self, internal=False, int_ext=False) -> str:
         """Serialize without checksum"""
         desc_base = MULTI_FMT_TO_SCRIPT[self.addr_fmt]
         desc_base = desc_base % ("sortedmulti(%s)")
-        assert len(self.keys) == self.N, "invalid descriptor object"
-        inner = str(self.M) + "," + ",".join(self.serialize_keys(internal=internal, int_ext=int_ext))
+        assert len(self.keys) == self.N
+        inner = str(self.M) + "," + ",".join(
+                        self.serialize_keys(internal=internal, int_ext=int_ext))
+
         return desc_base % (inner)
 
     def pretty_serialize(self) -> str:
         """Serialize in pretty and human-readable format"""
         res = "# Coldcard descriptor export\n"
-        res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP67)\n"
+        res += "# order of keys in the descriptor does not matter, will be sorted before creating script (BIP-67)\n"
         if self.addr_fmt == AF_P2SH:
             res += "# bare multisig - p2sh\n"
             res += "sh(sortedmulti(\n%s\n))"
@@ -358,8 +364,10 @@ class MultisigDescriptor(Descriptor):
         else:
             raise ValueError("Malformed descriptor")
 
-        assert len(self.keys) == self.N, "invalid descriptor object"
-        inner = "\t" + "# %d of %d (%s)\n" % (self.M, self.N, "requires all participants to sign" if self.M == self.N else "threshold")
+        assert len(self.keys) == self.N
+        inner = "\t" + "# %d of %d (%s)\n" % (
+                        self.M, self.N,
+                        "requires all participants to sign" if self.M == self.N else "threshold")
         inner += "\t" + str(self.M) + ",\n"
         ser_keys = self.serialize_keys()
         for i, key_str in enumerate(ser_keys, start=1):
@@ -367,7 +375,9 @@ class MultisigDescriptor(Descriptor):
                 inner += "\t" + key_str
             else:
                 inner += "\t" + key_str + ",\n"
+
         checksum = self.serialize().split("#")[1]
-        return res % (inner) + "#" + checksum
+
+        return (res % inner) + "#" + checksum
 
 # EOF
