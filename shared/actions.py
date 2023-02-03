@@ -49,7 +49,7 @@ async def accept_terms(*a):
     # force them to read message...
 
     if settings.get('terms_ok'):
-        return 
+        return
 
     while 1:
         ch = await ux_show_story("""\
@@ -120,7 +120,7 @@ Extended Master Key:
         # show the QR
         from ux import show_qr_code
         await show_qr_code(xpub, False)
-    
+
 
 async def show_settings_space(*a):
 
@@ -330,7 +330,7 @@ THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
 There is ABSOLUTELY NO WAY to 'reset the PIN' or 'factory reset' the Coldcard if you forget the PIN.
 
 DO NOT FORGET THE PIN CODE.
- 
+
 Press 6 to prove you read to the end of this message.''', title='WARNING', escape='6')
 
         if ch == 'x': return
@@ -508,7 +508,7 @@ async def login_now(*a):
     # wipe memory and reboot
     from utils import clean_shutdown
     clean_shutdown(2)
-    
+
 
 async def virgin_help(*a):
     await ux_show_story("""\
@@ -612,7 +612,7 @@ This action will certainly cause you to lose all funds associated with this wall
 unless you have a backup of the seed words and know how to import them into a \
 new wallet.\n\nPress (4) to prove you read to the end of this message and accept all \
 consequences.''', escape='4')
-    if ch != '4': 
+    if ch != '4':
         return await ux_aborted()
 
     seed.clear_seed()
@@ -732,7 +732,7 @@ async def version_migration():
     # - long term we generally cannot delete code from here, because we
     #   never know when a user might skip a bunch of intermediate versions
 
-    # Data migration issue: 
+    # Data migration issue:
     # - "login countdown" feature now stored elsewhere [mk3]
     had_delay = settings.get('lgto', 0)
     if had_delay:
@@ -743,10 +743,10 @@ async def version_migration():
         s.save()
         del s
 
-    # Disable vdisk so it is off by default until re-enabled, after 
+    # Disable vdisk so it is off by default until re-enabled, after
     # version 5.0.6 is installed
     settings.remove_key('vdsk')
-        
+
 async def version_migration_prelogin():
     # same, but for setting before login
     if version.has_se2:
@@ -880,7 +880,7 @@ async def start_login_sequence():
 
     # implement idle timeout now that we are logged-in
     from imptask import IMPT
-    IMPT.start_task('idle', idle_logout()) 
+    IMPT.start_task('idle', idle_logout())
 
     # Do green-light set immediately after firmware upgrade
     # - mk4 doesn't work this way, light will already be green
@@ -1002,7 +1002,7 @@ async def export_xpub(label, _2, item):
         # XFP shortcut
         xfp = xfp2str(settings.get('xfp', 0))
         await show_qr_code(xfp, True)
-        return 
+        return
 
     elif mode == 0:
         path = "m"
@@ -1048,14 +1048,14 @@ async def export_xpub(label, _2, item):
             await show_qr_code(xpub, False)
 
         break
-        
+
 
 def electrum_export_story(background=False):
     # saves memory being in a function
     return ('''\
 This saves a skeleton Electrum wallet file. \
 You can then open that file in Electrum without ever connecting this Coldcard to a computer.\n
-''' 
+'''
         + (background or 'Choose an address type for the wallet on the next screen.'+PICK_ACCOUNT)
         + SENSITIVE_NOT_SECRET)
 
@@ -1086,22 +1086,25 @@ async def electrum_skeleton(*a):
 
 def ss_descriptor_export_story(addition="", background=None):
     # saves memory being in a function
-    return ('''\
-This saves a ranged xpub descriptor\
-'''
-        + addition + (background or '. Choose descriptor and address type for the wallet on next screens.'+ PICK_ACCOUNT)
-        + SENSITIVE_NOT_SECRET)
+    return ("This saves a ranged xpub descriptor" + addition
+            + (background or
+              '. Choose descriptor and address type for the wallet on next screens.'+PICK_ACCOUNT)
+            + SENSITIVE_NOT_SECRET)
 
 async def ss_descriptor_skeleton(label, _, item):
+    # Export of descriptor data (wallet)
     ch = await ux_show_story(ss_descriptor_export_story(), escape='1')
+
     account_num = 0
     if ch == '1':
         account_num = await ux_enter_bip32_index('Account Number:', unlimited=True) or 0
     elif ch != 'y':
         return
+
     int_ext = True
-    ch = await ux_show_story("To export receiving and change descriptors in one descriptor (<0;1> notation) press OK"
-                             ", press (1) to export receiving and change descriptors separately.", escape='1')
+    ch = await ux_show_story(
+         "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK, "
+         "press (1) to export receiving and change descriptors separately.", escape='1')
     if ch == "1":
         int_ext = False
     elif ch != "y":
@@ -1115,9 +1118,12 @@ async def ss_descriptor_skeleton(label, _, item):
     # 'classic' instead of 'legacy' personallly.
     rv = []
 
-    rv.append(MenuItem("Legacy (P2PKH)", f=descriptor_skeleton_step2, arg=(AF_CLASSIC, account_num, int_ext)))
-    rv.append(MenuItem("P2SH-Segwit", f=descriptor_skeleton_step2, arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
-    rv.append(MenuItem("Native Segwit", f=descriptor_skeleton_step2, arg=(AF_P2WPKH, account_num, int_ext)))
+    rv.append(MenuItem("Legacy (P2PKH)", f=descriptor_skeleton_step2,
+                            arg=(AF_CLASSIC, account_num, int_ext)))
+    rv.append(MenuItem("P2SH-Segwit", f=descriptor_skeleton_step2,
+                            arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
+    rv.append(MenuItem("Native Segwit", f=descriptor_skeleton_step2,
+                            arg=(AF_P2WPKH, account_num, int_ext)))
 
     return MenuSystem(rv)
 
@@ -1146,8 +1152,10 @@ async def samourai_account_descriptor(name, account_num):
             background="\n"),
         escape='1'
     )
+
     if ch != 'y':
         return
+
     await export.make_descriptor_wallet_export(AF_P2WPKH, account_num)
 
 async def descriptor_skeleton_step2(_1, _2, item):
@@ -1339,9 +1347,9 @@ the start of a line, and probably starts with "xprv".''', title="FAILED")
 
     # restore as if it was a backup (code reuse)
     await restore_from_dict(d)
-   
-    # not reached; will do reset. 
-                            
+
+    # not reached; will do reset.
+
 EMPTY_RESTORE_MSG = '''\
 You must clear the wallet seed before restoring a backup because it replaces \
 the seed value and the old seed would be lost.\n\n\
@@ -1473,8 +1481,8 @@ async def list_files(*A):
 
     return
 
-async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None, choices=None, escape=None,
-                      none_msg=None, title=None, force_vdisk=False):
+async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None,
+                      choices=None, escape=None, none_msg=None, title=None, force_vdisk=False):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
@@ -1627,8 +1635,8 @@ async def ready2sign(*a):
 
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
-                            max_size=MAX_TXN_LEN, taster=is_psbt)
-    
+                                    max_size=MAX_TXN_LEN_MK4, taster=is_psbt)
+
     if stash.bip39_passphrase:
         title = '[%s]' % settings.get('xfp')
     else:
@@ -1644,7 +1652,7 @@ from your desktop wallet software or command line tools.\n\n'''
 
         if NFC:
             msg += 'Press (3) to send PSBT using NFC.\n\n'
-    
+
         msg += "You will always be prompted to confirm the details before \
 any signature is performed."
 
@@ -1659,7 +1667,8 @@ any signature is performed."
         label,path,fn = choices[0]
         input_psbt = path + '/' + fn
     else:
-        input_psbt = await file_picker('Choose PSBT file to be signed.', choices=choices, title=title)
+        input_psbt = await file_picker('Choose PSBT file to be signed.',
+                                            choices=choices, title=title)
         if not input_psbt:
             return
 
@@ -1679,9 +1688,10 @@ async def sign_message_on_sd(*a):
             lines = fd.readlines()
             return (1 <= len(lines) <= 5)
 
-    fn = await file_picker('Choose text file to be signed.', suffix='txt', min_size=2, max_size=500, taster=is_signable,
-                           none_msg='No suitable files found. Must be one line of text, in a .TXT file, optionally '
-                                    'followed by a subkey derivation path on a second line.')
+    fn = await file_picker('Choose text file to be signed.', suffix='txt',
+                            min_size=2, max_size=500, taster=is_signable, none_msg=
+'No suitable files found. Must be one line of text, in a .TXT file, optionally '
+'followed by a subkey derivation path on a second line.')
 
     if not fn:
         return
@@ -1724,7 +1734,7 @@ async def pin_changer(_1, _2, item):
 
     if pa.is_secondary:
         # secondary wallet user can only change their own password, and the secondary
-        # duress pin... 
+        # duress pin...
         # - now excluded from menu, but keep for Mark1/2 hardware!
         if mode == 'main' or mode == 'brickme':
             await needs_primary()
@@ -1742,7 +1752,7 @@ async def pin_changer(_1, _2, item):
     title, msg = warn[mode]
 
     async def incorrect_pin():
-        await ux_show_story('You provided an incorrect value for the existing %s.' % title, 
+        await ux_show_story('You provided an incorrect value for the existing %s.' % title,
                                 title='Wrong PIN')
         return
 
@@ -1764,7 +1774,7 @@ We strongly recommend all PIN codes used be unique between each other.
 
     if is_login_pin:
         # Challenge them for old password; they probably have it, and we have it
-        # in memory already, because we wouldn't be here otherwise... but 
+        # in memory already, because we wouldn't be here otherwise... but
         # challenge them anyway as a policy choice.
         need_old_pin = True
     else:
@@ -1889,7 +1899,7 @@ We strongly recommend all PIN codes used be unique between each other.
                     node, _ = sv.duress_root()
                     d_secret = SecretStash.encode(xprv=node)
                     sv.register(d_secret)
-        
+
                     # write it out.
                     pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
 
@@ -1948,8 +1958,7 @@ Secure Element{ses}:
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=serial, hw=hw, 
-                ses='s' if version.has_se2 else ''))
+                            ser=serial, hw=hw, ses='s' if version.has_se2 else ''))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.
@@ -1957,7 +1966,7 @@ async def ship_wo_bag(*a):
     if not ok: return
 
     import callgate
-    from glob import dis 
+    from glob import dis
     from version import is_devmode
 
     failed = callgate.set_bag_number(b'NOT BAGGED')      # 32 chars max
@@ -1999,7 +2008,7 @@ Rarely needed as critical security updates will set this automatically.''' % hav
     assert rv == 0, "Failed: %r" % rv
 
 async def start_hsm_menu_item(*a):
-    from hsm_ux import start_hsm_approval 
+    from hsm_ux import start_hsm_approval
     await start_hsm_approval(sf_len=0, usb_mode=False)
 
 async def wipe_hsm_policy(*A):
