@@ -42,9 +42,10 @@ class UserAuthorizedAction:
     def pop_menu(self):
         # drop them back into menu system, but try not to affect
         # menu position.
-        self.ux_done = True
         from actions import goto_top_menu
         from ux import the_ux, restore_menu
+
+        self.ux_done = True
         if the_ux.top_of_stack() == self:
             empty = the_ux.pop()
             if empty:
