@@ -13,24 +13,25 @@ from utils import xfp2str, problem_file_line, import_prompt_builder, export_prom
 from menu import MenuSystem, MenuItem
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_show_story, ux_enter_number, restore_menu, ux_input_numbers, ux_spinner_edit
+from ux import the_ux
 from descriptor import MultisigDescriptor, append_checksum
 
 
 BSMS_VERSION = "BSMS 1.0"
-
 ALLOWED_PATH_RESTRICTIONS = "/0/*,/1/*"
 
-
-et_map = {
+ENCRYPTION_TYPES = {
     "1": "STANDARD",
     "2": "EXTENDED",
     "3": "NO_ENCRYPTION"
 }
 
-
 class RejectAutoCollection(BaseException):
     pass
 
+class BSMSOutOfSpace(RuntimeError):
+    # should not be a concern on Mk4 and later; just in case, handle well.
+    pass
 
 def exceptions_handler(f):
     nice_name = " ".join(f.__name__.split("_")).replace("bsms", "BSMS")
@@ -40,10 +41,6 @@ def exceptions_handler(f):
         except BaseException as e:
             await ux_show_story(title="FAILURE", msg='%s failed.\n\n%s\n\n%s' % (nice_name, e, problem_file_line(e)))
     return new_func
-
-
-class BSMSOutOfSpace(RuntimeError):
-    pass
 
 
 def normalize_token(token_hex):
@@ -100,6 +97,7 @@ def bsms_encrypt(key, token_hex, data_str):
     iv = mac[:16]
     encrypt = ngu.aes.CTR(key, iv)
     ciphertext = encrypt.cipher(data_str)
+
     return mac + ciphertext
 
 
@@ -108,10 +106,11 @@ def signer_data_round1(token_hex, desc_type_key, key_description, sig_bytes=None
     result += "%s\n" % token_hex
     result += "%s\n" % desc_type_key
     result += "%s" % key_description
-    if sig_bytes is None:
-        return result
-    sig = b2a_base64(sig_bytes).decode().strip()
-    result += "\n" + sig
+
+    if sig_bytes:
+        sig = b2a_base64(sig_bytes).decode().strip()
+        result += "\n" + sig
+
     return result
 
 
@@ -120,6 +119,7 @@ def coordinator_data_round2(desc_template, addr, path_restrictions=ALLOWED_PATH_
     result += "%s\n" % desc_template
     result += "%s\n" % path_restrictions
     result += "%s" % addr
+
     return result
 
 
@@ -130,14 +130,16 @@ def summary_tokens(tokens):
 
 def coordinator_summary(M, N, addr_fmt, et, tokens):
     addr_fmt_str = "p2wsh" if addr_fmt == AF_P2WSH else "p2sh-p2wsh"
-    et_str = et_map[et]
+    et_str = ENCRYPTION_TYPES[et]
     token_summary = summary_tokens(tokens)
     summary = "%d of %d\n\n" % (M, N)
     summary += "Address format:\n%s\n\n" % addr_fmt_str
     summary += "Encryption type:\n%s\n\n" % et_str
     summary += token_summary
+
     if tokens:
         summary += "\n\n"
+
     return summary
 
 
@@ -231,7 +233,6 @@ class BSMSMenu(MenuSystem):
 
 
 async def user_delete_signer_settings(menu, label, item):
-    from ux import the_ux
     index = item.arg
     BSMSSettings.signer_delete(index)
     the_ux.pop()
@@ -276,7 +277,6 @@ class BSMSSignerMenu(BSMSMenu):
 
 
 async def user_delete_coordinator_settings(menu, label, item):
-    from ux import the_ux
     index = item.arg
     BSMSSettings.coordinator_delete(index)
     the_ux.pop()
@@ -354,8 +354,10 @@ async def bsms_coordinator_round1(*a):
     # M/N
     N = await ux_enter_number('No. of signers?(N)', 15)
     assert 2 <= N <= MAX_SIGNERS, "Number of signers must be in open interval (2..15)"
+
     M = await ux_enter_number("Threshold? (M)", 15)
     assert 1 <= M <= N, "M cannot be bigger than N (%d) or smaller than 1" % N
+
     ch = await ux_show_story("Choose address format. Default is P2WSH addresses. Press (1) for P2SH-P2WSH.", escape='1')
     if ch == 'y':
         addr_fmt = AF_P2WSH
@@ -363,10 +365,14 @@ async def bsms_coordinator_round1(*a):
         addr_fmt = AF_P2WSH_P2SH
     else:
         return
-    encryption_type = await ux_show_story("Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED,"
-                                          " and (3) for NO_ENCRYPTION", escape="123")
+
+    encryption_type = await ux_show_story(
+        "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED,"
+        " and (3) for NO_ENCRYPTION", escape="123")
+
     if encryption_type not in "123":
         return
+
     tokens = []
     if encryption_type == "2":
         dis.fullscreen('Generating...')
@@ -377,13 +383,13 @@ async def bsms_coordinator_round1(*a):
         tokens.append(b2a_hex(ngu.random.bytes(8)).decode())  # all signers same token
 
     summary = coordinator_summary(M, N, addr_fmt, encryption_type, tokens)
-    summary += "Press OK to continue, otherwise X to cancel"
+    summary += "Press OK to continue, or X to cancel"
     ch = await ux_show_story(title="SUMMARY", msg=summary)
     if ch != "y":
         return
 
     force_vdisk = False
-    title = "BSMS token file/s"
+    title = "BSMS token file(s)"
     prompt, escape = export_prompt_builder(title)
     if tokens and prompt:
         ch = await ux_show_story(prompt, escape=escape)
@@ -421,6 +427,7 @@ async def bsms_coordinator_round1(*a):
 
     BSMSSettings.coordinator_add((M, N, addr_fmt, encryption_type, tokens))
     await ux_show_story(msg)
+
     restore_menu()
 
 
@@ -432,10 +439,15 @@ async def bsms_coordinator_round2(menu, label, item):
 
     bsms_settings_index = item.arg
     chain = chains.current_chain()
-    # or xpub or tpub as we use descriptors (no SLIP132 allowed)
+
+    # or xpub or tpub as we use descriptors (no SLIP-132 allowed)
     ext_key_prefix = "%spub" % chain.slip132[AF_CLASSIC].hint
     force_vdisk = False
-    token_key_map = {}  # this can be RAM intensive (max 15 F mapped to keys) ((32 + 16) * 15) roughly (actually more with python overhead)
+
+    # this can be RAM intensive (max 15 F mapped to keys) 
+    #  => ((32 + 16) * 15) roughly (actually more with python overhead)
+    token_key_map = {}
+
     # choose correct values based on label (index in coordinator bsms settings)
     M, N, addr_fmt, et, tokens = BSMSSettings.get_coordinators()[bsms_settings_index]
 
@@ -713,7 +725,9 @@ async def bsms_signer_round1(*a):
         prompt += ", (4) to import from Virtual Disk"
         escape += "4"
     prompt += "."
+
     ch = await ux_show_story(prompt, escape=escape)
+
     if ch == '3':
         token_hex = await NFC.read_bsms_token()
     elif ch == "2":
@@ -731,16 +745,14 @@ async def bsms_signer_round1(*a):
             return
     elif ch in "14":
         from actions import file_picker
-        if ch == "1":
-            force_vdisk = False
-        else:
-            force_vdisk = True
+        force_vdisk = (ch == '4')
 
         # pick a likely-looking file.
         fn = await file_picker('Select file containing the token to be imported. File extension has to be ".token" '
                                'and file has to contain single line with hex encoded token string.',
                                min_size=15, max_size=35, suffix=".token", force_vdisk=force_vdisk)
         if not fn: return
+
         with CardSlot(force_vdisk=force_vdisk) as card:
             with open(fn, 'rt') as fd:
                 token_hex = fd.read().strip()
@@ -750,17 +762,20 @@ async def bsms_signer_round1(*a):
     # will raise, exc catched in decorator, FAILURE msg provided
     validate_token(token_hex)
     token_hex = normalize_token(token_hex)
-    is_extended = len(token_hex) == 32
+    is_extended = (len(token_hex) == 32)
     entered_msg = "%s\n\nhex:\n%s" % (token_int, token_hex) if token_int else token_hex
-    ch = await ux_show_story("You have entered token:\n%s" % entered_msg + "\n\nIs token correct?")
+
+    ch = await ux_show_story("You have entered token:\n" + entered_msg + "\n\nIs token correct?")
     if ch != "y":
         return
+
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
-    ch = await ux_show_story("Choose address format for correct SLIP derivation path. Default is 'unknown' as this "
-                             "information may not be known at this point in BSMS. SLIP agnostic path will be chosen. "
-                             "Press (1) for P2WSH. Press (2) for P2SH-P2WSH. "
-                             "Correct SLIP path is completely unnecessary as descriptors (BIP-0380) are used.",
+    ch = await ux_show_story(
+"Choose address format for correct SLIP derivation path. Default is 'unknown' as this "
+"information may not be known at this point in BSMS. SLIP agnostic path will be chosen. "
+"Press (1) for P2WSH. Press (2) for P2SH-P2WSH. "
+"Correct SLIP path is completely unnecessary as descriptors (BIP-0380) are used.",
                              escape='12')
     if ch == 'y':
         pth_template = "m/129'/{coin}'/{acct_num}'"
@@ -773,37 +788,51 @@ async def bsms_signer_round1(*a):
         af_str = " P2SH-P2WSH"
     else:
         return
+
     acct_num = await ux_enter_number('Account Number:', 9999) or 0
+
     # textual key description
     key_description = "ColdCard signer%s account %d" % (af_str, acct_num)
-    ch = await ux_show_story("Choose key description. To continue with default, generated description: '%s' press OK. "
-                             "Press (1) for custom key description." % key_description, escape="1")
+    ch = await ux_show_story(
+"Choose key description. To continue with default, generated description: '%s' press OK. "
+"Press (1) for custom key description." % key_description, escape="1")
+
     if ch == "1":
         key_description = await ux_spinner_edit("", confirm_exit=False) or ""
 
     key_description_len = len(key_description)
-    assert key_description_len <= 80, "Description of the key, 80 char maximum (current: %d char)" % key_description_len
+    assert key_description_len <= 80, "Key Description: 80 char max (was %d)" % key_description_len
+
     dis.fullscreen("Wait...")
+
     with stash.SensitiveValues() as sv:
         dis.progress_bar_show(0.1)
+
         dd = pth_template.format(coin=chain.b44_cointype, acct_num=acct_num)
         node = sv.derive_path(dd)
         ext_key = chain.serialize_public(node)
+
         dis.progress_bar_show(0.25)
+
         desc_type_key = "[%s%s]%s" % (xfp, dd[1:], ext_key)
         msg = signer_data_round1(token_hex, desc_type_key, key_description)
         digest = chain.hash_message(msg.encode())
         sk = node.privkey()
         sv.register(sk)
+
         dis.progress_bar_show(0.5)
+
         sig = ngu.secp256k1.sign(sk, digest, 0).to_bytes()
         result_data = signer_data_round1(token_hex, desc_type_key, key_description, sig_bytes=sig)
+
         dis.progress_bar_show(.75)
 
     encryption_key = key_derivation_function(token_hex)
     if encryption_key:
         result_data = bsms_encrypt(encryption_key, token_hex, result_data)
+
     dis.progress_bar_show(1)
+
     # export round 1 file
     force_vdisk = False
     title = "BSMS signer round 1 file"
@@ -854,24 +883,31 @@ async def bsms_signer_round2(menu, label, item):
     from multisig import make_redeem_script
 
     chain = chains.current_chain()
+
     # or xpub or tpub as we use descriptors (no SLIP132 allowed)
     ext_key_prefix = "%spub" % chain.slip132[AF_CLASSIC].hint
     force_vdisk = False
+
     # choose correct values based on label (index in signer bsms settings)
     bsms_settings_index = item.arg
     token = BSMSSettings.get_signers()[bsms_settings_index]
+
     decrypt_fail_msg = "Decryption with token %s failed." % token[:4]
     is_encrypted = False if token == "00" else True
     suffix = ".dat" if is_encrypted else ".txt"
     mode = "rb" if is_encrypted else "rt"
+
     prompt, escape = import_prompt_builder("descriptor template file")
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
+
         if ch == '3':
             force_vdisk = None
             desc_template_data = await NFC.read_bsms_data()
+
             if desc_template_data is None:
                 return
+
             if is_encrypted:
                 data_bytes = a2b_hex(desc_template_data)
                 encryption_key = key_derivation_function(token)
@@ -884,10 +920,12 @@ async def bsms_signer_round2(menu, label, item):
                 force_vdisk = True
 
     if force_vdisk is not None:
-        fn = await file_picker('Select file containing descriptor template from coordinator round 2. '
-                               'File extension has to be "%s"' % suffix,
-                               min_size=200, max_size=10000, suffix=suffix, force_vdisk=force_vdisk)  # TODO random max/min sizes
+        fn = await file_picker(
+                    'Select file containing descriptor template from coordinator round 2. '
+                   'File extension has to be "%s"' % suffix,
+                   min_size=200, max_size=10000, suffix=suffix, force_vdisk=force_vdisk)
         if not fn: return
+
         with CardSlot(force_vdisk=force_vdisk) as card:
             with open(fn, mode) as fd:
                 desc_template_data = fd.read()
@@ -897,22 +935,31 @@ async def bsms_signer_round2(menu, label, item):
                     assert desc_template_data, decrypt_fail_msg
 
     dis.fullscreen("Validating...")
-    assert desc_template_data.startswith(BSMS_VERSION), "Incompatible BSMS version. Need %s got %s" % (
-        BSMS_VERSION, desc_template_data[:9]
-    )
+    assert desc_template_data.startswith(BSMS_VERSION), \
+        "Incompatible BSMS version. Need %s got %s" % (BSMS_VERSION, desc_template_data[:9])
+
     dis.progress_bar_show(0.05)
+
     version, desc_template, pth_restrictions, addr = desc_template_data.split("\n")
-    assert pth_restrictions == ALLOWED_PATH_RESTRICTIONS, "Only '%s' allowed as path restrictions. Got %s" % (
-        ALLOWED_PATH_RESTRICTIONS, pth_restrictions
-    )
+    assert pth_restrictions == ALLOWED_PATH_RESTRICTIONS, \
+        "Only '%s' allowed as path restrictions. Got %s" % (
+                            ALLOWED_PATH_RESTRICTIONS, pth_restrictions)
+
     desc = desc_template.replace("/**", "/0/*")
+
     dis.progress_bar_show(0.1)
+
     if "#" not in desc:
         desc = append_checksum(desc)
-    ms_name = "bsms_" + desc[-4:]  # TODO multisig name bsms + last 4 chars from descriptor checksum
-    # will raise ValueError if not sortedmulti( descriptor script type
+
+    # TODO multisig name bsms + last 4 chars from descriptor checksum
+    ms_name = "bsms_" + desc[-4:]  
+
+    # will raise ValueError if not "sortedmulti" descriptor script type
     desc_obj = MultisigDescriptor.parse(desc)
+
     dis.progress_bar_show(0.2)
+
     my_xfp = settings.get('xfp')
     my_keys = []
     nodes = []
@@ -920,7 +967,8 @@ async def bsms_signer_round2(menu, label, item):
     # (desired value after loop - last displayed progress) / N
     progress_chunk = (0.5 - progress_counter) / desc_obj.N
     for xfp, deriv_path, ext_key in desc_obj.keys:
-        assert ext_key.startswith(ext_key_prefix), "Expected %s, got %s" % (ext_key_prefix, ext_key[:4])
+        assert ext_key.startswith(ext_key_prefix), \
+                        "Expected %s, got %s" % (ext_key_prefix, ext_key[:4])
         node = ngu.hdnode.HDNode()
         node.deserialize(ext_key)
         if xfp == my_xfp:
@@ -940,6 +988,7 @@ async def bsms_signer_round2(menu, label, item):
         assert ext_key == desc_ext_key, "My key %s missing in descriptor." % ext_key
 
     dis.progress_bar_show(0.55)
+
     # check address is correct
     progress_counter = 0.55  # last displayed progress
     # (desired value after loop - last displayed progress) / N
@@ -952,10 +1001,14 @@ async def bsms_signer_round2(menu, label, item):
     script = make_redeem_script(desc_obj.M, nodes, 0)  # first address
     dis.progress_bar_show(0.95)
     calc_addr = chain.p2sh_address(desc_obj.addr_fmt, script)
+
     assert calc_addr == addr, "Address mismatch! Calculated %s, got %s" % (calc_addr, addr)
+
     dis.progress_bar_show(1)
     try:
         maybe_enroll_xpub(config=desc, name=ms_name, bsms_index=bsms_settings_index)
         # bsms_settings_signer_delete(bsms_settings_index) --> moved to auth.py to only be done if actually approved
     except Exception as e:
         await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+
+# EOF
