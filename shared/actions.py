@@ -9,6 +9,7 @@ from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted,
 from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError, needs_microsd
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, MAX_TXN_LEN_MK4
 from utils import xfp2str
 from multisig import parse_extended_key
 from glob import settings
@@ -990,7 +991,6 @@ that you will need to import other wallet software to track balance.''' + SENSIT
 async def export_xpub(label, _2, item):
     # provide bare xpub in a QR/NFC for import into simple wallets.
     import chains, glob, stash
-    from public_constants import AF_CLASSIC
     from ux import show_qr_code
 
     chain = chains.current_chain()
@@ -1071,7 +1071,6 @@ async def electrum_skeleton(*a):
         return
 
     # pick segwit or classic derivation+such
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
     from menu import MenuSystem, MenuItem
 
     # Ordering and terminology from similar screen in Electrum. I prefer
@@ -1111,7 +1110,6 @@ async def ss_descriptor_skeleton(label, _, item):
         return
 
     # pick segwit or classic derivation+such
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
     from menu import MenuSystem, MenuItem
 
     # Ordering and terminology from similar screen in Electrum. I prefer
@@ -1144,7 +1142,6 @@ async def samourai_pre_mix_descriptor_export(*a):
 
 async def samourai_account_descriptor(name, account_num):
     import export
-    from public_constants import AF_P2WPKH
 
     ch = await ux_show_story(
         ss_descriptor_export_story(
@@ -1635,7 +1632,7 @@ async def ready2sign(*a):
 
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
-                                    max_size=MAX_TXN_LEN_MK4, taster=is_psbt)
+                                max_size=MAX_TXN_LEN_MK4, taster=is_psbt)
 
     if stash.bip39_passphrase:
         title = '[%s]' % settings.get('xfp')

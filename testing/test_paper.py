@@ -198,7 +198,7 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
     time.sleep(0.1)
     title, story = cap_story()
     assert 'Distribution of dice rolls is not random' in story
-    assert 'Some number/s occurred more than 30% of all attempts' in story
+    assert 'Some numbers occurred more than 30% of the time' in story
     # exit
 
 @pytest.mark.parametrize('rolls', [

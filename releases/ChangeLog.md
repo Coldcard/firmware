@@ -1,4 +1,4 @@
-## 5.1.0 - 2023-02-03
+## 5.1.0 - 2023-02-06
 
 - New Feature: Support BIP-0129 Bitcoin Secure Multisig Setup (BSMS).
   Both Coordinator and Signer roles are supported.

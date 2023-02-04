@@ -475,7 +475,7 @@ async def ux_input_numbers(val, validate_func):
             if len(here) < 32:
                 here += ch
 
-async def ux_spinner_edit(pw, confirm_exit=True):
+async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False):
     # Allow them to pick each digit using "D-pad"
     from glob import dis
     from display import FontTiny, FontSmall
@@ -485,16 +485,24 @@ async def ux_spinner_edit(pw, confirm_exit=True):
     # - so really just ascii; not even latin-1
     # - 8-bit codepoints only
     my_rng = range(32, 127)  # FontSmall.code_range
-    symbols = b' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-    letters = b'abcdefghijklmnopqrstuvwxyz'
-    Letters = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    numbers = b'1234567890'
+    if hex_only:
+        new_expand = "0"
+        symbols = b"0123456789abcdef"
+    else:
+        new_expand = " "
+        symbols = b' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+        letters = b'abcdefghijklmnopqrstuvwxyz'
+        Letters = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        numbers = b'1234567890'
     # assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
 
-    footer1 = "1=Letters  2=Numbers  3=Symbols"
-    footer2 = "4=SwapCase  0=HELP"
+    if hex_only:
+        footer1 = "hex mode"
+    else:
+        footer1 = "1=Letters  2=Numbers  3=Symbols"
+        footer2 = "4=SwapCase  0=HELP"
     y = 20
-    pw = bytearray(pw or 'A')
+    pw = bytearray(pw or ('0' if hex_only else 'A'))
 
     pos = len(pw) - 1  # which part being changed
     n_visible = const(9)
@@ -514,6 +522,8 @@ async def ux_spinner_edit(pw, confirm_exit=True):
     def change(dx):
         # next/prev within the same subset of related chars
         ch = pw[pos]
+        if hex_only:
+            return cycle_set(symbols, dx)
         for subset in [symbols, letters, Letters, numbers]:
             if ch in subset:
                 return cycle_set(subset, dx)
@@ -528,7 +538,8 @@ async def ux_spinner_edit(pw, confirm_exit=True):
     # pre-render the fixed stuff
     dis.clear()
     dis.text(None, -10, footer1, FontTiny)
-    dis.text(None, -1, footer2, FontTiny)
+    if not hex_only:
+        dis.text(None, -1, footer2, FontTiny)
     dis.save()
 
     # no key-repeat on certain keys
@@ -595,7 +606,9 @@ async def ux_spinner_edit(pw, confirm_exit=True):
             pos += 1
             if pos >= len(pw):
                 if len(pw) < 100 and pw[-3:] != b'   ':
-                    pw += ' '  # expand with spaces
+                    # expands with space in normal mode
+                    # expands with 0 in hex_only mode
+                    pw += new_expand
                 else:
                     pos -= 1  # abort addition
 
@@ -603,6 +616,10 @@ async def ux_spinner_edit(pw, confirm_exit=True):
             change(1)
         elif ch == '8':  # down
             change(-1)
+        elif hex_only:
+            # just got back at the beginning of the loop
+            # below branches are unreachable for hex_only mode
+            pass
         elif ch == '1':  # alpha
             cycle_set(b'Aa')
         elif ch == '4':  # toggle case
