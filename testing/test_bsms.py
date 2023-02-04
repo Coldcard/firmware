@@ -56,7 +56,7 @@ def assert_coord_summary(title, story, M, N, addr_fmt, et):
     assert title == "SUMMARY"
     assert f"{M} of {N}" in story
     assert f"Address format:\n{addr_fmt}" in story
-    assert f"Encryption type:\n{et_map[et]}" in story
+    assert f"Encryption type:\n{et_map[et].replace('_', ' ')}" in story
     tokens = story.split("\n\n")[3:-1]
     if et == "1":
         assert len(tokens) == 1
@@ -220,7 +220,8 @@ def bsms_cr2_fname(token, is_extended, suffix):
 @pytest.fixture
 def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set, microsd_path, virtdisk_path):
     def doit(M, N, addr_fmt, et, way, has_ours=True, ours_no=1, path_restrictions=ALLOWED_PATH_RESTRICTIONS,
-             bsms_version=BSMS_VERSION, sortedmulti=True, wrong_address=False, wrong_encryption=False, wrong_chain=False):
+             bsms_version=BSMS_VERSION, sortedmulti=True, wrong_address=False, wrong_encryption=False,
+             wrong_chain=False, add_checksum=False, wrong_checksum=False):
         tokens = make_coordinator_round1(M, N, addr_fmt, et, way=way, purge_bsms=True, tokens_only=True)
         range_num = N if has_ours is False else N - ours_no
         keys = []
@@ -244,7 +245,12 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
 
         desc_obj = MultisigDescriptor(M=M, N=N, addr_fmt=af_map[addr_fmt], keys=keys)
         desc = desc_obj._serialize(int_ext=True)
+        wcs = append_checksum(desc).split("#")[-1]
         desc = desc.replace("/<0;1>/*", "/**")
+        if add_checksum:
+            desc = append_checksum(desc)
+        elif wrong_checksum:
+            desc = desc + "#" + wcs
         if not sortedmulti:
             desc = desc.replace("sortedmulti", "multi")
         if wrong_chain:
@@ -309,12 +315,13 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     menu = cap_menu()
     assert len(menu) == 1  # nothing should be in menu at this point but round 1
-    pick_menu_item('Round 1')
+    pick_menu_item('Create BSMS')
     # choose number of signers N
     for num in str(N):
         need_keypress(num)
@@ -326,10 +333,10 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
     if addr_fmt == "p2wsh":
         need_keypress("y")
     else:
-        need_keypress("1")
+        need_keypress("2")
     time.sleep(0.1)
     title, story = cap_story()
-    assert story == "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED, and (3) for NO_ENCRYPTION"
+    assert story == "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED, and (3) for no encryption"
     need_keypress(encryption_type)
     time.sleep(0.1)
     title, story = cap_story()
@@ -337,11 +344,15 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
     need_keypress("y")  # confirm summary
     time.sleep(0.1)
     title, story = cap_story()
+    assert "Press (1) to participate as co-signer in this BSMS" in story
+    need_keypress("y") # continue normally
+    time.sleep(0.1)
+    title, story = cap_story()
     if encryption_type == "3":
         assert story == "Success. Coordinator round 1 saved."
     else:
         if way == "sd":
-            if "Press (1) to save BSMS token file/s to SD Card" in story:
+            if "Press (1) to save BSMS token file(s) to SD Card" in story:
                 need_keypress("1")
             # else no prompt if both NFC and vdisk disabled
         elif way == "nfc":
@@ -367,10 +378,15 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
         else:
             time.sleep(0.2)
             _, story = cap_story()
-            assert 'BSMS token file/s written' in story
-            fnames = story.split('\n\n')[1:]
+            assert 'BSMS token file(s) written' in story
+            fnames = story.split('\n\n')[2:]
             # check token files contains first 4 chars of token
-            token_start = set([tok.split(" ")[1][:4] for tok in tokens])
+            try:
+                token_start = set([tok.split(" ")[1][:4] for tok in tokens])
+            except IndexError:
+                # only one token - special case without numbering
+                assert len(tokens) == 1
+                token_start = set([tokens[0].split("\n")[1][:4]])
             token_fnames_start = set([fn.replace(".token", "").split("_")[-1].split("-")[0] for fn in fnames])
             assert token_start == token_fnames_start
             read_tokens = []
@@ -396,7 +412,7 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
     assert len(menu) == 2
     current_coord_menu_item = coordinator_label(M, N, addr_fmt, encryption_type, index=1)
     assert menu[0] == current_coord_menu_item
-    assert menu[1] == "Round 1"
+    assert menu[1] == "Create BSMS"
     # check correct summary in detail
     pick_menu_item(menu[0])
     time.sleep(0.1)
@@ -416,13 +432,16 @@ def test_coordinator_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_
         assert bsms_settings[BSMS_SIGNER_SETTINGS] == []
     coord_settings = bsms_settings[BSMS_COORD_SETTINGS]
     assert len(coord_settings) == 1
-    assert coord_settings[0] == (M, N, af_map[addr_fmt], encryption_type, [tok.split(" ")[-1] for tok in tokens] if tokens else [])
+    assert coord_settings[0] == (
+        M, N, af_map[addr_fmt], encryption_type,
+        [tok.split(" ")[-1].replace("Tokens:\n", "") for tok in tokens] if tokens else []
+    )
     # delete coordinator settings
     pick_menu_item("Delete")
     time.sleep(0.1)
     menu = cap_menu()
     assert len(menu) == 1
-    assert menu[0] == "Round 1"
+    assert menu[0] == "Create BSMS"
     bsms_settings = settings_get(BSMS_SETTINGS)
     coord_settings = bsms_settings[BSMS_COORD_SETTINGS]
     assert coord_settings == []
@@ -448,7 +467,8 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Signer')
     menu = cap_menu()
@@ -458,7 +478,6 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
     title, story = cap_story()
     if encryption_type == "3":
         token = "00"
-        need_keypress("2")  # manual
         need_keypress("3")  # no token (unencrypted BSMS)
     else:
         token = random.choice(tokens)
@@ -467,19 +486,19 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
                 need_keypress("1")
             # else no prompt if both NFC and vdisk disabled
         elif way == "nfc":
-            if "(3) to import via NFC" not in story:
+            if "(4) to import via NFC" not in story:
                 pytest.skip("NFC disabled")
             else:
-                need_keypress("3")
+                need_keypress("4")
                 time.sleep(0.1)
                 nfc_write_text(token)
                 time.sleep(0.4)
         else:
             # virtual disk
-            if "(4) to import from Virtual Disk" not in story:
+            if "(5) to import from Virtual Disk" not in story:
                 pytest.skip("Vdisk disabled")
             else:
-                need_keypress("4")
+                need_keypress("5")
 
         if way != "nfc":
             time.sleep(0.2)
@@ -497,7 +516,7 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
     time.sleep(0.1)
     _, story = cap_story()
     # address format a.k.a. SLIP derivation path - ignore and use SLIP agnostic
-    assert "Choose address format for correct SLIP derivation path" in story
+    assert "Choose co-signer address format for correct SLIP derivation path" in story
     need_keypress("y")  # default
     # account number prompt
     need_keypress("y")
@@ -622,7 +641,8 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     menu = cap_menu()
@@ -634,7 +654,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
     time.sleep(0.1)
     _, story = cap_story()
     if way == "sd":
-        if "Press (1) to import signer round 1 files from SD Card" in story:
+        if "Press (1) to import co-signer round 1 files from SD Card" in story:
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "vdisk":
@@ -656,7 +676,10 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
             time.sleep(0.1)
             title, story = cap_story()
             token = get_token(i)
-            expect = "Share %d. signer round 1 data for token starting with %s" % (i + 1, token[:4])
+            if encryption_type == "2":
+                expect = "Share co-signer #%d round-1 data for token starting with %s" % (i + 1, token[:4])
+            else:
+                expect = "Share co-signer #%d round-1 data" % (i + 1)
             assert expect in story
             nfc_write_text(data.hex() if isinstance(data, bytes) else data)
             time.sleep(0.1)
@@ -665,14 +688,14 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
         suffix = ".txt" if encryption_type == "3" else ".dat"
         time.sleep(0.1)
         title, story = cap_story()
-        assert "Press OK to pick signer round 1 files manually, or press (1) to attempt auto-collection." in story
+        assert "Press OK to pick co-signer round 1 files manually, or press (1) to attempt auto-collection." in story
         assert "For auto-collection to succeed all filenames have to start with 'bsms_sr1'" in story
         suffix_target = "and end with extension '%s'" % suffix
         assert suffix_target in story
         if encryption_type == "2":
             assert "In addition for EXTENDED encryption all files must contain first four characters of respective token." in story
         elif encryption_type == "3":
-            assert ("In addition for NO_ENCRYPTION cases, number of files with above mentioned"
+            assert ("In addition for NO ENCRYPTION cases, number of files with above mentioned"
                     " pattern and suffix must equal number of signers (N).") in story
         assert "If above is not respected auto-collection fails and defaults to manual selection of files." in story
         if auto_collect:
@@ -683,8 +706,11 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
                 token = get_token(i - 1)
                 time.sleep(0.1)
                 title, story = cap_story()
-                expect = ('Select %d. file containing signer round 1 data for token starting with %s. '
-                          'File extension has to be "%s"' % (i, token[:4], suffix))
+                if encryption_type == "2":
+                    expect = 'Select co-signer #%d file containing round 1 data for token starting with %s' % (i, token[:4])
+                else:
+                    expect = 'Select co-signer #%d file containing round 1 data' % i
+                expect += '. File extension has to be "%s"' % suffix
                 assert expect in story
                 need_keypress("y")
                 menu_item = bsms_sr1_fname(token, encryption_type == "2", suffix, i)
@@ -693,7 +719,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
     time.sleep(0.1)
     _, story = cap_story()
     if way == "sd":
-        if "Press (1) to save BSMS descriptor template file/s to SD Card" in story:
+        if "Press (1) to save BSMS descriptor template file(s) to SD Card" in story:
             need_keypress("1")
         # else no prompt if both NFC and vdisk disabled
     elif way == "nfc":
@@ -718,7 +744,7 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
             path_fn = virtdisk_path
         time.sleep(0.1)
         _, story = cap_story()
-        assert "BSMS descriptor template file/s written." in story
+        assert "BSMS descriptor template file(s) written." in story
         fnames = story.split("\n\n")[1:]
         if encryption_type == "2":
             for fname, token in zip(fnames, tokens):
@@ -752,10 +778,14 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 
     version, descriptor, pth_restrictions, addr = the_template.split("\n")
     assert version == BSMS_VERSION
+    try:
+        MultisigDescriptor.checksum_check(descriptor)
+        descriptor = descriptor.split("#")[0]
+    except ValueError:
+        pass
     # replace /** so we can parse it
     descriptor = descriptor.replace("/**", "/0/*")
-    if "#" not in descriptor:
-        descriptor = append_checksum(descriptor)
+    descriptor = append_checksum(descriptor)
     desc_obj = MultisigDescriptor.parse(descriptor)
     assert len(desc_obj.keys) == N
     assert pth_restrictions == ALLOWED_PATH_RESTRICTIONS
@@ -770,22 +800,24 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
 @pytest.mark.parametrize("refuse", [True, False])
 @pytest.mark.parametrize("way", ["sd", "nfc", "vdisk"])
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
+@pytest.mark.parametrize("with_checksum", [True, False])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
 def test_signer_round2(refuse, way, encryption_type, M_N, addr_fmt, clear_ms, goto_home, need_keypress, pick_menu_item,
                        cap_menu, cap_story, microsd_path, settings_remove, nfc_read_text, virtdisk_path, settings_get,
-                       make_coordinator_round2, nfc_write_text, virtdisk_wipe, microsd_wipe):
+                       make_coordinator_round2, nfc_write_text, virtdisk_wipe, microsd_wipe, with_checksum):
     M, N = M_N
     clear_ms()
     virtdisk_wipe()
     microsd_wipe()
-    desc_template, token = make_coordinator_round2(M, N, addr_fmt, encryption_type, way=way)
+    desc_template, token = make_coordinator_round2(M, N, addr_fmt, encryption_type, way=way, add_checksum=with_checksum)
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Signer')
     menu = cap_menu()
@@ -881,7 +913,8 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Signer')
     pick_menu_item('Round 1')
@@ -904,19 +937,19 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
                 need_keypress("1")
             # else no prompt if both NFC and vdisk disabled
         elif way == "nfc":
-            if "(3) to import via NFC" not in story:
+            if "(4) to import via NFC" not in story:
                 pytest.skip("NFC disabled")
             else:
-                need_keypress("3")
+                need_keypress("4")
                 time.sleep(0.1)
                 nfc_write_text(token)
                 time.sleep(0.4)
         else:
             # virtual disk
-            if "(4) to import from Virtual Disk" not in story:
+            if "(5) to import from Virtual Disk" not in story:
                 pytest.skip("Vdisk disabled")
             else:
-                need_keypress("4")
+                need_keypress("5")
 
         if way != "nfc":
             time.sleep(0.2)
@@ -930,7 +963,7 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "FAILURE"
-    assert "BSMS signer round1 failed." in story
+    assert "BSMS signer round1 failed" in story
     assert "Invalid token length. Expected 64 or 128 bits (16 or 32 hex characters)" in story
 
 
@@ -966,7 +999,8 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     menu = cap_menu()
@@ -977,7 +1011,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     pick_menu_item("Round 2")
     time.sleep(0.1)
     _, story = cap_story()
-    if "Press (1) to import signer round 1 files from SD Card" in story:
+    if "Press (1) to import co-signer round 1 files from SD Card" in story:
         need_keypress("1")
     need_keypress("y")  # continue with manual file selection
     suffix = ".txt" if encryption_type == "3" else ".dat"
@@ -985,8 +1019,11 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
         token = get_token(i - 1)
         time.sleep(0.1)
         title, story = cap_story()
-        expect = ('Select %d. file containing signer round 1 data for token starting with %s. '
-                  'File extension has to be "%s"' % (i, token[:4], suffix))
+        if encryption_type == "2":
+            expect = 'Select co-signer #%d file containing round 1 data for token starting with %s' % (i, token[:4])
+        else:
+            expect = 'Select co-signer #%d file containing round 1 data' % i
+        expect += '. File extension has to be "%s"' % suffix
         assert expect in story
         need_keypress("y")
         menu_item = bsms_sr1_fname(token, encryption_type == "2", suffix, i)
@@ -994,7 +1031,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "FAILURE"
-    assert "BSMS coordinator round2 failed." in story
+    assert "BSMS coordinator round2 failed" in story
     if failure == "slip":
         failure_msg = "Expected tpub"
     elif failure == "wrong_sig":
@@ -1031,7 +1068,8 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     menu = cap_menu()
@@ -1042,7 +1080,7 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
     pick_menu_item("Round 2")
     time.sleep(0.1)
     _, story = cap_story()
-    if "Press (1) to import signer round 1 files from SD Card" in story:
+    if "Press (1) to import co-signer round 1 files from SD Card" in story:
         need_keypress("1")
     need_keypress("y")  # continue with manual file selection
     suffix = ".txt" if encryption_type == "3" else ".dat"
@@ -1051,16 +1089,21 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
             token = get_token(i - 1)
             time.sleep(0.1)
             title, story = cap_story()
-            expect = ('Select %d. file containing signer round 1 data for token starting with %s. '
-                      'File extension has to be "%s"' % (i, token[:4], suffix))
+            if encryption_type == "2":
+                expect = 'Select co-signer #%d file containing round 1 data for token starting with %s' % (i, token[:4])
+            else:
+                expect = 'Select co-signer #%d file containing round 1 data' % i
+            expect += '. File extension has to be "%s"' % suffix
             assert expect in story
             need_keypress("y")
             menu_item = bsms_sr1_fname(token, encryption_type == "2", suffix, i)
             pick_menu_item(menu_item)
             time.sleep(0.1)
             _, story = cap_story()
-            expect_story = "Decryption failed for signer %d with token %s" % (i, token[:4])
-            assert  expect_story in story
+            expect_story = "Decryption failed for co-signer #%d" % i
+            if encryption_type == 2:
+                expect_story += " with token %s" % token[:4]
+            assert expect_story in story
             if attempt == 0:
                 assert "Try again?" in story
                 need_keypress("y")
@@ -1072,7 +1115,8 @@ def test_wrong_encryption_coordinator_round2(encryption_type, make_coordinator_r
 
 
 @pytest.mark.parametrize("failure", [
-    "wrong_address", "path_restrictions", "bsms_version", "sortedmulti", "has_ours", "ours_no", "wrong_encryption", "wrong_chain"
+    "wrong_address", "path_restrictions", "bsms_version", "sortedmulti", "has_ours", "ours_no",
+    "wrong_encryption", "wrong_chain", "wrong_checksum"
 ])
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_menu_item, cap_menu, cap_story,
@@ -1101,6 +1145,9 @@ def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_m
     elif failure == "wrong_chain":
         kws = {failure: True}
         failure_msg = "Expected tpub"
+    elif failure == "wrong_checksum":
+        kws = {failure: True}
+        failure_msg = "Wrong checksum"
     else:
         assert failure == "wrong_encryption"
         if encryption_type == "3":
@@ -1115,7 +1162,8 @@ def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_m
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Signer')
     menu_item = "1   %s" % token[:4]
@@ -1138,7 +1186,7 @@ def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_m
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "FAILURE"
-    assert "BSMS signer round2 failed." in story
+    assert "BSMS signer round2 failed" in story
     assert failure_msg in story
 
 
@@ -1175,14 +1223,14 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Signer')
     pick_menu_item('Round 1')
     time.sleep(0.1)
     _, story = cap_story()
     if encryption_type == "3":
-        need_keypress("2")  # manual
         need_keypress("3")  # no token (unencrypted BSMS)
     else:
         fname = "bsms_%s.token" % cc_token[:4] if cc_token != "00" else "1"
@@ -1205,7 +1253,7 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     time.sleep(0.1)
     _, story = cap_story()
     # address format a.k.a. SLIP derivation path - ignore and use SLIP agnostic
-    assert "Choose address format for correct SLIP derivation path" in story
+    assert "Choose co-signer address format for correct SLIP derivation path" in story
     need_keypress("y")
     # account number prompt
     need_keypress("y")
@@ -1260,7 +1308,8 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Signer')
     menu_item = "1   %s" % cc_token[:4]
@@ -1299,9 +1348,10 @@ def test_integration_signer(encryption_type, M_N, addr_fmt, clear_ms, microsd_wi
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
 @pytest.mark.parametrize("M_N", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("addr_fmt", ["p2wsh", "p2sh-p2wsh"])
+@pytest.mark.parametrize("cr1_shortcut", [True, False])
 def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, microsd_wipe, goto_home, pick_menu_item,
                                  cap_story, need_keypress, settings_remove, microsd_path, settings_get, cap_menu,
-                                 use_mainnet):
+                                 use_mainnet, cr1_shortcut):
     M, N = M_N
     settings_remove(BSMS_SETTINGS)
     use_mainnet()
@@ -1312,12 +1362,13 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     menu = cap_menu()
     assert len(menu) == 1  # nothing should be in menu at this point but round 1
-    pick_menu_item('Round 1')
+    pick_menu_item('Create BSMS')
     # choose number of signers N
     for num in str(N):
         need_keypress(num)
@@ -1329,10 +1380,10 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     if addr_fmt == "p2wsh":
         need_keypress("y")
     else:
-        need_keypress("1")
+        need_keypress("2")
     time.sleep(0.1)
     title, story = cap_story()
-    assert story == "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED, and (3) for NO_ENCRYPTION"
+    assert story == "Choose encryption type. Press (1) for STANDARD encryption, (2) for EXTENDED, and (3) for no encryption"
     need_keypress(encryption_type)
     time.sleep(0.1)
     title, story = cap_story()
@@ -1340,16 +1391,37 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     need_keypress("y")  # confirm summary
     time.sleep(0.1)
     title, story = cap_story()
+    assert "Press (1) to participate as co-signer in this BSMS" in story
+    if cr1_shortcut:
+        _start_idx = 1
+        need_keypress("1")
+        need_keypress("y")  # slip
+        need_keypress("y")  # acct num 0
+        need_keypress("y")  # default textual key description
+        time.sleep(0.1)
+        _, story = cap_story()
+        if "Press (1) to save BSMS signer round 1 file to SD Card" in story:
+            need_keypress("1")
+        time.sleep(0.2)
+        _, story = cap_story()
+        shortcut_fname = story.split("\n\n")[-1]
+        need_keypress("y") # looking at save sr1 filename
+    else:
+        _start_idx = 0
+        need_keypress("y") # continue normally
+
+    time.sleep(0.1)
+    title, story = cap_story()
     read_tokens = []
     if encryption_type == "3":
         assert story == "Success. Coordinator round 1 saved."
     else:
-        if "Press (1) to save BSMS token file/s to SD Card" in story:
+        if "Press (1) to save BSMS token file(s) to SD Card" in story:
             need_keypress("1")
         time.sleep(0.2)
         _, story = cap_story()
-        assert 'BSMS token file/s written' in story
-        fnames = story.split('\n\n')[1:]
+        assert 'BSMS token file(s) written' in story
+        fnames = story.split('\n\n')[2:]
         for fname in fnames:
             path = microsd_path(fname)
             with open(path, 'rt') as f:
@@ -1359,15 +1431,15 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     all_signers = []
     if encryption_type == "1":
         assert len(read_tokens) == 1
-        for i in range(N):
+        for i in range(_start_idx, N):
             all_signers.append(Signer(read_tokens[0], "key %d" % i))
     elif encryption_type == "2":
-        assert len(read_tokens) == N
-        for i in range(N):
+        assert len(read_tokens) == (N - _start_idx)
+        for i in range(N - _start_idx):
             all_signers.append(Signer(read_tokens[i], "key %d" % i))
     else:
         assert len(read_tokens) == 0
-        for i in range(N):
+        for i in range(N - _start_idx):
             all_signers.append(Signer("00", "key %d" % i))
 
     need_keypress("y")  # confirm success or files written story
@@ -1379,16 +1451,27 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     # check correct coord tuple saved
     bsms_settings = settings_get(BSMS_SETTINGS)
     if BSMS_SIGNER_SETTINGS in bsms_settings:
-        assert bsms_settings[BSMS_SIGNER_SETTINGS] == []
+        if cr1_shortcut:
+            assert len(bsms_settings[BSMS_SIGNER_SETTINGS]) == 1
+            shortcut_token = bsms_settings[BSMS_SIGNER_SETTINGS][0]
+        else:
+            assert bsms_settings[BSMS_SIGNER_SETTINGS] == []
+            shortcut_token = None
     coord_settings = bsms_settings[BSMS_COORD_SETTINGS]
     assert len(coord_settings) == 1
-    assert coord_settings[0] == (M, N, af_map[addr_fmt], encryption_type, [tok.split(" ")[-1] for tok in read_tokens] if read_tokens else [])
+    if read_tokens:
+        expect_tokens = [tok.split(" ")[-1] for tok in read_tokens]
+        if cr1_shortcut and encryption_type == "2":
+            expect_tokens = [shortcut_token] + expect_tokens
+    else:
+        expect_tokens = []
+    assert coord_settings[0] == (M, N, af_map[addr_fmt], encryption_type, expect_tokens)
 
     # ROUND 2
     def get_token(index):
         if len(read_tokens) == 1 and encryption_type == "1":
             token = read_tokens[0]
-        elif len(read_tokens) == N and encryption_type == "2":
+        elif encryption_type == "2":
             token = read_tokens[index]
         else:
             token = "00"
@@ -1408,7 +1491,8 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     menu = cap_menu()
@@ -1419,29 +1503,45 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     pick_menu_item("Round 2")
     time.sleep(0.1)
     _, story = cap_story()
-    if "Press (1) to import signer round 1 files from SD Card" in story:
+    if "Press (1) to import co-signer round 1 files from SD Card" in story:
         need_keypress("1")
     need_keypress("y")  # continue with manual file selection
-    for i in range(N):
-        token = get_token(i)
+    # import pdb;pdb.set_trace()
+    if cr1_shortcut:
         time.sleep(0.1)
         title, story = cap_story()
-        expect = ('Select %d. file containing signer round 1 data for token starting with %s. '
-                  'File extension has to be "%s"' % (i + 1, token[:4], suffix))
+        if encryption_type == "2":
+            expect = 'Select co-signer #1 file containing round 1 data for token starting with %s' % shortcut_token[:4]
+        else:
+            expect = 'Select co-signer #1 file containing round 1 data'
         assert expect in story
         need_keypress("y")
-        fname = bsms_sr1_fname(token, encryption_type == "2", suffix, i + 1)
+        pick_menu_item(shortcut_fname)
+    for i in range(_start_idx, N):
+        token = get_token(i - _start_idx)
+        time.sleep(0.1)
+        title, story = cap_story()
+        if encryption_type == "2":
+            expect = 'Select co-signer #%d file containing round 1 data for token starting with %s' % (i + 1, token[:4])
+        else:
+            expect = 'Select co-signer #%d file containing round 1 data' % (i + 1)
+        expect += '. File extension has to be "%s"' % suffix
+        assert expect in story
+        need_keypress("y")
+        fname = bsms_sr1_fname(token, encryption_type == "2", suffix, i + 1 - _start_idx)
         pick_menu_item(fname)
 
     time.sleep(0.1)
     _, story = cap_story()
-    if "Press (1) to save BSMS descriptor template file/s to SD Card" in story:
+    if "Press (1) to save BSMS descriptor template file(s) to SD Card" in story:
         need_keypress("1")
     time.sleep(0.1)
     _, story = cap_story()
-    assert "BSMS descriptor template file/s written." in story
+    assert "BSMS descriptor template file(s) written." in story
     fnames = story.split("\n\n")[1:]
     if encryption_type == "2":
+        if cr1_shortcut:
+            read_tokens = [shortcut_token] + read_tokens
         for fname, token in zip(fnames, read_tokens):
             assert token[:4] in fname
     descriptor_templates = []
@@ -1456,10 +1556,51 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
         for signer in all_signers:
             signer.round_2(target)
     else:
+        if cr1_shortcut:
+            _, descriptor_templates = descriptor_templates[0], descriptor_templates[1:]
         for signer, desc_tmplt in zip(all_signers, descriptor_templates):
             if isinstance(desc_tmplt, bytes):
                 desc_tmplt = desc_tmplt.hex()
             signer.round_2(desc_tmplt)
+    if cr1_shortcut:
+        # still need to add our signer
+        goto_home()
+        pick_menu_item('Settings')
+        pick_menu_item('Multisig Wallets')
+        pick_menu_item('BSMS (BIP-129)')
+        need_keypress("y")
+        pick_menu_item('Signer')
+        menu_item = "1   %s" % shortcut_token[:4]
+        pick_menu_item(menu_item)
+        pick_menu_item("Round 2")
+        time.sleep(0.1)
+        _, story = cap_story()
+        if "Press (1) to import descriptor template file from SD Card" in story:
+            need_keypress("1")
+        time.sleep(0.1)
+        title, story = cap_story()
+        expect = ('Select file containing descriptor template from coordinator round 2. '
+                  'File extension has to be "%s"' % suffix)
+        assert expect in story
+        need_keypress("y")
+        pick_menu_item(fnames[0])
+        time.sleep(0.1)
+        title, story = cap_story()
+        assert "Create new multisig wallet?" in story
+        assert "bsms" in story  # part of the name
+        policy = "Policy: %d of %d" % (M, N)
+        assert policy in story
+        assert addr_fmt.upper() in story
+        ms_wal_name = story.split("\n\n")[1].split("\n")[-1].strip()
+        ms_wal_menu_item = "%d/%d: %s" % (M, N, ms_wal_name)
+        need_keypress("y")
+        time.sleep(0.1)
+        menu = cap_menu()
+        assert ms_wal_menu_item in menu
+        bsms_settings = settings_get(BSMS_SETTINGS)
+        # signer round 2 removed
+        assert not bsms_settings.get(BSMS_SIGNER_SETTINGS, None)
+
 
 
 @pytest.mark.parametrize("encryption_type", ["1", "2", "3"])
@@ -1522,7 +1663,8 @@ def test_auto_collection_coordinator_r2(encryption_type, M_N, goto_home, need_ke
     pick_menu_item('Multisig Wallets')
     pick_menu_item('BSMS (BIP-129)')
     title, story = cap_story()
-    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to set up multisig wallets securely." in story
+    assert "Bitcoin Secure Multisig Setup (BIP-129) is a mechanism to securely create multisig wallets." in story
+    assert "WARNING: BSMS is an EXPERIMENTAL and BETA feature" in story
     need_keypress("y")
     pick_menu_item('Coordinator')
     coord_menu_item = coordinator_label(M, N, "p2wsh", encryption_type, index=1)
@@ -1530,7 +1672,7 @@ def test_auto_collection_coordinator_r2(encryption_type, M_N, goto_home, need_ke
     pick_menu_item("Round 2")
     time.sleep(0.1)
     _, story = cap_story()
-    if "Press (1) to import signer round 1 files from SD Card" in story:
+    if "Press (1) to import co-signer round 1 files from SD Card" in story:
             need_keypress("1")
     need_keypress("1") # auto-collection
     time.sleep(0.1)
@@ -1539,10 +1681,10 @@ def test_auto_collection_coordinator_r2(encryption_type, M_N, goto_home, need_ke
         # we need exact number of files for unencrypted as we would have no idea which are part of this multisig setup
         assert "Auto-collection failed. Defaulting to manual selection of files." in story
     else:
-        if "Press (1) to save BSMS descriptor template file/s to SD Card" in story:
+        if "Press (1) to save BSMS descriptor template file(s) to SD Card" in story:
             # if NFC or Vdisk enabled - but means auto-collection was successful and we are prompted where to
             # save the resulting descriptor (coordinator round2 data)
             assert True
         else:
             # NFC and Vdisk disabled, automatically written to SD card - success
-            assert "BSMS descriptor template file/s written" in story
+            assert "BSMS descriptor template file(s) written" in story

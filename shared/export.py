@@ -471,7 +471,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
     chain = chains.current_chain()
 
     xfp = settings.get('xfp')
-
+    dis.progress_bar_show(0.1)
     if mode is None:
         if addr_type == AF_CLASSIC:
             mode = 44
@@ -484,11 +484,14 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
 
     derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
-
+    dis.progress_bar_show(0.2)
     with stash.SensitiveValues() as sv:
+        dis.progress_bar_show(0.3)
         xpub = chain.serialize_public(sv.derive_path(derive))
 
+    dis.progress_bar_show(0.7)
     desc = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=addr_type)
+    dis.progress_bar_show(0.8)
     if int_ext:
         #  with <0;1> notation
         body = desc.serialize(int_ext=True)
@@ -500,6 +503,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
             desc.serialize(internal=True),
         )
 
+    dis.progress_bar_show(1)
     await write_text_file(fname_pattern="descriptor.txt", body=body, title="Descriptor")
 
 # EOF

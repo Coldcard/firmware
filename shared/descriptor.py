@@ -49,6 +49,10 @@ except ModuleNotFoundError:
         return struct.unpack('<I', a2b_hex(txt))[0]
 
 
+class WrongCheckSumError(Exception):
+    pass
+
+
 def polymod(c, val):
     c0 = c >> 35
     c = ((c & 0x7ffffffff) << 5) ^ val
@@ -143,7 +147,7 @@ class Descriptor:
             raise ValueError("Missing descriptor checksum")
         calc_checksum = descriptor_checksum(desc)
         if calc_checksum != checksum:
-            raise ValueError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
+            raise WrongCheckSumError("Wrong checksum %s, expected %s" % (checksum, calc_checksum))
         return desc, checksum
 
     @staticmethod
