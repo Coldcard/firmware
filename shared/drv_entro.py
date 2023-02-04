@@ -259,15 +259,6 @@ async def password_entry(*args, **kwargs):
     # (index, path, password)
     cache = tuple()
 
-    # TODO: maybe a way to kill this info dialog w/ a setting
-    ch = await ux_show_story('''\
-Type Passwords (BIP-85)
-
-This feature derives a deterministic password according BIP-85, from the seed. \
-The password will be sent as keystrokes via USB to the host computer.''')
-    if ch != 'y':
-        return
-
     with EmulatedKeyboard() as kbd:
         if await kbd.connect(): return
 
