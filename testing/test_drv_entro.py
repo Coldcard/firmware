@@ -303,12 +303,7 @@ def test_type_passwords(dev, cap_menu, pick_menu_item,
     menu = cap_menu()
     assert "Type Passwords" in menu
     pick_menu_item("Type Passwords")
-    time.sleep(1)
-    _, story = cap_story()
-    story2 = 'Type Passwords (BIP-85)\n\nThis feature derives a deterministic password according BIP-85, from the seed. The password will be sent as keystrokes via USB to the host computer.'
-    assert story == story2
-    need_keypress("y")
-    time.sleep(0.5)
+    time.sleep(0.1)
     # here we accessed index loop and can derive
     for index in [0, 10, 100, 1000, 9999]:
         time.sleep(0.5)
