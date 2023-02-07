@@ -796,8 +796,8 @@ async def bsms_signer_round1(*a):
             prompt += ", (4) to import via NFC"
             escape += "4"
         if VD is not None:
-            prompt += ", (5) to import from Virtual Disk"
-            escape += "5"
+            prompt += ", (6) to import from Virtual Disk"
+            escape += "6"
         prompt += "."
 
         ch = await ux_show_story(prompt, escape=escape)
@@ -817,9 +817,9 @@ async def bsms_signer_round1(*a):
                 token_hex = hex(int(token_int))
             else:
                 return
-        elif ch in "15":
+        elif ch in "16":
             from actions import file_picker
-            force_vdisk = (ch == '5')
+            force_vdisk = (ch == '6')
 
             # pick a likely-looking file.
             fn = await file_picker('Select file containing the token to be imported. File extension has to be ".token" '

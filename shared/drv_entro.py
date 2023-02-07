@@ -192,14 +192,14 @@ async def drv_entro_step2(_1, picked, _2):
         if glob.NFC:
             prompt += ', (4) to share via NFC'
     if glob.VD:
-        prompt += ", (5) to save to Virtual Disk"
+        prompt += ", (6) to save to Virtual Disk"
 
     prompt += '.'
 
     while 1:
-        ch = await ux_show_story(msg+prompt, sensitive=True, escape='12345')
+        ch = await ux_show_story(msg+prompt, sensitive=True, escape='12346')
 
-        if ch in "15":
+        if ch in "16":
             # write to SD card or Virtual Disk: simple text file
             if ch == "1":
                 force_vdisk = False
