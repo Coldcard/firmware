@@ -495,10 +495,10 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
                 time.sleep(0.4)
         else:
             # virtual disk
-            if "(5) to import from Virtual Disk" not in story:
+            if "(6) to import from Virtual Disk" not in story:
                 pytest.skip("Vdisk disabled")
             else:
-                need_keypress("5")
+                need_keypress("6")
 
         if way != "nfc":
             time.sleep(0.2)
@@ -946,10 +946,10 @@ def test_invalid_token_signer_round1(token, way, pick_menu_item, cap_story, need
                 time.sleep(0.4)
         else:
             # virtual disk
-            if "(5) to import from Virtual Disk" not in story:
+            if "(6) to import from Virtual Disk" not in story:
                 pytest.skip("Vdisk disabled")
             else:
-                need_keypress("5")
+                need_keypress("6")
 
         if way != "nfc":
             time.sleep(0.2)
