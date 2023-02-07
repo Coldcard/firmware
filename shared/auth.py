@@ -1138,11 +1138,10 @@ def usb_show_address(addr_format, subpath):
 
 
 class NewEnrollRequest(UserAuthorizedAction):
-    def __init__(self, ms, auto_export=False, bsms_index=None):
+    def __init__(self, ms, auto_export=False):
         super().__init__()
         self.wallet = ms
         self.auto_export = auto_export
-        self.bsms_index = bsms_index
 
         # self.result ... will be re-serialized xpub
 
@@ -1154,10 +1153,6 @@ class NewEnrollRequest(UserAuthorizedAction):
             ch = await ms.confirm_import()
 
             if ch == 'y':
-                if self.bsms_index is not None:
-                    # remove signer round 2 from settings after multisig import is approved by user
-                    from bsms import BSMSSettings
-                    BSMSSettings.signer_delete(self.bsms_index)
                 if self.auto_export:
                     # save cosigner details now too 
                     await ms.export_wallet_file('created on', 
@@ -1176,22 +1171,9 @@ class NewEnrollRequest(UserAuthorizedAction):
             sys.print_exception(exc)
         finally:
             UserAuthorizedAction.cleanup()      # because no results to store
-            if self.bsms_index is not None:
-                # bsms special case, get him back to multisig menu
-                from ux import the_ux, restore_menu
-                from multisig import MultisigMenu
-                while 1:
-                    top = the_ux.top_of_stack()
-                    if not top: break
-                    if not isinstance(top, MultisigMenu):
-                        the_ux.pop()
-                        continue
-                    break
-                restore_menu()
-            else:
-                self.pop_menu()
+            self.pop_menu()
 
-def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None):
+def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False):
     # Offer to import (enroll) a new multisig wallet. Allow reject by user.
     from multisig import MultisigWallet
 
@@ -1205,7 +1187,7 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
     # and be shown on screen/over usb
     ms = MultisigWallet.from_file(config, name=name)
 
-    UserAuthorizedAction.active_request = NewEnrollRequest(ms, bsms_index=bsms_index)
+    UserAuthorizedAction.active_request = NewEnrollRequest(ms)
 
     if ux_reset:
         # for USB case, and import from PSBT

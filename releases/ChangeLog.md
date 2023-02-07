@@ -1,7 +1,5 @@
 ## 5.1.0 - 2023-02-08
 
-- New Feature: Support BIP-0129 Bitcoin Secure Multisig Setup (BSMS).
-  Both Coordinator and Signer roles are supported.
 - New Feature: Single signature wallet generic descriptor export
   `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
   in one descriptor `<0;1>` and standard with two descriptors are supported.
