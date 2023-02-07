@@ -7,3 +7,4 @@
 *.dfu
 *.txn
 .tmp.tmp
+bsms_*
