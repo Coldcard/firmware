@@ -475,7 +475,7 @@ async def ux_input_numbers(val, validate_func):
             if len(here) < 32:
                 here += ch
 
-async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False):
+async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False, max_len=100):
     # Allow them to pick each digit using "D-pad"
     from glob import dis
     from display import FontTiny, FontSmall
@@ -497,10 +497,12 @@ async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False):
     # assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
 
     if hex_only:
-        footer1 = "hex mode"
+        footer1 = "Enter Hexidecimal Number"
+        footer2 = "58=Change 9=Next 7=Back"
     else:
         footer1 = "1=Letters  2=Numbers  3=Symbols"
         footer2 = "4=SwapCase  0=HELP"
+
     y = 20
     pw = bytearray(pw or ('0' if hex_only else 'A'))
 
@@ -538,8 +540,7 @@ async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False):
     # pre-render the fixed stuff
     dis.clear()
     dis.text(None, -10, footer1, FontTiny)
-    if not hex_only:
-        dis.text(None, -1, footer2, FontTiny)
+    dis.text(None, -1, footer2, FontTiny)
     dis.save()
 
     # no key-repeat on certain keys
@@ -567,7 +568,7 @@ async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False):
 
             if ax == pos:
                 # draw cursor
-                if len(pw) < 2 * n_visible:
+                if not hex_only and (len(pw) < 2 * n_visible):
                     dis.text(x - 4, y - 19, '0x%02X' % ch, FontTiny)
                 dis.icon(x - 2, y - 10, 'spin')
 
@@ -605,7 +606,7 @@ async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False):
         elif ch == '9':  # right
             pos += 1
             if pos >= len(pw):
-                if len(pw) < 100 and pw[-3:] != b'   ':
+                if len(pw) < max_len and pw[-3:] != b'   ':
                     # expands with space in normal mode
                     # expands with 0 in hex_only mode
                     pw += new_expand

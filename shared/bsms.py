@@ -790,7 +790,7 @@ async def bsms_signer_round1(*a):
     token_int = None
     if not shortcut:
         prompt = "Press (1) to import token file from SD Card, (2) to input token manually"
-        prompt += ", (3) for unencrypted BSMS."
+        prompt += ", (3) for unencrypted BSMS"
         escape = "123"
         if NFC is not None:
             prompt += ", (4) to import via NFC"
@@ -811,7 +811,7 @@ async def bsms_signer_round1(*a):
             escape = "12"
             ch = await ux_show_story(prompt, escape=escape)
             if ch == "1":
-                token_hex = await ux_spinner_edit("", hex_only=True)
+                token_hex = await ux_spinner_edit("", hex_only=True, max_len=32)
             elif ch == "2":
                 token_int = await ux_input_numbers("", lambda: True)
                 token_hex = hex(int(token_int))

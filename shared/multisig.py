@@ -3,10 +3,8 @@
 # multisig.py - support code for multisig signing and p2sh in general.
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
-from utils import (
-    xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, str_to_keypath, problem_file_line,
-    export_prompt_builder
-)
+from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str
+from utils import str_to_keypath, problem_file_line, export_prompt_builder
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
@@ -97,7 +95,6 @@ def make_redeem_script(M, nodes, subkey_idx):
         # 0x21 = 33 = len(pubkey) = OP_PUSHDATA(33)
         pubkeys.append(b'\x21' + copy.pubkey())
         del copy
-
 
     pubkeys.sort()
 
@@ -1177,7 +1174,7 @@ not be accepted by network.
 
 This settings lasts only until power down.
 
-Press (4) to confirm entering this DANGEROUS mode. 
+Press (4) to confirm entering this DANGEROUS mode.
 ''', escape='4')
 
         if ch != '4': return
