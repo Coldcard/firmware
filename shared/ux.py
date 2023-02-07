@@ -475,7 +475,7 @@ async def ux_input_numbers(val, validate_func):
             if len(here) < 32:
                 here += ch
 
-async def ux_spinner_edit(pw, confirm_exit=True, hex_only=False, max_len=100):
+async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100):
     # Allow them to pick each digit using "D-pad"
     from glob import dis
     from display import FontTiny, FontSmall

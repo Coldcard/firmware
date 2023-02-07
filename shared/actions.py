@@ -5,7 +5,7 @@
 # Every function here is called directly by a menu item. They should all be async.
 #
 import ckcc, pyb, version, uasyncio
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted, ux_enter_bip32_index, ux_spinner_edit
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted, ux_enter_bip32_index, ux_input_text
 from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
 from uasyncio import sleep_ms
 from files import CardSlot, CardMissingError, needs_microsd
@@ -492,7 +492,7 @@ async def pick_nickname(*a):
 You can give this Coldcard a nickname and it will be shown before login.''')
         if ch != 'y': return
 
-    nn = await ux_spinner_edit(nick, confirm_exit=False)
+    nn = await ux_input_text(nick, confirm_exit=False)
 
     nn = nn.strip() if nn else None
     s.set('nick', nn)
