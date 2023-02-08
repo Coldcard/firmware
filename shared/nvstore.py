@@ -55,6 +55,7 @@ from glob import PSRAM
 #   emu = (bool) if set, enables the USB Keyboard emulation (BIP-85 password entry)
 #   wa = (bool) if set, enables menu wraparound
 #   hsmcmd = (bool) if set, enables all user management and hsm-only USB commands
+#   sd2fa = (list of strings): track which SD card is needed for login
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
 #   nick = optional nickname for this coldcard (personalization)

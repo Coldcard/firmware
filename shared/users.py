@@ -16,6 +16,7 @@ from glob import settings
 # accepting strings and strings, returning bytes when decoding, str when encoding (ie. correct)
 b32encode = ngu.codecs.b32_encode
 b32decode = ngu.codecs.b32_decode
+
 hmac_sha256 = ngu.hmac.hmac_sha256
 
 # to keep menus and such to a reasonable size
