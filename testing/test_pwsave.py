@@ -122,8 +122,8 @@ cs = files.CardSlot().__enter__(); \
 p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()''')
 
     assert len(key) == 64
-    #assert key == '234af2aa2ab43af83667dfc6e11d08223e0f486ef34539b41a045dd9eb3ea664'
 
+    # recalc what it should be
     from pycoin.key.BIP32Node import BIP32Node
     from pycoin.encoding import from_bytes_32, to_bytes_32
     from hashlib import sha256
@@ -141,7 +141,7 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
 
     assert expect == key
 
-    # check that key works for decrypt / that the file was actually encrypted
+    # check that key works for decrypt and that the file was actually encrypted
 
     with open(SIM_FNAME, 'rb') as fd:
         raw = fd.read()
