@@ -4,7 +4,7 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb, version, uasyncio
+import ckcc, pyb, version, uasyncio, sys
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted, ux_enter_bip32_index, ux_input_text
 from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
 from uasyncio import sleep_ms
@@ -855,7 +855,7 @@ async def start_login_sequence():
 
     except BaseException as exc:
         # Robustness: any logic errors/bugs in above will brick the Coldcard
-        # even for legit owner, since they can't login. Try to recover, when it's
+        # even for legit owner, since they can't login. To try to recover, when it's
         # safe to do so. Remember the bootrom checks PIN on every access to
         # the secret, so "letting" them past this point is harmless if they don't know
         # the true pin.
@@ -863,7 +863,6 @@ async def start_login_sequence():
             raise
 
         print("Bug recovery!")
-        import sys
         sys.print_exception(exc)
 
     # Successful login...
@@ -878,6 +877,14 @@ async def start_login_sequence():
         await version_migration()
     except:
         pass
+
+    # Maybe insist on the "right" microSD being already installed?
+    try:
+        from pwsave import MicroSD2FA
+        MicroSD2FA.enforce_policy()
+    except BaseException as exc:
+        # robustness: keep going!
+        sys.print_exception(exc)
 
     # implement idle timeout now that we are logged-in
     from imptask import IMPT
@@ -2088,5 +2095,16 @@ async def change_which_chain(name):
         # no secrets yet, not an error
         pass
 
+async def microsd_2fa(*a):
+    # Feature: enforce special MicroSD being inserted at login time (a 2FA)
+    from pwsave import MicroSD2FA
+    
+    if not settings.get('sd2fa'):
+        ch = await ux_show_story('''When enabled, this feature requires a specially prepared MicroSD card to be inserted during login process. After correct PIN is provided, if card slot is empty or unknown card present, the seed is wiped.''')
+
+        if ch != 'y':
+            return
+
+    return MicroSD2FA.menu()
 
 # EOF

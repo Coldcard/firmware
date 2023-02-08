@@ -1,5 +1,8 @@
 ## 5.1.0 - 2023-02-08
 
+- New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be
+  already inserted when (true) PIN is entered, or else seed is wiped. Add, remove and check
+  cards in menu: Settings -> Login Settings -> MicroSD 2FA
 - New Feature: Single signature wallet generic descriptor export
   `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
   in one descriptor `<0;1>` and standard with two descriptors are supported.

@@ -114,6 +114,7 @@ LoginPrefsMenu = [
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Kill Key', f=pick_killkey, predicate=lambda: version.has_se2),
     MenuItem('Login Countdown', chooser=countdown_chooser),
+    MenuItem('MicroSD 2FA', menu=microsd_2fa, predicate=lambda: version.has_se2 and has_secrets()),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
