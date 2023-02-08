@@ -45,9 +45,10 @@ enrolled card).
 "Check Card" validates the card inserted and indicates if it would 
 be accepted or not.
 
-Use "Remove Card #N" is remove cards from the system. When the last
-card is removed, the feature is disabled and no card will be required
-for login.
+Use "Remove Card #N" is remove cards from the approved list. When
+the last card is removed, the feature is disabled and no card will
+be required for login. Access to the card in question is not required
+to remove it.
 
 ## During Login
 

@@ -271,7 +271,7 @@ class MicroSD2FA(PassphraseSaver):
 
     async def remove(self, nonce):
         # remove indicated nonce from records
-        # - delete file if present and found, but ok if missing
+        # - doesn't delete file, since might not have card anymore and useless w/o nonce
         from glob import dis, settings
 
         v = self.get_nonces()
@@ -282,13 +282,6 @@ class MicroSD2FA(PassphraseSaver):
         else:
             settings.set('sd2fa', v2)
         settings.save()
-        
-        try:
-            with CardSlot() as card:
-                fn = self.filename(card)
-                os.remove(fn)
-        except:
-            pass
 
     @classmethod
     def menu(cls):
