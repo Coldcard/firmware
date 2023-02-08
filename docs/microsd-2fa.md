@@ -38,9 +38,9 @@ be used with ephemeral seeds, as that secret will not be in effect
 during boot time.
 
 The menu initially contains only "Add Card". Once one or more
-cards are enabled (and the feature is activated), addition
-options appear: "Check Card" and "Remove Card #N" for each
-enrolled card.
+cards are enabled (and the feature is activated), additional
+options appear: "Check Card" and "Remove Card #N" (for each
+enrolled card).
 
 "Check Card" validates the card inserted and indicates if it would 
 be accepted or not.
