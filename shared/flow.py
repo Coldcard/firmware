@@ -87,6 +87,10 @@ def nfc_enabled():
 def vdisk_enabled():
     return bool(settings.get('vidsk', 0))
 
+def se2_and_real_secret():
+    from pincodes import pa
+    return version.has_se2 and (not pa.is_secret_blank()) and (not pa.tmp_value)
+
 
 HWTogglesMenu = [
     ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,
@@ -114,7 +118,7 @@ LoginPrefsMenu = [
     MenuItem('Scramble Keypad', f=pick_scramble),
     MenuItem('Kill Key', f=pick_killkey, predicate=lambda: version.has_se2),
     MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('MicroSD 2FA', menu=microsd_2fa, predicate=lambda: version.has_se2 and has_secrets()),
+    MenuItem('MicroSD 2FA', menu=microsd_2fa, predicate=se2_and_real_secret),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
