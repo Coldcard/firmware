@@ -1,25 +1,28 @@
-## 5.1.0 - 2023-02-08
+## 5.1.0 - 2023-02-XX
 
 - New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be
   already inserted when (true) PIN is entered, or else seed is wiped. Add, remove and check
-  cards in menu: Settings -> Login Settings -> MicroSD 2FA
+  cards in menu: `Settings -> Login Settings -> MicroSD 2FA`
 - New Feature: Single signature wallet generic descriptor export
   `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
   in one descriptor `<0;1>` and standard with two descriptors are supported.
-- Enhancement: Add ability to import multisig wallet via Virtual Disk.
-- Enhancement: Add ability to import extended private key via Virtual Disk and via NFC.
-- Enhancement: Import seed in compact/truncated form (just 3-4 letters of each seed word).
-- Enhancement: Application-specific address/derivation paths in `Address Explorer -> Applications`
-- Enhancement: Samourai POST-MIX and PRE-MIX descriptor export options added to `Export Wallet`
-- Enhancement: Lily Wallet export option added to `Export Wallet`
-- Enhancement: Add ability to export all supported wallets via NFC (instead of SD card only)
+- Address Explorer:
+    - Enhancement: Application-specific derivation paths in `Address Explorer -> Applications`
+    - Bugfix: Change value was ignored when generating addresses file
+- Import Enhancements:
+    - Add import multisig wallet via Virtual Disk
+    - Add import extended private key via Virtual Disk and via NFC
+    - Import seed in compact/truncated form (just 3-4 letters of each seed word)
+- Export Enhancements: 
+    - Samourai POST-MIX and PRE-MIX descriptor export options added
+    - Lily Wallet added
+    - Ability to export all supported wallets via NFC (instead of SD card only)
+    - Change electrum export file name from 'new-wallet.json' to 'new-electrum.json'
+    - Allow export of Wasabi skeleton for Bitcoin Regtest.
 - Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
   added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
-- Enhancement: Change electrum export file name from 'new-wallet.json' to 'new-electrum.json'
-- Bugfix: Change value was ignored when generating addresses file from address explorer.
 - Bugfix: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted.
-- Bugfix: Allow export of Wasabi skeleton for Bitcoin Regtest.
 - Docs: Add `docs/rolls12.py` script for verifying dice rolls math for 12 word seeds.
 
 ## 5.0.7 - 2022-10-05
