@@ -71,11 +71,26 @@ In Delta Mode, the usual card policy is in effect. However, if you
 are relying on this 2FA feature to wipe the seed in a case of duress,
 there doesn't seem to be any need for Delta Mode.
 
+## Duress Defenses
+
+We recommend simply keeping no card in your Coldcard once activating
+this feature. Your attacker, or yourself under duress, will login
+normally and trigger this defense without you taking any explicit
+action.
+
 If you were being forced to prepare a PSBT under duress, you can
 choose which SD card to use (so pick a normal one, which isn't
 enrolled) and you may also have a chance to clear your card of the
 special file. Either way would be an opportunity to ensure the
-automatic wipe occurs, even as you comply as provide the PIN code.
-If your hands are on the Coldcard during login, you can eject the
-card as well.
+automatic wipe occurs, even as you comply and provide the PIN code.
+
+Your enrolled SD cards can also be stored at another location away
+from your Coldcard. This could be a bank safety deposit box, since
+it contains no sensitive data.
+
+If you are closely surveilled when logging and using your Coldcard,
+the PIN code might already be known to your attacker. However, there
+is no indication on the screen during a normal (successful) login
+that this feature is in effect, so they would not know if the SD
+card was inserted by chance or necessity.
 
