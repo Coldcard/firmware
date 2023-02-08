@@ -1,9 +1,14 @@
 ## 5.1.0 - 2023-02-XX
 
+- New Feature: Exports are signed and detached signature file is exported with it.
+  Check "Signed Exports" part in `msg-signing.md` fo more information.
 - New Feature: Load TAPSIGNER encrypted backup as main or ephemeral seed
 - New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be
   already inserted when (true) PIN is entered, or else seed is wiped. Add, remove and check
   cards in menu: `Settings -> Login Settings -> MicroSD 2FA`
+- New Feature: Verification of signed messages: 
+    - SD card and Virtual disk `Advanced/Tools -> File Management -> Verify Sig File`
+    - NFC `Advanced/Tools -> NFC Tools -> Verify Sig File`
 - New Feature: Single signature wallet generic descriptor export
   `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
   in one descriptor `<0;1>` and standard with two descriptors are supported.
@@ -28,6 +33,10 @@
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
   added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
 - Bugfix: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted.
+- Bugfix: Recalculate extended key saved in settings upon chain change (BTC, XTN, XRT).
+- Bugfix: Provide correct derivation path (m/84'/1'/0') for testnet Wasabi export.
+- Bugfix: Properly display UX checkmark only if testnet (XTN, XRT) is enabled 
+  in `Settings- > Danger Zone -> Testnet Mode`.
 - Docs: Add `docs/rolls12.py` script for verifying dice rolls math for 12 word seeds.
 
 ## 5.0.7 - 2022-10-05

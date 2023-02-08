@@ -10,7 +10,10 @@ from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
+from uhashlib import sha256
+from ubinascii import hexlify as b2a_hex
 from glob import settings
+from auth import write_sig_file
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -112,31 +115,34 @@ class PickAddrFmtMenu(MenuSystem):
 class ApplicationsMenu(MenuSystem):
     def __init__(self, parent):
         self.parent = parent
+        self.chain = str(chains.current_chain().b44_cointype) + "'"
         items = [
             MenuItem("Samourai", menu=SamouraiAppMenu(self)),
-        ]
-        super().__init__(items)
-
-
-class SamouraiAppMenu(MenuSystem):
-    def __init__(self, parent):
-        self.parent = parent
-        chain = chains.current_chain()
-        hardened_chain = str(chain.b44_cointype) + "'"
-        items = [
-            MenuItem("Post-mix", f=self.done,
-                     arg=("m/84'/" + hardened_chain + "/2147483646'/{change}/{idx}", AF_P2WPKH)),
-            MenuItem("Pre-mix", f=self.done,
-                     arg=("m/84'/" + hardened_chain + "/2147483645'/{change}/{idx}", AF_P2WPKH)),
-            # MenuItem("Bad Bank", f=self.done,         # not released yet
-            #          arg=("m/84'/" + hardened_chain + "/2147483644'/{change}/{idx}", AF_P2WPKH)),
+            MenuItem("Wasabi", f=self.done,
+                     arg=("m/84'/" + self.chain + "/0'/{change}/{idx}", AF_P2WPKH)),
         ]
         super().__init__(items)
 
     def done(self, _1, _2, item):
         path = item.arg[0]
         addr_fmt = item.arg[1]
-        await self.parent.parent.show_n_addresses(path, addr_fmt, None, n=10, allow_change=True)
+        await self.parent.show_n_addresses(path, addr_fmt, None, n=10, allow_change=True)
+
+
+class SamouraiAppMenu(MenuSystem):
+    def __init__(self, parent):
+        self.parent = parent
+        chain = self.parent.chain
+        items = [
+            MenuItem("Post-mix", f=self.parent.done,
+                     arg=("m/84'/" + chain + "/2147483646'/{change}/{idx}", AF_P2WPKH)),
+            MenuItem("Pre-mix", f=self.parent.done,
+                     arg=("m/84'/" + chain + "/2147483645'/{change}/{idx}", AF_P2WPKH)),
+            # MenuItem("Bad Bank", f=self.done,         # not released yet
+            #          arg=("m/84'/" + hardened_chain + "/2147483644'/{change}/{idx}", AF_P2WPKH)),
+        ]
+        super().__init__(items)
+
 
 class AddressListMenu(MenuSystem):
 
@@ -236,33 +242,26 @@ Press (3) if you really understand and accept these risks.
         import version
 
         def make_msg(change=0):
-            msg = ''
+            export_msg = "Press (1) to save Address summary file to SD Card."
+            if version.has_fatram and not ms_wallet:
+                export_msg += " Press (2) to view QR Codes."
+            if NFC:
+                export_msg += " Press (3) to share via NFC."
+            if VD:
+                export_msg += " Press (4) to save to Virtual Disk."
+            if allow_change and change == 0:
+                export_msg += " Press (6) to show change addresses."  # 5 is needed to move up
+            export_msg += '\n\n'
+
+            msg = ""
             if n > 1:
                 if start == 0:
-                    msg = "Press (1) to save to file on SD Card."
-                    if version.has_fatram and not ms_wallet:
-                        msg += " (2) to view QR Codes."
-                    if NFC:
-                        msg += " Press (3) to share via NFC."
-                    if VD:
-                        msg += " Press (4) to save to file on Virtual Disk."
-                    if allow_change and change == 0:
-                        msg += " Press (6) to show change addresses."  # 5 is needed to move up
-                    msg += '\n\n'
+                    msg = export_msg
                 msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
-                msg = "Showing single address."
-                msg += " Press (1) to save to file on SD Card."
-                if version.has_fatram:
-                    msg += " Press (2) to view QR Codes."
-                if NFC:
-                    msg += " Press (3) to share via NFC."
-                if VD:
-                    msg += " Press (4) to save to file on Virtual Disk."
-                if allow_change and change == 0:
-                    msg += " Press (6) to show change address."  # 5 is needed to move up
-                msg += '\n\n'
+                msg = "Showing single address. "
+                msg += export_msg
 
             addrs = []
             chain = chains.current_chain()
@@ -324,8 +323,7 @@ Press (3) if you really understand and accept these risks.
                 await make_address_summary_file(path, addr_fmt, ms_wallet,
                                         self.account_num, count=(250 if n!=1 else 1),
                                         change=change, force_vdisk=force_vdisk)
-                # .. continue on same screen in case they want to write to multiple cards
-                continue
+                # continue on same screen in case they want to write to multiple cards
 
             elif ch == '2':
                 # switch into a mode that shows them as QR codes
@@ -363,8 +361,6 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     # Produce CSV file contents as a generator
 
     if ms_wallet:
-        from ubinascii import hexlify as b2a_hex
-
         # For multisig, include redeem script and derivation for each signer
         yield '"' + '","'.join(['Index', 'Payment Address',
                                     'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)] 
@@ -411,23 +407,34 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
     try:
         with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
-
+            h = sha256()
             # do actual write
             with open(fname, 'wb') as fd:
                 for idx, part in enumerate(body):
-                    fd.write(part.encode())
+                    ep = part.encode()
+                    fd.write(ep)
+                    if not ms_wallet:
+                        h.update(ep)
 
                     if idx % 5 == 0:
                         dis.progress_bar_show(idx / count)
+
+            sig_nice = None
+            if not ms_wallet:
+                derive = path.format(account=account_num, change=change, idx=0)  # first addr
+                sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
 
     except CardMissingError:
         await needs_microsd()
         return
     except Exception as e:
-        await ux_show_story('Failed to write!\n\n\n'+str(e))
+        from utils import problem_file_line
+        await ux_show_story('Failed to write!\n\n\n'+str(e) + problem_file_line(e))
         return
 
     msg = '''Address summary file written:\n\n%s''' % nice
+    if sig_nice:
+        msg += "\n\nAddress signature file written:\n\n%s" % sig_nice
     await ux_show_story(msg)
 
 async def address_explore(*a):

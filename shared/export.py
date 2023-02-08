@@ -2,12 +2,14 @@
 #
 # export.py - Export and share various semi-public data
 #
-import stash, chains, version, ujson
+import stash, chains, version, ujson, ngu
 from uio import StringIO
 from ucollections import OrderedDict
-from utils import xfp2str, swab32, export_prompt_builder
+from utils import xfp2str, swab32, export_prompt_builder, chunk_writer
 from ux import ux_show_story
 from glob import settings
+from auth import write_sig_file
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
 
 
 def generate_public_contents():
@@ -17,7 +19,6 @@ def generate_public_contents():
     #   key = value
     # or #comments
     # but value is JSON
-    from public_constants import AF_CLASSIC
 
     num_rx = 5
 
@@ -113,9 +114,9 @@ be needed for different systems.
             yield fp.getvalue()
             del fp
 
-async def write_text_file(fname_pattern, body, title, total_parts=72):
+async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     # - total_parts does need not be precise
-    from glob import dis, VD, NFC
+    from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
 
     force_vdisk = False
@@ -140,11 +141,10 @@ async def write_text_file(fname_pattern, body, title, total_parts=72):
 
             # do actual write
             with open(fname, 'wb') as fd:
-                body_len = len(body)
-                chunk = body_len // 10
-                for idx, i in enumerate(range(0, body_len, chunk)):
-                    dis.progress_bar_show(idx / 10)
-                    fd.write(body[i:i+chunk])
+                chunk_writer(fd, body)
+
+            h = ngu.hash.sha256s(body.encode())
+            sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
     except CardMissingError:
         await needs_microsd()
@@ -153,7 +153,8 @@ async def write_text_file(fname_pattern, body, title, total_parts=72):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''%s file written:\n\n%s''' % (title, nice)
+    msg = '%s file written:\n\n%s\n\n%s signature file written:\n\n%s' % (title, nice, title,
+                                                                          sig_nice)
     await ux_show_story(msg)
 
 async def make_summary_file(fname_pattern='public.txt'):
@@ -164,8 +165,9 @@ async def make_summary_file(fname_pattern='public.txt'):
 
     # generator function:
     body = "".join(list(generate_public_contents()))
-
-    await write_text_file(fname_pattern, body, 'Summary')
+    ch = chains.current_chain()
+    await write_text_file(fname_pattern, body, 'Summary', "m/44'/%d'/0'/0/0" % ch.b44_cointype,
+                          AF_CLASSIC)
 
 async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
     from glob import dis
@@ -215,14 +217,14 @@ importmulti '{imp_multi}'
 
     body += '\n'
 
-    await write_text_file(fname_pattern, body, 'Bitcoin Core')
+    ch = chains.current_chain()
+    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=ch.b44_cointype)
+    await write_text_file(fname_pattern, body, 'Bitcoin Core', derive + "/0/0", AF_P2WPKH)
 
 def generate_bitcoin_core_wallet(account_num, example_addrs):
     # Generate the data for an RPC command to import keys into Bitcoin Core
     # - yields dicts for json purposes
     from descriptor import Descriptor
-
-    from public_constants import AF_P2WPKH
 
     chain = chains.current_chain()
 
@@ -263,13 +265,15 @@ def generate_wasabi_wallet():
     # Generate the data for a JSON file which Wasabi can open directly as a new wallet.
     import version
 
-    # bitcoin (xpub) is used, even for testnet case (ie. no tpub)
-    # - altho, doesn't matter; the wallet operates based on it's own settings for test/mainnet
-    #   regardless of the contents of the wallet file
+    # bitcoin (xpub) is used, even for testnet case (i.e. no tpub)
+    # even though wasabi can properly parse tpub and generate correct addresses
+    # it would be confusing for user if he sees tpub in our export and then xpub in wasabi
+    # therefore we rather export xpub with correct testnet derivation path
     btc = chains.BitcoinMain
 
     with stash.SensitiveValues() as sv:
-        xpub = btc.serialize_public(sv.derive_path("84'/0'/0'"))
+        dd = "84'/%d'/0'" % chains.current_chain().b44_cointype
+        xpub = btc.serialize_public(sv.derive_path(dd))
 
     xfp = settings.get('xfp')
     txt_xfp = xfp2str(xfp)
@@ -283,44 +287,42 @@ def generate_wasabi_wallet():
 
     _,vers,_ = version.get_mpy_version()
 
-    return OrderedDict(ColdCardFirmwareVersion=vers,
-                       MasterFingerprint=txt_xfp,
-                       ExtPubKey=xpub)
+    rv = OrderedDict(ColdCardFirmwareVersion=vers, MasterFingerprint=txt_xfp, ExtPubKey=xpub)
+    return ujson.dumps(rv), dd + "/0/0", AF_P2WPKH
 
-def generate_unchained_export(acct_num=0):
+def generate_unchained_export(account_num=0):
     # They used to rely on our airgapped export file, so this is same style
     # - for multisig purposes
     # - BIP-45 style paths for now
     # - no account numbers (at this level)
-    from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH
 
     chain = chains.current_chain()
     todo = [
         ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
         ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        ( "m/45'", 'p2sh', AF_P2SH),  # iff acct_num == 0
+        ( "m/45'", 'p2sh', AF_P2SH),  # if acct_num == 0
     ]
 
     xfp = xfp2str(settings.get('xfp', 0))
-    rv = OrderedDict(xfp=xfp, account=acct_num)
+    rv = OrderedDict(xfp=xfp, account=account_num)
 
     with stash.SensitiveValues() as sv:
         for deriv, name, fmt in todo:
-            if fmt == AF_P2SH and acct_num:
+            if fmt == AF_P2SH and account_num:
                 continue
-            dd = deriv.format(coin=chain.b44_cointype, acct_num=acct_num)
+            dd = deriv.format(coin=chain.b44_cointype, acct_num=account_num)
             node = sv.derive_path(dd)
             xp = chain.serialize_public(node, fmt)
 
             rv['%s_deriv' % name] = dd
             rv[name] = xp
 
-    return rv
+    # sig_deriv = "m/44'/{ct}'/{acc}'".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
+    # return ujson.dumps(rv), sig_deriv, AF_CLASSIC
+    return ujson.dumps(rv), False, False
 
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH
-    from public_constants import AF_P2SH
     from descriptor import Descriptor, multisig_descriptor_template
 
     chain = chains.current_chain()
@@ -369,14 +371,14 @@ def generate_generic_export(account_num=0):
                 node.derive(0, False).derive(0, False)
                 rv[name]['first'] = chain.address(node, fmt)
 
-    return rv
+    sig_deriv = "m/44'/{ct}'/{acc}'".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
+    return ujson.dumps(rv), sig_deriv, AF_CLASSIC
 
-def generate_electrum_wallet(addr_type, account_num=0):
+def generate_electrum_wallet(addr_type, account_num):
     # Generate line-by-line JSON details about wallet.
     #
     # Much reverse enginerring of Electrum here. It's a complex
     # legacy file format.
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
     chain = chains.current_chain()
 
@@ -415,25 +417,25 @@ def generate_electrum_wallet(addr_type, account_num=0):
                                  ckcc_xpub=settings.get('xpub'),
                                  derivation=derive,
                                  xpub=top)
-        
-    return rv
 
-async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
+    return ujson.dumps(rv), derive + "/0/0", addr_type
+
+async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     # Record **public** values and helpful data into a JSON file
 
-    from glob import dis, NFC, VD
+    from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
 
     dis.fullscreen('Generating...')
-
-    body = generator()
+    json_str, derive, addr_fmt = func()
+    skip_sig = derive is False and addr_fmt is False
 
     force_vdisk = False
     prompt, escape = export_prompt_builder("%s file" % label)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == '3':
-            await NFC.share_json(ujson.dumps(body))
+            await NFC.share_json(json_str)
             return
         elif ch == '2':
             force_vdisk = True
@@ -449,7 +451,11 @@ async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
 
             # do actual write
             with open(fname, 'wt') as fd:
-                ujson.dump(body, fd)
+                chunk_writer(fd, json_str)
+
+            if not skip_sig:
+                h = ngu.hash.sha256s(json_str.encode())
+                sig_nice = write_sig_file([(h, fname)], derive, addr_fmt)
 
     except CardMissingError:
         await needs_microsd()
@@ -458,12 +464,14 @@ async def make_json_wallet(label, generator, fname_pattern='new-wallet.json'):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''%s file written:\n\n%s''' % (label, nice)
+    msg = '%s file written:\n\n%s' % (label, nice)
+    if not skip_sig:
+        msg += '\n\n%s signature file written:\n\n%s' % (label, sig_nice)
     await ux_show_story(msg)
 
 
-async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True):
-    from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int_ext=True,
+                                        fname_pattern="descriptor.txt"):
     from descriptor import Descriptor
     from glob import dis
 
@@ -504,7 +512,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
         )
 
     dis.progress_bar_show(1)
-    await write_text_file(fname_pattern="descriptor.txt", body=body, title="Descriptor")
+    await write_text_file(fname_pattern, body, "Descriptor", derive + "/0/0", addr_type)
 
 # EOF
 

@@ -1,8 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json
 from ckcc.protocol import CCProtocolPacker
-from helpers import B2A, U2SAT, prandom
+from helpers import B2A, U2SAT
+from msg import verify_message
 from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode
 from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_sim_watch
 from binascii import b2a_hex, a2b_hex
@@ -245,16 +246,19 @@ def addr_vs_path(master_xpub):
     from  pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
 
-    def doit(given_addr, path=None, addr_fmt=None, script=None):
+    def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
         if not script:
             try:
                 # prefer using xpub if we can
                 mk = BIP32Node.from_wallet_key(master_xpub)
+                if not testnet:
+                    mk._netcode = "BTC"
                 sk = mk.subkey_for_path(path[2:])
             except PublicPrivateMismatchError:
                 mk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+                if not testnet:
+                    mk._netcode = "BTC"
                 sk = mk.subkey_for_path(path[2:])
-
 
         if addr_fmt in {None,  AF_CLASSIC}:
             # easy
@@ -1428,6 +1432,163 @@ def load_shared_mod():
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod
+    return doit
+
+@pytest.fixture
+def verify_detached_signature_file(microsd_path, virtdisk_path):
+    def doit(fnames, sig_fname, way, addr_fmt=None):
+        fpaths = []
+        for fname in fnames:
+            if way == "sd":
+                path = microsd_path(fname)
+            else:
+                path = virtdisk_path(fname)
+            fpaths.append(path)
+
+        if way == "sd":
+            sig_path = microsd_path(sig_fname)
+        else:
+            sig_path = virtdisk_path(sig_fname)
+
+        with open(sig_path, "r") as sf:
+            sig_contents = sf.read()
+
+        split_sig = sig_contents.split("\n")
+        assert split_sig[0] == "-----BEGIN BITCOIN SIGNED MESSAGE-----"
+        h1_index = split_sig.index("-----BEGIN BITCOIN SIGNATURE-----")
+        assert split_sig[h1_index] == "-----BEGIN BITCOIN SIGNATURE-----"
+        msg = "\n".join(split_sig[1:h1_index])
+        address = split_sig[h1_index + 1]
+        sig = split_sig[h1_index + 2]
+        assert split_sig[h1_index + 3] == "-----END BITCOIN SIGNATURE-----"
+
+        if addr_fmt is not None:
+            if addr_fmt == AF_CLASSIC:
+                assert address[0] in "1mn"
+            elif addr_fmt == AF_P2WPKH:
+                assert address[:3] in ["tb1", "bc1"] or address[:5] == "bcrt1"
+            elif addr_fmt == AF_P2WPKH_P2SH:
+                assert address[0] in "23"
+            else:
+                raise ValueError("Can only sign with single signature address formats")
+
+        fcontents = []
+        for fn, fpath in zip(fnames, fpaths):
+            rb = fpath.endswith(".pdf")
+            with open(fpath, 'rb' if rb else 'rt') as fp:
+                contents = fp.read()
+                fcontents.append(contents)
+            if not rb:
+                contents = contents.encode()
+            fn_addendum = "  %s" % fn
+            assert (hashlib.sha256(contents).digest().hex() + fn_addendum) in msg
+
+        assert verify_message(address, sig, msg) is True
+        try:
+            os.unlink(sig_path)
+        except: pass
+        return fcontents[0], address
+
+    return doit
+
+@pytest.fixture
+def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detached_signature_file):
+    def doit(export_story, way, addr_fmt=None, is_json=False, label="wallet", fpattern=None,
+             tail_check=None):
+        if label is not None:
+            assert f'{label} file written' in export_story
+            assert 'signature file written' in export_story
+        if tail_check:
+            header, fname, sig_header, sig_fn, tail = export_story.split("\n\n")
+            assert tail_check in tail
+        else:
+            header, fname, sig_header, sig_fn = export_story.split("\n\n")
+
+        if fpattern:
+            assert fpattern in fname
+            assert fpattern in sig_fn
+        if is_json:
+            assert fname.endswith(".json")
+
+        contents, address = verify_detached_signature_file([fname], sig_fn, way, addr_fmt)
+
+        if is_json:
+            return json.loads(contents), address
+        return contents, address
+    return doit
+
+@pytest.fixture
+def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
+                load_export_and_verify_signature):
+    def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
+             tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
+             fpattern=None):
+        key_map = {
+            "sd": sd_key or "1",
+            "vdisk": vdisk_key or "2",
+            "nfc": nfc_key or "3",
+        }
+        time.sleep(0.2)
+        title, story = cap_story()
+        if way == "sd":
+            if f"({key_map['sd']}) to save {label} file to SD Card" in story:
+                need_keypress(key_map['sd'])
+
+        elif way == "nfc":
+            if f"({key_map['nfc']}) to share via NFC" not in story:
+                pytest.skip("NFC disabled")
+            else:
+                need_keypress(key_map['nfc'])
+                time.sleep(0.2)
+                if is_json:
+                    nfc_export = nfc_read_json()
+                else:
+                    nfc_export = nfc_read_text()
+                time.sleep(0.3)
+                need_keypress("x")  # exit NFC animation
+                return nfc_export
+        else:
+            # virtual disk
+            if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
+                pytest.skip("Vdisk disabled")
+            else:
+                need_keypress(key_map['vdisk'])
+
+        time.sleep(0.2)
+        title, story = cap_story()
+        if sig_check:
+            export, sig_addr = load_export_and_verify_signature(story, way, is_json=is_json,
+                                                                addr_fmt=addr_fmt, label=label,
+                                                                tail_check=tail_check,
+                                                                fpattern=fpattern)
+        else:
+            assert f"{label} file written" in story
+            if tail_check:
+                header, fname, tail = story.split("\n\n")
+                assert tail_check in tail
+            else:
+                header, fname = story.split("\n\n")
+            if fpattern:
+                assert fpattern in fname
+            if is_json:
+                assert fname.endswith(".json")
+            if way == "sd":
+                path = microsd_path(fname)
+            else:
+                path = virtdisk_path(fname)
+            with open(path, "r") as f:
+                export = f.read()
+                if is_json:
+                    export = json.loads(export)
+
+            need_keypress("y")
+
+        if ret_sig_addr and sig_addr:
+            return export, sig_addr
+        if ret_fname:
+            # ret_fname now only works if sig is not checked
+            return export, fname
+        return export
     return doit
 
 

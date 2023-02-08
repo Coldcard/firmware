@@ -6,4 +6,5 @@
 *.pdf
 *.dfu
 *.txn
+*.sig
 .tmp.tmp

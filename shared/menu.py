@@ -87,7 +87,10 @@ class ToggleMenuItem(MenuItem):
     def is_chosen(self):
         # should we show a check in parent menu?
         from glob import settings
-        rv = bool(settings.get(self.nvkey, 0))
+        if self.nvkey == "chain":
+            rv = True if settings.get(self.nvkey) in ["XRT", "XTN"] else False
+        else:
+            rv = bool(settings.get(self.nvkey, 0))
         if getattr(self, 'invert', False):
             rv = not rv
         return rv
@@ -97,7 +100,11 @@ class ToggleMenuItem(MenuItem):
         from ux import ux_show_story
 
         # skip story if default value has been changed
-        if self.story and settings.get(self.nvkey, None) == None:
+        if self.nvkey == "chain":
+            default = settings.get(self.nvkey) == "BTC"
+        else:
+            default = settings.get(self.nvkey, None) == None
+        if self.story and default:
             ch = await ux_show_story(self.story)
             if ch == 'x': return
 

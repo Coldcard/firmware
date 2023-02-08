@@ -5,17 +5,22 @@
 # Every function here is called directly by a menu item. They should all be async.
 #
 import ckcc, pyb, version, uasyncio, sys
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index, ux_input_text
-from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
-from utils import xfp2str, decrypt_tapsigner_backup
+from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
+from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
+from utils import xfp2str, decrypt_tapsigner_backup, B2A
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
+from ux import ux_enter_bip32_index, ux_input_text
+from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
+from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
+from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, MAX_TXN_LEN_MK4
 from glob import settings
 from pincodes import pa
 from menu import start_chooser
+
 
 CLEAR_PIN = '999999-999999'
 
@@ -991,8 +996,7 @@ that you will need to import other wallet software to track balance.''' + SENSIT
         return
 
     # pick a semi-random file name, save it.
-    import export
-    await export.make_summary_file()
+    await make_summary_file()
 
 async def export_xpub(label, _2, item):
     # provide bare xpub in a QR/NFC for import into simple wallets.
@@ -1147,8 +1151,6 @@ async def samourai_pre_mix_descriptor_export(*a):
 #     await samourai_account_descriptor(name, pre_mix_acct_num)
 
 async def samourai_account_descriptor(name, account_num):
-    import export
-
     ch = await ux_show_story(
         ss_descriptor_export_story(
             addition=" for Samourai %s account" % name,
@@ -1158,14 +1160,13 @@ async def samourai_account_descriptor(name, account_num):
 
     if ch != 'y':
         return
-
-    await export.make_descriptor_wallet_export(AF_P2WPKH, account_num)
+    fn_pattern = "samourai-%s.txt" % name.lower()
+    await make_descriptor_wallet_export(AF_P2WPKH, account_num, fname_pattern=fn_pattern)
 
 async def descriptor_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    import export
     addr_fmt, account_num, int_ext = item.arg
-    await export.make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext)
+    await make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext)
 
 
 async def bitcoin_core_skeleton(*A):
@@ -1185,80 +1186,79 @@ without ever connecting this Coldcard to a computer.\
         return
 
     # no choices to be made, just do it.
-    import export
-    await export.make_bitcoin_core_wallet(account_num)
+    await make_bitcoin_core_wallet(account_num)
 
 
 async def electrum_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    import export
     addr_fmt, account_num = item.arg
-    await export.make_json_wallet('Electrum wallet',
-                                  lambda: export.generate_electrum_wallet(addr_fmt, account_num),
-                                  "new-electrum.json")
+    await make_json_wallet('Electrum wallet',
+                           lambda: generate_electrum_wallet(addr_fmt, account_num),
+                           "new-electrum.json")
+
+async def _generic_export(prompt, label, f_pattern):
+    # like the Multisig export, make a single JSON file with
+    # basically all useful XPUB's in it.
+    ch = await ux_show_story(prompt + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_bip32_index('Account Number:') or 0
+    elif ch != 'y':
+        return
+
+    await make_json_wallet(label, lambda: generate_generic_export(account_num), f_pattern)
 
 async def generic_skeleton(*A):
     # like the Multisig export, make a single JSON file with
     # basically all useful XPUB's in it.
-
-    if await ux_show_story('''\
+    prompt = '''\
 Saves JSON file, with XPUB values that are needed to watch typical \
-single-signer UTXO associated with this Coldcard.''' + SENSITIVE_NOT_SECRET) != 'y':
-        return
+single-signer UTXO associated with this Coldcard.'''
 
-    account_num = await ux_enter_bip32_index('Account Number:') or 0
-
-    # no choices to be made, just do it.
-    import export
-    await export.make_json_wallet('Generic Export',
-                                  lambda: export.generate_generic_export(account_num),
-                                  'coldcard-export.json')
+    await _generic_export(prompt, 'Generic Export', 'coldcard-export.json')
 
 async def lily_skeleton(*A):
     # make a single JSON file with basically all useful XPUB's in it.
     # identical to generic_skeleton but with different story and filename.
-
-    if await ux_show_story('''\
+    prompt = '''\
 This saves a JSON file onto MicroSD card to use with Lily Wallet. \
-Works for both single signature and multisig wallets. \
-''' + SENSITIVE_NOT_SECRET) != 'y':
-        return
+Works for both single signature and multisig wallets.'''
 
-    account_num = await ux_enter_bip32_index('Account Number:') or 0
-
-    import export
-    await export.make_json_wallet('Lily Wallet',
-                                  lambda: export.generate_generic_export(account_num),
-                                  'lily-wallet-export.json')
+    await _generic_export(prompt, 'Lily Wallet', 'lily-wallet-export.json')
 
 
 async def wasabi_skeleton(*A):
     # save xpub, and some other public details into a file
     # - user has no choice, it's going to be bech32 with  m/84'/0'/0' path
 
-    if await ux_show_story('''\
+    ch = await ux_show_story('''\
 This saves a skeleton Wasabi wallet file. \
 You can then open that file in Wasabi without ever connecting this Coldcard to a computer.\
-''' + SENSITIVE_NOT_SECRET) != 'y':
+''' + SENSITIVE_NOT_SECRET)
+    if ch != 'y':
         return
 
     # no choices to be made, just do it.
-    import export
-    await export.make_json_wallet('Wasabi wallet', lambda: export.generate_wasabi_wallet(), 'new-wasabi.json')
+    await make_json_wallet('Wasabi wallet', lambda: generate_wasabi_wallet(), 'new-wasabi.json')
 
 async def unchained_capital_export(*a):
     # they were using our airgapped export, and the BIP-45 path from that
     #
-    if await ux_show_story('''\
+    ch = await ux_show_story('''\
 This saves multisig XPUB information required to setup on the Unchained Capital platform. \
-''' + SENSITIVE_NOT_SECRET) != 'y':
+''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
+    account_num = 0
+    if ch == '1':
+        account_num = await ux_enter_bip32_index('Account Number:') or 0
+    elif ch != 'y':
         return
 
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    import export
-    await export.make_json_wallet('Unchained Capital', lambda: export.generate_unchained_export(), fname)
+    await make_json_wallet('Unchained Capital',
+                           lambda: generate_unchained_export(account_num),
+                           fname)
 
 
 async def backup_everything(*A):
@@ -1440,6 +1440,14 @@ async def nfc_sign_msg(*A):
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to sign message. %s" % str(e))
 
+async def nfc_sign_verify(*A):
+    # Mk4: Receive armored data over NFC
+    from glob import NFC
+    try:
+        await NFC.verify_sig_nfc()
+    except Exception as e:
+        await ux_show_story(title="ERROR", msg="Failed to verify signed message. %s" % str(e))
+
 
 async def nfc_recv_ephemeral(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.
@@ -1503,11 +1511,10 @@ async def import_tapsigner_backup_file(_1, _2, item):
 
 async def list_files(*A):
     # list files, don't do anything with them?
-    fn = await file_picker('Lists all files, select one and SHA256(file contents) will be shown.', min_size=0)
+    fn = await file_picker('Lists all files, select one and SHA256(file contents) will be shown.',
+                           min_size=0)
     if not fn: return
 
-    from uhashlib import sha256
-    from utils import B2A
     chk = sha256()
 
     try:
@@ -1521,14 +1528,26 @@ async def list_files(*A):
         await needs_microsd()
         return
 
+    digest = chk.digest()
     basename = fn.rsplit('/', 1)[-1]
+    msg_base = 'SHA256(%s)\n\n%s\n\nPress ' % (basename, B2A(digest))
+    msg_sign = '(4) to sign file digest and export detached signature'
+    msg_delete = '(6) to delete.'
+    msg = msg_base + msg_sign + ", press " + msg_delete
+    while True:
+        ch = await ux_show_story(msg, escape='46')
+        if ch == "x": break
+        if ch in '46':
+            with CardSlot() as card:
+                if ch == '6':
+                    card.securely_blank_file(fn)
+                    break
+                else:
+                    from auth import write_sig_file
 
-    ch = await ux_show_story('''SHA256(%s)\n\n%s\n\nPress (6) to delete.''' % (basename, B2A(chk.digest())), escape='6')
-
-    if ch == '6':
-        with CardSlot() as card:
-            card.securely_blank_file(fn)
-
+                    sig_nice = write_sig_file([(digest, fn)])
+                    await ux_show_story("Signature file %s written." % sig_nice)
+                    msg = msg_base + msg_delete
     return
 
 async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None,
@@ -1736,12 +1755,13 @@ async def sign_message_on_sd(*a):
             return False
         with open(filename, 'rt') as fd:
             lines = fd.readlines()
-            return (1 <= len(lines) <= 5)
+            # min 1 line max 3 lines
+            return 1 <= len(lines) <= 3
 
     fn = await file_picker('Choose text file to be signed.', suffix='txt',
                             min_size=2, max_size=500, taster=is_signable, none_msg=
 'No suitable files found. Must be one line of text, in a .TXT file, optionally '
-'followed by a subkey derivation path on a second line.')
+'followed by a subkey derivation path on a second line and/or address format on third line.')
 
     if not fn:
         return
@@ -1749,6 +1769,27 @@ async def sign_message_on_sd(*a):
     # start the process
     from auth import sign_txt_file
     await sign_txt_file(fn)
+
+
+async def verify_sig_file_sd(*a):
+    def is_sig_file(filename):
+        with open(filename, 'rt') as fd:
+            line0 = fd.readline()
+            if "SIGNED MESSAGE" in line0:
+                return True
+            return False
+
+    fn = await file_picker(
+        'Choose signature file.', min_size=220, max_size=500, taster=is_sig_file,
+        none_msg='No suitable files found. Must be file with ascii armor.'
+    )
+
+    if not fn:
+        return
+
+    # start the process
+    from auth import verify_txt_sig_file
+    await verify_txt_sig_file(fn)
 
 
 async def pin_changer(_1, _2, item):
@@ -2129,7 +2170,7 @@ async def change_virtdisk_enable(enable):
         glob.VD.shutdown()
         assert not glob.VD
 
-async def change_which_chain(name):
+async def change_which_chain(*a):
     # setting already changed, but reflect that value in other settings
     try:
         # update xpub stored in settings

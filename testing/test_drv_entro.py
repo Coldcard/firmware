@@ -44,7 +44,7 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
 def test_bip_vectors(mode, index, entropy, expect,
         set_encoded_secret, dev, cap_menu, pick_menu_item,
         goto_home, cap_story, need_keypress, microsd_path, settings_set, sim_eval, sim_exec,
-        reset_seed_words
+        reset_seed_words, load_export_and_verify_signature
 ):
 
     set_encoded_secret(a2b_hex(EXAMPLE_XPRV))
@@ -129,22 +129,11 @@ def test_bip_vectors(mode, index, entropy, expect,
 
         time.sleep(0.1)
         title, story = cap_story()
-    
-        assert title == 'Saved'
-        fname = story.split('\n')[-1]
-        need_keypress('y')
-
+        contents,_ = load_export_and_verify_signature(story, "sd", fpattern="drv", label=None)
+        assert contents.strip() == msg.strip()
+        need_keypress("y")
         time.sleep(0.1)
         title, story = cap_story()
-
-        assert story.startswith(msg)
-
-        path = microsd_path(fname)
-        assert path.endswith('.txt')
-        txt = open(path, 'rt').read()
-
-        assert txt.strip() == msg.strip()
-
 
     if do_import:
         assert '(2) to switch to derived secret' in story

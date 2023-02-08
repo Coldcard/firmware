@@ -1,7 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re
+import pytest, time, os, re, hashlib
 from helpers import xfp2str, prandom
+from constants import AF_CLASSIC
+
 
 def test_get_secrets(get_secrets, master_xpub):
     v = get_secrets()
@@ -889,6 +891,77 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, need_keypress, cap_
     menu = cap_menu()
     assert "Change Main PIN" in menu
     goto_home()
+
+def test_chain_changes_settings_xpub(pick_menu_item, need_keypress, goto_home, cap_story):
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("View Identity")
+    _, story = cap_story()
+    extended_key = story.split("\n\n")[5]
+    assert extended_key.startswith("tpub")
+    need_keypress("y")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Testnet Mode")
+    pick_menu_item("Bitcoin")
+    need_keypress("x")  # go back to advanced
+    time.sleep(0.1)
+    pick_menu_item("View Identity")
+    _, story = cap_story()
+    extended_key = story.split("\n\n")[5]
+    assert extended_key.startswith("xpub")
+    need_keypress("y")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("Testnet Mode")
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert "Testnet must only be used by developers" in story
+    need_keypress("y")
+    pick_menu_item("Regtest")
+    need_keypress("x")  # go back to advanced
+    time.sleep(0.1)
+    pick_menu_item("View Identity")
+    _, story = cap_story()
+    extended_key = story.split("\n\n")[5]
+    assert extended_key.startswith("tpub")
+
+@pytest.mark.parametrize("f_len", [50, 500, 5000])
+def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, need_keypress,
+                                   microsd_path, cap_menu, verify_detached_signature_file):
+    fname = "test_sign_listed.pdf"
+    signame = "test_sign_listed.sig"
+    fpath = microsd_path(fname)
+    contents = os.urandom(f_len)
+    digest = hashlib.sha256(contents).digest().hex()
+    with open(fpath, "wb") as f:
+        f.write(contents)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item('File Management')
+    pick_menu_item('List Files')
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert 'Lists all files, select one and SHA256(file contents) will be shown' in story
+    need_keypress("y")
+    pick_menu_item(fname)
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert f"SHA256({fname})" in story
+    assert digest in story
+    assert "(4) to sign file digest and export detached signature" in story
+    assert "(6) to delete" in story
+    need_keypress("4")
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert f"Signature file {signame} written" in story
+    need_keypress("y")
+    verify_detached_signature_file([fname], signame, "sd", AF_CLASSIC)
+    _, story = cap_story()
+    assert "(4) to sign file digest and export detached signature" not in story
+    assert "(6) to delete" in story
+    need_keypress("6")
+    menu = cap_menu()
+    assert "List Files" in menu
 
 
 @pytest.mark.onetime

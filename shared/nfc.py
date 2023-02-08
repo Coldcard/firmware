@@ -675,11 +675,28 @@ class NFCHandler:
             return
 
     async def msg_sign_done(self, signature, address, text):
-        from auth import RFC_SIGNATURE_TEMPLATE
+        from auth import rfc_signature_template_gen
+
         sig = b2a_base64(signature).decode('ascii').strip()
-        armored_str = RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
-                                                    blockchain='BITCOIN', sig=sig)
+        armored_str = "".join(rfc_signature_template_gen(addr=address, msg=text, sig=sig))
         await self.confirm_share_loop(armored_str)
+
+    async def verify_sig_nfc(self):
+        from auth import verify_armored_signed_msg
+
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            if "SIGNED MESSAGE" in msg:
+                winner = msg.strip()
+                break
+
+        await verify_armored_signed_msg(winner)
 
     async def read_extended_private_key(self):
         data = await self.start_nfc_rx()

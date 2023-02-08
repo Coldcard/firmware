@@ -6,7 +6,6 @@
 # - must put real device into testnet mode first
 #
 import pytest, time
-from pycoin.contrib.msg_signing import verify_message
 from ckcc_protocol.protocol import CCProtocolPacker
 from ckcc_protocol.constants import *
 from constants import msg_sign_unmap_addr_fmt
