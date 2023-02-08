@@ -4,7 +4,6 @@
 #
 import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node
-from pycoin.contrib.msg_signing import verify_message
 from base64 import b64encode
 from binascii import b2a_hex, a2b_hex
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused

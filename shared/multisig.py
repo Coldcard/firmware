@@ -841,7 +841,8 @@ class MultisigWallet:
                                 label='Coldcard %s' % xfp2str(xfp),
                                 derivation=deriv, xpub=xp)
 
-            return rv
+            # sign export with first p2pkh key
+            return ujson.dumps(rv), False, False
             
         await make_json_wallet('Electrum multisig wallet', doit,
                                     fname_pattern=self.make_fname('el', 'json'))
@@ -849,17 +850,24 @@ class MultisigWallet:
     async def export_wallet_file(self, mode="exported from", extra_msg=None, descriptor=False,
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
-        from glob import NFC, VD
+        from glob import NFC
 
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
+            name = "Bitcoin Core"
             fname_pattern = self.make_fname('bitcoin-core')
+        elif descriptor:
+            name = "Descriptor"
+            fname_pattern = self.make_fname('desc')
         else:
+            name = "Coldcard"
             fname_pattern = self.make_fname('export')
+
         hdr = '%s %s' % (mode, my_xfp)
+        label = "%s multisig setup" % name
 
         force_vdisk = False
-        prompt, escape = export_prompt_builder("multisig wallet file")
+        prompt, escape = export_prompt_builder("%s file" % label)
         if prompt:
             ch = await ux_show_story(prompt, escape=escape)
             if ch == "3":
@@ -880,11 +888,18 @@ class MultisigWallet:
                 fname, nice = card.pick_filename(fname_pattern)
 
                 # do actual write
-                with open(fname, 'wt') as fp:
+                with open(fname, 'w+') as fp:
                     self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
                                        core=core, desc_pretty=desc_pretty)
+                #     fp.seek(0)
+                #     contents = fp.read()
+                # TODO re-enable once we know how to proceed with regards to with which key to sign
+                # from auth import write_sig_file
+                # h = ngu.hash.sha256s(contents.encode())
+                # sig_nice = write_sig_file([(h, fname)])
 
-            msg = '''Coldcard multisig setup file written:\n\n%s''' % nice
+            msg = '%s file written:\n\n%s' % (label, nice)
+            # msg += '\n\nColdcard multisig signature file written:\n\n%s' % sig_nice
             if extra_msg:
                 msg += extra_msg
 
@@ -1363,12 +1378,13 @@ async def export_multisig_xpubs(*a):
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
     # - however some 3rd parties are making use of it as well.
     #
-    from glob import NFC, VD
+    from glob import NFC
 
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
     
     fname_pattern = 'ccxp-%s.json' % xfp
+    label = "Multisig XPUB"
 
     msg = '''\
 This feature creates a small file containing \
@@ -1382,20 +1398,21 @@ P2SH-P2WSH:
 P2WSH:
    m/48'/{coin}'/acct'/2'
 
-OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
+OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
-    if VD:
-        msg += " Press (2) to save to Virtual Disk."
-    if NFC:
-        msg += ' Press (3) to share via NFC.'
-
-    force_vdisk = False
-    ch = await ux_show_story(msg, escape='23')
-    if ch == "2":
-        force_vdisk = True
-    if ch == 'x': return
+    ch = await ux_show_story(msg)
+    if ch != "y":
+        return
 
     acct_num = await ux_enter_bip32_index('Account Number:') or 0
+
+    prompt, escape = export_prompt_builder("%s file" % label)
+    force_vdisk = False
+    if prompt:
+        ch = await ux_show_story(prompt, escape=escape)
+        if ch == "2":
+            force_vdisk = True
+        if ch not in escape: return
 
     todo = [
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
@@ -1433,8 +1450,14 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
         with CardSlot(force_vdisk=force_vdisk) as card:
             fname, nice = card.pick_filename(fname_pattern)
             # do actual write: manual JSON here so more human-readable.
-            with open(fname, 'wt') as fp:
+            with open(fname, 'w+') as fp:
                 render(fp)
+            #     fp.seek(0)
+            #     contents = fp.read()
+            # TODO re-enable once we know how to proceed with regards to with which key to sign
+            # from auth import write_sig_file
+            # h = ngu.hash.sha256s(contents.encode())
+            # sig_nice = write_sig_file([(h, fname)])
 
     except CardMissingError:
         await needs_microsd()
@@ -1443,7 +1466,8 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = '''Multisig XPUB file written:\n\n%s''' % nice
+    msg = '%s file written:\n\n%s' % (label, nice)
+    # msg += '\n\nMultisig XPUB signature file written:\n\n%s' % sig_nice
     await ux_show_story(msg)
 
 async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=False):

@@ -4,6 +4,7 @@
 pytest==6.2.5
 pycoin==0.80
 pyserial
+python-secp256k1==0.2.0
 mnemonic==0.18
 onetimepass==1.0.1
 

@@ -184,6 +184,7 @@ FileMgmtMenu = [
     #MenuItem('Upgrade Firmware', f=microsd_upgrade),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('List Files', f=list_files),
+    MenuItem('Verify Sig File', f=verify_sig_file_sd),
     MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file),
     MenuItem('Format SD Card', f=wipe_sd_card),
     MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
@@ -273,6 +274,7 @@ DangerZoneMenu = [
     MenuItem('Clear OV cache', f=wipe_ovc),
     ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3', 'Regtest'],
         value_map=['BTC', 'XTN', 'XRT'],
+        on_change=change_which_chain,
         story="Testnet must only be used by developers because \
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
     MenuItem('Settings Space', f=show_settings_space),
@@ -290,6 +292,7 @@ BackupStuffMenu = [
 NFCToolsMenu = [
     MenuItem('Show Address', f=nfc_show_address),
     MenuItem('Sign Message', f=nfc_sign_msg),
+    MenuItem('Verify Sig File', f=nfc_sign_verify),
     MenuItem('File Share', f=nfc_share_file),
     MenuItem('Import Multisig', f=import_multisig_nfc),
 ]

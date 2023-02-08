@@ -511,6 +511,18 @@ def export_prompt_builder(title):
         prompt += "."
     return prompt, escape
 
+
+def chunk_writer(fd, body):
+    from glob import dis
+    dis.fullscreen("Saving...")
+    body_len = len(body)
+    chunk = body_len // 10
+    for idx, i in enumerate(range(0, body_len, chunk)):
+        fd.write(body[i:i + chunk])
+        dis.progress_bar_show(idx / 10)
+    dis.progress_bar_show(1)
+
+
 def decrypt_tapsigner_backup(backup_key, data):
     try:
         backup_key = a2b_hex(backup_key)

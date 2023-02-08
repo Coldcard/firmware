@@ -3,7 +3,10 @@
 #
 # paper.py - generate paper wallets, based on random values (not linked to wallet)
 #
+import ujson
+from ubinascii import hexlify as b2a_hex
 from utils import imported
+from public_constants import AF_CLASSIC, AF_P2WPKH
 from ux import ux_show_story, ux_dramatic_pause
 from files import CardSlot, CardMissingError, needs_microsd
 from actions import file_picker
@@ -86,6 +89,7 @@ class PaperWalletMaker:
 
         try:
             import ngu
+            from auth import write_sig_file
             from chains import current_chain
             from serializations import hash160
             from stash import blank_object
@@ -150,17 +154,28 @@ class PaperWalletMaker:
             with CardSlot(force_vdisk=force_vdisk) as card:
                 fname, nice_txt = card.pick_filename(basename + 
                                         ('-note.txt' if self.template_fn else '.txt'))
-
-                with card.open(fname, 'wt') as fp:
+                sig_cont = []
+                with card.open(fname, 'wt+') as fp:
                     self.make_txt(fp, addr, wif, privkey, qr_addr, qr_wif)
+                    fp.seek(0)
+                    contents0 = fp.read()
 
+                h = ngu.hash.sha256s(contents0.encode())
+                sig_cont.append((h, fname))
                 if self.template_fn:
                     fname, nice_pdf = card.pick_filename(basename + '.pdf')
 
-                    with open(fname, 'wb') as fp:
+                    with open(fname, 'wb+') as fp:
                         self.make_pdf(fp, addr, wif, qr_addr, qr_wif)
+                        fp.seek(0)
+                        contents1 = fp.read()
+                    h = ngu.hash.sha256s(contents1)
+                    sig_cont.append((h, fname))
                 else:
                     nice_pdf = ''
+
+                nice_sig = write_sig_file(sig_cont, pk=privkey, sig_name=basename,
+                                          addr_fmt=AF_P2WPKH if self.is_segwit else AF_CLASSIC)
 
             # Half-hearted attempt to cleanup secrets-contaminated memory
             # - better would be force user to reboot
@@ -173,10 +188,15 @@ class PaperWalletMaker:
             await needs_microsd()
             return
         except Exception as e:
-            await ux_show_story('Failed to write!\n\n\n'+str(e))
+            from utils import problem_file_line
+            await ux_show_story('Failed to write!\n\n\n'+problem_file_line(e))
             return
 
-        await ux_show_story('Done! Created file(s):\n\n%s\n\n%s' % (nice_txt, nice_pdf))
+        story = "Done! Created file(s):\n\n%s" % nice_txt
+        if nice_pdf:
+            story += "\n\n%s" % nice_pdf
+        story += "\n\n%s" % nice_sig
+        await ux_show_story(story)
 
     async def use_dice(self, *a):
         # Use lots of (D6) dice rolls to create privkey entropy.
@@ -194,9 +214,7 @@ class PaperWalletMaker:
 
     def make_txt(self, fp, addr, wif, privkey, qr_addr=None, qr_wif=None):
         # Generate the "simple" text file version, includes private key.
-        from ubinascii import hexlify as b2a_hex
         from descriptor import append_checksum
-        import ujson
 
         fp.write('Coldcard Generated Paper Wallet\n\n')
 

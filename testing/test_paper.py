@@ -20,7 +20,8 @@ from bech32 import bech32_decode, convertbits, Encoding
 
 @pytest.mark.parametrize('mode', [ "classic", 'segwit'])
 @pytest.mark.parametrize('pdf', [ False, True])
-def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
+                  microsd_path, verify_detached_signature_file):
     # test UX and operation of the 'bitcoin core' wallet export
     mx = "Don't make PDF"
 
@@ -66,14 +67,20 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
     assert 'Created file' in story
 
     story = [i for i in story.split('\n') if i]
+    sig_file = story[-1]
     if not pdf:
-        fname = story[-1]
-    else:
         fname = story[-2]
-        pdf_name = story[-1]
+        fnames = [fname]
+    else:
+        fname = story[-3]
+        pdf_name = story[-2]
+        fnames = [fname, pdf_name]
         assert pdf_name.endswith('.pdf')
 
     assert fname.endswith('.txt')
+    assert sig_file.endswith(".sig")
+    verify_detached_signature_file(fnames, sig_file, "sd",
+                                   addr_fmt=AF_CLASSIC if mode == "classic" else AF_P2WPKH)
 
     path = microsd_path(fname)
     with open(path, 'rt') as fp:
@@ -206,7 +213,8 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
     "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
     "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
 ])
-def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path):
+def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
+                       microsd_path, verify_detached_signature_file):
     # verify the math for dice rolling method
 
     goto_home()
@@ -244,14 +252,19 @@ def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_stor
     assert 'Created file' in story
 
     story = [i for i in story.split('\n') if i]
-    fname = story[-1]
+    sig_file = story[-1]
+    fname = story[-2]
 
+    assert sig_file.endswith('.sig')
     assert fname.endswith('.txt')
+    _, address = verify_detached_signature_file([fname], sig_file, "sd", addr_fmt=AF_CLASSIC)
 
     addr,_ = fname.split('.')
     if '-' in addr:
         # junk in working dir
         addr,_ = addr.split('-')
+
+    assert addr == address
     
     path = microsd_path(fname)
     with open(path, 'rt') as fp:

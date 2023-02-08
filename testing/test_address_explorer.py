@@ -1,10 +1,12 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, io, csv
+import pytest, time, os, io, csv, hashlib
 from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
 from pycoin.encoding import a2b_hashed_base58, hash160
+from msg import verify_message
+
 
 @pytest.fixture
 def mk_common_derivations():
@@ -55,7 +57,7 @@ def parse_display_screen(cap_story, is_mark3):
         title, body = cap_story()
         lines = body.split('\n')
         if start == 0:
-            assert 'Press (1) to save to file on SD Card.' in lines[0]
+            assert 'Press (1) to save Address summary file to SD Card.' in lines[0]
             if is_mark3:
                 assert '(2) to view QR Codes' in lines[0]
             assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
@@ -93,7 +95,8 @@ def validate_address():
     return doit
 
 @pytest.fixture
-def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text):
+def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path,
+                            virtdisk_path, nfc_read_text, load_export_and_verify_signature):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
     def doit(click_idx=None, expected_qty=250, way="sd", change=False):
@@ -106,7 +109,7 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
         if way == "sd":
             need_keypress('1')
         elif way == "vdisk":
-            if "Press (4) to save to file on Virtual Disk." not in story:
+            if "Press (4) to save to Virtual Disk." not in story:
                 pytest.skip("Vdisk disabled")
             need_keypress("4")
         else:
@@ -122,22 +125,17 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
             assert len(addresses.split("\n")) == 10
             pytest.xfail("PASSED - different export format for NFC")
 
-
         time.sleep(.5)  # always long enough to write the file?
         title, body = cap_story()
-        header, fn = body.split("\n\n")
-        assert header == "Address summary file written:"
-        if way == "vdisk":
-            path = virtdisk_path(fn.strip())
-        else:
-            path = microsd_path(fn.strip())
-        addr_dump = open(path, 'rt')
-
+        contents, sig_addr = load_export_and_verify_signature(body, way, label="Address summary")
+        addr_dump = io.StringIO(contents)
         cc = csv.reader(addr_dump)
         hdr = next(cc)
         assert hdr == ['Index', 'Payment Address', 'Derivation']
         for n, (idx, addr, deriv) in enumerate(cc):
             assert int(idx) == n
+            if n == 0:
+                assert sig_addr == addr
             assert ('/%s' % idx) in deriv
 
             yield deriv, addr

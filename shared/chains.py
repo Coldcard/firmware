@@ -42,6 +42,17 @@ class ChainsBase:
         return '\x18Bitcoin Signed Message:\n'
 
     @classmethod
+    def sig_hdr_base(cls, addr_fmt):
+        if addr_fmt == AF_CLASSIC:
+            return 31
+        elif addr_fmt == AF_P2WPKH_P2SH:
+            return 35
+        elif addr_fmt == AF_P2WPKH:
+            return 39
+        else:
+            raise ValueError
+
+    @classmethod
     def serialize_private(cls, node, addr_fmt=AF_CLASSIC):
         # output a xprv
         return node.serialize(cls.slip132[addr_fmt].priv, True)

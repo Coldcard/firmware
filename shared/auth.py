@@ -4,9 +4,10 @@
 # and signing bitcoin transactions.
 #
 import stash, ure, ux, chains, sys, gc, uio, version, ngu
-from ubinascii import b2a_base64
+from ubinascii import b2a_base64, a2b_base64
+from ubinascii import hexlify as b2a_hex
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
-from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32
+from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
 from sffile import SFFile
 from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_clear_keys
@@ -126,16 +127,26 @@ Press OK to continue, otherwise X to cancel.'''
 # RFC2440 <https://www.ietf.org/rfc/rfc2440.txt> style signatures, popular
 # since the genesis block, but not really part of any BIP as far as I know.
 #
-RFC_SIGNATURE_TEMPLATE = '''\
------BEGIN {blockchain} SIGNED MESSAGE-----
-{msg}
------BEGIN SIGNATURE-----
-{addr}
-{sig}
------END {blockchain} SIGNED MESSAGE-----
-'''
+def rfc_signature_template_gen(msg, addr, sig):
+    template = [
+        "-----BEGIN BITCOIN SIGNED MESSAGE-----\n",
+        "%s\n" % msg,
+        "-----BEGIN BITCOIN SIGNATURE-----\n",
+        "%s\n" % addr,
+        "%s\n" % sig,
+        "-----END BITCOIN SIGNATURE-----\n"
+    ]
+    for part in template:
+        yield part
 
-def sign_message_digest(digest, subpath, prompt):
+def parse_armored_signature_file(contents):
+    temp = contents.split("-----")
+    msg = temp[2].strip()
+    addr_sig = temp[4].strip()
+    addr, sig_str = addr_sig.split()
+    return msg, addr, sig_str
+
+def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
     # do the signature itself!
     from glob import dis
 
@@ -144,17 +155,73 @@ def sign_message_digest(digest, subpath, prompt):
 
     with stash.SensitiveValues() as sv:
         dis.progress_bar_show(.50)
+        if pk is None:
+            # if private key is provided, derivation subpath is ignored
+            # and provided private key is used for signing
+            node = sv.derive_path(subpath)
+            pk = node.privkey()
+        else:
+            node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
 
-        node = sv.derive_path(subpath)
-        pk = node.privkey()
+        addr = chains.current_chain().address(node, addr_fmt)
         sv.register(pk)
 
         dis.progress_bar_show(.75)
         rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
+        # AF_CLASSIC header byte base 31 is returned by default from ngu - NOOP
+        if addr_fmt != AF_CLASSIC:
+            header_byte, rs = rv[0], rv[1:]
+            # ngu only produces header base for compressed p2pkh, anyways get only rec_id
+            rec_id = (header_byte - 27) & 0x03
+            new_header_byte = rec_id + sv.chain.sig_hdr_base(addr_fmt=addr_fmt)
+            rv = bytes([new_header_byte]) + rs
 
     dis.progress_bar_show(1)
 
-    return rv
+    return rv, addr
+
+def make_signature_file_msg(content_list):
+    # list of tuples consisting of (hash, file_name)
+    return b"\n".join([
+        b2a_hex(h) + b"  " + fname.encode()
+        for h, fname in content_list
+    ])
+
+
+def sign_export_contents(content_list, deriv, addr_fmt, pk=None):
+    msg2sign = make_signature_file_msg(content_list)
+    bitcoin_digest = chains.current_chain().hash_message(msg2sign)
+    sig_bytes, addr = sign_message_digest(bitcoin_digest, deriv, "Signing...", addr_fmt, pk=pk)
+    sig = b2a_base64(sig_bytes).decode().strip()
+    gen = rfc_signature_template_gen(addr=addr, msg=msg2sign.decode(), sig=sig)
+    return gen
+
+def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_name=None):
+    from glob import dis
+
+    if derive is None:
+        ct = chains.current_chain().b44_cointype
+        derive = "m/44'/%d'/0'/0/0" % ct
+
+    fpath = content_list[0][1]
+    if len(content_list) > 1:
+        # we're signing contents of more files - need generic name for sig file
+        assert sig_name
+        sig_nice = sig_name + ".sig"
+        sig_fpath = fpath.rsplit("/", 1)[0] + "/" + sig_nice
+    else:
+        sig_fpath = fpath.rsplit(".")[0] + ".sig"
+        sig_nice = sig_fpath.split("/")[-1]
+
+    sig_gen = sign_export_contents([(h, f.split("/")[-1]) for h, f in content_list],
+                                   derive, addr_fmt, pk=pk)
+
+    with open(sig_fpath, 'wt') as fd:
+        for i, part in enumerate(sig_gen):
+            fd.write(part)
+            # rfc template generator has length of 6
+            dis.progress_bar_show(i / 6)
+    return sig_nice
 
 def validate_text_for_signing(text):
     # Check for some UX/UI traps in the message itself.
@@ -223,7 +290,7 @@ class ApproveMessageSign(UserAuthorizedAction):
 
             # perform signing (progress bar shown)
             digest = chains.current_chain().hash_message(self.text.encode())
-            self.result = sign_message_digest(digest, self.subpath, "Signing...")
+            self.result = sign_message_digest(digest, self.subpath, "Signing...", self.addr_fmt)[0]
 
             if self.approved_cb:
                 # for micro sd case
@@ -249,6 +316,7 @@ def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from files import CardSlot, CardMissingError
+
     from ux import the_ux
 
     UserAuthorizedAction.cleanup()
@@ -269,6 +337,8 @@ def sign_txt_file(filename):
 
     def done(signature, address, text):
         # complete. write out result
+        from glob import dis
+
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
         base = basename.rsplit('.', 1)[0]
@@ -297,11 +367,15 @@ def sign_txt_file(filename):
             else:
                 # attempt write-out
                 try:
+                    dis.fullscreen("Saving...")
                     with CardSlot() as card:
                         with card.open(out_full, 'wt') as fd:
                             # save in full RFC style
-                            fd.write(RFC_SIGNATURE_TEMPLATE.format(addr=address, msg=text,
-                                                blockchain='BITCOIN', sig=sig))
+                            # gen length is 6
+                            gen = rfc_signature_template_gen(addr=address, msg=text, sig=sig)
+                            for i, part in enumerate(gen):
+                                fd.write(part)
+                                dis.progress_bar_show(i / 6)
 
                     # success and done!
                     break
@@ -330,6 +404,101 @@ def sign_txt_file(filename):
     except AssertionError as exc:
         await ux_show_story("Problem: %s\n\nMessage to be signed must be a single line of ASCII text." % exc)
         return
+
+def verify_signature(msg, addr, sig_str):
+    warnings = []
+    script = None
+    hash160 = None
+    invalid_addr_fmt_msg = "Invalid address format - must be one of p2pkh, p2sh-p2wpkh, or p2wpkh."
+    invalid_addr = "Invalid signature for msg - address mismatch."
+
+    if addr[0] in "1mn":
+        addr_fmt = AF_CLASSIC
+        decoded_addr = ngu.codecs.b58_decode(addr)
+        hash160 = decoded_addr[1:]  # remove prefix
+    elif addr.startswith("bc1q") or addr.startswith("tb1q") or addr.startswith("bcrt1q"):
+        if len(addr) > 42:
+            # p2wsh
+            raise ValueError(invalid_addr_fmt_msg)
+        addr_fmt = AF_P2WPKH
+        decoded_addr = ngu.codecs.segwit_decode(addr)
+        hash160 = decoded_addr[2]
+    elif addr[0] in "32":
+        addr_fmt = AF_P2WPKH_P2SH
+        decoded_addr = ngu.codecs.b58_decode(addr)
+        script = decoded_addr[1:]  # remove prefix
+    else:
+        raise ValueError(invalid_addr_fmt_msg)
+
+    try:
+        sig_bytes = a2b_base64(sig_str)
+        if not sig_bytes:
+            # can return b'' in case of wrong, can also raise
+            raise ValueError("invalid base64 signature")
+        header_byte = sig_bytes[0]
+        header_base = chains.current_chain().sig_hdr_base(addr_fmt)
+        if (header_byte - header_base) not in (0, 1, 2, 3):
+            # wrong header value only - this can still verify OK
+            warnings.append("Specified address format does not match signature header byte format.")
+        # least two significant bits
+        rec_id = (header_byte - 27) & 0x03
+        # need to normalize it to 31 base for ngu
+        new_header_byte = 31 + rec_id
+        sig = ngu.secp256k1.signature(bytes([new_header_byte]) + sig_bytes[1:])
+    except ValueError as e:
+        raise ValueError("Parsing signature failed - %s." % str(e))
+    digest = chains.current_chain().hash_message(msg.encode('ascii'))
+    try:
+        rec_pubkey = sig.verify_recover(digest)
+    except ValueError as e:
+        raise ValueError("Invalid signature for msg - %s." % str(e))
+    rec_pubkey_bytes = rec_pubkey.to_bytes()
+    rec_hash160 = ngu.hash.hash160(rec_pubkey_bytes)
+    if script:
+        target = bytes([0, 20]) + rec_hash160
+        target = ngu.hash.hash160(target)
+        if target != script:
+            raise ValueError(invalid_addr)
+    else:
+        if rec_hash160 != hash160:
+            raise ValueError(invalid_addr)
+    return warnings
+
+async def verify_armored_signed_msg(contents):
+    try:
+        msg, addr, sig_str = parse_armored_signature_file(contents)
+    except:
+        await ux_show_story("Malformed signature file.", title="FAILURE")
+        return
+
+    try:
+        warn = verify_signature(msg, addr, sig_str)
+    except Exception as e:
+        await ux_show_story(str(e), title="FAILURE")
+        return
+
+    msg = "Correct signature for msg."
+    if warn:
+        msg = "Correctly signed, but not by this Coldcard"
+        msg += "\n\nWarning:\n\n"
+        msg += "\n\n".join(warn)
+    await ux_show_story(msg, title='OK')
+
+async def verify_txt_sig_file(filename):
+    from files import CardSlot, CardMissingError, needs_microsd
+    # copy message into memory
+    try:
+        with CardSlot() as card:
+            with card.open(filename, 'rt') as fd:
+                text = fd.read()
+    except CardMissingError:
+        await needs_microsd()
+        return
+    except Exception as e:
+        await ux_show_story('Error: ' + str(e))
+        return
+
+    await verify_armored_signed_msg(text)
 
 
 class ApproveTransaction(UserAuthorizedAction):
@@ -588,7 +757,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 from ubinascii import b2a_base64
                 # append the signature
                 digest = ngu.hash.sha256s(chk.digest())
-                sig = sign_message_digest(digest, 'm', None)
+                sig = sign_message_digest(digest, 'm', None, AF_CLASSIC)[0]
                 fd.write(b2a_base64(sig).decode('ascii').strip())
                 fd.write('\n')
 

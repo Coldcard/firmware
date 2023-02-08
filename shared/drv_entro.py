@@ -11,6 +11,8 @@ from ux import ux_show_story, ux_enter_bip32_index, the_ux, ux_confirm, ux_drama
 from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
+from auth import write_sig_file
+from utils import chunk_writer
 
 
 BIP85_PWD_LEN = 21
@@ -208,10 +210,13 @@ async def drv_entro_step2(_1, picked, _2):
             try:
                 with CardSlot(force_vdisk=force_vdisk) as card:
                     fname, out_fn = card.pick_filename('drv-%s-idx%d.txt' % (s_mode, index))
-
+                    body = msg + "\n"
                     with open(fname, 'wt') as fp:
-                        fp.write(msg)
-                        fp.write('\n')
+                        chunk_writer(fp, body)
+
+                    h = ngu.hash.sha256s(body.encode())
+                    sig_nice = write_sig_file([(h, fname)], derive=path)
+
             except CardMissingError:
                 await needs_microsd()
                 continue
@@ -219,7 +224,9 @@ async def drv_entro_step2(_1, picked, _2):
                 await ux_show_story('Failed to write!\n\n\n'+str(e))
                 continue
 
-            await ux_show_story("Filename is:\n\n%s" % out_fn, title='Saved')
+            story = "Filename is:\n\n%s" % out_fn
+            story += "\n\nSignature filename is:\n\n%s" % sig_nice
+            await ux_show_story(story, title='Saved')
         elif ch == '3' and version.has_fatram:
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum)

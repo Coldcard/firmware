@@ -2,12 +2,24 @@
 #
 # Message signing.
 #
-import pytest, time, os
-from pycoin.contrib.msg_signing import verify_message, parse_signed_message
+import pytest, time, os, itertools
+from pycoin.contrib.msg_signing import parse_signed_message
+from msg import verify_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
+
+
+RFC_SIGNATURE_TEMPLATE = '''\
+-----BEGIN BITCOIN SIGNED MESSAGE-----
+{msg}
+-----BEGIN BITCOIN SIGNATURE-----
+{addr}
+{sig}
+-----END BITCOIN SIGNATURE-----
+'''
+
 
 @pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
@@ -32,15 +44,8 @@ def test_sign_msg_good(dev, need_keypress, msg, path, addr_fmt, addr_vs_path):
     assert 40 <= len(raw) <= 65
 
     # check expected addr was used
-    sk = addr_vs_path(addr, path, addr_fmt)
-
-    if addr_fmt != AF_CLASSIC:
-        # - pycoin can't do signature decode XXX
-        return
-    
-    # verify signature
-    assert verify_message(sk, sig, message=msg.decode('ascii')) == True
-    assert verify_message(addr, sig, message=msg.decode('ascii')) == True
+    addr_vs_path(addr, path, addr_fmt)
+    assert verify_message(addr, sig, msg.decode("ascii")) is True
 
 
 def test_sign_msg_refused(dev, need_keypress, msg=b'testing 123', path='m'):
@@ -146,10 +151,10 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
 
         assert lines[0] == '-----BEGIN BITCOIN SIGNED MESSAGE-----'
         assert lines[1:-4] == [msg]
-        assert lines[-4] == '-----BEGIN SIGNATURE-----'
+        assert lines[-4] == '-----BEGIN BITCOIN SIGNATURE-----'
         addr = lines[-3]
         sig = lines[-2]
-        assert lines[-1] == '-----END BITCOIN SIGNED MESSAGE-----'
+        assert lines[-1] == '-----END BITCOIN SIGNATURE-----'
 
         return sig, addr
 
@@ -186,14 +191,9 @@ def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path, addr_fm
         path = 'm'
 
     # check expected addr was used
-    sk = addr_vs_path(addr, path, addr_fmt)
+    addr_vs_path(addr, path, addr_fmt)
+    assert verify_message(addr, sig, msg) is True
 
-    if addr_fmt != AF_CLASSIC:
-        # - pycoin can't do signature decode XXX
-        return
-
-    # verify signature
-    assert verify_message(sk, sig, message=msg) == True
 
 @pytest.fixture
 def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story):
@@ -310,8 +310,8 @@ def test_nfc_msg_signing_invalid(body, goto_home, pick_menu_item, nfc_write_text
 @pytest.mark.parametrize("msg", ["coinkite", "Coldcard Signing Device!", 200 * "a"])
 @pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800'", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
-def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item, goto_home, cap_story,
-                         need_keypress, addr_vs_path):
+def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
+                         goto_home, cap_story, need_keypress, addr_vs_path):
     # import pdb;pdb.set_trace()
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack
@@ -345,10 +345,8 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     need_keypress("y")  # exit NFC animation
     pmsg, addr, sig = parse_signed_message(signed_msg)
     assert pmsg == msg
-    sk = addr_vs_path(addr, path, addr_fmt)
-    if addr_fmt == AF_CLASSIC:
-        assert verify_message(addr, sig, message=msg) is True
-        assert verify_message(sk, sig, message=msg) is True
+    addr_vs_path(addr, path, addr_fmt)
+    assert verify_message(addr, sig, msg) is True
     time.sleep(0.5)
     _, story = cap_story()
     assert "Press OK to share again" in story
@@ -357,5 +355,118 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     assert signed_msg == signed_msg_again
     need_keypress("x")  # exit NFC animation
     need_keypress("x")  # do not want to share again
+
+@pytest.fixture
+def verify_armored_signature(pick_menu_item, nfc_write_text, need_keypress, cap_story, goto_home):
+    def doit(way, fname=None, signed_msg=None):
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        if way == "nfc":
+            pick_menu_item('NFC Tools')
+        else:
+            pick_menu_item('File Management')
+
+        pick_menu_item('Verify Sig File'),
+        if way == "nfc":
+            nfc_write_text(signed_msg)
+        else:
+            _, story = cap_story()
+            assert 'Choose signature file.' in story
+            need_keypress('y')
+            time.sleep(.1)
+            pick_menu_item(fname)
+
+        time.sleep(0.3)
+        title, story = cap_story()
+        return title, story
+    return doit
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("way", ("sd", "nfc"))
+@pytest.mark.parametrize("addr_fmt", ("p2pkh", "p2sh-p2wpkh", "p2wpkh"))
+@pytest.mark.parametrize("path", ("m/1'", "m/2'/1'", "m/3'/2'/1'", "m/1000'/100'/10'/1"))
+@pytest.mark.parametrize("msg", (
+        "coldcard", "coinkite", "blablablablablablablabla", "morecornfor us", 240 * "a",
+))
+def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_home, pick_menu_item,
+                               need_keypress, cap_story, bitcoind, microsd_path, nfc_write_text,
+                               verify_armored_signature):
+    sig, addr = sign_on_microsd(msg, path, msg_sign_unmap_addr_fmt[addr_fmt])
+    fname = 't-msgsign-signed.txt'
+    should = RFC_SIGNATURE_TEMPLATE.format(addr=addr, sig=sig, msg=msg)
+    with open(microsd_path(fname), "r") as f:
+        got = f.read()
+    assert should == got
+    title, story = verify_armored_signature(way, fname, should)
+    assert title == "OK"
+    if addr_fmt == "p2pkh":
+        res = bitcoind.rpc.verifymessage(addr, sig, msg)
+        assert res is True
+
+@pytest.mark.parametrize("way", ("sd", "nfc"))
+@pytest.mark.parametrize("addr_sig", list(itertools.product(
+    ["mwhrUneshkXh8yUw2L2T16UYCoF3ouy4L2",
+     "2MudcM4zWNf2rsR1RxvPaMgk5EssH7TXTH8",
+     "tb1qkxgmh66fdthecudx042feulz3ymzkyuf7gma0x"],
+    ["H3jE1G2pv+6GG35Unak824xig8GzotLE8pFfvNwlgGU7KebANAxo7RuwybCNXrK9+RvjUEohtffM521N+phQNX0=",
+     "I3jE1G2pv+6GG35Unak824xig8GzotLE8pFfvNwlgGU7KebANAxo7RuwybCNXrK9+RvjUEohtffM521N+phQNX0=",
+     "J3jE1G2pv+6GG35Unak824xig8GzotLE8pFfvNwlgGU7KebANAxo7RuwybCNXrK9+RvjUEohtffM521N+phQNX0="]
+)))
+def test_verify_signature_file_warning(way, addr_sig, microsd_path, verify_armored_signature,
+                                       cap_story, bitcoind):
+    warning = "Specified address format does not match signature header byte format."
+    text = "Correctly signed, but not by this Coldcard"
+    fname = "warn-signed.sig"
+    addr, sig = addr_sig
+    tmplt = RFC_SIGNATURE_TEMPLATE.format(addr=addr, sig=sig, msg="aaaaaaaaaaaaaaaaaa")
+    if way != "nfc":
+        with open(microsd_path(fname), "w") as f:
+            f.write(tmplt)
+    title, story = verify_armored_signature(way, fname, tmplt)
+    assert title == "OK"
+    if (addr[0] + sig[0]) not in ("mH", "2I", "tJ"):  # not in correct pair
+        assert "Warning" in story
+        assert text in story
+        assert warning in story
+
+@pytest.mark.parametrize("way", ("sd", "nfc"))
+@pytest.mark.parametrize("addr_sig", [
+    # bad signature - signature not base64
+    ("tb1qk3vdwdewzqkmagakdxfga3nrqgxnpw74h4w5p4", "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$", 0),
+    ("tb1qk3vdwdewzqkmagakdxfga3nrqgxnpw74h4w5p4", "fsdfsfsd97887989s7dfs8d7f8s7d8f7sd8f78sddgf8fg8*^&#^$@&dgfgdfgdfgdfgdfgdf#N&^%@$%N(@#==", 0),
+    # bad signature - signature from different secret
+    ("tb1qk3vdwdewzqkmagakdxfga3nrqgxnpw74h4w5p4", "KPxCN2edt9w5ukd0feOlFS6PJjsKwm6ii/erZErKDIApIxjHqxBzoDvVqcTX0mtecNTGCkJPhxjRKCjNtdnTAp0=", 3),
+    # bad signature length
+    ("mwxYMLpcbLjBdtbVdb1kKxHiR4rcAzqPxR", "H3h4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4", 2),
+    ("mwxYMLpcbLjBdtbVdb1kKxHiR4rcAzqPxR", "H3l5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eXl5eQ==", 2),
+    # p2tr
+    ("bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y", "KPxCN2edt9w5ukd0feOlFS6PJjsKwm6ii/erZErKDIApIxjHqxBzoDvVqcTX0mtecNTGCkJPhxjRKCjNtdnTAp0=", 1),
+    # p2wsh
+    ("bc1q2c8pym4m755pq4n4shu2wgzr7s58pygz8x6pg0mj0l6netq8am8qw69kss", "KPxCN2edt9w5ukd0feOlFS6PJjsKwm6ii/erZErKDIApIxjHqxBzoDvVqcTX0mtecNTGCkJPhxjRKCjNtdnTAp0=", 1),
+])
+def test_verify_signature_file_fail(way, addr_sig, microsd_path, cap_story, goto_home, nfc_write_text,
+                                    pick_menu_item, need_keypress, verify_armored_signature):
+    fname = "fail-signed.txt"
+    addr, sig, err_no = addr_sig
+
+    error_map = {
+        0: "Parsing signature failed",
+        1: "Invalid address format - must be one of p2pkh, p2sh-p2wpkh, or p2wpkh.",
+        2: "Parsing signature failed - sig len != 65.",
+        3: "Invalid signature for msg - address mismatch."
+    }
+    tmplt = RFC_SIGNATURE_TEMPLATE.format(msg="aaaaaaaaa",addr=addr, sig=sig)
+
+    try:
+        os.unlink(microsd_path(fname))
+    except OSError:
+        pass
+
+    with open(microsd_path(fname), "wt") as f:
+        f.write(tmplt)
+
+    title, story = verify_armored_signature(way, fname, tmplt)
+    assert title == "FAILURE"
+    assert error_map[err_no] in story
 
 # EOF

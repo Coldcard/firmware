@@ -6,5 +6,6 @@
 *.pdf
 *.dfu
 *.txn
+*.sig
 .tmp.tmp
 bsms_*
