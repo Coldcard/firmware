@@ -96,6 +96,7 @@ def render_backup_contents():
         if k[0] == '_': continue        # debug stuff in simulator
         if k == 'xpub': continue        # redundant, and wrong if bip39pw
         if k == 'xfp': continue         # redundant, and wrong if bip39pw
+        if k == 'bkpw': continue        # confusing/circular
         ADD('setting.' + k, v)
 
     if version.has_fatram:
@@ -215,43 +216,67 @@ async def restore_from_dict(vals):
 
 
 async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
+    words = None
+    skip_quiz = False
 
     if pa.tmp_value:
         if not await ux_confirm("An ephemeral seed is in effect, so backup will be of that seed."):
             return
 
-    # pick a password: like bip39 but no checksum word
-    #
-    b = bytearray(32)
-    while 1:
-        ckcc.rng_bytes(b)
-        words = bip39.b2a_words(b).split(' ')[0:num_pw_words]
+    stored_words = settings.get('bkpw', None)
 
-        ch = await seed.show_words(words,
-                        prompt="Record this (%d word) backup file password:\n", escape='6')
+    if stored_words:
+        stored_words = stored_words.split()
+        ch = await ux_show_story("Use same backup file password as last time?\n\n"
+                    " 1: %s\n   ...\n%d: %s" 
+                    % (stored_words[0], len(stored_words), stored_words[-1]), sensitive=True)
 
-        if ch == '6' and not write_sflash:
-            # Secret feature: plaintext mode
-            # - only safe for people living in faraday cages inside locked vaults.
-            if await ux_confirm("The file will **NOT** be encrypted and "
-                                "anyone who finds the file will get all of your money for free!"):
-                words = []
-                fname_pattern = 'backup.txt'
-                break
-            continue
+        if ch == 'y':
+            words = stored_words
+            skip_quiz = True
 
-        if ch == 'x':
-            return
+    if not words:
+        # Pick a password: like bip39 but no checksum word
+        #
+        b = bytearray(32)
+        while 1:
+            ckcc.rng_bytes(b)
+            words = bip39.b2a_words(b).split(' ')[0:num_pw_words]
 
-        break
+            ch = await seed.show_words(words,
+                            prompt="Record this (%d word) backup file password:\n", escape='6')
 
+            if ch == '6' and not write_sflash:
+                # Secret feature: plaintext mode
+                # - only safe for people living in faraday cages inside locked vaults.
+                if await ux_confirm("The file will **NOT** be encrypted and "
+                                    "anyone who finds the file will get all of your money for free!"):
+                    words = []
+                    fname_pattern = 'backup.txt'
+                    break
+                continue
 
-    if words:
+            if ch == 'x':
+                return
+
+            break
+
+    if words and not skip_quiz:
         # quiz them, but be nice and do a shorter test.
         ch = await seed.word_quiz(words, limited=(num_pw_words//3))
         if ch == 'x': return
 
-    return await write_complete_backup(words, fname_pattern, write_sflash=write_sflash)
+    await write_complete_backup(words, fname_pattern, write_sflash=write_sflash)
+
+    if words and words != stored_words:
+        ch = await ux_show_story("Would you like to use these same words next time you perform a backup? Press (1) to save them into this Coldcard for next time.", escape='1')
+
+        if ch == '1':
+            settings.put('bkpw', ' '.join(words))
+            settings.save()
+        elif stored_words:
+            settings.remove_key('bkpw')
+            settings.save()
 
 async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_copies=True):
     # Just do the writing

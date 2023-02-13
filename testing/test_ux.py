@@ -115,7 +115,9 @@ def pass_word_quiz(need_keypress, cap_story):
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
-def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting, cap_screen_qr):
+@pytest.mark.parametrize('reuse_pw', [False, True])
+@pytest.mark.parametrize('save_pw', [False, True])
+def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting, cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove):
     # Make an encrypted 7z backup, verify it, and even restore it!
 
     if multisig:
@@ -124,30 +126,45 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         time.sleep(.1)
         assert len(get_setting('multisig')) == 1
 
+    if reuse_pw:
+        settings_set('bkpw', ' '.join('zoo' for i in range(12)))
+    else:
+        settings_remove('bkpw')
+
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('Backup')
     pick_menu_item('Backup System')
 
     title, body = cap_story()
-    assert title == 'NO-TITLE'
-    assert 'Record this' in body
-    assert 'password:' in body
 
-    words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
-    assert len(words) == 12
-
-    print("Passphrase: %s" % ' '.join(words))
-
-    if 'QR Code' in body:
-        need_keypress('1')
-        got_qr = cap_screen_qr().decode('ascii').lower().split()
-        assert [w[0:4] for w in words] == got_qr
+    if reuse_pw:
+        assert ' 1: zoo' in body
+        assert '12: zoo' in body
         need_keypress('y')
+        words = ['zoo']*12
 
-    # pass the quiz!
-    count, title, body = pass_word_quiz(words)
-    assert count >= 4
+        time.sleep(0.1)
+        title, body = cap_story()
+    else:
+        assert title == 'NO-TITLE'
+        assert 'Record this' in body
+        assert 'password:' in body
+
+        words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+        assert len(words) == 12
+
+        print("Passphrase: %s" % ' '.join(words))
+
+        if 'QR Code' in body:
+            need_keypress('1')
+            got_qr = cap_screen_qr().decode('ascii').lower().split()
+            assert [w[0:4] for w in words] == got_qr
+            need_keypress('y')
+
+        # pass the quiz!
+        count, title, body = pass_word_quiz(words)
+        assert count >= 4
 
     time.sleep(0.1)
 
@@ -171,6 +188,22 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     bk_b = open_microsd(files[1]).read()
 
     assert bk_a == bk_b, "contents mismatch"
+
+    need_keypress('x')
+    time.sleep(.01) 
+
+    if not reuse_pw:
+        title, body = cap_story()
+        assert 'next time' in body
+        if save_pw:
+            need_keypress('1')
+            time.sleep(.01) 
+
+            assert get_setting('bkpw') == ' '.join(words)
+        else:
+            need_keypress('x')
+            time.sleep(.01) 
+            assert get_setting('bkpw', 'xxx') == 'xxx'
 
 
     # Check on-device verify UX works.
@@ -236,6 +269,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     # avoid simulator reboot; restore normal state
     unit_test('devtest/abort_ux.py')
     reset_seed_words()
+    settings_remove('multisig')
 
 
 @pytest.mark.qrcode

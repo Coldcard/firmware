@@ -19,6 +19,9 @@
     - Ability to export all supported wallets via NFC (instead of SD card only)
     - Change electrum export file name from 'new-wallet.json' to 'new-electrum.json'
     - Allow export of Wasabi skeleton for Bitcoin Regtest.
+- Backup Enhancement:
+    - Option to save the backup file's encryption password for next backup. Then next
+      backup is quick and simple: no need to record yet another 12 words.
 - Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
   added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
