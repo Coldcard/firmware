@@ -14,7 +14,7 @@ DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 # How many characters can we fit on each line? How many lines?
 # (using FontSmall)
 if version.hw_label == 'q1':
-    CH_PER_W = 45
+    CH_PER_W = 44
     STORY_H = 17
 else:
     CH_PER_W = 17
