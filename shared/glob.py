@@ -26,5 +26,7 @@ VD = None
 # NFC interface (Mk4, and can be disabled)
 NFC = None
 
+# QR scanner (Q1 only)
+SCAN = None
 
 # EOF

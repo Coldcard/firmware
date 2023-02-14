@@ -16,4 +16,7 @@ def init0():
 
     mk4_init0()
 
+    from scanner import QRScanner
+    glob.SCAN = QRScanner()
+
 # EOF

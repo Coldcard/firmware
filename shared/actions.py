@@ -2123,8 +2123,13 @@ Secure Elements:
   {se}
 '''
 
-    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=serial, hw=hw))
+    msg = msg.format(rel=rel, built=built, bl=bl, chk=chk,
+                     se=se, ser=serial, hw=hw)
+    if version.has_qr:
+        from glob import SCAN
+        msg += '\nQR Scanner:\n  %s\n' % (SCAN.version or 'missing')
+
+    await ux_show_story(msg)
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.
@@ -2250,7 +2255,7 @@ async def change_seed_vault(is_enabled):
 
     if (not is_enabled) and settings.master_get('seeds'):
         # problem: they still have some seeds... also this path blocks
-        # disable from within a tmp seed 
+        # disable from within a tmp seed
         settings.set('seedvault', 1)        # restore it
         await ux_show_story("Please remove all seeds from the vault before disabling.")
 
