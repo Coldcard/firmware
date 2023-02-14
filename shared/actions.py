@@ -2060,9 +2060,14 @@ Hardware:
 Secure Element{ses}:
   {se}
 '''
+    msg = msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
+                            ser=serial, hw=hw, ses='s' if version.has_se2 else '')
 
-    await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                            ser=serial, hw=hw, ses='s' if version.has_se2 else ''))
+    if version.has_qr:
+        from glob import SCAN
+        msg += '\nQR Scanner:\n  %s\n' % (SCAN.version or 'missing')
+
+    await ux_show_story(msg)
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.

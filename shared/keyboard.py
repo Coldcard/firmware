@@ -51,6 +51,7 @@ class FullKeyboard(NumpadBase):
         self.lcd_tear = Pin('LCD_TEAR', Pin.IN)
         self.lcd_tear.irq(self._measure_irq, trigger=Pin.IRQ_RISING, hard=False)
 
+        self.torch_on = False
         # ready to start 
 
     def power_press(self, pin):
@@ -131,6 +132,14 @@ class FullKeyboard(NumpadBase):
         # - not trying to support multiple presses, just one
         for kn in range(NUM_ROWS * NUM_COLS):
             if self.is_pressed[kn]:
+                if kn == KEYNUM_LAMP:
+                    if not self.torch_on:
+                        # handle light button right here and now
+                        from glob import SCAN
+                        self.torch_on = True
+                        call_later_ms(0, SCAN.torch, 1)
+                    continue
+
                 # indicated key was found to be down and then back up
                 key = DECODER[kn]
                 if key != self.key_pressed:
@@ -138,6 +147,11 @@ class FullKeyboard(NumpadBase):
                     self._key_event(key)
 
                 self.lp_time = utime.ticks_ms()
+
+        if self.torch_on and not self.is_pressed[KEYNUM_LAMP]:
+            from glob import SCAN
+            self.torch_on = False
+            call_later_ms(0, SCAN.torch, 0)
 
         none_active = (sum(self.is_pressed) == 0)
         if none_active:
