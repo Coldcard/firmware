@@ -11,7 +11,7 @@
 #    - 'abandon' * 11 + 'about'
 #
 from menu import MenuItem, MenuSystem
-from utils import xfp2str
+from utils import xfp2str, parse_extended_key
 import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code
@@ -20,6 +20,7 @@ from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
 from stash import SecretStash, SensitiveValues
 from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
 from pwsave import PassphraseSaver
 from glob import settings, dis
 from pincodes import pa
@@ -406,8 +407,8 @@ async def new_from_dice(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
-async def set_ephemeral_seed(encoded):
-    pa.tmp_secret(encoded)
+async def set_ephemeral_seed(encoded, chain=None):
+    pa.tmp_secret(encoded, chain=chain)
     dis.progress_bar_show(1)
     xfp = settings.get("xfp", "")
     if xfp:
@@ -468,6 +469,15 @@ async def ephemeral_seed_generate(nwords):
     if words:
         dis.fullscreen("Applying...")
         await set_ephemeral_seed_words(words)
+
+async def set_seed_extended_key(extended_key):
+    encoded, chain = xprv_to_encoded_secret(extended_key)
+    set_seed_value(encoded=encoded, chain=chain)
+
+async def set_ephemeral_seed_extended_key(extended_key):
+    encoded, chain = xprv_to_encoded_secret(extended_key)
+    await set_ephemeral_seed(encoded=encoded, chain=chain)
+    goto_top_menu()
 
 async def approve_word_list(seed, nwords, ephemeral=False):
     # Force the user to write the seeds words down, give a quiz, then save them.
@@ -533,7 +543,16 @@ def seed_words_to_encoded_secret(words):
     nv = SecretStash.encode(seed_phrase=seed)
     return nv
 
-def set_seed_value(words=None, encoded=None):
+def xprv_to_encoded_secret(xprv):
+    node, chain, _ = parse_extended_key(xprv, private=True)
+    if node is None:
+        raise ValueError("Failed to parse extended private key.")
+    nv = SecretStash.encode(xprv=node)
+    node.blank()
+    return nv, chain  # need to know chain
+
+
+def set_seed_value(words=None, encoded=None, chain=None):
     # Save the seed words into secure element, and reboot. BIP-39 password
     # is not set at this point (empty string)
     if words:
@@ -549,7 +568,7 @@ def set_seed_value(words=None, encoded=None):
 
         # re-read settings since key is now different
         # - also captures xfp, xpub at this point
-        pa.new_main_secret(nv)
+        pa.new_main_secret(nv, chain=chain)
 
         # check and reload secret
         pa.reset()
@@ -713,7 +732,7 @@ class EphemeralSeedMenu(MenuSystem):
     @classmethod
     def construct(cls):
         from glob import NFC, settings
-        from actions import nfc_recv_ephemeral
+        from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv
 
         import_ephemeral_menu = [
             MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
@@ -729,8 +748,10 @@ class EphemeralSeedMenu(MenuSystem):
         ]
 
         rv = [
-            MenuItem("Generate Seed", menu=gen_ephemeral_menu),
-            MenuItem("Import Seed", menu=import_ephemeral_menu),
+            MenuItem("Generate Words", menu=gen_ephemeral_menu),
+            MenuItem("Import Words", menu=import_ephemeral_menu),
+            MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
+            MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True),  # ephemeral=True
         ]
         if pa.tmp_value:
             xfp = settings.get("xfp", "")
