@@ -445,7 +445,7 @@ class PinAttempt:
 
         # does not call settings.save() but caller should!
 
-    def tmp_secret(self, encoded):
+    def tmp_secret(self, encoded, chain=None):
         # Use indicated secret and stop using the SE; operate like this until reboot
         self.tmp_value = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
 
@@ -459,7 +459,7 @@ class PinAttempt:
 
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
-        self.new_main_secret(self.tmp_value)
+        self.new_main_secret(self.tmp_value, chain=chain)
 
     def trick_request(self, method_num, data):
         # send/recv a trick-pin related request (mk4 only)

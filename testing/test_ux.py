@@ -463,11 +463,11 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress,
 
 
 @pytest.mark.parametrize('multiple_runs', range(3))
-@pytest.mark.parametrize('nfc', [True, False])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('testnet', [True, False])
-def test_import_prv(nfc, testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, word_menu_entry, get_secrets,
-                    microsd_path, multiple_runs, reset_seed_words, nfc_write_text, settings_set):
-
+def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu,
+                    word_menu_entry, get_secrets, microsd_path, multiple_runs, reset_seed_words,
+                    nfc_write_text, settings_set, virtdisk_path):
     if testnet:
         netcode = "XTN"
         settings_set('chain', 'XTN')
@@ -485,33 +485,107 @@ def test_import_prv(nfc, testnet, pick_menu_item, cap_story, need_keypress, unit
     else:
         assert "xprv" in prv
 
-    if not nfc:
-        fname = 'test-%d.txt' % os.getpid()
-        path = microsd_path(fname)
-        with open(path, 'wt') as f:
+    fname = 'test-%d.txt' % os.getpid()
+    if way =="sd":
+        fpath = microsd_path(fname)
+    elif way == "vdisk":
+        fpath = virtdisk_path(fname)
+    if way != "nfc":
+        with open(fpath, "w") as f:
             f.write(prv)
-        print("Created: %s" % path)
 
     m = cap_menu()
     assert m[0] == 'New Seed Words'    
     pick_menu_item('Import Existing')
     pick_menu_item('Import XPRV')
-    title, body = cap_story()
-    assert "press (3) to import via NFC" in body
-    assert "Press (1) to import extended private key file from SD Card" in body
-    if nfc:
-        need_keypress("3")
-        nfc_write_text(prv)
-        time.sleep(0.5)
+    time.sleep(0.1)
+    _, story = cap_story()
+    if way == "sd":
+        if "Press (1) to import extended private key file from SD Card" in story:
+            need_keypress("1")
+    elif way == "nfc":
+        if "press (3) to import via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            nfc_write_text(prv)
+            time.sleep(0.3)
     else:
-        need_keypress("1")
-        time.sleep(0.2)
-        title, body = cap_story()
-        assert 'Select file' in body
-        need_keypress('y')
-        time.sleep(.01)
+        # virtual disk
+        if "press (2) to import from Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+
+    if way != "nfc":
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert "Select file containing the extended private key" in story
+        need_keypress("y")
         pick_menu_item(fname)
 
+    unit_test('devtest/abort_ux.py')
+
+    v = get_secrets()
+
+    assert v['xpub'] == node.hwif()
+    assert v['xprv'] == node.hwif(as_private=True)
+
+    reset_seed_words()
+
+
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('retry', range(3))
+@pytest.mark.parametrize("testnet", [True, False])
+def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, goto_home, cap_story,
+                               need_keypress, reset_seed_words, dev, try_sign, enter_hex, unit_test,
+                               settings_set, get_secrets, tapsigner_encrypted_backup, nfc_write_text):
+
+    fname, backup_key_hex, node = tapsigner_encrypted_backup(way, testnet=testnet)
+    if testnet:
+        settings_set('chain', 'XTN')
+    else:
+        settings_set('chain', 'XTN')
+
+    unit_test('devtest/clear_seed.py')
+    m = cap_menu()
+    assert m[0] == 'New Seed Words'
+    pick_menu_item('Import Existing')
+    pick_menu_item("Tapsigner Backup")
+    time.sleep(0.1)
+    _, story = cap_story()
+    if way == "sd":
+        if "Press (1) to import TAPSIGNER encrypted backup file from SD Card" in story:
+            need_keypress("1")
+    elif way == "nfc":
+        if "press (3) to import via NFC" not in story:
+            pytest.skip("NFC disabled")
+        else:
+            need_keypress("3")
+            time.sleep(0.2)
+            nfc_write_text(fname)
+            time.sleep(0.3)
+    else:
+        # virtual disk
+        if "press (2) to import from Virtual Disk" not in story:
+            pytest.skip("Vdisk disabled")
+        else:
+            need_keypress("2")
+
+    if way != "nfc":
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert "Pick TAPSIGNER encrypted backup file" in story
+        need_keypress("y")
+        pick_menu_item(fname)
+
+    time.sleep(0.1)
+    _, story = cap_story()
+    assert "your TAPSIGNER" in story
+    assert "back of the card" in story
+    need_keypress("y")  # yes I have backup key
+    enter_hex(backup_key_hex)
     unit_test('devtest/abort_ux.py')
 
     v = get_secrets()

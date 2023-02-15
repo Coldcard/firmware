@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu
+import gc, sys, ustruct, ngu, chains, ure
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -453,6 +453,32 @@ def parse_addr_fmt_str(addr_fmt):
                            "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
 
 
+def parse_extended_key(ln, private=False):
+    # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
+    # - can handle any garbage line
+    # - returns (node, chain, addr_fmt)
+    # - people are using SLIP132 so we need this
+    node, chain, addr_fmt = None, None, None
+    if ln is None:
+        return node, chain, addr_fmt
+
+    ln = ln.strip()
+    if private:
+        rgx = r'.prv[A-Za-z0-9]+'
+    else:
+        rgx = r'.pub[A-Za-z0-9]+'
+
+    pat = ure.compile(rgx)
+    found = pat.search(ln)
+    # serialize, and note version code
+    try:
+        node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
+    except:
+        pass
+
+    return node, chain, addr_fmt
+
+
 def import_prompt_builder(title):
     from glob import NFC, VD
     prompt, escape = None, None
@@ -484,5 +510,18 @@ def export_prompt_builder(title):
             escape += "3"
         prompt += "."
     return prompt, escape
+
+def decrypt_tapsigner_backup(backup_key, data):
+    try:
+        backup_key = a2b_hex(backup_key)
+        decrypt = ngu.aes.CTR(backup_key, bytes(16))  # IV 0
+        decrypted = decrypt.cipher(data).decode().strip()
+        # format of TAPSIGNER backup is known in advance
+        # extended private key is expected at the beginning of the first line
+        assert decrypted[1:4] == "prv"
+    except Exception:
+        raise ValueError("Decryption failed - wrong key?")
+
+    return decrypted.split("\n")
 
 # EOF

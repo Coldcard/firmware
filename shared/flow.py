@@ -329,7 +329,8 @@ ImportWallet = [
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
-    MenuItem("Import XPRV", f=import_xprv),
+    MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
+    MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=False),
     MenuItem("Seed XOR", f=xor_restore_start),
 ]
 

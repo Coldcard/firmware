@@ -5,13 +5,14 @@
 # Every function here is called directly by a menu item. They should all be async.
 #
 import ckcc, pyb, version, uasyncio, sys
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted, ux_enter_bip32_index, ux_input_text
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
+from ux import ux_enter_bip32_index, ux_input_text
 from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
+from utils import xfp2str, decrypt_tapsigner_backup
 from uasyncio import sleep_ms
+from ubinascii import hexlify as b2a_hex
 from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, MAX_TXN_LEN_MK4
-from utils import xfp2str
-from multisig import parse_extended_key
 from glob import settings
 from pincodes import pa
 from menu import start_chooser
@@ -647,8 +648,6 @@ def render_master_secrets(mode, raw, node):
         qr = msg
 
     elif mode == 'master':
-        from ubinascii import hexlify as b2a_hex
-
         msg = '%d bytes:\n\n' % len(raw)
         qr = str(b2a_hex(raw), 'ascii')
         msg += qr
@@ -1281,14 +1280,30 @@ async def verify_backup(*A):
     # do a limited CRC-check over encrypted file
     await backups.verify_backup_file(fn)
 
-async def import_xprv(*A):
-    # read an XPRV from a text file and use it.
-    from stash import SecretStash
-    from glob import NFC
-    from ubinascii import hexlify as b2a_hex
-    from backups import restore_from_dict
+async def import_extended_key_as_secret(extended_key, ephemeral):
+    try:
+        import seed
+        if ephemeral:
+            await seed.set_ephemeral_seed_extended_key(extended_key)
+        else:
+            await seed.set_seed_extended_key(extended_key)
+    except ValueError:
+        msg = ("Sorry, wasn't able to find a valid extended private key to import. "
+               "It should be at the start of a line, and probably starts with 'xprv'.")
+        await ux_show_story(title="FAILED", msg=msg)
+    except Exception as e:
+        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
-    assert pa.is_secret_blank() # "must not have secret"
+async def import_xprv(_1, _2, item):
+    # read an XPRV from a text file and use it.
+    from glob import NFC
+
+    extended_key = None
+    label = "extended private key"
+
+    ephemeral = item.arg
+    if not ephemeral:
+        assert pa.is_secret_blank() # "must not have secret"
 
     def contains_xprv(fname):
         # just check if likely to be valid; not full check
@@ -1303,13 +1318,12 @@ async def import_xprv(*A):
             return False
 
     force_vdisk = False
-    prompt, escape = import_prompt_builder("extended private key file")
+    prompt, escape = import_prompt_builder("%s file" % label)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == "3":
             force_vdisk = None
             extended_key = await NFC.read_extended_private_key()
-            node, chain, addr_fmt = parse_extended_key(extended_key, private=True)
         elif ch == "2":
             force_vdisk = True
         elif ch == "1":
@@ -1320,38 +1334,19 @@ async def import_xprv(*A):
     if force_vdisk is not None:
         # only get here if NFC was not chosen
         # pick a likely-looking file.
-        fn = await file_picker('Select file containing the XPRV to be imported.', min_size=50, max_size=2000,
-                               taster=contains_xprv, force_vdisk=force_vdisk)
+        fn = await file_picker('Select file containing the %s to be imported.' % label, min_size=50,
+                               max_size=2000, taster=contains_xprv, force_vdisk=force_vdisk)
 
         if not fn: return
 
-        node = None
         with CardSlot(force_vdisk=force_vdisk, readonly=True) as card:
             with open(fn, 'rt') as fd:
                 for ln in fd.readlines():
-                    if 'prv' not in ln: continue
-                    node, chain, addr_fmt = parse_extended_key(ln, private=True)
-                    if node: break
+                    if 'prv' in ln:
+                        extended_key = ln
+                        break
 
-    if not node:
-        # unable
-        await ux_show_story('''\
-Sorry, wasn't able to find a valid extended private key to import. It should be at \
-the start of a line, and probably starts with "xprv".''', title="FAILED")
-        return
-
-    # encode it in our style
-    d = dict(chain=chain.ctype, raw_secret=b2a_hex(SecretStash.encode(xprv=node)))
-    node.blank()
-
-    # Should capture the address format implied by SLIP32 version bytes
-    # (addr_fmt var here) but no means to store that in our settings, and we're
-    # not supposed to care anyway.
-    # TODO: would be nice for addr explorer tho
-
-    # restore as if it was a backup (code reuse)
-    await restore_from_dict(d)
-
+    await import_extended_key_as_secret(extended_key, ephemeral)
     # not reached; will do reset.
 
 EMPTY_RESTORE_MSG = '''\
@@ -1454,6 +1449,57 @@ async def nfc_recv_ephemeral(*A):
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to import ephemeral seed via NFC. %s" % str(e))
 
+
+async def import_tapsigner_backup_file(_1, _2, item):
+    from glob import NFC
+
+    ephemeral = item.arg
+    if not ephemeral:
+        assert pa.is_secret_blank() # "must not have secret"
+
+    force_vdisk = False
+    label = "TAPSIGNER encrypted backup file"
+    prompt, escape = import_prompt_builder(label)
+    if prompt:
+        ch = await ux_show_story(prompt, escape=escape)
+        if ch == "3":
+            force_vdisk = None
+            data = await NFC.read_tapsigner_b64_backup()
+        elif ch == "2":
+            force_vdisk = True
+        elif ch == "1":
+            force_vdisk = False
+        else:
+            return
+
+    if force_vdisk is not None:
+        fn = await file_picker('Pick ' + label, suffix="aes", min_size=100, max_size=160,
+                               force_vdisk=force_vdisk)
+        if not fn: return
+        with CardSlot(force_vdisk=force_vdisk) as card:
+            with open(fn, 'rb') as fp:
+                data = fp.read()
+
+    if await ux_show_story("Make sure to have your TAPSIGNER handy as you will need to provide "
+                           "'Backup Password' from the back of the card in the next step. "
+                           "Press OK to continue X to cancel.") != "y":
+        return
+
+    while True:
+        backup_key = await ux_input_text("", confirm_exit=False, hex_only=True, max_len=32)
+        if backup_key is None:
+            return
+        if len(backup_key) != 32:
+            await ux_show_story(title="FAILURE", msg="'Backup Key' length != 32")
+            continue
+        try:
+            extended_key, derivation = decrypt_tapsigner_backup(backup_key, data)
+            break
+        except ValueError as e:
+            await ux_show_story(title="FAILURE", msg=str(e))
+            continue
+
+    await import_extended_key_as_secret(extended_key, ephemeral)
 
 async def list_files(*A):
     # list files, don't do anything with them?
@@ -1913,7 +1959,6 @@ We strongly recommend all PIN codes used be unique between each other.
 async def show_version(*a):
     # show firmware, bootload versions.
     import callgate, version
-    from ubinascii import hexlify as b2a_hex
     from glob import NFC
 
     built, rel, *_ = version.get_mpy_version()

@@ -1,5 +1,6 @@
 ## 5.1.0 - 2023-02-XX
 
+- New Feature: Load TAPSIGNER encrypted backup as main or ephemeral seed
 - New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be
   already inserted when (true) PIN is entered, or else seed is wiped. Add, remove and check
   cards in menu: `Settings -> Login Settings -> MicroSD 2FA`
@@ -13,6 +14,7 @@
     - Add import multisig wallet via Virtual Disk
     - Add import extended private key via Virtual Disk and via NFC
     - Import seed in compact/truncated form (just 3-4 letters of each seed word)
+    - Import extended private key as ephemeral seed
 - Export Enhancements: 
     - Samourai POST-MIX and PRE-MIX descriptor export options added
     - Lily Wallet added

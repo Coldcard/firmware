@@ -4,7 +4,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str
-from utils import str_to_keypath, problem_file_line, export_prompt_builder
+from utils import str_to_keypath, problem_file_line, export_prompt_builder, parse_extended_key
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
@@ -1445,28 +1445,6 @@ OK to continue. X to abort.'''.format(coin = chain.b44_cointype)
 
     msg = '''Multisig XPUB file written:\n\n%s''' % nice
     await ux_show_story(msg)
-
-def parse_extended_key(ln, private=False):
-    # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
-    # - can handle any garbage line
-    # - returns (node, chain, addr_fmt)
-    # - people are using SLIP132 so we need this
-    ln = ln.strip()
-    node, chain, addr_fmt = None, None, None
-    if private:
-        rgx = r'.prv[A-Za-z0-9]+'
-    else:
-        rgx = r'.pub[A-Za-z0-9]+'
-
-    pat = ure.compile(rgx)
-    found = pat.search(ln)
-    # serialize, and note version code
-    try:
-        node, chain, addr_fmt, is_private = chains.slip32_deserialize(found.group(0))
-    except:
-        pass
-
-    return node, chain, addr_fmt
 
 async def ondevice_multisig_create(mode='p2wsh', addr_fmt=AF_P2WSH, force_vdisk=False):
     # collect all xpub- exports on current SD card (must be >= 1) to make "air gapped" wallet

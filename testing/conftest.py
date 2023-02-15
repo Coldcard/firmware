@@ -154,6 +154,18 @@ def enter_number(need_keypress):
     return doit
 
 @pytest.fixture(scope='module')
+def enter_hex(need_keypress):
+    def doit(hex_str):
+        for ch in hex_str:
+            int_ch = int(ch, 16)
+            for i in range(int_ch):
+                need_keypress("5")  # up
+            need_keypress("9")  # next
+        need_keypress('y')
+
+    return doit
+
+@pytest.fixture(scope='module')
 def enter_pin(enter_number, need_keypress, cap_screen):
     def doit(pin):
         assert '-' in pin
@@ -1417,6 +1429,41 @@ def load_shared_mod():
         spec.loader.exec_module(mod)
         return mod
     return doit
+
+
+@pytest.fixture
+def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
+    def doit(way, testnet=True):
+        # create backup
+        from pycoin.key.BIP32Node import BIP32Node
+        node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN" if testnet else "BTC")
+        plaintext = node.hwif(as_private=True) + '\n' + random.choice(["m", "m/84h/0h/0h", "m/44'/0'/0'/0'"])
+        if testnet:
+            assert "tprv" in plaintext
+        else:
+            assert "xprv" in plaintext
+        from bsms.encryption import aes_256_ctr_encrypt
+        from base64 import b64encode
+        backup_key = os.urandom(16)  # 128 bit
+        backup_key_hex = backup_key.hex()
+        ciphertext_hex = aes_256_ctr_encrypt(backup_key, bytes(16), plaintext)
+        ciphertext = bytes.fromhex(ciphertext_hex)
+        ciphertext_b64 = b64encode(ciphertext).decode()
+        fname = "backup-A4MQA-3135-02-15T0113.aes"
+        if way == "sd":
+            fpath = microsd_path(fname)
+        elif way == "vdisk":
+            fpath = virtdisk_path(fname)
+        else:
+            fpath = None
+            fname = ciphertext_b64
+        if fpath:
+            with open(fpath, "wb") as f:
+                f.write(ciphertext)
+        # in case of NFC fname is b64 encoded backup itself
+        return fname, backup_key_hex, node
+    return doit
+
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,

@@ -11,7 +11,7 @@ import ngu, utime, ngu, ndef
 from uasyncio import sleep_ms
 from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
-from ubinascii import b2a_base64
+from ubinascii import b2a_base64, a2b_base64
 
 from ux import ux_show_story, ux_poll_key
 from utils import cleanup_deriv_path, B2A, problem_file_line, parse_addr_fmt_str
@@ -696,6 +696,28 @@ class NFCHandler:
 
         if not winner:
             await ux_show_story('Unable to find extended private key in NDEF data')
+            return
+
+        return winner
+
+    async def read_tapsigner_b64_backup(self):
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            try:
+                if 150 <= len(msg) <= 280:
+                    winner = a2b_base64(msg)
+                    break
+            except:
+                pass
+
+        if not winner:
+            await ux_show_story('Unable to find base64 encoded TAPSIGNER backup in NDEF data')
             return
 
         return winner

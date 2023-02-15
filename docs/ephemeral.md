@@ -11,15 +11,19 @@ Make sure you know what you're doing!
 ## Usage
 
 - go to `Advanced/Tools -> Ephemeral Seed`
-- if ephemeral seed is already in use, the menu option `CLEAR [<xfp>]` is visible
+- if ephemeral seed is already in use, top menu item `[<xfp>]` is visible
   with fingerprint of ephemeral master secret
-- an ephemeral seed can be Imported or Generated at random 
-- `Generate`:
-  - `Advanced/Tools -> Ephemeral Seed -> Generate`
-  - same options as generating new seeds, dice rolls included
-- `Import`:
-  - `Advanced/Tools -> Ephemeral Seed -> Import`
-  - same options as importing seeds
+- an ephemeral seed can be Imported or Generated at random
+- go to `Advanced/Tools -> Ephemeral Seed`
+- `Generate Words`:
+  - same options as generating new seed words, dice rolls included
+  - Import words via NFC with `Import via NFC` option
+- `Import Words`:
+  - same options as importing seed words
+- `Import XPRV`:
+  - import extended private key
+- `Tapsigner Backup`
+  - import TAPSIGNER encrypted backup
 - an ephemeral seed can also be a BIP-85 derived value
 
 ## Trick PIN Notes
