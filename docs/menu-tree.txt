@@ -2,6 +2,19 @@
   Choose PIN Code
   Advanced/Tools
     View Identity
+    Ephemeral Seed
+      Generate Words
+        24 Words
+        12 Words
+        24 Word Dice Roll
+        12 Word Dice Roll
+      Import Words
+        24 Words
+        18 Words
+        12 Words
+        Import via NFC
+      Import XPRV
+      Tapsigner Backup
     Upgrade Firmware
       Show Version
       From MicroSD
@@ -30,10 +43,24 @@
     Restore Backup
     Clone Coldcard
     Import XPRV
+    Tapsigner Backup
     Seed XOR
   Help
   Advanced/Tools
     View Identity
+    Ephemeral Seed
+      Generate Words
+        24 Words
+        12 Words
+        24 Word Dice Roll
+        12 Word Dice Roll
+      Import Words
+        24 Words
+        18 Words
+        12 Words
+        Import via NFC
+      Import XPRV
+      Tapsigner Backup
     Upgrade Firmware
       Show Version
       From MicroSD
@@ -42,6 +69,7 @@
     File Management
       Verify Backup
       List Files
+      Verify Sig File
       NFC File Share [IF NFC ENABLED]
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
@@ -58,8 +86,6 @@
       Change Main PIN
       PIN Options
       Trick PINs
-        Trick PINs:
-        ↳22-22
         Add New Trick
         Add If Wrong
         Delete All
@@ -81,6 +107,8 @@
          1 week
         24 hours
         28 days later
+      MicroSD 2FA [MAYBE]
+        Add Card
       Test Login Now
     Hardware On/Off
       USB Port
@@ -94,8 +122,18 @@
         Default Off
         Enable NFC
     Multisig Wallets
-      (none setup yet)
-      Import from SD
+      2/2: core2of2_native
+        "core2of2_native"
+        View Details
+        Delete
+        Coldcard Export
+        Descriptors
+          View Descriptor
+          Export
+          Bitcoin Core
+        Electrum Wallet
+      Import from File
+      Import via NFC
       Export XPUB
       Create Airgapped
       Trust PSBT?
@@ -121,6 +159,9 @@
     Delete PSBTs
       Default Keep
       Delete PSBTs
+    Menu Wrapping
+      Default Off
+      Enable
 ---
 
 [NORMAL OPERATION]
@@ -128,6 +169,7 @@
   Passphrase
   Start HSM Mode [IF HSM POLICY]
   Address Explorer
+  Type Passwords
   Secure Logout
   Advanced/Tools
     Backup
@@ -140,6 +182,10 @@
       Electrum Wallet
       Wasabi Wallet
       Unchained Capital
+      Lily Wallet
+      Samourai Postmix
+      Samourai Premix
+      Descriptor
       Generic JSON
       Export XPUB
         Segwit (BIP-84)
@@ -161,6 +207,10 @@
         Electrum Wallet
         Wasabi Wallet
         Unchained Capital
+        Lily Wallet
+        Samourai Postmix
+        Samourai Premix
+        Descriptor
         Generic JSON
         Export XPUB
           Segwit (BIP-84)
@@ -172,14 +222,37 @@
       Sign Text File
       Clone Coldcard
       List Files
+      Verify Sig File
       NFC File Share [IF NFC ENABLED]
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
     Derive Seed B85
     View Identity
+    Ephemeral Seed
+      Generate Words
+        24 Words
+        12 Words
+        24 Word Dice Roll
+        12 Word Dice Roll
+      Import Words
+        24 Words
+        18 Words
+        12 Words
+        Import via NFC
+      Import XPRV
+      Tapsigner Backup
     Paper Wallets
+    Enable HSM
+      Default Off
+      Enable
     User Management
       (no users yet)
+    NFC Tools [IF NFC ENABLED]
+      Show Address
+      Sign Message
+      Verify Sig File
+      File Share
+      Import Multisig
     Danger Zone
       Debug Functions
       Seed Functions
@@ -201,6 +274,7 @@
       Testnet Mode
         Bitcoin
         Testnet3
+        Regtest
       Settings Space
       MCU Key Slots
   Settings
@@ -208,8 +282,6 @@
       Change Main PIN
       PIN Options
       Trick PINs
-        Trick PINs:
-        ↳22-22
         Add New Trick
         Add If Wrong
         Delete All
@@ -231,6 +303,8 @@
          1 week
         24 hours
         28 days later
+      MicroSD 2FA [MAYBE]
+        Add Card
       Test Login Now
     Hardware On/Off
       USB Port
@@ -244,8 +318,18 @@
         Default Off
         Enable NFC
     Multisig Wallets
-      (none setup yet)
-      Import from SD
+      2/2: core2of2_native
+        "core2of2_native"
+        View Details
+        Delete
+        Coldcard Export
+        Descriptors
+          View Descriptor
+          Export
+          Bitcoin Core
+        Electrum Wallet
+      Import from File
+      Import via NFC
       Export XPUB
       Create Airgapped
       Trust PSBT?
@@ -271,6 +355,12 @@
     Delete PSBTs
       Default Keep
       Delete PSBTs
+    Menu Wrapping
+      Default Off
+      Enable
+    Keyboard EMU
+      Default Off
+      Enable
 ---
 
 [FACTORY MODE]
