@@ -8,8 +8,8 @@
 
 async def doit():
     async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0, whs=False):
-        from menu import MenuItem, ToggleMenuItem
-        from seed import WordNestMenu
+        from menu import MenuItem, ToggleMenuItem, MenuSystem
+        from seed import WordNestMenu, EphemeralSeedMenu
         from multisig import MultisigMenu
         from trick_pins import TrickPinMenu
         from users import UsersMenu
@@ -40,7 +40,9 @@ async def doit():
         if isinstance(m, WordNestMenu):
             print('%s[SEED WORD MENUS]' % indent, file=fd)
             return
-        for xm in [TrickPinMenu, MultisigMenu, UsersMenu]:
+        if isinstance(m, EphemeralSeedMenu) or isinstance(m, MultisigMenu):
+            m = [i for i in m.items]
+        for xm in [TrickPinMenu, UsersMenu]:
             if isinstance(m, xm):
                 m = [i.label for i in m.items]
                 break
