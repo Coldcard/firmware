@@ -6,5 +6,6 @@
 *.pdf
 *.dfu
 *.txn
+*.xor
 .tmp.tmp
 bsms_*

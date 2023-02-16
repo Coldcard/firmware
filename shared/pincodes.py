@@ -328,6 +328,9 @@ class PinAttempt:
     def has_brickme_pin(self):
         return bool(self.state_flags & PA_HAS_BRICKME)
 
+    def has_tmp_seed(self):
+        return not self.tmp_value == False
+
     def reset(self):
         # start over, like when you commit a new seed
         return self.setup(self.pin, self.is_secondary)

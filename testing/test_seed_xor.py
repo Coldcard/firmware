@@ -22,7 +22,7 @@ ones32 = ' '.join('zoo' for _ in range(23)) + ' vote'
     ( [ones32]*7, ones32),
     ( [ones32]*4, zero32),
 ])
-def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, reset_seed_words, set_seed_words):
+def test_import_xor_manual(incl_self, parts, expect, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, word_menu_entry, get_secrets, reset_seed_words, set_seed_words):
 
     # values from docs/seed-xor.md, and some easy cases
 
@@ -50,6 +50,8 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
     else:
         need_keypress('y')
 
+    pick_menu_item('Enter Manually')
+
     #time.sleep(0.01)
 
     for n, part in enumerate(parts):
@@ -65,6 +67,7 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
 
         if n != len(parts)-1:
             need_keypress('1')
+            pick_menu_item('Enter Manually')
         else:
             # correct anticipated checksum word
             chk_word = expect.split()[-1]
@@ -165,6 +168,7 @@ def test_import_zero_set(goto_home, pick_menu_item, cap_story, need_keypress, ca
     assert 'you have a seed already' in body
     assert '(1) to include this Coldcard' in body
     need_keypress('y')
+    pick_menu_item('Enter Manually')
 
     #time.sleep(0.01)
 
@@ -181,6 +185,8 @@ def test_import_zero_set(goto_home, pick_menu_item, cap_story, need_keypress, ca
             return
 
         need_keypress('1')
+        pick_menu_item('Enter Manually')
+
 
     raise pytest.fail("reached")
 
