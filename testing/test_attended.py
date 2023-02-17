@@ -4,39 +4,68 @@
 # - with mk4 these are unattended
 #
 import time, pytest
-from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
-from ckcc_protocol.protocol import CCUserRefused
+from ckcc_protocol.protocol import CCProtocolPacker, CCUserRefused
 
 
-def test_backup_refuse(dev, need_keypress):
+@pytest.fixture
+def bkpw(settings_set):
+    def doit(pwd=None, blank=False):
+        if pwd is None and blank is False:
+            # random
+            pwd = 'charge bottom tired when romance blind treat afford bus salute degree anchor'
+
+        if pwd:
+            settings_set("bkpw", pwd)
+        else:
+            settings_set("bkpw", None)
+    return doit
+
+
+@pytest.mark.parametrize("last_saved", [True, False])
+def test_backup_refuse(last_saved, dev, need_keypress, bkpw):
     time.sleep(0.050)
 
-    r = dev.send_recv(CCProtocolPacker.start_backup())
-    assert r == None
+    if last_saved:
+        bkpw()
+    else:
+        bkpw(blank=True)
 
+    r = dev.send_recv(CCProtocolPacker.start_backup())
+    assert r is None
+
+    if last_saved:
+        need_keypress("x")
     need_keypress('x')
 
     with pytest.raises(CCUserRefused):
         done = None
-        while done == None:
+        while done is None:
             time.sleep(0.050)
             done = dev.send_recv(CCProtocolPacker.get_backup_file())
 
-def test_backup_accept(dev, need_keypress):
-    time.sleep(0.050)
 
+@pytest.mark.parametrize("last_saved", [True, False])
+def test_backup_accept(last_saved, dev, need_keypress, bkpw):
+    time.sleep(0.050)
+    if last_saved:
+        bkpw()
+    else:
+        bkpw(blank=True)
     r = dev.send_recv(CCProtocolPacker.start_backup())
-    assert r == None
+    assert r is None
 
     need_keypress('y')
-
-    while 1:
-        # work our way thru the password quiz... eventually pressing '1' will work.
-        need_keypress('1')
-
-        time.sleep(0.10)
+    if last_saved:
         done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)
-        if done: break
+        assert done
+    else:
+        while 1:
+            # work our way thru the password quiz... eventually pressing '1' will work.
+            need_keypress('1')
+
+            time.sleep(0.10)
+            done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)
+            if done: break
 
     assert len(done) == 2, done
 

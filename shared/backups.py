@@ -266,10 +266,9 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         ch = await seed.word_quiz(words, limited=(num_pw_words//3))
         if ch == 'x': return
 
-    await write_complete_backup(words, fname_pattern, write_sflash=write_sflash)
-
     if words and words != stored_words:
-        ch = await ux_show_story("Would you like to use these same words next time you perform a backup? Press (1) to save them into this Coldcard for next time.", escape='1')
+        ch = await ux_show_story("Would you like to use these same words next time you perform a backup?"
+                                 " Press (1) to save them into this Coldcard for next time.", escape='1')
 
         if ch == '1':
             settings.put('bkpw', ' '.join(words))
@@ -277,6 +276,8 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
         elif stored_words:
             settings.remove_key('bkpw')
             settings.save()
+
+    return await write_complete_backup(words, fname_pattern, write_sflash=write_sflash)
 
 async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_copies=True):
     # Just do the writing
