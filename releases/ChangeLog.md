@@ -1,17 +1,16 @@
 ## 5.1.0 - 2023-02-XX
 
-- New Feature: Exports are signed and detached signature file is exported with it.
-  Check "Signed Exports" part in `msg-signing.md` fo more information.
-- New Feature: Load TAPSIGNER encrypted backup as main or ephemeral seed
 - New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be
   already inserted when (true) PIN is entered, or else seed is wiped. Add, remove and check
   cards in menu: `Settings -> Login Settings -> MicroSD 2FA`
-- New Feature: Verification of signed messages: 
-    - SD card and Virtual disk `Advanced/Tools -> File Management -> Verify Sig File`
-    - NFC `Advanced/Tools -> NFC Tools -> Verify Sig File`
-- New Feature: Single signature wallet generic descriptor export
-  `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
-  in one descriptor `<0;1>` and standard with two descriptors are supported.
+- New Feature: Import TAPSIGNER encrypted backup as main or ephemeral seed, for PSBT signing.
+- New Feature: Detached Bitcoin signature files (most exports)
+    - Files exported are now signed with a detached signature. Look for a `.sig` file
+      with the same name, and verify signature with your favourite Bitcoin tools.
+      See "Signed Exports" in `docs/msg-signing.md` fo more information.
+    - Coldcard can now verify signed files: 
+        - SD card and Virtual disk `Advanced/Tools -> File Management -> Verify Sig File`
+        - NFC `Advanced/Tools -> NFC Tools -> Verify Sig File`
 - Address Explorer:
     - Enhancement: Application-specific derivation paths in `Address Explorer -> Applications`
     - Bugfix: Change value was ignored when generating addresses file
@@ -31,6 +30,9 @@
       backup is quick and simple: no need to record yet another 12 words.
 - Enhancement: During seed generation from dice rolls, enforce at least 50 rolls
   for 12 word seeds, and 99 rolls for 24 word seeds. Statistical distribution check
+- Enhancement: Single signature wallet generic descriptor export
+  `Advanced -> Export Wallet -> Descriptor`. Both new format with internal/external
+  in one descriptor `<0;1>` and standard with two descriptors are supported.
   added to prevent users from generating low-entropy seeds by rolling same value repeatedly.
 - Bugfix: Offer import/export from/to Virtual Disk in UI even if SD Card is inserted.
 - Bugfix: Recalculate extended key saved in settings upon chain change (BTC, XTN, XRT).
