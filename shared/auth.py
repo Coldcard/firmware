@@ -6,6 +6,7 @@
 import stash, ure, ux, chains, sys, gc, uio, version, ngu
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
+from ubinascii import unhexlify as a2b_hex
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
@@ -187,6 +188,21 @@ def make_signature_file_msg(content_list):
         for h, fname in content_list
     ])
 
+def parse_signature_file_msg(msg):
+    # only succeed for our format digest + 2 spaces + fname
+    try:
+        res = []
+        lines = msg.split('\n')
+        for ln in lines:
+            d, fn = ln.split('  ')
+            # should not need to strip if our file format, so dont
+            # is hex? is 32 bytes long?
+            assert len(a2b_hex(d)) == 32
+            res.append((d, fn))
+
+        return res
+    except:
+        return
 
 def sign_export_contents(content_list, deriv, addr_fmt, pk=None):
     msg2sign = make_signature_file_msg(content_list)
@@ -195,6 +211,36 @@ def sign_export_contents(content_list, deriv, addr_fmt, pk=None):
     sig = b2a_base64(sig_bytes).decode().strip()
     gen = rfc_signature_template_gen(addr=addr, msg=msg2sign.decode(), sig=sig)
     return gen
+
+def verify_signed_file_digest(msg):
+    from files import CardSlot
+
+    parsed_msg = parse_signature_file_msg(msg)
+    if not parsed_msg:
+        # not our format
+        return
+
+    try:
+        err, warn = [], []
+        with CardSlot() as card:
+            for digest, fname in parsed_msg:
+                path = card.abs_path(fname)
+                if not card.exists(path):
+                    warn.append((fname, None))
+                    continue
+                path = card.abs_path(fname)
+                with open(path, "rb") as f:
+                    contents = f.read()
+
+                h = b2a_hex(ngu.hash.sha256s(contents)).decode().strip()
+                if h != digest:
+                    err.append((fname, h, digest))
+    except:
+        # fail silently if issues with reading files or SD issues
+        # no digest checking
+        return
+
+    return err, warn
 
 def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_name=None):
     from glob import dis
@@ -406,7 +452,7 @@ def sign_txt_file(filename):
         return
 
 def verify_signature(msg, addr, sig_str):
-    warnings = []
+    warnings = ""
     script = None
     hash160 = None
     invalid_addr_fmt_msg = "Invalid address format - must be one of p2pkh, p2sh-p2wpkh, or p2wpkh."
@@ -439,7 +485,7 @@ def verify_signature(msg, addr, sig_str):
         header_base = chains.current_chain().sig_hdr_base(addr_fmt)
         if (header_byte - header_base) not in (0, 1, 2, 3):
             # wrong header value only - this can still verify OK
-            warnings.append("Specified address format does not match signature header byte format.")
+            warnings += "Specified address format does not match signature header byte format."
         # least two significant bits
         rec_id = (header_byte - 27) & 0x03
         # need to normalize it to 31 base for ngu
@@ -465,6 +511,10 @@ def verify_signature(msg, addr, sig_str):
     return warnings
 
 async def verify_armored_signed_msg(contents):
+    from glob import dis
+
+    dis.fullscreen("Verifying...")
+
     try:
         msg, addr, sig_str = parse_armored_signature_file(contents)
     except:
@@ -472,17 +522,37 @@ async def verify_armored_signed_msg(contents):
         return
 
     try:
-        warn = verify_signature(msg, addr, sig_str)
+        sig_warn = verify_signature(msg, addr, sig_str)
     except Exception as e:
         await ux_show_story(str(e), title="FAILURE")
         return
 
-    msg = "Correct signature for msg."
-    if warn:
-        msg = "Correctly signed, but not by this Coldcard"
-        msg += "\n\nWarning:\n\n"
-        msg += "\n\n".join(warn)
-    await ux_show_story(msg, title='OK')
+    title = "OK"
+    warn_msg = ""
+    err_msg = ""
+    story = "Signature verifies as signed by address:\n %s" % addr
+
+    digest_prob = verify_signed_file_digest(msg)
+    if digest_prob:
+        err, digest_warn = digest_prob
+        if digest_warn:
+            title = "WARNING"
+            wmsg_base = "not present. SHA256SUM verification not possible."
+            if len(digest_warn) == 1:
+                fname = digest_warn[0][0]
+                warn_msg += "\n\n'%s' is %s" % (fname, wmsg_base)
+            else:
+                warn_msg += "\n\nFiles:\n" + "\n".join("> %s" % fname for fname, _ in digest_warn)
+                warn_msg += "\nare %s" % wmsg_base
+        if err:
+            title = "FAILURE"
+            for fname, calc, got in err:
+                err_msg += ("\n\nReferenced file '%s' has wrong contents.\n"
+                            "Got:\n%s\n\nCalculated:\n%s" % (fname, got, calc))
+
+    if sig_warn:
+        story = "Correctly signed, but not by this Coldcard. %s" % sig_warn
+    await ux_show_story(story + err_msg + warn_msg, title=title)
 
 async def verify_txt_sig_file(filename):
     from files import CardSlot, CardMissingError, needs_microsd

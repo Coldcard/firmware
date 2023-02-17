@@ -1,19 +1,22 @@
-# Coldcard Message Signing 
+# COLDCARD Message Signing 
 
-Coldcard can sign messages send to it via USB with the help of `ckcc` utility, 
+COLDCARD can sign messages send to it via USB with the help of `ckcc` utility, 
 sign messages provided via specially crafted file on SD card or Vdisk, 
-and Mk4 can also sign messages sent to Coldcard via NFC.
+and Mk4 can also sign messages sent to COLDCARD via NFC.
 
 Signature format follows [BIP-0137](https://github.com/bitcoin/bips/blob/master/bip-0137.mediawiki) specification.
-Coldcard Mk3 and Coldcard Mk4 up to version `5.1.0` used compressed P2PKH header byte for all script types.
+COLDCARD Mk3 and COLDCARD Mk4 up to version `5.1.0` used compressed P2PKH header byte for all script types.
 From Mk4 `5.1.0` correct header byte is used for corresponding script type.
 
 ### Verification
 
-From Coldcard Mk4 version `5.1.0` users can verify signed messages directly on the device.
-If signature file is on SD card or Virtual disk `Advanced/Tools -> File Management -> Verify Sig File`.
+From COLDCARD Mk4 version `5.1.0` users can verify signed messages directly on the device.
+If signature file is on SD card or Virtual disk `Advanced/Tools -> File Management -> Verify Sig File`. In case
+signature file is detached signature of signed export (or any other file), COLDCARD can check if digest of file 
+specified in the message matches contents of file. This requires file signed to be  available on SD card or Vdisk.
+File size limit for signature files is approximately 10KB.
 If signature file is imported via NFC `Advance/Tools -> NFC Tools -> Verify Sig File`.
-To cross-verify Coldcard verification use https://www.verifybitcoinmessage.com/ as it supports multiple script types.
+To cross-verify COLDCARD verification use https://www.verifybitcoinmessage.com/ as it supports multiple script types.
 Bitcoin core can only verify P2PKH.
 
 ## Signed Exports

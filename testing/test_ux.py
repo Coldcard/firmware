@@ -129,7 +129,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         assert len(get_setting('multisig')) == 1
 
     if reuse_pw:
-        settings_set('bkpw', ' '.join('zoo' for i in range(12)))
+        settings_set('bkpw', ' '.join('zoo' for _ in range(12)))
     else:
         settings_remove('bkpw')
 
@@ -167,6 +167,20 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # pass the quiz!
         count, title, body = pass_word_quiz(words)
         assert count >= 4
+        assert "same words next time" in body
+        assert "Press (1) to save" in body
+        if save_pw:
+            need_keypress('1')
+            time.sleep(.01)
+
+            assert get_setting('bkpw') == ' '.join(words)
+        else:
+            need_keypress('x')
+            time.sleep(.01)
+            assert get_setting('bkpw', 'xxx') == 'xxx'
+
+        time.sleep(0.1)
+        title, body = cap_story()
 
     time.sleep(0.1)
 
@@ -192,21 +206,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     assert bk_a == bk_b, "contents mismatch"
 
     need_keypress('x')
-    time.sleep(.01) 
-
-    if not reuse_pw:
-        title, body = cap_story()
-        assert 'next time' in body
-        if save_pw:
-            need_keypress('1')
-            time.sleep(.01) 
-
-            assert get_setting('bkpw') == ' '.join(words)
-        else:
-            need_keypress('x')
-            time.sleep(.01) 
-            assert get_setting('bkpw', 'xxx') == 'xxx'
-
+    time.sleep(.01)
 
     # Check on-device verify UX works.
     goto_home()

@@ -3,9 +3,32 @@
 import base64, hashlib
 from psbt import ser_compact_size
 from bech32 import decode
+from constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from pycoin.encoding import a2b_hashed_base58, hash160
 from pysecp256k1 import ec_pubkey_serialize
 from pysecp256k1.recovery import ecdsa_recover, ecdsa_recoverable_signature_parse_compact
+from pysecp256k1.recovery import ecdsa_sign_recoverable, ecdsa_recoverable_signature_serialize_compact
+
+
+RFC_SIGNATURE_TEMPLATE = '''\
+-----BEGIN BITCOIN SIGNED MESSAGE-----
+{msg}
+-----BEGIN BITCOIN SIGNATURE-----
+{addr}
+{sig}
+-----END BITCOIN SIGNATURE-----
+'''
+
+
+def sig_hdr_base(addr_fmt):
+    if addr_fmt in (AF_CLASSIC, "p2pkh"):
+        return 31
+    elif addr_fmt in (AF_P2WPKH_P2SH, "p2sh-p2wpkh", "p2wpkh-p2sh"):
+        return 35
+    elif addr_fmt in (AF_P2WPKH, "p2wpkh"):
+        return 39
+    else:
+        raise ValueError
 
 
 def bitcoin_hash_message(msg: bytes):
@@ -15,6 +38,13 @@ def bitcoin_hash_message(msg: bytes):
     s.update(ser_compact_size(msg_len))
     s.update(msg)
     return hashlib.sha256(s.digest()).digest()
+
+
+def sign_message(sk, msg, addr_fmt=AF_CLASSIC):
+    sig_o = ecdsa_sign_recoverable(sk, bitcoin_hash_message(msg))
+    sig_bytes, rec_id = ecdsa_recoverable_signature_serialize_compact(sig_o)
+    header_byte = rec_id + sig_hdr_base(addr_fmt=addr_fmt)
+    return base64.b64encode(bytes([header_byte]) + sig_bytes).decode().strip()
 
 
 def verify_message(address, signature, message):

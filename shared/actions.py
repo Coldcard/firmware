@@ -1771,7 +1771,7 @@ async def sign_message_on_sd(*a):
     await sign_txt_file(fn)
 
 
-async def verify_sig_file_sd(*a):
+async def verify_sig_file(*a):
     def is_sig_file(filename):
         with open(filename, 'rt') as fd:
             line0 = fd.readline()
@@ -1780,7 +1780,7 @@ async def verify_sig_file_sd(*a):
             return False
 
     fn = await file_picker(
-        'Choose signature file.', min_size=220, max_size=500, taster=is_sig_file,
+        'Choose signature file.', min_size=220, max_size=10000, taster=is_sig_file,
         none_msg='No suitable files found. Must be file with ascii armor.'
     )
 

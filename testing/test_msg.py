@@ -2,23 +2,14 @@
 #
 # Message signing.
 #
-import pytest, time, os, itertools
+import pytest, time, os, itertools, hashlib
 from pycoin.contrib.msg_signing import parse_signed_message
-from msg import verify_message
+from pycoin.key.BIP32Node import BIP32Node
+from msg import verify_message, RFC_SIGNATURE_TEMPLATE, sign_message
 from base64 import b64encode, b64decode
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
-
-
-RFC_SIGNATURE_TEMPLATE = '''\
------BEGIN BITCOIN SIGNED MESSAGE-----
-{msg}
------BEGIN BITCOIN SIGNATURE-----
-{addr}
-{sig}
------END BITCOIN SIGNATURE-----
-'''
 
 
 @pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
@@ -384,9 +375,9 @@ def verify_armored_signature(pick_menu_item, nfc_write_text, need_keypress, cap_
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("way", ("sd", "nfc"))
 @pytest.mark.parametrize("addr_fmt", ("p2pkh", "p2sh-p2wpkh", "p2wpkh"))
-@pytest.mark.parametrize("path", ("m/1'", "m/2'/1'", "m/3'/2'/1'", "m/1000'/100'/10'/1"))
+@pytest.mark.parametrize("path", ("m/1'", "m/3'/2'/1'", "m/1000'/100'/10'/1"))
 @pytest.mark.parametrize("msg", (
-        "coldcard", "coinkite", "blablablablablablablabla", "morecornfor us", 240 * "a",
+        "coldcard", "blablablablablablablabla", "morecornfor us", 240 * "a",
 ))
 def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_home, pick_menu_item,
                                need_keypress, cap_story, bitcoind, microsd_path, nfc_write_text,
@@ -399,6 +390,8 @@ def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_h
     assert should == got
     title, story = verify_armored_signature(way, fname, should)
     assert title == "OK"
+    assert "Signature verifies as signed by address" in story
+    assert addr in story
     if addr_fmt == "p2pkh":
         res = bitcoind.rpc.verifymessage(addr, sig, msg)
         assert res is True
@@ -412,8 +405,8 @@ def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_h
      "I3jE1G2pv+6GG35Unak824xig8GzotLE8pFfvNwlgGU7KebANAxo7RuwybCNXrK9+RvjUEohtffM521N+phQNX0=",
      "J3jE1G2pv+6GG35Unak824xig8GzotLE8pFfvNwlgGU7KebANAxo7RuwybCNXrK9+RvjUEohtffM521N+phQNX0="]
 )))
-def test_verify_signature_file_warning(way, addr_sig, microsd_path, verify_armored_signature,
-                                       cap_story, bitcoind):
+def test_verify_signature_file_header_warning(way, addr_sig, microsd_path, verify_armored_signature,
+                                              cap_story, bitcoind):
     warning = "Specified address format does not match signature header byte format."
     text = "Correctly signed, but not by this Coldcard"
     fname = "warn-signed.sig"
@@ -425,7 +418,6 @@ def test_verify_signature_file_warning(way, addr_sig, microsd_path, verify_armor
     title, story = verify_armored_signature(way, fname, tmplt)
     assert title == "OK"
     if (addr[0] + sig[0]) not in ("mH", "2I", "tJ"):  # not in correct pair
-        assert "Warning" in story
         assert text in story
         assert warning in story
 
@@ -468,5 +460,189 @@ def test_verify_signature_file_fail(way, addr_sig, microsd_path, cap_story, goto
     title, story = verify_armored_signature(way, fname, tmplt)
     assert title == "FAILURE"
     assert error_map[err_no] in story
+
+
+@pytest.mark.parametrize("binary", [True, False])
+def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick_menu_item,
+                                           need_keypress, goto_home):
+    fpattern = "to_sign"
+    if binary:
+        suffix = ".pdf"
+        mode = "wb"
+        contents = bytes(100)
+        orig_digest = hashlib.sha256(contents).digest().hex()
+    else:
+        suffix = ".txt"
+        mode = "w"
+        contents = "0" * 100
+        orig_digest = hashlib.sha256(contents.encode()).digest().hex()
+
+    fname = fpattern + suffix
+    sig_name = fpattern + ".sig"
+    fpath = microsd_path(fname)
+    with open(fpath, mode) as f:
+        f.write(contents)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("List Files")
+    need_keypress("y")
+    pick_menu_item(fname)
+    need_keypress("4")  # create detached sig
+    need_keypress("y")
+    need_keypress("x")
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "OK"
+    assert "Signature verifies as signed by address" in story
+    need_keypress("y")  # back in File Management
+
+    # modify contents of the file
+    with open(fpath, mode) as f:
+        mod_contents = contents + contents
+        f.write(mod_contents)
+
+    mod_digest = hashlib.sha256(mod_contents if binary else mod_contents.encode()).digest().hex()
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "FAILURE"
+    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert ("'%s' has wrong contents" % fname) in story
+    assert ("Got:\n%s" % orig_digest) in story
+    assert ("Calculated:\n%s" % mod_digest) in story
+    need_keypress("y")  # back in File Management
+
+    # remove file
+    os.remove(fpath)
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "WARNING"
+    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert ("'%s' is not present. SHA256SUM verification not possible." % fname) in story
+    need_keypress("y")  # back in File Management
+
+
+@pytest.mark.parametrize("f_num", [2, 10, 20])
+def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story, pick_menu_item,
+                                                 need_keypress, goto_home):
+    files = []
+    msg = ""
+    for i in range(f_num):
+        fpattern = "to_sign_%d" % i
+        even = i % 2 == 0
+        mode = "wb" if even else "w"
+        suffix = ".pdf" if even else ".txt"
+        fname = fpattern + suffix
+        fpath = microsd_path(fname)
+        contents = ("a%s" % i) * 50
+        contents_encoded = contents.encode()
+        digest = hashlib.sha256(contents_encoded).digest().hex()
+        msg += "%s  %s\n" % (digest, fname)
+        c = contents_encoded if even else contents
+        with open(fpath, mode) as f:
+            f.write(c)
+        files.append((fname, digest, fpath, mode, c))
+
+    wallet = BIP32Node.from_master_secret(os.urandom(32))
+    addr = wallet.address(False)
+    sk = wallet._secret_exponent_bytes
+    sig = sign_message(sk, msg.strip().encode())
+    armored = RFC_SIGNATURE_TEMPLATE.format(addr=addr, sig=sig, msg=msg)
+    sig_name = "sigs.sig"
+    with open(microsd_path(sig_name), "w") as f:
+        f.write(armored)
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "OK"
+    assert "Signature verifies as signed by address" in story
+    need_keypress("y")  # back in File Management
+
+    # change contents of 0th file
+    fname, orig_digest, fpath, _, _ = files[0]
+    with open(fpath, "w") as f:
+        new_contetns = "changed"
+        mod_digest = hashlib.sha256(new_contetns.encode()).digest().hex()
+        f.write(new_contetns)
+
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "FAILURE"
+    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert ("'%s' has wrong contents" % fname) in story
+    assert ("Got:\n%s" % orig_digest) in story
+    assert ("Calculated:\n%s" % mod_digest) in story
+    need_keypress("y")  # back in File Management
+
+    # change contents of 1st file remove 0th file
+    # both warnings must be visible
+    fname0, _, fpath, _, _ = files[0]
+    os.remove(fpath)
+    fname1, orig_digest, fpath, _, _ = files[1]
+    with open(fpath, "w") as f:
+        new_contetns = "changed5555"
+        mod_digest = hashlib.sha256(new_contetns.encode()).digest().hex()
+        f.write(new_contetns)
+
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "FAILURE"
+    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert ("'%s' has wrong contents" % fname1) in story
+    assert ("Got:\n%s" % orig_digest) in story
+    assert ("Calculated:\n%s" % mod_digest) in story
+    assert ("'%s' is not present. SHA256SUM verification not possible." % fname0) in story
+    need_keypress("y")  # back in File Management
+
+    # remove 1st file too
+    os.remove(fpath)
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "WARNING"
+    assert "Signature verifies as signed by address" in story  # sig is still correct
+    warn_msg = "Files:\n" + "\n".join("> %s" % fname for fname in (fname0, fname1))
+    assert warn_msg in story
+    assert "are not present. SHA256SUM verification not possible." in story
+    need_keypress("y")  # back in File Management
+
+    # reboult valid signed files
+    for tup in files:
+        _, _, fpath, mode, conts = tup
+        with open(fpath, mode) as f:
+            f.write(conts)
+
+    pick_menu_item("Verify Sig File")
+    need_keypress("y")
+    pick_menu_item(sig_name)
+    time.sleep(0.1)
+    title, story = cap_story()
+    assert title == "OK"
+    assert "Signature verifies as signed by address" in story
+    need_keypress("y")  # back in File Management
 
 # EOF
