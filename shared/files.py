@@ -316,6 +316,15 @@ class CardSlot:
 
         return ngu.hash.sha256s(repr(info))
 
+    @staticmethod
+    def exists(fname):
+        try:
+            os.stat(fname)
+        except OSError as e:
+            if e.args[0] == ENOENT:
+                return False
+        return True
+
     def pick_filename(self, pattern, path=None, overwrite=False):
         # given foo.txt, return a full path to filesystem, AND
         # a nice shortened version of the filename for display to user
@@ -337,16 +346,9 @@ class CardSlot:
 
         # try w/o any number first
         fname = path + basename + ext
-        try:
-            os.stat(fname)
-        except OSError as e:
-            if e.args[0] == ENOENT:
-                # file doesn't exist, done
-                return fname, basename+ext
-            pass
 
-        if overwrite:
-            return fname, basename+ext
+        if overwrite or not self.exists(fname):
+            return fname, basename + ext
 
         # look for existing numbered files, even if some are deleted, and pick next
         # highest filename
