@@ -139,10 +139,9 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
         if n != len(parts)-1:
             need_keypress('1')
         else:
-            if num_words == 24:
-                # correct anticipated checksum word (24-seed only)
-                chk_word = expect.split()[-1]
-                assert f"24: {chk_word}" in body
+            # correct anticipated checksum word
+            chk_word = expect.split()[-1]
+            assert f"{num_words}: {chk_word}" in body
             if expect == zeros[num_words]:
                 assert 'ZERO WARNING' in body
 
@@ -191,14 +190,13 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
     assert all((f'Part {chr(n+65)}:' in body) for n in range(qty))
     
     words = [ln[4:] for ln in body.split('\n') if ln[2:4] == ': ']
-    assert len(words) == (num_words * qty) + (1 if num_words == 24 else 0)  # check word
+    assert len(words) == (num_words * qty) + 1  # check word
 
     chk_word = words[-1]
     parts = [words[pos:pos+num_words] for pos in range(0, num_words*qty, num_words)]
 
     expect = get_secrets()['mnemonic'].split()
-    if num_words == 24:
-        assert expect[-1] == chk_word
+    assert expect[-1] == chk_word
 
     for part in parts[1:]:
         assert part != parts[0]
@@ -327,10 +325,9 @@ def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, n
             assert 'ZERO WARNING' not in body
             need_keypress('1')
         else:
-            if num_words == 24:
-                # correct anticipated checksum word
-                chk_word = expect.split()[-1]
-                assert f"24: {chk_word}" in body
+            # correct anticipated checksum word
+            chk_word = expect.split()[-1]
+            assert f"{num_words}: {chk_word}" in body
             if expect == zeros[num_words]:
                 assert 'ZERO WARNING' in body
 

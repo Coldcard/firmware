@@ -252,7 +252,7 @@ DebugFunctionsMenu = [
 
 SeedXORMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("Split Existing", f=xor_split_start),
+    MenuItem("Split Existing", f=xor_split_start, predicate=lambda: settings.get('words', True)),
     MenuItem("Restore Seed XOR", f=xor_restore_start),
 ]
 

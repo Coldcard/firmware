@@ -69,14 +69,8 @@ Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
             if sv.mode == 'words':
                 words = bip39.b2a_words(sv.raw).split(' ')
 
-            if not words:
-                await ux_show_story("Need seed words for this feature.")
-                return
-
-            # checksum of target result is useful (only for 24 words).
-            chk_word = None
-            if len(words) == 24:
-                chk_word = words[-1]
+            # checksum of target result is useful
+            chk_word = words[-1]
 
             vlen = stash.numwords_to_len(len(words))
 
@@ -141,10 +135,10 @@ class XORWordNestMenu(WordNestMenu):
         seed = xor(*(bip39.a2b_words(w) for w in import_xor_parts))
 
         msg = "You've entered %d parts so far.\n\n" % num_parts
-        if num_parts >= 2 and self.target_words == 24:
+        if num_parts >= 2:
             chk_word = bip39.b2a_words(seed).split(' ')[-1]
-            msg += "If you stop now, the 24th word of the XOR-combined seed phrase\nwill be:\n\n"
-            msg += "24: %s\n\n" % chk_word
+            msg += "If you stop now, the %dth word of the XOR-combined seed phrase\nwill be:\n\n" % self.target_words
+            msg += "%d: %s\n\n" % (self.target_words, chk_word)
 
         if all((not x) for x in seed):
             # zero seeds are never right.
@@ -185,7 +179,7 @@ class XORWordNestMenu(WordNestMenu):
         pn = len(import_xor_parts)
         return chr(65+pn) + ' Word' 
 
-async def show_n_parts(parts, chk_word=None):
+async def show_n_parts(parts, chk_word):
     num_parts = len(parts)
     seed_len = len(parts[0])
     msg = 'Record these %d lists of %d-words each.\n\n' % (num_parts, seed_len)
@@ -197,7 +191,7 @@ async def show_n_parts(parts, chk_word=None):
 
     if chk_word:
         msg += ('The correctly reconstructed seed phrase will have this final word,'
-                ' which we recommend recording:\n\n24: %s\n\n' % chk_word)
+                ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
 
     msg += 'Please check and double check your notes. There will be a test! '
 
@@ -222,8 +216,6 @@ or press (2) for 18 words XOR.''', escape="12")
     elif ch == "2":
         desired_num_words = 18
 
-    print("desired word len", desired_num_words)
-
     curr_num_words = settings.get('words', desired_num_words)
 
     global import_xor_parts
@@ -231,15 +223,17 @@ or press (2) for 18 words XOR.''', escape="12")
 
     from pincodes import pa
 
+    escape = ""
     if not pa.is_secret_blank():
         msg = ("Since you have a seed already on this Coldcard, the reconstructed XOR seed will be "
                "temporary and not saved. Wipe the seed first if you want to commit the new value "
                "into the secure element.")
         if curr_num_words == desired_num_words:
+            escape += "1"
             msg += ("\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
                     "or OK to continue without.")
 
-        ch = await ux_show_story(msg, escape='1')
+        ch = await ux_show_story(msg, escape=escape)
 
         if ch == 'x':
             return
