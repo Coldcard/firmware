@@ -37,6 +37,11 @@ def len_to_numwords(vlen):
     assert vlen in [16, 24, 32]
     return 6 * (vlen // 8)
 
+def numwords_to_len(num_words):
+    # map number of BIP-39 seed words to length of binary secret
+    assert num_words in [12, 18, 24]
+    return (num_words * 8) // 6
+
 class SecretStash:
     # Chip can hold 72-bytes as a secret: we need to store either
     # a list of seed words (packed), of various lengths, or maybe

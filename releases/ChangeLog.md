@@ -1,3 +1,8 @@
+## 5.1.2 - 2023-03-18
+
+- Enhancement: SeedXOR for 12 and 18 words mnemonics
+
+
 ## 5.1.1 - 2023-02-27
 
 - Bugfix: Same as 5.1.0 but corrects issue which prevented 5.1.0 from being upgraded
