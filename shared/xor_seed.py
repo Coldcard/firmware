@@ -5,17 +5,20 @@
 # - for secret spliting on paper
 # - all combination of partial XOR seed phrases are working wallets
 #
-import stash, ngu, chains, bip39, random
-from ux import ux_show_story, ux_enter_number, the_ux, ux_confirm, ux_dramatic_pause
+import stash, ngu, bip39, random
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause
 from seed import word_quiz, WordNestMenu, set_seed_value
 from glob import settings
 from actions import goto_top_menu
 
-def xor32(*args):
+def xor(*args):
     # bit-wise xor between all args
-    rv = bytearray(32)
+    vlen = len(args[0])
+    # all have to be same length
+    assert all(len(e) == vlen for e in args)
+    rv = bytearray(vlen)
 
-    for i in range(32):
+    for i in range(vlen):
         for a in args:
             rv[i] ^= a[i]
 
@@ -27,7 +30,7 @@ async def xor_split_start(*a):
 Seed XOR Split
 
 This feature splits your BIP-39 seed phrase into multiple parts. \
-Each part is 24 words and looks and functions as a normal BIP-39 wallet.
+Each part looks and functions as a normal BIP-39 wallet.
 
 We recommend spliting into just two parts, but permit up to four.
 
@@ -44,15 +47,15 @@ Press 2, 3 or 4 to select number of parts to split into. ''', strict_escape=True
     ch = await ux_show_story('''\
 Split Into {n} Parts
 
-On the following screen you will be shown {n} lists of 24-words. \
+On the following screen you will be shown {n} lists of words. \
 The new words, when reconstructed, will re-create the seed already \
 in use on this Coldcard.
 
 The new parts are generated deterministically from your seed, so if you \
-repeat this process later, the same {t} words will be shown.
+repeat this process later, the same words will be shown.
 
 If you would prefer a random split using the TRNG, press (2). \
-Otherwise, press OK to continue.'''.format(n=num_parts, t=num_parts*24), escape='2')
+Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
 
     use_rng = (ch == '2')
     if ch == 'x': return
@@ -66,32 +69,37 @@ Otherwise, press OK to continue.'''.format(n=num_parts, t=num_parts*24), escape=
             if sv.mode == 'words':
                 words = bip39.b2a_words(sv.raw).split(' ')
 
-            if not words or len(words) != 24:
-                await ux_show_story("Need 24-seed words for this feature.")
+            if not words:
+                await ux_show_story("Need seed words for this feature.")
                 return
 
-            # checksum of target result is useful.
-            chk_word = words[-1]
+            # checksum of target result is useful (only for 24 words).
+            chk_word = None
+            if len(words) == 24:
+                chk_word = words[-1]
+
+            vlen = stash.numwords_to_len(len(words))
+
             del words
 
             # going to need the secret
             raw_secret = bytearray(sv.raw)
-            assert len(raw_secret) == 32
+            assert len(raw_secret) in (16, 24, 32)
     
         parts = []
         for i in range(num_parts-1):
             if use_rng:
-                here = random.bytes(32)
+                here = random.bytes(vlen)
                 assert len(set(here)) > 4       # TRNG failure?
                 mask = ngu.hash.sha256d(here)
             else:
-                mask = ngu.hash.sha256d(b'Batshitoshi ' + raw_secret 
-                                            + b'%d of %d parts' % (i, num_parts))
-            parts.append(mask)
+                mask = ngu.hash.sha256d(b'Batshitoshi ' + raw_secret
+                                        + b'%d of %d parts' % (i, num_parts))
+            parts.append(mask[:vlen])
 
-        parts.append(xor32(raw_secret, *parts))
+        parts.append(xor(raw_secret, *parts))
 
-        assert xor32(*parts) == raw_secret      # selftest
+        assert xor(*parts) == raw_secret      # selftest
 
     finally:
         stash.blank_object(raw_secret)
@@ -120,20 +128,20 @@ You have confirmed the details of the new split.''')
 import_xor_parts = []
 
 class XORWordNestMenu(WordNestMenu):
-    @staticmethod
-    async def all_done(new_words):
+
+    async def all_done(self, new_words):
         # So we have another part, might be done or not.
         global import_xor_parts
-        assert len(new_words) == 24
+        assert len(new_words) == self.target_words
         import_xor_parts.append(new_words)
 
         XORWordNestMenu.pop_all()
 
         num_parts = len(import_xor_parts)
-        seed = xor32(*(bip39.a2b_words(w) for w in import_xor_parts))
+        seed = xor(*(bip39.a2b_words(w) for w in import_xor_parts))
 
         msg = "You've entered %d parts so far.\n\n" % num_parts
-        if num_parts >= 2:
+        if num_parts >= 2 and self.target_words == 24:
             chk_word = bip39.b2a_words(seed).split(' ')[-1]
             msg += "If you stop now, the 24th word of the XOR-combined seed phrase\nwill be:\n\n"
             msg += "24: %s\n\n" % chk_word
@@ -153,7 +161,7 @@ class XORWordNestMenu(WordNestMenu):
             return None
         elif ch == '1':
             # do another list of words
-            nxt = XORWordNestMenu(num_words=24)
+            nxt = XORWordNestMenu(num_words=self.target_words)
             the_ux.push(nxt)
         elif ch == '2':
             # done; import on temp basis, or be the main secret
@@ -177,18 +185,21 @@ class XORWordNestMenu(WordNestMenu):
         pn = len(import_xor_parts)
         return chr(65+pn) + ' Word' 
 
-async def show_n_parts(parts, chk_word):
+async def show_n_parts(parts, chk_word=None):
     num_parts = len(parts)
-    msg = 'Record these %d lists of 24-words each.\n\n' % num_parts
+    seed_len = len(parts[0])
+    msg = 'Record these %d lists of %d-words each.\n\n' % (num_parts, seed_len)
 
     for n,words in enumerate(parts):
         msg += 'Part %s:\n' % chr(65+n)
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
         msg += '\n\n'
 
-    msg += 'The correctly reconstructed seed phrase will have this final word, which we recommend recording:\n\n24: %s' % chk_word
+    if chk_word:
+        msg += ('The correctly reconstructed seed phrase will have this final word,'
+                ' which we recommend recording:\n\n24: %s\n\n' % chk_word)
 
-    msg += '\n\nPlease check and double check your notes. There will be a test! ' 
+    msg += 'Please check and double check your notes. There will be a test! '
 
     return await ux_show_story(msg, sensitive=True)
 
@@ -199,8 +210,21 @@ async def xor_restore_start(*a):
 To import a seed split using XOR, you must import all the parts.
 It does not matter the order (A/B/C or C/A/B) and the Coldcard
 cannot determine when you have all the parts. You may stop at
-any time and you will have a valid wallet.''')
+any time and you will have a valid wallet. Combined seed parts
+have to be equal length. No way to combine seed parts of different 
+length. Press OK for 24 words XOR, press (1) to for 12 words XOR, 
+or press (2) for 18 words XOR.''', escape="12")
     if ch == 'x': return
+
+    desired_num_words = 24
+    if ch == "1":
+        desired_num_words = 12
+    elif ch == "2":
+        desired_num_words = 18
+
+    print("desired word len", desired_num_words)
+
+    curr_num_words = settings.get('words', desired_num_words)
 
     global import_xor_parts
     import_xor_parts.clear()
@@ -208,10 +232,12 @@ any time and you will have a valid wallet.''')
     from pincodes import pa
 
     if not pa.is_secret_blank():
-        msg = "Since you have a seed already on this Coldcard, the reconstructed XOR seed will be temporary and not saved. Wipe the seed first if you want to commit the new value into the secure element."
-        if settings.get('words', 24) == 24:
-            msg += '''\n
-Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to continue without.'''
+        msg = ("Since you have a seed already on this Coldcard, the reconstructed XOR seed will be "
+               "temporary and not saved. Wipe the seed first if you want to commit the new value "
+               "into the secure element.")
+        if curr_num_words == desired_num_words:
+            msg += ("\nPress (1) to include this Coldcard's seed words into the XOR seed set, "
+                    "or OK to continue without.")
 
         ch = await ux_show_story(msg, escape='1')
 
@@ -221,9 +247,8 @@ Press (1) to include this Coldcard's seed words into the XOR seed set, or OK to 
             with stash.SensitiveValues() as sv:
                 if sv.mode == 'words':
                     words = bip39.b2a_words(sv.raw).split(' ')
-                    if len(words) == 24:
-                        import_xor_parts.append(words)
+                    import_xor_parts.append(words)
 
-    return XORWordNestMenu(num_words=24)
+    return XORWordNestMenu(num_words=desired_num_words)
 
 # EOF
