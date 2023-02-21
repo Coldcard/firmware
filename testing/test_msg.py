@@ -389,8 +389,8 @@ def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_h
         got = f.read()
     assert should == got
     title, story = verify_armored_signature(way, fname, should)
-    assert title == "OK"
-    assert "Signature verifies as signed by address" in story
+    assert title == "CORRECT"
+    assert "Good signature" in story
     assert addr in story
     if addr_fmt == "p2pkh":
         res = bitcoind.rpc.verifymessage(addr, sig, msg)
@@ -416,7 +416,7 @@ def test_verify_signature_file_header_warning(way, addr_sig, microsd_path, verif
         with open(microsd_path(fname), "w") as f:
             f.write(tmplt)
     title, story = verify_armored_signature(way, fname, tmplt)
-    assert title == "OK"
+    assert title == "CORRECT"
     if (addr[0] + sig[0]) not in ("mH", "2I", "tJ"):  # not in correct pair
         assert text in story
         assert warning in story
@@ -444,10 +444,10 @@ def test_verify_signature_file_fail(way, addr_sig, microsd_path, cap_story, goto
     error_map = {
         0: "Parsing signature failed",
         1: "Invalid address format - must be one of p2pkh, p2sh-p2wpkh, or p2wpkh.",
-        2: "Parsing signature failed - sig len != 65.",
-        3: "Invalid signature for msg - address mismatch."
+        2: "Parsing signature failed - invalid encoding.",
+        3: "Invalid signature for message."
     }
-    tmplt = RFC_SIGNATURE_TEMPLATE.format(msg="aaaaaaaaa",addr=addr, sig=sig)
+    tmplt = RFC_SIGNATURE_TEMPLATE.format(msg="aaaaaaaaa", addr=addr, sig=sig)
 
     try:
         os.unlink(microsd_path(fname))
@@ -458,7 +458,7 @@ def test_verify_signature_file_fail(way, addr_sig, microsd_path, cap_story, goto
         f.write(tmplt)
 
     title, story = verify_armored_signature(way, fname, tmplt)
-    assert title == "FAILURE"
+    assert title == "ERROR"
     assert error_map[err_no] in story
 
 
@@ -497,8 +497,8 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == "OK"
-    assert "Signature verifies as signed by address" in story
+    assert title == "CORRECT"
+    assert "Good signature" in story
     need_keypress("y")  # back in File Management
 
     # modify contents of the file
@@ -512,11 +512,11 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == "FAILURE"
-    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert title == "ERROR"
+    assert "Good signature" in story # sig is still correct
     assert ("'%s' has wrong contents" % fname) in story
     assert ("Got:\n%s" % orig_digest) in story
-    assert ("Calculated:\n%s" % mod_digest) in story
+    assert ("Expected:\n%s" % mod_digest) in story
     need_keypress("y")  # back in File Management
 
     # remove file
@@ -527,8 +527,9 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "WARNING"
-    assert "Signature verifies as signed by address" in story  # sig is still correct
-    assert ("'%s' is not present. SHA256SUM verification not possible." % fname) in story
+    assert "Good signature" in story # sig is still correct
+    assert ("'%s' is not present" % fname) in story
+    assert 'Contents verification not possible' in story
     need_keypress("y")  # back in File Management
 
 
@@ -570,8 +571,8 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == "OK"
-    assert "Signature verifies as signed by address" in story
+    assert title == "CORRECT"
+    assert "Good signature" in story
     need_keypress("y")  # back in File Management
 
     # change contents of 0th file
@@ -586,11 +587,11 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == "FAILURE"
-    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert title == "ERROR"
+    assert "Good signature" in story # sig is still correct
     assert ("'%s' has wrong contents" % fname) in story
     assert ("Got:\n%s" % orig_digest) in story
-    assert ("Calculated:\n%s" % mod_digest) in story
+    assert ("Expected:\n%s" % mod_digest) in story
     need_keypress("y")  # back in File Management
 
     # change contents of 1st file remove 0th file
@@ -608,12 +609,13 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == "FAILURE"
-    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert title == "ERROR"
+    assert "Good signature" in story # sig is still correct
     assert ("'%s' has wrong contents" % fname1) in story
     assert ("Got:\n%s" % orig_digest) in story
-    assert ("Calculated:\n%s" % mod_digest) in story
-    assert ("'%s' is not present. SHA256SUM verification not possible." % fname0) in story
+    assert ("Expected:\n%s" % mod_digest) in story
+    assert ("'%s' is not present" % fname0) in story
+    assert 'Contents verification not possible' in story
     need_keypress("y")  # back in File Management
 
     # remove 1st file too
@@ -624,10 +626,10 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "WARNING"
-    assert "Signature verifies as signed by address" in story  # sig is still correct
+    assert "Good signature" in story  # sig is still correct
     warn_msg = "Files:\n" + "\n".join("> %s" % fname for fname in (fname0, fname1))
     assert warn_msg in story
-    assert "are not present. SHA256SUM verification not possible." in story
+    assert 'Contents verification not possible' in story
     need_keypress("y")  # back in File Management
 
     # reboult valid signed files
@@ -641,8 +643,8 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
-    assert title == "OK"
-    assert "Signature verifies as signed by address" in story
+    assert title == "CORRECT"
+    assert "Good signature" in story
     need_keypress("y")  # back in File Management
 
 # EOF

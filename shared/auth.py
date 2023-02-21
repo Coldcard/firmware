@@ -456,7 +456,7 @@ def verify_signature(msg, addr, sig_str):
     script = None
     hash160 = None
     invalid_addr_fmt_msg = "Invalid address format - must be one of p2pkh, p2sh-p2wpkh, or p2wpkh."
-    invalid_addr = "Invalid signature for msg - address mismatch."
+    invalid_addr = "Invalid signature for message."
 
     if addr[0] in "1mn":
         addr_fmt = AF_CLASSIC
@@ -467,8 +467,7 @@ def verify_signature(msg, addr, sig_str):
             # p2wsh
             raise ValueError(invalid_addr_fmt_msg)
         addr_fmt = AF_P2WPKH
-        decoded_addr = ngu.codecs.segwit_decode(addr)
-        hash160 = decoded_addr[2]
+        _, _, hash160 = ngu.codecs.segwit_decode(addr)
     elif addr[0] in "32":
         addr_fmt = AF_P2WPKH_P2SH
         decoded_addr = ngu.codecs.b58_decode(addr)
@@ -478,14 +477,16 @@ def verify_signature(msg, addr, sig_str):
 
     try:
         sig_bytes = a2b_base64(sig_str)
-        if not sig_bytes:
+        if not sig_bytes or len(sig_bytes) != 65:
             # can return b'' in case of wrong, can also raise
-            raise ValueError("invalid base64 signature")
+            raise ValueError("invalid encoding")
+
         header_byte = sig_bytes[0]
         header_base = chains.current_chain().sig_hdr_base(addr_fmt)
         if (header_byte - header_base) not in (0, 1, 2, 3):
             # wrong header value only - this can still verify OK
             warnings += "Specified address format does not match signature header byte format."
+
         # least two significant bits
         rec_id = (header_byte - 27) & 0x03
         # need to normalize it to 31 base for ngu
@@ -493,13 +494,16 @@ def verify_signature(msg, addr, sig_str):
         sig = ngu.secp256k1.signature(bytes([new_header_byte]) + sig_bytes[1:])
     except ValueError as e:
         raise ValueError("Parsing signature failed - %s." % str(e))
+
     digest = chains.current_chain().hash_message(msg.encode('ascii'))
     try:
         rec_pubkey = sig.verify_recover(digest)
     except ValueError as e:
         raise ValueError("Invalid signature for msg - %s." % str(e))
+
     rec_pubkey_bytes = rec_pubkey.to_bytes()
     rec_hash160 = ngu.hash.hash160(rec_pubkey_bytes)
+
     if script:
         target = bytes([0, 20]) + rec_hash160
         target = ngu.hash.hash160(target)
@@ -508,6 +512,7 @@ def verify_signature(msg, addr, sig_str):
     else:
         if rec_hash160 != hash160:
             raise ValueError(invalid_addr)
+
     return warnings
 
 async def verify_armored_signed_msg(contents):
@@ -524,35 +529,38 @@ async def verify_armored_signed_msg(contents):
     try:
         sig_warn = verify_signature(msg, addr, sig_str)
     except Exception as e:
-        await ux_show_story(str(e), title="FAILURE")
+        await ux_show_story(str(e), title="ERROR")
         return
 
-    title = "OK"
+    title = "CORRECT"
     warn_msg = ""
     err_msg = ""
-    story = "Signature verifies as signed by address:\n %s" % addr
+    story = "Good signature by address:\n %s" % addr
 
     digest_prob = verify_signed_file_digest(msg)
     if digest_prob:
         err, digest_warn = digest_prob
         if digest_warn:
             title = "WARNING"
-            wmsg_base = "not present. SHA256SUM verification not possible."
+            wmsg_base = "not present. Contents verification not possible."
             if len(digest_warn) == 1:
                 fname = digest_warn[0][0]
-                warn_msg += "\n\n'%s' is %s" % (fname, wmsg_base)
+                warn_msg += "'%s' is %s" % (fname, wmsg_base)
             else:
-                warn_msg += "\n\nFiles:\n" + "\n".join("> %s" % fname for fname, _ in digest_warn)
+                warn_msg += "Files:\n" + "\n".join("> %s" % fname for fname, _ in digest_warn)
                 warn_msg += "\nare %s" % wmsg_base
+
         if err:
-            title = "FAILURE"
+            title = "ERROR"
             for fname, calc, got in err:
-                err_msg += ("\n\nReferenced file '%s' has wrong contents.\n"
-                            "Got:\n%s\n\nCalculated:\n%s" % (fname, got, calc))
+                err_msg += ("Referenced file '%s' has wrong contents.\n"
+                            "Got:\n%s\n\nExpected:\n%s" % (fname, got, calc))
 
     if sig_warn:
+        # we know not ours only because wrong recid header used & not BIP-137 compliant
         story = "Correctly signed, but not by this Coldcard. %s" % sig_warn
-    await ux_show_story(story + err_msg + warn_msg, title=title)
+
+    await ux_show_story('\n\n'.join(m for m in [err_msg, story, warn_msg] if m), title=title)
 
 async def verify_txt_sig_file(filename):
     from files import CardSlot, CardMissingError, needs_microsd
