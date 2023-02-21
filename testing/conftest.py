@@ -12,6 +12,12 @@ from constants import *
 # lock down randomness
 random.seed(42)
 
+if sys.platform == 'darwin':
+    # BUGFIX: my ARM-based MacOS system uses rosetta to run Python in x86 mode
+    # and so I needed this?
+    # - this assumes "brew install secp256k1"
+    os.environ['PYSECP_SO'] = '/usr/local/lib/libsecp256k1.dylib'
+
 def pytest_addoption(parser):
     parser.addoption("--dev", action="store_true",
                      default=False, help="run on real dev")
@@ -1630,5 +1636,6 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,
                                 make_ms_address, clear_ms, make_myself_wallet)
 from test_bip39pw import set_bip39_pw, clear_bip39_pw
+
 
 # EOF
