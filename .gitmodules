@@ -1,7 +1,7 @@
 [submodule "external/micropython"]
 	path = external/micropython
 	url = https://github.com/Coldcard/micropython.git
-	branch = master
+	branch = mk4-base
 [submodule "external/ckcc-protocol"]
 	path = external/ckcc-protocol
 	url = https://github.com/Coldcard/ckcc-protocol.git
