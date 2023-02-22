@@ -1,6 +1,6 @@
 # Coldcard Wallet
 
-Coldcard is a Cheap, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
+Coldcard is an Affordable, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
 Get yours at [Coldcard.com](http://coldcard.com)
 
 [Follow @COLDCARDwallet on Twitter](https://twitter.com/coldcardwallet) to keep up
