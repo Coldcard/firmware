@@ -1067,7 +1067,7 @@ class MultisigWallet:
 
         if M == N == 1:
             exp = 'The one signer must approve spends.'
-        if M == N:
+        elif M == N:
             exp = 'All %d co-signers must approve spends.' % N
         elif M == 1:
             exp = 'Any signature from %d co-signers will approve spends.' % N
