@@ -608,6 +608,9 @@ def virtdisk_path(request, is_simulator, only_mk4):
     def doit(fn):
         # could use: ckcc.get_sim_root_dirs() here
         if is_simulator():
+            get_setting = request.getfixturevalue('get_setting')
+            if not get_setting('vidsk', False):
+                raise pytest.xfail('virtdisk disabled')
             assert os.path.isdir('../unix/work/VirtDisk')
             return '../unix/work/VirtDisk/' + fn
         elif sys.platform == 'darwin':
