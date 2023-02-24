@@ -696,7 +696,7 @@ class NFCHandler:
                 winner = msg.strip()
                 break
 
-        await verify_armored_signed_msg(winner)
+        await verify_armored_signed_msg(winner, digest_check=False)
 
     async def read_extended_private_key(self):
         data = await self.start_nfc_rx()

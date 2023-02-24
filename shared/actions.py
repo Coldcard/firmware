@@ -1324,6 +1324,10 @@ async def import_xprv(_1, _2, item):
         if ch == "3":
             force_vdisk = None
             extended_key = await NFC.read_extended_private_key()
+            if not extended_key:
+                # failed to get any data - exit
+                # error already displayed in nfc.py
+                return
         elif ch == "2":
             force_vdisk = True
         elif ch == "1":
@@ -1473,6 +1477,10 @@ async def import_tapsigner_backup_file(_1, _2, item):
         if ch == "3":
             force_vdisk = None
             data = await NFC.read_tapsigner_b64_backup()
+            if not data:
+                # failed to get any data - exit
+                # error already displayed in nfc.py
+                return
         elif ch == "2":
             force_vdisk = True
         elif ch == "1":
