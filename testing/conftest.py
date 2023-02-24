@@ -1383,11 +1383,21 @@ def nfc_write(request, only_mk4):
         return doit_usb
 
 def ccfile_wrap(recs):
+    from struct import pack
     CC_FILE = bytes([0xE2, 0x43, 0x00, 0x01, 0x00, 0x00, 0x04, 0x00,   0x03])
-    if len(recs) >= 255:      # testing code limitation here FIXME
-        raise pytest.xfail('cant do NFC > 250 bytes yet in tests')
-    return CC_FILE + bytes([len(recs)]) + recs + b'\xfe'
 
+    ln = len(recs)
+    rv = bytearray(CC_FILE)
+    if ln <= 0xfe:
+        rv.append(ln)
+    else:
+        rv.append(0xff)
+        rv.extend(pack('>H', ln))
+
+    rv.extend(recs)
+    rv.extend(b'\xfe')
+
+    return rv
 
 @pytest.fixture()
 def nfc_write_text(nfc_write):
