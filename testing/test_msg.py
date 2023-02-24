@@ -659,6 +659,14 @@ def test_verify_signature_truncated(way, microsd_path, cap_story, verify_armored
             f.write(prob_file)
 
     title, story = verify_armored_signature(way, fname, prob_file)
-    assert title == ("CORRECT" if way == 'nfc' else 'WARNING')
+    if not truncation_len:
+        # warning for SD as file is not present on filesystem
+        # correct for NFC as it does not care (digest_check=False)
+        assert title == ("CORRECT" if way == 'nfc' else 'WARNING')
+    else:
+        assert title == "FAILURE"
+        assert "Armor text MUST be surrounded by exactly five (5) dashes" in story
+        assert "auth.py" in story
+
 
 # EOF

@@ -141,7 +141,9 @@ def rfc_signature_template_gen(msg, addr, sig):
         yield part
 
 def parse_armored_signature_file(contents):
-    temp = contents.split("-----")
+    sep = "-----"
+    assert contents.count(sep) == 6, "Armor text MUST be surrounded by exactly five (5) dashes."
+    temp = contents.split(sep)
     msg = temp[2].strip()
     addr_sig = temp[4].strip()
     addr, sig_str = addr_sig.split()
@@ -515,15 +517,17 @@ def verify_signature(msg, addr, sig_str):
 
     return warnings
 
-async def verify_armored_signed_msg(contents):
+async def verify_armored_signed_msg(contents, digest_check=True):
+    # digest_check=False for NFC cases, where we do not have filesystem
     from glob import dis
 
     dis.fullscreen("Verifying...")
 
     try:
         msg, addr, sig_str = parse_armored_signature_file(contents)
-    except:
-        await ux_show_story("Malformed signature file.", title="FAILURE")
+    except Exception as e:
+        e_line = problem_file_line(e)
+        await ux_show_story("Malformed signature file. %s %s" % (str(e), e_line), title="FAILURE")
         return
 
     try:
@@ -537,24 +541,25 @@ async def verify_armored_signed_msg(contents):
     err_msg = ""
     story = "Good signature by address:\n %s" % addr
 
-    digest_prob = verify_signed_file_digest(msg)
-    if digest_prob:
-        err, digest_warn = digest_prob
-        if digest_warn:
-            title = "WARNING"
-            wmsg_base = "not present. Contents verification not possible."
-            if len(digest_warn) == 1:
-                fname = digest_warn[0][0]
-                warn_msg += "'%s' is %s" % (fname, wmsg_base)
-            else:
-                warn_msg += "Files:\n" + "\n".join("> %s" % fname for fname, _ in digest_warn)
-                warn_msg += "\nare %s" % wmsg_base
+    if digest_check:
+        digest_prob = verify_signed_file_digest(msg)
+        if digest_prob:
+            err, digest_warn = digest_prob
+            if digest_warn:
+                title = "WARNING"
+                wmsg_base = "not present. Contents verification not possible."
+                if len(digest_warn) == 1:
+                    fname = digest_warn[0][0]
+                    warn_msg += "'%s' is %s" % (fname, wmsg_base)
+                else:
+                    warn_msg += "Files:\n" + "\n".join("> %s" % fname for fname, _ in digest_warn)
+                    warn_msg += "\nare %s" % wmsg_base
 
-        if err:
-            title = "ERROR"
-            for fname, calc, got in err:
-                err_msg += ("Referenced file '%s' has wrong contents.\n"
-                            "Got:\n%s\n\nExpected:\n%s" % (fname, got, calc))
+            if err:
+                title = "ERROR"
+                for fname, calc, got in err:
+                    err_msg += ("Referenced file '%s' has wrong contents.\n"
+                                "Got:\n%s\n\nExpected:\n%s" % (fname, got, calc))
 
     if sig_warn:
         # we know not ours only because wrong recid header used & not BIP-137 compliant
