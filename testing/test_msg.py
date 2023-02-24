@@ -406,7 +406,7 @@ def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_h
      "J3jE1G2pv+6GG35Unak824xig8GzotLE8pFfvNwlgGU7KebANAxo7RuwybCNXrK9+RvjUEohtffM521N+phQNX0="]
 )))
 def test_verify_signature_file_header_warning(way, addr_sig, microsd_path, verify_armored_signature,
-                                              cap_story, bitcoind):
+                                              cap_story):
     warning = "Specified address format does not match signature header byte format."
     text = "Correctly signed, but not by this Coldcard"
     fname = "warn-signed.sig"
@@ -646,5 +646,19 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     assert title == "CORRECT"
     assert "Good signature" in story
     need_keypress("y")  # back in File Management
+
+@pytest.mark.parametrize("way", ("sd", "nfc"))
+@pytest.mark.parametrize("truncation_len", (0, 1))
+def test_verify_signature_truncated(way, microsd_path, cap_story, verify_armored_signature, truncation_len):
+    # test: handle missing leading dash (at least)
+    prob_file = '-----BEGIN BITCOIN SIGNED MESSAGE-----\nfb9b0c78e60d57434ad0914a075e9fcb7cfe81ba9cad9cbfa1207b3bc5fbdf98  n4Boam6gCNq281bNAd3MqETpExMNPzCi8z.txt\n-----BEGIN BITCOIN SIGNATURE-----\nn4Boam6gCNq281bNAd3MqETpExMNPzCi8z\nIIITr0zBmC65ZSn+2RFvQCegpfq07TxRuGVkggh+ehL3chgEBmcCDH5D5z6INvCQ7PrHLIWkGEw1JSMdbiBKRX4=\n-----END BITCOIN SIGNATURE-----'[truncation_len:]
+
+    fname = 'ilename.txt'
+    if way != "nfc":
+        with open(microsd_path(fname), "w") as f:
+            f.write(prob_file)
+
+    title, story = verify_armored_signature(way, fname, prob_file)
+    assert title == ("CORRECT" if way == 'nfc' else 'WARNING')
 
 # EOF
