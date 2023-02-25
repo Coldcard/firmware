@@ -2211,7 +2211,11 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     mined = bitcoind_watch_only.generatetoaddress(101, multi_addr)
     assert isinstance(mined, list) and len(mined) == 101
     # create funded PSBT
-    psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 20, "change_type": addr_type})
+    all_of_it = bitcoind_watch_only.getbalance()
+    psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt(
+        [], [{dest_addr: all_of_it}], 0, {"fee_rate": 20, "change_type": addr_type,
+                                          "subtractFeeFromOutputs": [0]}
+    )
     psbt = psbt_resp.get("psbt")
     # sign with all bitcoind signers
     for signer in bitcoind_signers:
