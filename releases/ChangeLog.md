@@ -1,3 +1,9 @@
+## 5.1.1 - 2023-02-27
+
+- Bugfix: Same as 5.1.0 but corrects issue which prevented 5.1.0 from being upgraded
+  over SD card. No functional changes.
+
+
 ## 5.1.0 - 2023-02-27
 
 - New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be

@@ -224,8 +224,10 @@ async def microsd_upgrade(*a):
     # - erase serial flash
     # - copy it over (slow)
     # - reboot into bootloader, which finishes install
+    from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_MAX_LENGTH_MK4
 
-    fn = await file_picker('Pick firmware image to use (.DFU)', suffix='.dfu', min_size=0x7800)
+    fn = await file_picker('Pick firmware image to use (.DFU)', suffix='.dfu',
+                                    min_size=0x7800, max_size=FW_MAX_LENGTH_MK4)
 
     if not fn: return
 
@@ -245,7 +247,6 @@ async def microsd_upgrade(*a):
             offset, size = dfu_parse(fp)
 
             # we also put a copy of special signed heaer at the end of the flash
-            from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE
 
             # read just the signature header
             hdr = bytearray(FW_HEADER_SIZE)

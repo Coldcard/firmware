@@ -99,8 +99,10 @@ rc1:
 	$(SUBMAKE) DEBUG_BUILD=0 all
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
-		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		`signit version rc1.bin`-mk$(MK_NUM)-RC1-coldcard.dfu
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
+		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
+		`signit version rc1.bin`-mk$(MK_NUM)-RC1-factory-coldcard.dfu
 	ls -1 *-RC1-*.dfu
 
 # This target just combines latest version of production firmware with bootrom into a DFU
@@ -113,9 +115,10 @@ release-products: built/production.bin
 	cp built/file_time.c $(BOARD)/file_time.c
 	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
 	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin $(RELEASE_FNAME)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
-		$(RELEASE_FNAME)
+		factory-$(RELEASE_FNAME)
 	@echo
 	@echo 'Made release: ' $(RELEASE_FNAME)
 	@echo
