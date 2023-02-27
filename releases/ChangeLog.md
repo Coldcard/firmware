@@ -1,4 +1,4 @@
-## 5.1.0 - 2023-02-XX
+## 5.1.0 - 2023-02-27
 
 - New Feature: "MicroSD card as Second Factor". Specially marked MicroSD card must be
   already inserted when (true) PIN is entered, or else seed is wiped. Add, remove and check
