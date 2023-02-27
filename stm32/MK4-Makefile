@@ -25,7 +25,7 @@ dfu-up: dev.dfu
 	echo 'dfu' | nc localhost 4444
 	$(PYTHON_DO_DFU) -u dev.dfu
 
-dfu-up2:
+dfu-up2: dev.dfu
 	$(PYTHON_DO_DFU) -u dev.dfu
 
 # Super fast, assumes Coldcard already attached and unlock on this Mac.
