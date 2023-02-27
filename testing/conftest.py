@@ -742,7 +742,13 @@ def use_mainnet(settings_set):
 
 
 @pytest.fixture(scope="function")
-def use_regtest(settings_set):
+def use_regtest(request, settings_set):
+    if request.config.getoption("--manual"):
+        def xrt_warn():
+            print("NOTE: Device may need to be set for XRT chain!")
+        yield xrt_warn
+        return
+
     def doit():
         settings_set('chain', 'XRT')
     yield doit
