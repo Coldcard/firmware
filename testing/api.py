@@ -2,9 +2,8 @@
 #
 # needs local bitcoind in PATH
 
-import os, time, uuid, atexit, socket, shutil, pytest, tempfile, subprocess
+import os, time, uuid, socket, shutil, pytest, tempfile, subprocess, signal
 from authproxy import AuthServiceProxy, JSONRPCException
-from base64 import b64encode, b64decode
 
 
 def find_bitcoind():
@@ -20,6 +19,7 @@ def find_bitcoind():
         return mac_default
 
     raise RuntimeError("Need a binary for bitcoin core. Check path?")
+
 
 # stolen from HWI test suite and slightly modified
 class Bitcoind:
@@ -57,8 +57,7 @@ class Bitcoind:
                 f"-rpcport={self.rpc_port}"
             ]
         )
-
-        atexit.register(self.cleanup)
+        signal.signal(signal.SIGTERM, self.cleanup)
 
         # Wait for cookie file to be created
         cookie_path = os.path.join(self.datadir, "regtest", ".cookie")
@@ -104,9 +103,10 @@ class Bitcoind:
                               external_signer=external_signer)
         return self.get_wallet_rpc(wallet_name)
 
-    def cleanup(self):
+    def cleanup(self, *args, **kwargs):
         if self.bitcoind_proc is not None and self.bitcoind_proc.poll() is None:
             self.bitcoind_proc.kill()
+        time.sleep(0.5)
         shutil.rmtree(self.datadir)
 
     def delete_wallet_files(self, pattern=None):
@@ -128,12 +128,13 @@ class Bitcoind:
         return c
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture
 def bitcoind():
     # JSON-RPC connection to a bitcoind instance
     # this assumes that you have bitcoind in path somewhere
     bitcoin_d = Bitcoind.create()
-    return bitcoin_d
+    yield bitcoin_d
+    os.killpg(os.getpgid(bitcoin_d.bitcoind_proc.pid), signal.SIGTERM)
 
 
 @pytest.fixture
@@ -143,60 +144,23 @@ def match_key(bitcoind, set_master_key, reset_seed_words):
     # bummer: dumpmasterprivkey RPC call was removed!
     #prv = bitcoind.dumpmasterprivkey()
 
-    def doit():
-        print("match_key: doit()")
-        from tempfile import mktemp
-        fn = mktemp()
-        bitcoind.supply_wallet.dumpwallet(fn)
-        prv = None
+    from tempfile import mktemp
+    fn = mktemp()
+    bitcoind.supply_wallet.dumpwallet(fn)
+    prv = None
 
-        for ln in open(fn, 'rt').readlines():
-            if 'extended private masterkey' in ln:
-                assert not prv
-                prv = ln.split(": ", 1)[1].strip()
+    for ln in open(fn, 'rt').readlines():
+        if 'extended private masterkey' in ln:
+            assert not prv
+            prv = ln.split(": ", 1)[1].strip()
 
-        os.unlink(fn)
+    os.unlink(fn)
 
-        assert prv.startswith('tprv')
+    assert prv.startswith('tprv')
 
-        xfp = set_master_key(prv)
+    xfp = set_master_key(prv)
 
-        return xfp
-
-    # NOTE: set_master_key does teardown/reset
-    return doit
-
-
-@pytest.fixture
-def bitcoind_finalizer(bitcoind):
-    # Use bitcoind to finalize a PSBT and get out txn
-
-    def doit(psbt, extract=True):
-
-        rv = bitcoind.rpc.finalizepsbt(b64encode(psbt).decode('ascii'), extract)
-        return b64decode(rv.get('psbt', '')), rv.get('hex'), rv['complete']
-
-    return doit
-
-
-@pytest.fixture
-def bitcoind_analyze(bitcoind):
-    # Use bitcoind to finalize a PSBT and get out txn
-
-    def doit(psbt):
-        return bitcoind.rpc.analyzepsbt(b64encode(psbt).decode('ascii'))
-
-    return doit
-
-
-@pytest.fixture
-def bitcoind_decode(bitcoind):
-    # Use bitcoind to finalize a PSBT and get out txn
-
-    def doit(psbt):
-        return bitcoind.rpc.decodepsbt(b64encode(psbt).decode('ascii'))
-
-    return doit
+    yield xfp
 
 
 @pytest.fixture
@@ -205,7 +169,7 @@ def bitcoind_wallet(bitcoind):
     w_name = 'ckcc-test-wallet-%s' % uuid.uuid4()
     conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=True, blank=True,
                                   passphrase=None, avoid_reuse=False, descriptors=False)
-    return conn
+    yield conn
 
 
 @pytest.fixture
@@ -214,7 +178,7 @@ def bitcoind_d_wallet(bitcoind):
     w_name = 'ckcc-test-desc-wallet-%s' % uuid.uuid4()
     conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=True, blank=True,
                                   passphrase=None, avoid_reuse=False, descriptors=True)
-    return conn
+    yield conn
 
 
 @pytest.fixture
@@ -223,7 +187,7 @@ def bitcoind_d_wallet_w_sk(bitcoind):
     w_name = 'ckcc-test-desc-wallet-w-sk-%s' % uuid.uuid4()
     conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=False, blank=False,
                                   passphrase=None, avoid_reuse=False, descriptors=True)
-    return conn
+    yield conn
 
 
 @pytest.fixture
@@ -235,19 +199,46 @@ def bitcoind_d_sim_watch(bitcoind):
     descriptors = [
         {
             "timestamp": "now",
-            "label": "Coldcard 0f056943",
+            "label": "Coldcard 0f056943 segwit v0",
             "active": True,
             "desc": "wpkh([0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/0/*)#erexmnep",
-            "internal": False},
+            "internal": False
+        },
         {
             "desc": "wpkh([0f056943/84h/1h/0h]tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/1/*)#ghu8xxfe",
             "active": True,
             "internal": True,
             "timestamp": "now"
-        }
+        },
+        {
+            "timestamp": "now",
+            "label": "Coldcard 0f056943 p2pkh",
+            "active": True,
+            "desc": "pkh([0f056943/44h/1h/0h]tpubDCiHGUNYdRRBPNYm7CqeeLwPWfeb2ZT2rPsk4aEW3eUoJM93jbBa7hPpB1T9YKtigmjpxHrB1522kSsTxGm9V6cqKqrp1EDaYaeJZqcirYB/0/*)#fxwk08tc",
+            "internal": False
+        },
+        {
+            "timestamp": "now",
+            "active": True,
+            "desc": "pkh([0f056943/44h/1h/0h]tpubDCiHGUNYdRRBPNYm7CqeeLwPWfeb2ZT2rPsk4aEW3eUoJM93jbBa7hPpB1T9YKtigmjpxHrB1522kSsTxGm9V6cqKqrp1EDaYaeJZqcirYB/1/*)#cjthjjmq",
+            "internal": True
+        },
+        {
+            "timestamp": "now",
+            "label": "Coldcard 0f056943 p2sh-p2wpkh",
+            "active": True,
+            "desc": "sh(wpkh([0f056943/49h/1h/0h]tpubDCDqt7XXvhAYY9HSwrCXB7BXqYM4RXB8WFtKgtTXGa6u3U6EV1NJJRFTcuTRyhSY5Vreg1LP8aPdyiAPQGrDJLikkHoc7VQg6DA9NtUxHtj/0/*))#weah3vek",
+            "internal": False
+        },
+        {
+            "timestamp": "now",
+            "active": True,
+            "desc": "sh(wpkh([0f056943/49h/1h/0h]tpubDCDqt7XXvhAYY9HSwrCXB7BXqYM4RXB8WFtKgtTXGa6u3U6EV1NJJRFTcuTRyhSY5Vreg1LP8aPdyiAPQGrDJLikkHoc7VQg6DA9NtUxHtj/1/*))#mcnpfnvf",
+            "internal": True
+        },
     ]
     conn.importdescriptors(descriptors)
-    return conn
+    yield conn
 
 @pytest.fixture
 def bitcoind_d_sim_sign(bitcoind):
@@ -298,6 +289,6 @@ def bitcoind_d_sim_sign(bitcoind):
         },
     ]
     conn.importdescriptors(descriptors)
-    return conn
+    yield conn
 
 # EOF

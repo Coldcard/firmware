@@ -4,7 +4,7 @@ import pytest, time, sys, random, re, ndef, os, glob, hashlib, json
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT
 from msg import verify_message
-from api import bitcoind, match_key, bitcoind_finalizer, bitcoind_analyze, bitcoind_decode
+from api import bitcoind, match_key
 from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_sim_watch
 from binascii import b2a_hex, a2b_hex
 from constants import *

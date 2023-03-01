@@ -3,7 +3,7 @@
 # Transaction Signing. Important.
 #
 
-import time, pytest, os, random, pdb, struct, base64, binascii
+import time, pytest, os, random, pdb, struct, base64, binascii, itertools
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, MAX_TXN_LEN, CCUserRefused
 from binascii import b2a_hex, a2b_hex
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput, PSBT_IN_REDEEM_SCRIPT
@@ -14,9 +14,10 @@ from base64 import b64encode, b64decode
 from helpers import B2A, U2SAT, prandom, fake_dest_addr, make_change_addr, parse_change_back
 from helpers import xfp2str
 from pycoin.key.BIP32Node import BIP32Node
-from constants import ADDR_STYLES, ADDR_STYLES_SINGLE
+from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
 from txn import *
 from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
+
 
 @pytest.mark.parametrize('finalize', [ False, True ])
 def test_sign1(dev, need_keypress, finalize):
@@ -292,7 +293,7 @@ def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins, segwit, dec
 @pytest.mark.bitcoind
 def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, start_sign, end_sign, we_finalize, num_dests):
 
-    wallet_xfp = match_key()
+    wallet_xfp = match_key
     use_regtest()
     bal = bitcoind.supply_wallet.getbalance()
     assert bal > 0, "need some play money; drink from a faucet"
@@ -434,7 +435,7 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
     # - doesn't work anymore, because we won't sign a multisig we don't know the wallet details for
     raise pytest.skip('needs rework')
 
-    wallet_xfp = match_key()
+    wallet_xfp = match_key
 
     fn = 'data/p2sh_p2wpkh.psbt'
 
@@ -922,7 +923,7 @@ def KEEP_test_random_psbt(try_sign, sim_exec, fname="data/   .psbt"):
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, start_sign, end_sign, num_dests):
     # Compare how we finalize vs bitcoind ... should be exactly the same txn
-    wallet_xfp = match_key()
+    wallet_xfp = match_key
     # has to be after match key
     use_regtest()
 
@@ -1795,5 +1796,115 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
     start_sign(psbt)
     with pytest.raises(Exception):
         end_sign()
+
+
+@pytest.fixture
+def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, need_keypress,
+                             bitcoind, bitcoind_d_sim_watch):
+    def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2):
+        from decimal import Decimal, ROUND_DOWN
+        microsd_wipe()
+        time.sleep(1)
+        goto_home()
+        bitcoind_d_sim_watch.keypoolrefill(num_inputs + num_outputs)
+        input_val = bitcoind.supply_wallet.getbalance() / num_inputs
+        cc_dest = [
+            {bitcoind_d_sim_watch.getnewaddress("", addr_fmt): Decimal(input_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
+            for _ in range(num_inputs)
+        ]
+        psbt = bitcoind.supply_wallet.walletcreatefundedpsbt(
+            [], cc_dest, 0, {"fee_rate": 20, "subtractFeeFromOutputs": [0]}
+        )["psbt"]
+        psbt = bitcoind.supply_wallet.walletprocesspsbt(psbt, True, "ALL")["psbt"]
+        resp = bitcoind.supply_wallet.finalizepsbt(psbt)
+        assert resp["complete"] is True
+        assert len(bitcoind.supply_wallet.sendrawtransaction(resp["hex"])) == 64
+        # mine above txs
+        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+        unspent = bitcoind_d_sim_watch.listunspent()
+        output_val = bitcoind_d_sim_watch.getbalance() / num_outputs
+        destinations = [
+            {bitcoind_d_sim_watch.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
+            for _ in range(num_outputs)
+        ]
+        psbt = bitcoind_d_sim_watch.walletcreatefundedpsbt(
+            unspent[:num_inputs], destinations, 0,
+            {"fee_rate": 20, "subtractFeeFromOutputs": list(range(num_outputs))}
+        )["psbt"]
+        x = BasicPSBT().parse(base64.b64decode(psbt))
+        assert len(x.inputs) == num_inputs
+        assert len(x.outputs) == num_outputs
+        for idx, i in enumerate(x.inputs):
+            if len(sighash) == 1:
+                i.sighash = SIGHASH_MAP[sighash[0]]
+            else:
+                i.sighash = SIGHASH_MAP[sighash[idx]]
+        psbt_sh = x.as_b64_str()
+        with open(microsd_path("sighash.psbt"), "w") as f:
+            f.write(psbt_sh)
+        need_keypress("y")
+        time.sleep(0.2)
+        need_keypress("y")
+        time.sleep(0.5)
+        title, story = cap_story()
+        time.sleep(0.1)
+        need_keypress("y")  # confirm success or failure
+        if addr_fmt == "legacy" and (num_outputs < num_inputs) and any("SINGLE" in sh for sh in sighash):
+            assert "SINGLE corresponding output" in story
+            assert "missing" in story
+        else:
+            split_story = story.split("\n\n")
+            signed_fname = split_story[1]
+            txn_fname = split_story[3]
+            tx_id = split_story[4].split("\n")[-1]
+            with open(microsd_path(signed_fname), "r") as f:
+                cc_psbt = f.read().strip()
+            with open(microsd_path(txn_fname), "r") as f:
+                cc_tx_hex = f.read().strip()
+            y = BasicPSBT().parse(base64.b64decode(cc_psbt))
+            for idx, i in enumerate(y.inputs):
+                if len(sighash) == 1:
+                    assert i.sighash == SIGHASH_MAP[sighash[0]]
+                else:
+                    assert i.sighash == SIGHASH_MAP[sighash[idx]]
+                # check signature hash correct checkusm appended
+                for _, sig in i.part_sigs.items():
+                    assert sig[-1] == i.sighash
+            resp = bitcoind_d_sim_watch.finalizepsbt(cc_psbt)
+            assert resp["complete"] is True
+            tx_hex = resp["hex"]
+            assert tx_hex == cc_tx_hex
+            res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
+            assert res[0]["allowed"]
+            txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
+            assert tx_id == txn_id
+    return doit
+
+
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
+@pytest.mark.parametrize("num_outs", [1, 2, 3, 5])
+@pytest.mark.parametrize("num_ins", [2, 5])
+def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, microsd_path, need_keypress, goto_home,
+                      cap_story, microsd_wipe, _test_single_sig_sighash):
+    # sighash is the same among all inputs
+    _test_single_sig_sighash(addr_fmt, [sighash], num_inputs=num_ins, num_outputs=num_outs)
+
+
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP.keys(), 2)))
+@pytest.mark.parametrize("num_outs", [2, 3, 5])
+def test_sighash_different(addr_fmt, sighash, num_outs, microsd_path, need_keypress, goto_home,
+                           cap_story, microsd_wipe, _test_single_sig_sighash):
+    # sighash differ among all inputs
+    _test_single_sig_sighash(addr_fmt, sighash, num_inputs=2, num_outputs=num_outs)
+
+
+@pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
+@pytest.mark.parametrize("num_outs", [5, 8])
+def test_sighash_all(addr_fmt, num_outs, microsd_path, need_keypress, goto_home, cap_story,
+                     microsd_wipe, _test_single_sig_sighash):
+    # tx with 6 inputs representing all possible sighashes
+    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6, num_outputs=num_outs)
 
 # EOF

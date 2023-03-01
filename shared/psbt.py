@@ -13,9 +13,9 @@ from sram2 import psbt_tmp256
 from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160, hash256
-from serializations import CTxIn, CTxInWitness, CTxOut, SIGHASH_ALL, ser_uint256
+from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256
 from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
-from serializations import ser_string
+from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from glob import settings
 
 from public_constants import (
@@ -199,7 +199,7 @@ class psbtProxy:
             kt = key[0]
 
             if kt in self.no_keys:
-                assert len(key) == 1        # not expectiing key
+                assert len(key) == 1        # not expecting key
 
             # storing offset and length only! Mostly.
             if kt in self.short_values:
@@ -566,12 +566,6 @@ class psbtInputProxy(psbtProxy):
         # rework the pubkey => subpath mapping
         self.parse_subpaths(my_xfp, parent.warnings)
 
-        # sighash, but we're probably going to ignore anyway.
-        self.sighash = SIGHASH_ALL if self.sighash is None else self.sighash
-        if self.sighash != SIGHASH_ALL:
-            # - someday we will expand to other types, but not yet
-            raise FatalPSBTIssue('Can only do SIGHASH_ALL')
-
         if self.part_sig:
             # How complete is the set of signatures so far?
             # - assuming PSBT creator doesn't give us extra data not required
@@ -595,6 +589,10 @@ class psbtInputProxy(psbtProxy):
                 raise AssertionError("Trouble parsing UTXO given for input #%d" % idx)
 
             assert txin.prevout.hash == observed, "utxo hash mismatch for input #%d" % idx
+
+    def handle_none_sighash(self):
+        if self.sighash is None:
+            self.sighash = SIGHASH_ALL
 
     def has_utxo(self):
         # do we have a copy of the corresponding UTXO?
@@ -904,6 +902,7 @@ class psbtObject(psbtProxy):
         self.presigned_inputs = set()
 
         # when signing segwit stuff, there is some re-use of hashes
+        # only if SIGHASH_ALL
         self.hashPrevouts = None
         self.hashSequence = None
         self.hashOutputs = None
@@ -1540,20 +1539,7 @@ class psbtObject(psbtProxy):
                 txi.scriptSig = inp.scriptSig
                 assert txi.scriptSig, "no scriptsig?"
 
-                if not inp.is_segwit:
-                    # Hash by serializing/blanking various subparts of the transaction
-                    digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
-                else:
-                    # Hash the inputs and such in totally new ways, based on BIP-143
-                    digest = self.make_txn_segwit_sighash(in_idx, txi,
-                                    inp.amount, inp.scriptCode, inp.sighash)
-
-                if sv.deltamode:
-                    # Current user is actually a thug with a slightly wrong PIN, so we
-                    # do have access to the private keys and could sign txn, but we 
-                    # are going to silently corrupt our signatures.
-                    digest = bytes(range(32))
-
+                inp.handle_none_sighash()
                 if inp.is_multisig:
                     # need to consider a set of possible keys, since xfp may not be unique
                     for which_key in inp.required_key:
@@ -1588,6 +1574,20 @@ class psbtObject(psbtProxy):
                     pu = node.pubkey()
                     assert pu == which_key, "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
 
+                if sv.deltamode:
+                    # Current user is actually a thug with a slightly wrong PIN, so we
+                    # do have access to the private keys and could sign txn, but we
+                    # are going to silently corrupt our signatures.
+                    digest = bytes(range(32))
+                else:
+                    if not inp.is_segwit:
+                        # Hash by serializing/blanking various subparts of the transaction
+                        digest = self.make_txn_sighash(in_idx, txi, inp.sighash)
+                    else:
+                        # Hash the inputs and such in totally new ways, based on BIP-143
+                        digest = self.make_txn_segwit_sighash(in_idx, txi,
+                                        inp.amount, inp.scriptCode, inp.sighash)
+
                 # The precious private key we need
                 pk = node.privkey()
 
@@ -1621,6 +1621,10 @@ class psbtObject(psbtProxy):
 
                 inp.added_sig = (which_key, der_sig)
 
+                # remove sighash from input object - it is not required, takes space, and is already in signature
+                # or is implicit by not being part of the signature (taproot SIGHASH_DEFAULT)
+                # bitcoind does not set it either
+                # inp.sighash = None   # DISABLED for now
                 success.add(in_idx)
 
                 # memory cleanup
@@ -1637,39 +1641,56 @@ class psbtObject(psbtProxy):
         # - blank all script inputs
         # - except one single tx in, which is provided
         # - serialize that without witness data
-        # - append SIGHASH_ALL=1 value (LE32)
         # - sha256 over that
         fd = self.fd
         old_pos = fd.tell()
+
+        # sighash regardless of ANYONECANPAY input part
+        out_sighash_type = sighash_type & 0x1f
+
         rv = sha256()
 
         # version number
         rv.update(pack('<i', self.txn_version))           # nVersion
 
         # inputs
-        rv.update(ser_compact_size(self.num_inputs))
+        num_inputs = 1 if sighash_type & SIGHASH_ANYONECANPAY else self.num_inputs
+        rv.update(ser_compact_size(num_inputs))
         for in_idx, txi in self.input_iter():
-
             if in_idx == replace_idx:
                 assert not self.inputs[in_idx].witness_utxo
                 assert not self.inputs[in_idx].is_segwit
                 assert replacement.scriptSig
                 rv.update(replacement.serialize())
-            else:
+            elif not (sighash_type & SIGHASH_ANYONECANPAY):
+                if out_sighash_type in (SIGHASH_NONE, SIGHASH_SINGLE):
+                    # do not include sequence of other inputs (zero them for digest)
+                    # which means that they can be replaced
+                    txi.nSequence = 0
                 txi.scriptSig = b''
                 rv.update(txi.serialize())
+            # else:
+            #    is SIGHASH_ANYONECANPAY so we do not include any other inputs
 
         # outputs
-        rv.update(ser_compact_size(self.num_outputs))
-        for out_idx, txo in self.output_iter():
-            rv.update(txo.serialize())
+        if out_sighash_type == SIGHASH_NONE:
+            rv.update(ser_compact_size(0))
+        elif out_sighash_type == SIGHASH_SINGLE:
+            rv.update(ser_compact_size(replace_idx+1))
+            assert replace_idx < self.num_outputs, "SINGLE corresponding output (%d) missing" % replace_idx
+            for out_idx, txo in self.output_iter():
+                if out_idx < replace_idx:
+                    rv.update(CTxOut(-1).serialize())
+                if out_idx == replace_idx:
+                    rv.update(txo.serialize())
+        else:
+            assert out_sighash_type == SIGHASH_ALL
+            rv.update(ser_compact_size(self.num_outputs))
+            for out_idx, txo in self.output_iter():
+                rv.update(txo.serialize())
 
-        # locktime
-        rv.update(pack('<I', self.lock_time))
-
-        assert sighash_type == SIGHASH_ALL      # "only SIGHASH_ALL supported"
-        # SIGHASH_ALL==1 value
-        rv.update(b'\x01\x00\x00\x00')
+        # locktime, sighash_type
+        rv.update(pack('<II', self.lock_time, sighash_type))
 
         fd.seek(old_pos)
 
@@ -1680,36 +1701,50 @@ class psbtObject(psbtProxy):
         # Implement BIP 143 hashing algo for signature of segwit programs.
         # see <https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki>
         #
-
         fd = self.fd
         old_pos = fd.tell()
 
-        assert sighash_type == SIGHASH_ALL      # add support for others here
+        # sighash regardless of ANYONECANPAY input part
+        out_sighash_type = sighash_type & 0x1f
 
-        if self.hashPrevouts is None:
-            # First time thru, we'll need to hash up this stuff.
-
-            po = sha256()
-            sq = sha256()
-
+        if self.hashPrevouts and sighash_type == SIGHASH_ALL:
+            hashPrevouts = self.hashPrevouts
+            hashSequence = self.hashSequence
+            hashOutputs = self.hashOutputs
+        else:
             # input side
-            for in_idx, txi in self.input_iter():
-                po.update(txi.prevout.serialize())
-                sq.update(pack("<I", txi.nSequence))
+            hashPrevouts = sha256()
+            hashSequence = sha256()
+            if not (sighash_type & SIGHASH_ANYONECANPAY):
+                for in_idx, txi in self.input_iter():
+                    hashPrevouts.update(txi.prevout.serialize())
+                    if out_sighash_type == SIGHASH_ALL:
+                        hashSequence.update(pack("<I", txi.nSequence))
 
-            self.hashPrevouts = ngu.hash.sha256s(po.digest())
-            self.hashSequence = ngu.hash.sha256s(sq.digest())
-
-            del po, sq, txi
+                hashPrevouts = ngu.hash.sha256s(hashPrevouts.digest())
+                if out_sighash_type == SIGHASH_ALL:
+                    hashSequence = ngu.hash.sha256s(hashSequence.digest())
 
             # output side
-            ho = sha256()
-            for out_idx, txo in self.output_iter():
-                ho.update(txo.serialize())
+            hashOutputs = sha256()
+            if out_sighash_type == SIGHASH_ALL:
+                for out_idx, txo in self.output_iter():
+                    hashOutputs.update(txo.serialize())
 
-            self.hashOutputs = ngu.hash.sha256s(ho.digest())
+                hashOutputs = ngu.hash.sha256s(hashOutputs.digest())
+            elif out_sighash_type == SIGHASH_SINGLE:
+                for out_idx, txo in self.output_iter():
+                    if out_idx == replace_idx:
+                        hashOutputs = ngu.hash.sha256d(txo.serialize())
+            else:
+                assert out_sighash_type == SIGHASH_NONE
 
-            del ho, txo
+            if sighash_type == SIGHASH_ALL:
+                # cache this multitude of hashes
+                self.hashPrevouts = hashPrevouts
+                self.hashSequence = hashSequence
+                self.hashOutputs = hashOutputs
+
             gc.collect()
 
             #print('hPrev: %s' % str(b2a_hex(self.hashPrevouts), 'ascii'))
@@ -1720,8 +1755,8 @@ class psbtObject(psbtProxy):
 
         # version number
         rv.update(pack('<i', self.txn_version))       # nVersion
-        rv.update(self.hashPrevouts)
-        rv.update(self.hashSequence)
+        rv.update(hashPrevouts if isinstance(hashPrevouts, bytes) else bytes(32))
+        rv.update(hashSequence if isinstance(hashSequence, bytes) else bytes(32))
 
         rv.update(replacement.prevout.serialize())
 
@@ -1732,9 +1767,9 @@ class psbtObject(psbtProxy):
         rv.update(pack("<q", amount))
         rv.update(pack("<I", replacement.nSequence))
 
-        rv.update(self.hashOutputs)
+        rv.update(hashOutputs if isinstance(hashOutputs, bytes) else bytes(32))
 
-        # locktime, hashType
+        # locktime, sighash_type
         rv.update(pack('<II', self.lock_time, sighash_type))
 
         fd.seek(old_pos)
@@ -1852,6 +1887,5 @@ class psbtObject(psbtProxy):
         history.add_segwit_utxos_finalize(txid)
 
         return B2A(bytes(reversed(txid)))
-
 
 # EOF
