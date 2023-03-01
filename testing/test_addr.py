@@ -56,7 +56,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
         assert qr == addr or qr == addr.upper()
 
 @pytest.mark.bitcoind
-def test_addr_vs_bitcoind(use_regtest, match_key, need_keypress, dev, bitcoind_d_sim_sign):
+def test_addr_vs_bitcoind(use_regtest, need_keypress, dev, bitcoind_d_sim_sign):
     # check our p2wpkh wrapped in p2sh is right
     use_regtest()
     for i in range(5):

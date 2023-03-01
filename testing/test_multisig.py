@@ -9,7 +9,7 @@
 import sys
 sys.path.append("../shared")
 from descriptor import MultisigDescriptor, append_checksum, MULTI_FMT_TO_SCRIPT, parse_desc_str
-import time, pytest, os, random, json, shutil, pdb, io
+import time, pytest, os, random, json, shutil, pdb, io, base64
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
@@ -1251,7 +1251,7 @@ def test_ms_sign_simple(M_N, num_ins, dev, addr_fmt, clear_ms, incl_xpubs, impor
 @pytest.mark.parametrize('segwit', [True, False])
 @pytest.mark.parametrize('incl_xpubs', [ True, False ])
 def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev, clear_ms,
-        fake_ms_txn, try_sign, bitcoind_finalizer, incl_xpubs, bitcoind_analyze, bitcoind_decode):
+                        fake_ms_txn, try_sign, incl_xpubs, bitcoind):
 
     # IMPORTANT: wont work if you start simulator with --ms flag. Use no args
 
@@ -1283,14 +1283,14 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         psbt = aft.as_bytes()
 
     # should be fully signed now.
-    anal = bitcoind_analyze(psbt)
+    anal = bitcoind.rpc.analyzepsbt(b64encode(psbt).decode('ascii'))
     try:
         assert not any(inp.get('missing') for inp in anal['inputs']), "missing sigs: %r" % anal
         assert all(inp['next'] in {'finalizer','updater'} for inp in anal['inputs']), "other issue: %r" % anal
     except:
         # XXX seems to be a bug in analyzepsbt function ... not fully studied
         pprint(anal, stream=open('debug/analyzed.txt', 'wt'))
-        decode = bitcoind_decode(psbt)
+        decode = bitcoind.rpc.decodepsbt(b64encode(psbt).decode('ascii'))
         pprint(decode, stream=open('debug/decoded.txt', 'wt'))
     
         if M==N or segwit:
@@ -1310,7 +1310,8 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
         #     a witness signature in this situation.
         #
         # In our case, witness signature was not produced (but was required)
-        _, txn, is_complete = bitcoind_finalizer(aft.as_bytes(), extract=True)
+        rv = bitcoind.rpc.finalizepsbt(b64encode(aft.as_bytes()).decode('ascii'), True)
+        _, txn, is_complete = b64decode(rv.get('psbt', '')), rv.get('hex'), rv['complete']
         assert is_complete
 
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
@@ -2090,8 +2091,9 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("desc_type", ["p2wsh_desc", "p2sh_p2wsh_desc", "p2sh_desc"])
+@pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
 def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item,
-                                cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
+                                sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
                                 microsd_wipe, load_export):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
@@ -2217,9 +2219,13 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
                                           "subtractFeeFromOutputs": [0]}
     )
     psbt = psbt_resp.get("psbt")
+    x = BasicPSBT().parse(base64.b64decode(psbt))
+    for idx, i in enumerate(x.inputs):
+        i.sighash = SIGHASH_MAP[sighash]
+    psbt = x.as_b64_str()
     # sign with all bitcoind signers
     for signer in bitcoind_signers:
-        half_signed_psbt = signer.walletprocesspsbt(psbt, True, "ALL", True, False)  # do not finalize
+        half_signed_psbt = signer.walletprocesspsbt(psbt, True, sighash, True, False)  # do not finalize
         psbt = half_signed_psbt["psbt"]
     name = f"hsc_{M}of{N}_{desc_type}.psbt"
     with open(microsd_path(name), "w") as f:
@@ -2269,6 +2275,10 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     res0 = bitcoind_watch_only.walletcreatefundedpsbt(unspent, psbt_outs, 0,
                                                       {"fee_rate": 20, "subtractFeeFromOutputs": [0]})
     psbt = res0["psbt"]
+    x = BasicPSBT().parse(base64.b64decode(psbt))
+    for idx, i in enumerate(x.inputs):
+        i.sighash = SIGHASH_MAP[sighash]
+    psbt = x.as_b64_str()
     name = f"change_{M}of{N}_{desc_type}.psbt"
     with open(microsd_path(name), "w") as f:
         f.write(psbt)
@@ -2292,26 +2302,31 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     need_keypress("y")  # confirm signing
     time.sleep(0.5)
     title, story = cap_story()
-    assert "PSBT Signed" == title
-    assert "Updated PSBT is:" in story
-    need_keypress("y")
-    fname = story.split("\n\n")[-1]
-    with open(microsd_path(fname), "r") as f:
-        cc_signed_psbt = f.read().strip()
-    # CC already signed - now all bitcoin signers
-    for signer in bitcoind_signers:
-        res1 = signer.walletprocesspsbt(cc_signed_psbt, True, "ALL")
-        psbt = res1["psbt"]
-        cc_signed_psbt = psbt
-    res = bitcoind_watch_only.finalizepsbt(cc_signed_psbt)
-    assert res["complete"]
-    tx_hex = res["hex"]
-    res = bitcoind_watch_only.testmempoolaccept([tx_hex])
-    assert res[0]["allowed"]
-    res = bitcoind_watch_only.sendrawtransaction(tx_hex)
-    assert len(res) == 64  # tx id
-    bitcoind_signers[0].generatetoaddress(1, bitcoind_signers[0].getnewaddress())  # mine block
-    assert len(bitcoind_watch_only.listunspent()) == 2  # (merged all inputs to one + one newly spendable from mining)
+    if desc_type == "p2sh_desc" and "SINGLE" in sighash:
+        # we have only one output (consolidation) and legacy sighash does not support index out of range
+        assert "SINGLE corresponding output" in story
+        assert "missing" in story
+    else:
+        assert "PSBT Signed" == title
+        assert "Updated PSBT is:" in story
+        need_keypress("y")
+        fname = story.split("\n\n")[-1]
+        with open(microsd_path(fname), "r") as f:
+            cc_signed_psbt = f.read().strip()
+        # CC already signed - now all bitcoin signers
+        for signer in bitcoind_signers:
+            res1 = signer.walletprocesspsbt(cc_signed_psbt, True, sighash)
+            psbt = res1["psbt"]
+            cc_signed_psbt = psbt
+        res = bitcoind_watch_only.finalizepsbt(cc_signed_psbt)
+        assert res["complete"]
+        tx_hex = res["hex"]
+        res = bitcoind_watch_only.testmempoolaccept([tx_hex])
+        assert res[0]["allowed"]
+        res = bitcoind_watch_only.sendrawtransaction(tx_hex)
+        assert len(res) == 64  # tx id
+        bitcoind_signers[0].generatetoaddress(1, bitcoind_signers[0].getnewaddress())  # mine block
+        assert len(bitcoind_watch_only.listunspent()) == 2  # (merged all inputs to one + one newly spendable from mining)
 
 
 @pytest.mark.parametrize("desc", [

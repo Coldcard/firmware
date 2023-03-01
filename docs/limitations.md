@@ -73,8 +73,13 @@
 
 # SIGHASH types
 
-- only `SIGHASH_ALL` is supported at this time
-- in time, we will add support for others, especially to support Coinjoin usage
+- all sighash flags are supported:
+    - `ALL`
+    - `NONE`
+    - `SINGLE`
+    - `ALL|ANYONECANPAY`
+    - `NONE|ANYONECANPAY`
+    - `SINGLE|ANYONECANPAY`
 
 # U2F Protocol / Web Access to USB / WebUSB
 

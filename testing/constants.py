@@ -48,3 +48,13 @@ ADDR_STYLES_SINGLE = ['p2wpkh', 'p2pkh', 'p2wpkh-p2sh']
 
 # multi signer
 ADDR_STYLES_MS = ['p2sh', 'p2wsh', 'p2wsh-p2sh']
+
+# SIGHASH
+SIGHASH_MAP = {
+    "ALL": 1,
+    "NONE": 2,
+    "SINGLE": 3,
+    "ALL|ANYONECANPAY": 1 | 0x80,
+    "NONE|ANYONECANPAY": 2 | 0x80,
+    "SINGLE|ANYONECANPAY": 3 | 0x80,
+}
