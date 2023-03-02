@@ -1,6 +1,8 @@
 ## 5.1.2 - 2023-03-18
 
 - Enhancement: SeedXOR for 12 and 18 words mnemonics
+- Bugfix: After extended private key and TAPSIGNER backup import into blank wallet, users needed 
+  to manually reboot Coldcard. Fixed
 
 
 ## 5.1.1 - 2023-02-27

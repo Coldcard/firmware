@@ -473,6 +473,7 @@ async def ephemeral_seed_generate(nwords):
 async def set_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)
     set_seed_value(encoded=encoded, chain=chain)
+    goto_top_menu()
 
 async def set_ephemeral_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)
