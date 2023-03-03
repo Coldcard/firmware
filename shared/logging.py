@@ -3,10 +3,11 @@ from ubinascii import hexlify as b2a_hex
 from files import CardSlot, CardMissingError
 
 class AuditLogger:
-    def __init__(self, dirname, digest, never_log):
+    def __init__(self, dirname, digest, never_log, policy_hash=None):
         self.dirname = dirname
         self.digest = digest
         self.never_log = never_log
+        self.policy_hash = policy_hash
 
     def __enter__(self):
         try:
@@ -21,7 +22,12 @@ class AuditLogger:
             try: uos.stat(d)
             except: uos.mkdir(d)
                 
-            self.fname = d + '/' + b2a_hex(self.digest[-8:]).decode('ascii') + '.log'
+            if self.dirname == 'psbt':
+                self.fname = d + '/' + b2a_hex(self.digest[-8:]).decode('ascii') + '.log'
+            elif self.dirname == 'logs':
+                self.fname = d + '/' + b2a_hex(self.policy_hash[-8:]).decode('ascii') + '.log'
+            else:
+                raise NotImplementedError
             self.fd = open(self.fname, 'a+t')       # append mode
         except (CardMissingError, OSError, NotImplementedError):
             # may be fatal or not, depending on configuration
@@ -47,5 +53,13 @@ class AuditLogger:
         return not self.card
 
     def info(self, msg):
-        print(msg, file=self.fd)
-        #if self.fd != sys.stdout: print(msg)
+        if self.dirname == 'psbt':
+            print(msg, file=self.fd)
+        else:
+            print(b2a_hex(self.digest[-8:]).decode('ascii') + ' Info: ' + msg, file=self.fd)
+        
+    def error(self, msg):
+        if self.dirname == 'psbt':
+            print(msg, file=self.fd)
+        else:
+            print(b2a_hex(self.digest[-8:]).decode('ascii') + ' Error: ' + msg, file=self.fd)
