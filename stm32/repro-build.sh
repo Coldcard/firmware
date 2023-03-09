@@ -10,6 +10,8 @@ set -ex
 VERSION_STRING=$1
 MK_NUM=$2
 
+VENV_PATH="/tmp/ENV"
+
 MAKE="make -f MK$MK_NUM-Makefile"
 
 TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf"
@@ -22,7 +24,6 @@ if ! touch repro-build.sh ; then
     # If we seem to be on a R/O filesystem:
     # - do a local checkout of HEAD, build from that
     mkdir /tmp/checkout
-    mount -t tmpfs tmpfs /tmp/checkout
     cd /tmp/checkout
     git clone /work/src/.git firmware
     cd firmware/external
@@ -33,6 +34,8 @@ fi
 
 # need signit.py in path
 cd ../cli
+python -m venv $VENV_PATH
+. $VENV_PATH/bin/activate
 python -m pip install -r requirements.txt
 python -m pip install --editable .
 cd ../stm32
