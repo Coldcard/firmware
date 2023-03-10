@@ -146,8 +146,7 @@ code-committed:
 .PHONY: sign-release
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
-		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
-	git commit -m "Signed for release." ../releases/signatures.txt
+		gpg --clearsign -u 35B41FB07EFCCF36A1EA89D3A940F7604E73741B --digest-algo SHA256 --output signatures.txt --yes - )
 
 # Tag source code associate with built release version.
 # - do "make release" before this step!
@@ -156,7 +155,7 @@ sign-release:
 # - and tag everything
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
 tag-source: sign-release code-committed
-	git commit  --allow-empty -am "New release: "$(PUBLIC_VERSION)
+	git commit -m "New release: "$(PUBLIC_VERSION) ../releases/signatures.txt
 	echo "Tagging version: " $(PUBLIC_VERSION)
 	git tag -a $(PUBLIC_VERSION) -m "Release "$(PUBLIC_VERSION)
 	git push
