@@ -113,7 +113,6 @@ release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-mk$(MK_NUM)-coldcar
 release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c $(BOARD)/file_time.c
-	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
 	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin $(RELEASE_FNAME)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
@@ -147,7 +146,6 @@ code-committed:
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
 		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
-	git commit -m "Signed for release." ../releases/signatures.txt
 
 # Tag source code associate with built release version.
 # - do "make release" before this step!
@@ -155,8 +153,8 @@ sign-release:
 # - update & sign signatures file
 # - and tag everything
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
-tag-source: sign-release code-committed
-	git commit  --allow-empty -am "New release: "$(PUBLIC_VERSION)
+tag-source: sign-release
+	git commit -m "New release: "$(PUBLIC_VERSION) ../releases/signatures.txt $(BOARD)/file_time.c
 	echo "Tagging version: " $(PUBLIC_VERSION)
 	git tag -a $(PUBLIC_VERSION) -m "Release "$(PUBLIC_VERSION)
 	git push
