@@ -24,6 +24,7 @@ freeze_as_mpy('', [
 	'hsm.py',
 	'hsm_ux.py',
 	'imptask.py',
+	'logging.py',
 	'login.py',
 	'main.py',
 	'mempad.py',
