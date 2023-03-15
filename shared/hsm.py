@@ -819,8 +819,6 @@ class HSMPolicy:
             self.refuse(log, "Could not log details, and must_log is set")
             return 'x'
 
-        log.info('Transaction signing requested:')
-        log.info('SHA256(PSBT) = ' + b2a_hex(psbt_sha).decode('ascii'))
         log.info('-vvv-\n%s\n-^^^-' % story)
 
         # reset pending auth list and "consume" it now

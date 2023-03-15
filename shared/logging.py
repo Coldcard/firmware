@@ -22,9 +22,7 @@ class AuditLogger:
             try: uos.stat(d)
             except: uos.mkdir(d)
                 
-            if self.dirname == 'psbt':
-                self.fname = d + '/' + b2a_hex(self.digest[-8:]).decode('ascii') + '.log'
-            elif self.dirname == 'logs':
+            if self.dirname == 'logs':
                 self.fname = d + '/' + b2a_hex(self.policy_hash[-8:]).decode('ascii') + '.log'
             else:
                 raise NotImplementedError
@@ -53,13 +51,11 @@ class AuditLogger:
         return not self.card
 
     def info(self, msg):
-        if self.dirname == 'psbt':
-            print(msg, file=self.fd)
-        else:
-            print(b2a_hex(self.digest[-8:]).decode('ascii') + ' Info: ' + msg, file=self.fd)
+        print('Info: ' + msg, file=self.fd)
         
     def error(self, msg):
-        if self.dirname == 'psbt':
-            print(msg, file=self.fd)
-        else:
-            print(b2a_hex(self.digest[-8:]).decode('ascii') + ' Error: ' + msg, file=self.fd)
+        print('Error: ' + msg, file=self.fd)
+
+    def new_psbt(self):
+        print('Transaction signing requested:', file=self.fd)
+        print('SHA256(PSBT) = ' + b2a_hex(self.digest).decode('ascii'), file=self.fd)

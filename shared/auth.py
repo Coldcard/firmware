@@ -391,6 +391,7 @@ class ApproveTransaction(UserAuthorizedAction):
             policy_hash = b'\x00'*32
             never_log = False
         with AuditLogger('logs', self.psbt_sha, never_log, policy_hash) as log:
+            log.new_psbt()
             log.info("Loading the psbt file")
             try:
                 with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len, message='Reading...') as fd:
@@ -408,7 +409,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             dis.fullscreen("Validating...")
 
-            log.info("Beginning formal validation of PSBT")
+            log.info("PSBT parsing successful")
             # Do some analysis/ validation
             try:
                 await self.psbt.validate()      # might do UX: accept multisig import
