@@ -807,7 +807,7 @@ class HSMPolicy:
         from ubinascii import b2a_base64
         self.next_local_code = b2a_base64(ngu.random.bytes(15)).strip().decode('ascii')
 
-    async def approve_transaction(self, psbt, psbt_sha, story):
+    async def approve_transaction(self, psbt, psbt_sha, story, log):
         # Approve or don't a transaction. Catch assertions and other
         # reasons for failing/rejecting into the log.
         # - return 'y' or 'x'
@@ -815,87 +815,85 @@ class HSMPolicy:
         assert psbt_sha and len(psbt_sha) == 32
         self.get_time_left()
 
-        with AuditLogger('psbt', psbt_sha, self.never_log) as log:
+        if self.must_log and log.is_unsaved:
+            self.refuse(log, "Could not log details, and must_log is set")
+            return 'x'
 
-            if self.must_log and log.is_unsaved:
-                self.refuse(log, "Could not log details, and must_log is set")
-                return 'x'
+        log.info('Transaction signing requested:')
+        log.info('SHA256(PSBT) = ' + b2a_hex(psbt_sha).decode('ascii'))
+        log.info('-vvv-\n%s\n-^^^-' % story)
 
-            log.info('Transaction signing requested:')
-            log.info('SHA256(PSBT) = ' + b2a_hex(psbt_sha).decode('ascii'))
-            log.info('-vvv-\n%s\n-^^^-' % story)
+        # reset pending auth list and "consume" it now
+        auth = self.pending_auth
+        self.pending_auth = {}
 
-            # reset pending auth list and "consume" it now
-            auth = self.pending_auth
-            self.pending_auth = {}
+        try:
+            # do this super early so always cleared even if other issues
+            local_ok = self.consume_local_code(psbt_sha)
 
-            try:
-                # do this super early so always cleared even if other issues
-                local_ok = self.consume_local_code(psbt_sha)
+            if not self.rules:
+                raise ValueError("no txn signing allowed")
 
-                if not self.rules:
-                    raise ValueError("no txn signing allowed")
+            # reject anything with warning, probably
+            if psbt.warnings:
+                # if self.warnings_ok:
+                log.info("Txn has warnings, but policy is to accept anyway.")
+                # else:
+                #     raise ValueError("has %d warning(s)" % len(psbt.warnings))
 
-                # reject anything with warning, probably
-                if psbt.warnings:
-                    # if self.warnings_ok:
-                    log.info("Txn has warnings, but policy is to accept anyway.")
-                    # else:
-                    #     raise ValueError("has %d warning(s)" % len(psbt.warnings))
-
-                # See who has entered creditials already (all must be valid).
-                users = []
-                for u, (token, counter) in auth.items():
-                    problem = Users.auth_okay(u, token, totp_time=counter, psbt_hash=psbt_sha)
-                    if problem:
-                        self.refuse(log, "User '%s' gave wrong auth value: %s" % (u, problem))
-                        return 'x'
-                    users.append(u)
-
-                # was right code provided locally? (also resets for next attempt)
-                if local_ok:
-                    log.info("Local operator gave correct code.")
-                if users:
-                    log.info("These users gave correct auth codes: " + ', '.join(users))
-
-                # Totals (applies to foreign)
-                total_out = sum(o.amount for o in psbt.outputs if not o.is_change)
-
-                # Pick a rule to apply to this specific txn
-                reasons = []
-                for rule in self.rules:
-                    try:
-                        if rule.matches_transaction(psbt, users, total_out, local_ok, chain):
-                            break
-                    except BaseException as exc:
-                        # let's not share these details, except for debug; since
-                        # they are not errors, just picking best rule in priority order
-                        r = "rule #%d: %s" % (rule.index, str(exc) or problem_file_line(exc))
-                        reasons.append(r)
-                        print(r)
-                else:
-                    err = "Rejected: " + ', '.join(reasons)
-                    self.refuse(log, err)
+            # See who has entered creditials already (all must be valid).
+            users = []
+            for u, (token, counter) in auth.items():
+                problem = Users.auth_okay(u, token, totp_time=counter, psbt_hash=psbt_sha)
+                if problem:
+                    self.refuse(log, "User '%s' gave wrong auth value: %s" % (u, problem))
                     return 'x'
+                users.append(u)
 
-                if users:
-                    msg = ', '.join(auth.keys())
-                    if local_ok:
-                        msg += ', and the local operator.' if msg else 'local operator'
+            # was right code provided locally? (also resets for next attempt)
+            if local_ok:
+                log.info("Local operator gave correct code.")
+            if users:
+                log.info("These users gave correct auth codes: " + ', '.join(users))
 
-                # looks good, do it
-                self.approve(log, "Acceptable by rule #%d" % rule.index)
+            # Totals (applies to foreign)
+            total_out = sum(o.amount for o in psbt.outputs if not o.is_change)
 
-                if rule.per_period is not None:
-                    self.record_spend(rule, total_out)
-
-                return 'y'
-            except BaseException as exc:
-                sys.print_exception(exc)
-                err = "Rejected: " + (str(exc) or problem_file_line(exc))
+            # Pick a rule to apply to this specific txn
+            reasons = []
+            for rule in self.rules:
+                try:
+                    if rule.matches_transaction(psbt, users, total_out, local_ok, chain):
+                        break
+                except BaseException as exc:
+                    # let's not share these details, except for debug; since
+                    # they are not errors, just picking best rule in priority order
+                    r = "rule #%d: %s" % (rule.index, str(exc) or problem_file_line(exc))
+                    reasons.append(r)
+                    print(r)
+            else:
+                err = "Rejected: " + ', '.join(reasons)
                 self.refuse(log, err)
-
                 return 'x'
+
+            if users:
+                msg = ', '.join(auth.keys())
+                if local_ok:
+                    msg += ', and the local operator.' if msg else 'local operator'
+
+            # looks good, do it
+            self.approve(log, "Acceptable by rule #%d" % rule.index)
+
+            if rule.per_period is not None:
+                self.record_spend(rule, total_out)
+
+            return 'y'
+        except BaseException as exc:
+            sys.print_exception(exc)
+            err = "Rejected: " + (str(exc) or problem_file_line(exc))
+            self.refuse(log, err)
+
+            return 'x'
 
     def refuse(self, log, msg):
         # when things fail

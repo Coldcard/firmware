@@ -492,7 +492,7 @@ class ApproveTransaction(UserAuthorizedAction):
                     msg.write("\nPress OK to approve and sign transaction. X to abort.")
                     ch = await ux_show_story(msg, title="OK TO SEND?")
                 else:
-                    ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
+                    ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue(), log)
                     dis.progress_bar(1)     # finish the Validating...
 
             except MemoryError:
