@@ -380,11 +380,15 @@ class ApproveTransaction(UserAuthorizedAction):
 
         # step 1: parse PSBT from sflash into in-memory objects.
 
-        policy_hash = hsm_active.hash()
-        hsm_rules = hsm_active.save()['rules']
-        try:
-            hsm_rules[0]['never_log']
-        except KeyError:
+        if hsm_active:
+            policy_hash = hsm_active.hash()
+            hsm_rules = hsm_active.save()['rules']
+            try:
+                hsm_rules[0]['never_log']
+            except KeyError:
+                never_log = False
+        else:
+            policy_hash = b'\x00'*32
             never_log = False
         with AuditLogger('logs', self.psbt_sha, never_log, policy_hash) as log:
             log.info("Loading the psbt file")
