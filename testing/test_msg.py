@@ -653,7 +653,7 @@ def test_verify_signature_truncated(way, microsd_path, cap_story, verify_armored
     # test: handle missing leading dash (at least)
     prob_file = '-----BEGIN BITCOIN SIGNED MESSAGE-----\nfb9b0c78e60d57434ad0914a075e9fcb7cfe81ba9cad9cbfa1207b3bc5fbdf98  n4Boam6gCNq281bNAd3MqETpExMNPzCi8z.txt\n-----BEGIN BITCOIN SIGNATURE-----\nn4Boam6gCNq281bNAd3MqETpExMNPzCi8z\nIIITr0zBmC65ZSn+2RFvQCegpfq07TxRuGVkggh+ehL3chgEBmcCDH5D5z6INvCQ7PrHLIWkGEw1JSMdbiBKRX4=\n-----END BITCOIN SIGNATURE-----'[truncation_len:]
 
-    fname = 'ilename.txt'
+    fname = 'filename.txt'
     if way != "nfc":
         with open(microsd_path(fname), "w") as f:
             f.write(prob_file)

@@ -12,10 +12,10 @@ are not discrete and you could be compelled to produce the passphrase.
 
 Enter [_Seed XOR_](https://seedxor.com), a plausibly deniable means
 of storing secrets in two or more parts that look and behave just
-like the original secret. One 24-word seed phrase becomes two or more parts
+like the original secret. One 12 or 24-word seed phrase becomes two or more parts
 that are also BIP-39 compatible seeds phrases. These should be backed up in your
 preferred method, metal or otherwise. These parts can be individually loaded
-with honeypot funds as each one is 24 words, with the 24th being
+with honeypot funds as each one has same word length, with the last being
 the checksum and will work as such in any normal BIP-39 compatible wallet.
 
 This one more solution for your game-theory arsenal.
@@ -28,15 +28,16 @@ This one more solution for your game-theory arsenal.
 
 ## Background
 
-[_Seed XOR_](https://seedxor.com) works by taking any number of 24-word
+[_Seed XOR_](https://seedxor.com) works by taking any number of
 seed phrases in BIP-39 style, and simply XOR-ing them together,
-bit-by-bit into a new phrase.
+bit-by-bit into a new phrase. All seed phrases have to be of the same length.
 
-The last word (in 24-word case, which is the only width we support) has
-8 bits of checksum. For the "parts" (sometimes called "shares") this checksum 
-is calculated as normal for BIP-39, but those final 8-bits are not used in
+The last word contains checksum.
+For the "parts" (sometimes called "shares") this checksum 
+is calculated as normal for BIP-39, but those final bits are not used in
 the XOR process. But the checksums still protects the integrity of the
-individual parts.
+individual parts. In 24-words XOR last 8 bits are checksum and in 12-words
+XOR last 4 bits are checksum.
 
 Useful properties of this approach:
 
@@ -50,7 +51,7 @@ Useful properties of this approach:
 - You can store funds on the seeds of any part, and any subset of parts, which
   opens even more duress options.
 
-We recommend storing the checksum word (24-th) of the original
+We recommend storing the checksum word of the original
 wallet along with your N parts. This allows you to be sure you've
 gotten all the parts and assembled them correctly. This does reveal
 3 bits of your real wallet however, and also reveals that a
@@ -72,8 +73,8 @@ Advanced > Danger Zone > Seed Functions > Seed XOR > Split Existing
 You can choose between 2, 3 or 4 parts. You can also choose (next
 screen) to generate them deterministically or using the TRNG. The
 advantage of the deterministic approach is you'll always get the
-same answers, so you can check that you've recorded the correct
-48 to 96 words right the next day.
+same answers, so you can check that you've recorded the correct 
+words right the next day.
 
 When the parts are made deterministically, we take a double-SHA256 over
 a fixed string (`Batshitoshi`), your master secret, and the text
@@ -109,7 +110,7 @@ of all the parts.
 
 - You can pick your XOR parts randomly, and the result when XOR'ed
 together, is a random wallet. However, it would be best to get the
-24-th word checksum recorded correctly, so please use a tool such
+last word checksum recorded correctly, so please use a tool such
 as the Coldcard to lookup the 24th word and save that (for each
 part).  For example, you might take a fresh Coldcard (no secret)
 and draw 23 words from a hat. After providing the 23rd word, the
@@ -158,7 +159,7 @@ with the others on a SEEDPLATE.
 
 ---
 
-# XOR Seed Example Using 3 Parts
+# 24 Words XOR Seed Example Using 3 Parts
 
 ## Seed A  (1 of 3)
 
@@ -209,10 +210,56 @@ with the others on a SEEDPLATE.
       final word between: gas [300] - lend [3FF]
       correct final word: indoor [398]
 
+
+
+# 12 Words XOR Seed Example Using 3 Parts
+
+## Seed A  (1 of 3)
+
+      1=romance [5DC], 2=wink [7DE], 3=lottery [420], 4=autumn [07D], 5=shop [635], 6=bring [0E1],
+      7=dawn [1BF], 8=tongue [723], 9=range [58E], 10=crater [194], 11=truth [74E], 12=ability [001]
+
+      A = 5DC 7DE 420 07D 635 0E1 1BF 723 58E 194 74E 001
+
+
+## Seed B  (2 of 3)
+
+      1=boat [0C6], 2=unfair [768], 3=shell [62B], 4=violin [7A2], 5=tree [73F], 6=robust [5DA], 7=open [4D9],
+      8=ride [5CB], 9=visual [7A7], 10=forest [2D9], 11=vintage [7A1], 12=approve [056]
+
+      B = 0C6 768 62B 7A2 73F 5DA 4D9 5CB 7A7 2D9 7A1 056
+
+
+## Seed C  (3 of 3)
+
+      1=lion [411], 2=misery [46D], 3=divide [1FF], 4=hurry [37D], 5=latin [3EB], 6=fluid [2CD], 7=camp [106],
+      8=advance [01F], 9=illegal [388], 10=lab [3E0], 11=pyramid [578], 12=unhappy [76A]
+
+      C = 411 46D 1FF 37D 3EB 2CD 106 01F 388 3E0 578 76A
+
+
+## Calculation (XOR each hex digit)
+
+      A = 5DC 7DE 420 07D 635 0E1 1BF 723 58E 194 74E 001
+      B = 0C6 768 62B 7A2 73F 5DA 4D9 5CB 7A7 2D9 7A1 056
+      C = 411 46D 1FF 37D 3EB 2CD 106 01F 388 3E0 578 76A
+          |               |               |              
+    XOR = 10B 4DB 3F4 4A2 2E1 7F6 460 2F7 1A1 0AD 597 73x
+
+
+## Resulting Seed Phrase
+
+      1=cannon [10B], 2=opinion [4DB], 3=leader [3F4], 4=nephew [4A2], 5=found [2E1], 6=yard [7F6],
+      7=metal [460], 8=galaxy [2F7], 9=crouch [1A1], 10=between [0AD], 11=real [597]
+
+      final word between: toward [730] - tree [73F]
+      correct final word: trade [735]
+
+
+
 - It's not possible to calculate the checksum of the final seed phrase on paper (needs SHA256).
-- But it must start with the indicated digit, and there will be only one
+- But it must start with the indicated digit(s). If using 24 words XOR, there will be only one
   suitable choice offered by the Coldcard in that range (x00 to xFF),
   once you have entered the other 23 words.
 - The checksum of each of the XOR-parts protects the final result, assuming your XOR
   math is correct.
-
