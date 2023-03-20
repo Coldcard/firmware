@@ -757,7 +757,7 @@ normal operation.''')
         elif flags & TC_WORD_WALLET and (arg // 1000 == 2):
             encoded = b'\x80' + slot.xdata[0:16]
         else:
-            raise ValueError('f=0x%x a=%d' % (flags, args))
+            raise ValueError('f=0x%x a=%d' % (flags, arg))
 
         from glob import dis
 
