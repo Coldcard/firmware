@@ -649,15 +649,16 @@ class ApproveTransaction(UserAuthorizedAction):
         # Do some analysis/ validation
         try:
             await self.psbt.validate()      # might do UX: accept multisig import
+            dis.progress_bar_show(0.10)
             self.psbt.consider_inputs()
 
-            dis.fullscreen("Validating...", percent=0.33)
+            dis.progress_bar_show(0.33)
             self.psbt.consider_keys()
 
-            dis.progress_bar(0.66)
+            dis.progress_bar_show(0.66)
             self.psbt.consider_outputs()
 
-            dis.progress_bar(0.85)
+            dis.progress_bar_show(0.85)
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
             return await self.failure(exc.args[0], title='Change Fraud')
@@ -722,12 +723,12 @@ class ApproveTransaction(UserAuthorizedAction):
 
                 return
 
+            dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
                 msg.write("\nPress OK to approve and sign transaction. X to abort.")
                 ch = await ux_show_story(msg, title="OK TO SEND?")
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
-                dis.progress_bar(1)     # finish the Validating...
 
         except MemoryError:
             # recovery? maybe.
@@ -981,9 +982,8 @@ async def sign_psbt_file(filename, force_vdisk=False):
     # - or from VirtualDisk (mk4)
     from files import CardSlot, CardMissingError
     from glob import dis
+    from ux import the_ux
     from sram2 import tmp_buf
-
-    UserAuthorizedAction.cleanup()
 
     #print("sign: %s" % filename)
 
@@ -1033,6 +1033,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
             psbt_len = total
 
     async def done(psbt):
+        dis.fullscreen("Wait...")
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
         base = basename.rsplit('.', 1)[0]
@@ -1140,10 +1141,9 @@ async def sign_psbt_file(filename, force_vdisk=False):
 
         UserAuthorizedAction.cleanup()
 
+    UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
-
-    # kill any menu stack, and put our thing at the top
-    abort_and_goto(UserAuthorizedAction.active_request)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
     def __init__(self):
