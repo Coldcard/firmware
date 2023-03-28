@@ -189,9 +189,8 @@ async def show_n_parts(parts, chk_word):
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
         msg += '\n\n'
 
-    if chk_word:
-        msg += ('The correctly reconstructed seed phrase will have this final word,'
-                ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
+    msg += ('The correctly reconstructed seed phrase will have this final word,'
+            ' which we recommend recording:\n\n%d: %s\n\n' % (seed_len, chk_word))
 
     msg += 'Please check and double check your notes. There will be a test! '
 
@@ -206,7 +205,7 @@ It does not matter the order (A/B/C or C/A/B) and the Coldcard
 cannot determine when you have all the parts. You may stop at
 any time and you will have a valid wallet. Combined seed parts
 have to be equal length. No way to combine seed parts of different 
-length. Press OK for 24 words XOR, press (1) to for 12 words XOR, 
+length. Press OK for 24 words XOR, press (1) for 12 words XOR, 
 or press (2) for 18 words XOR.''', escape="12")
     if ch == 'x': return
 

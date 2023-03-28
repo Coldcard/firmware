@@ -14,8 +14,8 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
 from ux import ux_show_story, ux_poll_key
-from utils import cleanup_deriv_path, B2A, problem_file_line, parse_addr_fmt_str
-from public_constants import AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC
+from utils import B2A, problem_file_line, parse_addr_fmt_str
+from public_constants import AF_CLASSIC
 
 
 # practical limit for things to share: 8k part, minus overhead
@@ -396,7 +396,7 @@ class NFCHandler:
     async def start_psbt_rx(self):
         from auth import psbt_encoding_taster, TXN_INPUT_OFFSET
         from auth import UserAuthorizedAction, ApproveTransaction
-        from ux import abort_and_goto
+        from ux import the_ux
         from sffile import SFFile
 
         data = await self.start_nfc_rx()
@@ -445,7 +445,7 @@ class NFCHandler:
         UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, 0x0, psbt_sha=psbt_sha,
                                                 approved_cb=self.signing_done)
         # kill any menu stack, and put our thing at the top
-        abort_and_goto(UserAuthorizedAction.active_request)
+        the_ux.push(UserAuthorizedAction.active_request)
 
     async def signing_done(self, psbt):
         # User approved the PSBT, and signing worked... share result over NFC (only)
