@@ -16,7 +16,7 @@ from export import make_json_wallet, make_summary_file, make_descriptor_wallet_e
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
 from files import CardSlot, CardMissingError, needs_microsd
-from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, MAX_TXN_LEN_MK4
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from glob import settings
 from pincodes import pa
 from menu import start_chooser
@@ -1713,7 +1713,7 @@ async def ready2sign(*a):
 
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
-                                max_size=MAX_TXN_LEN_MK4, taster=is_psbt)
+                                max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if stash.bip39_passphrase:
         title = '[%s]' % settings.get('xfp')
