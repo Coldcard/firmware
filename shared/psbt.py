@@ -1175,21 +1175,11 @@ class psbtObject(psbtProxy):
         # scan ouputs:
         # - is it a change address, defined by redeem script (p2sh) or key we know is ours
         # - mark change outputs, so perhaps we don't show them to users
-        chain = chains.current_chain()
 
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
             output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
-            # cache inner tx output amount
-            output.amount = txo.nValue
-            # cache inner scriptpubkey
-            output.scriptpubkey = txo.scriptPubKey
-            # try to cache address, if the scriptpubkey is indeed an address
-            try:
-                output.address = chain.render_address(txo.scriptPubKey)
-            except ValueError:
-                pass # clearly not address
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?

@@ -341,21 +341,27 @@ class ApprovalRule:
         # check all destinations are in the whitelist if mode is basic
         if self.whitelist and not attest_mode:
             dests = set()
-            for o in psbt.outputs:
-                if o.is_change or (o.amount == 0 and allow_zeroval):
+            for idx, txo in psbt.output_iter():
+                o = psbt.outputs[idx]
+                if o.is_change or (txo.nValue == 0 and allow_zeroval):
                     continue
-                dests.add(o.address or str(b2a_hex(o.scriptpubkey), 'ascii'))
+                try:
+                    address = chain.render_address(txo.scriptPubKey)
+                except ValueError:
+                    address = None
+                dests.add(address or str(b2a_hex(txo.scriptPubKey), 'ascii'))
             diff = dests - set(self.whitelist)
             assert not diff, "non-whitelisted address: " + diff.pop()
 
         # check all foreign outputs are attested if mode is attest
         if self.whitelist and attest_mode:
-            for idx, o in enumerate(psbt.outputs):
-                if o.is_change or (o.amount == 0 and allow_zeroval):
+            for idx, txo in psbt.output_iter():
+                o = psbt.outputs[idx]
+                if o.is_change or (txo.nValue == 0 and allow_zeroval):
                     continue
                 assert o.attestation, "missing attestation for output %i" % idx
                 # we are verifying the whole consensus-encoded txout
-                txo_bytes = CTxOut(o.amount, o.scriptpubkey).serialize()
+                txo_bytes = CTxOut(txo.nValue, txo.scriptPubKey).serialize()
                 digest = chain.hash_message(txo_bytes)
                 addr_fmt, pubkey = chains.verify_recover_pubkey(o.attestation, digest)
                 # we have extracted a valid pubkey from the sig, but is it
@@ -381,7 +387,11 @@ class ApprovalRule:
         # check the self-transfer percentage
         if self.min_pct_self_transfer:
             own_in_value = sum([i.amount for i in psbt.inputs if i.num_our_keys])
-            own_out_value = sum([o.amount for o in psbt.outputs if o.num_our_keys])
+            own_out_value = 0
+            for idx, txo in psbt.output_iter():
+                o = psbt.outputs[idx]
+                if o.num_our_keys:
+                    own_out_value += txo.nValue
             percentage = (float(own_out_value) / own_in_value) * 100.0
             assert percentage >= self.min_pct_self_transfer, 'does not meet self transfer threshold, expected: %.2f, actual: %.2f' % (self.min_pct_self_transfer, percentage)
 
@@ -396,9 +406,10 @@ class ApprovalRule:
             assert own_ins == own_outs, 'unequal number of own inputs and outputs'
 
         if "EQ_OUT_AMOUNTS" in self.patterns:
-            wanted = psbt.outputs[0].amount
-            for o in psbt.outputs:
-                assert o.amount == wanted, 'not all output amounts are equal'
+            _, txo = next(psbt.output_iter())
+            wanted = txo.nValue
+            for _, txo in psbt.output_iter():
+                assert txo.nValue == wanted, 'not all output amounts are equal'
 
         return True
 
@@ -907,7 +918,11 @@ class HSMPolicy:
                     log.info("These users gave correct auth codes: " + ', '.join(users))
 
                 # Totals (applies to foreign)
-                total_out = sum(o.amount for o in psbt.outputs if not o.is_change)
+                total_out = 0
+                for idx, txo in psbt.output_iter():
+                    outp = psbt.outputs[idx]
+                    if not outp.is_change:
+                        total_out += txo.nValue
 
                 # Pick a rule to apply to this specific txn
                 reasons = []

@@ -851,14 +851,18 @@ class ApproveTransaction(UserAuthorizedAction):
         # Produce text report of what the "change" outputs are (based on our opinion).
         # - we don't really expect all users to verify these outputs, but just in case.
         # - show the total amount, and list addresses
-
+        chain = chains.current_chain()
         total = 0
         addrs = []
-        for outp in self.psbt.outputs:
+        for idx, txo in self.psbt.output_iter():
+            outp = self.psbt.outputs[idx]
             if not outp.is_change:
                 continue
-            total += outp.amount
-            addrs.append(outp.address)
+            total += txo.nValue
+            try:
+                addrs.append(chain.render_address(txo.scriptPubKey))
+            except ValueError:
+                pass
 
         if not addrs:
             return
@@ -1335,8 +1339,7 @@ def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # - first need to find appropriate multisig wallet associated
     # - they must provide full redeem script, and we will re-verify it and check pubkeys inside it
 
-    import ustruct
-    from multisig import MultisigWallet, MultisigOutOfSpace
+    from multisig import MultisigWallet
 
     try:
         assert addr_format in SUPPORTED_ADDR_FORMATS
