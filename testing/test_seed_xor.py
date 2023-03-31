@@ -110,9 +110,9 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
     title, body = cap_story()
 
     assert 'all the parts' in body
-    assert "Press OK for 24 words"
-    assert "press (1)"
-    assert "press (2)"
+    assert "Press OK for 24 words" in body
+    assert "press (1)" in body
+    assert "press (2)" in body
 
     choose_by_word_length(num_words)
     time.sleep(0.01)
@@ -133,8 +133,8 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
 
         time.sleep(0.01)
         title, body = cap_story()
-        assert f"You've entered {n} parts so far"
-        assert "or (2) if done"
+        assert f"You've entered {n+1} parts so far" in body
+        assert "or (2) if done" in body
 
         if n != len(parts)-1:
             need_keypress('1')
@@ -240,9 +240,9 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
     time.sleep(.01)
     title, body = cap_story()
     assert 'all the parts' in body
-    assert "Press OK for 24 words"
-    assert "press (1)"
-    assert "press (2)"
+    assert "Press OK for 24 words" in body
+    assert "press (1)" in body
+    assert "press (2)" in body
 
     choose_by_word_length(num_words)
     time.sleep(0.01)
@@ -258,7 +258,7 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
 
         time.sleep(0.01)
         title, body = cap_story()
-        assert f"You've entered {n + 1} parts so far" in body
+        assert f"You've entered {n+1} parts so far" in body
         assert "or (2) if done" in body
 
         if n == 1:
@@ -307,9 +307,9 @@ def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, n
     time.sleep(0.01)
     title, body = cap_story()
     assert 'all the parts' in body
-    assert "Press OK for 24 words"
-    assert "press (1)"
-    assert "press (2)"
+    assert "Press OK for 24 words" in body
+    assert "press (1)" in body
+    assert "press (2)" in body
     choose_by_word_length(num_words)
     time.sleep(0.01)
 
