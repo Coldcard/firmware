@@ -1,5 +1,7 @@
 # (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
+# Seed XOR helpers
+#
 import os, hashlib
 from mnemonic import Mnemonic
 
@@ -11,9 +13,11 @@ def numwords_to_len(num_words):
 def xor(*args):
     # bit-wise xor between all args
     vlen = len(args[0])
+
     # all have to be same length
     assert all(len(e) == vlen for e in args)
     rv = bytearray(vlen)
+
     for i in range(vlen):
         for a in args:
             rv[i] ^= a[i]
@@ -23,6 +27,7 @@ def xor(*args):
 def xor_split(secret, num_parts, deterministic=False):
     vlen = len(secret)
     parts = []
+
     for i in range(num_parts - 1):
         if deterministic:
             msg = b'Batshitoshi ' + secret + b'%d of %d parts' % (i, num_parts)
@@ -33,7 +38,9 @@ def xor_split(secret, num_parts, deterministic=False):
         parts.append(part)
 
     parts.append(xor(secret, *parts))
+
     assert xor(*parts) == secret  # selftest
+
     return parts
 
 
@@ -45,4 +52,7 @@ def prepare_test_pairs(num_parts, num_words=24, deterministic=False, mnemonic=No
         seed = Mnemonic.to_seed(mnemonic=mnemonic)
 
     parts = xor_split(seed, num_parts=num_parts, deterministic=deterministic)
+
     return [Mnemonic('english').to_mnemonic(s) for s in parts], mnemonic
+
+# EOF
