@@ -338,6 +338,7 @@ class ApprovalRule:
 
         attest_mode = self.whitelist_opts and self.whitelist_opts.attest
         allow_zeroval = self.whitelist_opts and self.whitelist_opts.allow_zeroval_outs
+
         # check all destinations are in the whitelist if mode is basic
         if self.whitelist and not attest_mode:
             dests = set()
@@ -345,11 +346,14 @@ class ApprovalRule:
                 o = psbt.outputs[idx]
                 if o.is_change or (txo.nValue == 0 and allow_zeroval):
                     continue
+
                 try:
                     address = chain.render_address(txo.scriptPubKey)
                 except ValueError:
-                    address = None
-                dests.add(address or str(b2a_hex(txo.scriptPubKey), 'ascii'))
+                    address = str(b2a_hex(txo.scriptPubKey), 'ascii')
+
+                dests.add(address)
+
             diff = dests - set(self.whitelist)
             assert not diff, "non-whitelisted address: " + diff.pop()
 
