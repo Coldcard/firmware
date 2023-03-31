@@ -714,10 +714,9 @@ def sign_psbt_file(filename):
     # sign a PSBT file found on a MicroSD card
     from files import CardSlot, CardMissingError, securely_blank_file
     from glob import dis
+    from ux import the_ux
     from sram2 import tmp_buf
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
-
-    UserAuthorizedAction.cleanup()
 
     #print("sign: %s" % filename)
 
@@ -881,10 +880,9 @@ def sign_psbt_file(filename):
 
         UserAuthorizedAction.cleanup()
 
+    UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
-
-    # kill any menu stack, and put our thing at the top
-    abort_and_goto(UserAuthorizedAction.active_request)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
     def __init__(self):
