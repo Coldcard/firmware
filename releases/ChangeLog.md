@@ -1,11 +1,12 @@
-## 5.1.2 - 2023-03-18
+## 5.1.2 - 2023-04-XX
 
-- Enhancement: SeedXOR for 12 and 18 words mnemonics
-- Enhancement: Support all SIGHASH types.
+- Enhancement: Support all `SIGHASH` types (previous: only `SIGHASH_ALL` was supported).
+  This enables specialized Bitcoin transactions such as "SINGLE|ANYONECANPAY".
+- Enhancement: SeedXOR now supports 12 and 18 words mnemonics.
+- Enhancement: Signing memory, speed optimizations.
 - Enhancement: Docker repro build container improvements (non-privileged container)
-- Enhancement: Signing memory optimizations
-- Bugfix: After extended private key and TAPSIGNER backup import into blank wallet, users needed 
-  to manually reboot Coldcard. Fixed
+- Bugfix: After extended private key and TAPSIGNER backup import into blank wallet,
+  users needed to manually reboot Coldcard.
 - Bugfix: Do not set SIGHASH type on foreign PSBT inputs
 
 
