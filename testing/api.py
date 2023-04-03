@@ -54,7 +54,9 @@ class Bitcoind:
                 "-server=1",
                 "-keypool=1",
                 f"-port={self.p2p_port}",
-                f"-rpcport={self.rpc_port}"
+                f"-rpcport={self.rpc_port}",
+                "-min",
+                "-nosplash",
             ]
         )
         signal.signal(signal.SIGTERM, self.cleanup)
@@ -84,10 +86,42 @@ class Bitcoind:
 
         assert self.rpc.getblockchaininfo()['chain'] == 'regtest'
         assert self.rpc.getnetworkinfo()['version'] >= 220000, "we require >= 22.0 of Core"
+
         # not descriptors so that we can do dumpwallet
         self.supply_wallet = self.create_wallet(wallet_name="supply", descriptors=False)
-        # Make sure there are blocks and coins available
-        self.supply_wallet.generatetoaddress(101, self.supply_wallet.getnewaddress())
+        self.need_supply(50)
+
+    def need_supply(self, need_btc):
+        # Make sure there are blocks and confirmed coins available
+        s = self.supply_wallet
+
+        if s.getbalance(minconf=1) < need_btc:
+            # Mine until we have enough coin; might be 100 blocks at startup, but
+            # after that, another 50 coins mature each block
+            addr = s.getnewaddress()
+            while s.getbalance(minconf=1) < need_btc:
+                s.generatetoaddress(5, addr)
+
+    def need_utxos(self, need_utxos, need_btc=0):
+        # split until we have enough UTXO w/ enough balance
+        # XXX unused, and probably useless
+        while 1:
+            utxo = s.listunspent(minconf=1)
+            bal = sum(i['amount'] for i in utxo)
+
+            if len(utxo) >= need_utxos and bal >= need_btc:
+                return
+
+            # make 10 more UTXO: 9 even, and one change (less fees)
+            addrs = [s.getnewaddress() for i in range(9)]
+            amt = round(s.getbalance() / (len(addrs)+1), 8)
+            self.supply_wallet.sendmany(amounts={a:amt for a in addrs}, minconf=0)
+            s.generatetoaddress(7, s.getnewaddress())
+
+    def walletcreatefundedpsbt(self, **kw):
+        # wrapper to be sure we have funds needed
+        assert 0
+        
 
     def get_wallet_rpc(self, wallet):
         url = self.rpc_url + f"/wallet/{wallet}"
@@ -128,7 +162,7 @@ class Bitcoind:
         return c
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def bitcoind():
     # JSON-RPC connection to a bitcoind instance
     # this assumes that you have bitcoind in path somewhere
@@ -190,7 +224,7 @@ def bitcoind_d_wallet_w_sk(bitcoind):
     yield conn
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def bitcoind_d_sim_watch(bitcoind):
     # watch only descriptor wallet simulator
     w_name = 'ckcc-test-desc-wallet-sim-%s' % uuid.uuid4()
