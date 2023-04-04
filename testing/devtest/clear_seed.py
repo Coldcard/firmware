@@ -5,10 +5,12 @@ from glob import numpad, dis
 from pincodes import pa
 from glob import settings
 from pincodes import AE_SECRET_LEN, PA_IS_BLANK
+from sim_settings import sim_defaults
 
 if not pa.is_secret_blank():
     # clear settings associated with this key, since it will be no more
-    settings.blank()
+    settings.current = dict(sim_defaults)
+    settings.overrides.clear()
 
     # save a blank secret (all zeros is a special case, detected by bootloader)
     dis.fullscreen('Wipe Seed!')
