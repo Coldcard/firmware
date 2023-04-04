@@ -16,6 +16,7 @@ from serializations import ser_compact_size, deser_compact_size, hash160, hash25
 from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256
 from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
+from serializations import ALL_SIGHASH_FLAGS
 from glob import settings
 
 from public_constants import (
@@ -900,6 +901,10 @@ class psbtObject(psbtProxy):
         self.total_value_out = None
         self.total_value_in = None
         self.presigned_inputs = set()
+        # will be tru if number of change outputs equals to total number of outputs
+        self.consolidation_tx = False
+        # number of change outputs
+        self.num_change_outputs = None
 
         # when signing segwit stuff, there is some re-use of hashes
         # only if SIGHASH_ALL
@@ -1176,10 +1181,13 @@ class psbtObject(psbtProxy):
         # - is it a change address, defined by redeem script (p2sh) or key we know is ours
         # - mark change outputs, so perhaps we don't show them to users
 
+        self.num_change_outputs = 0
         for idx, txo in self.output_iter():
             output = self.outputs[idx]
             # perform output validation
             output.validate(idx, txo, self.my_xfp, self.active_multisig, self)
+            if output.is_change:
+                self.num_change_outputs += 1
 
         if self.total_value_out is None:
             # this happens, but would expect this to have done already?
@@ -1208,8 +1216,41 @@ class psbtObject(psbtProxy):
             self.warnings.append(('Big Fee', 'Network fee is more than '
                                     '5%% of total value (%.1f%%).' % per_fee))
 
+        self.consolidation_tx = self.num_change_outputs == self.num_outputs
         # Enforce policy related to change outputs
         self.consider_dangerous_change(self.my_xfp)
+
+    def consider_dangerous_sighash(self):
+        sh_unusual = False
+        none_sh = False
+        for input in self.inputs:
+            # only if it is our input - one that will be eventually sign
+            if input.num_our_keys:
+                if input.sighash is not None:
+                    # our inputs MUST have SIGHASH that we are able to sign
+                    if input.sighash not in ALL_SIGHASH_FLAGS:
+                        raise FatalPSBTIssue("Unsupported sighash flag %x" % input.sighash)
+                    if input.sighash != SIGHASH_ALL:
+                        sh_unusual = True
+                    if input.sighash in (SIGHASH_NONE, SIGHASH_NONE|SIGHASH_ANYONECANPAY):
+                        none_sh = True
+
+        if sh_unusual and not settings.get("sighshchk"):
+            if self.consolidation_tx:
+                # not all inputs are sighash ALL in consolidation tx
+                raise FatalPSBTIssue("Only sighash ALL is allowed for consolidation tx")
+            if none_sh:
+                # sighash NONE or NONE|ANYONECANPAY used
+                raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere")
+
+        if none_sh:
+            self.warnings.append(
+                ("Danger", "Destination address can be changed after signing (sighash NONE).")
+            )
+        elif sh_unusual:
+            self.warnings.append(
+                ("Caution", "Some inputs have unusual SIGHASH values not used in typical cases.")
+            )
 
     def consider_dangerous_change(self, my_xfp):
         # Enforce some policy on change outputs:
@@ -1636,7 +1677,7 @@ class psbtObject(psbtProxy):
         old_pos = fd.tell()
 
         # sighash regardless of ANYONECANPAY input part
-        out_sighash_type = sighash_type & 0x1f
+        out_sighash_type = sighash_type & 0x7f
 
         rv = sha256()
 
@@ -1695,7 +1736,7 @@ class psbtObject(psbtProxy):
         old_pos = fd.tell()
 
         # sighash regardless of ANYONECANPAY input part
-        out_sighash_type = sighash_type & 0x1f
+        out_sighash_type = sighash_type & 0x7f
 
         if self.hashPrevouts and sighash_type == SIGHASH_ALL:
             hashPrevouts = self.hashPrevouts
@@ -1723,6 +1764,9 @@ class psbtObject(psbtProxy):
 
                 hashOutputs = ngu.hash.sha256s(hashOutputs.digest())
             elif out_sighash_type == SIGHASH_SINGLE:
+                # even though below case is consensus valid, we restrict it
+                # if users do not want to sign any outputs, NONE sighash flag should be used instead
+                assert replace_idx < self.num_outputs, "SINGLE corresponding output (%d) missing" % replace_idx
                 for out_idx, txo in self.output_iter():
                     if out_idx == replace_idx:
                         hashOutputs = ngu.hash.sha256d(txo.serialize())

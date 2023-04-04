@@ -1800,12 +1800,16 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 
 @pytest.fixture
 def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, need_keypress,
-                             bitcoind, bitcoind_d_sim_watch):
-    def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2):
+                             bitcoind, bitcoind_d_sim_watch, settings_set):
+    def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=True, sh_checks=False):
         from decimal import Decimal, ROUND_DOWN
+        settings_set("sighshchk", int(not sh_checks))
         microsd_wipe()
         time.sleep(1)
         goto_home()
+
+        not_all_ALL = any(sh != "ALL" for sh in sighash)
+
         bitcoind_d_sim_watch.keypoolrefill(num_inputs + num_outputs)
         input_val = bitcoind.supply_wallet.getbalance() / num_inputs
         cc_dest = [
@@ -1823,10 +1827,13 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
         bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
         unspent = bitcoind_d_sim_watch.listunspent()
         output_val = bitcoind_d_sim_watch.getbalance() / num_outputs
+        # consolidation or not?
+        dest_wal = bitcoind_d_sim_watch if consolidation else bitcoind.supply_wallet
         destinations = [
-            {bitcoind_d_sim_watch.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
+            {dest_wal.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_outputs)
         ]
+        assert len(unspent) >= num_inputs
         psbt = bitcoind_d_sim_watch.walletcreatefundedpsbt(
             unspent[:num_inputs], destinations, 0,
             {"fee_rate": 20, "subtractFeeFromOutputs": list(range(num_outputs))}
@@ -1836,76 +1843,132 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
         assert len(x.outputs) == num_outputs
         for idx, i in enumerate(x.inputs):
             if len(sighash) == 1:
-                i.sighash = SIGHASH_MAP[sighash[0]]
+                i.sighash = SIGHASH_MAP.get(sighash[0], sighash[0])
             else:
-                i.sighash = SIGHASH_MAP[sighash[idx]]
+                i.sighash = SIGHASH_MAP.get(sighash[idx], sighash[idx])
         psbt_sh = x.as_b64_str()
         with open(microsd_path("sighash.psbt"), "w") as f:
             f.write(psbt_sh)
         need_keypress("y")
         time.sleep(0.2)
+        title, story = cap_story()
+
+        if sh_checks is True:
+            # checks enabled
+            if consolidation and not_all_ALL:
+                assert title == "Failure"
+                assert "Only sighash ALL is allowed for consolidation tx" in story
+                return
+
+            elif not consolidation and any("NONE" in sh for sh in sighash if isinstance(sh, str)):
+                assert title == "Failure"
+                assert "Sighash NONE is not allowed as funds could be going anywhere" in story
+                return
+
+        assert title == "OK TO SEND?"
+        if any("NONE" in sh for sh in sighash):
+            assert "(1 warning below)" in story
+            assert "---WARNING---" in story
+            assert "Danger" in story
+            assert "Destination address can be changed after signing (sighash NONE)." in story
+        elif any(sh != "ALL" for sh in sighash):
+            assert "(1 warning below)" in story
+            assert "---WARNING---" in story
+            assert "Caution" in story
+            assert "Some inputs have unusual SIGHASH values not used in typical cases." in story
         need_keypress("y")
         time.sleep(0.5)
         title, story = cap_story()
         time.sleep(0.1)
         need_keypress("y")  # confirm success or failure
-        if addr_fmt == "legacy" and (num_outputs < num_inputs) and any("SINGLE" in sh for sh in sighash):
+        # now not just legacy but also segwit prohibits SINGLE out of bounds
+        # consensus allows it but it really is just bad usage - restricted
+        if (num_outputs < num_inputs) and any("SINGLE" in sh for sh in sighash):
             assert "SINGLE corresponding output" in story
             assert "missing" in story
-        else:
-            split_story = story.split("\n\n")
-            signed_fname = split_story[1]
-            txn_fname = split_story[3]
-            tx_id = split_story[4].split("\n")[-1]
-            with open(microsd_path(signed_fname), "r") as f:
-                cc_psbt = f.read().strip()
-            with open(microsd_path(txn_fname), "r") as f:
-                cc_tx_hex = f.read().strip()
-            y = BasicPSBT().parse(base64.b64decode(cc_psbt))
-            for idx, i in enumerate(y.inputs):
-                if len(sighash) == 1:
-                    assert i.sighash == SIGHASH_MAP[sighash[0]]
-                else:
-                    assert i.sighash == SIGHASH_MAP[sighash[idx]]
-                # check signature hash correct checkusm appended
-                for _, sig in i.part_sigs.items():
-                    assert sig[-1] == i.sighash
-            resp = bitcoind_d_sim_watch.finalizepsbt(cc_psbt)
-            assert resp["complete"] is True
-            tx_hex = resp["hex"]
-            assert tx_hex == cc_tx_hex
-            res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
-            assert res[0]["allowed"]
-            txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
-            assert tx_id == txn_id
+            return
+
+        split_story = story.split("\n\n")
+        signed_fname = split_story[1]
+        txn_fname = split_story[3]
+        tx_id = split_story[4].split("\n")[-1]
+
+        with open(microsd_path(signed_fname), "r") as f:
+            cc_psbt = f.read().strip()
+        with open(microsd_path(txn_fname), "r") as f:
+            cc_tx_hex = f.read().strip()
+
+        y = BasicPSBT().parse(base64.b64decode(cc_psbt))
+
+        for idx, i in enumerate(y.inputs):
+            if len(sighash) == 1:
+                assert i.sighash == SIGHASH_MAP[sighash[0]]
+            else:
+                assert i.sighash == SIGHASH_MAP[sighash[idx]]
+            # check signature hash correct checkusm appended
+            for _, sig in i.part_sigs.items():
+                assert sig[-1] == i.sighash
+
+        resp = bitcoind_d_sim_watch.finalizepsbt(cc_psbt)
+        assert resp["complete"] is True
+        tx_hex = resp["hex"]
+        assert tx_hex == cc_tx_hex
+        res = bitcoind.supply_wallet.testmempoolaccept([tx_hex])
+        assert res[0]["allowed"]
+        txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
+        assert tx_id == txn_id
+
     return doit
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
-@pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
-@pytest.mark.parametrize("num_outs", [1, 2, 3, 5])
+@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
+@pytest.mark.parametrize("num_outs", [1, 3, 5])
 @pytest.mark.parametrize("num_ins", [2, 5])
-def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, microsd_path, need_keypress, goto_home,
-                      cap_story, microsd_wipe, _test_single_sig_sighash):
+def test_sighash_same(addr_fmt, sighash, num_ins, num_outs, _test_single_sig_sighash):
     # sighash is the same among all inputs
     _test_single_sig_sighash(addr_fmt, [sighash], num_inputs=num_ins, num_outputs=num_outs)
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("sighash", list(itertools.combinations(SIGHASH_MAP.keys(), 2)))
 @pytest.mark.parametrize("num_outs", [2, 3, 5])
-def test_sighash_different(addr_fmt, sighash, num_outs, microsd_path, need_keypress, goto_home,
-                           cap_story, microsd_wipe, _test_single_sig_sighash):
+def test_sighash_different(addr_fmt, sighash, num_outs, _test_single_sig_sighash):
     # sighash differ among all inputs
     _test_single_sig_sighash(addr_fmt, sighash, num_inputs=2, num_outputs=num_outs)
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("num_outs", [5, 8])
-def test_sighash_all(addr_fmt, num_outs, microsd_path, need_keypress, goto_home, cap_story,
-                     microsd_wipe, _test_single_sig_sighash):
+def test_sighash_all(addr_fmt, num_outs, _test_single_sig_sighash):
     # tx with 6 inputs representing all possible sighashes
     _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6, num_outputs=num_outs)
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
+def test_sighash_disallowed_consolidation(sighash, _test_single_sig_sighash):
+    # sighash is the same among all inputs
+    _test_single_sig_sighash("bech32", [sighash], num_inputs=2, num_outputs=2, sh_checks=True)
+
+
+@pytest.mark.bitcoind
+@pytest.mark.parametrize("sighash", ["NONE", "NONE|ANYONECANPAY"])
+def test_sighash_disallowed_NONE(sighash, _test_single_sig_sighash):
+    # sighash is the same among all inputs
+    _test_single_sig_sighash("bech32", [sighash], num_inputs=2, num_outputs=2, consolidation=False,
+                             sh_checks=True)
+
+
+@pytest.mark.bitcoind
+def test_sighash_nonexistent( _test_single_sig_sighash):
+    with pytest.raises(AssertionError) as exc:
+        _test_single_sig_sighash("legacy", [0xe2], num_inputs=2, num_outputs=2,
+                                 consolidation=True, sh_checks=False)
+    assert "'Failure' == 'OK TO SEND?'" in exc.value.args[0]
 
 
 def test_no_outputs_tx(fake_txn, microsd_path, goto_home, need_keypress, pick_menu_item, cap_story):

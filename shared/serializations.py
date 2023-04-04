@@ -35,6 +35,16 @@ SIGHASH_NONE = const(2)
 SIGHASH_SINGLE = const(3)
 SIGHASH_ANYONECANPAY = const(0x80)
 
+# list containing all flags that we support signing for
+ALL_SIGHASH_FLAGS = [
+    SIGHASH_ALL,
+    SIGHASH_NONE,
+    SIGHASH_SINGLE,
+    SIGHASH_ALL|SIGHASH_ANYONECANPAY,
+    SIGHASH_NONE|SIGHASH_ANYONECANPAY,
+    SIGHASH_SINGLE|SIGHASH_ANYONECANPAY,
+]
+
 # Serialization/deserialization tools
 def ser_compact_size(l):
     if l < 253:

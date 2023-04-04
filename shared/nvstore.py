@@ -67,6 +67,7 @@ from glob import PSRAM
 #   cd_mode = [<=mk3] set to enable some less-destructive modes
 #   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
 #   kbtn =  (1 char) '1'-'9' that will wipe seed during login process (mk4+)
+#   sighshchk = (bool) whether sighash checks are enabled
 
 
 if mk_num <= 3:

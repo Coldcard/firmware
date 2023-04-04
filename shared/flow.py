@@ -130,6 +130,11 @@ SettingsMenu = [
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+    ToggleMenuItem("Sighash Checks", "sighshchk", ["Default On", "Disabled"],
+                   story='''\
+DANGER! This disables COLDCARD sighash checks. \
+All funds can be stolen by specially crafted PSBT. \
+Keep enabled if you're not sure what you're doing.'''),
     ToggleMenuItem('Delete PSBTs', 'del', ['Default Keep', 'Delete PSBTs'],
         story='''\
 PSBT files (on SDCard) will be blanked & deleted after they are used. \
