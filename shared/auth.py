@@ -657,7 +657,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             dis.progress_bar_show(0.66)
             self.psbt.consider_outputs()
-
+            self.psbt.consider_dangerous_sighash()
             dis.progress_bar_show(0.85)
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
@@ -884,9 +884,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # - does not show change outputs, by design.
         MAX_VISIBLE_OUTPUTS = const(10)
 
-        num_change = sum(1 for o in self.psbt.outputs if o.is_change)
-
-        if num_change == self.psbt.num_outputs:
+        if self.psbt.consolidation_tx:
             # consolidating txn that doesn't change balance of account.
             msg.write("Consolidating\n%s %s\nwithin wallet.\n\n" %
                             self.chain.render_value(self.psbt.total_value_out))
@@ -895,7 +893,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             return
 
-        if self.psbt.num_outputs - num_change <= MAX_VISIBLE_OUTPUTS:
+        if (self.psbt.num_outputs - self.psbt.num_change_outputs) <= MAX_VISIBLE_OUTPUTS:
             # simple, common case: don't sort outputs, and do show all of them
             first = True
             for idx, tx_out in self.psbt.output_iter():
@@ -940,7 +938,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write(txt)
             msg.write('\n')
 
-        left = self.psbt.num_outputs - len(largest) - num_change
+        left = self.psbt.num_outputs - len(largest) - self.psbt.num_change_outputs
         if left > 0:
             msg.write('.. plus %d smaller output(s), not shown here, which total: ' % left)
 

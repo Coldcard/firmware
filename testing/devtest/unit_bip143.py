@@ -31,28 +31,28 @@ BIP143_DATA = [
         '00ca9a3b00000000',  # amount
         '64f3b0f4dd2bb3aa1ce8566d220cc74dda9df97d8490cc81d89d735c92e59fb6',  # sighash (result)
     ),
-    (
-        "Native P2WSH (scriptCode 0) SINGLE",  # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki#native-p2wsh
-        '0100000002fe3dc9208094f3ffd12645477b3dc56f60ec4fa8e6f5d67c565d1c6b9216b36e0000000000ffffffff0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff0100f2052a010000001976a914a30741f8145e5acadf23f751864167f32e0963f788ac00000000',
-        # unsigned tx
-        '4721026dccc749adc2a9d0d89497ac511f760f45c47dc5ed9cf352a58ac706453880aeadab210255a9626aebf5e29c0e6538428ba0d1dcf6ca98ffdf086aa8ced5e0d0215ea465ac',
-        # scriptCode
-        1,  # input index
-        '0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff',  # outpoint
-        0x03,  # sigHash typr
-        '0011102401000000',  # amount
-        '82dde6e4f1e94d02c2b7ad03d2115d691f48d064e9d52f58194a6637e4194391',  # sighash (result)
-    ),
-    (
-        "Native P2WSH (scriptCode 1) SINGLE",  # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki#native-p2wsh
-        '0100000002fe3dc9208094f3ffd12645477b3dc56f60ec4fa8e6f5d67c565d1c6b9216b36e0000000000ffffffff0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff0100f2052a010000001976a914a30741f8145e5acadf23f751864167f32e0963f788ac00000000',
-        '23210255a9626aebf5e29c0e6538428ba0d1dcf6ca98ffdf086aa8ced5e0d0215ea465ac',  # scriptCode
-        1,  # input index
-        '0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff',  # outpoint
-        0x03,  # sigHash typr
-        '0011102401000000',  # amount
-        'fef7bd749cce710c5c052bd796df1af0d935e59cea63736268bcbe2d2134fc47',  # sighash (result)
-    ),
+    # (
+    #     "Native P2WSH (scriptCode 0) SINGLE",  # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki#native-p2wsh
+    #     '0100000002fe3dc9208094f3ffd12645477b3dc56f60ec4fa8e6f5d67c565d1c6b9216b36e0000000000ffffffff0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff0100f2052a010000001976a914a30741f8145e5acadf23f751864167f32e0963f788ac00000000',
+    #     # unsigned tx
+    #     '4721026dccc749adc2a9d0d89497ac511f760f45c47dc5ed9cf352a58ac706453880aeadab210255a9626aebf5e29c0e6538428ba0d1dcf6ca98ffdf086aa8ced5e0d0215ea465ac',
+    #     # scriptCode
+    #     1,  # input index
+    #     '0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff',  # outpoint
+    #     0x03,  # sigHash typr
+    #     '0011102401000000',  # amount
+    #     '82dde6e4f1e94d02c2b7ad03d2115d691f48d064e9d52f58194a6637e4194391',  # sighash (result)
+    # ),
+    # (
+    #     "Native P2WSH (scriptCode 1) SINGLE",  # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki#native-p2wsh
+    #     '0100000002fe3dc9208094f3ffd12645477b3dc56f60ec4fa8e6f5d67c565d1c6b9216b36e0000000000ffffffff0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff0100f2052a010000001976a914a30741f8145e5acadf23f751864167f32e0963f788ac00000000',
+    #     '23210255a9626aebf5e29c0e6538428ba0d1dcf6ca98ffdf086aa8ced5e0d0215ea465ac',  # scriptCode
+    #     1,  # input index
+    #     '0815cf020f013ed6cf91d29f4202e8a58726b1ac6c79da47c23d1bee0a6925f80000000000ffffffff',  # outpoint
+    #     0x03,  # sigHash typr
+    #     '0011102401000000',  # amount
+    #     'fef7bd749cce710c5c052bd796df1af0d935e59cea63736268bcbe2d2134fc47',  # sighash (result)
+    # ),
     (
         "Native P2WSH (input 0) SINGLE|ANYONECANPAY",  # https://github.com/bitcoin/bips/blob/master/bip-0143.mediawiki#native-p2wsh
         '0100000002e9b542c5176808107ff1df906f46bb1f2583b16112b95ee5380665ba7fcfc0010000000000ffffffff80e68831516392fcd100d186b3c2c7b95c80b53c77e77c35ba03a66b429a2a1b0000000000ffffffff0280969800000000001976a914de4b231626ef508c9a74a8517e6783c0546d6b2888ac80969800000000001976a9146648a8cd4531e1ec47f35916de8e259237294d1e88ac00000000',

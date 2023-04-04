@@ -2094,9 +2094,10 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
 def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, load_export):
+                                microsd_wipe, load_export, settings_set):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
+    settings_set("sighshchk", 1)  # disable checks
     use_regtest()
     clear_ms()
     microsd_wipe()
@@ -2233,7 +2234,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     goto_home()
     pick_menu_item("Ready To Sign")
     time.sleep(0.5)
-    title, _ = cap_story()
+    title, story = cap_story()
     if "OK TO SEND?" in title:
         # multiple files
         pass
@@ -2247,6 +2248,15 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
             time.sleep(0.5)
             title, story = cap_story()
     assert title == "OK TO SEND?"
+    if sighash != "ALL":
+        assert "(1 warning below)" in story
+        assert "---WARNING---" in story
+        if sighash in ("NONE", "NONE|ANYONECANPAY"):
+            assert "Danger" in story
+            assert "Destination address can be changed after signing (sighash NONE)." in story
+        else:
+            assert "Caution" in story
+            assert "Some inputs have unusual SIGHASH values not used in typical cases." in story
     need_keypress("y")  # confirm signing
     time.sleep(0.5)
     title, story = cap_story()
@@ -2302,31 +2312,34 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     need_keypress("y")  # confirm signing
     time.sleep(0.5)
     title, story = cap_story()
-    if desc_type == "p2sh_desc" and "SINGLE" in sighash:
+    if "SINGLE" in sighash:
         # we have only one output (consolidation) and legacy sighash does not support index out of range
+        # now not just legacy but also segwit prohibits SINGLE out of bounds
+        # consensus allows it but it really is just bad usage - restricted
         assert "SINGLE corresponding output" in story
         assert "missing" in story
-    else:
-        assert "PSBT Signed" == title
-        assert "Updated PSBT is:" in story
-        need_keypress("y")
-        fname = story.split("\n\n")[-1]
-        with open(microsd_path(fname), "r") as f:
-            cc_signed_psbt = f.read().strip()
-        # CC already signed - now all bitcoin signers
-        for signer in bitcoind_signers:
-            res1 = signer.walletprocesspsbt(cc_signed_psbt, True, sighash)
-            psbt = res1["psbt"]
-            cc_signed_psbt = psbt
-        res = bitcoind_watch_only.finalizepsbt(cc_signed_psbt)
-        assert res["complete"]
-        tx_hex = res["hex"]
-        res = bitcoind_watch_only.testmempoolaccept([tx_hex])
-        assert res[0]["allowed"]
-        res = bitcoind_watch_only.sendrawtransaction(tx_hex)
-        assert len(res) == 64  # tx id
-        bitcoind_signers[0].generatetoaddress(1, bitcoind_signers[0].getnewaddress())  # mine block
-        assert len(bitcoind_watch_only.listunspent()) == 2  # (merged all inputs to one + one newly spendable from mining)
+        return
+
+    assert "PSBT Signed" == title
+    assert "Updated PSBT is:" in story
+    need_keypress("y")
+    fname = story.split("\n\n")[-1]
+    with open(microsd_path(fname), "r") as f:
+        cc_signed_psbt = f.read().strip()
+    # CC already signed - now all bitcoin signers
+    for signer in bitcoind_signers:
+        res1 = signer.walletprocesspsbt(cc_signed_psbt, True, sighash)
+        psbt = res1["psbt"]
+        cc_signed_psbt = psbt
+    res = bitcoind_watch_only.finalizepsbt(cc_signed_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = bitcoind_watch_only.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    res = bitcoind_watch_only.sendrawtransaction(tx_hex)
+    assert len(res) == 64  # tx id
+    bitcoind_signers[0].generatetoaddress(1, bitcoind_signers[0].getnewaddress())  # mine block
+    assert len(bitcoind_watch_only.listunspent()) == 2  # (merged all inputs to one + one newly spendable from mining)
 
 
 @pytest.mark.parametrize("desc", [
