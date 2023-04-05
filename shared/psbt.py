@@ -1162,7 +1162,7 @@ class psbtObject(psbtProxy):
         if self.xpubs:
             await self.handle_xpubs()
 
-        assert self.num_outputs >= 1, 'need outs'
+        assert self.num_outputs >= 1, 'need outputs'
 
         if DEBUG:
             our_keys = sum(1 for i in self.inputs if i.num_our_keys)

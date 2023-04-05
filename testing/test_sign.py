@@ -1941,4 +1941,30 @@ def test_sighash_all(addr_fmt, num_outs, microsd_path, need_keypress, goto_home,
     # tx with 6 inputs representing all possible sighashes
     _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6, num_outputs=num_outs)
 
+
+def test_no_outputs_tx(fake_txn, microsd_path, goto_home, need_keypress, pick_menu_item, cap_story):
+    goto_home()
+    psbt = fake_txn(3, 0)  # no outputs
+    fname = "zero_outputs.psbt"
+    fpath = microsd_path(fname)
+
+    with open(fpath, "wb") as f:
+        f.write(psbt)
+
+    pick_menu_item("Ready To Sign")
+    time.sleep(0.1)
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        pick_menu_item(fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+
+    assert title == "Failure"
+    assert "Invalid PSBT" in story
+    assert "need outputs" in story
+
+    try: os.remove(fpath)
+    except: pass
+
 # EOF
