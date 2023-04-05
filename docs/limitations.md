@@ -48,6 +48,7 @@
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
+- every transaction needs to have at least one output (otherwise Invalid PSBT)
 
 
 # P2SH / Multisig
