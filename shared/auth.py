@@ -987,8 +987,6 @@ async def sign_psbt_file(filename, force_vdisk=False):
     from ux import the_ux
     from sram2 import tmp_buf
 
-    #print("sign: %s" % filename)
-
     # copy file into our spiflash
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered

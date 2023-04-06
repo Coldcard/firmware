@@ -271,6 +271,9 @@
       Set High-Water
       Wipe HSM Policy [IF HSM POLICY]
       Clear OV cache
+      Sighash Checks
+        Default: Block
+        Warn
       Testnet Mode
         Bitcoin
         Testnet3

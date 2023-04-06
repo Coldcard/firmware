@@ -1216,31 +1216,39 @@ class psbtObject(psbtProxy):
             self.warnings.append(('Big Fee', 'Network fee is more than '
                                     '5%% of total value (%.1f%%).' % per_fee))
 
-        self.consolidation_tx = self.num_change_outputs == self.num_outputs
+        self.consolidation_tx = (self.num_change_outputs == self.num_outputs)
+
         # Enforce policy related to change outputs
         self.consider_dangerous_change(self.my_xfp)
 
     def consider_dangerous_sighash(self):
+        # Check sighash flags are legal, useful, and safe. Warn about
+        # some risks if user has enabled special sighash values.
+
         sh_unusual = False
         none_sh = False
+
         for input in self.inputs:
             # only if it is our input - one that will be eventually sign
             if input.num_our_keys:
                 if input.sighash is not None:
-                    # our inputs MUST have SIGHASH that we are able to sign
+                    # All inputs MUST have SIGHASH that we are able to sign.
                     if input.sighash not in ALL_SIGHASH_FLAGS:
-                        raise FatalPSBTIssue("Unsupported sighash flag %x" % input.sighash)
+                        raise FatalPSBTIssue("Unsupported sighash flag 0x%x" % input.sighash)
+
                     if input.sighash != SIGHASH_ALL:
                         sh_unusual = True
+
                     if input.sighash in (SIGHASH_NONE, SIGHASH_NONE|SIGHASH_ANYONECANPAY):
                         none_sh = True
 
         if sh_unusual and not settings.get("sighshchk"):
             if self.consolidation_tx:
-                # not all inputs are sighash ALL in consolidation tx
+                # all inputs must be sighash ALL in consolidation tx
                 raise FatalPSBTIssue("Only sighash ALL is allowed for consolidation tx")
+
             if none_sh:
-                # sighash NONE or NONE|ANYONECANPAY used
+                # sighash NONE or NONE|ANYONECANPAY is proposed: block
                 raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere")
 
         if none_sh:
@@ -1747,6 +1755,7 @@ class psbtObject(psbtProxy):
             # input side
             hashPrevouts = sha256()
             hashSequence = sha256()
+
             if not (sighash_type & SIGHASH_ANYONECANPAY):
                 for in_idx, txi in self.input_iter():
                     hashPrevouts.update(txi.prevout.serialize())
@@ -1764,10 +1773,14 @@ class psbtObject(psbtProxy):
                     hashOutputs.update(txo.serialize())
 
                 hashOutputs = ngu.hash.sha256s(hashOutputs.digest())
+
             elif out_sighash_type == SIGHASH_SINGLE:
-                # even though below case is consensus valid, we restrict it
-                # if users do not want to sign any outputs, NONE sighash flag should be used instead
-                assert replace_idx < self.num_outputs, "SINGLE corresponding output (%d) missing" % replace_idx
+                # Even though below case is consensus valid, we block it.
+                # If users do not want to sign any outputs, NONE sighash flag
+                # should be used instead.
+                assert replace_idx < self.num_outputs, \
+                            "SINGLE corresponding output (%d) missing" % replace_idx
+
                 for out_idx, txo in self.output_iter():
                     if out_idx == replace_idx:
                         hashOutputs = ngu.hash.sha256d(txo.serialize())
@@ -1781,10 +1794,6 @@ class psbtObject(psbtProxy):
                 self.hashOutputs = hashOutputs
 
             gc.collect()
-
-            #print('hPrev: %s' % str(b2a_hex(self.hashPrevouts), 'ascii'))
-            #print('hSeq : %s' % str(b2a_hex(self.hashSequence), 'ascii'))
-            #print('hOuts: %s' % str(b2a_hex(self.hashOutputs), 'ascii'))
 
         rv = sha256()
 

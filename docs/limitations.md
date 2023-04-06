@@ -48,7 +48,7 @@
 - bitcoin limits transactions to 100k, but there could be large input transactions
   inside the PSBT. Reduce this by using segwit signatures and provide only the
   individual UTXO ("out points").
-- every transaction needs to have at least one output (otherwise Invalid PSBT)
+- every transaction needs to have at least one output, or we reject it
 
 
 # P2SH / Multisig
@@ -72,6 +72,7 @@
 - derivation path for each cosigner must be known and consistent with PSBT
 - fixed: XFP values (fingerprints) for each of the co-signers must be unique (limitation removed)
 
+
 # SIGHASH types
 
 - all sighash flags are supported:
@@ -81,6 +82,8 @@
     - `ALL|ANYONECANPAY`
     - `NONE|ANYONECANPAY`
     - `SINGLE|ANYONECANPAY`
+- any value other than ALL will cause a warning to be shown to user
+- by default, we reject `NONE` and `NONE|ANYONECANPAY` but there is a setting to allow
 
 # U2F Protocol / Web Access to USB / WebUSB
 

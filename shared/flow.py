@@ -130,11 +130,6 @@ SettingsMenu = [
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
-    ToggleMenuItem("Sighash Checks", "sighshchk", ["Default On", "Disabled"],
-                   story='''\
-DANGER! This disables COLDCARD sighash checks. \
-All funds can be stolen by specially crafted PSBT. \
-Keep enabled if you're not sure what you're doing.'''),
     ToggleMenuItem('Delete PSBTs', 'del', ['Default Keep', 'Delete PSBTs'],
         story='''\
 PSBT files (on SDCard) will be blanked & deleted after they are used. \
@@ -277,6 +272,12 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
+    ToggleMenuItem("Sighash Checks", "sighshchk", ["Default: Block", "Warn"], invert=True,
+                   story='''\
+If you disable sighash flag restrictions, and ignore the \
+warnings, funds can be stolen by specially crafted PSBT or MitM.
+
+Keep blocked unless you intend to sign special transactions.'''),
     ToggleMenuItem('Testnet Mode', 'chain', ['Bitcoin', 'Testnet3', 'Regtest'],
         value_map=['BTC', 'XTN', 'XRT'],
         on_change=change_which_chain,

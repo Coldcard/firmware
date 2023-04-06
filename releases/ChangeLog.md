@@ -1,13 +1,17 @@
 ## 5.1.2 - 2023-04-XX
 
-- Enhancement: Support all `SIGHASH` types (previous: only `SIGHASH_ALL` was supported).
-  This enables specialized Bitcoin transactions such as "SINGLE|ANYONECANPAY".
+- Enhancement: Support all `SIGHASH` types (previously only `SIGHASH_ALL` was supported).
+  This can enable specialized Bitcoin transactions involving multiple signers and even
+  limited changes to the transaction after signing. To enable the most dangerous SIGHASH
+  modes, you must change `Advanced -> Danger Zone -> Sighash Checks`. Warnings are shown
+  for any of the new SIGHASH modes regardless of this setting.
 - Enhancement: SeedXOR now supports 12 and 18 words mnemonics.
 - Enhancement: Signing memory, speed optimizations.
 - Enhancement: Docker repro build container improvements (non-privileged container)
 - Bugfix: After extended private key and TAPSIGNER backup import into blank wallet,
   users needed to manually reboot Coldcard.
 - Bugfix: Do not set SIGHASH type on foreign PSBT inputs
+- Bugfix: "Validating..." screen would be shown twice in some cases. Improves signing performance.
 
 
 ## 5.1.1 - 2023-02-27
