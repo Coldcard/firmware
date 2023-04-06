@@ -1652,10 +1652,11 @@ class psbtObject(psbtProxy):
 
                 inp.added_sig = (which_key, der_sig)
 
-                # remove sighash from input object - it is not required, takes space, and is already in signature
-                # or is implicit by not being part of the signature (taproot SIGHASH_DEFAULT)
-                # bitcoind does not set it either
-                # inp.sighash = None   # DISABLED for now
+                # Could remove sighash from input object - it is not required, takes space,
+                # and is already in signature or is implicit by not being part of the
+                # signature (taproot SIGHASH_DEFAULT)
+                ## inp.sighash = None
+
                 success.add(in_idx)
 
                 # memory cleanup
