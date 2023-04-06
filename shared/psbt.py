@@ -1244,12 +1244,12 @@ class psbtObject(psbtProxy):
 
         if sh_unusual and not settings.get("sighshchk"):
             if self.consolidation_tx:
-                # all inputs must be sighash ALL in consolidation tx
-                raise FatalPSBTIssue("Only sighash ALL is allowed for consolidation tx")
+                # policy: all inputs must be sighash ALL in purely consolidation txn
+                raise FatalPSBTIssue("Only sighash ALL is allowed for pure consolidation transactions.")
 
             if none_sh:
                 # sighash NONE or NONE|ANYONECANPAY is proposed: block
-                raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere")
+                raise FatalPSBTIssue("Sighash NONE is not allowed as funds could be going anywhere.")
 
         if none_sh:
             self.warnings.append(

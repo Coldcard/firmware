@@ -1801,11 +1801,12 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 @pytest.fixture
 def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, need_keypress,
                              bitcoind, bitcoind_d_sim_watch, settings_set):
-    def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=True, sh_checks=False):
+    def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False):
         from decimal import Decimal, ROUND_DOWN
+
         settings_set("sighshchk", int(not sh_checks))
         microsd_wipe()
-        time.sleep(1)
+        time.sleep(0.1)
         goto_home()
 
         not_all_ALL = any(sh != "ALL" for sh in sighash)
@@ -1847,6 +1848,11 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
             else:
                 i.sighash = SIGHASH_MAP.get(sighash[idx], sighash[idx])
         psbt_sh = x.as_b64_str()
+
+        # make useful reference psbt along the way
+        open(f'debug/sighash-{sighash[0] if len(sighash) == 1 else "MIX"}.psbt'\
+                .replace('|', '-'), 'wt').write(psbt_sh)
+
         with open(microsd_path("sighash.psbt"), "w") as f:
             f.write(psbt_sh)
         need_keypress("y")
@@ -1857,7 +1863,7 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
             # checks enabled
             if consolidation and not_all_ALL:
                 assert title == "Failure"
-                assert "Only sighash ALL is allowed for consolidation tx" in story
+                assert "Only sighash ALL is allowed for pure consolidation transaction" in story
                 return
 
             elif not consolidation and any("NONE" in sh for sh in sighash if isinstance(sh, str)):
@@ -1876,6 +1882,7 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
             assert "---WARNING---" in story
             assert "Caution" in story
             assert "Some inputs have unusual SIGHASH values not used in typical cases." in story
+
         need_keypress("y")
         time.sleep(0.5)
         title, story = cap_story()
@@ -1943,16 +1950,18 @@ def test_sighash_different(addr_fmt, sighash, num_outs, _test_single_sig_sighash
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("addr_fmt", ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize("num_outs", [5, 8])
-def test_sighash_all(addr_fmt, num_outs, _test_single_sig_sighash):
+def test_sighash_fullmix(addr_fmt, num_outs, _test_single_sig_sighash):
     # tx with 6 inputs representing all possible sighashes
-    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6, num_outputs=num_outs)
+    _test_single_sig_sighash(addr_fmt, tuple(SIGHASH_MAP.keys()), num_inputs=6,
+            num_outputs=num_outs)
 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("sighash", [sh for sh in SIGHASH_MAP if sh != 'ALL'])
 def test_sighash_disallowed_consolidation(sighash, _test_single_sig_sighash):
-    # sighash is the same among all inputs
-    _test_single_sig_sighash("bech32", [sighash], num_inputs=2, num_outputs=2, sh_checks=True)
+    # sighash != ALL blocked for pure consolidations
+    _test_single_sig_sighash("bech32", [sighash], num_inputs=2,
+            num_outputs=2, sh_checks=True, consolidation=True)
 
 
 @pytest.mark.bitcoind
@@ -1964,7 +1973,8 @@ def test_sighash_disallowed_NONE(sighash, _test_single_sig_sighash):
 
 
 @pytest.mark.bitcoind
-def test_sighash_nonexistent( _test_single_sig_sighash):
+def test_sighash_nonexistent(_test_single_sig_sighash):
+    # invalid sighash value
     with pytest.raises(AssertionError) as exc:
         _test_single_sig_sighash("legacy", [0xe2], num_inputs=2, num_outputs=2,
                                  consolidation=True, sh_checks=False)
