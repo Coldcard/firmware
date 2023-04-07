@@ -115,7 +115,10 @@ def fake_txn(dev):
 
             if i in change_outputs:
                 scr, act_scr, isw, pubkey, sp = make_change_addr(mk, style)
-                psbt.outputs[i].bip32_paths[pubkey] = sp
+                if len(pubkey) == 32:  # xonly
+                    psbt.outputs[i].taproot_bip32_paths[pubkey] = sp
+                else:
+                    psbt.outputs[i].bip32_paths[pubkey] = sp
             else:
                 scr = act_scr = fake_dest_addr(style)
                 isw = ('w' in style)
@@ -202,13 +205,13 @@ def render_address(script, testnet=True):
     if ll == 23 and script[0:2] == b'\xA9\x14' and script[22] == 0x87:
         return b2a_hashed_base58(b58_script + script[2:2+20])
 
-    # P2WPKH
-    if ll == 22 and script[0:2] == b'\x00\x14':
-        return bech32_encode(bech32_hrp, 0, script[2:])
-
-    # P2WSH, P2TR and later
-    if ll == 34 and script[0] <= 16 and script[1] == 0x20:
+    # segwit v0 (P2WPKH, P2WSH)
+    if script[0] == 0 and script[1] in (0x14, 0x20) and (ll - 2) == script[1]:
         return bech32_encode(bech32_hrp, script[0], script[2:])
+
+    # segwit v1 (P2TR) and later segwit version
+    if ll == 34 and (0x51 <= script[0] <= 0x60) and script[1] == 0x20:
+        return bech32_encode(bech32_hrp, script[0] - 80, script[2:])
 
     # OP_RETURN
     if script[0:1] == b'\x6a':

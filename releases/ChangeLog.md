@@ -1,3 +1,8 @@
+## 5.1.3 - 2023-XX-XX
+
+- Bugfix: correct `scrptPubkey` parsing for segwit v1-v16
+- Bugfix: do not infer segwit just by availability of `PSBT_IN_WITNESS_UTXO` in PSBT
+
 ## 5.1.2 - 2023-04-07
 
 - Enhancement: Support all `SIGHASH` types (previously only `SIGHASH_ALL` was supported).

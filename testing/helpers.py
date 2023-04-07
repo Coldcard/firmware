@@ -1,10 +1,14 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # stuff I need sometimes
+import random
 from io import BytesIO
 from binascii import b2a_hex, a2b_hex
 from decimal import Decimal
-import random
+from pysecp256k1 import tagged_sha256
+from pysecp256k1.extrakeys import xonly_pubkey_serialize, xonly_pubkey_tweak_add, xonly_pubkey_from_pubkey
+from pysecp256k1.extrakeys import xonly_pubkey_parse
+
 
 def B2A(s):
     return str(b2a_hex(s), 'ascii')
@@ -50,6 +54,15 @@ def prandom(count):
     # make some bytes, randomly, but not: deterministic
     return bytes(random.randint(0, 255) for i in range(count))
 
+def taptweak(internal_key, tweak=None):
+    tweak = internal_key if tweak is None else internal_key + tweak
+    assert len(internal_key) == 32, "not xonly-pubkey (len!=32)"
+    xonly_pubkey = xonly_pubkey_parse(internal_key)
+    tweak = tagged_sha256(b"TapTweak", tweak)
+    tweaked_pubkey = xonly_pubkey_tweak_add(xonly_pubkey, tweak)
+    tweaked_xonnly_pubkey, parity = xonly_pubkey_from_pubkey(tweaked_pubkey)
+    return xonly_pubkey_serialize(tweaked_xonnly_pubkey)
+
 def fake_dest_addr(style='p2pkh'):
     # Make a plausible output address, but it's random garbage. Cant use for change outs
 
@@ -67,6 +80,9 @@ def fake_dest_addr(style='p2pkh'):
 
     if style == 'p2pkh':
         return bytes([0x76, 0xa9, 0x14]) + prandom(20) + bytes([0x88, 0xac])
+
+    if style == "p2tr":
+        return bytes([81, 32]) + prandom(32)
 
     # missing: if style == 'p2pk' =>  pay to pubkey, considered obsolete
 
@@ -96,6 +112,11 @@ def make_change_addr(wallet, style):
     elif style == 'p2wpkh-p2sh':
         redeem_scr = bytes([0, 20]) + target
         actual_scr = bytes([0xa9, 0x14]) + hash160(redeem_scr) + bytes([0x87])
+    elif style == 'p2tr':
+        tweaked_xonly = taptweak(dest.sec()[1:])
+        redeem_scr = bytes([81, 32]) + tweaked_xonly
+        is_segwit = True
+        return redeem_scr, actual_scr, is_segwit, dest.sec()[1:], b'\x00' + struct.pack('4I', xfp, *deriv)
     else:
         raise ValueError('cant make fake change output of type: ' + style)
 
