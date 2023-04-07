@@ -138,7 +138,7 @@ latest:
 code-committed:
 	@echo ""
 	@echo "Are all changes commited already?"
-	git diff --stat --exit-code .
+	git diff --stat --ignore-submodules=dirty --exit-code
 	@echo '... yes'
 
 # Sign a message with the contents of ../releases on the developer's machine
