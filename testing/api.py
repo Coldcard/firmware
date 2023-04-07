@@ -212,6 +212,19 @@ def bitcoind_d_sim_watch(bitcoind):
         },
         {
             "timestamp": "now",
+            "label": "Coldcard 0f056943 segwit v1",
+            "active": True,
+            "desc": "tr([0f056943/86h/1h/0h]tpubDCeEX49avtiXrBTv3JWTtco99Ka499jXdZHBRtm7va2gkMAui11ctZjqNAT9dLVNaEozt2C1kfTM88cnvZCXsWLJN2p4viGvsyGjtKVV7A1/0/*)#6ghw47ge",
+            "internal": False
+        },
+        {
+            "desc": "tr([0f056943/86h/1h/0h]tpubDCeEX49avtiXrBTv3JWTtco99Ka499jXdZHBRtm7va2gkMAui11ctZjqNAT9dLVNaEozt2C1kfTM88cnvZCXsWLJN2p4viGvsyGjtKVV7A1/1/*)#tuj0gtcp",
+            "active": True,
+            "internal": True,
+            "timestamp": "now"
+        },
+        {
+            "timestamp": "now",
             "label": "Coldcard 0f056943 p2pkh",
             "active": True,
             "desc": "pkh([0f056943/44h/1h/0h]tpubDCiHGUNYdRRBPNYm7CqeeLwPWfeb2ZT2rPsk4aEW3eUoJM93jbBa7hPpB1T9YKtigmjpxHrB1522kSsTxGm9V6cqKqrp1EDaYaeJZqcirYB/0/*)#fxwk08tc",
@@ -260,6 +273,19 @@ def bitcoind_d_sim_sign(bitcoind):
             "active": True,
             "desc": "wpkh([0f056943/84h/1h/0h]tprv8fRh8AYC5iQitbbtzwVaUUyXVZh3Y7HxVYSbqzf45eao9SMfEc3MexJx4y6pU1WjjxcEiYArEjhRTSy5mqfXzBtSncTYhKfxQWywcfeqxFE/1/*)#2kdwuxdh",
             "internal": True
+        },
+        {
+            "timestamp": "now",
+            "label": "Coldcard 0f056943 segwit v1",
+            "active": True,
+            "desc": "tr([0f056943/86h/1h/0h]tprv8fxCNe7LnX2rxiS89eqsVD92aJ47ypYd4FgQ9NipWJEHurv95cC2i57yC2mRHnpuHfmgdb17GV9wfSNjswUQXmaY7Qs2Jaa5hEdkxaHy4BK/0/*)#x7dfk9mw",
+            "internal": False
+        },
+        {
+            "desc": "tr([0f056943/86h/1h/0h]tprv8fxCNe7LnX2rxiS89eqsVD92aJ47ypYd4FgQ9NipWJEHurv95cC2i57yC2mRHnpuHfmgdb17GV9wfSNjswUQXmaY7Qs2Jaa5hEdkxaHy4BK/1/*)#h2ggtstk",
+            "active": True,
+            "internal": True,
+            "timestamp": "now"
         },
         {
             "timestamp": "now",

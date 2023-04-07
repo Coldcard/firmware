@@ -13,26 +13,38 @@ b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 
 # BIP-174 aka PSBT defined values
 #
-PSBT_GLOBAL_UNSIGNED_TX 	= (0)
-PSBT_GLOBAL_XPUB         	= (1)
+PSBT_GLOBAL_UNSIGNED_TX = 0
+PSBT_GLOBAL_XPUB = 1
 
-PSBT_IN_NON_WITNESS_UTXO 	= (0)
-PSBT_IN_WITNESS_UTXO 	    = (1)
-PSBT_IN_PARTIAL_SIG 	    = (2)
-PSBT_IN_SIGHASH_TYPE 	    = (3)
-PSBT_IN_REDEEM_SCRIPT 	    = (4)
-PSBT_IN_WITNESS_SCRIPT 	    = (5)
-PSBT_IN_BIP32_DERIVATION 	= (6)
-PSBT_IN_FINAL_SCRIPTSIG 	= (7)
-PSBT_IN_FINAL_SCRIPTWITNESS = (8)
+PSBT_IN_NON_WITNESS_UTXO = 0
+PSBT_IN_WITNESS_UTXO = 1
+PSBT_IN_PARTIAL_SIG = 2
+PSBT_IN_SIGHASH_TYPE = 3
+PSBT_IN_REDEEM_SCRIPT = 4
+PSBT_IN_WITNESS_SCRIPT = 5
+PSBT_IN_BIP32_DERIVATION = 6
+PSBT_IN_FINAL_SCRIPTSIG = 7
+PSBT_IN_FINAL_SCRIPTWITNESS = 8
+# BIP-371
+PSBT_IN_TAP_KEY_SIG = 19  # 0x13
+PSBT_IN_TAP_SCRIPT_SIG = 20  # 0x14
+PSBT_IN_TAP_LEAF_SCRIPT = 21  # 0x15
+PSBT_IN_TAP_BIP32_DERIVATION = 22  # 0x16
+PSBT_IN_TAP_INTERNAL_KEY = 23  # 0x17
+PSBT_IN_TAP_MERKLE_ROOT = 24  # 0x18
 
-PSBT_OUT_REDEEM_SCRIPT 	    = (0)
-PSBT_OUT_WITNESS_SCRIPT 	= (1)
-PSBT_OUT_BIP32_DERIVATION 	= (2)
+PSBT_OUT_REDEEM_SCRIPT = 0
+PSBT_OUT_WITNESS_SCRIPT = 1
+PSBT_OUT_BIP32_DERIVATION = 2
+# BIP-371
+PSBT_OUT_TAP_INTERNAL_KEY = 5
+PSBT_OUT_TAP_TREE = 6
+PSBT_OUT_TAP_BIP32_DERIVATION = 7
 
-PSBT_PROPRIETARY        = (0xFC)
+PSBT_PROPRIETARY = 0xFC
 
 PSBT_PROP_CK_ID = b"COINKITE"
+
 
 # Serialization/deserialization tools
 def ser_compact_size(l):
@@ -47,12 +59,13 @@ def ser_compact_size(l):
         r = struct.pack("<BQ", 255, l)
     return r
 
+
 def deser_compact_size(f):
     try:
         nit = f.read(1)[0]
     except IndexError:
-        return None     # end of file
-    
+        return None  # end of file
+
     if nit == 253:
         nit = struct.unpack("<H", f.read(2))[0]
     elif nit == 254:
@@ -61,7 +74,8 @@ def deser_compact_size(f):
         nit = struct.unpack("<Q", f.read(8))[0]
     return nit
 
-def ser_prop_key(identifier, subtype, keydata = b''):
+
+def ser_prop_key(identifier, subtype, keydata=b''):
     # arg types are: bytes, int (< 256), bytes
     key = b""
     key += ser_compact_size(len(identifier))
@@ -103,6 +117,7 @@ class PSBTSection:
 
         fd.write(b'\0')
 
+
 class BasicPSBTInput(PSBTSection):
     def defaults(self):
         self.utxo = None
@@ -110,6 +125,9 @@ class BasicPSBTInput(PSBTSection):
         self.part_sigs = {}
         self.sighash = None
         self.bip32_paths = {}
+        self.taproot_bip32_paths = {}
+        self.taproot_internal_key = None
+        self.taproot_key_sig = None
         self.redeem_script = None
         self.witness_script = None
         self.others = {}
@@ -120,19 +138,22 @@ class BasicPSBTInput(PSBTSection):
             if a.sighash is not None and b.sighash is not None:
                 return False
 
-        rv =  a.utxo == b.utxo and \
-                a.witness_utxo == b.witness_utxo and \
-                a.redeem_script == b.redeem_script and \
-                a.witness_script == b.witness_script and \
-                a.my_index == b.my_index and \
-                a.bip32_paths == b.bip32_paths and \
-                sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys()) and \
-                a.unknown == b.unknown
+        rv = a.utxo == b.utxo and \
+             a.witness_utxo == b.witness_utxo and \
+             a.redeem_script == b.redeem_script and \
+             a.witness_script == b.witness_script and \
+             a.my_index == b.my_index and \
+             a.bip32_paths == b.bip32_paths and \
+             a.taproot_key_sig == b.taproot_key_sig and \
+             a.taproot_bip32_paths == b.taproot_bip32_paths and \
+             a.taproot_internal_key == b.taproot_internal_key and \
+             sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys()) and \
+             a.unknown == b.unknown
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
             #       and some maybe understanding of R/S values on curve that I don't have.
-            assert all(parse_signature_blob(a.part_sigs[k]) 
-                            == parse_signature_blob(b.part_sigs[k]) for k in a.part_sigs)
+            assert all(parse_signature_blob(a.part_sigs[k])
+                       == parse_signature_blob(b.part_sigs[k]) for k in a.part_sigs)
         return rv
 
     def parse_kv(self, kt, key, val):
@@ -156,12 +177,18 @@ class BasicPSBTInput(PSBTSection):
         elif kt == PSBT_IN_WITNESS_SCRIPT:
             self.witness_script = val
             assert not key
-        elif kt in ( PSBT_IN_REDEEM_SCRIPT,
-                     PSBT_IN_WITNESS_SCRIPT, 
-                     PSBT_IN_FINAL_SCRIPTSIG, 
-                     PSBT_IN_FINAL_SCRIPTWITNESS):
+        elif kt in (PSBT_IN_REDEEM_SCRIPT,
+                    PSBT_IN_WITNESS_SCRIPT,
+                    PSBT_IN_FINAL_SCRIPTSIG,
+                    PSBT_IN_FINAL_SCRIPTWITNESS):
             assert not key
             self.others[kt] = val
+        elif kt == PSBT_IN_TAP_BIP32_DERIVATION:
+            self.taproot_bip32_paths[key] = val
+        elif kt == PSBT_OUT_TAP_INTERNAL_KEY:
+            self.taproot_internal_key = val
+        elif kt == PSBT_IN_TAP_KEY_SIG:
+            self.taproot_key_sig = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -174,12 +201,21 @@ class BasicPSBTInput(PSBTSection):
             wr(PSBT_IN_REDEEM_SCRIPT, self.redeem_script)
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
-        for pk, val in sorted(self.part_sigs.items()):
-            wr(PSBT_IN_PARTIAL_SIG, val, pk)
+        if self.part_sigs:
+            for pk, val in sorted(self.part_sigs.items()):
+                wr(PSBT_IN_PARTIAL_SIG, val, pk)
         if self.sighash is not None:
             wr(PSBT_IN_SIGHASH_TYPE, struct.pack('<I', self.sighash))
-        for k in self.bip32_paths:
-            wr(PSBT_IN_BIP32_DERIVATION, self.bip32_paths[k], k)
+        if self.bip32_paths:
+            for k in self.bip32_paths:
+                wr(PSBT_IN_BIP32_DERIVATION, self.bip32_paths[k], k)
+        if self.taproot_bip32_paths:
+            for k in self.taproot_bip32_paths:
+                wr(PSBT_IN_TAP_BIP32_DERIVATION, self.taproot_bip32_paths[k], k)
+        if self.taproot_internal_key:
+            wr(PSBT_IN_TAP_INTERNAL_KEY, self.taproot_internal_key)
+        if self.taproot_key_sig:
+            wr(PSBT_IN_TAP_KEY_SIG, self.taproot_key_sig)
         for k in self.others:
             wr(k, self.others[k])
         if isinstance(self.unknown, list):
@@ -191,21 +227,26 @@ class BasicPSBTInput(PSBTSection):
             for key, val in self.unknown.items():
                 wr(key[0], val, key[1:])
 
+
 class BasicPSBTOutput(PSBTSection):
     def defaults(self):
         self.redeem_script = None
         self.witness_script = None
         self.bip32_paths = {}
+        self.taproot_bip32_paths = {}
+        self.taproot_internal_key = None
         self.proprietary = {}
         self.unknown = {}
 
     def __eq__(a, b):
-        return  a.redeem_script == b.redeem_script and \
-                a.witness_script == b.witness_script and \
-                a.my_index == b.my_index and \
-                a.bip32_paths == b.bip32_paths and \
-                a.proprietary == b.proprietary and \
-                a.unknown == b.unknown
+        return a.redeem_script == b.redeem_script and \
+            a.witness_script == b.witness_script and \
+            a.my_index == b.my_index and \
+            a.bip32_paths == b.bip32_paths and \
+            a.taproot_bip32_paths == b.taproot_bip32_paths and \
+            a.taproot_internal_key == b.taproot_internal_key and \
+            a.proprietary == b.proprietary and \
+            a.unknown == b.unknown
 
     def parse_kv(self, kt, key, val):
         if kt == PSBT_OUT_REDEEM_SCRIPT:
@@ -218,6 +259,10 @@ class BasicPSBTOutput(PSBTSection):
             self.bip32_paths[key] = val
         elif kt == PSBT_PROPRIETARY:
             self.proprietary[key] = val
+        elif kt == PSBT_OUT_TAP_BIP32_DERIVATION:
+            self.taproot_bip32_paths[key] = val
+        elif kt == PSBT_OUT_TAP_INTERNAL_KEY:
+            self.taproot_internal_key = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
@@ -226,8 +271,14 @@ class BasicPSBTOutput(PSBTSection):
             wr(PSBT_OUT_REDEEM_SCRIPT, self.redeem_script)
         if self.witness_script:
             wr(PSBT_OUT_WITNESS_SCRIPT, self.witness_script)
-        for k in self.bip32_paths:
-            wr(PSBT_OUT_BIP32_DERIVATION, self.bip32_paths[k], k)
+        if self.bip32_paths:
+            for k in self.bip32_paths:
+                wr(PSBT_OUT_BIP32_DERIVATION, self.bip32_paths[k], k)
+        if self.taproot_bip32_paths:
+            for k in self.taproot_bip32_paths:
+                wr(PSBT_OUT_TAP_BIP32_DERIVATION, self.taproot_bip32_paths[k], k)
+        if self.taproot_internal_key:
+            wr(PSBT_OUT_TAP_INTERNAL_KEY, self.taproot_internal_key)
         for k in self.proprietary:
             wr(PSBT_PROPRIETARY, self.proprietary[k], k)
         if isinstance(self.unknown, list):
@@ -270,7 +321,7 @@ class BasicPSBT:
             raw = b64decode(raw)
         assert raw[0:5] == b'psbt\xff', "bad magic {}".format(raw[0:5])
         with io.BytesIO(raw[5:]) as fd:
-            
+
             # globals
             while 1:
                 ks = deser_compact_size(fd)
@@ -319,7 +370,7 @@ class BasicPSBT:
 
         wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
-        for k,v in self.xpubs:
+        for k, v in self.xpubs:
             wr(PSBT_GLOBAL_XPUB, v, key=k)
 
         if isinstance(self.unknown, list):

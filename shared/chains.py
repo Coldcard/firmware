@@ -6,10 +6,10 @@ import ngu
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
-from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT, AFC_WRAPPED
+from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
 from serializations import hash160, ser_compact_size, disassemble
 from ucollections import namedtuple
-from opcodes import OP_CHECKMULTISIG, OP_RETURN
+from opcodes import OP_RETURN, OP_1, OP_16
 
 # See SLIP 132 <https://github.com/satoshilabs/slips/blob/master/slip-0132.md>
 # for background on these version bytes. Not to be confused with SLIP-32 which involves Bech32.
@@ -229,13 +229,13 @@ class ChainsBase:
         if ll == 23 and script[0:2] == b'\xA9\x14' and script[22] == 0x87:
             return ngu.codecs.b58_encode(cls.b58_script + script[2:2+20])
 
-        # P2WPKH
-        if ll == 22 and script[0:2] == b'\x00\x14':
-            return ngu.codecs.segwit_encode(cls.bech32_hrp, 0, script[2:])
-
-        # P2WSH, P2TR and later
-        if ll == 34 and script[0] <= 16 and script[1] == 0x20:
+        # segwit v0 (P2WPKH, P2WSH)
+        if script[0] == 0 and script[1] in (0x14, 0x20) and (ll-2) == script[1]:
             return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0], script[2:])
+
+        # segwit v1 (P2TR) and later segwit version
+        if ll == 34 and (OP_1 <= script[0] <= OP_16) and script[1] == 0x20:
+            return ngu.codecs.segwit_encode(cls.bech32_hrp, script[0] - 80, script[2:])
 
         raise ValueError('Unknown payment script', repr(script))
 

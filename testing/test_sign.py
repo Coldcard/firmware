@@ -1577,17 +1577,6 @@ def test_zero_xfp(dev, start_sign, end_sign, fake_txn, cap_story):
     # and then signing should work.
     signed = end_sign(True, finalize=True)
 
-def test_simple_p2tr(dev, start_sign, fake_txn, cap_story):
-    psbt = open('data/p2tr.psbt', 'rb').read()
-
-    start_sign(psbt)
-    time.sleep(.1)
-    _, story = cap_story()
-   
-    assert 'script' not in story
-    assert 'warning' not in story.lower()
-
-    assert 'tb1pvskwx3zmdfczewxwzeqdp5xcd7z75jwa3dcrausu5g7n48h3wtwqmrzp7y' in story
 
 @pytest.mark.parametrize("segwit_in", [True, False])
 @pytest.mark.parametrize('num_not_ours', [1, 3, 4])
@@ -2005,5 +1994,20 @@ def test_no_outputs_tx(fake_txn, microsd_path, goto_home, need_keypress, pick_me
 
     try: os.remove(fpath)
     except: pass
+
+
+def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
+    psbt = fake_txn(2, 2, segwit_in=True, change_outputs=[0], outstyles=["p2tr"])
+    start_sign(psbt)
+    title, story = cap_story()
+    assert title == "OK TO SEND?"
+    # we do not understand change in taproot (taproot not supported)
+    assert "Consolidating" not in story
+    assert "Change back" not in story
+    # but we should show address
+    assert "to script" not in story
+    assert "tb1p" in story
+    signed = end_sign(accept=True, finalize=False)
+    assert signed
 
 # EOF
