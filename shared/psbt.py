@@ -613,7 +613,6 @@ class psbtInputProxy(psbtProxy):
             # - prefer this format, altho does that imply segwit txn must be generated?
             # - I don't know why we wouldn't always use this
             # - once we use this partial utxo data, we must create witness data out
-            self.is_segwit = True
 
             fd.seek(self.witness_utxo[0])
             utxo = CTxOut()
@@ -1698,7 +1697,6 @@ class psbtObject(psbtProxy):
         rv.update(ser_compact_size(num_inputs))
         for in_idx, txi in self.input_iter():
             if in_idx == replace_idx:
-                assert not self.inputs[in_idx].witness_utxo
                 assert not self.inputs[in_idx].is_segwit
                 assert replacement.scriptSig
                 rv.update(replacement.serialize())

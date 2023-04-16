@@ -19,6 +19,7 @@ from helpers import path_to_str, str_to_path, slip132undo
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.tx import Tx
 from io import BytesIO
 from hashlib import sha256
 
@@ -2086,6 +2087,111 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
             _start, _end = _start[1:], _end[:-1]
         assert bitcoind_addrs[idx].startswith(_start)
         assert bitcoind_addrs[idx].endswith(_end)
+
+
+@pytest.mark.bitcoind
+def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
+                                              pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign):
+    use_regtest()
+    clear_ms()
+    microsd_wipe()
+    M,N = 2,2
+    cosigner = bitcoind.create_wallet(wallet_name=f"bitcoind--signer-wit-utxo", disable_private_keys=False, blank=False,
+                                      passphrase=None, avoid_reuse=False, descriptors=True)
+    ms = bitcoind.create_wallet(
+        wallet_name=f"watch_only_legacy_2of2", disable_private_keys=True,
+        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+    )
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Export XPUB')
+    time.sleep(0.5)
+    title, story = cap_story()
+    assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
+    need_keypress("y")
+    need_keypress("0")  # account
+    need_keypress("y")
+    xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
+    template = xpub_obj["p2sh_desc"]
+    # get key from bitcoind cosigner
+    target_desc = ""
+    bitcoind_descriptors = cosigner.listdescriptors()["descriptors"]
+    for desc in bitcoind_descriptors:
+        if desc["desc"].startswith("pkh(") and desc["internal"] is False:
+            target_desc = desc["desc"]
+    core_desc, checksum = target_desc.split("#")
+    # remove pkh(....)
+    core_key = core_desc[4:-1]
+    desc = template.replace("M", str(M), 1).replace("...", core_key)
+    desc_info = ms.getdescriptorinfo(desc)
+    desc_w_checksum = desc_info["descriptor"]  # with checksum
+    name = f"core{M}of{N}_legacy.txt"
+    with open(microsd_path(name), "w") as f:
+        f.write(desc_w_checksum + "\n")
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    pick_menu_item('Import from File')
+    time.sleep(0.3)
+    _, story = cap_story()
+    if "Press (1) to import multisig wallet file from SD Card" in story:
+        # in case Vdisk is enabled
+        need_keypress("1")
+    time.sleep(0.5)
+    need_keypress("y")
+    pick_menu_item(name)
+    _, story = cap_story()
+    assert "Create new multisig wallet?" in story
+    assert name.split(".")[0] in story
+    assert f"{M} of {N}" in story
+    assert f"All {N} co-signers must approve spends" in story
+    assert "P2SH" in story
+    assert "Derivation:\n  Varies (2)" in story
+    need_keypress("y")  # approve multisig import
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Multisig Wallets')
+    menu = cap_menu()
+    pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    # import descriptors to watch only wallet
+    res = ms.importdescriptors(core_desc_object)
+    for obj in res:
+        assert obj["success"], obj
+    # send to address type
+    addr_type = "legacy"
+    multi_addr = ms.getnewaddress("", addr_type)
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=49)
+    bitcoind.supply_wallet.generatetoaddress(101, bitcoind.supply_wallet.getnewaddress())  # mining
+    dest_addr = ms.getnewaddress("", addr_type)
+    assert all([addr.startswith("2") for addr in [multi_addr, dest_addr]])
+    # create funded PSBT
+    psbt_resp = ms.walletcreatefundedpsbt(
+        [], [{dest_addr: 5}], 0, {"fee_rate": 20, "change_type": addr_type, "subtractFeeFromOutputs": [0]}
+    )
+    psbt = psbt_resp.get("psbt")
+    import base64
+    o = BasicPSBT().parse(base64.b64decode(psbt))
+    assert len(o.inputs) == 1
+    non_witness_utxo = o.inputs[0].utxo
+    from io import BytesIO
+    parsed_tx = Tx.Tx.parse(BytesIO(non_witness_utxo))
+    witness_utxo = BytesIO()
+    for oo in parsed_tx.txs_out:
+        if oo.coin_value == 4900000000:
+            parsed_tx.txs_out[0].stream(witness_utxo)
+    o.inputs[0].witness_utxo = witness_utxo.getvalue()
+    updated = o.as_bytes()
+    try_sign(updated)
 
 
 @pytest.mark.bitcoind
