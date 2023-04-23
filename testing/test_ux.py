@@ -873,7 +873,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, need_keypress, cap_
     assert "Change Main PIN" in menu
     need_keypress("x")  # back to settings - on login settings
     # now go over top and back to Login settings from bottom
-    for i in range(10):
+    for i in range(9):
         need_keypress(UP)
     need_keypress("y")
     menu = cap_menu()

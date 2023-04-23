@@ -56,6 +56,7 @@ def test_backup_accept(last_saved, dev, need_keypress, bkpw):
 
     need_keypress('y')
     if last_saved:
+        time.sleep(1)  # needed
         done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)
         assert done
     else:
