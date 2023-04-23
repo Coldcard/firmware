@@ -90,7 +90,12 @@ def fake_txn(dev):
             # UTXO that provides the funding for to-be-signed txn
             supply = Tx(2,[TxIn(pack('4Q', 0xdead, 0xbeef, 0, 0), 73)],[])
 
-            scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
+            if segwit_in:
+                # p2wpkh
+                scr = bytes([0x00, 0x14]) + subkey.hash160()
+            else:
+                # p2pkh
+                scr = bytes([0x76, 0xa9, 0x14]) + subkey.hash160() + bytes([0x88, 0xac])
 
             supply.txs_out.append(TxOut(1E8 if not invals else invals[i], scr))
 
