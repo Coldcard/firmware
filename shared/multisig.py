@@ -451,7 +451,7 @@ class MultisigWallet:
             node = ch.deserialize_node(xpub, AF_P2SH)
             node.derive(change_idx, False)
             # indicate path used (for UX)
-            path = "(m=%s)/%s/%d/{idx}" % (xfp2str(xfp), deriv, change_idx)
+            path = "[%s/%s/%d/{idx}]" % (xfp2str(xfp), deriv[2:], change_idx)
             nodes.append(node)
             paths.append(path)
 
@@ -537,9 +537,9 @@ class MultisigWallet:
                 # Document path(s) used. Not sure this is useful info to user tho.
                 # - Do not show what we can't verify: we don't really know the hardeneded
                 #   part of the path from fingerprint to here.
-                here = '(m=%s)\n' % xfp2str(xfp)
+                here = '[%s]' % xfp2str(xfp)
                 if dp != len(path):
-                    here += 'm' + ('/_'*dp) + keypath_to_str(path[dp:], '/', 0)
+                    here = here[:-1] + ('/_'*dp) + keypath_to_str(path[dp:], '/', 0) + "]"
 
                 if found_pk != pubkey:
                     # Not a match but not an error by itself, since might be 
@@ -802,7 +802,7 @@ class MultisigWallet:
                 with stash.SensitiveValues() as sv:
                     chk_node = sv.derive_path(deriv)
                     assert node.pubkey() == chk_node.pubkey(), \
-                                "(m=%s)/%s wrong pubkey" % (xfp2str(xfp), deriv[2:])
+                                "[%s/%s] wrong pubkey" % (xfp2str(xfp), deriv[2:])
 
         # serialize xpub w/ BIP-32 standard now.
         # - this has effect of stripping SLIP-132 confusion away
