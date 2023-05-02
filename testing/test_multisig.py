@@ -1905,9 +1905,9 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         assert "Press (6)" not in story
     # unwrap text a bit
     if change:
-        story = story.replace("=>\n", "=> ").replace('1/0\n =>', "1/0 =>")
+        story = story.replace("=>\n", "=> ").replace('1/0]\n =>', "1/0 =>")
     else:
-        story = story.replace("=>\n", "=> ").replace('0/0\n =>', "0/0 =>")
+        story = story.replace("=>\n", "=> ").replace('0/0]\n =>', "0/0 =>")
 
     maps = []
     for ln in story.split('\n'):
