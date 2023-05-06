@@ -384,7 +384,7 @@ class CTxOut(object):
 
         # If this is reached, we do not understand the output well
         # enough to allow the user to authorize the spend, so fail hard.
-        raise ValueError('scriptPubKey template fail: ' + b2a_hex(self.scriptPubKey))
+        raise ValueError('scriptPubKey template fail: ' + b2a_hex(self.scriptPubKey).decode())
 
     def is_p2sh(self):
         return len(self.scriptPubKey) == 23 and self.scriptPubKey[0] == 0xa9 \
