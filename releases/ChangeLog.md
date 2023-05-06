@@ -1,5 +1,6 @@
 ## 5.2.0 - 2023-09-21
 
+- New Feature: PSBTv2 support added
 - New Feature: `Lock Down Seed` now works with every ephemeral secret (not just BIP39 passphrase)
 - New Feature: BIP-39 Passphrase can now be added to word based Ephemeral Seeds
 - New Feature: Add ability to back-up BIP39 Passphrase wallet

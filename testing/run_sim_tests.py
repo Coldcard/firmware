@@ -97,7 +97,7 @@ def is_ok(ec: ExitCode) -> bool:
 
 
 def _run_tests_with_simulator(test_module: str, simulator_args: List[str], pytest_marks: str,
-                              pytest_k: str, pdb: bool, failed_first: bool) -> ExitCode:
+                              pytest_k: str, pdb: bool, failed_first: bool, psbt2=False) -> ExitCode:
     sim = ColdcardSimulator(args=simulator_args)
     sim.start()
     time.sleep(1)
@@ -110,6 +110,9 @@ def _run_tests_with_simulator(test_module: str, simulator_args: List[str], pytes
         cmd_list.append("--pdb")
     if failed_first:
         cmd_list.append("--ff")
+    if psbt2:
+        cmd_list.append("--psbt2")
+
     exit_code = pytest.main(cmd_list)
     sim.stop()
     time.sleep(1)
@@ -119,11 +122,11 @@ def _run_tests_with_simulator(test_module: str, simulator_args: List[str], pytes
 
 
 def run_tests_with_simulator(test_module=None, simulator_args=None, pytest_k=None, pdb=False,
-                             failed_first=False,
+                             failed_first=False, psbt2=False,
                              pytest_marks="not onetime and not veryslow and not manual"):
     failed = []
     exit_code = _run_tests_with_simulator(test_module, simulator_args, pytest_marks, pytest_k,
-                                          pdb, failed_first)
+                                          pdb, failed_first, psbt2=psbt2)
     if not is_ok(exit_code):
         # no success, no nothing - give failed another try, each alone with its own simulator
         last_failed = get_last_failed()
@@ -131,7 +134,7 @@ def run_tests_with_simulator(test_module=None, simulator_args=None, pytest_k=Non
         exit_codes = []
         for failed_test in last_failed:
             exit_code_2 = _run_tests_with_simulator(failed_test, simulator_args, pytest_marks,
-                                                    pytest_k, pdb, failed_first)
+                                                    pytest_k, pdb, failed_first, psbt2=psbt2)
             exit_codes.append(exit_code_2)
             if not is_ok(exit_code_2):
                 failed.append(failed_test)
@@ -191,6 +194,7 @@ def main():
                         help="Choose how much to sleep after simulator is started")
     parser.add_argument("-m", "--module", action="append", help="Choose only n modules to run")
     parser.add_argument("--pdb", action="store_true", help="Go to debugger on failure")
+    parser.add_argument("--psbt2", action="store_true", help="`fake_txn` produces PSBTv2")
     parser.add_argument("--ff", action="store_true", help="Run the last failures first")
     parser.add_argument("--onetime", action="store_true", default=False,
                         help="run tests marked as 'onetime'")
@@ -246,7 +250,7 @@ def main():
             test_args = ["--set", "nfc=1"]
         ec, failed_tests = run_tests_with_simulator(test_module, simulator_args=test_args,
                                                     pytest_k=args.pytest_k, pdb=args.pdb,
-                                                    failed_first=args.ff)
+                                                    failed_first=args.ff, psbt2=args.psbt2)
         result.append((test_module, ec, failed_tests))
         print("Done", test_module)
         print(80 * "=")
@@ -257,7 +261,7 @@ def main():
         ec, failed_tests = run_tests_with_simulator(test_module=None, pytest_marks="veryslow",
                                                     pytest_k=args.pytest_k, pdb=args.pdb,
                                                     simulator_args=DEFAULT_SIMULATOR_ARGS,
-                                                    failed_first=args.ff)
+                                                    failed_first=args.ff, psbt2=args.psbt2)
         result.append(("veryslow", ec, failed_tests))
     # run onetime is specified (each test against its own simulator)
     if args.onetime:
@@ -266,7 +270,8 @@ def main():
         for onetime_test in onetime_tests:
             ec, failed_tests = run_tests_with_simulator(test_module=onetime_test, pdb=args.pdb,
                                                         failed_first=args.ff, pytest_marks="onetime",
-                                                        simulator_args=DEFAULT_SIMULATOR_ARGS,)
+                                                        simulator_args=DEFAULT_SIMULATOR_ARGS,
+                                                        psbt2=args.psbt2)
             result.append((f"onetime: {onetime_test}", ec, failed_tests))
     print("All done")
     any_failed = False
