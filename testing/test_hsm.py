@@ -9,20 +9,25 @@
 # - command line: py.test test_hsm.py --dev -s --ff
 # - no microSD card installed
 #
-
-from typing import OrderedDict
-import pytest, time, struct, os, itertools, base64, re
-from binascii import b2a_hex, a2b_hex
-from hashlib import sha256
-from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
-from ckcc_protocol.protocol import CCUserRefused, CCProtoError
-from ckcc_protocol.protocol import USER_AUTH_TOTP, USER_AUTH_HOTP, USER_AUTH_HMAC
-from ckcc_protocol.utils import calc_local_pincode
-
-import json
+import pytest, time, itertools, base64, re, json, struct
+from collections import OrderedDict
+from binascii import b2a_hex, a2b_base64
+from io import BytesIO
+from base64 import b32encode
+from hashlib import pbkdf2_hmac, sha256
+from hmac import HMAC
+from onetimepass import get_hotp
 from objstruct import ObjectStruct as DICT
-from txn import *
+from txn import render_address, fake_txn
+from psbt import ser_prop_key
+from helpers import sign_msg, prandom
 from ckcc_protocol.constants import *
+from ckcc_protocol.protocol import CCProtocolPacker
+from ckcc_protocol.protocol import CCUserRefused, CCProtoError
+from ckcc_protocol.utils import calc_local_pincode
+from pycoin.tx.Tx import Tx
+from pycoin.tx.TxOut import TxOut
+
 
 TEST_USERS = { 
             # time based OTP
@@ -325,7 +330,6 @@ def tweak_hsm_method(sim_exec):
 @pytest.fixture
 def load_hsm_users(dev, settings_set):
     def doit(u=None):
-        from base64 import b32encode
         TEST_USERS['pw'][1] = b32encode(calc_hmac_key(dev.serial)).decode('ascii').rstrip('=')
 
         settings_set('usr', u or TEST_USERS)
@@ -643,7 +647,6 @@ def test_whitelist_multi(dev, start_hsm, tweak_rule, attempt_psbt, fake_txn, amo
         assert nwl in dests
 
 def test_whitelist_invalid_attestation(start_hsm, attempt_psbt, fake_txn):
-    from psbt import ser_prop_key
     ID = b"COINKITE"
     SUBTYPE = 0
 
@@ -670,20 +673,20 @@ def test_whitelist_invalid_attestation(start_hsm, attempt_psbt, fake_txn):
     attempt_psbt(psbt, 'non-whitelisted attestation key') # this is a valid sig for some message but it will produce the wrong pubkey in our case
 
 def test_whitelist_valid_attestation(start_hsm, attempt_psbt, fake_txn):
-    from psbt import ser_prop_key
-    from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH_P2SH, AF_P2WPKH
-
     CK_ID = b"COINKITE"
     ATTESTATION_SUBTYPE = 0
 
     def attest(psbt, privkeys):
         # generate valid sigs for our txouts
-        from io import BytesIO
-        from pycoin.tx.Tx import Tx
-        from pycoin.tx.TxOut import TxOut
-        from helpers import sign_msg
-        txn = Tx.from_bin(psbt.txn)
-        for idx, txout in enumerate(txn.txs_out):
+
+        if psbt.txn is None:
+            assert psbt.version == 2
+            tx_outs = [TxOut(out.amount, out.script) for out in psbt.outputs]
+        else:
+            txn = Tx.from_bin(psbt.txn)
+            tx_outs = txn.txs_out
+
+        for idx, txout in enumerate(tx_outs):
             fd = BytesIO()
             txout.stream(fd)
             fd.seek(0)
@@ -693,10 +696,12 @@ def test_whitelist_valid_attestation(start_hsm, attempt_psbt, fake_txn):
                 psbt.outputs[idx].proprietary[(ser_prop_key(CK_ID, ATTESTATION_SUBTYPE))] = sig
 
     # we are testing signing with the following address types: legacy, wrapped segwit, native segwit
-    whitelist = ["mxgE6pFVo9ob5dtLhVZTMuZWwgYxWjqWvr", "2MwZkXTNYmBz5tsRLesLVubxf81TJseHMpZ", "tb1qetnxp3hgajcnvdzg5u6u7jg0av9e3gv2848fq7"]
+    whitelist = ["mxgE6pFVo9ob5dtLhVZTMuZWwgYxWjqWvr",
+                 "2MwZkXTNYmBz5tsRLesLVubxf81TJseHMpZ",
+                 "tb1qetnxp3hgajcnvdzg5u6u7jg0av9e3gv2848fq7"]
     attesters = [("cRvMu9BCaC1YX3XsEvURvjGVfSoxTJ1doJMrMbsSedniFYYfcTYC", AF_CLASSIC),
-                    ("cVwmTYzFfQSR1XiEHeB3sDWBYyKJFGZSuARXpnxsQW59ucUj6nw4", AF_P2WPKH_P2SH),
-                    ("cTLgBv9qechEAted1VwMwKdqHbfL51X5JN2WBS7JMU6v4EdErset", AF_P2WPKH)]
+                 ("cVwmTYzFfQSR1XiEHeB3sDWBYyKJFGZSuARXpnxsQW59ucUj6nw4", AF_P2WPKH_P2SH),
+                 ("cTLgBv9qechEAted1VwMwKdqHbfL51X5JN2WBS7JMU6v4EdErset", AF_P2WPKH)]
 
     policy = DICT(rules=[dict(whitelist=whitelist, whitelist_opts=dict(mode="ATTEST"))])
     start_hsm(policy)
@@ -833,9 +838,6 @@ def enter_local_code(need_keypress):
 # dev serial number is part of salt, stored PW value, and challenge
 # both need to follow that.
 def calc_hmac_key(serial, secret='abcd1234'):
-    from hashlib import pbkdf2_hmac, sha256
-    from ckcc_protocol.constants import PBKDF2_ITER_COUNT
-
     salt = sha256(b'pepper'+serial.encode('ascii')).digest()
     #key = pbkdf2_hmac('sha256', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)
     key = pbkdf2_hmac('sha512', secret.encode('ascii'), salt, PBKDF2_ITER_COUNT)[0:32]
@@ -844,9 +846,6 @@ def calc_hmac_key(serial, secret='abcd1234'):
 
 @pytest.fixture
 def auth_user(dev):
-
-    from onetimepass import get_hotp
-    
     class State:
         def __init__(self):
             # start time only; don't want to wait 30 seconds between steps
@@ -857,8 +856,6 @@ def auth_user(dev):
 
         def __call__(self, username, garbage=False, do_replay=False):
             # calc right values!
-            from base64 import b32decode
-
             mode, secret, _ = TEST_USERS[username]
 
             if garbage:
@@ -868,8 +865,6 @@ def auth_user(dev):
                 assert len(self.psbt_hash) == 32
                 assert username == 'pw'
                 cnt = 0
-
-                from hmac import HMAC
 
                 key = calc_hmac_key(dev.serial) 
                 pw = HMAC(key, self.psbt_hash, sha256).digest()
@@ -1246,8 +1241,7 @@ def test_min_users_perms(dev, quick_start_hsm, load_hsm_users, fake_txn,
         attempt_psbt(psbt, 'need user(s) confirmation')
 
 def calc_local_pincode(psbt_sha, next_local_code):
-    from binascii import a2b_base64
-    import struct, hmac
+    import hmac
 
     key = a2b_base64(next_local_code)
     assert len(key) >= 15
@@ -1292,8 +1286,6 @@ def test_local_conf(dev, quick_start_hsm, tweak_rule, load_hsm_users, fake_txn, 
 
 def worst_case_policy():
     MAX_NUMBER_USERS = 30       # from shared/users.py
-    from helpers import prandom
-    from base64 import b32encode
 
     users = {f'user{i:02d}': [1, b32encode(prandom(10)).decode('ascii'), 0]
                 for i in range(MAX_NUMBER_USERS)}
@@ -1384,7 +1376,7 @@ def test_priv_over_ux(quick_start_hsm, hsm_status, load_hsm_users):
 @pytest.mark.parametrize("allow_op_return", [False, True])
 def test_op_return_output_local(op_return_data, start_hsm, attempt_psbt, fake_txn, allow_op_return):
     dests = []
-    psbt = fake_txn(2, 2, op_return = (0, op_return_data), capture_scripts=dests)
+    psbt = fake_txn(2, 2, op_return=(0, op_return_data), capture_scripts=dests)
     if allow_op_return:
         policy = DICT(rules=[dict(whitelist=[render_address(d) for d in dests[0:2]],
             whitelist_opts=dict(allow_zeroval_outs=True))])

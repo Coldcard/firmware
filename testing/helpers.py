@@ -103,19 +103,18 @@ def make_change_addr(wallet, style):
     target = dest.hash160()
     assert len(target) == 20
 
-    is_segwit = False
+    is_segwit = True
     if style == 'p2pkh':
         redeem_scr = bytes([0x76, 0xa9, 0x14]) + target + bytes([0x88, 0xac])
+        is_segwit = False
     elif style == 'p2wpkh':
         redeem_scr = bytes([0, 20]) + target
-        is_segwit = True
     elif style == 'p2wpkh-p2sh':
         redeem_scr = bytes([0, 20]) + target
         actual_scr = bytes([0xa9, 0x14]) + hash160(redeem_scr) + bytes([0x87])
     elif style == 'p2tr':
         tweaked_xonly = taptweak(dest.sec()[1:])
         redeem_scr = bytes([81, 32]) + tweaked_xonly
-        is_segwit = True
         return redeem_scr, actual_scr, is_segwit, dest.sec()[1:], b'\x00' + struct.pack('4I', xfp, *deriv)
     else:
         raise ValueError('cant make fake change output of type: ' + style)

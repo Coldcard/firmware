@@ -2190,7 +2190,7 @@ def bitcoind_multisig(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, 
 
     return doit
 
-@pytest.mark.bitcoind
+
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
                                               pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign):
     use_regtest()
@@ -2299,9 +2299,10 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
 @pytest.mark.parametrize("m_n", [(2,2), (3, 5), (15, 15)])
 @pytest.mark.parametrize("script_type", ["p2wsh", "p2sh_p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
-def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keypress, pick_menu_item,
+@pytest.mark.parametrize("psbt_v2", [True, False])
+def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, load_export, settings_set, bitcoind_multisig):
+                                microsd_wipe, load_export, settings_set, psbt_v2, finalize_v2_v0_convert):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
     settings_set("sighshchk", 1)  # disable checks
@@ -2334,6 +2335,13 @@ def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keyp
     for signer in bitcoind_signers:
         half_signed_psbt = signer.walletprocesspsbt(psbt, True, sighash, True, False)  # do not finalize
         psbt = half_signed_psbt["psbt"]
+
+    if psbt_v2:
+        # below is noop is psbt is already v2
+        po = BasicPSBT().parse(base64.b64decode(psbt))
+        po.to_v2()
+        psbt = po.as_b64_str()
+
     name = f"hsc_{M}of{N}_{script_type}.psbt"
     with open(microsd_path(name), "w") as f:
         f.write(psbt)
@@ -2370,10 +2378,14 @@ def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keyp
     assert "Updated PSBT is:" in story
     need_keypress("y")
     os.remove(microsd_path(name))
+
     fname = story.split("\n\n")[-1]
     with open(microsd_path(fname), "r") as f:
         final_psbt = f.read().strip()
-    res = bitcoind_watch_only.finalizepsbt(final_psbt)
+
+    po = BasicPSBT().parse(base64.b64decode(final_psbt))
+    res = finalize_v2_v0_convert(po)
+
     assert res["complete"]
     tx_hex = res["hex"]
     res = bitcoind_watch_only.testmempoolaccept([tx_hex])
@@ -2430,6 +2442,10 @@ def test_bitcoind_MofN_tutorial(m_n, script_type, clear_ms, goto_home, need_keyp
     fname = story.split("\n\n")[-1]
     with open(microsd_path(fname), "r") as f:
         cc_signed_psbt = f.read().strip()
+
+    po = BasicPSBT().parse(base64.b64decode(cc_signed_psbt))
+    cc_signed_psbt = finalize_v2_v0_convert(po)["psbt"]
+
     # CC already signed - now all bitcoin signers
     for signer in bitcoind_signers:
         res1 = signer.walletprocesspsbt(cc_signed_psbt, True, sighash)

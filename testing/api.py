@@ -2,7 +2,7 @@
 #
 # needs local bitcoind in PATH
 
-import os, time, uuid, socket, shutil, pytest, tempfile, subprocess, signal
+import os, time, uuid, socket, shutil, pytest, tempfile, subprocess, signal, base64
 from authproxy import AuthServiceProxy, JSONRPCException
 
 
@@ -162,6 +162,27 @@ def match_key(bitcoind, set_master_key, reset_seed_words):
 
     yield xfp
 
+
+@pytest.fixture
+def finalize_v2_v0_convert(bitcoind):
+    def doit(psbt_obj):
+        # compat wrapper - can be removed after below released
+        # https://github.com/bitcoin/bitcoin/pull/21283 PSBTv2
+        # convert v2 -> v0 if bitcoind does not support PSBTv2
+        # to be able to finalize
+        from authproxy import JSONRPCException
+        try:
+            resp = bitcoind.supply_wallet.finalizepsbt(psbt_obj.as_b64_str())
+        except JSONRPCException as e:
+            assert "Unsupported version number" in e.error["message"]
+            # this version of bitcoind does not support PSBTv2
+            # convert to v0 - needed for finalize
+            resp = bitcoind.supply_wallet.finalizepsbt(
+                base64.b64encode(psbt_obj.to_v0()).decode()
+            )
+        return resp
+
+    return doit
 
 @pytest.fixture
 def bitcoind_wallet(bitcoind):
