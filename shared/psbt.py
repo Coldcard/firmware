@@ -12,8 +12,8 @@ from sffile import SizerFile
 from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160, hash256
-from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256
-from serializations import ser_sig_der, uint256_from_str, ser_push_data, uint256_from_str
+from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, ser_uint256, COutPoint
+from serializations import ser_sig_der, uint256_from_str, ser_push_data
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY
 from serializations import ALL_SIGHASH_FLAGS
 from glob import settings
@@ -23,7 +23,11 @@ from public_constants import (
     PSBT_IN_PARTIAL_SIG, PSBT_IN_SIGHASH_TYPE, PSBT_IN_REDEEM_SCRIPT,
     PSBT_IN_WITNESS_SCRIPT, PSBT_IN_BIP32_DERIVATION, PSBT_IN_FINAL_SCRIPTSIG,
     PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT,
-    PSBT_OUT_BIP32_DERIVATION, MAX_PATH_DEPTH, MAX_SIGNERS
+    PSBT_OUT_BIP32_DERIVATION, PSBT_OUT_SCRIPT, PSBT_OUT_AMOUNT, PSBT_GLOBAL_VERSION,
+    PSBT_GLOBAL_TX_MODIFIABLE, PSBT_GLOBAL_OUTPUT_COUNT, PSBT_GLOBAL_INPUT_COUNT,
+    PSBT_GLOBAL_FALLBACK_LOCKTIME, PSBT_GLOBAL_TX_VERSION, PSBT_IN_PREVIOUS_TXID,
+    PSBT_IN_OUTPUT_INDEX, PSBT_IN_SEQUENCE, PSBT_IN_REQUIRED_TIME_LOCKTIME,
+    PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_PATH_DEPTH, MAX_SIGNERS
 )
 
 psbt_tmp256 = bytearray(256)
@@ -305,9 +309,9 @@ class psbtProxy:
 #
 class psbtOutputProxy(psbtProxy):
     no_keys = { PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT }
+
     blank_flds = ('unknown', 'subpaths', 'redeem_script', 'witness_script',
-                    'is_change', 'num_our_keys', 'amount', 'address', 'scriptpubkey',
-                    'attestation')
+                  'is_change', 'num_our_keys', 'amount', 'script', 'attestation')
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -316,6 +320,8 @@ class psbtOutputProxy(psbtProxy):
         #self.subpaths = None        # a dictionary if non-empty
         #self.redeem_script = None
         #self.witness_script = None
+        #self.script = None
+        #self.amount = None
 
         # this flag is set when we are assuming output will be change (same wallet)
         #self.is_change = False
@@ -333,6 +339,10 @@ class psbtOutputProxy(psbtProxy):
             self.redeem_script = val
         elif kt == PSBT_OUT_WITNESS_SCRIPT:
             self.witness_script = val
+        elif kt == PSBT_OUT_SCRIPT:
+            self.script = val
+        elif kt == PSBT_OUT_AMOUNT:
+            self.amount = val
         elif kt == PSBT_PROPRIETARY:
             prefix, subtype, keydata = decode_prop_key(key[1:])
             # examine only Coinkite proprietary keys
@@ -347,7 +357,7 @@ class psbtOutputProxy(psbtProxy):
                 raise FatalPSBTIssue("Duplicate key. Key for unknown value already provided in output.")
             self.unknown[key] = val
 
-    def serialize(self, out_fd, my_idx):
+    def serialize(self, out_fd, is_v2):
 
         wr = lambda *a: self.write(out_fd, *a)
 
@@ -360,6 +370,10 @@ class psbtOutputProxy(psbtProxy):
 
         if self.witness_script:
             wr(PSBT_OUT_WITNESS_SCRIPT, self.witness_script)
+
+        if is_v2:
+            wr(PSBT_OUT_SCRIPT, self.script)
+            wr(PSBT_OUT_AMOUNT, self.amount)
 
         if self.attestation:
             wr(PSBT_PROPRIETARY, self.attestation, encode_prop_key(PSBT_PROP_CK_ID, PSBT_ATTESTATION_SUBTYPE))
@@ -379,7 +393,6 @@ class psbtOutputProxy(psbtProxy):
         # - full key derivation and validation is done during signing, and critical.
         # - we raise fraud alarms, since these are not innocent errors
         #
-
         num_ours = self.parse_subpaths(my_xfp, parent.warnings)
 
         if num_ours == 0:
@@ -516,11 +529,12 @@ class psbtInputProxy(psbtProxy):
                      PSBT_IN_REDEEM_SCRIPT, PSBT_IN_WITNESS_SCRIPT, PSBT_IN_FINAL_SCRIPTSIG,
                      PSBT_IN_FINAL_SCRIPTWITNESS }
 
-    blank_flds = ('unknown',
-                    'utxo', 'witness_utxo', 'sighash',
-                    'redeem_script', 'witness_script', 'fully_signed',
-                    'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
-                    'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig')
+    blank_flds = (
+        'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
+        'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
+        'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig', 'previous_txid',
+        'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime'
+    )
 
     def __init__(self, fd, idx):
         super().__init__()
@@ -551,6 +565,12 @@ class psbtInputProxy(psbtProxy):
 
         # after signing, we'll have a signature to add to output PSBT
         #self.added_sig = None
+
+        #self.previous_txid = None
+        #self.prevout_idx = None
+        #self.sequence = None
+        #self.req_time_locktime = None
+        #self.req_height_locktime = None
 
         self.parse(fd)
 
@@ -829,6 +849,16 @@ class psbtInputProxy(psbtProxy):
             self.witness_script = val
         elif kt == PSBT_IN_SIGHASH_TYPE:
             self.sighash = unpack('<I', val)[0]
+        elif kt == PSBT_IN_PREVIOUS_TXID:
+            self.previous_txid = val
+        elif kt == PSBT_IN_OUTPUT_INDEX:
+            self.prevout_idx = val
+        elif kt == PSBT_IN_SEQUENCE:
+            self.sequence = unpack("<I", self.get(val))[0]
+        elif kt == PSBT_IN_REQUIRED_TIME_LOCKTIME:
+            self.req_time_locktime = unpack("<I", self.get(val))[0]
+        elif kt == PSBT_IN_REQUIRED_HEIGHT_LOCKTIME:
+            self.req_height_locktime = unpack("<I", self.get(val))[0]
         else:
             # including: PSBT_IN_FINAL_SCRIPTSIG, PSBT_IN_FINAL_SCRIPTWITNESS
             self.unknown = self.unknown or {}
@@ -836,7 +866,7 @@ class psbtInputProxy(psbtProxy):
                 raise FatalPSBTIssue("Duplicate key. Key for unknown value already provided in input.")
             self.unknown[key] = val
 
-    def serialize(self, out_fd, my_idx):
+    def serialize(self, out_fd, is_v2):
         # Output this input's values; might include signatures that weren't there before
 
         wr = lambda *a: self.write(out_fd, *a)
@@ -866,6 +896,20 @@ class psbtInputProxy(psbtProxy):
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
 
+        if is_v2:
+            wr(PSBT_IN_PREVIOUS_TXID, self.previous_txid)
+
+            wr(PSBT_IN_OUTPUT_INDEX, self.prevout_idx)
+
+            if self.sequence is not None:
+                wr(PSBT_IN_SEQUENCE, pack("<I", self.sequence))
+
+            if self.req_time_locktime is not None:
+                wr(PSBT_IN_REQUIRED_TIME_LOCKTIME, pack("<I", self.req_time_locktime))
+
+            if self.req_height_locktime is not None:
+                wr(PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, pack("<I", self.req_height_locktime))
+
         if self.unknown:
             for k, v in self.unknown.items():
                 wr(k[0], v, k[1:])
@@ -881,10 +925,10 @@ class psbtObject(psbtProxy):
         super().__init__()
 
         # global objects
+        self.version = None
         self.txn = None
         self.xpubs = []         # tuples(xfp_path, xpub)
 
-        from glob import dis
         self.my_xfp = settings.get('xfp', 0)
 
         # details that we discover as we go
@@ -893,11 +937,13 @@ class psbtObject(psbtProxy):
         self.had_witness = None
         self.num_inputs = None
         self.num_outputs = None
+        self.txn_modifiable = None
+        self.fallback_locktime = None
         self.vin_start = None
         self.vout_start = None
         self.wit_start = None
         self.txn_version = None
-        self.lock_time = None
+        self._lock_time = None
         self.total_value_out = None
         self.total_value_in = None
         self.presigned_inputs = set()
@@ -918,6 +964,16 @@ class psbtObject(psbtProxy):
 
         self.warnings = []
 
+        # v1 vs v2 validation
+        self.is_v2 = False
+        self.has_gic = False  # global input count
+        self.has_goc = False  # global output count
+        self.has_gtv = False  # global txn version
+
+    @property
+    def lock_time(self):
+        return (self._lock_time or self.fallback_locktime) or 0
+
     def store(self, kt, key, val):
         # capture the values we care about
 
@@ -927,6 +983,21 @@ class psbtObject(psbtProxy):
             # list of tuples(xfp_path, xpub)
             self.xpubs.append( (self.get(val), key[1:]) )
             assert len(self.xpubs) <= MAX_SIGNERS
+        elif kt == PSBT_GLOBAL_VERSION:
+            self.version = unpack("<I", self.get(val))[0]
+        elif kt == PSBT_GLOBAL_TX_VERSION:
+            self.txn_version = unpack("<I", self.get(val))[0]
+            self.has_gtv = True
+        elif kt == PSBT_GLOBAL_FALLBACK_LOCKTIME:
+            self.fallback_locktime = unpack("<I", self.get(val))[0]
+        elif kt == PSBT_GLOBAL_INPUT_COUNT:
+            self.num_inputs = deser_compact_size(BytesIO(self.get(val)))
+            self.has_gic = True
+        elif kt == PSBT_GLOBAL_OUTPUT_COUNT:
+            self.num_outputs = deser_compact_size(BytesIO(self.get(val)))
+            self.has_goc = True
+        elif kt == PSBT_GLOBAL_TX_MODIFIABLE:
+            self.txn_modifiable = val[0]
         else:
             self.unknown = self.unknown or {}
             if key in self.unknown:
@@ -935,23 +1006,32 @@ class psbtObject(psbtProxy):
 
     def output_iter(self):
         # yield the txn's outputs: index, (CTxOut object) for each
-        assert self.vout_start is not None      # must call input_iter/validate first
-
-        fd = self.fd
-        fd.seek(self.vout_start)
-
         total_out = 0
-        tx_out = CTxOut()
-        for idx in range(self.num_outputs):
+        if self.is_v2:
+            for idx in range(self.num_outputs):
+                out = self.outputs[idx]
+                amount = unpack("<q", self.get(out.amount))[0]
+                spk = self.get(out.script)
+                tx_out = CTxOut(nValue=amount, scriptPubKey=spk)
+                total_out += amount
+                yield idx, tx_out
+        else:
+            assert self.vout_start is not None     # must call input_iter/validate first
 
-            tx_out.deserialize(fd)
+            fd = self.fd
+            fd.seek(self.vout_start)
 
-            total_out += tx_out.nValue
+            tx_out = CTxOut()
+            for idx in range(self.num_outputs):
 
-            cont = fd.tell()
-            yield idx, tx_out
+                tx_out.deserialize(fd)
 
-            fd.seek(cont)
+                total_out += tx_out.nValue
+
+                cont = fd.tell()
+                yield idx, tx_out
+
+                fd.seek(cont)
 
         if self.total_value_out is None:
             self.total_value_out = total_out
@@ -1004,7 +1084,7 @@ class psbtObject(psbtProxy):
             self.wit_start = _skip_n_objs(fd, num_in, 'CTxInWitness')
 
         # we are at end of outputs, and no witness data, so locktime is here
-        self.lock_time = unpack("<I", fd.read(4))[0]
+        self._lock_time = unpack("<I", fd.read(4))[0]
 
         assert fd.tell() == end_pos, 'txn read end wrong'
 
@@ -1017,21 +1097,29 @@ class psbtObject(psbtProxy):
         #
         # - we also capture much data about the txn on the first pass thru here
         #
-        fd = self.fd
+        if self.is_v2:
+            for idx in range(self.num_inputs):
+                inp = self.inputs[idx]
+                prevout = COutPoint(uint256_from_str(self.get(inp.previous_txid)),
+                                    unpack("<I", self.get(inp.prevout_idx))[0])
+                sequence = inp.sequence if inp.sequence is not None else 0xffffffff
+                txin = CTxIn(outpoint=prevout, nSequence=sequence)
+                yield idx, txin
+        else:
+            fd = self.fd
 
-        assert self.vin_start       # call parse_txn() first!
+            assert self.vin_start
+            # stream out the inputs
+            fd.seek(self.vin_start)
 
-        # stream out the inputs
-        fd.seek(self.vin_start)
+            txin = CTxIn()
+            for idx in range(self.num_inputs):
+                txin.deserialize(fd)
 
-        txin = CTxIn()
-        for idx in range(self.num_inputs):
-            txin.deserialize(fd)
+                cont = fd.tell()
+                yield idx, txin
 
-            cont = fd.tell()
-            yield idx, txin
-
-            fd.seek(cont)
+                fd.seek(cont)
 
     def input_witness_iter(self):
         # yield all the witness data, in order by input
@@ -1155,10 +1243,60 @@ class psbtObject(psbtProxy):
         # Do a first pass over the txn. Raise assertions, be terse tho because
         # these messages are rarely seen. These are syntax/fatal errors.
         #
-        assert self.txn[1] > 63, 'too short'
+        if self.version is not None:
+            # verision is provided in PSBT - take it as given
+            assert self.version in (0,2)
+        else:
+            # PSBT version is not defined
+            # global unsigned tx is only allowed in v0
+            self.version = 2 if self.txn is None else 0
+
+        self.is_v2 = self.version is not None and self.version >= 2
+
+        if self.is_v2:
+            assert self.has_gic, "v2 requires global input count"
+            assert self.has_goc, "v2 requires global output count"
+            assert self.has_gtv, "v2 requires global txn version"
+            assert self.txn is None, "v2 requires exclusion of global unsigned tx"
+        else:
+            assert not self.has_gic, "v0 requires exclusion of global input count"
+            assert not self.has_goc, "v0 requires exclusion of global output count"
+            assert not self.has_gtv, "v0 requires exclusion of global txn version"
+            assert self.txn, "v0 requires inclusion of global unsigned tx"
+            assert self.txn[1] > 63, 'txn too short'
+            assert self.fallback_locktime is None, "v0 requires exclusion of global fallback locktime"
+            assert self.txn_modifiable is None, "v0 requires exclusion of global txn modifiable"
+
+        for idx, txo in self.output_iter():
+            out = self.outputs[idx]
+            if self.is_v2:
+                # v2 requires inclusion
+                assert out.amount
+                assert out.script
+            else:
+                # v0 requires exclusion
+                assert out.amount is None
+                assert out.script is None
 
         # this parses the input TXN in-place
         for idx, txin in self.input_iter():
+            inp = self.inputs[idx]
+            if self.is_v2:
+                # v2 requires inclusion
+                assert inp.prevout_idx is not None
+                assert inp.previous_txid
+                if inp.req_time_locktime is not None:
+                    assert inp.req_time_locktime >= 500000000
+                if inp.req_height_locktime is not None:
+                    assert 0 < inp.req_height_locktime < 500000000
+            else:
+                # v0 requires exclusion
+                assert inp.prevout_idx is None
+                assert inp.previous_txid is None
+                assert inp.sequence is None
+                assert inp.req_time_locktime is None
+                assert inp.req_height_locktime is None
+
             self.inputs[idx].validate(idx, txin, self.my_xfp, self)
 
         assert len(self.inputs) == self.num_inputs, 'ni mismatch'
@@ -1193,7 +1331,6 @@ class psbtObject(psbtProxy):
             # this happens, but would expect this to have done already?
             for out_idx, txo in self.output_iter():
                 pass
-
 
         # check fee is reasonable
         if self.total_value_out == 0:
@@ -1455,11 +1592,12 @@ class psbtObject(psbtProxy):
         # read main body (globals)
         rv.parse(fd)
 
-        assert rv.txn, 'missing reqd section'
+        if rv.txn:
+            # learn about the bitcoin transaction we are signing.
+            rv.parse_txn()
 
-        # learn about the bitcoin transaction we are signing.
-        rv.parse_txn()
-
+        assert rv.num_inputs is not None
+        assert rv.num_outputs is not None
         rv.inputs = [psbtInputProxy(fd, idx) for idx in range(rv.num_inputs)]
         rv.outputs = [psbtOutputProxy(fd, idx) for idx in range(rv.num_outputs)]
 
@@ -1486,8 +1624,19 @@ class psbtObject(psbtProxy):
             out_fd.write(ser_compact_size(txn_len))
             self.finalize(out_fd)
         else:
-            # provide original txn (unchanged)
-            wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
+            if not self.is_v2:  # can be 0 or None
+                # provide original txn (unchanged)
+                wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
+
+        if self.is_v2:
+            wr(PSBT_GLOBAL_TX_VERSION, pack('<I', self.txn_version))
+            if self.fallback_locktime is not None:
+                wr(PSBT_GLOBAL_FALLBACK_LOCKTIME, pack('<I', self.fallback_locktime))
+            wr(PSBT_GLOBAL_INPUT_COUNT, ser_compact_size(self.num_inputs))
+            wr(PSBT_GLOBAL_OUTPUT_COUNT, ser_compact_size(self.num_outputs))
+            if self.txn_modifiable is not None:
+                wr(PSBT_GLOBAL_TX_MODIFIABLE, bytes([self.txn_modifiable]))
+            wr(PSBT_GLOBAL_VERSION, pack('<I', self.version))
 
         if self.xpubs:
             for v, k in self.xpubs:
@@ -1501,11 +1650,11 @@ class psbtObject(psbtProxy):
         out_fd.write(b'\0')
 
         for idx, inp in enumerate(self.inputs):
-            inp.serialize(out_fd, idx)
+            inp.serialize(out_fd, self.is_v2)
             out_fd.write(b'\0')
 
         for idx, outp in enumerate(self.outputs):
-            outp.serialize(out_fd, idx)
+            outp.serialize(out_fd, self.is_v2)
             out_fd.write(b'\0')
 
     def sign_it(self):
@@ -1667,6 +1816,9 @@ class psbtObject(psbtProxy):
 
                 success.add(in_idx)
 
+                if self.is_v2:
+                    self.set_modifiable_flag(inp)
+
                 # memory cleanup
                 del result, r, s
 
@@ -1675,6 +1827,31 @@ class psbtObject(psbtProxy):
         # done.
         dis.progress_bar_show(1)
 
+    def set_modifiable_flag(self, inp):
+        # only for PSBTv2
+        # sighash needs to be properly set on psbtInputProxy object before this runs
+        # TODO possible to also cross-check with sighash from signature:
+        #    1. witnes/scriptSig in serialized tx in PSBT
+        #    2. psbt meta fields partial_sigs, taproot_key_sig and taproot_script_sigs
+        if self.txn_modifiable is None:
+            # set to inputs/outputs modifiable
+            # has SINGLE to false
+            self.txn_modifiable = 3
+
+        if not (inp.sighash & SIGHASH_ANYONECANPAY):
+            # Bit 0 is the Inputs Modifiable flag - set to 0
+            if self.txn_modifiable & 1:
+                self.txn_modifiable &= ~1
+
+        out_type = inp.sighash & 0x7f  # regardless of ANYONECANPAY
+        if out_type != SIGHASH_NONE:
+            # Bit 1 is the Outputs Modifiable flag - set to 0
+            if self.txn_modifiable & 2:
+                self.txn_modifiable &= ~2
+
+        if out_type == SIGHASH_SINGLE:
+            # Bit 2 is the Has SIGHASH_SINGLE flag - set it to 1
+            self.txn_modifiable |= 4
 
     def make_txn_sighash(self, replace_idx, replacement, sighash_type):
         # calculate the hash value for one input of current transaction

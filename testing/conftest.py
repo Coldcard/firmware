@@ -6,7 +6,8 @@ from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT
 from msg import verify_message
 from api import bitcoind, match_key
-from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign, bitcoind_d_sim_watch
+from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitcoind_d_sim_sign
+from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
 
@@ -34,6 +35,10 @@ def pytest_addoption(parser):
 
     parser.addoption("--ms-danger", action="store_true",
                      default=False, help="Operate with multisig checks off")
+    parser.addoption("--psbt2", action="store_true",
+                     default=False, help="fake_txn produces PSBTv2")
+    # to make bitcoind produce psbt v2 one currently needs https://github.com/achow101/bitcoin/tree/psbt2
+    # or wait until https://github.com/bitcoin/bitcoin/pull/21283 merged and released
 
 @pytest.fixture(scope='session')
 def dev(request):

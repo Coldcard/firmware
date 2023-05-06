@@ -4,7 +4,7 @@
 #
 import io, struct
 from binascii import b2a_hex as _b2a_hex
-from pycoin.tx.Tx import Tx
+from pycoin.tx.Tx import Tx, TxIn, TxOut
 from pycoin.tx.script.check_signature import parse_signature_blob
 from binascii import a2b_hex
 from base64 import b64decode, b64encode
@@ -13,35 +13,59 @@ b2a_hex = lambda a: str(_b2a_hex(a), 'ascii')
 
 # BIP-174 aka PSBT defined values
 #
-PSBT_GLOBAL_UNSIGNED_TX = 0
-PSBT_GLOBAL_XPUB = 1
+# GLOBAL ===
+PSBT_GLOBAL_UNSIGNED_TX 	     = 0x00
+PSBT_GLOBAL_XPUB        	     = 0x01
+PSBT_GLOBAL_VERSION              = 0xfb
+PSBT_GLOBAL_PROPRIETARY          = 0xfc
 
-PSBT_IN_NON_WITNESS_UTXO = 0
-PSBT_IN_WITNESS_UTXO = 1
-PSBT_IN_PARTIAL_SIG = 2
-PSBT_IN_SIGHASH_TYPE = 3
-PSBT_IN_REDEEM_SCRIPT = 4
-PSBT_IN_WITNESS_SCRIPT = 5
-PSBT_IN_BIP32_DERIVATION = 6
-PSBT_IN_FINAL_SCRIPTSIG = 7
-PSBT_IN_FINAL_SCRIPTWITNESS = 8
+# BIP-370
+PSBT_GLOBAL_TX_VERSION           = 0x02
+PSBT_GLOBAL_FALLBACK_LOCKTIME    = 0x03
+PSBT_GLOBAL_INPUT_COUNT          = 0x04
+PSBT_GLOBAL_OUTPUT_COUNT         = 0x05
+PSBT_GLOBAL_TX_MODIFIABLE        = 0x06
+
+# INPUTS ===
+PSBT_IN_NON_WITNESS_UTXO 	     = 0x00
+PSBT_IN_WITNESS_UTXO 	         = 0x01
+PSBT_IN_PARTIAL_SIG 	         = 0x02
+PSBT_IN_SIGHASH_TYPE 	         = 0x03
+PSBT_IN_REDEEM_SCRIPT 	         = 0x04
+PSBT_IN_WITNESS_SCRIPT 	         = 0x05
+PSBT_IN_BIP32_DERIVATION 	     = 0x06
+PSBT_IN_FINAL_SCRIPTSIG 	     = 0x07
+PSBT_IN_FINAL_SCRIPTWITNESS      = 0x08
+PSBT_IN_POR_COMMITMENT           = 0x09   # Proof of Reserves
+PSBT_IN_RIPEMD160                = 0x0a
+PSBT_IN_SHA256                   = 0x0b
+PSBT_IN_HASH160                  = 0x0c
+PSBT_IN_HASH256                  = 0x0d
+# BIP-370
+PSBT_IN_PREVIOUS_TXID            = 0x0e
+PSBT_IN_OUTPUT_INDEX             = 0x0f
+PSBT_IN_SEQUENCE                 = 0x10
+PSBT_IN_REQUIRED_TIME_LOCKTIME   = 0x11
+PSBT_IN_REQUIRED_HEIGHT_LOCKTIME = 0x12
 # BIP-371
-PSBT_IN_TAP_KEY_SIG = 19  # 0x13
-PSBT_IN_TAP_SCRIPT_SIG = 20  # 0x14
-PSBT_IN_TAP_LEAF_SCRIPT = 21  # 0x15
-PSBT_IN_TAP_BIP32_DERIVATION = 22  # 0x16
-PSBT_IN_TAP_INTERNAL_KEY = 23  # 0x17
-PSBT_IN_TAP_MERKLE_ROOT = 24  # 0x18
+PSBT_IN_TAP_KEY_SIG              = 0x13
+PSBT_IN_TAP_SCRIPT_SIG           = 0x14
+PSBT_IN_TAP_LEAF_SCRIPT          = 0x15
+PSBT_IN_TAP_BIP32_DERIVATION     = 0x16
+PSBT_IN_TAP_INTERNAL_KEY         = 0x17
+PSBT_IN_TAP_MERKLE_ROOT          = 0x18
 
-PSBT_OUT_REDEEM_SCRIPT = 0
-PSBT_OUT_WITNESS_SCRIPT = 1
-PSBT_OUT_BIP32_DERIVATION = 2
+# OUTPUTS ===
+PSBT_OUT_REDEEM_SCRIPT 	         = 0x00
+PSBT_OUT_WITNESS_SCRIPT 	     = 0x01
+PSBT_OUT_BIP32_DERIVATION 	     = 0x02
+# BIP-370
+PSBT_OUT_AMOUNT                  = 0x03
+PSBT_OUT_SCRIPT                  = 0x04
 # BIP-371
-PSBT_OUT_TAP_INTERNAL_KEY = 5
-PSBT_OUT_TAP_TREE = 6
-PSBT_OUT_TAP_BIP32_DERIVATION = 7
-
-PSBT_PROPRIETARY = 0xFC
+PSBT_OUT_TAP_INTERNAL_KEY        = 0x05
+PSBT_OUT_TAP_TREE                = 0x06
+PSBT_OUT_TAP_BIP32_DERIVATION    = 0x07
 
 PSBT_PROP_CK_ID = b"COINKITE"
 
@@ -105,7 +129,7 @@ class PSBTSection:
             kt = key[0]
             self.parse_kv(kt, key[1:], val)
 
-    def serialize(self, fd, my_idx):
+    def serialize(self, fd, v2):
 
         def wr(ktype, val, key=b''):
             fd.write(ser_compact_size(1 + len(key)))
@@ -113,7 +137,7 @@ class PSBTSection:
             fd.write(ser_compact_size(len(val)))
             fd.write(val)
 
-        self.serialize_kvs(wr)
+        self.serialize_kvs(wr, v2)
 
         fd.write(b'\0')
 
@@ -130,6 +154,11 @@ class BasicPSBTInput(PSBTSection):
         self.taproot_key_sig = None
         self.redeem_script = None
         self.witness_script = None
+        self.previous_txid = None        # v2
+        self.prevout_idx = None          # v2
+        self.sequence = None             # v2
+        self.req_time_locktime = None    # v2
+        self.req_height_locktime = None  # v2
         self.others = {}
         self.unknown = {}
 
@@ -148,6 +177,11 @@ class BasicPSBTInput(PSBTSection):
              a.taproot_bip32_paths == b.taproot_bip32_paths and \
              a.taproot_internal_key == b.taproot_internal_key and \
              sorted(a.part_sigs.keys()) == sorted(b.part_sigs.keys()) and \
+             a.previous_txid == b.previous_txid and \
+             a.prevout_idx == b.prevout_idx and \
+             a.sequence == b.sequence and \
+             a.req_time_locktime == b.req_time_locktime and \
+             a.req_height_locktime == b.req_height_locktime and \
              a.unknown == b.unknown
         if rv:
             # NOTE: equality test on signatures requires parsing DER stupidness
@@ -189,10 +223,20 @@ class BasicPSBTInput(PSBTSection):
             self.taproot_internal_key = val
         elif kt == PSBT_IN_TAP_KEY_SIG:
             self.taproot_key_sig = val
+        elif kt == PSBT_IN_PREVIOUS_TXID:
+            self.previous_txid = val
+        elif kt == PSBT_IN_OUTPUT_INDEX:
+            self.prevout_idx = struct.unpack("<I", val)[0]
+        elif kt == PSBT_IN_SEQUENCE:
+            self.sequence = struct.unpack("<I", val)[0]
+        elif kt == PSBT_IN_REQUIRED_TIME_LOCKTIME:
+            self.req_time_locktime = struct.unpack("<I", val)[0]
+        elif kt == PSBT_IN_REQUIRED_HEIGHT_LOCKTIME:
+            self.req_height_locktime = struct.unpack("<I", val)[0]
         else:
             self.unknown[bytes([kt]) + key] = val
 
-    def serialize_kvs(self, wr):
+    def serialize_kvs(self, wr, v2):
         if self.utxo:
             wr(PSBT_IN_NON_WITNESS_UTXO, self.utxo)
         if self.witness_utxo:
@@ -201,21 +245,39 @@ class BasicPSBTInput(PSBTSection):
             wr(PSBT_IN_REDEEM_SCRIPT, self.redeem_script)
         if self.witness_script:
             wr(PSBT_IN_WITNESS_SCRIPT, self.witness_script)
+
         if self.part_sigs:
             for pk, val in sorted(self.part_sigs.items()):
                 wr(PSBT_IN_PARTIAL_SIG, val, pk)
+
         if self.sighash is not None:
             wr(PSBT_IN_SIGHASH_TYPE, struct.pack('<I', self.sighash))
+
         if self.bip32_paths:
             for k in self.bip32_paths:
                 wr(PSBT_IN_BIP32_DERIVATION, self.bip32_paths[k], k)
+
         if self.taproot_bip32_paths:
             for k in self.taproot_bip32_paths:
                 wr(PSBT_IN_TAP_BIP32_DERIVATION, self.taproot_bip32_paths[k], k)
+
         if self.taproot_internal_key:
             wr(PSBT_IN_TAP_INTERNAL_KEY, self.taproot_internal_key)
         if self.taproot_key_sig:
             wr(PSBT_IN_TAP_KEY_SIG, self.taproot_key_sig)
+
+        if v2:
+            if self.previous_txid is not None:
+                wr(PSBT_IN_PREVIOUS_TXID, self.previous_txid)
+            if self.prevout_idx is not None:
+                wr(PSBT_IN_OUTPUT_INDEX, struct.pack("<I", self.prevout_idx))
+            if self.sequence is not None:
+                wr(PSBT_IN_SEQUENCE, struct.pack("<I", self.sequence))
+            if self.req_time_locktime is not None:
+                wr(PSBT_IN_REQUIRED_TIME_LOCKTIME, struct.pack("<I", self.req_time_locktime))
+            if self.req_height_locktime is not None:
+                wr(PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, struct.pack("<I", self.req_height_locktime))
+
         for k in self.others:
             wr(k, self.others[k])
         if isinstance(self.unknown, list):
@@ -235,12 +297,16 @@ class BasicPSBTOutput(PSBTSection):
         self.bip32_paths = {}
         self.taproot_bip32_paths = {}
         self.taproot_internal_key = None
+        self.script = None  # v2
+        self.amount = None  # v2
         self.proprietary = {}
         self.unknown = {}
 
     def __eq__(a, b):
         return a.redeem_script == b.redeem_script and \
             a.witness_script == b.witness_script and \
+            a.script == b.script and \
+            a.amount == b.amount and \
             a.my_index == b.my_index and \
             a.bip32_paths == b.bip32_paths and \
             a.taproot_bip32_paths == b.taproot_bip32_paths and \
@@ -257,16 +323,20 @@ class BasicPSBTOutput(PSBTSection):
             assert not key
         elif kt == PSBT_OUT_BIP32_DERIVATION:
             self.bip32_paths[key] = val
-        elif kt == PSBT_PROPRIETARY:
-            self.proprietary[key] = val
         elif kt == PSBT_OUT_TAP_BIP32_DERIVATION:
             self.taproot_bip32_paths[key] = val
         elif kt == PSBT_OUT_TAP_INTERNAL_KEY:
             self.taproot_internal_key = val
+        elif kt == PSBT_OUT_SCRIPT:
+            self.script = val
+        elif kt == PSBT_OUT_AMOUNT:
+            self.amount = struct.unpack("<q", val)[0]
+        elif kt == PSBT_GLOBAL_PROPRIETARY:
+            self.proprietary[key] = val
         else:
             self.unknown[bytes([kt]) + key] = val
 
-    def serialize_kvs(self, wr):
+    def serialize_kvs(self, wr, v2):
         if self.redeem_script:
             wr(PSBT_OUT_REDEEM_SCRIPT, self.redeem_script)
         if self.witness_script:
@@ -279,8 +349,14 @@ class BasicPSBTOutput(PSBTSection):
                 wr(PSBT_OUT_TAP_BIP32_DERIVATION, self.taproot_bip32_paths[k], k)
         if self.taproot_internal_key:
             wr(PSBT_OUT_TAP_INTERNAL_KEY, self.taproot_internal_key)
+        if v2 and self.script is not None:
+            wr(PSBT_OUT_SCRIPT, self.script)
+        if v2 and self.amount is not None:
+            wr(PSBT_OUT_AMOUNT, struct.pack("<q", int(self.amount)))
+
         for k in self.proprietary:
-            wr(PSBT_PROPRIETARY, self.proprietary[k], k)
+            wr(PSBT_GLOBAL_PROPRIETARY, self.proprietary[k], k)
+
         if isinstance(self.unknown, list):
             # just so I can test duplicate unknown values
             # list of tuples [(key0, val0), (key1, val1)]
@@ -295,23 +371,35 @@ class BasicPSBT:
     "Just? parse and store"
 
     def __init__(self):
-
+        self.version = None
         self.txn = None
+        self.txn_version = None
         self.xpubs = []
-
+        self.input_count = None
+        self.output_count = None
         self.inputs = []
         self.outputs = []
-
+        self.txn_modifiable = None
+        self.fallback_locktime = None
         self.unknown = {}
+        self.parsed_txn = None
 
     def __eq__(a, b):
         return a.txn == b.txn and \
+            a.input_count == b.input_count and \
+            a.output_count == b.output_count and \
+            a.fallback_locktime == b.fallback_locktime and \
+            a.txn_version == b.txn_version and \
+            a.version == b.version and \
             len(a.inputs) == len(b.inputs) and \
             len(a.outputs) == len(b.outputs) and \
             all(a.inputs[i] == b.inputs[i] for i in range(len(a.inputs))) and \
             all(a.outputs[i] == b.outputs[i] for i in range(len(a.outputs))) and \
             sorted(a.xpubs) == sorted(b.xpubs) and \
             a.unknown == b.unknown
+
+    def is_v2(self):
+        return (self.version == 2) or (not self.txn)
 
     def parse(self, raw):
         # auto-detect and decode Base64 and Hex.
@@ -338,16 +426,43 @@ class BasicPSBT:
                     self.txn = val
 
                     t = Tx.parse(io.BytesIO(val))
+                    self.parsed_txn = t
                     num_ins = len(t.txs_in)
                     num_outs = len(t.txs_out)
                 elif kt == PSBT_GLOBAL_XPUB:
                     # key=(xpub) => val=(path)
                     # ignore PSBT_GLOBAL_XPUB on 0th index (should not be part of parsed key)
                     self.xpubs.append((key[1:], val))
+                elif kt == PSBT_GLOBAL_VERSION:
+                    self.version = struct.unpack("<I", val)[0]
+                elif kt == PSBT_GLOBAL_TX_VERSION:
+                    self.txn_version = struct.unpack("<I", val)[0]
+                elif kt == PSBT_GLOBAL_FALLBACK_LOCKTIME:
+                    self.fallback_locktime = struct.unpack("<I", val)[0]
+                elif kt == PSBT_GLOBAL_INPUT_COUNT:
+                    self.input_count = deser_compact_size(io.BytesIO(val))
+                    num_ins = self.input_count
+                elif kt == PSBT_GLOBAL_OUTPUT_COUNT:
+                    self.output_count = deser_compact_size(io.BytesIO(val))
+                    num_outs = self.output_count
+                elif kt == PSBT_GLOBAL_TX_MODIFIABLE:
+                    self.txn_modifiable = val[0]
                 else:
                     self.unknown[key] = val
 
-            assert self.txn, 'missing reqd section'
+            if self.version is None:
+                # decide version based on PSBT_GLOBAL_UNSIGNED_TX field
+                # v0 requires inclusion
+                # v2 requires exclusion
+                self.version = 0 if self.txn else 2
+
+            if self.version == 0:
+                assert self.txn, 'v0: missing reqd section - PSBT_GLOBAL_UNSIGNED_TX'
+            elif self.version == 2:
+                # tx version needs to be at least 2 because locktimes
+                assert self.txn_version == 2, 'v2: missing reqd section - PSBT_GLOBAL_TX_VERSION'
+                assert self.input_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_INPUT_COUNT'
+                assert self.output_count is not None, 'v2: missing reqd section - PSBT_GLOBAL_OUTPUT_COUNT'
 
             self.inputs = [BasicPSBTInput(fd, idx) for idx in range(num_ins)]
             self.outputs = [BasicPSBTOutput(fd, idx) for idx in range(num_outs)]
@@ -358,7 +473,7 @@ class BasicPSBT:
         return self
 
     def serialize(self, fd):
-
+        v2 = self.is_v2()
         def wr(ktype, val, key=b''):
             ktype_plus_key = bytes([ktype]) + key
             fd.write(ser_compact_size(len(ktype_plus_key)))
@@ -368,10 +483,30 @@ class BasicPSBT:
 
         fd.write(b'psbt\xff')
 
-        wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
+        if (not v2) and self.txn:
+            wr(PSBT_GLOBAL_UNSIGNED_TX, self.txn)
 
         for k, v in self.xpubs:
             wr(PSBT_GLOBAL_XPUB, v, key=k)
+
+        if v2:
+            if self.txn_version is not None:
+                wr(PSBT_GLOBAL_TX_VERSION, struct.pack('<I', self.txn_version))
+
+            if self.fallback_locktime is not None:
+                wr(PSBT_GLOBAL_FALLBACK_LOCKTIME, struct.pack('<I', self.fallback_locktime))
+
+            if self.input_count is not None:
+                wr(PSBT_GLOBAL_INPUT_COUNT, ser_compact_size(self.input_count))
+
+            if self.output_count is not None:
+                wr(PSBT_GLOBAL_OUTPUT_COUNT, ser_compact_size(self.output_count))
+
+            if self.txn_modifiable is not None:
+                wr(PSBT_GLOBAL_TX_MODIFIABLE, bytes([self.txn_modifiable]))
+
+        if self.version is not None:
+            wr(PSBT_GLOBAL_VERSION, struct.pack('<I', self.version))
 
         if isinstance(self.unknown, list):
             # just so I can test duplicate unknown values
@@ -386,10 +521,10 @@ class BasicPSBT:
         fd.write(b'\0')
 
         for idx, inp in enumerate(self.inputs):
-            inp.serialize(fd, idx)
+            inp.serialize(fd, v2)
 
         for idx, outp in enumerate(self.outputs):
-            outp.serialize(fd, idx)
+            outp.serialize(fd, v2)
 
     def as_bytes(self):
         with io.BytesIO() as fd:
@@ -398,6 +533,56 @@ class BasicPSBT:
 
     def as_b64_str(self):
         return b64encode(self.as_bytes()).decode()
+
+    def to_v2(self):
+        if self.version is None or self.version == 0:
+            self.version = 2
+            self.txn_version = 2
+            self.txn = None
+            self.input_count = len(self.parsed_txn.txs_in)
+            self.output_count = len(self.parsed_txn.txs_out)
+            self.fallback_locktime = self.parsed_txn.lock_time
+            for idx, inp in enumerate(self.parsed_txn.txs_in):
+                i = self.inputs[idx]
+                i.previous_txid = inp.previous_hash
+                i.prevout_idx = inp.previous_index
+                i.sequence = inp.sequence
+            for idx, out in enumerate(self.parsed_txn.txs_out):
+                o = self.outputs[idx]
+                o.script = out.script
+                o.amount = out.coin_value
+
+        return self.as_bytes()
+
+    def to_v0(self):
+        if self.version == 2:
+            tx_ins = []
+            for inp in self.inputs:
+                tx_ins.append(TxIn(inp.previous_txid, inp.prevout_idx,
+                                   sequence=inp.sequence or 0xffffffff))
+                inp.prevout_idx = None
+                inp.previous_txid = None
+                inp.sequence = None
+                inp.req_time_locktime = None
+                inp.req_height_locktime = None
+
+            tx_outs = []
+            for out in self.outputs:
+                tx_outs.append(TxOut(coin_value=out.amount, script=out.script))
+                out.amount = None
+                out.script = None
+
+            t = Tx(version=self.txn_version, txs_in=tx_ins, txs_out=tx_outs,
+                   lock_time=self.fallback_locktime or 0)
+            self.txn_version = None
+            self.input_count = None
+            self.output_count = None
+            self.txn_modifiable = None
+            self.version = None
+            self.parsed_txn = t
+            self.txn = self.parsed_txn.as_bin()
+
+        return self.as_bytes()
 
 
 def test_my_psbt():
