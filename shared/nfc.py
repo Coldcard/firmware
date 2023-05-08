@@ -739,4 +739,54 @@ class NFCHandler:
 
         return winner
 
+
+    async def read_bsms_token(self):
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode().strip()  # from memory view
+            try:
+                int(msg, 16)
+                winner = msg
+                break
+            except: pass
+
+        if not winner:
+            await ux_show_story('Unable to find BSMS token in NDEF data')
+            return
+
+        return winner
+
+    async def read_bsms_data(self):
+        data = await self.start_nfc_rx()
+        if not data:
+            await ux_show_story('Unable to find data expected in NDEF')
+            return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode().strip()  # from memory view
+            try:
+                if "BSMS" in msg:
+                    # unencrypted case
+                    winner = msg
+                    break
+                elif int(msg[:6], 16):
+                    # encrypted hex case
+                    winner = msg
+                    break
+                else:
+                    continue
+            except: pass
+
+        if not winner:
+            await ux_show_story('Unable to find BSMS data in NDEF data')
+            return
+
+        return winner
+
 # EOF

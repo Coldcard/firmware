@@ -1238,6 +1238,7 @@ class MultisigMenu(MenuSystem):
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of wallets shown
+        from bsms import make_ms_wallet_bsms_menu
 
         if not MultisigWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
@@ -1250,6 +1251,7 @@ class MultisigMenu(MenuSystem):
         rv.append(MenuItem('Import from File', f=import_multisig))
         rv.append(MenuItem('Import via NFC', f=import_multisig_nfc, predicate=lambda: NFC is not None))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
+        rv.append(MenuItem('BSMS (BIP-129)', menu=make_ms_wallet_bsms_menu))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
         rv.append(MenuItem('Skip Checks?', f=disable_checks_menu))
