@@ -79,6 +79,7 @@ def get_is_devmode():
 
 def is_fresh_version():
     # Did we just boot into a new firmware for the first time?
+
     # - mk4+ does not use this approach, light will be solid green during upgrade
     if mk_num >= 4: return False
 
@@ -103,7 +104,7 @@ def serial_number():
 def probe_system():
     # run-once code to determine what hardware we are running on
     global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
-    global has_se2, mk_num, has_nfc
+    global has_se2, mk_num, has_nfc, is_edge
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
@@ -153,6 +154,9 @@ def probe_system():
 
     # what firmware signing key did we boot with? are we in dev mode?
     is_devmode = get_is_devmode()
+
+    # newer, edge code in effect?
+    is_edge = (get_mpy_version()[1][-1] == 'X')
 
     # increase size limits for mk4
     if has_psram:

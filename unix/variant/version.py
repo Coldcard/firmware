@@ -21,6 +21,8 @@ is_factory_mode = bool('-f' in sys.argv)
 
 is_devmode = True
 
+is_edge = True
+
 def is_fresh_version():
     return False
 

@@ -4,7 +4,7 @@
 #
 import machine, ssd1306, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
-from version import is_devmode
+from version import is_devmode, is_edge
 import framebuf
 import uasyncio
 from uasyncio import sleep_ms
@@ -134,10 +134,16 @@ class Display:
         self.dis.fill_rect(128-2, pos, 1, 8, 1)
 
         if is_devmode and not ckcc.is_simulator():
-            self.dis.fill_rect(128-6, 20, 5, 21, 1)
-            self.text(-2, 21, 'D', font=FontTiny, invert=1)
-            self.text(-2, 28, 'E', font=FontTiny, invert=1)
-            self.text(-2, 35, 'V', font=FontTiny, invert=1)
+            self.dis.fill_rect(128-5, 20, 5, 21, 1)
+            self.text(-1, 21, 'D', font=FontTiny, invert=1)
+            self.text(-1, 28, 'E', font=FontTiny, invert=1)
+            self.text(-1, 35, 'V', font=FontTiny, invert=1)
+        elif is_edge:
+            self.dis.fill_rect(128-5, 19, 5, 26, 1)
+            self.text(-1, 20, 'E', font=FontTiny, invert=1)
+            self.text(-1, 27, 'D', font=FontTiny, invert=1)
+            self.text(-1, 33, 'G', font=FontTiny, invert=1)
+            self.text(-1, 39, 'E', font=FontTiny, invert=1)
 
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 

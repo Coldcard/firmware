@@ -918,14 +918,13 @@ async def start_login_sequence():
             # is early in boot process
             print("XFP save failed: %s" % exc)
 
-    # reckless warning before HSM is offered to also warn HSM users
-    _, ver, _ = version.get_mpy_version()
-    if ver[-1] == "X":
-        await ux_show_story(title="Reckless!!!",
-                            msg=("Bleeding Edge  Firmware\n\nThis preview version of firmware has not yet"
-                                 " been qualified and tested to the same standard as most Coinkite products."
-                                 "\n\nIt is recommended only for developers and early adopters for experimental use. "
-                                 "DO NOT use for large Bitcoin values."))
+    # Version warning before HSM is offered
+    if version.is_edge:
+        await ux_show_story(
+             "This preview version of firmware has not yet been qualified and "
+             "tested to the same standard as normal Coinkite products."
+             "\n\nIt is recommended only for developers and early adopters for experimental use. "
+             "DO NOT use for large Bitcoin amounts.", title="Edge Version")
 
     # If HSM policy file is available, offer to start that,
     # **before** the USB is even enabled.
