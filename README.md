@@ -66,6 +66,16 @@ so at the top level, do this command:
 pip install -r requirements.txt
 ```
 
+## Long-Lived Branches
+
+We are now maintaining two branches: `master` and `edge`.
+
+"Edge" will contain features that may not be ready for prime time,
+such as Taproot or Miniscript. Our standards for releasing new Edge
+versions are lower, so we can iterate faster and get these advancements
+out to other developers.
+
+
 ### macOS
 
 [Python 3.5 or higher](https://www.python.org) and [Homebrew](https://brew.sh) is required.
