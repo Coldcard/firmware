@@ -1,4 +1,4 @@
 
 # Our version for this release.
-VERSION_STRING = 5.1.2
+VERSION_STRING = 6.0.0X
 

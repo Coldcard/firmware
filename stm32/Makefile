@@ -14,11 +14,11 @@
 	$(MAKE) DEBUG_BUILD=1 -f MK4-Makefile $(MAKECMDGOALS)
 
 
-clean clobber rc1:
+clean clobber:
 	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
 	$(MAKE) -f MK3-Makefile $(MAKECMDGOALS)
 
-release repro:
+release repro rc1:
 	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
 	#NOTYET#$(MAKE) -f MK3-Makefile $(MAKECMDGOALS)
 
