@@ -75,7 +75,10 @@
 
 # Taproot
 
-- taproot limitation are listed in `docs/taproot.md`
+- only `TREE` of depth 0 is allowed
+- max 32 signers in TR multisig, only allowed script is: `sortedmulti_a`
+- if we can sign by both key path and script path: key path has precedence.
+- more background and detail in `docs/taproot.md`
 
 
 # SIGHASH types

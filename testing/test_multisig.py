@@ -2540,7 +2540,7 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("change", [True, False])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (32, 32)])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_bitcoind_taproot_ms_address(change, M_N, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu,
                                      cap_story, make_multisig, import_ms_wallet, microsd_path, bitcoind_multisig,
@@ -2704,7 +2704,7 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
 
 @pytest.mark.parametrize('cmn_pth_from_root', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (32, 32)])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
 def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear_ms, make_multisig,
                                     import_ms_wallet, goto_home, pick_menu_item, cap_menu,

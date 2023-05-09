@@ -8,7 +8,8 @@ from utils import str_to_keypath, problem_file_line, export_prompt_builder, pars
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
-from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS, AF_P2TR
+from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
+from public_constants import MAX_TR_SIGNERS, AF_P2TR
 from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG, OP_CHECKSIG, OP_NUMEQUAL, OP_CHECKSIGADD
 from exceptions import FatalPSBTIssue
@@ -28,7 +29,7 @@ class MultisigOutOfSpace(RuntimeError):
     pass
 
 def disassemble_multisig_mn(redeem_script):
-    # pull out just M and N from script. Simple, faster, no memory.
+    # Pull out just M and N from script. Simple, faster, no memory.
 
     assert redeem_script[-1] == OP_CHECKMULTISIG, 'need CHECKMULTISIG'
 
@@ -39,8 +40,8 @@ def disassemble_multisig_mn(redeem_script):
 
 
 def disassemble_multisig_mn_tr(script):
-    # pull out just M and N from script. Simple, faster, no memory.
-    # more validation is done in next steps
+    # Pull out just M and N from taproot script.
+    # - more validation is done in following steps
     assert script[-1] == OP_NUMEQUAL, 'need OP_NUMEQUAL'
     num_cs = 0
     num_csa = 0
@@ -68,6 +69,7 @@ def disassemble_multisig_mn_tr(script):
                     last = next(gen)[1]
                     assert last == OP_NUMEQUAL
                     M = int.from_bytes(bt[0], "little")
+
     assert M
     N = num_cs + num_csa
     return M, N
@@ -142,15 +144,15 @@ def make_redeem_script(M, nodes, subkey_idx):
 
 
 def make_redeem_script_tr(M, nodes, subkey_idx):
-    # take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
+    # Take a list of BIP-32 nodes, and derive Nth subkey (subkey_idx) and make
     # a taproot M-of-N redeem script for that. Always applies BIP-67 sorting.
+    # - tapscript multisig does not use OP_CHECKMULTISIG and therefore limit is
+    #   much higher (998 of 999 was demonstrated)
+    # - for now, MAX_TR_SIGNERS is 32, but this is artificial limit for tapscript
+    #   and could be something bigger
+
     N = len(nodes)
-    # TODO this is artificial limit for tapscript and should be something bigger
-    # MAX_SIGNERS is actually old P2SH limit
-    # limit for segwit v0 multisig is 20 (OP_CHECKMULTISIG limit)
-    # tapscript multisig does not use OP_CHECKMULTISIG and therefore limit is much higher (998of999 was tried)
-    # double current limit
-    assert 1 <= M <= N <= 32
+    assert 1 <= M <= N <= MAX_TR_SIGNERS
 
     pubkeys = []
     for n in nodes:
@@ -173,7 +175,7 @@ def make_redeem_script_tr(M, nodes, subkey_idx):
     if M <= 16:
         script += bytes([80 + M, OP_NUMEQUAL])
     else:
-        # up to 127
+        assert M < 128
         script += bytes([0x01, M, OP_NUMEQUAL])
 
     return script
@@ -187,7 +189,7 @@ class MultisigWallet:
     # - required during signing to verify change outputs
     # - can reconstruct any redeem script from this
     # Challenges:
-    # - can be big, taking big % of 4k storage in nvram
+    # - can be big, taking big % of storage in nvram
     # - complex object, want to have flexibility going forward
     FORMAT_NAMES = [
         (AF_P2SH, 'p2sh'),
@@ -581,6 +583,7 @@ class MultisigWallet:
         ch = chains.current_chain()
         internal_key = None
         xfp_deriv = None
+
         for key, lhs_path in taproot_subpaths.items():
             if not lhs_path[0]:
                 internal_key = key
@@ -601,6 +604,7 @@ class MultisigWallet:
         return internal_key
 
     def make_multisig_tr(self, taproot_subpaths):
+        # Make the redeem script for leafs
         ch = chains.current_chain()
         index = None
         nodes = []
@@ -626,8 +630,7 @@ class MultisigWallet:
             nodes.append(node)
 
         # this assumes we have same index for all keys
-        script = make_redeem_script_tr(self.M, nodes, index)
-        return script
+        return make_redeem_script_tr(self.M, nodes, index)
 
     def validate_script(self, redeem_script, subpaths=None, xfp_paths=None):
         # Check we can generate all pubkeys in the redeem script, raise on errors.
@@ -645,7 +648,8 @@ class MultisigWallet:
         M, N, pubkeys = disassemble_multisig(redeem_script)
         assert M==self.M and N == self.N, 'wrong M/N in script'
 
-        if self.disable_checks: return ['UNVERIFIED']
+        if self.disable_checks:
+            return ['UNVERIFIED']
 
         for pk_order, pubkey in enumerate(pubkeys):
             check_these = []
@@ -743,6 +747,7 @@ class MultisigWallet:
         xpubs = []
         addr_fmt = AF_P2SH
         my_xfp = settings.get('xfp')
+
         for ln in lines:
             # remove comments
             comm = ln.find('#')
@@ -811,6 +816,7 @@ class MultisigWallet:
                 is_mine = cls.check_xpub(xfp, value, deriv, chains.current_chain().ctype, my_xfp, xpubs)
                 if is_mine:
                     has_mine += 1
+
         return name, addr_fmt, xpubs, has_mine, M, N
 
     @classmethod
@@ -826,6 +832,7 @@ class MultisigWallet:
             is_mine = cls.check_xpub(xfp, xpub, deriv, chains.current_chain().ctype, my_xfp, xpubs)
             if is_mine:
                 has_mine += 1
+
         return None, desc.addr_fmt, xpubs, has_mine, desc.M, desc.N, desc.internal_key
 
     def to_descriptor(self):

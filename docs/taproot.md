@@ -1,10 +1,10 @@
 # Taproot
 
-**COLDCARD<sup>&reg;</sup>** Mk4 experimental `EDGE` version `5.2.0X` 
+**COLDCARD<sup>&reg;</sup>** Mk4 experimental `EDGE` versions will
 support Schnorr signatures ([BIP-0340](https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki)), 
 Taproot ([BIP-0341](https://github.com/bitcoin/bips/blob/master/bip-0341.mediawiki)) 
 and very limited Tapscript ([BIP-0342](https://github.com/bitcoin/bips/blob/master/bip-0342.mediawiki)) support.
-Tapscript support will get more versatile with next iterations.
+Tapscript support will get more versatile with future iterations.
 
 ## Output script (a.k.a address) generation
 
@@ -40,7 +40,7 @@ for multisig.
 
 ## Limitations
 
-### Tapscript limitations
+### Tapscript Limitations
 
 In current version only `TREE` of depth 0 is allowed. Meaning that only one leaf script is allowed 
 and tagged hash of this single leaf script is also a merkle root. Only allowed script (for now) is `sortedmulti_a`.
@@ -48,7 +48,7 @@ Taproot multisig currently has artificial limit of max 32 signers (M=N=32).
 
 If Coldcard can sign by both key path and script path - key path has precedence.
 
-### PSBT limitations
+### PSBT Requirements
 
 PSBT provider MUST provide following Taproot specific input fields in PSBT:
 1. `PSBT_IN_TAP_BIP32_DERIVATION` with all the necessary keys with their leaf hashes and derivation (including XFP). Internal key has to be specified here with empty leaf hashes.
