@@ -919,7 +919,7 @@ async def start_login_sequence():
             print("XFP save failed: %s" % exc)
 
     # Version warning before HSM is offered
-    if version.is_edge:
+    if version.is_edge and not ckcc.is_simulator():
         await ux_show_story(
              "This preview version of firmware has not yet been qualified and "
              "tested to the same standard as normal Coinkite products."
