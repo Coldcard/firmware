@@ -28,10 +28,10 @@ class KeypathMenu(MenuSystem):
             # Top level menu; useful shortcuts, and special case just "m"
             items = [
                 MenuItem("m/..", f=self.deeper),
-                MenuItem("m/44'/..", f=self.deeper),
                 MenuItem("m/49'/..", f=self.deeper),
                 MenuItem("m/84'/..", f=self.deeper),
                 MenuItem("m/86'/..", f=self.deeper),
+                MenuItem("m/44'/..", f=self.deeper),
                 MenuItem("m/0/{idx}", menu=self.done),
                 MenuItem("m/{idx}", menu=self.done),
                 MenuItem("m", f=self.done),
