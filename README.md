@@ -29,6 +29,16 @@ has been automated using Docker. Steps are as follows:
 4. At the end of the process a clear confirmation message is shown, or the differences.
 5. Build products can be found `firmware/stm32/built`.
 
+## Long-Lived Branches
+
+We are now maintaining two branches: `master` and `edge`.
+
+"Edge" will contain features that may not be ready for prime time,
+such as Taproot or Miniscript. Our standards for releasing new Edge
+versions are lower, so we can iterate faster and get these advancements
+out to other developers.
+
+
 ## Check-out and Setup
 
 **NOTE** This is the `master` branch and covers the latest hardware (Mk4).
@@ -65,16 +75,6 @@ so at the top level, do this command:
 ```shell
 pip install -r requirements.txt
 ```
-
-## Long-Lived Branches
-
-We are now maintaining two branches: `master` and `edge`.
-
-"Edge" will contain features that may not be ready for prime time,
-such as Taproot or Miniscript. Our standards for releasing new Edge
-versions are lower, so we can iterate faster and get these advancements
-out to other developers.
-
 
 ### macOS
 
