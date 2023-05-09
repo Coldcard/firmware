@@ -301,6 +301,7 @@ def start():
   - N to capture NFC data (tap it)
 ''')
     sdl2.ext.init()
+    sdl2.SDL_EnableScreenSaver()
 
     factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
     bg = factory.from_image("background.png")
