@@ -55,7 +55,7 @@ class PaperWalletMaker:
     def atype(self):
         if self.is_taproot: return 2, 'Taproot P2TR'
         if self.is_segwit: return 1, 'Segwit P2WPKH'
-        return 0, 'Classic P2PKPH'
+        return 0, 'Classic P2PKH'
 
     async def pick_template(self, *a):
         fn = await file_picker('Pick PDF template to use, or X for none.',
@@ -71,7 +71,7 @@ class PaperWalletMaker:
             self.is_segwit = idx == 1
             self.is_taproot = idx == 2
             self.update_menu()
-        return self.atype()[0], ['Classic P2PKPH', 'Segwit P2WPKH', 'Taproot P2TR'], set
+        return self.atype()[0], ['Classic P2PKH', 'Segwit P2WPKH', 'Taproot P2TR'], set
 
     @staticmethod
     def can_do_qr():

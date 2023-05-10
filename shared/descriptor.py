@@ -17,6 +17,7 @@ MULTI_FMT_TO_SCRIPT = {
     "p2sh-p2wsh": "sh(wsh(%s))",
     "p2wsh-p2sh": "sh(wsh(%s))",
     "p2wsh": "wsh(%s)",
+    "p2tr": "tr(%s)"
 }
 
 SINGLE_FMT_TO_SCRIPT = {
@@ -347,7 +348,7 @@ class MultisigDescriptor(Descriptor):
             tmp_desc = desc.replace("tr(", "")
             tmp_desc = tmp_desc.rstrip(")")
             internal_key, tmp_desc = tmp_desc.split(",", 1)
-            assert tmp_desc.startswith("sortedmulti_a("), "Only on sortedmulti_a allowed"
+            assert tmp_desc.startswith("sortedmulti_a("), "Only one sortedmulti_a allowed"
             tmp_desc = tmp_desc.replace("sortedmulti_a(", "")
             tmp_desc = tmp_desc.rstrip(")")
 

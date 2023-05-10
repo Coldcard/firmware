@@ -614,7 +614,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
         desc_prefix = "sh(wpkh("
         bip44_purpose = 49
     elif addr_fmt == AF_P2TR:
-        menu_item = "Taproot (P2TR)"
+        menu_item = "Taproot P2TR"
         desc_prefix = "tr("
         bip44_purpose = 86
     else:

@@ -107,7 +107,6 @@ def test_show_addr_nfc_invalid(body_err, goto_home, pick_menu_item, nfc_write_te
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh", "p2tr"])
 def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item, goto_home, cap_story,
                          need_keypress, addr_vs_path):
-    # import pdb;pdb.set_trace()
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack
         try:
