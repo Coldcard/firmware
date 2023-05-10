@@ -9,7 +9,7 @@ from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
-from utils import xfp2str, decrypt_tapsigner_backup, B2A
+from utils import xfp2str, decrypt_tapsigner_backup, B2A, addr_fmt_label
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
@@ -1090,9 +1090,12 @@ async def electrum_skeleton(*a):
     # 'classic' instead of 'legacy' personallly.
     rv = []
 
-    rv.append(MenuItem("Legacy (P2PKH)", f=electrum_skeleton_step2, arg=(AF_CLASSIC, account_num)))
-    rv.append(MenuItem("P2SH-Segwit", f=electrum_skeleton_step2, arg=(AF_P2WPKH_P2SH, account_num)))
-    rv.append(MenuItem("Native Segwit", f=electrum_skeleton_step2, arg=(AF_P2WPKH, account_num)))
+    rv.append(MenuItem(addr_fmt_label(AF_CLASSIC), f=electrum_skeleton_step2,
+                       arg=(AF_CLASSIC, account_num)))
+    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=electrum_skeleton_step2,
+                       arg=(AF_P2WPKH_P2SH, account_num)))
+    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH), f=electrum_skeleton_step2,
+                       arg=(AF_P2WPKH, account_num)))
 
     return MenuSystem(rv)
 
@@ -1129,12 +1132,12 @@ async def ss_descriptor_skeleton(label, _, item):
     # 'classic' instead of 'legacy' personallly.
     rv = []
 
-    rv.append(MenuItem("Legacy (P2PKH)", f=descriptor_skeleton_step2,
-                            arg=(AF_CLASSIC, account_num, int_ext)))
-    rv.append(MenuItem("P2SH-Segwit", f=descriptor_skeleton_step2,
-                            arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
-    rv.append(MenuItem("Native Segwit", f=descriptor_skeleton_step2,
-                            arg=(AF_P2WPKH, account_num, int_ext)))
+    rv.append(MenuItem(addr_fmt_label(AF_CLASSIC), f=descriptor_skeleton_step2,
+                       arg=(AF_CLASSIC, account_num, int_ext)))
+    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=descriptor_skeleton_step2,
+                       arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
+    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH), f=descriptor_skeleton_step2,
+                       arg=(AF_P2WPKH, account_num, int_ext)))
 
     return MenuSystem(rv)
 

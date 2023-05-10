@@ -42,8 +42,8 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
 
     time.sleep(0.1)
     if mode == 'segwit':
-        pick_menu_item('Classic Address')
-        pick_menu_item('Segwit/Bech32')
+        pick_menu_item('Classic P2PKH')
+        pick_menu_item('Segwit P2WPKH')
         time.sleep(0.5)
 
     if pdf:
@@ -63,6 +63,10 @@ def test_generate(mode, pdf, dev, cap_menu, pick_menu_item, goto_home, cap_story
 
     time.sleep(0.1)
     title, story = cap_story()
+    if "Press (1) to save paper wallet file to SD Card" in story:
+        need_keypress("1")
+        time.sleep(0.2)
+        title, story = cap_story()
 
     assert 'Created file' in story
 
@@ -249,6 +253,11 @@ def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_stor
     time.sleep(0.4)
 
     title, story = cap_story()
+    if "Press (1) to save paper wallet file to SD Card" in story:
+        need_keypress("1")
+        time.sleep(0.2)
+        title, story = cap_story()
+
     assert 'Created file' in story
 
     story = [i for i in story.split('\n') if i]

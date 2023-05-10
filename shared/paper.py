@@ -65,7 +65,7 @@ class PaperWalletMaker:
         def set(idx, text):
             self.is_segwit = bool(idx)
             self.update_menu()
-        return int(self.is_segwit), ['Classic', 'Segwit/Bech32'], set
+        return int(self.is_segwit), ['Classic P2PKH', 'Segwit P2WPKH'], set
 
     @staticmethod
     def can_do_qr():
@@ -77,7 +77,7 @@ class PaperWalletMaker:
         self.my_menu.replace_items([
             MenuItem("Don't make PDF" if not self.template_fn else 'Making PDF',
                         f=self.pick_template, predicate=self.can_do_qr),
-            MenuItem('Classic Address' if not self.is_segwit else 'Segwit Address',
+            MenuItem('Classic P2PKH' if not self.is_segwit else 'Segwit P2WPKH',
                         chooser=self.addr_format_chooser),
             MenuItem('Use Dice', f=self.use_dice),
             MenuItem('GENERATE WALLET', f=self.doit),
