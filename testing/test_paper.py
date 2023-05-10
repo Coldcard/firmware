@@ -45,8 +45,8 @@ def test_generate(mode, chain, pdf, cap_menu, pick_menu_item, goto_home, cap_sto
         time.sleep(0.5)
 
     if mode == 'taproot':
-        pick_menu_item('Classic Address')
-        pick_menu_item('Taproot')
+        pick_menu_item('Classic P2PKH')
+        pick_menu_item('Taproot P2TR')
         time.sleep(0.5)
 
     if pdf:

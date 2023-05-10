@@ -1586,7 +1586,6 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             else:
                 # virtual disk
                 if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
-                    import pdb;pdb.set_trace()
                     pytest.skip("Vdisk disabled")
                 else:
                     need_keypress(key_map['vdisk'])

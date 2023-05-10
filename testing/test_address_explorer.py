@@ -27,7 +27,7 @@ def mk_common_derivations():
     return doit
 
 @pytest.fixture
-def goto_address_explorer(goto_home, pick_menu_item, need_keypress, enter_number):
+def goto_address_explorer(goto_home, pick_menu_item, need_keypress, enter_number, cap_menu):
     def doit(click_idx=None, acct_num=None):
         goto_home()
         pick_menu_item('Address Explorer')
@@ -41,9 +41,12 @@ def goto_address_explorer(goto_home, pick_menu_item, need_keypress, enter_number
                 time.sleep(0.01)
 
             if acct_num:
-                for _ in range(5):  # goto account number
-                    need_keypress('8')
-                need_keypress("y")
+                # import pdb;pdb.set_trace()
+                menu = cap_menu()
+                # can be "Account number" or "Account: N"
+                mi = [m for m in menu if "Account" in m]
+                assert len(mi) == 1
+                pick_menu_item(mi[0])
                 enter_number(acct_num)
                 # now we are back at the top
 
@@ -117,7 +120,7 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
 
         time.sleep(.5)  # always long enough to write the file?
         title, body = cap_story()
-        if click_idx == 3 or is_p2tr:
+        if click_idx in (6,7) or is_p2tr:
             # p2tr - no signature file
             contents = load_export(way, label="Address summary", is_json=False, sig_check=False,
                                    skip_query=True)
@@ -194,7 +197,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
-    goto_address_explorer(click_idx=6)  # "applications" at index 3
+    goto_address_explorer(click_idx=8)  # "applications" at index 8
     menu = cap_menu()
     assert "Samourai" in menu
     pick_menu_item("Samourai")
@@ -459,7 +462,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
 @pytest.mark.parametrize("acct_num", [None, "999"])
 def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pick_menu_item, cap_story,
                                      use_regtest, need_keypress, microsd_path, generate_addresses_file,
-                                     bitcoind_d_wallet_w_sk, load_export):
+                                     bitcoind_d_wallet_w_sk, load_export, settings_set):
     # export single sig descriptors (external, internal)
     # export addressses from address explorer
     # derive addresses from descriptor with bitcoind
@@ -495,15 +498,15 @@ def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pi
     if addr_fmt == AF_P2WPKH:
         menu_item = "Segwit P2WPKH"
         desc_prefix = "wpkh("
-        click_idx = 2
+        click_idx = 4
     elif addr_fmt == AF_P2WPKH_P2SH:
         menu_item = "P2SH-Segwit"
         desc_prefix = "sh(wpkh("
-        click_idx = 1
+        click_idx = 2
     elif addr_fmt == AF_P2TR:
         menu_item = "Taproot P2TR"
         desc_prefix = "tr("
-        click_idx = 3
+        click_idx = 6
         sig_check = False
     else:
         # addr_fmt == AF_CLASSIC:
@@ -521,6 +524,7 @@ def test_bitcoind_descriptor_address(addr_fmt, acct_num, bitcoind, goto_home, pi
     # check both external and internal
     for chng in [False, True]:
         desc = int_desc if chng else ext_desc
+        settings_set("axi", 0)
         cc_addrs_gen = generate_addresses_file(click_idx, acct_num=acct_num, change=chng)
         cc_addrs = [addr for deriv, addr in cc_addrs_gen]
         bitcoind_addrs = bitcoind.deriveaddresses(desc, [0, 249])

@@ -169,7 +169,6 @@ def make_signer_round1(settings_get, settings_set, settings_remove, microsd_path
                 # vdisk
                 path_fn = virtdisk_path
             basename = bsms_sr1_fname(token, is_extended, suffix, index)
-            # pdb.set_trace()
             with open(path_fn(basename), mode) as f:
                 f.write(data)
         return data
@@ -634,8 +633,9 @@ def test_coordinator_round2(way, encryption_type, M_N, addr_fmt, auto_collect, c
         index = None
         if encryption_type != "2":
             index = i + 1
-        # pdb.set_trace()
+
         all_data.append(make_signer_round1(token, way, purge_bsms=False, index=index))
+
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
@@ -1506,7 +1506,6 @@ def test_integration_coordinator(encryption_type, M_N, addr_fmt, clear_ms, micro
     if "Press (1) to import co-signer round 1 files from SD Card" in story:
         need_keypress("1")
     need_keypress("y")  # continue with manual file selection
-    # import pdb;pdb.set_trace()
     if cr1_shortcut:
         time.sleep(0.1)
         title, story = cap_story()

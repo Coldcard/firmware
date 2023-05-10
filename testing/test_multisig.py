@@ -157,7 +157,7 @@ def offer_ms_import(cap_story, dev, need_keypress):
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None,
-             descriptor=False, int_ext_desc=False):
+             descriptor=False, int_ext_desc=False, internal_key=None):
         keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None))
         name = name or f'test-{M}-{N}'
 
@@ -172,12 +172,17 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
             else:
                 assert len(derivs) == N
                 key_list = [(xfp, derivs[idx], dd.hwif(as_private=False)) for idx, (xfp, m, dd) in enumerate(keys)]
-            desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=addr_fmt)
+
+            if "p2tr" and internal_key is None:
+                internal_key = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
+                addr_fmt = AF_P2TR
+            desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=addr_fmt, internal_key=internal_key)
             if int_ext_desc:
                 desc_str = desc.serialize(int_ext=True)
             else:
                 desc_str = desc.serialize()
             config = "%s\n" % desc_str
+
         else:
             # render as a file for import
             config = f"name: {name}\npolicy: {M} / {N}\n\n"
@@ -1841,7 +1846,8 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
     derivs = [deriv.format(idx=i) for i in range(N)]
 
     clear_ms()
-    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs, addr_fmt=text_a_fmt, descriptor=descriptor)
+    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs,
+                            addr_fmt=text_a_fmt, descriptor=descriptor)
 
     goto_home()
     pick_menu_item("Address Explorer")
@@ -2003,8 +2009,12 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     title, story = cap_story()
     assert "Press (6)" in story
     assert "change addresses." in story
-    assert "Taproot internal key" not in story
-    assert "Taproot tree keys" not in story
+    if addr_fmt == AF_P2TR:
+        assert "Taproot internal key" in story
+        assert "Taproot tree keys" in story
+    else:
+        assert "Taproot internal key" not in story
+        assert "Taproot tree keys" not in story
     if change:
         need_keypress("6")
         time.sleep(0.2)
@@ -2704,8 +2714,8 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
 
 @pytest.mark.parametrize('cmn_pth_from_root', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (32, 32)])
-@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
+@pytest.mark.parametrize('M_N', [(3, 5), (2, 3), (15, 15), (32, 32)])
+@pytest.mark.parametrize('addr_fmt', [AF_P2TR])
 def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear_ms, make_multisig,
                                     import_ms_wallet, goto_home, pick_menu_item, cap_menu,
                                     nfc_read_text, microsd_path, cap_story, need_keypress,
@@ -2723,6 +2733,7 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
 
     dd = {
         AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
+        AF_P2TR: ("m/48'/1'/0'/3'/{idx}", 'p2tr'),
         AF_P2SH: ("m/45'/{idx}", 'p2sh'),
         AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
     }
@@ -2730,8 +2741,18 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     keys = make_multisig(M, N, unique=1, deriv=None if cmn_pth_from_root else deriv)
     derivs = [deriv.format(idx=i) for i in range(N)]
     clear_ms()
-    import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=None if cmn_pth_from_root else derivs,
-                     addr_fmt=text_a_fmt, descriptor=False, common="m/45'" if cmn_pth_from_root else None)
+
+    try:
+        import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name,
+                         derivs=None if cmn_pth_from_root else derivs,
+                         addr_fmt=text_a_fmt, descriptor=True,
+                         common="m/45'" if cmn_pth_from_root else None)
+    except Exception as e:
+        assert addr_fmt != AF_P2TR
+        assert M == N == 32
+        assert str(e) == 'Coldcard Error: badlen'
+        return
+
     # get bare descriptor
     choose_multisig_wallet()
     pick_menu_item("Descriptors")

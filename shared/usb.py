@@ -478,7 +478,7 @@ class USBHandler:
             file_len, file_sha = unpack_from('<I32s', args)
             if file_sha != self.file_checksum.digest():
                 return b'err_Checksum'
-            assert 100 < file_len <= (20*200), "badlen"
+            assert 100 < file_len <= (32*200), "badlen"
 
             # Start an UX interaction, return immediately here
             from auth import maybe_enroll_xpub
