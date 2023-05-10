@@ -166,8 +166,16 @@ class MenuSystem:
         if not keep_position:
             self.cursor = 0
             self.ypos = 0
+
         self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
         self.count = len(self.items)
+
+    def goto_label(self, label):
+        for i, m in enumerate(self.items):
+            if m.label == label or m.label[-4:] == label:
+                self.goto_idx(i)
+                return True
+        return False
 
     def show(self):
         #

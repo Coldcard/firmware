@@ -220,7 +220,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
     assert got.sec() == expect.sec()
 
         
-@pytest.mark.parametrize('mode', [ "Legacy (P2PKH)", "P2SH-Segwit", "Native Segwit"])
+@pytest.mark.parametrize('mode', [ "Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
 @pytest.mark.parametrize('acct_num', [ None, '0', '9897'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('testnet', [True, False])
@@ -606,7 +606,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
 
     menu = cap_menu()
     if addr_fmt == AF_P2WPKH:
-        menu_item = "Native Segwit"
+        menu_item = "Segwit P2WPKH"
         desc_prefix = "wpkh("
         bip44_purpose = 84
     elif addr_fmt == AF_P2WPKH_P2SH:
@@ -619,7 +619,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
         bip44_purpose = 86
     else:
         # addr_fmt == AF_CLASSIC:
-        menu_item = "Legacy (P2PKH)"
+        menu_item = "Classic P2PKH"
         desc_prefix = "pkh("
         bip44_purpose = 44
 
@@ -673,7 +673,7 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
         need_keypress(ch)
     need_keypress("y")
     need_keypress("y")  # int_ext <0;1>
-    pick_menu_item("Native Segwit")  #  both postmix and premix are p2wpkh only
+    pick_menu_item("Segwit P2WPKH")  #  both postmix and premix are p2wpkh only
     file_desc_generic = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
     need_keypress("y")  # written
     need_keypress("x")  # go back to advanced

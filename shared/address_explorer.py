@@ -14,6 +14,7 @@ from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
+from utils import addr_fmt_label
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -98,10 +99,10 @@ class PickAddrFmtMenu(MenuSystem):
     def __init__(self, path, parent):
         self.parent = parent
         items = [
-            MenuItem("Classic P2PKH", f=self.done, arg=(path, AF_CLASSIC)), 
-            MenuItem("Segwit P2WPKH", f=self.done, arg=(path, AF_P2WPKH)), 
-            MenuItem("P2SH-P2WPKH", f=self.done, arg=(path, AF_P2WPKH_P2SH)), 
-            MenuItem("Taproot P2TR", f=self.done, arg=(path, AF_P2TR)),
+            MenuItem(addr_fmt_label(AF_CLASSIC), f=self.done, arg=(path, AF_CLASSIC)),
+            MenuItem(addr_fmt_label(AF_P2WPKH), f=self.done, arg=(path, AF_P2WPKH)),
+            MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=self.done, arg=(path, AF_P2WPKH_P2SH)),
+            MenuItem(addr_fmt_label(AF_P2TR), f=self.done, arg=(path, AF_P2TR)),
         ]
         super().__init__(items)
         if path.startswith("m/84'"):
@@ -181,10 +182,15 @@ class AddressListMenu(MenuSystem):
 
             stash.blank_object(node)
 
-        items = [MenuItem(address, f=self.pick_single, arg=(path, addr_fmt)) 
-                        for i, (address, path, addr_fmt) in enumerate(choices)]
+        items = []
+        for i, (address, path, addr_fmt) in enumerate(choices):
+            axi = address[-4:]  # last 4 address characters
+            items.append(MenuItem("  "+addr_fmt_label(addr_fmt), f=self.pick_single,
+                                  arg=(path, addr_fmt, axi)))
+            items.append(MenuItem(address, f=self.pick_single,
+                                  arg=(path, addr_fmt, axi)))
 
-        # some other choices
+            # some other choices
         if self.account_num == 0:
             items.append(MenuItem("Applications", menu=ApplicationsMenu(self)))
             items.append(MenuItem("Account Number", f=self.change_account))
@@ -197,22 +203,27 @@ class AddressListMenu(MenuSystem):
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 
-        self.goto_idx(settings.get('axi', 0))      # weak
-
         self.replace_items(items)
+        axi = settings.get('axi', 0)
+        if isinstance(axi, str):
+            ok = self.goto_label(axi)
+            if not ok:
+                self.goto_idx(0)
+        else:
+            self.goto_idx(axi)
 
     async def change_account(self, *a):
         self.account_num = await ux_enter_bip32_index('Account Number:') or 0
         await self.render()
 
-    async def pick_single(self, _1, menu_idx, item):
-        settings.put('axi', menu_idx)       # update last clicked address
-        path, addr_fmt = item.arg
+    async def pick_single(self, _1, _2, item):
+        path, addr_fmt, axi = item.arg
+        settings.put('axi', axi)  # update last clicked address
         await self.show_n_addresses(path, addr_fmt, None)
 
-    async def pick_multisig(self, _1, menu_idx, item):
+    async def pick_multisig(self, _1, _2, item):
         ms_wallet = item.arg
-        settings.put('axi', menu_idx)       # update last clicked address
+        settings.put('axi', item.label)       # update last clicked address
         await self.show_n_addresses(None, None, ms_wallet)
 
     async def make_custom(self, *a):

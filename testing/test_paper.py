@@ -40,8 +40,8 @@ def test_generate(mode, chain, pdf, cap_menu, pick_menu_item, goto_home, cap_sto
 
     time.sleep(0.1)
     if mode == 'segwit':
-        pick_menu_item('Classic Address')
-        pick_menu_item('Segwit/Bech32')
+        pick_menu_item('Classic P2PKH')
+        pick_menu_item('Segwit P2WPKH')
         time.sleep(0.5)
 
     if mode == 'taproot':
