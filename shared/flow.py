@@ -193,8 +193,8 @@ FileMgmtMenu = [
 UpgradeMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Show Version', f=show_version),
-    MenuItem('From MicroSD', f=microsd_upgrade),        # mk4: misnomer, could be vdisk too
-    MenuItem('From VirtDisk', predicate=vdisk_enabled, f=microsd_upgrade), 
+    MenuItem('From MicroSD', f=microsd_upgrade, arg=False),
+    MenuItem('From VirtDisk', predicate=vdisk_enabled, f=microsd_upgrade, arg=True),  # force_vdisk=True
     MenuItem('Bless Firmware', f=bless_flash),
 ]
 

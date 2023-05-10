@@ -217,7 +217,7 @@ async def dev_enable_protocol(*a):
 
     await ux_show_story('Back to normal USB mode.')
 
-async def microsd_upgrade(*a):
+async def microsd_upgrade(menu, label, item):
     # Upgrade vis MicroSD card
     # - search for a particular file
     # - verify it lightly
@@ -226,14 +226,16 @@ async def microsd_upgrade(*a):
     # - reboot into bootloader, which finishes install
     from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_MAX_LENGTH_MK4
 
+    force_vdisk = item.arg
     fn = await file_picker('Pick firmware image to use (.DFU)', suffix='.dfu',
-                                    min_size=0x7800, max_size=FW_MAX_LENGTH_MK4)
+                           min_size=0x7800, max_size=FW_MAX_LENGTH_MK4,
+                           force_vdisk=force_vdisk)
 
     if not fn: return
 
     failed = None
 
-    with CardSlot() as card:
+    with CardSlot(force_vdisk=force_vdisk) as card:
         with card.open(fn, 'rb') as fp:
             from version import has_psram
             if has_psram:
