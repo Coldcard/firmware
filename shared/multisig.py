@@ -68,7 +68,8 @@ def disassemble_multisig_mn_tr(script):
                 else:
                     last = next(gen)[1]
                     assert last == OP_NUMEQUAL
-                    M = int.from_bytes(bt[0], "little")
+                    assert len(bt[0]) == 1, "M>32"
+                    M = ustruct.unpack("B", bt[0])[0]
 
     assert M
     N = num_cs + num_csa
