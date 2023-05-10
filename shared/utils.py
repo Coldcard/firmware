@@ -539,4 +539,12 @@ def decrypt_tapsigner_backup(backup_key, data):
 
     return decrypted.split("\n")
 
+def addr_fmt_label(addr_fmt):
+    return {
+        AF_CLASSIC: "Classic P2PKH",
+        AF_P2WPKH_P2SH: "P2SH-Segwit",
+        AF_P2WPKH: "Segwit P2WPKH",
+        AF_P2TR: "Taproot P2TR"
+    }[addr_fmt]
+
 # EOF
