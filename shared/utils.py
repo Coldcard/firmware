@@ -7,6 +7,7 @@ from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -535,5 +536,12 @@ def decrypt_tapsigner_backup(backup_key, data):
         raise ValueError("Decryption failed - wrong key?")
 
     return decrypted.split("\n")
+
+def addr_fmt_label(addr_fmt):
+    return {
+        AF_CLASSIC: "Classic P2PKH",
+        AF_P2WPKH_P2SH: "P2SH-Segwit",
+        AF_P2WPKH: "Segwit P2WPKH"
+    }[addr_fmt]
 
 # EOF

@@ -5,7 +5,6 @@ from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
 from pycoin.encoding import a2b_hashed_base58, hash160
-from msg import verify_message
 
 
 @pytest.fixture
@@ -158,14 +157,15 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
     need_keypress('4')
     time.sleep(.01)
     m = cap_menu()
-
+    gap = iter(range(1, 10))
     for idx, (path, addr_format) in enumerate(common_derivs):
         # derive index=0 address
+        _id = next(gap) + idx
         subpath = path.format(account=0, change=0, idx=0) # e.g. "m/44'/1'/0'/0/0"
         sk = node_prv.subkey_for_path(subpath[2:])
 
         # capture full index=0 address from display screen & validate it
-        goto_address_explorer(click_idx=idx)
+        goto_address_explorer(click_idx=_id)
         addr_dict = parse_display_screen(0, 10)
         if subpath not in addr_dict:
             raise Exception('Subpath ("%s") not found in address explorer display' % subpath)
@@ -173,7 +173,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         validate_address(expected_addr, sk)
 
         # validate that stub is correct
-        [start, end] = m[idx].split('-')
+        [start, end] = m[_id].split('-')
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
@@ -195,7 +195,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
-    goto_address_explorer(click_idx=3)  # "applications" at index 3
+    goto_address_explorer(click_idx=6)  # "applications" at index 3
     menu = cap_menu()
     assert "Samourai" in menu
     pick_menu_item("Samourai")
@@ -228,8 +228,10 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
         sim_execfile('devtest/dump_private.py').strip()
     )
     common_derivs = mk_common_derivations(node_prv.netcode())
+    gap = iter(range(1, 10))
     for click_idx, (path, addr_format) in enumerate(common_derivs):
         # Click on specified derivation idx in explorer
+        _id = next(gap) + click_idx
         goto_address_explorer(click_idx=click_idx)
 
         # perform keypad press sequence
@@ -243,7 +245,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(given_addr, sk)
 
-@pytest.mark.parametrize('click_idx', range(3))
+@pytest.mark.parametrize('click_idx', [1,3,5])
 @pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivations, sim_execfile, validate_address,
@@ -290,7 +292,9 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
     assert f'Account: {account_num}' in m
 
     which = 0
+    gap = iter(range(1,10))
     for idx, (path, addr_format) in enumerate(common_derivs):
+        _id = next(gap) + idx
         # derive index=0 address
         assert '{account}' in path
 
@@ -301,7 +305,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
 
         # go down menu to expected derivation spot
         m = cap_menu()
-        pick_menu_item(m[idx])
+        pick_menu_item(m[_id])
         time.sleep(0.1)
 
         addr_dict = parse_display_screen(0, 10)
@@ -311,7 +315,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
         validate_address(expected_addr, sk)
 
         # validate that stub is correct
-        [start, end] = m[idx].split('-')
+        [start, end] = m[_id].split('-')
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
@@ -392,12 +396,12 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
     m = cap_menu()
     assert m[0] == 'Classic P2PKH'
     assert m[1] == 'Segwit P2WPKH'
-    assert m[2] == 'P2SH-P2WPKH'
+    assert m[2] == 'P2SH-Segwit'
         
     fmts = {
         AF_CLASSIC: 'Classic P2PKH', 
         AF_P2WPKH: 'Segwit P2WPKH', 
-        AF_P2WPKH_P2SH: 'P2SH-P2WPKH', 
+        AF_P2WPKH_P2SH: 'P2SH-Segwit',
     }
 
     pick_menu_item(fmts[which_fmt])
