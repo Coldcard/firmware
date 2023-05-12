@@ -28,7 +28,6 @@ if ! touch repro-build.sh ; then
     git clone /work/src/.git firmware
     cd firmware/external
     git submodule update --init
-    cd ../stm32
     rsync --ignore-missing-args -av /work/src/releases/20*.dfu ../releases
 fi
 
