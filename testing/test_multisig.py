@@ -173,7 +173,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
                 assert len(derivs) == N
                 key_list = [(xfp, derivs[idx], dd.hwif(as_private=False)) for idx, (xfp, m, dd) in enumerate(keys)]
 
-            if "p2tr" and internal_key is None:
+            if addr_fmt == "p2tr" and internal_key is None:
                 internal_key = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
                 addr_fmt = AF_P2TR
             desc = MultisigDescriptor(M=M, N=N, keys=key_list, addr_fmt=addr_fmt, internal_key=internal_key)
