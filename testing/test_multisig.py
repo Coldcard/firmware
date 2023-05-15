@@ -2715,7 +2715,7 @@ def test_ms_xpub_ordering(descriptor, m_n, clear_ms, make_multisig, import_ms_wa
 @pytest.mark.parametrize('cmn_pth_from_root', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('M_N', [(3, 5), (2, 3), (15, 15), (32, 32)])
-@pytest.mark.parametrize('addr_fmt', [AF_P2TR])
+@pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_P2TR])
 def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear_ms, make_multisig,
                                     import_ms_wallet, goto_home, pick_menu_item, cap_menu,
                                     nfc_read_text, microsd_path, cap_story, need_keypress,
@@ -2750,7 +2750,7 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     except Exception as e:
         assert addr_fmt != AF_P2TR
         assert M == N == 32
-        assert str(e) == 'Coldcard Error: badlen'
+        assert str(e) == 'Coldcard Error: M/N range'
         return
 
     # get bare descriptor
