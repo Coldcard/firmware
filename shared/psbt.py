@@ -8,7 +8,7 @@ from utils import xfp2str, B2A, keypath_to_str, validate_derivation_path_length
 import stash, gc, history, sys, ngu, ckcc
 from uhashlib import sha256
 from uio import BytesIO
-from chains import taptweak
+from chains import taptweak, tapleaf_hash
 from sffile import SizerFile
 from sram2 import psbt_tmp256
 from multisig import MultisigWallet, disassemble_multisig_mn, disassemble_multisig_mn_tr
@@ -27,7 +27,8 @@ from public_constants import (
     PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT,
     PSBT_OUT_BIP32_DERIVATION, MAX_SIGNERS, PSBT_OUT_TAP_BIP32_DERIVATION, PSBT_OUT_TAP_INTERNAL_KEY,
     PSBT_IN_TAP_BIP32_DERIVATION, PSBT_IN_TAP_INTERNAL_KEY, PSBT_IN_TAP_KEY_SIG, PSBT_OUT_TAP_TREE,
-    PSBT_IN_TAP_MERKLE_ROOT, PSBT_IN_TAP_LEAF_SCRIPT, PSBT_IN_TAP_SCRIPT_SIG
+    PSBT_IN_TAP_MERKLE_ROOT, PSBT_IN_TAP_LEAF_SCRIPT, PSBT_IN_TAP_SCRIPT_SIG,
+    TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
 )
 
 # PSBT proprietary keytype
@@ -385,10 +386,11 @@ class psbtOutputProxy(psbtProxy):
         while length:
             tree = BytesIO(self.get(self.taproot_tree))
             depth = tree.read(1)
-            version = tree.read(1)
+            leaf_version = tree.read(1)[0]
+            assert (leaf_version & ~TAPROOT_LEAF_MASK) == 0
             script_len, nb = deser_compact_size(tree, ret_num_bytes=True)
             script = tree.read(script_len)
-            res.append((depth, version, script))
+            res.append((depth, leaf_version, script))
             length -= (2 + nb + script_len)
 
         return res
@@ -609,7 +611,7 @@ class psbtOutputProxy(psbtProxy):
                 target = active_multisig.make_multisig_tr(self.taproot_subpaths)
                 if target != script:
                     raise FraudulentChangeOutput(out_idx, "Taproot leaf script does not match")
-                h = ngu.secp256k1.tagged_sha256(b"TapLeaf", leaf_version + ser_string(script))
+                h = tapleaf_hash(script, leaf_version)
                 expect_pkh = taptweak(internal_key, h)
             else:
                 expect_pkh = taptweak(expect_pubkey)
@@ -981,7 +983,7 @@ class psbtInputProxy(psbtProxy):
                     # as we only allow one script (tree depth 0) - meaning our script is also merkle root (when hashed)
                     # EXTREMELY IMPORTANT merkle root needs to be verified so that we are sure that we know all the
                     # possible scripts in it - otherwise we can get rugged by unknown scriptpath - do not trust PSBT with merkle root
-                    if ngu.secp256k1.tagged_sha256(b"TapLeaf", bytes([leaf_ver]) + ser_string(target)) != merkle_root:
+                    if tapleaf_hash(script, leaf_ver) != merkle_root:
                         raise FatalPSBTIssue('Input #%d: %s' % (my_idx, "Merkle root does not match"))
                     self.required_key = which_key
                     return
@@ -1954,6 +1956,7 @@ class psbtObject(psbtProxy):
                                 if which_key in script:
                                     taproot_script = script
                                     leaf_ver = lv
+                                    assert leaf_ver == TAPROOT_LEAF_TAPSCRIPT, "tapleaf ver"
                                     break
                             break
                     else:
@@ -2149,7 +2152,7 @@ class psbtObject(psbtProxy):
         return ngu.hash.sha256s(rv.digest())
 
     def make_txn_taproot_sighash(self, input_index, hash_type=SIGHASH_DEFAULT, scriptpath=False, script=None,
-                                 codeseparator_pos=-1, annex=None, leaf_ver=0xc0):
+                                 codeseparator_pos=-1, annex=None, leaf_ver=TAPROOT_LEAF_TAPSCRIPT):
         # BIP-341
         fd = self.fd
         old_pos = fd.tell()
@@ -2242,7 +2245,7 @@ class psbtObject(psbtProxy):
                     break
 
         if scriptpath:
-            msg += ngu.secp256k1.tagged_sha256(b"TapLeaf", bytes([leaf_ver]) + ser_string(script))
+            msg += tapleaf_hash(script, leaf_ver)
             msg += bytes([0])
             msg += pack("<i", codeseparator_pos)
 

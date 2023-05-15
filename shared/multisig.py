@@ -16,7 +16,7 @@ from exceptions import FatalPSBTIssue
 from glob import settings
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
-from serializations import ser_string, disassemble
+from serializations import disassemble
 
 
 # PSBT Xpub trust policies
@@ -560,7 +560,7 @@ class MultisigWallet:
                 # p2tr
                 script = make_redeem_script_tr(self.M, nodes, idx)
                 # leaf hash is also a merkle root in tree of depth 0 (only allowed now) - aka taptweak
-                leaf_hash = ngu.secp256k1.tagged_sha256(b"TapLeaf", bytes([0xc0]) + ser_string(script))
+                leaf_hash = chains.tapleaf_hash(script)
 
                 if isinstance(self.internal_key, str):
                     internal_key_bytes = a2b_hex(self.internal_key)

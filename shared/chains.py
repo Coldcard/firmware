@@ -7,7 +7,8 @@ from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH, AF_P2TR
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
-from serializations import hash160, ser_compact_size, disassemble
+from public_constants import TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
+from serializations import hash160, ser_compact_size, disassemble, ser_string
 from ucollections import namedtuple
 from opcodes import OP_RETURN, OP_1, OP_16
 
@@ -36,6 +37,12 @@ def taptweak(internal_key, tweak=None):
     xo_pubkey = ngu.secp256k1.xonly_pubkey(internal_key)
     xo_pubkey_tweaked = xo_pubkey.tweak_add(tweak)
     return xo_pubkey_tweaked.to_bytes()
+
+def tapleaf_hash(script, leaf_version=TAPROOT_LEAF_TAPSCRIPT):
+    # Tapleaf hash requires one to provide version, version consists
+    # of 7 msb
+    lv = leaf_version % TAPROOT_LEAF_MASK
+    return ngu.secp256k1.tagged_sha256(b"TapLeaf", bytes([lv]) + ser_string(script))
 
 
 class ChainsBase:
