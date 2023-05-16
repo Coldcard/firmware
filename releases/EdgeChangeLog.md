@@ -7,6 +7,9 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+## 6.0.1X - 2023-0?-??
+- Address explorer display refined slightly (cosmetic)
+
 ## 6.0.0X - 2023-05-12
 
 - New Feature: Taproot keyspend & Tapscript multisig `sortedmulti_a` (tree depth = 0)

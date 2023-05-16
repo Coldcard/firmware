@@ -18,8 +18,10 @@ from utils import addr_fmt_label
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
-    # - 16 chars screen width, so show 8 prefix, dash, and 7 of end of address
-    return addr[0:8] + '-' + addr[-7:]
+    # - 16 chars screen width
+    # - but 2 lost at left (menu arrow, corner arrow)
+    # - want to show not truncated on right side
+    return addr[0:5] + '⋯' + addr[-6:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -29,10 +31,10 @@ class KeypathMenu(MenuSystem):
             # Top level menu; useful shortcuts, and special case just "m"
             items = [
                 MenuItem("m/..", f=self.deeper),
+                MenuItem("m/44'/..", f=self.deeper),
                 MenuItem("m/49'/..", f=self.deeper),
                 MenuItem("m/84'/..", f=self.deeper),
                 MenuItem("m/86'/..", f=self.deeper),
-                MenuItem("m/44'/..", f=self.deeper),
                 MenuItem("m/0/{idx}", menu=self.done),
                 MenuItem("m/{idx}", menu=self.done),
                 MenuItem("m", f=self.done),
@@ -185,12 +187,12 @@ class AddressListMenu(MenuSystem):
         items = []
         for i, (address, path, addr_fmt) in enumerate(choices):
             axi = address[-4:]  # last 4 address characters
-            items.append(MenuItem("  "+addr_fmt_label(addr_fmt), f=self.pick_single,
+            items.append(MenuItem(addr_fmt_label(addr_fmt), f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
-            items.append(MenuItem(address, f=self.pick_single,
+            items.append(MenuItem('↳'+address, f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
 
-            # some other choices
+        # some other choices
         if self.account_num == 0:
             items.append(MenuItem("Applications", menu=ApplicationsMenu(self)))
             items.append(MenuItem("Account Number", f=self.change_account))
