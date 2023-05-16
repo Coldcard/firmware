@@ -9,7 +9,6 @@ font_files = {
 }
 
 # test with:
-#
 #   ./build.py build --portable && ./testit.py --msg "hello→world←\n↳this\n•Bullet\n•Text" -f small
 #
 special_chars = dict(small=[
@@ -64,6 +63,15 @@ special_chars = dict(small=[
 
 
   xxxxx 
+'''),
+('⋯', dict(y=0), '''\
+
+
+
+
+
+
+  x x x x x
 '''),
 
 ])
