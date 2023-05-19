@@ -337,7 +337,7 @@ def check_firmware_hdr(hdr, binary_size):
     # - hdr must be a bytearray(FW_HEADER_SIZE+more)
 
     from sigheader import FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
-    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, MK_4_OK
+    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, MK_4_OK, MK_Q1_OK
     from ustruct import unpack_from
     from version import hw_label
     import callgate
