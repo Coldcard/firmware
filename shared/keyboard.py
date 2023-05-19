@@ -1,6 +1,6 @@
 # (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# keyboard.py - Full keyboard found on the Q1 product.
+# keyboard.py - Full qwerty keyboard found on the Q1 product.
 #
 import array, utime, pyb, sys
 from ucollections import deque
@@ -40,7 +40,6 @@ class FullKeyboard(NumpadBase):
         self.lp_time = 0
 
         for c in self.cols:
-            if c.pin() == 15: continue     # D15 conflicts with LCD_TEAR's irq pin
             c.irq(self.anypress_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
 
         # power btn
