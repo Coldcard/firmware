@@ -91,7 +91,6 @@ def wipe_if_deltamode():
     # a thing that might reveal true master secret...
 
     from pincodes import pa
-    import callgate
 
     if not pa.is_deltamode():
         return
