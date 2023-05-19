@@ -7,6 +7,7 @@ import uasyncio as asyncio
 from struct import pack, unpack
 from utils import B2A
 from imptask import IMPT
+from queues import Queue
 
 def calc_bcc(msg):
     bcc = 0
@@ -44,6 +45,9 @@ OKAY = b'Z\x01\x00\x02\x90\x00\x93\xa5'
 class QRScanner:
 
     def __init__(self):
+        self.q = None
+        self._scan_task = None
+
         from machine import UART, Pin
         self.serial = UART(2, 9600)
         self.reset = Pin('QR_RESET', Pin.OUT_OD)
@@ -81,20 +85,76 @@ class QRScanner:
         # configure it like we want it
         #self.tx('T_CMD...'
         await self.tx('S_CMD_MTRS5000')     # 5s to read before fail
-        await self.tx('S_CMD_MT10')         # trigger is level-based (not edge)
-        await self.tx('S_CMD_MT30')         # Same code reading withou delay
+        await self.tx('S_CMD_MT11')         # trigger is edge-based (not level)
+        await self.tx('S_CMD_MT30')         # Same code reading without delay
         await self.tx('S_CMD_MT20')         # Enable automatic sleep when idle
+        await self.tx('S_CMD_MTRF500')      # Idle time: 500ms
 
-    def scan(self):
+        await self.sleep()
+
+    def hw_scan(self):
         if self.trigger() == 0:
             # need to release/re-press
             self.trigger(1)
             utime.sleep_ms(100)
         self.trigger(0);
 
+    async def _read_results(self):
+        # be a task that reads incoming QR codes from scanner (already in operation)
+        # - will be canceled when done/stopping
+        while 1:
+            ln = await self.sr.read(200)
+            if not ln: continue
+            print(repr(ln))
+            await self.q.put(ln)
+            
+    async def scan_start(self, test=15):
+        # returns a Q we append to as results come in
+        await self.wakeup()
+        await self.tx('S_CMD_020D')
+
+        self.q = rv = Queue()
+        self._scan_task = asyncio.create_task(self._read_results())
+
+        # begin scan
+        await self.tx('SR030301')
+
+        if test:
+            await asyncio.sleep(test)
+            await self.scan_stop()
+
+        return rv
+
+    async def scan_stop(self):
+        # stop scanning
+        if self._scan_task:
+            self._scan_task.cancel()
+            self._scan_task = None
+
+        self.q = None
+
+        await self.tx('SR030300')
+        await self.sleep()
+
     def rx(self):
         # untested
         return self.serial.read()
+
+    async def wakeup(self):
+        # send specific command until it responds
+        # - it will wake on any command, but not instant
+        for retry in range(3):
+            try:
+                await self.tx('SRDF0051')
+                return
+            except: pass
+
+        print("unable to wake QR")
+
+    async def sleep(self):
+        # Had to decode hex to get this command! Does work tho, current consumption
+        # is near zero, and wakeup is instant
+        await self.tx('SRDF0050')
 
     async def tx(self, msg):
         # send a command, get response
@@ -130,7 +190,15 @@ class QRScanner:
         # be an expensive flashlight
         # - S_CMD_03L1 => always light
         # - S_CMD_03L2 => when needed
-        if not self.version: return
+        if not self.version:
+            return
+
+        await self.wakeup()
+
         await self.tx('S_CMD_03L%d' % (1 if on else 2))
+
+        if not on:
+            # sleep module too
+            await self.sleep()
 
 # EOF
