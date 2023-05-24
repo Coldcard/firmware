@@ -48,17 +48,93 @@ def random_test_cases():
     return [(c, None) for c in comb]
 
 @pytest.fixture
-def choose_by_word_length(need_keypress):
-    def doit(num_words):
-        if num_words == 12:
+def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
+                     choose_by_word_length, need_keypress, get_secrets,
+                     word_menu_entry):
+    def doit(parts, expect, incl_self=False, save_to_vault=False):
+        if expect is None:
+            parts, expect = prepare_test_pairs(*parts)
+
+        num_words = len(expect.split())
+
+        if incl_self is True:
+            set_seed_words(parts[0])
+        elif incl_self is False:
+            set_seed_words(proper[num_words])
+
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('Danger Zone')
+        pick_menu_item('Seed Functions')
+        pick_menu_item('Seed XOR')
+        pick_menu_item('Restore Seed XOR')
+        time.sleep(.01)
+        title, body = cap_story()
+
+        assert 'all the parts' in body
+        assert "Press OK for 24 words" in body
+        assert "press (1)" in body
+        assert "press (2)" in body
+
+        choose_by_word_length(num_words)
+        time.sleep(0.01)
+
+        title, body = cap_story()
+        assert 'you have a seed already' in body
+        if incl_self:
+            assert '(1) to include this Coldcard' in body
             need_keypress('1')
-        elif num_words == 18:
-            need_keypress("2")
         else:
-            need_keypress("y")
+            need_keypress('y')
+
+        for n, part in enumerate(parts):
+            if n == 0 and incl_self:
+                continue
+
+            word_menu_entry(part.split())
+
+            time.sleep(0.01)
+            title, body = cap_story()
+            assert f"You've entered {n + 1} parts so far" in body
+            assert "or (2) if done" in body
+
+            if n != len(parts) - 1:
+                need_keypress('1')
+            else:
+                # correct anticipated checksum word
+                chk_word = expect.split()[-1]
+                assert f"{num_words}: {chk_word}" in body
+                if expect == zeros[num_words]:
+                    assert 'ZERO WARNING' in body
+
+        need_keypress('2')
+
+        time.sleep(0.01)
+        title, body = cap_story()
+
+        if 'into Seed Vault' in body:
+            # seed vault saving is enabled, use it, maybe
+            if save_to_vault:
+                need_keypress('1')
+                time.sleep(0.01)
+                title, body = cap_story()
+                assert 'Saved to Seed Vault' in body
+
+                need_keypress('y')
+            else:
+                need_keypress('x')
+
+            time.sleep(0.01)
+            title, body = cap_story()
+
+        assert 'New ephemeral master key in effect' in body
+        need_keypress("y")
+        assert get_secrets()['mnemonic'] == expect
+
     return doit
 
 @pytest.mark.parametrize('incl_self', [False, True])
+@pytest.mark.parametrize('seed_vault', [False, True])
 @pytest.mark.parametrize('parts, expect', [
     # 24words - 3 parts
     (['romance wink lottery autumn shop bring dawn tongue range crater truth ability miss spice fitness easy legal release recall obey exchange recycle dragon room',
@@ -87,72 +163,9 @@ def choose_by_word_length(need_keypress):
     # random generated
     *random_test_cases()
 ])
-def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_story, need_keypress,
-                    cap_menu, word_menu_entry, get_secrets, reset_seed_words, set_seed_words,
-                    choose_by_word_length):
+def test_import_xor(seed_vault, incl_self, parts, expect, word_menu_entry, restore_seed_xor):
+    restore_seed_xor(parts, expect, incl_self, seed_vault)
 
-    if expect is None:
-        parts, expect = prepare_test_pairs(*parts)
-
-    num_words = len(expect.split())
-    set_seed_words(proper[num_words])
-
-    if incl_self:
-        set_seed_words(parts[0])
-
-    goto_home()
-    pick_menu_item('Advanced/Tools')
-    pick_menu_item('Danger Zone')
-    pick_menu_item('Seed Functions')
-    pick_menu_item('Seed XOR')
-    pick_menu_item('Restore Seed XOR')
-    time.sleep(.01)
-    title, body = cap_story()
-
-    assert 'all the parts' in body
-    assert "Press OK for 24 words" in body
-    assert "press (1)" in body
-    assert "press (2)" in body
-
-    choose_by_word_length(num_words)
-    time.sleep(0.01)
-
-    title, body = cap_story()
-    assert 'you have a seed already' in body
-    assert '(1) to include this Coldcard' in body
-    if incl_self:
-        need_keypress('1')
-    else:
-        need_keypress('y')
-
-    for n, part in enumerate(parts):
-        if n == 0 and incl_self:
-            continue
-
-        word_menu_entry(part.split())
-
-        time.sleep(0.01)
-        title, body = cap_story()
-        assert f"You've entered {n+1} parts so far" in body
-        assert "or (2) if done" in body
-
-        if n != len(parts)-1:
-            need_keypress('1')
-        else:
-            # correct anticipated checksum word
-            chk_word = expect.split()[-1]
-            assert f"{num_words}: {chk_word}" in body
-            if expect == zeros[num_words]:
-                assert 'ZERO WARNING' in body
-
-    need_keypress('2')
-
-    time.sleep(0.01)
-    title, story = cap_story()
-    assert 'New ephemeral master key in effect' in story
-
-    assert get_secrets()['mnemonic'] == expect
-    reset_seed_words()
 
 @pytest.mark.parametrize('num_words', [12, 18, 24])
 @pytest.mark.parametrize('qty', [2, 3, 4])
@@ -288,9 +301,9 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
     # random generated
     *random_test_cases()
 ])
-def test_xor_import_empty(parts, expect, goto_home, pick_menu_item, cap_story, need_keypress,
-                          cap_menu, word_menu_entry, get_secrets, reset_seed_words, unit_test,
-                          expect_ftux, choose_by_word_length):
+def test_xor_import_empty(parts, expect, pick_menu_item, cap_story, need_keypress,
+                          cap_menu, word_menu_entry, get_secrets, reset_seed_words,
+                          unit_test, expect_ftux, choose_by_word_length):
 
     # test import when wallet empty
     if expect is None:

@@ -5,6 +5,8 @@
 import sys, stash, ujson, os, ngu, pyb
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
+from utils import xfp2str
+
 
 class PassphraseSaver:
     # Encrypts BIP-39 passphrase very carefully, and appends
@@ -131,18 +133,39 @@ class PassphraseSaver:
 
         async def doit(menu, idx, item):
             # apply the password immediately and drop them at top menu
-            pw, expect_xfp = item.arg
-            await set_bip39_passphrase(pw)
-
+            from pincodes import pa
             from glob import settings
-            from utils import xfp2str
+
+            bypass_tmp = True
+            pw, expect_xfp = item.arg
+            if pa.tmp_value and settings.get("words", None):
+                xfp = settings.get("xfp", None)
+                title = "[%s]" % xfp2str(xfp)
+                ch = await ux_show_story("Ephemeral wallet is active. Press (1)"
+                                         " to add passphrase to the current active"
+                                         " ephemeral seed instead of the main seed.",
+                                         title=title, escape='1')
+                if ch == '1':
+                    bypass_tmp = False
+
+            applied = await set_bip39_passphrase(pw, bypass_tmp=bypass_tmp,
+                                                 summarize_ux=False)
+            if not applied:
+                return
+
             xfp = settings.get('xfp')
 
-            # verification step; I don't see any way for this to go wrong
-            assert xfp == expect_xfp
-
-            # feedback that it worked
-            await ux_show_story("Passphrase restored.", title="[%s]" % xfp2str(xfp))
+            # verification step
+            if xfp == expect_xfp:
+                # feedback that it worked
+                await ux_show_story("Passphrase restored.", title="[%s]" % xfp2str(xfp))
+            else:
+                got = xfp2str(xfp)
+                exp = xfp2str(expect_xfp)
+                await ux_show_story("XFP verification failed. Restored wallet XFP [%s] "
+                                    "does not match expected XFP [%s] from "
+                                    "saved passphrase file." % (got, exp))
+                return
 
             goto_top_menu()
 

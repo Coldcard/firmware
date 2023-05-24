@@ -548,9 +548,8 @@ def get_secrets(sim_execfile):
         assert 'Error' not in resp
         for ln in resp.split('\n'):
             ln = ln.strip()
-            if '#' in ln:
-                ln = ln[0:ln.index('#')]
             if not ln: continue
+            if ln[0] == '#': continue
 
             assert ' = ' in ln
             n, v = ln.split(' = ', 1)
@@ -698,6 +697,14 @@ def settings_path(simulator):
         # could use: ckcc.get_sim_root_dirs() here
         return '../unix/work/settings/' + fn
 
+    return doit
+
+@pytest.fixture
+def settings_slots(settings_path):
+    def doit():
+        return [fn
+                for fn in os.listdir(settings_path(""))
+                if fn.endswith(".aes")]
     return doit
 
 @pytest.fixture(scope="function")
@@ -1689,6 +1696,21 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
         return fname, backup_key_hex, node
     return doit
 
+@pytest.fixture
+def choose_by_word_length(need_keypress):
+    # for use in seed XOR menu system
+    def doit(num_words):
+        if num_words == 12:
+            need_keypress('1')
+        elif num_words == 18:
+            need_keypress("2")
+        else:
+            need_keypress("y")
+    return doit
+
+# workaround: need these fixtures to be global so I can call test from a test
+from test_se2 import clear_all_tricks, new_trick_pin, new_pin_confirmed, goto_trick_menu, se2_gate
+
 
 @pytest.fixture
 def validate_address():
@@ -1804,13 +1826,15 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
     return doit
 
 
-# useful fixtures related to multisig
-from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,
-                                make_ms_address, clear_ms, make_myself_wallet)
+# useful fixtures
+from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
+from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_bip39pw import set_bip39_pw
+from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
-from test_ephemeral import ephemeral_seed_disabled_ui
-from test_ux import enter_complex, pass_word_quiz, word_menu_entry
+from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
+from test_seed_xor import restore_seed_xor
+from test_ux import enter_complex, pass_word_quiz, word_menu_entry
 
 # EOF

@@ -13,8 +13,8 @@ def test_get_secrets(get_secrets, master_xpub):
     assert 'xpub' in v
     assert v['xpub'] == master_xpub
 
-def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypress):
-
+def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_words):
+    reset_seed_words()
     # get to top, force a redraw
     need_keypress('x')
     need_keypress('x')
@@ -29,10 +29,10 @@ def test_home_menu(capture_enabled, cap_menu, cap_story, cap_screen, need_keypre
     assert 'Address Explorer' in m
     assert 'Advanced/Tools' in m
     assert 'Settings' in m
-    if len(m) == 6:
+    if len(m) == 7:
         assert 'Passphrase' in m
     else:
-        assert len(m) == 5
+        assert len(m) == 6
 
     # check 4 lines of menu are shown right
     scr = cap_screen()
@@ -823,20 +823,23 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
 
 
 def test_bip39_pw_signing_xfp_ux(goto_home, pick_menu_item, need_keypress, cap_story,
-                                 enter_complex, reset_seed_words):
+                                 enter_complex, reset_seed_words, cap_menu):
     goto_home()
     pick_menu_item("Passphrase")
     need_keypress("y")
     enter_complex("21coinkite21")
     pick_menu_item("APPLY")
     time.sleep(0.3)
-    title, _ = cap_story()
+    title, story = cap_story()
     assert title == "[0C9DC99D]"
+    assert 'Above is the master key fingerprint of the new wallet' in story
     need_keypress("y")  # confirm passphrase
+    m = cap_menu()
+    assert m[0] == "[0C9DC99D]"
     pick_menu_item("Ready To Sign")
     time.sleep(0.1)
     title_sign, _ = cap_story()
-    assert title == title_sign
+    assert title_sign == title
     reset_seed_words()  # for subsequent tests
 
 

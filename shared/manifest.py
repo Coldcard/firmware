@@ -48,7 +48,6 @@ freeze_as_mpy('', [
 	'serializations.py',
 	'wallet_base.py',
 	'sffile.py',
-	'sram2.py',
 	'ssd1306.py',
 	'stash.py',
 	'usb.py',

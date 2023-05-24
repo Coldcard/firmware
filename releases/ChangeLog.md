@@ -1,5 +1,8 @@
 ## 5.2.0 - 2023-10-XX
 
+- New Feature: Seed Vault. Store ephemeral secrets in encrypted settings object for later use.
+  Enable Seed Vault functionality in `Advanced/Tools -> Danger Zone -> Seed Vault -> Enable`. 
+  Use stored seeds from Seed Vault with `Seed Vault` menu choice (shown once enabled).
 - New Feature: PSBTv2 support added
 - New Feature: `Lock Down Seed` now works with every ephemeral secret (not just BIP39 passphrase)
 - New Feature: BIP-39 Passphrase can now be added to word based Ephemeral Seeds
