@@ -446,6 +446,7 @@ class PinAttempt:
 
     def tmp_secret(self, encoded, chain=None):
         # Use indicated secret and stop using the SE; operate like this until reboot
+        # - use None to clear and reset to normal
         self.tmp_value = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
 
         # We're no longer blank. hard to say about duress secret and stuff tho

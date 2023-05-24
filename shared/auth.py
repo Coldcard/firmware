@@ -1219,7 +1219,7 @@ Press (2) to view the provided passphrase.\n\nOK to continue, X to cancel.''' % 
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                set_bip39_passphrase(self._pw)
+                await set_bip39_passphrase(self._pw)
 
                 self.result = settings.get('xpub')
 

@@ -252,6 +252,8 @@ async def drv_entro_step2(_1, picked, _2):
         # switch over to new secret!
         dis.fullscreen("Applying...")
         await seed.set_ephemeral_seed(encoded)
+        from actions import goto_top_menu
+        goto_top_menu()
 
     if encoded is not None:
         stash.blank_object(encoded)

@@ -544,4 +544,15 @@ def addr_fmt_label(addr_fmt):
         AF_P2WPKH: "Segwit P2WPKH"
     }[addr_fmt]
 
+
+def pad_raw_secret(raw_sec_str):
+    from pincodes import AE_SECRET_LEN
+
+    raw = bytearray(AE_SECRET_LEN)
+    if len(raw_sec_str) % 2:
+        raw_sec_str += '0'
+    x = a2b_hex(raw_sec_str)
+    raw[0:len(x)] = x
+    return raw
+
 # EOF

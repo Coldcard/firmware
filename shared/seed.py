@@ -11,7 +11,7 @@
 #    - 'abandon' * 11 + 'about'
 #
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key
+from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret
 import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code
@@ -407,13 +407,48 @@ async def new_from_dice(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
+
+async def add_seed_to_vault(encoded):
+    if not settings.get("seedvault", False):
+        return
+
+    _,_,node = SecretStash.decode(encoded)
+    new_xfp = xfp2str(swab32(node.my_fp()))
+
+    seeds = settings.get("seeds", [])
+    if new_xfp in [s[0].upper() for s in seeds]:
+        # do not offer to store secrets that are already in vault
+        return
+
+    xfp_ui = "[" + new_xfp + "]"
+    story = ("Press (1) to "
+             "store ephemeral secret into Seed Vault. This way you can easily switch "
+             "to this secret and use it as ephemeral seed in future.\n\nPress OK "
+             "to continue without saving.")
+
+    ch = await ux_show_story(story, escape="1")
+    if ch == "1":
+        seeds.append([new_xfp, b2a_hex(bytes(encoded).rstrip(b"\x00")).decode(), '[%s]' % new_xfp])
+        settings.set("seeds", seeds)
+        settings.save()
+        await ux_show_story(xfp_ui + "\nSaved to Seed Vault")
+
+        return True
+
 async def set_ephemeral_seed(encoded, chain=None):
+    saved = await add_seed_to_vault(encoded)
     pa.tmp_secret(encoded, chain=chain)
     dis.progress_bar_show(1)
     xfp = settings.get("xfp", "")
     if xfp:
         xfp = "[" + xfp2str(xfp) + "]\n"
-    await ux_show_story("%sNew ephemeral master key in effect until next power down.\n\nIt is NOT stored anywhere." % xfp)
+
+    msg = xfp + "New ephemeral master key in effect until next power down."
+    if not saved:
+        msg += "\nIt is NOT stored anywhere."
+    msg += "\n\nAll settings data stored in this mode will be lost on next power down."
+
+    await ux_show_story(msg)
 
 async def set_ephemeral_seed_words(words):
     dis.progress_bar_show(0.1)
@@ -577,7 +612,7 @@ def set_seed_value(words=None, encoded=None, chain=None):
     finally:
         dis.busy_bar(False)
 
-def set_bip39_passphrase(pw):
+async def set_bip39_passphrase(pw):
     # apply bip39 passphrase for now (volatile)
 
     # takes a bit, so show something
@@ -715,6 +750,104 @@ async def word_quiz(words, limited=None, title='Word %d is?'):
 
     return
 
+async def make_seed_vault_menu(*a):
+    # list of all multisig wallets, and high-level settings/actions
+
+    rv = SeedVaultMenu.construct()
+    return SeedVaultMenu(rv)
+
+class SeedVaultMenu(MenuSystem):
+
+    @staticmethod
+    async def _set(menu, label, item):
+        xfp, encoded = item.arg
+        raw = pad_raw_secret(encoded)
+        dis.fullscreen("Applying...")
+        await set_ephemeral_seed(raw)
+        goto_top_menu()
+
+    @staticmethod
+    async def _clear(menu, label, item):
+        idx, xfp_str = item.arg
+        seeds = settings.get("seeds", [])
+        if not await ux_confirm("Delete stored seed [%s]?" % xfp_str):
+            return
+
+        try:
+            del seeds[idx]
+            settings.set("seeds", seeds)
+            settings.save()
+        except IndexError: pass  # already gone?
+
+        # pop menu stack
+        the_ux.pop()
+        m = the_ux.top_of_stack()
+        m.update_contents()
+
+    @staticmethod
+    async def _detail(menu, label, item):
+        xfp_str, encoded, name = item.arg
+        detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nSecret (Byte) Length:\n%d" % (
+            # (-2) one byte in hex that represents type of secret (internal)
+            name, xfp_str, int((len(encoded) - 2) / 2)
+        )
+        await ux_show_story(detail)
+
+    @staticmethod
+    async def _rename(menu, label, item):
+        # let them edit the name
+        idx, xfp_str = item.arg
+        seeds = settings.get("seeds", [])
+        chk_xfp, encoded, old_name = seeds[idx]
+        assert chk_xfp == xfp_str
+
+        from ux import ux_input_text
+        new_name = await ux_input_text(old_name, confirm_exit=False, max_len=40)
+
+        if not new_name:
+            new_name = old_name
+
+        # save it
+        seeds[idx] = (chk_xfp, encoded, new_name)
+        settings.set("seeds", seeds)
+        settings.save()
+
+        # update label in sub-menu, and parent menu too!
+        menu.items[0].label = new_name
+        pm = the_ux.parent_of(menu)
+        if pm:
+            pm.items[idx].label = '%d: %s' % (idx+1, new_name)
+
+
+    @classmethod
+    def construct(cls):
+        # Dynamic menu with user-defined names of seeds shown
+        from glob import settings
+
+        rv = []
+            
+        seeds = settings.get("seeds", [])
+        if not seeds:
+            rv.append(MenuItem('(none saved yet)'))
+        else:
+            for i, (xfp_str, encoded, name) in enumerate(seeds):
+                submenu = [
+                    MenuItem(name, f=cls._detail, arg=(xfp_str, encoded, name)),
+                    MenuItem('Use This Seed', f=cls._set, arg=(xfp_str, encoded)),
+                    MenuItem('Rename', f=cls._rename, arg=(i, xfp_str)),
+                    MenuItem('Delete', f=cls._clear, arg=(i, xfp_str)),
+                ]
+
+                rv.append(MenuItem('%d: %s' % (i+1, name),
+                                   menu=MenuSystem(submenu)))
+
+        return rv
+
+    def update_contents(self):
+        # Reconstruct the list of wallets on this dynamic menu, because
+        # we added or changed them and are showing that same menu again.
+        tmp = self.construct()
+        self.replace_items(tmp)
 
 class EphemeralSeedMenu(MenuSystem):
 
@@ -879,7 +1012,7 @@ class PassphraseMenu(MenuSystem):
         from stash import bip39_passphrase
         old_pw = str(bip39_passphrase)
 
-        set_bip39_passphrase(pp_sofar)
+        await set_bip39_passphrase(pp_sofar)
 
         xfp = settings.get('xfp')
 
@@ -890,7 +1023,7 @@ Press X to abort and keep editing passphrase, OK to use the new wallet, or 1 to 
         ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
         if ch == 'x':
             # go back!
-            set_bip39_passphrase(old_pw)
+            await set_bip39_passphrase(old_pw)
             return
 
         if ch == '1':

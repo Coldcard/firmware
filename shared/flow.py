@@ -9,7 +9,7 @@ from glob import settings
 from actions import *
 from choosers import *
 from multisig import make_multisig_menu, import_multisig_nfc
-from seed import make_ephemeral_seed_menu
+from seed import make_ephemeral_seed_menu, make_seed_vault_menu
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start, password_entry
@@ -283,6 +283,9 @@ Keep blocked unless you intend to sign special transactions.'''),
         on_change=change_which_chain,
         story="Testnet must only be used by developers because \
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
+    ToggleMenuItem('Seed Vault', 'seedvault', ['Default Off', 'Enable'],
+                   on_change=change_seed_vault,
+                   story="Enable Seed Vault? Adds prompt to store ephemeral secrets into Seed Vault, where they can easily to reused later."),
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', predicate=lambda: version.has_se2, f=show_mcu_keys_left),
 ]
@@ -371,6 +374,7 @@ NormalSystem = [
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem('Type Passwords', f=password_entry, predicate=lambda: settings.get("emu", False) and has_secrets()),
+    MenuItem('Seed Vault', menu=make_seed_vault_menu, predicate=lambda: settings.get('seedvault')),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),

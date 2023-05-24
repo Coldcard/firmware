@@ -1925,7 +1925,7 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
         expect, pubkey, script, _ = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
-                                                        path_mapper=path_mapper)
+                                                    path_mapper=path_mapper)
 
         assert int(subpath.split('/')[-1]) == idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))

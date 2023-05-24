@@ -1,6 +1,9 @@
 ## 5.1.3 - 2023-06-20
 
 - New Feature: Batch Sign PSBTs. `Advanced/Tools -> File Management -> Batch Sign PSBT`
+- New Feature: Seed Vault. Store ephemeral secrets in encrypted settings object for later use.
+  Enable Seed Vault functionality in `Advanced/Tools -> Danger Zone -> Seed Vault -> Enable`. 
+  Use stored seeds from Seed Vault with `Seed Vault` menu choice (shown once enabled).
 - Enhancement: change Key Origin Information export format in multisig `addresses.csv` to match
   [BIP-0380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions)
   was `(m=0F056943)/m/48'/1'/0'/2'/0/0` now `[0F056943/48'/1'/0'/2'/0/0]`
