@@ -2,15 +2,172 @@
 #
 # test drv_entro.py features
 #
-import pytest, time, os, re
+import pytest, time, re
 from binascii import a2b_hex, b2a_hex
 from helpers import B2A
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.key.Key import Key
 from mnemonic import Mnemonic
 
+HISTORY = set()
+
 # XPRV from spec: xprv9s21ZrQH143K2LBWUUQRFXhucrQqBpKdRRxNVq2zBqsx8HVqFk2uYo8kmbaLLHRdqtQpUm98uKfu3vca1LqdGhUtyoFnCNkfmXRyPXLjbKb
 EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a589c3f15e5d852dc2e9ba5e9fe189a8dd2e1547badef5b563bbe6579fc6807d80ed900000000000000'
+
+
+@pytest.fixture
+def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
+                        set_encoded_secret, set_seed_words, settings_set):
+    def doit(mode, index, expect=None, entropy=None, sim_sec=None, chain="BTC"):
+        if sim_sec:
+            if len(sim_sec.split(" ")) in (12,18,24):
+                set_seed_words(sim_sec)
+            else:
+                set_encoded_secret(a2b_hex(sim_sec))
+
+        if chain:
+            settings_set('chain', chain)
+
+        goto_home()
+        time.sleep(.1)
+        pick_menu_item('Advanced/Tools')
+        time.sleep(.1)
+        pick_menu_item('Derive Seed B85')
+
+        time.sleep(0.1)
+        title, story = cap_story()
+
+        assert 'seed value' in story
+        assert 'other wallet systems' in story
+
+        need_keypress('y')
+        time.sleep(0.1)
+        title, story = cap_story()
+        if "You have an ephemeral seed - deriving from ephemeral" in story:
+            need_keypress("y")
+
+        time.sleep(0.1)
+        pick_menu_item(mode)
+
+        if index is not None:
+            time.sleep(0.1)
+            for n in str(index):
+                need_keypress(n)
+
+        need_keypress('y')
+
+        time.sleep(0.1)
+        title, story = cap_story()
+
+        assert f'Path Used (index={index}):' in story
+        assert "m/83696968'/" in story
+        assert f"/{index}'" in story
+
+        if entropy is not None:
+            assert f"Raw Entropy:\n{entropy}" in story
+
+        can_import = False
+
+        if ' words' in mode:
+            num_words = int(mode.split()[0])
+            assert f'Seed words ({num_words}):' in story
+            assert f"m/83696968'/39'/0'/{num_words}'/{index}'" in story
+            assert '\n 1: ' in story
+            assert f'\n{num_words}: ' in story
+            got = [ln[4:] for ln in story.split('\n') if len(ln) > 5 and ln[2] == ':']
+            if expect:
+                assert ' '.join(got) == expect
+            can_import = 'words'
+
+        elif 'XPRV' in mode:
+            assert 'Derived XPRV:' in story
+            assert f"m/83696968'/32'/{index}'" in story
+            if expect:
+                assert expect in story
+            can_import = 'xprv'
+
+        elif 'WIF' in mode:
+            assert 'WIF (privkey)' in story
+            assert f"m/83696968'/2'/{index}'" in story
+            if expect:
+                assert expect in story
+
+        elif 'bytes hex' in mode:
+            width = int(mode.split('-')[0])
+            assert width in {32, 64}
+            assert f'Hex ({width} bytes):' in story
+            assert f"m/83696968'/128169'/{width}'/{index}'" in story
+            if expect:
+                assert expect in story
+
+        elif 'Passwords' == mode:
+            assert "Password:" in story
+            assert f"m/83696968'/707764'/21'/{index}'" in story
+            if expect:
+                assert expect in story
+            assert "(2) to type password over USB" in story
+
+        else:
+            raise ValueError(mode)
+
+        return can_import, story
+
+    return doit
+
+
+@pytest.fixture
+def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_words):
+    def doit(do_import, reset=True, expect=None, entropy=None, save_to_vault=False):
+        _, story = cap_story()
+        assert '(2) to switch to derived secret' in story
+
+        try:
+            time.sleep(0.1)
+            need_keypress('2')
+
+            time.sleep(0.1)
+            title, story = cap_story()
+            if "Press (1) to store ephemeral secret into Seed Vault" in story:
+                if save_to_vault:
+                    need_keypress("1")  # store to seed vault
+                    time.sleep(.2)
+                    title, story = cap_story()
+                    assert "Saved to Seed Vault" in story
+                    need_keypress("y")
+                else:
+                    need_keypress("y")  # do not store
+                time.sleep(0.1)
+                title, story = cap_story()
+
+            assert 'master key in effect' in story
+
+            encoded = sim_exec('from pincodes import pa; RV.write(repr(pa.fetch()))')
+            print(encoded)
+            assert 'Error' not in encoded
+            encoded = eval(encoded)
+            assert len(encoded) == 72
+
+            marker = encoded[0]
+            if do_import == 'words':
+                assert marker & 0x80 == 0x80
+                width = ((marker & 0x3) + 2) * 8
+                assert width in {16, 24, 32}
+                if entropy:
+                    assert encoded[1:1 + width] == a2b_hex(entropy)
+            elif do_import == 'xprv':
+                assert marker == 0x01
+                if expect:
+                    node = BIP32Node.from_hwif(expect)
+                    ch, pk = encoded[1:33], encoded[33:65]
+                    assert node.chain_code() == ch
+                    assert node.secret_exponent() == int(B2A(pk), 16)
+
+        finally:
+            # required cleanup
+            if reset:
+                reset_seed_words()
+
+    return doit
 
 
 @pytest.mark.parametrize('mode,index,entropy,expect', [ 
@@ -41,147 +198,33 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
      None,
      "dKLoepugzdVJvdL56ogNV"),
 ])
-def test_bip_vectors(mode, index, entropy, expect,
-        set_encoded_secret, dev, cap_menu, pick_menu_item,
-        goto_home, cap_story, need_keypress, microsd_path, settings_set, sim_eval, sim_exec,
-        reset_seed_words, load_export_and_verify_signature
-):
+def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
+                     load_export_and_verify_signature, derive_bip85_secret,
+                     activate_bip85_ephemeral):
 
-    set_encoded_secret(a2b_hex(EXAMPLE_XPRV))
-    settings_set('chain', 'BTC')
-
-    goto_home()
-    pick_menu_item('Advanced/Tools')
-    pick_menu_item('Derive Seed B85')
-
-    time.sleep(0.1)
-    title, story = cap_story()
-
-    assert 'seed value' in story
-    assert 'other wallet systems' in story
-    
-    need_keypress('y')
-    time.sleep(0.1)
-    
-    pick_menu_item(mode) 
-
-    if index is not None:
-        time.sleep(0.1)
-        for n in str(index):
-            need_keypress(n)
-
-    need_keypress('y')
-
-    time.sleep(0.1)
-    title, story = cap_story()
-
-    assert f'Path Used (index={index}):' in story
-    assert "m/83696968'/" in story
-    assert f"/{index}'" in story
-
-    if entropy is not None:
-        assert f"Raw Entropy:\n{entropy}" in story
-
-    do_import = False
-
-    if ' words' in mode:
-        num_words = int(mode.split()[0])
-        assert f'Seed words ({num_words}):' in story
-        assert f"m/83696968'/39'/0'/{num_words}'/{index}'" in story
-        assert '\n 1: ' in story
-        assert f'\n{num_words}: ' in story
-        got = [ln[4:] for ln in story.split('\n') if len(ln)>5 and ln[2] == ':']
-        assert ' '.join(got) == expect
-        do_import = 'words'
-
-    elif 'XPRV' in mode:
-        assert 'Derived XPRV:' in story
-        assert f"m/83696968'/32'/{index}'" in story
-        assert expect in story
-        do_import = 'xprv'
-
-    elif 'WIF' in mode:
-        assert 'WIF (privkey)' in story
-        assert f"m/83696968'/2'/{index}'" in story
-        assert expect in story
-
-    elif 'bytes hex' in mode:
-        width = int(mode.split('-')[0])
-        assert width in { 32, 64}
-        assert f'Hex ({width} bytes):' in story
-        assert f"m/83696968'/128169'/{width}'/{index}'" in story
-        assert expect in story
-
-    elif 'Passwords' == mode:
-        assert "Password:" in story
-        assert f"m/83696968'/707764'/21'/{index}'" in story
-        assert expect in story
-        assert "(2) to type password over USB" in story
-
-    else:
-        raise ValueError(mode)
+    do_import, story = derive_bip85_secret(mode, index, expect, entropy, sim_sec=EXAMPLE_XPRV)
 
     # write to SD
     msg = story.split('Press', 1)[0]
-    if 1:
-        assert 'Press (1) to save' in story
-        need_keypress('1')
+    assert 'Press (1) to save' in story
+    need_keypress('1')
 
-        time.sleep(0.1)
-        title, story = cap_story()
-        contents,_ = load_export_and_verify_signature(story, "sd", fpattern="drv", label=None)
-        assert contents.strip() == msg.strip()
-        need_keypress("y")
-        time.sleep(0.1)
-        title, story = cap_story()
+    time.sleep(0.1)
+    title, story = cap_story()
+    contents,_ = load_export_and_verify_signature(story, "sd", fpattern="drv", label=None)
+    assert contents.strip() == msg.strip()
+    need_keypress("y")
+    time.sleep(0.1)
+    title, story = cap_story()
 
     if do_import:
-        assert '(2) to switch to derived secret' in story
-
-        try:
-            time.sleep(0.1)
-            need_keypress('2')
-
-            if 0:   # screen was removed
-                time.sleep(0.1)
-                title, story = cap_story()
-                assert title == "WARNING"
-                assert 'Press (4) to prove you read to the end of this message and accept all consequences.' in story
-                need_keypress("4")
-
-            time.sleep(0.1)
-            title, story = cap_story()
-            assert 'master key in effect' in story
-
-            encoded = sim_exec('from pincodes import pa; RV.write(repr(pa.fetch()))')
-            print(encoded)
-            assert 'Error' not in encoded
-            encoded = eval(encoded)
-            assert len(encoded) == 72
-
-            marker = encoded[0]
-            if do_import == 'words':
-                assert marker & 0x80 == 0x80
-                width = ((marker & 0x3) + 2) * 8
-                assert width in {16, 24, 32}
-                assert encoded[1:1+width] == a2b_hex(entropy)
-            elif do_import == 'xprv':
-                assert marker == 0x01
-                node = BIP32Node.from_hwif(expect)
-                ch, pk = encoded[1:33], encoded[33:65]
-                assert node.chain_code() == ch
-                assert node.secret_exponent() == int(B2A(pk), 16)
-
-        finally:
-            # required cleanup
-            reset_seed_words()
+        activate_bip85_ephemeral(do_import, expect=expect, entropy=entropy)
 
     else:
         assert '(3) to view as QR code' in story
 
     need_keypress('x')
 
-HISTORY = set()
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('mode,pattern', [ 
@@ -195,36 +238,10 @@ HISTORY = set()
     ('Passwords', r'[a-zA-Z0-9+/]{21}'),
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
-def test_path_index(mode, pattern, index,
-        dev, cap_menu, pick_menu_item,
-        goto_home, cap_story, need_keypress, cap_screen_qr, qr_quality_check
-):
+def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
+                    derive_bip85_secret):
     # Uses any key on Simulator; just checking for operation + entropy level
-
-    goto_home()
-    pick_menu_item('Advanced/Tools')
-    pick_menu_item('Derive Seed B85')
-
-    time.sleep(0.1)
-    title, story = cap_story()
-
-    assert 'seed value' in story
-    assert 'other wallet systems' in story
-    
-    need_keypress('y')
-    time.sleep(0.1)
-    
-    pick_menu_item(mode) 
-
-    if index is not None:
-        time.sleep(0.1)
-        for n in str(index):
-            need_keypress(n)
-
-    need_keypress('y')
-
-    time.sleep(0.1)
-    title, story = cap_story()
+    _, story = derive_bip85_secret(mode, index)
 
     assert f'Path Used (index={index}):' in story
     assert "m/83696968'/" in story

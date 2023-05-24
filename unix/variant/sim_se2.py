@@ -62,8 +62,8 @@ class SecondSecureElement:
         obj.set_key(a2b_hex(SECRETS["_pin1_secret"]))
         obj.load()
         # merging default values as they contain useful nfc,vidsk info
-        obj.merge_previous_active(obj.default_values())
-        obj.save()
+        dv = obj.default_values()
+        obj.current.update(dv)
         s = obj.get('_se2', None)
         if not s:
             print("no SE2 data")

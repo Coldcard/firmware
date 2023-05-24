@@ -53,6 +53,8 @@ from version import mk_num, is_devmode
 #   sd2fa = (list of strings): track which SD card is needed for login
 #   bkpw = (string): last backup password, so can be re-used easily
 #   sighshchk = (bool) set if sighash checks are disabled
+#   seedvault = (bool) opt-in enable seed vault feature
+#   seeds = list of stored secrets for seedvault feature
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -71,8 +73,8 @@ from version import mk_num, is_devmode
 # LINKED_SETTINGS += ["sd2fa", "usr", "axi", "hsmcmd"]
 # prelogin settings - do not need to be part of other saved settings
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
-# settings that need to be copied to any newly loaded settings as they describe state as is (a.k.a current state)
-KEEP_SETTINGS = ["du", "nfc", "vidsk"]
+# seed vault is singleton
+SINGLE_SETTINGS = ["seedvault", "seeds"]
 # keep these settings only if unspecified on the other end
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
                           "axskip", "del", "pms", "idle_to", "b39skip"]
@@ -124,7 +126,6 @@ class SettingsObject:
                 # read secret and use it.
                 new_secret = pa.fetch()
                 mine = True
-                SensitiveValues.cache_secret(new_secret)
 
         if new_secret:
             # hash up the secret... without decoding it or similar
@@ -150,7 +151,6 @@ class SettingsObject:
         _, _, blocks, bfree, *_ = os.statvfs(MK4_WORKDIR)
 
         return (blocks-bfree) / blocks
-            
 
     def _open_file(self, pos, mode='rb'):
         return open(MK4_FILENAME(pos), mode)
@@ -169,7 +169,11 @@ class SettingsObject:
         fn = MK4_FILENAME(pos)
         try:
             os.remove(fn)
-        except:
+            print("wiped slot", pos)
+        except Exception as exc:
+            import sys
+            sys.print_exception(exc)
+            print("failed to wipe slot")
             # Error (ENOENT) expected here when saving first time, because the
             # "old" slot was not in use
             pass
@@ -205,7 +209,7 @@ class SettingsObject:
 
         # serialize the data into JSON
         d = ujson.dumps(self.current)
-
+        print("write_slot:", pos,d)
         with self._open_file(pos, 'wb') as fd:
             # pad w/ zeros at least to 4k, but allow larger
             dat_len = len(d)
@@ -230,7 +234,9 @@ class SettingsObject:
     def _used_slots(self):
         # mk4: faster list of slots in use; doesn't open them
         files = os.listdir(MK4_WORKDIR)
-        return [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
+        x = [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
+        print("used slots", x)
+        return x
 
     def _nonempty_slots(self, dis=None):
         # generate slots that are non-empty
@@ -287,6 +293,7 @@ class SettingsObject:
                 self.current = d
                 self.my_pos = pos
             else:
+                print("stale data - clean up", pos)
                 # stale data seen; clean it up.
                 assert self.current['_age'] > 0
                 self._wipe_slot(pos)
@@ -296,6 +303,7 @@ class SettingsObject:
 
         # done, if we found something
         if self.my_pos is not None:
+            print("found slot", self.my_pos, self.current)
             return
 
         # nothing found, use defaults
@@ -303,7 +311,7 @@ class SettingsObject:
 
         # pick a (new) random home
         self.my_pos = self.find_spot(-1)
-
+        print("found nothing, picking new random", self.my_pos)
         if is_devmode:
             self.current['chain'] = 'XTN'
 
@@ -331,17 +339,47 @@ class SettingsObject:
         self.changed()
 
     def merge_previous_active(self, previous):
-        for k in KEEP_SETTINGS:
-            if k not in previous:
-                self.current.pop(k, None)
-            else:
-                self.current[k] = previous[k]
+        if previous:
+            for k in SINGLE_SETTINGS:
+                if k not in previous:
+                    self.current.pop(k, None)
+                else:
+                    self.current[k] = previous[k]
 
-        for k in KEEP_IF_BLANK_SETTINGS:
-            if previous.get(k, None) and not self.current.get(k, None):
-                self.current[k] = previous[k]
+            for k in KEEP_IF_BLANK_SETTINGS:
+                if previous.get(k, None) and not self.current.get(k, None):
+                    self.current[k] = previous[k]
 
-        self.changed()
+        # nfc, usb, vidsk handling
+        self.update_interface_state()
+
+    def update_interface_state(self):
+        # update current settings based on actual state
+        # settings that need to be copied to any newly loaded settings
+        # as they describe state as is (a.k.a current state)
+        import pyb
+        from glob import NFC, VD
+        to_update = []
+
+        nfc_on = int(bool(NFC))
+        if nfc_on != self.get("nfc", 0):
+            to_update.append(("nfc", nfc_on))
+
+        vidsk_on = int(bool(VD))
+        vidsk_setting = self.get("vidsk", 0)
+        if vidsk_on != vidsk_setting:
+            # state no2 is auto
+            if not (vidsk_on and (vidsk_setting == 2)):
+                to_update.append(("vidsk", vidsk_on))
+
+        usb_on = int(bool(pyb.usb_mode()))
+        du_setting = self.get("du", 0)
+        if usb_on == du_setting:
+            to_update.append(("du", int(not du_setting)))
+
+        # actual setting
+        for k, v in to_update:
+            self.put(k, v)
 
     def clear(self):
         # could be just:
@@ -392,24 +430,26 @@ class SettingsObject:
         aes = self.get_aes(pos).cipher
 
         self._write_slot(pos, aes)
+        print("save: written to new slot", pos, "old slot", self.my_pos)
 
         # erase old copy of data
         if (self.my_pos is not None) and (self.my_pos != pos):
+            print("save: Erasing old copy of data on pos", self.my_pos)
             self._wipe_slot(self.my_pos)
 
         self.my_pos = pos
         self.is_dirty = 0
 
-    def blank(self, blank_current=True):
+    def blank(self):
         # erase current copy of values in nvram; older ones may exist still
         # - use when clearing the seed value
+        print("in settings.blank")
         if self.my_pos is not None:
             self._wipe_slot(self.my_pos)
             self.my_pos = 0
 
         # act blank too, just in case.
-        if blank_current:
-            self.current.clear()
+        self.current.clear()
         self.is_dirty = 0
         self.capacity = 0
 

@@ -9,7 +9,7 @@ from actions import *
 from choosers import *
 from mk4 import dev_enable_repl
 from multisig import make_multisig_menu, import_multisig_nfc
-from seed import make_ephemeral_seed_menu
+from seed import make_ephemeral_seed_menu, make_seed_vault_menu
 from address_explorer import address_explore
 from users import make_users_menu
 from drv_entro import drv_entro_start, password_entry
@@ -208,6 +208,7 @@ SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed),
+
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
 ]
 
@@ -216,6 +217,14 @@ DangerZoneMenu = [
     MenuItem("Debug Functions", menu=DebugFunctionsMenu),       # actually harmless
     MenuItem("Seed Functions", menu=SeedFunctionsMenu),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
+    ToggleMenuItem('Seed Vault', 'seedvault', ['Default Off', 'Enable'],
+                   on_change=change_seed_vault,
+                   story=("Enable Seed Vault? Adds prompt to store ephemeral secrets "
+                          "into Seed Vault, where they can easily be reused later.\n\n"
+                          "WARNING: Seed Vault is encrypted (AES-256-CTR) by master seed,"
+                          " but not held directly inside secure elements. Backups are required"
+                          " after any change to vault! Recommended for experiments or temporary use."),
+                   predicate=has_secrets),
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
@@ -315,7 +324,10 @@ NormalSystem = [
     MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
-    MenuItem('Type Passwords', f=password_entry, predicate=lambda: settings.get("emu", False) and has_secrets()),
+    MenuItem('Type Passwords', f=password_entry,
+             predicate=lambda: settings.get("emu", False) and has_secrets()),
+    MenuItem('Seed Vault', menu=make_seed_vault_menu,
+             predicate=lambda: settings.get('seedvault') and has_secrets()),
     MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),

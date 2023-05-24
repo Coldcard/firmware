@@ -750,23 +750,24 @@ normal operation.''')
         # TC_BLANK_WALLET here would be nice, but no support working w/ fake empty secret
 
         # emulate stash.py encoding
+        name = 'Duress #%d' % (arg % 10)
         if flags & TC_XPRV_WALLET:
             encoded = b'\x01' + slot.xdata[0:64]
+            name = 'Mk3 Duress'
         elif flags & TC_WORD_WALLET and (arg // 1000 == 1):
             encoded = b'\x82' + slot.xdata[0:32]
         elif flags & TC_WORD_WALLET and (arg // 1000 == 2):
             encoded = b'\x80' + slot.xdata[0:16]
         else:
-            raise ValueError('f=0x%x a=%d' % (flags, arg))
+            raise ValueError            #('f=0x%x a=%d' % (flags, arg))
 
         from glob import dis
+        from seed import set_ephemeral_seed
+        from actions import goto_top_menu
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
-        from seed import set_ephemeral_seed
-        await set_ephemeral_seed(encoded)
-
-        from actions import goto_top_menu
+        await set_ephemeral_seed(encoded, meta=name)
         goto_top_menu()
 
     async def countdown_details(self, m, l, item):

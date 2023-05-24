@@ -931,17 +931,29 @@ async def start_login_sequence():
         enable_usb()
 
 async def restore_main_secret(*a):
-    ch = await ux_show_story(
-        "Restore main wallet and its settings?\n\n"
-        "Press OK to forget current ephemeral wallet "
-        "settings, or press (1) to save & keep "
-        "those settings for later use.",
-        escape="1"
-    )
+    from glob import dis
+    from seed import restore_to_main_secret, in_seed_vault
+
+    escape = None
+    msg = "Restore main wallet and its settings?\n\n"
+    if not await in_seed_vault():
+        msg += (
+            "Press OK to forget current ephemeral wallet "
+            "settings, or press (1) to save & keep "
+            "those settings if same seed is later restored."
+        )
+        escape = "1"
+
+    ch = await ux_show_story(msg, escape=escape)
     if ch == "x": return
 
-    from seed import restore_to_main_secret
-    await restore_to_main_secret(False if ch == "y" else True)
+    dis.fullscreen("Working...")
+
+    ps = True
+    if escape and (ch == "y"):
+        ps = False
+
+    await restore_to_main_secret(preserve_settings=ps)
     goto_top_menu()
 
 def make_top_menu():
@@ -1293,11 +1305,11 @@ async def verify_backup(*A):
     # do a limited CRC-check over encrypted file
     await backups.verify_backup_file(fn)
 
-async def import_extended_key_as_secret(extended_key, ephemeral):
+async def import_extended_key_as_secret(extended_key, ephemeral, meta=None):
     try:
         import seed
         if ephemeral:
-            await seed.set_ephemeral_seed_extended_key(extended_key)
+            await seed.set_ephemeral_seed_extended_key(extended_key, meta=meta)
         else:
             await seed.set_seed_extended_key(extended_key)
     except ValueError:
@@ -1363,7 +1375,7 @@ async def import_xprv(_1, _2, item):
                         extended_key = ln
                         break
 
-    await import_extended_key_as_secret(extended_key, ephemeral)
+    await import_extended_key_as_secret(extended_key, ephemeral, meta='Imported XPRV')
     # not reached; will do reset.
 
 EMPTY_RESTORE_MSG = '''\
@@ -1480,10 +1492,12 @@ async def import_tapsigner_backup_file(_1, _2, item):
 
     ephemeral = item.arg
     if not ephemeral:
-        assert pa.is_secret_blank() # "must not have secret"
+        assert pa.is_secret_blank()  # "must not have secret"
 
+    meta = "from "
     force_vdisk = False
     label = "TAPSIGNER encrypted backup file"
+    meta += label
     prompt, escape = import_prompt_builder(label)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
@@ -1505,6 +1519,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
         fn = await file_picker('Pick ' + label, suffix="aes", min_size=100, max_size=160,
                                force_vdisk=force_vdisk)
         if not fn: return
+        meta += (" (%s)" % fn)
         with CardSlot(force_vdisk=force_vdisk) as card:
             with open(fn, 'rb') as fp:
                 data = fp.read()
@@ -1528,7 +1543,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
             await ux_show_story(title="FAILURE", msg=str(e))
             continue
 
-    await import_extended_key_as_secret(extended_key, ephemeral)
+    await import_extended_key_as_secret(extended_key, ephemeral, meta=meta)
 
 async def list_files(*A):
     # list files, don't do anything with them?
@@ -2220,6 +2235,18 @@ async def change_virtdisk_enable(enable):
         assert glob.VD
         glob.VD.shutdown()
         assert not glob.VD
+
+async def change_seed_vault(is_enabled):
+    # user has changed seed vault enable/disable flag
+    from glob import settings
+    print("is enabled", is_enabled)
+    if (not is_enabled) and settings.get('seeds'):
+        # restore it
+        settings.set('seedvault', 1)
+        await ux_show_story("Please remove all seeds from the vault before disabling")
+        return
+
+    goto_top_menu()
 
 async def change_which_chain(*a):
     # setting already changed, but reflect that value in other settings

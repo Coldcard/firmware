@@ -5,12 +5,13 @@
 import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
+from utils import pad_raw_secret
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 import version, ujson
 from uio import StringIO
 import seed
 from glob import settings
-from pincodes import pa, AE_SECRET_LEN
+from pincodes import pa
 
 # we make passwords with this number of words
 num_pw_words = const(12)
@@ -131,12 +132,9 @@ def restore_from_dict_ll(vals):
         chain = chains.get_chain(vals.get('chain', 'BTC'))
 
         assert 'raw_secret' in vals
-        raw = bytearray(AE_SECRET_LEN)
         rs = vals.pop('raw_secret')
-        if len(rs) % 2:
-            rs += '0'
-        x = a2b_hex(rs)
-        raw[0:len(x)] = x
+
+        raw = pad_raw_secret(rs)
 
         # check we can decode this right (might be different firmare)
         opmode, bits, node = stash.SecretStash.decode(raw)
