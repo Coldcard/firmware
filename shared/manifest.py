@@ -44,7 +44,6 @@ freeze_as_mpy('', [
 	'selftest.py',
 	'serializations.py',
 	'sffile.py',
-	'sram2.py',
 	'ssd1306.py',
 	'stash.py',
 	'usb.py',

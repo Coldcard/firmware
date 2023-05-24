@@ -16,7 +16,7 @@ from hashlib import sha256
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 from helpers import xfp2str
-from conftest import simulator_fixed_xfp, simulator_fixed_xprv
+from conftest import simulator_fixed_xfp, simulator_fixed_tprv
 from bech32 import bech32_decode, convertbits, Encoding
 
 

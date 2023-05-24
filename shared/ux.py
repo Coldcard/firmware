@@ -53,6 +53,12 @@ class UserInteraction:
         old = self.stack.pop()
         del old
 
+    def parent_of(self, child_ux):
+        for n, x in enumerate(self.stack):
+            if x == child_ux and n:
+                return self.stack[n-1]
+        return None
+
 # Singleton. User interacts with this "menu" stack.
 the_ux = UserInteraction()
 

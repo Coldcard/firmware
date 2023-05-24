@@ -2,8 +2,8 @@
 #
 # pincodes.py - manage PIN code (which map to wallet seeds)
 #
-import ustruct, ckcc, version
-from ubinascii import hexlify as b2a_hex
+import ustruct, ckcc, version, chains, stash
+# from ubinascii import hexlify as b2a_hex
 from callgate import enter_dfu
 from bip39 import wordlist_en
 
@@ -148,7 +148,6 @@ class PinAttempt:
         if new_secret is not None:
             change_flags |= CHANGE_SECRET if not is_duress else CHANGE_DURESS_SECRET
             assert len(new_secret) in (32, AE_SECRET_LEN)
-            import stash
             stash.SensitiveValues.clear_cache()
         else:
             new_secret = bytes(AE_SECRET_LEN)
@@ -318,7 +317,7 @@ class PinAttempt:
         return bool(self.state_flags & PA_SUCCESSFUL)
 
     def is_secret_blank(self):
-        assert self.state_flags & PA_SUCCESSFUL
+        assert self.is_successful()
         return bool(self.state_flags & PA_ZERO_SECRET)
 
     # Mk1/2/3 concepts, not used in Mk4
@@ -413,29 +412,60 @@ class PinAttempt:
         self.roundtrip(7, fw_upgrade=(start, length))
         # not-reached
 
-    def new_main_secret(self, raw_secret, chain=None, bip39pw=''):
+    def new_main_secret(self, raw_secret=None, chain=None, bip39pw='', blank=False):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
+        # if None is provided as raw_secret -> restore to main seed
         from glob import settings
-        import stash
         stash.SensitiveValues.clear_cache()
 
+        bypass_tmp = False
         stash.bip39_passphrase = bool(bip39pw)
 
         # capture values we have already
         old_values = dict(settings.current)
+        print("old values", old_values)
+        print()
+        if chain is None:
+            chain = chains.get_chain(old_values.get("chain", None))
 
-        settings.set_key(raw_secret)
-        settings.load()
-        settings.merge_previous_active(old_values)
+        if raw_secret is None:
+            print("removing tmp_val")
+            assert pa.tmp_value
+            bypass_tmp = True
+            pa.tmp_value = None
+            if blank:
+                print("blanking in new_main secret")
+                # wipe current ephemeral secret settings slot
+                settings.blank()
+                old_values = None
+        else:
+            settings.set_key(raw_secret)
+            settings.load()
 
         # Recalculate xfp/xpub values (depends both on secret and chain)
-        with stash.SensitiveValues(raw_secret) as sv:
-            if chain is not None:
-                sv.chain = chain
-            sv.capture_xpub()
+        try:
+            with stash.SensitiveValues(raw_secret, bypass_tmp=bypass_tmp) as sv:
+                if chain is not None:
+                    sv.chain = chain
+                if raw_secret is None:
+                    # restore to main wallet
+                    nv = sv.encoded_secret()
+                    settings.set_key(nv)
+                    settings.load()
+                else:
+                    sv.capture_xpub()
+        except stash.ZeroSecretException:
+            # secret is zero - using ephemeral secrets in CC
+            # with no se2 secret
+            settings.nvram_key = b'\0'*32
+            settings.load()
+            # set PA_ZEROS to 1
+            self.state_flags |= (1 << 4)
+            return
 
-        # does not call settings.save() but caller should!
+
+        settings.merge_previous_active(old_values)
 
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot

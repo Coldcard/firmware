@@ -468,7 +468,7 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
         new_pin_confirmed(new_pin, subchoice, xflags, val, confirm=False)
         prev = active_duration
 
-    
+
 @pytest.mark.parametrize('with_wipe', [False, True])
 @pytest.mark.parametrize('subchoice, expect, xflags, xargs', [
     ( 'BIP-85 Wallet #1', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1001 ),
@@ -479,7 +479,9 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
-        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
+        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
+        stop_after_activated=False,
+):
 
     # import multisig
     clear_ms()
@@ -553,6 +555,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
 
     need_keypress('y')
     time.sleep(.1)
+    if stop_after_activated: return
     _, story = cap_story()
     assert 'New ephemeral master key in effect' in story
 
@@ -732,6 +735,127 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
         force_main_pin(case, expect_fail='makes problems with a Delta Mode')
 
     clear_all_tricks()
+
+def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test, 
+        new_trick_pin, new_pin_confirmed, pick_menu_item, need_keypress):
+
+    clear_all_tricks()
+
+    # - make wallets of all duress types (x2 each)
+    # - plus a few simple ones
+    # - perform a backup and check result
+
+    for n in range(8):
+        goto_trick_menu()
+        pin = '123-%04d'%n
+        new_trick_pin(pin, 'Duress Wallet', None)
+        item = 'BIP-85 Wallet #%d' % (n%4) if (n%4 != 0) else 'Legacy Wallet'
+        pick_menu_item(item)
+        need_keypress('y')
+        new_pin_confirmed(pin, item, None, None)
+
+    for pin, op_mode, expect, _, xflags in [
+        ('11-33', 'Just Reboot', 'Reboot when this PIN', False, TC_REBOOT), 
+        ('11-55', 'Look Blank', 'Look and act like a freshly', False, TC_BLANK_WALLET), 
+    ]:
+        new_trick_pin(pin, op_mode, expect)
+        new_pin_confirmed(pin, op_mode, xflags)
+
+    # works, but not the best test
+    #unit_test('devtest/backups.py')
+
+    bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
+
+    assert 'Coldcard backup file' in bk
+
+    def decode_backup(txt):
+        import json
+        vals = dict()
+        trimmed = dict()
+        for ln in txt.split('\n'):
+            if not ln: continue
+            if ln[0] == '#': continue
+
+            k,v = ln.split(' = ', 1)
+
+            v = json.loads(v)
+
+            if k.startswith('duress_') or k.startswith('fw_'):
+                # no space in USB xfer for thesE!
+                trimmed[k] = v
+            else:
+                vals[k] = v
+
+        return vals, trimmed
+
+    # decode it
+    vals, trimmed = decode_backup(bk)
+
+    assert 'duress_xprv' in trimmed
+    assert 'duress_1001_words' in trimmed
+    assert 'duress_1002_words' in trimmed
+    assert 'duress_1003_words' in trimmed
+
+    unit_test('devtest/clear_seed.py')
+    
+    repl.exec(f'import backups; backups.restore_from_dict_ll({vals!r})')
+
+    # recover from recovery
+    repl.exec(f'import backups; pa.setup(pa.pin); pa.login(); from actions import goto_top_menu; goto_top_menu()')
+
+    bk2 = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
+    assert 'Traceback' not in bk2
+
+    vals2, tr2 = decode_backup(bk2)
+
+    assert vals == vals2
+    assert trimmed == tr2
+
+def build_duress_wallets(request, seed_vault=False):
+    # Call a bunch of stuff in this file to build out all 4 possible
+    # duress wallets, and save them each into Seed Vault.
+
+    # fixtures I need directly
+    cap_story = request.getfixturevalue('cap_story')
+    need_keypress = request.getfixturevalue('need_keypress')
+    restore_main_seed = request.getfixturevalue('restore_main_seed')
+
+    # fixtures I need in test_ux_duress_choices
+    args = {f: request.getfixturevalue(f)
+              for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_ms',
+                        'import_ms_wallet', 'get_setting',
+                        'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress']}
+
+    for (subchoice, expect, xflags, xargs) in [
+        ( 'BIP-85 Wallet #1', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1001 ),
+        ( 'BIP-85 Wallet #2', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1002 ),
+        ( 'BIP-85 Wallet #3', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1003 ),
+        ( 'Legacy Wallet', 'fixed derivation', TC_WIPE|TC_XPRV_WALLET, 0 )
+    ]:
+        test_ux_duress_choices(subchoice=subchoice, expect=expect, xflags=xflags, xargs=xargs,
+                               with_wipe=False, stop_after_activated=True, **args)
+        time.sleep(.1)
+        _, story = cap_story()
+        assert '(1) to store ephemeral secret' in story
+        need_keypress('1')
+        time.sleep(.1)
+        _, story = cap_story()
+        assert 'Saved to Seed Vault' in story
+
+        need_keypress('y')
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert 'master key in effect until next power down' in story
+        need_keypress("y")
+
+        # re-login to reset to normal seed
+        # .. because cant get into trick menu when non-master seed is set (says Unavailable)
+        restore_main_seed(seed_vault=seed_vault)
+
+    # number of entries created
+    return 4
+
+
 
 # TODO
 # - make trick and do login, check arrives right state?

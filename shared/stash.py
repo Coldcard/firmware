@@ -13,7 +13,12 @@
 import ngu, uctypes, gc, bip39, utime
 from uhashlib import sha256
 from pincodes import AE_SECRET_LEN
-from utils import swab32, call_later_ms
+from utils import swab32, call_later_ms, B2A
+
+
+class ZeroSecretException(ValueError):
+    # raised when there is no secret or secret is zero
+    pass
 
 def blank_object(item):
     # Use/abuse uctypes to blank objects under python. Will likely
@@ -115,7 +120,7 @@ class SecretStash:
 
         elif marker == 0x00:
             # probably all zeros, which we don't normally store, and represents "no secret"
-            raise ValueError('actually zero secret')
+            raise ZeroSecretException
         else:
             # variable-length master secret for BIP-32
             vlen = secret[0]
@@ -126,6 +131,30 @@ class SecretStash:
             hd = hd.from_master(ms)
 
             return 'master', ms, hd
+
+    @staticmethod
+    def storage_encode(secret):
+        return B2A(bytes(secret).rstrip(b"\x00"))
+
+    @staticmethod
+    def summary(marker):
+        # decode enough to explain what we have in a text form
+        # - give us the first byte of the stored, encoded secret
+        if marker == 0x01:
+            # xprv => BIP-32 private key values
+            return 'xprv'
+
+        if marker & 0x80:
+            # seed phrase
+            ll = ((marker & 0x3) + 2) * 8
+            return '%d words' % len_to_numwords(ll)
+
+        if marker == 0x00:
+            # probably all zeros, which we don't normally store, and represents "no secret"
+            return 'zeros'
+
+        # variable-length master secret for BIP-32
+        return '%d bytes' % marker
 
 # optional global value: user-supplied passphrase to salt BIP-39 seed process
 # just a boolean flag from version 5.2.0
@@ -158,7 +187,7 @@ class SensitiveValues:
             from pincodes import pa
 
             if pa.is_secret_blank():
-                raise ValueError('no secrets yet')
+                raise ZeroSecretException
             self.deltamode = pa.is_deltamode()
 
             if self._cache_secret and not bypass_tmp:

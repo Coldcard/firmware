@@ -5,7 +5,7 @@
 import pytest, time, os
 from test_ux import word_menu_entry, enter_complex
 from binascii import b2a_hex, a2b_hex
-from constants import simulator_fixed_xprv
+from constants import simulator_fixed_tprv
 
 SIM_FNAME = '../unix/work/MicroSD/.tmp.tmp'
 
@@ -129,7 +129,7 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     from pycoin.encoding import from_bytes_32, to_bytes_32
     from hashlib import sha256
 
-    mk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+    mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
 
     sk = mk.subkey_for_path('2147431408p/0p')
 

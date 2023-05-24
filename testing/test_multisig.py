@@ -123,7 +123,7 @@ def make_multisig(dev, sim_execfile):
             xfp_bytes = pk.fingerprint()
             xfp = swab32(struct.unpack('>I', xfp_bytes)[0])
         else:
-            pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+            pk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
             xfp = simulator_fixed_xfp
 
         if not deriv:
@@ -639,7 +639,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
     assert 'xfp' in rv
     assert len(rv) >= 6
 
-    e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+    e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
     if not testnet:
         e._netcode = "BTC"
 
@@ -660,7 +660,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         ('p2sh_p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/1'"),
         ('p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/2'"),
     ]:
-        e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+        e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
         if not testnet:
             e._netcode = "BTC"
         xpub, *_ = slip132undo(rv[name])
@@ -1047,7 +1047,8 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
 
 
 @pytest.fixture
-def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms):
+def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms,
+                       reset_seed_words):
 
     # construct a wallet (M of 4) using different bip39 passwords, and default sim
     def doit(M, addr_fmt=None, do_import=True):
@@ -1109,7 +1110,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
 
     yield doit
 
-    set_bip39_pw('')
+    reset_seed_words()
 
 
 @pytest.fixture()
@@ -1523,7 +1524,7 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45'"])
 
     cc_deriv = "m/45'/55"
-    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(cc_deriv[2:]).sec())
+    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(cc_deriv[2:]).sec())
 
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
     resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
@@ -1938,7 +1939,7 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
         expect, pubkey, script, _ = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
-                                                        path_mapper=path_mapper)
+                                                    path_mapper=path_mapper)
 
         assert int(subpath.split('/')[-1]) == idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
