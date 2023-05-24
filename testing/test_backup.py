@@ -1,5 +1,5 @@
 import pytest, time
-from constants import simulator_fixed_words, simulator_fixed_xprv
+from constants import simulator_fixed_words, simulator_fixed_tprv
 from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
 
@@ -211,7 +211,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     else:
         assert "mnemonic" not in contents
     assert simulator_fixed_words not in contents
-    assert simulator_fixed_xprv not in contents
+    assert simulator_fixed_tprv not in contents
     assert target == contents
     if "words" in stype:
         words_str = " ".join(sec)
@@ -284,7 +284,7 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     contents = check_and_decrypt_backup(fn, words)
     assert "mnemonic" not in contents
     assert simulator_fixed_words not in contents
-    assert simulator_fixed_xprv not in contents
+    assert simulator_fixed_tprv not in contents
     assert target == contents
     seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
     expect = BIP32Node.from_master_secret(seed, netcode="XTN")
@@ -379,3 +379,84 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
 
     assert vals == vals2
     assert trimmed == tr2
+
+
+def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_words,
+                           import_ephemeral_xprv, restore_main_seed, settings_get,
+                           repl, pick_menu_item, need_keypress, cap_story, get_setting,
+                           pass_word_quiz, verify_backup_file, check_and_decrypt_backup,
+                           restore_backup_cs, cap_menu):
+    reset_seed_words()
+    settings_set("seedvault", 1)
+    settings_set("seeds", [])
+    expect_count = 0
+    ui_xfps = []
+    for num_words in [12, 24]:
+        generate_ephemeral_words(num_words=num_words, seed_vault=True)
+        time.sleep(.1)
+        title, story = cap_story()
+        ui_xfps.append(title)
+        expect_count += 1
+
+    # Ephemeral seeds - extended keys
+    import_ephemeral_xprv("sd", seed_vault=True)
+    time.sleep(.1)
+    title, story = cap_story()
+    ui_xfps.append(title)
+    expect_count += 1
+    restore_main_seed(seed_vault=True)
+    assert expect_count == 3
+    assert len(ui_xfps) == expect_count
+    # check all saved okay
+    seeds = settings_get('seeds')
+    assert len(seeds) == expect_count
+
+    bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
+    assert 'Coldcard backup file' in bk
+
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Backup")
+    pick_menu_item("Backup System")
+
+    time.sleep(.1)
+    title, story = cap_story()
+    if "Use same backup file password as last time?" in story:
+        need_keypress("x")
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == 'NO-TITLE'
+    assert 'Record this' in story
+    assert 'password:' in story
+
+    words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    assert len(words) == 12
+    # pass the quiz!
+    count, title, body = pass_word_quiz(words)
+    assert count >= 4
+    assert "same words next time" in body
+    assert "Press (1) to save" in body
+    need_keypress('x')
+    time.sleep(.01)
+    assert get_setting('bkpw', 'xxx') == 'xxx'
+    title, story = cap_story()
+    assert "Backup file written:" in story
+    fn = story.split("\n\n")[1]
+    assert fn.endswith(".7z")
+    verify_backup_file(fn)
+    contents = check_and_decrypt_backup(fn, words)
+    assert "mnemonic" in contents
+    assert simulator_fixed_words in contents
+    assert simulator_fixed_tprv in contents
+    assert "setting.seedvault = 1" in contents
+    assert "setting.seeds" in contents
+
+    restore_backup_cs(fn, words)
+    time.sleep(.2)
+    m = cap_menu()
+    assert "Seed Vault" in m
+    pick_menu_item('Seed Vault')
+    m = cap_menu()
+    assert len(m) == expect_count
+    sv_xfp_menu = [i.split(" ")[-1] for i in m]
+    for xfp_ui in ui_xfps:
+        assert xfp_ui in sv_xfp_menu

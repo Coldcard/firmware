@@ -11,6 +11,7 @@ from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
 from glob import settings
 from actions import goto_top_menu
 
+
 def xor(*args):
     # bit-wise xor between all args
     vlen = len(args[0])
@@ -132,11 +133,13 @@ class XORWordNestMenu(WordNestMenu):
         XORWordNestMenu.pop_all()
 
         num_parts = len(import_xor_parts)
-        seed = xor(*(bip39.a2b_words(w) for w in import_xor_parts))
+        enc_parts = [bip39.a2b_words(w) for w in import_xor_parts]
+        seed = xor(*enc_parts)
+        chk_word = bip39.b2a_words(seed).split(' ')[-1]
 
         msg = "You've entered %d parts so far.\n\n" % num_parts
         if num_parts >= 2:
-            chk_word = bip39.b2a_words(seed).split(' ')[-1]
+
             msg += "If you stop now, the %dth word of the XOR-combined seed phrase\nwill be:\n\n" % self.target_words
             msg += "%d: %s\n\n" % (self.target_words, chk_word)
 
@@ -169,7 +172,21 @@ class XORWordNestMenu(WordNestMenu):
                 # update menu contents now that wallet defined
                 goto_top_menu(first_time=True)
             else:
-                await set_ephemeral_seed(enc)
+                # set as ephemeral seed, maybe save it too
+                # below is super costly as we need to bip32 generate master secret from entropy bytes
+                # only need XFPs for UI
+                # xfps = [
+                #     xfp2str(swab32(
+                #         stash.SecretStash.decode(stash.SecretStash.encode(seed_phrase=i))[2].my_fp()
+                #     ))
+                #     for i in enc_parts
+                # ]
+                await set_ephemeral_seed(
+                    enc,
+                    meta='SeedXOR(%d parts, check: "%s")' % (
+                        num_parts, chk_word
+                    )
+                )
                 goto_top_menu()
 
         return None

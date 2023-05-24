@@ -356,7 +356,9 @@ class BitcoinRegtest(BitcoinMain):
 
 def get_chain(short_name):
     # lookup object from name: 'BTC' or 'XTN'
-    if short_name == 'BTC' or short_name is None:
+    if short_name is None:
+        return BitcoinMain
+    if short_name == 'BTC':
         return BitcoinMain
     elif short_name == 'XTN':
         return BitcoinTestnet

@@ -1047,7 +1047,8 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
 
 
 @pytest.fixture
-def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms):
+def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms,
+                       reset_seed_words):
 
     # construct a wallet (M of 4) using different bip39 passwords, and default sim
     def doit(M, addr_fmt=None, do_import=True):
@@ -1109,7 +1110,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
 
     yield doit
 
-    set_bip39_pw('')
+    reset_seed_words()
 
 
 @pytest.fixture()
@@ -1900,7 +1901,7 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
         expect, pubkey, script, _ = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
-                                                        path_mapper=path_mapper)
+                                                    path_mapper=path_mapper)
 
         assert int(subpath.split('/')[-1][0]) == idx
         assert int(subpath.split('/')[-2]) == chng_idx

@@ -12,7 +12,7 @@ from menu import MenuItem, MenuSystem
 from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 from auth import write_sig_file
-from utils import chunk_writer
+from utils import chunk_writer, xfp2str
 
 
 BIP85_PWD_LEN = 21
@@ -254,9 +254,14 @@ async def drv_entro_step2(_1, picked, _2):
 
     if ch == '2' and (encoded is not None):
         # switch over to new secret!
-        from actions import goto_top_menu
         dis.fullscreen("Applying...")
-        await seed.set_ephemeral_seed(encoded)
+        from actions import goto_top_menu
+        from glob import settings
+        xfp_str = xfp2str(settings.get("xfp"))
+        await seed.set_ephemeral_seed(
+            encoded,
+            meta='BIP85 Derived from [%s], index=%d' % (xfp_str, index)
+        )
         goto_top_menu()
 
     if encoded is not None:

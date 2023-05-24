@@ -1194,25 +1194,37 @@ class NewPassphrase(UserAuthorizedAction):
     async def interact(self):
         # prompt them
         from glob import settings
+        from pincodes import pa
 
+        title = "Passphrase"
+        bypass_tmp = True
+        escape = "2"
         showit = False
         while 1:
             if showit:
-                ch = await ux_show_story('''Given:\n\n%s\n\nShould we switch to that wallet now?
-
-OK to continue, X to cancel.''' % self._pw, title="Passphrase")
+                ch = await ux_show_story('Given:\n\n%s\n\nShould we switch to that wallet now?'
+                                         '\n\nOK to continue, X to cancel.' % self._pw, title=title)
             else:
-                ch = await ux_show_story('''BIP-39 passphrase (%d chars long) has been provided over USB connection. Should we switch to that wallet now?
+                msg = ('BIP-39 passphrase (%d chars long) has been provided over '
+                       'USB connection. Should we switch to that wallet now?\n\n')
+                if pa.tmp_value and settings.get("words", True):
+                    escape += "1"
+                    msg += "Press (1) to add passphrase to currently active ephemeral seed. "
 
-Press (2) to view the provided passphrase.\n\nOK to continue, X to cancel.''' % len(self._pw), title="Passphrase", escape='2')
+                msg += ('Press (2) to view the provided passphrase.\n\n'
+                        'OK to continue, X to cancel.')
+                ch = await ux_show_story(msg=msg % len(self._pw), title=title, escape=escape)
 
             if ch == '2':
                 showit = True
                 continue
+            elif ch == '1':
+                bypass_tmp = False
+
             break
 
         try:
-            if ch != 'y':
+            if ch not in 'y1':
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 1)
@@ -1220,7 +1232,8 @@ Press (2) to view the provided passphrase.\n\nOK to continue, X to cancel.''' % 
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                await set_bip39_passphrase(self._pw, summarize_ux=False)
+                await set_bip39_passphrase(self._pw, bypass_tmp=bypass_tmp,
+                                           summarize_ux=False)
 
                 self.result = settings.get('xpub')
 

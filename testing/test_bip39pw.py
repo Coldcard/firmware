@@ -51,7 +51,7 @@ def test_b9p_basic(pw, set_bip39_pw):
 @pytest.fixture()
 def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story, sim_execfile):
 
-    def doit(pw, reset=True):
+    def doit(pw, reset=True, seed_vault=False):
         # reset from previous runs
         if reset:
             words = reset_seed_words()
@@ -61,6 +61,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story, sim_execfile):
             for l in conts.split("\n"):
                 if l.startswith("mnemonic ="):
                     words = l.split("=")[-1].strip().replace('"', '')
+                    break
 
         # optimization
         if pw == '':
@@ -82,9 +83,19 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story, sim_execfile):
             assert pw in body
 
         need_keypress('y')
+        title, story = cap_story()
+        if "Press (1)" in story:
+            if seed_vault:
+                need_keypress("1")
+                time.sleep(.1)
+                title, story = cap_story()
+                assert "Saved to Seed Vault" in story
+                need_keypress("y")
+            else:
+                need_keypress("y")
 
         done = None
-        while done == None:
+        while done is None:
             time.sleep(0.050)
             done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
@@ -174,7 +185,6 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
 
     # real code does reboot, which is poorly simulated; avoid that
     sim_exec('import callgate; callgate.show_logout = lambda x:0')
-
     # commit change
     need_keypress('y')
 

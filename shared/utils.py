@@ -544,6 +544,20 @@ def addr_fmt_label(addr_fmt):
         AF_P2WSH_P2SH: "P2SH-P2WSH"
     }[addr_fmt]
 
+
+def pad_raw_secret(raw_sec_str):
+    # Chip can hold 72-bytes as a secret
+    # every secret has 0th byte as marker
+    # then secret and padded to zero to AE_SECRET_LEN
+    from pincodes import AE_SECRET_LEN
+
+    raw = bytearray(AE_SECRET_LEN)
+    if len(raw_sec_str) % 2:
+        raw_sec_str += '0'
+    x = a2b_hex(raw_sec_str)
+    raw[0:len(x)] = x
+    return raw
+
 def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
     # Shared code: consider an xpub for inclusion into a wallet
     # return T if it's our own key and parsed details in form (xfp, deriv, xpub)
