@@ -10,6 +10,9 @@ freeze_as_mpy('', [
 	'trick_pins.py',
 ], opt=0)
 
+# Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
+	'graphics.py',
 	'graphics_mk4.py',
+	'zevvpeep.py',
 ], opt=3)

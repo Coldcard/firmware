@@ -5,3 +5,9 @@ freeze_as_mpy('', [
 	'sflash.py',
 ], opt=0)
 
+# Optimize data-like files, since no need to debug them.
+freeze_as_mpy('', [
+	'graphics.py',
+	'zevvpeep.py',
+], opt=3)
+
