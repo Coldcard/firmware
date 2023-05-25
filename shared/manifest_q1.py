@@ -11,5 +11,12 @@ freeze_as_mpy('', [
 	'nfc.py',
 	'ndef.py',
 	'trick_pins.py',
-	'graphics_mk4.py',
 ], opt=0)
+
+# Optimize data-like files, since no need to debug them.
+freeze_as_mpy('', [
+	'graphics.py',          # TODO remove
+	'graphics_mk4.py',      # TODO remove
+	'graphics_q1.py',
+], opt=3)
+

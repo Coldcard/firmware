@@ -57,8 +57,6 @@ freeze_as_mpy('', [
 # Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
 	'sigheader.py',
-	'graphics.py',
-	'zevvpeep.py',
 	'public_constants.py',
 ], opt=3)
 
