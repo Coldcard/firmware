@@ -123,8 +123,7 @@ class PinAttempt:
 
 
         assert MAX_PIN_LEN == 32        # update FMT otherwise
-        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1, \
-                            ustruct.calcsize(PIN_ATTEMPT_FMT)
+        assert ustruct.calcsize(PIN_ATTEMPT_FMT_V1) == PIN_ATTEMPT_SIZE_V1
         assert ustruct.calcsize(PIN_ATTEMPT_FMT_V2_ADDITIONS) == PIN_ATTEMPT_SIZE - PIN_ATTEMPT_SIZE_V1
 
         # check for bricked system early
