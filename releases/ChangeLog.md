@@ -6,6 +6,8 @@
 - Bugfix: correct `scriptPubkey` parsing for segwit v1-v16
 - Bugfix: do not infer segwit just by availability of `PSBT_IN_WITNESS_UTXO` in PSBT. Improves
   compatibility with Bitcoin Core.
+- Bugfix: remove label from Bitcoin Core `importdescriptors` export as it is no longer supported
+  with ranged descriptors in version `24.1`
 
 ## 5.1.2 - 2023-04-07
 
