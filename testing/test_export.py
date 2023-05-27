@@ -133,12 +133,17 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
-        if n == 0:
-            assert here['label'] == 'Coldcard ' + xfp
+        assert 'label' not in d
 
         # test against bitcoind -- needs a "descriptor native" wallet
-        bitcoind_d_wallet.importdescriptors(obj)
+        res = bitcoind_d_wallet.importdescriptors(obj)
+        assert res[0]["success"]
+        assert res[1]["success"]
+        core_gen = []
+        for i in range(3):
+            core_gen.append(bitcoind_d_wallet.getnewaddress())
 
+        assert core_gen == addrs
         x = bitcoind_d_wallet.getaddressinfo(addrs[-1])
         pprint(x)
         assert x['address'] == addrs[-1]

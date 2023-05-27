@@ -258,7 +258,7 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
         for internal in [False, True]
     ]
     # for importdescriptors
-    imd_list = desc_obj.bitcoin_core_serialize(external_label="Coldcard %s" % txt_xfp)
+    imd_list = desc_obj.bitcoin_core_serialize()
     return imm_list, imd_list
 
 def generate_wasabi_wallet():
