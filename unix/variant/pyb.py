@@ -36,10 +36,10 @@ class USB_HID:
         import usocket as socket
         self.pipe = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         # If on linux, try commenting the following line
-        addr = bytes([len(self.fn)+2, socket.AF_UNIX] + list(self.fn))
+        # addr = bytes([len(self.fn)+2, socket.AF_UNIX] + list(self.fn))
         # If on linux, try uncommenting the following two lines
-        #import struct
-        #addr = struct.pack('H108s', socket.AF_UNIX, self.fn)
+        import struct
+        addr = struct.pack('H108s', socket.AF_UNIX, self.fn)
         while 1:
             try:
                 self.pipe.bind(addr)
