@@ -345,7 +345,6 @@ def generate_unchained_export(account_num=0):
 
 def generate_generic_export(account_num=0):
     # Generate data that other programers will use to import Coldcard (single-signer)
-    from descriptor import Descriptor, multisig_descriptor_template
 
     chain = chains.current_chain()
     master_xfp = settings.get("xfp")

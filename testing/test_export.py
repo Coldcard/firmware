@@ -142,7 +142,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert expect+f'/{n}/*' in desc
 
         # test against bitcoind -- needs a "descriptor native" wallet
-        bitcoind_d_wallet.importdescriptors(obj)
+        res = bitcoind_d_wallet.importdescriptors(obj)
+        assert res[0]["success"]
+        assert res[1]["success"]
         x = bitcoind_d_wallet.getaddressinfo(addrs[2])
         pprint(x)
         assert x['address'] == addrs[2]
@@ -171,7 +173,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert expect + f'/{n}/*' in desc
 
         # test against bitcoind -- needs a "descriptor native" wallet
-        bitcoind_d_wallet.importdescriptors(obj)
+        res = bitcoind_d_wallet.importdescriptors(obj)
+        assert res[0]["success"]
+        assert res[1]["success"]
 
         x = bitcoind_d_wallet.getaddressinfo(addrs[-1])
         pprint(x)
