@@ -174,7 +174,7 @@ AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     MenuItem('Upgrade Firmware', menu=UpgradeMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
-    MenuItem('Secure Logout', f=logout_now),
+    MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
 ]
 
 AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
@@ -186,7 +186,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
-    MenuItem('Secure Logout', f=logout_now),
+    MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
 ]
 
 DebugFunctionsMenu = [
@@ -326,7 +326,7 @@ NormalSystem = [
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu,
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),
-    MenuItem('Secure Logout', f=logout_now),
+    MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
