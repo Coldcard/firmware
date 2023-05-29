@@ -12,7 +12,7 @@
 # Limitations:
 # - USB light not fully implemented, because happens at irq level on real product
 #
-import os, sys, tty, pty, termios, time, pdb, tempfile, struct
+import os, sys, tty, pty, termios, time, pdb, tempfile, struct, zlib
 import subprocess
 import sdl2.ext
 from PIL import Image, ImageSequence
@@ -72,9 +72,13 @@ class SimulatedScreen:
             self.movie.append((dt, img))
 
 class LCDSimulator(SimulatedScreen):
-    # Simulate the LCD found on the Q1: 320x240xBGR565
+    # Simulate the LCD found on the Q1: 320x240xRGB565
 
     background_img = 'q1-images/background.png'
+
+    TEXT_PALETTE = [0x0000, 0x0861, 0x18e3, 0x2965, 0x39e7, 0x4a69, 0x5aeb, 0x6b6d,
+                    0x7bef, 0x8c71, 0x9cf3, 0xad75, 0xbdf7, 0xdefb, 0xef7d, 0xffff]
+    TEXT_PALETTE_INV = list(reversed(TEXT_PALETTE))
 
     # where the simulated screen is, relative to fixed background
     TOPLEFT = (65, 60)
@@ -94,12 +98,22 @@ class LCDSimulator(SimulatedScreen):
     def __init__(self, factory):
         self.movie = None
 
-        self.sprite = s = factory.create_software_sprite( (320,240), bpp=32)
+        self.sprite = s = factory.create_software_sprite( (320,240), bpp=16)
         s.x, s.y = self.TOPLEFT
         s.depth = 100
 
         self.palette = [sdl2.ext.prepare_color(code, s) for code in self.palette_colours]
         assert len(self.palette) == 16
+
+        # selftest
+        try:
+            assert sdl2.ext.prepare_color('#0f0', s) == 0x07e0, 'need RGB565 sprite (got 555?)'
+            assert sdl2.ext.prepare_color('#f00', s) == 0xf800, 'need RGB565 sprite (got RGB?)'
+        except:
+            print('red = ' + hex(sdl2.ext.prepare_color('#f00', s)))
+            print('grn = ' + hex(sdl2.ext.prepare_color('#0f0', s)))
+            print('blu = ' + hex(sdl2.ext.prepare_color('#00f', s)))
+            raise
 
         sdl2.ext.fill(s, self.palette[0])
 
@@ -112,24 +126,78 @@ class LCDSimulator(SimulatedScreen):
     def new_contents(self, readable):
         # got bytes for new update. expect a header and packed pixels
         while 1:
-            prefix = readable.read(8)
+            prefix = readable.read(11)
             if not prefix: return
-            X,Y, w, h = struct.unpack('<4H', prefix)
+            mode, X,Y, w, h, count = struct.unpack('<s5H', prefix)
+            mode = mode.decode('ascii')
+            here = readable.read(count)
 
-            assert X>=0 and Y>=0
-            assert X+w <= 320
-            assert Y+h <= 240
-
-            sz = w*h
-            here = readable.read(sz)
-            assert len(here) == sz
+            try:
+                assert X>=0 and Y>=0
+                assert X+w <= 320
+                assert Y+h <= 240
+                assert len(here) == count
+            except AssertionError:
+                print(f"Bad LCD update: x,y={X},{Y} w,h={w}x{h} mode={mode}")
+                continue
 
             pos = 0
-            for y in range(Y, Y+h):
-                for x in range(X, X+w):
-                    val = here[pos]
-                    pos += 1
-                    self.mv[x][y] = self.palette[val & 0xf]
+            if mode == 'p':
+                # palette lookup mode (fixed, limited; obsolete)
+                assert w*h == count
+
+                for y in range(Y, Y+h):
+                    for x in range(X, X+w):
+                        val = here[pos]
+                        pos += 1
+                        self.mv[x][y] = self.palette[val & 0xf]
+
+            elif mode in 'ti':
+                # palette lookup mode for text: packed 4-bit / pixel
+                # cheat: palette is not repeated over link
+                assert w*h == count*2, [w,h,count]
+
+                pal = self.TEXT_PALETTE if mode == 't' else self.TEXT_PALETTE_INV
+
+                unpacked = bytearray()
+                for b in here:
+                    unpacked.append(b >> 4)
+                    unpacked.append(b & 0xf)
+
+                for y in range(Y, Y+h):
+                    for x in range(X, X+w):
+                        val = unpacked[pos]
+                        self.mv[x][y] = pal[val & 0xf]
+                        pos += 1
+
+            elif mode == 'z':
+                # compressed RGB565 pixels
+                raw = zlib.decompress(here, wbits=-12)
+                assert w*h*2 == len(raw)
+                for y in range(Y, Y+h):
+                    for x in range(X, X+w):
+                        #val = (raw[pos] << 8) + raw[pos+1]
+                        #val = raw[pos+1] + (raw[pos] << 8)
+                        val, = struct.unpack('<H', raw[pos:pos+2])
+                        self.mv[x][y] = val
+                        pos += 2
+
+            elif mode == 'r':
+                # raw RGB565 pixels (not compressed, packed)
+                # slow, avoid
+                assert count == w * h * 2, [count, w, h]
+                for y in range(Y, Y+h):
+                    for x in range(X, X+w):
+                        val, = struct.unpack('<H', here[pos:pos+2])
+                        self.mv[x][y] = val
+                        pos += 2
+
+            elif mode == 'f':
+                # fill a region to single pixel value
+                px, = struct.unpack("<H", here)
+                for y in range(Y, Y+h):
+                    for x in range(X, X+w):
+                        self.mv[x][y] = px
 
         if self.movie is not None:
             self.new_frame()
@@ -282,7 +350,7 @@ def scancode_remap(sc):
 
 def alt_up(ch):
     # ALT+(ch) => special needs of Q1
-    print(f"Alt: {ch}")
+
     if ch == 'n':
         return q1_charmap.KEY_NFC
     if ch == 'q':
@@ -290,20 +358,30 @@ def alt_up(ch):
     if ch == 'l':
         return q1_charmap.KEY_LAMP
 
+    print(f"Alt+{ch.upper()} ignored")
+
     return None
 
 
 def start():
+    is_q1 = ('--q1' in sys.argv)
+
     print('''\nColdcard Simulator: Commands (over simulated window):
   - Control-Q to quit
   - ^Z to snapshot screen.
   - ^S/^E to start/end movie recording
-  - ^N to capture NFC data (tap it)
+  - ^N to capture NFC data (tap it)'''
+)
+    if is_q1:
+        print('''\
+Q1 specials:
+  Alt-L - lamp button (but ignored because implemented lower level)
+  Alt-N - NFC button
+  Alt-Q - QR button
 ''')
     sdl2.ext.init()
     sdl2.SDL_EnableScreenSaver()
 
-    is_q1 = ('--q1' in sys.argv)
 
     factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
     simdis = (OLEDSimulator if not is_q1 else LCDSimulator)(factory)
@@ -418,6 +496,7 @@ def start():
                         ch = shift_up(ch)
                     if event.key.keysym.mod & 0x300:      # left or right ALT
                         ch = alt_up(ch)
+                        if ch is None: continue
                 except:
                     # things like 'shift' by itself and anything not really ascii
 
@@ -466,7 +545,7 @@ def start():
                             numpad_tx.write(b'\n')
                         continue
 
-                if event.key.keysym.mod == 0x40:
+                if event.key.keysym.mod == 0x40 and event.type == sdl2.SDL_KEYUP:
                     # control key releases: ignore
                     continue
 
