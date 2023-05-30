@@ -80,8 +80,8 @@ DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB
 
 # - same w/ SYMBOL pressed
 # - be nice and allow number+symbol == number + shift
-DECODER_SYMBOL = (
-    '\0\0\0\0\0\0\0\0\0\0'
+DECODER_SYMBOL = (KEY_NFC + KEY_QR + KEY_TAB 
+            + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_SELECT + KEY_CANCEL + '\0'
     + '!@#$%^&*()'
     + '-_`\0\0\0[]{}'
     + '+=\0\0:;~|\\"'
