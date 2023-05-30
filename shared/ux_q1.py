@@ -4,11 +4,10 @@
 #
 from uasyncio import sleep_ms
 import utime, gc
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+from charcodes import *
 
 class PressRelease:
-    def __init__(self, need_release='xy'):
+    def __init__(self, need_release=KEY_SELECT+KEY_CANCEL):
         # Manage key-repeat: track last key, measure time it's held down, etc.
         self.need_release = need_release
         self.last_key = None
@@ -67,44 +66,33 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     from glob import dis
     from math import log
 
-    # allow key repeat on X only
-    press = PressRelease('1234567890y')
+    # allow key repeat on X only?
+    press = PressRelease()
 
-    y = 26
     value = ''
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
-    dis.text(0, 0, prompt)
-    dis.text(None, -1, ("X to CANCEL, or OK when DONE." if can_cancel else 
-                        "X to DELETE, or OK when DONE."), FontTiny)
-    dis.save()
+    dis.text(None, -1, "CANCEL or SELECT when done.")
 
     while 1:
-        dis.restore()
-
-        # text centered
-        if value:
-            bx = dis.text(None, y, value)
-            dis.icon(bx+1, y+11, 'space')
-        else:
-            dis.icon(64-7, y+11, 'space')
-
-        dis.show()
+        # TODO: check width, go to two lines if needed?
+        bx = dis.text(2, 4, prompt + ' ' + value + '█ ')
 
         ch = await press.wait()
-        if ch == 'y' or ch == KEY_SELECT:
+        if ch == KEY_SELECT:
 
-            if not value: return 0
+            if not value:
+                return 0
+
             return min(max_value, int(value))
 
-        elif ch == 'x' or ch == KEY_CANCEL:
+        elif ch == KEY_DELETE:
             if value:
                 value = value[0:-1]
-            elif can_cancel:
-                # quit if they press X on empty screen
-                return None
-        else:
+        elif ch == KEY_CANCEL:
+            return None
+        elif '0' <= ch <= '9':
             if len(value) == max_w:
                 value = value[0:-1] + ch
             else:
@@ -116,12 +104,10 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
 async def ux_input_numbers(val, validate_func):
     # collect a series of digits
     from glob import dis
-    from display import FontTiny
 
-    # allow key repeat on X only
-    press = PressRelease('1234567890y')
+    press = PressRelease()
 
-    footer = "X to DELETE, or OK when DONE."
+    footer = "CANCEL or SELECT when done."
     lx = 6
     y = 16
     here = ''

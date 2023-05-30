@@ -177,8 +177,6 @@ class Display:
     def text(self, x,y, msg, font=None, invert=0):
         # Draw at x,y (in cell positions, not pixels)
         # Use invert=1 to get reverse video
-        if x not in (-1, 0, None): return 
-        #if y not in (-1, 0, None): return 
 
         if x is None or x < 0:
             w = len(msg)
