@@ -4,7 +4,7 @@
 #
 # Address Explorer menu functionality
 #
-import chains, stash
+import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
@@ -18,10 +18,14 @@ from utils import addr_fmt_label
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
-    # - 16 chars screen width
-    # - but 2 lost at left (menu arrow, corner arrow)
-    # - want to show not truncated on right side
-    return addr[0:5] + '⋯' + addr[-6:]
+    if not version.has_qwerty:
+        # - 16 chars screen width
+        # - but 2 lost at left (menu arrow, corner arrow)
+        # - want to show not truncated on right side
+        return addr[0:5] + '⋯' + addr[-6:]
+    else:
+        # tons of space on Q1
+        return addr[0:12] + '⋯' + addr[-12:]
 
 class KeypathMenu(MenuSystem):
     def __init__(self, path=None, nl=0):
@@ -252,7 +256,6 @@ Press (3) if you really understand and accept these risks.
         # - also for other {account} numbers
         # - or multisig case
         from glob import dis, NFC, VD
-        import version
 
         def make_msg(change=0):
             export_msg = "Press (1) to save Address summary file to SD Card."
