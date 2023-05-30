@@ -103,7 +103,7 @@ def serial_number():
 def probe_system():
     # run-once code to determine what hardware we are running on
     global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
-    global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery
+    global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery, is_edge
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
@@ -125,6 +125,7 @@ def probe_system():
     mk_num = 2
     has_battery = False
     has_qwerty = False
+    is_edge = False
 
     cpuid = ckcc.get_cpu_id()
     if cpuid == 0x461:      # STM32L496RG6
