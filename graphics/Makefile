@@ -2,8 +2,8 @@
 
 all: graphics.py graphics_mk4.py graphics_q1.py
 	
-SOURCES = $(filter-out mk4_%, $(wildcard *.txt) $(wildcard *.png))
-MK4_SOURCES = $(wildcard mk4_*.txt) $(wildcard mk4_*.png)
+SOURCES = $(filter-out mono/mk4_%, $(wildcard mono/*.txt) $(wildcard mono/*.png))
+MK4_SOURCES = $(wildcard mono/mk4_*.txt) $(wildcard mono/mk4_*.png)
 Q1_SOURCES = colour/*.???
 
 graphics.py: Makefile $(SOURCES) build.py
