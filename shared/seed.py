@@ -413,7 +413,8 @@ async def set_ephemeral_seed(encoded, chain=None):
     xfp = settings.get("xfp", "")
     if xfp:
         xfp = "[" + xfp2str(xfp) + "]\n"
-    await ux_show_story("%sNew ephemeral master key in effect until next power down.\n\nIt is NOT stored anywhere." % xfp)
+
+    await ux_show_story("New ephemeral master key in effect until next power down.\n\nIt is NOT stored anywhere.", title=xfp or None)
 
 async def set_ephemeral_seed_words(words):
     dis.progress_bar_show(0.1)
@@ -595,6 +596,8 @@ def set_bip39_passphrase(pw):
 
         sv.capture_xpub()
 
+    dis.draw_status(bip39=int(bool(pw)))
+
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and
     # would only affect MitM test, which has already been done.
@@ -611,6 +614,7 @@ async def remember_bip39_passphrase():
 
     # Important: won't write new XFP to nvram if pw still set
     stash.bip39_passphrase = ''
+    dis.draw_status(bip39=0)
 
     dis.fullscreen('Saving...')
     pa.change(new_secret=nv)
