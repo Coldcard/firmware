@@ -456,6 +456,10 @@ class PinAttempt:
         stash.bip39_passphrase = ''
         stash.SensitiveValues.clear_cache()
 
+        # On Q1, update status icons
+        from glob import dis
+        dis.draw_status(bip39=0, tmp=1)
+
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value, chain=chain)
