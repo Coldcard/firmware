@@ -25,13 +25,19 @@ print(f'Screen: {320//CELL_W} x {240//CELL_H} chars')
 # - 4 not enough, 8 decent, 16 even better
 NUM_GREYS = 16
 
-CHARSET = list(sorted(
-            [chr(x) for x in range(32,127)] 
-            + ['→', '←', '↳', '•', '⋯', '█', '▐', '⎸',
-                '▼', '▲', '►', '◀',
-                '₿', '✔', '™', '©',
-              ]))
-DBL_WIDTH = ['⋯', '✔︎', '→', '←']        # these are be better as double-wide chars
+
+# TODO: 
+# - need _ but for blank space
+# - need better menu arrow
+
+CHARSET = [chr(x) for x in range(32,127)] \
+            + ['→', '←', '↳', '•', '⋯',
+                '█', '▌', '▐', 
+                '▼', '▲', '►', '◀', '⏵',
+                '₿', '✔', '✓', '⥎',
+                '™', '©',
+          ]
+DBL_WIDTH = ['⋯', '✔︎', '✓','→', '←']        # these are be better as double-wide chars
 NUM_CHARS = len(CHARSET)
 
 # use a different glyph for these unicode values
@@ -39,7 +45,8 @@ NUM_CHARS = len(CHARSET)
 REMAPS = {
 }
 
-assert all(len(ch) == 1 for ch in CHARSET)      # hidden zero-width junk
+# find hidden zero-width junk
+assert all(len(ch) == 1 for ch in CHARSET), [ch for ch in CHARSET if len(ch) > 1]
 
 MEM_PER_CHAR = int(round((math.log2(NUM_GREYS) * CELL_W * CELL_H) / 8, 0))
 print(f'Font has {NUM_CHARS} chars')
@@ -97,7 +104,8 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     data = {}
     pos = {}
     out_x = 0
-    for n, ch in enumerate(CHARSET):
+    n = 0
+    for ch in CHARSET:
         # render each one
         is_dbl = (ch in DBL_WIDTH)
         img = Image.new('L', CELL_SIZE if not is_dbl else DBL_CELL_SIZE)
@@ -128,6 +136,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
         samples.paste(img, box=(
                     ((n % NUM_COL) * (CELL_W+1)) + 1,
                     ((n // NUM_COL) * (CELL_H+1)) +1))
+        n += (1 if not is_dbl else 2)
 
         # track actual pixels we'll use
         cells.paste(img, box=(out_x, 0))
@@ -178,7 +187,6 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
     # slice into chars, packed and encoded by the palette
     results = []
-    size_avg = 0
     for n, ch in enumerate(CHARSET):
         is_dbl = (ch in DBL_WIDTH)
         x = pos[ch]
@@ -196,18 +204,18 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             assert set(here) == {0}
 
         results.append((ch, here))
-    
-    print(f"Avg char size: {size_avg / NUM_CHARS:.2f} bytes")
 
     pal_vals, text_pal = make_palette(shades, (255, 255, 255))
+    pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], (255, 255, 255))
 
     with open(out_fname, 'w') as fp:
         tmpl = open('template.py').read()
         fp.write(tmpl)
 
         fp.write(f'''
-FONT_SHADES = {shades}
+#FONT_SHADES = {shades}
 TEXT_PALETTE = {text_pal}
+TEXT_PALETTE_INV = {text_pal_inv}
 
 # same, but w/o byte swapping, packing (useful for simulator)
 #TEXT_PALETTE = [{pal_vals}]
@@ -215,6 +223,8 @@ TEXT_PALETTE = {text_pal}
 CELL_W = const({CELL_W})
 CELL_H = const({CELL_H})
 BYTES_PER_CHAR = const({MEM_PER_CHAR})
+
+#SPECIAL_CHARS = {[c for c in CHARSET if ord(c) >= 128]}
 #DOUBLE_WIDE = {DBL_WIDTH}
 
 class {cls_name}:
