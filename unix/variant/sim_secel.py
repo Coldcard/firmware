@@ -256,7 +256,7 @@ def pin_stuff(submethod, buf_io):
         # greenlight firmware
         from ckcc import genuine_led, led_pipe
         genuine_led = True
-        led_pipe.write(b'\x01')
+        led_pipe.write(b'\x00\x01')
 
     elif submethod == 6:
         if not version.has_608:

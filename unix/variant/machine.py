@@ -1,5 +1,7 @@
 from mock import Mock
 
+UNSPEC = object()
+
 class Pin:
     def __init__(self, name, *a, **kw):
         self.name = name
@@ -15,14 +17,19 @@ class Pin:
         self.cur_value = int(n)
 
         bm = 0
+        # 0x01 => SE1 light
         if self.name == 'SD_ACTIVE':
             bm = 0x02
         elif self.name == 'USB_ACTIVE':
             bm = 0x04
+        elif self.name == 'SD_ACTIVE2':
+            bm = 0x08
+        elif self.name == 'NFC_ACTIVE':
+            bm = 0x10
 
         if bm:
             from ckcc import led_pipe
-            led_pipe.write(bytes([(bm << 4) | (bm if n else 0)]))
+            led_pipe.write(bytes([bm, (bm if n else 0)]))
 
     def pin(self):
         # ? pin number
@@ -34,6 +41,12 @@ class Pin:
             from touch import Touch
             Touch()
         pass
+
+    def __call__(self, new_val=UNSPEC):
+        if new_val==UNSPEC:
+            return self.cur_value
+        else:
+            self.value(new_val)
 
     ALT = None
     PULL_NONE = None
