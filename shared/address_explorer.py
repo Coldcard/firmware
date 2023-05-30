@@ -190,11 +190,12 @@ class AddressListMenu(MenuSystem):
             stash.blank_object(node)
 
         items = []
+        indent = ' ↳ ' if version.has_qwerty else '↳'
         for i, (address, path, addr_fmt) in enumerate(choices):
             axi = address[-4:]  # last 4 address characters
             items.append(MenuItem(addr_fmt_label(addr_fmt), f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
-            items.append(MenuItem('↳'+address, f=self.pick_single,
+            items.append(MenuItem(indent+address, f=self.pick_single,
                                   arg=(path, addr_fmt, axi)))
 
         # some other choices
