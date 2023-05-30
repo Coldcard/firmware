@@ -164,6 +164,10 @@ class Display:
         
         self.show()
 
+    def splash_text(self, msg):
+        # additional progress during splash/startup screen
+        self.fullscreen(msg)
+
     def progress_bar(self, percent):
         # Horizontal progress bar
         # takes 0.0 .. 1.0 as fraction of doneness
@@ -245,5 +249,66 @@ class Display:
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
         self.dis.write_cmd(0x81)        # Set Contrast Control
         self.dis.write_cmd(val)
+
+    def menu_draw(self, ry, msg, is_sel, is_checked, space_indicators):
+        # draw a menu item, perhaps selected, checked.
+        x, y = (10, 2)
+        h = 14
+        y += ry * h
+
+        if is_sel:
+            self.dis.fill_rect(0, y, Display.WIDTH, h-1, 1)
+            self.icon(2, y, 'wedge', invert=1)
+            self.text(x, y, msg, invert=1)
+        else:
+            self.text(x, y, msg)
+
+        if msg[0] == ' ' and space_indicators:
+            self.icon(x-2, y+11, 'space', invert=is_sel)
+
+        if is_checked:
+            self.icon(108, y, 'selected', invert=is_sel)
+
+    def show_yikes(self, lines):
+        self.clear()
+        self.text(None, 1, '>>>> Yikes!! <<<<')
+
+        y = 13+2
+        for num, ln in enumerate(lines):
+            ln = ln.strip()
+
+            if ln[0:6] == 'File "':
+                # convert: File "main.py", line 63, in interact
+                #    into: main.py:63  interact
+                ln = ln[6:].replace('", line ', ':').replace(', in ', '  ')
+
+            dis.text(0, y + (num*8), ln, FontTiny)
+
+        dis.show()
+
+    def draw_story(self, lines, top, num_lines, is_sensitive):
+        self.clear()
+
+        y=0
+        for ln in lines:
+            if ln == 'EOT':
+                self.hline(y+3)
+            elif ln and ln[0] == '\x01':
+                self.text(0, y, ln[1:], FontLarge)
+                y += 21
+            else:
+                self.text(0, y, ln)
+
+                if is_sensitive and len(ln) > 3 and ln[2] == ':':
+                    self.mark_sensitive(y, y+13)
+
+                y += 13
+
+        self.scroll_bar(top / num_lines)
+        self.show()
+
+    def draw_status(self, **k):
+        # no status bar on Mk4
+        return
 
 # EOF
