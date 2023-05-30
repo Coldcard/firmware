@@ -12,11 +12,12 @@ from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 
 # How many characters can we fit on each line? How many lines?
-# (using FontSmall)
-if version.hw_label == 'q1':
-    CH_PER_W = 44
-    STORY_H = 17
+if version.has_qwerty:
+    from lcd_display import CHARS_W, CHARS_H
+    CH_PER_W = CHARS_W
+    STORY_H = CHARS_H
 else:
+    # (using FontSmall)
     CH_PER_W = 17
     STORY_H = 5
 
@@ -225,25 +226,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     pr = PressRelease()
     while 1:
         # redraw
-        dis.clear()
-
-        y=0
-        for ln in lines[top:top+STORY_H]:
-            if ln == 'EOT':
-                dis.hline(y+3)
-            elif ln and ln[0] == '\x01':
-                dis.text(0, y, ln[1:], FontLarge)
-                y += 21
-            else:
-                dis.text(0, y, ln)
-
-                if sensitive and len(ln) > 3 and ln[2] == ':':
-                    dis.mark_sensitive(y, y+13)
-
-                y += 13
-
-        dis.scroll_bar(top / len(lines))
-        dis.show()
+        dis.draw_story(lines[top:top+STORY_H], top, len(lines), sensitive)
 
         # wait to do something
         ch = await pr.wait()
@@ -324,24 +307,9 @@ async def ux_dramatic_pause(msg, seconds):
 def show_fatal_error(msg):
     # show a multi-line error message, over some kinda "fatal" banner
     from glob import dis
-    from display import FontTiny
 
-    dis.clear()
     lines = msg.split('\n')[-6:]
-    dis.text(None, 1, '>>>> Yikes!! <<<<')
-
-    y = 13+2
-    for num, ln in enumerate(lines):
-        ln = ln.strip()
-
-        if ln[0:6] == 'File "':
-            # convert: File "main.py", line 63, in interact
-            #    into: main.py:63  interact
-            ln = ln[6:].replace('", line ', ':').replace(', in ', '  ')
-
-        dis.text(0, y + (num*8), ln, FontTiny)
-
-    dis.show()
+    dis.show_yikes(lines)
 
 async def ux_aborted():
     # use this when dangerous action is not performed due to confirmations
@@ -391,6 +359,9 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     # return the decimal number which the user has entered
     # - default/blank value assumed to be zero
     # - clamps large values to the max
+    if has_qwerty:
+        return ux_enter_number_qwerty(prompt, max_value, can_cancel=can_cancel)
+
     from glob import dis
     from display import FontTiny
     from math import log
