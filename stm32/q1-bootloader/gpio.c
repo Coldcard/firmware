@@ -63,9 +63,9 @@ gpio_setup(void)
     }
 
     {   // Port B - mostly unused, but want TEAR input
-        // TEAR from LCD: PB15
+        // TEAR from LCD: PB11
         GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_15,
+            .Pin = GPIO_PIN_11,
             .Mode = GPIO_MODE_INPUT,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,       // 60Hz
@@ -79,20 +79,22 @@ gpio_setup(void)
     // SD1 active LED: PC7
     // USB active LED: PC6
     // TURN OFF: PC0
+    // SD mux: PC13
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_0,
+            .Pin = GPIO_PIN_7 | GPIO_PIN_6 | GPIO_PIN_0, GPIO_PIN_13,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);               // stay on!
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);               // keep power on!
         HAL_GPIO_Init(GPIOC, &setup);
 
-        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|GPIO_PIN_6, 0);    // turn LEDs off
+        // turn LEDs off, SD mux to A
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7|GPIO_PIN_6|GPIO_PIN_13, 0);
     }
 
     // Port C - Inputs
-    // SD card detect switch: PC13, PC1 battery/not
+    // SD card detect switch: PC1 battery/not
     {   GPIO_InitTypeDef setup = {
             .Pin = GPIO_PIN_13 | GPIO_PIN_1,
             .Mode = GPIO_MODE_INPUT,
@@ -104,32 +106,44 @@ gpio_setup(void)
 
     // Port D - outputs
     // SD2 active LED: PD0
-    // SD_MUX: PD3
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_0 | GPIO_PIN_3,
+            .Pin = GPIO_PIN_0,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
         HAL_GPIO_Init(GPIOD, &setup);
 
-        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_0|GPIO_PIN_3, 0);    // turn off / select A slot
+        HAL_GPIO_WritePin(GPIOD, GPIO_PIN_0, 0);    // turn off
+    }
+
+    // Port D - Inputs
+    // SD slots detects: PD3/4
+    {   GPIO_InitTypeDef setup = {
+            .Pin = GPIO_PIN_3 | GPIO_PIN_4,
+            .Mode = GPIO_MODE_INPUT,
+            .Pull = GPIO_PULLUP,        // required
+            .Speed = GPIO_SPEED_FREQ_LOW,
+        };
+        HAL_GPIO_Init(GPIOD, &setup);
     }
 
     // Port E - Q1 things
-    // QR_RESET/TRIG - leave for now
+    // QR_RESET/TRIG - ignore for now
     // BL_ENABLE: PE3
     // NFC_ACTIVE: PE4 (led)
+    // GPU control: 2,5,6 outputs
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_3 | GPIO_PIN_4,
+            .Pin = GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_2 | GPIO_PIN_5 | GPIO_PIN_6,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
         HAL_GPIO_Init(GPIOE, &setup);
 
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, 0);    // turn off NFC LED
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);    // turn on Backlight
+        // turn off NFC LED, reset GPU, keep in reset
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4|GPIO_PIN_5, 0);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);    // turn on Backlight,
     }
 
 

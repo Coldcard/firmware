@@ -18,15 +18,18 @@
 //#define DISABLE_LCD
 
 // LCD connections: 
-// - all on port A
+// - mostly on port A
 // - all push/pull outputs
-// - PB15: TEAR input
+// - shared with GPU
 //
 #define RESET_PIN       GPIO_PIN_6
 #define DC_PIN          GPIO_PIN_8
 #define CS_PIN          GPIO_PIN_4
 #define SPI_SCK         GPIO_PIN_5
 #define SPI_MOSI        GPIO_PIN_7
+
+// port B
+#define TEAR_PIN        GPIO_PIN_11
 
 const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
@@ -55,11 +58,15 @@ static SPI_HandleTypeDef   spi_port;
 #endif
 
 static inline void wait_vsync(void) {
-    // PB15 is TEAR input: a positive pulse every 60Hz that
+    // PB11 is TEAR input: a positive pulse every 60Hz that
     // corresponds to vertical blanking time
-    while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == 0) {
-        ;
+    uint32_t timeout = 1000000;
+    for(; timeout; timeout--) {
+        if(HAL_GPIO_ReadPin(GPIOB, TEAR_PIN) != 0) {
+            return;
+        }
     }
+    puts("TEAR timeout");
 }
 
 // forward refs

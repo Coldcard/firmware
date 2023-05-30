@@ -123,7 +123,11 @@ sdcard_probe(uint32_t *num_blocks)
     bool
 sdcard_is_inserted(void)
 {
-    return !!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13); 
+#ifdef FOR_Q1_ONLY
+    return !!HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_3);       // PD3
+#else
+    return !!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);      // PC13
+#endif
 }
 
 // dfu_hdr_parse()
