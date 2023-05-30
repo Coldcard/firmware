@@ -44,6 +44,16 @@ const uint16_t COLOUR_RED = 0x1f;
 // track what we are showing so we never re-send same thing (too slow)
 static const uint8_t *last_screen;
 
+// memset2()
+//
+    static inline void
+memset2(uint16_t *dest, uint16_t value, uint16_t byte_len)
+{
+    for(; byte_len; byte_len-=2, dest++) {
+        *dest = value;
+    }
+}
+
 /*
 // Bytes to send before sending the 1024 bytes of pixel data.
 //

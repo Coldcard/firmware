@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "console.h"
+#include "config.h"
 
 extern void fatal_error(const char *) __attribute__((noreturn));
 
