@@ -8,15 +8,39 @@ from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+from version import has_qwerty
 
-# number of full text lines per screen
-if Display.HEIGHT == 64:
-    PER_M = 4       # const(4)
+# Number of full text lines per screen.
+# - we will draw one past this because on Mk1-4 it shows a partial line under those 4
+if not has_qwerty:
+    PER_M = 4
 else:
-    PER_M = Display.HEIGHT / 16
+    from lcd_display import CHARS_H
+    PER_M = CHARS_H - 1
 
 # do wrap-around, but only for mega menus like seed words
 WRAP_IF_OVER = const(16)
+
+def numpad_remap(key):
+    # map from numpad+2 (12 keys) into symbolic names
+    # - might only make sense within context of menus.
+    if key == '5':
+        return KEY_UP
+    elif key == '8':
+        return KEY_DOWN
+    elif key == '7':
+        return KEY_PAGE_UP
+    elif key == '9':
+        return KEY_END
+    elif key == '0':
+        return KEY_HOME
+    elif key == 'y':
+        return KEY_SELECT
+    elif key == 'x':
+        return KEY_CANCEL
+    else:
+        # keys 1-4 useful for selecting the top visible items from menu
+        return key
 
 def start_chooser(chooser):
     # get which one to show as selected, list of choices, and fcn to call after
@@ -194,21 +218,11 @@ class MenuSystem:
         # subclass hook
         self.early_draw(dis)
 
-        x,y = (10, 2)
-        h = 14
         for n in range(self.ypos+PER_M+1):
             if n+self.ypos >= self.count: break
+
             msg = self.items[n+self.ypos].label
             is_sel = (self.cursor == n+self.ypos)
-            if is_sel:
-                dis.dis.fill_rect(0, y, Display.WIDTH, h-1, 1)
-                dis.icon(2, y, 'wedge', invert=1)
-                dis.text(x, y, msg, invert=1)
-            else:
-                dis.text(x, y, msg)
-
-            if msg[0] == ' ' and self.space_indicators:
-                dis.icon(x-2, y+11, 'space', invert=is_sel)
 
             # show check?
             checked = (self.chosen is not None and (n+self.ypos) == self.chosen)
@@ -217,11 +231,7 @@ class MenuSystem:
             if fcn and fcn():
                 checked = True
 
-            if checked:
-                dis.icon(108, y, 'selected', invert=is_sel)
-
-            y += h
-            if y > Display.HEIGHT: break
+            dis.menu_draw(n, msg, is_sel, checked, self.space_indicators)
 
         # subclass hook
         self.late_draw(dis)
@@ -281,7 +291,7 @@ class MenuSystem:
             self.ypos = n - 2
 
     def page(self, n):
-        # relative page dn/up
+        # relative page dn/up - may wrap around
         if n == 1:
             for i in range(PER_M):
                 self.down()
@@ -325,7 +335,7 @@ class MenuSystem:
         key = None
 
         # 5,8 have key-repeat, not others
-        pr = PressRelease('790xy')
+        pr = PressRelease('790xy')      # TODO: q1 needs
 
         while 1:
             self.show()
@@ -334,26 +344,42 @@ class MenuSystem:
 
             if not key:
                 continue
-            if key == '5' or key == KEY_UP:
+
+            if not has_qwerty:
+                key = numpad_remap(key)
+
+            if key == KEY_SELECT:
+                # selected - done
+                return self.cursor
+            elif key == KEY_CANCEL:
+                # abort/nothing selected/back out?
+                return None
+            elif key == KEY_UP:
                 self.up()
-            elif key == '8' or key == KEY_DOWN:
+            elif key == KEY_DOWN:
                 self.down()
-            elif key == '7' or key == KEY_PAGE_UP:
-                self.page(-1)       # maybe should back out of nested menus?
-            elif key == '9' or key == KEY_END:
+            elif key == KEY_PAGE_UP:
+                self.page(-1)
+            elif key == KEY_PAGE_DOWN:
                 self.page(1)
-            elif key == '0' or key == KEY_HOME:
+            elif key == KEY_END:
+                self.goto_idx(self.count-1)
+            elif key == KEY_HOME:
                 # zip to top, no selection
                 self.cursor = 0
                 self.ypos = 0
-            elif key in '1234':
+            elif '1' <= key <= '9':
                 # jump down, based on screen postion
                 self.goto_n(ord(key)-ord('1'))
-            elif key == 'y' or key == KEY_SELECT:
-                # selected
-                return self.cursor
-            elif key == 'x' or key == KEY_CANCEL:
-                # abort/nothing selected/back out?
-                return None
+            else:
+                # search downwards for a menu item that starts with indicated letter
+                # if found, select it but dont drill down
+                lst = list(range(self.cursor+1, self.count)) + list(range(0, self.cursor))
+                for n in lst:
+                    if self.items[n].label[0].upper() == key.upper():
+                        self.goto_idx(n)
+                        break
+                else:
+                    print("Unused menu key: %s=0x%02x" % (key, ord(key)))
 
 # EOF
