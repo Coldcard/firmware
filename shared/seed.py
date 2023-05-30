@@ -672,8 +672,11 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
 
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
     nv, _, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
-    return await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
-                                    meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
+    ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
+                                   meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
+    dis.draw_status(bip39=int(bool(pw)))
+    return ret
+
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and
     # would only affect MitM test, which has already been done.
@@ -687,6 +690,7 @@ async def remember_ephemeral_seed():
     with stash.SensitiveValues() as sv:
         nv = sv.encoded_secret()
 
+    dis.draw_status(bip39=0, tmp=0)
     dis.fullscreen('Saving...')
     pa.change(new_secret=nv)
 
