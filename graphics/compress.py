@@ -2,14 +2,18 @@
 #
 # (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Read in PNG (or even JPG)... output heavily compressed BGR232 data.
+# Read in PNG (or even JPG) and output heavily compressed RGB565 data suited to Q1's LCD panel.
+#
+# - also renders status bar icons/indicators
 #
 import os, sys, pdb
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFont, ImageDraw
 import zlib
 from struct import pack
 
 WBITS = -10
+
+FONT_PATH = './fonts/'
 
 def read_img(fn):
     img = Image.open(fn)
@@ -69,6 +73,79 @@ def into_bgr565(img):
             rv.extend(swizzle(r,g,b))
 
     return rv
+
+def make_icons():
+    # return list of (varname, img) for each image
+    
+    # - see  shared/lcd_display.py TOP_MARGIN for this
+    ICON_SIZE = 14
+    MAX_HEIGHT = 14
+
+    # PROBLEM: this file costs money... altho free version looks okay too
+    try:
+        awesome = ImageFont.truetype(FONT_PATH + 'Font Awesome 6 Sharp-Regular-400.otf', ICON_SIZE)
+    except:
+        raise
+
+    sm_font = ImageFont.truetype(FONT_PATH + 'iosevka-heavy.ttf')
+
+    targets = [
+        ( 'shift', True, 'SHIFT', {} ),
+        ( 'symbol', True, 'SYMB', {} ),
+        ( 'caps', True, 'CAPS', {} ),
+        ( 'bip39', True, 'PASSPHRASE', {} ),
+        ( 'tmp', True, 'EPHEMERAL', dict(col_0='black') ),
+        ( 'bat_0', False, '\uf244', dict(col='red', y=0)),
+        ( 'bat_1', False, '\uf243', dict(col='yellow', y=0)),
+        ( 'bat_2', False, '\uf242', dict(col='#0f0', y=0)),
+        ( 'bat_3', False, '\uf240', dict(col='green', y=0)),
+        ( 'plugged', False, '\uf1e6', dict(col='green')),
+        #( 'locked', False, '\uf023', dict(col='green')),
+        #( 'unlocked', False, '\uf3c1', dict(col='green')),      # why tho?
+    ]
+
+    samples = Image.new('RGB', (320*2, ICON_SIZE+1))
+    s_x = 5
+
+    for basename, is_text, body, opts in targets:
+        for state in [0, 1]:
+            col = opts.get('col', '#fff' if state else '#444')
+            vn = f'{basename}_{state}'
+
+            if 'col' in opts:
+                if state == 0: continue
+                vn = basename
+
+            if state == 0 and 'col_0' in opts:
+                col = opts['col_0']
+
+            img = Image.new('RGB', (100,100))
+            d = ImageDraw.Draw(img)
+            f = sm_font if is_text else awesome
+
+
+            x, y = (0, 1 if is_text else 0)
+            y += opts.get('y', 0)
+            x += opts.get('x', 0)
+
+            tl = (x, y)
+            _,_, w,h = d.textbbox(tl, body, font=f)
+
+            if h > MAX_HEIGHT:
+                h = MAX_HEIGHT
+                print(f'{vn} too tall, cropped')
+
+            d.text(tl, body, font=f, fill=col)
+            rv = img.crop( (0, 0, w,h) )
+
+            samples.paste(rv, (s_x, 0))
+            s_x += w + 10
+
+            yield (vn, rv)
+            
+    samples = samples.crop( (0,0, s_x, samples.height ))
+    samples.save('icon-samples.png')
+            
     
 
 def doit(outfname, fnames):
@@ -89,24 +166,21 @@ class Graphics:
 
 """)
 
+    fnames += make_icons()
+
     for fn in fnames:
-        img = read_img(fn)
+        if isinstance(fn, str):
+            img = read_img(fn)
+            varname = fn.split('/')[-1].split('.')[0].replace('-', '_')
+        else:
+            varname, img = fn
 
         assert img.mode == 'RGB'
-
-        varname = fn.split('/')[-1].split('.')[0].replace('-', '_')
 
         w,h = img.size
         raw = into_bgr565(img)
         comp = compress(raw)
         #crunch(raw)
-
-        if 0:
-            # is compression better?
-            is_comp = len(comp)+8 < len(raw)
-        else:
-            # disable; taking too much runtime memory
-            is_comp = False
 
         print("    %s = (%d, %d,\n     %r\n    )\n" % (varname, w, h, comp), file=fp)
 
@@ -117,3 +191,5 @@ class Graphics:
 
 if 1:
     doit(sys.argv[1], sys.argv[2:])
+
+# EOF
