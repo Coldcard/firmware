@@ -208,7 +208,7 @@ class CardSlot:
         cls.last_change = utime.ticks_ms()
 
         if num_sd_slots == 2:
-            #XXX SD_DETECT w/ PB13 vs. PD13 ... same irq number
+            #XXX Q1 work needed here
             cls.irq = None
             cls.mux = Pin('SD_MUX')
             cls.mux(0)      # top slot = A
