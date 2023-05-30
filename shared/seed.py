@@ -796,15 +796,23 @@ class PassphraseMenu(MenuSystem):
         global pp_sofar
         pp_sofar = ''
 
-        items = [
-            #         xxxxxxxxxxxxxxxx
-            MenuItem('Edit Phrase', f=self.view_edit_phrase),
-            MenuItem('Add Word', menu=self.word_menu),
-            MenuItem('Add Numbers', f=self.add_numbers),
-            MenuItem('Clear All', f=self.empty_phrase),
-            MenuItem('APPLY', f=self.done_apply),
-            MenuItem('CANCEL', f=self.done_cancel),
-        ]
+        if version.has_qwerty:
+            items = [
+                MenuItem('Edit Phrase', f=self.view_edit_phrase),
+                MenuItem('Clear Phrase', f=self.empty_phrase),
+                MenuItem('APPLY', f=self.done_apply),
+                MenuItem('CANCEL', f=self.done_cancel),
+            ]
+        else:
+            items = [
+                #         xxxxxxxxxxxxxxxx
+                MenuItem('Edit Phrase', f=self.view_edit_phrase),
+                MenuItem('Add Word', menu=self.word_menu),
+                MenuItem('Add Numbers', f=self.add_numbers),
+                MenuItem('Clear All', f=self.empty_phrase),
+                MenuItem('APPLY', f=self.done_apply),
+                MenuItem('CANCEL', f=self.done_cancel),
+            ]
 
         try:
             saved = PassphraseSaver().make_menu()
