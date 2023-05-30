@@ -484,6 +484,11 @@ class PinAttempt:
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value, chain=chain, bip39pw=bip39pw)
 
+        # On Q1, update status icons
+        from glob import dis
+        is_pass, is_tmp = (1,0) if bip39pw else (0,1)
+        dis.draw_status(bip39=is_pass, tmp=is_tmp)
+
         return True
 
     def trick_request(self, method_num, data):
