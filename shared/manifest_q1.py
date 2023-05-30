@@ -18,5 +18,6 @@ freeze_as_mpy('', [
 	'graphics.py',          # TODO remove
 	'graphics_mk4.py',      # TODO remove
 	'graphics_q1.py',
+	'font_iosevka.py',
 ], opt=3)
 
