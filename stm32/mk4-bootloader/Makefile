@@ -113,10 +113,6 @@ $(TARGETS): $(TARGET_ELF) Makefile
 
 version.o: version.h
 
-# makes the .py from a shared header file
-sigheader.py: mk-sigheader.py sigheader.h
-	python3 mk-sigheader.py
-
 # link step
 $(TARGET_ELF): $(OBJS) $(LINKER_SCRIPT) Makefile
 	$(CC) $(CFLAGS) -o $(TARGET_ELF) $(LDFLAGS) $(OBJS)
