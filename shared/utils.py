@@ -405,12 +405,12 @@ def clean_shutdown(style=0):
 
     callgate.show_logout(style)
 
-def call_later_ms(delay, cb, *args):
+def call_later_ms(delay, cb, *args, **kws):
     import uasyncio
 
     async def doit():
         await uasyncio.sleep_ms(delay)
-        await cb(*args)
+        await cb(*args, **kws)
         
     uasyncio.create_task(doit())
 
