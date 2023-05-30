@@ -250,7 +250,7 @@ STATIC mp_obj_t watchpoint(volatile mp_obj_t arg1)
 MP_DEFINE_CONST_FUN_OBJ_1(watchpoint_obj, watchpoint);
 
 #define SWAB16(n)     (( ((n)>>8) | ((n) << 8) )&0xffff)
-#define GREY(n)       SWAB16( (n<<11) | (n<<6) | n)
+#define GREY(n)       SWAB16( (n<<11) | (n<<5) | n)
 
 // BGR565 values, but wrong endian, so green split weird
 static uint16_t palette[16] = {
@@ -259,7 +259,7 @@ static uint16_t palette[16] = {
 
     SWAB16(0xf800),         // 2 => red
     SWAB16(0x07e0),         // 3 => green
-    SWAB16(0x00f8),         // 4 => blue
+    SWAB16(0x001f),         // 4 => blue
 
     // some greys: 5 .. 12
     GREY(5), GREY(9), GREY(13), GREY(17), GREY(21), GREY(25), GREY(29),
