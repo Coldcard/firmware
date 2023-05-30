@@ -74,7 +74,7 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, is_factory_mode, is_devmode
+    global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram, is_edge
     global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
@@ -89,6 +89,7 @@ def probe_system():
     mk_num = 4
     has_battery = False
     has_qwerty = False
+    is_edge = False
 
     cpuid = ckcc.get_cpu_id()
     assert cpuid == 0x470  # STM32L4S5VI

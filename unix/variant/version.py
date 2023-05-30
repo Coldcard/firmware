@@ -44,6 +44,7 @@ has_qr = False
 num_sd_slots = 1
 has_battery = False
 has_qwerty = False
+is_edge = False
 
 if  '--mk1' in sys.argv:
     # doubt this works still
