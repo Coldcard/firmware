@@ -26,7 +26,7 @@ PROD_KEYNUM = -k 1
 BUILD_DIR = l-port/build-$(BOARD)
 MAKE_ARGS = BOARD=$(BOARD) -j 4 EXCLUDE_NGU_TESTS=1 DEBUG_BUILD=$(DEBUG_BUILD)
 
-all: $(BOARD)/file_time.c
+all: $(BOARD)/file_time.c sigheader.py
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
 
 clean:
@@ -80,6 +80,11 @@ up-dfu: dev.dfu
 $(BOARD)/file_time.c: make_filetime.py version.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
 	cp $(BOARD)/file_time.c .
+
+# Makes the .py from a shared header file
+# - used by q1/mk4/earlier bootroms, and also signit
+sigheader.py: make-sigheader.py sigheader.h
+	python3 make-sigheader.py
 
 # Make a factory release: using key #1
 # - when executed in a repro w/o the required key, it defaults to key zero

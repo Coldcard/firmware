@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+#
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 
 # parse out some values from C header... and include them into globals
 def doit(c_fname, py_file):
@@ -12,7 +15,7 @@ def doit(c_fname, py_file):
             lines.append(None)
 
     with open(py_file, 'wt') as o:
-        print("# Autogen'ed file, don't edit. See bootloader/sigheader.h for original\n",file=o)
+        print("# Autogen'ed file, don't edit. See stm32/sigheader.h for original\n",file=o)
 
         for ln in lines:
             if ln is None:
@@ -30,3 +33,4 @@ def doit(c_fname, py_file):
 if __name__ == '__main__':
     doit('sigheader.h', 'sigheader.py')
 
+# EOF
