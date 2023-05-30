@@ -807,7 +807,7 @@ async def start_login_sequence():
     guess = settings.get('_skip_pin', None)
     if guess is not None:
         try:
-            dis.fullscreen("(Skip PIN)")
+            dis.splash_text("Skip PIN...")
             pa.setup(guess)
             pa.login()
         except: pass
@@ -875,7 +875,7 @@ async def start_login_sequence():
     # Successful login...
 
     # Must re-read settings after login
-    dis.fullscreen("Startup...")
+    dis.splash_text("Startup...")
     settings.set_key()
     settings.load(dis)
 
