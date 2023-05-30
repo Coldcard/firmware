@@ -3,7 +3,6 @@
 # lcd_display.py - LCD rendering for Q1's 320x240 pixel *colour* display!
 #
 import machine, uzlib, ckcc, utime, struct, array, sys
-from version import is_devmode
 import framebuf
 import uasyncio
 from uasyncio import sleep_ms
@@ -65,6 +64,12 @@ def get_sys_status():
     from pincodes import pa
     rv['tmp'] = int(bool(pa.tmp_value))
 
+    from version import is_edge, is_devmode
+    if is_edge:
+        rv['edge'] = 1
+    elif is_devmode:
+        rv['devmode'] = 1
+
     return rv
     
 
@@ -113,6 +118,11 @@ class Display:
 
         if 'tmp' in kws:
             self.image(200, 0, 'tmp_%d' % kws['tmp'])
+
+        if 'edge' in kws:
+            self.image(260, 0, 'edge')
+        elif 'devmode' in kws:
+            self.image(260, 0, 'devmode')
 
         for x, meta in [(7, 'shift'), (38, 'symbol'), (65, 'caps')]:
             if meta in kws:
@@ -244,12 +254,6 @@ class Display:
         mm = HEIGHT-6
         pos = min(int(mm*fraction), mm)
         self.dis.fill_rect(WIDTH-2, pos, 1, 16, 1)
-
-        if is_devmode and not ckcc.is_simulator():
-            self.dis.fill_rect(WIDTH-6, 20, 5, 21, 1)
-            self.text(-2, 21, 'D', font=FontTiny, invert=1)
-            self.text(-2, 28, 'E', font=FontTiny, invert=1)
-            self.text(-2, 35, 'V', font=FontTiny, invert=1)
 
     def fullscreen(self, msg, percent=None):
         # show a simple message "fullscreen". 

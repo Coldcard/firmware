@@ -95,6 +95,8 @@ def make_icons():
         ( 'caps', True, 'CAPS', {} ),
         ( 'bip39', True, 'PASSPHRASE', {} ),
         ( 'tmp', True, 'EPHEMERAL', dict(col_0='black') ),
+        ( 'devmode', True, 'DEV', dict(col='yellow') ),
+        ( 'edge', True, 'EDGE', dict(col='yellow') ),
         ( 'bat_0', False, '\uf244', dict(col='red', y=0)),
         ( 'bat_1', False, '\uf243', dict(col='yellow', y=0)),
         ( 'bat_2', False, '\uf242', dict(col='#0f0', y=0)),
