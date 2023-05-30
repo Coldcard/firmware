@@ -9,6 +9,8 @@ freeze_as_mpy('', [
 	'pyb.py',
 	'sflash.py',
 	'sim_mk4.py',
+	'sim_q1.py',
+	'sim_scanner.py',
 	'sim_nfc.py',
 	'sim_psram.py',
 	'sim_quickstart.py',

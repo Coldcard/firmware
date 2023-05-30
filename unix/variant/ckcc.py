@@ -18,7 +18,7 @@ rng_fd = open('/dev/urandom', 'rb')
 global genuine_led
 
 led_pipe = open(int(sys.argv[3]), 'wb')
-led_pipe.write(b'\xf1')     # all off, except green
+led_pipe.write(b'\xff\x01')     # all off, except green
 genuine_led = True
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
@@ -84,11 +84,11 @@ def gate(method, buf_io, arg2):
         if arg2 == 1:
             # clear it
             genuine_led = False
-            led_pipe.write(b'\x10')
+            led_pipe.write(b'\x01\x00')
         if arg2 == 3:
             # real code would do checksum then go green
             genuine_led = True
-            led_pipe.write(b'\x11')
+            led_pipe.write(b'\x01\x01')
         return 1 if genuine_led else 0
 
     if method == 5:

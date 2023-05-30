@@ -207,18 +207,32 @@ class LCDSimulator(SimulatedScreen):
         # - not planning to support, tedious
         return None
 
+    def draw_single_led(self, spriterenderer, x, y, red=False):
+        sp = self.led_red if red else self.led_green
+        sp.position = (x, y)
+        spriterenderer.render(sp)
+
     def draw_leds(self, spriterenderer, active_set=0):
-        # always draw SE led, since one is always on
-        GEN_LED = 0x1
-        SD_LED = 0x2
+        # redraw all LED's in their current state, indicated
+        SE1_LED = 0x1
+        SD1_LED = 0x2
         USB_LED = 0x4
+        SD2_LED = 0x8
+        NFC_LED = 0x10
 
-        spriterenderer.render(self.led_green if (active_set & GEN_LED) else self.led_red)
+        if active_set & SE1_LED:
+            self.draw_single_led(spriterenderer, 17, 0, red=False)
+        else:
+            self.draw_single_led(spriterenderer, 65, 0, red=True)
 
-        if active_set & SD_LED:
-            spriterenderer.render(self.led_green)       # XXX reposition
+        if active_set & SD1_LED:
+            self.draw_single_led(spriterenderer, -10, 125)
+        if active_set & SD2_LED:
+            self.draw_single_led(spriterenderer, -10, 215)
         if active_set & USB_LED:
-            spriterenderer.render(self.led_green)       # XXX reposition
+            self.draw_single_led(spriterenderer, 195, 705)
+        if active_set & NFC_LED:
+            self.draw_single_led(spriterenderer, 400, 275)
 
 class OLEDSimulator(SimulatedScreen):
     # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
@@ -362,6 +376,67 @@ def alt_up(ch):
 
     return None
 
+q1_pressed = set()
+def handle_q1_key_events(event, numpad_tx):
+    # Map SDL2 (unix, desktop) keyscan code into keynumber on Q1
+    # - allow Q1 to do shift logic
+    # - support up to 5 keys down at once
+    global q1_pressed
+
+    assert event.type in { sdl2.SDL_KEYUP, sdl2.SDL_KEYDOWN}
+
+    is_press = (event.type == sdl2.SDL_KEYDOWN)
+
+    # first, see if we can convert to ascii char
+    scancode = event.key.keysym.sym & 0xffff
+    try:
+        ch = chr(event.key.keysym.sym)
+    except:
+        ch = scancode_remap(scancode)
+
+    #print(f'scan 0x{scancode:04x} => char={ch}=0x{ord(ch) if ch else 0:02x}')
+
+    shift_down = bool(event.key.keysym.mod & 0x3)      # left or right shift
+    symbol_down = bool(event.key.keysym.mod & 0x200)      # right ALT
+
+    #print(f"modifier = 0x{event.key.keysym.mod:04x} => shift={shift_down} symb={symbol_down}")
+
+    # reverse char to a keynum, and perhaps the meta key too
+    kn = None
+
+    if ch:
+        if ch in q1_charmap.DECODER:
+            kn = q1_charmap.DECODER.find(ch)
+        elif ch in q1_charmap.DECODER_SHIFT:
+            kn = q1_charmap.DECODER_SHIFT.find(ch)
+            shift_down = is_press
+        elif ch in q1_charmap.DECODER_SYMBOL:
+            kn = q1_charmap.DECODER_SYMBOL.find(ch)
+            symbol_down = is_press
+
+    #print(f" .. => keynum={kn} => shift={shift_down} symb={symbol_down}")
+
+    if kn:
+        if is_press:
+            q1_pressed.add(kn)
+        else:
+            q1_pressed.discard(kn)
+
+    q1_pressed.discard(q1_charmap.KEYNUM_SHIFT)
+    q1_pressed.discard(q1_charmap.KEYNUM_SYMBOL)
+
+    if shift_down: 
+        q1_pressed.add(q1_charmap.KEYNUM_SHIFT)
+    if symbol_down: 
+        q1_pressed.add(q1_charmap.KEYNUM_SYMBOL)
+
+    #print(f" .. => pressed: {q1_pressed}")
+
+    # see variant/touch.py where this is decoded.
+    assert len(q1_pressed) <= 5
+    report = bytes(list(q1_pressed) + [ 255, 255, 255, 255, 255])[0:5]
+    numpad_tx.write(report)
+
 
 def start():
     is_q1 = ('--q1' in sys.argv)
@@ -375,6 +450,7 @@ def start():
     if is_q1:
         print('''\
 Q1 specials:
+  Right-Alt = AltGr - Symb (symbol key)
   Alt-L - lamp button (but ignored because implemented lower level)
   Alt-N - NFC button
   Alt-Q - QR button
@@ -488,6 +564,15 @@ Q1 specials:
                 running = False
                 break
 
+            if is_q1 and event.type in { sdl2.SDL_KEYUP, sdl2.SDL_KEYDOWN} :
+                if event.key.keysym.mod == 0x40:
+                    # ctrl key down, not used on Q1, so process as simulator
+                    # command, see lower.
+                    pass
+                else:
+                    handle_q1_key_events(event, numpad_tx)
+                    continue
+
             if event.type == sdl2.SDL_KEYUP or event.type == sdl2.SDL_KEYDOWN:
                 try:
                     ch = chr(event.key.keysym.sym)
@@ -586,24 +671,18 @@ Q1 specials:
                 spriterenderer.render(simdis.sprite)
                 window.refresh()
             elif r is led_rx:
-                # XXX 8+8 bits
-                c = r.read(1)
+                # XXX was 4+4 bits, now two bytes: [active, mask]
+                c = r.read(2)
                 if not c:
                     break
 
-                c = c[0]
-                if 1:
-                    #print("LED change: 0x%02x" % c[0])
+                mask, lset = c
+                active_set = (mask & lset)
 
-                    mask = (c >> 4) & 0xf
-                    lset = c & 0xf
-
-                    active_set = (mask & lset)
-
-                    #print("Genuine LED: %r" % genuine_state)
-                    spriterenderer.render(bg)
-                    spriterenderer.render(simdis.sprite)
-                    simdis.draw_leds(spriterenderer, active_set)
+                #print("Genuine LED: %r" % genuine_state)
+                spriterenderer.render(bg)
+                spriterenderer.render(simdis.sprite)
+                simdis.draw_leds(spriterenderer, active_set)
 
                 window.refresh()
             else:

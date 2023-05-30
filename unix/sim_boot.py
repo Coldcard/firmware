@@ -2,6 +2,7 @@
 #
 # Code for the simulator to run, to get it to the point where main.py is called
 # on real system. Equivilent to a few lines of code found in stm32/COLDCARD/initfs.c
+#
 
 import machine, pyb, sys, os
 
@@ -30,9 +31,10 @@ if '--sflash' not in sys.argv:
         #glob.settings.current = dict(sim_defaults)
 
 if 1:
-    # Install Mk4 hacks and workarounds
+    # Install various hacks and workarounds
     import mk4
     import sim_mk4
+    import sim_q1
     import sim_psram
     import sim_vdisk
 

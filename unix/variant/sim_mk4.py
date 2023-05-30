@@ -18,6 +18,10 @@ def _init0():
     import sim_nfc
     sys.modules['nfc'] = sim_nfc
 
+    # Q1: install (fake) QR scanner interface code
+    import sim_scanner
+    sys.modules['scanner'] = sim_scanner
+
     mk4.rng_seeding()
 
 mk4.init0 = _init0
