@@ -13,6 +13,7 @@ from charcodes import *
 SAMPLE_FREQ = const(60)         # (Hz) how fast to do each scan
 NUM_SAMPLES = const(3)          # this many matching samples required for debounce
 
+META_KEYS = { KEY_LAMP, KEY_SHIFT, KEY_SYMBOL }
 
 class FullKeyboard(NumpadBase):
 
@@ -29,6 +30,9 @@ class FullKeyboard(NumpadBase):
 
         # after full scan, these flags are set for each key
         self.is_pressed = bytearray(NUM_ROWS * NUM_COLS)
+
+        # what meta keys are currently pressed 
+        self.active_meta_keys = set()
 
         # internal to irq handler
         self._history = bytearray(NUM_ROWS * NUM_COLS)
@@ -50,7 +54,12 @@ class FullKeyboard(NumpadBase):
         self.lcd_tear = Pin('LCD_TEAR', Pin.IN)
         self.lcd_tear.irq(self._measure_irq, trigger=Pin.IRQ_RISING, hard=False)
 
+        # meta state
         self.torch_on = False
+        self.caps_lock = False
+        self.shift_down = False
+        self.symbol_down = False
+
         # ready to start 
 
     def power_press(self, pin):
@@ -94,7 +103,7 @@ class FullKeyboard(NumpadBase):
         self.waiting_for_any = False
 
     def _measure_irq(self, _timer):
-        # CHALLENGE: Called at high rate, and cannot do memory alloc.
+        # CHALLENGE: Called at high rate (61Hz), but can do memory alloc.
         # - sample all keys once, record any that are pressed
         if self.waiting_for_any:
             # do nothing in that mode
@@ -127,20 +136,49 @@ class FullKeyboard(NumpadBase):
                 self.is_pressed[kn] = 0
             self._history[kn] = 0
 
+        self.process_chg_state()
+
+    def process_chg_state(self):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
+        # - convert that into asci-like events in a Q for rest of system
         # - not trying to support multiple presses, just one
+        shift_down = self.is_pressed[KEYNUM_SHIFT]
+        symbol_down = self.is_pressed[KEYNUM_SYMBOL]
+        status_chg = dict()
+
+        if self.caps_lock:
+            decoder = DECODER_CAPS
+        elif symbol_down:
+            decoder = DECODER_SYMBOL
+        elif shift_down:
+            decoder = DECODER_SHIFT
+        else:
+            decoder = DECODER
+
         for kn in range(NUM_ROWS * NUM_COLS):
             if self.is_pressed[kn]:
-                if kn == KEYNUM_LAMP:
+                if kn == KEYNUM_SHIFT:
+                    if symbol_down:
+                        self.caps_lock = not self.caps_lock
+                        status_chg['caps'] = int(self.caps_lock)
+                    continue
+                elif kn == KEYNUM_SYMBOL:
+                    continue
+                elif kn == KEYNUM_LAMP:
                     if not self.torch_on:
                         # handle light button right here and now
-                        from glob import SCAN
                         self.torch_on = True
+                        from glob import SCAN
                         call_later_ms(0, SCAN.torch, 1)
                     continue
 
                 # indicated key was found to be down and then back up
-                key = DECODER[kn]
+                key = decoder[kn]
+                if key == '\0':
+                    # dead/unused key: do nothing
+                    print("KEYNUM %d is no-op (in this state)" % kn)
+                    continue
+
                 if key != self.key_pressed:
                     #print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
                     self._key_event(key)
@@ -148,9 +186,21 @@ class FullKeyboard(NumpadBase):
                 self.lp_time = utime.ticks_ms()
 
         if self.torch_on and not self.is_pressed[KEYNUM_LAMP]:
-            from glob import SCAN
             self.torch_on = False
+            from glob import SCAN
             call_later_ms(0, SCAN.torch, 0)
+
+        if self.shift_down != shift_down:
+            self.shift_down = shift_down
+            status_chg['shift'] = int(self.shift_down)
+
+        if self.symbol_down != symbol_down:
+            self.symbol_down = symbol_down
+            status_chg['symbol'] = int(self.symbol_down)
+
+        if status_chg:
+            from glob import dis
+            call_later_ms(0, dis.async_draw_status, **status_chg)
 
         none_active = (sum(self.is_pressed) == 0)
         if none_active:

@@ -61,5 +61,15 @@ def get_batt_level():
 
     return round((avg / 65535.0) * 2.5 * 2, 2)
     
+def get_batt_threshold():
+    # return 0=empty, 1=low, 2=75% 3=full or None if no bat
+    volts = get_batt_level()
+    if volts is None:
+        return None
+    if volts <= 2.0:
+        return 0
+    if volts > 4.5:
+        return 3
+    return 2 if volts > 3 else 1
 
 # EOF

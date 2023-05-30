@@ -9,14 +9,22 @@ import uasyncio
 from uasyncio import sleep_ms
 from graphics import Graphics
 import sram2
-from ckcc import lcd_blast
 
 # few key commands for this display
 CASET = const(0x2a)
 RASET = const(0x2b)
 RAMWR = const(0x2c)
 
-class ST7788(framebuf.FrameBuffer):
+# TODO: move fully into C code
+# - w/ zlib expansion
+# - with window control
+# - with font lookups / a text-only layer
+# - maybe: with QR module expansion?
+# - clear to pixel value
+# - palette + xy/wh + nible-packed palette lookup (for font)
+from ckcc import lcd_blast
+
+class ST7788():
     def __init__(self):
         # assume the Bootrom setup the interface and LCD correctly already
         # - its fairly slow, complex and no need to change
@@ -39,9 +47,9 @@ class ST7788(framebuf.FrameBuffer):
         # for framebuf.FrameBuffer
         self.width = 320
         self.height = 240
-        self.buffer = bytearray(320*240)
+        #self.buffer = bytearray(320*240)
 
-        super().__init__(self.buffer, self.width, self.height, framebuf.GS8)
+        #super().__init__(self.buffer, self.width, self.height, framebuf.GS8)
 
     def write_cmd(self, cmd, args=None):
         # send a command byte and a number of arguments
@@ -96,9 +104,26 @@ class ST7788(framebuf.FrameBuffer):
         rows = memoryview(self.buffer)[320*y:320*(y+h)]
         self.write_pixel_data(rows)
 
+    def show_zpixels(self, x, y, w, h, zpixels):
+        # display compressed pixel data
+        print('st7788.show_zpixels ... write me')
+
+    def show_pal_pixels(self, x, y, w, h, palette, pixels):
+        # show 4-bit packed paletted lookup pixels; used for fonts, icons
+        assert len(palette) == 2 * 16
+
     def show(self):
         # send entire frame buffer
         self._set_window(0, 0)
         self.write_pixel_data(self.buffer)
+
+    def fill_rect(self, x,y, w,h, pixel=0x0000):
+        # need C code
+        pass
+
+    def fill_screen(self, pixel=0x0000):
+        # clear screen to indicated pixel value
+        # XXX need C code
+        pass
 
 # EOF 
