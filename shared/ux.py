@@ -159,6 +159,9 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         gc.collect()
     else:
         # simple string
+        if version.has_qwerty:
+            msg = msg.replace(' X ', ' CANCEL ').replace('OK', 'SELECT')
+
         for ln in msg.split('\n'):
             if len(ln) > CH_PER_W:
                 lines.extend(word_wrap(ln, CH_PER_W))
