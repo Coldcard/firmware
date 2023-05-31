@@ -265,7 +265,9 @@ class CardSlot:
         elif glob.VD:
             glob.VD.unmount(self.wrote_files)
 
+        self.active_led.off()           # required on simulator
         self.mountpt = None
+
         return False
 
     def open(self, fname, mode='r', **kw):
