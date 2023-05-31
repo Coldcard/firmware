@@ -18,7 +18,7 @@ rng_fd = open('/dev/urandom', 'rb')
 global genuine_led
 
 led_pipe = open(int(sys.argv[3]), 'wb')
-led_pipe.write(b'\xff\x01')     # all off, except green
+led_pipe.write(b'\xff\x01')     # all off, except SE1 green
 genuine_led = True
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
