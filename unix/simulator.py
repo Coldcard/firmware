@@ -26,6 +26,7 @@ MPY_UNIX = 'l-port/micropython'
 
 UNIX_SOCKET_PATH = '/tmp/ckcc-simulator.sock'
 
+current_led_state = 0x0
 
 class SimulatedScreen:
     # a base class
@@ -312,18 +313,6 @@ class OLEDSimulator(SimulatedScreen):
         if active_set & USB_LED:
             spriterenderer.render(self.led_usb)
 
-def shift_up(ch):
-    # what ascii code for ascii key, ch, when shift also pressed?
-    # IMPORTANT: this has nothing to do with Q1's keyboard layout
-    if 'a' <= ch <= 'z':
-        return ch.upper()
-
-    f,t = '1234567890-=\`[];\',./', \
-          '!@#$%^&*()_+|~{}:"<>?'
-
-    idx = f.find(ch)
-    return t[idx] if idx != -1 else ch
-
 def load_shared_mod(name, path):
     # load indicated file.py as a module
     # from <https://stackoverflow.com/questions/67631/how-to-import-a-module-given-the-full-path>
@@ -362,8 +351,9 @@ def scancode_remap(sc):
 
     return m[sc] if sc in m else None
 
-def alt_up(ch):
-    # ALT+(ch) => special needs of Q1
+def special_q1_keys(ch):
+    # special keys on Q1 keyboard that do not have anything similar on
+    # normal desktop.
 
     if ch == 'n':
         return q1_charmap.KEY_NFC
@@ -371,8 +361,6 @@ def alt_up(ch):
         return q1_charmap.KEY_QR
     if ch == 'l':
         return q1_charmap.KEY_LAMP
-
-    print(f"Alt+{ch.upper()} ignored")
 
     return None
 
@@ -394,12 +382,18 @@ def handle_q1_key_events(event, numpad_tx):
     except:
         ch = scancode_remap(scancode)
 
-    #print(f'scan 0x{scancode:04x} => char={ch}=0x{ord(ch) if ch else 0:02x}')
+    #print(f'scan 0x{scancode:04x} mod=0x{event.key.keysym.mod:04x}=> char={ch}=0x{ord(ch) if ch else 0:02x}')
 
-    shift_down = bool(event.key.keysym.mod & 0x3)      # left or right shift
+    shift_down = bool(event.key.keysym.mod & 0x3)         # left or right shift
     symbol_down = bool(event.key.keysym.mod & 0x200)      # right ALT
+    special_down = bool(event.key.keysym.mod & 0xc00)     # left or right META
 
-    #print(f"modifier = 0x{event.key.keysym.mod:04x} => shift={shift_down} symb={symbol_down}")
+    #print(f"modifier = 0x{event.key.keysym.mod:04x} => shift={shift_down} symb={symbol_down} spec={special_down}")
+
+    if special_down:
+        ch = special_q1_keys(ch)
+        if not ch:
+            return
 
     # reverse char to a keynum, and perhaps the meta key too
     kn = None
@@ -450,10 +444,10 @@ def start():
     if is_q1:
         print('''\
 Q1 specials:
-  Right-Alt = AltGr - Symb (symbol key)
-  Alt-L - lamp button (but ignored because implemented lower level)
-  Alt-N - NFC button
-  Alt-Q - QR button
+  Right-Alt = AltGr => Symb (symbol key, blue)
+  Meta-L - Lamp button
+  Meta-N - NFC button
+  Meta-Q - QR button
 ''')
     sdl2.ext.init()
     sdl2.SDL_EnableScreenSaver()
@@ -570,6 +564,7 @@ Q1 specials:
                     # command, see lower.
                     pass
                 else:
+                    # all other key events for Q1 get handled here
                     handle_q1_key_events(event, numpad_tx)
                     continue
 
@@ -577,20 +572,12 @@ Q1 specials:
                 try:
                     ch = chr(event.key.keysym.sym)
                     #print('0x%0x => chr %s  mod=0x%x'%(event.key.keysym.sym, ch, event.key.keysym.mod))
-                    if event.key.keysym.mod & 0x3:      # left or right shift
-                        ch = shift_up(ch)
-                    if event.key.keysym.mod & 0x300:      # left or right ALT
-                        ch = alt_up(ch)
-                        if ch is None: continue
                 except:
                     # things like 'shift' by itself and anything not really ascii
 
                     scancode = event.key.keysym.sym & 0xffff
                     #print(f'keysym=0x%0x => {scancode}' % event.key.keysym.sym)
-                    if is_q1:
-                        ch = scancode_remap(scancode)
-                        if not ch: continue
-                    elif SDL_SCANCODE_RIGHT <= scancode <= SDL_SCANCODE_UP:
+                    if SDL_SCANCODE_RIGHT <= scancode <= SDL_SCANCODE_UP:
                         # arrow keys remap for Mk4
                         ch = '9785'[scancode - SDL_SCANCODE_RIGHT]
                     else:
@@ -649,15 +636,18 @@ Q1 specials:
                 # need this to kill key-repeat
                 send_event(ch, event.type == sdl2.SDL_KEYDOWN)
 
-            if event.type == sdl2.SDL_MOUSEBUTTONDOWN:
-                #print('xy = %d, %d' % (event.button.x, event.button.y))
-                ch = simdis.click_to_key(event.button.x, event.button.y)
-                if ch is not None:
-                    send_event(ch, True)
+            if is_q1 and event.type in (sdl2.SDL_MOUSEBUTTONDOWN, sdl2.SDL_MOUSEBUTTONUP):
+                print('NOTE: Click on sim keyboard not supported for Q1')
+            else:
+                if event.type == sdl2.SDL_MOUSEBUTTONDOWN:
+                    #print('xy = %d, %d' % (event.button.x, event.button.y))
+                    ch = simdis.click_to_key(event.button.x, event.button.y)
+                    if ch is not None:
+                        send_event(ch, True)
 
-            if event.type == sdl2.SDL_MOUSEBUTTONUP:
-                for ch in list(pressed):
-                    send_event(ch, False)
+                if event.type == sdl2.SDL_MOUSEBUTTONUP:
+                    for ch in list(pressed):
+                        send_event(ch, False)
 
         rs, ws, es = select(readables, [], [], .001)
         for r in rs:
@@ -671,18 +661,21 @@ Q1 specials:
                 spriterenderer.render(simdis.sprite)
                 window.refresh()
             elif r is led_rx:
-                # XXX was 4+4 bits, now two bytes: [active, mask]
+                # was 4+4 bits, now two bytes: [active, mask]
                 c = r.read(2)
                 if not c:
                     break
 
+                global current_led_state
                 mask, lset = c
-                active_set = (mask & lset)
+                current_led_state |= (mask & lset)
+                current_led_state &= ~(mask & ~lset)
+                print(f'LED: mask={mask:x} lset={lset:x} => active={current_led_state:x}')
 
                 #print("Genuine LED: %r" % genuine_state)
                 spriterenderer.render(bg)
                 spriterenderer.render(simdis.sprite)
-                simdis.draw_leds(spriterenderer, active_set)
+                simdis.draw_leds(spriterenderer, current_led_state)
 
                 window.refresh()
             else:
