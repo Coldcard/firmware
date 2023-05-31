@@ -468,7 +468,6 @@ Q1 specials:
     # initial state
     spriterenderer.render(bg)
     spriterenderer.render(simdis.sprite)
-    genuine_state = False
     simdis.draw_leds(spriterenderer)
 
     # capture exec path and move into intended working directory
@@ -670,9 +669,8 @@ Q1 specials:
                 mask, lset = c
                 current_led_state |= (mask & lset)
                 current_led_state &= ~(mask & ~lset)
-                print(f'LED: mask={mask:x} lset={lset:x} => active={current_led_state:x}')
+                #print(f'LED: mask={mask:x} lset={lset:x} => active={current_led_state:x}')
 
-                #print("Genuine LED: %r" % genuine_state)
                 spriterenderer.render(bg)
                 spriterenderer.render(simdis.sprite)
                 simdis.draw_leds(spriterenderer, current_led_state)
