@@ -254,6 +254,8 @@ individual words if you wish.''')
         # add an overlay with "word N" in small text, top right.
         from display import FontTiny
 
+        if dis.has_lcd: return      # unreachable?
+
         count = len(self.words)
         if count >= self.target_words:
             # on final DONE/incorrect screen
@@ -277,8 +279,12 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
         # user can skip quiz for ephemeral secrets
         msg += " There will be a test!"
 
-    escape = (escape or '') + '1'
-    extra += 'Press (1) to view as QR Code. '
+    if not version.has_qwerty:
+        escape = (escape or '') + '1'
+        extra += 'Press (1) to view as QR Code. '
+    else:
+        escape = (escape or '') + KEY_QR
+        extra += 'Press QR button to view as QR Code. '
 
     if extra:
         msg += '\n\n'
@@ -286,7 +292,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
     while 1:
         ch = await ux_show_story(msg, escape=escape, sensitive=True)
-        if ch == '1':
+        if ch == '1' or ch == KEY_QR:
             await show_qr_code(' '.join(w[0:4] for w in words), True)
             continue
         break
@@ -1245,8 +1251,5 @@ class SingleWordMenu(WordNestMenu):
         return MenuSystem([MenuItem(w, f=PassphraseMenu.add_text) 
                                     for n,w in enumerate(options)], space_indicators=True)
 
-    def late_draw(self, dis):
-        #PassphraseMenu.late_draw(self, dis)
-        pass
 
 # EOF
