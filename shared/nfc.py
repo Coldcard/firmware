@@ -307,7 +307,10 @@ class NFCHandler:
         self.set_rf_disable(0)
         await self.setup_gpio()
 
-        frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
+        if dis.has_lcd:
+            pass        # TODO
+        else:
+            frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
 
         aborted = True
         phase = -1
@@ -319,9 +322,13 @@ class NFCHandler:
 
         while 1:
             phase = (phase + 1) % 4
-            dis.clear()
-            dis.icon(0, 8, frames[phase])
-            dis.show()
+            if dis.has_lcd:
+                dis.clear()
+                dis.text(None, 4, 'NFC animation fr#%d' % phase)
+            else:
+                dis.clear()
+                dis.icon(0, 8, frames[phase])
+                dis.show()
             await sleep_ms(250)
 
             if self.last_edge:
