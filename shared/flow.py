@@ -3,6 +3,7 @@
 # flow.py - Menu structure
 #
 from menu import MenuItem, ToggleMenuItem
+import version
 from glob import settings
 
 from actions import *
@@ -156,7 +157,6 @@ UpgradeMenu = [
     MenuItem('Show Version', f=show_version),
     MenuItem('From MicroSD', f=microsd_upgrade, arg=False),
     MenuItem('From VirtDisk', predicate=vdisk_enabled, f=microsd_upgrade, arg=True),  # force_vdisk=True
-    MenuItem('Bless Firmware', f=bless_flash),
 ]
 
 DevelopersMenu = [
@@ -208,7 +208,6 @@ SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed),
-
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
 ]
 
@@ -242,6 +241,7 @@ Keep blocked unless you intend to sign special transactions.'''),
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
+    MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
 ]
 
 BackupStuffMenu = [
