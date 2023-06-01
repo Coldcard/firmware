@@ -173,7 +173,7 @@ def gate(method, buf_io, arg2):
         return 0
 
     if method == 27:
-        buf_io[:] = b'ATECC608B\nDS28C36B'
+        buf_io[:] = b'ATECC608B\nDS28C36B\0'
         return 0
 
     return ENOENT
