@@ -94,12 +94,12 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
         dis.show()
 
         ch = await press.wait()
-        if ch == 'y' or ch == KEY_SELECT:
+        if ch == 'y':
 
             if not value: return 0
             return min(max_value, int(value))
 
-        elif ch == 'x' or ch == KEY_CANCEL:
+        elif ch == 'x':
             if value:
                 value = value[0:-1]
             elif can_cancel:

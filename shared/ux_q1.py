@@ -75,10 +75,11 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
-    dis.text(None, -1, "CANCEL or SELECT when done.")
+    dis.text(None, -1, "CANCEL or SELECT when done." if can_cancel else
+                       "Enter number, SELECT when done.")
 
     while 1:
-        # TODO: check width, go to two lines if needed?
+        # TODO: check width, go to two lines if needed? depends on prompt text
         bx = dis.text(2, 4, prompt + ' ' + value + CURSOR)
 
         ch = await press.wait()
@@ -93,7 +94,9 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
             if value:
                 value = value[0:-1]
         elif ch == KEY_CANCEL:
-            return None
+            if can_cancel:
+                # quit if they press X on empty screen
+                return None
         elif '0' <= ch <= '9':
             if len(value) == max_w:
                 value = value[0:-1] + ch
@@ -109,10 +112,11 @@ async def ux_input_numbers(val, validate_func):
     pass
 
 async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
-    # Allow them to pick each digit using "D-pad"
+    # Get a text string.
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
     # - no control chars allowed either
+    # - TODO: editing, completion, etc
     from glob import dis
     from lcd_display import CHARS_W
     from ux import ux_show_story

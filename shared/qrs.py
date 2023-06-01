@@ -56,82 +56,9 @@ class QRDisplaySingle(UserInteraction):
             self.calc_qr(msg)
 
         # draw display
-        dis.clear()
-
-        w = self.qr_data.width()
-        if w == 29:
-            # version 3 => we can double-up the pixels
-            XO,YO = 4, 3    # offsets
-            dbl = True
-            bw = 62
-            lm, tm = 2, 1           # left, top margin
-        else:
-            # v4+ => just one pixel per module, might not be easy to read
-            # - vert center, left justify; text on space to right
-            dbl = False
-            YO = max(0, (64 - w) // 2)
-            XO,lm = 6, 4
-            bw = w + lm
-            tm = (64 - bw) // 2
-
-        inv = self.invert
-        if dbl:
-            if not inv:
-                dis.dis.fill_rect(lm, tm, bw, bw, 1)
-            else:
-                dis.dis.fill_rect(lm, tm, bw, bw, 0)
-
-            for x in range(w):
-                for y in range(w):
-                    if not self.qr_data.get(x, y):
-                        continue
-                    X = (x*2) + XO
-                    Y = (y*2) + YO
-                    dis.dis.fill_rect(X,Y, 2,2, inv)
-        else:
-            # direct "bilt" .. faster. Does not support inversion.
-            dis.dis.fill_rect(lm, tm, bw, bw, 1)
-            _, _, packed = self.qr_data.packed()
-            packed = bytes(i^0xff for i in packed)
-            gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
-            dis.dis.blit(gly, XO, YO, 1)
-
-        if not self.sidebar and len(msg) > (5*7):
-            # use FontTiny and word wrap (will just split if no spaces)
-            x = bw + lm + 4
-            ww = ((128 - x)//4) - 1        # char width avail
-            y = 1
-            parts = list(word_wrap(msg, ww))
-            if len(parts) > 8:
-                parts = parts[:8]
-                parts[-1] = parts[-1][0:-3] + '...'
-            elif len(parts) <= 5:
-                parts.insert(0, '')
-    
-            for line in parts:
-                dis.text(x, y, line, FontTiny)
-                y += 8
-        else:
-            # hand-positioned for known cases
-            # - self.sidebar = (text, #of char per line)
-            x, y = 73, (0 if self.is_alnum else 2)
-            dy = 10 if self.is_alnum else 12
-            sidebar, ll = self.sidebar if self.sidebar else (msg, 7)
-
-            for i in range(0, len(sidebar), ll):
-                dis.text(x, y, sidebar[i:i+ll], FontSmall)
-                y += dy
-
-        if not inv and len(self.addrs) > 1:
-            # show path number, very tiny
-            ai = str(self.start_n + self.idx)
-            if len(ai) == 1:
-                dis.text(0, 30, ai[0], FontTiny)
-            else:
-                dis.text(0, 27, ai[0], FontTiny)
-                dis.text(0, 27+7, ai[1], FontTiny)
-
-        dis.busy_bar(False)     # includes show
+        idx_hint = str(self.start_n + self.idx) if len(self.addrs) > 1 else None
+        dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
+                                        self.sidebar, idx_hint, self.invert)
 
 
     async def interact_bare(self):

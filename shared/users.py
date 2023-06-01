@@ -149,6 +149,7 @@ class Users:
             # can only show up to 42 chars, and secret is 16, required overhead is 23 => 39 min
             # - can't fit any meta data, like username or our serial # in there
             # - HOTP not compliant because 'counter=0' not included (works in FreeOTP)
+            # - XXX could be better on Q1 but HSM not supported at release anyway?
             from ux import abort_and_push, the_ux
             from qrs import QRDisplaySingle
 

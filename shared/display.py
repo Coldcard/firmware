@@ -312,4 +312,82 @@ class Display:
         # no status bar on Mk4
         return
 
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert):
+        from utils import word_wrap
+
+        self.clear()
+
+        w = qr_data.width()
+        if w == 29:
+            # version 3 => we can double-up the pixels
+            XO,YO = 4, 3    # offsets
+            dbl = True
+            bw = 62
+            lm, tm = 2, 1           # left, top margin
+        else:
+            # v4+ => just one pixel per module, might not be easy to read
+            # - vert center, left justify; text on space to right
+            dbl = False
+            YO = max(0, (64 - w) // 2)
+            XO,lm = 6, 4
+            bw = w + lm
+            tm = (64 - bw) // 2
+
+        if dbl:
+            if not invert:
+                self.dis.fill_rect(lm, tm, bw, bw, 1)
+            else:
+                self.dis.fill_rect(lm, tm, bw, bw, 0)
+
+            for x in range(w):
+                for y in range(w):
+                    if not qr_data.get(x, y):
+                        continue
+                    X = (x*2) + XO
+                    Y = (y*2) + YO
+                    self.dis.fill_rect(X,Y, 2,2, invert)
+        else:
+            # direct "bilt" .. faster. Does not support inversion.
+            self.dis.fill_rect(lm, tm, bw, bw, 1)
+            _, _, packed = qr_data.packed()
+            packed = bytes(i^0xff for i in packed)
+            gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
+            self.dis.blit(gly, XO, YO, 1)
+
+        if not sidebar and len(msg) > (5*7):
+            # use FontTiny and word wrap (will just split if no spaces)
+            x = bw + lm + 4
+            ww = ((128 - x)//4) - 1        # char width avail
+            y = 1
+            parts = list(word_wrap(msg, ww))
+            if len(parts) > 8:
+                parts = parts[:8]
+                parts[-1] = parts[-1][0:-3] + '...'
+            elif len(parts) <= 5:
+                parts.insert(0, '')
+    
+            for line in parts:
+                self.text(x, y, line, FontTiny)
+                y += 8
+        else:
+            # hand-positioned for known cases
+            # - sidebar = (text, #of char per line)
+            x, y = 73, (0 if is_alnum else 2)
+            dy = 10 if is_alnum else 12
+            sidebar, ll = sidebar if sidebar else (msg, 7)
+
+            for i in range(0, len(sidebar), ll):
+                self.text(x, y, sidebar[i:i+ll], FontSmall)
+                y += dy
+
+        if not invert and idx_hint:
+            # show path number, very tiny: 1 or 2 digits, vertical left edge
+            if len(idx_hint) == 1:
+                self.text(0, 30, idx_hint[0], FontTiny)
+            else:
+                self.text(0, 27, idx_hint[0], FontTiny)
+                self.text(0, 27+7, idx_hint[1], FontTiny)
+
+        self.busy_bar(False)     # includes show
+
 # EOF
