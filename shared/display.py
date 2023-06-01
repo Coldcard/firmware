@@ -23,6 +23,9 @@ class Display:
     CENTER = -2
     RJUST = -1
 
+    # use this to know if on Q1 or earlier 
+    has_lcd = False
+
     def __init__(self):
         from machine import Pin
 

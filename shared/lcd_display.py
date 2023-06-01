@@ -41,7 +41,7 @@ def grey_level(amt):
     # give percent 0..1.0
     r = int(amt * 0x1f)
     g = int(amt * 0x3f)
-    #b = int(amt * 0x1f)
+    #b = int(amt * 0x1f)        # same as Red
 
     return (r<<11) | (g << 5) | r
 
@@ -82,6 +82,9 @@ class Display:
     # use these negative X values for auto layout features
     CENTER = -2
     RJUST = -1
+
+    # use this to know if on Q1 or earlier 
+    has_lcd = True
 
     # icon names and their values (0 / 1)
     status_icons = {}
@@ -204,7 +207,7 @@ class Display:
             y = CHARS_H + y
 
         if y >= CHARS_H: 
-            print("Draw '%s' at y=%d" % (msg, y))
+            print("BAD Draw '%s' at y=%d" % (msg, y))
             return     # past bottom
 
         # convert to pixels
