@@ -15,6 +15,7 @@
 import os, sys, tty, pty, termios, time, pdb, tempfile, struct, zlib
 import subprocess
 import sdl2.ext
+import PIL
 from PIL import Image, ImageSequence
 from select import select
 import fcntl
@@ -31,15 +32,19 @@ current_led_state = 0x0
 class SimulatedScreen:
     # a base class
 
-    def snapshot(self):
-        fn = time.strftime('../snapshot-%j-%H%M%S.png')
+    def snapshot(self, fn_in=None):
+        # save to file
+        fn = fn_in or time.strftime('../snapshot-%j-%H%M%S.png')
         with tempfile.NamedTemporaryFile() as tmp:
             sdl2.SDL_SaveBMP(self.sprite.surface, tmp.name.encode('ascii'))
             tmp.file.seek(0)
             img = Image.open(tmp.file)
             img.save(fn)
 
-        print("Snapshot saved: %s" % fn.split('/', 1)[1])
+        if not fn_in:
+            print("Snapshot saved: %s" % fn.split('/', 1)[1])
+
+        return fn
 
     def movie_start(self):
         self.movie = []
@@ -133,6 +138,11 @@ class LCDSimulator(SimulatedScreen):
             mode = mode.decode('ascii')
             here = readable.read(count)
 
+            if mode == 's':
+                # trigger a snapshot, data is filename to save PNG into
+                self.snapshot(here.decode())
+                continue
+
             try:
                 assert X>=0 and Y>=0
                 assert X+w <= 320
@@ -182,6 +192,48 @@ class LCDSimulator(SimulatedScreen):
                         val, = struct.unpack('<H', raw[pos:pos+2])
                         self.mv[x][y] = val
                         pos += 2
+
+            elif mode == 'q':
+                # 8-bit packed black vs. white values for QR's
+                # - we do the expansion
+                # - we add one unit of whitespace around
+                expand = h
+                h = w
+                scan_w = (w+7)//8
+                print(f'QR: {scan_w=} {expand=} {w=}')
+                assert 21 <= w < 177 and (w%2) == 1, w
+
+                # use PIL to resize/paste into border
+                W = (w+2) * expand
+                qr = Image.new('1', (W, W), 0)
+                tmp = Image.frombytes('1', (w, w), here).resize( (w*expand, w*expand))
+                                                            #resample=PIL.Resampling.NEAREST)
+                qr.paste(tmp, (expand, expand))
+                pixels = list(qr.convert('L').getdata(0))
+
+                pos = 0
+                for y in range(Y, Y+W):
+                    for x in range(X, X+W):
+                        self.mv[x][y] = 0x0000 if pixels[pos] else 0xffff
+                        pos += 1
+
+                if 0:
+                    H = w * expand
+                    mask = 0x80
+                    pos = 0
+                    for y in range(w):
+                        for x in range(w):
+                            val = 0x0000 if (here[pos] & mask) else 0xffff
+                            for z in range(expand*expand):
+                                self.mv[X+(x*expand)+(z % expand)][Y+(y*expand)+(z // expand)] = val
+
+                            mask = (mask >> 1) & 0xff
+                            if not mask:
+                                mask = 0x80
+                                pos += 1
+
+                        mask = 0x80
+                        pos += 1
 
             elif mode == 'r':
                 # raw RGB565 pixels (not compressed, packed)
@@ -354,10 +406,11 @@ def scancode_remap(sc):
 def special_q1_keys(ch):
     # special keys on Q1 keyboard that do not have anything similar on
     # normal desktop.
+    # Press META + key
 
     if ch == 'n':
         return q1_charmap.KEY_NFC
-    if ch == 'q':
+    if ch == 'r':               # cant be Q, sadly
         return q1_charmap.KEY_QR
     if ch == 'l':
         return q1_charmap.KEY_LAMP
@@ -447,13 +500,14 @@ Q1 specials:
   Right-Alt = AltGr => Symb (symbol key, blue)
   Meta-L - Lamp button
   Meta-N - NFC button
-  Meta-Q - QR button
+  Meta-R - QR button
 ''')
     sdl2.ext.init()
     sdl2.SDL_EnableScreenSaver()
 
 
     factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
+
     simdis = (OLEDSimulator if not is_q1 else LCDSimulator)(factory)
     bg = factory.from_image(simdis.background_img)
 
@@ -554,6 +608,7 @@ Q1 specials:
         events = sdl2.ext.get_events()
         for event in events:
             if event.type == sdl2.SDL_QUIT:
+                # META-Q comes here for some SDL reason
                 running = False
                 break
 
@@ -570,7 +625,6 @@ Q1 specials:
             if event.type == sdl2.SDL_KEYUP or event.type == sdl2.SDL_KEYDOWN:
                 try:
                     ch = chr(event.key.keysym.sym)
-                    #print('0x%0x => chr %s  mod=0x%x'%(event.key.keysym.sym, ch, event.key.keysym.mod))
                 except:
                     # things like 'shift' by itself and anything not really ascii
 
@@ -580,7 +634,7 @@ Q1 specials:
                         # arrow keys remap for Mk4
                         ch = '9785'[scancode - SDL_SCANCODE_RIGHT]
                     else:
-                        print('Ignore: 0x%0x' % event.key.keysym.sym)
+                        #print('Ignore: 0x%0x' % event.key.keysym.sym)
                         continue
 
                 # control+KEY => for our use
