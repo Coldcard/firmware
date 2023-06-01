@@ -69,4 +69,15 @@ class ST7788:
             hdr = struct.pack('<s5H', 't' if palette[0] == 0 else 'i', x, y, w, h, len(pixels))
             self.pipe.write(hdr + pixels)
 
+    def show_qr_data(self, x, y, w, expand, scan_w, packed_data):
+        # 8-bit packed QR data, and where to draw it, expanded
+        assert len(packed_data) == (scan_w*w) // 8, [len(packed_data), w, scan_w]
+        hdr = struct.pack('<s5H', 'q', x, y, w, expand, len(packed_data))
+        self.pipe.write(hdr + packed_data)
+
+    def save_snapshot(self, full_path):
+        # save into PNG in local filesystem, return file name
+        hdr = struct.pack('<s5H', 's', 0, 0, 0, 0, len(full_path))
+        self.pipe.write(hdr + full_path.encode())
+
 # EOF 
