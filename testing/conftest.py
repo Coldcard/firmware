@@ -10,6 +10,7 @@ from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitc
 from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
+from charcodes import *
 
 # lock down randomness
 random.seed(42)
@@ -394,7 +395,7 @@ def cap_story(sim_exec):
     return doit
 
 @pytest.fixture(scope='module')
-def cap_image(sim_exec):
+def cap_image(sim_exec, is_q1):
 
     def flip(raw):
         reorg = bytearray(128*64)
@@ -406,18 +407,29 @@ def cap_image(sim_exec):
                     j += 1
         return bytes(reorg)
 
-    # returns Pillow image  of whatever story is being actively shown on OLED
+    # returns Pillow image  of whatever story is being actively shown on OLED/LCD
     def doit():
         from PIL import Image
 
-        #raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
-        raw = a2b_hex(sim_exec('''
+        if is_q1:
+            # trigger simulator to capture a snapshot into a named file, read it.
+            fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9e6)}.png')
+            try:
+                sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
+                time.sleep(0.250)
+                rv = Image.open(fn)
+            finally:
+                os.remove(fn)
+            return rv
+        else:
+            # reads internal memory buffer intended screen contents
+            raw = a2b_hex(sim_exec('''
 from glob import dis;
 from ubinascii import hexlify as b2a_hex;
 RV.write(b2a_hex(dis.dis.buffer))'''))
 
-        assert len(raw) == (128*64//8)
-        return Image.frombytes('L', (128,64), flip(raw), 'raw')
+            assert len(raw) == (128*64//8)
+            return Image.frombytes('L', (128,64), flip(raw), 'raw')
 
     return doit
 
@@ -442,7 +454,7 @@ def qr_quality_check():
     count = len(QR_HISTORY)
     TH = 32
 
-    scale=3
+    scale=2
     rv = Image.new('RGB', (w*scale, ((h*scale)+TH)*count), color=(64,64,64))
     y = 0
     try:
@@ -480,7 +492,7 @@ def qr_quality_check():
 
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit(x=0, w=64):
+    def doit():
         # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
         # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
         global QR_HISTORY
@@ -490,28 +502,34 @@ def cap_screen_qr(cap_image):
         except ImportError:
             raise pytest.skip('need zbar-py module')
         import numpy, os
-        from PIL import ImageOps
+        from PIL import ImageOps, ImageDraw
 
         # see <http://qrlogo.kaarposoft.dk/qrdecode.html>
 
         orig_img = cap_image()
 
         # document it
-        if x < 10:
-            # removes dups: happen when same image samples for two different
-            # QR's in side-by-side mode
-            tname = os.environ.get('PYTEST_CURRENT_TEST')
-            QR_HISTORY.append( (tname, orig_img) )
+        tname = os.environ.get('PYTEST_CURRENT_TEST')
+        QR_HISTORY.append( (tname, orig_img) )
 
-        img = orig_img.crop( (x, 0, x+w, w) )
-        img = ImageOps.expand(img, 16, 0)
-        img = img.resize( (256, 256))
+        if orig_img.width == 128:
+            # Mk3/4 - pull out just the QR, blow it up 16x
+            x, w = 0, 64
+            img = orig_img.crop( (x, 0, x+w, w) )
+            img = ImageOps.expand(img, 16, 0)       # add border
+            img = img.resize( (256, 256))
+        else:
+            # Q1 - trim status line, convert to greyscale
+            w, h = orig_img.size        # 320x240
+            img = orig_img.convert('L')
+
         img.save('debug/last-qr.png')
         #img.show()
-    
-        scanner = zbar.Scanner()
-        np = numpy.array(img.getdata(), 'uint8').reshape(img.width, img.height)
 
+        # Important: w/h reversed in shape of NP array
+        np = numpy.array(img.getdata(), 'uint8').reshape(img.height, img.width)
+
+        scanner = zbar.Scanner()
         for sym, value, *_ in scanner.scan(np):
             assert sym == 'QR-Code', 'unexpected symbology: ' + sym
             return value            # bytes, could be binary
@@ -552,12 +570,24 @@ def get_secrets(sim_execfile):
     return doit
 
 @pytest.fixture
-def goto_home(cap_menu, need_keypress, pick_menu_item):
+def press_select(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_SELECT if has_qwerty else 'y')
+    return doit
+
+@pytest.fixture
+def press_cancel(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_CANCEL if has_qwerty else 'x')
+    return doit
+
+@pytest.fixture
+def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty):
 
     def doit():
         # get to top, force a redraw
         for i in range(10):
-            need_keypress('x')
+            press_cancel()
             time.sleep(.1)      # required
 
             m = cap_menu()
@@ -566,7 +596,7 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
                 # special case to get out of passphrase menu
                 pick_menu_item('CANCEL')
                 time.sleep(.01)
-                need_keypress('y')
+                press_select()
 
             if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break
@@ -581,12 +611,12 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
     return doit
 
 @pytest.fixture
-def pick_menu_item(cap_menu, need_keypress):
+def pick_menu_item(cap_menu, need_keypress, has_qwerty):
     WRAP_IF_OVER = 16       # see ../shared/menu.py
 
     def doit(text):
         print(f"PICK menu item: {text}")
-        need_keypress('0')
+        need_keypress(KEY_HOME if has_qwerty else '0')
         m = cap_menu()
         if text not in m:
             raise KeyError(text, "%r not in menu: %r" % (text, m))
@@ -596,23 +626,25 @@ def pick_menu_item(cap_menu, need_keypress):
         if len(m) > WRAP_IF_OVER and m_pos > (len(m)//2):
             # use wrap around, work up from bottom
             for n in range(len(m) - m_pos):
-                need_keypress('5')
+                need_keypress(KEY_UP if has_qwerty else '5')
                 time.sleep(.01)      # required
-            need_keypress('y')
+
+            need_keypress(KEY_SELECT if has_qwerty else 'y')
             time.sleep(.01)      # required
         else:
             # go down
             for n in range(m_pos):
-                need_keypress('8')
+                need_keypress(KEY_DOWN if has_qwerty else '8')
                 time.sleep(.01)      # required
-            need_keypress('y')
+
+            need_keypress(KEY_SELECT if has_qwerty else 'y')
             time.sleep(.01)      # required
 
     return doit
 
 
 @pytest.fixture(scope='module')
-def virtdisk_path(request, is_simulator, only_mk4):
+def virtdisk_path(request, is_simulator, needs_virtdisk):
     # get a path to indicated filename on emulated/shared dir
 
     def doit(fn):
@@ -635,7 +667,7 @@ def virtdisk_path(request, is_simulator, only_mk4):
     return doit
 
 @pytest.fixture(scope='module')
-def virtdisk_wipe(dev, only_mk4, virtdisk_path):
+def virtdisk_wipe(dev, needs_virtdisk, virtdisk_path):
     def doit():
         for fn in glob.glob(virtdisk_path('*')):
             if os.path.isdir(fn): continue
@@ -1303,40 +1335,79 @@ def is_mark2(request):
     return int(request.config.getoption('--mk')) == 2
 
 @pytest.fixture(scope='session')
-def is_mark3(dev):
+def dev_hw_label(dev):
+    # gets a short string that labels product: mk4 / q1, etc
     v = dev.send_recv(CCProtocolPacker.version()).split()
-    return (v[4] == 'mk3')
+    return v[4]
 
 @pytest.fixture(scope='session')
-def is_mark4(dev):
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    return (v[4] == 'mk4')
+def is_mark3(dev_hw_label):
+    return (dev_hw_label == 'mk3')
 
 @pytest.fixture(scope='session')
-def mk_num(dev):
+def is_mark4(dev_hw_label):
+    return (dev_hw_label == 'mk4')
+
+@pytest.fixture(scope='session')
+def is_q1(dev_hw_label):
+    return (dev_hw_label == 'q1')
+
+@pytest.fixture(scope='session')
+def is_mark4plus(is_mark4, is_q1):
+    # mark4 PLUS ... so Q1 and Mk4
+    return is_mark4 or is_q1
+
+@pytest.fixture(scope='session')
+def mk_num(dev_hw_label):
     # return 1..4 as number (mark number)
-    v = dev.send_recv(CCProtocolPacker.version()).split()[4]
-    assert v[0:2] == 'mk'
-    return int(v[2:])
+    # - give 4 here for Q1
+    v = dev_hw_label
+    if v[0:2] == 'mk':
+        return int(v[2:])
+    elif v == 'q1':
+        return 4
+    else:
+        raise ValueError(v)
 
 @pytest.fixture(scope='session')
-def only_mk4(dev):
-    # better: ask it .. use USB version cmd
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    if v[4] != 'mk4':
+def only_mk4(is_mark4):
+    # NOTE: avoid this, and try to be more specific! ie. NFC vs. QR etc
+    if not is_mark4:
         raise pytest.skip("Mk4 only")
 
 @pytest.fixture(scope='session')
-def only_mk3(dev):
-    # better: ask it .. use USB version cmd
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    if v[4] != 'mk3':
+def needs_nfc(is_mark4, is_q1):
+    if is_mark4 or is_q1:
+        return
+    raise pytest.skip("Needs NFC support")
+
+@pytest.fixture(scope='session')
+def needs_virtdisk(is_mark4, is_q1):
+    # TODO/MAYBE: test if feature enabled in settings?
+    if is_mark4 or is_q1:
+        return
+    raise pytest.skip("Needs VirtDisk support")
+
+@pytest.fixture(scope='session')
+def only_mk4plus(mk_num):
+    # Mk4 and Q1
+    if mk_num < 4:
+        raise pytest.skip("Mk4/Q1 only")
+
+@pytest.fixture(scope='session')
+def only_mk3(mk_num):
+    if mk_num != 3:
         raise pytest.skip("Mk3 only")
 
+@pytest.fixture(scope='session')
+def has_qwerty(is_q1):
+    # has a full keyboard on product?
+    return is_q1
+
 @pytest.fixture(scope='module')
-def rf_interface(only_mk4, sim_exec):
+def rf_interface(needs_nfc, sim_exec):
     # provide a read/write connection over NFC
-    # - requires pyscard module and NFC-V reader like HID OMNIKEY 5022CL
+    # - requires pyscard module and desktop NFC-V reader which doesn't exist
     raise pytest.xfail('broken NFC-V challenges')
     class RFHandler:
         def __init__(self, want_atr=None):
@@ -1395,7 +1466,7 @@ def rf_interface(only_mk4, sim_exec):
     sim_exec('glob.NFC.set_rf_disable(1)')
 
 @pytest.fixture()
-def nfc_read(request, only_mk4):
+def nfc_read(request, needs_nfc):
     # READ data from NFC chip
     # - perfer to do over NFC reader, but can work over USB too
     def doit_usb():
@@ -1412,7 +1483,7 @@ def nfc_read(request, only_mk4):
         return doit_usb
 
 @pytest.fixture()
-def nfc_write(request, only_mk4):
+def nfc_write(request, needs_nfc):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
         sim_exec = request.getfixturevalue('sim_exec')

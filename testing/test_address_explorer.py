@@ -340,7 +340,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
     "m/1'/2'/3'/4'/5'",
 ])
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check, is_mark4, nfc_read_text, get_setting):
+def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer, need_keypress, cap_menu, parse_display_screen, validate_address, cap_story, cap_screen_qr, qr_quality_check, is_mark4plus, nfc_read_text, get_setting, press_select):
 
     is_single = '{idx}' not in path
 
@@ -377,7 +377,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         for d in part:
             if d == "'": break
             need_keypress(d)
-        need_keypress('y')
+        press_select()
 
         last_part = part
 
@@ -432,7 +432,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         else:
             assert qr == addr
 
-        if is_mark4 and get_setting('nfc', 0):
+        if is_mark4plus and get_setting('nfc', 0):
             # this is actually testing NFC export in qr code menu
             need_keypress('3')
             time.sleep(.1)
