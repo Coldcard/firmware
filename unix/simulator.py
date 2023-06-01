@@ -16,7 +16,7 @@ import os, sys, tty, pty, termios, time, pdb, tempfile, struct, zlib
 import subprocess
 import sdl2.ext
 import PIL
-from PIL import Image, ImageSequence
+from PIL import Image, ImageSequence, ImageOps
 from select import select
 import fcntl
 from binascii import b2a_hex, a2b_hex
@@ -203,36 +203,19 @@ class LCDSimulator(SimulatedScreen):
                 print(f'QR: {scan_w=} {expand=} {w=}')
                 assert 21 <= w < 177 and (w%2) == 1, w
 
-                # use PIL to resize/paste into border
+                # use PIL to resize and add border
+                # - but pasting img into sprite is too hard, so use self.mv instead
                 W = (w+2) * expand
-                qr = Image.new('1', (W, W), 0)
-                tmp = Image.frombytes('1', (w, w), here).resize( (w*expand, w*expand))
-                                                            #resample=PIL.Resampling.NEAREST)
-                qr.paste(tmp, (expand, expand))
-                pixels = list(qr.convert('L').getdata(0))
+                tmp = Image.frombytes('1', (w, w), here).resize( (w*expand, w*expand),
+                                                        resample=Image.Resampling.NEAREST)
+                qr = ImageOps.expand(tmp, expand, 0)
+                assert qr.size == (W, W)
 
                 pos = 0
+                pixels = list(qr.getdata(0))
                 for y in range(Y, Y+W):
                     for x in range(X, X+W):
                         self.mv[x][y] = 0x0000 if pixels[pos] else 0xffff
-                        pos += 1
-
-                if 0:
-                    H = w * expand
-                    mask = 0x80
-                    pos = 0
-                    for y in range(w):
-                        for x in range(w):
-                            val = 0x0000 if (here[pos] & mask) else 0xffff
-                            for z in range(expand*expand):
-                                self.mv[X+(x*expand)+(z % expand)][Y+(y*expand)+(z // expand)] = val
-
-                            mask = (mask >> 1) & 0xff
-                            if not mask:
-                                mask = 0x80
-                                pos += 1
-
-                        mask = 0x80
                         pos += 1
 
             elif mode == 'r':
