@@ -9,7 +9,7 @@
 try:
     from micropython import const
 except ImportError:
-    # this file also used by simulator.py
+    # this file also used by simulator.py and conftest.py
     const = int
 
 NUM_ROWS = const(6)

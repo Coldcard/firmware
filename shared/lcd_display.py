@@ -29,7 +29,7 @@ display2_buf = bytearray(320 * 240)
 #HEIGHT = const(240)
 LEFT_MARGIN = const(7)
 TOP_MARGIN = const(15)
-ACTIVE_H = const(320 - TOP_MARGIN)
+ACTIVE_H = const(240 - TOP_MARGIN)
 CHARS_W = const(34)
 CHARS_H = const(10)
 
@@ -305,24 +305,14 @@ class Display:
             self.dis.line(wx-ln, y, wx, y, 1)
 
     def busy_bar(self, enable, speed_code=5):
-        print("busy_bar")       # XXX TODO not obvious how to do on this platform
-        if not enable:
-            self.show()
+        # TODO: activate the GPU to render/animate this.
+        print("busy_bar: %s" % enable)
         return
 
     def set_brightness(self, val):
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
-        # XXX maybe control BL_ENABLE timing
+        # XXX maybe control BL_ENABLE timing? or not required.
         return 
-
-    def test(self):
-        self.clear()
-        #self.image(0,0, 'ios')
-        #self.image(155,0, 'testfont2')
-        tp = bytes(((a<<4)|a) for a in range(16))
-        bits = b''.join(bytes([i]*10) for i in tp)
-        for y in range(30):
-            self.dis.show_pal_pixels(0, y, 320, 1, TEXT_PALETTE, bits)
 
     def menu_draw(self, ry, msg, is_sel, is_checked, space_indicators):
         # draw a menu item, perhaps selected, checked.
@@ -389,6 +379,65 @@ class Display:
         self.scroll_bar(top / num_lines)
         self.show()
 
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert):
+        # Show a QR code on screen w/ some text under it
+        # - invert not supported on Q1
+        # - sidebar not supported here (see users.py)
+        # - we need one more (white) pixel on all sides
+        from utils import word_wrap
+
+        assert not sidebar
+
+        if msg:
+            if len(msg) <= CHARS_W:
+                parts = [msg]
+            elif ' ' not in msg and (len(msg) <= CHARS_W*2):
+                # fits in two lines, but has no spaces (ie. payment addr)
+                # so split nicely, and shift off center
+                hh = len(msg) // 2
+                parts = [msg[0:hh] + '  ', '  '+msg[hh:]]
+            else:
+                # do word wrap
+                parts = list(word_wrap(msg, CHARS_W))
+
+            num_lines = len(parts)
+        else:
+            num_lines = 0
+
+        if num_lines > 2:
+            # show no text if it would be too big (case: 18, 24 seed words)
+            num_lines = 0
+            del parts
+
+        w = qr_data.width()
+
+        # always draw as large as possible (vertical is limit)
+        expand = max(1, (ACTIVE_H - (num_lines * CELL_H))  // (w+2))
+        qw = (w+2) * expand
+
+        # horz/vert center in available space
+        y = (ACTIVE_H - (num_lines * CELL_H) - qw) // 2
+        x = (WIDTH - qw) // 2
+
+        # send packed pixel data to C level to decode and exand to LCD
+        # - 8-bit aligned rows of data
+        scan_w, _, data = qr_data.packed()
+
+        self.clear()
+        self.dis.show_qr_data(x, TOP_MARGIN + y, w, expand, scan_w, data)
+
+        if num_lines:
+            # centered text under that
+            y = CHARS_H - num_lines
+            for line in parts:
+                self.text(None, y, line, FontTiny)
+                y += 1
+
+        if idx_hint:
+            # show path index number: just 1 or 2 digits
+            self.text(-1, 0, idx_hint)
+
+        self.busy_bar(False)     # includes show
 
         
 # here for mpy reasons
