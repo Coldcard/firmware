@@ -195,7 +195,6 @@ UpgradeMenu = [
     MenuItem('Show Version', f=show_version),
     MenuItem('From MicroSD', f=microsd_upgrade, arg=False),
     MenuItem('From VirtDisk', predicate=vdisk_enabled, f=microsd_upgrade, arg=True),  # force_vdisk=True
-    MenuItem('Bless Firmware', f=bless_flash),
 ]
 
 if version.mk_num < 4:
@@ -285,6 +284,7 @@ Keep blocked unless you intend to sign special transactions.'''),
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', predicate=lambda: version.has_se2, f=show_mcu_keys_left),
+    MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
 ]
 
 BackupStuffMenu = [
