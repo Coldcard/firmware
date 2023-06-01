@@ -183,8 +183,6 @@ class MenuSystem:
     #
     def late_draw(self, dis):
         pass
-    def early_draw(self, dis):
-        pass
 
     def update_contents(self):
         # something changed in system state; maybe re-construct menu contents
@@ -214,9 +212,6 @@ class MenuSystem:
         dis.clear()
 
         #print('cur=%d ypos=%d' % (self.cursor, self.ypos))
-
-        # subclass hook
-        self.early_draw(dis)
 
         for n in range(self.ypos+PER_M+1):
             if n+self.ypos >= self.count: break
