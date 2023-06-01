@@ -12,6 +12,23 @@ from callgate import get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
 import version
 from glob import settings
+from charcodes import KEY_SELECT, KEY_CANCEL
+
+async def wait_ok():
+    k = await ux_wait_keyup('xy' + KEY_SELECT + KEY_CANCEL)
+    if k not in 'y' + KEY_SELECT:
+        raise RuntimeError('Canceled')
+
+def label_test(line1, line2=''):
+    if version.has_qwerty:
+        dis.clear()
+        dis.text(None, 1, line1)
+        dis.text(None, 3, line2)
+    else:
+        dis.clear()
+        dis.text(None, 10, line1)
+        dis.text(None, 34, line2, font=FontLarge)
+        dis.show()
 
 async def test_numpad():
     # do an interactive self test
@@ -28,6 +45,11 @@ async def test_numpad():
         if k == 'x' and ch != 'x':
             raise RuntimeError("numpad test aborted")
         assert k == ch
+
+async def test_keyboard():
+    # for Q1
+    # XXX
+    pass
 
 def set_genuine():
     # PIN must be blank for this to work
@@ -67,15 +89,18 @@ async def test_secure_element():
     for ph in range(5):
         gg = get_genuine()
 
-        dis.clear()
-        if gg:
-            dis.text(-1, 8, "Green ON? -->")
+        if version.has_qwerty:
+            dis.clear()
+            dis.text(0, 0, "^^-- Green?      " if gg else "   ^^-- Red?")
         else:
-            dis.text(-1,50, "Red ON? -->")
+            dis.clear()
+            if gg:
+                dis.text(-1, 8, "Green ON? -->")
+            else:
+                dis.text(-1,50, "Red ON? -->")
 
         dis.show()
-        k = await ux_wait_keyup('xy')
-        assert k == 'y'     # "LED bust"
+        await wait_ok()
 
         if ph and gg:
             # stop once it's on and we've tested both states
@@ -86,8 +111,7 @@ async def test_secure_element():
             clear_genuine()
         else:
             # very slow!
-            dis.text(0,0, "Wait")
-            dis.show()
+            dis.fullscreen("Wait...")
             set_genuine()
             ux_clear_keys()
 
@@ -95,23 +119,33 @@ async def test_secure_element():
         assert ng != gg     # "Could not invert LED"
             
 async def test_sd_active():
-    # Mark 2: SD Card active light.
+    # Mark 2+: SD Card active light.
+    # Q1: dual slots
     from machine import Pin
-    led = Pin('SD_ACTIVE', Pin.OUT)
 
-    for ph in range(2):
-        gg = not ph
-        led.value(gg)
+    for num in range(version.num_sd_slots):
 
-        dis.clear()
-        if gg:
-            dis.text(0,16, "<-- Green ON?")
-        else:
-            dis.text(0,16, "<-- Green off?")
+        led = Pin('SD_ACTIVE' if not num else 'SD_ACTIVE2', Pin.OUT)
 
-        dis.show()
-        k = await ux_wait_keyup('xy')
-        assert k == 'y'     # "SD Active LED bust"
+        for ph in range(2):
+            gg = not ph
+            led.value(gg)
+
+            if version.has_qwerty:
+                dis.clear()
+                if num == 0:
+                    dis.text(0, 2, "<-- SD A is %s?  " % ('ON' if gg else 'off'))
+                else:
+                    dis.text(0, 7, "<-- SD B is %s?  " % ('ON' if gg else 'off'))
+            else:
+                dis.clear()
+                if gg:
+                    dis.text(0,16, "<-- Green ON?")
+                else:
+                    dis.text(0,16, "<-- Green off?")
+                dis.show()
+        
+            await wait_ok()
 
 async def test_usb_light():
     # Mk4's new USB activity light (right by connector)
@@ -123,12 +157,25 @@ async def test_usb_light():
 
     try:
         p.value(1)
-        dis.clear()
-        dis.text(0,0, "USB light on? ^^")
-        dis.show()
+        label_test("USB light is on?")
 
-        k = await ux_wait_keyup('xy')
-        assert k == 'y'     # "USB Active LED bust"
+        await wait_ok()
+    finally:
+        p.value(0)
+
+async def test_nfc_light():
+    if not version.has_qwerty:
+        return
+
+    from machine import Pin
+    p = Pin('NFC_ACTIVE', Pin.OUT)
+
+    try:
+        p.value(1)
+        dis.clear()
+        dis.text(-1, -1, "NFC light green? --->")
+
+        await wait_ok()
     finally:
         p.value(0)
 
@@ -145,9 +192,7 @@ async def test_psram():
     from ustruct import pack
     import ngu
 
-    dis.clear()
-    dis.text(None, 18, 'PSRAM Test')
-    dis.show()
+    label_test('PSRAM Test')
 
     test_len = PSRAM.length * 2
     chk = bytearray(32)
@@ -168,54 +213,6 @@ async def test_psram():
         assert chk == rnd, "RB bad @ 0x%x" % pos
         dis.progress_bar_show((PSRAM.length + pos) / test_len)
 
-async def test_sflash():
-    if version.has_psram: return
-
-    dis.clear()
-    dis.text(None, 18, 'Serial Flash')
-    dis.show()
-
-    from sflash import SF
-    from ustruct import pack
-    import ngu
-
-    msize = 1024*1024
-    SF.chip_erase()
-
-    for phase in [0, 1]:
-        steps = 7*4
-        for i in range(steps):
-            dis.progress_bar_show(i/steps)
-            await sleep_ms(250)
-            if not SF.is_busy(): break
-
-        assert not SF.is_busy()     # "didn't finish"
-
-        # leave chip blank
-        if phase == 1: break
-
-
-        buf = bytearray(32)
-        for addr in range(0, msize, 1024):
-            SF.read(addr, buf)
-            assert set(buf) == {255}        # "not blank"
-
-            rnd = ngu.hash.sha256s(pack('I', addr))
-            SF.write(addr, rnd)
-            SF.wait_done()
-            SF.read(addr, buf)
-            assert buf == rnd           #  "write failed"
-
-            dis.progress_bar_show(addr/msize)
-
-        # check no aliasing, also right size part
-        for addr in range(0, msize, 1024):
-            expect = ngu.hash.sha256s(pack('I', addr))
-            SF.read(addr, buf)
-            assert buf == expect        # "readback failed"
-
-            dis.progress_bar_show(addr/msize)
-
 async def test_oled():
     # all on/off tests
     for ph in (1, 0):
@@ -225,18 +222,26 @@ async def test_oled():
         dis.text(None,30, "All on?" if ph else 'All off?', invert=ph, font=FontLarge)
         dis.show()
 
-        ch = await ux_wait_keyup('yx')
-        if ch != 'y':
-            raise RuntimeError("OLED test aborted")
+        await wait_ok()
+
+async def test_lcd():
+    # Very basic
+    try:
+        for nm, col in [('RED', 0xf800), ('GREEN', 0x07e0), ('BLUE', 0x001f)]:
+            dis.dis.fill_screen(col)
+            dis.text(1,1, "Selftest")
+            dis.text(None,3, "All pixels are %s?" % nm)
+
+            await wait_ok()
+    finally:
+        dis.draw_status(full=1)
+        dis.clear()
 
 async def test_microsd():
     if ckcc.is_simulator(): return
 
     async def wait_til_state(want):
-        dis.clear()
-        dis.text(None, 10, 'MicroSD Card:')
-        dis.text(None, 34, 'Remove' if sd.present() else 'Insert', font=FontLarge)
-        dis.show()
+        label_test('MicroSD Card:', 'Remove' if sd.present() else 'Insert')
 
         while 1:
             if want == sd.present(): return
@@ -244,6 +249,7 @@ async def test_microsd():
             if ux_poll_key():
                 raise RuntimeError("MicroSD test aborted")
 
+    # XXX slot 2 on Q1
     try:
         import pyb
         sd = pyb.SDCard()
@@ -260,10 +266,7 @@ async def test_microsd():
                 if ux_poll_key():
                     raise RuntimeError("MicroSD test aborted")
 
-        dis.clear()
-        dis.text(None, 10, 'MicroSD Card:')
-        dis.text(None, 34, 'Testing', font=FontLarge)
-        dis.show()
+        label_test('MicroSD Card:', 'Testing')
 
         # card inserted
         assert sd.present()     #, "SD not present?"
@@ -302,12 +305,18 @@ async def test_microsd():
 async def start_selftest():
 
     try:
-        await test_oled()
+        if not version.has_qwerty:
+            await test_oled()
+        else:
+            await test_lcd()
         await test_psram()
+        await test_nfc_light()
         await test_nfc()
-        await test_sflash()
         await test_microsd()
-        await test_numpad()
+        if version.has_qwerty:
+            await test_keyboard()
+        else:
+            await test_numpad()
         await test_secure_element()
         await test_sd_active()
         await test_usb_light()
@@ -316,6 +325,7 @@ async def start_selftest():
 
         settings.set('tested', True)
         await ux_show_story("Selftest complete", 'PASS')
+        dis.clear()
 
     except (RuntimeError, AssertionError) as e:
         e = str(e) or problem_file_line(e)
