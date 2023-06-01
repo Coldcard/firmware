@@ -15,6 +15,7 @@ from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
 from utils import addr_fmt_label
+from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -71,6 +72,8 @@ class KeypathMenu(MenuSystem):
     def late_draw(self, dis):
         # replace bottom partial menu line w/ tiny text
         if not self.prefix: return
+        if dis.has_lcd: return      # no tiny font
+
         from display import FontTiny
         y = 64 - 8
         dis.clear_rect(0, y, dis.WIDTH, 8)
@@ -326,7 +329,7 @@ Press (3) if you really understand and accept these risks.
         msg, addrs = make_msg()
         change = 0
         while 1:
-            ch = await ux_show_story(msg, escape='1234679')
+            ch = await ux_show_story(msg, escape='1234679' + KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_HOME)
 
             if ch == 'x':
                 return
@@ -342,7 +345,7 @@ Press (3) if you really understand and accept these risks.
                                         change=change, force_vdisk=force_vdisk)
                 # continue on same screen in case they want to write to multiple cards
 
-            elif ch == '2':
+            elif ch == '2' or ch == KEY_QR:
                 # switch into a mode that shows them as QR codes
                 if not version.has_fatram or ms_wallet:
                     # requires mk3 and not multisig
@@ -352,7 +355,7 @@ Press (3) if you really understand and accept these risks.
                 await show_qr_codes(addrs, bool(addr_fmt & AFC_BECH32), start)
                 continue
 
-            elif ch == '3' and NFC:
+            elif NFC and (ch == '3' or ch == KEY_NFC):
                 # share table over NFC
                 if n > 1:
                     await NFC.share_text('\n'.join(addrs))
@@ -363,12 +366,14 @@ Press (3) if you really understand and accept these risks.
             elif ch == '6' and allow_change:
                 change = 1
 
-            elif ch == '7' and start>0:
+            elif start > 0 and (ch == '7' or ch == KEY_PAGE_UP):
                 # go backwards in explorer
                 start -= n
-            elif ch == '9':
+            elif ch == '9' or ch == KEY_PAGE_DOWN:
                 # go forwards
                 start += n
+            elif ch == KEY_HOME:
+                start = 0
             else:
                 continue        # 3 in non-NFC mode
 
