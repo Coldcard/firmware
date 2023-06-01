@@ -77,10 +77,10 @@ class QRScanner:
             # get b'V2.3.0.7\r\n' or similar
             rx = await self.tx('T_OUT_CVER')
             self.version = rx.decode().strip()
-            print("QR Scanner: " + self.version)
+            #print("QR Scanner: " + self.version)
         except:
             raise
-            print("QR Scanner: missing")
+            #print("QR Scanner: missing")
 
         # configure it like we want it
         #self.tx('T_CMD...'
