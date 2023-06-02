@@ -27,17 +27,22 @@ NUM_GREYS = 16
 
 
 # TODO: 
-# - need _ but for blank space
-# - need better menu arrow
+# - need _ but for blank space; never found and yet may not need.
 
 CHARSET = [chr(x) for x in range(32,127)] \
             + ['→', '←', '↳', '•', '⋯',
                 '█', '▌', '▐', 
                 '▼', '▲', '►', '◀', '⏵',
-                '₿', '✔', '✓', '⥎',
+                '₿', '✔', '✓', '↦', '␣',
+                '◉', '◯', '◌',
                 '™', '©',
           ]
-DBL_WIDTH = ['⋯', '✔︎', '✓','→', '←']        # these are be better as double-wide chars
+
+# these are be better as double-wide chars
+DBL_WIDTH = ['⋯', '✔︎', '✓','→', '←', '↦',        
+                '◉', '◯', '◌',
+            ]
+
 NUM_CHARS = len(CHARSET)
 
 # use a different glyph for these unicode values
@@ -95,9 +100,9 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     left, top, right, bottom = font.getbbox("j")
     y_offset = CELL_H - bottom - 1
 
-    NUM_COL = 16
+    NUM_COL = 24
     samples = Image.new('L', (((CELL_W + 1) * NUM_COL) + 1,
-                                ((CELL_H+1) * (NUM_CHARS//NUM_COL + 2))), 255)
+                                ((CELL_H+1) * (NUM_CHARS//NUM_COL + 3))), 255)
 
     cells = Image.new('L', (CELL_W*NUM_CHARS*2, CELL_H), 0)
 
@@ -115,7 +120,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
         left, top, right, bottom = font.getbbox(ch)
         if (right-left > CELL_W) and not is_dbl:
             # char is too wide: some will be lost
-            if ch in '←':
+            if ch in '←↦':
                 # keep left edge of these
                 x_shift = -left
             elif ch in '→':
@@ -125,7 +130,13 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
                 # center it
                 x_shift = (CELL_W - (right-left)) / 2.0
 
-        draw.text((x_shift, y_offset), REMAPS.get(ch, ch), 'white', font)
+        # Vertical tweaks
+        this_y = 0
+        if ch == '↳':
+            # this one up a little, so arrow is more mid-line-ish
+            this_y = -4
+
+        draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font)
 
         # check 
         actual = img.getcolors()
@@ -133,6 +144,8 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             assert len(actual) >= 2, f'blank char? {ch}'
 
         # build sample
+        if is_dbl and (n % NUM_COL) == NUM_COL-1:
+            n += 1
         samples.paste(img, box=(
                     ((n % NUM_COL) * (CELL_W+1)) + 1,
                     ((n // NUM_COL) * (CELL_H+1)) +1))
