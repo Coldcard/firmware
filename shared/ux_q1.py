@@ -5,6 +5,7 @@
 from uasyncio import sleep_ms
 import utime, gc
 from charcodes import *
+from lcd_display import CHARS_W
 
 CURSOR = '█ '
 
@@ -93,6 +94,9 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
         elif ch == KEY_DELETE:
             if value:
                 value = value[0:-1]
+        elif ch == KEY_CLEAR:
+            value = ''
+            dis.text(0, 4, ' '*CHARS_W)
         elif ch == KEY_CANCEL:
             if can_cancel:
                 # quit if they press X on empty screen
@@ -116,9 +120,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
     # - no control chars allowed either
-    # - TODO: editing, completion, etc
+    # - TODO: editing, line wrap, completion, etc
+    # - TODO: press QR -> do scan and use that text
     from glob import dis
-    from lcd_display import CHARS_W
     from ux import ux_show_story
 
     dis.clear()
@@ -143,6 +147,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
             if len(value) > 0:
                 # delete current char
                 value = value[:-1]
+        elif ch == KEY_CLEAR:
+            value = ''
+            dis.text(0, 1, ' '*CHARS_W)
         elif ch == KEY_CANCEL:
             if confirm_exit:
                 pp = await ux_show_story(
@@ -151,5 +158,64 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
             return None
         elif ' ' <= ch < chr(127):
             value += ch
+
+def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
+                    footer=None, randomize=None):
+
+    # Draw PIN during entry / reentry / changing or setting
+    #MAX_PIN_PART_LEN = 6
+
+    # extra (empty) box after
+    ln = len(pin)
+    FILLED = '◉'
+    EMPTY = '◯'     #, '◌'
+    msg = ''.join(FILLED if n < ln else EMPTY for n in range(6))
+    y = 1 if randomize else 2
+
+    if force_draw:
+        dis.clear()
+
+    if randomize and force_draw:
+        # screen redraw, when we are "randomized"
+        # - only used at login, none of the other cases
+        # - test w/ "simulator.py --q1 -g --eff --set rngk=1"
+
+        # remapped numbers along bottom
+        x = 3
+        dis.text(x-1, -4, ' 1  2  3  4  5  6  7  8  9  0 ', invert=1)
+        dis.text(x  , -3, '  '.join(randomize[1:]) + '  ' + randomize[0])
+
+    if force_draw:
+
+        if is_first_part:
+            prompt="Enter PIN prefix" 
+        else:
+            prompt="Enter second part of PIN" 
+
+
+        if subtitle:
+            # "New Main PIN" ... so not really a SUB title.
+            dis.text(None, 0, subtitle)
+            dis.text(None, y, prompt)
+        else:
+            dis.text(None, y, prompt)
+
+        if footer:
+            # ie. '1 failures, 12 tries left'
+            dis.text(None, -2, footer)
+
+        if is_confirmation:
+            cta = "Confirm pin value"
+        if is_confirmation:
+            cta = "CANCEL or SELECT when done"
+        else:
+            cta = "CANCEL or SELECT to continue"
+
+        dis.text(None, -1, cta)
+
+    # auto-center broken w/ double-wides
+    dis.text(10, y+2, msg)
+    dis.show()
+
 
 # EOF

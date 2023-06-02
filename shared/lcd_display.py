@@ -236,7 +236,9 @@ class Display:
         self.dis.fill_rect(x,y, w,h, 0x0000)
 
     def show(self):
-        #self.dis.show()
+        # used to be critical, pushing internal screen representation to device
+        # however, we can be more selective/auto now...
+        # - but might still use... idk
         pass
 
     # rather than clearing and redrawing, use this buffer w/ fixed parts of screen

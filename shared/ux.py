@@ -6,24 +6,23 @@ from uasyncio import sleep_ms
 from queues import QueueEmpty
 import utime, gc, version
 from utils import word_wrap
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 
-# see ux_mk or ux_q1 for these...
-
-# How many characters can we fit on each line? How many lines?
+# See ux_mk or ux_q1 for some display functions now
 if version.has_qwerty:
     from lcd_display import CHARS_W, CHARS_H
     CH_PER_W = CHARS_W
     STORY_H = CHARS_H
-    from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text
+    from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
 else:
+    # How many characters can we fit on each line? How many lines?
     # (using FontSmall)
     CH_PER_W = 17
     STORY_H = 5
-    from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text
+    from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
 
 # This signals the need to switch from current
 # menu (or whatever) to show something new. The
@@ -131,8 +130,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
     # - accepts a stream or string
-    from glob import dis, numpad
-    from display import FontLarge
+    from glob import dis
 
     lines = []
     if title:
@@ -158,9 +156,9 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         del msg
         gc.collect()
     else:
-        # simple string
+        # simple string being shown
         if version.has_qwerty:
-            msg = msg.replace(' X ', ' CANCEL ').replace('OK', 'SELECT')
+            msg = msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'SELECT')
 
         for ln in msg.split('\n'):
             if len(ln) > CH_PER_W:
@@ -208,6 +206,9 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
             top = max(0, top-1)
         elif ch == '8' or ch == KEY_DOWN:
             top = min(len(lines)-2, top+1)
+        elif not strict_escape:
+            if ch in { KEY_NFC, KEY_QR }:
+                return ch
 
         
 

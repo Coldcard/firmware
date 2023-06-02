@@ -336,4 +336,92 @@ Add more characters by moving past end (right side).'''
                 help_msg += '\nTo quit without changes, delete everything.'
             await ux_show_story(help_msg)
 
+
+def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
+                    footer=None, randomize=None):
+
+    # Draw PIN (placeholder)
+    from display import FontTiny, FontLarge
+
+    if randomize:
+        # screen redraw, when we are "randomized"
+        # - only used at login, none of the other cases
+
+        if force_draw:
+            dis.clear()
+
+            # prompt
+            dis.text(5+3, 2, "ENTER PIN")
+            dis.text(5+6, 17, ('1st part' if is_first_part else '2nd part'))
+
+            # remapped keypad
+            y = 2
+            x = 89
+            h = 16
+            for i in range(0, 10, 3):
+                if i == 9:
+                    dis.text(x, y, '  %s' % randomize[0])
+                else:
+                    dis.text(x, y, ' '.join(randomize[1+i:1+i+3]))
+                y += h
+        else:
+            # just clear what we need to: the PIN area
+            dis.clear_rect(0, 40, 88, 20)
+
+        # placeholder text
+        msg = '[' + ('*'*len(self.pin)) + ']'
+        x = 40 - ((10*len(msg))//2)
+        dis.text(x, 40, msg, FontLarge)
+
+        dis.show()
+
+        return
+
+    filled = len(pin)
+    y = 27
+
+    if force_draw:
+        dis.clear()
+
+        if is_first_part:
+            prompt="Enter PIN Prefix" 
+        else:
+            prompt="Enter rest of PIN" 
+
+
+        if subtitle:
+            dis.text(None, 0, subtitle)
+            dis.text(None, 16, prompt, FontTiny)
+        else:
+            dis.text(None, 4, prompt)
+
+        if footer:
+            pass
+        elif is_confirmation:
+            footer = "CONFIRM PIN VALUE"
+        elif is_confirmation:
+            footer = "X to CANCEL, or OK when DONE"
+        else:
+            footer = "X to CANCEL, or OK to CONTINUE"
+
+        dis.text(None, -1, footer, FontTiny)
+
+    else:
+        # just clear what we need to: the PIN area
+        dis.clear_rect(0, y, 128, 21)
+
+    w = 18
+
+    # extra (empty) box after
+    if not filled:
+        dis.icon(64-(w//2), y, 'box')
+    else:
+        x = 64 - ((w*filled)//2)
+        # filled boxes
+        for idx in range(filled):
+            dis.icon(x, y, 'xbox')
+            x += w
+
+    dis.show()
+
 # EOF
