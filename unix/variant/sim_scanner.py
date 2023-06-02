@@ -11,6 +11,7 @@ DATA_FILE = 'qrdata.txt'
 class SimulatedQRScanner(QRScanner):
     def __init__(self):
         self.q = None
+        self.version = '4.20'
 
     def hw_scan(self):
         # trigger a scan
