@@ -5,7 +5,6 @@
 import framebuf, math, uqr
 from ux import UserInteraction, ux_wait_keyup, the_ux 
 from utils import word_wrap
-from version import has_fatram
 from ubinascii import hexlify as b2a_hex
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)

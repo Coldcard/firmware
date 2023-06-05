@@ -115,9 +115,6 @@ Extended Master Key:
     if bn:
         msg += '\nShipping Bag:\n  %s\n' % bn
 
-    if not version.has_fatram:
-        # can't support on mk2
-        xpub = None
     if xpub:
         msg += '\nPress (3) to show QR code of xpub.'
 
@@ -683,8 +680,7 @@ async def view_seed_words(*a):
         dis.busy_bar(False)
         msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
 
-        if version.has_fatram:
-            msg += '\n\nPress (1) to view as QR Code.'
+        msg += '\n\nPress (1) to view as QR Code.'
 
         while 1:
             ch = await ux_show_story(msg, sensitive=True, escape='1')
@@ -922,7 +918,7 @@ async def start_login_sequence():
 
     # If HSM policy file is available, offer to start that,
     # **before** the USB is even enabled.
-    if version.has_fatram:
+    if version.supports_hsm:
         # do not offer HSM if wallet is blank -> HSM needs secret
         if not pa.is_secret_blank():
             try:

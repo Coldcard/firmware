@@ -9,6 +9,9 @@ freeze_as_mpy('', [
 	'ndef.py',
 	'trick_pins.py',
 	'ux_mk4.py',
+	'hsm.py',
+	'hsm_ux.py',
+	'users.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

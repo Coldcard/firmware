@@ -78,11 +78,7 @@ async def test_secure_element():
     assert not get_is_bricked()         # bricked already
 
     # test right chips installed
-    if version.has_fatram:
-        assert version.has_608          # expect 608
-    else:
-        assert not version.has_608      # expect 508a
-        assert version.hw_label == 'mk2'
+    assert version.has_608              # expect 608
 
     if ckcc.is_simulator(): return
 

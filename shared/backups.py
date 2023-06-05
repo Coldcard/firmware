@@ -99,7 +99,7 @@ def render_backup_contents():
         if k == 'bkpw': continue        # confusing/circular
         ADD('setting.' + k, v)
 
-    if version.has_fatram:
+    if version.supports_hsm:
         import hsm
         if hsm.hsm_policy_available():
             ADD('hsm_policy', hsm.capture_backup())
@@ -195,7 +195,7 @@ def restore_from_dict_ll(vals):
     # write out
     settings.save()
 
-    if version.has_fatram and ('hsm_policy' in vals):
+    if version.supports_hsm and ('hsm_policy' in vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
 

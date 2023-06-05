@@ -36,7 +36,7 @@ def get_header_value(fld_name):
 hw_label = 'mk4'
 has_608 = True
 has_membrane = True
-has_fatram = True
+supports_hsm = True
 has_se2 = True
 has_psram = True
 has_nfc = True
@@ -51,26 +51,26 @@ if  '--mk1' in sys.argv:
     hw_label = 'mk1'
     has_608 = False
     has_membrane = False
-    has_fatram = False
     has_se2 = False
     has_psram = False
     has_nfc = False
+    supports_hsm = False
 
 if  '--mk2' in sys.argv:
     hw_label = 'mk2'
     has_608 = False
-    has_fatram = False
     has_se2 = False
     has_psram = False
     has_nfc = False
+    supports_hsm = False
 
 if  '--mk3' in sys.argv:
     hw_label = 'mk3'
     has_608 = True
-    has_fatram = True
     has_se2 = False
     has_psram = False
     has_nfc = False
+    supports_hsm = False
 
 mk_num = int(hw_label[2:])
 
@@ -80,6 +80,7 @@ if '--q1' in sys.argv:
     num_sd_slots = 2
     has_battery = True
     has_qwerty = True
+    supports_hsm = False
 
 from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
 from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4

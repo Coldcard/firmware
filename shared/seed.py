@@ -278,14 +278,12 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
         # user can skip quiz for ephemeral secrets
         msg += " There will be a test!"
 
-
-    if version.has_fatram:
-        if not version.has_qwerty:
-            escape = (escape or '') + '1'
-            extra += 'Press (1) to view as QR Code. '
-        else:
-            escape = (escape or '') + KEY_QR
-            extra += 'Press QR button to view as QR Code. '
+    if not version.has_qwerty:
+        escape = (escape or '') + '1'
+        extra += 'Press (1) to view as QR Code. '
+    else:
+        escape = (escape or '') + KEY_QR
+        extra += 'Press QR button to view as QR Code. '
 
     if extra:
         msg += '\n\n'

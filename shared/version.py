@@ -102,7 +102,7 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
+    global hw_label, has_608, is_factory_mode, is_devmode, has_psram, supports_hsm
     global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery, is_edge
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
@@ -115,8 +115,8 @@ def probe_system():
     #mark2 = (Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0)
 
     hw_label = 'mk2'
-    has_fatram = False
     has_psram = False
+    supports_hsm = False
     has_608 = True
     has_se2 = False
     has_nfc = False         # hardware present; they might not be using it
@@ -130,15 +130,14 @@ def probe_system():
     cpuid = ckcc.get_cpu_id()
     if cpuid == 0x461:      # STM32L496RG6
         hw_label = 'mk3'
-        has_fatram = True
         mk_num = 3
     elif cpuid == 0x470:    # STM32L4S5VI
         hw_label = 'mk4'
-        has_fatram = True
         has_psram = True
         has_se2 = True
         mk_num = 4
         has_nfc = nfc_presence_check()
+        supports_hsm = True
     else:
         # mark 2
         has_608 = callgate.has_608()
@@ -151,6 +150,7 @@ def probe_system():
         hw_label = 'q1'
         has_battery = True
         has_qwerty = True
+        supports_hsm = False
         # but, still mk_num = 4
     except ValueError:
         pass

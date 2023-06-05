@@ -10,7 +10,7 @@ from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
-from version import has_fatram, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
+from version import supports_hsm, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
 
 # Unofficial, unpermissioned... numbers
@@ -571,8 +571,8 @@ class USBHandler:
         if cmd == 'bagi':
             return self.handle_bag_number(args)
 
-        if has_fatram:
-            # HSM and user-related features only supported on larger-memory Mk3
+        if supports_hsm:
+            # HSM and user-related features only supported on Mk4
 
             if cmd == 'hsms':
                 # HSM mode "start" -- requires user approval

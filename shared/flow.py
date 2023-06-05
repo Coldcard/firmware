@@ -17,11 +17,14 @@ from backups import clone_start, clone_write_data
 from xor_seed import xor_split_start, xor_restore_start
 from countdowns import countdown_pin_submenu, countdown_chooser
 
-# Optional feature: HSM
-if version.has_fatram:
+# Optional feature: HSM, depends on hardware
+# - code for HSM support wont exist on other version, so dont call it
+if version.supports_hsm:
     from hsm import hsm_policy_available
+    hsm_feature = lambda: True
 else:
     hsm_policy_available = lambda: False
+    hsm_feature = lambda: False
 
 # Optional feature: Paper Wallets
 try:
@@ -316,8 +319,8 @@ AdvancedNormalMenu = [
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
 By default these commands are disabled.",
-                   predicate=lambda: version.has_fatram),
-    MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
+                   predicate=hsm_feature),
+    MenuItem('User Management', menu=make_users_menu, predicate=hsm_feature),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]

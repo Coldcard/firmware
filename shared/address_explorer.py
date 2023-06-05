@@ -263,7 +263,7 @@ Press (3) if you really understand and accept these risks.
 
         def make_msg(change=0):
             export_msg = "Press (1) to save Address summary file to SD Card."
-            if version.has_fatram and not ms_wallet:
+            if not ms_wallet:
                 export_msg += " Press (2) to view QR Codes."
             if NFC:
                 export_msg += " Press (3) to share via NFC."
@@ -347,8 +347,8 @@ Press (3) if you really understand and accept these risks.
 
             elif ch == '2' or ch == KEY_QR:
                 # switch into a mode that shows them as QR codes
-                if not version.has_fatram or ms_wallet:
-                    # requires mk3 and not multisig
+                if not ms_wallet:
+                    # requires not multisig
                     continue
 
                 from ux import show_qr_codes

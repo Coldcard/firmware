@@ -18,7 +18,7 @@ from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from utils import B2A, parse_addr_fmt_str
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
-from version import has_psram, has_fatram, MAX_TXN_LEN
+from version import has_psram, MAX_TXN_LEN
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -800,14 +800,13 @@ class ApproveTransaction(UserAuthorizedAction):
                 # - maybe even as QR, hex-encoded in alnum mode
                 tmsg = txid + '\n\n'
 
-                if has_fatram:
-                    tmsg += 'Press (1) for QR Code of TXID. '
+                tmsg += 'Press (1) for QR Code of TXID. '
                 if NFC:
                     tmsg += 'Press (3) to share signed txn via NFC.'
 
                 ch = await ux_show_story(tmsg, "Final TXID", escape='13')
 
-                if ch=='1' and has_fatram:
+                if ch=='1':
                     await show_qr_code(txid, True)
                     continue
 
@@ -1268,13 +1267,12 @@ class ShowAddressBase(UserAuthorizedAction):
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
             if NFC:
                 msg += ' Press (3) to share via NFC.'
-            if has_fatram:
-                msg += ' Press (4) to view QR Code.'
+            msg += ' Press (4) to view QR Code.'
 
             while 1:
                 ch = await ux_show_story(msg, title=self.title, escape='34')
 
-                if ch == '4' and has_fatram:
+                if ch == '4':
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
                 if ch == '3' and NFC:
