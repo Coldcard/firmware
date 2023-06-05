@@ -24,6 +24,7 @@ from ubinascii import unhexlify as a2b_hex
 from pwsave import PassphraseSaver
 from glob import settings, dis
 from pincodes import pa
+from charcodes import KEY_QR
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
