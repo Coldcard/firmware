@@ -24,6 +24,7 @@ from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd, CardSlot
+from charcodes import KEY_QR
 
 
 # seed words lengths we support: 24=>256 bits, and recommended

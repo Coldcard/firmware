@@ -348,6 +348,7 @@ Press (3) if you really understand and accept these risks.
             elif ch == '2' or ch == KEY_QR:
                 # switch into a mode that shows them as QR codes
                 if ms_wallet:
+                    # requires not multisig
                     continue
 
                 from ux import show_qr_codes

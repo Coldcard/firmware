@@ -6,6 +6,7 @@ from uasyncio import sleep_ms
 import utime, gc
 from charcodes import *
 from lcd_display import CHARS_W
+from exceptions import AbortInteraction
 
 CURSOR = '█ '
 
@@ -120,8 +121,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
     # - no control chars allowed either
-    # - TODO: editing, line wrap, completion, etc
+    # - TODO: editing, line wrap, seed completion, etc
     # - TODO: press QR -> do scan and use that text
+    # - TODO: regex validation for derviation paths
     from glob import dis
     from ux import ux_show_story
 

@@ -8,6 +8,7 @@ import utime, gc, version
 from utils import word_wrap
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+from exceptions import AbortInteraction
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 
@@ -23,14 +24,6 @@ else:
     CH_PER_W = 17
     STORY_H = 5
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-
-# This signals the need to switch from current
-# menu (or whatever) to show something new. The
-# stack has already been updated, but the old 
-# top-of-stack code was waiting for a key event.
-#
-class AbortInteraction(BaseException):
-    pass
 
 class UserInteraction:
     def __init__(self):
