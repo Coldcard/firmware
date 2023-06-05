@@ -75,7 +75,7 @@ def serial_number():
 def probe_system():
     # run-once code to determine what hardware we are running on
     global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram, is_edge
-    global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery
+    global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery, supports_hsm
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
@@ -90,6 +90,7 @@ def probe_system():
     has_battery = False
     has_qwerty = False
     is_edge = False
+    supports_hsm = False
 
     cpuid = ckcc.get_cpu_id()
     assert cpuid == 0x470  # STM32L4S5VI
@@ -102,6 +103,7 @@ def probe_system():
         hw_label = 'q1'
         has_battery = True
         has_qwerty = True
+        supports_hsm = False
         # but, still mk_num = 4
     except ValueError:
         pass

@@ -10,7 +10,7 @@ from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
-from version import is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
+from version import supports_hsm, is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
 
 # Unofficial, unpermissioned... numbers
@@ -570,64 +570,65 @@ class USBHandler:
         if cmd == 'bagi':
             return self.handle_bag_number(args)
 
-        # HSM and user-related features only supported on larger-memory Mk3
+        if supports_hsm:
+            # HSM and user-related features only supported on Mk4
 
-        if cmd == 'hsms':
-            # HSM mode "start" -- requires user approval
-            if args:
-                file_len, file_sha = unpack_from('<I32s', args)
-                if file_sha != self.file_checksum.digest():
-                    return b'err_Checksum'
-                assert 2 <= file_len <= (200*1000), "badlen"
-            else:
-                file_len = 0
+            if cmd == 'hsms':
+                # HSM mode "start" -- requires user approval
+                if args:
+                    file_len, file_sha = unpack_from('<I32s', args)
+                    if file_sha != self.file_checksum.digest():
+                        return b'err_Checksum'
+                    assert 2 <= file_len <= (200*1000), "badlen"
+                else:
+                    file_len = 0
 
-            # Start an UX interaction but return (mostly) immediately here
-            from hsm_ux import start_hsm_approval
-            await start_hsm_approval(sf_len=file_len, usb_mode=True)
+                # Start an UX interaction but return (mostly) immediately here
+                from hsm_ux import start_hsm_approval
+                await start_hsm_approval(sf_len=file_len, usb_mode=True)
 
-            return None
-
-        if cmd == 'hsts':
-            # can always query HSM mode
-            from hsm import hsm_status_report
-            import ujson
-            return b'asci' + ujson.dumps(hsm_status_report())
-
-        if cmd == 'gslr':
-            # get the value held in the Storage Locker
-            assert hsm_active, 'need hsm'
-            return b'biny' + hsm_active.fetch_storage_locker()
-
-        # User Mgmt
-        if cmd == 'nwur':     # new user
-            from users import Users
-            auth_mode, ul, sl = unpack_from('<BBB', args)
-            username = bytes(args[3:3+ul]).decode('ascii')
-            secret = bytes(args[3+ul:3+ul+sl])
-
-            return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
-
-        if cmd == 'rmur':     # delete user
-            from users import Users
-            ul, = unpack_from('<B', args)
-            username = bytes(args[1:1+ul]).decode('ascii')
-
-            return Users.delete(username)
-
-        if cmd == 'user':       # auth user (HSM mode)
-            from users import Users
-            totp_time, ul, tl = unpack_from('<IBB', args)
-            username = bytes(args[6:6+ul]).decode('ascii')
-            token = bytes(args[6+ul:6+ul+tl])
-
-            if hsm_active:
-                # just queues these details, can't be checked until PSBT on-hand
-                hsm_active.usb_auth_user(username, token, totp_time)
                 return None
-            else:
-                # dryrun/testing purposes: validate only, doesn't unlock nothing
-                return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
+
+            if cmd == 'hsts':
+                # can always query HSM mode
+                from hsm import hsm_status_report
+                import ujson
+                return b'asci' + ujson.dumps(hsm_status_report())
+
+            if cmd == 'gslr':
+                # get the value held in the Storage Locker
+                assert hsm_active, 'need hsm'
+                return b'biny' + hsm_active.fetch_storage_locker()
+
+            # User Mgmt
+            if cmd == 'nwur':     # new user
+                from users import Users
+                auth_mode, ul, sl = unpack_from('<BBB', args)
+                username = bytes(args[3:3+ul]).decode('ascii')
+                secret = bytes(args[3+ul:3+ul+sl])
+
+                return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
+
+            if cmd == 'rmur':     # delete user
+                from users import Users
+                ul, = unpack_from('<B', args)
+                username = bytes(args[1:1+ul]).decode('ascii')
+
+                return Users.delete(username)
+
+            if cmd == 'user':       # auth user (HSM mode)
+                from users import Users
+                totp_time, ul, tl = unpack_from('<IBB', args)
+                username = bytes(args[6:6+ul]).decode('ascii')
+                token = bytes(args[6+ul:6+ul+tl])
+
+                if hsm_active:
+                    # just queues these details, can't be checked until PSBT on-hand
+                    hsm_active.usb_auth_user(username, token, totp_time)
+                    return None
+                else:
+                    # dryrun/testing purposes: validate only, doesn't unlock nothing
+                    return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
 
         #print("USB garbage: %s +[%d]" % (cmd, len(args)))
 

@@ -19,9 +19,6 @@ from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
-    # - 16 chars screen width
-    # - but 2 lost at left (menu arrow, corner arrow)
-    # - want to show not truncated on right side
     if not version.has_qwerty:
         # - 16 chars screen width
         # - but 2 lost at left (menu arrow, corner arrow)

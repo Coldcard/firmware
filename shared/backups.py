@@ -104,9 +104,10 @@ def render_backup_contents(bypass_tmp=False):
         if k == 'seeds' and not v: continue
         ADD('setting.' + k, v)
 
-    import hsm
-    if hsm.hsm_policy_available():
-        ADD('hsm_policy', hsm.capture_backup())
+    if version.supports_hsm:
+        import hsm
+        if hsm.hsm_policy_available():
+            ADD('hsm_policy', hsm.capture_backup())
 
     rv.write('\n# EOF\n')
 
@@ -218,7 +219,7 @@ def restore_from_dict_ll(vals):
     # write out
     settings.save()
 
-    if 'hsm_policy' in vals:
+    if version.supports_hsm and ('hsm_policy' in vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
 

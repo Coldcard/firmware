@@ -297,11 +297,6 @@ async def make_paper_wallet(*a):
     menu = MenuSystem([])
     rv = PaperWalletMaker(menu)
 
-    # annoying?
-    # always have them pick the template, because that's mostly required
-    #if rv.can_do_qr():
-    #    await rv.pick_template()
-
     rv.update_menu()
 
     return menu

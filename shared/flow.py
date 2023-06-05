@@ -22,6 +22,15 @@ from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 
 
+# Optional feature: HSM, depends on hardware
+# - code for HSM support wont exist on other version, so dont call it
+if version.supports_hsm:
+    from hsm import hsm_policy_available
+    hsm_feature = lambda: True
+else:
+    hsm_policy_available = lambda: False
+    hsm_feature = lambda: False
+
 trick_pin_menu = TrickPinMenu.make_menu
 
 #
@@ -272,8 +281,8 @@ AdvancedNormalMenu = [
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
-By default these commands are disabled."),
-    MenuItem('User Management', menu=make_users_menu),
+By default these commands are disabled.", predicate=hsm_feature),
+    MenuItem('User Management', menu=make_users_menu, predicate=hsm_feature),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
