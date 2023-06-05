@@ -98,6 +98,7 @@ LDFLAGS += -Wl,--defsym,BL_NVROM_SIZE=$(BL_NVROM_SIZE)
 LDFLAGS += -Wl,--defsym,BL_SRAM_BASE=$(BL_SRAM_BASE)
 LDFLAGS += -Wl,--defsym,BL_SRAM_SIZE=$(BL_SRAM_SIZE)
 LDFLAGS += -Wl,-Map=$(TARGET_NAME).map
+LDFLAGS += -I../mk4-bootloader
 
 ASFLAGS += -Wa,--defsym,BL_FLASH_BASE=$(BL_FLASH_BASE) -Wa,--defsym,BL_FLASH_SIZE=$(BL_FLASH_SIZE)
 ASFLAGS += -Wa,--defsym,BL_SRAM_BASE=$(BL_SRAM_BASE) -Wa,--defsym,BL_SRAM_SIZE=$(BL_SRAM_SIZE)
