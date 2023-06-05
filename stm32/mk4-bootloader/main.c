@@ -80,7 +80,7 @@ system_startup(void)
     // debug output and banner
     console_setup();
 
-    puts2("\r\n\nMk4 Bootloader: ");
+    puts2(BOOT_BANNER);
     puts(version_string);
 
     uint32_t reset_reason = RCC->CSR;
