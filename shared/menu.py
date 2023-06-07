@@ -3,7 +3,6 @@
 # menu.py - Implement an interactive menu system.
 #
 import gc
-from display import FontLarge, FontTiny, Display
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,

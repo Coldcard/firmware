@@ -22,7 +22,8 @@ RAMWR = const(0x2c)
 # - maybe: with QR module expansion?
 # - clear to pixel value
 # - palette + xy/wh + nible-packed palette lookup (for font)
-from ckcc import lcd_blast
+# - see stm32/COLDCARD_Q1/modlcd.c for code
+import lcd
 
 class ST7788():
     def __init__(self):
@@ -32,9 +33,9 @@ class ST7788():
         from pyb import Timer       # not from machine
 
         self.spi = machine.SPI(1, baudrate=60_000_000, polarity=0, phase=0)
-        #reset_pin = Pin('PA6', Pin.OUT)        # not using
-        self.dc = Pin('PA8', Pin.OUT, value=0)
-        self.cs = Pin('PA4', Pin.OUT, value=1)
+        #reset_pin = Pin('LCD_RESET', Pin.OUT)        # not using
+        self.dc = Pin('LCD_DATA_CMD', Pin.OUT, value=0)
+        self.cs = Pin('LCD_CS', Pin.OUT, value=1)
 
         if 0:
             # BUST - just fades away
@@ -47,9 +48,6 @@ class ST7788():
         # for framebuf.FrameBuffer
         self.width = 320
         self.height = 240
-        #self.buffer = bytearray(320*240)
-
-        #super().__init__(self.buffer, self.width, self.height, framebuf.GS8)
 
     def write_cmd(self, cmd, args=None):
         # send a command byte and a number of arguments
@@ -72,18 +70,6 @@ class ST7788():
         self.spi.write(buf)
         self.cs(1)
 
-    def write_pixel_data(self, buf):
-        # lcd_blast expands 1-byte per pixel to BGR565
-        self.cs(1)
-        self.dc(1)
-        self.cs(0)
-        try:
-            lcd_blast(self.spi, buf)
-        except:
-            print('lcd_blast fail')
-        self.cs(1)
-
-
     def _set_window(self, x, y, w=320, h=240):
         #self.write_cmd(0x2a, 0, LCD_WIDTH-1)         # CASET - Column address set range (x)
         #self.write_cmd(0x2b, y, LCD_HEIGHT-1)        # RASET - Row address set range (y)
@@ -97,33 +83,52 @@ class ST7788():
 
         # .. follow with w*h*2 bytes of pixel data
 
-    def show_partial(self, y, h):
-        # update just a few rows of the display
-        assert h >= 1
-        self._set_window(0, y, h=h)
-        rows = memoryview(self.buffer)[320*y:320*(y+h)]
-        self.write_pixel_data(rows)
+    def fill_screen(self, pixel=0x0000):
+        # clear ENTIRE screen to indicated pixel value
+        self.fill_rect(0,0, 320, 240, pixel)
 
     def show_zpixels(self, x, y, w, h, zpixels):
-        # display compressed pixel data
-        print('st7788.show_zpixels ... write me')
+        # display compressed pixel data, used for images/icons
+        # - keeping in mpy since C version would be same speed
+        data = uzlib.decompress(zpixels, -10)
+        self._set_window(x, y, w, h)
+        self.write_data(data)
 
     def show_pal_pixels(self, x, y, w, h, palette, pixels):
-        # show 4-bit packed paletted lookup pixels; used for fonts, icons
+        # show 4-bit packed paletted lookup pixels; used for fonts
         assert len(palette) == 2 * 16
+        if 0:
+            buf = bytearray()
+            for here in pixels:
+                px1 = (here >> 4) * 2
+                px2 = (here & 0xf) * 2
+                buf.extend(palette[px1:px1+2])
+                buf.extend(palette[px2:px2+2])
 
-    def show(self):
-        # send entire frame buffer
-        self._set_window(0, 0)
-        self.write_pixel_data(self.buffer)
+            if (w*h) % 2 == 1:
+                buf = memoryview(buf[0:-2])
+
+            self._set_window(x, y, w, h)
+            self.write_data(buf)
+        else:
+            lcd.send_packed(self.spi, x, y, w, h, palette, pixels)
+
+    def show_qr_data(self, x, y, w, expand, scan_w, packed_data):
+        # 8-bit packed QR data, and where to draw it, expanded by 'expand'
+        assert len(packed_data) == (scan_w*w) // 8
+        # XXX write me
 
     def fill_rect(self, x,y, w,h, pixel=0x0000):
-        # need C code
-        pass
-
-    def fill_screen(self, pixel=0x0000):
-        # clear screen to indicated pixel value
-        # XXX need C code
-        pass
+        # set a rectangle to a single colour
+        if not w or not h: return
+        if 0:
+            assert h >= 1 and w >= 1
+            pixel = struct.pack('>H', pixel)
+            ln = pixel * w
+            self._set_window(x, y, w, h)
+            for y in range(h):
+                self.write_data(ln)
+        else:
+            lcd.fill_rect(self.spi, x, y, w, h, pixel)
 
 # EOF 

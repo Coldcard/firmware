@@ -46,20 +46,20 @@ def crunch(n):
 
     return a[0]
 
-# LCD Display wants RGB565 values, but wrong endian from us, so green gets split weird.
+# LCD Display wants RGB565 values, but big endian, so green gets split weird.
 def swizzle(r,g,b):
     # from 0-255 per component => two bytes
     b = (b >> 3)
     g = (g >> 3)        # should be >> 2 for 6 bits; but looks trash?
     r = (r >> 3)
 
-    return pack('<H', ((r<<11) | (g<<6) | b))
+    return pack('>H', ((r<<11) | (g<<6) | b))
 
 # these values tested on real hardware
-assert swizzle(255, 0, 0) == b'\x00\xf8'        # red
-#assert swizzle(0, 255, 0) == b'\xc0\x0f'        # green (6 bits)
-assert swizzle(0, 255, 0) == b'\xc0\x07'        # green (5 bits)
-assert swizzle(0, 0, 255) == b'\x1f\x00'        # blue
+assert swizzle(255, 0, 0) == b'\xf8\x00'        # red
+##assert swizzle(0, 255, 0) == b'\xc0\x0f'        # green (6 bits)
+assert swizzle(0, 255, 0) == b'\x07\xc0'        # green (5 bits)
+assert swizzle(0, 0, 255) == b'\x00\x1f'        # blue
 
         
 def into_bgr565(img):

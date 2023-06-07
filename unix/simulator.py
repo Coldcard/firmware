@@ -79,6 +79,7 @@ class SimulatedScreen:
 
 class LCDSimulator(SimulatedScreen):
     # Simulate the LCD found on the Q1: 320x240xRGB565
+    # - written with little-endian (16 bit) data
 
     background_img = 'q1-images/background.png'
 
@@ -189,7 +190,7 @@ class LCDSimulator(SimulatedScreen):
                     for x in range(X, X+w):
                         #val = (raw[pos] << 8) + raw[pos+1]
                         #val = raw[pos+1] + (raw[pos] << 8)
-                        val, = struct.unpack('<H', raw[pos:pos+2])
+                        val, = struct.unpack('>H', raw[pos:pos+2])
                         self.mv[x][y] = val
                         pos += 2
 

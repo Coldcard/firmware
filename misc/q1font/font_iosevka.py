@@ -9,8 +9,8 @@ GlyphInfo = namedtuple('GlyphInfo', 'w h bits')
 
 
 #FONT_SHADES = [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 223, 239, 255]
-TEXT_PALETTE = b'\x00\x00a\x08\xe3\x18e)\xe79iJ\xebZmk\xef{q\x8c\xf3\x9cu\xad\xf7\xbd\xfb\xde}\xef\xff\xff'
-TEXT_PALETTE_INV = b'\xff\xff}\xef\xfb\xdey\xce\xf7\xbdu\xad\xf3\x9cq\x8c\xef{mk\xebZiJ\xe79\xe3\x18a\x08\x00\x00'
+TEXT_PALETTE = b'\x00\x00\x08a\x18\xe3)e9\xe7JiZ\xebkm{\xef\x8cq\x9c\xf3\xadu\xbd\xf7\xde\xfb\xef}\xff\xff'
+TEXT_PALETTE_INV = b'\xff\xff\xef}\xde\xfb\xcey\xbd\xf7\xadu\x9c\xf3\x8cq{\xefkmZ\xebJi9\xe7\x18\xe3\x08a\x00\x00'
 
 # same, but w/o byte swapping, packing (useful for simulator)
 #TEXT_PALETTE = [0x0000, 0x0861, 0x18e3, 0x2965, 0x39e7, 0x4a69, 0x5aeb, 0x6b6d, 0x7bef, 0x8c71, 0x9cf3, 0xad75, 0xbdf7, 0xdefb, 0xef7d, 0xffff]

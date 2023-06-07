@@ -12,7 +12,6 @@ from mk4 import dev_enable_repl
 from multisig import make_multisig_menu, import_multisig_nfc
 from seed import make_ephemeral_seed_menu, make_seed_vault_menu
 from address_explorer import address_explore
-from users import make_users_menu
 from drv_entro import drv_entro_start, password_entry
 from backups import clone_start, clone_write_data
 from xor_seed import xor_split_start, xor_restore_start
@@ -23,13 +22,15 @@ from trick_pins import TrickPinMenu
 
 
 # Optional feature: HSM, depends on hardware
-# - code for HSM support wont exist on other version, so dont call it
+# - code for HSM support wont exist on some platforms, so dont call it
 if version.supports_hsm:
     from hsm import hsm_policy_available
+    from users import make_users_menu
     hsm_feature = lambda: True
 else:
     hsm_policy_available = lambda: False
     hsm_feature = lambda: False
+    make_users_menu = lambda: []
 
 trick_pin_menu = TrickPinMenu.make_menu
 

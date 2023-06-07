@@ -26,7 +26,7 @@ USER_C_MODULES = boards/$(BOARD)/c-modules
 # - do not want contents of stm32/boards/manifest.py
 FROZEN_MANIFEST =  \
 					boards/$(BOARD)/shared/manifest.py \
-					boards/$(BOARD)/shared/manifest_mk4.py
+					boards/$(BOARD)/shared/manifest_q1.py
 
 # This will relocate things up by 128k=0x2_0000
 # see also ./layout.ld
@@ -73,18 +73,18 @@ checksum:
 COPT += -g
 
 # bugfix IIRC
-build-COLDCARD_MK4/boards/COLDCARD_MK4/modckcc.o: COPT = -O0 -DNDEBUG
+build-COLDCARD_Q1/boards/COLDCARD_Q1/modckcc.o: COPT = -O0 -DNDEBUG
 
 # pickiness
-build-COLDCARD_MK4/dma.o: COPT=-Werror=unused-const-variable=0
-build-COLDCARD_MK4/boards/COLDCARD_MK4/psramdisk.o: COPT=-Werror=unused-const-variable=0
+build-COLDCARD_Q1/dma.o: COPT=-Werror=unused-const-variable=0
+build-COLDCARD_Q1/boards/COLDCARD_Q1/psramdisk.o: COPT=-Werror=unused-const-variable=0
 
 # bugfix: remove unwanted setup code called from ports/stm32/resethandler.s
-build-COLDCARD_MK4/lib/stm32lib/CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.o: \
+build-COLDCARD_Q1/lib/stm32lib/CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx.o: \
 	CFLAGS += -DSystemInit=SystemInit_OMIT
 
 # bugfix: replace keyboard interrupt handling
-build-COLDCARD_MK4/lib/utils/interrupt_char.o: \
+build-COLDCARD_Q1/lib/utils/interrupt_char.o: \
 	CFLAGS += -Dmp_hal_set_interrupt_char=mp_hal_set_interrupt_char_OMIT
 	
 
