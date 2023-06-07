@@ -381,39 +381,6 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
     from flow import EmptyWallet
     return MenuSystem(EmptyWallet)
 
-async def login_countdown(sec):
-    # Show a countdown, which may need to
-    # run for multiple **days**
-    from glob import dis
-    from display import FontSmall, FontLarge
-    from utime import ticks_ms, ticks_diff
-
-    # pre-render fixed parts
-    dis.clear()
-    y = 0
-    dis.text(None, y, 'Login countdown in', font=FontSmall); y += 14
-    dis.text(None, y, 'effect. Must wait:', font=FontSmall); y += 14
-    y += 5
-    dis.save()
-
-    st = ticks_ms()
-    while sec > 0:
-        dis.restore()
-        dis.text(None, y, pretty_short_delay(sec), font=FontLarge)
-
-        dis.show()
-        dis.busy_bar(1)
-
-        # this should be more accurate, errors were accumulating
-        now = ticks_ms()
-        dt = 1000 - ticks_diff(now, st)
-        await sleep_ms(dt)
-        st = ticks_ms()
-
-        sec -= 1
-
-    dis.busy_bar(0)
-
 async def block_until_login():
     #
     # Force user to enter a valid PIN.
@@ -449,17 +416,22 @@ async def show_nickname(nick):
     # Show a nickname for this coldcard (as a personalization)
     # - no keys here, just show it until they press anything
     from glob import dis
-    from display import FontLarge, FontTiny, FontSmall
     from ux import ux_wait_keyup
 
     dis.clear()
 
-    if dis.width(nick, FontLarge) <= dis.WIDTH:
-        dis.text(None, 21, nick, font=FontLarge)
+    if dis.has_lcd:
+        from lcd_display import CHARS_H
+        dis.text(None, CHARS_H//3, nick)
     else:
-        dis.text(None, 27, nick, font=FontSmall)
+        from display import FontLarge, FontSmall
 
-    dis.show()
+        if dis.width(nick, FontLarge) <= dis.WIDTH:
+            dis.text(None, 21, nick, font=FontLarge)
+        else:
+            dis.text(None, 27, nick, font=FontSmall)
+
+        dis.show()
 
     await ux_wait_keyup()
 
@@ -763,7 +735,7 @@ async def start_login_sequence():
     #
     # - easy to brick units here, so catch and ignore errors where possible/appropriate
     #
-    from ux import idle_logout
+    from ux import idle_logout, ux_login_countdown
     from glob import dis
     import callgate
 
@@ -836,7 +808,7 @@ async def start_login_sequence():
         if delay:
             # kill some time, with countdown, and get "the" PIN again for real login
             pa.reset()
-            await login_countdown(delay * (60 if not version.is_devmode else 1))
+            await ux_login_countdown(delay * (60 if not version.is_devmode else 1))
 
             if version.has_se2:
                 # keep it simple for Mk4+: just challenge again for any PIN

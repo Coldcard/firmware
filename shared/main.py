@@ -16,7 +16,7 @@ assert not glob.dis, "main reimport"
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
-if 0:
+if 1: #XXX
     # useful for debug: keep this stub!
     import ckcc
     ckcc.vcp_enabled(True)

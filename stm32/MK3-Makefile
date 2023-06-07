@@ -2,10 +2,13 @@
 #
 # Build micropython for stm32 (an ARM processor). Also handles signing of resulting firmware images.
 #
+# XXX obsolete, not supported but kept as reference?
+#
 include version.mk
 
 BOARD = COLDCARD
-MK_NUM = 3
+HW_MODEL = mk3
+PARENT_MKFILE = MK3-Makefile
 
 # These values used to make .DFU files. Flash memory locations.
 FIRMWARE_BASE   = 0x08008000

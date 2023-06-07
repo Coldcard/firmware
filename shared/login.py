@@ -4,7 +4,6 @@
 #
 import pincodes, version, random
 from glob import dis
-from display import FontLarge, FontTiny
 from ux import PressRelease, ux_wait_keyup, ux_show_story, ux_show_pin
 from callgate import show_logout
 from pincodes import pa
@@ -70,6 +69,7 @@ class LoginUX:
             dis.text(None, -1, "CANCEL or SELECT to continue")
         else:
             # Old style
+            from display import FontLarge, FontTiny
             y = 15
             x = 18
             dis.text(x, y,    words[0], FontLarge)

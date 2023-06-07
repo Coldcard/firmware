@@ -252,9 +252,9 @@ individual words if you wish.''')
 
     def late_draw(self, dis):
         # add an overlay with "word N" in small text, top right.
-        from display import FontTiny
+        if dis.has_lcd: return      # unreachable anyway?
 
-        if dis.has_lcd: return      # unreachable?
+        from display import FontTiny
 
         count = len(self.words)
         if count >= self.target_words:
@@ -301,6 +301,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
 async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
     from glob import dis
+    # XXX q1 support
     from display import FontTiny, FontLarge
 
     low_entropy_msg = "You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy."

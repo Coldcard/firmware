@@ -83,7 +83,7 @@ def make_palette(shades, col):
     assert len(shades) == NUM_GREYS
     vals = [remap(col, s) for s in shades]
     txt = ', '.join('0x%04x'% i for i in vals)
-    return txt, pack('<%dH' % NUM_GREYS, *vals)
+    return txt, pack('>%dH' % NUM_GREYS, *vals)
 
 def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     font = ImageFont.truetype(FONT, FONT_SIZE)

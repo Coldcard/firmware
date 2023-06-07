@@ -219,5 +219,31 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
     dis.text(10, y+2, msg)
     dis.show()
 
+async def ux_login_countdown(sec):
+    # Show a countdown, which may need to
+    # run for multiple **days**
+    # XXX untested
+    from glob import dis
+    from utime import ticks_ms, ticks_diff
+
+    y = 4
+    dis.clear()
+    dis.text(None, y-2, "Login countdown in effect.", invert=1)
+    dis.text(None, y-1, "Must wait:")
+
+    st = ticks_ms()
+    while sec > 0:
+        dis.text(None, y, pretty_short_delay(sec))
+        dis.busy_bar(1)
+
+        # this should be more accurate, errors were accumulating
+        now = ticks_ms()
+        dt = 1000 - ticks_diff(now, st)
+        await sleep_ms(dt)
+        st = ticks_ms()
+
+        sec -= 1
+
+    dis.busy_bar(0)
 
 # EOF

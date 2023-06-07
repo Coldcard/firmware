@@ -5,7 +5,6 @@
 import ckcc
 from uasyncio import sleep_ms
 from glob import dis
-from display import FontLarge
 from ux import ux_wait_keyup, ux_clear_keys, ux_poll_key
 from ux import ux_show_story
 from callgate import get_is_bricked, get_genuine, clear_genuine
@@ -13,6 +12,11 @@ from utils import problem_file_line
 import version
 from glob import settings
 from charcodes import KEY_SELECT, KEY_CANCEL
+
+try:
+    from display import FontLarge
+except ImportError:
+    FontLarge = None
 
 async def wait_ok():
     k = await ux_wait_keyup('xy' + KEY_SELECT + KEY_CANCEL)
@@ -50,6 +54,12 @@ async def test_keyboard():
     # for Q1
     # XXX
     pass
+
+async def test_qr_scanner():
+    # QR Scanner module: assume pretested, just testing connection
+    from glob import SCAN
+    assert SCAN
+    assert glob.SCAN.version.startswith('V2.3.')
 
 def set_genuine():
     # PIN must be blank for this to work
@@ -313,6 +323,8 @@ async def start_selftest():
             await test_keyboard()
         else:
             await test_numpad()
+        if version.has_qr:
+            await test_qr_scanner()
         await test_secure_element()
         await test_sd_active()
         await test_usb_light()

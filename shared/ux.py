@@ -18,12 +18,14 @@ if version.has_qwerty:
     CH_PER_W = CHARS_W
     STORY_H = CHARS_H
     from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
+    from ux_q1 import ux_login_countdown
 else:
     # How many characters can we fit on each line? How many lines?
     # (using FontSmall)
     CH_PER_W = 17
     STORY_H = 5
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
+    from ux_mk4 import ux_login_countdown
 
 class UserInteraction:
     def __init__(self):

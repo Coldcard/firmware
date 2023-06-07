@@ -11,19 +11,16 @@ from graphics import Graphics as obsoleteGraphics
 import sram2
 from st7788 import ST7788
 
-# we support 4 fonts
-from zevvpeep import FontSmall, FontLarge, FontTiny
-FontFixed = object()    # ugly 8x8 PET font
-
+# the one font: fixed-width (except for a few double-width chars)
 from font_iosevka import CELL_W, CELL_H, TEXT_PALETTE, TEXT_PALETTE_INV
 from font_iosevka import FontIosevka
 
-# free unused screen buffers, we will make bigger ones
+# free unused screen buffers, we don't work that way
 del sram2.display_buf
 del sram2.display2_buf
 
 # one byte per pixel; fixed palette maps to BGR565 in C code
-display2_buf = bytearray(320 * 240)
+#display2_buf = bytearray(320 * 240)
 
 #WIDTH = const(320)
 #HEIGHT = const(240)
@@ -106,7 +103,7 @@ class Display:
     def draw_status(self, full=False, **kws):
         if full:
             y = TOP_MARGIN
-            self.dis.fill_rect(0, 0, WIDTH, y-2, 0x0)
+            self.dis.fill_rect(0, 0, WIDTH, y-1, 0x0)
             self.dis.fill_rect(0, y-1, WIDTH, 1, grey_level(0.25))
             kws = get_sys_status()
 
@@ -132,10 +129,7 @@ class Display:
                 self.image(x, 0, '%s_%d' % (meta, kws[meta]))
 
     def width(self, msg, font):
-        if font == FontFixed:
-            return len(msg) * 8
-        else:
-            return sum(font.lookup(ord(ch)).w for ch in msg)
+        return sum(font.lookup(ord(ch)).w for ch in msg)
 
     def image(self, x, y, name):
         # display a graphics image, immediately
@@ -147,45 +141,6 @@ class Display:
     def icon(self, x, y, name, invert=0):
         # XXX plan is these are chars or images
         return 10, 10
-
-    def XXX_text(self, x,y, msg, font=FontSmall, invert=0):
-        # Draw at x,y (top left corner of first letter)
-        # using font. Use invert=1 to get reverse video
-
-        if x is None or x < 0:
-            # center/rjust
-            w = self.width(msg, font)
-            if x == None:
-                x = max(0, (WIDTH - w) // 2)
-            else:
-                # measure from right edge (right justify)
-                x = max(0, WIDTH - w + 1 + x)
-
-        if y < 0:
-            # measure up from bottom edge
-            y = HEIGHT - font.height + 1 + y
-
-        if font == FontFixed:
-            # use font provided by Micropython: 8x8
-            self.dis.text(msg, x, y)
-
-            return x + (len(msg) * 8)
-
-        for ch in msg:
-            fn = font.lookup(ord(ch))
-            if fn is None:
-                # use last char in font as error char for junk we don't
-                # know how to render
-                fn = font.lookup(font.code_range.stop)
-            bits = bytearray(fn.w * fn.h)
-            bits[0:len(fn.bits)] = fn.bits
-            if invert:
-                bits = bytearray(i^0xff for i in bits)
-            gly = framebuf.FrameBuffer(bits, fn.w, fn.h, framebuf.MONO_HLSB)
-            self.dis.blit(gly, x, y, invert)
-            x += fn.w
-
-        return x
 
     def text(self, x,y, msg, font=None, invert=0):
         # Draw at x,y (in cell positions, not pixels)
@@ -228,8 +183,7 @@ class Display:
             if x >= WIDTH: break
 
     def clear(self):
-        # fill to black, but only text area
-        # - not status bar
+        # fill to black, but only text area, not status bar
         self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
 
     def clear_rect(self, x,y, w,h):
@@ -242,10 +196,11 @@ class Display:
         pass
 
     # rather than clearing and redrawing, use this buffer w/ fixed parts of screen
+    # - obsolete concept
     def save(self):
-        display2_buf[:] = self.dis.buffer
+        pass
     def restore(self):
-        self.dis.buffer[:] = display2_buf
+        pass
 
     def hline(self, y):
         self.dis.fill_rect(0,y, WIDTH, 1, 0xffff)
@@ -435,7 +390,7 @@ class Display:
             # centered text under that
             y = CHARS_H - num_lines
             for line in parts:
-                self.text(None, y, line, FontTiny)
+                self.text(None, y, line)
                 y += 1
 
         if idx_hint:
