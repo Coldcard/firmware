@@ -64,10 +64,7 @@ async def accept_terms(*a):
 By using this product, you are accepting our Terms of Sale and Use.
 
 Read the full document at:
-
-https://
-  coldcardwallet
-  .com/legal
+  coldcard.com/legal
 
 Press OK to accept terms and continue.""", escape='7')
 
