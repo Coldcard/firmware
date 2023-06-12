@@ -55,6 +55,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--eject` => pretend no (simulated) SD Card is inserted
 - `--eff` => (mk4) wipe setttings at startup, use simulator defaults
 - `--seq 1234yx34` => after start, enter those keypresses to get you to some submenu
+- `--bootup-movie` => begin a movie on startup, to capture boot sequence
 
 See `variant/sim_settings.py` for the details of settings-related options.
 
