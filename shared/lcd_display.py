@@ -12,7 +12,7 @@ import sram2
 from st7788 import ST7788
 
 # the one font: fixed-width (except for a few double-width chars)
-from font_iosevka import CELL_W, CELL_H, TEXT_PALETTE, TEXT_PALETTE_INV
+from font_iosevka import CELL_W, CELL_H, TEXT_PALETTE, TEXT_PALETTE_INV, COL_TEXT
 from font_iosevka import FontIosevka
 
 # free unused screen buffers, we don't work that way
@@ -33,6 +33,17 @@ CHARS_H = const(10)
 # colouuurs: RGB565
 COL_WHITE = 0xffff
 COL_BLACK = 0x0000
+COL_PROGRESS = COL_TEXT
+
+FLAG_INVERT = 0x8000
+ATTR_MASK = 0x8000
+
+# text display attributes, ie. colours
+AT_INVERT = 0x1
+AT_GREY25 = 0x1
+AT_GREY50 = 0x1
+AT_RED = 0x1
+AT_GREEN = 0x1
 
 def grey_level(amt):
     # give percent 0..1.0
@@ -41,6 +52,14 @@ def grey_level(amt):
     #b = int(amt * 0x1f)        # same as Red
 
     return (r<<11) | (g << 5) | r
+
+def rgb(r,g,b):
+    # as if 24-bit, but we're 16
+    r = int(r/255 * 0x1f)
+    g = int(g/255 * 0x3f)
+    b = int(b/255 * 0x1f)
+    return (r<<11) | (g << 5) | b
+
 
 def get_sys_status():
     # read current values for all status-bar items
@@ -89,9 +108,19 @@ class Display:
     def __init__(self):
         self.dis = ST7788()
 
+        self.last_buf = self.make_buf(0)
+        self.next_buf = self.make_buf(32)
+
+        # state of progress bar
+        self.last_prog_x = -1
+        self.next_prog_x = 0
+
         self.last_bar_update = 0
         self.dis.fill_screen()
         self.draw_status(full=True)
+
+    def make_buf(self, ch):
+        return [array.array('H', (ch for i in range(CHARS_W))) for y in range(CHARS_H)]
 
     def redraw_metakeys(self, new_state):
         # called when metakeys have changed state
@@ -128,26 +157,61 @@ class Display:
             if meta in kws:
                 self.image(x, 0, '%s_%d' % (meta, kws[meta]))
 
-    def width(self, msg, font):
-        return sum(font.lookup(ord(ch)).w for ch in msg)
-
     def image(self, x, y, name):
         # display a graphics image, immediately
         w,h, data = getattr(Graphics, name)
         if x == None:
             x = max(0, (WIDTH - w) // 2)
         self.dis.show_zpixels(x, y, w, h, data)
+        self.mark_correct(x, y, w, h)
+
+    def mark_lines_dirty(self, rng):
+        # mark a bunch of lines as needing redraw
+        # - for QR which covers most of screen
+        # - DELME
+        for y in rng:
+            self.last_buf[y] = array.array('H', (0xfffe for i in range(CHARS_W)))
+            self.next_buf[y] = array.array('H', (0xfffe for i in range(CHARS_W)))
+
+    def mark_correct(self, px, py, w, h):
+        # mark a subset of the screen as already drawn correctly
+        # - because we drew an image in that spot already (immediate)
+        # - hard: need to convert from pixel coord space to chars
+        if py < TOP_MARGIN:
+            # status icons not a concern
+            return
+
+        cy = (py - TOP_MARGIN) // CELL_H
+        cx = (px - LEFT_MARGIN) // CELL_W
+        cw = (w+CELL_W) // CELL_W
+        ch = (h+CELL_H) // CELL_H
+        #print('pixel %dx%d @ (%d,%d) => %dx%d @ (%d,%d)' % (w, h, px,py,  cw, ch, cx,cy))
+
+        for y in range(cy, cy+ch+1):
+            for x in range(cx, cx+cw+1):
+                try:
+                    self.last_buf[y][x] = self.next_buf[y][x] = 0xfffe
+                except IndexError:
+                    pass
+        self.show()
 
     def icon(self, x, y, name, invert=0):
-        # XXX plan is these are chars or images
-        return 10, 10
+        # plan is these are chars or images
+        raise NotImplementedError
 
-    def text(self, x,y, msg, font=None, invert=0):
+    def width(self, msg):
+        # length of text msg in char cells
+        # - typically 1:1 but we have a few double-width chars
+        rv = len(msg)
+        rv += sum(1 for ch in msg if ch in FontIosevka.DOUBLE_WIDE)
+        return rv
+
+    def text(self, x,y, msg, font=None, invert=0, attr=None):
         # Draw at x,y (in cell positions, not pixels)
         # Use invert=1 to get reverse video
 
         if x is None or x < 0:
-            w = len(msg)
+            w = self.width(msg)
             if x == None:
                 # center: also blanks rest of line
                 x = max(0, (CHARS_W - w) // 2)
@@ -165,35 +229,79 @@ class Display:
             print("BAD Draw '%s' at y=%d" % (msg, y))
             return     # past bottom
 
-        # convert to pixels
-        x = LEFT_MARGIN + (x * CELL_W)
-        y = TOP_MARGIN + (y * CELL_H)
-
         for ch in msg:
-            fn = FontIosevka.lookup(ch)
-            if fn is None:
-                # draw blanks for unknowns
-                x += CELL_W
-                continue
+            if x >= CHARS_W: break
+            self.next_buf[y][x] = ord(ch) + (FLAG_INVERT if invert else 0)
+            x += 1
+            if ch in FontIosevka.DOUBLE_WIDE:
+                self.next_buf[y][x] = 0
+                x += 1
 
-            self.dis.show_pal_pixels(x, y, fn.w, fn.h, 
-                TEXT_PALETTE if not invert else TEXT_PALETTE_INV, fn.bits)
-            x += fn.w
-
-            if x >= WIDTH: break
+    def real_clear(self, _internal=False):
+        # fill to black, but only text area, not status bar
+        if not _internal:
+            self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
+        self.last_buf = self.make_buf(32)
+        self.next_buf = self.make_buf(32)
+        self.next_prog_x = 0
 
     def clear(self):
-        # fill to black, but only text area, not status bar
-        self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
+        # clear text
+        self.next_buf = self.make_buf(32)
+        # clear progress bar
+        self.next_prog_x = 0
 
-    def clear_rect(self, x,y, w,h):
-        self.dis.fill_rect(x,y, w,h, 0x0000)
+    def show(self, just_lines=None):
+        # Push internal screen representation to device, effeciently
+        lines = just_lines or range(CHARS_H)
+        for y in lines:
+            x = 0
+            while x < CHARS_W:
+                if self.next_buf[y][x] == self.last_buf[y][x]:
+                    # already correct
+                    x += 1
+                    continue
 
-    def show(self):
-        # used to be critical, pushing internal screen representation to device
-        # however, we can be more selective/auto now...
-        # - but might still use... idk
-        pass
+                py = TOP_MARGIN + (y * CELL_H)
+                px = LEFT_MARGIN + (x * CELL_W)
+                ch = chr(self.next_buf[y][x] & ~ATTR_MASK)
+                attr = (self.next_buf[y][x] & ATTR_MASK)
+
+                if ch == ' ':
+                    # space - look for horz runs & fill w/ blank
+                    run = 1
+                    for x2 in range(x+1, CHARS_W):
+                        if self.next_buf[y][x] != self.next_buf[y][x2]:
+                            break                                        
+                        run += 1
+
+                    self.dis.fill_rect(px, py, run*CELL_W, CELL_H, 
+                                COL_TEXT if attr == FLAG_INVERT else 0)
+                    x += run
+                    continue
+
+                fn = FontIosevka.lookup(ch)
+                if not fn:
+                    # unknown char
+                    x += 1
+                    continue
+
+                self.dis.show_pal_pixels(px, py, fn.w, fn.h, 
+                    TEXT_PALETTE if not (attr == FLAG_INVERT) else TEXT_PALETTE_INV, fn.bits)
+
+                x += fn.w // CELL_W
+
+            self.last_buf[y][:] = self.next_buf[y]
+
+        # maybe update progress bar
+        if self.next_prog_x != self.last_prog_x:
+            x = self.next_prog_x
+            if x:
+                self.dis.fill_rect(0, HEIGHT-3, x, 3, COL_PROGRESS)
+            if x != WIDTH:
+                self.dis.fill_rect(x, HEIGHT-3, WIDTH-x, 3, COL_BLACK)
+            self.last_prog_x = x
+                
 
     # rather than clearing and redrawing, use this buffer w/ fixed parts of screen
     # - obsolete concept
@@ -201,6 +309,8 @@ class Display:
         pass
     def restore(self):
         pass
+    def clear_rect(self, x,y, w,h):
+        raise NotImplementedError
 
     def hline(self, y):
         self.dis.fill_rect(0,y, WIDTH, 1, 0xffff)
@@ -222,29 +332,49 @@ class Display:
         if percent is not None:
             self.progress_bar(percent)
 
+    def DELME_splash(self):
+        # test code
+        from qrs import QRDisplaySingle
+        import glob, time
+        glob.dis = self
+        #q = QRDisplaySingle(['mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'], is_alnum=True)
+        #q2 = QRDisplaySingle(['R5bcepvg91mVPdDSAj62BmZYE9PyBVSHtm'], is_alnum=True)
+        q = QRDisplaySingle(['a'*2953], is_alnum=False)
+        q2 = QRDisplaySingle(['b'*2953], is_alnum=False)
+        q.redraw()
+        while 1:
+            #time.sleep_ms(250)
+            q2.redraw()
+            #time.sleep_ms(250)
+            q.redraw()
+        assert False
+
     def splash(self):
         # display a splash screen with some version numbers
-        self.clear()
-        self.image(None, 24, 'splash')
+        self.real_clear()
+
+        self.image(None, 80, 'splash')
+        self.text(None, 1, "Don't Trust. Verify.")
 
         from version import get_mpy_version
         timestamp, label, *_ = get_mpy_version()
 
-        y = HEIGHT-CELL_H-2
         self.text(0,  -1, 'Version '+label)
         self.text(-1, -1, timestamp)
+        self.show([CHARS_H-1])
+
 
     def splash_text(self, msg):
         # additional progress during splash/startup screen
-        self.text(None, 6, msg)
+        y = 6
+        self.text(None, y, msg)
+        self.show([y])
 
     def progress_bar(self, percent):
         # Horizontal progress bar
         # takes 0.0 .. 1.0 as fraction of doneness
         percent = max(0, min(1.0, percent))
-        x = int(WIDTH * percent)
-        self.dis.fill_rect(0, HEIGHT-3, x, 3, COL_WHITE)
-        self.dis.fill_rect(x, HEIGHT-3, WIDTH-x, 3, COL_BLACK)
+        self.next_prog_x = int(WIDTH * percent)
 
     def progress_sofar(self, done, total):
         # Update progress bar, but only if it's been a while since last update
@@ -256,18 +386,19 @@ class Display:
     def progress_bar_show(self, percent):
         # useful as a callback
         self.progress_bar(percent)
+        self.show()
 
     def mark_sensitive(self, from_y, to_y):
-        return # XXX maybe TODO ? or remove ... LCD doesnt have issue
-        wx = WIDTH-4       # avoid scroll bar
-        for y in range(from_y, to_y):
-            ln = max(2, ckcc.rng() % 32)
-            self.dis.line(wx-ln, y, wx, y, 1)
+        # XXX maybe TODO ? or remove ... LCD doesnt have issue
+        return
 
     def busy_bar(self, enable, speed_code=5):
         # TODO: activate the GPU to render/animate this.
-        print("busy_bar: %s" % enable)
-        return
+        #print("busy_bar: %s" % enable)
+
+        # impt, this show() is relied-upon by callers
+        self.next_prog_x = 0
+        self.show()
 
     def set_brightness(self, val):
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
@@ -280,18 +411,33 @@ class Display:
 
         if ry >= CHARS_H:
             # higher layer tries to draw partial line past bottom, and that's
-            # ok because needed on mk4
+            # ok because the mk4 had a 5th, half-line as a hint
             return
 
         if msg[0] == ' ' and space_indicators:
-            msg = '_' + msg[1:]        # XXX improve me w/ special char
+            # unused, but might need?
+            msg = '␣' + msg[1:]
 
-        ln = ('⏵ ' if is_sel else '  ') + ('%-32s' % msg)
+        x = 0
+        self.text(x, ry, ' '+msg+' ', invert=is_sel)
 
         if is_checked:
-            ln = ln[:CHARS_W-3] + '✓ '
+            #self.text(CHARS_W-3, ry, '✔︎')
+            self.text(len(msg)+2, ry, '✔︎')
 
-        self.text(0, ry, ln, invert=is_sel)
+        if 0:
+            if is_sel:
+                #ln = '▶ %s ◀' % msg
+                #ln = '█▌%s▐█' % msg
+                ln = '█▌%-29s▐█' % msg
+            else:
+                ln = '  ' + msg
+
+            if is_checked:
+                ln = '%-34s' % ln
+                ln = ln[:CHARS_W-3] + '✓'
+
+            self.text(0, ry, ln)
 
 
     def show_yikes(self, lines):
@@ -317,13 +463,15 @@ class Display:
                 self.text(1 if second else 0, y, l)
                 y += 1
 
+        self.show()
+
     def draw_story(self, lines, top, num_lines, is_sensitive):
         self.clear()
 
         y=0
         for ln in lines:
             if ln == 'EOT':
-                self.hline( TOP_MARGIN + (y*CELL_H) )
+                self.text(0, y, '─'*CHARS_W, attr=AT_GREY25)
                 continue
             elif ln and ln[0] == '\x01':
                 # title ... but we have no special font?
@@ -379,12 +527,13 @@ class Display:
         y = (ACTIVE_H - (num_lines * CELL_H) - qw) // 2
         x = (WIDTH - qw) // 2
 
-        # send packed pixel data to C level to decode and exand to LCD
+        # send packed pixel data to C level to decode and expand onto LCD
         # - 8-bit aligned rows of data
         scan_w, _, data = qr_data.packed()
 
-        self.clear()
+        self.real_clear(_internal=True)
         self.dis.show_qr_data(x, TOP_MARGIN + y, w, expand, scan_w, data)
+        self.mark_correct(x, TOP_MARGIN + y, qw, qw)
 
         if num_lines:
             # centered text under that
@@ -397,7 +546,7 @@ class Display:
             # show path index number: just 1 or 2 digits
             self.text(-1, 0, idx_hint)
 
-        self.busy_bar(False)     # includes show
+        self.busy_bar(False)
 
         
 # here for mpy reasons
