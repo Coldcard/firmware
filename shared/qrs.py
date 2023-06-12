@@ -7,6 +7,7 @@ from ux import UserInteraction, ux_wait_keyup, the_ux
 from utils import word_wrap
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+from version import has_qwerty
 
 
 class QRDisplaySingle(UserInteraction):
@@ -38,12 +39,13 @@ class QRDisplaySingle(UserInteraction):
             enc = uqr.Mode_BYTE
 
         # can fail if not enough space in QR
-        self.qr_data = uqr.make(msg, min_version=3, max_version=11, encoding=enc)
+        self.qr_data = uqr.make(msg, min_version=3,
+                                    max_version=11 if not has_qwerty else 40,
+                                    encoding=enc)
 
     def redraw(self):
         # Redraw screen.
         from glob import dis
-        from display import FontSmall, FontTiny
 
         # what we are showing inside the QR
         msg = self.addrs[self.idx]
