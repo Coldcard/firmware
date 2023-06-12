@@ -77,7 +77,6 @@ class LoginUX:
             dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
 
         dis.busy_bar(False)     # includes a dis.show()
-        #dis.show()
 
     def cancel(self):
         self.reset()

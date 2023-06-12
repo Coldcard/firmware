@@ -83,6 +83,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     while 1:
         # TODO: check width, go to two lines if needed? depends on prompt text
         bx = dis.text(2, 4, prompt + ' ' + value + CURSOR)
+        dis.show()
 
         ch = await press.wait()
         if ch == KEY_SELECT:
@@ -128,7 +129,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
     from ux import ux_show_story
 
     dis.clear()
-    dis.text(None, -2, "Use |-> to auto-complete words.")
+    dis.text(None, -2, "Use ↦ to auto-complete words.")
     dis.text(None, -1, "CANCEL or SELECT when done.")
 
     # TODO:
@@ -141,6 +142,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
     while 1:
 
         dis.text(1, 1, value + CURSOR)
+        dis.show()
 
         ch = await press.wait()
         if ch == KEY_SELECT:
@@ -171,7 +173,8 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
     ln = len(pin)
     FILLED = '◉'
     EMPTY = '◯'     #, '◌'
-    msg = ''.join(FILLED if n < ln else EMPTY for n in range(6))
+    #msg = ''.join(FILLED if n < ln else EMPTY for n in range(6))
+    msg = ('※ ' * ln) + '██'
     y = 1 if randomize else 2
 
     if force_draw:
@@ -184,8 +187,8 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
 
         # remapped numbers along bottom
         x = 3
-        dis.text(x-1, -4, ' 1  2  3  4  5  6  7  8  9  0 ', invert=1)
-        dis.text(x  , -3, '  '.join(randomize[1:]) + '  ' + randomize[0])
+        dis.text(x-1, -5, ' 1  2  3  4  5  6  7  8  9  0 ', invert=1)
+        dis.text(x  , -4, '  '.join(randomize[1:]) + '  ' + randomize[0])
 
     if force_draw:
 
@@ -216,7 +219,9 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
         dis.text(None, -1, cta)
 
     # auto-center broken w/ double-wides
-    dis.text(10, y+2, msg)
+    x = None        # 10
+    dis.text(None, y+2, ' '*20)
+    dis.text(x, y+2, msg)
     dis.show()
 
 async def ux_login_countdown(sec):
