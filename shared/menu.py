@@ -208,9 +208,8 @@ class MenuSystem:
         # Redraw the menu.
         #
         from glob import dis
-        dis.clear()
 
-        #print('cur=%d ypos=%d' % (self.cursor, self.ypos))
+        dis.clear()
 
         for n in range(self.ypos+PER_M+1):
             if n+self.ypos >= self.count: break
