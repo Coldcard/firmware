@@ -40,7 +40,7 @@ CHARSET = [chr(x) for x in range(32,127)] \
 
 # these are be better as double-wide chars
 DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
-                '◉', '◯', '◌',
+                '◉', '◯', '◌', '※',
             ]
 
 NUM_CHARS = len(CHARSET)
