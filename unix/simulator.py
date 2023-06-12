@@ -29,6 +29,14 @@ UNIX_SOCKET_PATH = '/tmp/ckcc-simulator.sock'
 
 current_led_state = 0x0
 
+def activate_file(filename):
+    # see <https://stackoverflow.com/questions/17317219>
+    if sys.platform == "win32":
+        os.startfile(filename)
+    else:
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.call([opener, filename])
+
 class SimulatedScreen:
     # a base class
 
@@ -43,6 +51,7 @@ class SimulatedScreen:
 
         if not fn_in:
             print("Snapshot saved: %s" % fn.split('/', 1)[1])
+            activate_file(fn)
 
         return fn
 
@@ -63,6 +72,7 @@ class SimulatedScreen:
                         duration=[max(dt, 20) for dt,_ in self.movie], loop=50)
 
         print("Movie saved: %s (%d frames)" % (fn.split('/', 1)[1], len(self.movie)))
+        activate_file(fn)
 
         self.movie = None
 
@@ -83,24 +93,8 @@ class LCDSimulator(SimulatedScreen):
 
     background_img = 'q1-images/background.png'
 
-    TEXT_PALETTE = [0x0000, 0x0861, 0x18e3, 0x2965, 0x39e7, 0x4a69, 0x5aeb, 0x6b6d,
-                    0x7bef, 0x8c71, 0x9cf3, 0xad75, 0xbdf7, 0xdefb, 0xef7d, 0xffff]
-    TEXT_PALETTE_INV = list(reversed(TEXT_PALETTE))
-
     # where the simulated screen is, relative to fixed background
     TOPLEFT = (65, 60)
-
-    # see stm32/COLDCARD_Q1/modckcc.c where this pallet is defined.
-    palette_colours = [
-            '#000', '#fff',             # black/white, must be 0/1
-            '#f00', '#0f0', '#00f',     # RGB demos
-            # some greys: 5 .. 12
-            '#555', '#999', '#ddd', '#111111', '#151515', '#191919', '#1d1d1d',
-            # tbd/unused
-            '#200', '#400', '#800',
-            # #15: Coinkite brand
-            '#f16422'
-        ]
 
     def __init__(self, factory):
         self.movie = None
@@ -108,9 +102,6 @@ class LCDSimulator(SimulatedScreen):
         self.sprite = s = factory.create_software_sprite( (320,240), bpp=16)
         s.x, s.y = self.TOPLEFT
         s.depth = 100
-
-        self.palette = [sdl2.ext.prepare_color(code, s) for code in self.palette_colours]
-        assert len(self.palette) == 16
 
         # selftest
         try:
@@ -122,7 +113,7 @@ class LCDSimulator(SimulatedScreen):
             print('blu = ' + hex(sdl2.ext.prepare_color('#00f', s)))
             raise
 
-        sdl2.ext.fill(s, self.palette[0])
+        sdl2.ext.fill(s, 0x0)
 
         self.mv = sdl2.ext.pixels2d(self.sprite)
     
@@ -134,7 +125,9 @@ class LCDSimulator(SimulatedScreen):
         # got bytes for new update. expect a header and packed pixels
         while 1:
             prefix = readable.read(11)
-            if not prefix: return
+            if not prefix:
+                break
+
             mode, X,Y, w, h, count = struct.unpack('<s5H', prefix)
             mode = mode.decode('ascii')
             here = readable.read(count)
@@ -154,25 +147,14 @@ class LCDSimulator(SimulatedScreen):
                 continue
 
             pos = 0
-            if mode == 'p':
-                # palette lookup mode (fixed, limited; obsolete)
-                assert w*h == count
-
-                for y in range(Y, Y+h):
-                    for x in range(X, X+w):
-                        val = here[pos]
-                        pos += 1
-                        self.mv[x][y] = self.palette[val & 0xf]
-
-            elif mode in 'ti':
+            if mode in 't':
                 # palette lookup mode for text: packed 4-bit / pixel
-                # cheat: palette is not repeated over link
-                assert w*h == count*2, [w,h,count]
+                assert count == ((w*h)//2)+(2*16), [w,h,count]
 
-                pal = self.TEXT_PALETTE if mode == 't' else self.TEXT_PALETTE_INV
+                pal = struct.unpack('>16H', here[:2*16])
 
                 unpacked = bytearray()
-                for b in here:
+                for b in here[2*16:]:
                     unpacked.append(b >> 4)
                     unpacked.append(b & 0xf)
 
@@ -201,8 +183,8 @@ class LCDSimulator(SimulatedScreen):
                 expand = h
                 h = w
                 scan_w = (w+7)//8
-                print(f'QR: {scan_w=} {expand=} {w=}')
-                assert 21 <= w < 177 and (w%2) == 1, w
+                #print(f'QR: {scan_w=} {expand=} {w=}')
+                assert 21 <= w <= 177 and (w%2) == 1, w
 
                 # use PIL to resize and add border
                 # - but pasting img into sprite is too hard, so use self.mv instead
@@ -235,6 +217,8 @@ class LCDSimulator(SimulatedScreen):
                 for y in range(Y, Y+h):
                     for x in range(X, X+w):
                         self.mv[x][y] = px
+            else:
+                raise ValueError(mode)
 
         if self.movie is not None:
             self.new_frame()
@@ -507,6 +491,9 @@ Q1 specials:
     spriterenderer.render(bg)
     spriterenderer.render(simdis.sprite)
     simdis.draw_leds(spriterenderer)
+
+    if ('--bootup-movie' in sys.argv):
+        simdis.movie_start()
 
     # capture exec path and move into intended working directory
     env = os.environ.copy()
