@@ -332,7 +332,7 @@ VirginSystem = [
     MenuItem('Choose PIN Code', f=initial_pin_setup),
     MenuItem('Advanced/Tools', menu=AdvancedVirginMenu),
     MenuItem('Bag Number', f=show_bag_number),
-    MenuItem('Help', f=virgin_help),
+    MenuItem('Help', f=virgin_help, predicate=lambda: not version.has_qwerty),
 ]
 
 ImportWallet = [
@@ -361,7 +361,7 @@ EmptyWallet = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('New Seed Words', menu=NewSeedMenu),
     MenuItem('Import Existing', menu=ImportWallet),
-    MenuItem('Help', f=virgin_help),
+    MenuItem('Help', f=virgin_help, predicate=lambda: not version.has_qwerty),
     MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
