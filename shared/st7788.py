@@ -116,7 +116,7 @@ class ST7788():
     def show_qr_data(self, x, y, w, expand, scan_w, packed_data):
         # 8-bit packed QR data, and where to draw it, expanded by 'expand'
         assert len(packed_data) == (scan_w*w) // 8
-        # XXX write me
+        lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data)
 
     def fill_rect(self, x,y, w,h, pixel=0x0000):
         # set a rectangle to a single colour
