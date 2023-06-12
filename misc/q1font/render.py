@@ -32,14 +32,14 @@ NUM_GREYS = 16
 CHARSET = [chr(x) for x in range(32,127)] \
             + ['→', '←', '↳', '•', '⋯',
                 '█', '▌', '▐', 
-                '▼', '▲', '►', '◀', '⏵',
+                '▼', '▲', '▶', '◀', '⏵',
                 '₿', '✔', '✓', '↦', '␣',
-                '◉', '◯', '◌',
-                '™', '©',
+                '◉', '◯', '◌', '⬚', '░',
+                '™', '©', '─', '⬧', '※'
           ]
 
 # these are be better as double-wide chars
-DBL_WIDTH = ['⋯', '✔︎', '✓','→', '←', '↦',        
+DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
                 '◉', '◯', '◌',
             ]
 
@@ -83,7 +83,7 @@ def make_palette(shades, col):
     assert len(shades) == NUM_GREYS
     vals = [remap(col, s) for s in shades]
     txt = ', '.join('0x%04x'% i for i in vals)
-    return txt, pack('>%dH' % NUM_GREYS, *vals)
+    return vals, txt, pack('>%dH' % NUM_GREYS, *vals)
 
 def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     font = ImageFont.truetype(FONT, FONT_SIZE)
@@ -218,8 +218,8 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
         results.append((ch, here))
 
-    pal_vals, text_pal = make_palette(shades, (255, 255, 255))
-    pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], (255, 255, 255))
+    pal_nums, pal_vals, text_pal = make_palette(shades, (255, 176, 0))
+    _, pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], (255, 176, 0))
 
     with open(out_fname, 'w') as fp:
         tmpl = open('template.py').read()
@@ -232,15 +232,16 @@ TEXT_PALETTE_INV = {text_pal_inv}
 
 # same, but w/o byte swapping, packing (useful for simulator)
 #TEXT_PALETTE = [{pal_vals}]
+COL_TEXT = const(0x{pal_nums[15]:04x})   # text foreground colour
 
 CELL_W = const({CELL_W})
 CELL_H = const({CELL_H})
 BYTES_PER_CHAR = const({MEM_PER_CHAR})
 
 #SPECIAL_CHARS = {[c for c in CHARSET if ord(c) >= 128]}
-#DOUBLE_WIDE = {DBL_WIDTH}
 
 class {cls_name}:
+    DOUBLE_WIDE = {DBL_WIDTH}
 
     @classmethod
     def lookup(cls, cp):
