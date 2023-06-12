@@ -29,9 +29,24 @@
 #define CASET   0x2a
 #define RASET   0x2b
 #define RAMWR   0x2c
-
+#define DISPOFF 0x28
+#define DISPON  0x29
 
 #define SWAB16(n)     (( ((n)>>8) | ((n) << 8) )&0xffff)
+
+/* have not needed
+static inline void wait_vsync(void) {
+    // PB11 is TEAR input: a positive pulse every 60Hz that
+    // corresponds to vertical blanking time
+    uint32_t timeout = 1000000;
+    for(; timeout; timeout--) {
+        if(mp_hal_pin_read(PIN_LCD_TEAR)) {
+            return;
+        }
+    }
+    //puts("TEAR timeout");
+}
+*/
 
 static inline void write_cmd(const spi_t *spi, uint8_t cmd)
 {
@@ -40,7 +55,7 @@ static inline void write_cmd(const spi_t *spi, uint8_t cmd)
     mp_hal_pin_write(PIN_LCD_DATA_CMD, 0);
     mp_hal_pin_write(PIN_LCD_CS, 0);
 
-    spi_transfer(spi, 1, (const uint8_t *)&cmd, NULL, SPI_TRANSFER_TIMEOUT(1));
+    HAL_SPI_Transmit(spi->spi, (uint8_t *)&cmd, 1, SPI_TRANSFER_TIMEOUT(1));
 
     mp_hal_pin_write(PIN_LCD_CS, 1);
 }
@@ -50,17 +65,15 @@ static inline void write_cmd2(const spi_t *spi, uint8_t cmd, uint16_t arg1, uint
     // Write a command byte, followed by 2 big-endian 16 bit arguments.
     uint16_t args[2] = { SWAB16(arg1), SWAB16(arg2)};
 
+    // might be faster to avoid DMA for little transfers, so do that
     mp_hal_pin_write(PIN_LCD_CS, 1);
     mp_hal_pin_write(PIN_LCD_DATA_CMD, 0);
     mp_hal_pin_write(PIN_LCD_CS, 0);
 
-    //spi_transfer(spi, 1, (const uint8_t *)&cmd, NULL, SPI_TRANSFER_TIMEOUT(1));
     HAL_SPI_Transmit(spi->spi, (uint8_t *)&cmd, 1, SPI_TRANSFER_TIMEOUT(1));
 
     mp_hal_pin_write(PIN_LCD_DATA_CMD, 1);
 
-    // faster to avoid DMA for little transfers, so do that
-    //spi_transfer(spi, 4, (const uint8_t *)&args, NULL, SPI_TRANSFER_TIMEOUT(4));
     HAL_SPI_Transmit(spi->spi, (uint8_t *)&args, 4, SPI_TRANSFER_TIMEOUT(4));
 
     mp_hal_pin_write(PIN_LCD_CS, 1);
@@ -75,6 +88,20 @@ static void write_data(const spi_t *spi, int len, const uint8_t *data)
     mp_hal_pin_write(PIN_LCD_CS, 0);
 
     spi_transfer(spi, len, data, NULL, SPI_TRANSFER_TIMEOUT(len));
+
+    mp_hal_pin_write(PIN_LCD_CS, 1);
+}
+
+static void write_data_repeated(const spi_t *spi, int count, int len, const uint8_t *data)
+{
+    // Send a bunch of pixel data, and repeat it N tim.es
+    mp_hal_pin_write(PIN_LCD_CS, 1);
+    mp_hal_pin_write(PIN_LCD_DATA_CMD, 1);
+    mp_hal_pin_write(PIN_LCD_CS, 0);
+
+    for(int i=0; i<count; i++) {
+        spi_transfer(spi, len, data, NULL, SPI_TRANSFER_TIMEOUT(len));
+    }
 
     mp_hal_pin_write(PIN_LCD_CS, 1);
 }
@@ -128,6 +155,67 @@ STATIC mp_obj_t send_packed(size_t n_args, const mp_obj_t *args)
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(send_packed_obj, 7, 7, send_packed);
 
+
+STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
+{
+    // Take a packed QR code, and rendered as black/white squares
+    // - expands it by "expand"
+    // - adds one-unit border to all sides
+    // - scan_w: scanline width (packed to mod 8)
+    //lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data)
+
+    const uint16_t COL_WHITE = 0xffff; 
+    const uint16_t COL_BLACK = 0x0000; 
+    const spi_t *spi = spi_from_mp_obj(args[0]);
+ 
+    mp_int_t x = mp_obj_get_int(args[1]);
+    mp_int_t y = mp_obj_get_int(args[2]);
+    mp_int_t w = mp_obj_get_int(args[3]);
+    mp_int_t expand = mp_obj_get_int(args[4]);
+    mp_int_t scan_w = mp_obj_get_int(args[5]);
+
+    mp_buffer_info_t boxes;
+    mp_get_buffer_raise(args[6], &boxes, MP_BUFFER_READ);
+    if(boxes.len!= (scan_w*w) / 8) {
+        mp_raise_ValueError(NULL);
+    }
+
+    // operate line by line
+    const uint32_t W = (w+2) * expand;
+    uint16_t line[(w+2) * expand];
+
+    for(int i=0; i<W; i++) {
+        line[i] = COL_WHITE;
+    }
+
+    // top, bot blank lines
+    set_window(spi, x, y, W, expand);
+    write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
+    set_window(spi, x, y+W-expand, W, expand);
+    write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
+
+    const uint8_t *ptr=boxes.buf;
+    for(int Y=0; Y < w; Y++, ptr += (scan_w/8)) {
+        const uint8_t *p = ptr;
+        for(int X=0; X<w; ) {
+            for(uint8_t m = 0x80; m && (X <w); m >>= 1) {
+                uint16_t here = ((*p) & m) ? COL_BLACK : COL_WHITE;
+                for(int r=0; r<expand; r++) {
+                    line[((1+X)*expand) + r] = here;
+                }
+                X++;
+            }
+            p++;
+        }
+
+        set_window(spi, x, y+((Y+1)*expand), W, expand);
+        write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
+    }
+
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(send_qr_obj, 7, 7, send_qr);
+
 STATIC mp_obj_t fill_rect(size_t n_args, const mp_obj_t *args)
 {
     // write the same pixel value to a region
@@ -146,9 +234,7 @@ STATIC mp_obj_t fill_rect(size_t n_args, const mp_obj_t *args)
     }
 
     set_window(spi, x, y, w, h);
-    for(int y=0; y<h; y++) {
-        write_data(spi, w*2, (const uint8_t *)line);
-    }
+    write_data_repeated(spi, h, sizeof(line), (const uint8_t *)line);
 
     return mp_const_none;
 }
@@ -158,6 +244,7 @@ STATIC const mp_rom_map_elem_t lcd_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__),            MP_ROM_QSTR(MP_QSTR_lcd) },
     { MP_ROM_QSTR(MP_QSTR_send_packed),         MP_ROM_PTR(&send_packed_obj) },
     { MP_ROM_QSTR(MP_QSTR_fill_rect),           MP_ROM_PTR(&fill_rect_obj) },
+    { MP_ROM_QSTR(MP_QSTR_send_qr),             MP_ROM_PTR(&send_qr_obj) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(lcd_module_globals, lcd_module_globals_table);
