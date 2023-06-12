@@ -322,13 +322,12 @@ class NFCHandler:
 
         while 1:
             phase = (phase + 1) % 4
+            dis.clear()
             if dis.has_lcd:
-                dis.clear()
                 dis.text(None, 4, 'NFC animation fr#%d' % phase)
             else:
-                dis.clear()
                 dis.icon(0, 8, frames[phase])
-                dis.show()
+            dis.show()
             await sleep_ms(250)
 
             if self.last_edge:
