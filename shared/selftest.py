@@ -24,15 +24,14 @@ async def wait_ok():
         raise RuntimeError('Canceled')
 
 def label_test(line1, line2=''):
+    dis.clear()
     if version.has_qwerty:
-        dis.clear()
         dis.text(None, 1, line1)
         dis.text(None, 3, line2)
     else:
-        dis.clear()
         dis.text(None, 10, line1)
         dis.text(None, 34, line2, font=FontLarge)
-        dis.show()
+    dis.show()
 
 async def test_numpad():
     # do an interactive self test
@@ -59,7 +58,7 @@ async def test_qr_scanner():
     # QR Scanner module: assume pretested, just testing connection
     from glob import SCAN
     assert SCAN
-    assert glob.SCAN.version.startswith('V2.3.')
+    assert SCAN.version.startswith('V2.3.')
 
 def set_genuine():
     # PIN must be blank for this to work
@@ -180,6 +179,7 @@ async def test_nfc_light():
         p.value(1)
         dis.clear()
         dis.text(-1, -1, "NFC light green? --->")
+        dis.show()
 
         await wait_ok()
     finally:
@@ -234,12 +234,15 @@ async def test_lcd():
     # Very basic
     try:
         for nm, col in [('RED', 0xf800), ('GREEN', 0x07e0), ('BLUE', 0x001f)]:
+            dis.real_clear()
             dis.dis.fill_screen(col)
             dis.text(1,1, "Selftest")
             dis.text(None,3, "All pixels are %s?" % nm)
+            dis.show()
 
             await wait_ok()
     finally:
+        dis.real_clear()
         dis.draw_status(full=1)
         dis.clear()
 
