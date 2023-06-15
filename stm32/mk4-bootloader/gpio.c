@@ -8,10 +8,8 @@
 #include "gpio.h"
 #include "stm32l4xx_hal.h"
 
-// PA0 - onewire bus for 508a
-// PA2 - onewire bus for 508a - second SE
+// PA0 - onewire bus for 608a
 #define ONEWIRE_PIN      GPIO_PIN_0
-#define ONEWIRE2_PIN     GPIO_PIN_2
 #define ONEWIRE_PORT     GPIOA
 
 // gpio_setup()
