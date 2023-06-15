@@ -35,11 +35,12 @@ const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
 const int NUM_PIXELS = (LCD_WIDTH*LCD_HEIGHT);
 
-// doing BGR565
-const uint16_t COLOUR_BLACK = 0;
-const uint16_t COLOUR_WHITE = ~0;
-const uint16_t COLOUR_BLUE = 0x1f<<11;
-const uint16_t COLOUR_RED = 0x1f;
+const int PROGRESS_BAR_Y = (LCD_HEIGHT - 3);
+
+// doing RGB565, but swab16
+const uint16_t COL_BLACK = 0;
+const uint16_t COL_WHITE = ~0;
+const uint16_t COL_FOREGROUND = 0x60fd;     //SWAB16(0xfd60);     // orange
 
 // track what we are showing so we never re-send same thing (too slow)
 static const uint8_t *last_screen;
@@ -67,6 +68,10 @@ static const uint8_t before_show[] = {
 static SPI_HandleTypeDef   spi_port;
 #endif
 
+// forward refs
+void lcd_fill_solid(uint16_t pattern);
+void lcd_write_rows(int y, int num_rows, uint16_t *pixels);
+
 static inline void wait_vsync(void) {
     // PB11 is TEAR input: a positive pulse every 60Hz that
     // corresponds to vertical blanking time
@@ -78,10 +83,6 @@ static inline void wait_vsync(void) {
     }
     puts("TEAR timeout");
 }
-
-// forward refs
-void lcd_fill_solid(uint16_t pattern);
-void lcd_write_rows(int y, int num_rows, uint16_t *pixels);
 
 // write_bytes()
 //
@@ -217,9 +218,11 @@ oled_setup(void)
     setup.Alternate = GPIO_AF5_SPI1;
     HAL_GPIO_Init(GPIOA, &setup);
 
-    // lock the RESET pin so that St's DFU code doesn't clear screen
-    // it might be trying to use it a MISO signal for SPI loading
+#if 0
+    // lock the LCD pins so nothing else can set them wrong
+    // LATER: no, while GPU in action, we need to tri-state
     HAL_GPIO_LockPin(GPIOA, RESET_PIN | CS_PIN | DC_PIN);
+#endif
 
     // config SPI port
     lcd_spi_setup();
@@ -318,7 +321,7 @@ oled_setup(void)
     lcd_write_data1(0x0);
 
     // kill garbage on display before shown first time
-    lcd_fill_solid(COLOUR_BLACK);
+    lcd_fill_solid(COL_BLACK);
 
     // finally
     lcd_write_cmd(0x21);            // INVON 
@@ -328,11 +331,6 @@ oled_setup(void)
     last_screen = NULL;
 
     rng_delay();
-
-    for(int i=0; i<100; i++) {
-        oled_show_progress(screen_verify, i);
-        delay_ms(100);
-    }
 }
 
 // oled_show_raw()
@@ -424,9 +422,9 @@ oled_show(const uint8_t *pixels)
             uint8_t packed = buf[i];
             for(uint8_t mask = 0x80; mask; mask >>= 1, out++) {
                 if(packed & mask) {
-                    *out = 0xffff;
+                    *out = COL_FOREGROUND;
                 } else {
-                    *out = 0x0;
+                    *out = COL_BLACK;
                 }
             }
         }
@@ -446,6 +444,8 @@ oled_show(const uint8_t *pixels)
     void
 oled_show_progress(const uint8_t *pixels, int progress)
 {
+    //if(pixels == screen_verify) return;         // XXX disable screen
+
     oled_setup();
 
     if(last_screen != pixels) {
@@ -458,15 +458,14 @@ oled_show_progress(const uint8_t *pixels, int progress)
 
     // draw just the progress bar
     uint16_t row[LCD_WIDTH];
-    memset2(row, COLOUR_WHITE, 2*p_count);
-    memset2(&row[p_count], COLOUR_BLACK, 2*(LCD_WIDTH-p_count));
+    memset2(row, COL_FOREGROUND, 2*p_count);
+    memset2(&row[p_count], COL_BLACK, 2*(LCD_WIDTH-p_count));
 
     wait_vsync();
 
-const int PROGRESS_BAR_Y = (LCD_HEIGHT - 30);
-
     lcd_write_rows(PROGRESS_BAR_Y+0, 1, row);
     lcd_write_rows(PROGRESS_BAR_Y+1, 1, row);
+    lcd_write_rows(PROGRESS_BAR_Y+2, 1, row);
 
     rng_delay();
 }
