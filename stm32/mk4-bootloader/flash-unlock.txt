@@ -3,6 +3,7 @@
 ##
 ##     nc lh 4444 < flash-unlock.txt
 ##
+## XXX doesnt work anymore? use "flash protect 0  0 14 off" instead?
 
 halt
 # expect 0x40000000, if it's 0xc0000000, can't work; reboot w/ DFU pressed, to fix
