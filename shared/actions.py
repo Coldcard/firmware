@@ -1251,7 +1251,7 @@ async def unchained_capital_export(*a):
     # they were using our airgapped export, and the BIP-45 path from that
     #
     ch = await ux_show_story('''\
-This saves multisig XPUB information required to setup on the Unchained Capital platform. \
+This saves multisig XPUB information required to setup on the Unchained platform. \
 ''' + PICK_ACCOUNT + SENSITIVE_NOT_SECRET, escape="1")
     account_num = 0
     if ch == '1':
@@ -1262,7 +1262,7 @@ This saves multisig XPUB information required to setup on the Unchained Capital 
     xfp = xfp2str(settings.get('xfp', 0))
     fname = 'unchained-%s.json' % xfp
 
-    await make_json_wallet('Unchained Capital',
+    await make_json_wallet('Unchained',
                            lambda: generate_unchained_export(account_num),
                            fname)
 
