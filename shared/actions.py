@@ -885,6 +885,8 @@ async def start_login_sequence():
             # is early in boot process
             print("XFP save failed: %s" % exc)
 
+    dis.draw_status(xfp=settings.get('xfp'))
+
     # If HSM policy file is available, offer to start that,
     # **before** the USB is even enabled.
     if version.supports_hsm:

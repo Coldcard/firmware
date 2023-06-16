@@ -423,7 +423,7 @@ class PinAttempt:
     def new_main_secret(self, raw_secret, chain=None):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
-        from glob import settings
+        from glob import settings, dis
         import stash
         stash.SensitiveValues.clear_cache()
 
@@ -440,7 +440,9 @@ class PinAttempt:
         with stash.SensitiveValues(raw_secret) as sv:
             if chain is not None:
                 sv.chain = chain
-            sv.capture_xpub()
+            xfp = sv.capture_xpub()
+
+        dis.draw_status(xfp=xfp)
 
         # does not call settings.save() but caller should!
 

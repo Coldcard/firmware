@@ -600,9 +600,9 @@ def set_bip39_passphrase(pw):
         # can't do it without original seed words (late, but caller has checked)
         assert sv.mode == 'words'
 
-        sv.capture_xpub()
+        xfp = sv.capture_xpub()
 
-    dis.draw_status(bip39=int(bool(pw)))
+    dis.draw_status(bip39=int(bool(pw)), xfp=xfp)
 
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and

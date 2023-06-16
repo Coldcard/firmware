@@ -306,6 +306,8 @@ class SensitiveValues:
             nw = len_to_numwords(len(self.raw))
         settings.put('words', nw)
 
+        return xfp
+
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
         # typically would be byte arrays or byte strings, but also
