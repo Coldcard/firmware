@@ -629,6 +629,6 @@ def truncate_address(addr):
     # - 16 chars screen width
     # - but 2 lost at left (menu arrow, corner arrow)
     # - want to show not truncated on right side
-    return addr[0:5] + '⋯' + addr[-6:]
+    return addr[0:6] + '⋯' + addr[-6:]
 
 # EOF
