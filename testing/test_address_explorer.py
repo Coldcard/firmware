@@ -5,6 +5,7 @@ from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
 from pycoin.encoding import a2b_hashed_base58, hash160
+from helpers import detruncate_address
 
 
 @pytest.fixture
@@ -173,7 +174,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         validate_address(expected_addr, sk)
 
         # validate that stub is correct
-        [start, end] = m[_id].split('-')
+        start, end = detruncate_address(m[_id])
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 
@@ -315,7 +316,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
         validate_address(expected_addr, sk)
 
         # validate that stub is correct
-        [start, end] = m[_id].split('-')
+        start, end = detruncate_address(m[_id])
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
 

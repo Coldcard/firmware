@@ -14,8 +14,8 @@ from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
 from base64 import b64encode, b64decode
-from helpers import B2A, fake_dest_addr, swab32, xfp2str
-from helpers import path_to_str, str_to_path, slip132undo
+from helpers import B2A, fake_dest_addr, xfp2str, detruncate_address
+from helpers import path_to_str, str_to_path, slip132undo, swab32
 from struct import unpack, pack
 from constants import *
 from pycoin.key.BIP32Node import BIP32Node
@@ -1924,14 +1924,15 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         chng_idx = 1 if change else 0
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
-        expect, pubkey, script, _  = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
+        expect, pubkey, script, _ = make_ms_address(M, keys, idx=idx, addr_fmt=addr_fmt,
                                                         path_mapper=path_mapper)
 
         assert int(subpath.split('/')[-1]) == idx
         #print('../0/%s => \n %s' % (idx, B2A(script)))
 
-        trunc = expect[0:8] + "-" + expect[-7:]
-        assert trunc == addr
+        start, end = detruncate_address(addr)
+        assert expect.startswith(start)
+        assert expect.endswith(end)
 
 
 def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_wallet, clear_ms, M=2, N=3):
