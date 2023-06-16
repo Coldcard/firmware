@@ -253,4 +253,10 @@ def sign_msg(key, msg, addr_fmt, b64 = False):
     else:
         return sig
 
+def detruncate_address(s):
+    if s[0] == "↳":
+        s = s[1:]
+    start, end = s.split('⋯')
+    return start, end
+
 # EOF
