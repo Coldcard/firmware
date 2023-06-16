@@ -90,23 +90,27 @@ def make_icons():
     sm_font = ImageFont.truetype(FONT_PATH + 'iosevka-heavy.ttf')
 
     targets = [
+        ( 'brand', True, 'Q1', dict(col='#ffb000') ),
         ( 'shift', True, 'SHIFT', {} ),
         ( 'symbol', True, 'SYMB', {} ),
         ( 'caps', True, 'CAPS', {} ),
         ( 'bip39', True, 'PASSPHRASE', {} ),
-        ( 'tmp', True, 'EPHEMERAL', dict(col_0='black') ),
+        ( 'tmp', True, 'EPHEMERAL', dict(col_0='black', col_1='red') ),
         ( 'devmode', True, 'DEV', dict(col='yellow') ),
         ( 'edge', True, 'EDGE', dict(col='yellow') ),
-        ( 'bat_0', False, '\uf244', dict(col='red', y=0)),
-        ( 'bat_1', False, '\uf243', dict(col='yellow', y=0)),
-        ( 'bat_2', False, '\uf242', dict(col='#0f0', y=0)),
-        ( 'bat_3', False, '\uf240', dict(col='green', y=0)),
+        ( 'bat_0', False, '\uf244', dict(col='red', y=-1)),
+        ( 'bat_1', False, '\uf243', dict(col='yellow', y=-1)),
+        ( 'bat_2', False, '\uf242', dict(col='#0f0', y=-1)),
+        ( 'bat_3', False, '\uf240', dict(col='green', y=-1)),
         ( 'plugged', False, '\uf1e6', dict(col='green')),
         #( 'locked', False, '\uf023', dict(col='green')),
         #( 'unlocked', False, '\uf3c1', dict(col='green')),      # why tho?
     ]
 
-    samples = Image.new('RGB', (320*2, ICON_SIZE+1))
+    targets += [ ( 'ch_'+c, True, c.upper(), dict(col='white') ) for c in 
+                    '0123456789abcdef']
+
+    samples = Image.new('RGB', (320*3, ICON_SIZE+1))
     s_x = 5
 
     for basename, is_text, body, opts in targets:
@@ -120,6 +124,8 @@ def make_icons():
 
             if state == 0 and 'col_0' in opts:
                 col = opts['col_0']
+            if state == 1 and 'col_1' in opts:
+                col = opts['col_1']
 
             img = Image.new('RGB', (100,100))
             d = ImageDraw.Draw(img)
