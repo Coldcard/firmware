@@ -416,8 +416,7 @@ class PinAttempt:
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
-        import nvstore
-        from glob import settings
+        from glob import settings, dis
         stash.SensitiveValues.clear_cache()
 
         bypass_tmp = False
@@ -450,8 +449,11 @@ class PinAttempt:
                 if raw_secret is None:
                     # restore to main wallet's settings
                     settings.return_to_master_seed()
+                    xfp = 0  # TODO need secret xfp to provide to the draw_status
                 else:
-                    sv.capture_xpub()
+                    xfp = sv.capture_xpub()
+
+                dis.draw_status(xfp=xfp)
 
             settings.merge_previous_active(old_values)
 

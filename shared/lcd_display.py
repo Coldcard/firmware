@@ -10,6 +10,7 @@ from graphics_q1 import Graphics
 from graphics import Graphics as obsoleteGraphics
 import sram2
 from st7788 import ST7788
+from utils import xfp2str
 
 # the one font: fixed-width (except for a few double-width chars)
 from font_iosevka import CELL_W, CELL_H, TEXT_PALETTE, TEXT_PALETTE_INV, COL_TEXT
@@ -62,12 +63,12 @@ def rgb(r,g,b):
 
 
 def get_sys_status():
-    # read current values for all status-bar items
+    # Read current values for all status-bar items
     # - normally we update as we go along.
     # - return a dict
     from q1 import get_batt_threshold
 
-    rv = dict(shift=0, caps=0, symbol=0)
+    rv = dict(shift=0, caps=0, symbol=0, brand=1)
     b = get_batt_threshold()
     if b is None:
         rv['plugged'] = True
@@ -80,6 +81,10 @@ def get_sys_status():
     from pincodes import pa
     rv['tmp'] = int(bool(pa.tmp_value))
 
+    from glob import settings
+    if settings:
+        rv['xfp'] = settings.get('xfp')
+
     from version import is_edge, is_devmode
     if is_edge:
         rv['edge'] = 1
@@ -87,7 +92,6 @@ def get_sys_status():
         rv['devmode'] = 1
 
     return rv
-    
 
 class Display:
 
@@ -116,7 +120,7 @@ class Display:
         self.next_prog_x = 0
 
         self.last_bar_update = 0
-        self.dis.fill_screen()
+        #self.dis.fill_screen()     # defer a bit
         self.draw_status(full=True)
 
     def make_buf(self, ch):
@@ -136,6 +140,9 @@ class Display:
             self.dis.fill_rect(0, y-1, WIDTH, 1, grey_level(0.25))
             kws = get_sys_status()
 
+        if 'brand' in kws:
+            self.image(4, 0, 'brand')
+
         b_x = 290
         if 'bat' in kws:
             self.image(b_x, 0, 'bat_%d' % kws['bat'])
@@ -143,19 +150,28 @@ class Display:
             self.image(b_x, 0, 'plugged')
 
         if 'bip39' in kws:
-            self.image(120, 0, 'bip39_%d' % kws['bip39'])
+            self.image(108, 0, 'bip39_%d' % kws['bip39'])
 
         if 'tmp' in kws:
-            self.image(200, 0, 'tmp_%d' % kws['tmp'])
+            self.image(165, 0, 'tmp_%d' % kws['tmp'])
 
+        xfp = kws.get('xfp', None)      # expects an integer
+        if xfp != None:
+            x = 215
+            for ch in xfp2str(xfp).lower():
+                self.image(x, 0, 'ch_'+ch)
+                x += 6
+
+        x = 265
         if 'edge' in kws:
-            self.image(260, 0, 'edge')
+            self.image(x, 0, 'edge')
         elif 'devmode' in kws:
-            self.image(260, 0, 'devmode')
+            self.image(x+5, 0, 'devmode')
 
-        for x, meta in [(7, 'shift'), (38, 'symbol'), (65, 'caps')]:
+        x = 16
+        for dx, meta in [(7, 'shift'), (38, 'symbol'), (65, 'caps')]:
             if meta in kws:
-                self.image(x, 0, '%s_%d' % (meta, kws[meta]))
+                self.image(x+dx, 0, '%s_%d' % (meta, kws[meta]))
 
     def image(self, x, y, name):
         # display a graphics image, immediately
@@ -353,20 +369,22 @@ class Display:
         # display a splash screen with some version numbers
         self.real_clear()
 
-        self.image(None, 80, 'splash')
-        self.text(None, 1, "Don't Trust. Verify.")
+        y = 6
+        self.image(None, 90, 'splash')
+        self.text(None, y, "Don't Trust. Verify.")
 
         from version import get_mpy_version
         timestamp, label, *_ = get_mpy_version()
 
         self.text(0,  -1, 'Version '+label)
         self.text(-1, -1, timestamp)
-        self.show([CHARS_H-1])
+        self.show([y, CHARS_H-1])
 
 
     def splash_text(self, msg):
         # additional progress during splash/startup screen
-        y = 6
+        # - not sure any of this occurs during normal login sequence
+        y = 1
         self.text(None, y, msg)
         self.show([y])
 

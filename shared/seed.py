@@ -679,10 +679,10 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
     return nv, xfp, current_xfp
 
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
-    nv, _, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
+    nv, xfp, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
     ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
                                    meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
-    dis.draw_status(bip39=int(bool(pw)))
+    dis.draw_status(bip39=int(bool(pw)), xfp=xfp)
     return ret
 
     # Might need to bounce the USB connection, because our pubkey has changed,
