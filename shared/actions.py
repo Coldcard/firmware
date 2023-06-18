@@ -20,6 +20,7 @@ from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from glob import settings
 from pincodes import pa
 from menu import start_chooser
+from version import MAX_TXN_LEN
 
 
 CLEAR_PIN = '999999-999999'
@@ -1693,28 +1694,56 @@ async def bless_flash(*a):
     dis.show()
 
 
+def is_psbt(filename):
+    if '-signed' in filename.lower():       # XXX problem: multi-signers?
+        return False
+
+    with open(filename, 'rb') as fd:
+        taste = fd.read(10)
+        if taste[0:5] == b'psbt\xff':
+            return True
+        if taste[0:10] == b'70736274ff':        # hex-encoded
+            return True
+        if taste[0:6] == b'cHNidP':             # base64-encoded
+            return True
+        return False
+
+async def batch_sign(*a):
+
+    force_vdisk = False
+    prompt, escape = import_prompt_builder("PSBTs", no_nfc=True)
+    if prompt:
+        ch = await ux_show_story(prompt, escape=escape)
+        if ch == "x": return
+        if ch == "2":
+            force_vdisk = True
+
+    choices = await file_picker(None, suffix='psbt', min_size=50,
+                                force_vdisk=force_vdisk,
+                                max_size=MAX_TXN_LEN, taster=is_psbt)
+    if not choices:
+        await ux_show_story("No PSBTs found. Need to have '.psbt' suffix.")
+
+    from auth import sign_psbt_file
+    from ux import the_ux
+    for label, path, fn in choices:
+        ch = await ux_show_story("Sign %s ??\n\nPress OK to sign, (1) to skip this PSBT,"
+                                 " X to quit and exit." % fn, escape="1")
+        if ch == "x": break
+        elif ch == "y":
+            input_psbt = path + '/' + fn
+            await sign_psbt_file(input_psbt)
+            await sleep_ms(100)
+            await the_ux.top_of_stack().interact()
+
+
 async def ready2sign(*a):
     # Top menu choice of top menu! Signing!
     # - check if any signable in SD card, if so do it
     # - if no card, check virtual disk for PSBT
     # - if still nothing, then talk about USB connection
-    from version import MAX_TXN_LEN
     import stash
     from glob import NFC
-
-    def is_psbt(filename):
-        if '-signed' in filename.lower():       # XXX problem: multi-signers?
-            return False
-
-        with open(filename, 'rb') as fd:
-            taste = fd.read(10)
-            if taste[0:5] == b'psbt\xff':
-                return True
-            if taste[0:10] == b'70736274ff':        # hex-encoded
-                return True
-            if taste[0:6] == b'cHNidP':             # base64-encoded
-                return True
-            return False
 
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
