@@ -2316,4 +2316,56 @@ def test_invalid_output_tapproot_psbt(fake_txn, start_sign, cap_story, dev):
     # error messages are disabled to save some space - problem file line is still included
     # assert "PSBT_IN_TAP_BIP32_DERIVATION xonly-pubkey length != 32" in story
 
+
+@pytest.mark.parametrize("num_tx", [1, 2, 10])
+@pytest.mark.parametrize("action", ["sign", "skip", "refuse"])
+def test_batch_sign(num_tx, action, fake_txn, need_keypress, pick_menu_item,
+                    cap_story, microsd_path, microsd_wipe, goto_home):
+
+    goto_home()
+    microsd_wipe()
+
+    for i in range(num_tx):
+        psbt = fake_txn(2, 2, segwit_in=random.getrandbits(1))
+        with open(microsd_path(f"{i}.psbt"), "wb") as f:
+            f.write(psbt)
+
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("File Management")
+    pick_menu_item("Batch Sign")
+    time.sleep(.1)
+    title, story = cap_story()
+    if "Press (1)" in story:
+        need_keypress("1")
+        time.sleep(.1)
+        title, story = cap_story()
+
+    for i in range(num_tx):
+        assert "Sign" in story
+        assert "(1) to skip" in story
+        assert "X to quit and exit" in story
+        if action == "skip":
+            need_keypress("1")  # skip this PSBT
+            time.sleep(.5)
+            title, story = cap_story()
+            continue
+
+        need_keypress("y")  # sign this PSBT
+        time.sleep(.5)
+        title, story = cap_story()
+        assert title == "OK TO SEND?"
+        if action == "refuse":
+            need_keypress("x")  # refuse
+            time.sleep(.5)
+            title, story = cap_story()
+            continue
+
+        need_keypress("y")  # confirm send
+        time.sleep(.5)
+        title, story = cap_story()
+        assert "-signed.psbt" in story
+        need_keypress("y")
+        time.sleep(.5)
+        title, story = cap_story()
+
 # EOF
