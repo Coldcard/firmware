@@ -180,6 +180,7 @@ FileMgmtMenu = [
     MenuItem("Verify Backup", f=verify_backup),
     MenuItem("Backup System", predicate=has_secrets, f=backup_everything),
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),        #dup elsewhere
+    MenuItem('Batch Sign', predicate=has_secrets, f=batch_sign),
     MenuItem('Sign Text File', predicate=has_secrets, f=sign_message_on_sd),
     #MenuItem('Upgrade Firmware', f=microsd_upgrade),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),

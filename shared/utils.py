@@ -480,7 +480,7 @@ def parse_extended_key(ln, private=False):
     return node, chain, addr_fmt
 
 
-def import_prompt_builder(title):
+def import_prompt_builder(title, no_nfc=False):
     from glob import NFC, VD
     prompt, escape = None, None
     if NFC or VD:
@@ -489,7 +489,7 @@ def import_prompt_builder(title):
         if VD is not None:
             prompt += ", press (2) to import from Virtual Disk"
             escape += "2"
-        if NFC is not None:
+        if NFC is not None and not no_nfc:
             prompt += ", press (3) to import via NFC"
             escape += "3"
         prompt += "."
