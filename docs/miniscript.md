@@ -9,6 +9,9 @@ support Miniscript and MiniTapscript.
 * only [descriptors](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) allowed for import
 * `Settings` -> `Miniscript` -> `<name>` -> `Descriptors`
 * only [descriptors](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki) are exported
+* export extended keys to participate in miniscript:
+    * `Advanced/Tools` -> `Export Wallet` -> `Generic JSON`
+    * `Settings` -> `Multisig Wallets` -> `Export XPUB`
 
 ## Address Explorer
 
