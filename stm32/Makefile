@@ -34,7 +34,7 @@ BOOTLOADER_BASE = 0x08000000
 FILESYSTEM_BASE = 0x080e0000
 
 # Our version for this release.
-VERSION_STRING = 4.1.7
+VERSION_STRING = 4.1.8
 
 #
 # Sign and merge various parts
