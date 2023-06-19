@@ -133,12 +133,17 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         assert expect in desc
         assert expect+f'/{n}/*' in desc
 
-        if n == 0:
-            assert here['label'] == 'Coldcard ' + xfp
+        assert 'label' not in d
 
         # test against bitcoind -- needs a "descriptor native" wallet
-        bitcoind_d_wallet.importdescriptors(obj)
+        res = bitcoind_d_wallet.importdescriptors(obj)
+        assert res[0]["success"]
+        assert res[1]["success"]
+        core_gen = []
+        for i in range(3):
+            core_gen.append(bitcoind_d_wallet.getnewaddress())
 
+        assert core_gen == addrs
         x = bitcoind_d_wallet.getaddressinfo(addrs[-1])
         pprint(x)
         assert x['address'] == addrs[-1]
@@ -342,19 +347,20 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
                           microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
                           load_export, settings_set, use_mainnet):
-    # test UX and operation of the 'unchained capital export'
+    # test UX and operation of the 'unchained export'
     if not testnet:
         use_mainnet()
     goto_home()
     pick_menu_item('Advanced/Tools')
     pick_menu_item('File Management')
     pick_menu_item('Export Wallet')
-    pick_menu_item('Unchained Capital')
+    pick_menu_item('Unchained')
 
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'Unchained Capital' in story
+    assert 'Unchained' in story
+    assert "Capital" not in story
     assert 'Press (1) to' in story
     if acct_num is not None:
         need_keypress('1')
@@ -364,7 +370,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         acct_num = '0'
         need_keypress('y')
 
-    obj = load_export(way, label="Unchained Capital", is_json=True, sig_check=False)
+    obj = load_export(way, label="Unchained", is_json=True, sig_check=False)
 
     root = BIP32Node.from_wallet_key(simulator_fixed_xprv)
     if not testnet:

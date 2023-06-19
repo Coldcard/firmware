@@ -29,6 +29,7 @@ Step 2: Export descriptor from Coldcard to Core
 - in Bitcoin Core, go to Windows -> Console
 - select your newly created descriptor wallet in the wallet pulldown (top left)
 - paste the `importdescriptor` command. It should respond with a success message
+  - in Bitcoin Core v24.1, the console response will include `"message": "Ranged descriptors should not have a label"` and Bitcoin Core won't allow address generation. Removing the entry `"label": "Coldcard x0x0x0x0"` from the .txt file fixes this issue.
 
 NOTE: If you are importing an existing wallet this way, with UTXO on the blockchain,
 you may need to rescan and/or delete "timestamp=now" from the command. If the
