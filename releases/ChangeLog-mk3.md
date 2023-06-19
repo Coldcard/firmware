@@ -1,4 +1,10 @@
+## 4.1.8 - Jun 19, 2023
+
+- Bugfix: "Validating..." screen would be shown twice in some cases. Improves signing performance.
+- Bugfix: Reproducible builds corrected.
+
 ## 4.1.7 - Nov 15, 2022
+
 - Bugfix: Upgrades to 4.1.6 version using SD Card did not work due to an obscure alignment
   bug. USB upgrade did work. A workaround to this issue has been added for this release.
 
