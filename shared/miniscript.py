@@ -631,8 +631,6 @@ async def delete_all(*a):
 class MiniscriptMenu(MenuSystem):
     @classmethod
     def construct(cls):
-        from multisig import export_multisig_xpubs
-
         if not MiniScriptWallet.exists():
             rv = [MenuItem('(none setup yet)', f=no_miniscript_yet)]
         else:
@@ -645,7 +643,6 @@ class MiniscriptMenu(MenuSystem):
         rv.append(MenuItem('Import from File', f=import_miniscript))
         rv.append(MenuItem('Import via NFC', f=import_miniscript_nfc,
                            predicate=lambda: NFC is not None))
-        rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem("DELETE ALL", f=delete_all))
 
         return rv
