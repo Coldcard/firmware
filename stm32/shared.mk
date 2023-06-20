@@ -215,6 +215,7 @@ size:
 setup:
 	cd $(MPY_TOP) ; git submodule update --init lib/stm32lib
 	cd ../external/libngu; make min-one-time
+	cd ../external/libngu/libs/bech32; git apply ../../bech32.patch || true
 	cd $(MPY_TOP)/mpy-cross ; make
 	-ln -s $(PORT_TOP) l-port
 	-ln -s $(MPY_TOP) l-mpy
