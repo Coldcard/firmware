@@ -821,12 +821,15 @@ class PassphraseMenu(MenuSystem):
 
     async def add_numbers(self, *a):
         global pp_sofar
-        pp_sofar = await ux_input_numbers(pp_sofar, self.check_length)
+        pw = await ux_input_numbers(pp_sofar, self.check_length)
+        if pw is not None:
+            pp_sofar = pw
+            self.check_length()
 
     async def empty_phrase(self, *a):
         global pp_sofar
 
-        if pp_sofar and len(pp_sofar) >= 3:
+        if len(pp_sofar) >= 3:
             if not await ux_confirm("Press OK to clear passphrase. X to cancel."):
                 return
 

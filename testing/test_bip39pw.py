@@ -127,6 +127,18 @@ def test_b39p_refused(dev, need_keypress, pw='testing 123'):
             done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
 
+def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, need_keypress, cap_menu):
+    goto_home()
+    pick_menu_item('Passphrase')
+    need_keypress("y")  # intro story
+    pick_menu_item('Add Numbers')
+    need_keypress("x")  # do not add any numbers and cancel with x
+    pick_menu_item('CANCEL')
+    time.sleep(0.1)
+    m = cap_menu()
+    assert m[0] == "Ready To Sign"
+
+
 @pytest.mark.parametrize('haz', [ False, True ])
 def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, cap_story, need_keypress, sim_exec, sim_eval, get_settings, reset_seed_words, get_setting):
     # test UX and operation of the 'seed lockdown' option
