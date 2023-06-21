@@ -102,7 +102,8 @@ be needed for different systems.
             yield ('\n\n')
 
     from multisig import MultisigWallet
-    if MultisigWallet.exists():
+    exists, exists_other_chain = MultisigWallet.exists()
+    if exists:
         yield '\n# Your Multisig Wallets\n\n'
 
         for ms in MultisigWallet.get_all():

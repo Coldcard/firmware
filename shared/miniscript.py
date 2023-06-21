@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/miniscript.py
 #
-import ngu, ujson, chains, uio
+import ngu, ujson, uio, chains
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size, ser_string
@@ -25,8 +25,8 @@ class MiniScriptWallet(BaseWallet):
 
     def __init__(self, desc=None, policy=None, keys=None, key=None,
                  af=None, name=None, taproot=False, sh=False, wsh=False,
-                 wpkh=False):
-        super().__init__()
+                 wpkh=False, chain_type=None):
+        super().__init__(chain_type=chain_type)
         self._policy = policy
         self._keys = keys
         self._key = key
@@ -126,6 +126,7 @@ class MiniScriptWallet(BaseWallet):
         taproot = self.desc.taproot
         return (
             self.name,
+            self.chain_type,
             self.desc.addr_fmt,
             key,
             keys,
@@ -135,9 +136,10 @@ class MiniScriptWallet(BaseWallet):
 
     @classmethod
     def deserialize(cls, c, idx=-1):
-        name, af, key, keys, policy, sh, wsh, wpkh, taproot = c
+        name, ct, af, key, keys, policy, sh, wsh, wpkh, taproot = c
         rv = cls(name=name, key=key, keys=keys, policy=policy, af=af,
-                 taproot=taproot, sh=sh, wsh=wsh, wpkh=wpkh)
+                 taproot=taproot, sh=sh, wsh=wsh, wpkh=wpkh,
+                 chain_type=ct)
         rv.storage_idx = idx
         return rv
 
@@ -283,7 +285,7 @@ class MiniScriptWallet(BaseWallet):
         else:
             desc_obj = Descriptor.from_string(config.strip())
         assert not desc_obj.is_basic_multisig, "Use Settings -> Multisig Wallets"
-        wal = cls(desc_obj, name=name)
+        wal = cls(desc_obj, name=name, chain_type=desc_obj.keys[0].chain_type)
         return wal
 
     async def confirm_import(self):
@@ -624,19 +626,13 @@ async def make_miniscript_wallet_menu(menu, label, item):
     ]
     return rv
 
-async def delete_all(*a):
-    ch = await ux_show_story("Delete all stored miniscript wallets?")
-    if ch == "y":
-        MiniScriptWallet.delete_all()
-    from ux import the_ux
-    m = the_ux.top_of_stack()
-    m.update_contents()
 
 class MiniscriptMenu(MenuSystem):
     @classmethod
     def construct(cls):
-        if not MiniScriptWallet.exists():
-            rv = [MenuItem('(none setup yet)', f=no_miniscript_yet)]
+        exists, exists_other_chain = MiniScriptWallet.exists()
+        if not exists:
+            rv = [MenuItem(MiniScriptWallet.none_setup_yet(exists_other_chain), f=no_miniscript_yet)]
         else:
             rv = []
             for msc in MiniScriptWallet.get_all():
@@ -647,8 +643,6 @@ class MiniscriptMenu(MenuSystem):
         rv.append(MenuItem('Import from File', f=import_miniscript))
         rv.append(MenuItem('Import via NFC', f=import_miniscript_nfc,
                            predicate=lambda: NFC is not None))
-        rv.append(MenuItem("DELETE ALL", f=delete_all))
-
         return rv
 
     def update_contents(self):
@@ -707,7 +701,7 @@ class KeyHash(Key):
         kd = k.decode()
         # raw 20-byte hash
         if len(kd) == 40:
-            return kd
+            return kd, None
         return super().parse_key(k, *args, **kwargs)
 
     def serialize(self, *args, **kwargs):

@@ -573,7 +573,7 @@ def check_xpub(xfp, xpub, deriv, expect_chain, my_xfp, disable_checks=False):
         # HACK but there is no difference extended_keys - just bech32 hrp
         assert chain.ctype == "XTN"
     else:
-        assert chain.ctype == expect_chain      # 'wrong chain'
+        assert chain.ctype == expect_chain, 'wrong chain'
 
     depth = node.depth()
 

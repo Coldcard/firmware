@@ -1316,8 +1316,7 @@ class ShowP2SHAddress(ShowAddressBase):
 
         # calculate all the pubkeys involved.
         self.subpath_help = ms.validate_script(witdeem_script, xfp_paths=xfp_paths)
-
-        self.address = ms.chain.p2sh_address(addr_fmt, witdeem_script)
+        self.address = chains.current_chain().p2sh_address(addr_fmt, witdeem_script)
 
     def get_msg(self):
         return '''\

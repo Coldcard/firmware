@@ -8,7 +8,7 @@ from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from io import BytesIO
 from helpers import fake_dest_addr, make_change_addr, taptweak
 from pycoin.key.BIP32Node import BIP32Node
-from constants import ADDR_STYLES, simulator_fixed_xprv
+from constants import ADDR_STYLES, simulator_fixed_tprv
 
 @pytest.fixture()
 def simple_fake_txn():
@@ -66,7 +66,7 @@ def fake_txn(dev):
                 change_outputs=[], capture_scripts=None, add_xpub=None, op_return=None, taproot_in=False):
         psbt = BasicPSBT()
         txn = Tx(2,[],[])
-        master_xpub = master_xpub or dev.master_xpub or simulator_fixed_xprv
+        master_xpub = master_xpub or dev.master_xpub or simulator_fixed_tprv
         
         # we have a key; use it to provide "plausible" value inputs
         mk = BIP32Node.from_wallet_key(master_xpub)

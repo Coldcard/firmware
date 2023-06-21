@@ -4,7 +4,7 @@
 #
 import pytest, time, re, os, shutil
 
-from constants import simulator_fixed_xpub
+from constants import simulator_fixed_tpub
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
@@ -117,7 +117,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_hom
             assert mnemonic == seed_words
 
         e_master_xpub = dev.send_recv(CCProtocolPacker.get_xpub(), timeout=5000)
-        assert e_master_xpub != simulator_fixed_xpub
+        assert e_master_xpub != simulator_fixed_tpub
         if xpub:
             assert e_master_xpub == xpub
         psbt = fake_txn(2, 2, master_xpub=e_master_xpub, segwit_in=True)

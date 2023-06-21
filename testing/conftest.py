@@ -196,7 +196,7 @@ def enter_pin(enter_number, need_keypress, cap_screen):
 def master_xpub(dev):
     if hasattr(dev.dev, 'pipe'):
         # this works better against simulator in HSM mode, where the xpub cmd may be disabled
-        return simulator_fixed_xpub
+        return simulator_fixed_tpub
 
     r = dev.send_recv(CCProtocolPacker.get_xpub('m'), timeout=None, encrypt=1)
 
@@ -263,7 +263,7 @@ def addr_vs_path(master_xpub):
                     mk._netcode = "BTC"
                 sk = mk.subkey_for_path(path[2:])
             except PublicPrivateMismatchError:
-                mk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+                mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
                 if not testnet:
                     mk._netcode = "BTC"
                 sk = mk.subkey_for_path(path[2:])

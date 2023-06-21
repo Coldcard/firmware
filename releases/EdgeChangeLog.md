@@ -10,6 +10,8 @@
 ## 6.1.1X - 2023-08-XX
 
 - New Feature: Enroll Miniscript wallet via USB (requires ckcc `v1.4.0`)
+- Enhancement: mainnet/testnet separation. Only show wallets for current chain.
+- Bugfix: chain switching with miniscript wallet was not possible
 
 ## 6.1.0X - 2023-06-20
 
