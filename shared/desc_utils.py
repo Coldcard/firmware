@@ -211,11 +211,12 @@ class KeyDerivationInfo:
 
 
 class Key:
-    def __init__(self, node, origin, derivation=None, taproot=False):
+    def __init__(self, node, origin, derivation=None, taproot=False, chain_type=None):
         self.origin = origin
         self.node = node
         self.derivation = derivation
         self.taproot = taproot
+        self.chain_type = chain_type
         if not isinstance(self.node, bytes):
             assert self.origin, "Key origin info is required"
 
@@ -265,17 +266,22 @@ class Key:
         if char is not None:
             s.seek(-1, 1)
         # parse key
-        node = cls.parse_key(k)
+        node, chain_type = cls.parse_key(k)
         der = KeyDerivationInfo.from_string(der.decode())
-        return cls(node, origin, der)
+        return cls(node, origin, der, chain_type=chain_type)
 
     @classmethod
     def parse_key(cls, key_str):
-        # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
+        chain_type = None
         if key_str[1:4].lower() == b"pub":
-            ext_key_prefix = b"%spub" % chains.current_chain().slip132[AF_CLASSIC].hint
             # extended key
-            assert key_str.startswith(ext_key_prefix), ext_key_prefix.decode() + " required"
+            # or xpub or tpub as we use descriptors (SLIP-132 NOT allowed)
+            hint = key_str[0:1].lower()
+            if hint == b"x":
+                chain_type = "BTC"
+            else:
+                assert hint == b"t", "no slip"
+                chain_type = "XTN"
             node = ngu.hdnode.HDNode()
             node.deserialize(key_str)
         else:
@@ -309,7 +315,7 @@ class Key:
 
             assert len(node) == 32, "invalid pk %d %s" % (len(node), node)
 
-        return node
+        return node, chain_type
 
     def derive(self, idx=0):
         if isinstance(self.node, bytes):
@@ -340,18 +346,6 @@ class Key:
         return (self.origin.cc_fp,
                 self.origin.str_derivation(),
                 ch.serialize_public(self.node, AF_CLASSIC))
-
-    @property
-    def can_derive(self):
-        return True if self.derivation else False
-
-    @property
-    def is_extended(self):
-        return True
-
-    @property
-    def is_wildcard(self):
-        return True
 
     @property
     def is_provably_unspendable(self):

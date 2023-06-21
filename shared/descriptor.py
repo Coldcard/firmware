@@ -5,7 +5,7 @@
 import ngu, chains
 from io import BytesIO
 from binascii import hexlify as b2a_hex
-from utils import cleanup_deriv_path, check_xpub
+from utils import cleanup_deriv_path, check_xpub, xfp2str
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
 from public_constants import AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH, MAX_SIGNERS, MAX_TR_SIGNERS
 from desc_utils import parse_desc_str, append_checksum, descriptor_checksum, Key
@@ -233,17 +233,18 @@ class Descriptor:
         else:
             assert self.key is None and self.miniscript, "not miniscript"
 
+        c = chains.current_key_chain().ctype
         for k in to_check:
+            assert k.chain_type == c, "wrong chain"
             xfp = k.origin.cc_fp
             deriv = k.origin.str_derivation()
             xpub = k.extended_public_key()
             deriv = cleanup_deriv_path(deriv)
-            is_mine, _ = check_xpub(xfp, xpub, deriv, chains.current_chain().ctype,
-                                    my_xfp, False)
+            is_mine, _ = check_xpub(xfp, xpub, deriv, c, my_xfp, False)
             if is_mine:
                 has_mine += 1
 
-        assert has_mine != 0, 'my key not included'
+        assert has_mine != 0, 'My key %s missing in descriptor.' % xfp2str(my_xfp).upper()
 
     def storage_policy(self):
         if self.tapscript:
@@ -276,10 +277,6 @@ class Descriptor:
             for key in self.keys
             if key.origin
         ]
-
-    @property
-    def is_wildcard(self):
-        return any([key.is_wildcard for key in self.keys])
 
     @property
     def is_wrapped(self):

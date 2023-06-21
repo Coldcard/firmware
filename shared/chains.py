@@ -356,7 +356,7 @@ class BitcoinRegtest(BitcoinMain):
 
 def get_chain(short_name):
     # lookup object from name: 'BTC' or 'XTN'
-    if short_name == 'BTC':
+    if short_name == 'BTC' or short_name is None:
         return BitcoinMain
     elif short_name == 'XTN':
         return BitcoinTestnet
@@ -374,6 +374,13 @@ def current_chain():
         return BitcoinMain
 
     return get_chain(chain)
+
+def current_key_chain():
+    c = current_chain()
+    if c == BitcoinRegtest:
+        # regtest has same extended keys as testnet
+        c = BitcoinTestnet
+    return c
 
 # Overbuilt: will only be testnet and mainchain.
 AllChains = [BitcoinMain, BitcoinTestnet, BitcoinRegtest]

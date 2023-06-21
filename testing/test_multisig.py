@@ -94,11 +94,11 @@ def make_multisig():
     # default is BIP-45:   m/45'/... (but no co-signer idx)
     # - but can provide str format for deriviation, use {idx} for cosigner idx
 
-    def doit(M, N, unique=0, deriv=None):
+    def doit(M, N, unique=0, deriv=None, chain="XTN"):
         keys = []
 
         for i in range(N-1):
-            pk = BIP32Node.from_master_secret(b'CSW is a fraud %d - %d' % (i, unique), 'XTN')
+            pk = BIP32Node.from_master_secret(b'CSW is a fraud %d - %d' % (i, unique), chain)
 
             xfp = unpack("<I", pk.fingerprint())[0]
 
@@ -114,7 +114,7 @@ def make_multisig():
 
             keys.append((xfp, pk, sub))
 
-        pk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+        pk = BIP32Node.from_wallet_key(simulator_fixed_tprv if chain == "XTN" else simulator_fixed_xprv)
 
         if not deriv:
             sub = pk.subkey(45, is_hardened=True, as_private=True)
@@ -154,8 +154,8 @@ def offer_ms_import(cap_story, dev, need_keypress):
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None,
-             descriptor=False, int_ext_desc=False):
-        keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None))
+             descriptor=False, int_ext_desc=False, chain="XTN"):
+        keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None), chain=chain)
         name = name or f'test-{M}-{N}'
 
         if not do_import:
@@ -629,7 +629,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
     assert 'xfp' in rv
     assert len(rv) >= 6
 
-    e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+    e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
     if not testnet:
         e._netcode = "BTC"
 
@@ -650,7 +650,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         ('p2sh_p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/1'"),
         ('p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/2'"),
     ]:
-        e = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+        e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
         if not testnet:
             e._netcode = "BTC"
         xpub, *_ = slip132undo(rv[name])
@@ -1509,7 +1509,7 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45'"])
 
     cc_deriv = "m/45'/55"
-    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_xprv).subkey_for_path(cc_deriv[2:]).sec())
+    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(cc_deriv[2:]).sec())
 
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
     resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
@@ -2595,5 +2595,63 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
         else:
             assert obj["desc"] == bare_desc
     clear_ms()
+
+
+def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
+                         clear_ms, goto_home, cap_menu, pick_menu_item,
+                         need_keypress, import_ms_wallet):
+    clear_ms()
+    use_regtest()
+
+    # cannot import XPUBS when testnet/regtest enabled
+    with pytest.raises(Exception):
+        import_ms_wallet(3, 3, addr_fmt="p2wsh", accept=1, descriptor=True, chain="BTC")
+
+    import_ms_wallet(2, 2, addr_fmt="p2wsh", accept=1, descriptor=True, chain="XTN")
+    # assert that wallets created at XRT always store XTN anywas (key_chain)
+    res = settings_get("multisig")
+    assert len(res) == 1
+    assert res[0][-1]["ch"] == "XTN"
+
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    time.sleep(0.1)
+    m = cap_menu()
+    assert "(none setup yet)" not in m
+    assert "2/2:" in m[0]
+    goto_home()
+    settings_set("chain", "BTC")
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    time.sleep(0.1)
+    m = cap_menu()
+    # asterisk hints that some wallets are already stored
+    # but not on current active chain
+    assert "(none setup yet)*" in m
+    import_ms_wallet(3, 3, addr_fmt="p2wsh", accept=1, descriptor=True, chain="BTC")
+    goto_home()
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    time.sleep(0.1)
+    m = cap_menu()
+    assert "3/3:" in m[0]
+    for mi in m:
+        assert not mi.startswith("2/2:")
+
+    goto_home()
+    settings_set("chain", "XTN")
+    import_ms_wallet(4, 4, addr_fmt="p2wsh", accept=1, descriptor=True, chain="XTN")
+    pick_menu_item("Settings")
+    pick_menu_item("Multisig Wallets")
+    time.sleep(0.1)
+    m = cap_menu()
+    assert "(none setup yet)" not in m
+    assert "2/2:" in m[0]
+    assert "4/4:" in m[1]
+    for mi in m:
+        assert not mi.startswith("3/3:")
+
+
 
 # EOF

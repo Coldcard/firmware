@@ -130,12 +130,11 @@ class MultisigWallet(BaseWallet):
     disable_checks = False
     key_name = "multisig"
 
-    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type='BTC'):
-        super().__init__()
+    def __init__(self, name, m_of_n, xpubs, addr_fmt=AF_P2SH, chain_type=None):
+        super().__init__(chain_type=chain_type)
         self.name = name
         assert len(m_of_n) == 2
         self.M, self.N = m_of_n
-        self.chain_type = chain_type or 'BTC'
         assert len(xpubs[0]) == 3
         self.xpubs = xpubs                  # list of (xfp(int), deriv, xpub(str))
         self.addr_fmt = addr_fmt            # address format for wallet
@@ -154,17 +153,12 @@ class MultisigWallet(BaseWallet):
                 return v.upper()
         return '?'
 
-    @property
-    def chain(self):
-        return chains.get_chain(self.chain_type)
-
     @classmethod
     def get_trust_policy(cls):
-
         which = settings.get('pms', None)
-
+        exists, _ = cls.exists()
         if which is None:
-            which = TRUST_VERIFY if cls.exists() else TRUST_OFFER
+            which = TRUST_VERIFY if exists else TRUST_OFFER
 
         return which
 
@@ -219,12 +213,27 @@ class MultisigWallet(BaseWallet):
         return rv
 
     @classmethod
+    def is_correct_chain(cls, o, curr_chain):
+        if "ch" not in o[-1]:
+            # mainnet
+            ch = "BTC"
+        else:
+            ch = o[-1]["ch"]
+
+        if ch == curr_chain.ctype:
+            return True
+        return False
+
+    @classmethod
     def iter_wallets(cls, M=None, N=None, addr_fmt=None):
         # yield MS wallets we know about, that match at least right M,N if known.
         # - this is only place we should be searching this list, please!!
         lst = settings.get(cls.key_name, [])
+        c = chains.current_key_chain()
 
         for idx, rec in enumerate(lst):
+            if not cls.is_correct_chain(rec, c):
+                continue
             if M or N:
                 # peek at M/N
                 has_m, has_n = tuple(rec[1])
@@ -388,7 +397,7 @@ class MultisigWallet(BaseWallet):
         # user the resulting addresses because we cannot be certain
         # they are valid and could be signed. And yet, don't blank too many
         # spots or else an attacker could grid out a suitable replacement.
-        ch = self.chain
+        ch = chains.current_chain()
 
         assert self.addr_fmt, 'no addr fmt known'
 
@@ -627,7 +636,7 @@ class MultisigWallet(BaseWallet):
                     continue
 
                 # deserialize, update list and lots of checks
-                is_mine, item = check_xpub(xfp, value, deriv, chains.current_chain().ctype,
+                is_mine, item = check_xpub(xfp, value, deriv, chains.current_key_chain().ctype,
                                            my_xfp, cls.disable_checks)
                 xpubs.append(item)
                 if is_mine:
@@ -653,7 +662,7 @@ class MultisigWallet(BaseWallet):
             deriv = key.origin.str_derivation()
             xpub = key.extended_public_key()
             deriv = cleanup_deriv_path(deriv)
-            is_mine, item = check_xpub(xfp, xpub, deriv, chains.current_chain().ctype,
+            is_mine, item = check_xpub(xfp, xpub, deriv, chains.current_key_chain().ctype,
                                        my_xfp, cls.disable_checks)
             xpubs.append(item)
             if is_mine:
@@ -690,7 +699,7 @@ class MultisigWallet(BaseWallet):
         # - M of N line (assume N of N if not spec'd)
         # - xpub: any bip32 serialization we understand, but be consistent
         #
-        expect_chain = chains.current_chain().ctype
+        expect_chain = chains.current_key_chain().ctype
         if Descriptor.is_descriptor(config):
             # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
             # ignore name
@@ -1166,8 +1175,9 @@ class MultisigMenu(MenuSystem):
         # Dynamic menu with user-defined names of wallets shown
         from bsms import make_ms_wallet_bsms_menu
 
-        if not MultisigWallet.exists():
-            rv = [MenuItem('(none setup yet)', f=no_ms_yet)]
+        exists, exists_other_chain = MultisigWallet.exists()
+        if not exists:
+            rv = [MenuItem(MultisigWallet.none_setup_yet(exists_other_chain), f=no_ms_yet)]
         else:
             rv = []
             for ms in MultisigWallet.get_all():

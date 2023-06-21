@@ -758,7 +758,6 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
 @pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
 def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
                 cap_menu, get_pp_sofar, get_secrets, cap_screen_qr, set_encoded_secret, qr_quality_check):
-    from constants import simulator_fixed_xprv
 
     if mode == 'words':
         # Check the seed words are displayed correctly: the new "View Seed Words" feature

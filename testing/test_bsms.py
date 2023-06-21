@@ -6,7 +6,7 @@
 import sys
 sys.path.append("../shared")
 import pytest, time, pdb, os, random, hashlib, base64
-from constants import simulator_fixed_xprv
+from constants import simulator_fixed_tprv
 from psbt import ser_compact_size
 from bsms import CoordinatorSession, Signer
 from bsms.encryption import key_derivation_function, decrypt, encrypt
@@ -225,7 +225,7 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
         range_num = N if has_ours is False else N - ours_no
         keys = []
         for _ in range(range_num):
-            wk = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
+            wk = BIP32Node.from_master_secret(os.urandom(32), netcode="BTC" if wrong_chain else "XTN")
             root_xfp = wk.fingerprint().hex()
             paths = ["48'/1'/0'/2'", "48'/1'/0'/1'", "0'/1'/0'/0'", "0'", "100'/0'"]
             path = random.choice(paths)
@@ -234,7 +234,7 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
             keys.append((root_xfp, "m/" + path, xpub))
         if has_ours:
             for _ in range(ours_no):
-                wk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+                wk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
                 root_xfp = wk.fingerprint().hex()
                 paths = ["48'/1'/0'/2'", "48'/1'/0'/1'", "0'/1'/0'/0'", "0'", "100'/0'"]
                 path = random.choice(paths)
@@ -252,8 +252,6 @@ def make_coordinator_round2(make_coordinator_round1, settings_get, settings_set,
             desc = desc + "#" + wcs
         if not sortedmulti:
             desc = desc.replace("sortedmulti", "multi")
-        if wrong_chain:
-            desc = desc.replace("tpub", "xpub", 1)
         desc_template = "%s\n" % bsms_version
         desc_template += "%s\n" % desc
         desc_template += "%s\n" % path_restrictions
@@ -586,12 +584,12 @@ def test_signer_round1(way, encryption_type, M_N, addr_fmt, clear_ms, goto_home,
     assert xpub[:4] in ["xpub", "tpub"]
     xfp, path = key_orig_info.split("/", 1)
     # pycoin xpub check
-    mk = BIP32Node.from_wallet_key(simulator_fixed_xprv)
+    mk = BIP32Node.from_wallet_key(simulator_fixed_tprv)
     sk = mk.subkey_for_path(path)
     pycoin_xpub = sk.hwif(as_private=False)
     assert xpub == pycoin_xpub
     # bsms lib xpub check
-    mk0 = PrvKeyNode.parse(simulator_fixed_xprv, testnet=True)
+    mk0 = PrvKeyNode.parse(simulator_fixed_tprv, testnet=True)
     sk0 = mk0.derive_path(str2path(path))
     bsms_xpub = sk0.extended_public_key()
     assert xpub == bsms_xpub
@@ -1035,7 +1033,7 @@ def test_failure_coordinator_round2(encryption_type, make_coordinator_round1, ma
     assert title == "FAILURE"
     assert "BSMS coordinator round2 failed" in story
     if failure == "slip":
-        failure_msg = "tpub required"
+        failure_msg = "no slip"
     elif failure == "wrong_sig":
         failure_msg = "Recovered key from signature does not equal key provided. Wrong signature?"
     else:
@@ -1146,7 +1144,7 @@ def test_failure_signer_round2(encryption_type, goto_home, need_keypress, pick_m
         failure_msg = "Multiple 0F056943 keys in descriptor (2)"
     elif failure == "wrong_chain":
         kws = {failure: True}
-        failure_msg = "tpub required"
+        failure_msg = "wrong chain"
     elif failure == "wrong_checksum":
         kws = {failure: True}
         failure_msg = "Wrong checksum"
