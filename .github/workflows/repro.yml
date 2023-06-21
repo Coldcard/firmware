@@ -1,0 +1,21 @@
+name: Run a reproducible build
+
+on:
+  ## NOTE: uncomment to run on all new tags automatically
+  # push:
+  #   tags:
+  #     - "*"
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch: {}
+
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Run repro
+        run: cd stm32 && make repro
+
