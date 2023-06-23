@@ -1,7 +1,7 @@
 
 ## Background on Submodules
 
-This project uses many submodules, and to build the final produts, you will
+This project uses many submodules, and to build the final products, you will
 have to get all the submodules into place and build them in appropriate orders.
 
 A good resource, from an unrelated project, is:
