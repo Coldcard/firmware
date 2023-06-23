@@ -207,6 +207,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     pick_menu_item(menu_option)
     if change:
         need_keypress("6")  # change (internal)
+        time.sleep(.1)
     screen_addrs = parse_display_screen(0, 10)
     file_addr_gen = generate_addresses_file(None)
     for subpath, addr in screen_addrs.items():
