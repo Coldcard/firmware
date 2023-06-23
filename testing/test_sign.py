@@ -2332,7 +2332,7 @@ def test_batch_sign(num_tx, action, fake_txn, need_keypress, pick_menu_item,
 
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
-    pick_menu_item("Batch Sign")
+    pick_menu_item("Batch Sign PSBT")
     time.sleep(.1)
     title, story = cap_story()
     if "Press (1)" in story:
