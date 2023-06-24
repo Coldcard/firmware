@@ -127,6 +127,26 @@ class SecretStash:
 
             return 'master', ms, hd
 
+    @staticmethod
+    def summary(marker):
+        # decode enough to explain what we have in a text form
+        # - give us the first byte of the stored, encoded secret
+        if marker == 0x01:
+            # xprv => BIP-32 private key values
+            return 'xprv'
+
+        if marker & 0x80:
+            # seed phrase
+            ll = ((marker & 0x3) + 2) * 8
+            return '%d words' % len_to_numwords(ll)
+
+        if marker == 0x00:
+            # probably all zeros, which we don't normally store, and represents "no secret"
+            return 'zeros'
+
+        # variable-length master secret for BIP-32
+        return '%d bytes' % marker
+
 # optional global value: user-supplied passphrase to salt BIP-39 seed process
 bip39_passphrase = ''
 
