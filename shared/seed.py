@@ -444,7 +444,7 @@ async def set_ephemeral_seed(encoded, chain=None, is_restore=False):
         xfp = "[" + xfp2str(xfp) + "]\n"
 
     msg = xfp + "New ephemeral master key in effect until next power down."
-    if not saved or is_restore:
+    if not saved and not is_restore:
         msg += "\nIt is NOT stored anywhere."
     msg += "\n\nAll settings data stored in this mode will be lost on next power down."
 
