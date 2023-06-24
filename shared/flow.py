@@ -257,9 +257,11 @@ SeedXORMenu = [
 ]
 
 SeedFunctionsMenu = [
+    #         xxxxxxxxxxxxxxxx
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed),
+    MenuItem('Capture to Vault', f=save_bip39_to_vault, predicate=lambda: settings.get('seedvault')),
     MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
 ]
 

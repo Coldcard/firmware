@@ -579,6 +579,17 @@ def new_from_dice(menu, label, item):
     import seed
     return seed.new_from_dice(item.arg)
 
+async def save_bip39_to_vault(*a):
+    # save current seed+bip39 passphrase into the Seed Vault
+    # - only reachable if feature is enabled
+    import seed, stash
+    if not stash.bip39_passphrase:
+        await ux_show_story('''You do not have a BIP-39 passphrase set right now, \
+so this command is not useful.''')
+        return
+
+    await seed.remember_bip39_passphrase(True)
+
 async def convert_bip39_to_bip32(*a):
     import seed, stash
 

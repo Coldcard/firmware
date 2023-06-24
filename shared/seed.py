@@ -435,8 +435,8 @@ async def add_seed_to_vault(encoded):
 
         return True
 
-async def set_ephemeral_seed(encoded, chain=None):
-    saved = await add_seed_to_vault(encoded)
+async def set_ephemeral_seed(encoded, chain=None, is_restore=False):
+    saved = is_restore or (await add_seed_to_vault(encoded))
     pa.tmp_secret(encoded, chain=chain)
     dis.progress_bar_show(1)
     xfp = settings.get("xfp", "")
@@ -444,7 +444,7 @@ async def set_ephemeral_seed(encoded, chain=None):
         xfp = "[" + xfp2str(xfp) + "]\n"
 
     msg = xfp + "New ephemeral master key in effect until next power down."
-    if not saved:
+    if not saved or is_restore:
         msg += "\nIt is NOT stored anywhere."
     msg += "\n\nAll settings data stored in this mode will be lost on next power down."
 
@@ -634,7 +634,7 @@ async def set_bip39_passphrase(pw):
     # altho if they have already picked a shared session key, no need, and
     # would only affect MitM test, which has already been done.
 
-async def remember_bip39_passphrase():
+async def remember_bip39_passphrase(for_vault=False):
     # Compute current xprv and switch to using that as root secret.
     import stash
     from glob import dis
@@ -643,6 +643,11 @@ async def remember_bip39_passphrase():
 
     with stash.SensitiveValues() as sv:
         nv = SecretStash.encode(xprv=sv.node)
+
+    if for_vault:
+        # offer to save into seed-vault if they have that enabled.
+        await add_seed_to_vault(nv)
+        return
 
     # Important: won't write new XFP to nvram if pw still set
     stash.bip39_passphrase = ''
@@ -762,8 +767,10 @@ class SeedVaultMenu(MenuSystem):
     async def _set(menu, label, item):
         xfp, encoded = item.arg
         raw = pad_raw_secret(encoded)
+
         dis.fullscreen("Applying...")
-        await set_ephemeral_seed(raw)
+        await set_ephemeral_seed(raw, is_restore=True)
+
         goto_top_menu()
 
     @staticmethod
@@ -787,10 +794,12 @@ class SeedVaultMenu(MenuSystem):
     @staticmethod
     async def _detail(menu, label, item):
         xfp_str, encoded, name = item.arg
-        detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nSecret (Byte) Length:\n%d" % (
+        txt = SecretStash.summary(a2b_hex(encoded[0:2])[0])
+
+        detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nSecret Type:\n%s" % (
             # (-2) one byte in hex that represents type of secret (internal)
-            name, xfp_str, int((len(encoded) - 2) / 2)
-        )
+            name, xfp_str, txt)
+
         await ux_show_story(detail)
 
     @staticmethod
