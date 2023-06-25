@@ -170,7 +170,8 @@ class XORWordNestMenu(WordNestMenu):
                 goto_top_menu(first_time=True)
             else:
                 # set as ephemeral seed, maybe save it too
-                await set_ephemeral_seed(enc)
+                await set_ephemeral_seed(enc, name='SeedXOR')
+                goto_top_menu()
 
         return None
 

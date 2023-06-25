@@ -579,7 +579,7 @@ class NFCHandler:
 
         try:
             from seed import set_ephemeral_seed_words
-            await set_ephemeral_seed_words(winner)
+            await set_ephemeral_seed_words(winner, name='NFC Import')
         except Exception as e:
             #import sys; sys.print_exception(e)
             await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))

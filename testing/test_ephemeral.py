@@ -115,50 +115,44 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_hom
         assert menu[0] == "Ready To Sign"  # returned to main menu
 
         if seed_vault:
-            # check seed is saved
+            # check exactly one seed is saved, then delete it
             pick_menu_item("Seed Vault")
             time.sleep(.1)
             sc_menu = cap_menu()
             assert len(sc_menu) == 1  # stored seed
-            for i in sc_menu:
-                if in_effect_xfp in i.split()[-1]:
-                    pick_menu_item(i)
-                    time.sleep(.1)
-                    m = cap_menu()
-                    assert "Use This Seed" in m
-                    assert "Delete" in m
-                    assert "Rename" in m
-                    assert len(m) == 4  # xfp is top item (works same as "Use this seed")
-                    # apply it - even if it is applied already
-                    pick_menu_item("Use This Seed")
-                    time.sleep(.1)
-                    _, story = cap_story()
-                    assert "Press (1)" not in story
-                    assert "key in effect until next power down." in story
-                    assert in_effect_xfp in story
-                    need_keypress("y")
-                    pick_menu_item("Seed Vault")
-                    pick_menu_item(i)
-                    time.sleep(.1)
-                    # delete it from records
-                    pick_menu_item("Delete")
-                    time.sleep(.1)
-                    _, story = cap_story()
-                    assert "Delete" in story
-                    assert in_effect_xfp in story
-                    need_keypress("y")
-                    time.sleep(.1)
-                    m = cap_menu()
-                    assert "(none saved yet)" in m
-                    assert len(m) == 1
-                    break
-            else:
-                raise pytest.fail("Failed to save seed?")
+            pick_menu_item(sc_menu[0])
+            time.sleep(.1)
+            m = cap_menu()
+            assert "Use This Seed" in m
+            assert "Delete" in m
+            assert "Rename" in m
+            assert len(m) == 4  # xfp is top item (works same as "Use this seed")
+            # apply it - even if it is applied already
+            pick_menu_item("Use This Seed")
+            time.sleep(.1)
+            _, story = cap_story()
+            assert "Press (1)" not in story
+            assert "key in effect until next power down." in story
+            assert in_effect_xfp in story
+            need_keypress("y")
+            pick_menu_item("Seed Vault")
+            pick_menu_item(sc_menu[0])
+            time.sleep(.1)
+            # delete it from records
+            pick_menu_item("Delete")
+            time.sleep(.1)
+            _, story = cap_story()
+            assert "Delete" in story
+            assert in_effect_xfp in story
+            need_keypress("y")
+            time.sleep(.1)
+            m = cap_menu()
+            assert "(none saved yet)" in m
+            assert len(m) == 1
         else:
             # Seed Vault disabled
             m = cap_menu()
             assert "Seed Vault" not in m
-
 
         ident_story = get_identity_story()
         assert "Ephemeral seed is in effect" in ident_story

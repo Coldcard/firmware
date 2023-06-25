@@ -1302,7 +1302,7 @@ async def import_extended_key_as_secret(extended_key, ephemeral):
     try:
         import seed
         if ephemeral:
-            await seed.set_ephemeral_seed_extended_key(extended_key)
+            await seed.set_ephemeral_seed_extended_key(extended_key, name='Imported')
         else:
             await seed.set_seed_extended_key(extended_key)
     except ValueError:
@@ -1369,7 +1369,6 @@ async def import_xprv(_1, _2, item):
                         break
 
     await import_extended_key_as_secret(extended_key, ephemeral)
-    # not reached; will do reset.
 
 EMPTY_RESTORE_MSG = '''\
 You must clear the wallet seed before restoring a backup because it replaces \

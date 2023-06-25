@@ -408,7 +408,7 @@ async def new_from_dice(nwords):
         goto_top_menu(first_time=True)
 
 
-async def add_seed_to_vault(encoded):
+async def add_seed_to_vault(encoded, name=None):
     if not settings.get("seedvault", False):
         return
 
@@ -420,26 +420,26 @@ async def add_seed_to_vault(encoded):
         # do not offer to store secrets that are already in vault
         return
 
-    xfp_ui = "[" + new_xfp + "]"
+    xfp_ui = "[%s]" % new_xfp
     story = ("Press (1) to "
              "store ephemeral secret into Seed Vault. This way you can easily switch "
              "to this secret and use it as ephemeral seed in future.\n\nPress OK "
              "to continue without saving.")
 
+
     ch = await ux_show_story(story, escape="1")
     if ch == "1":
-        seeds.append([new_xfp, b2a_hex(bytes(encoded).rstrip(b"\x00")).decode(), '[%s]' % new_xfp])
+        seeds.append([new_xfp, b2a_hex(bytes(encoded).rstrip(b"\x00")).decode(), name or xfp_ui])
         settings.set("seeds", seeds)
         settings.save()
         await ux_show_story(xfp_ui + "\nSaved to Seed Vault")
 
         return True
 
-async def set_ephemeral_seed(encoded, chain=None, is_restore=False):
+async def set_ephemeral_seed(encoded, chain=None, is_restore=False, name=None):
     # Take encoded master secret and put it into effect as an ephemeral seed
-    saved = is_restore or (await add_seed_to_vault(encoded))
+    saved = is_restore or (await add_seed_to_vault(encoded, name=name))
     pa.tmp_secret(encoded, chain=chain)
-    dis.progress_bar_show(1)
 
     xfp = settings.get("xfp", "")
     if xfp:
@@ -452,11 +452,9 @@ async def set_ephemeral_seed(encoded, chain=None, is_restore=False):
 
     await ux_show_story(msg)
 
-async def set_ephemeral_seed_words(words):
-    dis.progress_bar_show(0.1)
+async def set_ephemeral_seed_words(words, name):
     encoded = seed_words_to_encoded_secret(words)
-    dis.progress_bar_show(0.5)
-    await set_ephemeral_seed(encoded)
+    await set_ephemeral_seed(encoded, name=name)
     goto_top_menu()
 
 async def ephemeral_seed_generate_from_dice(nwords):
@@ -472,8 +470,7 @@ async def ephemeral_seed_generate_from_dice(nwords):
 
     words = await approve_word_list(seed, nwords, ephemeral=True)
     if words:
-        dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words)
+        await set_ephemeral_seed_words(words, 'Dice')
 
 def generate_seed():
     seed = random.bytes(32)
@@ -492,29 +489,28 @@ async def make_new_wallet(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
-async def ephemeral_seed_import_done_cb(words):
-    dis.fullscreen("Applying...")
-    await set_ephemeral_seed_words(words)
 
 async def ephemeral_seed_import(nwords):
-    return WordNestMenu(nwords, done_cb=ephemeral_seed_import_done_cb)
+    async def import_done_cb(words):
+        await set_ephemeral_seed_words(words, 'Imported')
+
+    return WordNestMenu(nwords, done_cb=import_done_cb)
 
 async def ephemeral_seed_generate(nwords):
     await ux_dramatic_pause('Generating...', 3)
     seed = generate_seed()
     words = await approve_word_list(seed, nwords, ephemeral=True)
     if words:
-        dis.fullscreen("Applying...")
-        await set_ephemeral_seed_words(words)
+        await set_ephemeral_seed_words(words, 'TRNG Words')
 
 async def set_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)
     set_seed_value(encoded=encoded, chain=chain)
     goto_top_menu()
 
-async def set_ephemeral_seed_extended_key(extended_key):
+async def set_ephemeral_seed_extended_key(extended_key, name=None):
     encoded, chain = xprv_to_encoded_secret(extended_key)
-    await set_ephemeral_seed(encoded=encoded, chain=chain)
+    await set_ephemeral_seed(encoded=encoded, chain=chain, name=name)
     goto_top_menu()
 
 async def approve_word_list(seed, nwords, ephemeral=False):
@@ -579,6 +575,7 @@ def seed_words_to_encoded_secret(words):
     seed = bip39.a2b_words(words)  # checksum check
     # encode it for our limited secret space
     nv = SecretStash.encode(seed_phrase=seed)
+
     return nv
 
 def xprv_to_encoded_secret(xprv):
@@ -648,7 +645,7 @@ async def remember_bip39_passphrase(for_vault=False):
 
     if for_vault:
         # offer to save into seed-vault if they have that enabled.
-        await add_seed_to_vault(nv)
+        await add_seed_to_vault(nv, name='X+Pass')
         return
 
     # Important: won't write new XFP to nvram if pw still set
@@ -770,7 +767,6 @@ class SeedVaultMenu(MenuSystem):
         xfp, encoded = item.arg
         raw = pad_raw_secret(encoded)
 
-        dis.fullscreen("Applying...")
         await set_ephemeral_seed(raw, is_restore=True)
 
         goto_top_menu()
@@ -838,6 +834,7 @@ class SeedVaultMenu(MenuSystem):
         rv = []
             
         seeds = settings.get("seeds", [])
+        cur_xfp = xfp2str(settings.get("xfp"))
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
         else:
@@ -849,8 +846,10 @@ class SeedVaultMenu(MenuSystem):
                     MenuItem('Delete', f=cls._clear, arg=(i, xfp_str)),
                 ]
 
-                rv.append(MenuItem('%d: %s' % (i+1, name),
-                                   menu=MenuSystem(submenu)))
+                item = MenuItem('%d: %s' % (i+1, name), menu=MenuSystem(submenu))
+                if cur_xfp == xfp_str:
+                    item.is_chosen = lambda: True
+                rv.append(item)
 
         return rv
 
