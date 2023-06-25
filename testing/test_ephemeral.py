@@ -107,7 +107,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_hom
         assert menu[0] == "Ready To Sign"  # returned to main menu
 
         if seed_vault:
-            # check seed is saved in cache
+            # check seed is saved
             pick_menu_item("Seed Vault")
             time.sleep(.1)
             sc_menu = cap_menu()
@@ -132,7 +132,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_hom
                     pick_menu_item("Seed Vault")
                     pick_menu_item(i)
                     time.sleep(.1)
-                    # delete it from cache
+                    # delete it from records
                     pick_menu_item("Delete")
                     time.sleep(.1)
                     _, story = cap_story()
@@ -145,7 +145,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_hom
                     assert len(m) == 1
                     break
             else:
-                raise pytest.fail("Failed to cache seed?")
+                raise pytest.fail("Failed to save seed?")
         else:
             # Seed Vault disabled
             m = cap_menu()
@@ -553,8 +553,10 @@ def test_ephemeral_seed_import_xprv(way, retry, testnet, cap_menu, pick_menu_ite
 def test_seed_vault(dev, data, settings_set, settings_get, pick_menu_item, need_keypress, cap_story,
                     cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
                     try_sign, sim_exec, goto_home, goto_eph_seed_menu):
-    cache_data, mnemonic = data
-    xfp, entropy = cache_data
+
+    # Verify "seed vault" feature works as intended
+
+    (xfp, entropy), mnemonic = data
     entropy_bytes = bytes.fromhex(entropy)
     vlen = len(entropy_bytes)
     assert vlen in [16, 24, 32]
