@@ -533,9 +533,8 @@ def get_secrets(sim_execfile):
         assert 'Error' not in resp
         for ln in resp.split('\n'):
             ln = ln.strip()
-            if '#' in ln:
-                ln = ln[0:ln.index('#')]
             if not ln: continue
+            if ln[0] == '#': continue
 
             assert ' = ' in ln
             n, v = ln.split(' = ', 1)
