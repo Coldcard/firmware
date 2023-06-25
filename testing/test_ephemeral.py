@@ -683,6 +683,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
     # - XOR seed restore
     # - Ephemeral keys menu: random and import
     # - Capture a BIP-39 passphrase into words
+    # - NOT YET: Trick pin -> duress wallet * 4 options
     # Then, verify those can all co-exist and be recalled correctly.
 
     reset_seed_words()
