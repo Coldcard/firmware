@@ -149,7 +149,19 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
 
     time.sleep(0.01)
     title, body = cap_story()
-    assert 'New master key in effect' in body
+
+    if 'into Seed Vault' in body:
+        # seed vault saving is enabled, use it
+        need_keypress('1')
+        time.sleep(0.01)
+        title, body = cap_story()
+        assert 'Saved to Seed Vault' in body
+
+        need_keypress('y')
+        time.sleep(0.01)
+        title, body = cap_story()
+
+    assert 'master key in effect until next power down' in body
 
     assert get_secrets()['mnemonic'] == expect
     reset_seed_words()

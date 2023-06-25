@@ -575,7 +575,7 @@ def pick_menu_item(cap_menu, need_keypress):
     WRAP_IF_OVER = 16       # see ../shared/menu.py
 
     def doit(text):
-        print(f"PICK menu item: {text}")
+        #print(f"PICK menu item: {text}")
         need_keypress('0')
         m = cap_menu()
         if text not in m:

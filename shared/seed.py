@@ -436,9 +436,11 @@ async def add_seed_to_vault(encoded):
         return True
 
 async def set_ephemeral_seed(encoded, chain=None, is_restore=False):
+    # Take encoded master secret and put it into effect as an ephemeral seed
     saved = is_restore or (await add_seed_to_vault(encoded))
     pa.tmp_secret(encoded, chain=chain)
     dis.progress_bar_show(1)
+
     xfp = settings.get("xfp", "")
     if xfp:
         xfp = "[" + xfp2str(xfp) + "]\n"
