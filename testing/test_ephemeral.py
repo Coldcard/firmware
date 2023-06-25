@@ -8,6 +8,7 @@ from constants import simulator_fixed_xpub
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
+from pycoin.key.BIP32Node import BIP32Node
 
 
 def truncate_seed_words(words):
@@ -18,6 +19,11 @@ def truncate_seed_words(words):
 
 def seed_story_to_words(story: str):
     # filter those that starts with space, number and colon --> actual words
+    # NOTE: will show xprv/tprv in full if we are not storing
+    #       words (ie. BIP-32 loaded as master secret). So just return that string.
+    if story[1:4] == 'prv':
+        return story.split()[0]
+
     words = [
         line.strip().split(":")[1].strip()
         for line in story.split("\n")
@@ -51,6 +57,7 @@ def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story, nfc_r
         need_keypress('y')  # skip warning
         time.sleep(0.01)
         title, story = cap_story()
+
         if nfc:
             need_keypress("1")  # show QR code
             time.sleep(.1)
@@ -60,8 +67,8 @@ def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story, nfc_r
             time.sleep(.1)
             need_keypress("y")  # exit NFC animation
             return str_words.split(" ")  # always truncated
-        words = seed_story_to_words(story)
-        return words
+
+        return seed_story_to_words(story)
     return doit
 
 
@@ -546,24 +553,32 @@ def test_ephemeral_seed_import_xprv(way, retry, testnet, cap_menu, pick_menu_ite
 
 
 @pytest.mark.parametrize('data', [
-    [("47649253", "344f9dc08e88b8a46d4b8f46c4e6bb6c"), "crowd language ice brown merit fall release impose egg cheese put suit"],
-    [("CC7BB706", "88f53ed897cc371ffe4b715c267206f3286ed2f655ba9d68"), "material prepare renew convince sell morning weird hotel found crime like town manage harvest sun resemble output dolphin"],
-    [("AC39935C", "956f484cc2136178fd1ad45faeb54972c829f65aad0d74eb2541b11984655893"), "nice kid basket loud current round virtual fold garden interest false tortoise little will height payment insane float expire giraffe obscure crawl girl glare"]
+    ("47649253", "344f9dc08e88b8a46d4b8f46c4e6bb6c", "crowd language ice brown merit fall release impose egg cheese put suit"),
+    ("CC7BB706", "88f53ed897cc371ffe4b715c267206f3286ed2f655ba9d68", "material prepare renew convince sell morning weird hotel found crime like town manage harvest sun resemble output dolphin"),
+    ("AC39935C", "956f484cc2136178fd1ad45faeb54972c829f65aad0d74eb2541b11984655893", "nice kid basket loud current round virtual fold garden interest false tortoise little will height payment insane float expire giraffe obscure crawl girl glare"),
+    ('939B32C4', '017caa3142d48791f837b42fcd7a98662f9fb4101a15ae87cdbc1fecc96f33c11ffcefd8121daaba0625c918a335a0712b8c35c2da60e6fc6eef78b7028f4be02a', None),      # BIP-85 -> bip-32 -> #23
 ])
-def test_seed_vault(dev, data, settings_set, settings_get, pick_menu_item, need_keypress, cap_story,
+def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item, need_keypress, cap_story,
                     cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
                     try_sign, sim_exec, goto_home, goto_eph_seed_menu):
 
     # Verify "seed vault" feature works as intended
 
-    (xfp, entropy), mnemonic = data
+    xfp, entropy, mnemonic = data
+
+    # build stashed encoded secret
     entropy_bytes = bytes.fromhex(entropy)
-    vlen = len(entropy_bytes)
-    assert vlen in [16, 24, 32]
-    marker = 0x80 | ((vlen // 8) - 2)
-    stored_secret = bytes([marker]) + entropy_bytes
+    if mnemonic:
+        vlen = len(entropy_bytes)
+        assert vlen in [16, 24, 32]
+        marker = 0x80 | ((vlen // 8) - 2)
+        stored_secret = bytes([marker]) + entropy_bytes
+    else:
+        stored_secret = entropy_bytes
+
     settings_set("seedvault", None)
     settings_set("seeds", [(xfp, stored_secret.hex(), f"[{xfp}]")])
+
     # enable Seed Vault
     goto_home()
     pick_menu_item("Advanced/Tools")
@@ -583,6 +598,19 @@ def test_seed_vault(dev, data, settings_set, settings_get, pick_menu_item, need_
     assert len(m) == 1
     assert xfp in m[0]
     pick_menu_item(m[0])
+
+    # Now in submenu for saved seed
+
+    # view details.
+    pick_menu_item('[%s]' % xfp)
+    _, story = cap_story()
+    assert xfp in story
+    if mnemonic:
+        assert ('%d words' % (6 * (vlen // 8))) in story
+    else:
+        assert 'xprv' in story
+    need_keypress("x")
+
     # rename
     pick_menu_item("Rename")
     for _ in range(len(xfp) + 1):  # [xfp]
@@ -607,8 +635,16 @@ def test_seed_vault(dev, data, settings_set, settings_get, pick_menu_item, need_
     assert xfp in story
     assert "key in effect until next power down." in story
     need_keypress("y")
-    active_mnemonic = get_seed_value_ux()
-    assert active_mnemonic == mnemonic.split()
+    active = get_seed_value_ux()
+    if mnemonic:
+        assert active == mnemonic.split()
+    else:
+        assert active[1:4] == 'prv'
+        node = BIP32Node.from_hwif(active)
+        ch, pk = entropy_bytes[1:33], entropy_bytes[33:65]
+        assert node.chain_code() == ch
+        assert node.secret_exponent() == int(pk.hex(), 16)
+
     istory = get_identity_story()
     assert "Ephemeral seed is in effect" in istory
 
