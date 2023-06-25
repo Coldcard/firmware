@@ -802,4 +802,9 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
 
         assert raw == encoded_sec
 
+    # cleanup
+    reset_seed_words()
+    settings_set("seedvault", None)
+    settings_set("seeds", [])
+
 # EOF
