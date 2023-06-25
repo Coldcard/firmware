@@ -686,15 +686,35 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
     # Capture seeds by all the different paths and verify correct values are captured.
     # - BIP-85 -> 12, 24 words
     # - BIP-85 -> xprv (BIP-32)
-    # - Capture a BIP-39 passphrase into words
     # - XOR seed restore
     # - Ephemeral keys menu: random and import
+    # - Capture a BIP-39 passphrase into words
     # Then, verify those can all co-exist and be recalled correctly.
 
     reset_seed_words()
     settings_set("seedvault", True)
     settings_set("seeds", [])
     expect_count = 0
+
+    if 1:
+        # BIP-39 passphrase, probably needs to be first
+        import test_bip39pw
+        set_bip39_pw = request.getfixturevalue('set_bip39_pw')
+        set_bip39_pw('dogsNcats')
+        goto_home()
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("Danger Zone")
+        pick_menu_item("Seed Functions")
+        pick_menu_item("Capture to Vault")
+
+        _, story = cap_story()
+        assert '(1) to store ephemeral secret' in story
+        need_keypress('1')
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert 'Saved to Seed Vault' in story
+        
+        expect_count += 1
 
     if 1:
         # Seed XOR of 12words into 3 parts... not simple, kinda slow
@@ -714,10 +734,9 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
                 reset_seed_words=lambda:None, set_seed_words=lambda x:None, **args)
 
         # check was saved
-        assert len(settings_get("seeds")) == 1
         expect_count += 1
         xor_xfp = xfp2str(settings_get('xfp'))
-        assert settings_get("seeds")[0][0] == xor_xfp
+        assert settings_get("seeds")[expect_count-1][0] == xor_xfp
 
     if 1:
         # Create via BIP-85
@@ -775,6 +794,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
 
         expect_count += 4
 
+
     # check all saved okay
     seeds = settings_get('seeds')
     n_seeds = len(seeds)
@@ -802,9 +822,10 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
 
         assert raw == encoded_sec
 
-    # cleanup
-    reset_seed_words()
-    settings_set("seedvault", None)
-    settings_set("seeds", [])
+    if 1:
+        # cleanup
+        reset_seed_words()
+        settings_set("seedvault", None)
+        settings_set("seeds", [])
 
 # EOF
