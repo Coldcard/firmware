@@ -1650,6 +1650,18 @@ def tapsigner_encrypted_backup(microsd_path, virtdisk_path):
         return fname, backup_key_hex, node
     return doit
 
+@pytest.fixture
+def choose_by_word_length(need_keypress):
+    # for use in seed XOR menu system
+    def doit(num_words):
+        if num_words == 12:
+            need_keypress('1')
+        elif num_words == 18:
+            need_keypress("2")
+        else:
+            need_keypress("y")
+    return doit
+
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,

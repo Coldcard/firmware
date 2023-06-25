@@ -9,6 +9,7 @@ from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
 from pycoin.key.BIP32Node import BIP32Node
+from helpers import xfp2str
 
 
 def truncate_seed_words(words):
@@ -248,7 +249,7 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
                                      cap_story, need_keypress, reset_seed_words, goto_eph_seed_menu,
                                      word_menu_entry, nfc_write_text, verify_ephemeral_secret_ui,
                                      ephemeral_seed_disabled, get_seed_value_ux, seed_vault,
-                                     settings_set):
+                                     settings_set, skip_nfc_check=False):
     if truncated and not nfc: return
 
     wordlists = {
@@ -301,9 +302,10 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
 
     verify_ephemeral_secret_ui(mnemonic=words.split(" "), seed_vault=seed_vault)
 
-    nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
-    seed_words = get_seed_value_ux()
-    assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
+    if not skip_nfc_check:
+        nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
+        seed_words = get_seed_value_ux()
+        assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
 
 
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
@@ -676,19 +678,128 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
     time.sleep(.2)
     need_keypress("x")
 
-def test_seed_vault_captures(dev, data, settings_set, settings_get,
-                    pick_menu_item, need_keypress, cap_story,
-                    cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
-                    try_sign, sim_exec, goto_home, goto_eph_seed_menu
+def test_seed_vault_captures(request, dev, settings_set, settings_get,
+        pick_menu_item, need_keypress, cap_story,
+        cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
+        try_sign, sim_exec, goto_home, goto_eph_seed_menu, get_secrets,
 ):
     # Capture seeds by all the different paths and verify correct values are captured.
     # - BIP-85 -> 12, 24 words
     # - BIP-85 -> xprv (BIP-32)
     # - Capture a BIP-39 passphrase into words
     # - XOR seed restore
+    # - Ephemeral keys menu: random and import
     # Then, verify those can all co-exist and be recalled correctly.
 
+    reset_seed_words()
+    settings_set("seedvault", True)
+    settings_set("seeds", [])
+    expect_count = 0
 
-    pass
+    if 1:
+        # Seed XOR of 12words into 3 parts... not simple, kinda slow
+        from test_seed_xor import test_import_xor
+
+        xor_parts, xor_expect = (
+             ['become wool crumble brand camera cement gloom sell stand once connect stage',
+              'save saddle indicate embrace detail weasel spread life staff mushroom bicycle light',
+              'unlock damp injury tape enhance pause sheriff onion valley panic finger moon'],
+                 'drama jeans craft mixture filter lamp invest suggest vacant neutral history swim')
+
+        args = {f: request.getfixturevalue(f)
+                  for f in ['choose_by_word_length', 'goto_home', 'pick_menu_item', 'cap_story',
+                            'need_keypress', 'cap_menu', 'word_menu_entry', 'get_secrets']}
+
+        test_import_xor(incl_self=False, save_to_vault=True, parts=xor_parts, expect=xor_expect,
+                reset_seed_words=lambda:None, set_seed_words=lambda x:None, **args)
+
+        # check was saved
+        assert len(settings_get("seeds")) == 1
+        expect_count += 1
+        xor_xfp = xfp2str(settings_get('xfp'))
+        assert settings_get("seeds")[0][0] == xor_xfp
+
+    if 1:
+        # Create via BIP-85
+        from test_drv_entro import test_path_index
+        args = {f: request.getfixturevalue(f)
+                    for f in ['dev', 'cap_menu', 'pick_menu_item', 'goto_home', 'cap_story',
+                                'need_keypress', 'cap_screen_qr', 'qr_quality_check']}
+
+        for mode, regex_pattern in [
+            ('12 words', r'[a-f0-9]{32}'),
+            ('18 words', r'[a-f0-9]{48}'),
+            ('24 words', r'[a-f0-9]{64}'),
+            ('XPRV (BIP-32)', r'[tx]prv[1-9A-HJ-NP-Za-km-z]{107}'),
+        ]:
+            test_path_index(index=72, mode=mode, pattern=regex_pattern, **args)
+            _, story = cap_story()
+            assert '(2) to switch to derived secret' in story
+            need_keypress('2')
+            time.sleep(0.1)
+
+            _, story = cap_story()
+            assert '(1) to store ephemeral secret' in story
+            need_keypress('1')
+            time.sleep(0.1)
+            _, story = cap_story()
+            assert 'Saved to Seed Vault' in story
+            
+            need_keypress('y')
+            time.sleep(0.1)
+            _, story = cap_story()
+            assert 'master key in effect until next power down' in story
+
+        expect_count += 4
+
+    if 1:
+        # Ephemeral seeds - generated and imported cases
+        args = {f: request.getfixturevalue(f)
+                    for f in ['pick_menu_item', 'goto_home', 'cap_story', 'need_keypress',
+                     'reset_seed_words', 'goto_eph_seed_menu', 'ephemeral_seed_disabled',
+                     'settings_set', 'settings_get']}
+
+        args2 = {f: request.getfixturevalue(f)
+                    for f in ['cap_menu', 'pick_menu_item', 'goto_home', 'cap_story',
+                                'need_keypress', 'reset_seed_words', 'goto_eph_seed_menu',
+                                'word_menu_entry', 'nfc_write_text', 
+                                'ephemeral_seed_disabled', 'get_seed_value_ux', 'settings_set']}
+
+        for num_words in [12, 24]:
+            test_ephemeral_seed_generate(num_words=num_words, dice=False, seed_vault=True, 
+                    verify_ephemeral_secret_ui=lambda **k:None, **args)
+
+            test_ephemeral_seed_import_words(num_words=num_words, nfc=False,
+                    truncated=False, seed_vault=True, skip_nfc_check=True,
+                    verify_ephemeral_secret_ui=lambda **k:None, **args2)
+
+        expect_count += 4
+
+    # check all saved okay
+    seeds = settings_get('seeds')
+    n_seeds = len(seeds)
+    assert n_seeds == expect_count
+
+    # Switch to each one
+    for n in list(range(n_seeds))+list(range(n_seeds-1, -1, -1)):
+        goto_home()
+        xfp, encoded_sec, name = seeds[n]
+        pick_menu_item("Seed Vault")
+        pick_menu_item('%d: %s' % (n+1, name))
+        pick_menu_item('Use This Seed')
+        time.sleep(0.1)
+
+        _, story = cap_story()
+        assert 'New ephemeral master key' in story
+        assert 'power down' in story
+        assert xfp in story
+
+        assert xfp2str(settings_get('xfp')) == xfp
+
+        raw = get_secrets()['raw_secret']
+        if len(raw) % 2:
+            raw += '0'
+
+        assert raw == encoded_sec
 
 # EOF
