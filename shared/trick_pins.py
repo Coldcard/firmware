@@ -750,7 +750,7 @@ normal operation.''')
         # TC_BLANK_WALLET here would be nice, but no support working w/ fake empty secret
 
         # emulate stash.py encoding
-        name = 'Duress #%d' % (arg % 10)+1
+        name = 'Duress #%d' % (arg % 10)
         if flags & TC_XPRV_WALLET:
             encoded = b'\x01' + slot.xdata[0:64]
             name = 'Mk3 Duress'
