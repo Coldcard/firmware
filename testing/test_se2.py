@@ -433,7 +433,9 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         reset_seed_words, repl, clear_all_tricks, 
-        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
+        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
+        stop_after_activated=False,
+):
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
     clear_all_tricks()
@@ -501,6 +503,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
 
     need_keypress('y')
     time.sleep(.1)
+    if stop_after_activated: return
     _, story = cap_story()
     assert 'New master key in effect' in story
 
@@ -752,6 +755,49 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
 
     assert vals == vals2
     assert trimmed == tr2
+
+def build_duress_wallets(request):
+    # Call a bunch of stuff in this file to build out all 4 possible
+    # duress wallets, and save them each into Seed Vault.
+
+    # fixtures I need directly
+    cap_story = request.getfixturevalue('cap_story')
+    need_keypress = request.getfixturevalue('need_keypress')
+    repl = request.getfixturevalue('repl')
+
+    # fixtures I need in test_ux_duress_choices
+    args = {f: request.getfixturevalue(f)
+              for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin',
+                        'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress']}
+
+    for (subchoice, expect, xflags, xargs) in [
+        ( 'BIP-85 Wallet #1', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1001 ),
+        ( 'BIP-85 Wallet #2', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1002 ),
+        ( 'BIP-85 Wallet #3', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1003 ),
+        ( 'Legacy Wallet', 'fixed derivation', TC_WIPE|TC_XPRV_WALLET, 0 )
+    ]:
+        test_ux_duress_choices(subchoice=subchoice, expect=expect, xflags=xflags, xargs=xargs,
+            with_wipe=False, stop_after_activated=True, **args)
+
+        _, story = cap_story()
+        assert '(1) to store ephemeral secret' in story
+        need_keypress('1')
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert 'Saved to Seed Vault' in story
+        
+        need_keypress('y')
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert 'master key in effect until next power down' in story
+
+        # re-login to reset to normal seed
+        # .. because cant get into trick menu when non-master seed is set (says Unavailable)
+        repl.exec('pa.tmp_value=False; pa.setup(pa.pin); pa.login()')
+
+    # number of entries created
+    return 4
+
 
 
 # TODO

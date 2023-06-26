@@ -1661,6 +1661,9 @@ def choose_by_word_length(need_keypress):
             need_keypress("y")
     return doit
 
+# workaround: need these fixtures to be global so I can call test from a test
+from test_se2 import clear_all_tricks, new_trick_pin, new_pin_confirmed, goto_trick_menu, se2_gate
+
 
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,

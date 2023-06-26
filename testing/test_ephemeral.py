@@ -683,7 +683,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
     # - XOR seed restore
     # - Ephemeral keys menu: random and import
     # - Capture a BIP-39 passphrase into words
-    # - NOT YET: Trick pin -> duress wallet * 4 options
+    # - Trick pin -> duress wallet * 4 options
     # Then, verify those can all co-exist and be recalled correctly.
 
     reset_seed_words()
@@ -710,6 +710,11 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get,
         assert 'Saved to Seed Vault' in story
         
         expect_count += 1
+
+    if 1:
+        # Trick Pin -> duress wallet
+        from test_se2 import build_duress_wallets
+        expect_count += build_duress_wallets(request)
 
     if 1:
         # Seed XOR of 12words into 3 parts... not simple, kinda slow
