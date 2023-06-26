@@ -1,3 +1,7 @@
+## 4.1.9 - Jun 26, 2023
+
+- Bugfix: QR codes could not be rendered in 4.1.8 release due to a regression.
+
 ## 4.1.8 - Jun 19, 2023
 
 - Bugfix: "Validating..." screen would be shown twice in some cases. Improves signing performance.
