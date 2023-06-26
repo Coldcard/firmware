@@ -36,6 +36,7 @@ cd ../stm32
 cd ../releases
 if [ -f *-v$VERSION_STRING-coldcard.dfu ]; then
     echo "Using existing binary in ../releases, not downloading."
+    PUBLISHED_BIN=`realpath *-v$VERSION_STRING-coldcard.dfu`
 else
     # fetch a copy of the required binary
     PUBLISHED_BIN=`grep -F $VERSION_STRING signatures.txt | dd bs=66 skip=1`
@@ -43,6 +44,7 @@ else
         echo "No existing signature for this binary version. Nothing to check against."
     else
         wget -S https://coldcard.com/downloads/$PUBLISHED_BIN
+        PUBLISHED_BIN=`realpath "$PUBLISHED_BIN"`
     fi
 fi
 cd ../stm32
@@ -62,7 +64,7 @@ if [ $PWD != '/work/src/stm32' ]; then
 fi
 
 set +e
-make check-repro
+make "PUBLISHED_BIN=$PUBLISHED_BIN" check-repro
 
 set +ex
 if [ $PWD != '/work/src/stm32' ]; then
