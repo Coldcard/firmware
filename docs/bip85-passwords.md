@@ -1,9 +1,7 @@
 # BIP-85 Passwords
 
-This feature derives a deterministic password according from your seed,
-according to [BIP-85](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki)
-(with the recent changes 
-[proposed here](https://github.com/scgbckbone/bips/blob/passwords/bip-0085.mediawiki)).
+This feature derives a deterministic password from your seed,
+according to [BIP-85 PWD BASE64](https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki#pwd-base64).
 Generated passwords can be sent as keystrokes via USB to the host computer,
 effectively using Coldcard as specialized password manager.
 
