@@ -964,6 +964,24 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
     assert "List Files" in menu
 
 
+def test_bip39_pw_signing_xfp_ux(goto_home, pick_menu_item, need_keypress, cap_story,
+                                 enter_complex, reset_seed_words):
+    goto_home()
+    pick_menu_item("Passphrase")
+    need_keypress("y")
+    enter_complex("21coinkite21")
+    pick_menu_item("APPLY")
+    time.sleep(0.3)
+    title, _ = cap_story()
+    assert title == "[0C9DC99D]"
+    need_keypress("y")  # confirm new wallet
+    pick_menu_item("Ready To Sign")
+    time.sleep(0.1)
+    title_sign, _ = cap_story()
+    assert title == title_sign
+    reset_seed_words()  # for subsequent tests
+
+
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
     # saves to ../unix/work/menudump.txt

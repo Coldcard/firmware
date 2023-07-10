@@ -1750,7 +1750,7 @@ async def ready2sign(*a):
                                 max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if stash.bip39_passphrase:
-        title = '[%s]' % settings.get('xfp')
+        title = '[%s]' % xfp2str(settings.get('xfp'))
     else:
         title = None
 
