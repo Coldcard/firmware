@@ -11,6 +11,7 @@
 - Bugfix: remove label from Bitcoin Core `importdescriptors` export as it is no longer supported
   with ranged descriptors in version `24.1` of Core.
 - Bugfix: empty number during BIP-39 passphrase entry could cause crash.
+- Bugfix: UX: Signing with BIP39 Passphrase showed master fingerprint as integer. Fixed to show hex. 
 
 ## 5.1.2 - 2023-04-07
 
