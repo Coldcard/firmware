@@ -47,6 +47,11 @@ def se2_and_real_secret():
     from pincodes import pa
     return (not pa.is_secret_blank()) and (not pa.tmp_value)
 
+def bip39_passphrase_active():
+    from stash import bip39_passphrase
+    from pincodes import pa
+    return settings.get('words', True) or (bip39_passphrase and pa.tmp_value)
+
 
 HWTogglesMenu = [
     ToggleMenuItem('USB Port', 'du', ['Default On', 'Disable USB'], invert=True,
@@ -203,7 +208,7 @@ SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed),
-    MenuItem('Lock Down Seed', f=convert_bip39_to_bip32),
+    MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
 ]
 
 DangerZoneMenu = [
@@ -307,7 +312,7 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
-    MenuItem('Passphrase', f=start_b39_pw, predicate=lambda: settings.get('words', True)),
+    MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem('Type Passwords', f=password_entry, predicate=lambda: settings.get("emu", False) and has_secrets()),

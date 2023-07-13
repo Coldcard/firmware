@@ -38,6 +38,17 @@ a single file, which is a simple text file and
 easy to read. Before version 4.0.0, this text file was always
 called `ckcc-backup.txt`, but the filename is now picked randomly.
 
+## BIP39 Passphrase
+
+If BIP39 passphrase is active the default behavior is to back-up
+main wallet - not BIP39 passphrase wallet. From version `5.2.0`
+users can choose to back-up also BIP39 passphrase wallet.
+
+## Ephemeral Seeds
+
+If ephemeral seed is active the default behavior is to always 
+back-up ephemeral wallet instead of the main wallet.
+
 ## Limitations
 
 - The archive file names are not encrypted. You can see there is a single

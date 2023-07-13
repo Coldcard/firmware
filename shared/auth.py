@@ -1217,7 +1217,7 @@ Press (2) to view the provided passphrase.\n\nOK to continue, X to cancel.''' % 
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                set_bip39_passphrase(self._pw)
+                await set_bip39_passphrase(self._pw, summarize_ux=False)
 
                 self.result = settings.get('xpub')
 
@@ -1230,8 +1230,9 @@ Press (2) to view the provided passphrase.\n\nOK to continue, X to cancel.''' % 
 
         if self.result:
             new_xfp = settings.get('xfp')
-            await ux_show_story('''Above is the master key fingerprint of the current wallet.''',
-                            title="[%s]" % xfp2str(new_xfp))
+            await ux_show_story('Above is the master key fingerprint '
+                                'of the current wallet.',
+                                title="[%s]" % xfp2str(new_xfp))
 
 
 def start_bip39_passphrase(pw):

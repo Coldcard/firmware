@@ -128,7 +128,8 @@ class SecretStash:
             return 'master', ms, hd
 
 # optional global value: user-supplied passphrase to salt BIP-39 seed process
-bip39_passphrase = ''
+# just a boolean flag from version 5.2.0
+bip39_passphrase = False
 
 CACHE_CHECK_RATE = const(10*1000)   # 10 seconds
 CACHE_MAX_LIFE = const(60*1000)     # one minute
@@ -136,16 +137,14 @@ CACHE_MAX_LIFE = const(60*1000)     # one minute
 class SensitiveValues:
     # be a context manager, and holder of secrets in-memory
 
-    # class-level cache, key is bip39 pass
-    _cache = {}
+    # class-level cache
     _cache_secret = None
     _cache_used = None
 
-    def __init__(self, secret=None, bypass_pw=False):
+    def __init__(self, secret=None, bip39pw='', bypass_tmp=False):
         self.spots = []
 
-        # backup during volatile bip39 encryption: do not use passphrase
-        self._bip39pw = '' if bypass_pw else str(bip39_passphrase)
+        self._bip39pw = bip39pw
 
         if secret is not None:
             # sometimes we already know the secret
@@ -162,24 +161,20 @@ class SensitiveValues:
                 raise ValueError('no secrets yet')
             self.deltamode = pa.is_deltamode()
 
-            if self._bip39pw in self._cache:
-                # cache hit
+            if self._cache_secret and not bypass_tmp:
+                # they are using new BIP39 passphrase but we already have raw secret
                 self.secret = bytearray(self._cache_secret)
-                self.mode, r, n = self._cache[self._bip39pw]
-                self.raw = bytearray(r)
-                self.node = n.copy()
-                self.__class__._cache_used = utime.ticks_ms()
             else:
-                if self._cache_secret:
-                    # they are using new BIP39 passphrase but we already have raw secret
-                    self.secret = bytearray(self._cache_secret)
-                else:
-                    # slow: read from secure element(s)
-                    self.secret = pa.fetch()
+                # slow: read from secure element(s)
+                self.secret = pa.fetch(bypass_tmp=bypass_tmp)
 
-                # slow: do bip39 key stretching (typically)
-                self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
+            # slow: do bip39 key stretching (typically)
+            self.mode, self.raw, self.node = SecretStash.decode(self.secret, self._bip39pw)
 
+            if not bypass_tmp:
+                # DO NOT save to cache if we are bypassing tmp
+                # we mostly just need it for some  specific
+                # operation after which we go back to tmp
                 self.save_to_cache()
 
             self.spots.append(self.secret)
@@ -197,12 +192,6 @@ class SensitiveValues:
         # - will be called after 2 minutes of idle keypad
         blank_object(cls._cache_secret)
         cls._cache_secret = None
-
-        for _,raw,node in cls._cache.values():
-            blank_object(raw)
-            blank_object(node)
-
-        cls._cache.clear()
         cls._cache_used = None
 
     def save_to_cache(self):
@@ -212,7 +201,6 @@ class SensitiveValues:
         else:
             assert SensitiveValues._cache_secret == self.secret
 
-        SensitiveValues._cache[self._bip39pw] = ( self.mode, bytearray(self.raw), self.node.copy() )
         SensitiveValues._cache_used = utime.ticks_ms()
 
         call_later_ms(CACHE_CHECK_RATE, self.cache_check)
@@ -290,14 +278,8 @@ class SensitiveValues:
         xfp = swab32(self.node.my_fp())
         xpub = self.chain.serialize_public(self.node)
 
-        if self._bip39pw:
-            settings.put_volatile('xfp', xfp)
-            settings.put_volatile('xpub', xpub)
-        else:
-            settings.overrides.clear()
-            settings.put('xfp', xfp)
-            settings.put('xpub', xpub)
-
+        settings.put('xfp', xfp)
+        settings.put('xpub', xpub)
         settings.put('chain', self.chain.ctype)
 
         # calc num words in seed, or zero

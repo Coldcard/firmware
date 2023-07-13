@@ -4,13 +4,12 @@
 #
 import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node
-from base64 import b64encode
-from binascii import b2a_hex, a2b_hex
+from binascii import a2b_hex
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 import json
 from mnemonic import Mnemonic
-from conftest import simulator_fixed_xfp
+from constants import simulator_fixed_xfp, simulator_fixed_words, simulator_fixed_xprv
 
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
@@ -50,16 +49,18 @@ def test_b9p_basic(pw, set_bip39_pw):
 
 
 @pytest.fixture()
-def clear_bip39_pw(sim_exec, reset_seed_words):
-    # faster?
-    reset_seed_words()
+def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story, sim_execfile):
 
-@pytest.fixture()
-def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
-
-    def doit(pw):
+    def doit(pw, reset=True):
         # reset from previous runs
-        words = reset_seed_words()
+        if reset:
+            words = reset_seed_words()
+        else:
+            conts = sim_execfile('devtest/get-secrets.py')
+            assert 'mnemonic' in conts
+            for l in conts.split("\n"):
+                if l.startswith("mnemonic ="):
+                    words = l.split("=")[-1].strip().replace('"', '')
 
         # optimization
         if pw == '':
@@ -139,12 +140,20 @@ def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, need_keypress,
     assert m[0] == "Ready To Sign"
 
 
-@pytest.mark.parametrize('haz', [ False, True ])
-def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, cap_story, need_keypress, sim_exec, sim_eval, get_settings, reset_seed_words, get_setting):
+@pytest.mark.parametrize('stype', ["bip39pw", "words", "xprv", None])
+def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
+                  need_keypress, sim_exec, get_settings, reset_seed_words,
+                  get_setting, generate_ephemeral_words, import_ephemeral_xprv):
     # test UX and operation of the 'seed lockdown' option
-    
-    if haz:
-        xfp = set_bip39_pw('test')
+    if stype:
+        if stype == "bip39pw":
+            set_bip39_pw('test')
+        elif stype == "words":
+            generate_ephemeral_words(24)
+        elif stype == "xprv":
+            import_ephemeral_xprv("sd")
+
+        xfp = get_setting("xfp")
         assert xfp != simulator_fixed_xfp
 
     goto_home()
@@ -156,25 +165,12 @@ def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, c
     time.sleep(0.1)
     title, story = cap_story()
 
-    assert 'Are you SURE' in story
-    assert 'computes' in story
-
-    if not haz:
-        need_keypress('y')
-
-        time.sleep(0.1)
-        title, story = cap_story()
+    if stype:
         assert 'Are you SURE' in story
-        assert 'do not have a BIP-39 passphrase' in story
-        
+    else:
+        assert 'do not have an active ephemeral seed' in story
         need_keypress('x')
         return
-
-    # before saving, xfp should be in-memory only
-    nv = get_settings()
-    mem_xfp = get_setting('xfp')
-    assert hex(mem_xfp) == hex(xfp), "XFP or key correct b4 save"
-    assert nv['xfp'] != mem_xfp, "in-memory xfp not different from saved value"
 
     # real code does reboot, which is poorly simulated; avoid that
     sim_exec('import callgate; callgate.show_logout = lambda x:0')
@@ -191,7 +187,118 @@ def test_lockdown(dev, haz, cap_menu, pick_menu_item, set_bip39_pw, goto_home, c
     assert nv['xfp'] == mem_xfp, "in-memory xfp different from saved value"
 
     # not 100% sure this reset is complete enough
-    goto_home()
+    # goto_home()
     reset_seed_words()
+
+
+@pytest.mark.parametrize("stype", ["words", "xprv"])
+@pytest.mark.parametrize("passphrase", ["@coinkite rulez!!", "!@#!@", "AAAAAAAAAAA"])
+def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_xprv,
+                                     need_keypress, pick_menu_item, goto_home,
+                                     reset_seed_words, goto_eph_seed_menu, stype,
+                                     enter_complex, cap_story, cap_menu, passphrase):
+    reset_seed_words()
+    goto_eph_seed_menu()
+    if stype == "words":
+        # words
+        sec = generate_ephemeral_words(24, from_main=True)
+    else:
+        # node
+        sec = import_ephemeral_xprv("sd", from_main=True)
+
+    goto_home()
+    if stype == "xprv":
+        # cannot add passphrase on top of extended key - only words
+        m = cap_menu()
+        assert "Passphrase" not in m
+        return
+
+    pick_menu_item("Passphrase")
+    need_keypress("y")
+    enter_complex(passphrase)
+    pick_menu_item("APPLY")
+    time.sleep(.1)
+    title, story = cap_story()
+    # title is xfp = simulator fixed words + pass (as first iteration is always from main seed)
+    xfp0 = title[1:-1]
+    seed0 = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
+    expect0 = BIP32Node.from_master_secret(seed0)
+    assert expect0.fingerprint().hex().upper() == xfp0
+    assert "press (2) to add passphrase to the current active ephemeral seed" in story
+    need_keypress("2")
+    time.sleep(.5)
+    title, story = cap_story()
+    xfp1 = title[1:-1]
+    seed1 = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
+    expect1 = BIP32Node.from_master_secret(seed1)
+    assert expect1.fingerprint().hex().upper() == xfp1
+    assert "press (2)" not in story
+
+
+@pytest.mark.parametrize("passphrase", ["@coinkite rulez!!", "!@#!@", "AAAAAAAAAAA"])
+def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keypress,
+                             goto_home, cap_story, pass_word_quiz, get_setting,
+                             verify_backup_file, microsd_path, check_and_decrypt_backup,
+                             sim_execfile, unit_test, word_menu_entry, cap_menu,
+                             restore_backup_cs):
+    goto_home()
+    set_bip39_pw(passphrase)
+    target = sim_execfile('devtest/get-secrets.py')
+    assert 'Error' not in target
+    need_keypress("y")
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Backup")
+    pick_menu_item("Backup System")
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "BIP39 passphrase is in effect" in story
+    assert "ignores passphrases and produces backup of main seed" in story
+    assert "(2) to back-up BIP39 passphrase wallet" in story
+    need_keypress("2")
+    time.sleep(.1)
+    title, story = cap_story()
+    if "Use same backup file password as last time?" in story:
+        need_keypress("x")
+        time.sleep(.1)
+        title, story = cap_story()
+    assert title == 'NO-TITLE'
+    assert 'Record this' in story
+    assert 'password:' in story
+
+    words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    assert len(words) == 12
+    # pass the quiz!
+    count, title, body = pass_word_quiz(words)
+    assert count >= 4
+    assert "same words next time" in body
+    assert "Press (1) to save" in body
+    need_keypress('x')
+    time.sleep(.01)
+    assert get_setting('bkpw', 'xxx') == 'xxx'
+    title, story = cap_story()
+    assert "Backup file written:" in story
+    fn = story.split("\n\n")[1]
+    assert fn.endswith(".7z")
+    verify_backup_file(fn)
+    contents = check_and_decrypt_backup(fn, words)
+    assert "mnemonic" not in contents
+    assert simulator_fixed_words not in contents
+    assert simulator_fixed_xprv not in contents
+    assert target == contents
+    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
+    expect = BIP32Node.from_master_secret(seed, netcode="XTN")
+    esk = expect.hwif(as_private=True)
+    epk = expect.hwif(as_private=False)
+    target_esk = None
+    target_epk = None
+    for line in contents.split("\n"):
+        if line.startswith("xprv ="):
+            target_esk = line.split("=")[-1].strip().replace('"', '')
+        if line.startswith("xpub ="):
+            target_epk = line.split("=")[-1].strip().replace('"', '')
+    assert target_epk == epk
+    assert target_esk == esk
+
+    restore_backup_cs(fn, words)
 
 # EOF

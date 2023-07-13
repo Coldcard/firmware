@@ -2,7 +2,9 @@
 #
 import pytest, time, os, re, hashlib
 from helpers import xfp2str, prandom
-from constants import AF_CLASSIC
+from constants import AF_CLASSIC, simulator_fixed_words
+from mnemonic import Mnemonic
+from pycoin.key.BIP32Node import BIP32Node
 
 
 def test_get_secrets(get_secrets, master_xpub):
@@ -117,16 +119,42 @@ def pass_word_quiz(need_keypress, cap_story):
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
+@pytest.mark.parametrize('st', ["b39pass", "eph", None])
 @pytest.mark.parametrize('reuse_pw', [False, True])
 @pytest.mark.parametrize('save_pw', [False, True])
-def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry, pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting, cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove):
+def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, st,
+                     open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry,
+                     pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting,
+                     cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove,
+                     generate_ephemeral_words, set_bip39_pw, verify_backup_file,
+                     check_and_decrypt_backup, restore_backup_cs):
     # Make an encrypted 7z backup, verify it, and even restore it!
 
-    if multisig:
+    # need to make multisig in my main wallet
+    if multisig and st != "eph":
         import_ms_wallet(15, 15)
         need_keypress('y')
         time.sleep(.1)
         assert len(get_setting('multisig')) == 1
+
+    if st == "b39pass":
+        xfp_pass = set_bip39_pw("coinkite", reset=False)
+        _, story = cap_story()
+        assert "Above is the master key fingerprint of the current wallet" in story
+        need_keypress("y")
+        assert not get_setting('multisig', None)
+    elif st == "eph":
+        eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True)
+        _, story = cap_story()
+        assert "New ephemeral master key in effect" in story
+        need_keypress("y")
+
+        if multisig:
+            # make multisig in ephemeral wallet
+            import_ms_wallet(15, 15, dev_key=True, common="605'/0'/0'")
+            need_keypress('y')
+            time.sleep(.1)
+            assert len(get_setting('multisig')) == 1
 
     if reuse_pw:
         settings_set('bkpw', ' '.join('zoo' for _ in range(12)))
@@ -139,6 +167,18 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     pick_menu_item('Backup System')
 
     title, body = cap_story()
+    if st:
+        if st == "b39pass":
+            assert "BIP39 passphrase is in effect" in body
+            assert "ignores passphrases and produces backup of main seed" in body
+            assert "(2) to back-up BIP39 passphrase wallet" in body
+        if st == "eph":
+            assert "An ephemeral seed is in effect" in body
+            assert "so backup will be of that seed" in body
+
+        need_keypress("y")
+        time.sleep(.1)
+        title, body = cap_story()
 
     if reuse_pw:
         assert ' 1: zoo' in body
@@ -171,7 +211,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         assert "Press (1) to save" in body
         if save_pw:
             need_keypress('1')
-            time.sleep(.01)
+            time.sleep(.1)
 
             assert get_setting('bkpw') == ' '.join(words)
         else:
@@ -183,6 +223,12 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         title, body = cap_story()
 
     time.sleep(0.1)
+    if st == "b39pass" and multisig:
+        # correct settings switch back?
+        # multisig is only in main wallet
+        # must not be copied from main to b39pass
+        # must not be available after backup done
+        assert not get_setting('multisig', None)
 
     files = []
     for copy in range(2):
@@ -208,68 +254,17 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     need_keypress('x')
     time.sleep(.01)
 
-    # Check on-device verify UX works.
-    goto_home()
-    pick_menu_item('Advanced/Tools')
-    pick_menu_item('Backup')
-    pick_menu_item('Verify Backup')
-    time.sleep(0.1)
-    title, body = cap_story()
-    assert "Select file" in body
-    need_keypress('y')
-    time.sleep(0.1)
-    pick_menu_item(os.path.basename(fn))
-
-    time.sleep(0.1)
-    title, body = cap_story()
-    assert "Backup file CRC checks out okay" in body
-
-
-    # List contents using unix tools
-    from subprocess import check_output
-    import re
-    pn = microsd_path(files[0])
-    out = check_output(['7z', 'l', pn], encoding='utf8')
-    xfname, = re.findall('[a-z0-9]{4,30}.txt', out)
-    print(f"Filename inside 7z: {xfname}")
-    assert xfname in out
-    assert 'Method = 7zAES' in out
-
-    # does decryption; at least for CRC purposes
-    out = check_output(['7z', 't', '-p'+' '.join(words), pn, xfname], encoding='utf8')
-    assert "Everything is Ok" in out, out
+    verify_backup_file(fn)
+    check_and_decrypt_backup(fn, words)
 
     for i in range(10):
         need_keypress('x')
         time.sleep(.01) 
 
     # test verify on device (CRC check)
-    
-    # try decrypt on microptyhon
-    unit_test('devtest/clear_seed.py')
+    avail_settings = ['multisig'] if multisig else None
+    restore_backup_cs(files[0], words, avail_settings=avail_settings)
 
-    m = cap_menu()
-    assert m[0] == 'New Seed Words'    
-    pick_menu_item('Import Existing')
-    pick_menu_item('Restore Backup')
-
-    # skip 
-    title, body = cap_story()
-    assert 'files to pick from' in body
-    need_keypress('y'); time.sleep(.01) 
-
-    pick_menu_item(files[0])
-
-    word_menu_entry(words)
-    title, body = cap_story()
-    assert title == 'Success!'
-    assert 'has been successfully restored' in body
-
-    if multisig:
-        assert len(get_setting('multisig')) == 1
-
-    # avoid simulator reboot; restore normal state
-    unit_test('devtest/abort_ux.py')
     reset_seed_words()
     settings_remove('multisig')
 
@@ -479,7 +474,6 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
 
     unit_test('devtest/clear_seed.py')
 
-    from pycoin.key.BIP32Node import BIP32Node
     node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
     prv = node.hwif(as_private=True)+'\n'
     if testnet:
@@ -746,16 +740,15 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
 @pytest.mark.qrcode
 @pytest.mark.parametrize('mode', ['words', 'xprv', 'ms'])
 @pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
-def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
-                cap_menu, get_pp_sofar, get_secrets, cap_screen_qr, set_encoded_secret, qr_quality_check):
-    from constants import simulator_fixed_xprv
+def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress,
+                   sim_exec, cap_menu, get_pp_sofar, get_secrets, cap_screen_qr,
+                   set_encoded_secret, qr_quality_check, reset_seed_words, set_bip39_pw):
 
+    reset_seed_words()
     if mode == 'words':
-        # Check the seed words are displayed correctly: the new "View Seed Words" feature
-        sim_exec("import stash; stash.bip39_passphrase = '%s'" % b39_word)
+        set_bip39_pw(b39_word, reset=False)
+        words = simulator_fixed_words.split(" ")
 
-        v = get_secrets()
-        words = v['mnemonic'].split(' ')
     else:
         if b39_word: return
 
@@ -776,11 +769,11 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     pick_menu_item('Danger Zone')
     pick_menu_item('Seed Functions')
     pick_menu_item('View Seed Words')
-    time.sleep(.01); 
+    time.sleep(.01)
     title, body = cap_story()
     assert 'Are you SURE' in body
     assert 'can control all funds' in body
-    need_keypress('y');      # skip warning
+    need_keypress('y')      # skip warning
     time.sleep(0.01)
 
     title, body = cap_story()
@@ -794,9 +787,15 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
 
         if b39_word:
             assert lines[26] == 'BIP-39 Passphrase:'
-            assert b39_word in lines[27]
-
-            sim_exec("import stash; stash.bip39_passphrase = ''")
+            assert "*" in lines[27]
+            assert "Seed+Passphrase" in lines[29]
+            ek = lines[30]
+            seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=b39_word)
+            expect = BIP32Node.from_master_secret(seed, netcode="XTN")
+            esk = expect.hwif(as_private=True)
+            assert esk == ek
+        else:
+            assert "BIP-39 Passphrase" not in body
 
         qr_expect = ' '.join(w[0:4].upper() for w in words)
 
@@ -974,7 +973,7 @@ def test_bip39_pw_signing_xfp_ux(goto_home, pick_menu_item, need_keypress, cap_s
     time.sleep(0.3)
     title, _ = cap_story()
     assert title == "[0C9DC99D]"
-    need_keypress("y")  # confirm new wallet
+    need_keypress("y")  # confirm passphrase
     pick_menu_item("Ready To Sign")
     time.sleep(0.1)
     title_sign, _ = cap_story()

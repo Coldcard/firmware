@@ -46,8 +46,8 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
         '1aaa2aaa',
         'ab'*25,
     ])
-def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, enter_complex, cap_menu, get_to_pwmenu):
-
+def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex,
+                    cap_menu, get_to_pwmenu, reset_seed_words):
     try:    os.unlink(SIM_FNAME)
     except: pass
 
@@ -75,11 +75,11 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         time.sleep(.01)
         title, story = cap_story()
         xfp = title[1:-1]
-        assert '1 to use and save to MicroSD' in story
+        assert '(1) to use and save to MicroSD' in story
 
         need_keypress('1')
         xfps[pw] = xfp
-
+        reset_seed_words()
 
     for n, pw in enumerate(uniq):
         get_to_pwmenu()
@@ -103,7 +103,8 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, goto_home, en
         xfp = title[1:-1]
 
         assert xfp == xfps[uniq[n]]
-        need_keypress('y'); 
+        need_keypress('y')
+        reset_seed_words()
 
 
 def test_crypto_unittest(sim_eval, sim_exec, simulator):

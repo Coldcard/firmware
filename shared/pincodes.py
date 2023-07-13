@@ -369,8 +369,8 @@ class PinAttempt:
         # - call new_main_secret() when main secret changes!
         # - is_secret_blank and is_successful may be wrong now, re-login to get again
 
-    def fetch(self, duress_pin=None, spare_num=0):
-        if self.tmp_value:
+    def fetch(self, duress_pin=None, spare_num=0, bypass_tmp=False):
+        if self.tmp_value and not bypass_tmp:
             # must make a copy here, and must be mutable instance so not reused
             if spare_num:
                 return bytearray(AE_SECRET_LEN)
@@ -413,12 +413,15 @@ class PinAttempt:
         self.roundtrip(7, fw_upgrade=(start, length))
         # not-reached
 
-    def new_main_secret(self, raw_secret, chain=None):
+    def new_main_secret(self, raw_secret, chain=None, bip39pw=''):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
-        from glob import settings, NFC
+        from glob import settings
         import stash
         stash.SensitiveValues.clear_cache()
+
+        stash.bip39_passphrase = bool(bip39pw)
+
         # capture values we have already
         old_values = dict(settings.current)
 
@@ -434,7 +437,7 @@ class PinAttempt:
 
         # does not call settings.save() but caller should!
 
-    def tmp_secret(self, encoded, chain=None):
+    def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
         val = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
         if self.tmp_value == val:
@@ -445,14 +448,9 @@ class PinAttempt:
         # We're no longer blank. hard to say about duress secret and stuff tho
         self.state_flags = PA_SUCCESSFUL
 
-        # Clear bip-39 secret, not applicable anymore.
-        import stash
-        stash.bip39_passphrase = ''
-        stash.SensitiveValues.clear_cache()
-
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
-        self.new_main_secret(self.tmp_value, chain=chain)
+        self.new_main_secret(self.tmp_value, chain=chain, bip39pw=bip39pw)
         return True
 
     def trick_request(self, method_num, data):
