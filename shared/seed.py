@@ -11,7 +11,7 @@
 #    - 'abandon' * 11 + 'about'
 #
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key
+from utils import xfp2str, parse_extended_key, swab32
 import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
@@ -405,17 +405,18 @@ async def new_from_dice(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
-async def set_ephemeral_seed(encoded, chain=None):
-    applied = pa.tmp_secret(encoded, chain=chain)
+async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw=''):
+    applied = pa.tmp_secret(encoded, chain=chain, bip39pw=bip39pw)
     dis.progress_bar_show(1)
-    xfp = settings.get("xfp", "")
+    xfp = settings.get("xfp", None)
     if xfp:
-        xfp = "[" + xfp2str(xfp) + "]\n"
+        xfp = "[" + xfp2str(xfp) + "]"
     if not applied:
-        await ux_show_story("%sEphemeral master key already in use." % xfp)
+        await ux_show_story(title=xfp, msg="Ephemeral master key already in use.")
         return
 
-    await ux_show_story("%sNew ephemeral master key in effect until next power down." % xfp)
+    if summarize_ux:
+        await ux_show_story(title=xfp, msg="New ephemeral master key in effect until next power down.")
 
 async def set_ephemeral_seed_words(words):
     dis.progress_bar_show(0.1)
@@ -579,40 +580,38 @@ def set_seed_value(words=None, encoded=None, chain=None):
     finally:
         dis.busy_bar(False)
 
-def set_bip39_passphrase(pw):
-    # apply bip39 passphrase for now (volatile)
 
-    # takes a bit, so show something
+async def calc_bip39_passphrase(pw, bypass_tmp=False):
     from glob import dis
     dis.fullscreen("Working...")
-
-    # set passphrase
     import stash
-    stash.bip39_passphrase = pw
-
-    # capture updated XFP
-    with stash.SensitiveValues() as sv:
+    # generate secret
+    with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
         assert sv.mode == 'words'
+        nv = SecretStash.encode(xprv=sv.node)
+        xfp = swab32(sv.node.my_fp())
+    return nv, xfp
 
-        sv.capture_xpub()
-
+async def set_bip39_passphrase(pw, summarize_ux=True):
+    nv, _ = await calc_bip39_passphrase(pw)
+    await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw)
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and
     # would only affect MitM test, which has already been done.
 
-async def remember_bip39_passphrase():
+async def remember_ephemeral_seed():
     # Compute current xprv and switch to using that as root secret.
     import stash
     from glob import dis
 
     dis.fullscreen('Check...')
-
     with stash.SensitiveValues() as sv:
-        nv = SecretStash.encode(xprv=sv.node)
-
-    # Important: won't write new XFP to nvram if pw still set
-    stash.bip39_passphrase = ''
+        if sv.mode == "xprv":
+            nv = SecretStash.encode(xprv=sv.node)
+        else:
+            assert sv.mode == "words"
+            nv = SecretStash.encode(seed_phrase=sv.raw)
 
     dis.fullscreen('Saving...')
     pa.change(new_secret=nv)
@@ -866,23 +865,33 @@ class PassphraseMenu(MenuSystem):
     async def done_apply(self, *a):
         # apply the passphrase.
         # - important to work on empty string here too.
-        from stash import bip39_passphrase
-        old_pw = str(bip39_passphrase)
+        import stash
+        from glob import settings
+        from pincodes import pa
 
-        set_bip39_passphrase(pp_sofar)
+        nv, xfp = await calc_bip39_passphrase(pp_sofar, bypass_tmp=True)
 
-        xfp = settings.get('xfp')
+        msg = ('Above is the master key fingerprint of the new wallet. '
+               'Press X to abort and keep editing passphrase, '
+               'OK to use the new wallet, (1) to use and save to MicroSD')
 
-        msg = '''Above is the master key fingerprint of the new wallet.
+        msg1 = ""
+        if pa.tmp_value and settings.get("words", True):
+            # we have ephemeral seed but can add passphrase to it as it is word based
+            msg1 = (", or press (2) to add passphrase to the current "
+                    "active ephemeral seed instead of the main seed.")
 
-Press X to abort and keep editing passphrase, OK to use the new wallet, or 1 to use and save to MicroSD'''
-
-        ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
+        ch = await ux_show_story(msg + msg1, title="[%s]" % xfp2str(xfp), escape='12')
         if ch == 'x':
-            # go back!
-            set_bip39_passphrase(old_pw)
             return
 
+        if ch == "2":
+            stash.SensitiveValues.clear_cache()
+            nv, xfp = await calc_bip39_passphrase(pp_sofar, bypass_tmp=False)
+            ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
+            if ch == "x": return
+
+        await set_ephemeral_seed(nv, summarize_ux=False, bip39pw=pp_sofar)
         if ch == '1':
             await PassphraseSaver().append(xfp, pp_sofar)
 

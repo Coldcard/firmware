@@ -10,7 +10,7 @@ from sim_settings import sim_defaults
 if not pa.is_secret_blank():
     # clear settings associated with this key, since it will be no more
     settings.current = dict(sim_defaults)
-    settings.overrides.clear()
+    pa.tmp_value = None
 
     # save a blank secret (all zeros is a special case, detected by bootloader)
     dis.fullscreen('Wipe Seed!')

@@ -6,7 +6,7 @@
 #
 #       py.test test_multisig.py -m ms_danger --ms-danger
 #
-import time, pytest, os, random, json, shutil, pdb, io, base64
+import time, pytest, os, random, json, shutil, pdb, io, base64, struct
 from psbt import BasicPSBT, BasicPSBTInput, BasicPSBTOutput
 from ckcc.protocol import CCProtocolPacker, MAX_TXN_LEN
 from pprint import pprint
@@ -87,14 +87,14 @@ def clear_ms(unit_test):
         unit_test('devtest/wipe_ms.py')
     return doit
 
-@pytest.fixture()
-def make_multisig():
+@pytest.fixture
+def make_multisig(dev, sim_execfile):
     # make a multsig wallet, always with simulator as an element
 
     # default is BIP-45:   m/45'/... (but no co-signer idx)
     # - but can provide str format for deriviation, use {idx} for cosigner idx
 
-    def doit(M, N, unique=0, deriv=None, chain="XTN"):
+    def doit(M, N, unique=0, deriv=None, dev_key=False, chain="XTN"):
         keys = []
 
         for i in range(N-1):
@@ -114,7 +114,14 @@ def make_multisig():
 
             keys.append((xfp, pk, sub))
 
-        pk = BIP32Node.from_wallet_key(simulator_fixed_tprv if chain == "XTN" else simulator_fixed_xprv)
+        if dev_key:
+            sk = sim_execfile('devtest/dump_private.py').strip()
+            pk = BIP32Node.from_wallet_key(sk)
+            xfp_bytes = pk.fingerprint()
+            xfp = swab32(struct.unpack('>I', xfp_bytes)[0])
+        else:
+            pk = BIP32Node.from_wallet_key(simulator_fixed_tprv if chain == "XTN" else simulator_fixed_xprv)
+            xfp = simulator_fixed_xfp
 
         if not deriv:
             sub = pk.subkey(45, is_hardened=True, as_private=True)
@@ -126,7 +133,7 @@ def make_multisig():
                 # some test cases are using bogus paths
                 sub = pk
 
-        keys.append((simulator_fixed_xfp, pk, sub))
+        keys.append((xfp, pk, sub))
 
         return keys
 
@@ -153,9 +160,12 @@ def offer_ms_import(cap_story, dev, need_keypress):
 @pytest.fixture
 def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
-    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None, keys=None, do_import=True, derivs=None,
-             descriptor=False, int_ext_desc=False, chain="XTN"):
-        keys = keys or make_multisig(M, N, unique=unique, deriv=common or (derivs[0] if derivs else None), chain=chain)
+    def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None,
+             keys=None, do_import=True, derivs=None, descriptor=False,
+             int_ext_desc=False, dev_key=False, chain="XTN"):
+        keys = keys or make_multisig(M, N, unique=unique, dev_key=dev_key,
+                                     deriv=common or (derivs[0] if derivs else None),
+                                     chain=chain)
         name = name or f'test-{M}-{N}'
 
         if not do_import:

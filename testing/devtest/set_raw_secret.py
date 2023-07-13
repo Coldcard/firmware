@@ -15,7 +15,6 @@ print("New raw secret: %s" % b2a_hex(rs))
 
 if 1:
     settings.current = dict(sim_defaults)
-    settings.overrides.clear()
     settings.set('chain', 'XTN')
 
     pa.change(new_secret=rs)

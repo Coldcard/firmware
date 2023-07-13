@@ -25,7 +25,7 @@ class PassphraseSaver:
         try:
             salt = card.get_id_hash()
 
-            with stash.SensitiveValues(bypass_pw=True) as sv:
+            with stash.SensitiveValues(bypass_tmp=True) as sv:
                 self.key = bytearray(sv.encryption_key(salt))
 
         except:
@@ -132,7 +132,7 @@ class PassphraseSaver:
         async def doit(menu, idx, item):
             # apply the password immediately and drop them at top menu
             pw, expect_xfp = item.arg
-            set_bip39_passphrase(pw)
+            await set_bip39_passphrase(pw)
 
             from glob import settings
             from utils import xfp2str

@@ -108,8 +108,7 @@ Extended Master Key:
 
     if stash.bip39_passphrase:
         msg += '\nBIP-39 passphrase is in effect.\n'
-
-    if pa.tmp_value:
+    elif pa.tmp_value:
         msg += '\nEphemeral seed is in effect.\n'
 
     bn = callgate.get_bag_number()
@@ -555,22 +554,42 @@ def new_from_dice(menu, label, item):
     import seed
     return seed.new_from_dice(item.arg)
 
-async def convert_bip39_to_bip32(*a):
-    import seed, stash
+async def convert_ephemeral_to_master(*a):
+    import seed
+    from pincodes import pa
+    from stash import bip39_passphrase
 
-    if not await ux_confirm('''This operation computes the extended master private key using your BIP-39 seed words and passphrase, and then saves the resulting value (xprv) as the wallet secret.
+    if not pa.tmp_value:
+        await ux_show_story('You do not have an active ephemeral seed (including BIP-39 passphrase)'
+                            ' right now, so this command does little except forget the seed words.'
+                            ' It does not enhance security in any way.')
+        return
 
-The seed words themselves are erased forever, but effectively there is no other change. If a BIP-39 passphrase is currently in effect, its value is captured during this process and will be 'in effect' going forward, but the passphrase itself is erased and unrecoverable. The resulting wallet cannot be used with any other passphrase.
+    words = settings.get("words", True)
+    msg = 'Convert currently used '
+    msg += 'BIP-39 passphrase ' if bip39_passphrase else 'ephemeral seed '
+    msg += 'to main seed. '
+    if words or bip39_passphrase:
+        msg += 'Main seed words themselves are erased forever, '
+    else:
+        msg += 'Main seed is erased forever, '
 
-A reboot is part of this process. PIN code, and funds are not affected.
-'''):
+    msg += 'but effectively there is no other change. '
+
+    if bip39_passphrase:
+        msg += ('BIP-39 passphrase is currently in effect, its value '
+                'is captured during this process and will be in effect '
+                'going forward, but the passphrase itself is erased '
+                'and unrecoverable. ')
+    if not words:
+        msg += 'The resulting wallet cannot be used with any other passphrase. '
+
+    msg += 'A reboot is part of this process. PIN code, and funds are not affected.'
+    if not await ux_confirm(msg):
+
         return await ux_aborted()
 
-    if not stash.bip39_passphrase:
-        if not await ux_confirm('''You do not have a BIP-39 passphrase set right now, so this command does little except forget the seed words. It does not enhance security.'''):
-            return
-
-    await seed.remember_bip39_passphrase()
+    await seed.remember_ephemeral_seed()
 
     settings.save()
 
@@ -612,8 +631,9 @@ consequences.''', escape='4')
 
 def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
-    import stash
+    import stash, chains
 
+    c = chains.current_chain()
     qr_alnum = False
 
     if mode == 'words':
@@ -628,12 +648,14 @@ def render_master_secrets(mode, raw, node):
         msg = 'Seed words (%d):\n' % len(words)
         msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
 
-        pw = stash.bip39_passphrase
-        if pw:
-            msg += '\n\nBIP-39 Passphrase:\n%s' % pw
+        if stash.bip39_passphrase:
+            msg += '\n\nBIP-39 Passphrase:\n    *****'
+            if node:
+                msg += '\n\nSeed+Passphrase:\n%s' % c.serialize_private(node)
+
+
     elif mode == 'xprv':
-        import chains
-        msg = chains.current_chain().serialize_private(node)
+        msg = c.serialize_private(node)
         qr = msg
 
     elif mode == 'master':
@@ -648,21 +670,40 @@ def render_master_secrets(mode, raw, node):
 async def view_seed_words(*a):
     import stash
 
-    if not await ux_confirm('''The next screen will show the seed words (and if defined, your BIP-39 passphrase).\n\nAnyone with knowledge of those words can control all funds in this wallet.''' ):
+    if not await ux_confirm('The next screen will show the seed words'
+                            ' (and if defined, your BIP-39 passphrase).'
+                            '\n\nAnyone with knowledge of those words '
+                            'can control all funds in this wallet.'):
         return
 
     from glob import dis
     dis.fullscreen("Wait...")
     dis.busy_bar(True)
 
-    with stash.SensitiveValues() as sv:
+    # preserve old UI where we show words + passphrase
+    # instead of just calculated seed + passphrase = extended privkey
+    # new: calculated xprv is now also shown for BIP39 passphrase wallet
+    raw = mode = None
+    if stash.bip39_passphrase:
+        # get main secret - bypass tmp
+        with stash.SensitiveValues(bypass_tmp=True) as sv:
+            if not sv.deltamode:
+                assert sv.mode == "words"
+                raw = sv.raw[:]
+                mode = sv.mode
+
+        stash.SensitiveValues.clear_cache()
+
+    with stash.SensitiveValues(bypass_tmp=False) as sv:
         if sv.deltamode:
             # give up and wipe self rather than show true seed values.
             import callgate
             callgate.fast_wipe()
 
         dis.busy_bar(False)
-        msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
+        msg, qr, qr_alnum = render_master_secrets(mode or sv.mode,
+                                                  raw or sv.raw,
+                                                  sv.node)
 
         msg += '\n\nPress (1) to view as QR Code.'
 
@@ -674,8 +715,9 @@ async def view_seed_words(*a):
                 continue
             break
 
-        stash.blank_object(qr)
-        stash.blank_object(msg)
+    stash.blank_object(qr)
+    stash.blank_object(msg)
+    stash.blank_object(raw)
 
 async def damage_myself():
     # called when it's time to disable ourselves due to various
@@ -1709,13 +1751,14 @@ async def ready2sign(*a):
     # - if no card, check virtual disk for PSBT
     # - if still nothing, then talk about USB connection
     import stash
+    from pincodes import pa
     from glob import NFC
 
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
                                 max_size=MAX_TXN_LEN, taster=is_psbt)
 
-    if stash.bip39_passphrase:
+    if pa.tmp_value:
         title = '[%s]' % xfp2str(settings.get('xfp'))
     else:
         title = None

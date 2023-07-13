@@ -1,6 +1,7 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, bech32
+from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT, prandom, taptweak
 from msg import verify_message
@@ -706,7 +707,7 @@ def set_master_key(sim_exec, sim_execfile, simulator, reset_seed_words):
     reset_seed_words()
 
 @pytest.fixture(scope="function")
-def set_xfp(sim_exec, sim_execfile, simulator, reset_seed_words):
+def set_xfp(sim_exec):
     # set the XFP, without really knowing the private keys
     # - won't be able to sign, but should accept PSBT for signing
 
@@ -716,11 +717,12 @@ def set_xfp(sim_exec, sim_execfile, simulator, reset_seed_words):
         import struct
         need_xfp, = struct.unpack("<I", a2b_hex(xfp))
 
-        sim_exec('from main import settings; settings.put_volatile("xfp", 0x%x);' % need_xfp)
+        sim_exec('from main import settings; settings.set("xfp", 0x%x);' % need_xfp)
 
     yield doit
 
-    sim_exec('from main import settings; settings.overrides.clear();')
+    sim_exec('from main import settings; settings.set("xfp", 0x%x);' % simulator_fixed_xfp)
+
 
 @pytest.fixture(scope="function")
 def set_encoded_secret(sim_exec, sim_execfile, simulator, reset_seed_words):
@@ -1699,10 +1701,97 @@ def validate_address():
     return doit
 
 
+@pytest.fixture
+def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
+    def doit(fn):
+        # Check on-device verify UX works.
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('Backup')
+        pick_menu_item('Verify Backup')
+        time.sleep(0.1)
+        title, body = cap_story()
+        assert "Select file" in body
+        need_keypress('y')
+        time.sleep(0.1)
+        pick_menu_item(os.path.basename(fn))
+
+        time.sleep(0.1)
+        title, body = cap_story()
+        assert "Backup file CRC checks out okay" in body
+    return doit
+
+
+@pytest.fixture
+def check_and_decrypt_backup(microsd_path):
+    def doit(fn, passphrase):
+        # List contents using unix tools
+        pn = microsd_path(fn)
+        out = check_output(['7z', 'l', pn], encoding='utf8')
+        xfname, = re.findall('[a-z0-9]{4,30}.txt', out)
+        print(f"Filename inside 7z: {xfname}")
+        assert xfname in out
+        assert 'Method = 7zAES' in out
+
+        xfn_path = microsd_path(xfname)
+        if os.path.exists(xfn_path):
+            os.remove(xfn_path)
+
+        # does decryption; at least for CRC purposes
+        args = ['7z', 'e', '-p' + ' '.join(passphrase), pn, xfname, '-o' + '../unix/work/MicroSD',]
+        out = check_output(args, encoding='utf8')
+        assert "Extracting archive" in out, out
+        assert "Everything is Ok" in out, out
+
+        with open(xfn_path, "r") as f:
+            res = f.read()
+        return res
+
+    return doit
+
+
+@pytest.fixture
+def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
+                      need_keypress, word_menu_entry, get_setting):
+    # restore backup with clear seed as first step
+    def doit(fn, passphrase, avail_settings=None):
+        unit_test('devtest/clear_seed.py')
+
+        m = cap_menu()
+        assert m[0] == 'New Seed Words'
+        pick_menu_item('Import Existing')
+        pick_menu_item('Restore Backup')
+
+        # skip
+        title, body = cap_story()
+        if ('files to pick from' in body) or ("only one file to pick from" in body):
+            need_keypress('y')
+            time.sleep(.01)
+
+            pick_menu_item(fn)
+
+        time.sleep(.1)
+        word_menu_entry(passphrase)
+        title, body = cap_story()
+        assert title == 'Success!'
+        assert 'has been successfully restored' in body
+
+        if avail_settings:
+            for key in avail_settings:
+                assert get_setting(key)
+
+        # avoid simulator reboot; restore normal state
+        unit_test('devtest/abort_ux.py')
+
+    return doit
+
+
 # useful fixtures related to multisig
 from test_multisig import (import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn,
                                 make_ms_address, clear_ms, make_myself_wallet)
-from test_bip39pw import set_bip39_pw, clear_bip39_pw
-
+from test_bip39pw import set_bip39_pw
+from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
+from test_ephemeral import ephemeral_seed_disabled_ui
+from test_ux import enter_complex, pass_word_quiz, word_menu_entry
 
 # EOF
