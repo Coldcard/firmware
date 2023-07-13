@@ -7,7 +7,7 @@
 #
 import stash, ngu, bip39, random
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause
-from seed import word_quiz, WordNestMenu, set_seed_value
+from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
 from glob import settings
 from actions import goto_top_menu
 
@@ -169,8 +169,8 @@ class XORWordNestMenu(WordNestMenu):
                 # update menu contents now that wallet defined
                 goto_top_menu(first_time=True)
             else:
-                pa.tmp_secret(enc)
-                await ux_show_story("New master key in effect until next power down.")
+                await set_ephemeral_seed(enc)
+                goto_top_menu()
 
         return None
 

@@ -114,13 +114,14 @@ def check_file_headers(f):
         raise ValueError("Second header too big")
 
     # capture this spot
+    # TODO 'data_start' unused
     data_start = f.tell()       # expect 0x20
 
     try:
         f.seek(sh.offset, 1)
         th = f.read(sh.size)
         if len(th) != sh.size:
-            raise IndexError("Truncated file? %s" % e.message)
+            raise IndexError("Truncated file?")
 
         # Look for properties about compression. this could be 
         # faked-out but good enough for now

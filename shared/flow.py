@@ -3,11 +3,11 @@
 # flow.py - Menu structure
 #
 from menu import MenuItem, ToggleMenuItem
-import version
 from glob import settings
 
 from actions import *
 from choosers import *
+from mk4 import dev_enable_repl
 from multisig import make_multisig_menu, import_multisig_nfc
 from seed import make_ephemeral_seed_menu
 from address_explorer import address_explore
@@ -15,62 +15,18 @@ from users import make_users_menu
 from drv_entro import drv_entro_start, password_entry
 from backups import clone_start, clone_write_data
 from xor_seed import xor_split_start, xor_restore_start
-from countdowns import countdown_pin_submenu, countdown_chooser
+from countdowns import countdown_chooser
+from hsm import hsm_policy_available
+from paper import make_paper_wallet
+from trick_pins import TrickPinMenu
 
-# Optional feature: HSM
-if version.has_fatram:
-    from hsm import hsm_policy_available
-else:
-    hsm_policy_available = lambda: False
 
-# Optional feature: Paper Wallets
-try:
-    from paper import make_paper_wallet
-except:
-    make_paper_wallet = None
-
-if version.mk_num >= 4:
-    from trick_pins import TrickPinMenu
-    trick_pin_menu = TrickPinMenu.make_menu
-else:
-    trick_pin_menu = None
+trick_pin_menu = TrickPinMenu.make_menu
 
 #
 # NOTE: "Always In Title Case"
 #
 # - try to keep harmless things as first item: so double-tap of OK does no harm
-
-# Mk3 and earlier: see Trick Pins for Mk4
-PinChangesMenu = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem('Change Main PIN', f=pin_changer, arg='main'),
-    MenuItem('Second Wallet', f=pin_changer, arg='secondary',
-                                predicate=lambda: not version.has_608),
-    MenuItem('Duress PIN', f=pin_changer, arg='duress'),
-    MenuItem('Brick Me PIN', f=pin_changer, arg='brickme'),
-    MenuItem('Countdown PIN', menu=countdown_pin_submenu, predicate=lambda: version.has_608),
-    MenuItem('Login Now', f=login_now, arg=1),
-]
-
-# Not reachable on Mark3 hardware
-if not version.has_608:
-    SecondaryPinChangesMenu = [
-        #         xxxxxxxxxxxxxxxx
-        MenuItem('Second Wallet', f=pin_changer, arg='secondary'),
-        MenuItem('Duress PIN', f=pin_changer, arg='duress'),
-        MenuItem('Countdown PIN', menu=countdown_pin_submenu),
-        MenuItem('Login Now', f=login_now, arg=1),
-    ]
-
-async def which_pin_menu(_1,_2, item):
-    assert version.mk_num < 4
-    if version.has_608:
-        # mk3
-        return PinChangesMenu
-    else:
-        # mk2 only
-        from pincodes import pa
-        return PinChangesMenu if not pa.is_secondary else SecondaryPinChangesMenu
 
 #
 # Predicates
@@ -89,7 +45,7 @@ def vdisk_enabled():
 
 def se2_and_real_secret():
     from pincodes import pa
-    return version.has_se2 and (not pa.is_secret_blank()) and (not pa.tmp_value)
+    return (not pa.is_secret_blank()) and (not pa.tmp_value)
 
 
 HWTogglesMenu = [
@@ -97,7 +53,7 @@ HWTogglesMenu = [
         on_change=change_usb_disable, story='''\
 Blocks any data over USB port. Useful when your plan is air-gap usage.'''),
     ToggleMenuItem('Virtual Disk', 'vidsk', ['Default Off', 'Enable', 'Enable & Auto'],
-        predicate=lambda: version.has_psram, on_change=change_virtdisk_enable, 
+        on_change=change_virtdisk_enable,
         story='''Coldcard can emulate a virtual disk drive (4MB) where new PSBT files \
 can be saved. Signed PSBT files (transactions) will also be saved here. \n\
 In "auto" mode, selects PSBT as soon as written.'''),
@@ -112,11 +68,10 @@ with the Coldcard.''',
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=pin_changer, arg='main'),
-    MenuItem('PIN Options', predicate=lambda: not version.has_se2, menu=which_pin_menu),
-    MenuItem('Trick PINs', predicate=lambda: version.has_se2, menu=trick_pin_menu),
+    MenuItem('Trick PINs', menu=trick_pin_menu),
     MenuItem('Set Nickname', f=pick_nickname),
     MenuItem('Scramble Keypad', f=pick_scramble),
-    MenuItem('Kill Key', f=pick_killkey, predicate=lambda: version.has_se2),
+    MenuItem('Kill Key', f=pick_killkey),
     MenuItem('Login Countdown', chooser=countdown_chooser),
     MenuItem('MicroSD 2FA', menu=microsd_2fa, predicate=se2_and_real_secret),
     MenuItem('Test Login Now', f=login_now, arg=1),
@@ -199,26 +154,13 @@ UpgradeMenu = [
     MenuItem('Bless Firmware', f=bless_flash),
 ]
 
-if version.mk_num < 4:
-    DevelopersMenu = [
-        #         xxxxxxxxxxxxxxxx
-        MenuItem("Normal USB Mode", f=dev_enable_protocol),
-        MenuItem("Enable USB REPL", f=dev_enable_vcp),
-        MenuItem("Enable USB Disk", f=dev_enable_disk),
-        MenuItem("Wipe Patch Area", f=wipe_filesystem),         # needs better label
-        MenuItem('Warm Reset', f=reset_self),
-        MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
-    ]
-else:
-    # Mk4 and later
-    from mk4 import dev_enable_repl
-    DevelopersMenu = [
-        #         xxxxxxxxxxxxxxxx
-        MenuItem("Serial REPL", f=dev_enable_repl),
-        MenuItem("Wipe LFS", f=wipe_filesystem),                # kills settings, HSM stuff
-        MenuItem('Warm Reset', f=reset_self),
-        MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
-    ]
+DevelopersMenu = [
+    #         xxxxxxxxxxxxxxxx
+    MenuItem("Serial REPL", f=dev_enable_repl),
+    MenuItem("Wipe LFS", f=wipe_filesystem),                # kills settings, HSM stuff
+    MenuItem('Warm Reset', f=reset_self),
+    MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
+]
 
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
@@ -285,7 +227,7 @@ Keep blocked unless you intend to sign special transactions.'''),
         story="Testnet must only be used by developers because \
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
     MenuItem('Settings Space', f=show_settings_space),
-    MenuItem('MCU Key Slots', predicate=lambda: version.has_se2, f=show_mcu_keys_left),
+    MenuItem('MCU Key Slots', f=show_mcu_keys_left),
 ]
 
 BackupStuffMenu = [
@@ -316,9 +258,8 @@ AdvancedNormalMenu = [
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
-By default these commands are disabled.",
-                   predicate=lambda: version.has_fatram),
-    MenuItem('User Management', menu=make_users_menu, predicate=lambda: version.has_fatram),
+By default these commands are disabled."),
+    MenuItem('User Management', menu=make_users_menu),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
@@ -344,7 +285,6 @@ ImportWallet = [
     MenuItem("Seed XOR", f=xor_restore_start),
 ]
 
-
 NewSeedMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("24 Word (default)", f=pick_new_seed, arg=24),
@@ -363,7 +303,6 @@ EmptyWallet = [
     MenuItem('Settings', menu=SettingsMenu),
 ]
 
-
 # In operation, normal system, after a good PIN received.
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
@@ -376,7 +315,6 @@ NormalSystem = [
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
-
 
 # Shown until unit is put into a numbered bag
 FactoryMenu = [

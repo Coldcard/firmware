@@ -390,15 +390,8 @@ class PinAttempt:
         if self.tmp_value:
             return bytes(AE_LONG_SECRET_LEN)
 
-        if version.mk_num < 4:
-            secret = b''
-            for n in range(13):
-                secret += self.roundtrip(6, ls_offset=n)[0:32]
-
-            return secret
-        else:
-            # faster method for Mk4
-            return self.roundtrip(8, after_buf=bytes(AE_LONG_SECRET_LEN))
+        # faster method for Mk4
+        return self.roundtrip(8, after_buf=bytes(AE_LONG_SECRET_LEN))
 
     def ls_change(self, new_long_secret):
         # set the "long secret"
@@ -423,18 +416,15 @@ class PinAttempt:
     def new_main_secret(self, raw_secret, chain=None):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
-        from glob import settings
+        from glob import settings, NFC
         import stash
         stash.SensitiveValues.clear_cache()
-
         # capture values we have already
         old_values = dict(settings.current)
 
         settings.set_key(raw_secret)
         settings.load()
-
-        # merge in settings, including what chain to use, timeout, etc.
-        settings.merge(old_values)
+        settings.merge_previous_active(old_values)
 
         # Recalculate xfp/xpub values (depends both on secret and chain)
         with stash.SensitiveValues(raw_secret) as sv:
@@ -446,7 +436,11 @@ class PinAttempt:
 
     def tmp_secret(self, encoded, chain=None):
         # Use indicated secret and stop using the SE; operate like this until reboot
-        self.tmp_value = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
+        val = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
+        if self.tmp_value == val:
+            return False
+
+        self.tmp_value = val
 
         # We're no longer blank. hard to say about duress secret and stuff tho
         self.state_flags = PA_SUCCESSFUL
@@ -459,6 +453,7 @@ class PinAttempt:
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value, chain=chain)
+        return True
 
     def trick_request(self, method_num, data):
         # send/recv a trick-pin related request (mk4 only)

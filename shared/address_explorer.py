@@ -72,7 +72,7 @@ class KeypathMenu(MenuSystem):
         dis.clear_rect(0, y, dis.WIDTH, 8)
         dis.text(-1, y+4, self.prefix, FontTiny, invert=False)
 
-    def done(self, _1, menu_idx, item):
+    async def done(self, _1, menu_idx, item):
         final_path = item.arg or item.label
         self.chosen = menu_idx
         self.show()
@@ -89,7 +89,7 @@ class KeypathMenu(MenuSystem):
 
         return PickAddrFmtMenu(final_path, top)
 
-    def deeper(self, _1, _2, item):
+    async def deeper(self, _1, _2, item):
         val = item.arg or item.label
         assert val.endswith('/..')
         cpath = val[:-3]
@@ -110,7 +110,7 @@ class PickAddrFmtMenu(MenuSystem):
         if path.startswith("m/49'"):
             self.goto_idx(2)
 
-    def done(self, _1, _2, item):
+    async def done(self, _1, _2, item):
         the_ux.pop()
         await self.parent.got_custom_path(*item.arg)
 
@@ -126,7 +126,7 @@ class ApplicationsMenu(MenuSystem):
         ]
         super().__init__(items)
 
-    def done(self, _1, _2, item):
+    async def done(self, _1, _2, item):
         path = item.arg[0]
         addr_fmt = item.arg[1]
         await self.parent.show_n_addresses(path, addr_fmt, None, n=10, allow_change=True)
