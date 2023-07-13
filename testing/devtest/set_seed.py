@@ -14,7 +14,6 @@ tn = chains.BitcoinTestnet
 
 stash.bip39_passphrase = ''
 settings.current = sim_defaults
-settings.overrides.clear()
 settings.set('chain', 'XTN')
 settings.set('words', True)
 settings.set('terms_ok', True)

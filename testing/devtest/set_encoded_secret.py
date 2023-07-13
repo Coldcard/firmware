@@ -10,7 +10,6 @@ from stash import SecretStash, SensitiveValues
 from utils import xfp2str
 
 settings.current = dict(sim_defaults)
-settings.overrides.clear()
 
 import main
 raw = main.ENCODED_SECRET

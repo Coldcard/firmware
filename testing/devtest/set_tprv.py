@@ -25,7 +25,6 @@ if settings.get('xfp') == swab32(node.my_fp()):
 
 else:
     settings.current = sim_defaults
-    settings.overrides.clear()
     settings.set('chain', 'XTN')
 
     raw = SecretStash.encode(xprv=node)

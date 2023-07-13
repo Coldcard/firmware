@@ -2039,7 +2039,7 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
             pytest.skip("classic sign")
 
         _, story = cap_story()
-        assert "Press (9) to use Batch Sign" in story
+        assert "Press (9) to select all files for potential signing" in story
         need_keypress("9")
 
     time.sleep(.1)
