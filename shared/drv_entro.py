@@ -18,6 +18,7 @@ from utils import chunk_writer
 BIP85_PWD_LEN = 21
 
 async def drv_entro_start(*a):
+    from pincodes import pa
 
     # UX entry
     ch = await ux_show_story('''\
@@ -36,8 +37,14 @@ so the other wallet is effectively segregated from the Coldcard and yet \
 still backed-up.''')
     if ch != 'y': return
 
-    if stash.bip39_passphrase:
-        if not await ux_confirm('''You have a BIP-39 passphrase set right now and so that will become wrapped into the new secret.'''):
+    if pa.tmp_value:
+        if stash.bip39_passphrase:
+            msg = ('You have a BIP-39 passphrase set right now '
+                   'and so it will be wrapped into the new secret.')
+        else:
+            msg = 'You have an ephemeral seed - deriving from ephemeral.'
+
+        if not await ux_confirm(msg):
             return
 
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',

@@ -1,11 +1,19 @@
 ## 5.2.0 - 2023-09-21
 
+- New Feature: `Lock Down Seed` now works with every ephemeral secret (not just BIP39 passphrase)
+- New Feature: BIP-39 Passphrase can now be added to word based Ephemeral Seeds
+- New Feature: Add ability to back-up BIP39 Passphrase wallet
 - Enhancement: Shortcut to `Batch Sign PSBT` via `Ready To Sign` -> `Press (9)`
 - Enhancement: Old plausible deniability feature on fresh COLDCARD removed.
   Only needed for Mk 2-3 where SPI flash was external chip, 
   easily observed, but now that's different. New simpler and less storage
   wasteful plausible deniability.
 - Enhancement: Remove obsolete Mk2/Mk3 code-paths from master branch
+- Enhancement: BIP39 Passphrase is now internally handled as an ephemeral secret.
+  Ability to see BIP-39 Passphrase after wallet is active via `View Seed Words`
+  was removed as a consequence of this change.
+- Enhancement: Showing secrets now also display extended private key for BIP-39
+  passphrase wallets.
 
 ## 5.1.4 - 2023-09-08
 

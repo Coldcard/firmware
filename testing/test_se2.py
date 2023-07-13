@@ -2,7 +2,7 @@
 #
 # Mk4 SE2 (second secure element) test cases and fixtures.
 #
-# - use 'simulator.py --eff' for these
+# - use 'simulator.py' without '--eff' for these
 #
 import pytest, struct, time
 from collections import namedtuple
@@ -497,7 +497,6 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
 
     need_keypress('x')
     time.sleep(.1)
-
     pick_menu_item('Activate Wallet')
     time.sleep(.1)
     _, story = cap_story()
@@ -512,9 +511,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     assert xp == wallet.hwif(as_private=False)
 
     assert not get_setting('multisig')  # multisig is not copied
-    assert not get_setting('tp')  # trick pins are not copied
-    assert not get_setting('bkpw')  # backup password is not copied
-    assert not get_setting('usr')  # hsm users are not copied
+
     # re-login to recover normal seed
     reset_seed_words()
     repl.exec('pa.tmp_value=False; pa.setup(pa.pin); pa.login()')

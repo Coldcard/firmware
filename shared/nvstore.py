@@ -98,7 +98,6 @@ class SettingsObject:
         self.nvram_key = b'\0'*32
         self.capacity = 0
         self.current = self.default_values()
-        self.overrides = {}         # volatile overide values
 
         self.load(dis)
 
@@ -256,7 +255,6 @@ class SettingsObject:
         # and pick the newest one (in unlikely case of dups)
         # reset
         self.current.clear()
-        self.overrides.clear()
         self.my_pos = None
         self.is_dirty = 0
         self.capacity = 0
@@ -311,10 +309,7 @@ class SettingsObject:
             self.current['chain'] = 'XTN'
 
     def get(self, kn, default=None):
-        if kn in self.overrides:
-            return self.overrides.get(kn)
-        else:
-            return self.current.get(kn, default)
+        return self.current.get(kn, default)
 
     def changed(self):
         self.is_dirty += 1
@@ -329,9 +324,6 @@ class SettingsObject:
     def put(self, kn, v):
         self.current[kn] = v
         self.changed()
-
-    def put_volatile(self, kn, v):
-        self.overrides[kn] = v
 
     set = put
 
@@ -359,8 +351,7 @@ class SettingsObject:
         rk = [k for k in self.current if k[0] != '_']
         for k in rk:
             del self.current[k]
-            
-        self.overrides.clear()
+
         self.changed()
         
     async def write_out(self):
@@ -419,7 +410,6 @@ class SettingsObject:
 
         # act blank too, just in case.
         self.current.clear()
-        self.overrides.clear()
         self.is_dirty = 0
         self.capacity = 0
 
