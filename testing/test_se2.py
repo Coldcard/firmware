@@ -5,8 +5,6 @@
 # - use 'simulator.py --eff' for these
 #
 import pytest, struct, time
-from helpers import B2A
-from binascii import b2a_hex, a2b_hex
 from collections import namedtuple
 from mnemonic import Mnemonic
 
@@ -53,7 +51,6 @@ TRICK_FMT = 'IHH64s16sII32s'
 TRICK_FMT_FLDS = 'slot_num tc_flags tc_arg xdata pin pin_len blank_slots spare'
 assert struct.calcsize(TRICK_FMT) == 128
 
-from collections import namedtuple
 SlotInfo = namedtuple('SlotInfo', TRICK_FMT_FLDS)
 
 def make_slot(**kws):
@@ -432,8 +429,15 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,
     # ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
-        reset_seed_words, repl, clear_all_tricks, 
+        reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
+
+    # import multisig
+    clear_ms()
+    import_ms_wallet(2, 2)
+    need_keypress('y')
+    time.sleep(.1)
+    assert len(get_setting('multisig')) == 1
 
     # after Wipe Seed -> Wipe->Wallet choice, another level
     clear_all_tricks()
@@ -502,12 +506,17 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     need_keypress('y')
     time.sleep(.1)
     _, story = cap_story()
-    assert 'New master key in effect' in story
+    assert 'New ephemeral master key in effect' in story
 
     xp = repl.eval("settings.get('xpub')")
     assert xp == wallet.hwif(as_private=False)
 
+    assert not get_setting('multisig')  # multisig is not copied
+    assert not get_setting('tp')  # trick pins are not copied
+    assert not get_setting('bkpw')  # backup password is not copied
+    assert not get_setting('usr')  # hsm users are not copied
     # re-login to recover normal seed
+    reset_seed_words()
     repl.exec('pa.tmp_value=False; pa.setup(pa.pin); pa.login()')
 
 

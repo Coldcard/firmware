@@ -3,11 +3,17 @@
 # Ephemeral Seeds tests
 #
 import pytest, time, re, os, shutil
-
 from constants import simulator_fixed_xpub
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
+
+
+WORDLISTS = {
+    12: ('abandon ' * 11 + 'about', '73C5DA0A'),
+    18: ('abandon ' * 17 + 'agent', 'E08B8AC3'),
+    24: ('abandon ' * 23 + 'art', '5436D724'),
+}
 
 
 def truncate_seed_words(words):
@@ -93,13 +99,15 @@ def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
 
 
 @pytest.fixture
-def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_home, pick_menu_item,
-                               fake_txn, try_sign, goto_eph_seed_menu, reset_seed_words,
-                               get_identity_story, get_seed_value_ux):
-    def doit(mnemonic=None, xpub=None):
+def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn, try_sign,
+                               goto_eph_seed_menu, reset_seed_words, get_identity_story,
+                               get_seed_value_ux):
+    def doit(mnemonic=None, xpub=None, expected_xfp=None):
         time.sleep(0.3)
         _, story = cap_story()
         in_effect_xfp = story[1:9]
+        if expected_xfp is not None:
+            assert in_effect_xfp == expected_xfp
         assert "key in effect until next power down." in story
         need_keypress("y")  # just confirm new master key message
 
@@ -140,9 +148,9 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, goto_hom
 
 @pytest.mark.parametrize("num_words", [12, 24])
 @pytest.mark.parametrize("dice", [False, True])
-def test_ephemeral_seed_generate(num_words, pick_menu_item, goto_home, cap_story, need_keypress,
-                                 reset_seed_words, goto_eph_seed_menu, dice, ephemeral_seed_disabled,
-                                 verify_ephemeral_secret_ui):
+def test_ephemeral_seed_generate(num_words, pick_menu_item, cap_story, need_keypress,
+                                 reset_seed_words, goto_eph_seed_menu, dice,
+                                 ephemeral_seed_disabled, verify_ephemeral_secret_ui):
 
     reset_seed_words()
     try:
@@ -180,18 +188,14 @@ def test_ephemeral_seed_generate(num_words, pick_menu_item, goto_home, cap_story
 @pytest.mark.parametrize("num_words", [12, 18, 24])
 @pytest.mark.parametrize("nfc", [False, True])
 @pytest.mark.parametrize("truncated", [False, True])
-def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_menu_item, goto_home,
-                                     cap_story, need_keypress, reset_seed_words, goto_eph_seed_menu,
+def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_menu_item,
+                                     need_keypress, reset_seed_words, goto_eph_seed_menu,
                                      word_menu_entry, nfc_write_text, verify_ephemeral_secret_ui,
                                      ephemeral_seed_disabled, get_seed_value_ux):
     if truncated and not nfc: return
 
-    wordlists = {
-        12: ( 'abandon ' * 11 + 'about', 0x0adac573),
-        18: ( 'abandon ' * 17 + 'agent', 0xc38a8be0),
-        24: ( 'abandon ' * 23 + 'art', 0x24d73654 ),
-    }
-    words, expect_xfp = wordlists[num_words]
+
+    words, expect_xfp = WORDLISTS[num_words]
 
     reset_seed_words()
     try:
@@ -222,7 +226,7 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
 
     need_keypress("4")  # understand consequences
 
-    verify_ephemeral_secret_ui(mnemonic=words.split(" "))
+    verify_ephemeral_secret_ui(mnemonic=words.split(" "), expected_xfp=expect_xfp)
 
     nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
     seed_words = get_seed_value_ux()
@@ -285,7 +289,7 @@ def test_ephemeral_seed_import_tapsigner(way, retry, testnet, pick_menu_item, ca
 
 
 @pytest.mark.parametrize("fail", ["wrong_key", "key_len", "plaintext", "garbage"])
-def test_ephemeral_seed_import_tapsigner_fail(cap_menu, pick_menu_item, goto_home, cap_story, fail,
+def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail,
                                               need_keypress, reset_seed_words, enter_hex,
                                               tapsigner_encrypted_backup, goto_eph_seed_menu,
                                               microsd_path, ephemeral_seed_disabled):
@@ -347,8 +351,8 @@ def test_ephemeral_seed_import_tapsigner_fail(cap_menu, pick_menu_item, goto_hom
         "xpub661MyMwAqRbcGBeMu9h1B222hQmc4XkXasbN4F3mDGTWRJ11UQ5orWv41FPVK7stXsS9UtR5DBTArBvcsHPiCE2E1PAdqq1UQiQTYmrEEaa"
     ),
 ])
-def test_ephemeral_seed_import_tapsigner_real(data, cap_menu, pick_menu_item, goto_home, cap_story,
-                                              need_keypress, reset_seed_words, enter_hex, microsd_path,
+def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, microsd_path,
+                                              need_keypress, reset_seed_words, enter_hex,
                                               goto_eph_seed_menu, verify_ephemeral_secret_ui,
                                               ephemeral_seed_disabled):
     fname, backup_key_hex, pub = data
@@ -386,10 +390,11 @@ def test_ephemeral_seed_import_tapsigner_real(data, cap_menu, pick_menu_item, go
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('retry', range(3))
 @pytest.mark.parametrize("testnet", [True, False])
-def test_ephemeral_seed_import_xprv(way, retry, testnet, cap_menu, pick_menu_item, goto_home,
-                                    cap_story, need_keypress, reset_seed_words, goto_eph_seed_menu,
-                                    nfc_write_text, enter_hex, microsd_path, virtdisk_path,
-                                    verify_ephemeral_secret_ui, ephemeral_seed_disabled):
+def test_ephemeral_seed_import_xprv(way, retry, testnet, pick_menu_item,
+                                    cap_story, need_keypress, reset_seed_words,
+                                    goto_eph_seed_menu, nfc_write_text, microsd_path,
+                                    virtdisk_path, verify_ephemeral_secret_ui,
+                                    ephemeral_seed_disabled):
     reset_seed_words()
     fname = "ek.txt"
     from pycoin.key.BIP32Node import BIP32Node
@@ -443,5 +448,47 @@ def test_ephemeral_seed_import_xprv(way, retry, testnet, cap_menu, pick_menu_ite
         pick_menu_item(fname)
 
     verify_ephemeral_secret_ui(xpub=node.hwif())
+
+
+def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
+                                     ephemeral_seed_disabled, cap_story,
+                                     pick_menu_item, need_keypress,
+                                     word_menu_entry):
+    reset_seed_words()
+    try:
+        goto_eph_seed_menu()
+    except:
+        time.sleep(.1)
+        goto_eph_seed_menu()
+
+    ephemeral_seed_disabled()
+    words, expected_xfp = WORDLISTS[12]
+    pick_menu_item("Import Words")
+    pick_menu_item(f"12 Words")
+    time.sleep(0.1)
+
+    word_menu_entry(words.split())
+    time.sleep(0.3)
+    _, story = cap_story()
+    assert "key in effect until next power down." in story
+    in_effect_xfp = story[1:9]
+    need_keypress("y")
+    try:
+        goto_eph_seed_menu()
+    except:
+        time.sleep(.1)
+        goto_eph_seed_menu()
+
+    pick_menu_item("Import Words")
+    pick_menu_item(f"12 Words")
+    time.sleep(0.1)
+
+    word_menu_entry(words.split())
+    time.sleep(0.3)
+    _, story = cap_story()
+    assert "Ephemeral master key already in use" in story
+    already_used_xfp = story[1:9]
+    assert already_used_xfp == in_effect_xfp == expected_xfp
+    need_keypress("y")
 
 # EOF

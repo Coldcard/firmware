@@ -55,6 +55,7 @@ class PSRAMWrapper:
 
     def wipe_all(self):
         # works, but code in bootrom is much faster and better (rng values used)
+        from glob import dis
 
         z = bytes(16384)
         for pos in range(0, self.length, len(z)):

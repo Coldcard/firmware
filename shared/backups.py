@@ -5,7 +5,6 @@
 import compat7z, stash, ckcc, chains, gc, sys, bip39, uos, ngu
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-from utils import imported, xfp2str
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause
 import version, ujson
 from uio import StringIO
@@ -98,6 +97,7 @@ def render_backup_contents():
         if k == 'xfp': continue         # redundant, and wrong if bip39pw
         if k == 'bkpw': continue        # confusing/circular
         if k == 'sd2fa': continue       # do NOT backup SD 2FA (card can be lost or damaged)
+        if k == 'words': continue       # words length is recalculated from secret
         ADD('setting.' + k, v)
 
     if version.has_fatram:
@@ -292,7 +292,7 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
 async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_copies=True):
     # Just do the writing
     from glob import dis
-    from files import CardSlot, CardMissingError
+    from files import CardSlot
 
     # Show progress:
     dis.fullscreen('Encrypting...' if words else 'Generating...')
@@ -374,11 +374,11 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False, allow_
             while 1:
                 msg = '''Backup file written:\n\n%s\n\n\
 To view or restore the file, you must have the full password.\n\n\
-Insert another SD card and press 2 to make another copy.''' % (nice)
+Insert another SD card and press 2 to make another copy.''' % nice
     
                 ch = await ux_show_story(msg, escape='2')
 
-                if ch == 'y': return
+                if ch in 'xy': return
                 if ch == '2': break
 
         else:
