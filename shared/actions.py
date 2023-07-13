@@ -2194,20 +2194,18 @@ async def usb_keyboard_emulation(enable):
 
 async def change_nfc_enable(enable):
     # NFC enable / disable
-    import glob
     from glob import NFC
     import nfc
 
     if not enable:
-        if glob.NFC:
-            glob.NFC.shutdown()
+        if NFC:
+            NFC.shutdown()
     else:
         nfc.NFCHandler.startup()
 
 async def change_virtdisk_enable(enable):
     # NOTE: enable can be 0,1,2
     import glob, vdisk
-    from usb import enable_usb, disable_usb
 
     if bool(enable) == bool(glob.VD):
         # not a change in state, do nothing
@@ -2238,7 +2236,9 @@ async def microsd_2fa(*a):
     from pwsave import MicroSD2FA
 
     if not settings.get('sd2fa'):
-        ch = await ux_show_story('''When enabled, this feature requires a specially prepared MicroSD card to be inserted during login process. After correct PIN is provided, if card slot is empty or unknown card present, the seed is wiped.''')
+        ch = await ux_show_story('When enabled, this feature requires a specially prepared MicroSD card '
+                                 'to be inserted during login process. After correct PIN is provided, '
+                                 'if card slot is empty or unknown card present, the seed is wiped.')
 
         if ch != 'y':
             return

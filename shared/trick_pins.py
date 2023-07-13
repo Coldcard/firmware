@@ -7,8 +7,7 @@
 # - replaces old "duress wallet" and "brickme" features 
 # - changes require knowledge of real PIN code (it is checked)
 # 
-import version, uctypes, errno, ngu, sys, ckcc, stash, bip39
-from ubinascii import hexlify as b2a_hex
+import uctypes, errno, ngu, sys, stash, bip39
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux, ux_aborted
 from stash import SecretStash
@@ -764,10 +763,8 @@ normal operation.''')
 
         # switch over to new secret!
         dis.fullscreen("Applying...")
-        pa.tmp_secret(encoded)
-        tp.reload()
-
-        await ux_show_story("New master key in effect until next power down.")
+        from seed import set_ephemeral_seed
+        await set_ephemeral_seed(encoded)
 
         from actions import goto_top_menu
         goto_top_menu()

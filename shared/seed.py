@@ -14,13 +14,12 @@ from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key
 import ngu, uctypes, bip39, random, version
 from uhashlib import sha256
-from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, show_qr_code
-from ux import PressRelease, ux_input_numbers, ux_input_text
+from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
+from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
 from pincodes import AE_SECRET_LEN, AE_LONG_SECRET_LEN
 from actions import goto_top_menu
-from stash import SecretStash, SensitiveValues
+from stash import SecretStash
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 from pwsave import PassphraseSaver
 from glob import settings, dis
 from pincodes import pa
@@ -294,6 +293,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
     return ch
 
+
 async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
     from glob import dis
     from display import FontTiny, FontLarge
@@ -408,12 +408,16 @@ async def new_from_dice(nwords):
         goto_top_menu(first_time=True)
 
 async def set_ephemeral_seed(encoded, chain=None):
-    pa.tmp_secret(encoded, chain=chain)
+    applied = pa.tmp_secret(encoded, chain=chain)
     dis.progress_bar_show(1)
     xfp = settings.get("xfp", "")
     if xfp:
         xfp = "[" + xfp2str(xfp) + "]\n"
-    await ux_show_story("%sNew ephemeral master key in effect until next power down.\n\nIt is NOT stored anywhere." % xfp)
+    if not applied:
+        await ux_show_story("%sEphemeral master key already in use." % xfp)
+        return
+
+    await ux_show_story("%sNew ephemeral master key in effect until next power down." % xfp)
 
 async def set_ephemeral_seed_words(words):
     dis.progress_bar_show(0.1)

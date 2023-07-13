@@ -569,6 +569,7 @@ class CTransaction(object):
         self.hash = b2a_hex(bytes(tmp[i] for i in range(len(tmp)-1, -1, -1)))
 
     def is_valid(self):
+        COIN = 100000000
         self.calc_sha256()
         for tout in self.vout:
             if tout.nValue < 0 or tout.nValue > 21000000 * COIN:
