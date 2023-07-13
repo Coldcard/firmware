@@ -148,8 +148,8 @@ def test_import_xor(incl_self, parts, expect, goto_home, pick_menu_item, cap_sto
     need_keypress('2')
 
     time.sleep(0.01)
-    title, body = cap_story()
-    assert 'New master key in effect' in body
+    title, story = cap_story()
+    assert 'New ephemeral master key in effect' in story
 
     assert get_secrets()['mnemonic'] == expect
     reset_seed_words()

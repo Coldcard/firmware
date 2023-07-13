@@ -246,12 +246,11 @@ async def drv_entro_step2(_1, picked, _2):
     stash.blank_object(msg)
 
     if ch == '2' and (encoded is not None):
-        from glob import dis
-        from pincodes import pa
-
         # switch over to new secret!
+        from actions import goto_top_menu
         dis.fullscreen("Applying...")
         await seed.set_ephemeral_seed(encoded)
+        goto_top_menu()
 
     if encoded is not None:
         stash.blank_object(encoded)

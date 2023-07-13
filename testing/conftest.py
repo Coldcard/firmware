@@ -775,8 +775,8 @@ def set_seed_words(sim_exec, sim_execfile, simulator, reset_seed_words):
     # load simulator w/ a specific bip32 master key
 
     def doit(words):
-
-        sim_exec('import main; main.WORDS = %r; ' % words.split())
+        cmd = 'import main; main.WORDS = %r;' % words.split()
+        sim_exec(cmd)
         rv = sim_execfile('devtest/set_seed.py')
         if rv: pytest.fail(rv)
 
@@ -798,8 +798,8 @@ def reset_seed_words(sim_exec, sim_execfile, simulator):
 
     def doit():
         words = simulator_fixed_words
-
-        sim_exec('import main; main.WORDS = %r; ' % words.split())
+        cmd = 'import main; main.WORDS = %r;' % words.split()
+        sim_exec(cmd)
         rv = sim_execfile('devtest/set_seed.py')
         if rv: pytest.fail(rv)
 

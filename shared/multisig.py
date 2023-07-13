@@ -1080,7 +1080,6 @@ Addresses:
         # concern: the order of keys here is non-deterministic
         # or order is taken from descriptor order (multi) but we do not support it
         # or order is determined by BIP (sortedmulti)
-        # concern: the order of keys here is non-deterministic
         for idx, (xfp, deriv, xpub) in enumerate(self.xpubs):
             if idx:
                 msg.write('\n---===---\n\n')

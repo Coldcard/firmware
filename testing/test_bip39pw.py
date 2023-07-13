@@ -60,7 +60,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story):
     def doit(pw):
         # reset from previous runs
         words = reset_seed_words()
-    
+
         # optimization
         if pw == '':
             return simulator_fixed_xfp

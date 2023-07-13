@@ -1089,11 +1089,15 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
         def select_wallet(idx):
             # select to specific pw
             xfp = set_bip39_pw(passwords[idx])
+            if do_import:
+                offer_ms_import(config)
+                time.sleep(.1)
+                need_keypress('y')
             assert xfp == keys[idx][0]
 
         return (keys, select_wallet)
 
-    yield  doit
+    yield doit
 
     set_bip39_pw('')
 
@@ -1272,7 +1276,7 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
     open(f'debug/myself-before.psbt', 'w').write(base64.b64encode(psbt).decode())
     for idx in range(M):
         select_wallet(idx)
-        _, updated = try_sign(psbt, accept_ms_import=(incl_xpubs and (idx==0)))
+        _, updated = try_sign(psbt, accept_ms_import=incl_xpubs)
         open(f'debug/myself-after.psbt', 'w').write(base64.b64encode(updated).decode())
         assert updated != psbt
 

@@ -2,12 +2,10 @@
 #
 # display.py - OLED rendering
 #
-import machine, ssd1306, uzlib, ckcc, utime
+import machine, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
 from version import is_devmode, is_edge
 import framebuf
-import uasyncio
-from uasyncio import sleep_ms
 from graphics import Graphics
 from sram2 import display2_buf
 
