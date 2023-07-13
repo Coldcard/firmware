@@ -52,7 +52,7 @@ KEY_F6 = '\x17'
 # - these are unshifted values
 # - ten per row, gaps with zero
 DECODER = (KEY_NFC + KEY_QR + KEY_TAB 
-            + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_SELECT + KEY_CANCEL + '\0'
+            + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_SELECT + '\0'
     + '1234567890'
     + 'qwertyuiop'
     + 'asdfghjkl`'
@@ -73,7 +73,7 @@ DECODER_SHIFT = (
 
 # in caps mode: numbers unaffected, and also allow meta keys normally
 DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB 
-            + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_SELECT + KEY_CANCEL + '\0'
+            + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_SELECT + '\0'
     + '1234567890'
     + 'QWERTYUIOP'
     + "ASDFGHJKL'"
@@ -83,7 +83,7 @@ DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB
 # when SYMBOL pressed
 # - be nice and allow number+symbol == number + shift
 DECODER_SYMBOL = (KEY_NFC + KEY_QR + KEY_TAB 
-            + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_SELECT + KEY_CANCEL + '\0'
+            + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_CANCEL + KEY_SELECT + '\0'
     + '!@#$%^&*()'
     + '-_`\0\0\0[]{}'
     + '+=\0\0:;~|\\"'
