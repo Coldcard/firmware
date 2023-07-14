@@ -207,6 +207,9 @@ class MicroSD2FA(PassphraseSaver):
         except:
             # die. wrong
             import callgate
+            from glob import settings
+            settings.remove_key("sd2fa")
+            settings.save()
             callgate.fast_wipe(silent=False)
 
         # proceed w/o any notice
@@ -258,6 +261,7 @@ class MicroSD2FA(PassphraseSaver):
                     fd.write(msg)
 
             # update setting as well
+            # TODO use general method that handles memory overflow
             v.append(nonce)
             settings.set('sd2fa', v)
             settings.save()
@@ -324,13 +328,15 @@ class MicroSD2FA(PassphraseSaver):
             ok = cls.authorized_card_present(cls.get_nonces())
             if ok:
                 await ux_show_story("Need a different MicroSD card. "
-                                        "This card would already be accepted.")
+                                    "This card would already be accepted.")
                 return
 
         ctx = 'this card or one of the others' if count >= 1 else 'it'
 
-        ok = await ux_confirm("Add this card to authorized set? Going forward %s must be present during login process or the seed will be wiped!" % ctx)
-
+        ok = await ux_confirm("Add this card to authorized set? Going forward %s must be "
+                              "present during login process or the seed will be wiped!" % ctx)
+        if not ok:
+            return
 
         await cls().enroll()
 
