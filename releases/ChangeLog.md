@@ -13,6 +13,11 @@
 - Bugfix: empty number during BIP-39 passphrase entry could cause crash.
 - Bugfix: UX: Signing with BIP39 Passphrase showed master fingerprint as integer. Fixed to show hex.
 - Bugfix: Fixed inability to generate paper wallet without secrets
+- Bugfix: SD2FA setting is cleared when seed is wiped after failed policy SD2FA enforce.
+  Prevents infinite seed wipe loop when restoring backup after 2FA MicroSD lost or damaged.
+  SD2FA is not backed up and also not restored from older backups. If SD2FA is set up,
+  it will not survive restore of backup.
+
 
 ## 5.1.2 - 2023-04-07
 

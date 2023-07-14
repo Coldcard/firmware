@@ -96,7 +96,6 @@ def wipe_if_deltamode():
     if not pa.is_deltamode():
         return
 
-    import callgate
     callgate.fast_wipe()
 
 # EOF
