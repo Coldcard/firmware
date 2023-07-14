@@ -97,6 +97,7 @@ def render_backup_contents():
         if k == 'xpub': continue        # redundant, and wrong if bip39pw
         if k == 'xfp': continue         # redundant, and wrong if bip39pw
         if k == 'bkpw': continue        # confusing/circular
+        if k == 'sd2fa': continue       # do NOT backup SD 2FA (card can be lost or damaged)
         ADD('setting.' + k, v)
 
     if version.has_fatram:
@@ -171,26 +172,35 @@ def restore_from_dict_ll(vals):
             sys.print_exception(exc)
             # but keep going
 
-    # restore settings from backup file
+    # if sd2fa is encountered during backup restore - purge it
+    settings.remove_key("sd2fa")
 
-    for idx, k in enumerate(vals):
-        dis.progress_bar_show(idx / len(vals))
-        if not k.startswith('setting.'):
+    # restore settings from backup file
+    vals_len = len(vals)
+    for idx, key in enumerate(vals):
+        dis.progress_bar_show(idx / vals_len)
+        if not key[:8] == "setting.":
             continue
 
-        if k == 'xfp' or k == 'xpub': continue
+        k = key[8:]
+
+        if k == 'sd2fa':
+            # do NOT restore sd2fa as SD card can be lost or damaged
+            # new version of firmware 5.1.3+ will not back sd2fa
+            # old backups need this to function properly
+            continue
 
         if k == 'tp':
             # restore trick pins, which may involve many ops
             if version.mk_num >= 4:
                 from trick_pins import tp
                 try:
-                    tp.restore_backup(vals[k])
+                    tp.restore_backup(vals[key])
                 except Exception as exc:
                     sys.print_exception(exc)
             continue
 
-        settings.set(k[8:], vals[k])
+        settings.set(k, vals[key])
 
     # write out
     settings.save()
