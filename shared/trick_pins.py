@@ -512,7 +512,7 @@ class TrickPinMenu(MenuSystem):
             have.remove(existing_pin)
 
         if (new_pin == self.current_pin) or (new_pin in have):
-            await ux_show_story("That PIN (%s) is already in use. All PIN codes must be unique." % new_pin);
+            await ux_show_story("That PIN (%s) is already in use. All PIN codes must be unique." % new_pin)
             return
 
         # check if we "forgot" this pin, and read it back if we did.
