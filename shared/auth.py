@@ -156,28 +156,29 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
     if prompt:
         dis.fullscreen(prompt, percent=.25)
 
-    with stash.SensitiveValues() as sv:
-        dis.progress_bar_show(.50)
-        if pk is None:
-            # if private key is provided, derivation subpath is ignored
-            # and provided private key is used for signing
+    if pk is None:
+        with stash.SensitiveValues() as sv:
+        # if private key is provided, derivation subpath is ignored
+        # and provided private key is used for signing
             node = sv.derive_path(subpath)
+            dis.progress_bar_show(.50)
             pk = node.privkey()
-        else:
-            node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
+    else:
+        node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
+        dis.progress_bar_show(.50)
 
-        addr = chains.current_chain().address(node, addr_fmt)
-        sv.register(pk)
+    ch = chains.current_chain()
+    addr = ch.address(node, addr_fmt)
 
-        dis.progress_bar_show(.75)
-        rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
-        # AF_CLASSIC header byte base 31 is returned by default from ngu - NOOP
-        if addr_fmt != AF_CLASSIC:
-            header_byte, rs = rv[0], rv[1:]
-            # ngu only produces header base for compressed p2pkh, anyways get only rec_id
-            rec_id = (header_byte - 27) & 0x03
-            new_header_byte = rec_id + sv.chain.sig_hdr_base(addr_fmt=addr_fmt)
-            rv = bytes([new_header_byte]) + rs
+    dis.progress_bar_show(.75)
+    rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
+    # AF_CLASSIC header byte base 31 is returned by default from ngu - NOOP
+    if addr_fmt != AF_CLASSIC:
+        header_byte, rs = rv[0], rv[1:]
+        # ngu only produces header base for compressed p2pkh, anyways get only rec_id
+        rec_id = (header_byte - 27) & 0x03
+        new_header_byte = rec_id + ch.sig_hdr_base(addr_fmt=addr_fmt)
+        rv = bytes([new_header_byte]) + rs
 
     dis.progress_bar_show(1)
 
