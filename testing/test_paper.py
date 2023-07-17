@@ -2,6 +2,10 @@
 #
 # Tests for paper-wallet feature
 #
+# Paper wallet features MUST work on both device with and without secrets.
+# This module can and should be run with `-l` and without it.
+#
+import random
 
 import pytest, time, os, shutil, re, random, json
 from pycoin.key.Key import Key
@@ -13,15 +17,17 @@ from ckcc_protocol.constants import *
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('mode', [ "classic", 'segwit', 'taproot'])
-@pytest.mark.parametrize('chain', [ "BTC", "XRT", "XTN"])
+@pytest.mark.parametrize('netcode', [ "BTC", "XRT", "XTN"])
 @pytest.mark.parametrize('pdf', [ False, True])
-def test_generate(mode, chain, pdf, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
+def test_generate(mode, netcode, pdf, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
                   dev, microsd_path, verify_detached_signature_file, validate_address, bitcoind,
                   settings_set):
 
-    settings_set("chain", chain)
+    settings_set("chain", netcode)
     # test UX and operation of the 'bitcoin core' wallet export
     mx = "Don't make PDF"
+
+    settings_set("chain", netcode)
 
     goto_home()
     pick_menu_item('Advanced/Tools')
@@ -263,9 +269,13 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
     "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
     "".join([str(random.SystemRandom().randint(1,6)) for _ in range(99)]),
 ])
-def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
-                       microsd_path, verify_detached_signature_file):
+@pytest.mark.parametrize('netcode', ["XTN", "BTC"])
+def test_dice_generate(rolls, netcode, dev, cap_menu, pick_menu_item, goto_home,
+                       cap_story, need_keypress, microsd_path,
+                       verify_detached_signature_file, settings_set):
     # verify the math for dice rolling method
+
+    settings_set("chain", netcode)
 
     goto_home()
     pick_menu_item('Advanced/Tools')
@@ -327,12 +337,11 @@ def test_dice_generate(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_stor
         assert len(hx) == 1
         val, = hx
 
-        k2 = Key(secret_exponent=from_bytes_32(a2b_hex(val)), is_compressed=True, netcode='XTN')
+        k2 = Key(secret_exponent=from_bytes_32(a2b_hex(val)), is_compressed=True, netcode=netcode)
         assert addr == k2.address()
 
         assert val == sha256(rolls.encode('ascii')).hexdigest()
 
         os.unlink(path)
-
 
 # EOF
