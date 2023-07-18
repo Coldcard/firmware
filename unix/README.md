@@ -74,6 +74,6 @@ See `variant/sim_settings.py` for the details of settings-related options.
 # Other OS
 
 - linux supported (only tested on debian based Ubuntu 20.04), please check main README.md
-- no Windows
+- Windows can work under WSL but is not supported by our team. Follow instructions on <https://www.reddit.com/r/coldcard/comments/14etq8i/coldcard_simulator_for_windows_mac_and_linux_to/>
 
 
