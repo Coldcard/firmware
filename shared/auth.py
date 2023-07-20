@@ -153,6 +153,8 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
     # do the signature itself!
     from glob import dis
 
+    ch = chains.current_chain()
+
     if prompt:
         dis.fullscreen(prompt, percent=.25)
 
@@ -163,12 +165,11 @@ def sign_message_digest(digest, subpath, prompt, addr_fmt=AF_CLASSIC, pk=None):
             node = sv.derive_path(subpath)
             dis.progress_bar_show(.50)
             pk = node.privkey()
+            addr = ch.address(node, addr_fmt)
     else:
         node = ngu.hdnode.HDNode().from_chaincode_privkey(bytes(32), pk)
         dis.progress_bar_show(.50)
-
-    ch = chains.current_chain()
-    addr = ch.address(node, addr_fmt)
+        addr = ch.address(node, addr_fmt)
 
     dis.progress_bar_show(.75)
     rv = ngu.secp256k1.sign(pk, digest, 0).to_bytes()
