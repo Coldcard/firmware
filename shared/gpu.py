@@ -18,6 +18,8 @@ BL_ACK = b'y'       # 0x79
 BL_NACK = b'\x1f'
 BL_BUSY = b'v'      # 0x76
 
+FLASH_START = const(0x0800_0000)
+
 def add_xor_check(lst):
     # byte-wise xor over list of bytes (used as a very weak checksum in BL)
     rv = 0x0
@@ -50,20 +52,25 @@ class GPUAccess:
             else:
                 qq = bytes(addr)
 
-            print('wr ' + B2A(qq))
             i2c.writeto(BL_ADDR, qq)
 
             resp = i2c.readfrom(BL_ADDR, 1)
             if resp != BL_ACK:
-                raise ValueError('bad addr ' + B2A(resp))
+                raise ValueError('bad addr')
 
         if arg2 is not None:
-            # XXX tbd
-            # write 1 bytes of address
-            i2c.writeto(BL_ADDR, bytes([arg2, 0xff ^ arg2]))
+            # write second argument, might be a length or date to be written
+            if isinstance(arg2, int):
+                i2c.writeto(BL_ADDR, bytes([arg2, 0xff ^ arg2]))
+            else:
+                i2c.writeto(BL_ADDR, add_xor_check(arg2))
+
             resp = i2c.readfrom(BL_ADDR, 1)
             if resp != BL_ACK:
                 raise ValueError('bad arg2')
+
+        if expect_len == 0:
+            return
 
         # for some commands, first byte of response is length and it can vary
         # - however, they are inconsistent on how they count that and not
@@ -84,15 +91,15 @@ class GPUAccess:
             try:
                 resp = self.i2c.readfrom(BL_ADDR, 1)
             except OSError:     # ENODEV
-                print('recover')
+                #print('recover')
                 utime.sleep_ms(50)
                 continue
 
             if resp != BL_BUSY:
                 break
 
-            print('busy')
-            utime.sleep_ms(50)
+            #print('busy')
+            utime.sleep_ms(20)
 
         return resp
 
@@ -104,10 +111,10 @@ class GPUAccess:
             raise ValueError('unknown command')
 
     def bl_doit(self, cmd, arg):
-        # send a one-byte command and and argument, wait until done
+        # send a one-byte command and an argument, wait until done
         self._send_cmd(cmd)
 
-        i2c.writeto(BL_ADDR, add_xor_check(arg))
+        self.i2c.writeto(BL_ADDR, add_xor_check(arg))
 
         return self._wait_done()
 
@@ -120,14 +127,17 @@ class GPUAccess:
         return resp
 
     def reset(self):
-        # pulse reset and let it run
+        # Pulse reset and let it run
+        self.g_boot0.init(mode=Pin.IN)
         self.g_reset(0)
         self.g_reset(1)
 
     def enter_bl(self):
-        # get it into bootloader
+        # Get it into bootloader. Reliable. Still allows SWD to work.
         self.g_reset(0)
-        self.g_boot0.init(mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
+        #self.g_boot0.init(mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
+        self.g_boot0.init(mode=Pin.OUT_PP)
+        self.g_boot0(1)
         self.g_reset(1)
         self.g_boot0.init(mode=Pin.IN)
 
@@ -147,13 +157,33 @@ class GPUAccess:
         # "No-Stretch Readout Protect" 
         return self.bl_double_ack(0x83)
 
-    def read_at(self, addr=0x0800_0000, ln=16):
+    def read_at(self, addr=FLASH_START+0x100, ln=16):
         # read memory, but address must be "correct" and mapped, which is undocumented
-        # - need not be aligned, up to 255
-        # - 0x1fff0cd0 also fun
-        # - some weird trailing byte, it's not an ACK/NACK/xor but needs reading
-        assert ln < 256
-        return self.bl_cmd_read(0x11, ln+1, addr=addr, arg2=ln, no_final=True)[0:ln]
+        # - need not be aligned, up to 256
+        # - 0x1fff0cd0 also fun: BL code; 0x20001000 => RAM (but wont allow any lower?)
+        assert ln <= 256
+        return self.bl_cmd_read(0x11, ln, addr=addr, arg2=ln-1, no_final=True)
 
+    def write_at(self, addr=FLASH_START+0x100, data=b'1234'):
+        # "No-Stretch Write Memory command"
+        # - flash must be erased beforehand, or does nothing (no error)
+        ln = len(data)
+        assert ln <= 256
+        assert ln % 4 == 0
+        assert addr % 4 == 0
+
+        arg = add_xor_check(bytes([ln-1]) + data)
+
+        # send cmd, addr
+        self.bl_cmd_read(0x32, 0, addr=addr, arg2=None)
+
+        # then second arg, and wait til done
+        self.i2c.writeto(BL_ADDR, arg)
+
+        return self._wait_done() == BL_ACK
+
+    def run_at(self, addr=FLASH_START):
+        # "Go command" - starts code, but wants a reset vector really (stack+PC values)
+        self.bl_cmd_read(0x21, 0, addr=addr)
 
 # EOF
