@@ -1315,7 +1315,7 @@ async def export_multisig_xpubs(*a):
     # Consumer for this file is supposed to be ourselves, when we build on-device multisig.
     # - however some 3rd parties are making use of it as well.
     #
-    from glob import NFC
+    from glob import NFC, dis
 
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
@@ -1352,6 +1352,8 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
         if ch == "2":
             force_vdisk = True
         if ch not in escape: return
+
+    dis.fullscreen('Generating...')
 
     todo = [
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0

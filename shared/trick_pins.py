@@ -437,6 +437,8 @@ class TrickPinMenu(MenuSystem):
     async def done_picking(self, item, parents):
         # done picking/drilling down tree.
         # - shows point-form summary and gets confirmation
+        from glob import dis
+
         wants_wipe = (self.WillWipeMenu in parents)
         self.WillWipeMenu = None        # memory free
 
@@ -477,10 +479,11 @@ class TrickPinMenu(MenuSystem):
         if ch != 'y': return
 
         # save it
+        dis.fullscreen("Saving...")
         try:
             bpin = self.proposed_pin.encode()
-            b, slot = tp.update_slot(bpin, new=True, tc_flags=flags,
-                                        tc_arg=tc_arg, secret=new_secret)
+            tp.update_slot(bpin, new=True, tc_flags=flags,
+                           tc_arg=tc_arg, secret=new_secret)
             await ux_dramatic_pause("Saved.", 1)
         except BaseException as exc:
             sys.print_exception(exc)
@@ -905,9 +908,13 @@ class StoryMenuItem(MenuItem):
         super().__init__(label, **kws)
 
     async def activate(self, menu, idx):
+        from glob import dis
+
         ch = await ux_show_story(self.story)
         if ch == 'x':
             return
+
+        dis.fullscreen('Wait...')
 
         if getattr(self, 'next_menu', None):
             # drill down more
