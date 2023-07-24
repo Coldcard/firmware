@@ -21,8 +21,9 @@ TARGET_NAME = gpu
 
 # Source files, listed here as the object files they will become.
 OBJS += startup.o
-OBJS += main.o version.o
+OBJS += main.o lcd.o version.o
 OBJS += stm32c0xx_hal.o system_stm32c0xx.o interrupts.o
+OBJS += stm32c0xx_ll_gpio.o stm32c0xx_ll_spi.o
 
 # Have to have copies of these because the DMA and interrupt stuff
 # needs to be commented-out.
@@ -42,7 +43,8 @@ GPU_SRAM_SIZE = 0x00001800
 CFLAGS = -I. -Wall --std=gnu99 -Os -g3 \
 			-mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=soft -mtune=cortex-m0 \
 			-ffunction-sections -fdata-sections \
-			-mcpu=cortex-m0 -DMCU_SERIES_C0 -DSTM32C011xx 
+			-mcpu=cortex-m0 -DMCU_SERIES_C0 -DSTM32C011xx \
+			-DUSE_FULL_LL_DRIVER
 #-DUSE_HAL_DRIVER
 
 # Pass in the locations of stuff
@@ -61,8 +63,7 @@ CFLAGS += $(foreach INC,$(INC_PATHS),-I$(INC))
 LINKER_SCRIPT = link-script.ld
 LDFLAGS += -Wl,-T$(LINKER_SCRIPT)
 
-#LDFLAGS += -flto -Wl,--gc-sections --specs=nano.specs
-LDFLAGS += -fpic -Wl,--gc-sections --specs=nano.specs
+LDFLAGS += -flto -Wl,--gc-sections --specs=nano.specs
 LDFLAGS += -Wl,--defsym,GPU_FLASH_BASE=$(GPU_FLASH_BASE)
 LDFLAGS += -Wl,--defsym,GPU_FLASH_SIZE=$(GPU_FLASH_SIZE)
 LDFLAGS += -Wl,--defsym,GPU_SRAM_BASE=$(GPU_SRAM_BASE)
@@ -156,13 +157,19 @@ clean:
 clobber: clean
 	$(RM) $(TARGETS)
 
+# In another window: 
+#
+#	openocd-stm -s /usr/local/Cellar/open-ocd/0.12.0/share/openocd/scripts -f openocd-gpu.cfg
+#
+# Can do:
+# - "load" which writes the flash (medium speed, lots of output on st-util)
+# - "cont" starts/continues system
+# - "br main" sets breakpoints
+# - "mon reset" to reset micro
+# - and so on
+#
 debug:
-	arm-none-eabi-gdb bootloader.elf -x gogo.gdb
-
-xxx:
-	@echo CFLAGS = $(CFLAGS)
-	@echo 
-	@echo OBJS = $(OBJS)
+	arm-none-eabi-gdb $(TARGET_ELF) -x gogo.gdb
 
 tags:
 	ctags -f .tags *.[ch] -R $(INC_PATHS)
