@@ -471,14 +471,18 @@ class Descriptor:
         return desc, checksum
 
     @classmethod
-    def from_string(cls, desc):
+    def from_string(cls, desc, checksum=False):
         desc = parse_desc_str(desc)
-        desc, checksum = cls.checksum_check(desc)
+        desc, cs = cls.checksum_check(desc)
         s = BytesIO(desc.encode())
         res = cls.read_from(s)
         left = s.read()
         if len(left) > 0:
             raise ValueError("Unexpected characters after descriptor: %r" % left)
+        if checksum:
+            if cs is None:
+                _, cs = res.to_string().split("#")
+            return res, cs
         return res
 
     @classmethod
