@@ -15,12 +15,17 @@ const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
 const int NUM_PIXELS = (LCD_WIDTH*LCD_HEIGHT);
 
-const int PROGRESS_BAR_Y = (LCD_HEIGHT - 3);
-
 // doing RGB565, but swab16
 const uint16_t COL_BLACK = 0;
 const uint16_t COL_WHITE = ~0;
 const uint16_t COL_FOREGROUND = 0x60fd;     //SWAB16(0xfd60);     // orange
+
+// progress bar specs
+const uint16_t PROG_HEIGHT = 3;
+const uint16_t PROG_Y = LCD_HEIGHT - PROG_HEIGHT;
+
+static const int NUM_PHASES = 16;
+static int phase = 0;
 
 // forward refs
 void lcd_write_rows(int y, int num_rows, uint16_t *pixels);
@@ -52,18 +57,15 @@ static inline void wait_vsync(void) {
     static inline void
 write_byte(uint8_t b)
 {
-    asm(" nop; nop; nop; nop; ");
-    asm(" nop; nop; nop; nop; ");
-    asm(" nop; nop; nop; nop; ");
-    asm(" nop; nop; nop; nop; ");
-    asm(" nop; nop; nop; nop; ");
-    asm(" nop; nop; nop; nop; ");
-
     while(LL_SPI_GetTxFIFOLevel(SPI1) == LL_SPI_TX_FIFO_FULL) {
         // wait for space
     }
 
     LL_SPI_TransmitData8(SPI1, b);
+
+    while(LL_SPI_GetTxFIFOLevel(SPI1) != LL_SPI_TX_FIFO_EMPTY) {
+        // wait for FIFO to drain completely
+    }
 }
 
 // write_bytes()
@@ -72,10 +74,17 @@ write_byte(uint8_t b)
 write_bytes(int len, const uint8_t *buf)
 {
     for(int n=0; n<len; n++, buf++) {
-        write_byte(*buf);
+        while(LL_SPI_GetTxFIFOLevel(SPI1) == LL_SPI_TX_FIFO_FULL) {
+            // wait for space
+        }
+
+        LL_SPI_TransmitData8(SPI1, *buf);
+    }
+
+    while(LL_SPI_GetTxFIFOLevel(SPI1) != LL_SPI_TX_FIFO_EMPTY) {
+        // wait for FIFO to drain completely
     }
 }
-
 
 // lcd_write_cmd()
 //
@@ -95,7 +104,7 @@ lcd_write_cmd(uint8_t cmd)
 
 // lcd_write_data()
 //
-    static void
+    void
 lcd_write_data(int len, const uint8_t *pixels)
 {
     LL_GPIO_SetOutputPin(GPIOA, PIN_CS);
@@ -133,7 +142,7 @@ lcd_write_data1(uint8_t data)
 // Just setup SPI, do not reset display, etc.
 //
     void
-lcd_spi_setup(void)
+lcd_setup(void)
 {
     LL_SPI_InitTypeDef init = { 0 };
 
@@ -144,25 +153,20 @@ lcd_spi_setup(void)
     init.ClockPolarity = LL_SPI_POLARITY_LOW;
     init.ClockPhase = LL_SPI_PHASE_1EDGE;
     init.NSS = LL_SPI_NSS_SOFT;
-    init.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV2;          // measure me
+    init.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV2;          // measured: 6 Mhz
     init.BitOrder = LL_SPI_MSB_FIRST;
     init.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
 
     LL_SPI_Init(SPI1, &init);
     LL_SPI_Enable(SPI1);
+
+    phase = 0;
 }
 
-// lcd_setup()
+// take_control()
 //
-// Ok to call this lots.
+// Make the shared SPI bus ours. All push-pull, because we need the speed.
 //
-    void
-lcd_setup(void)
-{
-    // config SPI port
-    lcd_spi_setup();
-}
-
     static void
 take_control(void)
 {
@@ -176,14 +180,28 @@ take_control(void)
     init.Alternate = GPIO_AF0_SPI1;
 
     LL_GPIO_Init(GPIOA, &init);
+
+    init.Pin =  SPI_CTRL_PINS;
+    init.Mode = LL_GPIO_MODE_OUTPUT;
+    init.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+    init.Pull = LL_GPIO_PULL_NO;
+    init.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    init.Alternate = 0;
+
+    LL_GPIO_Init(GPIOA, &init);
 }
 
+// release_control()
+//
+// Go back to being a listener only on SPI.
+//
     static void
 release_control(void)
 {
+    // make all inputs again
     LL_GPIO_InitTypeDef init = {0};
 
-    init.Pin =  SPI_PINS;
+    init.Pin =  SPI_PINS | SPI_CTRL_PINS;
     init.Mode = LL_GPIO_MODE_INPUT;
     init.Speed = LL_GPIO_SPEED_FREQ_LOW;
     init.Pull = LL_GPIO_PULL_NO;
@@ -211,8 +229,7 @@ lcd_fill_solid(uint16_t pattern)
     // note, MADCTL MV/MX/MY setting causes row vs. col swap here
     lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
     lcd_write_cmd4(0x2b, 0, LCD_HEIGHT-1);        // RASET - Row address set range (y)
-
-    lcd_write_cmd(0x2c);            // RAMWR - memory write
+    lcd_write_cmd(0x2c);                          // RAMWR - memory write
 
     uint16_t    row[LCD_WIDTH];
     memset2(row, pattern, sizeof(row));
@@ -222,13 +239,33 @@ lcd_fill_solid(uint16_t pattern)
     }
 }
 
+// lcd_draw_progress()
+//
+    void
+lcd_draw_progress(void)
+{
+    uint16_t    row[LCD_WIDTH + NUM_PHASES + 1];
+
+    for(int i=0; i<numberof(row); i++) {
+        row[i] = ((i % 8) < 2) ? COL_BLACK : COL_FOREGROUND;
+    }
+
+    lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);           // CASET - Column address set range (x)
+    lcd_write_cmd4(0x2b, PROG_Y, LCD_HEIGHT-1);     // RASET - Row address set range (y)
+    lcd_write_cmd(0x2c);                            // RAMWR - memory write
+
+    for(int y=0; y<PROG_HEIGHT; y++) {
+        lcd_write_data(LCD_WIDTH*2, (uint8_t *)(&row[phase]));
+    }
+}
+
 // lcd_write_rows()
 //
     void
 lcd_write_rows(int y, int num_rows, uint16_t *pixels)
 {
     lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
-    lcd_write_cmd4(0x2b, y, LCD_HEIGHT-1);        // RASET - Row address set range (y)
+    lcd_write_cmd4(0x2b, y, LCD_HEIGHT-1);        // RASET - Row address set range (y) [wrong, works]
 
     lcd_write_cmd(0x2c);            // RAMWR - memory write
 
@@ -452,14 +489,16 @@ lcd_factory_busy(void)
 */
 }
 
-// lcd_test()
+// lcd_animate()
 //
     void
-lcd_test(void)
+lcd_animate(void)
 {
     take_control();
 
-    lcd_fill_solid(COL_FOREGROUND);
+    lcd_draw_progress();
+
+    phase = (phase + 1) % NUM_PHASES;
 
     release_control();
 }
