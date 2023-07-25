@@ -22,6 +22,6 @@
 
 #define INPUT_PINS          (PIN_TEAR | PIN_G_CTRL)
 #define SPI_PINS            (PIN_MOSI | PIN_SCLK)
-#define OUTPUT_OD_PINS      (PIN_DATA_CMD | PIN_CS)
+#define SPI_CTRL_PINS       (PIN_DATA_CMD | PIN_CS)
 
 // EOF

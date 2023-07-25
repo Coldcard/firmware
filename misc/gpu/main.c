@@ -16,15 +16,16 @@ gpio_setup(void)
 
     //LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_3);
 
-    // setup input pins
+    // Setup input pins -- which is all!
     // - make SPI stuff input at this point as well.
-    init.Pin = INPUT_PINS | SPI_PINS;
+    init.Pin = INPUT_PINS | SPI_PINS | SPI_CTRL_PINS;
     init.Mode = LL_GPIO_MODE_INPUT;
     init.Speed = LL_GPIO_SPEED_FREQ_HIGH;
     init.Pull = LL_GPIO_PULL_NO;
 
     LL_GPIO_Init(GPIOA, &init);
 
+#if 0
     // setup shared open-drain pins
     init.Pin = OUTPUT_OD_PINS;
     init.Mode = LL_GPIO_MODE_OUTPUT;
@@ -33,6 +34,7 @@ gpio_setup(void)
     init.Pull = LL_GPIO_PULL_NO;
 
     LL_GPIO_Init(GPIOA, &init);
+#endif
 }
 
 // mainloop()
@@ -56,20 +58,19 @@ mainloop(void)
     lcd_setup();
 
     while(1) {
-        if(!LL_GPIO_IsInputPinSet(GPIOA, PIN_G_CTRL)) {
-            lcd_test();
-            break;
-        }
-    }
+        // G_CTRL must be low, and TEAR high, and if so we do progress bar
+        if(!LL_GPIO_IsInputPinSet(GPIOA, PIN_G_CTRL)
+                 && LL_GPIO_IsInputPinSet(GPIOA, PIN_TEAR)
+        ) {
+            lcd_animate();
 
-    while(1) ;
+            // wait until start of next frame before looking again
+            while(LL_GPIO_IsInputPinSet(GPIOA, PIN_TEAR))
+                ;
+        } 
+    }
 
     //return 0;
 }
 
-/*
-void __attribute__((noreturn)) exit(int unused)
-{
-    while(1) ;
-}
-*/
+// EOF

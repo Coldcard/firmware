@@ -4,6 +4,6 @@
 #pragma once
 
 void lcd_setup(void);
-void lcd_test(void);
+void lcd_animate(void);
 
 // EOF
