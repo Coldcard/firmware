@@ -277,7 +277,11 @@ class MiniScriptWallet(BaseWallet):
     @classmethod
     def from_file(cls, config, name=None):
         from descriptor import Descriptor
-        desc_obj = Descriptor.from_string(config.strip())
+        if name is None:
+            desc_obj, cs = Descriptor.from_string(config.strip(), checksum=True)
+            name = cs
+        else:
+            desc_obj = Descriptor.from_string(config.strip())
         assert not desc_obj.is_basic_multisig, "Use Settings -> Multisig Wallets"
         wal = cls(desc_obj, name=name)
         return wal

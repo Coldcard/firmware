@@ -7,6 +7,10 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+## 6.1.1X - 2023-08-XX
+
+- New Feature: Enroll Miniscript wallet via USB (requires ckcc `v1.4.0`)
+
 ## 6.1.0X - 2023-06-20
 
 - New Feature: Miniscript and MiniTapscript support (`docs/miniscript.md`)

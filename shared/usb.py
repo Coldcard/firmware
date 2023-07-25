@@ -486,6 +486,21 @@ class USBHandler:
 
             return None
 
+        if cmd == 'mins':
+            # Enroll new xpubkey to be involved in miniscript.
+            # - descriptor text config file must already be uploaded
+
+            file_len, file_sha = unpack_from('<I32s', args)
+            if file_sha != self.file_checksum.digest():
+                return b'err_Checksum'
+            assert 100 < file_len <= (100*200), "badlen"
+
+            # Start an UX interaction, return immediately here
+            from auth import maybe_enroll_xpub
+            maybe_enroll_xpub(sf_len=file_len, ux_reset=True, miniscript=True)
+
+            return None
+
         if cmd == 'msck':
             # Quick check to test if we have a wallet already installed.
             from multisig import MultisigWallet
