@@ -21,9 +21,9 @@ TARGET_NAME = gpu
 
 # Source files, listed here as the object files they will become.
 OBJS += startup.o
-OBJS += main.o lcd.o version.o
-OBJS += stm32c0xx_hal.o system_stm32c0xx.o interrupts.o
-OBJS += stm32c0xx_ll_gpio.o stm32c0xx_ll_spi.o
+OBJS += main.o lcd.o version.o interrupts.o
+OBJS += system_stm32c0xx.o
+OBJS += stm32c0xx_ll_gpio.o stm32c0xx_ll_spi.o stm32c0xx_ll_i2c.o stm32c0xx_ll_utils.o
 
 # Have to have copies of these because the DMA and interrupt stuff
 # needs to be commented-out.

@@ -10,9 +10,13 @@
 #include "stm32c0xx_ll_bus.h"
 #include "stm32c0xx_ll_gpio.h"
 #include "stm32c0xx_ll_spi.h"
+#include "stm32c0xx_ll_i2c.h"
+#include "stm32c0xx_ll_rcc.h"
+#include "stm32c0xx_ll_utils.h"
 
 // Pins in use: be careful, most are also controlled by main micro
-// - all on port A
+
+// Port A
 #define PIN_G_CTRL        LL_GPIO_PIN_0
 #define PIN_SCLK          LL_GPIO_PIN_1
 #define PIN_MOSI          LL_GPIO_PIN_2
@@ -23,5 +27,10 @@
 #define INPUT_PINS          (PIN_TEAR | PIN_G_CTRL)
 #define SPI_PINS            (PIN_MOSI | PIN_SCLK)
 #define SPI_CTRL_PINS       (PIN_DATA_CMD | PIN_CS)
+
+// Port B
+#define PIN_SCL         LL_GPIO_PIN_6
+#define PIN_SDA         LL_GPIO_PIN_7
+#define I2C_PINS        PIN_SCL | PIN_SDA
 
 // EOF

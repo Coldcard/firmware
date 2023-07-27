@@ -41,7 +41,7 @@ memset2(uint16_t *dest, uint16_t value, uint16_t byte_len)
 }
 
 static inline void wait_vsync(void) {
-    // PB11 is TEAR input: a positive pulse every 60Hz that
+    // PA5 is TEAR input: a positive pulse every 60Hz that
     // corresponds to vertical blanking time
     uint32_t timeout = 1000000;
     for(; timeout; timeout--) {
@@ -255,7 +255,7 @@ lcd_draw_progress(void)
     lcd_write_cmd(0x2c);                            // RAMWR - memory write
 
     for(int y=0; y<PROG_HEIGHT; y++) {
-        lcd_write_data(LCD_WIDTH*2, (uint8_t *)(&row[phase]));
+        lcd_write_data(LCD_WIDTH*2, (uint8_t *)(&row[NUM_PHASES - phase - 1]));
     }
 }
 
@@ -327,166 +327,6 @@ lcd_show(const uint8_t *pixels)
     }
 
     lcd_write_cmd(0x29);            // DISPON
-}
-
-// lcd_show_progress()
-//
-// Perform simple RLE decompression, and add a bar on final screen line.
-//
-    void
-lcd_show_progress(const uint8_t *pixels, int progress)
-{
-    //if(pixels == screen_verify) return;         // XXX disable screen
-
-#if 0
-    lcd_setup();
-
-    if(last_screen != pixels) {
-        lcd_show(pixels);
-    }
-
-    uint32_t p_count = LCD_WIDTH * 10 * progress / 1000;
-    if(p_count > LCD_WIDTH) p_count = LCD_WIDTH-1;
-    if(p_count < 0) p_count = 0;
-
-    // draw just the progress bar
-    uint16_t row[LCD_WIDTH];
-    memset2(row, COL_FOREGROUND, 2*p_count);
-    memset2(&row[p_count], COL_BLACK, 2*(LCD_WIDTH-p_count));
-
-    wait_vsync();
-
-    lcd_write_rows(PROGRESS_BAR_Y+0, 1, row);
-    lcd_write_rows(PROGRESS_BAR_Y+1, 1, row);
-    lcd_write_rows(PROGRESS_BAR_Y+2, 1, row);
-#endif
-}
-
-#if 0
-// lcd_busy_bar()
-//
-    void
-lcd_busy_bar(bool en)
-{
-    // Render a continuous activity (not progress) bar in lower 8 lines of display
-    // - using OLED itself to do the animation, so smooth and CPU free
-    // - cannot preserve bottom 8 lines, since we have to destructively write there
-    lcd_spi_setup();
-
-    static const uint8_t setup[] = { 
-        //0x20, 0x00,             // horz addr-ing mode (normal)
-        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
-        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
-    };
-    static const uint8_t animate[] = { 
-        0x2e,               // stop animations in progress
-        0x26,               // scroll leftwards (stock ticker mode)
-            0,              // placeholder
-            7,              // start 'page' (vertical)
-            7,              // scroll speed: 7=fastest, 
-            7,              // end 'page'
-            0, 0xff,        // placeholders
-        0x2f                // start
-    };
-    static const uint8_t cleanup[] = { 
-        0x2e,               // stop animation
-        0x20, 0x00,         // horz addr-ing mode
-        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
-        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
-    };
-
-    uint8_t data[128];
-
-    if(!en) {
-        // clear it, stop animation
-        memset(data, 0, sizeof(data));
-        lcd_write_cmd_sequence(sizeof(cleanup), cleanup);
-        lcd_write_data(sizeof(data), data);
-
-        return;
-    }
-
-    // some diagonal lines
-    for(int x=0; x<128; x++) {
-        // each byte here is a vertical column, 8 pixels tall, MSB at bottom
-        switch(x % 4) {
-            default:
-                data[x] = 0x0;
-                break;
-            case 0 ... 1:
-                data[x] = 0x80;
-                break;
-        }
-    }
-
-    lcd_write_cmd_sequence(sizeof(setup), setup);
-    lcd_write_data(sizeof(data), data);
-    lcd_write_cmd_sequence(sizeof(animate), animate);
-}
-
-// lcd_draw_bar()
-//
-    void
-lcd_draw_bar(int percent)
-{
-    // Render a continuous activity (progress) bar in lower 8 lines of display
-    // - cannot preserve bottom 8 lines, since we have to destructively write there
-    // - requires OLED and GPIO's already setup by other code.
-    lcd_spi_setup();
-
-    static const uint8_t setup[] = { 
-        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
-        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
-    };
-
-    uint8_t data[128];
-    int cut = percent * 128 / 100;
-
-    // each byte here is a vertical column, 8 pixels tall, MSB at bottom
-    memset(data, 0x80, cut);
-    memset(data+cut, 0x0, 128-cut);
-
-    lcd_write_cmd_sequence(sizeof(setup), setup);
-    lcd_write_data(sizeof(data), data);
-}
-#endif
-
-// lcd_factory_busy()
-//
-    void
-lcd_factory_busy(void)
-{
-/* XXX
-    // Render a continuous activity (not progress) bar in lower 8 lines of display
-    // - using OLED itself to do the animation, so smooth and CPU free
-    // - cannot preserve bottom 8 lines, since we have to destructively write there
-    //lcd_spi_setup();
-
-    static const uint8_t setup[] = { 
-        0x21, 0x00, 0x7f,       // setup column address range (start, end): 0-127
-        0x22, 7, 7,             // setup page start/end address: page 7=last 8 lines
-    };
-    static const uint8_t animate[] = { 
-        0x2e,               // stop animations in progress
-        0x26,               // scroll leftwards (stock ticker mode)
-            0,              // placeholder
-            7,              // start 'page' (vertical)
-            7,              // scroll speed: 7=fastest, 
-            7,              // end 'page'
-            0, 0xff,        // placeholders
-        0x2f                // start
-    };
-    uint8_t data[128];
-
-    for(int x=0; x<128; x++) {
-        // each byte here is a vertical column, 8 pixels tall, MSB at bottom
-        data[x] = (1<<(7 - (x%8)));
-    }
-
-    lcd_write_cmd_sequence(sizeof(setup), setup);
-    lcd_write_data(sizeof(data), data);
-    lcd_write_cmd_sequence(sizeof(animate), animate);
-*/
 }
 
 // lcd_animate()
