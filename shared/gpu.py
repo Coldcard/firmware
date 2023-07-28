@@ -13,6 +13,8 @@ from machine import Pin
 
 # boot loader ROM response to this I2C address
 BL_ADDR = const(0x64)
+# my GPU micro code responses to this I2C address
+GPU_ADDR = const(0x65)
 
 BL_ACK = b'y'       # 0x79
 BL_NACK = b'\x1f'
@@ -30,13 +32,18 @@ def add_xor_check(lst):
 class GPUAccess:
     def __init__(self):
         # much sharing/overlap in these pins!
-        self.g_reset = Pin('G_RESET', mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
-        #self.g_boot0 = Pin('G_SWCLK_B0', mode=Pin.OPEN_DRAIN, pull=Pin.PULL_NONE)
-        self.g_boot0 = Pin('G_SWCLK_B0', mode=Pin.IN)
-        self.g_ctrl = Pin('G_CTRL', mode=Pin.IN)
+        # - pins are already setup in bootloader, no need to change here
+        self.g_reset = Pin('G_RESET')           #, mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
+        self.g_boot0 = Pin('G_SWCLK_B0')        #, mode=Pin.IN)
+        self.g_ctrl = Pin('G_CTRL')             #, mode=Pin.OUT_PP, value=1)
+        self.mosi_pin = Pin('LCD_MOSI')
+        self.sclk_pin = Pin('LCD_SCLK')
 
         from machine import I2C
         self.i2c = I2C(1, freq=400000)      # same bus & speed as nfc.py
+
+        # let the GPU run
+        self.g_reset(1)
 
     def bl_cmd_read(self, cmd, expect_len, addr=None, arg2=None, no_final=False):
         # send a one-byte command to bootloader ROM and get response
@@ -135,13 +142,12 @@ class GPUAccess:
     def enter_bl(self):
         # Get it into bootloader. Reliable. Still allows SWD to work.
         self.g_reset(0)
-        #self.g_boot0.init(mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
         self.g_boot0.init(mode=Pin.OUT_PP)
         self.g_boot0(1)
         self.g_reset(1)
         self.g_boot0.init(mode=Pin.IN)
 
-    def get_version(self):
+    def bl_version(self):
         # assume already in bootloader
         return self.bl_cmd_read(0x0, 20)
 
@@ -185,5 +191,69 @@ class GPUAccess:
     def run_at(self, addr=FLASH_START):
         # "Go command" - starts code, but wants a reset vector really (stack+PC values)
         self.bl_cmd_read(0x21, 0, addr=addr)
+
+    def cmd_resp(self, cmd_args, expect_len):
+        # send a command and read response back from our code running on GPU
+        self.i2c.writeto(GPU_ADDR, cmd_args)
+        return self.i2c.readfrom(GPU_ADDR, expect_len)
+
+    def goto_bootloader(self):
+        # switch working GPU code into bootloader mode
+        resp = self.cmd_resp(b'b', 2)
+        assert resp == b'OK'
+        self.reset()
+        utime.sleep_ms(100)
+
+    def get_version(self):
+        # see if running, and what version
+        try:
+            resp = self.cmd_resp(b'v', 20)
+        except OSError:
+            try:
+                # check bootloader is running
+                self.bl_version()
+            except:
+                return 'FAIL'
+            return 'BL'       # ready to load via BL
+        return resp[0:resp.index(b'\0')].decode()
+
+    def spi(self, ours=False):
+        # change the MOSI/SCLK lines to be input so we don't interfere
+        # with the GPU.. other lines are OD
+        # - signal by G_CTRL that GPU can take over
+        if ours:
+            self.g_ctrl(1)
+            self.mosi_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
+            self.sclk_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
+        else:
+            self.mosi_pin.init(mode=Pin.IN)
+            self.sclk_pin.init(mode=Pin.IN)
+            self.g_ctrl(0)
+
+    def upgrade(self):
+        # do in-circuit programming of GPU chip
+        import gpu_binary
+
+        if self.get_version() != 'BL':
+            self.goto_bootloader()
+        assert self.get_version() == 'BL'
+
+        ok = self.bulk_erase()
+        assert ok, 'bulk erase fail'
+
+        for pos in range(256, gpu_binary.LENGTH, 256):
+            self.write_at(FLASH_START+pos, gpu_binary.BINARY[pos:pos+256])
+
+        # last! the first part
+        self.write_at(FLASH_START, gpu_binary.BINARY[0:256])
+
+        self.run_at(FLASH_START)
+        utime.sleep_ms(50)
+
+        v = self.get_version() 
+        assert v== gpu_binary.VERSION
+
+        return v
+            
 
 # EOF

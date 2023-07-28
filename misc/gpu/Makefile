@@ -22,7 +22,6 @@ TARGET_NAME = gpu
 # Source files, listed here as the object files they will become.
 OBJS += startup.o
 OBJS += main.o lcd.o version.o interrupts.o
-OBJS += system_stm32c0xx.o
 OBJS += stm32c0xx_ll_gpio.o stm32c0xx_ll_spi.o stm32c0xx_ll_i2c.o stm32c0xx_ll_utils.o
 
 # Have to have copies of these because the DMA and interrupt stuff
@@ -98,8 +97,7 @@ $(TARGET_ELF): $(OBJS) $(LINKER_SCRIPT) Makefile
 
 # raw binary, forced to right size, pad w/ 0xff
 %.bin: $(TARGET_ELF)
-	$(OBJCOPY) -O binary --pad-to $(GPU_FLASH_LAST) --gap-fill 0xff $< $@.tmp
-	dd bs=$(shell printf "%d" $(GPU_FLASH_SIZE)) count=1 if=$@.tmp of=$@
+	$(OBJCOPY) -O binary --gap-fill 0xff $< $@
 
 # assumes openocd running from current directory
 up:
@@ -117,7 +115,11 @@ code-committed:
 	@echo '... yes'
 
 # these files are what we capture and store for each release.
-DELIVERABLES = $(TARGET_NAME).bin $(TARGET_NAME).lss
+DELIVERABLES = $(TARGET_NAME).bin $(TARGET_NAME).lss gpu_binary.py
+
+# package the binary into a mpy file to be frozen/included into main micro code
+gpu_binary.py: version.txt $(TARGET_NAME).bin
+	./repackage.py `cat version.txt` $(TARGET_NAME).bin > $@
 
 checksums.txt: $(DELIVERABLES)
 	shasum -a 256 $(DELIVERABLES) > $@
@@ -129,8 +131,8 @@ capture: version.txt version-full.txt $(DELIVERABLES) checksums.txt
 	@echo
 	@echo "      Version: " `cat version.txt`
 	@echo
-	V=`cat version.txt` && git tag -am "Mk4 Bootloader version $$V" "mk4-bootloader-"$$V
-	git add -f releases/*/bootloader.* releases/*.txt
+	V=`cat version.txt` && git tag -am "Q1 GPU version $$V" "q1-gpu-"$$V
+	git add -f releases/*/gpu.* releases/*.txt releases/*/*.py
 
 # Pull out the version string from binary object (already linked in) and 
 # construct a text file (version.txt) with those contents
