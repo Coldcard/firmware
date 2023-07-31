@@ -11,6 +11,8 @@
 #include <string.h>
 #include "stm32c0xx_hal_gpio_ex.h"
 
+lcd_state_t lcd_state;
+
 const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
 const int NUM_PIXELS = (LCD_WIDTH*LCD_HEIGHT);
@@ -25,7 +27,6 @@ const uint16_t PROG_HEIGHT = 3;
 const uint16_t PROG_Y = LCD_HEIGHT - PROG_HEIGHT;
 
 static const int NUM_PHASES = 16;
-static int phase = 0;
 
 // forward refs
 void lcd_write_rows(int y, int num_rows, uint16_t *pixels);
@@ -160,7 +161,19 @@ lcd_setup(void)
     LL_SPI_Init(SPI1, &init);
     LL_SPI_Enable(SPI1);
 
-    phase = 0;
+    // debug values?
+    lcd_state.activity_bar = true;
+#if 0
+    lcd_state.cursor_x = 9;
+    lcd_state.cursor_y = 2;
+    lcd_state.outline_cursor = true;
+#else
+    lcd_state.dbl_wide = true;
+    lcd_state.cursor_x = 16;
+    lcd_state.cursor_y = 4;
+    lcd_state.solid_cursor = true;
+#endif
+    //lcd_state.outline_cursor = true;
 }
 
 // take_control()
@@ -209,6 +222,81 @@ release_control(void)
     LL_GPIO_Init(GPIOA, &init);
 }
 
+// send_window()
+//
+    static void
+send_window(int x, int y, int w, int h, const void *data)
+{
+    // write inclusive range 
+    // note, MADCTL MV/MX/MY setting causes row vs. col swap here
+    lcd_write_cmd4(0x2a, x, x+w-1);        // CASET - Column address set range (x)
+    lcd_write_cmd4(0x2b, y, y+h-1);        // RASET - Row address set range (y)
+    lcd_write_cmd(0x2c);                   // RAMWR - memory write
+
+    if(data) {
+        // follow with data write of 2*w*h bytes
+        lcd_write_data(2*w*h, (uint8_t *)data);
+    }
+}
+
+// send_solid()
+//
+    static void
+send_solid(int x, int y, int w, int h, uint16_t pixel)
+{
+    // NOTE: stack size limit here
+    uint16_t buf[w*h];
+    memset2(buf, pixel, sizeof(buf));
+
+    send_window(x, y, w, h, buf);
+}
+
+// cursor_draw()
+//
+    void
+cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
+{
+    // see shared/lcd.py and shared/font_iosevka.py
+    const int LEFT_MARGIN = 7;
+    const int TOP_MARGIN = 15;
+    const int CHARS_W = 34;
+    const int CHARS_H = 10;
+    const int CELL_W = 9;
+    const int CELL_H = 22;
+
+    ASSERT(char_x < CHARS_W);
+    ASSERT(char_y < CHARS_H);
+    STATIC_ASSERT(CELL_H > 2*CELL_W);       // for dbl_wide case
+
+    // top left corner, just on edge of character cell
+    int x = LEFT_MARGIN + (char_x * CELL_W);
+    int y = TOP_MARGIN + (char_y * CELL_H);
+    int cell_w = CELL_W + (dbl_wide?CELL_W:0);
+
+    // make some pixels big enough for either vert or horz lines
+    uint16_t    colour = phase ? COL_FOREGROUND : COL_BLACK;
+    uint16_t    row[CELL_H];        
+    memset2(row, colour, sizeof(row));
+
+    if(outline) {
+        // horz
+        send_window(x,y, cell_w, 1, &row);
+        send_window(x,y+CELL_H-1, cell_w, 1, &row);
+
+        // vert
+        send_window(x, y+1, 1, CELL_H-2, &row);
+        send_window(x+cell_w-1, y+1, 1, CELL_H-2, &row);
+    } else {
+        if(!phase) {
+            // solid fill -- draw first time
+            send_solid(x,y, cell_w, CELL_H, COL_FOREGROUND);
+        } else {
+            // box shape, blank interior pixels
+            send_solid(x+1,y+1, cell_w-2, CELL_H-2, COL_BLACK);
+        }
+    }
+}
+
 // lcd_show_raw()
 //
 // No decompression. Just used for factory show. 1k bytes
@@ -226,10 +314,7 @@ lcd_show_raw(uint32_t len, const uint8_t *pixels)
     void
 lcd_fill_solid(uint16_t pattern)
 {
-    // note, MADCTL MV/MX/MY setting causes row vs. col swap here
-    lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
-    lcd_write_cmd4(0x2b, 0, LCD_HEIGHT-1);        // RASET - Row address set range (y)
-    lcd_write_cmd(0x2c);                          // RAMWR - memory write
+    send_window(0, 0, LCD_WIDTH, LCD_HEIGHT, NULL);
 
     uint16_t    row[LCD_WIDTH];
     memset2(row, pattern, sizeof(row));
@@ -244,19 +329,26 @@ lcd_fill_solid(uint16_t pattern)
     void
 lcd_draw_progress(void)
 {
+    static int phase = 0;
+
     uint16_t    row[LCD_WIDTH + NUM_PHASES + 1];
 
     for(int i=0; i<numberof(row); i++) {
         row[i] = ((i % 8) < 2) ? COL_BLACK : COL_FOREGROUND;
     }
 
+    send_window(0, PROG_Y, LCD_WIDTH, PROG_Y-LCD_HEIGHT, NULL);
+#if 0
     lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);           // CASET - Column address set range (x)
     lcd_write_cmd4(0x2b, PROG_Y, LCD_HEIGHT-1);     // RASET - Row address set range (y)
     lcd_write_cmd(0x2c);                            // RAMWR - memory write
+#endif
 
     for(int y=0; y<PROG_HEIGHT; y++) {
         lcd_write_data(LCD_WIDTH*2, (uint8_t *)(&row[NUM_PHASES - phase - 1]));
     }
+
+    phase = (phase + 1) % NUM_PHASES;
 }
 
 // lcd_write_rows()
@@ -264,81 +356,41 @@ lcd_draw_progress(void)
     void
 lcd_write_rows(int y, int num_rows, uint16_t *pixels)
 {
+    send_window(0, y, LCD_WIDTH, num_rows, pixels);
+#if 0
     lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
     lcd_write_cmd4(0x2b, y, LCD_HEIGHT-1);        // RASET - Row address set range (y) [wrong, works]
-
     lcd_write_cmd(0x2c);            // RAMWR - memory write
 
     lcd_write_data(num_rows * 2 * LCD_WIDTH, (uint8_t *)pixels);
+#endif
 }
 
-// lcd_show()
-//
-// Perform simple RLE decompression, and pixel expansion.
-//
-    void
-lcd_show(const uint8_t *pixels)
-{
-    lcd_setup();
-
-    // we are NOT fast enough to send entire screen during the
-    // vblanking time, so either we show torn stuff, or we flash display off a little
-    wait_vsync();
-    lcd_write_cmd(0x28);            // DISPOFF
-
-    // always full update
-    lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
-    lcd_write_cmd4(0x2b, 0, LCD_HEIGHT-1);        // RASET - Row address set range (y)
-
-    uint8_t         buf[127];
-    uint16_t        expand[sizeof(buf)*8];
-    const uint8_t *p = pixels;
-
-    lcd_write_cmd(0x2c);            // RAMWR - memory write
-
-    while(1) {
-        uint8_t hdr = *(p++);
-        if(!hdr) break;         // end marker
-
-        uint8_t len = hdr & 0x7f;
-        if(hdr & 0x80) {
-            // random bytes follow
-            memcpy(buf, p, len);
-            p += len;
-        } else {
-            // repeat same byte
-            memset(buf, *p, len);
-            p++;
-        }
-
-        // expand 'len' packed monochrom into BGR565 16-bit data: buf => expand
-        uint16_t *out = expand;
-        for(int i=0; i<len; i++) {
-            uint8_t packed = buf[i];
-            for(uint8_t mask = 0x80; mask; mask >>= 1, out++) {
-                if(packed & mask) {
-                    *out = COL_FOREGROUND;
-                } else {
-                    *out = COL_BLACK;
-                }
-            }
-        }
-        lcd_write_data(len*8*2, (uint8_t *)expand);
-    }
-
-    lcd_write_cmd(0x29);            // DISPON
-}
 
 // lcd_animate()
+//
+// Called at LCD frame rate, when we have control over LCD.
 //
     void
 lcd_animate(void)
 {
     take_control();
 
-    lcd_draw_progress();
+    if(lcd_state.activity_bar) {
+        lcd_draw_progress();
+    }
 
-    phase = (phase + 1) % NUM_PHASES;
+    if(lcd_state.solid_cursor || lcd_state.outline_cursor) {
+        static int cur_phase;
+
+        if(cur_phase == 0) {
+            cursor_draw(lcd_state.cursor_x, lcd_state.cursor_y,
+                    lcd_state.outline_cursor, lcd_state.cur_flash, lcd_state.dbl_wide);
+            lcd_state.cur_flash = !lcd_state.cur_flash;
+        }
+
+        cur_phase = (cur_phase+1) % 32;
+    }
 
     release_control();
 }
