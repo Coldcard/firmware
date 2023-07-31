@@ -278,4 +278,12 @@ mainloop(void)
     //return 0;
 }
 
+// fatal_error()
+//
+    void __attribute__((noreturn))
+fatal_error(const char *msg)
+{
+    while(1) ;
+}
+
 // EOF
