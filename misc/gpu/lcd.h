@@ -5,6 +5,7 @@
 
 typedef struct {
     bool        activity_bar:1;
+    bool        test_pattern:1;     // self clearing
 
     bool        solid_cursor:1;
     bool        outline_cursor:1;
@@ -18,5 +19,6 @@ extern lcd_state_t lcd_state;
 
 void lcd_setup(void);
 void lcd_animate(void);
+void lcd_test_pattern(void);
 
 // EOF

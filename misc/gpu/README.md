@@ -37,46 +37,20 @@ Useful commands:
 
     flash erase_sector 0 0 last
 
+Set EMPTY bit, so goes into BL:
+
+    > mdw 0x40022000
+    0x40022000: 00040600 
+    > mmw 0x40022000 0x10000 0
+    > mdw 0x40022000          
+    0x40022000: 00050600 
+
+
 
 ## In-Circuit Programming
 
 - AN4221 describes the protocol used to load the flash
 - timing is sensitive, but more important is where the i2c start/stops fall:
-
-```python
->>> from machine import I2C, Pin
->>> i2c = I2C(1, freq=400000)
-
->>> r = Pin('G_RESET')
->>> r
-Pin(Pin.cpu.E6, mode=Pin.OUT)
->>> r.init(mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
->>> r()
-0
->>> r(1)
->>> r()
-1
->>> [hex(i) for i in i2c.scan()]
-['0x2d', '0x51', '0x53', '0x55', '0x57', '0x64']
-
-# for SWI to work, also:
->>> gg=Pin('G_SWCLK_B0')
->>> gg.init(mode=Pin.IN)
-
-
-# Get - reveals bootloader version, commands (v1.2)
->>> i2c.writeto(0x64, b'\x00\xff'); i2c.readfrom(0x64, 1); i2c.readfrom(0x64, 20); i2c.readfrom(0x64, 1);
-2
-b'y'
-b'\x12\x11\x00\x01\x02\x11!1Dcs\x82\x922Edt\x83\x93\xa1'
-b'y'
-
-# Get ID command
->>> i2c.writeto(0x64, b'\x02\xfd'); i2c.readfrom(0x64, 1); [hex(i) for i in i2c.readfrom(0x64, 3)]; i2c.readfrom(2x64, 1);
-b'y'
-['0x1', '0x4', '0x43']
-b'y'
-```
 
 ## First Time Boot
 
@@ -85,6 +59,7 @@ b'y'
 - so must clear bit 16 of `FLASH_ACR` after loading image: @ `0x40022000`
 - also, main micro has control over `BOOT0` (PE2) which stop main flash from running too
 - and the reset line on E6
+- we use this flag to get into boot mode from working code
 
 ## Getting BOOT0 to work
 
@@ -93,6 +68,7 @@ b'y'
 - `NRST_MODE` should be 0b01 (input only) not default (0b11 = bidirectional)
 - register `FLASH_OPTR` at 0x40022020 => found as 0xfffffeaa
 - loads from 0x1FFF7800 at power up
+- TODO XXX still need this!
 
 ## AN4221 / Bootloader Bugs
 
@@ -101,6 +77,7 @@ b'y'
 - command 0x01 - 'getversion' ... return 1 byte, and doesn't include length prefix byte
 - memory read only works from flash, some parts of SRAM... not IO registers
 - undocumented need for N-1 as length in read/write commands
+- flash writes need to be 256-aligned, or else they do nothing and don't fail
 
 ## Resource Sharing
 

@@ -6,7 +6,7 @@
 #include "version.h"
 #include <string.h>
 
-// LL/HAL internal vars
+// LL/CMSIS internal vars
 uint32_t SystemCoreClock = 12000000UL;
 
 #define MY_I2C_ADDR     0x65
@@ -97,7 +97,7 @@ i2c_setup(void)
     void
 enter_bootloader(void)
 {
-    // prepare enter bootloader on next reset
+    // Force entry into bootloader on next reset
     SET_BIT(FLASH->ACR, FLASH_ACR_PROGEMPTY);
 }
 
@@ -136,13 +136,16 @@ i2c_poll(void)
         // - sending strings as zero-terminated
         // - for other responses, master will need to know true length of response
         if(!isRead) {
+            respLen = 0;
             switch(cmd) {
                 case 'V':       // full version
+                    if(argLen != 0) goto bad_args;
                     resp = version_string;
                     respLen = strlen(version_string)+1;
                     break;
 
                 case 'v':       // short version
+                    if(argLen != 0) goto bad_args;
                     resp = RELEASE_VERSION;
                     respLen = strlen(RELEASE_VERSION)+1;
                     break;
@@ -152,15 +155,44 @@ i2c_poll(void)
                     respLen = argLen;
                     break;
 
-                case 'b':       // enter bootloader
+                case 'b':       // enter bootloader (follow w/ hard reset)
+                    if(argLen != 0) goto bad_args;
                     enter_bootloader();
                     resp = "OK";
                     respLen = 3;
                     break;
 
+                case 'c':       // enable cursor: args=x,y,outline(else solid),dbl_wide
+                    if(argLen != 4) goto bad_args;
+                    lcd_state.activity_bar = false;
+                    lcd_state.cursor_x = args[0];
+                    lcd_state.cursor_y = args[1];
+                    lcd_state.outline_cursor = !args[2];
+                    lcd_state.solid_cursor = !!args[2];
+                    lcd_state.dbl_wide = !!args[3];
+                    lcd_state.cur_flash = false;
+                    break;
+
+                case 'a':       // disable cursor (implied: enable activity bar)
+                    if(argLen != 0) goto bad_args;
+                    lcd_state.activity_bar = true;
+                    lcd_state.outline_cursor = false;
+                    lcd_state.solid_cursor = false;
+                    break;
+
+                case 't':       // test feature: draw a single test pattern
+                    if(argLen != 0) goto bad_args;
+                    lcd_state.test_pattern = true;
+                    break;
+
                 case 0:
                 default:
                     resp = "Bad cmd?";
+                    respLen = strlen(resp);
+                    break;
+
+                bad_args:
+                    resp = "Bad args?";
                     respLen = strlen(resp);
                     break;
             }
@@ -232,10 +264,16 @@ clock_setup(void)
 
     // Set APB1 prescaler
     LL_RCC_SetAPB1Prescaler(LL_RCC_APB1_DIV_1);
-    LL_Init1msTick(12000000);
 
-    // Update CMSIS variable (which can be updated also through SystemCoreClockUpdate function)
-    LL_SetSystemCoreClock(12000000);
+    // WAS:
+    //  LL_Init1msTick(12000000);
+    //  LL_SetSystemCoreClock(12000000);
+    // but, this saves 296-324 bytes because it avoids a division that pulls in a math helper
+    //SysTick->LOAD  = (uint32_t)((12000000 / 1000) - 1UL);   // set reload register
+    SysTick->LOAD  = 11999;
+    SysTick->VAL   = 0;                                       // Load the SysTick Counter Value
+    SysTick->CTRL  = SysTick_CTRL_CLKSOURCE_Msk |
+                   SysTick_CTRL_ENABLE_Msk;                   // Enable the Systick Timer
 }
 
 // mainloop()
@@ -249,7 +287,6 @@ mainloop(void)
     LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG | LL_APB2_GRP1_PERIPH_SPI1);
     LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR | LL_APB1_GRP1_PERIPH_I2C1);
 
-
     // Our setup code.
     gpio_setup();
     lcd_setup();
@@ -262,7 +299,7 @@ mainloop(void)
     while(1) {
         i2c_poll();
 
-        // G_CTRL must be low, and TEAR high, and if so we do progress bar
+        // G_CTRL must be low, and TEAR high, and if so we can write to LCD.
         if(!LL_GPIO_IsInputPinSet(GPIOA, PIN_G_CTRL)
                  && LL_GPIO_IsInputPinSet(GPIOA, PIN_TEAR)
         ) {
@@ -274,8 +311,6 @@ mainloop(void)
             }
         } 
     }
-
-    //return 0;
 }
 
 // fatal_error()

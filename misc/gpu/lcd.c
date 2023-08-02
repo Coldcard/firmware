@@ -10,6 +10,7 @@
 #include "lcd.h"
 #include <string.h>
 #include "stm32c0xx_hal_gpio_ex.h"
+#include "barcode.h"
 
 lcd_state_t lcd_state;
 
@@ -20,7 +21,8 @@ const int NUM_PIXELS = (LCD_WIDTH*LCD_HEIGHT);
 // doing RGB565, but swab16
 const uint16_t COL_BLACK = 0;
 const uint16_t COL_WHITE = ~0;
-const uint16_t COL_FOREGROUND = 0x60fd;     //SWAB16(0xfd60);     // orange
+const uint16_t COL_RED = 0x00f8;            //SWAP16(0xf800);
+const uint16_t COL_FOREGROUND = 0x60fd;     //SWAB16(0xfd60);     // brand orange
 
 // progress bar specs
 const uint16_t PROG_HEIGHT = 3;
@@ -28,9 +30,7 @@ const uint16_t PROG_Y = LCD_HEIGHT - PROG_HEIGHT;
 
 static const int NUM_PHASES = 16;
 
-// forward refs
-void lcd_write_rows(int y, int num_rows, uint16_t *pixels);
-
+#if 0
 // memset2()
 //
     static inline void
@@ -52,6 +52,7 @@ static inline void wait_vsync(void) {
     }
     //puts("TEAR timeout");
 }
+#endif
 
 // write_byte()
 //
@@ -87,6 +88,31 @@ write_bytes(int len, const uint8_t *buf)
     }
 }
 
+// write_uint16()
+//
+    static inline void
+write_uint16(int count, uint16_t val)
+{
+    uint8_t a = val & 0xff;
+    uint8_t b = val >> 8;
+
+    for(int n=0; n<count; n++) {
+        while(LL_SPI_GetTxFIFOLevel(SPI1) == LL_SPI_TX_FIFO_FULL) {
+            // wait for space
+        }
+        LL_SPI_TransmitData8(SPI1, a);
+
+        while(LL_SPI_GetTxFIFOLevel(SPI1) == LL_SPI_TX_FIFO_FULL) {
+            // wait for space
+        }
+        LL_SPI_TransmitData8(SPI1, b);
+    }
+
+    while(LL_SPI_GetTxFIFOLevel(SPI1) != LL_SPI_TX_FIFO_EMPTY) {
+        // wait for FIFO to drain completely
+    }
+}
+
 // lcd_write_cmd()
 //
     static void
@@ -113,6 +139,20 @@ lcd_write_data(int len, const uint8_t *pixels)
     LL_GPIO_ResetOutputPin(GPIOA, PIN_CS);
 
     write_bytes(len, pixels);
+
+    LL_GPIO_SetOutputPin(GPIOA, PIN_CS);
+}
+
+// lcd_write_constant()
+//
+    void
+lcd_write_constant(int len, const uint16_t pixel)
+{
+    LL_GPIO_SetOutputPin(GPIOA, PIN_CS);
+    LL_GPIO_SetOutputPin(GPIOA, PIN_DATA_CMD);
+    LL_GPIO_ResetOutputPin(GPIOA, PIN_CS);
+
+    write_uint16(len, pixel);
 
     LL_GPIO_SetOutputPin(GPIOA, PIN_CS);
 }
@@ -161,19 +201,22 @@ lcd_setup(void)
     LL_SPI_Init(SPI1, &init);
     LL_SPI_Enable(SPI1);
 
-    // debug values?
+    // usually want the busy bar
     lcd_state.activity_bar = true;
+
 #if 0
+    // debug values
     lcd_state.cursor_x = 9;
     lcd_state.cursor_y = 2;
     lcd_state.outline_cursor = true;
-#else
+#endif
+#if 0
     lcd_state.dbl_wide = true;
     lcd_state.cursor_x = 16;
     lcd_state.cursor_y = 4;
     lcd_state.solid_cursor = true;
-#endif
     //lcd_state.outline_cursor = true;
+#endif
 }
 
 // take_control()
@@ -244,11 +287,9 @@ send_window(int x, int y, int w, int h, const void *data)
     static void
 send_solid(int x, int y, int w, int h, uint16_t pixel)
 {
-    // NOTE: stack size limit here
-    uint16_t buf[w*h];
-    memset2(buf, pixel, sizeof(buf));
+    send_window(x, y, w, h, NULL);
 
-    send_window(x, y, w, h, buf);
+    lcd_write_constant(w*h, pixel);
 }
 
 // cursor_draw()
@@ -264,9 +305,9 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
     const int CELL_W = 9;
     const int CELL_H = 22;
 
-    ASSERT(char_x < CHARS_W);
-    ASSERT(char_y < CHARS_H);
-    STATIC_ASSERT(CELL_H > 2*CELL_W);       // for dbl_wide case
+    // no error reporting.. but dont die either
+    if(char_x >= CHARS_W) return;
+    if(char_y >= CHARS_H) return;
 
     // top left corner, just on edge of character cell
     int x = LEFT_MARGIN + (char_x * CELL_W);
@@ -274,18 +315,16 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
     int cell_w = CELL_W + (dbl_wide?CELL_W:0);
 
     // make some pixels big enough for either vert or horz lines
-    uint16_t    colour = phase ? COL_FOREGROUND : COL_BLACK;
-    uint16_t    row[CELL_H];        
-    memset2(row, colour, sizeof(row));
+    uint16_t colour = phase ? COL_FOREGROUND : COL_BLACK;
 
     if(outline) {
         // horz
-        send_window(x,y, cell_w, 1, &row);
-        send_window(x,y+CELL_H-1, cell_w, 1, &row);
+        send_solid(x,y, cell_w, 1, colour);
+        send_solid(x,y+CELL_H-1, cell_w, 1, colour);
 
         // vert
-        send_window(x, y+1, 1, CELL_H-2, &row);
-        send_window(x+cell_w-1, y+1, 1, CELL_H-2, &row);
+        send_solid(x, y+1, 1, CELL_H-2, colour);
+        send_solid(x+cell_w-1, y+1, 1, CELL_H-2, colour);
     } else {
         if(!phase) {
             // solid fill -- draw first time
@@ -297,31 +336,14 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
     }
 }
 
-// lcd_show_raw()
-//
-// No decompression. Just used for factory show. 1k bytes
-//
-    void
-lcd_show_raw(uint32_t len, const uint8_t *pixels)
-{
-    // 1024 / 2 = 512 / 320 = 1.6 => just one row!
-    lcd_write_rows(LCD_HEIGHT-3, 1, (uint16_t *)pixels);
-    lcd_write_rows(LCD_HEIGHT-2, 1, (uint16_t *)pixels);
-}
-
 // lcd_fill_solid()
 //
     void
 lcd_fill_solid(uint16_t pattern)
 {
+    // whole screen
     send_window(0, 0, LCD_WIDTH, LCD_HEIGHT, NULL);
-
-    uint16_t    row[LCD_WIDTH];
-    memset2(row, pattern, sizeof(row));
-
-    for(int y=0; y<LCD_HEIGHT; y++) {
-        lcd_write_data(sizeof(row), (uint8_t *)&row);
-    }
+    lcd_write_constant(LCD_WIDTH*LCD_HEIGHT, pattern);
 }
 
 // lcd_draw_progress()
@@ -331,18 +353,13 @@ lcd_draw_progress(void)
 {
     static int phase = 0;
 
-    uint16_t    row[LCD_WIDTH + NUM_PHASES + 1];
+    uint16_t row[LCD_WIDTH + NUM_PHASES + 1];
 
     for(int i=0; i<numberof(row); i++) {
         row[i] = ((i % 8) < 2) ? COL_BLACK : COL_FOREGROUND;
     }
 
     send_window(0, PROG_Y, LCD_WIDTH, PROG_Y-LCD_HEIGHT, NULL);
-#if 0
-    lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);           // CASET - Column address set range (x)
-    lcd_write_cmd4(0x2b, PROG_Y, LCD_HEIGHT-1);     // RASET - Row address set range (y)
-    lcd_write_cmd(0x2c);                            // RAMWR - memory write
-#endif
 
     for(int y=0; y<PROG_HEIGHT; y++) {
         lcd_write_data(LCD_WIDTH*2, (uint8_t *)(&row[NUM_PHASES - phase - 1]));
@@ -350,22 +367,6 @@ lcd_draw_progress(void)
 
     phase = (phase + 1) % NUM_PHASES;
 }
-
-// lcd_write_rows()
-//
-    void
-lcd_write_rows(int y, int num_rows, uint16_t *pixels)
-{
-    send_window(0, y, LCD_WIDTH, num_rows, pixels);
-#if 0
-    lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
-    lcd_write_cmd4(0x2b, y, LCD_HEIGHT-1);        // RASET - Row address set range (y) [wrong, works]
-    lcd_write_cmd(0x2c);            // RAMWR - memory write
-
-    lcd_write_data(num_rows * 2 * LCD_WIDTH, (uint8_t *)pixels);
-#endif
-}
-
 
 // lcd_animate()
 //
@@ -375,6 +376,11 @@ lcd_write_rows(int y, int num_rows, uint16_t *pixels)
 lcd_animate(void)
 {
     take_control();
+
+    if(lcd_state.test_pattern) {
+        lcd_test_pattern();
+        lcd_state.test_pattern = false;
+    }
 
     if(lcd_state.activity_bar) {
         lcd_draw_progress();
@@ -386,6 +392,7 @@ lcd_animate(void)
         if(cur_phase == 0) {
             cursor_draw(lcd_state.cursor_x, lcd_state.cursor_y,
                     lcd_state.outline_cursor, lcd_state.cur_flash, lcd_state.dbl_wide);
+
             lcd_state.cur_flash = !lcd_state.cur_flash;
         }
 
@@ -393,6 +400,36 @@ lcd_animate(void)
     }
 
     release_control();
+}
+
+// lcd_test_pattern()
+//
+    void
+lcd_test_pattern(void)
+{
+    // NOTE: this is very limited so it cannot be abused to show arbitrary things
+    // - take packed pixels in (blk/white)
+    // - draw them centered w/ red side border
+    // - repeat same pattern bunch of times.
+    // - used for a linear barcode in selftest process
+    // - important: this cannot render a QR code, nor misleading text.
+    // - LATER: let's just make fully static instead.
+
+    STATIC_ASSERT(sizeof(test_barcode) == LCD_WIDTH/8);
+
+    uint16_t    row[LCD_WIDTH];
+    for(int i=0, x=0; i<sizeof(test_barcode); i++) {
+        for(uint8_t m=0x80; m; m >>= 1) {
+            row[x++] = (test_barcode[i] & m) ? COL_BLACK : COL_WHITE;
+        }
+    }
+
+    const int y = 40, h = 120;
+    send_window(0, y, LCD_WIDTH, h, NULL);
+
+    for(int i=0; i<h; i++) {
+        lcd_write_data(sizeof(row), (uint8_t *)&row);
+    }
 }
 
 // EOF
