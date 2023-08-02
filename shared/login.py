@@ -115,6 +115,10 @@ class LoginUX:
                     if self.pin:
                         self.pin = self.pin[:-1]
                         self.show_pin()
+                else:
+                    # clear input, because they have a BS key
+                    self.pin = ''
+                    self.show_pin()
 
             elif ch == KEY_SELECT:
                 if len(self.pin) < MIN_PIN_PART_LEN:

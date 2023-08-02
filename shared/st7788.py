@@ -15,13 +15,12 @@ CASET = const(0x2a)
 RASET = const(0x2b)
 RAMWR = const(0x2c)
 
-# TODO: move fully into C code
-# - w/ zlib expansion
-# - with window control
-# - with font lookups / a text-only layer
-# - maybe: with QR module expansion?
+# Lots of drawing code now in C code:
+# - zlib expansion
+# - font lookups / a text-only layer
+# - QR module expansion
 # - clear to pixel value
-# - palette + xy/wh + nible-packed palette lookup (for font)
+# - (MAYBE NOT) palette + xy/wh + nible-packed palette lookup (for font)
 # - see stm32/COLDCARD_Q1/modlcd.c for code
 import lcd
 
@@ -34,8 +33,11 @@ class ST7788():
 
         self.spi = machine.SPI(1, baudrate=60_000_000, polarity=0, phase=0)
         #reset_pin = Pin('LCD_RESET', Pin.OUT)        # not using
-        self.dc = Pin('LCD_DATA_CMD', Pin.OUT, value=0)
-        self.cs = Pin('LCD_CS', Pin.OUT, value=1)
+        #self.dc = Pin('LCD_DATA_CMD', Pin.OUT, value=0)
+        #self.cs = Pin('LCD_CS', Pin.OUT, value=1)
+        # do not change careful GPIO setup from bootloader
+        self.dc = Pin('LCD_DATA_CMD')
+        self.cs = Pin('LCD_CS')
 
         if 0:
             # BUST - just fades away

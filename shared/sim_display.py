@@ -3,6 +3,7 @@
 # DEBUG ONLY -- only installed for debug builds
 # Hack to monitor screen contents, as text.
 # Import this file to install the hacks.
+#
 import ux, version
 
 global contents, full_contents, story

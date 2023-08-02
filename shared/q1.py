@@ -16,21 +16,24 @@ def init0():
 
     mk4_init0()
 
-    from scanner import QRScanner
-    glob.SCAN = QRScanner()
-
     # XXX do not ship like this XXX
-    ckcc.vcp_enabled(True)
-    print("REPL enabled")
+    ckcc.vcp_enabled(True); print("REPL enabled")
+
+    # Setup various hardware features of the Q1
+    # - try to continue in case of errors/hardware faults
+    try:
+        from scanner import QRScanner
+        glob.SCAN = QRScanner()
+    except: pass
 
     try:
         setup_adc()
-        print('Batt volt: %s' % get_batt_level())
+        #print('Batt volt: %s' % get_batt_level())
     except BaseException as exc:
         sys.print_exception(exc)
 
 def setup_adc():
-    # configure VREF source as internap 2.5v 
+    # configure VREF source as internal 2.5v 
     VREF_LAYOUT = {
         "CSR": 0 | uctypes.UINT32,
         "CCR": 4 | uctypes.UINT32,

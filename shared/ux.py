@@ -199,13 +199,14 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
             top = max(0, len(lines)-(STORY_H//2))
         elif ch == '0' or ch == KEY_HOME:
             top = 0
-        elif ch == '7' or ch == KEY_PAGE_UP:
+        elif ch == '7' or ch == KEY_PAGE_UP or ch == KEY_UP:
             top = max(0, top-STORY_H)
-        elif ch == '9' or ch == KEY_PAGE_DOWN:
+        elif ch == '9' or ch == KEY_PAGE_DOWN or ch == KEY_DOWN:
             top = min(len(lines)-2, top+STORY_H)
-        elif ch == '5' or ch == KEY_UP:
+        elif ch == '5':
+            # line up/down only on Mk4; too slow w/ Q1's big screen
             top = max(0, top-1)
-        elif ch == '8' or ch == KEY_DOWN:
+        elif ch == '8':
             top = min(len(lines)-2, top+1)
         elif not strict_escape:
             if ch in { KEY_NFC, KEY_QR }:
