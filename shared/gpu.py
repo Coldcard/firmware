@@ -4,12 +4,13 @@
 #
 # - see notes in misc/gpu/README.md
 # - bl = Bootloader, provided by ST Micro in ROM of chip
-# - useful: import gpu; g=gpu.GPUAccess(); g.enter_bl()
+# - errors are suppressed so we can boot w/o GPU loaded (factory)
 #
 import utime, struct
 import uasyncio as asyncio
 from utils import B2A
 from machine import Pin
+from ustruct import pack
 
 # boot loader ROM response to this I2C address
 BL_ADDR = const(0x64)
@@ -42,7 +43,8 @@ class GPUAccess:
         from machine import I2C
         self.i2c = I2C(1, freq=400000)      # same bus & speed as nfc.py
 
-        # let the GPU run
+        # let the GPU run, but we have SPI for now
+        self.g_ctrl(1)
         self.g_reset(1)
 
     def bl_cmd_read(self, cmd, expect_len, addr=None, arg2=None, no_final=False):
@@ -192,8 +194,9 @@ class GPUAccess:
         # "Go command" - starts code, but wants a reset vector really (stack+PC values)
         self.bl_cmd_read(0x21, 0, addr=addr)
 
-    def cmd_resp(self, cmd_args, expect_len):
+    def cmd_resp(self, cmd_args, expect_len=0):
         # send a command and read response back from our code running on GPU
+        # - will fail w/ OSError: ENODEV if i2c device (GPU) doesn't respond
         self.i2c.writeto(GPU_ADDR, cmd_args)
         return self.i2c.readfrom(GPU_ADDR, expect_len)
 
@@ -217,41 +220,76 @@ class GPUAccess:
             return 'BL'       # ready to load via BL
         return resp[0:resp.index(b'\0')].decode()
 
-    def spi(self, ours=False):
+    def take_spi(self):
         # change the MOSI/SCLK lines to be input so we don't interfere
         # with the GPU.. other lines are OD
         # - signal by G_CTRL that GPU can take over
-        if ours:
-            self.g_ctrl(1)
-            self.mosi_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
-            self.sclk_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
+        if self.g_ctrl() == 1: return
+        self.g_ctrl(1)
+        self.mosi_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
+        self.sclk_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
+
+    def give_spi(self):
+        self.mosi_pin.init(mode=Pin.IN)
+        self.sclk_pin.init(mode=Pin.IN)
+        self.g_ctrl(0)
+
+    def have_spi(self):
+        # do we control the display?
+        return self.g_ctrl() == 1
+
+    def busy_bar(self, enable):
+        if enable:
+            # start the bar
+            try:
+                self.cmd_resp(b'a')
+            except: pass
+            self.give_spi()
         else:
-            self.mosi_pin.init(mode=Pin.IN)
-            self.sclk_pin.init(mode=Pin.IN)
-            self.g_ctrl(0)
+            # stop showing it
+            self.take_spi()
+
+    def cursor_off(self):
+        # stop showing the cursor
+        self.take_spi()
+        try:
+            self.cmd_resp(b'a')
+        except: pass
+        
+    def cursor_at(self, x, y, dbl_wide=False, outline=False):
+        # use outline to leave most of the cell unaffects (just 1px inside border)
+        cmd = b'c' + bytes([x, y, int(not outline), int(dbl_wide)])
+        try:
+            self.cmd_resp(cmd)
+        except: pass
+        self.give_spi()
 
     def upgrade(self):
         # do in-circuit programming of GPU chip
         import gpu_binary
 
+        # get into bootloader
         if self.get_version() != 'BL':
             self.goto_bootloader()
         assert self.get_version() == 'BL'
 
+        # wipe old program
         ok = self.bulk_erase()
         assert ok, 'bulk erase fail'
 
+        # write block by block, but skip first part, so we can handle powerfail w/o brick
         for pos in range(256, gpu_binary.LENGTH, 256):
-            self.write_at(FLASH_START+pos, gpu_binary.BINARY[pos:pos+256])
+            ok = self.write_at(FLASH_START+pos, gpu_binary.BINARY[pos:pos+256])
+            assert ok
 
-        # last! the first part
+        # finally, the first part, which commits us to running this code on reset
         self.write_at(FLASH_START, gpu_binary.BINARY[0:256])
 
         self.run_at(FLASH_START)
         utime.sleep_ms(50)
 
         v = self.get_version() 
-        assert v== gpu_binary.VERSION
+        assert v == gpu_binary.VERSION
 
         return v
             

@@ -5,10 +5,8 @@
 from uasyncio import sleep_ms
 import utime, gc
 from charcodes import *
-from lcd_display import CHARS_W
+from lcd_display import CHARS_W, CursorSpec
 from exceptions import AbortInteraction
-
-CURSOR = '█ '
 
 class PressRelease:
     def __init__(self, need_release=KEY_SELECT+KEY_CANCEL):
@@ -82,8 +80,8 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
 
     while 1:
         # TODO: check width, go to two lines if needed? depends on prompt text
-        bx = dis.text(2, 4, prompt + ' ' + value + CURSOR)
-        dis.show()
+        bx = dis.text(2, 4, prompt + ' ' + value)
+        dis.show(cursor=CursorSpec(bx, 4))
 
         ch = await press.wait()
         if ch == KEY_SELECT:
@@ -141,8 +139,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
     press = PressRelease()
     while 1:
 
-        dis.text(1, 1, value + CURSOR)
-        dis.show()
+        dis.text(1, 1, value+'  ')
+        bx = dis.width(value) + 1
+        dis.show(cursor=CursorSpec(bx, 1, 0, 0))
 
         ch = await press.wait()
         if ch == KEY_SELECT:
@@ -171,10 +170,7 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
 
     # extra (empty) box after
     ln = len(pin)
-    FILLED = '◉'
-    EMPTY = '◯'     #, '◌'
-    #msg = ''.join(FILLED if n < ln else EMPTY for n in range(6))
-    msg = ('※ ' * ln) + '██'
+    msg = ('※ ' * ln)
     y = 1 if randomize else 2
 
     if force_draw:
@@ -218,16 +214,14 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
 
         dis.text(None, -1, cta)
 
-    # auto-center broken w/ double-wides
-    x = None        # 10
-    dis.text(None, y+2, ' '*20)
-    dis.text(x, y+2, msg)
-    dis.show()
+    y += 2
+    x = dis.text(None, y, msg)
+    dis.show(cursor=CursorSpec(x, y, True, False))
 
 async def ux_login_countdown(sec):
     # Show a countdown, which may need to
     # run for multiple **days**
-    # XXX untested
+    # XXX untested TODO
     from glob import dis
     from utime import ticks_ms, ticks_diff
 

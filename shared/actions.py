@@ -2098,8 +2098,10 @@ Secure Elements:
     msg = msg.format(rel=rel, built=built, bl=bl, chk=chk,
                      se=se, ser=serial, hw=hw)
     if version.has_qr:
-        from glob import SCAN
+        from glob import SCAN, dis
         msg += '\nQR Scanner:\n  %s\n' % (SCAN.version or 'missing')
+
+        msg += '\nGPU:\n  %s\n' % dis.gpu.get_version()
 
     await ux_show_story(msg)
 

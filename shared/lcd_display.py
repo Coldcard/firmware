@@ -11,6 +11,7 @@ from graphics import Graphics as obsoleteGraphics
 import sram2
 from st7788 import ST7788
 from utils import xfp2str
+from ucollections import namedtuple
 
 # the one font: fixed-width (except for a few double-width chars)
 from font_iosevka import CELL_W, CELL_H, TEXT_PALETTE, TEXT_PALETTE_INV, COL_TEXT
@@ -45,6 +46,9 @@ AT_GREY25 = 0x1
 AT_GREY50 = 0x1
 AT_RED = 0x1
 AT_GREEN = 0x1
+
+# use this to describe cursor you need.
+CursorSpec = namedtuple('CursorSpec', 'x y dbl_wide outline')
 
 def grey_level(amt):
     # give percent 0..1.0
@@ -93,6 +97,7 @@ def get_sys_status():
 
     return rv
 
+
 class Display:
 
     # XXX move  to global, but rest of system looks at these member vars
@@ -111,6 +116,9 @@ class Display:
 
     def __init__(self):
         self.dis = ST7788()
+
+        from gpu import GPUAccess
+        self.gpu = GPUAccess()
 
         self.last_buf = self.make_buf(0)
         self.next_buf = self.make_buf(32)
@@ -134,6 +142,8 @@ class Display:
         self.draw_status(**kws)
 
     def draw_status(self, full=False, **kws):
+        self.gpu.take_spi()
+
         if full:
             y = TOP_MARGIN
             self.dis.fill_rect(0, 0, WIDTH, y-1, 0x0)
@@ -178,6 +188,7 @@ class Display:
         w,h, data = getattr(Graphics, name)
         if x == None:
             x = max(0, (WIDTH - w) // 2)
+        self.gpu.take_spi()
         self.dis.show_zpixels(x, y, w, h, data)
         self.mark_correct(x, y, w, h)
 
@@ -224,18 +235,22 @@ class Display:
 
     def text(self, x,y, msg, font=None, invert=0, attr=None):
         # Draw at x,y (in cell positions, not pixels)
-        # Use invert=1 to get reverse video
+        # - use invert=1 to get reverse video
+        # - returns ending X position, if we centered it
+        end_x = None
 
         if x is None or x < 0:
             w = self.width(msg)
             if x == None:
                 # center: also blanks rest of line
                 x = max(0, (CHARS_W - w) // 2)
+                end_x = x + w
                 msg = ((' '*x) + msg + (' ' * CHARS_W))[0:CHARS_W]
                 x = 0
             else:
                 # measure from right edge (right justify)
                 x = max(0, CHARS_W - w + 1 + x)
+                end_x = x + w
 
         if y < 0:
             # measure up from bottom edge
@@ -253,9 +268,12 @@ class Display:
                 self.next_buf[y][x] = 0
                 x += 1
 
+        return end_x
+
     def real_clear(self, _internal=False):
         # fill to black, but only text area, not status bar
         if not _internal:
+            self.gpu.take_spi()
             self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
         self.last_buf = self.make_buf(32)
         self.next_buf = self.make_buf(32)
@@ -267,8 +285,10 @@ class Display:
         # clear progress bar
         self.next_prog_x = 0
 
-    def show(self, just_lines=None):
+    def show(self, just_lines=None, cursor=None):
         # Push internal screen representation to device, effeciently
+        self.gpu.take_spi()
+
         lines = just_lines or range(CHARS_H)
         for y in lines:
             x = 0
@@ -311,13 +331,20 @@ class Display:
 
         # maybe update progress bar
         if self.next_prog_x != self.last_prog_x:
+            # NOTE: misc/gpu/lcd.c must be updated to match any changes here
             x = self.next_prog_x
             if x:
                 self.dis.fill_rect(0, HEIGHT-3, x, 3, COL_PROGRESS)
             if x != WIDTH:
                 self.dis.fill_rect(x, HEIGHT-3, WIDTH-x, 3, COL_BLACK)
             self.last_prog_x = x
-                
+
+        if cursor:
+            # implement CursorSpec values
+            self.gpu.cursor_at(*cursor)
+            self.last_buf[cursor.y][cursor.x] = 0xfffd
+            if cursor.dbl_wide:
+                self.last_buf[cursor.y][cursor.x+1] = 0xfffd
 
     # rather than clearing and redrawing, use this buffer w/ fixed parts of screen
     # - obsolete concept
@@ -329,14 +356,20 @@ class Display:
         raise NotImplementedError
 
     def hline(self, y):
-        self.dis.fill_rect(0,y, WIDTH, 1, 0xffff)
+        # used only in hsm_ux.py
+        #self.dis.fill_rect(0,y, WIDTH, 1, 0xffff)
+        pass
+
     def vline(self, x):
-        self.dis.fill_rect(x,TOP_MARGIN, 1, ACTIVE_H, 0xffff)
+        # used only in hsm_ux.py
+        #self.dis.fill_rect(x,TOP_MARGIN, 1, ACTIVE_H, 0xffff)
+        pass
 
     def scroll_bar(self, fraction):
         # along right edge
+        # MAYBE TODO: make this internal, part of show and make fraction a var?
+        self.gpu.take_spi()
         self.dis.fill_rect(WIDTH-5, 0, 5, HEIGHT, 0)
-        #self.icon(WIDTH-3, 1, 'scroll');      // dots + arrow
         mm = HEIGHT-6
         pos = min(int(mm*fraction), mm)
         self.dis.fill_rect(WIDTH-2, pos, 1, 16, 1)
@@ -347,23 +380,6 @@ class Display:
         self.text(None, CHARS_H // 3, msg)
         if percent is not None:
             self.progress_bar(percent)
-
-    def DELME_splash(self):
-        # test code
-        from qrs import QRDisplaySingle
-        import glob, time
-        glob.dis = self
-        #q = QRDisplaySingle(['mtHSVByP9EYZmB26jASDdPVm19gvpecb5R'], is_alnum=True)
-        #q2 = QRDisplaySingle(['R5bcepvg91mVPdDSAj62BmZYE9PyBVSHtm'], is_alnum=True)
-        q = QRDisplaySingle(['a'*2953], is_alnum=False)
-        q2 = QRDisplaySingle(['b'*2953], is_alnum=False)
-        q.redraw()
-        while 1:
-            #time.sleep_ms(250)
-            q2.redraw()
-            #time.sleep_ms(250)
-            q.redraw()
-        assert False
 
     def splash(self):
         # display a splash screen with some version numbers
@@ -411,12 +427,18 @@ class Display:
         return
 
     def busy_bar(self, enable, speed_code=5):
-        # TODO: activate the GPU to render/animate this.
-        #print("busy_bar: %s" % enable)
-
-        # impt, this show() is relied-upon by callers
-        self.next_prog_x = 0
-        self.show()
+        # activate the GPU to render/animate this.
+        # - show() in this funct is relied-upon by callers
+        if enable:
+            self.last_prog_x = self.next_prog_x = -1
+            self.show()
+            self.gpu.busy_bar(True)
+        else:
+            # - self.show will stop animation
+            # - and redraw w/ no bar visible
+            self.last_prog_x = -1
+            self.next_prog_x = 0
+            self.show()
 
     def set_brightness(self, val):
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
@@ -549,7 +571,8 @@ class Display:
         # - 8-bit aligned rows of data
         scan_w, _, data = qr_data.packed()
 
-        self.real_clear(_internal=True)
+        self.gpu.take_spi()
+        self.real_clear()
         self.dis.show_qr_data(x, TOP_MARGIN + y, w, expand, scan_w, data)
         self.mark_correct(x, TOP_MARGIN + y, qw, qw)
 
@@ -564,7 +587,7 @@ class Display:
             # show path index number: just 1 or 2 digits
             self.text(-1, 0, idx_hint)
 
-        self.busy_bar(False)
+        self.show()
 
         
 # here for mpy reasons
