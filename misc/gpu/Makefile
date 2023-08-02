@@ -74,7 +74,7 @@ ASFLAGS += -Wa,--defsym,GPU_SRAM_BASE=$(GPU_SRAM_BASE) -Wa,--defsym,GPU_SRAM_SIZ
 
 
 TARGET_ELF = $(TARGET_NAME).elf
-TARGETS = $(TARGET_NAME).lss $(TARGET_NAME).bin $(TARGET_NAME).sym
+TARGETS = $(TARGET_NAME).lss $(TARGET_NAME).bin $(TARGET_NAME).sym gpu_binary.py
 
 all: $(TARGETS)
 
@@ -120,9 +120,15 @@ DELIVERABLES = $(TARGET_NAME).bin $(TARGET_NAME).lss gpu_binary.py
 # package the binary into a mpy file to be frozen/included into main micro code
 gpu_binary.py: version.txt $(TARGET_NAME).bin
 	./repackage.py `cat version.txt` $(TARGET_NAME).bin > $@
+	wc -c $(TARGET_NAME).bin
 
 checksums.txt: $(DELIVERABLES)
 	shasum -a 256 $(DELIVERABLES) > $@
+
+lcd.o: barcode.h
+#barcode.h: version.h make_barcode.py Makefile
+barcode.h: make_barcode.py Makefile
+	python3 make_barcode.py
 
 # Track released versions
 .PHONY: capture
