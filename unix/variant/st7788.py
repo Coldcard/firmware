@@ -12,7 +12,15 @@ class ST7788:
         self.width = 320
         self.height = 240
 
+        # also used by variant/gpu.py
         self.pipe = open(int(sys.argv[1]), 'wb')
+
+    def gpu_send(self, cmd, *args):
+        # for use by variant/gpu.py code
+        if len(args) < 4:
+            args += (0,)*(4-len(args))
+        hdr = struct.pack('<s5H', cmd, *args)
+        self.pipe.write(hdr)
 
     def show_zpixels(self, x, y, w, h, zpixels):
         # display compressed pixel data

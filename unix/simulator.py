@@ -13,7 +13,8 @@
 # - USB light not fully implemented, because happens at irq level on real product
 #
 import os, sys, tty, pty, termios, time, pdb, tempfile, struct, zlib
-import subprocess
+import subprocess, asyncio
+from dataclasses import dataclass
 import sdl2.ext
 import PIL
 from PIL import Image, ImageSequence, ImageOps
@@ -87,6 +88,10 @@ class SimulatedScreen:
             img = img.convert('P')
             self.movie.append((dt, img))
 
+    def vsync_handler(self, sr, w):
+        # called at 61Hz, just like the real LCD's TEAR output signal
+        return
+
 class LCDSimulator(SimulatedScreen):
     # Simulate the LCD found on the Q1: 320x240xRGB565
     # - written with little-endian (16 bit) data
@@ -95,6 +100,13 @@ class LCDSimulator(SimulatedScreen):
 
     # where the simulated screen is, relative to fixed background
     TOPLEFT = (65, 60)
+
+    @dataclass
+    class CursorSpec:
+        x: int
+        y: int
+        dbl_wide: bool
+        outline: bool
 
     def __init__(self, factory):
         self.movie = None
@@ -106,7 +118,7 @@ class LCDSimulator(SimulatedScreen):
         # selftest
         try:
             assert sdl2.ext.prepare_color('#0f0', s) == 0x07e0, 'need RGB565 sprite (got 555?)'
-            assert sdl2.ext.prepare_color('#f00', s) == 0xf800, 'need RGB565 sprite (got RGB?)'
+            assert sdl2.ext.prepare_color('#f00', s) == 0xf800, 'need RGB565 sprite (got BGR?)'
         except:
             print('red = ' + hex(sdl2.ext.prepare_color('#f00', s)))
             print('grn = ' + hex(sdl2.ext.prepare_color('#0f0', s)))
@@ -120,6 +132,119 @@ class LCDSimulator(SimulatedScreen):
         # for any LED's .. no position implied
         self.led_red = factory.from_image("q1-images/led-red.png")
         self.led_green = factory.from_image("q1-images/led-green.png")
+
+        # state for LCD animations normally handled by GPU
+        self.busy_bar = False
+        self.cursor = None
+        self.phase = 0
+
+        # GPU stuff needs to know implementation details... because it re-implements
+        self.COL_BLACK = 0
+        self.COL_WHITE = 0xffff
+        self.COL_FOREGROUND = 0xfd60     # brand orange (not byte-swapped here)
+        
+
+    def vsync_handler(self, spriterenderer, window):
+        # will be called at 61Hz, just like the real LCD's TEAR output signal
+        if not (self.busy_bar or self.cursor):
+            return
+
+        activity = False
+
+        if self.busy_bar:
+            activity |= self.gpu_draw_busy()
+
+        if self.cursor:
+            activity |= self.gpu_draw_cursor()
+
+        self.phase = (self.phase + 1) % 256
+
+        if not activity:
+            # nothing got drawn
+            return
+
+        # maybe save
+        if self.movie is not None:
+            self.new_frame()
+
+        # draw to screen
+        spriterenderer.render(self.sprite)
+        window.refresh()
+
+
+    def gpu_draw_busy(self):
+        # infinite progress bar
+        PROG_HEIGHT = 3
+        PROG_Y = 240 - PROG_HEIGHT
+        NUM_PHASES = 16
+        LCD_WIDTH = 320
+        bg = self.COL_BLACK
+        fg = self.COL_FOREGROUND
+
+        ph = self.phase % NUM_PHASES
+
+        sz = LCD_WIDTH + NUM_PHASES + 1
+        row = [bg if ((i % 8) < 2) else fg for i in range(sz)]
+
+        for y in range(PROG_Y, PROG_Y+PROG_HEIGHT):
+            for x in range(LCD_WIDTH):
+                self.mv[x][y] = row[NUM_PHASES - ph - 1 + x]
+
+        return True
+
+    def gpu_draw_cursor(self):
+        # screen layout constants.
+        # see shared/lcd.py and shared/font_iosevka.py
+        LEFT_MARGIN = 7
+        TOP_MARGIN = 15
+        CHARS_W = 34
+        CHARS_H = 10
+        CELL_W = 9
+        CELL_H = 22
+
+        # flash cursor at frame rate / 32
+        if self.phase & 31 != 0: return False
+        phase = bool(self.phase & 32)
+
+        # GPU is silent on errors
+        char_x = self.cursor.x
+        char_y = self.cursor.y
+        if char_x >= CHARS_W: return False
+        if char_y >= CHARS_H: return False
+
+        assert CELL_H > 2*CELL_W           # for dbl_wide case
+
+        # top left corner, just on edge of character cell
+        x = LEFT_MARGIN + (char_x * CELL_W)
+        y = TOP_MARGIN + (char_y * CELL_H)
+        cell_w = CELL_W + (CELL_W if self.cursor.dbl_wide else 0)
+
+        # make some pixels big enough for either vert or horz lines
+        colour = self.COL_FOREGROUND if phase else self.COL_BLACK
+
+        def fill_solid(X,Y, w, h, col):
+            for x in range(X, X+w):
+                for y in range(Y, Y+h):
+                    self.mv[x][y] = col
+
+        if self.cursor.outline:
+            # horz
+            fill_solid(x,y, cell_w, 1, colour)
+            fill_solid(x,y+CELL_H-1, cell_w, 1, colour)
+
+            # vert
+            fill_solid(x, y+1, 1, CELL_H-2, colour)
+            fill_solid(x+cell_w-1, y+1, 1, CELL_H-2, colour)
+        else:
+            if not phase:
+                # solid fill -- draw first time
+                fill_solid(x,y, cell_w, CELL_H, self.COL_FOREGROUND);
+            else:
+                # box shape, blank interior pixels
+                fill_solid(x+1,y+1, cell_w-2, CELL_H-2, self.COL_BLACK);
+
+        return True
+        
 
     def new_contents(self, readable):
         # got bytes for new update. expect a header and packed pixels
@@ -149,6 +274,7 @@ class LCDSimulator(SimulatedScreen):
             pos = 0
             if mode in 't':
                 # palette lookup mode for text: packed 4-bit / pixel
+                # ? no longer used ?
                 assert count == ((w*h)//2)+(2*16), [w,h,count]
 
                 pal = struct.unpack('>16H', here[:2*16])
@@ -217,6 +343,22 @@ class LCDSimulator(SimulatedScreen):
                 for y in range(Y, Y+h):
                     for x in range(X, X+w):
                         self.mv[x][y] = px
+
+            elif mode in 'TBC':        
+                # emulated GPU commands
+                # see vsync_handler() for implementation
+                if mode == 'T':
+                    # stop animating: "taking" the SPI bus away from GPU
+                    self.cursor = None
+                    self.busy_bar = False
+                elif mode == 'B':
+                    # show busy bar (infinite progress bar)
+                    self.busy_bar = True
+                elif mode == 'C':
+                    # show a cursor
+                    self.cursor = self.CursorSpec(X,Y, dbl_wide=bool(w), outline=bool(h))
+                    self.phase = 0      # make update happen immediately
+
             else:
                 raise ValueError(mode)
 
@@ -673,7 +815,7 @@ Q1 specials:
                     for ch in list(pressed):
                         send_event(ch, False)
 
-        rs, ws, es = select(readables, [], [], .001)
+        rs, ws, es = select(readables, [], [], 0)
         for r in rs:
 
             if bare_metal and r == bare_metal.request:
@@ -707,6 +849,9 @@ Q1 specials:
         if xterm.poll() != None:
             print("\r\n<xterm stopped: %s>\r\n" % xterm.poll())
             break
+
+        sdl2.SDL_Delay(16)       # 60-61Hz ish
+        simdis.vsync_handler(spriterenderer, window)
 
     xterm.kill()
     
