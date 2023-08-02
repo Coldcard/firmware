@@ -199,11 +199,12 @@ oled_setup(void)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_SPI1_CLK_ENABLE();
 
-    // simple pins
+    // Simple pins
+    // - must be opendrain to allow GPU to share
     GPIO_InitTypeDef setup = {
-        .Pin = RESET_PIN | DC_PIN | CS_PIN,
-        .Mode = GPIO_MODE_OUTPUT_PP,
-        .Pull = GPIO_NOPULL,
+        .Pin = RESET_PIN | CS_PIN | DC_PIN,
+        .Mode = GPIO_MODE_OUTPUT_OD,
+        .Pull = GPIO_PULLUP,
         .Speed = GPIO_SPEED_FREQ_MEDIUM,
         .Alternate = 0,
     };
@@ -212,10 +213,11 @@ oled_setup(void)
     // starting values
     HAL_GPIO_WritePin(GPIOA, RESET_PIN | CS_PIN | DC_PIN, 1);
 
-    // SPI pins
+    // SPI pins (same but with AF)
     setup.Pin = SPI_SCK | SPI_MOSI;
-    setup.Mode = GPIO_MODE_AF_PP;
     setup.Alternate = GPIO_AF5_SPI1;
+    setup.Mode = GPIO_MODE_AF_PP;
+    setup.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     HAL_GPIO_Init(GPIOA, &setup);
 
 #if 0
@@ -226,6 +228,10 @@ oled_setup(void)
 
     // config SPI port
     lcd_spi_setup();
+
+    // => attempt to avoid flash of garbage at boot/powerup
+    lcd_write_cmd(0x28);            // DISPOFF
+    lcd_fill_solid(COL_BLACK);
 
     // Need 10us+ low-going pulse on reset pin; do 1ms.
     delay_ms(1);
@@ -321,7 +327,7 @@ oled_setup(void)
     lcd_write_data1(0x0);
 
     // kill garbage on display before shown first time
-    lcd_fill_solid(COL_BLACK);
+    //lcd_fill_solid(COL_BLACK);
 
     // finally
     lcd_write_cmd(0x21);            // INVON 
@@ -386,7 +392,7 @@ oled_show(const uint8_t *pixels)
 {
     oled_setup();
 
-    // we are not fast enough to send entire screen during the
+    // we are NOT fast enough to send entire screen during the
     // vblanking time, so either we show torn stuff, or we flash display off a little
     wait_vsync();
     lcd_write_cmd(0x28);            // DISPOFF

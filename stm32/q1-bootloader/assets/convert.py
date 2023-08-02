@@ -73,9 +73,20 @@ def make_background():
 
     return img
 
-def make_frame(img, txt, icon_name, text_pos=None, icon_pos=20, icon_xpos=0, crossout=False):
+def make_frame(img, txt, icon_name, text_pos=None, icon_pos=20, icon_xpos=0, tight_mode=0):
     rv = img.copy()
     d = ImageDraw.Draw(rv)
+
+    if tight_mode:
+        awe2 = ImageFont.truetype('FontAwesome5Pro-Light-300.otf', ICON_SIZE//3)
+        assert icon_name
+        x, y = 15, 200
+        _,_, w,h = d.textbbox((0,0), icons[icon_name], font=awe2)
+        d.text( (x, y), icons[icon_name], font=awe2, fill=1)
+        d.text( (x+w+10, y-0), txt, font=sm_font, fill=1)
+
+        return rv
+        
 
     CX = LCD_W // 2
     TH = LCD_H // 2
@@ -92,11 +103,6 @@ def make_frame(img, txt, icon_name, text_pos=None, icon_pos=20, icon_xpos=0, cro
     _,_, w,h = d.textbbox((0,0), txt, font=sm_font)
     assert w <= LCD_W, "Message too wide: " + repr(txt)
     d.text( (CX-(w/2), text_pos-h), txt, font=sm_font, fill=1)
-
-    if crossout:
-        # ugly and covers info
-        x,y = (CX-(w/2), text_pos-h)
-        d.line( (x-2,y-2, x+w, y+h), fill=1)
 
     return rv
 
@@ -181,7 +187,7 @@ def serialize(img, label, fp):
 # - rare screens don't need to be pretty
 #
 results = [
-    ( 'verify', 'Verifying', 'clock', {} ),
+    ( 'verify', 'Verifying...', 'clock', { 'tight_mode': 1} ),
     ( 'blankish', '. . .', None, dict() ), # shown while we boot micropython (momentary)
     ( 'fatal', '#fwf', None, dict() ),    # don't waste space on rarely-seen screens
     ( 'mitm', '-/-', None, {} ),                # don't waste space on rarely-seen screens
@@ -200,8 +206,8 @@ results = [
     ( 'search', 'Searching...', 'search-card', {}),
     ( 'recovery', 'Insert Card', 'insert-card', {}),
     #( 'recovery', 'Recovery!', 'sdcard', {}),
-    ( 'se1_issue', 'U4=SE1', 'bug', dict(crossout=0) ), 
-    ( 'se2_issue', 'U5=SE2', 'bug', dict(crossout=0) ), 
+    ( 'se1_issue', 'U4=SE1', 'bug', {} ), 
+    ( 'se2_issue', 'U5=SE2', 'bug', {} ), 
     ( 'wiped', 'Seed Wiped', 'power', {}),
 ]
 

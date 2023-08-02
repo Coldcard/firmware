@@ -6,13 +6,17 @@
  */
 #include "basics.h"
 #include "gpio.h"
+#include "delay.h"
 #include "stm32l4xx_hal.h"
 
-// PA0 - onewire bus for 508a
-// PA2 - onewire bus for 508a - second SE
+// PA0 - onewire bus for SW1
 #define ONEWIRE_PIN      GPIO_PIN_0
-#define ONEWIRE2_PIN     GPIO_PIN_2
 #define ONEWIRE_PORT     GPIOA
+
+// When showing a fatal msg, we will power ourselves down
+// after this many seconds (or instantly if they press power key).
+//
+#define AUTO_POWERDOWN_TIME         15
 
 // gpio_setup()
 //
@@ -62,10 +66,11 @@ gpio_setup(void)
         HAL_GPIO_Init(GPIOA, &setup);
     }
 
-    {   // Port B - mostly unused, but want TEAR input
+    {   // Port B - mostly unused, but want TEAR input and pwr btn
         // TEAR from LCD: PB11
+        // PWR_BTN: PB12
         GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_11,
+            .Pin = GPIO_PIN_11 | GPIO_PIN_12,
             .Mode = GPIO_MODE_INPUT,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,       // 60Hz
@@ -130,26 +135,39 @@ gpio_setup(void)
 
     // Port E - Q1 things
     // QR_RESET/TRIG - ignore for now
-    // BL_ENABLE: PE3
+    // BL_ENABLE: PE3 (critical so we can see stuff)
     // NFC_ACTIVE: PE4 (led)
-    // GPU control: 2,5,6 outputs
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_3 | GPIO_PIN_4 | GPIO_PIN_2 | GPIO_PIN_5 | GPIO_PIN_6,
+            .Pin = GPIO_PIN_3 | GPIO_PIN_4,
             .Mode = GPIO_MODE_OUTPUT_PP,
             .Pull = GPIO_NOPULL,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
         HAL_GPIO_Init(GPIOE, &setup);
 
-        // turn off NFC LED, reset GPU, keep in reset
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4|GPIO_PIN_5, 0);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, 0);    // turn off NFC LED,
         HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);    // turn on Backlight,
+    }
+
+    // GPU control: Port E: PE2=G_SWCLK_BOOT0, PE5=G_CTRL, PE6=G_RESET outputs
+    // - want open-drain on these outputs, so the SWD debugger can override
+    {   GPIO_InitTypeDef setup = {
+            .Pin = GPIO_PIN_2 | GPIO_PIN_5 | GPIO_PIN_6,
+            .Mode = GPIO_MODE_OUTPUT_OD,
+            .Pull = GPIO_PULLUP,
+            .Speed = GPIO_SPEED_FREQ_LOW,
+        };
+        HAL_GPIO_Init(GPIOE, &setup);
+
+        // assert reset, leave others high
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2|GPIO_PIN_5, 1);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, 0);
     }
 
 
 #if 0
     // TEST CODE -- keep
-    // enable MCO=PA8 for clock watching. Conflicts w/ OLED normal use.
+    // enable MCO=PA8 for clock watching. Conflicts w/ LCD normal use.
     GPIO_InitTypeDef mco_setup = {
         .Pin = GPIO_PIN_8,
         .Mode = GPIO_MODE_AF_PP,
@@ -170,7 +188,7 @@ gpio_setup(void)
 
 // turn_power_off()
 //
-// kill system power; instant
+// Kill system power; instant.
 //
     void
 turn_power_off(void)
@@ -179,7 +197,34 @@ turn_power_off(void)
 
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
 
-    LOCKUP_FOREVER();
+    while(1) {
+        __WFI();
+    }
+}
+
+// q1_wait_powerdown()
+//
+// Showing a fatal msg to user; power down after a long delay
+// or instantly if they touch power btn. Replaces LOCKUP_FOREVER
+//
+    void
+q1_wait_powerdown(void)
+{
+    gpio_setup();
+
+    for(uint32_t i=0; i<AUTO_POWERDOWN_TIME*10; i++) {
+        if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_12) == 0) {
+            break;
+        }
+
+        delay_ms(100);
+    }
+
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
+
+    while(1) {
+        __WFI();
+    }
 }
 
 // EOF

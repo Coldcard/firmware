@@ -75,12 +75,12 @@ Mk1-3:
 
     dfu-util -d 0483:df11 -a 0 -s 0x08007800:256 -U pairing.bin
 
-Mk4:
+Mk4 & Q1:
 
-    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:16384 -U pairing.bin
 
 - but that file is misleading, because all the unused mcu key slots are un-programmed-cells (ones)
-- will hit assert on new key attempt if you just write that back
+- will hit assert on new MCU key attempt if you just write that back
 - trim and write only actual non-ones content
 
 # Wiping Secrets
@@ -102,9 +102,10 @@ Mk4:
 
 ## Bootloader upgrade 3.0.? to 3.0.2
 
+- mk3 only
 - capture pairing data:
 
-    dfu-util -d 0483:df11 -a 0 -s 0x0801e000:8192 -U pairing.bin
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
 
 - do the above unlock write-protect process, but don't erase any flash
     - would only be required if "bag" operation done

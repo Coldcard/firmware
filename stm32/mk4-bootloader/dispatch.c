@@ -247,7 +247,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
 
             // wait for an interrupt which will never happen (ie. sleep)
-            LOCKUP_FOREVER()
+            LOCKUP_FOREVER();
             break;
 
         case 4:
