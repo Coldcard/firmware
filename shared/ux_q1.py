@@ -166,11 +166,8 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
                     footer=None, randomize=None):
 
     # Draw PIN during entry / reentry / changing or setting
-    #MAX_PIN_PART_LEN = 6
 
-    # extra (empty) box after
-    ln = len(pin)
-    msg = ('※ ' * ln)
+    msg = ('※ ' * len(pin))
     y = 1 if randomize else 2
 
     if force_draw:
@@ -182,17 +179,15 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
         # - test w/ "simulator.py --q1 -g --eff --set rngk=1"
 
         # remapped numbers along bottom
-        x = 3
-        dis.text(x-1, -5, ' 1  2  3  4  5  6  7  8  9  0 ', invert=1)
-        dis.text(x  , -4, '  '.join(randomize[1:]) + '  ' + randomize[0])
+        dis.text(1, -5, '  1  2  3  4  5  6  7  8  9  0  ', invert=1)
+        dis.text(1, -4, '↳ ' + '  '.join(randomize[1:]) + '  ' + randomize[0])
 
     if force_draw:
 
         if is_first_part:
-            prompt="Enter PIN prefix" 
+            prompt="Enter FIRST part of PIN (XXX-)" 
         else:
-            prompt="Enter second part of PIN" 
-
+            prompt="Enter SECOND part of PIN (-YYY)" 
 
         if subtitle:
             # "New Main PIN" ... so not really a SUB title.
@@ -216,6 +211,9 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
 
     y += 2
     x = dis.text(None, y, msg)
+    if not msg:
+        x -= 1      # to get exactly in center when empty
+
     dis.show(cursor=CursorSpec(x, y, True, False))
 
 async def ux_login_countdown(sec):
