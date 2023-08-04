@@ -27,7 +27,7 @@ NUM_GREYS = 16
 
 
 # TODO: 
-# - need _ but for blank space; never found and yet may not need.
+# - needed _ but for blank space; never found one, and may not need anyway
 
 CHARSET = [chr(x) for x in range(32,127)] \
             + ['→', '←', '↳', '•', '⋯',
@@ -35,7 +35,9 @@ CHARSET = [chr(x) for x in range(32,127)] \
                 '▼', '▲', '▶', '◀', '⏵',
                 '₿', '✔', '✓', '↦', '␣',
                 '◉', '◯', '◌', '⬚', '░',
-                '™', '©', '─', '⬧', '※'
+                '™', '©', '⬧', '※',
+                '─',
+                '━', '┃', '┓', '┏', '┛','┗',        # 'heavy' versions
           ]
 
 # these are be better as double-wide chars
