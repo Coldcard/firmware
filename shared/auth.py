@@ -365,7 +365,7 @@ def sign_msg(text, subpath, addr_fmt):
     abort_and_goto(UserAuthorizedAction.active_request)
 
 
-def sign_txt_file(filename):
+async def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from files import CardSlot, CardMissingError
@@ -388,7 +388,7 @@ def sign_txt_file(filename):
     if not addr_fmt:
         addr_fmt = AF_CLASSIC
 
-    def done(signature, address, text):
+    async def done(signature, address, text):
         # complete. write out result
         from glob import dis
 
@@ -824,7 +824,7 @@ class ApproveTransaction(UserAuthorizedAction):
         #if NFC:
             #NFC.share_signed_psbt(TXN_OUTPUT_OFFSET, self.result[0], self.result[1])
 
-    def save_visualization(self, msg, sign_text=False):
+    async def save_visualization(self, msg, sign_text=False):
         # write text into spi flash, maybe signing it as we go
         # - return length and checksum
         txt_len = msg.seek(0, 2)
@@ -843,7 +843,6 @@ class ApproveTransaction(UserAuthorizedAction):
                 fd.write(blk)
 
             if chk:
-                from ubinascii import b2a_base64
                 # append the signature
                 digest = ngu.hash.sha256s(chk.digest())
                 sig = sign_message_digest(digest, 'm', None, AF_CLASSIC)[0]
