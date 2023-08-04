@@ -69,7 +69,7 @@ async def more_setup():
     # Boot up code; splash screen is being shown
                 
     # MAYBE: check if we're a brick and die again? Or show msg?
-    
+
     try:
         from files import CardSlot
         CardSlot.setup()
@@ -78,7 +78,9 @@ async def more_setup():
         try:
             from pincodes import pa
             pa.setup(b'')       # just to see where we stand.
+            is_blank = pa.is_blank()
         except RuntimeError as e:
+            is_blank = True
             print("Problem: %r" % e)
 
         if version.is_factory_mode:
@@ -92,8 +94,9 @@ async def more_setup():
                 from actions import start_selftest
                 await start_selftest()
 
-        else:
-            # force them to accept terms (unless marked as already done)
+        elif is_blank:
+            # force them to accept terms (unless marked as already done in settings)
+            # only if no main PIN chosen
             from actions import accept_terms
             await accept_terms()
 
