@@ -13,6 +13,7 @@ from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
+from charcodes import KEY_NFC
 
 
 # PSBT Xpub trust policies
@@ -870,7 +871,7 @@ class MultisigWallet:
         prompt, escape = export_prompt_builder("%s file" % label)
         if prompt:
             ch = await ux_show_story(prompt, escape=escape)
-            if ch == "3":
+            if ch in "3"+KEY_NFC:
                 with uio.StringIO() as fp:
                     self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
                                        core=core, desc_pretty=desc_pretty)
@@ -1442,7 +1443,7 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)
 
-    if NFC and ch == '3':
+    if NFC and ch in "3"+KEY_NFC:
         with uio.StringIO() as fp:
             render(fp)
             await NFC.share_json(fp.getvalue())

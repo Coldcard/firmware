@@ -10,6 +10,7 @@ from ux import ux_show_story
 from glob import settings
 from auth import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
+from charcodes import KEY_NFC
 
 
 def generate_public_contents():
@@ -123,7 +124,7 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     prompt, escape = export_prompt_builder("%s file" % title)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
-        if ch == '3':
+        if ch in '3'+KEY_NFC:
             await NFC.share_text(body)
             return
         elif ch == "2":
@@ -434,7 +435,7 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     prompt, escape = export_prompt_builder("%s file" % label)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
-        if ch == '3':
+        if ch in '3'+KEY_NFC:
             await NFC.share_json(json_str)
             return
         elif ch == '2':
