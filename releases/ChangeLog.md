@@ -17,6 +17,7 @@
   Prevents infinite seed wipe loop when restoring backup after 2FA MicroSD lost or damaged.
   SD2FA is not backed up and also not restored from older backups. If SD2FA is set up,
   it will not survive restore of backup.
+- Bugfix: TOS only presented if main PIN was not chosen already.
 
 
 ## 5.1.2 - 2023-04-07
