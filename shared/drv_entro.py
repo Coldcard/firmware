@@ -17,7 +17,7 @@ from utils import chunk_writer
 
 BIP85_PWD_LEN = 21
 
-def drv_entro_start(*a):
+async def drv_entro_start(*a):
 
     # UX entry
     ch = await ux_show_story('''\
