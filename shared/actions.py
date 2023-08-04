@@ -514,7 +514,12 @@ X to go back. Or press (2) to hide this message forever.
 
 async def start_seed_import(menu, label, item):
     import seed
-    return seed.WordNestMenu(item.arg)
+    if version.has_qwerty:
+        from ux_q1 import seed_word_entry
+        await seed_word_entry('Enter Seed Words', num_words,
+                                            done_cb=seed.commit_new_words)
+    else:
+        return seed.WordNestMenu(item.arg)
 
 def pick_new_seed(menu, label, item):
     import seed

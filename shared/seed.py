@@ -535,9 +535,15 @@ async def make_new_wallet(nwords):
 
 async def ephemeral_seed_import(nwords):
     async def import_done_cb(words):
+        dis.fullscreen("Applying...")
         await set_ephemeral_seed_words(words, meta='Imported')
 
-    return WordNestMenu(nwords, done_cb=import_done_cb)
+    if version.has_qwerty:
+        from ux_q1 import seed_word_entry
+        await seed_word_entry('Ephemeral Seed Words', nwords,
+                              done_cb=import_done_cb)
+    else:
+        return WordNestMenu(nwords, done_cb=import_done_cb)
 
 async def ephemeral_seed_generate(nwords):
     await ux_dramatic_pause('Generating...', 3)
@@ -1233,6 +1239,7 @@ class PassphraseMenu(MenuSystem):
         goto_top_menu()
 
 class SingleWordMenu(WordNestMenu):
+    # NOTE: not used on Q1
     def __init__(self, items=None, **kws):
         if items:
             super(SingleWordMenu, self).__init__(items=items, **kws)

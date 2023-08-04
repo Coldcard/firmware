@@ -129,9 +129,15 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     from ux import ux_show_story
 
     dis.clear()
-    if b39_complete or num_words:
-        scan_ok = True
+    if num_words:
+        b39_complete = True
+        max_len = 216
+        min_len = 36
+        got_words = []
+
+    if b39_complete:
         dis.text(None, -2, "↦ to auto-complete. (QR) to scan.")
+
     dis.text(None, -1, "CANCEL or SELECT when done.")
 
     # TODO:
@@ -144,6 +150,8 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     ch_remap = lambda ch: ch if ' ' <= ch < chr(127) else None
     if hex_only:
         ch_remap = lambda ch: ch.lower() if ch in '0123456789abcdefABCDEF' else None
+    if num_words:
+        ch_remap = lambda ch: ch.lower() if ch==' ' or ch.isalpha() else None
 
 
     y = 2
@@ -201,9 +209,14 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         dis.show(cursor=cur)
 
         ch = await press.wait()
+
         if ch == KEY_SELECT:
-            if len(value) >= min_len:
-                return value
+            if num_words:
+                if len(got_words) == num_words:
+                    break
+                err_msg = 'Need exactly %d words.' % num_words
+            elif len(value) >= min_len:
+                break
             else:
                 err_msg = 'Need %d characters at least.' % min_len
         elif ch == KEY_DELETE or ch == KEY_LEFT:
@@ -218,7 +231,8 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                     "OK to leave without any changes? Or CANCEL to avoid leaving.")
                 if pp == KEY_CANCEL:
                     continue
-            return None
+            value = None
+            break
 
         elif b39_complete and ch == KEY_TAB:
             # match case and auto-complete BIP-39 word if we can
@@ -240,7 +254,17 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
             pref = ''.join(pref)
             exact, nextchars, is_word = bip39.next_char(pref.lower())
+            print('%s => exact=%s nextchars=%s is_word=%s' % (pref, exact, nextchars, is_word))
 
+            if not is_word and len(nextchars) == 1:
+                # only one possible next char, so complete for them
+                # example "yo" => "you"
+                is_word = pref + nextchars[0]
+
+            #N OTE: if exact and not is_word:
+            # example "act" -> could be "act" or "actor" etc.
+            # but they pressed auto-complete and not space, so they want next char info
+                
             if is_word:
                 # got a match; append it
                 if pref.isupper():
@@ -249,15 +273,31 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                     is_word = is_word.upper()
 
                 value += is_word[len(pref):]
+                if num_words:
+                    got_words.append(exact)
+                    if len(got_words) < num_words:
+                        value += ' '
             elif not nextchars:
-                err_msg = 'Not a prefix BIP-39 word: ' + pref
+                err_msg = 'Not a BIP-39 word: ' + pref
             elif len(nextchars) < 12:
                 # 'sta' and other s-prefixes
                 err_msg = 'Press next key: ' + nextchars
             else:
                 err_msg = 'Need more letters.'
-                print(pref)
 
+        elif num_words and ch == ' ':
+            # doing a space during seed-word entry: must be forming a 
+            # valid word, or fail
+            last = value.split(' ')[-1]
+            if last:
+                exact, nextchars, is_word = bip39.next_char(last)
+                if exact and not is_word:
+                    is_word = last      # "act " case
+                if is_word:
+                    got_words.append(is_word)
+                    value += ' ' 
+                else:
+                    err_msg = 'Not a BIP-39 word: ' + last
         else:
             ch = ch_remap(ch)
             if ch is not None:
@@ -266,7 +306,22 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                 else:
                     value = value[0:max_len-1] + ch
 
+            if num_words and ch != ' ':
+                last = value.split(' ')[-1]
+                if len(last) >= 4:
+                    exact, nextchars, is_word = bip39.next_char(last)
+                    if not exact:
+                        err_msg = 'Not a BIP-39 prefix: ' + last
+                    else:
+                        got_words.append(is_word)
+                        value = value + is_word[len(last):] + ' '
+                
+                
 
+    if num_words:
+        return got_words
+
+    return value
 
 
 def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
@@ -353,5 +408,17 @@ async def ux_login_countdown(sec):
         sec -= 1
 
     dis.busy_bar(0)
+
+async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
+    # Accept a seed phrase
+    # - replaces WordNestMenu()'s constructor
+    # - return a function that will be called w/ menu details (dont care)
+    assert num_words and prompt and done_cb
+
+    v = await ux_input_text('', confirm_exit=False, prompt=prompt, num_words=num_words)
+    if not v:
+        return
+
+    await done_cb(v)
 
 # EOF
