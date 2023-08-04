@@ -7,6 +7,7 @@ import utime, gc
 from charcodes import *
 from lcd_display import CHARS_W, CursorSpec
 from exceptions import AbortInteraction
+import bip39
 
 class PressRelease:
     def __init__(self, need_release=KEY_SELECT+KEY_CANCEL):
@@ -115,19 +116,22 @@ async def ux_input_numbers(val, validate_func):
     # - not wanted on Q1; just get the digits w/ the text.
     pass
 
-async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
+async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
+            prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False, num_words=0):
     # Get a text string.
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
     # - no control chars allowed either
-    # - TODO: editing, line wrap, seed completion, etc
     # - TODO: press QR -> do scan and use that text
     # - TODO: regex validation for derviation paths
+    # - TODO: assume phrase seed entry
     from glob import dis
     from ux import ux_show_story
 
     dis.clear()
-    dis.text(None, -2, "Use ↦ to auto-complete words.")
+    if b39_complete or num_words:
+        scan_ok = True
+        dis.text(None, -2, "↦ to auto-complete. (QR) to scan.")
     dis.text(None, -1, "CANCEL or SELECT when done.")
 
     # TODO:
@@ -135,32 +139,135 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100):
     # - multi line support
     # - add prompt text?
 
+    # map from what they entered, to allowed char. None if not allowed char
+    # - can case fold if desired
+    ch_remap = lambda ch: ch if ' ' <= ch < chr(127) else None
+    if hex_only:
+        ch_remap = lambda ch: ch.lower() if ch in '0123456789abcdefABCDEF' else None
+
+
+    y = 2
+    if max_len <= CHARS_W-2:
+        # single-line or perhaps shorter value
+        line_len = max_len
+        num_lines = 1
+        y = 4
+    elif max_len == 100:
+        # passphrase case, handle nicely
+        line_len = 25
+        num_lines = 4
+    else:
+        # multi-line mode: just do a box for most of screen
+        num_lines = 6
+        line_len = CHARS_W-2
+
+    dis.text(None, y-2, prompt)
+    x = dis.draw_box(None, y-1, line_len, num_lines)
+
+    # NOTE:
+    #  - x,y here are top left of entry area
+    #  - not allow cursor movement, always appending to end
+
     # no key-repeat on certain keys
+    err_msg = last_err = None
     press = PressRelease()
     while 1:
+        dis.clear_box(x, y, line_len, num_lines)
 
-        dis.text(1, 1, value+'  ')
-        bx = dis.width(value) + 1
-        dis.show(cursor=CursorSpec(bx, 1, 0, 0))
+        # show error msg, until they type anything to clear it
+        if err_msg:
+            dis.text(None, y+num_lines+1, err_msg)
+            err_msg = None
+            last_err = True
+        elif last_err:
+            dis.text(None, y+num_lines+1, '')
+            last_err = False
+
+        if not value:
+            bx = 0
+            n = 0
+        else:
+            for n, ln_pos in enumerate(range(0, len(value), line_len)):
+                ln = value[ln_pos:ln_pos+line_len]
+                dis.text(x, y+n, ln)
+                bx = len(ln)
+
+        # decide cursor appearance
+        cur = CursorSpec(x+bx, y+n, 0, 0)
+        if cur.x >= x+line_len:
+            # outline mode if on final possible location
+            cur = CursorSpec(x+line_len-1, y+n, 0, True)     
+
+        dis.show(cursor=cur)
 
         ch = await press.wait()
         if ch == KEY_SELECT:
-            return str(value, 'ascii')
-        elif ch == KEY_DELETE:
+            if len(value) >= min_len:
+                return value
+            else:
+                err_msg = 'Need %d characters at least.' % min_len
+        elif ch == KEY_DELETE or ch == KEY_LEFT:
             if len(value) > 0:
-                # delete current char
+                # delete last char
                 value = value[:-1]
         elif ch == KEY_CLEAR:
             value = ''
-            dis.text(0, 1, ' '*CHARS_W)
         elif ch == KEY_CANCEL:
             if confirm_exit:
                 pp = await ux_show_story(
                     "OK to leave without any changes? Or CANCEL to avoid leaving.")
-                if pp == KEY_CANCEL: continue
+                if pp == KEY_CANCEL:
+                    continue
             return None
-        elif ' ' <= ch < chr(127):
-            value += ch
+
+        elif b39_complete and ch == KEY_TAB:
+            # match case and auto-complete BIP-39 word if we can
+            # - search backwards for alpha chars, up to 5
+            # - stop on first non-letter
+            # - break if case changes, so "ZooAct" gives "Act"
+            pref = []
+            for b in reversed(value[-4:]):
+                if not b: break
+                if 'a' <= b.lower() <= 'z':
+                    pref.insert(0, b)
+                    if len(pref)>=1 and b.isupper() != pref[0].isupper():
+                        break
+                else:
+                    break
+            if not pref:
+                #err_msg = 'Need some letters first.'
+                continue
+
+            pref = ''.join(pref)
+            exact, nextchars, is_word = bip39.next_char(pref.lower())
+
+            if is_word:
+                # got a match; append it
+                if pref.isupper():
+                    # all upper case, so append w/ same
+                    # - Titlecase will just happen w/o any code here
+                    is_word = is_word.upper()
+
+                value += is_word[len(pref):]
+            elif not nextchars:
+                err_msg = 'Not a prefix BIP-39 word: ' + pref
+            elif len(nextchars) < 12:
+                # 'sta' and other s-prefixes
+                err_msg = 'Press next key: ' + nextchars
+            else:
+                err_msg = 'Need more letters.'
+                print(pref)
+
+        else:
+            ch = ch_remap(ch)
+            if ch is not None:
+                if len(value) < max_len:
+                    value += ch
+                else:
+                    value = value[0:max_len-1] + ch
+
+
+
 
 def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
                     footer=None, randomize=None):
@@ -178,16 +285,16 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
         # - only used at login, none of the other cases
         # - test w/ "simulator.py --q1 -g --eff --set rngk=1"
 
-        # remapped numbers along bottom
-        dis.text(1, -5, '  1  2  3  4  5  6  7  8  9  0  ', invert=1)
-        dis.text(1, -4, '↳ ' + '  '.join(randomize[1:]) + '  ' + randomize[0])
+        # show mapping of numbers vs. PIN digits
+        dis.text(1, -5, '  ' + '  '.join(randomize[1:]) + '  ' + randomize[0] + '  ', invert=1)
+        dis.text(1, -4, '↳ 1  2  3  4  5  6  7  8  9  0')
 
     if force_draw:
 
         if is_first_part:
-            prompt="Enter FIRST part of PIN (XXX-)" 
+            prompt="Enter FIRST part of PIN (xxx-)" 
         else:
-            prompt="Enter SECOND part of PIN (-YYY)" 
+            prompt="Enter SECOND part of PIN (-yyy)" 
 
         if subtitle:
             # "New Main PIN" ... so not really a SUB title.
@@ -219,18 +326,22 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
 async def ux_login_countdown(sec):
     # Show a countdown, which may need to
     # run for multiple **days**
-    # XXX untested TODO
+    # - test with: ./simulator.py --q1 -g --eff --set lgto=60
+    # - test with: ./simulator.py --q1 -g --eff --set lgto=3600
+    # - test with: ./simulator.py --q1 -g --eff --set lgto=2419200
     from glob import dis
     from utime import ticks_ms, ticks_diff
+    from utils import pretty_short_delay, pretty_delay
 
-    y = 4
+    y = 1
     dis.clear()
-    dis.text(None, y-2, "Login countdown in effect.", invert=1)
-    dis.text(None, y-1, "Must wait:")
+    dis.text(None, y, "Login countdown in effect.", invert=1)
+    dis.text(None, y+2, "Must wait:")
 
     st = ticks_ms()
     while sec > 0:
-        dis.text(None, y, pretty_short_delay(sec))
+        txt = pretty_delay(sec) if sec > 12*3600 else pretty_short_delay(sec)
+        dis.text(None, y+4, txt)
         dis.busy_bar(1)
 
         # this should be more accurate, errors were accumulating

@@ -341,6 +341,8 @@ class Display:
 
         if cursor:
             # implement CursorSpec values
+            assert 0 <= cursor.x < CHARS_W, 'cur x'
+            assert 0 <= cursor.y < CHARS_H, 'cur y'
             self.gpu.cursor_at(*cursor)
             self.last_buf[cursor.y][cursor.x] = 0xfffd
             if cursor.dbl_wide:
@@ -588,6 +590,33 @@ class Display:
             self.text(-1, 0, idx_hint)
 
         self.show()
+
+    def draw_box(self, x, y, w, h):
+        # using line-drawing chars, draw a box
+        # returns X pos of first inside char
+        assert 0 <= h <= CHARS_H-2      # 8 max
+        assert 0 <= w <= CHARS_W-2      # 32 max
+
+        if x is None:
+            x = (CHARS_W - w - 2) // 2
+        ln = '┏' + ('━'*w) + '┓'
+        self.text(x, y, ln)
+        for yy in range(y+1, y+h+1):
+            self.text(x, yy,  '┃')
+            self.text(x+w+1,  yy, '┃')
+
+        ln = '┗' + ln[1:-1] + '┛'
+        self.text(x, y+h+1, ln)
+
+        return x+1
+
+    def clear_box(self, x, y, w, h):
+        # clear (w/ spaces) a box on screen
+        for Y in range(y, y+h):
+            for X in range(x, x+w):
+                assert 0 <= X < CHARS_W
+                assert 0 <= Y < CHARS_H
+                self.next_buf[Y][X] = 32
 
         
 # here for mpy reasons

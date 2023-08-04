@@ -342,7 +342,7 @@ class MenuSystem:
             if not has_qwerty:
                 key = numpad_remap(key)
 
-            if key == KEY_SELECT:
+            if key == KEY_SELECT or key == ' ':
                 # selected - done
                 return self.cursor
             elif key == KEY_CANCEL:

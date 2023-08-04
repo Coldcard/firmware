@@ -1167,7 +1167,8 @@ class PassphraseMenu(MenuSystem):
     async def view_edit_phrase(self, *a):
         # let them control each character
         global pp_sofar
-        pw = await ux_input_text(pp_sofar)
+        pw = await ux_input_text(pp_sofar, prompt="Your BIP-39 Passphrase",
+                                    b39_complete=True, max_len=100)
         if pw is not None:
             pp_sofar = pw
             self.check_length()

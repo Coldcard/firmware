@@ -82,13 +82,14 @@ DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB
 
 # when SYMBOL pressed
 # - be nice and allow number+symbol == number + shift
+# - also nicity: symb+cancel=clear
 DECODER_SYMBOL = (KEY_NFC + KEY_QR + KEY_TAB 
             + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_CANCEL + KEY_SELECT + '\0'
     + '!@#$%^&*()'
     + '-_`\0\0\0[]{}'
     + '+=\0\0:;~|\\"'
     + KEY_F1 + KEY_F2 + KEY_F3 + KEY_F4 + KEY_F5 + KEY_F6 + '\0<>?'
-    '\0\0\0\0\0\0\0\0\0\0' )
+    '\0\0\0\0' + KEY_CLEAR + '\0\0\0\0\0' )
 
 KEYNUM_LAMP = const(50)
 KEYNUM_SHIFT = const(51)

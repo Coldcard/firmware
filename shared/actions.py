@@ -21,6 +21,7 @@ from glob import settings
 from pincodes import pa
 from menu import start_chooser
 from version import MAX_TXN_LEN
+from charcodes import KEY_NFC
 
 
 CLEAR_PIN = '999999-999999'
@@ -1021,7 +1022,7 @@ async def export_xpub(label, _2, item):
         if '{acct}' in path:
             msg += "Press (1) to select account other than zero. "
         if glob.NFC:
-            msg += "Press (3) to share via NFC. "
+            msg += "Press (" + ("nfc" if qwerty else "3") + ") to share via NFC. "
 
         ch = await ux_show_story(msg, escape='13')
         if ch == 'x': return
@@ -1041,7 +1042,7 @@ async def export_xpub(label, _2, item):
             node = sv.derive_path(path) if path != 'm' else sv.node
             xpub = chain.serialize_public(node, addr_fmt)
 
-        if ch == '3' and glob.NFC:
+        if glob.NFC and ch in '3'+KEY_NFC:
             await glob.NFC.share_text(xpub)
         else:
             from ux import show_qr_code
@@ -1316,7 +1317,7 @@ async def import_xprv(_1, _2, item):
     prompt, escape = import_prompt_builder("%s file" % label)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
-        if ch == "3":
+        if ch in "3"+KEY_NFC:
             force_vdisk = None
             extended_key = await NFC.read_extended_private_key()
             if not extended_key:
@@ -1481,7 +1482,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
     prompt, escape = import_prompt_builder(label)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
-        if ch == "3":
+        if ch in "3"+KEY_NFC:
             force_vdisk = None
             data = await NFC.read_tapsigner_b64_backup()
             if not data:
@@ -1505,17 +1506,18 @@ async def import_tapsigner_backup_file(_1, _2, item):
                 data = fp.read()
 
     if await ux_show_story("Make sure to have your TAPSIGNER handy as you will need to provide "
-                           "'Backup Password' from the back of the card in the next step. "
+                           "'Backup Password' from the back of the card in the next step.\n\n"
                            "Press OK to continue X to cancel.") != "y":
         return
 
     while True:
-        backup_key = await ux_input_text("", confirm_exit=False, hex_only=True, max_len=32)
+        backup_key = await ux_input_text("", confirm_exit=False, hex_only=True,
+                            min_len=32, max_len=32, prompt='Backup Password (32 hex digits)')
         if backup_key is None:
             return
-        if len(backup_key) != 32:
-            await ux_show_story(title="FAILURE", msg="'Backup Key' length != 32")
-            continue
+
+        assert len(backup_key) == 32
+
         try:
             extended_key, derivation = decrypt_tapsigner_backup(backup_key, data)
             break

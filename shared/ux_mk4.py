@@ -166,8 +166,9 @@ async def ux_input_numbers(val, validate_func):
             if len(here) < 32:
                 here += ch
 
-async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100):
+async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_len=0, **_kws):
     # Allow them to pick each digit using "D-pad"
+    # - Q1 version of this function can do much more w/ more keyword args
     from glob import dis
     from display import FontTiny, FontSmall
 
@@ -277,6 +278,9 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100):
 
         ch = await press.wait()
         if ch == 'y':
+            if len(pw) < min_len:
+                # enforce a minimum length, better: say so.
+                continue
             return str(pw, 'ascii')
         elif ch == 'x':
             if len(pw) > 1:
