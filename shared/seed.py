@@ -121,6 +121,13 @@ def test_lc():
                     (thres, min(sizes), max(sizes), sum(sizes)/len(sizes), len(sizes)))
 '''
 
+async def commit_new_words(new_words):
+    # save the new seed value
+    set_seed_value(new_words)
+    
+    # clear menu stack
+    goto_top_menu(first_time=True)
+
 
 class WordNestMenu(MenuSystem):
     # singleton (cls level) vars
@@ -129,13 +136,15 @@ class WordNestMenu(MenuSystem):
     has_checksum = True
     done_cb = None
 
-    def __init__(self, num_words=None, has_checksum=True, done_cb=None, items=None, is_commit=False):
+    def __init__(self, num_words=None, has_checksum=True, done_cb=commit_new_words,
+                        items=None, is_commit=False):
 
         if num_words is not None:
             WordNestMenu.target_words = num_words
             WordNestMenu.has_checksum = has_checksum
             WordNestMenu.words = []
-            WordNestMenu.done_cb = done_cb or self.all_done
+            assert done_cb
+            WordNestMenu.done_cb = done_cb
             is_commit = True
 
         if not items:
@@ -221,16 +230,6 @@ class WordNestMenu(MenuSystem):
             the_ux.push(nxt)
         else:
             the_ux.pop()
-
-    @staticmethod
-    async def all_done(new_words):
-        # save the new seed value
-        set_seed_value(new_words)
-        
-        # clear menu stack
-        goto_top_menu(first_time=True)
-
-        return None
 
     async def explain_error(self, *a):
 
@@ -1238,10 +1237,11 @@ class SingleWordMenu(WordNestMenu):
         if items:
             super(SingleWordMenu, self).__init__(items=items, **kws)
         else:
-            super(SingleWordMenu, self).__init__(num_words=1, has_checksum=False, done_cb=None)
+            super(SingleWordMenu, self).__init__(num_words=1, has_checksum=False,
+                        done_cb=self.commit_value)
 
     @staticmethod
-    async def all_done(new_words):
+    async def commit_value(new_words):
         # create one more menu w/ the word and some variations on that word
         word = new_words[0]
         options = [word, word[0].upper() + word[1:], word.upper()]

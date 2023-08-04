@@ -124,7 +124,10 @@ import_xor_parts = []
 
 class XORWordNestMenu(WordNestMenu):
 
-    async def all_done(self, new_words):
+    def __init__(self, **kws):
+        super().__init__(done_cb=self.xor_all_done, **kws)
+
+    async def xor_all_done(self, new_words):
         # So we have another part, might be done or not.
         global import_xor_parts
         assert len(new_words) == self.target_words
