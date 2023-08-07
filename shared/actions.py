@@ -21,7 +21,7 @@ from glob import settings
 from pincodes import pa
 from menu import start_chooser
 from version import MAX_TXN_LEN
-from charcodes import KEY_NFC
+from charcodes import KEY_NFC, KEY_QR
 
 
 CLEAR_PIN = '999999-999999'
@@ -516,7 +516,7 @@ async def start_seed_import(menu, label, item):
     import seed
     if version.has_qwerty:
         from ux_q1 import seed_word_entry
-        await seed_word_entry('Enter Seed Words', num_words,
+        await seed_word_entry('Enter Seed Words', item.arg,
                                             done_cb=seed.commit_new_words)
     else:
         return seed.WordNestMenu(item.arg)
@@ -607,6 +607,7 @@ consequences.''', escape='4')
 def render_master_secrets(mode, raw, node):
     # Render list of words, or XPRV / master secret to text.
     import stash, chains
+    from ux import ux_render_words
 
     c = chains.current_chain()
     qr_alnum = False
@@ -621,7 +622,7 @@ def render_master_secrets(mode, raw, node):
         qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
-        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+        msg += ux_render_words(words)
 
         if stash.bip39_passphrase:
             msg += '\n\nBIP-39 Passphrase:\n    *****'
@@ -683,8 +684,8 @@ async def view_seed_words(*a):
         msg += '\n\nPress (1) to view as QR Code.'
 
         while 1:
-            ch = await ux_show_story(msg, sensitive=True, escape='1')
-            if ch == '1':
+            ch = await ux_show_story(msg, sensitive=True, escape='1'+KEY_QR)
+            if ch in '1'+KEY_QR:
                 from ux import show_qr_code
                 await show_qr_code(qr, qr_alnum)
                 continue

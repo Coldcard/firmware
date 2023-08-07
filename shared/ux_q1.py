@@ -5,7 +5,7 @@
 from uasyncio import sleep_ms
 import utime, gc
 from charcodes import *
-from lcd_display import CHARS_W, CursorSpec
+from lcd_display import CHARS_W, CHARS_H, CursorSpec
 from exceptions import AbortInteraction
 import bip39
 
@@ -61,6 +61,14 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
+            
+async def ux_confirm(msg):
+    # confirmation screen, with stock title and Y=of course.
+    from ux import ux_show_story
+
+    resp = await ux_show_story('\n' + msg, title="Are you SURE ?!?")
+
+    return resp == 'y'
 
 async def ux_enter_number(prompt, max_value, can_cancel=False):
     # return the decimal number which the user has entered
@@ -82,7 +90,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     while 1:
         # TODO: check width, go to two lines if needed? depends on prompt text
         bx = dis.text(2, 4, prompt + ' ' + value)
-        dis.show(cursor=CursorSpec(bx, 4))
+        dis.show(cursor=CursorSpec(bx, 4, 0, 0))
 
         ch = await press.wait()
         if ch == KEY_SELECT:
@@ -117,27 +125,20 @@ async def ux_input_numbers(val, validate_func):
     pass
 
 async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
-            prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False, num_words=0):
+            prompt='Enter value', min_len=0, b39_complete=False, scan_ok=True):
     # Get a text string.
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
     # - no control chars allowed either
     # - TODO: press QR -> do scan and use that text
-    # - TODO: regex validation for derviation paths
-    # - TODO: assume phrase seed entry
+    # - TODO: regex validation for derviation paths?
     from glob import dis
     from ux import ux_show_story
 
     dis.clear()
-    if num_words:
-        b39_complete = True
-        max_len = 216
-        min_len = 36
-        got_words = []
 
     if b39_complete:
         dis.text(None, -2, "↦ to auto-complete. (QR) to scan.")
-
     dis.text(None, -1, "CANCEL or SELECT when done.")
 
     # TODO:
@@ -150,8 +151,6 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     ch_remap = lambda ch: ch if ' ' <= ch < chr(127) else None
     if hex_only:
         ch_remap = lambda ch: ch.lower() if ch in '0123456789abcdefABCDEF' else None
-    if num_words:
-        ch_remap = lambda ch: ch.lower() if ch==' ' or ch.isalpha() else None
 
 
     y = 2
@@ -211,11 +210,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         ch = await press.wait()
 
         if ch == KEY_SELECT:
-            if num_words:
-                if len(got_words) == num_words:
-                    break
-                err_msg = 'Need exactly %d words.' % num_words
-            elif len(value) >= min_len:
+            if len(value) >= min_len:
                 break
             else:
                 err_msg = 'Need %d characters at least.' % min_len
@@ -254,7 +249,6 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
             pref = ''.join(pref)
             exact, nextchars, is_word = bip39.next_char(pref.lower())
-            print('%s => exact=%s nextchars=%s is_word=%s' % (pref, exact, nextchars, is_word))
 
             if not is_word and len(nextchars) == 1:
                 # only one possible next char, so complete for them
@@ -273,31 +267,15 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                     is_word = is_word.upper()
 
                 value += is_word[len(pref):]
-                if num_words:
-                    got_words.append(exact)
-                    if len(got_words) < num_words:
-                        value += ' '
+
             elif not nextchars:
                 err_msg = 'Not a BIP-39 word: ' + pref
-            elif len(nextchars) < 12:
+            elif len(nextchars) < 18:
                 # 'sta' and other s-prefixes
                 err_msg = 'Press next key: ' + nextchars
             else:
                 err_msg = 'Need more letters.'
 
-        elif num_words and ch == ' ':
-            # doing a space during seed-word entry: must be forming a 
-            # valid word, or fail
-            last = value.split(' ')[-1]
-            if last:
-                exact, nextchars, is_word = bip39.next_char(last)
-                if exact and not is_word:
-                    is_word = last      # "act " case
-                if is_word:
-                    got_words.append(is_word)
-                    value += ' ' 
-                else:
-                    err_msg = 'Not a BIP-39 word: ' + last
         else:
             ch = ch_remap(ch)
             if ch is not None:
@@ -305,21 +283,6 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                     value += ch
                 else:
                     value = value[0:max_len-1] + ch
-
-            if num_words and ch != ' ':
-                last = value.split(' ')[-1]
-                if len(last) >= 4:
-                    exact, nextchars, is_word = bip39.next_char(last)
-                    if not exact:
-                        err_msg = 'Not a BIP-39 prefix: ' + last
-                    else:
-                        got_words.append(is_word)
-                        value = value + is_word[len(last):] + ' '
-                
-                
-
-    if num_words:
-        return got_words
 
     return value
 
@@ -409,16 +372,216 @@ async def ux_login_countdown(sec):
 
     dis.busy_bar(0)
 
+def ux_render_words(words):
+    # re-use word-list rendering code to show as a string in a story.
+    # - because I want them all on-screen at once, and not simple to do that
+    buf = [bytearray(CHARS_W) for y in range(CHARS_H)]
+
+    rv = ['']
+
+    num_words = len(words)
+    if num_words == 12:
+        for y in range(6):
+            rv.append('%2d: %-8s   %2d: %s' % (y+1, words[y], y+7, words[y+6]))
+    else:
+        lines = 6 if num_words == 18 else 8
+        for y in range(lines):
+            rv.append('%d:%-8s %2d:%-8s %2d:%s' % (y+1, words[y], 
+                    y+lines+1, words[y+lines], 
+                    y+(lines*2)+1, words[y+(lines*2)]))
+
+    return '\n'.join(rv)
+    
+
+def ux_draw_words(y, num_words, words):
+    # Draw seed words on single screen (hard) and return x/y position of start of each
+    from glob import dis
+
+    if num_words == 12:
+        cols = 2
+        xpos = [2, 18]
+    else:
+        cols = 3
+        xpos = [0, 11, 23]
+
+    n_per_c = num_words // cols     #   6/4/8
+
+    rv = []
+    for n, word in enumerate(words, 1):
+        if num_words == 12:
+            # luxious space after colon
+            msg = ('%2d: ' % n) + word
+            x_off = 3
+        else:
+            if n <= n_per_c:
+                # no space in front of 1: thru N: in leftmost column of 3
+                msg = ('%d:' % n) + word
+                x_off = 2
+            else:
+                msg = ('%2d:' % n) + word
+                x_off = 3
+
+        X, Y = xpos[(n-1) // n_per_c], y + ((n-1) % n_per_c)
+        dis.text(X, Y, msg)
+        rv.append( (X+x_off, Y) )
+
+    return rv
+
 async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
-    # Accept a seed phrase
-    # - replaces WordNestMenu()'s constructor
-    # - return a function that will be called w/ menu details (dont care)
+    # Accept a seed phrase, only
+    # - replaces WordNestMenu on Q1
+    # - max word length is 8, min is 3
+    # - useful: simulator.py --q1 --eff --seq 'aa ee 4i '
+    from glob import dis
+
     assert num_words and prompt and done_cb
 
-    v = await ux_input_text('', confirm_exit=False, prompt=prompt, num_words=num_words)
-    if not v:
-        return
+    words = ['' for i in range(num_words)]
 
-    await done_cb(v)
+    dis.clear()
+    dis.text(None, 0, prompt, invert=1)
+    pos = ux_draw_words(2 if num_words != 24 else 1, num_words, words)
+
+    word_num = 0
+    value = ''
+    err_msg = last_err = None
+    press = PressRelease()
+    last_words = []
+    while 1:
+        if word_num == num_words:
+            # useful to show final word on screen, even tho confirm not needed
+            err_msg = 'Press SELECT if all done.' if not has_checksum else \
+                      'Valid words! Press SELECT.'
+            cur = None
+        else:
+            x, y = pos[word_num]
+            ln = len(value)
+            if ln == 8:
+                # outline mode if on final possible location
+                cur = CursorSpec(x+ln-1, y, 0, True)
+            else:
+                cur = CursorSpec(x+ln, y, 0, 0)
+
+            dis.text(x, y, '%-8s' % value)
+
+        # show error msg, until they type anything to clear it
+        if err_msg:
+            dis.text(None, -1, err_msg)
+            err_msg = None
+            last_err = True
+        elif last_err:
+            dis.text(None, -1, '')
+            last_err = False
+
+        dis.show(cursor=cur)
+        ch = await press.wait()
+
+        commit = False
+        if ch == KEY_SELECT:
+            if word_num == num_words:
+                break
+            commit = True
+        elif ch == KEY_DELETE or ch == KEY_LEFT:
+            # delete last char
+            if len(value) > 0:
+                value = value[:-1]
+            elif word_num:
+                # go to prev word
+                word_num -= 1
+                words[word_num] = value = ''
+                
+        elif ch == KEY_CLEAR:
+            value = ''
+        elif ch == KEY_CANCEL:
+            if word_num >= 2:
+                tmp = dis.save_state()
+                ok = await ux_confirm("Everything you've entered will be lost.")
+                if not ok: 
+                    dis.restore_state(tmp)
+                    continue
+            return None
+            
+        elif ch in { ' ', KEY_TAB, KEY_DOWN, KEY_RIGHT }:
+            # re-consider if word done, like "act" and other 3-letter cases
+            commit = True
+        elif ch.isalpha():
+            value += ch.lower()
+        else:
+            continue
+
+        if has_checksum and word_num == num_words-1 and (len(value) >= 1 or commit):
+            assert last_words
+            if value not in last_words:
+                maybe = [i for i in last_words if i.startswith(value)]
+                if len(maybe) == 1:
+                    value = maybe[0]
+                elif len(maybe) == 0:
+                    if len(last_words) == 8:        # 24 words case
+                        ll = ''.join(sorted(set([w[0] for w in last_words])))
+                        err_msg = 'Final word starts with: ' + ll
+                    else:
+                                   ##################################
+                        err_msg = "Final word cannot start with: " + value
+                    value = value[:-1]
+                    continue
+                else:
+                    nextchars = ''.join(sorted(set(i[len(value)] for i in maybe)))
+                    err_msg = 'Next key: ' + nextchars
+                    continue
+            if value in last_words:
+                dis.text(x, y, '%-8s' % value)
+                words[word_num] = value
+                word_num += 1
+                value = ''
+                continue
+        
+        if len(value) >= 2:
+            exact, nextchars, is_word = bip39.next_char(value)
+            #print('%s => exact=%s nextchars=%s is_word=%s' % (value, exact, nextchars, is_word))
+
+            if exact and not is_word and commit:
+                # they pressed space after a valid 3 letter prefix (act vs actor)
+                is_word = value
+
+            if is_word:
+                # word is from list, so we are done... move to next word
+                words[word_num] = is_word
+                dis.text(x, y, '%-8s' % is_word)
+                word_num += 1
+                value = ''
+
+                if has_checksum and word_num == num_words-1:
+                    # calc all possible final words
+                    # 12 -> 128, 18->32, 24->8
+                    last_words = list(bip39.a2b_words_guess(words[:-1]))
+
+            elif not nextchars:
+                err_msg = 'Not a BIP-39 word: ' + value
+                value = value[0:3]
+            else:
+                # 'sta' and other s-prefixes can have many choices!
+                err_msg = 'Next key: ' + nextchars
+
+    await done_cb(words)
+
+def ux_dice_rolling():
+    from glob import dis
+
+    # draw fixed parts of screen
+    dis.clear()
+    dis.text(0, 1, "Press 1-6 for each dice roll")
+    dis.text(0, 2, "to mix in.")
+
+    def update(count, hx=None):
+        dis.text(None, 4, '%d rolls so far' % count, invert=1)
+
+        if hx is not None:
+            dis.text(0, -2, hx[0:32]+'-')
+            dis.text(2, -1, ''+hx[32:])
+
+        dis.show()
+
+    # return funct to draw updating part
+    return update
 
 # EOF

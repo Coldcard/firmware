@@ -37,10 +37,12 @@ COL_WHITE = 0xffff
 COL_BLACK = 0x0000
 COL_PROGRESS = COL_TEXT
 
+# Just one bit for attribute data (for now)
 FLAG_INVERT = 0x8000
 ATTR_MASK = 0x8000
 
 # text display attributes, ie. colours
+# XXX not implem
 AT_INVERT = 0x1
 AT_GREY25 = 0x1
 AT_GREY50 = 0x1
@@ -192,14 +194,6 @@ class Display:
         self.dis.show_zpixels(x, y, w, h, data)
         self.mark_correct(x, y, w, h)
 
-    def mark_lines_dirty(self, rng):
-        # mark a bunch of lines as needing redraw
-        # - for QR which covers most of screen
-        # - DELME
-        for y in rng:
-            self.last_buf[y] = array.array('H', (0xfffe for i in range(CHARS_W)))
-            self.next_buf[y] = array.array('H', (0xfffe for i in range(CHARS_W)))
-
     def mark_correct(self, px, py, w, h):
         # mark a subset of the screen as already drawn correctly
         # - because we drew an image in that spot already (immediate)
@@ -268,7 +262,7 @@ class Display:
                 self.next_buf[y][x] = 0
                 x += 1
 
-        return end_x
+        return end_x if end_x is not None else x
 
     def real_clear(self, _internal=False):
         # fill to black, but only text area, not status bar
@@ -345,16 +339,24 @@ class Display:
             assert 0 <= cursor.y < CHARS_H, 'cur y'
             self.gpu.cursor_at(*cursor)
             self.last_buf[cursor.y][cursor.x] = 0xfffd
-            if cursor.dbl_wide:
+            if cursor.dbl_wide and cursor.x < CHARS_W-1:
                 self.last_buf[cursor.y][cursor.x+1] = 0xfffd
 
-    # rather than clearing and redrawing, use this buffer w/ fixed parts of screen
-    # - obsolete concept
+    # When drawing another screen for a bit, then coming back, use these
+    def save_state(self):
+        # TODO: should be a dataclass w/ all our state details
+        return ([array.array('H', ln) for ln in self.last_buf], self.last_prog_x)
+
+    def restore_state(self, old_state):
+        rows, self.next_prog_x = old_state
+        for y in range(CHARS_H):
+            self.next_buf[y][:] = rows[y]
+        self.show()
+
+    # obsolete OLED approach
     def save(self):
-        pass
+        raise NotImplementedError
     def restore(self):
-        pass
-    def clear_rect(self, x,y, w,h):
         raise NotImplementedError
 
     def hline(self, y):
@@ -367,9 +369,14 @@ class Display:
         #self.dis.fill_rect(x,TOP_MARGIN, 1, ACTIVE_H, 0xffff)
         pass
 
+    def clear_rect(self, x,y, w,h):
+        # but see clear_box() instead
+        raise NotImplementedError
+
     def scroll_bar(self, fraction):
         # along right edge
         # MAYBE TODO: make this internal, part of show and make fraction a var?
+        # XXX not showing at all
         self.gpu.take_spi()
         self.dis.fill_rect(WIDTH-5, 0, 5, HEIGHT, 0)
         mm = HEIGHT-6
@@ -464,23 +471,7 @@ class Display:
         self.text(x, ry, ' '+msg+' ', invert=is_sel)
 
         if is_checked:
-            #self.text(CHARS_W-3, ry, '✔︎')
-            self.text(len(msg)+2, ry, '✔︎')
-
-        if 0:
-            if is_sel:
-                #ln = '▶ %s ◀' % msg
-                #ln = '█▌%s▐█' % msg
-                ln = '█▌%-29s▐█' % msg
-            else:
-                ln = '  ' + msg
-
-            if is_checked:
-                ln = '%-34s' % ln
-                ln = ln[:CHARS_W-3] + '✓'
-
-            self.text(0, ry, ln)
-
+            self.text(len(msg)+2, ry, '✔')
 
     def show_yikes(self, lines):
         # dump a stack trace

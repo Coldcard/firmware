@@ -60,6 +60,14 @@ class PressRelease:
             else:
                 self.last_key = ch
                 return ch
+            
+async def ux_confirm(msg):
+    # confirmation screen, with stock title and Y=of course.
+    from ux import ux_show_story
+
+    resp = await ux_show_story("Are you SURE ?!?\n\n" + msg)
+
+    return resp == 'y'
 
 async def ux_enter_number(prompt, max_value, can_cancel=False):
     # return the decimal number which the user has entered
@@ -461,5 +469,33 @@ async def ux_login_countdown(sec):
         sec -= 1
 
     dis.busy_bar(0)
+
+def ux_dice_rolling():
+    from glob import dis
+    from display import FontTiny, FontLarge
+
+    # draw fixed parts of screen
+    dis.clear()
+    y = 38
+    dis.text(0, y, "Press 1-6 for each dice"); y += 13
+    dis.text(0, y, "roll to mix in.")
+    dis.save()
+
+    def update(count, hx=None):
+        dis.restore()
+        dis.text(None, 0, '%d rolls' % count, FontLarge)
+
+        if hx is not None:
+            dis.text(0, 20, hx[0:32], FontTiny)
+            dis.text(0, 20+7, hx[32:], FontTiny)
+
+        dis.show()
+
+    # return funct to draw updating part
+    return update
+
+def ux_render_words(words):
+    # caution: text layout here, and flag sensitive=T trigger side-channel defenses
+    return '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
 
 # EOF

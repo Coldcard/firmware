@@ -24,7 +24,7 @@ from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR
+from charcodes import KEY_QR, KEY_SELECT, KEY_CANCEL
 
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -273,7 +273,10 @@ individual words if you wish.''')
 
 async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False):
     msg = (prompt or 'Record these %d secret words!\n') % len(words)
-    msg += '\n'.join('%2d: %s' % (i, w) for i, w in enumerate(words, start=1))
+
+    from ux import ux_render_words
+    msg += ux_render_words(words)
+
     msg += '\n\nPlease check and double check your notes.'
     if not ephemeral:
         # user can skip quiz for ephemeral secrets
@@ -301,9 +304,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
 
 async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
-    from glob import dis
-    # XXX q1 support
-    from display import FontTiny, FontLarge
+    from ux import ux_dice_rolling
 
     low_entropy_msg = "You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy."
     low_entropy_msg += " For %d-bit security"
@@ -324,23 +325,13 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
     md = sha256(seed)
     pr = PressRelease()
 
-    # fixed parts of screen
-    dis.clear()
-    y = 38
-    dis.text(0, y, "Press 1-6 for each dice"); y += 13
-    dis.text(0, y, "roll to mix in.")
-    dis.save()
+    # draws initial screen, and returns funct to update count and/or hash
+    screen_updater = ux_dice_rolling()
 
     while 1:
         # Note: cannot scroll this msg because 5=up arrow
-        dis.restore()
-        dis.text(None, 0, '%d rolls' % count, FontLarge)
-
         hx = str(b2a_hex(md.digest()), 'ascii')
-        dis.text(0, 20, hx[0:32], FontTiny)
-        dis.text(0, 20+7, hx[32:], FontTiny)
-
-        dis.show()
+        screen_updater(count, hx)
 
         ch = await pr.wait()
 
@@ -348,19 +339,18 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
             count += 1
             counter[ch] = counter.get(ch, 0) + 1  # mimics defaultdict
 
-            dis.restore()
-            dis.text(None, 0, '%d rolls' % count, FontLarge)
-            dis.show()
+            # show udpated count immediately
+            screen_updater(count, None)
 
             # this is slow enough to see
             md.update(ch)
 
-        elif ch == 'x':
+        elif ch == KEY_CANCEL:
             # Because the change (roll) has already been applied,
             # only let them abort if it's early still
             if count < 10 and judge_them:
                 return 0, seed
-        elif ch == 'y':
+        elif ch == KEY_SELECT:
             if count < threshold and judge_them:
                 if not count:
                     return 0, seed
@@ -777,8 +767,10 @@ async def word_quiz(words, limited=None, title='Word %d is?'):
 
         while 1:
             random.shuffle(choices)
-            
-            msg = '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
+
+            msg = '' if not dis.has_lcd else '\n'
+
+            msg += '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
             msg += '\n\nWhich word is right?\n\nX to give up, OK to see all the words again.'
 
             ch = await ux_show_story(msg, title=title % (o+1), escape='123', sensitive=True)

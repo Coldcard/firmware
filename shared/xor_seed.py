@@ -6,11 +6,12 @@
 # - all combination of partial XOR seed phrases are working wallets
 #
 import stash, ngu, bip39, random
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause
+from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_render_words
 from seed import word_quiz, WordNestMenu, set_seed_value, set_ephemeral_seed
 from glob import settings
 from actions import goto_top_menu
 from version import has_qwerty
+from charcodes import KEY_CANCEL
 
 
 def xor(*args):
@@ -104,7 +105,7 @@ Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
 
     while 1:
         ch = await show_n_parts(word_parts, chk_word)
-        if ch == 'x': 
+        if ch == KEY_CANCEL:
             if not use_rng: return
             if await ux_confirm("Stop and forget those words?"):
                 return
@@ -112,7 +113,7 @@ Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
 
         for ws, part in enumerate(word_parts):
             ch = await word_quiz(part, title='Word %s%%d is?' % chr(65+ws))
-            if ch == 'x': break
+            if ch == KEY_CANCEL: break
         else:
             break
 
@@ -158,8 +159,13 @@ async def xor_all_done(new_words):
 
     elif ch == '1':
         # do another list of words
-        nxt = XORWordNestMenu(num_words=target_words)
-        the_ux.push(nxt)
+        if has_qwerty:
+            from ux_q1 import seed_word_entry
+            await seed_word_entry("Part %s Words" % chr(65+len(import_xor_parts)),
+                                                target_words, done_cb=xor_all_done)
+        else:
+            nxt = XORWordNestMenu(num_words=target_words)
+            the_ux.push(nxt)
 
     elif ch == '2':
         # done; import on temp basis, or be the main secret
@@ -204,7 +210,7 @@ async def show_n_parts(parts, chk_word):
 
     for n,words in enumerate(parts):
         msg += 'Part %s:\n' % chr(65+n)
-        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+        msg += ux_render_words(words)
         msg += '\n\n'
 
     msg += ('The correctly reconstructed seed phrase will have this final word,'

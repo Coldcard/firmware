@@ -18,14 +18,14 @@ if version.has_qwerty:
     CH_PER_W = CHARS_W
     STORY_H = CHARS_H
     from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-    from ux_q1 import ux_login_countdown
+    from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
 else:
     # How many characters can we fit on each line? How many lines?
     # (using FontSmall)
     CH_PER_W = 17
     STORY_H = 5
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
-    from ux_mk4 import ux_login_countdown
+    from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
 
 class UserInteraction:
     def __init__(self):
@@ -237,13 +237,6 @@ async def idle_logout():
             from actions import logout_now
             await logout_now()
             return              # not reached
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-
-    resp = await ux_show_story("Are you SURE ?!?\n\n" + msg)
-
-    return resp == 'y'
 
 
 async def ux_dramatic_pause(msg, seconds):
