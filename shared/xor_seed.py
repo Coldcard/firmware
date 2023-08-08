@@ -206,11 +206,11 @@ class XORWordNestMenu(WordNestMenu):
 async def show_n_parts(parts, chk_word):
     num_parts = len(parts)
     seed_len = len(parts[0])
-    msg = 'Record these %d lists of %d-words each.\n\n' % (num_parts, seed_len)
+    msg = 'Record these %d lists of %d-words each: ' % (num_parts, seed_len)
 
     for n,words in enumerate(parts):
         msg += 'Part %s:\n' % chr(65+n)
-        msg += ux_render_words(words)
+        msg += ux_render_words(words, leading_blanks=0)
         msg += '\n\n'
 
     msg += ('The correctly reconstructed seed phrase will have this final word,'

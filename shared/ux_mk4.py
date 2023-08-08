@@ -494,7 +494,7 @@ def ux_dice_rolling():
     # return funct to draw updating part
     return update
 
-def ux_render_words(words):
+def ux_render_words(words, **kws):
     # caution: text layout here, and flag sensitive=T trigger side-channel defenses
     return '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
 
