@@ -31,6 +31,7 @@ from version import mk_num, is_devmode
 #   words = {0/12/18/24} nummber of BIP-39 seed words exist (default: 24, 0=XPRV, etc)
 #   b39skip = (bool) skip discussion about use of BIP-39 passphrase
 #   idle_to = idle timeout period (seconds)
+#   batt_to = (when on battery only) idle timeout period
 #   _age = internal verison number for data (see below)
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)

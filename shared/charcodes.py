@@ -51,7 +51,7 @@ KEY_F6 = '\x17'
 # - unused spots are \0
 # - these are unshifted values
 # - ten per row, gaps with zero
-DECODER = (KEY_NFC + KEY_QR + KEY_TAB 
+DECODER = (KEY_NFC + KEY_TAB + KEY_QR 
             + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_SELECT + '\0'
     + '1234567890'
     + 'qwertyuiop'
@@ -72,7 +72,7 @@ DECODER_SHIFT = (
     '\0\0\0\0' + KEY_CLEAR + '\0\0\0\0\0' )
 
 # in caps mode: numbers unaffected, and also allow meta keys normally
-DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB 
+DECODER_CAPS = (KEY_NFC + KEY_TAB + KEY_QR
             + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_SELECT + '\0'
     + '1234567890'
     + 'QWERTYUIOP'
@@ -83,7 +83,7 @@ DECODER_CAPS = (KEY_NFC + KEY_QR + KEY_TAB
 # when SYMBOL pressed
 # - be nice and allow number+symbol == number + shift
 # - also nicity: symb+cancel=clear
-DECODER_SYMBOL = (KEY_NFC + KEY_QR + KEY_TAB 
+DECODER_SYMBOL = (KEY_NFC + KEY_TAB + KEY_QR 
             + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_CANCEL + KEY_SELECT + '\0'
     + '!@#$%^&*()'
     + '-_`\0\0\0[]{}'

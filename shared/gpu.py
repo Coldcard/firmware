@@ -256,9 +256,9 @@ class GPUAccess:
             self.cmd_resp(b'a')
         except: pass
         
-    def cursor_at(self, x, y, dbl_wide=False, outline=False):
-        # use outline to leave most of the cell unaffects (just 1px inside border)
-        cmd = b'c' + bytes([x, y, int(not outline), int(dbl_wide)])
+    def cursor_at(self, x, y, cur_type):
+        # enable a cursor at indicated position. few different styles
+        cmd = b'c' + bytes([x, y, cur_type])
         try:
             self.cmd_resp(cmd)
         except: pass
@@ -292,6 +292,29 @@ class GPUAccess:
         assert v == gpu_binary.VERSION
 
         return v
-            
+
+    async def reflash_gpu_ux(self):
+        # Available from Advanced > Danger Zone > Reflash GPU
+        from ux import ux_show_story
+        from gpu_binary import VERSION
+        from utils import problem_file_line
+        from glob import dis
+
+        b4 = self.get_version()
+        ch = await ux_show_story('''This action reloads the firmware on the GPU co-processor. \
+Should not be needed in normal use.\n
+  Current GPU version is: %s
+         We have version: %s\n\nContinue?''' % (b4, VERSION))
+
+        if ch != 'y': return
+
+        dis.fullscreen('Reflashing...')
+
+        try:
+            aft = self.upgrade()
+            await ux_show_story('Upgraded/reflashed.\n\nNew version is: %s' % aft)
+        except BaseException as exc:
+            await ux_show_story('GPU Flash Failed!\n\n%s' % problem_file_line(exc))
+                
 
 # EOF

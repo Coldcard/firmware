@@ -14,15 +14,12 @@ from utils import xfp2str
 from ucollections import namedtuple
 
 # the one font: fixed-width (except for a few double-width chars)
-from font_iosevka import CELL_W, CELL_H, TEXT_PALETTE, TEXT_PALETTE_INV, COL_TEXT
+from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT
 from font_iosevka import FontIosevka
 
 # free unused screen buffers, we don't work that way
 del sram2.display_buf
 del sram2.display2_buf
-
-# one byte per pixel; fixed palette maps to BGR565 in C code
-#display2_buf = bytearray(320 * 240)
 
 #WIDTH = const(320)
 #HEIGHT = const(240)
@@ -37,20 +34,22 @@ COL_WHITE = 0xffff
 COL_BLACK = 0x0000
 COL_PROGRESS = COL_TEXT
 
-# Just one bit for attribute data (for now)
-FLAG_INVERT = 0x8000
-ATTR_MASK = 0x8000
-
-# text display attributes, ie. colours
-# XXX not implem
-AT_INVERT = 0x1
-AT_GREY25 = 0x1
-AT_GREY50 = 0x1
-AT_RED = 0x1
-AT_GREEN = 0x1
+# Attribute stored per-char; really just an index into TEXT_PALETTES
+FLAG_INVERT = 0x10000
+FLAG_DARK   = 0x20000
+ATTR_MASK   = 0x30000
 
 # use this to describe cursor you need.
-CursorSpec = namedtuple('CursorSpec', 'x y dbl_wide outline')
+# - outline leaves most of the cell unaffected (just 1px inside border)
+# - solid/outline available in double-width as well
+CURSOR_SOLID = 0x01
+CURSOR_OUTLINE = 0x02
+CURSOR_MENU = 0x03
+CURSOR_DW_OUTLINE = 0x11
+CURSOR_DW_SOLID = 0x12
+
+CursorSpec = namedtuple('CursorSpec', 'x y cur_type')
+CURSOR_DW_Mask = 0x10
 
 def grey_level(amt):
     # give percent 0..1.0
@@ -133,8 +132,10 @@ class Display:
         #self.dis.fill_screen()     # defer a bit
         self.draw_status(full=True)
 
-    def make_buf(self, ch):
-        return [array.array('H', (ch for i in range(CHARS_W))) for y in range(CHARS_H)]
+    def make_buf(self, ch=32):
+        # make a screen-state storage buffer. One spot per character, but needs to
+        # store attributes as well as support 16-bit unicode
+        return [array.array('I', (ch for i in range(CHARS_W))) for y in range(CHARS_H)]
 
     def redraw_metakeys(self, new_state):
         # called when metakeys have changed state
@@ -227,11 +228,18 @@ class Display:
         rv += sum(1 for ch in msg if ch in FontIosevka.DOUBLE_WIDE)
         return rv
 
-    def text(self, x,y, msg, font=None, invert=0, attr=None):
+    def text(self, x,y, msg, font=None, invert=False, dark=False):
         # Draw at x,y (in cell positions, not pixels)
         # - use invert=1 to get reverse video
-        # - returns ending X position, if we centered it
+        # - returns ending X position, where you might want a cursor after
         end_x = None
+
+        # encode text attribute for this part
+        attr = 0
+        if invert:
+            attr = FLAG_INVERT
+        if dark:
+            attr = FLAG_DARK
 
         if x is None or x < 0:
             w = self.width(msg)
@@ -256,7 +264,7 @@ class Display:
 
         for ch in msg:
             if x >= CHARS_W: break
-            self.next_buf[y][x] = ord(ch) + (FLAG_INVERT if invert else 0)
+            self.next_buf[y][x] = ord(ch) + attr
             x += 1
             if ch in FontIosevka.DOUBLE_WIDE:
                 self.next_buf[y][x] = 0
@@ -316,8 +324,7 @@ class Display:
                     x += 1
                     continue
 
-                self.dis.show_pal_pixels(px, py, fn.w, fn.h, 
-                    TEXT_PALETTE if not (attr == FLAG_INVERT) else TEXT_PALETTE_INV, fn.bits)
+                self.dis.show_pal_pixels(px, py, fn.w, fn.h, TEXT_PALETTES[attr >> 16], fn.bits)
 
                 x += fn.w // CELL_W
 
@@ -337,15 +344,15 @@ class Display:
             # implement CursorSpec values
             assert 0 <= cursor.x < CHARS_W, 'cur x'
             assert 0 <= cursor.y < CHARS_H, 'cur y'
-            self.gpu.cursor_at(*cursor)
+            self.gpu.cursor_at(cursor.x, cursor.y, cursor.cur_type)
             self.last_buf[cursor.y][cursor.x] = 0xfffd
-            if cursor.dbl_wide and cursor.x < CHARS_W-1:
+            if (cursor.cur_type & CURSOR_DW_Mask) and (cursor.x < CHARS_W-1):
                 self.last_buf[cursor.y][cursor.x+1] = 0xfffd
 
     # When drawing another screen for a bit, then coming back, use these
     def save_state(self):
         # TODO: should be a dataclass w/ all our state details
-        return ([array.array('H', ln) for ln in self.last_buf], self.last_prog_x)
+        return ([array.array('I', ln) for ln in self.last_buf], self.last_prog_x)
 
     def restore_state(self, old_state):
         rows, self.next_prog_x = old_state
@@ -376,7 +383,7 @@ class Display:
     def scroll_bar(self, fraction):
         # along right edge
         # MAYBE TODO: make this internal, part of show and make fraction a var?
-        # XXX not showing at all
+        # XXX not showing at all?!?
         self.gpu.take_spi()
         self.dis.fill_rect(WIDTH-5, 0, 5, HEIGHT, 0)
         mm = HEIGHT-6
@@ -473,6 +480,10 @@ class Display:
         if is_checked:
             self.text(len(msg)+2, ry, '✔')
 
+    def menu_show(self, cursor_y):
+        cs = CursorSpec(0, cursor_y or 0, CURSOR_MENU)
+        self.show(cursor=cs)
+
     def show_yikes(self, lines):
         # dump a stack trace
         # - intended for photos, sent to support!
@@ -504,7 +515,7 @@ class Display:
         y=0
         for ln in lines:
             if ln == 'EOT':
-                self.text(0, y, '─'*CHARS_W, attr=AT_GREY25)
+                self.text(0, y, '─'*CHARS_W, dark=True)
                 continue
             elif ln and ln[0] == '\x01':
                 # title ... but we have no special font?

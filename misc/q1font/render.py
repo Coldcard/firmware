@@ -249,7 +249,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     BRAND_TEXT_COLOUR = (255, 176, 0)       # amber phospher colour #ffb000
     pal_nums, pal_vals, text_pal = make_palette(shades, BRAND_TEXT_COLOUR)
     _, pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], BRAND_TEXT_COLOUR)
-    _, _, text_pal_dark =  make_palette(shades, BRAND_TEXT_COLOUR, 0.5)
+    _, _, text_pal_dark =  make_palette(shades, BRAND_TEXT_COLOUR, 0.66)
 
     with open(out_fname, 'w') as fp:
         tmpl = open('template.py').read()

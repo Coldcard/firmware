@@ -5,7 +5,7 @@
 from uasyncio import sleep_ms
 import utime, gc
 from charcodes import *
-from lcd_display import CHARS_W, CHARS_H, CursorSpec
+from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE, CURSOR_DW_SOLID
 from exceptions import AbortInteraction
 import bip39
 
@@ -90,7 +90,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     while 1:
         # TODO: check width, go to two lines if needed? depends on prompt text
         bx = dis.text(2, 4, prompt + ' ' + value)
-        dis.show(cursor=CursorSpec(bx, 4, 0, 0))
+        dis.show(cursor=CursorSpec(bx, 4, CURSOR_SOLID))
 
         ch = await press.wait()
         if ch == KEY_SELECT:
@@ -138,7 +138,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     dis.clear()
 
     if b39_complete:
-        dis.text(None, -2, "↦ to auto-complete. (QR) to scan.")
+        dis.text(None, -2, KEY_TAB + " to auto-complete. " + KEY_QR + " to scan.")
     dis.text(None, -1, "CANCEL or SELECT when done.")
 
     # TODO:
@@ -183,7 +183,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
         # show error msg, until they type anything to clear it
         if err_msg:
-            dis.text(None, y+num_lines+1, err_msg)
+            dis.text(None, y+num_lines+1, err_msg, dark=True)
             err_msg = None
             last_err = True
         elif last_err:
@@ -200,10 +200,10 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                 bx = len(ln)
 
         # decide cursor appearance
-        cur = CursorSpec(x+bx, y+n, 0, 0)
+        cur = CursorSpec(x+bx, y+n, CURSOR_SOLID)
         if cur.x >= x+line_len:
             # outline mode if on final possible location
-            cur = CursorSpec(x+line_len-1, y+n, 0, True)     
+            cur = CursorSpec(x+line_len-1, y+n, CURSOR_OUTLINE)
 
         dis.show(cursor=cur)
 
@@ -271,7 +271,10 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
             elif not nextchars:
                 err_msg = 'Not a BIP-39 word: ' + pref
             elif len(nextchars) < 18:
-                # 'sta' and other s-prefixes
+                # 'sta' and other s-prefixes can have many choices!
+                # 'act' could be by itself, or 'actual', etc.
+                if exact:
+                    nextchars += '␣'
                 err_msg = 'Press next key: ' + nextchars
             else:
                 err_msg = 'Need more letters.'
@@ -339,7 +342,7 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
     if not msg:
         x -= 1      # to get exactly in center when empty
 
-    dis.show(cursor=CursorSpec(x, y, True, False))
+    dis.show(cursor=CursorSpec(x, y, CURSOR_DW_SOLID))
 
 async def ux_login_countdown(sec):
     # Show a countdown, which may need to
@@ -457,16 +460,16 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
             x, y = pos[word_num]
             ln = len(value)
             if ln == 8:
-                # outline mode if on final possible location
-                cur = CursorSpec(x+ln-1, y, 0, True)
+                # outline-style cursor if on top of final possible location
+                cur = CursorSpec(x+ln-1, y, CURSOR_OUTLINE)
             else:
-                cur = CursorSpec(x+ln, y, 0, 0)
+                cur = CursorSpec(x+ln, y, CURSOR_SOLID)
 
             dis.text(x, y, '%-8s' % value)
 
         # show error msg, until they type anything to clear it
         if err_msg:
-            dis.text(None, -1, err_msg)
+            dis.text(None, -1, err_msg, dark=True)
             err_msg = None
             last_err = True
         elif last_err:
@@ -559,7 +562,6 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
                 err_msg = 'Not a BIP-39 word: ' + value
                 value = value[0:3]
             else:
-                # 'sta' and other s-prefixes can have many choices!
                 err_msg = 'Next key: ' + nextchars
 
     await done_cb(words)

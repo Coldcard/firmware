@@ -272,6 +272,9 @@ class Display:
         if is_checked:
             self.icon(108, y, 'selected', invert=is_sel)
 
+    def menu_show(self, *a):
+        self.show()
+
     def show_yikes(self, lines):
         self.clear()
         self.text(None, 1, '>>>> Yikes!! <<<<')

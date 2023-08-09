@@ -34,6 +34,12 @@ else:
 
 trick_pin_menu = TrickPinMenu.make_menu
 
+if version.has_battery:
+    from q1 import battery_idle_timeout_chooser
+else:
+    battery_idle_timeout_chooser = None
+
+
 #
 # NOTE: "Always In Title Case"
 #
@@ -101,6 +107,8 @@ SettingsMenu = [
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
+    MenuItem('Idle Timeout (on battery)', chooser=battery_idle_timeout_chooser,
+                                                 predicate=lambda: version.has_battery),
     ToggleMenuItem('Delete PSBTs', 'del', ['Default Keep', 'Delete PSBTs'],
         story='''\
 PSBT files (on SDCard) will be blanked & deleted after they are used. \
@@ -252,6 +260,7 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
+    MenuItem('Reflash GPU', f=reflash_gpu, predicate=lambda: version.has_qwerty),
 ]
 
 BackupStuffMenu = [

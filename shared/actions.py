@@ -398,8 +398,12 @@ async def show_nickname(nick):
     dis.clear()
 
     if dis.has_lcd:
-        from lcd_display import CHARS_H
-        dis.text(None, CHARS_H//3, nick)
+        from lcd_display import CHARS_W
+        from utils import word_wrap
+
+        lines = list(word_wrap(nick, CHARS_W))
+        for y,ln in enumerate(lines):
+            dis.text(None, 2+y, ln)
     else:
         from display import FontLarge, FontSmall
 
@@ -408,7 +412,7 @@ async def show_nickname(nick):
         else:
             dis.text(None, 27, nick, font=FontSmall)
 
-        dis.show()
+    dis.show()
 
     await ux_wait_keyup()
 
@@ -447,7 +451,7 @@ async def pick_nickname(*a):
 You can give this Coldcard a nickname and it will be shown before login.''')
         if ch != 'y': return
 
-    nn = await ux_input_text(nick, confirm_exit=False)
+    nn = await ux_input_text(nick, confirm_exit=False, prompt="Enter Nickname")
 
     nn = nn.strip() if nn else None
     s.set('nick', nn)
@@ -767,6 +771,7 @@ async def start_login_sequence():
     from ux import idle_logout, ux_login_countdown
     from glob import dis
     import callgate
+    from imptask import IMPT
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
@@ -777,6 +782,10 @@ async def start_login_sequence():
     try:
         await version_migration_prelogin()
     except: pass
+
+    if version.has_battery:
+        from q1 import batt_idle_logout
+        IMPT.start_task('b-idle', batt_idle_logout())
 
     # maybe show a nickname before we do anything
     try:
@@ -856,7 +865,6 @@ async def start_login_sequence():
         sys.print_exception(exc)
 
     # implement idle timeout now that we are logged-in
-    from imptask import IMPT
     IMPT.start_task('idle', idle_logout())
 
     # Populate xfp/xpub values, if missing.
@@ -2269,5 +2277,9 @@ async def microsd_2fa(*a):
             return
 
     return MicroSD2FA.menu()
+
+async def reflash_gpu(*a):
+    from glob import dis
+    await dis.gpu.reflash_gpu_ux()
 
 # EOF

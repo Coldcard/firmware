@@ -6,6 +6,9 @@
 #
 import os, sys, pyb, ckcc, version, glob, uctypes
 
+# value must exist in battery_idle_timeout_chooser() choices
+DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
+
 def init0():
     # called very early
     from mk4 import init0 as mk4_init0
@@ -74,5 +77,68 @@ def get_batt_threshold():
     if volts > 4.5:
         return 3
     return 2 if volts > 3 else 1
+
+def battery_idle_timeout_chooser():
+    from glob import settings
+
+    timeout = settings.get('batt_to', DEFAULT_BATT_IDLE_TIMEOUT)        # in seconds
+
+    ch = [  
+            ' 30 seconds',
+            ' 60 seconds',
+            ' 2 minutes',
+            ' 5 minutes',
+            '10 minutes',
+            '15 minutes',
+            '30 minutes',
+            ' 1 hour',
+            ' 4 hours',
+            ' Never' ]
+    va = [ 30, 60, 2*60, 5*60, 10*60, 15*60, 30*60,
+              3600, 4*3600, 0 ]
+
+    try:
+        which = va.index(timeout)
+    except ValueError:
+        which = 0
+
+    def _set(idx, text):
+        settings.set('batt_to', va[idx])
+
+    return which, ch, _set
+
+
+async def batt_idle_logout():
+    # long-running task to power down when idle too long.
+    # - even before login
+    import glob
+    from uasyncio import sleep_ms
+    from glob import settings
+    import utime
+
+    while not glob.hsm_active:
+        await sleep_ms(5000)
+
+        if get_batt_level() == None:
+            # on USB power
+            continue
+
+        last = glob.numpad.last_event_time
+        if not last:
+            continue
+
+        dt = utime.ticks_diff(utime.ticks_ms(), last)
+
+        # they may have changed setting recently
+        timeout = settings.get('batt_to', DEFAULT_BATT_IDLE_TIMEOUT)*1000        # ms
+
+        if timeout and dt > timeout:
+            # user has been idle for too long: do a logout (and powerdown)
+            print("Batt Idle!")
+
+            from actions import logout_now
+            await logout_now()
+            return              # not reached
+
 
 # EOF

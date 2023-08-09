@@ -18,7 +18,6 @@ freeze_as_mpy('', [
 # Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
 	'graphics.py',          # TODO remove
-	#'graphics_mk4.py',      # TODO remove
 	'graphics_q1.py',
 	'font_iosevka.py',
 	'gpu_binary.py',        # remove someday?

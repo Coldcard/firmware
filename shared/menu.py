@@ -5,7 +5,7 @@
 import gc
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_SPACE,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 from version import has_qwerty
 
@@ -212,11 +212,14 @@ class MenuSystem:
 
         dis.clear()
 
+        cursor_y = None
         for n in range(self.ypos+PER_M+1):
             if n+self.ypos >= self.count: break
 
             msg = self.items[n+self.ypos].label
             is_sel = (self.cursor == n+self.ypos)
+            if is_sel:
+                cursor_y = n
 
             # show check?
             checked = (self.chosen is not None and (n+self.ypos) == self.chosen)
@@ -233,7 +236,7 @@ class MenuSystem:
         if self.count > PER_M:
             dis.scroll_bar(self.ypos / (self.count-PER_M))
 
-        dis.show()
+        dis.menu_show(cursor_y)
 
     def get_wrap_length(self):
         from glob import settings
@@ -342,7 +345,7 @@ class MenuSystem:
             if not has_qwerty:
                 key = numpad_remap(key)
 
-            if key == KEY_SELECT or key == ' ':
+            if key == KEY_SELECT or key == KEY_SPACE:
                 # selected - done
                 return self.cursor
             elif key == KEY_CANCEL:
