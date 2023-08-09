@@ -2,28 +2,30 @@
 #
 # countdowns.py - various details and chooser menus for setting/showing countdown times
 #
-from glob import settings
+from ucollections import OrderedDict
 from nvstore import SettingsObject
 from menu import MenuItem
 from ux import ux_show_story, ux_dramatic_pause
 
 # Login countdown length, stored in minutes
 #
-lgto_map = {  
-         0: 'Disabled',
-         5: ' 5 minutes',
-        15: '15 minutes',
-        30: '30 minutes',
-        60: ' 1 hour',
-      2*60: ' 2 hours',
-      4*60: ' 4 hours',
-      8*60: ' 8 hours',
-     12*60: '12 hours',
-     24*60: '24 hours',
-     48*60: '48 hours',
-   3*24*60: ' 3 days',
-   7*24*60: ' 1 week',
-  28*24*60: '28 days later' }
+lgto_map = OrderedDict([
+    (0, 'Disabled'),
+    (5, ' 5 minutes'),
+    (15, '15 minutes'),
+    (30, '30 minutes'),
+    (60, ' 1 hour'),
+    (2*60, ' 2 hours'),
+    (4*60, ' 4 hours'),
+    (8*60, ' 8 hours'),
+    (12*60, '12 hours'),
+    (24*60, '24 hours'),
+    (48*60, '48 hours'),
+    (3*24*60, ' 3 days'),
+    (7*24*60, ' 1 week'),
+    (28*24*60, '28 days later'),
+])
+
 lgto_va = list(lgto_map.keys())
 lgto_ch = list(lgto_map.values())
 
