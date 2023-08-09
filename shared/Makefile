@@ -14,19 +14,7 @@ q1:
 up:
 	(cd ../stm32; make up)
 
-# Find any python files newer than the last firmware DFU file, and copy
-# them onto the flash filesystem of the device. They will replace the
-# frozen versions of the same name.
-#
-#NEWER = $(shell find . -name \*.py -newer ../stm32/firmware-signed.dfu)
-#up:
-#	cp $(NEWER) /Volumes/COLDCARD/lib
-
-# Remove old junk code, restore use of frozen modules.
-clean:
-	rm /Volumes/COLDCARD/lib/*.py
-
 tags:
 	ctags --python-kinds=-i -f .tags *.py */*.py
 
-.PHONY: up clean tags q1 dfu
+.PHONY: up tags q1 dfu
