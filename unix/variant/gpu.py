@@ -49,14 +49,18 @@ class GPUAccess:
         # stop showing the cursor
         self.take_spi()
         
-    def cursor_at(self, x, y, dbl_wide=False, outline=False):
+    def cursor_at(self, x, y, cur_type):
         # use outline to leave most of the cell unaffects (just 1px inside border)
-        glob.dis.dis.gpu_send('C', x, y, int(dbl_wide), int(outline))
+        glob.dis.dis.gpu_send('C', x, y, cur_type)
         self.i_have_spi = False
 
     def upgrade(self):
         # do in-circuit programming of GPU chip -- not simulated
         import gpu_binary
         return gpu_binary.VERSION
+
+    async def reflash_gpu_ux(self):
+        # nope
+        return
 
 # EOF

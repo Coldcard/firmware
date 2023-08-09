@@ -105,8 +105,7 @@ class LCDSimulator(SimulatedScreen):
     class CursorSpec:
         x: int
         y: int
-        dbl_wide: bool
-        outline: bool
+        cur_type: int
 
     def __init__(self, factory):
         self.movie = None
@@ -202,6 +201,14 @@ class LCDSimulator(SimulatedScreen):
         CELL_W = 9
         CELL_H = 22
 
+        # cur_type encoding
+        CURSOR_SOLID = 0x01
+        CURSOR_OUTLINE = 0x02
+        CURSOR_MENU = 0x03
+        CURSOR_DW_OUTLINE = 0x11
+        CURSOR_DW_SOLID = 0x12
+        CURSOR_DW_Mask = 0x10
+
         # flash cursor at frame rate / 32
         if self.phase & 31 != 0: return False
         phase = bool(self.phase & 32)
@@ -212,12 +219,14 @@ class LCDSimulator(SimulatedScreen):
         if char_x >= CHARS_W: return False
         if char_y >= CHARS_H: return False
 
+        dbl_wide = bool(self.cursor.cur_type & CURSOR_DW_Mask)
+        ctype = self.cursor.cur_type & 0xf
         assert CELL_H > 2*CELL_W           # for dbl_wide case
 
         # top left corner, just on edge of character cell
         x = LEFT_MARGIN + (char_x * CELL_W)
         y = TOP_MARGIN + (char_y * CELL_H)
-        cell_w = CELL_W + (CELL_W if self.cursor.dbl_wide else 0)
+        cell_w = CELL_W + (CELL_W if dbl_wide else 0)
 
         # make some pixels big enough for either vert or horz lines
         colour = self.COL_FOREGROUND if phase else self.COL_BLACK
@@ -227,7 +236,7 @@ class LCDSimulator(SimulatedScreen):
                 for y in range(Y, Y+h):
                     self.mv[x][y] = col
 
-        if self.cursor.outline:
+        if ctype == CURSOR_OUTLINE:
             # horz
             fill_solid(x,y, cell_w, 1, colour)
             fill_solid(x,y+CELL_H-1, cell_w, 1, colour)
@@ -235,13 +244,18 @@ class LCDSimulator(SimulatedScreen):
             # vert
             fill_solid(x, y+1, 1, CELL_H-2, colour)
             fill_solid(x+cell_w-1, y+1, 1, CELL_H-2, colour)
-        else:
+        elif ctype == CURSOR_SOLID:
             if not phase:
                 # solid fill -- draw first time
-                fill_solid(x,y, cell_w, CELL_H, self.COL_FOREGROUND);
+                fill_solid(x,y, cell_w, CELL_H, self.COL_FOREGROUND)
             else:
                 # box shape, blank interior pixels
-                fill_solid(x+1,y+1, cell_w-2, CELL_H-2, self.COL_BLACK);
+                fill_solid(x+1,y+1, cell_w-2, CELL_H-2, self.COL_BLACK)
+        elif ctype == CURSOR_MENU:
+            # half-wide thing for menus
+            fill_solid(x,y, 4, CELL_H, colour)
+        else:
+            raise ValueError(ctype)
 
         return True
         
@@ -356,7 +370,7 @@ class LCDSimulator(SimulatedScreen):
                     self.busy_bar = True
                 elif mode == 'C':
                     # show a cursor
-                    self.cursor = self.CursorSpec(X,Y, dbl_wide=bool(w), outline=bool(h))
+                    self.cursor = self.CursorSpec(X,Y, cur_type=w)
                     self.phase = 0      # make update happen immediately
 
             else:
@@ -590,7 +604,8 @@ def handle_q1_key_events(event, numpad_tx):
     #print(f" .. => pressed: {q1_pressed}")
 
     # see variant/touch.py where this is decoded.
-    assert len(q1_pressed) <= 5
+    if len(q1_pressed) > 5:
+        q1_pressed.clear()      ## keep going?!
     report = bytes(list(q1_pressed) + [ 255, 255, 255, 255, 255])[0:5]
     numpad_tx.write(report)
 
