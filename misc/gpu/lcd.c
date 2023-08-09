@@ -295,7 +295,7 @@ send_solid(int x, int y, int w, int h, uint16_t pixel)
 // cursor_draw()
 //
     void
-cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
+cursor_draw(int char_x, int char_y, uint8_t ctype, bool phase)
 {
     // see shared/lcd.py and shared/font_iosevka.py
     const int LEFT_MARGIN = 7;
@@ -309,6 +309,9 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
     if(char_x >= CHARS_W) return;
     if(char_y >= CHARS_H) return;
 
+    bool dbl_wide = ctype & 0x10;
+    ctype &= 0xf;
+
     // top left corner, just on edge of character cell
     int x = LEFT_MARGIN + (char_x * CELL_W);
     int y = TOP_MARGIN + (char_y * CELL_H);
@@ -317,7 +320,7 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
     // make some pixels big enough for either vert or horz lines
     uint16_t colour = phase ? COL_FOREGROUND : COL_BLACK;
 
-    if(outline) {
+    if(ctype == CURSOR_OUTLINE) {
         // horz
         send_solid(x,y, cell_w, 1, colour);
         send_solid(x,y+CELL_H-1, cell_w, 1, colour);
@@ -325,7 +328,9 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
         // vert
         send_solid(x, y+1, 1, CELL_H-2, colour);
         send_solid(x+cell_w-1, y+1, 1, CELL_H-2, colour);
-    } else {
+    }
+
+    if(ctype == CURSOR_SOLID) {
         if(!phase) {
             // solid fill -- draw first time
             send_solid(x,y, cell_w, CELL_H, COL_FOREGROUND);
@@ -333,6 +338,11 @@ cursor_draw(int char_x, int char_y, bool outline, bool phase, bool dbl_wide)
             // box shape, blank interior pixels
             send_solid(x+1,y+1, cell_w-2, CELL_H-2, COL_BLACK);
         }
+    }
+
+    if(ctype == CURSOR_MENU) {
+        // half-block 
+        send_solid(x,y, 4, CELL_H, colour);
     }
 }
 
@@ -386,12 +396,12 @@ lcd_animate(void)
         lcd_draw_progress();
     }
 
-    if(lcd_state.solid_cursor || lcd_state.outline_cursor) {
+    if(lcd_state.cursor_type != NO_CURSOR) {
         static int cur_phase;
 
         if(cur_phase == 0) {
             cursor_draw(lcd_state.cursor_x, lcd_state.cursor_y,
-                    lcd_state.outline_cursor, lcd_state.cur_flash, lcd_state.dbl_wide);
+                            lcd_state.cursor_type, lcd_state.cur_flash);
 
             lcd_state.cur_flash = !lcd_state.cur_flash;
         }

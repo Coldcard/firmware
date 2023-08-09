@@ -3,14 +3,20 @@
  */
 #pragma once
 
+static const uint8_t NO_CURSOR = 0;
+static const uint8_t CURSOR_SOLID = 0x01;
+static const uint8_t CURSOR_OUTLINE = 0x02;
+static const uint8_t CURSOR_MENU = 0x03;
+static const uint8_t CURSOR_DW_OUTLINE = 0x11;
+static const uint8_t CURSOR_DW_SOLID = 0x12;
+
+
 typedef struct {
     bool        activity_bar:1;
     bool        test_pattern:1;     // self clearing
 
-    bool        solid_cursor:1;
-    bool        outline_cursor:1;
-    bool        dbl_wide:1;
     bool        cur_flash:1;        // clear when changing pos/type/enable
+    uint8_t     cursor_type;
 
     uint8_t     cursor_x, cursor_y;
 } lcd_state_t;

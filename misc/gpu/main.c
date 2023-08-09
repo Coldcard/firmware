@@ -162,22 +162,19 @@ i2c_poll(void)
                     respLen = 3;
                     break;
 
-                case 'c':       // enable cursor: args=x,y,outline(else solid),dbl_wide
-                    if(argLen != 4) goto bad_args;
+                case 'c':       // enable cursor: args=x,y,ctype
+                    if(argLen != 3) goto bad_args;
                     lcd_state.activity_bar = false;
                     lcd_state.cursor_x = args[0];
                     lcd_state.cursor_y = args[1];
-                    lcd_state.outline_cursor = !args[2];
-                    lcd_state.solid_cursor = !!args[2];
-                    lcd_state.dbl_wide = !!args[3];
+                    lcd_state.cursor_type = args[2];
                     lcd_state.cur_flash = false;
                     break;
 
                 case 'a':       // disable cursor (implied: enable activity bar)
                     if(argLen != 0) goto bad_args;
                     lcd_state.activity_bar = true;
-                    lcd_state.outline_cursor = false;
-                    lcd_state.solid_cursor = false;
+                    lcd_state.cursor_type = NO_CURSOR;
                     break;
 
                 case 't':       // test feature: draw a single test pattern
