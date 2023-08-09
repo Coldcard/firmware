@@ -25,6 +25,12 @@ print(f'Screen: {320//CELL_W} x {240//CELL_H} chars')
 # - 4 not enough, 8 decent, 16 even better
 NUM_GREYS = 16
 
+# specially-named symbols=keys
+KEY_NFC = '\x0e'        # ctrl-N
+KEY_QR = '\x11'         # ctrl-Q
+KEY_TAB = '\t'          # tab = ctrl-I
+
+KEYCAP_SYMBOLS = [ KEY_NFC, KEY_QR, KEY_TAB, ]
 
 # TODO: 
 # - needed _ but for blank space; never found one, and may not need anyway
@@ -38,11 +44,13 @@ CHARSET = [chr(x) for x in range(32,127)] \
                 '™', '©', '⬧', '※',
                 '─',
                 '━', '┃', '┓', '┏', '┛','┗',        # 'heavy' versions
+                KEY_NFC, KEY_QR, KEY_TAB,
           ]
 
 # these are be better as double-wide chars
 DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
                 '◉', '◯', '◌', '※',
+                KEY_NFC, KEY_QR, KEY_TAB,
             ]
 
 NUM_CHARS = len(CHARSET)
@@ -50,6 +58,9 @@ NUM_CHARS = len(CHARSET)
 # use a different glyph for these unicode values
 # - useful for multi-codepoint sequences, which we want to encode as single char
 REMAPS = {
+    KEY_NFC: 'nfc',
+    KEY_QR:  'qr',
+    KEY_TAB: '↦',
 }
 
 # find hidden zero-width junk
@@ -64,7 +75,7 @@ print(f"Total font memory: {NUM_CHARS * MEM_PER_CHAR // 1024} KiBytes")
 # plus lots of overhead, so don't do that.
 
 
-def make_palette(shades, col):
+def make_palette(shades, col, darken=1.0):
     # make bytes representing a NUM_GREYS palette to map back to a RGB565 colour
     from struct import pack
 
@@ -83,12 +94,13 @@ def make_palette(shades, col):
         return (r<<11) | (g << 5) | b
 
     assert len(shades) == NUM_GREYS
-    vals = [remap(col, s) for s in shades]
+    vals = [remap(col, s*darken) for s in shades]
     txt = ', '.join('0x%04x'% i for i in vals)
     return vals, txt, pack('>%dH' % NUM_GREYS, *vals)
 
 def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     font = ImageFont.truetype(FONT, FONT_SIZE)
+    font2 = ImageFont.truetype(FONT, FONT_SIZE-5)
 
     left, top, right, bottom = font.getbbox("|")
     char_h = bottom - top
@@ -136,9 +148,23 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
         this_y = 0
         if ch == '↳':
             # this one up a little, so arrow is more mid-line-ish
+            # - looks awesome for random keyboard PIN entry mode
             this_y = -4
 
-        draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font)
+        if ch in KEYCAP_SYMBOLS:
+            if ch == KEY_NFC:
+                x_shift += 0
+            elif ch == KEY_QR:
+                x_shift += 2
+            else:
+                x_shift += 3
+            this_y += 3
+            draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font2)
+
+            # add a border
+            draw.rounded_rectangle( ( 0,0, (CELL_W*2)-1, CELL_H-1), 4, outline='white')
+        else:
+            draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font)
 
         # check 
         actual = img.getcolors()
@@ -223,6 +249,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     BRAND_TEXT_COLOUR = (255, 176, 0)       # amber phospher colour #ffb000
     pal_nums, pal_vals, text_pal = make_palette(shades, BRAND_TEXT_COLOUR)
     _, pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], BRAND_TEXT_COLOUR)
+    _, _, text_pal_dark =  make_palette(shades, BRAND_TEXT_COLOUR, 0.5)
 
     with open(out_fname, 'w') as fp:
         tmpl = open('template.py').read()
@@ -230,8 +257,11 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
         fp.write(f'''
 #FONT_SHADES = {shades}
-TEXT_PALETTE = {text_pal}
-TEXT_PALETTE_INV = {text_pal_inv}
+TEXT_PALETTES = [
+ {text_pal}, #normal
+ {text_pal_inv}, # inverted
+ {text_pal_dark}, # darker
+]
 
 # same, but w/o byte swapping, packing (useful for simulator)
 #TEXT_PALETTE = [{pal_vals}]
