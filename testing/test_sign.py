@@ -359,6 +359,7 @@ def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, s
         if hex(got_xfp) != hex(wallet_xfp):
             raise pytest.xfail("wrong HD master key fingerprint")
 
+    start_sign(psbt, finalize=we_finalize)
     if mine.txn:
         # pull out included txn
         txn2 = B2A(mine.txn)
@@ -366,8 +367,6 @@ def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, s
         check_against_bitcoind(txn2, fee)
     else:
         assert mine.version == 2
-
-    start_sign(psbt, finalize=we_finalize)
 
     signed = end_sign(accept=True, finalize=we_finalize)
     open('debug/vs-signed.psbt', 'wb').write(signed)
@@ -964,6 +963,7 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
         if hex(got_xfp) != hex(wallet_xfp):
             raise pytest.xfail("wrong HD master key fingerprint")
 
+    start_sign(psbt, finalize=True)
     if mine.txn:
         # pull out included txn (only available in PSBTv0)
         txn2 = B2A(mine.txn)
@@ -971,8 +971,6 @@ def test_finalization_vs_bitcoind(match_key, use_regtest, check_against_bitcoind
         check_against_bitcoind(txn2, fee)
     else:
         assert mine.version == 2
-
-    start_sign(psbt, finalize=True)
 
     signed_final = end_sign(accept=True, finalize=True)
     assert signed_final[0:4] != b'psbt', "expecting raw bitcoin txn"
