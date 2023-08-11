@@ -607,11 +607,7 @@ async def remember_ephemeral_seed():
 
     dis.fullscreen('Check...')
     with stash.SensitiveValues() as sv:
-        if sv.mode == "xprv":
-            nv = SecretStash.encode(xprv=sv.node)
-        else:
-            assert sv.mode == "words"
-            nv = SecretStash.encode(seed_phrase=sv.raw)
+        nv = sv.encoded_secret()
 
     dis.fullscreen('Saving...')
     pa.change(new_secret=nv)
@@ -623,6 +619,23 @@ async def remember_ephemeral_seed():
     # check and reload secret
     pa.reset()
     pa.login()
+
+async def restore_to_main_secret(preserve_settings=False):
+    # go back to main se2 secret
+    import stash
+    from glob import settings
+
+    # get main secret
+    with stash.SensitiveValues(bypass_tmp=True) as sv:
+        nv = sv.encoded_secret()
+    # drop ephemeral secret
+    pa.tmp_value = None
+    if not preserve_settings:
+        # we do not blank ram as we want to merge
+        # settings that we want to keep KEEP_SETTINGS (nvstore.py)
+        settings.blank(blank_current=False)
+
+    pa.new_main_secret(nv)
 
 def clear_seed():
     from glob import dis
@@ -751,6 +764,7 @@ class EphemeralSeedMenu(MenuSystem):
                 rv.insert(0, MenuItem("[Active]"))
 
         return rv
+
 
 async def make_ephemeral_seed_menu(*a):
     if not pa.tmp_value:

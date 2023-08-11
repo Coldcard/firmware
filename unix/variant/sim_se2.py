@@ -3,6 +3,7 @@
 # - do not import this file before trick_pins has had a chance to be imported
 #
 from binascii import a2b_base64, b2a_base64
+from binascii import unhexlify as a2b_hex
 from errno import ENOENT
 
 # these flags are masked-out from mpy so even it can't tell they happened
@@ -53,11 +54,16 @@ class SecondSecureElement:
         from trick_pins import TRICK_SLOT_LAYOUT
         import uctypes
         from nvstore import SettingsObject
-
+        from sim_secel import SECRETS
 
         self.state = {}
 
         obj = SettingsObject()
+        obj.set_key(a2b_hex(SECRETS["_pin1_secret"]))
+        obj.load()
+        # merging default values as they contain useful nfc,vidsk info
+        obj.merge_previous_active(obj.default_values())
+        obj.save()
         s = obj.get('_se2', None)
         if not s:
             print("no SE2 data")

@@ -29,12 +29,11 @@ if '--sflash' not in sys.argv:
 
         #glob.settings.current = dict(sim_defaults)
 
-if 1:
-    # Install Mk4 hacks and workarounds
-    import mk4
-    import sim_mk4
-    import sim_psram
-    import sim_vdisk
+# Install Mk4 hacks and workarounds
+import mk4
+import sim_mk4
+import sim_psram
+import sim_vdisk
 
 if sys.argv[-1] != '-q':
     import main     # must be last, does not return

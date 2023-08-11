@@ -129,13 +129,8 @@ print("done")
 
 
 # test recovery/reset
-if version.mk_num <= 3:
-    from sflash import SF
-    SF.chip_erase()
-    settings.load()
-else:
-    settings.clear()
-    settings.save()
+settings.clear()
+settings.save()
     
 print("fully done")
 
