@@ -4,6 +4,7 @@
 - New Feature: `Lock Down Seed` now works with every ephemeral secret (not just BIP39 passphrase)
 - New Feature: BIP-39 Passphrase can now be added to word based Ephemeral Seeds
 - New Feature: Add ability to back-up BIP39 Passphrase wallet
+- New Feature: Restore to main secret from ephemeral without need to reboot the device
 - Enhancement: Shortcut to `Batch Sign PSBT` via `Ready To Sign` -> `Press (9)`
 - Enhancement: Old plausible deniability feature on fresh COLDCARD removed.
   Only needed for Mk 2-3 where SPI flash was external chip, 

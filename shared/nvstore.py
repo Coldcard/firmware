@@ -401,7 +401,7 @@ class SettingsObject:
         self.my_pos = pos
         self.is_dirty = 0
 
-    def blank(self):
+    def blank(self, blank_current=True):
         # erase current copy of values in nvram; older ones may exist still
         # - use when clearing the seed value
         if self.my_pos is not None:
@@ -409,7 +409,8 @@ class SettingsObject:
             self.my_pos = 0
 
         # act blank too, just in case.
-        self.current.clear()
+        if blank_current:
+            self.current.clear()
         self.is_dirty = 0
         self.capacity = 0
 

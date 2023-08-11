@@ -199,12 +199,14 @@ def restore_from_dict_ll(vals):
 
         if k == 'tp':
             # restore trick pins, which may involve many ops
-            if version.mk_num >= 4:
-                from trick_pins import tp
-                try:
-                    tp.restore_backup(vals[key])
-                except Exception as exc:
-                    sys.print_exception(exc)
+            from trick_pins import tp
+            try:
+                tp.restore_backup(vals[key])
+            except Exception as exc:
+                sys.print_exception(exc)
+
+            # continue as `tp.restore_backup` handles
+            # saving into settings
             continue
 
         settings.set(k, vals[key])

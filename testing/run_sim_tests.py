@@ -238,16 +238,18 @@ def main():
             continue
         print("Started", test_module)
         if test_module in ["test_bsms.py", "test_address_explorer.py", "test_export.py",
-                           "test_multisig.py", "test_ephemeral.py", "test_ux.py"]:
+                           "test_multisig.py", "test_ux.py"]:
             test_args = DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_vdisk.py":
             test_args = ["--eject"] + DEFAULT_SIMULATOR_ARGS + ["--set", "vidsk=1"]
         if test_module == "test_bip39pw.py":
             test_args = []
-        if test_module in ["test_unit.py", "test_se2.py"]:
+        if test_module in ["test_unit.py", "test_se2.py", "test_backup.py"]:
             # test_nvram_mk4 needs to run without --eff
             # se2 duress wallet activated as ephemeral seed requires proper `settings.load`
             test_args = ["--set", "nfc=1"]
+        if test_module == "test_ephemeral.py":
+            test_args = ["--set", "nfc=1", "--set", "vidsk=1"]
         ec, failed_tests = run_tests_with_simulator(test_module, simulator_args=test_args,
                                                     pytest_k=args.pytest_k, pdb=args.pdb,
                                                     failed_first=args.ff, psbt2=args.psbt2)

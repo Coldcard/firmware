@@ -792,15 +792,6 @@ async def start_login_sequence():
     from glob import dis
     import callgate, version
 
-    if version.mk_num < 4:
-        # Block very obsolete versions.
-        try:
-            MIN_WATERMARK = b'!\x03)\x19\'"\x00\x00'    #  b2a_hex('2103291927220000')
-            now = callgate.get_highwater()
-            if now < MIN_WATERMARK:
-                callgate.set_highwater(MIN_WATERMARK)
-        except: pass
-
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
         goto_top_menu()
@@ -932,26 +923,40 @@ async def start_login_sequence():
                     await ar.interact()
         except: pass
 
-    if version.mk_num >= 4:
-        if version.has_nfc and settings.get('nfc', 0):
-            # Maybe allow NFC now
-            import nfc
-            nfc.NFCHandler.startup()
+    if version.has_nfc and settings.get('nfc', 0):
+        # Maybe allow NFC now
+        import nfc
+        nfc.NFCHandler.startup()
 
-        if settings.get('vidsk', 0):
-            # Maybe start virtual disk
-            import vdisk
-            vdisk.VirtDisk()
+    if settings.get('vidsk', 0):
+        # Maybe start virtual disk
+        import vdisk
+        vdisk.VirtDisk()
 
     # Allow USB protocol, now that we are auth'ed
     if not settings.get('du', 0):
         from usb import enable_usb
         enable_usb()
 
+async def restore_main_secret(*a):
+    ch = await ux_show_story(
+        "Restore main wallet and its settings?\n\n"
+        "Press OK to forget current ephemeral wallet "
+        "settings, or press (1) to save & keep "
+        "those settings for later use.",
+        escape="1"
+    )
+    if ch == "x": return
+
+    from seed import restore_to_main_secret
+    await restore_to_main_secret(False if ch == "y" else True)
+    goto_top_menu()
+
 def make_top_menu():
-    from menu import MenuSystem
+    from menu import MenuSystem, MenuItem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
-    from glob import hsm_active
+    from glob import hsm_active, settings
+    from pincodes import pa
 
     if hsm_active:
         from hsm_ux import hsm_ux_obj
@@ -964,7 +969,18 @@ def make_top_menu():
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 
-        m = MenuSystem(EmptyWallet if pa.is_secret_blank() else NormalSystem)
+        if not pa.is_secret_blank():
+            _cls = NormalSystem[:]
+            if pa.tmp_value:
+                active_xfp = settings.get("xfp", 0)
+                if active_xfp:
+                    ui_xfp = "[" + xfp2str(active_xfp) + "]"
+                    _cls.insert(0, MenuItem(ui_xfp, f=ready2sign))
+                    _cls.append(MenuItem("Restore Seed", f=restore_main_secret))
+        else:
+            _cls = EmptyWallet
+
+        m = MenuSystem(_cls)
     return m
 
 def goto_top_menu(first_time=False):
@@ -1983,12 +1999,11 @@ We strongly recommend all PIN codes used be unique between each other.
                                 title="Try Again")
             continue
 
-        if version.mk_num >= 4:
-            from trick_pins import tp
-            prob = tp.check_new_main_pin(pin)
-            if prob:
-                await ux_show_story(prob, title="Try Again")
-                continue
+        from trick_pins import tp
+        prob = tp.check_new_main_pin(pin)
+        if prob:
+            await ux_show_story(prob, title="Try Again")
+            continue
 
         break
 
@@ -2025,10 +2040,9 @@ We strongly recommend all PIN codes used be unique between each other.
             # we cannot/need not login again
             pa.login()
 
-        if version.mk_num >= 4:
-            # Deltamode trick pins need to track main pin
-            from trick_pins import tp
-            tp.main_pin_has_changed(pa.pin.decode())
+        # Deltamode trick pins need to track main pin
+        from trick_pins import tp
+        tp.main_pin_has_changed(pa.pin.decode())
 
         if mode == 'duress':
             # program the duress secret now... it's derived from real wallet contents
@@ -2069,7 +2083,7 @@ async def show_version(*a):
         serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
 
     hw = version.hw_label
-    if not version.has_nfc and version.mk_num >= 4:
+    if not version.has_nfc:
         hw += ' (no NFC)'
 
     msg = '''\
