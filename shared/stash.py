@@ -350,4 +350,13 @@ class SensitiveValues:
         self.register(pk)
         return pk
 
+    def encoded_secret(self):
+        # we do not support master as secret - only extended keys and mnemonics
+        if self.mode == "xprv":
+            nv = SecretStash.encode(xprv=self.node)
+        else:
+            assert self.mode == "words"
+            nv = SecretStash.encode(seed_phrase=self.raw)
+        return nv
+
 # EOF

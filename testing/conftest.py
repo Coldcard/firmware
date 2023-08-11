@@ -571,6 +571,9 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
 
             if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break
+            if (m[1] == "Ready To Sign") and m[0][0] == "[":
+                # ephemeral has XFP as first menu item
+                break
         else:
             raise pytest.fail("trapped in a menu")
 
@@ -671,6 +674,16 @@ def open_microsd(simulator, microsd_path):
 
     def doit(fn, mode='rb'):
         return open(microsd_path(fn), mode)
+
+    return doit
+
+@pytest.fixture(scope='module')
+def settings_path(simulator):
+    # open a file from the simulated microsd
+
+    def doit(fn):
+        # could use: ckcc.get_sim_root_dirs() here
+        return '../unix/work/settings/' + fn
 
     return doit
 
@@ -1752,5 +1765,6 @@ from test_bip39pw import set_bip39_pw
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui
 from test_ux import enter_complex, pass_word_quiz, word_menu_entry
+from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 
 # EOF

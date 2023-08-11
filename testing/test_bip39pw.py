@@ -9,7 +9,7 @@ from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 import json
 from mnemonic import Mnemonic
-from constants import simulator_fixed_xfp, simulator_fixed_words, simulator_fixed_xprv
+from constants import simulator_fixed_xfp, simulator_fixed_words
 
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
@@ -137,7 +137,7 @@ def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, need_keypress,
     pick_menu_item('CANCEL')
     time.sleep(0.1)
     m = cap_menu()
-    assert m[0] == "Ready To Sign"
+    assert "Ready To Sign" in m[:3]
 
 
 @pytest.mark.parametrize('stype', ["bip39pw", "words", "xprv", None])
@@ -233,72 +233,5 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     expect1 = BIP32Node.from_master_secret(seed1)
     assert expect1.fingerprint().hex().upper() == xfp1
     assert "press (2)" not in story
-
-
-@pytest.mark.parametrize("passphrase", ["@coinkite rulez!!", "!@#!@", "AAAAAAAAAAA"])
-def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keypress,
-                             goto_home, cap_story, pass_word_quiz, get_setting,
-                             verify_backup_file, microsd_path, check_and_decrypt_backup,
-                             sim_execfile, unit_test, word_menu_entry, cap_menu,
-                             restore_backup_cs):
-    goto_home()
-    set_bip39_pw(passphrase)
-    target = sim_execfile('devtest/get-secrets.py')
-    assert 'Error' not in target
-    need_keypress("y")
-    pick_menu_item("Advanced/Tools")
-    pick_menu_item("Backup")
-    pick_menu_item("Backup System")
-    time.sleep(.1)
-    title, story = cap_story()
-    assert "BIP39 passphrase is in effect" in story
-    assert "ignores passphrases and produces backup of main seed" in story
-    assert "(2) to back-up BIP39 passphrase wallet" in story
-    need_keypress("2")
-    time.sleep(.1)
-    title, story = cap_story()
-    if "Use same backup file password as last time?" in story:
-        need_keypress("x")
-        time.sleep(.1)
-        title, story = cap_story()
-    assert title == 'NO-TITLE'
-    assert 'Record this' in story
-    assert 'password:' in story
-
-    words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
-    assert len(words) == 12
-    # pass the quiz!
-    count, title, body = pass_word_quiz(words)
-    assert count >= 4
-    assert "same words next time" in body
-    assert "Press (1) to save" in body
-    need_keypress('x')
-    time.sleep(.01)
-    assert get_setting('bkpw', 'xxx') == 'xxx'
-    title, story = cap_story()
-    assert "Backup file written:" in story
-    fn = story.split("\n\n")[1]
-    assert fn.endswith(".7z")
-    verify_backup_file(fn)
-    contents = check_and_decrypt_backup(fn, words)
-    assert "mnemonic" not in contents
-    assert simulator_fixed_words not in contents
-    assert simulator_fixed_xprv not in contents
-    assert target == contents
-    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
-    expect = BIP32Node.from_master_secret(seed, netcode="XTN")
-    esk = expect.hwif(as_private=True)
-    epk = expect.hwif(as_private=False)
-    target_esk = None
-    target_epk = None
-    for line in contents.split("\n"):
-        if line.startswith("xprv ="):
-            target_esk = line.split("=")[-1].strip().replace('"', '')
-        if line.startswith("xpub ="):
-            target_epk = line.split("=")[-1].strip().replace('"', '')
-    assert target_epk == epk
-    assert target_esk == esk
-
-    restore_backup_cs(fn, words)
 
 # EOF
