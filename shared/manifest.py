@@ -28,7 +28,6 @@ freeze_as_mpy('', [
 	'menu.py',
 	'multisig.py',
 	'numpad.py',
-	'charcodes.py',
 	'nvstore.py',
 	'opcodes.py',
 	'paper.py',
@@ -55,6 +54,7 @@ freeze_as_mpy('', [
 freeze_as_mpy('', [
 	'sigheader.py',
 	'public_constants.py',
+	'charcodes.py',
 ], opt=3)
 
 # Maybe include test code.
