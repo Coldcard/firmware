@@ -266,7 +266,7 @@ class GPUAccess:
 
     def upgrade(self):
         # do in-circuit programming of GPU chip
-        import gpu_binary
+        import gpu_binary, zlib
 
         # get into bootloader
         if self.get_version() != 'BL':
@@ -277,13 +277,15 @@ class GPUAccess:
         ok = self.bulk_erase()
         assert ok, 'bulk erase fail'
 
+        tmp = zlib.decompress(gpu_binary.BINARY)
+
         # write block by block, but skip first part, so we can handle powerfail w/o brick
         for pos in range(256, gpu_binary.LENGTH, 256):
-            ok = self.write_at(FLASH_START+pos, gpu_binary.BINARY[pos:pos+256])
+            ok = self.write_at(FLASH_START+pos, tmp[pos:pos+256])
             assert ok
 
         # finally, the first part, which commits us to running this code on reset
-        self.write_at(FLASH_START, gpu_binary.BINARY[0:256])
+        self.write_at(FLASH_START, tmp[0:256])
 
         self.run_at(FLASH_START)
         utime.sleep_ms(50)
