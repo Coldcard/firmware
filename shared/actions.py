@@ -453,6 +453,10 @@ You can give this Coldcard a nickname and it will be shown before login.''')
 
     nn = await ux_input_text(nick, confirm_exit=False, prompt="Enter Nickname")
 
+    from glob import dis
+    dis.fullscreen("Saving...")
+    dis.busy_bar(True)
+
     nn = nn.strip() if nn else None
     s.set('nick', nn)
     s.save()
@@ -1714,8 +1718,14 @@ async def bless_flash(*a):
         await needs_primary()
         return
 
+    # bugfix
+    if dis.has_lcd: 
+        await dis.bootrom_takeover()
+
     # do it
     pa.greenlight_firmware()
+
+    # redraw our screen
     dis.show()
 
 

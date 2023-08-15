@@ -159,8 +159,10 @@ class Display:
         b_x = 290
         if 'bat' in kws:
             self.image(b_x, 0, 'bat_%d' % kws['bat'])
+            self.dis.backlight.intensity(128)      # dim if running on batteries
         if 'plugged' in kws:
             self.image(b_x, 0, 'plugged')
+            self.dis.backlight.intensity(250)     # full brightness when on VBUS
 
         if 'bip39' in kws:
             self.image(108, 0, 'bip39_%d' % kws['bip39'])
@@ -457,8 +459,8 @@ class Display:
             self.show()
 
     def set_brightness(self, val):
-        # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
-        # XXX maybe control BL_ENABLE timing? or not required.
+        # - was only used by HSM ux code
+        # - QR code display brightness could be done in show_qr_data()
         return 
 
     def menu_draw(self, ry, msg, is_sel, is_checked, space_indicators):
@@ -591,6 +593,7 @@ class Display:
             # show path index number: just 1 or 2 digits
             self.text(-1, 0, idx_hint)
 
+        # TODO: pass a "max_brightness" param here, which would be cleared after next show
         self.show()
 
     def draw_box(self, x, y, w, h):
@@ -619,6 +622,14 @@ class Display:
                 assert 0 <= X < CHARS_W
                 assert 0 <= Y < CHARS_H
                 self.next_buf[Y][X] = 32
+
+    async def bootrom_takeover(self):
+        # we are going to go into the bootrom and have it do stuff on the
+        # screen... we need to redraw completely on return
+        self.gpu.take_spi()
+        self.last_buf = self.make_buf(0)
+        self.last_prog_x = -1
+        await sleep_ms(20)      # at least one frame (60Hz) so GPU stops
 
         
 # here for mpy reasons

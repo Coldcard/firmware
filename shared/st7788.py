@@ -29,7 +29,7 @@ class ST7788():
         # assume the Bootrom setup the interface and LCD correctly already
         # - its fairly slow, complex and no need to change
         from machine import Pin
-        from pyb import Timer       # not from machine
+        from pyb import LED
 
         self.spi = machine.SPI(1, baudrate=60_000_000, polarity=0, phase=0)
         #reset_pin = Pin('LCD_RESET', Pin.OUT)        # not using
@@ -39,17 +39,9 @@ class ST7788():
         self.dc = Pin('LCD_DATA_CMD')
         self.cs = Pin('LCD_CS')
 
-        if 0:
-            # BUST - just fades away
-            # backlight control - will not see display with it off!
-            self.bl_enable = Pin('BL_ENABLE', Pin.OUT, value=1)
-            t = Timer(3, freq=100_000)
-            # must be channel 3 because BL_ENABLE=>PE3?
-            self.dimmer = t.channel(3, Timer.PWM, pin=self.bl_enable)
-
-        # for framebuf.FrameBuffer
-        self.width = 320
-        self.height = 240
+        # control backlight brightness via this object
+        self.backlight = LED(1)
+        self.backlight.on()
 
     def write_cmd(self, cmd, args=None):
         # send a command byte and a number of arguments
