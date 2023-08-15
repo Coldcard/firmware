@@ -199,6 +199,10 @@ oled_setup(void)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_SPI1_CLK_ENABLE();
 
+    // take over from GPU
+    // - can be issue when coming in via callgate from mpy which might have been showing menu
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, 1);        // G_CTRL pin -- we have control
+
     // Simple pins
     // - must be opendrain to allow GPU to share
     GPIO_InitTypeDef setup = {
@@ -212,6 +216,7 @@ oled_setup(void)
 
     // starting values
     HAL_GPIO_WritePin(GPIOA, RESET_PIN | CS_PIN | DC_PIN, 1);
+
 
     // SPI pins (same but with AF)
     setup.Pin = SPI_SCK | SPI_MOSI;
