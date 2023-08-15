@@ -118,7 +118,7 @@ code-committed:
 DELIVERABLES = $(TARGET_NAME).bin $(TARGET_NAME).lss gpu_binary.py
 
 # package the binary into a mpy file to be frozen/included into main micro code
-gpu_binary.py: version.txt $(TARGET_NAME).bin
+gpu_binary.py: version.txt $(TARGET_NAME).bin repackage.py
 	./repackage.py `cat version.txt` $(TARGET_NAME).bin > $@
 	wc -c $(TARGET_NAME).bin
 
