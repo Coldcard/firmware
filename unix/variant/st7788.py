@@ -6,14 +6,21 @@ import struct, sys
 import framebuf
 import uasyncio
 
+class mock_LED:
+    def intensity(self, n):
+        pass
+    def on(self):
+        pass
+    def off(self):
+        pass
+
 class ST7788:
     def __init__(self):
-        # for framebuf.FrameBuffer
-        self.width = 320
-        self.height = 240
-
-        # also used by variant/gpu.py
+        # also used by variant/gpu.py via gpu_send()
         self.pipe = open(int(sys.argv[1]), 'wb')
+
+        # not simulated: the backlighting on the LCD
+        self.backlight = mock_LED()
 
     def gpu_send(self, cmd, *args):
         # for use by variant/gpu.py code
