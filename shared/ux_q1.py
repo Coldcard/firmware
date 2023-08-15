@@ -135,6 +135,8 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     from glob import dis
     from ux import ux_show_story
 
+    value = value or ''
+
     dis.clear()
 
     if b39_complete:
@@ -578,8 +580,8 @@ def ux_dice_rolling():
         dis.text(None, 4, '%d rolls so far' % count, invert=1)
 
         if hx is not None:
-            dis.text(0, -2, hx[0:32]+'-')
-            dis.text(2, -1, ''+hx[32:])
+            dis.text(0, -2, hx[0:32]+'-', dark=True)
+            dis.text(2, -1, ''+hx[32:], dark=True)
 
         dis.show()
 
