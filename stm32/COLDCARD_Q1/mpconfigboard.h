@@ -125,4 +125,10 @@ extern void psramdisk_USBD_MSC_RegisterStorage(int num_lun, struct _usbd_cdc_msc
 // enable some code inside oofatfs that we need
 #define FF_USE_FASTSEEK         (1)
 
+// LEDs -- used for LCD backlight
+#define MICROPY_HW_LED1             (pin_E3)
+#define MICROPY_HW_LED_ON(pin)      (mp_hal_pin_high(pin))
+#define MICROPY_HW_LED_OFF(pin)     (mp_hal_pin_low(pin))
+#define MICROPY_HW_LED1_PWM         { TIM3, 3, TIM_CHANNEL_1, GPIO_AF2_TIM3 }
+
 // EOF

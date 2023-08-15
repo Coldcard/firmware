@@ -86,7 +86,13 @@ build-COLDCARD_Q1/lib/stm32lib/CMSIS/STM32L4xx/Source/Templates/system_stm32l4xx
 # bugfix: replace keyboard interrupt handling
 build-COLDCARD_Q1/lib/utils/interrupt_char.o: \
 	CFLAGS += -Dmp_hal_set_interrupt_char=mp_hal_set_interrupt_char_OMIT
-	
+
+# bugfix: leave my LED's alone
+build-COLDCARD_Q1/flashbdev.o: CFLAGS += -Dled_state=led_state_OMIT
+build-COLDCARD_Q1/spibdev.o: CFLAGS += -Dled_state=led_state_OMIT
+build-COLDCARD_Q1/factoryreset.o: CFLAGS += -Dled_state=led_state_OMIT
+build-COLDCARD_Q1/boardctrl.o: CFLAGS += -Dled_state=led_state_OMIT
+
 
 files:
 	# SRC_C: $(SRC_C)

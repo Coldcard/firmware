@@ -357,4 +357,12 @@ void *realloc(void *ptr, size_t size)
     return m_realloc(ptr, size);
 }
 
+void led_state_OMIT(int led, int state)
+{
+    // A number of files in ports/stm32 include leds.h and then
+    // call led_state() directly. This prevents us from using that LED
+    // for LCD backlight control, which we want because they've figured out
+    // the PWM nicely... so see mpconfigboard.mk where we hack in this no-op.
+}
+
 // EOF
