@@ -5,6 +5,7 @@
   [BIP-0380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions)
   was `(m=0F056943)/m/48'/1'/0'/2'/0/0` now `[0F056943/48'/1'/0'/2'/0/0]`
 - Enhancement: Address explorer UX cosmetics, now with arrows and dots.
+- Enhancement: Improved side channel protection (more libsecp256k1 context randomizations)
 - Rename `Unchained Capital` to `Unchained`
 - Bugfix: correct `scriptPubkey` parsing for segwit v1-v16
 - Bugfix: do not infer segwit just by availability of `PSBT_IN_WITNESS_UTXO` in PSBT.
