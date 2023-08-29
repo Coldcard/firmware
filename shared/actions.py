@@ -1224,14 +1224,16 @@ single-signer UTXO associated with this Coldcard.'''
 
     await _generic_export(prompt, 'Generic Export', 'coldcard-export.json')
 
-async def lily_skeleton(*A):
+
+async def named_generic_skeleton(menu, label, item):
+    name = item.arg
     # make a single JSON file with basically all useful XPUB's in it.
     # identical to generic_skeleton but with different story and filename.
-    prompt = '''\
-This saves a JSON file onto MicroSD card to use with Lily Wallet. \
-Works for both single signature and multisig wallets.'''
+    prompt = ('This saves a JSON file onto MicroSD card to use with %s Wallet. '
+              'Works for both single signature and multisig wallets.') % name
 
-    await _generic_export(prompt, 'Lily Wallet', 'lily-wallet-export.json')
+    await _generic_export(prompt, '%s Wallet' % name,
+                          '%s-export.json' % name.lower())
 
 
 async def wasabi_skeleton(*A):
