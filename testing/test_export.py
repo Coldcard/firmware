@@ -294,7 +294,11 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 @pytest.mark.parametrize('acct_num', [ None, '99', '1236'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('testnet', [True, False])
-@pytest.mark.parametrize('app', [("Generic JSON", "Generic Export"), ("Lily Wallet", "Lily Wallet")])
+@pytest.mark.parametrize('app', [
+    ("Generic JSON", "Generic Export"),
+    ("Lily Wallet", "Lily Wallet"),
+    ("Sparrow Wallet", "Sparrow Wallet")
+])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
                          load_export, testnet, use_mainnet):
