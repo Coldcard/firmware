@@ -588,7 +588,7 @@ class TrickPinMenu(MenuSystem):
             StoryMenuItem('Wipe Seed', "Wipe the seed and maybe do more. See next menu.",
                                             menu=self.WillWipeMenu),
             StoryMenuItem('Duress Wallet', "Goes directly to a specific duress wallet. No side effects.", menu=DuressOptions),
-            StoryMenuItem('Login Countdown', "Pretends a login countdown timer (%s) is in effect but wipes seed first. Resets system at end of countdown or bricks it." % lgto_map[def_to].strip(),
+            StoryMenuItem('Login Countdown', "Pretends a login countdown timer (%s) is in effect. Can wipe seed or brick system or do nothing." % lgto_map[def_to].strip(),
                     menu=countdown_menu),
             StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", flags=TC_BLANK_WALLET),
             StoryMenuItem('Just Reboot', "Reboot when this PIN is entered. Doesn't do anything else.", flags=TC_REBOOT),
