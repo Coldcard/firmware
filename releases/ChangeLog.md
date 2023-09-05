@@ -1,7 +1,7 @@
-## 5.1.3 - 2023-06-20
+## 5.1.3 - 2023-09-07
 
 - New Feature: Batch Sign PSBTs. `Advanced/Tools -> File Management -> Batch Sign PSBT`
-- Enhancement: `Sparrow Wallet` added as an individual export option
+- Enhancement: `Sparrow Wallet` added as an individual export option (same file contents)
 - Enhancement: change Key Origin Information export format in multisig `addresses.csv` to match
   [BIP-0380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions)
   was `(m=0F056943)/m/48'/1'/0'/2'/0/0` now `[0F056943/48'/1'/0'/2'/0/0]`
@@ -14,12 +14,12 @@
 - Bugfix: empty number during BIP-39 passphrase entry could cause crash.
 - Bugfix: UX: Signing with BIP39 Passphrase showed master fingerprint as integer. Fixed to show hex.
 - Bugfix: Fixed inability to generate paper wallet without secrets
-- Bugfix: SD2FA setting is cleared when seed is wiped after failed policy SD2FA enforce.
+- Bugfix: SD2FA setting is cleared when seed is wiped after failed login due to policy SD2FA enforce.
   Prevents infinite seed wipe loop when restoring backup after 2FA MicroSD lost or damaged.
   SD2FA is not backed up and also not restored from older backups. If SD2FA is set up,
   it will not survive restore of backup.
-- Bugfix: TOS only presented if main PIN was not chosen already.
-- Bugfix: preserve defined order of Login Countdown chooser
+- Bugfix: Terms only presented if main PIN was not chosen already.
+- Bugfix: preserve defined order of Login Countdown settings list
 
 
 ## 5.1.2 - 2023-04-07
