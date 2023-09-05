@@ -558,7 +558,6 @@ class TrickPinMenu(MenuSystem):
             StoryMenuItem('BIP-85 Wallet #2', b85, arg=dbase+2, flags=TC_WORD_WALLET),
             StoryMenuItem('BIP-85 Wallet #3', b85, arg=dbase+3, flags=TC_WORD_WALLET),
             StoryMenuItem('Legacy Wallet', "Uses duress wallet created on Mk3 Coldcard, using a fixed derivation.\n\nRecommended only for existing UTXO compatibility.", flags=TC_XPRV_WALLET),
-            StoryMenuItem('Blank Coldcard', "Look and act like a freshly wiped Coldcard", flags=TC_BLANK_WALLET),
         ]
         self.WillWipeMenu = MenuSystem([
             #              xxxxxxxxxxxxxxxx
@@ -637,7 +636,6 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
                             arg=num, flags=TC_WIPE|TC_FAKE_OUT),
             StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK),
             StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.", arg=num, flags=TC_WIPE|TC_BRICK),
-            StoryMenuItem('Look Blank', "Look and act like a freshly- wiped Coldcard but don't affect actual seed.", arg=num, flags=TC_BLANK_WALLET),
             StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.", arg=num, flags=TC_REBOOT),
         ])
 

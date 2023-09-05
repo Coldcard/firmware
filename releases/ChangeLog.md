@@ -20,6 +20,7 @@
   it will not survive restore of backup.
 - Bugfix: Terms only presented if main PIN was not chosen already.
 - Bugfix: preserve defined order of Login Countdown settings list
+- Bugfix: remove unsupported trick pin option `Look Blank` from `if wrong` (not supported by bootrom)
 
 
 ## 5.1.2 - 2023-04-07
