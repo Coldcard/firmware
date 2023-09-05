@@ -23,7 +23,6 @@ def test_generate(mode, netcode, pdf, cap_menu, pick_menu_item, goto_home, cap_s
                   dev, microsd_path, verify_detached_signature_file, validate_address, bitcoind,
                   settings_set):
 
-    settings_set("chain", netcode)
     # test UX and operation of the 'bitcoin core' wallet export
     mx = "Don't make PDF"
 
@@ -144,24 +143,24 @@ def test_generate(mode, netcode, pdf, cap_menu, pick_menu_item, goto_home, cap_s
 
     os.unlink(path)
 
-    if chain != "XRT":
+    if netcode != "XRT":
         k1 = Key.from_text(_wif)
         k2 = Key(secret_exponent=from_bytes_32(a2b_hex(_sk)), is_compressed=True)
         assert k2.secret_exponent() == k1.secret_exponent()
         validate_address(_addr, k1)
         # validate address is chain agnostic - which should be changed at some point
         if mode == "segwit":
-            if chain == "BTC":
+            if netcode == "BTC":
                 assert _addr.startswith("bc1q")
             else:
                 assert _addr.startswith("tb1q")
         elif mode == "taproot":
-            if chain == "BTC":
+            if netcode == "BTC":
                 assert _addr.startswith("bc1p")
             else:
                 assert _addr.startswith("tb1p")
         else:
-            if chain == "BTC":
+            if netcode == "BTC":
                 assert _addr.startswith("1")
             else:
                 assert _addr[0] in "mn"
