@@ -171,8 +171,9 @@ class MenuSystem:
         self.count = len(self.items)
 
     def goto_label(self, label):
+        # pick menu item based on label text
         for i, m in enumerate(self.items):
-            if m.label == label or m.label[-4:] == label:
+            if m.label.endswith(label):
                 self.goto_idx(i)
                 return True
         return False
