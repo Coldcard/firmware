@@ -1,26 +1,26 @@
 ## 5.1.3 - 2023-09-07
 
-- New Feature: Batch Sign PSBTs. `Advanced/Tools -> File Management -> Batch Sign PSBT`
+- New Feature: Batch sign multiple PSBT files. `Advanced/Tools -> File Management -> Batch Sign PSBT`
 - Enhancement: `Sparrow Wallet` added as an individual export option (same file contents)
-- Enhancement: change Key Origin Information export format in multisig `addresses.csv` to match
+- Enhancement: change key origin information export format in multisig `addresses.csv` to match
   [BIP-0380](https://github.com/bitcoin/bips/blob/master/bip-0380.mediawiki#key-expressions)
   was `(m=0F056943)/m/48'/1'/0'/2'/0/0` now `[0F056943/48'/1'/0'/2'/0/0]`
 - Enhancement: Address explorer UX cosmetics, now with arrows and dots.
 - Rename `Unchained Capital` to `Unchained`
-- Bugfix: correct `scriptPubkey` parsing for segwit v1-v16
-- Bugfix: do not infer segwit just by availability of `PSBT_IN_WITNESS_UTXO` in PSBT.
-- Bugfix: remove label from Bitcoin Core `importdescriptors` export as it is no longer supported
+- Bugfix: Correct `scriptPubkey` parsing for segwit v1-v16
+- Bugfix: Do not infer segwit just by availability of `PSBT_IN_WITNESS_UTXO` in PSBT.
+- Bugfix: Remove label from Bitcoin Core `importdescriptors` export as it is no longer supported
   with ranged descriptors in version `24.1` of Core.
-- Bugfix: empty number during BIP-39 passphrase entry could cause crash.
-- Bugfix: UX: Signing with BIP39 Passphrase showed master fingerprint as integer. Fixed to show hex.
+- Bugfix: Empty number during BIP-39 passphrase entry could cause crash.
+- Bugfix: Signing with BIP39 Passphrase showed master fingerprint as integer. Fixed to show hex.
 - Bugfix: Fixed inability to generate paper wallet without secrets
 - Bugfix: SD2FA setting is cleared when seed is wiped after failed login due to policy SD2FA enforce.
   Prevents infinite seed wipe loop when restoring backup after 2FA MicroSD lost or damaged.
   SD2FA is not backed up and also not restored from older backups. If SD2FA is set up,
   it will not survive restore of backup.
 - Bugfix: Terms only presented if main PIN was not chosen already.
-- Bugfix: preserve defined order of Login Countdown settings list
-- Bugfix: remove unsupported trick pin option `Look Blank` from `if wrong` (not supported by bootrom)
+- Bugfix: Preserve defined order of Login Countdown settings list.
+- Bugfix: Remove unsupported trick pin option `Look Blank` from `if wrong` (not supported by bootrom).
 
 
 ## 5.1.2 - 2023-04-07
