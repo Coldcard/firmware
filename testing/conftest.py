@@ -455,7 +455,9 @@ def qr_quality_check():
             fnt = ImageFont.load_default()
 
     dr = ImageDraw.Draw(rv)
-    mw = int((w*scale) / dr.textsize('M', fnt)[0])
+    left, top, right, bottom = dr.textbbox((0, 0), text='M', font=fnt)
+    size = (right - left, bottom - top)
+    mw = int((w*scale) / size[0])
 
     for test_name, img in QR_HISTORY:
         if '[' in test_name:
