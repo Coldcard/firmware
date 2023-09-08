@@ -102,7 +102,8 @@ checksum_flash(uint8_t fw_digest[32], uint8_t world_digest[32], uint32_t fw_leng
     const uint8_t *base = (const uint8_t *)BL_FLASH_BASE;
     checksum_more(&ctx, &total_len, base, ((uint8_t *)MCU_KEYS)-base);
 
-    // Probably-blank area after firmware, and filesystem area
+    // Probably-blank area after firmware, and filesystem area.
+    // Important: firmware images (fw_length) must be aligned with flash erase unit size (4k).
     const uint8_t *fs = start + fw_length;
     const uint8_t *last = base + MAIN_FLASH_SIZE;
     checksum_more(&ctx, &total_len, fs, last-fs);

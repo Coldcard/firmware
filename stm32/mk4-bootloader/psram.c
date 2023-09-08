@@ -335,7 +335,7 @@ psram_do_upgrade(const uint8_t *start, uint32_t size)
         if(dest % FLASH_ERASE_SIZE == 0) {
             // page erase as we go
             rv = flash_page_erase(dest);
-#if 1
+#if 0
             if(rv) {
                 puts2("erase rv=");
                 puthex2(rv);
@@ -347,7 +347,7 @@ psram_do_upgrade(const uint8_t *start, uint32_t size)
 
         memcpy(&tmp, start+pos, 8);
         rv = flash_burn(dest, tmp);
-#if 1
+#if 0
         if(rv) {
             puts2("burn rv=");
             puthex2(rv);
