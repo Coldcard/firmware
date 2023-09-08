@@ -1,3 +1,7 @@
+## 5.1.4 - 2023-09-08
+
+- Bugfix: Most users would see a red light after upgrade to 5.1.3 from 5.1.2. Fixed.
+
 ## 5.1.3 - 2023-09-07
 
 - New Feature: Batch sign multiple PSBT files. `Advanced/Tools -> File Management -> Batch Sign PSBT`

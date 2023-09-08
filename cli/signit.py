@@ -293,8 +293,12 @@ def doit(keydir, outfn=None, build_dir=None, high_water=False,
         # bugfix: size must be non-page aligned, so extra bytes are erased past end
         if (body_len % 4096) == 0:
             body_len += 512
-
-    assert body_len % 512 == 0, body_len
+        assert body_len % 512 == 0, body_len
+    else:
+        # bugfix: PSRAM-based products (Mk4, Q1) need to erase 4k blocks, so
+        # trouble happens if final binary isn't aligned to that size.
+        body_len = align_to(body_len, 4096)
+        assert body_len % 4096 == 0, body_len
 
     # pad out 
     vectors = pad_to(vectors, FW_HEADER_OFFSET)
