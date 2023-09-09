@@ -20,6 +20,7 @@
 - Enhancement: Linked settings (multisig, trick pins, backup password, hsm users and utxo cache)
   separation for new main secret.
 - Rename `Unchained Capital` to `Unchained`
+- Bugfix: Most users would see a red light after upgrade to 5.1.3 from 5.1.2. Fixed.
 - Bugfix: Correct `scriptPubkey` parsing for segwit v1-v16
 - Bugfix: Do not infer segwit just by availability of `PSBT_IN_WITNESS_UTXO` in PSBT.
 - Bugfix: Remove label from Bitcoin Core `importdescriptors` export as it is no longer supported
