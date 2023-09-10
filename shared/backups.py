@@ -65,21 +65,13 @@ def render_backup_contents():
             ADD('long_secret', b2a_hex(pa.ls_fetch()))
 
         # Duress wallets (somewhat optional, since derived)
-        if version.mk_num <= 3:
-            if pa.has_duress_pin():
-                COMMENT('Duress Wallet (informational)')
-                dpk, p = sv.duress_root()
-                COMMENT('path = %s' % p)
-                ADD('duress_xprv', chain.serialize_private(dpk))
-                ADD('duress_xpub', chain.serialize_public(dpk))
-        else:
-            from trick_pins import tp
-            for label, path, pairs in tp.backup_duress_wallets(sv):
-                COMMENT()
-                COMMENT(label + ' (informational)')
-                COMMENT(path)
-                for k,v in pairs:
-                    ADD(k, v)
+        from trick_pins import tp
+        for label, path, pairs in tp.backup_duress_wallets(sv):
+            COMMENT()
+            COMMENT(label + ' (informational)')
+            COMMENT(path)
+            for k,v in pairs:
+                ADD(k, v)
     
     COMMENT('Firmware version (informational)')
     date, vers, timestamp = version.get_mpy_version()[0:3]
@@ -100,10 +92,9 @@ def render_backup_contents():
         if k == 'words': continue       # words length is recalculated from secret
         ADD('setting.' + k, v)
 
-    if version.has_fatram:
-        import hsm
-        if hsm.hsm_policy_available():
-            ADD('hsm_policy', hsm.capture_backup())
+    import hsm
+    if hsm.hsm_policy_available():
+        ADD('hsm_policy', hsm.capture_backup())
 
     rv.write('\n# EOF\n')
 
@@ -205,7 +196,7 @@ def restore_from_dict_ll(vals):
     # write out
     settings.save()
 
-    if version.has_fatram and ('hsm_policy' in vals):
+    if 'hsm_policy' in vals:
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
 

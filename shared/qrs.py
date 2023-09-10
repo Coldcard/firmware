@@ -2,11 +2,10 @@
 #
 # qrs.py - QR Display related UX
 #
-import framebuf, math, uqr
+import framebuf, uqr
 from ux import UserInteraction, ux_wait_keyup, the_ux 
 from utils import word_wrap
-from version import has_fatram
-from ubinascii import hexlify as b2a_hex
+
 
 class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.

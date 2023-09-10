@@ -275,10 +275,8 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
         # user can skip quiz for ephemeral secrets
         msg += " There will be a test!"
 
-
-    if version.has_fatram:
-        escape = (escape or '') + '1'
-        extra += 'Press (1) to view as QR Code. '
+    escape = (escape or '') + '1'
+    extra += 'Press (1) to view as QR Code. '
 
     if extra:
         msg += '\n\n'
@@ -637,18 +635,8 @@ def clear_seed():
     # clear settings associated with this key, since it will be no more
     settings.blank()
 
-    if version.mk_num >= 4:
-        callgate.fast_wipe(True)
-        # NOT REACHED
-    else:
-        # save a blank secret (all zeros is a special case, detected by bootloader)
-        nv = bytes(AE_SECRET_LEN)
-        pa.change(new_secret=nv)
-
-        if version.has_608:
-            # wipe the long secret too
-            nv = bytes(AE_LONG_SECRET_LEN)
-            pa.ls_change(nv)
+    callgate.fast_wipe(True)
+    # NOT REACHED
 
     dis.busy_bar(False)
     dis.fullscreen('Reboot...')

@@ -4,7 +4,7 @@
 The Mk4 bootloader is smart enough to read an SD card. However, you
 will only be able to trigger the SD card loading code, if the system
 is powered-down during the upgrade process. At that point, the
-intended (new) firmware image has been lost because it it held in
+intended (new) firmware image has been lost because it is held in
 PSRAM (volatile memory) during the flash writing process.
 
 The bootloader will only install an image of exactly the same version

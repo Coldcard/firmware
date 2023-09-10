@@ -9,29 +9,16 @@
 # - the offset is the file name
 # - (<Mk3) last 64k of memory reserved for settings
 #
-from uasyncio import sleep_ms
-from uio import BytesIO
 from uhashlib import sha256
-from version import has_psram
 
-if not has_psram:
-    # Use SPI flash chip
-    from sflash import SF
 
-    # this code works on large "blocks" defined by the chip as 64k
-    blksize = 65536
+# Use PSRAM chip
+from glob import PSRAM
+blksize = 4
+PADOUT = lambda n: n
 
-    def PADOUT(n):
-        # rounds up
-        return (n + blksize - 1) & ~(blksize-1)
-else:
-    # Use PSRAM chip
-    from glob import PSRAM
-    blksize = 4
-    PADOUT = lambda n: n
-
-    def ALIGN4(n):
-         return n & ~0x3
+def ALIGN4(n):
+     return n & ~0x3
 
 class SFFile:
     def __init__(self, start, length=0, max_size=None, message=None, pre_erased=False):
@@ -49,10 +36,9 @@ class SFFile:
             self.readonly = False
             self.checksum = sha256()
 
-            if has_psram:
-                # up to 3 bytes that haven't been written-out yet
-                self.runt = bytearray()
-                self._pos = 0
+            # up to 3 bytes that haven't been written-out yet
+            self.runt = bytearray()
+            self._pos = 0
         else:
             # Read
             self.readonly = True
@@ -89,19 +75,7 @@ class SFFile:
         # must be used by caller before writing any bytes
         assert not self.readonly
         assert self.length == 0 # 'already wrote?'
-
-        if has_psram: return
-
-        for i in range(0, self.max_size, blksize):
-            SF.block_erase(self.start + i)
-
-            if i and self.message:
-                from glob import dis
-                dis.progress_bar_show(i/self.max_size)
-
-            # expect block erase to take up to 2 seconds
-            while SF.is_busy():
-                await sleep_ms(50)
+        return
 
     def __enter__(self):
         if self.message:
@@ -117,12 +91,6 @@ class SFFile:
             dis.progress_bar_show(1)
 
         return False
-
-    def wait_writable(self):
-        if has_psram: return
-
-        while SF.is_busy():
-            pass
 
     def close(self):
         # PSRAM might leave a little behind
@@ -144,58 +112,24 @@ class SFFile:
 
         left = len(b)
 
-        if has_psram: 
-            # Mk4: memory-mapped, but can only do word-aligned writes
-            self.checksum.update(b)
+        # Mk4: memory-mapped, but can only do word-aligned writes
+        self.checksum.update(b)
 
-            self.runt.extend(b)
-            here = ALIGN4(len(self.runt))
-            if here:
-                PSRAM.write(self.start + self._pos, self.runt[0:here])
-                self._pos += here
-                self.runt = self.runt[here:]
+        self.runt.extend(b)
+        here = ALIGN4(len(self.runt))
+        if here:
+            PSRAM.write(self.start + self._pos, self.runt[0:here])
+            self._pos += here
+            self.runt = self.runt[here:]
 
+        self.pos += left
+        self.length = self.pos
 
-            self.pos += left
-            self.length = self.pos
+        if self.message:
+            from glob import dis
+            dis.progress_sofar(self.pos, self.length)
 
-            if self.message:
-                from glob import dis
-                dis.progress_sofar(self.pos, self.length)
-
-            return left
-
-        else:
-            # must perform page-aligned (256) writes, but can start
-            # anywhere in the page, and can write just one byte
-            sofar = 0
-
-            while left:
-                if (self.pos + sofar) % 256 != 0:
-                    # start is unaligned, do a partial write to align
-                    assert sofar == 0 #, (sofar, (self.pos+sofar))       # can only happen on first page
-                    runt = min(left, 256 - (self.pos % 256))
-                    here = memoryview(b)[0:runt]
-                    assert len(here) == runt
-                else:
-                    # write full pages, or final runt
-                    here = memoryview(b)[sofar:sofar+256]
-                    assert 1 <= len(here) <= 256
-
-                self.wait_writable()
-
-                SF.write(self.start + self.pos + sofar, here)
-
-                left -= len(here)
-                sofar += len(here)
-                self.checksum.update(here)
-
-                assert left >= 0
-
-            assert sofar == len(b)
-            self.pos += sofar
-            self.length = self.pos
-            return sofar
+        return left
 
     def read(self, ll=None):
         if ll == 0:
@@ -210,10 +144,7 @@ class SFFile:
             return b''
 
         rv = bytearray(ll)
-        if has_psram:
-            PSRAM.read(self.start + self.pos, rv)
-        else:
-            SF.read(self.start + self.pos, rv)
+        PSRAM.read(self.start + self.pos, rv)
 
         self.pos += ll
 
@@ -227,10 +158,7 @@ class SFFile:
         if actual <= 0:
             return 0
 
-        if has_psram:
-            PSRAM.read(self.start + self.pos, b)
-        else:
-            SF.read(self.start + self.pos, b)
+        PSRAM.read(self.start + self.pos, b)
 
         self.pos += actual
 
@@ -251,9 +179,6 @@ class SizerFile(SFFile):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         return False
-
-    def wait_writable(self):
-        return
 
     def write(self, b):
         # immediate write, no buffering

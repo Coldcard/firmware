@@ -188,7 +188,7 @@ async def drv_entro_step2(_1, picked, _2):
         prompt += ', (2) to switch to derived secret'
     elif s_mode == 'pw':
         prompt += ', (2) to type password over USB'
-    if (qr is not None) and version.has_fatram:
+    if qr is not None:
         prompt += ', (3) to view as QR code'
         if glob.NFC:
             prompt += ', (4) to share via NFC'
@@ -226,7 +226,7 @@ async def drv_entro_step2(_1, picked, _2):
             story = "Filename is:\n\n%s" % out_fn
             story += "\n\nSignature filename is:\n\n%s" % sig_nice
             await ux_show_story(story, title='Saved')
-        elif ch == '3' and version.has_fatram:
+        elif ch == '3':
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum)
             continue

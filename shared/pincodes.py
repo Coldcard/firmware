@@ -472,9 +472,6 @@ class PinAttempt:
 
     def is_deltamode(self):
         # (mk4 only) are we operating w/ a slightly wrong PIN code?
-        if version.mk_num < 4:
-            return False
-
         from trick_pins import TC_DELTA_MODE
         return bool(self.delay_required & TC_DELTA_MODE)
 
