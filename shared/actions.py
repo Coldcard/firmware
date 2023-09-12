@@ -1571,7 +1571,8 @@ async def list_files(*A):
     return
 
 async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None,
-                      choices=None, escape=None, none_msg=None, title=None, force_vdisk=False):
+                      choices=None, escape=None, none_msg=None, title=None,
+                      force_vdisk=False, batch_sign=False):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
@@ -1652,10 +1653,17 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     # tell them they need to pick; can quit here too, but that's obvious.
     if len(choices) != 1:
         msg += '\n\nThere are %d files to pick from.' % len(choices)
+        if batch_sign:
+            msg += '\n\nPress (9) to select all files for potential signing.'
+
     else:
         msg += '\n\nThere is only one file to pick from.'
 
     ch = await ux_show_story(msg, escape=escape, title=title)
+    if batch_sign and (ch == escape == "9"):
+        await _batch_sign(choices=choices)
+        return
+
     if escape and ch in escape: return ch
     if ch == 'x': return
 
@@ -1713,8 +1721,7 @@ def is_psbt(filename):
             return True
         return False
 
-async def batch_sign(*a):
-
+async def _batch_sign(choices=None):
     force_vdisk = False
     prompt, escape = import_prompt_builder("PSBTs", no_nfc=True)
     if prompt:
@@ -1723,9 +1730,10 @@ async def batch_sign(*a):
         if ch == "2":
             force_vdisk = True
 
-    choices = await file_picker(None, suffix='psbt', min_size=50,
-                                force_vdisk=force_vdisk,
-                                max_size=MAX_TXN_LEN, taster=is_psbt)
+    if not choices:
+        choices = await file_picker(None, suffix='psbt', min_size=50,
+                                    force_vdisk=force_vdisk,
+                                    max_size=MAX_TXN_LEN, taster=is_psbt)
     if not choices:
         await ux_show_story("No PSBTs found. Need to have '.psbt' suffix.")
 
@@ -1740,6 +1748,9 @@ async def batch_sign(*a):
             await sign_psbt_file(input_psbt)
             await sleep_ms(100)
             await the_ux.top_of_stack().interact()
+
+async def batch_sign(*a):
+    await _batch_sign()
 
 
 async def ready2sign(*a):
@@ -1785,7 +1796,8 @@ any signature is performed."
         input_psbt = path + '/' + fn
     else:
         input_psbt = await file_picker('Choose PSBT file to be signed.',
-                                            choices=choices, title=title)
+                                       choices=choices, title=title,
+                                       batch_sign=True, escape="9")
         if not input_psbt:
             return
 
