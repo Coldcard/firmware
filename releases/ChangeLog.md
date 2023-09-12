@@ -1,5 +1,6 @@
 ## 5.2.0 - 2023-09-21
 
+- Enhancement: Shortcut to `Batch Sign PSBT` via `Ready To Sign` -> `Press (9)`
 - Enhancement: Old plausible deniability feature on fresh COLDCARD removed.
   Only needed for Mk 2-3 where SPI flash was external chip, 
   easily observed, but now that's different. New simpler and less storage

@@ -2318,9 +2318,11 @@ def test_invalid_output_tapproot_psbt(fake_txn, start_sign, cap_story, dev):
 
 
 @pytest.mark.parametrize("num_tx", [1, 2, 10])
+@pytest.mark.parametrize("ui_path", [True, False])
 @pytest.mark.parametrize("action", ["sign", "skip", "refuse"])
-def test_batch_sign(num_tx, action, fake_txn, need_keypress, pick_menu_item,
-                    cap_story, microsd_path, microsd_wipe, goto_home):
+def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
+                    pick_menu_item, cap_story, microsd_path,
+                    microsd_wipe, goto_home):
 
     goto_home()
     microsd_wipe()
@@ -2330,9 +2332,22 @@ def test_batch_sign(num_tx, action, fake_txn, need_keypress, pick_menu_item,
         with open(microsd_path(f"{i}.psbt"), "wb") as f:
             f.write(psbt)
 
-    pick_menu_item("Advanced/Tools")
-    pick_menu_item("File Management")
-    pick_menu_item("Batch Sign PSBT")
+    if ui_path:
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("File Management")
+        pick_menu_item("Batch Sign PSBT")
+    else:
+        # shortcut via Ready To Sign
+        pick_menu_item("Ready To Sign")
+        time.sleep(.1)
+        if num_tx == 1:
+            need_keypress("x")
+            pytest.skip("classic sign")
+
+        _, story = cap_story()
+        assert "Press (9) to use Batch Sign" in story
+        need_keypress("9")
+
     time.sleep(.1)
     title, story = cap_story()
     if "Press (1)" in story:
