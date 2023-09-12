@@ -483,7 +483,7 @@ def parse_extended_key(ln, private=False):
 def import_prompt_builder(title, no_nfc=False):
     from glob import NFC, VD
     prompt, escape = None, None
-    if NFC or VD:
+    if (NFC and (not no_nfc)) or VD:
         prompt = "Press (1) to import %s from SD Card" % title
         escape = "1"
         if VD is not None:
