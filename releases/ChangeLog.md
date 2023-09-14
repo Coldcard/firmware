@@ -1,3 +1,10 @@
+## 5.2.0 - 2023-09-21
+
+- Enhancement: Old plausible deniability feature on fresh COLDCARD removed.
+  Only needed for Mk 2-3 where SPI flash was external chip, 
+  easily observed, but now that's different. New simpler and less storage
+  wasteful plausible deniability.
+
 ## 5.1.4 - 2023-09-08
 
 - Bugfix: Most users would see a red light after upgrade to 5.1.3 from 5.1.2. Fixed.
