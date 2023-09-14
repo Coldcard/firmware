@@ -12,8 +12,6 @@
 # - encrypted and stored in SPI flash, in last 128k area
 # - AES encryption key is derived from actual wallet secret
 # - if logged out, then use fixed key instead (ie. it's public)
-# - to support multiple wallets and plausible deniablity, we 
-#   will preserve any noise already there, and only replace our own stuff
 # - you cannot move data between slots because AES-CTR with CTR seed based on slot #
 # - SHA-256 check on decrypted data
 # - (Mk4) each slot is a file on /flash/settings 
@@ -311,13 +309,6 @@ class SettingsObject:
 
         if is_devmode:
             self.current['chain'] = 'XTN'
-
-        if self.num_empty == NUM_SLOTS:
-            # Whole thing is blank. Bad for plausible deniability. Write 3 slots
-            # with white noise. They will be wasted space until it fills up.
-            for _ in range(4):
-                pos = self.find_spot(-1)
-                self._deny_slot(pos)
 
     def get(self, kn, default=None):
         if kn in self.overrides:
