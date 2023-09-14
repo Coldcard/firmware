@@ -131,8 +131,11 @@ Extended Master Key:
 
 
 async def show_settings_space(*a):
-
-    await ux_show_story('Settings storage space in use:\n\n       %d%%' % int(settings.get_capacity() * 100))
+    percentage_capacity = int(settings.get_capacity() * 100)
+    if percentage_capacity < 10:
+        percentage_capacity = 10
+    await ux_show_story('Settings storage space in use:\n\n'
+                        '       %d%%' % percentage_capacity)
 
 async def show_mcu_keys_left(*a):
     import callgate
