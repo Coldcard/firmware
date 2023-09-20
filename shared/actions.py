@@ -116,9 +116,6 @@ Extended Master Key:
     if bn:
         msg += '\nShipping Bag:\n  %s\n' % bn
 
-    if not version.has_fatram:
-        # can't support on mk2
-        xpub = None
     if xpub:
         msg += '\nPress (3) to show QR code of xpub.'
 
@@ -228,6 +225,9 @@ async def microsd_upgrade(menu, label, item):
     # - erase serial flash
     # - copy it over (slow)
     # - reboot into bootloader, which finishes install
+    from glob import dis, PSRAM
+    from files import dfu_parse
+    from utils import check_firmware_hdr
     from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_MAX_LENGTH_MK4
 
     force_vdisk = item.arg
@@ -238,18 +238,8 @@ async def microsd_upgrade(menu, label, item):
     if not fn: return
 
     failed = None
-
     with CardSlot(force_vdisk=force_vdisk) as card:
         with card.open(fn, 'rb') as fp:
-            from version import has_psram
-            if has_psram:
-                from glob import PSRAM as SF
-            else:
-                from sflash import SF
-            from glob import dis
-            from files import dfu_parse
-            from utils import check_firmware_hdr
-
             offset, size = dfu_parse(fp)
 
             # we also put a copy of special signed heaer at the end of the flash
@@ -264,12 +254,12 @@ async def microsd_upgrade(menu, label, item):
             failed = check_firmware_hdr(hdr, size)
 
             if not failed:
-                # copy binary into serial flash / PSRAM
+                # copy binary into PSRAM
                 fp.seek(offset)
 
                 dis.fullscreen("Loading...")
 
-                buf = bytearray(256 if not has_psram else 0x20000)
+                buf = bytearray(0x20000)
                 pos = 0
                 while pos < size:
                     dis.progress_bar_show(pos/size)
@@ -277,21 +267,7 @@ async def microsd_upgrade(menu, label, item):
                     here = fp.readinto(buf)
                     if not here: break
 
-                    if has_psram:
-                        SF.write(pos, buf)
-                    else:
-                        if pos % 4096 == 0:
-                            # erase here
-                            SF.sector_erase(pos)
-                            while SF.is_busy():
-                                await sleep_ms(10)
-
-                        SF.write(pos, buf)
-
-                        # full page write: 0.6 to 3ms
-                        while SF.is_busy():
-                            await sleep_ms(1)
-
+                    PSRAM.write(pos, buf)
                     pos += here
 
     if failed:
@@ -300,7 +276,7 @@ async def microsd_upgrade(menu, label, item):
 
     # continue process...
     from auth import FirmwareUpgradeRequest
-    m = FirmwareUpgradeRequest(hdr, size, psram_offset=(0 if has_psram else None))
+    m = FirmwareUpgradeRequest(hdr, size, psram_offset=0)
     the_ux.push(m)
 
 async def start_dfu(*a):
@@ -429,9 +405,6 @@ async def block_until_login():
     from login import LoginUX
     from ux import AbortInteraction
 
-    # mk4 does differently, as a "trick pin"
-    cd_pin = settings.get('cd_pin', None) if not version.has_se2 else None
-
     # do they want a randomized (shuffled) keypad?
     rnd_keypad = settings.get('rngk', 0)
 
@@ -444,7 +417,7 @@ async def block_until_login():
         lll = LoginUX(rnd_keypad, kill_btn)
 
         try:
-            rv = await lll.try_login(bypass_pin=cd_pin)
+            rv = await lll.try_login(bypass_pin=None)
             if rv: break
         except AbortInteraction:
             # not allowed!
@@ -609,16 +582,20 @@ async def clear_seed(*a):
     import seed
 
     if pa.has_duress_pin():
-        await ux_show_story('''Please empty the duress wallet, and clear the duress PIN before clearing main seed.''')
+        await ux_show_story('Please empty the duress wallet, and clear '
+                            'the duress PIN before clearing main seed.')
         return
 
-    if version.has_se2:
-        from trick_pins import tp
-        if any(tp.get_duress_pins()):
-            await ux_show_story('''You have one or more duress wallets defined under Trick PINs. Please empty them, and clear associated Trick PINs before clearing main seed.''')
-            return
+    from trick_pins import tp
+    if any(tp.get_duress_pins()):
+        await ux_show_story('You have one or more duress wallets defined '
+                            'under Trick PINs. Please empty them, and clear '
+                            'associated Trick PINs before clearing main seed.')
+        return
 
-    if not await ux_confirm('''Wipe seed words and reset wallet. All funds will be lost. You better have a backup of the seed words.'''):
+    if not await ux_confirm('Wipe seed words and reset wallet. '
+                            'All funds will be lost. '
+                            'You better have a backup of the seed words.'):
         return await ux_aborted()
 
     ch = await ux_show_story('''Are you REALLY sure though???\n\n\
@@ -687,8 +664,7 @@ async def view_seed_words(*a):
         dis.busy_bar(False)
         msg, qr, qr_alnum = render_master_secrets(sv.mode, sv.raw, sv.node)
 
-        if version.has_fatram:
-            msg += '\n\nPress (1) to view as QR Code.'
+        msg += '\n\nPress (1) to view as QR Code.'
 
         while 1:
             ch = await ux_show_story(msg, sensitive=True, escape='1')
@@ -761,10 +737,9 @@ async def version_migration():
 
 async def version_migration_prelogin():
     # same, but for setting before login
-    if version.has_se2:
-        # these have moved into SE2 for Mk4 and so can be removed
-        for n in [ 'cd_lgto', 'cd_mode', 'cd_pin' ]:
-            settings.remove_key(n)
+    # these have moved into SE2 for Mk4 and so can be removed
+    for n in [ 'cd_lgto', 'cd_mode', 'cd_pin' ]:
+        settings.remove_key(n)
 
 async def start_login_sequence():
     # Boot up login sequence here.
@@ -786,12 +761,6 @@ async def start_login_sequence():
 
     if pa.is_blank():
         # Blank devices, with no PIN set all, can continue w/o login
-
-        # Do green-light set immediately after firmware upgrade [not after mk3]
-        if version.is_fresh_version() and version.mk_num <=3:
-            pa.greenlight_firmware()
-            dis.show()
-
         goto_top_menu()
         return
 
@@ -826,16 +795,11 @@ async def start_login_sequence():
 
         # Do we need to do countdown delay? (real or otherwise)
         delay = 0
-        if wants_countdown:
-            # Mk3 and earlier
-            await damage_myself()
-            delay = settings.get('cd_lgto', 60)
-        elif version.has_se2:
-            # Mk4 approach:
-            # - wiping has already occured if that was picked
-            # - delay is variable, stored in tc_arg
-            from trick_pins import tp
-            delay = tp.was_countdown_pin()
+        # Mk4 approach:
+        # - wiping has already occured if that was picked
+        # - delay is variable, stored in tc_arg
+        from trick_pins import tp
+        delay = tp.was_countdown_pin()
 
         # Maybe they do know the right PIN, but do a delay anyway, because they wanted that
         if not delay:
@@ -846,23 +810,10 @@ async def start_login_sequence():
             pa.reset()
             await login_countdown(delay * (60 if not version.is_devmode else 1))
 
-            if version.has_se2:
-                # keep it simple for Mk4+: just challenge again for any PIN
-                # - if it's the same countdown pin, it will be accepted and they
-                #   get in (as most trick pins would do)
-                await block_until_login()
-            else:
-                # second PIN challenge; but only if first one was actually legit
-                wants_countdown = await block_until_login()
-
-                # whenever they use the countdown pin on second screen, kill ourselves
-                if wants_countdown:
-                    await damage_myself()
-
-                if wants_countdown:
-                    # crash
-                    dis.fullscreen("ERROR")
-                    callgate.show_logout(1)
+            # keep it simple for Mk4+: just challenge again for any PIN
+            # - if it's the same countdown pin, it will be accepted and they
+            #   get in (as most trick pins would do)
+            await block_until_login()
 
     except BaseException as exc:
         # Robustness: any logic errors/bugs in above will brick the Coldcard
@@ -901,13 +852,6 @@ async def start_login_sequence():
     from imptask import IMPT
     IMPT.start_task('idle', idle_logout())
 
-    # Do green-light set immediately after firmware upgrade
-    # - mk4 doesn't work this way, light will already be green
-    if version.mk_num <= 3:
-        if version.is_fresh_version() and not pa.is_secondary:
-            pa.greenlight_firmware()
-            dis.show()
-
     # Populate xfp/xpub values, if missing.
     # - can happen for first-time login of duress wallet
     # - may indicate lost settings, which we can easily recover from
@@ -934,18 +878,17 @@ async def start_login_sequence():
 
     # If HSM policy file is available, offer to start that,
     # **before** the USB is even enabled.
-    if version.has_fatram:
-        # do not offer HSM if wallet is blank -> HSM needs secret
-        if not pa.is_secret_blank():
-            try:
-                import hsm, hsm_ux
+    # do not offer HSM if wallet is blank -> HSM needs secret
+    if not pa.is_secret_blank():
+        try:
+            import hsm, hsm_ux
 
-                if hsm.hsm_policy_available():
-                    settings.put("hsmcmd", True)
-                    ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
-                    if ar:
-                        await ar.interact()
-            except: pass
+            if hsm.hsm_policy_available():
+                settings.put("hsmcmd", True)
+                ar = await hsm_ux.start_hsm_approval(usb_mode=False, startup_mode=True)
+                if ar:
+                    await ar.interact()
+        except: pass
 
     if version.mk_num >= 4:
         if version.has_nfc and settings.get('nfc', 0):
@@ -2073,14 +2016,7 @@ async def show_version(*a):
     bl = callgate.get_bl_version()[0]
     chk = str(b2a_hex(callgate.get_bl_checksum(0))[-8:], 'ascii')
 
-    if version.has_se2:
-        se = '\n  '.join(callgate.get_se_parts())
-    else:
-        se = 'ATECC'
-        if version.has_608:
-            se += '608B' if callgate.has_608b() else '608A'
-        else:
-            se += '508A'
+    se = '\n  '.join(callgate.get_se_parts())
 
     # exposed over USB interface:
     serial = version.serial_number()
@@ -2110,12 +2046,12 @@ Serial:
 Hardware:
   {hw}
 
-Secure Element{ses}:
+Secure Elements:
   {se}
 '''
 
     await ux_show_story(msg.format(rel=rel, built=built, bl=bl, chk=chk, se=se,
-                                   ser=serial, hw=hw, ses='s' if version.has_se2 else ''))
+                            ser=serial, hw=hw))
 
 async def ship_wo_bag(*a):
     # Factory command: for dev and test units that have no bag number, and never will.
