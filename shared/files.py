@@ -56,8 +56,7 @@ def wipe_flash_filesystem():
     # erase and re-format the flash filesystem (/flash/**)
     import ckcc, pyb
     from glob import dis
-    from version import mk_num
-    
+
     dis.fullscreen('Erasing...')
     os.umount('/flash')
 
@@ -81,16 +80,10 @@ def wipe_flash_filesystem():
         
     # rebuild and mount /flash
     dis.fullscreen('Rebuilding...')
-    
-    if mk_num == 4:
-        # no need to erase, we just put new FS on top
-        import mk4
-        mk4.make_flash_fs()
-    else:
-        ckcc.wipe_fs()
 
-        # remount it
-        os.mount(fl, '/flash')
+    # no need to erase, we just put new FS on top
+    import mk4
+    mk4.make_flash_fs()
 
     # re-store current settings
     from glob import settings

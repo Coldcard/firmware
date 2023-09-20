@@ -39,21 +39,17 @@ glob.dis = dis
 # slowish imports, some with side-effects
 import ckcc, uasyncio
 
-if version.mk_num >= 4:
-    # early setup code needed on Mk4
-    try:
-        import mk4
-        mk4.init0()
+# early setup code needed on Mk4
+try:
+    import mk4
+    mk4.init0()
 
-        from psram import PSRAMWrapper
-        glob.PSRAM = PSRAMWrapper()
+    from psram import PSRAMWrapper
+    glob.PSRAM = PSRAMWrapper()
 
-    except BaseException as exc:
-        sys.print_exception(exc)
-        # continue tho
-else:
-    # Serial Flash memory
-    from sflash import SF
+except BaseException as exc:
+    sys.print_exception(exc)
+    # continue tho
 
 # Setup membrane numpad (mark 2+)
 from mempad import MembraneNumpad

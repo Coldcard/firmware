@@ -19,6 +19,7 @@ freeze_as_mpy('', [
 	'export.py',
 	'files.py',
 	'flow.py',
+	'ftux.py',
 	'glob.py',
 	'history.py',
 	'hsm.py',
@@ -52,7 +53,6 @@ freeze_as_mpy('', [
 	'ux.py',
 	'version.py',
 	'xor_seed.py',
-	'ftux.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

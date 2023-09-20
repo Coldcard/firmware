@@ -5,6 +5,7 @@
   Only needed for Mk 2-3 where SPI flash was external chip, 
   easily observed, but now that's different. New simpler and less storage
   wasteful plausible deniability.
+- Enhancement: Remove obsolete Mk2/Mk3 code-paths from master branch
 
 ## 5.1.4 - 2023-09-08
 

@@ -682,12 +682,6 @@ class HSMPolicy:
             with open(POLICY_FNAME, 'w+t') as f:
                 ujson.dump(self.save(), f)
 
-            if version.mk_num <= 3:
-                # that changes the flash, so need to update
-                # the hash stored in SE (Mk3 and earlier)
-                pa.greenlight_firmware()
-                dis.show()
-
         if self.set_sl:
             self.save_storage_locker()
 

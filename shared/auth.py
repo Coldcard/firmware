@@ -18,7 +18,7 @@ from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from utils import B2A, parse_addr_fmt_str
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
-from version import has_psram, has_fatram, MAX_TXN_LEN
+from version import MAX_TXN_LEN
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -631,7 +631,7 @@ class ApproveTransaction(UserAuthorizedAction):
         # Prompt user w/ details and get approval
         from glob import dis, hsm_active
 
-        # step 1: parse PSBT from sflash into in-memory objects.
+        # step 1: parse PSBT from PSRAM into in-memory objects.
 
         try:
             with SFFile(TXN_INPUT_OFFSET, length=self.psbt_len, message='Reading...') as fd:
@@ -798,16 +798,14 @@ class ApproveTransaction(UserAuthorizedAction):
             while 1:
                 # Show txid when we can; advisory
                 # - maybe even as QR, hex-encoded in alnum mode
-                tmsg = txid + '\n\n'
+                tmsg = txid + '\n\nPress (1) for QR Code of TXID. '
 
-                if has_fatram:
-                    tmsg += 'Press (1) for QR Code of TXID. '
                 if NFC:
                     tmsg += 'Press (3) to share signed txn via NFC.'
 
                 ch = await ux_show_story(tmsg, "Final TXID", escape='13')
 
-                if ch=='1' and has_fatram:
+                if ch == '1':
                     await show_qr_code(txid, True)
                     continue
 
@@ -952,7 +950,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
 
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):
-    # transaction (binary) loaded into sflash/PSRAM already, checksum checked
+    # transaction (binary) loaded into PSRAM already, checksum checked
     UserAuthorizedAction.check_busy(ApproveTransaction)
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, flags, psbt_sha=psbt_sha)
 
@@ -986,9 +984,10 @@ async def sign_psbt_file(filename, force_vdisk=False):
     from files import CardSlot, CardMissingError
     from glob import dis
     from ux import the_ux
-    from sram2 import tmp_buf
 
-    # copy file into our spiflash
+    tmp_buf = bytearray(1024)
+
+    # copy file into PSRAM
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
     with CardSlot(force_vdisk, readonly=True) as card:
@@ -1267,13 +1266,13 @@ class ShowAddressBase(UserAuthorizedAction):
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
             if NFC:
                 msg += ' Press (3) to share via NFC.'
-            if has_fatram:
-                msg += ' Press (4) to view QR Code.'
+
+            msg += ' Press (4) to view QR Code.'
 
             while 1:
                 ch = await ux_show_story(msg, title=self.title, escape='34')
 
-                if ch == '4' and has_fatram:
+                if ch == '4':
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
                 if ch == '3' and NFC:
@@ -1495,26 +1494,15 @@ Binary checksum and signature will be further verified before any changes are ma
                 # - reboot to start process
                 from glob import dis
                 dis.fullscreen('Upgrading...', percent=1)
-
-                if not has_psram:
-                    from sflash import SF
-                    import callgate
-                    SF.write(self.length, self.hdr)
-
-                    callgate.show_logout(2)
-                else:
-                    # Mk4 copies from PSRAM to flash inside bootrom, we have
-                    # nothing to do here except start that process.
-                    from pincodes import pa
-                    pa.firmware_upgrade(self.psram_offset, self.length)
-                    # not reached, unless issue?
-                    raise RuntimeError("bootrom fail")
+                # Mk4 copies from PSRAM to flash inside bootrom, we have
+                # nothing to do here except start that process.
+                from pincodes import pa
+                pa.firmware_upgrade(self.psram_offset, self.length)
+                # not reached, unless issue?
+                raise RuntimeError("bootrom fail")
             else:
                 # they don't want to!
                 self.refused = True
-                if not has_psram:
-                    from sflash import SF
-                    SF.block_erase(0)           # just in case, but not required
                 await ux_dramatic_pause("Refused.", 2)
 
         except BaseException as exc:
