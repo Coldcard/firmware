@@ -37,8 +37,7 @@ class SSD1306(framebuf.FrameBuffer):
 
         #self.buffer = bytearray(self.pages * self.width)
 
-        from sram2 import display_buf
-        self.buffer = display_buf
+        self.buffer = bytearray(1024)
         assert len(self.buffer) == self.pages * self.width
 
         super().__init__(self.buffer, self.width, self.height, framebuf.MONO_VLSB)

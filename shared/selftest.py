@@ -56,11 +56,7 @@ async def test_secure_element():
     assert not get_is_bricked()         # bricked already
 
     # test right chips installed
-    if version.has_fatram:
-        assert version.has_608          # expect 608
-    else:
-        assert not version.has_608      # expect 508a
-        assert version.hw_label == 'mk2'
+    assert version.has_608          # expect 608
 
     if ckcc.is_simulator(): return
 
@@ -115,9 +111,6 @@ async def test_sd_active():
 
 async def test_usb_light():
     # Mk4's new USB activity light (right by connector)
-
-    if version.mk_num < 4: return
-
     from machine import Pin
     p = Pin('USB_ACTIVE', Pin.OUT)
 
@@ -139,8 +132,6 @@ async def test_nfc():
     await NFCHandler.selftest()
     
 async def test_psram():
-    if not version.has_psram: return
-
     from glob import PSRAM
     from ustruct import pack
     import ngu
@@ -168,54 +159,6 @@ async def test_psram():
         assert chk == rnd, "RB bad @ 0x%x" % pos
         dis.progress_bar_show((PSRAM.length + pos) / test_len)
 
-async def test_sflash():
-    if version.has_psram: return
-
-    dis.clear()
-    dis.text(None, 18, 'Serial Flash')
-    dis.show()
-
-    from sflash import SF
-    from ustruct import pack
-    import ngu
-
-    msize = 1024*1024
-    SF.chip_erase()
-
-    for phase in [0, 1]:
-        steps = 7*4
-        for i in range(steps):
-            dis.progress_bar(i/steps)
-            dis.show()
-            await sleep_ms(250)
-            if not SF.is_busy(): break
-
-        assert not SF.is_busy()     # "didn't finish"
-
-        # leave chip blank
-        if phase == 1: break
-
-
-        buf = bytearray(32)
-        for addr in range(0, msize, 1024):
-            SF.read(addr, buf)
-            assert set(buf) == {255}        # "not blank"
-
-            rnd = ngu.hash.sha256s(pack('I', addr))
-            SF.write(addr, rnd)
-            SF.wait_done()
-            SF.read(addr, buf)
-            assert buf == rnd           #  "write failed"
-
-            dis.progress_bar_show(addr/msize)
-
-        # check no aliasing, also right size part
-        for addr in range(0, msize, 1024):
-            expect = ngu.hash.sha256s(pack('I', addr))
-            SF.read(addr, buf)
-            assert buf == expect        # "readback failed"
-
-            dis.progress_bar_show(addr/msize)
 
 async def test_oled():
     # all on/off tests
@@ -306,7 +249,6 @@ async def start_selftest():
         await test_oled()
         await test_psram()
         await test_nfc()
-        await test_sflash()
         await test_microsd()
         await test_numpad()
         await test_secure_element()

@@ -11,8 +11,8 @@ from uio import BytesIO
 from chains import taptweak, tapleaf_hash
 from sffile import SizerFile
 from sram2 import psbt_tmp256
-from multisig import MultisigWallet, disassemble_multisig_mn
 from miniscript import MiniScriptWallet
+from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
 from serializations import CTxIn, CTxInWitness, CTxOut, ser_string
@@ -31,6 +31,8 @@ from public_constants import (
     PSBT_IN_TAP_MERKLE_ROOT, PSBT_IN_TAP_LEAF_SCRIPT, PSBT_IN_TAP_SCRIPT_SIG,
     TAPROOT_LEAF_TAPSCRIPT, TAPROOT_LEAF_MASK
 )
+
+psbt_tmp256 = bytearray(256)
 
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)

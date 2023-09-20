@@ -73,16 +73,11 @@ class PaperWalletMaker:
             self.update_menu()
         return self.atype()[0], ['Classic P2PKH', 'Segwit P2WPKH', 'Taproot P2TR'], set
 
-    @staticmethod
-    def can_do_qr():
-        import version
-        return version.has_fatram
-
     def update_menu(self):
         # Reconstruct the menu contents based on our state.
         self.my_menu.replace_items([
             MenuItem("Don't make PDF" if not self.template_fn else 'Making PDF',
-                     f=self.pick_template, predicate=self.can_do_qr),
+                     f=self.pick_template),
             MenuItem(self.atype()[1], chooser=self.addr_format_chooser),
             MenuItem('Use Dice', f=self.use_dice),
             MenuItem('GENERATE WALLET', f=self.doit),
@@ -122,18 +117,14 @@ class PaperWalletMaker:
 
             wif = ngu.codecs.b58_encode(ch.b58_privkey + privkey + b'\x01')
 
-            if self.can_do_qr():
-                with imported('uqr') as uqr:
-                    # make the QR's now, since it's slow
-                    is_alnum = self.is_segwit 
-                    qr_addr = uqr.make(addr if not is_alnum else addr.upper(), 
-                                min_version=4, max_version=4,
-                                encoding=(uqr.Mode_ALPHANUMERIC if is_alnum else 0))
+            with imported('uqr') as uqr:
+                # make the QR's now, since it's slow
+                is_alnum = self.is_segwit
+                qr_addr = uqr.make(addr if not is_alnum else addr.upper(),
+                            min_version=4, max_version=4,
+                            encoding=(uqr.Mode_ALPHANUMERIC if is_alnum else 0))
 
-                    qr_wif = uqr.make(wif, min_version=4, max_version=4, encoding=uqr.Mode_BYTE)
-            else:
-                qr_addr = None
-                qr_wif = None
+                qr_wif = uqr.make(wif, min_version=4, max_version=4, encoding=uqr.Mode_BYTE)
 
             # Use address as filename. clearly will be unique, but perhaps a bit
             # awkward to work with.
@@ -308,7 +299,8 @@ class PaperWalletMaker:
 
 async def make_paper_wallet(*a):
 
-    msg = background_msg.format(can_qr=('\nIf you have a special PDF template file, it can also make a pretty version of the same data.' if PaperWalletMaker.can_do_qr() else ''))
+    msg = background_msg.format(can_qr='\nIf you have a special PDF template file, '
+                                       'it can also make a pretty version of the same data.')
 
     if await ux_show_story(msg) != 'y':
         return

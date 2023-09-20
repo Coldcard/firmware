@@ -10,7 +10,7 @@ from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
-from version import has_fatram, is_devmode, has_psram, MAX_TXN_LEN, MAX_UPLOAD_LEN
+from version import is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
 
 # Unofficial, unpermissioned... numbers
@@ -90,7 +90,7 @@ def enable_usb():
     else:
         # subclass, protocol, max packet length, polling interval, report descriptor
         hid_info = (0x0, 0x0, 64, 5, hid_descp)
-        classes = 'VCP+HID' if not has_psram else 'VCP+MSC+HID'
+        classes = 'VCP+MSC+HID'
         pyb.usb_mode(classes, vid=COINKITE_VID, pid=CKCC_PID, hid=hid_info)
 
     global handler
@@ -129,8 +129,7 @@ class USBHandler:
         # handle simulator
         self.blockable = getattr(self.dev, 'pipe', self.dev)
 
-        from sram2 import usb_buf
-        self.msg = usb_buf
+        self.msg = bytearray(2048+12)
         assert len(self.msg) == MAX_MSG_LEN
 
         self.encrypted_req = False
@@ -586,66 +585,64 @@ class USBHandler:
         if cmd == 'bagi':
             return self.handle_bag_number(args)
 
-        if has_fatram:
-            # HSM and user-related features only supported on larger-memory Mk3
+        # HSM and user-related features only supported on larger-memory Mk3
 
-            if cmd == 'hsms':
-                # HSM mode "start" -- requires user approval
-                if args:
-                    file_len, file_sha = unpack_from('<I32s', args)
-                    if file_sha != self.file_checksum.digest():
-                        return b'err_Checksum'
-                    assert 2 <= file_len <= (200*1000), "badlen"
-                else:
-                    file_len = 0
+        if cmd == 'hsms':
+            # HSM mode "start" -- requires user approval
+            if args:
+                file_len, file_sha = unpack_from('<I32s', args)
+                if file_sha != self.file_checksum.digest():
+                    return b'err_Checksum'
+                assert 2 <= file_len <= (200*1000), "badlen"
+            else:
+                file_len = 0
 
-                # Start an UX interaction but return (mostly) immediately here
-                from hsm_ux import start_hsm_approval
-                await start_hsm_approval(sf_len=file_len, usb_mode=True)
+            # Start an UX interaction but return (mostly) immediately here
+            from hsm_ux import start_hsm_approval
+            await start_hsm_approval(sf_len=file_len, usb_mode=True)
 
+            return None
+
+        if cmd == 'hsts':
+            # can always query HSM mode
+            from hsm import hsm_status_report
+            import ujson
+            return b'asci' + ujson.dumps(hsm_status_report())
+
+        if cmd == 'gslr':
+            # get the value held in the Storage Locker
+            assert hsm_active, 'need hsm'
+            return b'biny' + hsm_active.fetch_storage_locker()
+
+        # User Mgmt
+        if cmd == 'nwur':     # new user
+            from users import Users
+            auth_mode, ul, sl = unpack_from('<BBB', args)
+            username = bytes(args[3:3+ul]).decode('ascii')
+            secret = bytes(args[3+ul:3+ul+sl])
+
+            return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
+
+        if cmd == 'rmur':     # delete user
+            from users import Users
+            ul, = unpack_from('<B', args)
+            username = bytes(args[1:1+ul]).decode('ascii')
+
+            return Users.delete(username)
+
+        if cmd == 'user':       # auth user (HSM mode)
+            from users import Users
+            totp_time, ul, tl = unpack_from('<IBB', args)
+            username = bytes(args[6:6+ul]).decode('ascii')
+            token = bytes(args[6+ul:6+ul+tl])
+
+            if hsm_active:
+                # just queues these details, can't be checked until PSBT on-hand
+                hsm_active.usb_auth_user(username, token, totp_time)
                 return None
-
-            if cmd == 'hsts':
-                # can always query HSM mode
-                from hsm import hsm_status_report
-                import ujson
-                return b'asci' + ujson.dumps(hsm_status_report())
-
-            if cmd == 'gslr':
-                # get the value held in the Storage Locker
-                assert hsm_active, 'need hsm'
-                return b'biny' + hsm_active.fetch_storage_locker()
-
-
-            # User Mgmt
-            if cmd == 'nwur':     # new user
-                from users import Users
-                auth_mode, ul, sl = unpack_from('<BBB', args)
-                username = bytes(args[3:3+ul]).decode('ascii')
-                secret = bytes(args[3+ul:3+ul+sl])
-
-                return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
-
-            if cmd == 'rmur':     # delete user
-                from users import Users
-                ul, = unpack_from('<B', args)
-                username = bytes(args[1:1+ul]).decode('ascii')
-
-                return Users.delete(username)
-
-            if cmd == 'user':       # auth user (HSM mode)
-                from users import Users
-                totp_time, ul, tl = unpack_from('<IBB', args)
-                username = bytes(args[6:6+ul]).decode('ascii')
-                token = bytes(args[6+ul:6+ul+tl])
-
-                if hsm_active:
-                    # just queues these details, can't be checked until PSBT on-hand
-                    hsm_active.usb_auth_user(username, token, totp_time)
-                    return None
-                else:
-                    # dryrun/testing purposes: validate only, doesn't unlock nothing
-                    return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
+            else:
+                # dryrun/testing purposes: validate only, doesn't unlock nothing
+                return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
 
         #print("USB garbage: %s +[%d]" % (cmd, len(args)))
 
@@ -736,23 +733,16 @@ class USBHandler:
         buf = memoryview(resp)[4:]
 
         pos = (MAX_TXN_LEN * file_number) + offset
-        
-        if has_psram:
-            from glob import PSRAM
-            PSRAM.read(pos, buf)
-        else:
-            from sflash import SF
-            SF.read(pos, buf)
+
+        from glob import PSRAM
+        PSRAM.read(pos, buf)
 
         self.file_checksum.update(buf)
 
         return resp
 
     async def handle_upload(self, offset, total_size, data):
-        if has_psram:
-            from glob import PSRAM
-        else:
-            from sflash import SF
+        from glob import PSRAM
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
@@ -774,15 +764,6 @@ class USBHandler:
         for pos in range(offset, offset+len(data), 256):
             if pos % 4096 == 0:
                 dis.fullscreen("Receiving...", offset/total_size)
-
-                if not has_psram:
-                    # erase here
-                    SF.sector_erase(pos)
-
-                    # expect 10-22 ms delay here
-                    await sleep_ms(12)
-                    while SF.is_busy():
-                        await sleep_ms(2)
 
             # write up to 256 bytes
             here = data[pos-offset:pos-offset+256]
@@ -817,15 +798,8 @@ class USBHandler:
                 # pretend we wrote it, so ckcc-protocol or whatever gives normal feedback
                 return offset
 
-            # write to SPI Flash / PSRAM
-            if has_psram:
-                PSRAM.write(pos, here)
-            else:
-                SF.write(pos, here)
-
-                # full page write: 0.6 to 3ms
-                while SF.is_busy():
-                    await sleep_ms(1)
+            # write to PSRAM
+            PSRAM.write(pos, here)
 
         if offset+len(data) >= total_size and not hsm_active:
             # probably done
