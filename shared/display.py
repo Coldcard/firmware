@@ -7,11 +7,12 @@ from ssd1306 import SSD1306_SPI
 from version import is_devmode
 import framebuf
 from graphics import Graphics
-from sram2 import display2_buf
 
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
 FontFixed = object()    # ugly 8x8 PET font
+display2_buf = bytearray(1024)
+
 
 class Display:
 

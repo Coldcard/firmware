@@ -29,7 +29,7 @@ transfer data easily via NFC.''' + COMMON
                 
         # Disabled for now, because limited audience and
         # extra barrier to "just getting started"
-        if 0:       #  version.has_psram and not settings.get('vidsk', 0):
+        if 0:       #  if not settings.get('vidsk', 0):
             msg = '''Enable USB Drive?\n\n\
 Connect your COLDCARD directly as a USB flash drive \
 to your phone or desktop. You will be able to drag-n-drop or \

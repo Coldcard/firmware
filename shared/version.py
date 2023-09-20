@@ -21,12 +21,12 @@ def decode_firmware_header(hdr):
 
 def get_fw_header():
     # located in our own flash
-    from sigheader import FLASH_HEADER_BASE, FLASH_HEADER_BASE_MK4, FW_HEADER_SIZE
+    from sigheader import FLASH_HEADER_BASE_MK4, FW_HEADER_SIZE
     import uctypes
 
     global mk_num
 
-    return uctypes.bytes_at(FLASH_HEADER_BASE_MK4 if mk_num == 4 else FLASH_HEADER_BASE,
+    return uctypes.bytes_at(FLASH_HEADER_BASE_MK4,
                             FW_HEADER_SIZE)
 
 def get_mpy_version():
@@ -58,36 +58,8 @@ def nfc_presence_check():
 
 def get_is_devmode():
     # what firmware signing key did we boot with? are we in dev mode?
-
-    if mk_num == 4:
-        # mk4: are we built differently?
-        import ckcc
-        return ckcc.is_debug_build()
-
-    from sigheader import RAM_HEADER_BASE, FWH_PK_NUM_OFFSET
-    import stm
-
-    # Important? Use the RAM version of this, not flash version!
-    kn = stm.mem32[RAM_HEADER_BASE + FWH_PK_NUM_OFFSET]
-
-    # For now, all keys are "production" except number zero, which will be made public
-    # - some other keys may be de-authorized and so on in the future
-    is_devmode = (kn == 0)
-
-    return is_devmode
-
-
-def is_fresh_version():
-    # Did we just boot into a new firmware for the first time?
-    # - mk4+ does not use this approach, light will be solid green during upgrade
-    if mk_num >= 4: return False
-
-    from sigheader import RAM_BOOT_FLAGS, RBF_FRESH_VERSION
-    import stm
-
-    flags = stm.mem32[RAM_BOOT_FLAGS]
-
-    return bool(flags & RBF_FRESH_VERSION)
+    import ckcc
+    return ckcc.is_debug_build()
 
 
 def serial_number():
@@ -102,49 +74,25 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, has_fatram, is_factory_mode, is_devmode, has_psram
-    global has_se2, mk_num, has_nfc
+    global hw_label, has_608, is_factory_mode
+    global mk_num, has_nfc, is_devmode
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
-    import ckcc, callgate, stm
-    from machine import Pin
+    import ckcc, callgate
 
-    # NOTE: mk1 not supported anymore.
-    # PA10 is pulled-down in Mark2, open in previous revs
-    #mark2 = (Pin('MARK2', Pin.IN, pull=Pin.PULL_UP).value() == 0)
-
-    hw_label = 'mk2'
-    has_fatram = False
-    has_psram = False
+    hw_label = 'mk4'
     has_608 = True
-    has_se2 = False
-    has_nfc = False         # hardware present; they might not be using it
-    mk_num = 2
+    has_nfc = nfc_presence_check()  # hardware present; they might not be using it
+    mk_num = 4
 
     cpuid = ckcc.get_cpu_id()
-    if cpuid == 0x461:      # STM32L496RG6
-        hw_label = 'mk3'
-        has_fatram = True
-        mk_num = 3
-    elif cpuid == 0x470:    # STM32L4S5VI
-        hw_label = 'mk4'
-        has_fatram = True
-        has_psram = True
-        has_se2 = True
-        mk_num = 4
-        has_nfc = nfc_presence_check()
-    else:
-        # mark 2
-        has_608 = callgate.has_608()
+    assert cpuid == 0x470  # STM32L4S5VI
 
     # Boot loader needs to tell us stuff about how we were booted, sometimes:
     # - did we just install a new version, for example (obsolete in mk4)
     # - are we running in "factory mode" with flash un-secured?
-    if mk_num < 4:
-        is_factory_mode = bool(stm.mem32[RAM_BOOT_FLAGS] & RBF_FACTORY_MODE)
-    else:
-        is_factory_mode = callgate.get_factory_mode()
+    is_factory_mode = callgate.get_factory_mode()
 
     bn = callgate.get_bag_number()
     if bn:
@@ -155,10 +103,9 @@ def probe_system():
     is_devmode = get_is_devmode()
 
     # increase size limits for mk4
-    if has_psram:
-        from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4
-        MAX_UPLOAD_LEN = MAX_UPLOAD_LEN_MK4
-        MAX_TXN_LEN = MAX_TXN_LEN_MK4
+    from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4
+    MAX_UPLOAD_LEN = MAX_UPLOAD_LEN_MK4
+    MAX_TXN_LEN = MAX_TXN_LEN_MK4
 
 probe_system()
 

@@ -388,17 +388,11 @@ def clean_shutdown(style=0):
     settings.save_if_dirty()
 
     try:
-        from glob import dis
+        from glob import dis, NFC
         dis.fullscreen("Cleanup...")
 
-        if not version.has_psram:
-            from sflash import SF
-            SF.wipe_most()
-        else:
-            from glob import NFC
-
-            if NFC:
-                uasyncio.run(NFC.wipe(True))
+        if NFC:
+            uasyncio.run(NFC.wipe(True))
                 
     except: pass
 

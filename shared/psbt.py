@@ -9,7 +9,6 @@ import stash, gc, history, sys, ngu, ckcc, chains
 from uhashlib import sha256
 from uio import BytesIO
 from sffile import SizerFile
-from sram2 import psbt_tmp256
 from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160, hash256
@@ -26,6 +25,8 @@ from public_constants import (
     PSBT_IN_FINAL_SCRIPTWITNESS, PSBT_OUT_REDEEM_SCRIPT, PSBT_OUT_WITNESS_SCRIPT,
     PSBT_OUT_BIP32_DERIVATION, MAX_PATH_DEPTH, MAX_SIGNERS
 )
+
+psbt_tmp256 = bytearray(256)
 
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)
