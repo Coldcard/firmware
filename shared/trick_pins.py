@@ -799,7 +799,7 @@ normal operation.''')
             va = lgto_va[1:]
 
             def set_it(idx, text):
-                new_val = va[idx+1]
+                new_val = va[idx]
                 # save it
                 try:
                     b, slot = tp.update_slot(pin.encode(), tc_flags=flags, tc_arg=new_val)

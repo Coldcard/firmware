@@ -302,14 +302,15 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_
 @pytest.fixture(scope='function')
 def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
     # from Ok? screen, check it worked right
-    def doit(new_pin, op_mode, xflags, xargs=0):
-        time.sleep(.1)
-        _, story = cap_story()
-        assert f'PIN {new_pin}' in story
-        assert op_mode in story
-        assert story.endswith('Ok?')
+    def doit(new_pin, op_mode, xflags, xargs=0, confirm=True):
+        if confirm:
+            time.sleep(.1)
+            _, story = cap_story()
+            assert f'PIN {new_pin}' in story
+            assert op_mode in story
+            assert story.endswith('Ok?')
 
-        need_keypress('y')
+            need_keypress('y')
 
         # should be back on trick-menu page, with new one there
         m = cap_menu()
@@ -402,14 +403,13 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     ( 'Silent Wipe', 'code was just wrong', TC_WIPE|TC_FAKE_OUT ),
     ( 'Say Wiped, Stop', 'message is shown', TC_WIPE ),
 ])
-def test_ux_wipe_choices_1(subchoice, expect, xflags, 
-        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
+def test_ux_wipe_choices_1(subchoice, expect, xflags,  new_trick_pin,
+                           new_pin_confirmed, pick_menu_item, cap_story, need_keypress):
 
     # first level only, see test_duress_choices() for wipe+duress/other choices
 
     new_pin = '11-123'
     new_trick_pin(new_pin, 'Wipe Seed', 'Wipe the seed and maybe do')
-    m = cap_menu()
 
     pick_menu_item(subchoice)
 
@@ -419,6 +419,55 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,
     need_keypress('y')
 
     new_pin_confirmed(new_pin, subchoice, xflags)
+
+
+@pytest.mark.parametrize('subchoice, expect, xflags', [
+    ('Wipe & Countdown', 'Seed is wiped at start of countdown', TC_WIPE|TC_COUNTDOWN),
+    ('Countdown & Brick', 'countdown, then system is bricked', TC_WIPE|TC_BRICK|TC_COUNTDOWN),
+    ('Just Countdown', 'has no effect on seed', TC_COUNTDOWN),
+])
+def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_confirmed,
+                              pick_menu_item, cap_story, need_keypress):
+
+    # first level only, see test_duress_choices() for wipe+duress/other choices
+    new_pin = '11-123'
+    default_duration = 60  # in minutes
+    new_trick_pin(new_pin, 'Login Countdown', 'Pretends a login countdown timer')
+
+    pick_menu_item(subchoice)
+
+    _, story = cap_story()
+    assert expect in story
+
+    need_keypress('y')
+
+    new_pin_confirmed(new_pin, subchoice, xflags, default_duration)
+
+    # proof for off by one bug in version<=5.1.4
+    prev = "(1 hour)"
+    for label, val in [(" 5 minutes", 5), ("24 hours", 24*60),
+                      (" 3 days", 3*24*60), (" 1 week", 7*24*60),
+                      ("28 days later", 28*24*60)]:
+        # change duration
+        pick_menu_item(f'↳{new_pin}')
+        pick_menu_item(f'↳Countdown')
+        time.sleep(.1)
+        _, story = cap_story()
+        assert prev in story
+        assert "Press (4)" in story
+        need_keypress("4")
+        time.sleep(.1)
+        pick_menu_item(label)
+        time.sleep(.5)
+        pick_menu_item(f'↳Countdown')
+        _, story = cap_story()
+        active_duration = "(" + label.strip() + ")"
+        assert active_duration in story
+        need_keypress("x")
+        need_keypress("x")
+        new_pin_confirmed(new_pin, subchoice, xflags, val, confirm=False)
+        prev = active_duration
+
     
 @pytest.mark.parametrize('with_wipe', [False, True])
 @pytest.mark.parametrize('subchoice, expect, xflags, xargs', [
