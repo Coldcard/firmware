@@ -15,6 +15,7 @@
   was removed as a consequence of this change.
 - Enhancement: Showing secrets now also display extended private key for BIP-39
   passphrase wallets.
+- Bugfix: Fixed off by one bug in `Trick Pins -> Login Countdown` chooser
 
 ## 5.1.4 - 2023-09-08
 
