@@ -78,7 +78,7 @@ KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
                           "axskip", "del", "pms", "idle_to", "b39skip"]
 
 
-NUM_SLOTS = const(64)
+NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
 MK4_WORKDIR = '/flash/settings/'
 
