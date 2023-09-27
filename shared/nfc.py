@@ -301,7 +301,6 @@ class NFCHandler:
         # - similar when "read" and then removed from field
         # - return T if aborted by user
         from glob import dis
-        from graphics_mk4 import Graphics
 
         await self.wait_ready()
         self.set_rf_disable(0)
@@ -310,6 +309,7 @@ class NFCHandler:
         if dis.has_lcd:
             pass        # TODO
         else:
+            from graphics_mk4 import Graphics
             frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
 
         aborted = True

@@ -99,7 +99,7 @@ class LCDSimulator(SimulatedScreen):
     background_img = 'q1-images/background.png'
 
     # where the simulated screen is, relative to fixed background
-    TOPLEFT = (65, 60)
+    TOPLEFT = (90, 91)
 
     @dataclass
     class CursorSpec:
