@@ -169,11 +169,7 @@ class SettingsObject:
         fn = MK4_FILENAME(pos)
         try:
             os.remove(fn)
-            print("wiped slot", pos)
-        except Exception as exc:
-            import sys
-            sys.print_exception(exc)
-            print("failed to wipe slot")
+        except Exception:
             # Error (ENOENT) expected here when saving first time, because the
             # "old" slot was not in use
             pass
@@ -209,7 +205,6 @@ class SettingsObject:
 
         # serialize the data into JSON
         d = ujson.dumps(self.current)
-        print("write_slot:", pos,d)
         with self._open_file(pos, 'wb') as fd:
             # pad w/ zeros at least to 4k, but allow larger
             dat_len = len(d)
@@ -235,7 +230,6 @@ class SettingsObject:
         # mk4: faster list of slots in use; doesn't open them
         files = os.listdir(MK4_WORKDIR)
         x = [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
-        print("used slots", x)
         return x
 
     def _nonempty_slots(self, dis=None):
@@ -293,7 +287,6 @@ class SettingsObject:
                 self.current = d
                 self.my_pos = pos
             else:
-                print("stale data - clean up", pos)
                 # stale data seen; clean it up.
                 assert self.current['_age'] > 0
                 self._wipe_slot(pos)
@@ -303,7 +296,6 @@ class SettingsObject:
 
         # done, if we found something
         if self.my_pos is not None:
-            print("found slot", self.my_pos, self.current)
             return
 
         # nothing found, use defaults
@@ -311,7 +303,6 @@ class SettingsObject:
 
         # pick a (new) random home
         self.my_pos = self.find_spot(-1)
-        print("found nothing, picking new random", self.my_pos)
         if is_devmode:
             self.current['chain'] = 'XTN'
 
@@ -430,11 +421,9 @@ class SettingsObject:
         aes = self.get_aes(pos).cipher
 
         self._write_slot(pos, aes)
-        print("save: written to new slot", pos, "old slot", self.my_pos)
 
         # erase old copy of data
         if (self.my_pos is not None) and (self.my_pos != pos):
-            print("save: Erasing old copy of data on pos", self.my_pos)
             self._wipe_slot(self.my_pos)
 
         self.my_pos = pos
@@ -443,7 +432,6 @@ class SettingsObject:
     def blank(self):
         # erase current copy of values in nvram; older ones may exist still
         # - use when clearing the seed value
-        print("in settings.blank")
         if self.my_pos is not None:
             self._wipe_slot(self.my_pos)
             self.my_pos = 0

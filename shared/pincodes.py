@@ -424,18 +424,15 @@ class PinAttempt:
 
         # capture values we have already
         old_values = dict(settings.current)
-        print("old values", old_values)
-        print()
+
         if chain is None:
             chain = chains.get_chain(old_values.get("chain", None))
 
         if raw_secret is None:
-            print("removing tmp_val")
             assert pa.tmp_value
             bypass_tmp = True
             pa.tmp_value = None
             if blank:
-                print("blanking in new_main secret")
                 # wipe current ephemeral secret settings slot
                 settings.blank()
                 old_values = None

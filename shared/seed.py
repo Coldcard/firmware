@@ -823,40 +823,26 @@ class SeedVaultMenu(MenuSystem):
             # slot wiping
             if tmp_val:
                 # wipe current settings
-                print("wipe current ephemeral")
                 settings.blank()
-                print("done")
             else:
                 # in main settings
-                print("save current main settings")
                 settings.save()
-                print("tmp_secret")
                 pa.tmp_secret(pad_raw_secret(encoded))
-                print("blank")
                 settings.blank()
-                print("done")
 
         if pa.tmp_value:
-            print("restore to main")
             await restore_to_main_secret(preserve_settings=True)
 
         seeds = settings.get("seeds", [])
-        print("retrieved seeds from vault", seeds)
         try:
             del seeds[idx]
-            print("del idx", idx)
-            print("seeds after", seeds)
             settings.set("seeds", seeds)
             settings.save()
-            print("saved")
-        except Exception as e:
-            import sys
-            sys.print_exception(e)
+        except IndexError: pass
         finally:
             if tmp_val and (not wipe_slot):
                 # we were in ephemeral mode before and have not
                 # wiped seed - return back to ephemral
-                print("we were in tmp removed diff tmp - need to return")
                 pa.tmp_secret(tmp_val)
                 settings.set("seeds", seeds)
                 settings.save()
