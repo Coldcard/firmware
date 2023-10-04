@@ -134,9 +134,9 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
         prev = len(settings_slots())
         goto_home()
         menu = cap_menu()
-        assert menu[-1] == "Restore Seed"
+        assert menu[-1] == "Restore Master"
         assert (menu[0][0] == "[") and (menu[0][-1] == "]")
-        pick_menu_item("Restore Seed")
+        pick_menu_item("Restore Master")
         time.sleep(.1)
         title, story = cap_story()
         ch = "y"
@@ -156,7 +156,7 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
         time.sleep(.3)
 
         menu = cap_menu()
-        assert menu[-1] != "Restore Seed"
+        assert menu[-1] != "Restore Master"
         assert (menu[0][0] != "[") and (menu[0][-1] != "]")
 
         after = len(settings_slots())
@@ -180,14 +180,14 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
         in_effect_xfp = title[1:-1]
         if expected_xfp is not None:
             assert in_effect_xfp == expected_xfp
-        assert "key in effect until next power down." in story
+        assert 'ephemeral master key is in effect now' in story in story
         need_keypress("y")  # just confirm new master key message
 
         menu = cap_menu()
 
         assert expected_xfp in menu[0] if expected_xfp else True
         assert menu[1] == "Ready To Sign"  # returned to main menu
-        assert menu[-1] == "Restore Seed"  # restore main from ephemeral
+        assert menu[-1] == "Restore Master"  # restore main from ephemeral
 
         if seed_vault:
             pick_menu_item("Seed Vault")
@@ -199,6 +199,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
             m = cap_menu()
             assert "Delete" in m
             assert "Rename" in m
+            assert "Restore Master" in m
             assert len(m) == 4  # xfp is top item (works same as "Use this seed")
             if "Use This Seed" in m:
                 pick_menu_item("Use This Seed")
@@ -229,6 +230,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
             time.sleep(.1)
             m = cap_menu()
             assert item not in m
+            assert "Restore Master" not in m
         else:
             # Seed Vault disabled
             m = cap_menu()
@@ -709,7 +711,7 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
         need_keypress("y")
         time.sleep(0.2)
         title, story = cap_story()
-    assert "key in effect until next power down." in story
+    assert 'ephemeral master key is in effect now' in story
     in_effect_xfp = title[1:-1]
     need_keypress("y")
     goto_eph_seed_menu()
@@ -808,7 +810,7 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
     time.sleep(.1)
     title, story = cap_story()
     assert xfp in title
-    assert "key in effect until next power down." in story
+    assert 'ephemeral master key is in effect now' in story
     need_keypress("y")
     active = get_seed_value_ux()
     if mnemonic:
