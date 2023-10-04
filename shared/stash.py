@@ -12,7 +12,6 @@
 #
 import ngu, uctypes, gc, bip39, utime
 from uhashlib import sha256
-from pincodes import AE_SECRET_LEN
 from utils import swab32, call_later_ms, B2A
 
 
@@ -54,7 +53,7 @@ class SecretStash:
 
     @staticmethod
     def encode(seed_phrase=None, master_secret=None, xprv=None):
-        nv = bytearray(AE_SECRET_LEN)
+        nv = bytearray(72)      # AE_SECRET_LEN
 
         if seed_phrase:
             # typical: packed version of memonic phrase
