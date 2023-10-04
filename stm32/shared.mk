@@ -72,6 +72,11 @@ relink:
 dev: dev.dfu
 	ckcc upgrade dev.dfu
 
+# Requires special bootorm w/ DFU still enabled
+.PHONY: up-dfu
+up-dfu: dev.dfu
+	$(PYTHON_DO_DFU) -u dev.dfu
+
 $(BOARD)/file_time.c: make_filetime.py version.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
 	cp $(BOARD)/file_time.c .
