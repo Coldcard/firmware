@@ -1,24 +1,28 @@
-## 5.2.0 - 2023-10-XX
+## 5.2.0 - 2023-10-04
 
-- New Feature: Seed Vault. Store ephemeral secrets in encrypted settings object for later use.
-  Enable Seed Vault functionality in `Advanced/Tools -> Danger Zone -> Seed Vault -> Enable`. 
-  Use stored seeds from Seed Vault with `Seed Vault` menu choice (shown once enabled).
-- New Feature: PSBTv2 support added
+- New Feature: Seed Vault. Store multiple ephemeral secrets into encrypted settings for simple
+  recall and later use (AES-256-CTR encrypted with your master seed's key).
+  Enable this functionality in `Advanced/Tools -> Danger Zone -> Seed Vault -> Enable`. 
+  Use stored seeds from Seed Vault with top-level `Seed Vault` menu choice (once enabled).
+  Can capture and hold master secret from any ephemeral seed source, including: TRNG, Dice Rolls,
+  SeedXOR, TAPSIGNER backups, BIP-85 derived values, BIP-39 passphrase wallets.
+- New Feature: PSBTv2 support added! Enables new PSBT workflows and applications.
 - New Feature: `Lock Down Seed` now works with every ephemeral secret (not just BIP39 passphrase)
-- New Feature: BIP-39 Passphrase can now be added to word based Ephemeral Seeds
-- New Feature: Add ability to back-up BIP39 Passphrase wallet
-- New Feature: Restore to main secret from ephemeral without need to reboot the device
+- New Feature: BIP-39 Passphrase can now be added to any words-based ephemeral seed.
+- New Feature: Add ability to back-up BIP39 Passphrase wallet (with passphrase encoded).
+- New Feature: Return to main secret from ephemeral without need to reboot the device.
 - Enhancement: Shortcut to `Batch Sign PSBT` via `Ready To Sign` -> `Press (9)`
 - Enhancement: Waste less storage space by removing old plausible deniability code
   which was only needed for Mk1 - Mk3 where SPI flash was an external chip.
-- Enhancement: Remove obsolete Mk2/Mk3 code-paths from master branch
+- Enhancement: Remove obsolete Mk2/Mk3 code-paths from master branch.
 - Enhancement: BIP39 Passphrase is now internally handled as an ephemeral secret.
   Ability to see BIP-39 Passphrase after wallet is active via `View Seed Words`
-  was removed as a consequence of this change.
-- Enhancement: Showing secrets now also display extended private key for BIP-39
+  was removed as a consequence of this change. Benefit: passphrase no longer held
+  in memory while in operation.
+- Enhancement: Showing secrets now also display extended private key (XPRV) for BIP-39
   passphrase wallets.
-- Enhancement: Increase number of slots in PSRAM memory from 64 to 100
-- Bugfix: Fixed off by one bug in `Trick Pins -> Login Countdown` chooser
+- Enhancement: Increase number of slots in settings memory from 64 to 100.
+- Bugfix: Fixed off by one bug in `Trick Pins -> Login Countdown` menu.
 
 ## 5.1.4 - 2023-09-08
 
