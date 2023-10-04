@@ -1,8 +1,9 @@
 # Ephemeral Seeds
 
-Ephemeral seed is temporary secret stored only in Coldcard volatile
-memory (RAM). It only survives single boot, meaning after Coldcard
-restart it is gone.  Ephemeral seeds *completely* defeats the design
+Ephemeral seed is temporary secret mostly stored only in Coldcard volatile
+memory (RAM). Ephemeral seed can also be stored in `Seed Vault` (5.2.0+). 
+It only survives single boot, meaning after Coldcard
+restart it is gone. Ephemeral seeds *completely* defeats the design
 of Coldcard's security model, based on secure elements.
 
 Make sure you know what you're doing!
