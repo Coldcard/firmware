@@ -978,7 +978,7 @@ def make_top_menu():
                 if active_xfp:
                     ui_xfp = "[" + xfp2str(active_xfp) + "]"
                     _cls.insert(0, MenuItem(ui_xfp, f=ready2sign))
-                    _cls.append(MenuItem("Restore Seed", f=restore_main_secret))
+                    _cls.append(MenuItem("Restore Master", f=restore_main_secret))
         else:
             _cls = EmptyWallet
 

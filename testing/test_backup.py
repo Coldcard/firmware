@@ -34,7 +34,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     elif st == "eph":
         eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True)
         _, story = cap_story()
-        assert "New ephemeral master key in effect" in story
+        assert "New ephemeral master key is in effect now." in story
         need_keypress("y")
 
         if multisig:

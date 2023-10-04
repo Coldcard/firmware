@@ -139,7 +139,7 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
                 time.sleep(0.1)
                 title, story = cap_story()
 
-            assert 'master key in effect' in story
+            assert 'ephemeral master key is in effect now' in story
 
             encoded = sim_exec('from pincodes import pa; RV.write(repr(pa.fetch()))')
             print(encoded)

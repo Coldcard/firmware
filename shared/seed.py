@@ -480,7 +480,7 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
         return
 
     if summarize_ux:
-        await ux_show_story(title=xfp, msg="New ephemeral master key in effect until next power down.")
+        await ux_show_story(title=xfp, msg="New ephemeral master key is in effect now.")
 
     return applied
 
@@ -914,6 +914,7 @@ class SeedVaultMenu(MenuSystem):
         cur_xfp = xfp2str(settings.get("xfp", 0))
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
+            rv.append(MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu))
         else:
             for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
                 current_active = cur_xfp == xfp_str
@@ -937,6 +938,10 @@ class SeedVaultMenu(MenuSystem):
                     item.is_chosen = lambda: True
 
                 rv.append(item)
+
+            if pa.tmp_value:
+                from actions import restore_main_secret
+                rv.append(MenuItem("Restore Master", f=restore_main_secret))
 
         return rv
 
@@ -995,12 +1000,15 @@ class EphemeralSeedMenu(MenuSystem):
 
 
 async def make_ephemeral_seed_menu(*a):
-    if not pa.tmp_value:
+    if (not pa.tmp_value) or (not settings.get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         ch = await ux_show_story(
-            "Ephemeral seed is a temporary secret stored solely in device RAM, persisted for only a single boot. "
-            "This defeats all of the benefits of Coldcard's secure element design."
-            "\n\nPress (4) to prove you read to the end of this message and accept all consequences.",
+            "Ephemeral seed is a temporary secret mostly stored "
+            "only in device RAM, but can be saved to Seed Vault. "
+            "Ephemeral seed is persisted for only a single boot. "
+            "Above defeats all of the benefits of Coldcard's secure "
+            "element design.\n\nPress (4) to prove you read to the end"
+            " of this message and accept all consequences.",
             title="WARNING",
             escape="4"
         )
