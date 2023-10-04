@@ -2239,11 +2239,12 @@ async def change_virtdisk_enable(enable):
 async def change_seed_vault(is_enabled):
     # user has changed seed vault enable/disable flag
     from glob import settings
-    print("is enabled", is_enabled)
+
     if (not is_enabled) and settings.get('seeds'):
         # restore it
         settings.set('seedvault', 1)
         await ux_show_story("Please remove all seeds from the vault before disabling")
+
         return
 
     goto_top_menu()
