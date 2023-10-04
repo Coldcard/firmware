@@ -850,14 +850,12 @@ async def start_login_sequence():
 
     except BaseException as exc:
         # Robustness: any logic errors/bugs in above will brick the Coldcard
-        # even for legit owner, since they can't login. To try to recover, when it's
+        # even for legit owner, since they can't login. So try to recover, when it's
         # safe to do so. Remember the bootrom checks PIN on every access to
         # the secret, so "letting" them past this point is harmless if they don't know
         # the true pin.
         if not pa.is_successful():
             raise
-
-        print("Bug recovery!")
         sys.print_exception(exc)
 
     # Successful login...
