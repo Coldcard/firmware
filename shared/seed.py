@@ -1000,14 +1000,14 @@ class EphemeralSeedMenu(MenuSystem):
 
 
 async def make_ephemeral_seed_menu(*a):
-    if (not pa.tmp_value) or (not settings.get("seedvault", False)):
+    if not (pa.tmp_value or settings.get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         ch = await ux_show_story(
-            "Ephemeral seed is a temporary secret mostly stored "
-            "only in device RAM, but can be saved to Seed Vault. "
-            "Ephemeral seed is persisted for only a single boot. "
-            "Above defeats all of the benefits of Coldcard's secure "
-            "element design.\n\nPress (4) to prove you read to the end"
+            "Ephemeral seed is a temporary secret completely separate "
+            "from the master seed, typically held in device RAM and "
+            "not persisted between reboots in the Secure Element. "
+            "Enable the Seed Vault feature to store these secrets longer-term."
+            "\n\nPress (4) to prove you read to the end"
             " of this message and accept all consequences.",
             title="WARNING",
             escape="4"
