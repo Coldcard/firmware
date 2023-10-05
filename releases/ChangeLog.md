@@ -1,11 +1,11 @@
-## 5.2.0 - 2023-10-04
+## 5.2.0 - 2023-10-05
 
 - New Feature: Seed Vault. Store multiple ephemeral secrets into encrypted settings for simple
-  recall and later use (AES-256-CTR encrypted with your master seed's key).
+  recall and later use (AES-256-CTR encrypted by key based on the seed).
   Enable this functionality in `Advanced/Tools -> Danger Zone -> Seed Vault -> Enable`. 
   Use stored seeds from Seed Vault with top-level `Seed Vault` menu choice (once enabled).
   Can capture and hold master secret from any ephemeral seed source, including: TRNG, Dice Rolls,
-  SeedXOR, TAPSIGNER backups, BIP-85 derived values, BIP-39 passphrase wallets.
+  SeedXOR, TAPSIGNER backups, Duress Wallets, BIP-85 derived values, BIP-39 passphrase wallets.
 - New Feature: PSBTv2 support added! Enables new PSBT workflows and applications.
 - New Feature: `Lock Down Seed` now works with every ephemeral secret (not just BIP39 passphrase)
 - New Feature: BIP-39 Passphrase can now be added to any words-based ephemeral seed.
