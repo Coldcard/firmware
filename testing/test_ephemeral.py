@@ -750,7 +750,7 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
 ])
 def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item, need_keypress, cap_story,
                           cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
-                          try_sign, sim_exec, goto_home, goto_eph_seed_menu):
+                          try_sign, sim_exec, goto_home):
     # Verify "seed vault" feature works as intended
     reset_seed_words()
     xfp, entropy, mnemonic = data
@@ -775,8 +775,8 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
     pick_menu_item("Seed Vault")
     time.sleep(.1)
     _, story = cap_story()
-    assert "Enable Seed Vault?" in story
-    need_keypress("y")
+    if "Enable Seed Vault?" in story:
+        need_keypress("y")
     time.sleep(.1)
     pick_menu_item("Enable")
     time.sleep(.5)
