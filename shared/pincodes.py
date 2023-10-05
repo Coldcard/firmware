@@ -416,6 +416,7 @@ class PinAttempt:
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
+        import nvstore
         from glob import settings
         stash.SensitiveValues.clear_cache()
 
@@ -447,9 +448,10 @@ class PinAttempt:
                     sv.chain = chain
                 if raw_secret is None:
                     # restore to main wallet
-                    nv = sv.encoded_secret()
-                    settings.set_key(nv)
+                    settings.nvram_key = nvstore.master_nvram_key
                     settings.load()
+                    # blank global as we return to main seed
+                    nvstore.set_master_sv_data(None, None)
                 else:
                     sv.capture_xpub()
         except stash.ZeroSecretException:
@@ -461,14 +463,21 @@ class PinAttempt:
             self.state_flags |= (1 << 4)
             return
 
-
         settings.merge_previous_active(old_values)
 
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
         val = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
         if self.tmp_value == val:
+            # noop - already enabled
             return False
+
+        if not self.tmp_value:
+            # going from master seed
+            import nvstore
+            from glob import settings
+            nvstore.set_master_sv_data(settings.current,
+                                       settings.nvram_key)
 
         self.tmp_value = val
 
