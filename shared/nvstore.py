@@ -69,12 +69,10 @@ from version import mk_num, is_devmode
 
 # settings linked to seed
 # LINKED_SETTINGS = ["multisig", "tp", "ovc", "xfp", "xpub", "words"]
-# settings that does not make sense to copy to ephemeral secret
+# settings that does not make sense to copy to temporary secret
 # LINKED_SETTINGS += ["sd2fa", "usr", "axi", "hsmcmd"]
 # prelogin settings - do not need to be part of other saved settings
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
-# seed vault is singleton
-SINGLE_SETTINGS = ["seedvault", "seeds"]
 # keep these settings only if unspecified on the other end
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
                           "axskip", "del", "pms", "idle_to", "b39skip"]
@@ -88,6 +86,31 @@ MK4_WORKDIR = '/flash/settings/'
 # for mk4: we store binary files on LFS2 filesystem
 def MK4_FILENAME(slot):
     return MK4_WORKDIR + ('%03x.aes' % slot)
+
+
+# master current dict
+master_sv_data = None
+master_nvram_key = None
+
+
+def extract_master_sv_data(settings_dict):
+    # allows us to specify what we want to keep
+    # in global 'master_sv_data' variable
+    # and save RAM
+    if settings_dict is None:
+        return
+    seeds = settings_dict.get("seeds", [])
+    seedvault = settings_dict.get("seedvault", 0)
+    if (not seedvault) and (not seeds):
+        return
+    return {"seeds": seeds, "seedvault": seedvault,
+            "xfp": settings_dict.get("xfp", 0)}
+
+
+def set_master_sv_data(data, key):
+    global master_sv_data, master_nvram_key
+    master_sv_data = extract_master_sv_data(data)
+    master_nvram_key = key
 
 
 class SettingsObject:
@@ -306,6 +329,9 @@ class SettingsObject:
             self.current['chain'] = 'XTN'
 
     def get(self, kn, default=None):
+        if master_sv_data and kn in ["seeds", "seedvault"]:
+            # we are in temporary mode as global 'master_sv_data' is populated
+            return master_sv_data.get(kn, default)
         return self.current.get(kn, default)
 
     def changed(self):
@@ -330,12 +356,6 @@ class SettingsObject:
 
     def merge_previous_active(self, previous):
         if previous:
-            for k in SINGLE_SETTINGS:
-                if k not in previous:
-                    self.current.pop(k, None)
-                else:
-                    self.current[k] = previous[k]
-
             for k in KEEP_IF_BLANK_SETTINGS:
                 if previous.get(k, None) and not self.current.get(k, None):
                     self.current[k] = previous[k]
