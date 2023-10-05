@@ -221,7 +221,7 @@ DangerZoneMenu = [
                    on_change=change_seed_vault,
                    story=("Enable Seed Vault? Adds prompt to store ephemeral secrets "
                           "into Seed Vault, where they can easily be reused later.\n\n"
-                          "WARNING: Seed Vault is encrypted (AES-256-CTR) by ephemeral master seed,"
+                          "WARNING: Seed Vault is encrypted (AES-256-CTR) by your seed,"
                           " but not held directly inside secure elements. Backups are required"
                           " after any change to vault! Recommended for experiments or temporary use."),
                    predicate=has_secrets),
