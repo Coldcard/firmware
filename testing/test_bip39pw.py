@@ -2,6 +2,8 @@
 #
 # BIP-39 seed word encryption
 #
+import pdb
+
 import pytest, time, struct
 from pycoin.key.BIP32Node import BIP32Node
 from binascii import a2b_hex
@@ -202,19 +204,29 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
 
 
 @pytest.mark.parametrize("stype", ["words", "xprv"])
-@pytest.mark.parametrize("passphrase", ["@coinkite rulez!!", "!@#!@", "AAAAAAAAAAA"])
+@pytest.mark.parametrize("on_eph", [True, False])
+@pytest.mark.parametrize("seed_vault", [True, False])
 def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_xprv,
                                      need_keypress, pick_menu_item, goto_home,
                                      reset_seed_words, goto_eph_seed_menu, stype,
-                                     enter_complex, cap_story, cap_menu, passphrase):
+                                     enter_complex, cap_story, cap_menu, on_eph,
+                                     settings_set, seed_vault):
+    passphrase = "@coinkite rulez!!"
     reset_seed_words()
+    settings_set("seedvault", 1)
+    settings_set("seeds", [])
+
     goto_eph_seed_menu()
+
     if stype == "words":
         # words
-        sec = generate_ephemeral_words(24, from_main=True)
+        sec = generate_ephemeral_words(24, from_main=True, seed_vault=seed_vault)
+        parent = Mnemonic.to_seed(" ".join(sec))
+        parent_node = BIP32Node.from_master_secret(parent)
+        parent_fp = parent_node.fingerprint().hex().upper()
     else:
         # node
-        sec = import_ephemeral_xprv("sd", from_main=True)
+        sec = import_ephemeral_xprv("sd", from_main=True, seed_vault=seed_vault)
 
     goto_home()
     if stype == "xprv":
@@ -235,13 +247,58 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     expect0 = BIP32Node.from_master_secret(seed0)
     assert expect0.fingerprint().hex().upper() == xfp0
     assert "press (2) to add passphrase to the current active ephemeral seed" in story
-    need_keypress("2")
-    time.sleep(.5)
+
+    if on_eph:
+        need_keypress("2")
+        time.sleep(.5)
+        title, story = cap_story()
+        xfp1 = title[1:-1]
+        seed1 = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
+        expect1 = BIP32Node.from_master_secret(seed1)
+        assert expect1.fingerprint().hex().upper() == xfp1
+        assert "press (2)" not in story
+        need_keypress("y")
+    else:
+        need_keypress("y")
+
+    time.sleep(.3)
     title, story = cap_story()
-    xfp1 = title[1:-1]
-    seed1 = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
-    expect1 = BIP32Node.from_master_secret(seed1)
-    assert expect1.fingerprint().hex().upper() == xfp1
-    assert "press (2)" not in story
+    to_check = None
+    if seed_vault:
+        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        need_keypress("1")
+        time.sleep(.2)
+        title, story = cap_story()
+        assert "Saved to Seed Vault" in story
+        if on_eph:
+            assert xfp1 in story
+            to_check = xfp1
+        else:
+            assert xfp0 in story
+            to_check = xfp0
+        need_keypress("y")
+    else:
+        assert "Press (1)" not in story
+
+    if seed_vault:
+        # check correct meta in seed vault
+        pick_menu_item("Seed Vault")
+        m = cap_menu()
+        for i in m:
+            if to_check in i:
+                pick_menu_item(i)
+                break
+        else:
+            pytest.fail("not in menu")
+
+        # choose first info item in submenu
+        need_keypress("y")
+        time.sleep(.1)
+        _, story = cap_story()
+        assert to_check in story
+        if on_eph:
+            assert ("BIP-39 Passphrase on [%s]" % parent_fp) in story
+        else:
+            assert "BIP-39 Passphrase on [0F056943]"  in story
 
 # EOF

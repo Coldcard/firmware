@@ -109,7 +109,10 @@ def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
 
         title, story = cap_story()
         if title == "WARNING":
-            assert "temporary secret stored solely in device RAM" in story
+            assert "Ephemeral seed is a temporary secret completely separate from the master seed" in story
+            assert "typically held in device RAM" in story
+            assert "not persisted between reboots in the Secure Element." in story
+            assert "Enable the Seed Vault feature to store these secrets longer-term." in story
             assert "Press (4) to prove you read to the end of this message and accept all consequences." in story
             need_keypress("4")  # understand consequences
 
@@ -185,7 +188,11 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
 
         menu = cap_menu()
 
-        assert expected_xfp in menu[0] if expected_xfp else True
+        if expected_xfp:
+            assert expected_xfp in menu[0]
+        else:
+            assert menu[0].startswith("[")  # ephemeral xfp
+
         assert menu[1] == "Ready To Sign"  # returned to main menu
         assert menu[-1] == "Restore Master"  # restore main from ephemeral
 
@@ -193,13 +200,13 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
             pick_menu_item("Seed Vault")
             time.sleep(.1)
             sc_menu = cap_menu()
+            assert "Restore Master" in sc_menu
             item = [i for i in sc_menu if in_effect_xfp in i][0]
             pick_menu_item(item)
             time.sleep(.1)
             m = cap_menu()
             assert "Delete" in m
             assert "Rename" in m
-            assert "Restore Master" in m
             assert len(m) == 4  # xfp is top item (works same as "Use this seed")
             if "Use This Seed" in m:
                 pick_menu_item("Use This Seed")
@@ -230,7 +237,6 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
             time.sleep(.1)
             m = cap_menu()
             assert item not in m
-            assert "Restore Master" not in m
         else:
             # Seed Vault disabled
             m = cap_menu()
@@ -263,12 +269,6 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
             psbt = fake_txn(2, 2, master_xpub=e_master_xpub, segwit_in=True)
             try_sign(psbt, accept=True, finalize=True)  # MUST NOT raise
             need_keypress("y")
-
-            goto_eph_seed_menu()
-            time.sleep(0.1)
-            menu = cap_menu()
-            # ephemeral seed chosen -> [xfp] will be visible
-            assert menu[0] == f"[{ident_xfp}]"
 
             restore_main_seed(preserve_settings)
 
@@ -712,6 +712,7 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
         time.sleep(0.2)
         title, story = cap_story()
     assert 'ephemeral master key is in effect now' in story
+
     in_effect_xfp = title[1:-1]
     need_keypress("y")
     goto_eph_seed_menu()
@@ -723,6 +724,13 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     word_menu_entry(words.split())
     time.sleep(0.2)
     title, story = cap_story()
+    if seed_vault:
+        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        # do not save
+        need_keypress("y")
+        time.sleep(0.2)
+        title, story = cap_story()
+
     assert "Ephemeral master key already in use" in story
     already_used_xfp = title[1:-1]
     assert already_used_xfp == in_effect_xfp == expected_xfp
@@ -936,7 +944,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
 
         title, story = cap_story()
         assert 'New ephemeral master key' in story
-        assert 'power down' in story
+        assert 'power down' not in story
         assert xfp in title
         need_keypress("y")  # confirm activation of ephemeral secret
 
@@ -953,5 +961,148 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
         reset_seed_words()
         settings_set("seedvault", None)
         settings_set("seeds", [])
+
+
+def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item,
+                                  generate_ephemeral_words, import_ephemeral_xprv,
+                                  goto_home, cap_story, cap_menu, restore_main_seed,
+                                  need_keypress):
+    reset_seed_words()
+    settings_set("seedvault", 1)
+    settings_set("seeds", [])
+
+    generate_ephemeral_words(num_words=24, seed_vault=True)
+    generate_ephemeral_words(num_words=12, seed_vault=True)
+    import_ephemeral_xprv("sd", seed_vault=True)
+    import_ephemeral_xprv("sd", seed_vault=True)
+
+    goto_home()
+    pick_menu_item("Seed Vault")
+    m = cap_menu()
+    # 4 entries + Restore Master (as we are in ephemeral)
+    assert len(m) == 5
+
+    # restore to main seed
+    restore_main_seed(seed_vault=True, preserve_settings=True)
+
+    time.sleep(.1)
+    m = cap_menu()
+    # no ephemeral xfp at the top
+    assert m[0] == "Ready To Sign"
+    pick_menu_item("Seed Vault")
+    # we are no longer in ephemral
+    assert "Restore Master" not in m
+    # first entry in menu
+    need_keypress("y")
+    m = cap_menu()
+    assert "Rename" in m
+    assert "Use This Seed" in m  # we are in master - so this must be there
+    assert "Delete" in m
+
+    # delete entry 0
+    pick_menu_item("Delete")
+    need_keypress("y")
+    time.sleep(.1)
+    m = cap_menu()
+    assert len(m) == 3
+
+    # first entry again
+    need_keypress("y")
+    pick_menu_item("Rename")
+    for _ in range(9):
+        need_keypress("x")
+    need_keypress("1")  # big letters
+    need_keypress("9")
+    need_keypress("1")
+    # name changed to AA
+    need_keypress("y")
+
+    m = cap_menu()
+    assert m[0] == "AA"
+    assert "Rename" in m
+    assert "Use This Seed" in m  # we are in master - so this must be there
+    assert "Delete" in m
+
+    # go back
+    need_keypress("x")
+    # second item
+    need_keypress("8")
+    need_keypress("y")
+    time.sleep(.1)
+    pick_menu_item("Use This Seed")
+    title, _ = cap_story()
+    need_keypress("y")  # confirm new eph
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[0] == title
+    pick_menu_item("Seed Vault")
+    need_keypress("8")
+    need_keypress("y")
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Rename" in m
+    assert "In Use" in m
+    assert "Delete" in m
+
+    pick_menu_item("Rename")
+    for _ in range(9):
+        need_keypress("x")
+    need_keypress("1")  # big letters
+    need_keypress("9")
+    need_keypress("1")
+    need_keypress("9")
+    need_keypress("1")
+    # name changed to AAA
+    need_keypress("y")
+
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[0] == "AAA"
+    pick_menu_item("Delete")
+    need_keypress("y")
+    time.sleep(.1)
+    m = cap_menu()
+    # after we delete from seed vault together with its settings
+    # we're back to master secret
+    assert m[0] == "Ready To Sign"
+    pick_menu_item("Seed Vault")
+    time.sleep(.1)
+    m = cap_menu()
+    assert len(m) == 2
+
+    need_keypress("8")
+    need_keypress("y")
+    pick_menu_item("Use This Seed")
+    title, _ = cap_story()
+    need_keypress("y")  # confirm new eph
+    time.sleep(.1)
+    m = cap_menu()
+    assert m[0] == title
+    pick_menu_item("Seed Vault")
+    need_keypress("8")
+    need_keypress("y")
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Rename" in m
+    assert "In Use" in m
+    assert "Delete" in m
+
+    pick_menu_item("Delete")
+    need_keypress("1")  # only delete from seed vault
+    time.sleep(.1)
+    m = cap_menu()
+    assert len(m) == 2
+    need_keypress("y")
+    # this is now different eph - modification not allowed
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Rename" not in m
+    assert "Delete" not in m
+    assert "Use This Seed" in m
+    goto_home()
+    time.sleep(.1)
+    m = cap_menu()
+    # still in ephemeral
+    assert title == m[0]
 
 # EOF
