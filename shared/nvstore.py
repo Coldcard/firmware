@@ -229,8 +229,7 @@ class SettingsObject:
     def _used_slots(self):
         # mk4: faster list of slots in use; doesn't open them
         files = os.listdir(MK4_WORKDIR)
-        x = [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
-        return x
+        return [int(fn[0:-4], 16) for fn in files if fn.endswith('.aes')]
 
     def _nonempty_slots(self, dis=None):
         # generate slots that are non-empty

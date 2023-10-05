@@ -127,7 +127,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
             time.sleep(0.01)
             title, body = cap_story()
 
-        assert 'New ephemeral master key in effect' in body
+        assert 'New ephemeral master key is in effect now' in body
         need_keypress("y")
         assert get_secrets()['mnemonic'] == expect
 

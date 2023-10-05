@@ -428,17 +428,21 @@ async def add_seed_to_vault(encoded, meta=None):
     new_xfp_str = xfp2str(new_xfp)
     tmp_val = None
 
-    # do not offer to store main seed
-    if new_xfp == settings.get("xfp", 0):
-        return
-
     # do not offer to store secrets that are already in vault
     if await in_seed_vault(new_xfp_str, settings.get("seeds", [])):
         return
 
     if pa.tmp_value:
+        dis.fullscreen("Wait...")
         tmp_val = pa.tmp_value[:]
         await restore_to_main_secret(preserve_settings=True)
+
+    # do not offer to store main seed
+    if new_xfp == settings.get("xfp", 0):
+        if tmp_val:
+            pa.tmp_secret(tmp_val)
+
+        return
 
     seeds = settings.get("seeds", [])
 
@@ -459,6 +463,7 @@ async def add_seed_to_vault(encoded, meta=None):
         await ux_show_story(xfp_ui + "\nSaved to Seed Vault")
 
     if tmp_val:
+        dis.fullscreen("Wait...")
         pa.tmp_secret(tmp_val)
         settings.set("seeds", seeds)
         settings.save()
@@ -649,15 +654,23 @@ def set_seed_value(words=None, encoded=None, chain=None):
 
 async def calc_bip39_passphrase(pw, bypass_tmp=False):
     from glob import dis, settings
+    from pincodes import pa
 
     dis.fullscreen("Working...")
-    current_xfp = settings.get("xfp", 0)
-    # generate secret
+    # get xfp of parent reliably - cannot go to settings for this if in ephemeral
+    if pa.tmp_value:
+        with stash.SensitiveValues(bypass_tmp=bypass_tmp) as sv:
+            assert sv.mode == 'words'
+            current_xfp = swab32(sv.node.my_fp())
+    else:
+        current_xfp = settings.get("xfp", 0)
+
     with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
         assert sv.mode == 'words'
         nv = SecretStash.encode(xprv=sv.node)
         xfp = swab32(sv.node.my_fp())
+
     return nv, xfp, current_xfp
 
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
@@ -801,7 +814,7 @@ class SeedVaultMenu(MenuSystem):
                "only remove from seed vault and keep "
                "encrypted settings for later use.\n\n"
                "WARNING: Funds will be lost if wallet is"
-               "not backed up elsewhere.")
+               " not backed up elsewhere.")
 
         ch = await ux_show_story(title="[" + xfp_str + "]",
                                  msg=msg, escape="1")
@@ -842,10 +855,12 @@ class SeedVaultMenu(MenuSystem):
         finally:
             if tmp_val and (not wipe_slot):
                 # we were in ephemeral mode before and have not
-                # wiped seed - return back to ephemral
+                # wiped seed - return back to ephemeral
                 pa.tmp_secret(tmp_val)
                 settings.set("seeds", seeds)
                 settings.save()
+            elif tmp_val and wipe_slot:
+                goto_top_menu()
 
         # pop menu stack
         the_ux.pop()
@@ -989,18 +1004,12 @@ class EphemeralSeedMenu(MenuSystem):
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
             MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True),  # ephemeral=True
         ]
-        if pa.tmp_value:
-            xfp = settings.get("xfp", "")
-            if xfp:
-                rv.insert(0, MenuItem("[%s]" % xfp2str(xfp)))
-            else:
-                rv.insert(0, MenuItem("[Active]"))
 
         return rv
 
 
 async def make_ephemeral_seed_menu(*a):
-    if not (pa.tmp_value or settings.get("seedvault", False)):
+    if (not pa.tmp_value) and (not settings.get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         ch = await ux_show_story(
             "Ephemeral seed is a temporary secret completely separate "
