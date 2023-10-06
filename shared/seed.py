@@ -447,8 +447,8 @@ async def add_seed_to_vault(encoded, meta=None):
 
     xfp_ui = "[%s]" % new_xfp_str
     story = ("Press (1) to "
-             "store ephemeral secret into Seed Vault. This way you can easily switch "
-             "to this secret and use it as ephemeral seed in future.\n\nPress OK "
+             "store temporary seed into Seed Vault. This way you can easily switch "
+             "to this secret and use it as temporary seed in future.\n\nPress OK "
              "to continue without saving.")
 
     ch = await ux_show_story(story, escape="1")
@@ -488,11 +488,11 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
     if xfp:
         xfp = "[" + xfp2str(xfp) + "]"
     if not applied:
-        await ux_show_story(title=xfp, msg="Ephemeral master key already in use.")
+        await ux_show_story(title=xfp, msg="Temporary master key already in use.")
         return
 
     if summarize_ux:
-        await ux_show_story(title=xfp, msg="New ephemeral master key is in effect now.")
+        await ux_show_story(title=xfp, msg="New temporary master key is in effect now.")
 
     return applied
 
@@ -955,7 +955,7 @@ class SeedVaultMenu(MenuSystem):
         cur_xfp = xfp2str(settings.get("xfp", 0))
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
-            rv.append(MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu))
+            rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
         else:
             for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
                 current_active = cur_xfp == xfp_str
@@ -1038,7 +1038,7 @@ async def make_ephemeral_seed_menu(*a):
     if (not pa.tmp_value) and (not settings.get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         ch = await ux_show_story(
-            "Ephemeral seed is a temporary secret completely separate "
+            "Temporary seed is a secret completely separate "
             "from the master seed, typically held in device RAM and "
             "not persisted between reboots in the Secure Element. "
             "Enable the Seed Vault feature to store these secrets longer-term."
@@ -1164,7 +1164,7 @@ class PassphraseMenu(MenuSystem):
         if pa.tmp_value and settings.get("words", True):
             # we have ephemeral seed but can add passphrase to it as it is word based
             msg1 = (", or press (2) to add passphrase to the current "
-                    "active ephemeral seed instead of the main seed.")
+                    "active temporary seed instead of the main seed.")
 
         ch = await ux_show_story(msg + msg1, title="[%s]" % xfp2str(xfp), escape='12')
         if ch == 'x':

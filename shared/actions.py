@@ -109,7 +109,7 @@ Extended Master Key:
     if stash.bip39_passphrase:
         msg += '\nBIP-39 passphrase is in effect.\n'
     elif pa.tmp_value:
-        msg += '\nEphemeral seed is in effect.\n'
+        msg += '\nTemporary seed is in effect.\n'
 
     bn = callgate.get_bag_number()
     if bn:
@@ -560,14 +560,14 @@ async def convert_ephemeral_to_master(*a):
     from stash import bip39_passphrase
 
     if not pa.tmp_value:
-        await ux_show_story('You do not have an active ephemeral seed (including BIP-39 passphrase)'
+        await ux_show_story('You do not have an active temporary seed (including BIP-39 passphrase)'
                             ' right now, so this command does little except forget the seed words.'
                             ' It does not enhance security in any way.')
         return
 
     words = settings.get("words", True)
     msg = 'Convert currently used '
-    msg += 'BIP-39 passphrase ' if bip39_passphrase else 'ephemeral seed '
+    msg += 'BIP-39 passphrase ' if bip39_passphrase else 'temporary seed '
     msg += 'to main seed. '
     if words or bip39_passphrase:
         msg += 'Main seed words themselves are erased forever, '
@@ -936,7 +936,7 @@ async def restore_main_secret(*a):
     msg = "Restore main wallet and its settings?\n\n"
     if not await in_seed_vault():
         msg += (
-            "Press OK to forget current ephemeral wallet "
+            "Press OK to forget current temporary wallet "
             "settings, or press (1) to save & keep "
             "those settings if same seed is later restored."
         )
@@ -1482,7 +1482,7 @@ async def nfc_recv_ephemeral(*A):
     try:
         await NFC.import_ephemeral_seed_words_nfc()
     except Exception as e:
-        await ux_show_story(title="ERROR", msg="Failed to import ephemeral seed via NFC. %s" % str(e))
+        await ux_show_story(title="ERROR", msg="Failed to import temporary seed via NFC. %s" % str(e))
 
 
 async def import_tapsigner_backup_file(_1, _2, item):

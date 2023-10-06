@@ -557,7 +557,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     time.sleep(.1)
     if stop_after_activated: return
     _, story = cap_story()
-    assert 'ephemeral master key is in effect now' in story
+    assert 'temporary master key is in effect now' in story
 
     xp = repl.eval("settings.get('xpub')")
     assert xp == wallet.hwif(as_private=False)
@@ -836,7 +836,7 @@ def build_duress_wallets(request, seed_vault=False):
                                with_wipe=False, stop_after_activated=True, **args)
         time.sleep(.1)
         _, story = cap_story()
-        assert '(1) to store ephemeral secret' in story
+        assert '(1) to store temporary seed' in story
         need_keypress('1')
         time.sleep(.1)
         _, story = cap_story()
@@ -845,7 +845,7 @@ def build_duress_wallets(request, seed_vault=False):
         need_keypress('y')
         time.sleep(0.1)
         _, story = cap_story()
-        assert 'ephemeral master key is in effect now' in story
+        assert 'temporary master key is in effect now' in story
         need_keypress("y")
 
         # re-login to reset to normal seed
