@@ -849,6 +849,17 @@ def settings_get(sim_exec):
     return doit
 
 @pytest.fixture()
+def master_settings_get(sim_exec):
+
+    def doit(key):
+        cmd = f"RV.write(repr(settings.master_get('{key}')))"
+        resp = sim_exec(cmd)
+        assert 'Traceback' not in resp, resp
+        return eval(resp)
+
+    return doit
+
+@pytest.fixture()
 def settings_remove(sim_exec):
 
     def doit(key):

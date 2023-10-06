@@ -33,7 +33,7 @@ def real_countdown_chooser(tag, offset, def_to):
     ch = lgto_ch[offset:]
     va = lgto_va[offset:]
 
-    s = SettingsObject()
+    s = SettingsObject.prelogin()
     timeout = s.get(tag, def_to)        # in minutes
     try:
         which = va.index(timeout)
@@ -42,7 +42,7 @@ def real_countdown_chooser(tag, offset, def_to):
 
     def set_it(idx, text):
         # save on key0, not normal settings
-        s = SettingsObject()
+        s = SettingsObject.prelogin()
         s.set(tag, va[idx])
         s.save()
         del s

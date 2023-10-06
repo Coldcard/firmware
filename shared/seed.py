@@ -23,6 +23,7 @@ from ubinascii import unhexlify as a2b_hex
 from pwsave import PassphraseSaver
 from glob import settings, dis
 from pincodes import pa
+from nvstore import SettingsObject
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
@@ -405,20 +406,22 @@ async def new_from_dice(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
-async def in_seed_vault(xfp=None, seeds=None):
+def in_seed_vault(xfp=None):
+    # Test if indicated xfp (or currently active XFP) is in the seed vault already.
+
     if xfp is None:
         xfp = xfp2str(settings.get("xfp", 0))
-    if seeds is None:
-        seeds = settings.get("seeds", [])
+
+    seeds = settings.master_get("seeds", [])
 
     if xfp in [s[0] for s in seeds]:
         return True
+
     return False
 
 async def add_seed_to_vault(encoded, meta=None):
-    import nvstore
 
-    if not settings.get("seedvault", False):
+    if not SettingsObject.master_get("seedvault", False):
         # seed vault disabled
         return
     if pa.is_secret_blank():
@@ -430,20 +433,16 @@ async def add_seed_to_vault(encoded, meta=None):
     new_xfp_str = xfp2str(new_xfp)
 
     # do not offer to store secrets that are already in vault
-    if await in_seed_vault(new_xfp_str, settings.get("seeds", [])):
+    if in_seed_vault(new_xfp_str):
         return
 
     # do not offer to store main seed
-    if nvstore.master_sv_data:
-        main_xfp = nvstore.master_sv_data.get("xfp", 0)
-    else:
-        main_xfp = settings.get("xfp", 0)
+    main_xfp = SettingsObject.master_get("xfp", 0)
 
     if new_xfp == main_xfp:
         return
 
-    # if in ephemeral 'seeds' are grabbed from master_sv_data global var
-    seeds = settings.get("seeds", [])
+    seeds = SettingsObject.master_get("seeds", [])
 
     xfp_ui = "[%s]" % new_xfp_str
     story = ("Press (1) to "
@@ -452,29 +451,21 @@ async def add_seed_to_vault(encoded, meta=None):
              "to continue without saving.")
 
     ch = await ux_show_story(story, escape="1")
-    if ch == "1":
-        eph_nvram_key = None
-        seeds.append((new_xfp_str,
-                      stash.SecretStash.storage_encode(encoded),
-                      xfp_ui,
-                      meta))
-        if nvstore.master_sv_data:
-            # in ephemeral
-            nvstore.master_sv_data["seeds"] = seeds
-            eph_nvram_key = settings.nvram_key[:]
-            settings.nvram_key = nvstore.master_nvram_key
-            settings.load()
+    if ch != "1":
+        # didn't want to save
+        return
 
-        settings.set("seeds", seeds)
-        settings.save()
+    # Save it into master settings
+    seeds.append((new_xfp_str,
+                  stash.SecretStash.storage_encode(encoded),
+                  xfp_ui,
+                  meta))
 
-        if eph_nvram_key:
-            # restore ephemerlal settings after save to main settings
-            settings.nvram_key = eph_nvram_key
-            settings.load()
+    SettingsObject.master_set("seeds", seeds)
 
-        await ux_show_story(xfp_ui + "\nSaved to Seed Vault")
-        return True
+    await ux_show_story(xfp_ui + "\nSaved to Seed Vault")
+
+    return True
 
 async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
                              is_restore=False, meta=None):
@@ -813,77 +804,50 @@ class SeedVaultMenu(MenuSystem):
 
     @staticmethod
     async def _clear(menu, label, item):
-        import nvstore
         from glob import dis, settings
 
-        idx, xfp_str, encoded = item.arg
+        idx, xfp_str, encoded, is_active = item.arg
 
         msg = ("Remove seed from seed vault and delete its "
                "settings?\n\nPress OK to continue, press (1) to "
                "only remove from seed vault and keep "
                "encrypted settings for later use.\n\n"
                "WARNING: Funds will be lost if wallet is"
-               " not backed up elsewhere.")
+               " not backed-up elsewhere.")
 
-        ch = await ux_show_story(title="[" + xfp_str + "]",
-                                 msg=msg, escape="1")
+        ch = await ux_show_story(title="[" + xfp_str + "]", msg=msg, escape="1")
         if ch == "x": return
 
         dis.fullscreen("Saving...")
 
         wipe_slot = (ch != "1")
-        tmp_val = False
-
-        if pa.tmp_value:
-            tmp_val = True
+        tmp_mode = bool(pa.tmp_value)
 
         if wipe_slot:
-            # are we deleting current active ephemeral wallet
-            # and its settings ?
-            # slot wiping
-            if tmp_val:
-                # wipe current settings
-                master_nvram_key = nvstore.master_nvram_key
-                settings.blank()
-            else:
-                # in main settings
-                settings.save()
-                master_nvram_key = settings.nvram_key[:]
-                settings.set_key(pad_raw_secret(encoded))
-                settings.load()
-                settings.blank()
+            # wiping key's settings
+            xs = SettingsObject()
+            xs.set_key(pad_raw_secret(encoded))
+            xs.load()
+            xs.blank()
+            del xs
 
-            # back to master settings
-            pa.tmp_value = False
-            settings.nvram_key = master_nvram_key
-            settings.load()
-            nvstore.set_master_sv_data(None, None)
-
-        eph_nvram_key = None
-        # will get global master_sv_data from nvstore if in ephemeral
+        # CAUTION: will get shadow copy if in tmp seed mode already
         seeds = settings.get("seeds", [])
         try:
             del seeds[idx]
         except IndexError:
             pass
 
-        if nvstore.master_sv_data:
-            # in ephemeral
-            nvstore.master_sv_data["seeds"] = seeds
-            eph_nvram_key = settings.nvram_key[:]
-            settings.nvram_key = nvstore.master_nvram_key
-            settings.load()
+        # need to load and work on master secrets, will be slow if on tmp seed
+        SettingsObject.master_set("seeds", seeds)
 
-        settings.set("seeds", seeds)
-        settings.save()
-
-        if tmp_val and (not wipe_slot):
-            # we were in ephemeral mode before and have not
-            # wiped seed - return back to ephemeral
-            settings.nvram_key = eph_nvram_key
-            settings.load()
-        elif tmp_val and wipe_slot:
-            goto_top_menu()
+        # IMHO: if you delete the active seed, we should go back to normal master,
+        # but debatable... so left out for now. You'll end up on a tmp seed that
+        # just isn't saved, and also no way to re-save it again.
+        #if is_active:
+        #    # go back to main secret now, with master secret
+        #    pa.new_main_secret()
+        #    goto_top_menu()
 
         # pop menu stack
         the_ux.pop()
@@ -904,17 +868,15 @@ class SeedVaultMenu(MenuSystem):
     @staticmethod
     async def _rename(menu, label, item):
         # let them edit the name
-        import nvstore
         from glob import dis
+        from ux import ux_input_text
 
         idx, xfp_str = item.arg
 
-        # will get global master_sv_data from nvstore if in ephemeral
-        seeds = settings.get("seeds", [])
+        seeds = SettingsObject.master_get("seeds", [])
         chk_xfp, encoded, old_name, meta = seeds[idx]
         assert chk_xfp == xfp_str
 
-        from ux import ux_input_text
         new_name = await ux_input_text(old_name, confirm_exit=False, max_len=40)
 
         if not new_name:
@@ -923,25 +885,19 @@ class SeedVaultMenu(MenuSystem):
         dis.fullscreen("Saving...")
 
         # save it
-        eph_nvram_key = None
         seeds[idx] = (chk_xfp, encoded, new_name, meta)
-        if nvstore.master_sv_data:
-            # in ephemeral
-            nvstore.master_sv_data["seeds"] = seeds
-            eph_nvram_key = settings.nvram_key[:]
-            settings.nvram_key = nvstore.master_nvram_key
-            settings.load()
 
-        settings.set("seeds", seeds)
-        settings.save()
-        if eph_nvram_key:
-            # restore ephemerlal settings after save to main settings
-            settings.nvram_key = eph_nvram_key
-            settings.load()
+        # need to load and work on master secrets, will be slow if on tmp seed
+        SettingsObject.master_set("seeds", seeds)
 
         # update label in sub-menu
         menu.items[0].label = new_name
         menu.items[0].arg = menu.items[0].arg[0:2] + (new_name,) + menu.items[0].arg[3:]
+
+        # .. and name in parent menu too
+        parent = the_ux.parent_of(menu)
+        if parent:
+            parent.update_contents()
 
     @classmethod
     def construct(cls):
@@ -951,31 +907,31 @@ class SeedVaultMenu(MenuSystem):
 
         rv = []
 
-        seeds = settings.get("seeds", [])
+        seeds = SettingsObject.master_get("seeds", [])
         cur_xfp = xfp2str(settings.get("xfp", 0))
+
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
             rv.append(MenuItem("Ephemeral Seed", menu=make_ephemeral_seed_menu))
         else:
             for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
-                current_active = cur_xfp == xfp_str
+                is_active = (cur_xfp == xfp_str)
                 submenu = [
                     MenuItem(name, f=cls._detail, arg=(xfp_str, encoded, name, meta)),
                     MenuItem('Use This Seed', f=cls._set, arg=(xfp_str, encoded)),
                     MenuItem('Rename', f=cls._rename, arg=(i, xfp_str)),
-                    MenuItem('Delete', f=cls._clear, arg=(i, xfp_str, encoded)),
+                    MenuItem('Delete', f=cls._clear, arg=(i, xfp_str, encoded, is_active)),
                 ]
-                if current_active:
+                if is_active:
                     submenu[1] = MenuItem("In Use")
 
-                if pa.tmp_value and (not current_active):
+                if pa.tmp_value and (not is_active):
                     # if different ephemeral wallet active
                     # DO NOT offer any modification api (rename/delete)
                     submenu = submenu[:2]
 
-                item = MenuItem(('%-4s' % (str(i+1)+":")) + ('[%s]' % xfp_str),
-                                menu=MenuSystem(submenu))
-                if current_active:
+                item = MenuItem('%d: %s' % (i+1, name), menu=MenuSystem(submenu))
+                if is_active:
                     item.is_chosen = lambda: True
 
                 rv.append(item)
@@ -1008,7 +964,7 @@ class EphemeralSeedMenu(MenuSystem):
 
     @classmethod
     def construct(cls):
-        from glob import NFC, settings
+        from glob import NFC
         from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv
 
         import_ephemeral_menu = [
@@ -1028,14 +984,14 @@ class EphemeralSeedMenu(MenuSystem):
             MenuItem("Generate Words", menu=gen_ephemeral_menu),
             MenuItem("Import Words", menu=import_ephemeral_menu),
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
-            MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True),  # ephemeral=True
+            MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True), # ephemeral=True
         ]
 
         return rv
 
 
 async def make_ephemeral_seed_menu(*a):
-    if (not pa.tmp_value) and (not settings.get("seedvault", False)):
+    if (not pa.tmp_value) and (not SettingsObject.master_get("seedvault", False)):
         # force a warning on them, unless they are already doing it.
         ch = await ux_show_story(
             "Ephemeral seed is a temporary secret completely separate "
