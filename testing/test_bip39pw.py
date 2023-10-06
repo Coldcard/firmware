@@ -181,7 +181,7 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
     if stype:
         assert 'Are you SURE' in story
     else:
-        assert 'do not have an active ephemeral seed' in story
+        assert 'do not have an active temporary seed' in story
         need_keypress('x')
         return
 
@@ -246,7 +246,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     seed0 = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
     expect0 = BIP32Node.from_master_secret(seed0)
     assert expect0.fingerprint().hex().upper() == xfp0
-    assert "press (2) to add passphrase to the current active ephemeral seed" in story
+    assert "press (2) to add passphrase to the current active temporary seed" in story
 
     if on_eph:
         need_keypress("2")
@@ -265,7 +265,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     title, story = cap_story()
     to_check = None
     if seed_vault:
-        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        assert "Press (1) to store temporary seed into Seed Vault" in story
         need_keypress("1")
         time.sleep(.2)
         title, story = cap_story()

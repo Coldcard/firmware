@@ -42,7 +42,7 @@ still backed-up.''')
             msg = ('You have a BIP-39 passphrase set right now '
                    'and so it will be wrapped into the new secret.')
         else:
-            msg = 'You have an ephemeral seed - deriving from ephemeral.'
+            msg = 'You have a temporary seed active - deriving from temporary.'
 
         if not await ux_confirm(msg):
             return

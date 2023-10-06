@@ -141,9 +141,9 @@ class PassphraseSaver:
             if pa.tmp_value and settings.get("words", None):
                 xfp = settings.get("xfp", None)
                 title = "[%s]" % xfp2str(xfp)
-                ch = await ux_show_story("Ephemeral wallet is active. Press (1)"
+                ch = await ux_show_story("Temporary wallet is active. Press (1)"
                                          " to add passphrase to the current active"
-                                         " ephemeral seed instead of the main seed.",
+                                         " temporary seed instead of the main seed.",
                                          title=title, escape='1')
                 if ch == '1':
                     bypass_tmp = False
