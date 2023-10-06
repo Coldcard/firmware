@@ -446,24 +446,22 @@ class PinAttempt:
             with stash.SensitiveValues(raw_secret, bypass_tmp=bypass_tmp) as sv:
                 if chain is not None:
                     sv.chain = chain
+
                 if raw_secret is None:
-                    # restore to main wallet
-                    settings.nvram_key = nvstore.master_nvram_key
-                    settings.load()
-                    # blank global as we return to main seed
-                    nvstore.set_master_sv_data(None, None)
+                    # restore to main wallet's settings
+                    settings.return_to_master_seed()
                 else:
                     sv.capture_xpub()
+
+            settings.merge_previous_active(old_values)
+
         except stash.ZeroSecretException:
             # secret is zero - using ephemeral secrets in CC
             # with no se2 secret
             settings.nvram_key = b'\0'*32
             settings.load()
-            # set PA_ZEROS to 1
-            self.state_flags |= (1 << 4)
-            return
+            self.state_flags |= PA_ZERO_SECRET
 
-        settings.merge_previous_active(old_values)
 
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
@@ -473,11 +471,9 @@ class PinAttempt:
             return False
 
         if not self.tmp_value:
-            # going from master seed
-            import nvstore
+            # leaving from master seed, might capture some useful values
             from glob import settings
-            nvstore.set_master_sv_data(settings.current,
-                                       settings.nvram_key)
+            settings.leaving_master_seed()
 
         self.tmp_value = val
 
@@ -487,6 +483,7 @@ class PinAttempt:
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value, chain=chain, bip39pw=bip39pw)
+
         return True
 
     def trick_request(self, method_num, data):

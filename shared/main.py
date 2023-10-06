@@ -58,7 +58,8 @@ glob.numpad = numpad
 
 # NV settings
 from nvstore import SettingsObject
-settings = SettingsObject(glob.dis)
+settings = SettingsObject()
+settings.load(glob.dis)
 glob.settings = settings
 
 async def more_setup():

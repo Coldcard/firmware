@@ -67,7 +67,7 @@ def value_resolution_chooser():
 def scramble_keypad_chooser():
     #   rngk = randomize keypad for PIN entry
 
-    s = SettingsObject()
+    s = SettingsObject.prelogin()
     which = s.get('rngk', 0)
     del s
 
@@ -75,7 +75,7 @@ def scramble_keypad_chooser():
 
     def set(idx, text):
         # save it, but "outside" of login PIN
-        s = SettingsObject()
+        s = SettingsObject.prelogin()
         s.set('rngk', idx)
         s.save()
         del s
@@ -85,7 +85,7 @@ def scramble_keypad_chooser():
 def kill_key_chooser():
     #   kbtn = single keypress after anti-phishing words will wipe seed
 
-    s = SettingsObject()
+    s = SettingsObject.prelogin()
     which = s.get('kbtn', -1)
     del s
     which = int(which) + 1
@@ -94,7 +94,7 @@ def kill_key_chooser():
 
     def set(idx, text):
         # save it, but "outside" of login PIN
-        s = SettingsObject()
+        s = SettingsObject.prelogin()
         if idx == 0:
             s.remove_key('kbtn')
         else:
