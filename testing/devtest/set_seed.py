@@ -9,7 +9,8 @@ import stash
 from seed import set_seed_value
 from utils import xfp2str
 from actions import goto_top_menu
-import nvstore
+from nvstore import SettingsObject
+
 
 tn = chains.BitcoinTestnet
 
@@ -22,8 +23,8 @@ settings.set('idle_to', 0)
 
 import main
 pa.tmp_value = None
-nvstore.master_sv_data = None
-nvstore.master_nvram_key = None
+SettingsObject.master_sv_data = {}
+SettingsObject.master_nvram_key = None
 set_seed_value(main.WORDS)
 
 print("New key in effect: %s" % settings.get('xpub', 'MISSING'))

@@ -218,8 +218,8 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
                 pick_menu_item(sc_menu[0])
                 time.sleep(.1)
             else:
-                assert "In Use" in m
-                pick_menu_item("In Use")  # noop
+                assert "Seed In Use" in m
+                pick_menu_item("Seed In Use")  # noop
 
             # delete it from records
             pick_menu_item("Delete")
@@ -748,7 +748,7 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
      '017caa3142d48791f837b42fcd7a98662f9fb4101a15ae87cdbc1fecc96f33c11ffcefd8121daaba0625c918a335a0712b8c35c2da60e6fc6eef78b7028f4be02a',
      None),  # BIP-85 -> BIP-32 -> #23
 ])
-def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item, need_keypress, cap_story,
+def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_menu_item, need_keypress, cap_story,
                           cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
                           try_sign, sim_exec, goto_home):
     # Verify "seed vault" feature works as intended
@@ -814,6 +814,7 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
     need_keypress("y")
     m = cap_menu()
     assert m[0] == "AAAA"
+    # UNTESTED: parent menu will also show our updated name
     pick_menu_item("Use This Seed")
     time.sleep(.1)
     title, story = cap_story()
@@ -849,7 +850,7 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
     assert encoded[0:len(stored_secret)] == stored_secret
 
     # check rename worked
-    seeds = settings_get("seeds")
+    seeds = master_settings_get("seeds")
     assert len(seeds) == 1
     entry = seeds[0]
     assert len(entry) == 4
@@ -864,7 +865,7 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
 
 def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu_item,
                              need_keypress, cap_story, reset_seed_words, fake_txn,
-                             generate_ephemeral_words, goto_home, get_secrets,
+                             generate_ephemeral_words, goto_home, get_secrets, master_settings_get,
                              import_ephemeral_xprv, set_bip39_pw, restore_main_seed,
                              restore_seed_xor, derive_bip85_secret, activate_bip85_ephemeral):
     # Capture seeds by all the different paths and verify correct values are captured.
@@ -928,7 +929,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
         restore_main_seed(seed_vault=True)
 
     # check all saved okay
-    seeds = settings_get('seeds')
+    seeds = master_settings_get('seeds')
     n_seeds = len(seeds)
     assert n_seeds == expect_count
 
@@ -1041,7 +1042,7 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     time.sleep(.1)
     m = cap_menu()
     assert "Rename" in m
-    assert "In Use" in m
+    assert "Seed In Use" in m
     assert "Delete" in m
 
     pick_menu_item("Rename")
@@ -1084,7 +1085,7 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     time.sleep(.1)
     m = cap_menu()
     assert "Rename" in m
-    assert "In Use" in m
+    assert "Seed In Use" in m
     assert "Delete" in m
 
     pick_menu_item("Delete")
