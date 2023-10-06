@@ -469,7 +469,7 @@ async def pick_nickname(*a):
 
     # Value is not stored with normal settings, it's part of "prelogin" settings
     # which are encrypted with zero-key.
-    s = SettingsObject()
+    s = SettingsObject.prelogin()
     nick = s.get('nick', '')
 
     if not nick:
@@ -768,7 +768,7 @@ async def version_migration():
     if had_delay:
         from nvstore import SettingsObject
         settings.remove_key('lgto')
-        s = SettingsObject()
+        s = SettingsObject.prelogin()
         s.set('lgto', had_delay)
         s.save()
         del s
@@ -942,7 +942,7 @@ async def restore_main_secret(*a):
 
     escape = None
     msg = "Restore main wallet and its settings?\n\n"
-    if not await in_seed_vault():
+    if not in_seed_vault():
         msg += (
             "Press OK to forget current temporary wallet "
             "settings, or press (1) to save & keep "
@@ -2245,10 +2245,11 @@ async def change_seed_vault(is_enabled):
     # user has changed seed vault enable/disable flag
     from glob import settings
 
-    if (not is_enabled) and settings.get('seeds'):
-        # restore it
-        settings.set('seedvault', 1)
-        await ux_show_story("Please remove all seeds from the vault before disabling")
+    if (not is_enabled) and settings.master_get('seeds'):
+        # problem: they still have some seeds... also this path blocks
+        # disable from within a tmp seed 
+        settings.set('seedvault', 1)        # restore it
+        await ux_show_story("Please remove all seeds from the vault before disabling.")
 
         return
 

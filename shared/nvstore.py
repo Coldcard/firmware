@@ -78,6 +78,7 @@ from version import mk_num, is_devmode
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
                           "axskip", "del", "pms", "idle_to", "b39skip"]
 
+SEEDVAULT_FIELDS = [ 'seeds', 'seedvault', 'xfp' ]
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
@@ -89,42 +90,25 @@ def MK4_FILENAME(slot):
     return MK4_WORKDIR + ('%03x.aes' % slot)
 
 
-# master current dict
-master_sv_data = None
-master_nvram_key = None
-
-
-def extract_master_sv_data(settings_dict):
-    # allows us to specify what we want to keep
-    # in global 'master_sv_data' variable
-    # and save RAM
-    if settings_dict is None:
-        return
-    seeds = settings_dict.get("seeds", [])
-    seedvault = settings_dict.get("seedvault", 0)
-    if (not seedvault) and (not seeds):
-        return
-    return {"seeds": seeds, "seedvault": seedvault,
-            "xfp": settings_dict.get("xfp", 0)}
-
-
-def set_master_sv_data(data, key):
-    global master_sv_data, master_nvram_key
-    master_sv_data = extract_master_sv_data(data)
-    master_nvram_key = key
-
-
 class SettingsObject:
+    # class vars: track a few values from master seed settings
+    master_sv_data = {}
+    master_nvram_key = None
 
-    def __init__(self, dis=None):
+    def __init__(self, nvram_key=None):
+        # NOTE: constructor no longer loads the values by default (too slow).
         self.is_dirty = 0
         self.my_pos = None
 
-        self.nvram_key = b'\0'*32
-        self.capacity = 0
+        self.nvram_key = nvram_key or b'\0'*32
         self.current = self.default_values()
 
-        self.load(dis)
+    @classmethod
+    def prelogin(cls):
+        # make an instance of the pre-login settings (ie. w/o key)
+        rv = cls()
+        rv.load()
+        return rv
 
     def get_aes(self, pos):
         # Build AES object for en/decrypt of specific block.
@@ -159,7 +143,6 @@ class SettingsObject:
 
             for round in range(5):
                 s.update('pad')
-            
                 s = sha256(s.digest())
 
             key = s.digest()
@@ -167,7 +150,7 @@ class SettingsObject:
             if mine:
                 blank_object(new_secret)
 
-        # for restore from backup case, or when changing (created) the seed
+        # save value for use in self.get_aes()
         self.nvram_key = key
 
     def get_capacity(self):
@@ -272,6 +255,59 @@ class SettingsObject:
 
             yield pos, taste
 
+    def leaving_master_seed(self):
+        # going from master seed to a tmp seed, so capture a few values we need.
+
+        SettingsObject.master_nvram_key = self.nvram_key
+
+        for fn in SEEDVAULT_FIELDS:
+            SettingsObject.master_sv_data[fn] = self.current.get(fn)
+
+    def return_to_master_seed(self):
+        # switching from a tmp seed to the normal master seed
+        # - we already kept the key needed, so just re-read 
+        assert SettingsObject.master_nvram_key
+        self.nvram_key = SettingsObject.master_nvram_key
+        self.load()
+
+        # these value no longer required, and might become stale
+        SettingsObject.master_sv_data.clear()
+        SettingsObject.master_nvram_key = None
+
+    def master_set(self, key, value):
+        # Set a value, and it must be saved under the master seed's 
+        # Concern is we may be changing a setting from a tmp seed mode
+        # - always does a save
+        from glob import settings as self
+
+        if not SettingsObject.master_nvram_key:
+            # simple, we are already on master seed
+            self.set(key, value)
+            self.save()
+        else:
+            # harder, slower: have to load, change and write
+            tmp = SettingsObject(nvram_key=SettingsObject.master_nvram_key)
+            tmp.load()
+            tmp.set(key, value)
+            tmp.save()
+            del tmp
+
+            # track our copies
+            if key in SEEDVAULT_FIELDS:
+                SettingsObject.master_sv_data[key] = value
+
+    def master_get(self, kn, default=None):
+        # Read a value from master seed's settings, perhaps from within context of tmp seed
+        from glob import settings as self
+
+        if not SettingsObject.master_nvram_key:
+            # simple, we are already on master seed
+            return self.get(kn, default)
+
+        # LIMITATION: only supporting a few values we know we will need
+        assert kn in SEEDVAULT_FIELDS
+        return SettingsObject.master_sv_data.get(kn, default)
+
     def load(self, dis=None):
         # Search all slots for any we can read, decrypt that,
         # and pick the newest one (in unlikely case of dups)
@@ -279,7 +315,6 @@ class SettingsObject:
         self.current.clear()
         self.my_pos = None
         self.is_dirty = 0
-        self.capacity = 0
         nonempty = set()
 
         for pos, taste in self._nonempty_slots(dis):
@@ -330,9 +365,6 @@ class SettingsObject:
             self.current['chain'] = 'XTN'
 
     def get(self, kn, default=None):
-        if master_sv_data and kn in ["seeds", "seedvault"]:
-            # we are in temporary mode as global 'master_sv_data' is populated
-            return master_sv_data.get(kn, default)
         return self.current.get(kn, default)
 
     def changed(self):
@@ -459,7 +491,6 @@ class SettingsObject:
         # act blank too, just in case.
         self.current.clear()
         self.is_dirty = 0
-        self.capacity = 0
 
     @staticmethod
     def default_values():
