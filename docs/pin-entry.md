@@ -81,7 +81,7 @@ of your duress PIN.
 The attackers could tell when the brick-me PIN has worked, but when
 the brick-me PIN works, the Coldcard will immediately use it to
 destroy the main pairing secret. This renders the security element
-useless. This happens in about 50 milliseconds and is done long before
+useless. This happens in about 50 milliseconds and is done long 
 before anyone gets an on-screen confirmation that it worked.
 
 There is little time to interrupt this or jam the bus to stop it.
