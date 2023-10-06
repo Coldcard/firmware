@@ -34,7 +34,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     elif st == "eph":
         eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True)
         _, story = cap_story()
-        assert "New ephemeral master key is in effect now." in story
+        assert "New temporary master key is in effect now." in story
         need_keypress("y")
 
         if multisig:
@@ -61,7 +61,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
             assert "ignores passphrases and produces backup of main seed" in body
             assert "(2) to back-up BIP39 passphrase wallet" in body
         if st == "eph":
-            assert "An ephemeral seed is in effect" in body
+            assert "An temporary seed is in effect" in body
             assert "so backup will be of that seed" in body
 
         need_keypress("y")
@@ -177,7 +177,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     pick_menu_item("Backup System")
     time.sleep(.1)
     title, story = cap_story()
-    assert "An ephemeral seed is in effect" in story
+    assert "An temporary seed is in effect" in story
     assert "so backup will be of that seed" in story
     need_keypress("y")
     time.sleep(.1)

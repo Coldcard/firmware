@@ -251,7 +251,7 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
             bypass_tmp = True
 
     elif pa.tmp_value:
-        if not await ux_confirm("An ephemeral seed is in effect, "
+        if not await ux_confirm("An temporary seed is in effect, "
                                 "so backup will be of that seed."):
             return
 
