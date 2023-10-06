@@ -132,7 +132,8 @@ class SecretStash:
             return 'master', ms, hd
 
     @staticmethod
-    def storage_encode(secret):
+    def storage_serialize(secret):
+        # make it a JSON-compatible field
         return B2A(bytes(secret).rstrip(b"\x00"))
 
     @staticmethod

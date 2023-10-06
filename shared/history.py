@@ -125,8 +125,6 @@ class OutptValueCache:
 
         # memory management: can't store very much, so trim as needed
         depth = HISTORY_SAVED
-        if settings.capacity > 0.8:
-            depth //= 2
 
         # also limit in-memory use
         cls.load_cache()
