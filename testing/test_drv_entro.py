@@ -43,7 +43,7 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
         need_keypress('y')
         time.sleep(0.1)
         title, story = cap_story()
-        if "You have an ephemeral seed - deriving from ephemeral" in story:
+        if "You have a temporary seed active - deriving from temporary" in story:
             need_keypress("y")
 
         time.sleep(0.1)
@@ -127,7 +127,7 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
 
             time.sleep(0.1)
             title, story = cap_story()
-            if "Press (1) to store ephemeral secret into Seed Vault" in story:
+            if "Press (1) to store temporary seed into Seed Vault" in story:
                 if save_to_vault:
                     need_keypress("1")  # store to seed vault
                     time.sleep(.2)
@@ -139,7 +139,7 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
                 time.sleep(0.1)
                 title, story = cap_story()
 
-            assert 'ephemeral master key is in effect now' in story
+            assert 'temporary master key is in effect now' in story
 
             encoded = sim_exec('from pincodes import pa; RV.write(repr(pa.fetch()))')
             print(encoded)

@@ -1206,7 +1206,7 @@ class NewPassphrase(UserAuthorizedAction):
                        'USB connection. Should we switch to that wallet now?\n\n')
                 if pa.tmp_value and settings.get("words", True):
                     escape += "1"
-                    msg += "Press (1) to add passphrase to currently active ephemeral seed. "
+                    msg += "Press (1) to add passphrase to currently active temporary seed. "
 
                 msg += ('Press (2) to view the provided passphrase.\n\n'
                         'OK to continue, X to cancel.')

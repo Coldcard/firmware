@@ -105,11 +105,11 @@ def goto_eph_seed_menu(goto_home, pick_menu_item, cap_story, need_keypress):
     def _doit():
         goto_home()
         pick_menu_item("Advanced/Tools")
-        pick_menu_item("Ephemeral Seed")
+        pick_menu_item("Temporary Seed")
 
         title, story = cap_story()
         if title == "WARNING":
-            assert "Ephemeral seed is a temporary secret completely separate from the master seed" in story
+            assert "Temporary seed is a secret completely separate from the master seed" in story
             assert "typically held in device RAM" in story
             assert "not persisted between reboots in the Secure Element." in story
             assert "Enable the Seed Vault feature to store these secrets longer-term." in story
@@ -146,10 +146,10 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
 
         assert "Restore main wallet and its settings?" in story
         if seed_vault:
-            assert "Press OK to forget current ephemeral wallet " not in story
+            assert "Press OK to forget current temporary wallet " not in story
             assert "settings, or press (1) to save & keep " not in story
         else:
-            assert "Press OK to forget current ephemeral wallet " in story
+            assert "Press OK to forget current temporary wallet " in story
             assert "settings, or press (1) to save & keep " in story
             assert "those settings if same seed is later restored." in story
             if preserve_settings:
@@ -183,7 +183,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
         in_effect_xfp = title[1:-1]
         if expected_xfp is not None:
             assert in_effect_xfp == expected_xfp
-        assert 'ephemeral master key is in effect now' in story in story
+        assert 'temporary master key is in effect now' in story in story
         need_keypress("y")  # just confirm new master key message
 
         menu = cap_menu()
@@ -246,10 +246,10 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
         ident_xfp = ident_story.split("\n\n")[1].strip()
         if sv_wipe and seed_vault:
             # we had to wipe the settings so we're back in main wallet
-            assert "Ephemeral seed is in effect" not in ident_story
+            assert "Temporary seed is in effect" not in ident_story
             assert ident_xfp == xfp2str(simulator_fixed_xfp)
         else:
-            assert "Ephemeral seed is in effect" in ident_story
+            assert "Temporary seed is in effect" in ident_story
             assert ident_xfp == in_effect_xfp
 
         if mnemonic:
@@ -324,7 +324,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item,
         if seed_vault:
             time.sleep(0.1)
             _, story = cap_story()
-            assert "Press (1) to store ephemeral secret into Seed Vault" in story
+            assert "Press (1) to store temporary seed into Seed Vault" in story
             need_keypress("1")  # store it
             need_keypress("y")  # confirm saved to Seed Vault
 
@@ -407,7 +407,7 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
         if seed_vault:
             time.sleep(.1)
             _, story = cap_story()
-            assert "Press (1) to store ephemeral secret into Seed Vault" in story
+            assert "Press (1) to store temporary seed into Seed Vault" in story
             need_keypress("1")  # store it
             need_keypress("y")  # confirm saved to Seed Vault
 
@@ -484,7 +484,7 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
     if seed_vault:
         time.sleep(.1)
         _, story = cap_story()
-        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        assert "Press (1) to store temporary seed into Seed Vault" in story
         need_keypress("1")  # store it
         need_keypress("y")  # confirm saved to Seed Vault
 
@@ -563,7 +563,7 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
     if seed_vault:
         time.sleep(.1)
         _, story = cap_story()
-        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        assert "Press (1) to store temporary seed into Seed Vault" in story
         need_keypress("1")  # store it
         need_keypress("y")  # confirm saved to Seed Vault
 
@@ -706,12 +706,12 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     time.sleep(0.3)
     title, story = cap_story()
     if seed_vault:
-        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        assert "Press (1) to store temporary seed into Seed Vault" in story
         # do not save
         need_keypress("y")
         time.sleep(0.2)
         title, story = cap_story()
-    assert 'ephemeral master key is in effect now' in story
+    assert 'temporary master key is in effect now' in story
 
     in_effect_xfp = title[1:-1]
     need_keypress("y")
@@ -725,13 +725,13 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     time.sleep(0.2)
     title, story = cap_story()
     if seed_vault:
-        assert "Press (1) to store ephemeral secret into Seed Vault" in story
+        assert "Press (1) to store temporary seed into Seed Vault" in story
         # do not save
         need_keypress("y")
         time.sleep(0.2)
         title, story = cap_story()
 
-    assert "Ephemeral master key already in use" in story
+    assert "Temporary master key already in use" in story
     already_used_xfp = title[1:-1]
     assert already_used_xfp == in_effect_xfp == expected_xfp
     need_keypress("y")
@@ -818,7 +818,7 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
     time.sleep(.1)
     title, story = cap_story()
     assert xfp in title
-    assert 'ephemeral master key is in effect now' in story
+    assert 'temporary master key is in effect now' in story
     need_keypress("y")
     active = get_seed_value_ux()
     if mnemonic:
@@ -831,7 +831,7 @@ def test_seed_vault_menus(dev, data, settings_set, settings_get, pick_menu_item,
         assert node.secret_exponent() == int(pk.hex(), 16)
 
     istory = get_identity_story()
-    assert "Ephemeral seed is in effect" in istory
+    assert "Temporary seed is in effect" in istory
 
     ident_xfp = istory.split("\n\n")[1].strip()
     assert ident_xfp == xfp
@@ -943,7 +943,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
         time.sleep(0.1)
 
         title, story = cap_story()
-        assert 'New ephemeral master key' in story
+        assert 'New temporary master key' in story
         assert 'power down' not in story
         assert xfp in title
         need_keypress("y")  # confirm activation of ephemeral secret
