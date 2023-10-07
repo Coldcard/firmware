@@ -803,7 +803,7 @@ class SeedVaultMenu(MenuSystem):
         goto_top_menu()
 
     @staticmethod
-    async def _clear(menu, label, item):
+    async def _remove(menu, label, item):
         from glob import dis, settings
 
         idx, xfp_str, encoded, is_active = item.arg
@@ -821,7 +821,6 @@ class SeedVaultMenu(MenuSystem):
         dis.fullscreen("Saving...")
 
         wipe_slot = (ch != "1")
-        tmp_mode = bool(pa.tmp_value)
 
         if wipe_slot:
             # wiping key's settings
@@ -832,7 +831,7 @@ class SeedVaultMenu(MenuSystem):
             del xs
 
         # CAUTION: will get shadow copy if in tmp seed mode already
-        seeds = settings.get("seeds", [])
+        seeds = SettingsObject.master_get("seeds", [])
         try:
             del seeds[idx]
         except IndexError:
@@ -921,10 +920,11 @@ class SeedVaultMenu(MenuSystem):
                     MenuItem(name, f=cls._detail, arg=(xfp_str, encoded, name, meta)),
                     MenuItem('Use This Seed', f=cls._set, arg=(xfp_str, encoded)),
                     MenuItem('Rename', f=cls._rename, arg=(i, xfp_str)),
-                    MenuItem('Delete', f=cls._clear, arg=(i, xfp_str, encoded, is_active)),
+                    MenuItem('Delete', f=cls._remove, arg=(i, xfp_str, encoded, is_active)),
                 ]
                 if is_active:
-                    submenu[1] = MenuItem("In Use")
+                    submenu[1] = MenuItem("Seed In Use")
+                    submenu[1].is_chosen = lambda: True
 
                 if pa.tmp_value and (not is_active):
                     # if different ephemeral wallet active

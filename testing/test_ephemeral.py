@@ -218,8 +218,8 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
                 pick_menu_item(sc_menu[0])
                 time.sleep(.1)
             else:
-                assert "In Use" in m
-                pick_menu_item("In Use")  # noop
+                assert "Seed In Use" in m
+                pick_menu_item("Seed In Use")  # noop
 
             # delete it from records
             pick_menu_item("Delete")
@@ -1042,7 +1042,7 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     time.sleep(.1)
     m = cap_menu()
     assert "Rename" in m
-    assert "In Use" in m
+    assert "Seed In Use" in m
     assert "Delete" in m
 
     pick_menu_item("Rename")
@@ -1085,7 +1085,7 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     time.sleep(.1)
     m = cap_menu()
     assert "Rename" in m
-    assert "In Use" in m
+    assert "Seed In Use" in m
     assert "Delete" in m
 
     pick_menu_item("Delete")

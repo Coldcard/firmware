@@ -134,6 +134,9 @@ class SettingsObject:
                 new_secret = pa.fetch()
                 mine = True
 
+                # this is *the* master seed, so track for faster later use
+                SettingsObject.master_nvram_key = key
+
         if new_secret:
             # hash up the secret... without decoding it or similar
             assert len(new_secret) >= 32
@@ -149,11 +152,7 @@ class SettingsObject:
             if mine:
                 blank_object(new_secret)
 
-            if not pa.tmp_value:
-                # this is *the* master seed, so track for faster later use
-                SettingsObject.master_nvram_key = key
-
-        # for restore from backup case, or when changing (created) the seed
+        # save value for use in self.get_aes()
         self.nvram_key = key
 
     def get_capacity(self):
