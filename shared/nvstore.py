@@ -95,7 +95,7 @@ class SettingsObject:
     master_nvram_key = None
 
     def __init__(self, nvram_key=None):
-        # NOTE: constructor no longer loads the values by default (slow).
+        # NOTE: constructor no longer loads the values by default (too slow).
         self.is_dirty = 0
         self.my_pos = None
 

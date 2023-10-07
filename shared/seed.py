@@ -457,7 +457,7 @@ async def add_seed_to_vault(encoded, meta=None):
 
     # Save it into master settings
     seeds.append((new_xfp_str,
-                  stash.SecretStash.storage_encode(encoded),
+                  stash.SecretStash.storage_serialize(encoded),
                   xfp_ui,
                   meta))
 
@@ -857,12 +857,13 @@ class SeedVaultMenu(MenuSystem):
     @staticmethod
     async def _detail(menu, label, item):
         xfp_str, encoded, name, meta = item.arg
+
+        # - first byte represents type of secret (internal encoding flag)
         txt = SecretStash.summary(a2b_hex(encoded[0:2])[0])
 
-        detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nMetadata:\n%s\n\nSecret Type:\n%s" % (
-            # (-2) one byte in hex that represents type of secret (internal)
-            name, xfp_str, meta, txt
-        )
+        detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nOrigin:\n%s\n\nSecret Type:\n%s" \
+                        % (name, xfp_str, meta, txt)
+
         await ux_show_story(detail)
 
     @staticmethod
