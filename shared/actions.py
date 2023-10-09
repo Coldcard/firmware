@@ -934,7 +934,7 @@ async def restore_main_secret(*a):
 
     escape = None
     msg = "Restore main wallet and its settings?\n\n"
-    if not in_seed_vault():
+    if not in_seed_vault(pa.tmp_value):
         msg += (
             "Press OK to forget current temporary wallet "
             "settings, or press (1) to save & keep "
