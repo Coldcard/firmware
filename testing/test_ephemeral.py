@@ -17,6 +17,18 @@ WORDLISTS = {
     24: ('abandon ' * 23 + 'art', '5436D724'),
 }
 
+SEEDVAULT_TEST_DATA = [
+    ("47649253", "344f9dc08e88b8a46d4b8f46c4e6bb6c",
+     "crowd language ice brown merit fall release impose egg cheese put suit"),
+    ("CC7BB706", "88f53ed897cc371ffe4b715c267206f3286ed2f655ba9d68",
+     "material prepare renew convince sell morning weird hotel found crime like town manage harvest sun resemble output dolphin"),
+    ("AC39935C", "956f484cc2136178fd1ad45faeb54972c829f65aad0d74eb2541b11984655893",
+     "nice kid basket loud current round virtual fold garden interest false tortoise little will height payment insane float expire giraffe obscure crawl girl glare"),
+    ('939B32C4',
+     '017caa3142d48791f837b42fcd7a98662f9fb4101a15ae87cdbc1fecc96f33c11ffcefd8121daaba0625c918a335a0712b8c35c2da60e6fc6eef78b7028f4be02a',
+     None),  # BIP-85 -> BIP-32 -> #23
+]
+
 
 def truncate_seed_words(words):
     if isinstance(words, str):
@@ -737,17 +749,7 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     need_keypress("y")
 
 
-@pytest.mark.parametrize('data', [
-    ("47649253", "344f9dc08e88b8a46d4b8f46c4e6bb6c",
-     "crowd language ice brown merit fall release impose egg cheese put suit"),
-    ("CC7BB706", "88f53ed897cc371ffe4b715c267206f3286ed2f655ba9d68",
-     "material prepare renew convince sell morning weird hotel found crime like town manage harvest sun resemble output dolphin"),
-    ("AC39935C", "956f484cc2136178fd1ad45faeb54972c829f65aad0d74eb2541b11984655893",
-     "nice kid basket loud current round virtual fold garden interest false tortoise little will height payment insane float expire giraffe obscure crawl girl glare"),
-    ('939B32C4',
-     '017caa3142d48791f837b42fcd7a98662f9fb4101a15ae87cdbc1fecc96f33c11ffcefd8121daaba0625c918a335a0712b8c35c2da60e6fc6eef78b7028f4be02a',
-     None),  # BIP-85 -> BIP-32 -> #23
-])
+@pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA)
 def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_menu_item, need_keypress, cap_story,
                           cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
                           try_sign, sim_exec, goto_home):
@@ -814,7 +816,16 @@ def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_men
     need_keypress("y")
     m = cap_menu()
     assert m[0] == "AAAA"
-    # UNTESTED: parent menu will also show our updated name
+    # check parnt menu - must be updated too
+    need_keypress("x")
+    m = cap_menu()
+    for item in m:
+        if "AAAA" in item:
+            break
+    else:
+        assert False
+    # go back
+    need_keypress("y")
     pick_menu_item("Use This Seed")
     time.sleep(.1)
     title, story = cap_story()

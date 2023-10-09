@@ -1,4 +1,4 @@
-import pytest, time
+import pytest, time, json
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
@@ -9,15 +9,20 @@ from mnemonic import Mnemonic
 @pytest.mark.parametrize('st', ["b39pass", "eph", None])
 @pytest.mark.parametrize('reuse_pw', [False, True])
 @pytest.mark.parametrize('save_pw', [False, True])
+@pytest.mark.parametrize('seedvault', [False, True])
 def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, st,
                      open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry,
                      pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting,
                      cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove,
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
-                     check_and_decrypt_backup, restore_backup_cs, clear_ms):
+                     check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
+                     restore_main_seed, import_ephemeral_xprv):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
+    settings_set("seedvault", int(seedvault))
+    settings_set("seeds", [] if seedvault else None)
+
     # need to make multisig in my main wallet
     if multisig and st != "eph":
         import_ms_wallet(15, 15)
@@ -26,13 +31,14 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         assert len(get_setting('multisig')) == 1
 
     if st == "b39pass":
-        xfp_pass = set_bip39_pw("coinkite", reset=False)
+        xfp_pass = set_bip39_pw("coinkite", reset=False, seed_vault=seedvault)
         _, story = cap_story()
         assert "Above is the master key fingerprint of the current wallet" in story
         need_keypress("y")
         assert not get_setting('multisig', None)
     elif st == "eph":
-        eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True)
+        eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True,
+                                            seed_vault=seedvault)
         _, story = cap_story()
         assert "New temporary master key is in effect now." in story
         need_keypress("y")
@@ -43,6 +49,14 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
             need_keypress('y')
             time.sleep(.1)
             assert len(get_setting('multisig')) == 1
+    else:
+        # create ephemeral seed - add to seed vault if necessary
+        # and restore master (just so we have something in setting.seeds)
+        node = import_ephemeral_xprv("sd", from_main=True, seed_vault=seedvault)
+        _, story = cap_story()
+        assert "New ephemeral master key is in effect now." in story
+        need_keypress("y")
+        restore_main_seed(seed_vault=seedvault, preserve_settings=True)
 
     if reuse_pw:
         settings_set('bkpw', ' '.join('zoo' for _ in range(12)))
@@ -143,14 +157,25 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
     time.sleep(.01)
 
     verify_backup_file(fn)
-    check_and_decrypt_backup(fn, words)
+    decrypted = check_and_decrypt_backup(fn, words)
+    avail_settings = []
+    if seedvault and (st in [None, "b39pass"]):
+        assert "seedvault" in decrypted
+        assert "seeds" in decrypted
+        avail_settings.append("seeds")
+        avail_settings.append("seedvault")
+    else:
+        assert "seedvault" not in decrypted
+        assert "seeds" not in decrypted
 
     for i in range(10):
         need_keypress('x')
         time.sleep(.01)
 
     # test verify on device (CRC check)
-    avail_settings = ['multisig'] if multisig else None
+    if multisig:
+        avail_settings.append("multisig")
+
     restore_backup_cs(files[0], words, avail_settings=avail_settings)
 
 
@@ -236,14 +261,18 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     restore_backup_cs(fn, words)
 
 
+@pytest.mark.parametrize('seedvault', [False, True])
 @pytest.mark.parametrize("passphrase", ["@coinkite rulez!!", "!@#!@", "AAAAAAAAAAA"])
 def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keypress,
                              goto_home, cap_story, pass_word_quiz, get_setting,
                              verify_backup_file, microsd_path, check_and_decrypt_backup,
                              sim_execfile, unit_test, word_menu_entry, cap_menu,
-                             restore_backup_cs):
+                             restore_backup_cs, seedvault, settings_set, reset_seed_words):
+    reset_seed_words()
     goto_home()
-    set_bip39_pw(passphrase)
+    settings_set("seedvault", int(seedvault))
+    settings_set("seeds", [] if seedvault else None)
+    set_bip39_pw(passphrase, seed_vault=True)
     target = sim_execfile('devtest/get-secrets.py')
     assert 'Error' not in target
     need_keypress("y")
@@ -283,6 +312,8 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     verify_backup_file(fn)
     contents = check_and_decrypt_backup(fn, words)
     assert "mnemonic" not in contents
+    assert "seedvault" not in contents
+    assert "seeds" not in contents
     assert simulator_fixed_words not in contents
     assert simulator_fixed_tprv not in contents
     assert target == contents
@@ -460,3 +491,32 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     sv_xfp_menu = [i.split(" ")[-1] for i in m]
     for xfp_ui in ui_xfps:
         assert xfp_ui in sv_xfp_menu
+
+
+def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl):
+    from test_ephemeral import SEEDVAULT_TEST_DATA
+
+    reset_seed_words()
+    settings_set("seedvault", 1)
+
+    sv = []
+    for item in SEEDVAULT_TEST_DATA:
+        xfp, entropy, mnemonic = item
+
+        # build stashed encoded secret
+        entropy_bytes = bytes.fromhex(entropy)
+        if mnemonic:
+            vlen = len(entropy_bytes)
+            assert vlen in [16, 24, 32]
+            marker = 0x80 | ((vlen // 8) - 2)
+            stored_secret = bytes([marker]) + entropy_bytes
+        else:
+            stored_secret = entropy_bytes
+
+        sv.append((xfp, stored_secret.hex(), f"[{xfp}]", "meta"))
+
+    settings_set("seeds", sv)
+    bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
+    assert 'Coldcard backup file' in bk
+    target = json.dumps(sv)
+    assert target in bk
