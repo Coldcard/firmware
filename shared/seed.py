@@ -406,17 +406,13 @@ async def new_from_dice(nwords):
         # send them to home menu, now with a wallet enabled
         goto_top_menu(first_time=True)
 
-def in_seed_vault(xfp=None):
+def in_seed_vault(encoded):
     # Test if indicated xfp (or currently active XFP) is in the seed vault already.
-
-    if xfp is None:
-        xfp = xfp2str(settings.get("xfp", 0))
-
     seeds = settings.master_get("seeds", [])
-
-    if seeds and (xfp in [s[0] for s in seeds]):
-        return True
-
+    if seeds:
+        ss = stash.SecretStash.storage_serialize(encoded)
+        if ss in [s[1] for s in seeds]:
+            return True
     return False
 
 async def add_seed_to_vault(encoded, meta=None):
@@ -433,7 +429,7 @@ async def add_seed_to_vault(encoded, meta=None):
     new_xfp_str = xfp2str(new_xfp)
 
     # do not offer to store secrets that are already in vault
-    if in_seed_vault(new_xfp_str):
+    if in_seed_vault(encoded):
         return
 
     # do not offer to store main seed
@@ -796,9 +792,8 @@ class SeedVaultMenu(MenuSystem):
         dis.fullscreen("Applying...")
 
         xfp, encoded = item.arg
-        raw = pad_raw_secret(encoded)
 
-        await set_ephemeral_seed(raw, is_restore=True)
+        await set_ephemeral_seed(encoded, is_restore=True)
 
         goto_top_menu()
 
@@ -838,7 +833,7 @@ class SeedVaultMenu(MenuSystem):
             else:
                 # in main settings
                 xs = SettingsObject()
-                xs.set_key(pad_raw_secret(encoded))
+                xs.set_key(encoded)
                 xs.load()
                 xs.blank()
                 del xs
@@ -866,7 +861,7 @@ class SeedVaultMenu(MenuSystem):
         xfp_str, encoded, name, meta = item.arg
 
         # - first byte represents type of secret (internal encoding flag)
-        txt = SecretStash.summary(a2b_hex(encoded[0:2])[0])
+        txt = SecretStash.summary(encoded[0])
 
         detail = "Name:\n%s\n\nMaster XFP:\n%s\n\nOrigin:\n%s\n\nSecret Type:\n%s" \
                         % (name, xfp_str, meta, txt)
@@ -923,7 +918,8 @@ class SeedVaultMenu(MenuSystem):
             rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
         else:
             for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
-                is_active = (cur_xfp == xfp_str)
+                encoded = pad_raw_secret(encoded)
+                is_active = (encoded == pa.tmp_value)
                 submenu = [
                     MenuItem(name, f=cls._detail, arg=(xfp_str, encoded, name, meta)),
                     MenuItem('Use This Seed', f=cls._set, arg=(xfp_str, encoded)),
