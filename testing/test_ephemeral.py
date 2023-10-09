@@ -2,7 +2,8 @@
 #
 # Ephemeral Seeds tests
 #
-import pytest, time, re, os, shutil, pdb
+
+import pytest, time, re, os, shutil, pdb, hashlib
 from constants import simulator_fixed_tpub, simulator_fixed_words, simulator_fixed_xfp, simulator_fixed_xpub
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
@@ -367,17 +368,18 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
         if extended_key is None:
             node = BIP32Node.from_master_secret(os.urandom(32), netcode=netcode)
             ek = node.hwif(as_private=True) + '\n'
-            if way == "sd":
-                fpath = microsd_path(fname)
-            elif way == "vdisk":
-                fpath = virtdisk_path(fname)
-            if way != "nfc":
-                with open(fpath, "w") as f:
-                    f.write(ek)
         else:
             node = BIP32Node.from_wallet_key(extended_key)
             assert extended_key == node.hwif(as_private=True)
             ek = extended_key
+
+        if way == "sd":
+            fpath = microsd_path(fname)
+        elif way == "vdisk":
+            fpath = virtdisk_path(fname)
+        if way != "nfc":
+            with open(fpath, "w") as f:
+                f.write(ek)
 
         if testnet:
             assert "tprv" in ek
@@ -1116,5 +1118,50 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     m = cap_menu()
     # still in ephemeral
     assert title == m[0]
+
+
+def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
+                       cap_story, need_keypress, pick_menu_item, cap_menu):
+    node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
+    xfp = node.fingerprint().hex().upper()
+    k0 = node.hwif(as_private=True)
+
+    # change chain code but presevre public key
+    node._chain_code = hashlib.sha256(node._chain_code).digest()
+    k1 = node.hwif(as_private=True)
+    assert k1 != k0
+
+    reset_seed_words()
+    settings_set("seedvault", 1)
+    settings_set("seeds", [])
+
+    import_ephemeral_xprv("sd", extended_key=k0, seed_vault=True, from_main=True)
+    title, story = cap_story()
+    assert "is in effect now" in story
+    need_keypress("y")
+
+    import_ephemeral_xprv("sd", extended_key=k1, seed_vault=True, from_main=False)
+    title, story = cap_story()
+    assert "is in effect now" in story
+    need_keypress("y")
+
+    pick_menu_item("Seed Vault")
+    m = cap_menu()
+    assert len(m) == 3  # two seeds and Restore Master
+    # same master fingerprints
+    assert xfp in m[0]
+    assert xfp in m[1]
+    # but only second is in use
+    pick_menu_item(m[1])
+    time.sleep(.1)
+    sm = cap_menu()
+    assert "Seed In Use" in sm
+    assert "Use This Seed" not in sm
+    need_keypress("x")  # go back
+    pick_menu_item(m[0])
+    time.sleep(.1)
+    sm = cap_menu()
+    assert "Seed In Use" not in sm
+    assert "Use This Seed" in sm
 
 # EOF
