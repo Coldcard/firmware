@@ -119,38 +119,27 @@ def render_backup_contents(bypass_tmp=False):
 
     return rv.getvalue()
 
-def restore_from_dict_ll(vals):
-    # Restore from a dict of values. Already JSON decoded.
-    # Need a Reboot on success, return string on failure
-    # - low-level version, factored out for better testing
-    from glob import dis
-
-    #print("Restoring from: %r" % vals)
-
+def extract_raw_secret(chain, vals):
     # step1: the private key
     # - prefer raw_secret over other values
     # - TODO: fail back to other values
-    try:
-        chain = chains.get_chain(vals.get('chain', 'BTC'))
+    assert 'raw_secret' in vals
+    rs = vals.pop('raw_secret')
 
-        assert 'raw_secret' in vals
-        rs = vals.pop('raw_secret')
+    raw = pad_raw_secret(rs)
 
-        raw = pad_raw_secret(rs)
+    # check we can decode this right (might be different firmare)
+    opmode, bits, node = stash.SecretStash.decode(raw)
+    assert node
 
-        # check we can decode this right (might be different firmare)
-        opmode, bits, node = stash.SecretStash.decode(raw)
-        assert node
+    # verify against xprv value (if we have it)
+    if 'xprv' in vals:
+        check_xprv = chain.serialize_private(node)
+        assert check_xprv == vals['xprv'], 'xprv mismatch'
 
-        # verify against xprv value (if we have it)
-        if 'xprv' in vals:
-            check_xprv = chain.serialize_private(node)
-            assert check_xprv == vals['xprv'], 'xprv mismatch'
+    return raw
 
-    except Exception as e:
-        return ('Unable to decode raw_secret and '
-                                'restore the seed value!\n\n\n'+str(e))
-
+def extract_long_secret(vals):
     ls = None
     if ('long_secret' in vals) and version.has_608:
         try:
@@ -158,6 +147,22 @@ def restore_from_dict_ll(vals):
         except Exception as exc:
             sys.print_exception(exc)
             # but keep going.
+    return ls
+
+def restore_from_dict_ll(vals):
+    # Restore from a dict of values. Already JSON decoded.
+    # Need a Reboot on success, return string on failure
+    # - low-level version, factored out for better testing
+    from glob import dis
+
+    #print("Restoring from: %r" % vals)
+    chain = chains.get_chain(vals.get('chain', 'BTC'))
+
+    try:
+        raw = extract_raw_secret(chain, vals)
+    except Exception as e:
+        return ('Unable to decode raw_secret and '
+                                'restore the seed value!\n\n\n'+str(e))
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.25)
@@ -169,9 +174,8 @@ def restore_from_dict_ll(vals):
     # force the right chain
     pa.new_main_secret(raw, chain)         # updates xfp/xpub
 
-
     # NOTE: don't fail after this point... they can muddle thru w/ just right seed
-
+    ls = extract_long_secret(vals)
     if ls is not None:
         try:
             pa.ls_change(ls)
@@ -218,6 +222,30 @@ def restore_from_dict_ll(vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
 
+async def restore_tmp_from_dict_ll(vals):
+    from glob import dis
+
+    chain = chains.get_chain(vals.get('chain', 'BTC'))
+    try:
+        raw = extract_raw_secret(chain, vals)
+    except Exception as e:
+        return ('Unable to decode raw_secret and '
+                'restore the seed value!\n\n\n' + str(e))
+
+    dis.fullscreen("Applying...")
+    from seed import set_ephemeral_seed
+    from actions import goto_top_menu
+
+    await set_ephemeral_seed(raw, chain, meta="Coldcard Backup")
+    for k, v in vals.items():
+        if not k[:8] == "setting.":
+            continue
+        key = k[8:]
+        if key in ["multisig"]:
+            # whitelist
+            settings.set(k, v)
+
+    goto_top_menu()
 
 async def restore_from_dict(vals):
     # Restore from a dict of values. Already JSON decoded (ie. dict object).
@@ -455,14 +483,15 @@ async def verify_backup_file(fname):
     await ux_show_story("Backup file CRC checks out okay.\n\nPlease note this is only a check against accidental truncation and similar. Targeted modifications can still pass this test.")
 
 
-async def restore_complete(fname_or_fd):
+async def restore_complete(fname_or_fd, temporary=False):
     from ux import the_ux
 
     async def done(words):
         # remove all pw-picking from menu stack
         seed.WordNestMenu.pop_all()
 
-        prob = await restore_complete_doit(fname_or_fd, words)
+        prob = await restore_complete_doit(fname_or_fd, words,
+                                           temporary=temporary)
 
         if prob:
             await ux_show_story(prob, title='FAILED')
@@ -472,7 +501,7 @@ async def restore_complete(fname_or_fd):
 
     the_ux.push(m)
 
-async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
+async def restore_complete_doit(fname_or_fd, words, file_cleanup=None, temporary=False):
     # Open file, read it, maybe decrypt it; return string if any error
     # - some errors will be shown, None return in that case
     # - no return if successful (due to reboot)
@@ -543,7 +572,10 @@ async def restore_complete_doit(fname_or_fd, words, file_cleanup=None):
             # but keep going!
 
     # this leads to reboot if it works, else errors shown, etc.
-    return await restore_from_dict(vals)
+    if temporary:
+        return await restore_tmp_from_dict_ll(vals)
+    else:
+        return await restore_from_dict(vals)
 
 async def clone_start(*a):
     # Begins cloning process, on target device.

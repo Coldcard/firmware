@@ -1381,6 +1381,16 @@ You must clear the wallet seed before restoring a backup because it replaces \
 the seed value and the old seed would be lost.\n\n\
 Visit the advanced menu and choose 'Destroy Seed'.'''
 
+async def restore_temporary(*A):
+
+    fn = await file_picker('Select file containing the backup '
+                           'to be restored as temporary seed.',
+                           suffix=".7z", max_size=10000)
+
+    if fn:
+        import backups
+        await backups.restore_complete(fn, temporary=True)
+
 async def restore_everything(*A):
 
     if not pa.is_secret_blank():
