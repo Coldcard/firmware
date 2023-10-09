@@ -100,6 +100,8 @@ def render_backup_contents(bypass_tmp=False):
         if k == 'bkpw': continue        # confusing/circular
         if k == 'sd2fa': continue       # do NOT backup SD 2FA (card can be lost or damaged)
         if k == 'words': continue       # words length is recalculated from secret
+        if k == 'seedvault' and not v: continue
+        if k == 'seeds' and not v: continue
         ADD('setting.' + k, v)
 
     import hsm
