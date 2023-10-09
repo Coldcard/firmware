@@ -1,5 +1,6 @@
 ## 5.2.1 - 2023-11-XX
 
+- New Feature: Temporary Seed from COLDCARD encrypted backup
 - Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
   If current active temporary seed is not saved yet, `Add current tmp` menu item is 
   present in Seed Vault menu.

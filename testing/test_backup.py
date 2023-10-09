@@ -4,6 +4,115 @@ from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
 
 
+def decode_backup(txt):
+    import json
+    vals = dict()
+    trimmed = dict()
+    for ln in txt.split('\n'):
+        if not ln: continue
+        if ln[0] == '#': continue
+
+        k, v = ln.split(' = ', 1)
+
+        v = json.loads(v)
+
+        if k.startswith('duress_') or k.startswith('fw_'):
+            # no space in USB xfer for thesE!
+            trimmed[k] = v
+        else:
+            vals[k] = v
+
+    return vals, trimmed
+
+
+@pytest.fixture
+def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
+                  cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
+                  get_setting):
+    def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
+        # st -> seed type
+        # ct -> cleartext backup
+        if reuse_pw:
+            settings_set('bkpw', ' '.join('zoo' for _ in range(12)))
+        else:
+            settings_remove('bkpw')
+
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('Backup')
+        pick_menu_item('Backup System')
+
+        title, body = cap_story()
+        if st:
+            if st == "b39pass":
+                assert "BIP39 passphrase is in effect" in body
+                assert "ignores passphrases and produces backup of main seed" in body
+                assert "(2) to back-up BIP39 passphrase wallet" in body
+            if st == "eph":
+                assert "An temporary seed is in effect" in body
+                assert "so backup will be of that seed" in body
+
+            need_keypress("y")
+            time.sleep(.1)
+            title, body = cap_story()
+
+        if ct:
+            # cleartext backup
+            if ' 1: zoo' in body:
+                need_keypress("x")
+
+            need_keypress("6")
+            time.sleep(.1)
+            _, story = cap_story()
+            assert "Are you SURE ?!?" in story
+            assert "**NOT** be encrypted" in story
+            need_keypress("y")
+            return  # nothing more to be done
+
+        if reuse_pw:
+            assert ' 1: zoo' in body
+            assert '12: zoo' in body
+            need_keypress('y')
+            words = ['zoo'] * 12
+
+            time.sleep(0.1)
+            title, body = cap_story()
+        else:
+            assert title == 'NO-TITLE'
+            assert 'Record this' in body
+            assert 'password:' in body
+
+            words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+            assert len(words) == 12
+
+            print("Passphrase: %s" % ' '.join(words))
+
+            if 'QR Code' in body:
+                need_keypress('1')
+                got_qr = cap_screen_qr().decode('ascii').lower().split()
+                assert [w[0:4] for w in words] == got_qr
+                need_keypress('y')
+
+            # pass the quiz!
+            count, title, body = pass_word_quiz(words)
+            assert count >= 4
+            assert "same words next time" in body
+            assert "Press (1) to save" in body
+            if save_pw:
+                need_keypress('1')
+                time.sleep(.1)
+
+                assert get_setting('bkpw') == ' '.join(words)
+            else:
+                need_keypress('x')
+                time.sleep(.01)
+                assert get_setting('bkpw', 'xxx') == 'xxx'
+
+        return words
+
+    return doit
+
+
 @pytest.mark.qrcode
 @pytest.mark.parametrize('multisig', [False, 'multisig'])
 @pytest.mark.parametrize('st', ["b39pass", "eph", None])
@@ -16,7 +125,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove,
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
-                     restore_main_seed, import_ephemeral_xprv):
+                     restore_main_seed, import_ephemeral_xprv, backup_system):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
@@ -48,73 +157,11 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         node = import_ephemeral_xprv("sd", from_main=True, seed_vault=seedvault)
         restore_main_seed(seed_vault=seedvault, preserve_settings=True)
 
-    if reuse_pw:
-        settings_set('bkpw', ' '.join('zoo' for _ in range(12)))
-    else:
-        settings_remove('bkpw')
+    words = backup_system(reuse_pw=reuse_pw, save_pw=save_pw, st=st)
 
-    goto_home()
-    pick_menu_item('Advanced/Tools')
-    pick_menu_item('Backup')
-    pick_menu_item('Backup System')
-
+    time.sleep(.1)
     title, body = cap_story()
-    if st:
-        if st == "b39pass":
-            assert "BIP39 passphrase is in effect" in body
-            assert "ignores passphrases and produces backup of main seed" in body
-            assert "(2) to back-up BIP39 passphrase wallet" in body
-        if st == "eph":
-            assert "An temporary seed is in effect" in body
-            assert "so backup will be of that seed" in body
 
-        need_keypress("y")
-        time.sleep(.1)
-        title, body = cap_story()
-
-    if reuse_pw:
-        assert ' 1: zoo' in body
-        assert '12: zoo' in body
-        need_keypress('y')
-        words = ['zoo']*12
-
-        time.sleep(0.1)
-        title, body = cap_story()
-    else:
-        assert title == 'NO-TITLE'
-        assert 'Record this' in body
-        assert 'password:' in body
-
-        words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
-        assert len(words) == 12
-
-        print("Passphrase: %s" % ' '.join(words))
-
-        if 'QR Code' in body:
-            need_keypress('1')
-            got_qr = cap_screen_qr().decode('ascii').lower().split()
-            assert [w[0:4] for w in words] == got_qr
-            need_keypress('y')
-
-        # pass the quiz!
-        count, title, body = pass_word_quiz(words)
-        assert count >= 4
-        assert "same words next time" in body
-        assert "Press (1) to save" in body
-        if save_pw:
-            need_keypress('1')
-            time.sleep(.1)
-
-            assert get_setting('bkpw') == ' '.join(words)
-        else:
-            need_keypress('x')
-            time.sleep(.01)
-            assert get_setting('bkpw', 'xxx') == 'xxx'
-
-        time.sleep(0.1)
-        title, body = cap_story()
-
-    time.sleep(0.1)
     if st == "b39pass" and multisig:
         # correct settings switch back?
         # multisig is only in main wallet
@@ -355,26 +402,6 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
 
     assert 'Coldcard backup file' in bk
-
-    def decode_backup(txt):
-        import json
-        vals = dict()
-        trimmed = dict()
-        for ln in txt.split('\n'):
-            if not ln: continue
-            if ln[0] == '#': continue
-
-            k, v = ln.split(' = ', 1)
-
-            v = json.loads(v)
-
-            if k.startswith('duress_') or k.startswith('fw_'):
-                # no space in USB xfer for thesE!
-                trimmed[k] = v
-            else:
-                vals[k] = v
-
-        return vals, trimmed
 
     # decode it
     vals, trimmed = decode_backup(bk)
