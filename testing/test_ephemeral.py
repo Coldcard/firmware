@@ -9,7 +9,7 @@ from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
 from pycoin.key.BIP32Node import BIP32Node
-from helpers import xfp2str
+from helpers import xfp2str, a2b_hex
 
 
 WORDLISTS = {
@@ -1206,5 +1206,72 @@ def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xpr
     else:
         need_keypress("y")
         verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=True)
+
+
+@pytest.mark.parametrize('multisig', [False, 'multisig'])
+@pytest.mark.parametrize('seedvault', [False, True])
+@pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA)
+def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_setting,
+                               data, need_keypress, cap_story, set_encoded_secret,
+                               reset_seed_words, check_and_decrypt_backup,
+                               goto_eph_seed_menu, pick_menu_item, word_menu_entry,
+                               verify_ephemeral_secret_ui, seedvault, settings_set,
+                               seed_vault_enable, confirm_tmp_seed, settings_path,
+                               seed_vault_delete, restore_main_seed):
+    xfp_str, encoded_str, mnemonic = data
+    encoded = a2b_hex(encoded_str)
+    if mnemonic:
+        vlen = len(encoded)
+        assert vlen in [16, 24, 32]
+        marker = 0x80 | ((vlen // 8) - 2)
+        encoded = bytes([marker]) + encoded
+
+    set_encoded_secret(encoded)
+
+    settings_set("chain", "XTN")
+
+    if multisig:
+        import_ms_wallet(15, 15, dev_key=True)
+        need_keypress('y')
+        time.sleep(.1)
+        assert len(get_setting('multisig')) == 1
+
+    # ACTUAL BACKUP
+    bk_pw = backup_system()
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+
+    check_and_decrypt_backup(fname, bk_pw)
+
+    # restore fixed simulator
+    reset_seed_words()
+    seed_vault_enable(seedvault)
+
+    goto_eph_seed_menu()
+    pick_menu_item("Coldcard Backup")
+
+    time.sleep(.1)
+    _, story = cap_story()
+    if "Select file containing the backup" in story:
+        need_keypress("y")
+        time.sleep(.1)
+        pick_menu_item(fname)
+
+    word_menu_entry(bk_pw)
+
+    confirm_tmp_seed(seedvault)
+
+    time.sleep(.1)
+    if mnemonic:
+        mnemonic = mnemonic.split(" ")
+
+    xfp = verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, # xpub veriphy ephemeral secret not tested here
+                                     seed_vault=seedvault)
+
+    if seedvault:
+        seed_vault_delete(xfp, not False)
+    else:
+        restore_main_seed(False)
 
 # EOF

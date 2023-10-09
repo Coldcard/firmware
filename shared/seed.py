@@ -1015,7 +1015,7 @@ class EphemeralSeedMenu(MenuSystem):
     @classmethod
     def construct(cls):
         from glob import NFC
-        from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv
+        from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv, restore_temporary
 
         import_ephemeral_menu = [
             MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
@@ -1035,6 +1035,7 @@ class EphemeralSeedMenu(MenuSystem):
             MenuItem("Import Words", menu=import_ephemeral_menu),
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
             MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True), # ephemeral=True
+            MenuItem("Coldcard Backup", f=restore_temporary),
         ]
 
         return rv
