@@ -10,12 +10,11 @@ from uhashlib import sha256
 from uio import BytesIO
 from chains import taptweak, tapleaf_hash
 from sffile import SizerFile
-from sram2 import psbt_tmp256
 from miniscript import MiniScriptWallet
 from multisig import MultisigWallet, disassemble_multisig, disassemble_multisig_mn
 from exceptions import FatalPSBTIssue, FraudulentChangeOutput
 from serializations import ser_compact_size, deser_compact_size, hash160
-from serializations import CTxIn, CTxInWitness, CTxOut, ser_string
+from serializations import CTxIn, CTxInWitness, CTxOut, ser_string, COutPoint
 from serializations import ser_sig_der, ser_push_data, uint256_from_str
 from serializations import SIGHASH_ALL, SIGHASH_SINGLE, SIGHASH_NONE, SIGHASH_ANYONECANPAY, SIGHASH_DEFAULT
 from serializations import ALL_SIGHASH_FLAGS
@@ -668,9 +667,10 @@ class psbtInputProxy(psbtProxy):
     blank_flds = (
         'unknown', 'utxo', 'witness_utxo', 'sighash', 'redeem_script', 'witness_script',
         'fully_signed', 'is_segwit', 'is_multisig', 'is_p2sh', 'num_our_keys',
-        'required_key', 'scriptSig', 'amount', 'scriptCode', 'added_sig', 'previous_txid',
+        'required_key', 'scriptSig', 'amount', 'scriptCode', 'part_sig', 'previous_txid',
         'prevout_idx', 'sequence', 'req_time_locktime', 'req_height_locktime', 'taproot_key_sig',
-        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "use_keypath"
+        'taproot_merkle_root', 'taproot_script_sigs', 'taproot_scripts', "use_keypath", "subpaths",
+        "taproot_subpaths", "taproot_internal_key"
     )
 
     def __init__(self, fd, idx):

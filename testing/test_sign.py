@@ -1846,24 +1846,24 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
         not_all_ALL = any(sh != "ALL" for sh in sighash)
 
         bitcoind_d_sim_watch.keypoolrefill(num_inputs + num_outputs)
-        input_val = bitcoind.supply_wallet.getbalance() / num_inputs
+        input_val = bitcoind_d_wallet_w_sk.getbalance() / num_inputs
         cc_dest = [
             {bitcoind_d_sim_watch.getnewaddress("", addr_fmt): Decimal(input_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_inputs)
         ]
-        psbt = bitcoind.supply_wallet.walletcreatefundedpsbt(
+        psbt = bitcoind_d_wallet_w_sk.walletcreatefundedpsbt(
             [], cc_dest, 0, {"fee_rate": 20, "subtractFeeFromOutputs": [0]}
         )["psbt"]
-        psbt = bitcoind.supply_wallet.walletprocesspsbt(psbt, True, "ALL")["psbt"]
-        resp = bitcoind.supply_wallet.finalizepsbt(psbt)
+        psbt = bitcoind_d_wallet_w_sk.walletprocesspsbt(psbt, True, "ALL")["psbt"]
+        resp = bitcoind_d_wallet_w_sk.finalizepsbt(psbt)
         assert resp["complete"] is True
-        assert len(bitcoind.supply_wallet.sendrawtransaction(resp["hex"])) == 64
+        assert len(bitcoind_d_wallet_w_sk.sendrawtransaction(resp["hex"])) == 64
         # mine above txs
-        bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+        bitcoind_d_wallet_w_sk.generatetoaddress(1, bitcoind_d_wallet_w_sk.getnewaddress())
         unspent = bitcoind_d_sim_watch.listunspent()
         output_val = bitcoind_d_sim_watch.getbalance() / num_outputs
         # consolidation or not?
-        dest_wal = bitcoind_d_sim_watch if consolidation else bitcoind.supply_wallet
+        dest_wal = bitcoind_d_sim_watch if consolidation else bitcoind_d_wallet_w_sk
         destinations = [
             {dest_wal.getnewaddress("", addr_fmt): Decimal(output_val).quantize(Decimal('.0000001'), rounding=ROUND_DOWN)}
             for _ in range(num_outputs)

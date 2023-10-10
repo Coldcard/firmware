@@ -2301,9 +2301,10 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
 @pytest.mark.parametrize("script_type", ["p2wsh", "p2sh_p2wsh", "p2sh"])
 @pytest.mark.parametrize("sighash", list(SIGHASH_MAP.keys()))
 @pytest.mark.parametrize("psbt_v2", [True, False])
-def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item,
-                                sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, load_export, settings_set, psbt_v2, finalize_v2_v0_convert):
+def test_bitcoind_MofN_tutorial(m_n, clear_ms, goto_home, need_keypress, pick_menu_item,
+                                sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind_multisig,
+                                microsd_wipe, load_export, settings_set, psbt_v2, script_type,
+                                finalize_v2_v0_convert):
     # 2of2 case here is described in docs with tutorial
     M, N = m_n
     settings_set("sighshchk", 1)  # disable checks
