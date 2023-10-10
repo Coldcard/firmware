@@ -54,7 +54,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # and restore master (just so we have something in setting.seeds)
         node = import_ephemeral_xprv("sd", from_main=True, seed_vault=seedvault)
         _, story = cap_story()
-        assert "New ephemeral master key is in effect now." in story
+        assert "New temporary master key is in effect now." in story
         need_keypress("y")
         restore_main_seed(seed_vault=seedvault, preserve_settings=True)
 
