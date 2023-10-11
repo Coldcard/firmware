@@ -911,7 +911,6 @@ class SeedVaultMenu(MenuSystem):
         rv = []
 
         seeds = settings.master_get("seeds", [])
-        cur_xfp = xfp2str(settings.get("xfp", 0))
 
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
