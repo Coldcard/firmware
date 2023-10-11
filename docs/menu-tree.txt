@@ -2,7 +2,7 @@
   Choose PIN Code
   Advanced/Tools
     View Identity
-    Ephemeral Seed
+    Temporary Seed
       Generate Words
         24 Words
         12 Words
@@ -48,7 +48,7 @@
   Help
   Advanced/Tools
     View Identity
-    Ephemeral Seed
+    Temporary Seed
       Generate Words
         24 Words
         12 Words
@@ -84,7 +84,6 @@
   Settings
     Login Settings
       Change Main PIN
-      PIN Options
       Trick PINs
         Add New Trick
         Add If Wrong
@@ -94,21 +93,23 @@
       Kill Key
       Login Countdown
         Disabled
+         5 minutes
         15 minutes
         30 minutes
-         4 hours
          1 hour
-         5 minutes
+         2 hours
+         4 hours
          8 hours
         12 hours
-         2 hours
-         3 days
-        48 hours
-         1 week
         24 hours
+        48 hours
+         3 days
+         1 week
         28 days later
       MicroSD 2FA [MAYBE]
         Add Card
+        Check Card
+        Remove Card #1
       Test Login Now
     Hardware On/Off
       USB Port
@@ -133,7 +134,7 @@
           Bitcoin Core
         Electrum Wallet
       Import from File
-      Import via NFC
+      Import via NFC [MAYBE]
       Export XPUB
       Create Airgapped
       Trust PSBT?
@@ -170,6 +171,21 @@
   Start HSM Mode [IF HSM POLICY]
   Address Explorer
   Type Passwords
+  Seed Vault
+    (none saved yet)
+    Temporary Seed
+      Generate Words
+        24 Words
+        12 Words
+        24 Word Dice Roll
+        12 Word Dice Roll
+      Import Words
+        24 Words
+        18 Words
+        12 Words
+        Import via NFC
+      Import XPRV
+      Tapsigner Backup
   Secure Logout
   Advanced/Tools
     Backup
@@ -179,9 +195,10 @@
       Clone Coldcard
     Export Wallet
       Bitcoin Core
+      Sparrow Wallet
       Electrum Wallet
       Wasabi Wallet
-      Unchained Capital
+      Unchained
       Lily Wallet
       Samourai Postmix
       Samourai Premix
@@ -204,9 +221,10 @@
       Backup System
       Export Wallet
         Bitcoin Core
+        Sparrow Wallet
         Electrum Wallet
         Wasabi Wallet
-        Unchained Capital
+        Unchained
         Lily Wallet
         Samourai Postmix
         Samourai Premix
@@ -220,15 +238,16 @@
           Current XFP
         Dump Summary
       Sign Text File
-      Clone Coldcard
+      Batch Sign PSBT
       List Files
       Verify Sig File
       NFC File Share [IF NFC ENABLED]
+      Clone Coldcard
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
     Derive Seed B85
     View Identity
-    Ephemeral Seed
+    Temporary Seed
       Generate Words
         24 Words
         12 Words
@@ -267,6 +286,9 @@
         Wipe LFS
         Warm Reset
         Restore Txt Bkup
+      Seed Vault
+        Default Off
+        Enable
       Perform Selftest
       Set High-Water
       Wipe HSM Policy [IF HSM POLICY]
@@ -283,7 +305,6 @@
   Settings
     Login Settings
       Change Main PIN
-      PIN Options
       Trick PINs
         Add New Trick
         Add If Wrong
@@ -293,21 +314,23 @@
       Kill Key
       Login Countdown
         Disabled
+         5 minutes
         15 minutes
         30 minutes
-         4 hours
          1 hour
-         5 minutes
+         2 hours
+         4 hours
          8 hours
         12 hours
-         2 hours
-         3 days
-        48 hours
-         1 week
         24 hours
+        48 hours
+         3 days
+         1 week
         28 days later
       MicroSD 2FA [MAYBE]
         Add Card
+        Check Card
+        Remove Card #1
       Test Login Now
     Hardware On/Off
       USB Port
@@ -332,7 +355,7 @@
           Bitcoin Core
         Electrum Wallet
       Import from File
-      Import via NFC
+      Import via NFC [MAYBE]
       Export XPUB
       Create Airgapped
       Trust PSBT?
