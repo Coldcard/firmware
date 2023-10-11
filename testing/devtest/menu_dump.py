@@ -9,11 +9,11 @@
 async def doit():
     async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0, whs=False):
         from menu import MenuItem, ToggleMenuItem, MenuSystem
-        from seed import WordNestMenu, EphemeralSeedMenu
+        from seed import WordNestMenu, EphemeralSeedMenu, SeedVaultMenu
         from multisig import MultisigMenu
         from trick_pins import TrickPinMenu
         from users import UsersMenu
-        from flow import which_pin_menu, has_secrets, nfc_enabled, vdisk_enabled
+        from flow import has_secrets, nfc_enabled, vdisk_enabled
         from flow import hsm_policy_available
 
         print("%s%s"% (indent, label), file=fd)
@@ -28,7 +28,7 @@ async def doit():
             return
 
         if callable(m):
-            print("Calling: %r (%s)" % (m, label))
+            print("Calling: %r (%s)" % (m.__name__, label))
             m = await m(m, 0, menu_item)
             print("Done")
 
@@ -36,17 +36,16 @@ async def doit():
 
         indent += '  '
 
-
         if isinstance(m, WordNestMenu):
             print('%s[SEED WORD MENUS]' % indent, file=fd)
             return
-        if isinstance(m, EphemeralSeedMenu) or isinstance(m, MultisigMenu):
+        if isinstance(m, EphemeralSeedMenu) or isinstance(m, MultisigMenu) \
+                or isinstance(m, SeedVaultMenu):
             m = [i for i in m.items]
         for xm in [TrickPinMenu, UsersMenu]:
             if isinstance(m, xm):
                 m = [i.label for i in m.items]
                 break
-
 
         for menu_idx, mi in enumerate(m):
 
@@ -101,6 +100,13 @@ async def doit():
             
 
     from flow import EmptyWallet, NormalSystem, FactoryMenu, VirginSystem
+    from glob import settings
+
+    # need these to supress warnings and info messages
+    # that need user interaction nad/or show hidden items
+    settings.put("seedvault", 1)
+    settings.put("axskip", 1)
+    settings.put("sd2fa", ["a"])
 
     with open('menudump.txt', 'wt') as fd:
         for nm, m in [
