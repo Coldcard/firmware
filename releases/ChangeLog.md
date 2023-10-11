@@ -20,7 +20,7 @@
   Ability to see BIP-39 Passphrase after wallet is active via `View Seed Words`
   was removed as a consequence of this change. Benefit: passphrase no longer held
   in memory while in operation.
-- Enhancement: Showing secrets now also display extended private key (XPRV) for BIP-39
+- Enhancement: Showing secrets now also displays extended private key (XPRV) for BIP-39
   passphrase wallets.
 - Enhancement: Increase number of slots in settings memory from 64 to 100.
 - Bugfix: Fixed off by one bug in `Trick Pins -> Login Countdown` menu.
