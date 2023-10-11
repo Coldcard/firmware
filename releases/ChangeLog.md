@@ -1,4 +1,4 @@
-## 5.2.0 - 2023-10-10 (TARGET DATE: still working on it!)
+## 5.2.0 - 2023-10-10
 
 - New Feature: Seed Vault. Store multiple temporary secrets into encrypted settings for simple
   recall and later use (AES-256-CTR encrypted by key based on the seed).
