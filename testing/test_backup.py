@@ -32,17 +32,10 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     if st == "b39pass":
         xfp_pass = set_bip39_pw("coinkite", reset=False, seed_vault=seedvault)
-        _, story = cap_story()
-        assert "Above is the master key fingerprint of the current wallet" in story
-        need_keypress("y")
         assert not get_setting('multisig', None)
     elif st == "eph":
         eph_seed = generate_ephemeral_words(num_words=24, dice=False, from_main=True,
                                             seed_vault=seedvault)
-        _, story = cap_story()
-        assert "New temporary master key is in effect now." in story
-        need_keypress("y")
-
         if multisig:
             # make multisig in ephemeral wallet
             import_ms_wallet(15, 15, dev_key=True, common="605'/0'/0'")
@@ -53,9 +46,6 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # create ephemeral seed - add to seed vault if necessary
         # and restore master (just so we have something in setting.seeds)
         node = import_ephemeral_xprv("sd", from_main=True, seed_vault=seedvault)
-        _, story = cap_story()
-        assert "New temporary master key is in effect now." in story
-        need_keypress("y")
         restore_main_seed(seed_vault=seedvault, preserve_settings=True)
 
     if reuse_pw:
@@ -190,13 +180,12 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     goto_home()
     if "words" in stype:
         num_words = int(stype.replace("words", ""))
-        sec = generate_ephemeral_words(num_words, from_main=True)
+        sec = generate_ephemeral_words(num_words, from_main=True, seed_vault=False)
     else:
-        sec = import_ephemeral_xprv("sd", from_main=True)
+        sec = import_ephemeral_xprv("sd", from_main=True, seed_vault=False)
 
     target = sim_execfile('devtest/get-secrets.py')
     assert 'Error' not in target
-    need_keypress("y")
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Backup")
     pick_menu_item("Backup System")
@@ -275,7 +264,6 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     set_bip39_pw(passphrase, seed_vault=True)
     target = sim_execfile('devtest/get-secrets.py')
     assert 'Error' not in target
-    need_keypress("y")
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Backup")
     pick_menu_item("Backup System")
@@ -416,24 +404,22 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
                            import_ephemeral_xprv, restore_main_seed, settings_get,
                            repl, pick_menu_item, need_keypress, cap_story, get_setting,
                            pass_word_quiz, verify_backup_file, check_and_decrypt_backup,
-                           restore_backup_cs, cap_menu):
+                           restore_backup_cs, cap_menu, verify_ephemeral_secret_ui):
     reset_seed_words()
     settings_set("seedvault", 1)
     settings_set("seeds", [])
     expect_count = 0
     ui_xfps = []
     for num_words in [12, 24]:
-        generate_ephemeral_words(num_words=num_words, seed_vault=True)
-        time.sleep(.1)
-        title, story = cap_story()
-        ui_xfps.append(title)
+        mnemonic = generate_ephemeral_words(num_words=num_words, seed_vault=True)
+        xfp = verify_ephemeral_secret_ui(mnemonic=mnemonic, seed_vault=True)
+        ui_xfps.append(xfp)
         expect_count += 1
 
     # Ephemeral seeds - extended keys
-    import_ephemeral_xprv("sd", seed_vault=True)
-    time.sleep(.1)
-    title, story = cap_story()
-    ui_xfps.append(title)
+    node = import_ephemeral_xprv("sd", seed_vault=True)
+    xfp = verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=True)
+    ui_xfps.append(xfp)
     expect_count += 1
     restore_main_seed(seed_vault=True)
     assert expect_count == 3
@@ -488,7 +474,7 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     pick_menu_item('Seed Vault')
     m = cap_menu()
     assert len(m) == expect_count
-    sv_xfp_menu = [i.split(" ")[-1] for i in m]
+    sv_xfp_menu = [i.split(" ")[-1][1:-1] for i in m]
     for xfp_ui in ui_xfps:
         assert xfp_ui in sv_xfp_menu
 
