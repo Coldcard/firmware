@@ -1797,9 +1797,11 @@ from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_bip39pw import set_bip39_pw
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
-from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed
+from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
+from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
 from test_ux import enter_complex, pass_word_quiz, word_menu_entry
+from txn import fake_txn
 
 # EOF
