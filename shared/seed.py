@@ -424,17 +424,18 @@ async def add_seed_to_vault(encoded, meta=None):
         # do not save anything if no secrets yet
         return
 
-    _,_,node = SecretStash.decode(encoded)
-    new_xfp = swab32(node.my_fp())
-    new_xfp_str = xfp2str(new_xfp)
-
     # do not offer to store secrets that are already in vault
     if in_seed_vault(encoded):
         return
 
-    # do not offer to store main seed
     main_xfp = settings.master_get("xfp", 0)
 
+    # parse encoded
+    _,_,node = SecretStash.decode(encoded)
+    new_xfp = swab32(node.my_fp())
+    new_xfp_str = xfp2str(new_xfp)
+
+    # do not offer to store main seed
     if new_xfp == main_xfp:
         return
 
@@ -902,6 +903,41 @@ class SeedVaultMenu(MenuSystem):
         if parent:
             parent.update_contents()
 
+    @staticmethod
+    async def _add_current_tmp(*a):
+        from pincodes import pa
+
+        assert pa.tmp_value
+        main_xfp = settings.master_get("xfp", 0)
+
+        new_xfp = settings.get("xfp", 0)
+        new_xfp_str = xfp2str(new_xfp)
+
+        # do not offer to store main seed
+        if new_xfp == main_xfp:
+            return
+
+        xfp_ui = "[%s]" % new_xfp_str
+
+        ch = await ux_show_story(title=xfp_ui, msg="Add to Seed Vault?")
+        if ch != "y":
+            return
+
+        seeds = settings.master_get("seeds", [])
+
+        # Save it into master settings
+        seeds.append((new_xfp_str,
+                      stash.SecretStash.storage_serialize(pa.tmp_value),
+                      xfp_ui,
+                      "unknown origin"))
+
+        settings.master_set("seeds", seeds)
+
+        await ux_show_story(xfp_ui + "\nSaved to Seed Vault")
+
+        m = the_ux.top_of_stack()
+        m.update_contents()
+
     @classmethod
     def construct(cls):
         # Dynamic menu with user-defined names of seeds shown
@@ -909,16 +945,22 @@ class SeedVaultMenu(MenuSystem):
         from pincodes import pa
 
         rv = []
+        add_current_tmp = MenuItem("Add current tmp", f=cls._add_current_tmp)
 
         seeds = settings.master_get("seeds", [])
 
         if not seeds:
             rv.append(MenuItem('(none saved yet)'))
+            if pa.tmp_value:
+                rv.append(add_current_tmp)
             rv.append(MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu))
         else:
+            tmp_in_sv = False
             for i, (xfp_str, encoded, name, meta) in enumerate(seeds):
+                is_active = False
                 encoded = pad_raw_secret(encoded)
-                is_active = (encoded == pa.tmp_value)
+                if encoded == pa.tmp_value:
+                    is_active = tmp_in_sv = True
                 submenu = [
                     MenuItem(name, f=cls._detail, arg=(xfp_str, encoded, name, meta)),
                     MenuItem('Use This Seed', f=cls._set, arg=(xfp_str, encoded)),
@@ -941,6 +983,10 @@ class SeedVaultMenu(MenuSystem):
                 rv.append(item)
 
             if pa.tmp_value:
+                if seeds and (not tmp_in_sv):
+                    # give em chance to store current active
+                    rv.append(add_current_tmp)
+
                 from actions import restore_main_secret
                 rv.append(MenuItem("Restore Master", f=restore_main_secret))
 

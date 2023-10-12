@@ -50,7 +50,8 @@ def random_test_cases():
 @pytest.fixture
 def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      choose_by_word_length, need_keypress, get_secrets,
-                     word_menu_entry):
+                     word_menu_entry, verify_ephemeral_secret_ui,
+                     confirm_tmp_seed, seed_vault_enable):
     def doit(parts, expect, incl_self=False, save_to_vault=False):
         if expect is None:
             parts, expect = prepare_test_pairs(*parts)
@@ -62,7 +63,9 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
         elif incl_self is False:
             set_seed_words(proper[num_words])
 
-        goto_home()
+        seed_vault_enable(save_to_vault)
+        time.sleep(.2)
+
         pick_menu_item('Advanced/Tools')
         pick_menu_item('Danger Zone')
         pick_menu_item('Seed Functions')
@@ -108,27 +111,9 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                     assert 'ZERO WARNING' in body
 
         need_keypress('2')
-
-        time.sleep(0.01)
-        title, body = cap_story()
-
-        if 'into Seed Vault' in body:
-            # seed vault saving is enabled, use it, maybe
-            if save_to_vault:
-                need_keypress('1')
-                time.sleep(0.01)
-                title, body = cap_story()
-                assert 'Saved to Seed Vault' in body
-
-                need_keypress('y')
-            else:
-                need_keypress('x')
-
-            time.sleep(0.01)
-            title, body = cap_story()
-
-        assert 'New temporary master key is in effect now' in body
-        need_keypress("y")
+        confirm_tmp_seed(seedvault=save_to_vault)
+        verify_ephemeral_secret_ui(mnemonic=expect.split(" "),
+                                   seed_vault=save_to_vault)
         assert get_secrets()['mnemonic'] == expect
 
     return doit
@@ -163,7 +148,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
     # random generated
     *random_test_cases()
 ])
-def test_import_xor(seed_vault, incl_self, parts, expect, word_menu_entry, restore_seed_xor):
+def test_import_xor(seed_vault, incl_self, parts, expect, restore_seed_xor):
     restore_seed_xor(parts, expect, incl_self, seed_vault)
 
 
