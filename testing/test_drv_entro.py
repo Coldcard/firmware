@@ -116,7 +116,8 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
 
 
 @pytest.fixture
-def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_words):
+def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_words,
+                             confirm_tmp_seed):
     def doit(do_import, reset=True, expect=None, entropy=None, save_to_vault=False):
         _, story = cap_story()
         assert '(2) to switch to derived secret' in story
@@ -125,21 +126,7 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
             time.sleep(0.1)
             need_keypress('2')
 
-            time.sleep(0.1)
-            title, story = cap_story()
-            if "Press (1) to store temporary seed into Seed Vault" in story:
-                if save_to_vault:
-                    need_keypress("1")  # store to seed vault
-                    time.sleep(.2)
-                    title, story = cap_story()
-                    assert "Saved to Seed Vault" in story
-                    need_keypress("y")
-                else:
-                    need_keypress("y")  # do not store
-                time.sleep(0.1)
-                title, story = cap_story()
-
-            assert 'temporary master key is in effect now' in story
+            confirm_tmp_seed(seedvault=save_to_vault)
 
             encoded = sim_exec('from pincodes import pa; RV.write(repr(pa.fetch()))')
             print(encoded)
