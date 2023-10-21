@@ -290,10 +290,9 @@ VirginSystem = [
 ]
 
 ImportWallet = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem("24 Words", menu=start_seed_import, arg=24),
-    MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("12 Words", menu=start_seed_import, arg=12),
+    MenuItem("18 Words", menu=start_seed_import, arg=18),
+    MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
@@ -302,11 +301,10 @@ ImportWallet = [
 ]
 
 NewSeedMenu = [
-    #         xxxxxxxxxxxxxxxx
-    MenuItem("24 Word (default)", f=pick_new_seed, arg=24),
-    MenuItem("12 Word", f=pick_new_seed, arg=12),
-    MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
+    MenuItem("12 Words", f=pick_new_seed, arg=12),
+    MenuItem("24 Words", f=pick_new_seed, arg=24),
     MenuItem("12 Word Dice Roll", f=new_from_dice, arg=12),
+    MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
 ]
 
 # has PIN, but no secret seed yet

@@ -3,6 +3,7 @@
 - Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
   If current active temporary seed is not saved yet, `Add current tmp` menu item is 
   present in Seed Vault menu.
+- Reorg: `12 Words` menu option preferred on the top of the menu in all the seed menus
 
 ## 5.2.0 - 2023-10-10
 
