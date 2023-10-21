@@ -4,14 +4,14 @@
     View Identity
     Temporary Seed
       Generate Words
-        24 Words
         12 Words
-        24 Word Dice Roll
+        24 Words
         12 Word Dice Roll
+        24 Word Dice Roll
       Import Words
-        24 Words
-        18 Words
         12 Words
+        18 Words
+        24 Words
         Import via NFC
       Import XPRV
       Tapsigner Backup
@@ -29,16 +29,16 @@
 
 [IF BLANK WALLET]
   New Seed Words
-    24 Word (default)
-    12 Word
-    24 Word Dice Roll
-    12 Word Dice Roll
-  Import Existing
+    12 Words
     24 Words
+    12 Word Dice Roll
+    24 Word Dice Roll
+  Import Existing
+    12 Words
       [SEED WORD MENUS]
     18 Words
       [SEED WORD MENUS]
-    12 Words
+    24 Words
       [SEED WORD MENUS]
     Restore Backup
     Clone Coldcard
@@ -50,14 +50,14 @@
     View Identity
     Temporary Seed
       Generate Words
-        24 Words
         12 Words
-        24 Word Dice Roll
+        24 Words
         12 Word Dice Roll
+        24 Word Dice Roll
       Import Words
-        24 Words
-        18 Words
         12 Words
+        18 Words
+        24 Words
         Import via NFC
       Import XPRV
       Tapsigner Backup
@@ -175,14 +175,14 @@
     (none saved yet)
     Temporary Seed
       Generate Words
-        24 Words
         12 Words
-        24 Word Dice Roll
+        24 Words
         12 Word Dice Roll
+        24 Word Dice Roll
       Import Words
-        24 Words
-        18 Words
         12 Words
+        18 Words
+        24 Words
         Import via NFC
       Import XPRV
       Tapsigner Backup
@@ -249,14 +249,14 @@
     View Identity
     Temporary Seed
       Generate Words
-        24 Words
         12 Words
-        24 Word Dice Roll
+        24 Words
         12 Word Dice Roll
+        24 Word Dice Roll
       Import Words
-        24 Words
-        18 Words
         12 Words
+        18 Words
+        24 Words
         Import via NFC
       Import XPRV
       Tapsigner Backup
