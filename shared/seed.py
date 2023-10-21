@@ -1018,16 +1018,16 @@ class EphemeralSeedMenu(MenuSystem):
         from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv
 
         import_ephemeral_menu = [
-            MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
-            MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
             MenuItem("12 Words", f=cls.ephemeral_seed_import, arg=12),
+            MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
+            MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
             MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=lambda: NFC is not None),
         ]
         gen_ephemeral_menu = [
-            MenuItem("24 Words", f=cls.ephemeral_seed_generate, arg=24),
             MenuItem("12 Words", f=cls.ephemeral_seed_generate, arg=12),
-            MenuItem("24 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=24),
+            MenuItem("24 Words", f=cls.ephemeral_seed_generate, arg=24),
             MenuItem("12 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=12),
+            MenuItem("24 Word Dice Roll", f=cls.ephemeral_seed_generate_from_dice, arg=24),
         ]
 
         rv = [
