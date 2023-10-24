@@ -31,7 +31,8 @@ SEEDVAULT_TEST_DATA = [
 ]
 
 @pytest.fixture
-def seed_vault_enable(cap_story, pick_menu_item, need_keypress, goto_home):
+def seed_vault_enable(cap_story, pick_menu_item, need_keypress, goto_home,
+                      settings_set):
     def doit(enable=True):
         goto_home()
         pick_menu_item("Advanced/Tools")
@@ -46,6 +47,14 @@ def seed_vault_enable(cap_story, pick_menu_item, need_keypress, goto_home):
             pick_menu_item("Enable")
         else:
             pick_menu_item("Default Off")
+            time.sleep(.2)
+            _, story = cap_story()
+            if "Please remove all seeds from the vault" in story:
+                need_keypress("y")
+                settings_set("seeds", [])
+                pick_menu_item("Seed Vault")
+                time.sleep(.1)
+                pick_menu_item("Default Off")
 
         time.sleep(.1)
 
@@ -1217,16 +1226,13 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
                                goto_eph_seed_menu, pick_menu_item, word_menu_entry,
                                verify_ephemeral_secret_ui, seedvault, settings_set,
                                seed_vault_enable, confirm_tmp_seed, settings_path,
-                               seed_vault_delete, restore_main_seed):
+                               seed_vault_delete, restore_main_seed, set_seed_words):
     xfp_str, encoded_str, mnemonic = data
-    encoded = a2b_hex(encoded_str)
     if mnemonic:
-        vlen = len(encoded)
-        assert vlen in [16, 24, 32]
-        marker = 0x80 | ((vlen // 8) - 2)
-        encoded = bytes([marker]) + encoded
-
-    set_encoded_secret(encoded)
+        set_seed_words(mnemonic)
+    else:
+        encoded = a2b_hex(encoded_str)
+        set_encoded_secret(encoded)
 
     settings_set("chain", "XTN")
 
