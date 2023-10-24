@@ -69,7 +69,7 @@ from version import mk_num, is_devmode
 #   terms_ok = customer has signed-off on the terms of sale
 
 # settings linked to seed
-# LINKED_SETTINGS = ["multisig", "tp", "ovc", "xfp", "xpub", "words"]
+# LINKED_SETTINGS = ["multisig", "miniscript", "tp", "ovc", "xfp", "xpub", "words"]
 # settings that does not make sense to copy to temporary secret
 # LINKED_SETTINGS += ["sd2fa", "usr", "axi", "hsmcmd"]
 # prelogin settings - do not need to be part of other saved settings
