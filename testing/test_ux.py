@@ -293,7 +293,7 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress,
     unit_test('devtest/clear_seed.py')
     m = cap_menu()
     pick_menu_item('New Seed Words')
-    pick_menu_item(f'{nwords} Word')
+    pick_menu_item(f'{nwords} Words')
 
     title, body = cap_story()
     assert title == 'NO-TITLE'
