@@ -7,9 +7,14 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
-## 6.2.1X - 2023-10-19
+## 6.2.1X - 2023-10-26
 
 - New Feature: Enroll Miniscript wallet via USB (requires ckcc `v1.4.0`)
+- New Feature: Temporary Seed from COLDCARD encrypted backup
+- Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
+  If current active temporary seed is not saved yet, `Add current tmp` menu item is 
+  present in Seed Vault menu.
+- Reorg: `12 Words` menu option preferred on the top of the menu in all the seed menus
 - Enhancement: Mainnet/Testnet separation. Only show wallets for current active chain.
 - contains all the changes from the newest stable `5.2.0-mk4` firmware
 
