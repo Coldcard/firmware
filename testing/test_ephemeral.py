@@ -9,7 +9,7 @@ from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
 from pycoin.key.BIP32Node import BIP32Node
-from helpers import xfp2str
+from helpers import xfp2str, a2b_hex
 
 
 WORDLISTS = {
@@ -30,6 +30,35 @@ SEEDVAULT_TEST_DATA = [
      None),  # BIP-85 -> BIP-32 -> #23
 ]
 
+@pytest.fixture
+def seed_vault_enable(cap_story, pick_menu_item, need_keypress, goto_home,
+                      settings_set):
+    def doit(enable=True):
+        goto_home()
+        pick_menu_item("Advanced/Tools")
+        pick_menu_item("Danger Zone")
+        pick_menu_item("Seed Vault")
+        time.sleep(.1)
+        _, story = cap_story()
+        if "Enable Seed Vault?" in story:
+            need_keypress("y")
+
+        if enable:
+            pick_menu_item("Enable")
+        else:
+            pick_menu_item("Default Off")
+            time.sleep(.2)
+            _, story = cap_story()
+            if "Please remove all seeds from the vault" in story:
+                need_keypress("y")
+                settings_set("seeds", [])
+                pick_menu_item("Seed Vault")
+                time.sleep(.1)
+                pick_menu_item("Default Off")
+
+        time.sleep(.1)
+
+    return doit
 
 def truncate_seed_words(words):
     if isinstance(words, str):
@@ -185,26 +214,93 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
 
 
 @pytest.fixture
-def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn,
-                               goto_eph_seed_menu, get_identity_story, try_sign,
-                               get_seed_value_ux, pick_menu_item, goto_home,
-                               restore_main_seed):
-    def doit(mnemonic=None, xpub=None, expected_xfp=None, preserve_settings=False,
-             seed_vault=False, sv_wipe=True, testnet=True):
+def confirm_tmp_seed(need_keypress, cap_story):
+    def doit(seedvault=False, expect_xfp=None):
         time.sleep(0.3)
         title, story = cap_story()
-        in_effect_xfp = title[1:-1]
-        if expected_xfp is not None:
-            assert in_effect_xfp == expected_xfp
-        assert 'temporary master key is in effect now' in story in story
-        need_keypress("y")  # just confirm new master key message
+        if "Press (1) to store temporary seed into Seed Vault" in story:
+            if seedvault:
+                need_keypress("1")  # store it
+                time.sleep(.1)
+                title, story = cap_story()
+                assert "Saved to Seed Vault" in story
+                if expect_xfp is not None:
+                    assert expect_xfp in story
 
+                need_keypress("y")
+            else:
+                need_keypress("y")  # do not store
+
+            time.sleep(.2)
+            title, story = cap_story()
+
+        if expect_xfp is not None:
+            assert expect_xfp in title
+        else:
+            expect_xfp = title[1:-1]
+
+        assert "New temporary master key is in effect now." in story
+        need_keypress("y")
+        return expect_xfp
+
+    return doit
+
+
+@pytest.fixture
+def seed_vault_delete(pick_menu_item, need_keypress, cap_menu, cap_story,
+                      goto_home):
+    def doit(xfp, wipe=True):
+        # delete it from records
+        goto_home()
+        pick_menu_item("Seed Vault")
+        time.sleep(.1)
+        m = cap_menu()
+        target_sv_mi = None
+        for mi in m:
+            if xfp in mi:
+                pick_menu_item(mi)
+                target_sv_mi = mi
+                break
+        else:
+            assert False
+        pick_menu_item("Delete")
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "Remove" in story
+        assert xfp in title
+        assert "press (1)" in story
+        if wipe:
+            need_keypress("y")
+        else:
+            # preserve settings - remove just from seed vaul
+            need_keypress("1")
+
+        time.sleep(.1)
+        goto_home()
+        pick_menu_item("Seed Vault")
+        time.sleep(.1)
+        m = cap_menu()
+        assert target_sv_mi
+        assert target_sv_mi not in m
+    return doit
+
+
+@pytest.fixture
+def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn,
+                               get_identity_story, try_sign, get_seed_value_ux,
+                               pick_menu_item, goto_home):
+    def doit(mnemonic=None, xpub=None, expected_xfp=None, seed_vault=False,
+             testnet=True):
+
+        goto_home()
         menu = cap_menu()
 
         if expected_xfp:
             assert expected_xfp in menu[0]
         else:
             assert menu[0].startswith("[")  # ephemeral xfp
+
+        in_effect_xfp = menu[0][1:-1]
 
         assert menu[1] == "Ready To Sign"  # returned to main menu
         assert menu[-1] == "Restore Master"  # restore main from ephemeral
@@ -220,36 +316,10 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
             m = cap_menu()
             assert "Delete" in m
             assert "Rename" in m
-            assert len(m) == 4  # xfp is top item (works same as "Use this seed")
-            if "Use This Seed" in m:
-                pick_menu_item("Use This Seed")
-                time.sleep(.1)
-                title, story = cap_story()
-                assert in_effect_xfp in title
-                need_keypress("y")
-                pick_menu_item("Seed Vault")
-                pick_menu_item(sc_menu[0])
-                time.sleep(.1)
-            else:
-                assert "Seed In Use" in m
-                pick_menu_item("Seed In Use")  # noop
+            assert len(m) == 4
 
-            # delete it from records
-            pick_menu_item("Delete")
-            time.sleep(.1)
-            title, story = cap_story()
-            assert "Remove" in story
-            assert in_effect_xfp in title
-            assert "press (1)" in story
-            if sv_wipe:
-                need_keypress("y")
-            else:
-                # preserve settings - remove just from seed vaul
-                need_keypress("1")
-
-            time.sleep(.1)
-            m = cap_menu()
-            assert item not in m
+            assert "Seed In Use" in m
+            pick_menu_item("Seed In Use")  # noop
         else:
             # Seed Vault disabled
             m = cap_menu()
@@ -257,38 +327,21 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
 
         ident_story = get_identity_story()
         ident_xfp = ident_story.split("\n\n")[1].strip()
-        if sv_wipe and seed_vault:
-            # we had to wipe the settings so we're back in main wallet
-            assert "Temporary seed is in effect" not in ident_story
-            assert ident_xfp == xfp2str(simulator_fixed_xfp)
-        else:
-            assert "Temporary seed is in effect" in ident_story
-            assert ident_xfp == in_effect_xfp
+        assert "Temporary seed is in effect" in ident_story
+        assert ident_xfp == in_effect_xfp
 
         if mnemonic:
             seed_words = get_seed_value_ux()
-            if sv_wipe and seed_vault:
-                assert seed_words == simulator_fixed_words.split(" ")
-            else:
-                assert mnemonic == seed_words
+            assert mnemonic == seed_words
 
         e_master_xpub = dev.send_recv(CCProtocolPacker.get_xpub(), timeout=5000)
-        if sv_wipe and seed_vault:
-            assert e_master_xpub == (simulator_fixed_tpub if testnet else simulator_fixed_xpub)
-        else:
-            assert e_master_xpub != (simulator_fixed_tpub if testnet else simulator_fixed_xpub)
-            if xpub:
-                assert e_master_xpub == xpub
-            psbt = fake_txn(2, 2, master_xpub=e_master_xpub, segwit_in=True)
-            try_sign(psbt, accept=True, finalize=True)  # MUST NOT raise
-            need_keypress("y")
-
-            restore_main_seed(preserve_settings)
-
-        goto_eph_seed_menu()
-        menu = cap_menu()
-
-        assert menu[0] != f"[{ident_xfp}]"
+        assert e_master_xpub != (simulator_fixed_tpub if testnet else simulator_fixed_xpub)
+        if xpub:
+            assert e_master_xpub == xpub
+        psbt = fake_txn(2, 2, master_xpub=e_master_xpub, segwit_in=True)
+        try_sign(psbt, accept=True, finalize=True)  # MUST NOT raise
+        need_keypress("y")
+        return in_effect_xfp
 
     return doit
 
@@ -296,7 +349,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
 @pytest.fixture
 def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item,
                              need_keypress, cap_story, settings_set,
-                             ephemeral_seed_disabled_ui):
+                             ephemeral_seed_disabled_ui, confirm_tmp_seed):
     def doit(num_words, dice=False, from_main=False, seed_vault=None, testnet=True):
         if testnet:
             netcode = "XTN"
@@ -304,11 +357,6 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item,
             netcode = "BTC"
 
         settings_set("chain", netcode)
-
-        if seed_vault:
-            settings_set("seedvault", 1)
-        else:
-            settings_set("seedvault", 0)
 
         goto_eph_seed_menu()
         if from_main:
@@ -334,12 +382,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item,
 
         need_keypress("6")  # skip quiz
         need_keypress("y")  # yes - I'm sure
-        if seed_vault:
-            time.sleep(0.1)
-            _, story = cap_story()
-            assert "Press (1) to store temporary seed into Seed Vault" in story
-            need_keypress("1")  # store it
-            need_keypress("y")  # confirm saved to Seed Vault
+        confirm_tmp_seed(seedvault=seed_vault)
 
         return e_seed_words
 
@@ -349,7 +392,7 @@ def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item,
 @pytest.fixture
 def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
                           pick_menu_item, need_keypress, cap_story, settings_set,
-                          nfc_write_text, ephemeral_seed_disabled_ui):
+                          nfc_write_text, ephemeral_seed_disabled_ui, confirm_tmp_seed):
     def doit(way, extended_key=None, testnet=True, seed_vault=False, from_main=False):
         from pycoin.key.BIP32Node import BIP32Node
         if testnet:
@@ -358,11 +401,6 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
             netcode = "BTC"
 
         settings_set("chain", netcode)
-
-        if seed_vault:
-            settings_set("seedvault", 1)
-        else:
-            settings_set("seedvault", 0)
 
         fname = "ek.txt"
         if extended_key is None:
@@ -418,12 +456,8 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
             need_keypress("y")
             pick_menu_item(fname)
 
-        if seed_vault:
-            time.sleep(.1)
-            _, story = cap_story()
-            assert "Press (1) to store temporary seed into Seed Vault" in story
-            need_keypress("1")  # store it
-            need_keypress("y")  # confirm saved to Seed Vault
+        confirm_tmp_seed(expect_xfp=node.fingerprint().hex().upper(),
+                         seedvault=seed_vault)
 
         return node
 
@@ -437,18 +471,19 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
 def test_ephemeral_seed_generate(num_words, generate_ephemeral_words, dice,
                                  reset_seed_words, goto_eph_seed_menu, seed_vault,
                                  ephemeral_seed_disabled, verify_ephemeral_secret_ui,
-                                 preserve_settings):
+                                 preserve_settings, seed_vault_enable, seed_vault_delete,
+                                 restore_main_seed):
     reset_seed_words()
     goto_eph_seed_menu()
     ephemeral_seed_disabled()
+    seed_vault_enable(seed_vault)
     e_seed_words = generate_ephemeral_words(num_words=num_words, dice=dice,
                                             from_main=True, seed_vault=seed_vault)
-    # sv_wipe only makes sense if seed_vault=True
-    # preserve settings only makes sense when seed_vault=False
-    # reuse preserve_settings variable for both cases
-    verify_ephemeral_secret_ui(mnemonic=e_seed_words,
-                               preserve_settings=preserve_settings,
-                               seed_vault=seed_vault, sv_wipe=preserve_settings)
+    xfp = verify_ephemeral_secret_ui(mnemonic=e_seed_words, seed_vault=seed_vault)
+    if seed_vault:
+        seed_vault_delete(xfp, not preserve_settings)
+    else:
+        restore_main_seed(preserve_settings)
 
 
 @pytest.mark.parametrize("num_words", [12, 18, 24])
@@ -460,18 +495,14 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
                                      need_keypress, reset_seed_words, goto_eph_seed_menu,
                                      word_menu_entry, nfc_write_text, verify_ephemeral_secret_ui,
                                      ephemeral_seed_disabled, get_seed_value_ux, seed_vault,
-                                     settings_set, cap_story, preserve_settings,
-                                     skip_nfc_check=False):
+                                     settings_set, cap_story, preserve_settings, seed_vault_enable,
+                                     seed_vault_delete, restore_main_seed, confirm_tmp_seed):
     if truncated and not nfc: return
-
 
     words, expect_xfp = WORDLISTS[num_words]
 
     reset_seed_words()
-    if seed_vault:
-        settings_set("seedvault", 1)
-    else:
-        settings_set("seedvault", 0)
+    seed_vault_enable(seed_vault)
     goto_eph_seed_menu()
 
     ephemeral_seed_disabled()
@@ -495,21 +526,19 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
             nfc_write_text(words)
         time.sleep(.5)
 
+    confirm_tmp_seed(seedvault=seed_vault)
+
+    xfp = verify_ephemeral_secret_ui(mnemonic=words.split(" "), expected_xfp=expect_xfp,
+                                     seed_vault=seed_vault)
+
+    nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
+    seed_words = get_seed_value_ux()
+    assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
+
     if seed_vault:
-        time.sleep(.1)
-        _, story = cap_story()
-        assert "Press (1) to store temporary seed into Seed Vault" in story
-        need_keypress("1")  # store it
-        need_keypress("y")  # confirm saved to Seed Vault
-
-    verify_ephemeral_secret_ui(mnemonic=words.split(" "), expected_xfp=expect_xfp,
-                               preserve_settings=preserve_settings, seed_vault=seed_vault,
-                               sv_wipe=preserve_settings)
-
-    if not skip_nfc_check:
-        nfc_seed = get_seed_value_ux(nfc=True)  # export seed via NFC (always truncated)
-        seed_words = get_seed_value_ux()
-        assert " ".join(nfc_seed) == truncate_seed_words(seed_words)
+        seed_vault_delete(xfp, not preserve_settings)
+    else:
+        restore_main_seed(preserve_settings)
 
 
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
@@ -519,8 +548,9 @@ def test_ephemeral_seed_import_words(nfc, truncated, num_words, cap_menu, pick_m
 def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story, enter_hex,
                                          need_keypress, reset_seed_words, goto_eph_seed_menu,
                                          verify_ephemeral_secret_ui, ephemeral_seed_disabled,
-                                         nfc_write_text, tapsigner_encrypted_backup,
-                                         preserve_settings, seed_vault, settings_set):
+                                         nfc_write_text, tapsigner_encrypted_backup, seed_vault,
+                                         preserve_settings, seed_vault_enable, settings_set,
+                                         seed_vault_delete, restore_main_seed, confirm_tmp_seed):
     reset_seed_words()
     if testnet:
         netcode = "XTN"
@@ -529,10 +559,7 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
 
     settings_set("chain", netcode)
 
-    if seed_vault:
-        settings_set("seedvault", 1)
-    else:
-        settings_set("seedvault", 0)
+    seed_vault_enable(seed_vault)
 
     fname, backup_key_hex, node = tapsigner_encrypted_backup(way, testnet=testnet)
 
@@ -574,16 +601,15 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
     need_keypress("y")  # yes I have backup key
     enter_hex(backup_key_hex)
 
-    if seed_vault:
-        time.sleep(.1)
-        _, story = cap_story()
-        assert "Press (1) to store temporary seed into Seed Vault" in story
-        need_keypress("1")  # store it
-        need_keypress("y")  # confirm saved to Seed Vault
+    confirm_tmp_seed(expect_xfp=node.fingerprint().hex().upper(),
+                     seedvault=seed_vault)
 
-    verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=seed_vault,
-                               preserve_settings=preserve_settings,
-                               sv_wipe=preserve_settings, testnet=testnet)
+    xfp = verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=seed_vault,
+                                     testnet=testnet)
+    if seed_vault:
+        seed_vault_delete(xfp, not preserve_settings)
+    else:
+        restore_main_seed(preserve_settings)
 
 
 @pytest.mark.parametrize("fail", ["wrong_key", "key_len", "plaintext", "garbage"])
@@ -650,7 +676,8 @@ def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail,
 def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, microsd_path,
                                               need_keypress, reset_seed_words, enter_hex,
                                               goto_eph_seed_menu, verify_ephemeral_secret_ui,
-                                              ephemeral_seed_disabled, settings_set):
+                                              ephemeral_seed_disabled, settings_set,
+                                              confirm_tmp_seed, restore_main_seed):
     fname, backup_key_hex, pub = data
     fpath = microsd_path(fname)
     shutil.copy(f"data/{fname}", fpath)
@@ -676,8 +703,10 @@ def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, m
     assert "Press OK to continue X to cancel." in story
     need_keypress("y")  # yes I have backup key
     enter_hex(backup_key_hex)
+    confirm_tmp_seed(seedvault=False)
     verify_ephemeral_secret_ui(xpub=pub)
     os.unlink(fpath)
+    restore_main_seed(False)
 
 
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
@@ -687,14 +716,20 @@ def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, m
 def test_ephemeral_seed_import_xprv(way, testnet, reset_seed_words,
                                     goto_eph_seed_menu, verify_ephemeral_secret_ui,
                                     ephemeral_seed_disabled, import_ephemeral_xprv,
-                                    preserve_settings, seed_vault):
+                                    preserve_settings, seed_vault, seed_vault_enable,
+                                    seed_vault_delete, restore_main_seed, confirm_tmp_seed):
     reset_seed_words()
     goto_eph_seed_menu()
+    seed_vault_enable(seed_vault)
     ephemeral_seed_disabled()
-    node = import_ephemeral_xprv(way=way, testnet=testnet, from_main=True, seed_vault=seed_vault)
-    verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=seed_vault,
-                               preserve_settings=preserve_settings,
-                               sv_wipe=preserve_settings, testnet=testnet)
+    node = import_ephemeral_xprv(way=way, testnet=testnet, from_main=True,
+                                 seed_vault=seed_vault)
+    xfp = verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=seed_vault,
+                                     testnet=testnet)
+    if seed_vault:
+        seed_vault_delete(xfp, not preserve_settings)
+    else:
+        restore_main_seed(preserve_settings)
 
 
 @pytest.mark.parametrize("seed_vault", [True, False])
@@ -702,12 +737,10 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
                                      ephemeral_seed_disabled, cap_story,
                                      pick_menu_item, need_keypress,
                                      word_menu_entry, settings_set,
-                                     seed_vault):
+                                     seed_vault, seed_vault_enable,
+                                     confirm_tmp_seed):
     reset_seed_words()
-    if seed_vault:
-        settings_set("seedvault", 1)
-    else:
-        settings_set("seedvault", 0)
+    seed_vault_enable(seed_vault)
 
     goto_eph_seed_menu()
     ephemeral_seed_disabled()
@@ -717,18 +750,8 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     time.sleep(0.1)
 
     word_menu_entry(words.split())
-    time.sleep(0.3)
-    title, story = cap_story()
-    if seed_vault:
-        assert "Press (1) to store temporary seed into Seed Vault" in story
-        # do not save
-        need_keypress("y")
-        time.sleep(0.2)
-        title, story = cap_story()
-    assert 'temporary master key is in effect now' in story
 
-    in_effect_xfp = title[1:-1]
-    need_keypress("y")
+    in_effect_xfp = confirm_tmp_seed(seedvault=seed_vault)
     goto_eph_seed_menu()
 
     pick_menu_item("Import Words")
@@ -738,12 +761,6 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     word_menu_entry(words.split())
     time.sleep(0.2)
     title, story = cap_story()
-    if seed_vault:
-        assert "Press (1) to store temporary seed into Seed Vault" in story
-        # do not save
-        need_keypress("y")
-        time.sleep(0.2)
-        title, story = cap_story()
 
     assert "Temporary master key already in use" in story
     already_used_xfp = title[1:-1]
@@ -752,9 +769,10 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
 
 
 @pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA)
-def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_menu_item, need_keypress, cap_story,
-                          cap_menu, reset_seed_words, get_identity_story, get_seed_value_ux, fake_txn,
-                          try_sign, sim_exec, goto_home):
+def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_menu_item,
+                          need_keypress, cap_story, cap_menu, reset_seed_words,
+                          get_identity_story, get_seed_value_ux, fake_txn, try_sign,
+                          sim_exec, goto_home, seed_vault_enable):
     # Verify "seed vault" feature works as intended
     reset_seed_words()
     xfp, entropy, mnemonic = data
@@ -774,17 +792,8 @@ def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_men
 
     # enable Seed Vault
     goto_home()
-    pick_menu_item("Advanced/Tools")
-    pick_menu_item("Danger Zone")
-    pick_menu_item("Seed Vault")
+    seed_vault_enable(True)
     time.sleep(.1)
-    _, story = cap_story()
-    if "Enable Seed Vault?" in story:
-        need_keypress("y")
-    time.sleep(.1)
-    pick_menu_item("Enable")
-    time.sleep(.5)
-    goto_home()
     pick_menu_item("Seed Vault")
     time.sleep(.1)
     m = cap_menu()
@@ -880,7 +889,8 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
                              need_keypress, cap_story, reset_seed_words, fake_txn,
                              generate_ephemeral_words, goto_home, get_secrets, master_settings_get,
                              import_ephemeral_xprv, set_bip39_pw, restore_main_seed,
-                             restore_seed_xor, derive_bip85_secret, activate_bip85_ephemeral):
+                             restore_seed_xor, derive_bip85_secret, activate_bip85_ephemeral,
+                             seed_vault_enable):
     # Capture seeds by all the different paths and verify correct values are captured.
     # - BIP-85 -> 12, 24 words
     # - BIP-85 -> xprv (BIP-32)
@@ -891,7 +901,7 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
     # Then, verify those can all co-exist and be recalled correctly.
 
     reset_seed_words()
-    settings_set("seedvault", 1)
+    seed_vault_enable(True)
     settings_set("seeds", [])
     expect_count = 0
 
@@ -980,9 +990,9 @@ def test_seed_vault_captures(request, dev, settings_set, settings_get, pick_menu
 def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item,
                                   generate_ephemeral_words, import_ephemeral_xprv,
                                   goto_home, cap_story, cap_menu, restore_main_seed,
-                                  need_keypress):
+                                  need_keypress, seed_vault_enable):
     reset_seed_words()
-    settings_set("seedvault", 1)
+    seed_vault_enable(True)
     settings_set("seeds", [])
 
     generate_ephemeral_words(num_words=24, seed_vault=True)
@@ -1105,7 +1115,8 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     need_keypress("1")  # only delete from seed vault
     time.sleep(.1)
     m = cap_menu()
-    assert len(m) == 2
+    assert len(m) == 3
+    assert "Add current tmp" in m
     need_keypress("y")
     # this is now different eph - modification not allowed
     time.sleep(.1)
@@ -1121,7 +1132,9 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
 
 
 def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
-                       cap_story, need_keypress, pick_menu_item, cap_menu):
+                       cap_story, need_keypress, pick_menu_item, cap_menu,
+                       seed_vault_enable):
+
     node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
     xfp = node.fingerprint().hex().upper()
     k0 = node.hwif(as_private=True)
@@ -1132,18 +1145,12 @@ def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
     assert k1 != k0
 
     reset_seed_words()
-    settings_set("seedvault", 1)
+    seed_vault_enable(True)
     settings_set("seeds", [])
 
     import_ephemeral_xprv("sd", extended_key=k0, seed_vault=True, from_main=True)
-    title, story = cap_story()
-    assert "is in effect now" in story
-    need_keypress("y")
 
     import_ephemeral_xprv("sd", extended_key=k1, seed_vault=True, from_main=False)
-    title, story = cap_story()
-    assert "is in effect now" in story
-    need_keypress("y")
 
     pick_menu_item("Seed Vault")
     m = cap_menu()
@@ -1163,5 +1170,114 @@ def test_xfp_collision(reset_seed_words, settings_set, import_ephemeral_xprv,
     sm = cap_menu()
     assert "Seed In Use" not in sm
     assert "Use This Seed" in sm
+
+
+@pytest.mark.parametrize("refuse", [False, True])
+def test_add_current_active(reset_seed_words, settings_set, import_ephemeral_xprv,
+                            goto_home, pick_menu_item, cap_story, cap_menu,
+                            need_keypress, verify_ephemeral_secret_ui,
+                            seed_vault_enable, refuse):
+    ADD_MI = "Add current tmp"
+
+    reset_seed_words()
+    goto_home()
+    seed_vault_enable(True)
+    settings_set("seeds", [])
+
+    time.sleep(.2)
+    # in master - do not offer
+    pick_menu_item("Seed Vault")
+    time.sleep(.1)
+    m = cap_menu()
+    assert ADD_MI not in m
+    goto_home()
+
+    node = import_ephemeral_xprv("sd", seed_vault=False, from_main=True)
+    xfp = node.fingerprint().hex().upper()
+    pick_menu_item("Seed Vault")
+    m = cap_menu()
+    assert ADD_MI in m
+    for mi in m:
+        assert xfp not in mi
+
+    pick_menu_item(ADD_MI)
+    time.sleep(.1)
+    title, story = cap_story()
+    assert xfp in title
+    assert "Add to Seed Vault?" in story
+    if refuse:
+        need_keypress("x")
+        time.sleep(.1)
+        m = cap_menu()
+        assert ADD_MI in m
+        for mi in m:
+            assert xfp not in mi
+    else:
+        need_keypress("y")
+        verify_ephemeral_secret_ui(xpub=node.hwif(), seed_vault=True)
+
+
+@pytest.mark.parametrize('multisig', [False, 'multisig'])
+@pytest.mark.parametrize('seedvault', [False, True])
+@pytest.mark.parametrize('data', SEEDVAULT_TEST_DATA)
+def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_setting,
+                               data, need_keypress, cap_story, set_encoded_secret,
+                               reset_seed_words, check_and_decrypt_backup,
+                               goto_eph_seed_menu, pick_menu_item, word_menu_entry,
+                               verify_ephemeral_secret_ui, seedvault, settings_set,
+                               seed_vault_enable, confirm_tmp_seed, settings_path,
+                               seed_vault_delete, restore_main_seed, set_seed_words):
+    xfp_str, encoded_str, mnemonic = data
+    if mnemonic:
+        set_seed_words(mnemonic)
+    else:
+        encoded = a2b_hex(encoded_str)
+        set_encoded_secret(encoded)
+
+    settings_set("chain", "XTN")
+
+    if multisig:
+        import_ms_wallet(15, 15, dev_key=True)
+        need_keypress('y')
+        time.sleep(.1)
+        assert len(get_setting('multisig')) == 1
+
+    # ACTUAL BACKUP
+    bk_pw = backup_system()
+    time.sleep(.1)
+    title, story = cap_story()
+    fname = story.split("\n\n")[1]
+
+    check_and_decrypt_backup(fname, bk_pw)
+
+    # restore fixed simulator
+    reset_seed_words()
+    seed_vault_enable(seedvault)
+
+    goto_eph_seed_menu()
+    pick_menu_item("Coldcard Backup")
+
+    time.sleep(.1)
+    _, story = cap_story()
+    if "Select file containing the backup" in story:
+        need_keypress("y")
+        time.sleep(.1)
+        pick_menu_item(fname)
+
+    word_menu_entry(bk_pw)
+
+    confirm_tmp_seed(seedvault)
+
+    time.sleep(.1)
+    if mnemonic:
+        mnemonic = mnemonic.split(" ")
+
+    xfp = verify_ephemeral_secret_ui(mnemonic=mnemonic, xpub=None, # xpub veriphy ephemeral secret not tested here
+                                     seed_vault=seedvault)
+
+    if seedvault:
+        seed_vault_delete(xfp, not False)
+    else:
+        restore_main_seed(False)
 
 # EOF

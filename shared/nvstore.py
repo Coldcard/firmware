@@ -260,7 +260,9 @@ class SettingsObject:
         SettingsObject.master_nvram_key = self.nvram_key
 
         for fn in SEEDVAULT_FIELDS:
-            SettingsObject.master_sv_data[fn] = self.current.get(fn)
+            curr = self.current.get(fn, None)
+            if curr is not None:
+                SettingsObject.master_sv_data[fn] = curr
 
     def return_to_master_seed(self):
         # switching from a tmp seed to the normal master seed
@@ -285,11 +287,11 @@ class SettingsObject:
             self.save()
         else:
             # harder, slower: have to load, change and write
-            tmp = SettingsObject(nvram_key=SettingsObject.master_nvram_key)
-            tmp.load()
-            tmp.set(key, value)
-            tmp.save()
-            del tmp
+            master = SettingsObject(nvram_key=SettingsObject.master_nvram_key)
+            master.load()
+            master.set(key, value)
+            master.save()
+            del master
 
             # track our copies
             if key in SEEDVAULT_FIELDS:
@@ -305,7 +307,10 @@ class SettingsObject:
 
         # LIMITATION: only supporting a few values we know we will need
         assert kn in SEEDVAULT_FIELDS
-        return SettingsObject.master_sv_data.get(kn, default)
+        res = SettingsObject.master_sv_data.get(kn, default)
+        if res is None:
+            return default
+        return res
 
     def load(self, dis=None):
         # Search all slots for any we can read, decrypt that,

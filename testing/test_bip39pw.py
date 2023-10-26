@@ -51,7 +51,8 @@ def test_b9p_basic(pw, set_bip39_pw):
 
 
 @pytest.fixture()
-def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story, sim_execfile):
+def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
+                 sim_execfile):
 
     def doit(pw, reset=True, seed_vault=False):
         # reset from previous runs
@@ -85,16 +86,24 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story, sim_execfile):
             assert pw in body
 
         need_keypress('y')
+
+        time.sleep(.3)
         title, story = cap_story()
-        if "Press (1)" in story:
+        if "Press (1) to store temporary seed into Seed Vault" in story:
             if seed_vault:
-                need_keypress("1")
+                need_keypress("1")  # store it
                 time.sleep(.1)
                 title, story = cap_story()
                 assert "Saved to Seed Vault" in story
+
                 need_keypress("y")
             else:
-                need_keypress("y")
+                need_keypress("y")  # do not store
+
+            title, story = cap_story()
+
+        assert "Above is the master key fingerprint" in story
+        need_keypress("y")
 
         done = None
         while done is None:
@@ -261,24 +270,24 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     else:
         need_keypress("y")
 
+    if on_eph:
+        to_check = xfp1
+    else:
+        to_check = xfp0
+
     time.sleep(.3)
     title, story = cap_story()
-    to_check = None
-    if seed_vault:
-        assert "Press (1) to store temporary seed into Seed Vault" in story
-        need_keypress("1")
-        time.sleep(.2)
-        title, story = cap_story()
-        assert "Saved to Seed Vault" in story
-        if on_eph:
-            assert xfp1 in story
-            to_check = xfp1
+    if "Press (1) to store temporary seed into Seed Vault" in story:
+        if seed_vault:
+            need_keypress("1")  # store it
+            time.sleep(.1)
+            title, story = cap_story()
+            assert "Saved to Seed Vault" in story
+            assert to_check in story
+
+            need_keypress("y")
         else:
-            assert xfp0 in story
-            to_check = xfp0
-        need_keypress("y")
-    else:
-        assert "Press (1)" not in story
+            need_keypress("y")  # do not store
 
     if seed_vault:
         # check correct meta in seed vault
