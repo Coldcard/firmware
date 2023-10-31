@@ -2,7 +2,7 @@
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import sys, stash, ujson, os, ngu, pyb
+import stash, ujson, ngu, pyb
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
 from utils import xfp2str
@@ -13,6 +13,8 @@ class PassphraseSaver:
     # to a file on MicroSD card. Order is preserved.
     # AES-256 CTR with key=SHA256(SHA256(salt + derived key off master + salt))
     # where: salt=sha256(microSD serial # details)
+    def __init__(self):
+        self.key = None
 
     def filename(self, card):
         # Construct actual filename to use.
@@ -21,17 +23,14 @@ class PassphraseSaver:
 
     def _calc_key(self, card, force=False):
         # calculate the key to be used.
-        if not force and getattr(self, 'key', None):
+        if not force and self.key:
             return
 
-        try:
-            salt = card.get_id_hash()
+        salt = card.get_id_hash()
 
-            with stash.SensitiveValues(bypass_tmp=True) as sv:
-                self.key = bytearray(sv.encryption_key(salt))
+        with stash.SensitiveValues(bypass_tmp=True) as sv:
+            self.key = bytearray(sv.encryption_key(salt))
 
-        except:
-            self.key = None
 
     def _read(self, card):
         # Return a list of saved passphrases, or empty list if fail.
@@ -44,9 +43,6 @@ class PassphraseSaver:
             txt = decrypt.cipher(msg)
 
             return ujson.loads(txt)
-        except OSError:
-            #print('missing? ' + fname)
-            return []
         except:
             return []
 
@@ -88,25 +84,16 @@ class PassphraseSaver:
         from ux import ux_show_story
         from seed import set_bip39_passphrase
 
-        # Very quick check for card not present case.
-        if not pyb.SDCard().present():
-            return None
-
         # Read file, decrypt and make a menu to show; OR return None
         # if any error hit.
-        try:
-            with CardSlot() as card:
+        with CardSlot() as card:
 
-                self._calc_key(card)
-                if not self.key: return None
+            self._calc_key(card)
+            if not self.key: return None
 
-                data = self._read(card)
+            data = self._read(card)
 
-                if not data: return None
-
-        except CardMissingError:
-            # not an error: they just aren't using feature
-            return None
+            if not data: return None
 
         # We have a list of xfp+pw fields. Make a menu.
 
