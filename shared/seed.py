@@ -10,20 +10,21 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
+import ngu, uctypes, bip39, random, stash, pyb
 from menu import MenuItem, MenuSystem
-from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret
-import ngu, uctypes, bip39, random, version, stash, chains
+from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
 from actions import goto_top_menu
 from stash import SecretStash
 from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 from pwsave import PassphraseSaver
 from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
+from files import CardMissingError, needs_microsd, CardSlot
+
 
 # seed words lengths we support: 24=>256 bits, and recommended
 VALID_LENGTHS = (24, 18, 12)
@@ -1069,7 +1070,7 @@ class PassphraseMenu(MenuSystem):
     # singleton (cls level) vars
     done_cb = None
 
-    def __init__(self, done_cb=None, items=None):
+    def __init__(self):
         global pp_sofar
         pp_sofar = ''
 
@@ -1082,16 +1083,36 @@ class PassphraseMenu(MenuSystem):
             MenuItem('APPLY', f=self.done_apply),
             MenuItem('CANCEL', f=self.done_cancel),
         ]
+        # quick SD card check
+        if pyb.SDCard().present():
+            try:
+                with CardSlot() as card:
+                    # check if passphrases file exists on SD
+                    # if yes add menu item
+                    if card.exists(PassphraseSaver().filename(card)):
+                        items.insert(0, MenuItem('Restore Saved', menu=self.restore_saved))
 
-        try:
-            saved = PassphraseSaver().make_menu()
-            if saved:
-                items.insert(0, MenuItem('Restore Saved', menu=saved))
-        except:
-            # don't want bugs/corrupt files to make rest of menu inaccessible
-            pass
+            except: pass
 
         super(PassphraseMenu, self).__init__(items)
+
+    @staticmethod
+    async def restore_saved(*a):
+        dis.fullscreen("Decrypting...")
+        try:
+            menu = PassphraseSaver().make_menu()
+        except CardMissingError:
+            await needs_microsd()
+            return
+        except Exception as e:
+            await ux_show_story(title="Failure", msg=str(e) + problem_file_line(e))
+            return
+
+        if not menu:
+            await ux_show_story("Nothing found")
+            return
+
+        return menu
 
     def on_cancel(self):
         # zip to cancel item when they fail to exit via X button
