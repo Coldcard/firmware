@@ -30,6 +30,7 @@ class Bitcoind:
         self.bitcoind_proc = None
         self.userpass = None
         self.supply_wallet = None
+        self.has_bdb = True
 
     def start(self):
 
@@ -85,7 +86,13 @@ class Bitcoind:
         assert self.rpc.getblockchaininfo()['chain'] == 'regtest'
         assert self.rpc.getnetworkinfo()['version'] >= 220000, "we require >= 22.0 of Core"
         # not descriptors so that we can do dumpwallet
-        self.supply_wallet = self.create_wallet(wallet_name="supply", descriptors=False)
+        try:
+            self.supply_wallet = self.create_wallet(wallet_name="supply", descriptors=False)
+        except JSONRPCException as e:
+            assert "BDB wallet creation is deprecated" in str(e)
+            self.has_bdb = False
+            self.supply_wallet = self.create_wallet(wallet_name="supply", descriptors=True)
+
         # Make sure there are blocks and coins available
         self.supply_wallet.generatetoaddress(101, self.supply_wallet.getnewaddress())
 
@@ -144,17 +151,24 @@ def match_key(bitcoind, set_master_key, reset_seed_words):
     # bummer: dumpmasterprivkey RPC call was removed!
     #prv = bitcoind.dumpmasterprivkey()
 
-    from tempfile import mktemp
-    fn = mktemp()
-    bitcoind.supply_wallet.dumpwallet(fn)
-    prv = None
+    # bummer: dumpwallet RPC call was removed does not work with descriptor wallets
+    try:
+        from tempfile import mktemp
+        fn = mktemp()
+        bitcoind.supply_wallet.dumpwallet(fn)
+        prv = None
 
-    for ln in open(fn, 'rt').readlines():
-        if 'extended private masterkey' in ln:
-            assert not prv
-            prv = ln.split(": ", 1)[1].strip()
+        for ln in open(fn, 'rt').readlines():
+            if 'extended private masterkey' in ln:
+                assert not prv
+                prv = ln.split(": ", 1)[1].strip()
 
-    os.unlink(fn)
+        os.unlink(fn)
+    except JSONRPCException as e:
+        print(str(e))
+        assert "Only legacy wallets are supported by this command" in str(e)
+        prv_descs = bitcoind.supply_wallet.listdescriptors(True)  # True --> show private
+        prv = prv_descs["descriptors"][0]["desc"].replace("pkh(", "").split("/")[0]
 
     assert prv.startswith('tprv')
 
