@@ -1486,6 +1486,11 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
     # - the constructed multisig walelt will only work for a single pubkey on core side
     # - before starting this test, have some funds already deposited to bitcoind testnet wallet
+
+    if not bitcoind.has_bdb:
+        # addmultisigaddress not supported by descriptor wallets
+        pytest.skip("Needs BDB legacy wallet")
+
     from pycoin.encoding import sec_to_public_pair
     from binascii import a2b_hex
     use_regtest()
