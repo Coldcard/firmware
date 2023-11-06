@@ -7,7 +7,7 @@
 # - has GPIO signal "??" which is multipurpose on its own pin
 # - this chip chosen because it can disable RF interaction
 #
-import ngu, utime, ngu, ndef
+import utime, ngu, ndef
 from uasyncio import sleep_ms
 from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
