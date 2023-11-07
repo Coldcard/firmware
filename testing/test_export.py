@@ -22,7 +22,7 @@ from pprint import pprint
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
-                     enter_number, nfc_read_text, load_export):
+                     enter_number, nfc_read_text, load_export, bitcoind):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
     use_regtest()
@@ -98,21 +98,24 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             assert expect in desc
             assert expect+f'/{n}/*' in desc
 
-        # test against bitcoind
-        for x in obj:
-            x['label'] = 'testcase'
-        bitcoind_wallet.importmulti(obj)
-        x = bitcoind_wallet.getaddressinfo(addrs[-1])
-        pprint(x)
-        assert x['address'] == addrs[-1]
-        if 'label' in x:
-            # pre 0.21.?
-            assert x['label'] == 'testcase'
-        else:
-            assert x['labels'] == ['testcase']
-        assert x['iswatchonly'] == True
-        assert x['iswitness'] == True
-        assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
+        if bitcoind.has_bdb:
+            # test against bitcoind
+            # only legacy wallets do support importmulti
+            for x in obj:
+                x['label'] = 'testcase'
+
+            bitcoind_wallet.importmulti(obj)
+            x = bitcoind_wallet.getaddressinfo(addrs[-1])
+            pprint(x)
+            assert x['address'] == addrs[-1]
+            if 'label' in x:
+                # pre 0.21.?
+                assert x['label'] == 'testcase'
+            else:
+                assert x['labels'] == ['testcase']
+            assert x['iswatchonly'] == True
+            assert x['iswitness'] == True
+            assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
     # importdescriptors -- its better
     assert imd_js
