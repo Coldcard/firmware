@@ -206,7 +206,7 @@ def bitcoind_wallet(bitcoind):
     # Use bitcoind to create a temporary wallet file
     w_name = 'ckcc-test-wallet-%s' % uuid.uuid4()
     conn = bitcoind.create_wallet(wallet_name=w_name, disable_private_keys=True, blank=True,
-                                  passphrase=None, avoid_reuse=False, descriptors=False)
+                                  passphrase=None, avoid_reuse=False, descriptors=not bitcoind.has_bdb)
     yield conn
 
 
