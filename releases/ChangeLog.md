@@ -6,6 +6,7 @@
   ([nLockTime](https://en.bitcoin.it/wiki/NLockTime),
   [nSequence](https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki))
   when signing
+- Enhancement: New submenu for saved BIP-39 Passphrases allowing to delete saved entries.
 - Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
   If current seed is temporary and not saved yet, `Add current tmp` menu item is 
   shown in Seed Vault menu.
@@ -20,6 +21,7 @@
 - Bugfix: Add missing First Time UX for extended key import as master seed
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active
 - Bugfix: Disallow using master seed as temporary seed
+- Bugfix: Do not allow to `APPLY` empty BIP-39 passphrase
 
 ## 5.2.0 - 2023-10-10
 

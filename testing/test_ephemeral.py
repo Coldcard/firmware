@@ -189,10 +189,10 @@ def restore_main_seed(goto_home, pick_menu_item, cap_story, cap_menu,
 
         assert "Restore main wallet and its settings?" in story
         if seed_vault:
-            assert "Press OK to forget current temporary wallet " not in story
+            assert "Press OK to forget current temporary seed " not in story
             assert "settings, or press (1) to save & keep " not in story
         else:
-            assert "Press OK to forget current temporary wallet " in story
+            assert "Press OK to forget current temporary seed " in story
             assert "settings, or press (1) to save & keep " in story
             assert "those settings if same seed is later restored." in story
             if preserve_settings:
