@@ -2,10 +2,11 @@
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import stash, ujson, ngu
+import stash, ujson, ngu, pyb, os
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
 from utils import xfp2str
+from menu import MenuItem, MenuSystem
 
 
 class PassphraseSaver:
@@ -16,7 +17,8 @@ class PassphraseSaver:
     def __init__(self):
         self.key = None
 
-    def filename(self, card):
+    @staticmethod
+    def filename(card):
         # Construct actual filename to use.
         # - some very minor obscurity, but we aren't relying on that.
         return card.get_sd_root() + '/.tmp.tmp'
@@ -30,7 +32,6 @@ class PassphraseSaver:
 
         with stash.SensitiveValues(bypass_tmp=True) as sv:
             self.key = bytearray(sv.encryption_key(salt))
-
 
     def _read(self, card):
         # Return a list of saved passphrases, or empty list if fail.
@@ -46,9 +47,7 @@ class PassphraseSaver:
         except:
             return []
 
-
-    async def append(self, xfp, bip39pw):
-        # encrypt and save; always appends.
+    async def read_and_save(self):
         from glob import dis
 
         while 1:
@@ -59,8 +58,7 @@ class PassphraseSaver:
                     self._calc_key(card)
 
                     data = self._read(card) if self.key else []
-
-                    data.append(dict(xfp=xfp, pw=bip39pw))
+                    yield data  # yield data that can be modified
 
                     encrypt = ngu.aes.CTR(self.key)
 
@@ -74,32 +72,115 @@ class PassphraseSaver:
 
             except CardMissingError:
                 ch = await needs_microsd()
-                if ch == 'x':       # undocumented, but needs escape route
+                if ch == 'x':  # undocumented, but needs escape route
                     break
 
-            
-    def make_menu(self):
-        from menu import MenuItem, MenuSystem
+    async def delete(self, idx):
+        c = self.read_and_save()
+        data = next(c)
+        del data[idx]
+        # resume generator - save
+        try:
+            next(c)
+        except StopIteration: pass
+        if not data:
+            return True
+
+    async def append(self, xfp, bip39pw):
+        c = self.read_and_save()
+        data = next(c)
+        to_add = dict(xfp=xfp, pw=bip39pw)
+        if to_add not in data:
+            data.append(to_add)
+            # resume generator - save
+            try:
+                next(c)
+            except StopIteration: pass
+
+
+class PassphraseSaverMenu(MenuSystem):
+
+    def update_contents(self):
+        tmp = PassphraseSaverMenu.construct()
+        self.replace_items(tmp)
+
+    @staticmethod
+    async def apply(menu, idx, item):
+        # apply the password immediately and drop them at top menu
         from actions import goto_top_menu
         from ux import ux_show_story
         from seed import set_bip39_passphrase
+        from pincodes import pa
+        from glob import settings
 
+        bypass_tmp = True
+        pw, expect_xfp = item.arg
+        if pa.tmp_value and settings.get("words", None):
+            xfp = settings.get("xfp", 0)
+            title = "[%s]" % xfp2str(xfp)
+            ch = await ux_show_story("Temporary seed is active. Press (1)"
+                                     " to add passphrase to the current active"
+                                     " temporary seed instead of the main seed.",
+                                     title=title, escape='1')
+            if ch == '1':
+                bypass_tmp = False
+
+        applied = await set_bip39_passphrase(pw, bypass_tmp=bypass_tmp,
+                                             summarize_ux=False)
+        if not applied:
+            return
+
+        xfp = settings.get('xfp')
+
+        # verification step
+        if xfp == expect_xfp:
+            # feedback that it worked
+            await ux_show_story("Passphrase restored.", title="[%s]" % xfp2str(xfp))
+        else:
+            got = xfp2str(xfp)
+            exp = xfp2str(expect_xfp)
+            await ux_show_story("XFP verification failed. Restored wallet XFP [%s] "
+                                "does not match expected XFP [%s] from "
+                                "saved passphrase file." % (got, exp))
+            return
+
+        goto_top_menu()
+
+    @staticmethod
+    async def delete_entry(menu, idx, item):
+        from ux import the_ux
+        pw_saver, i = item.arg
+        if await ux_confirm("Delete saved passphrase?"):
+            is_empty = await pw_saver.delete(i)
+            the_ux.pop()
+            if not is_empty:
+                m = the_ux.top_of_stack()
+                m.update_contents()
+            else:
+                # remove .tmp.tmp file after last passphrase
+                # is deleted
+                with CardSlot() as card:
+                    f_path = pw_saver.filename(card)
+                    os.remove(f_path)
+                the_ux.pop()
+                m = the_ux.top_of_stack()
+                m.update_contents()
+
+    @classmethod
+    def construct(cls):
+        # We have a list of xfp+pw fields. Make a menu.
         # Read file, decrypt and make a menu to show; OR return None
         # if any error hit.
+        pw_saver = PassphraseSaver()
         with CardSlot() as card:
-
-            self._calc_key(card)
-            if not self.key: return None
-
-            data = self._read(card)
+            pw_saver._calc_key(card)
+            data = pw_saver._read(card)
 
             if not data: return None
 
-        # We have a list of xfp+pw fields. Make a menu.
-
         # Challenge: we need to hint at which is which, but don't want to
         # show the password on-screen.
-        # - simple algo: 
+        # - simple algo:
         #   - show either first N or last N chars only
         #   - pick which set which is all-unique, if neither, try N+1
         #
@@ -118,46 +199,16 @@ class PassphraseSaver:
             # give up: show it all!
             parts = [i for i,_ in pws]
 
-        async def doit(menu, idx, item):
-            # apply the password immediately and drop them at top menu
-            from pincodes import pa
-            from glob import settings
-
-            bypass_tmp = True
-            pw, expect_xfp = item.arg
-            if pa.tmp_value and settings.get("words", None):
-                xfp = settings.get("xfp", None)
-                title = "[%s]" % xfp2str(xfp)
-                ch = await ux_show_story("Temporary wallet is active. Press (1)"
-                                         " to add passphrase to the current active"
-                                         " temporary seed instead of the main seed.",
-                                         title=title, escape='1')
-                if ch == '1':
-                    bypass_tmp = False
-
-            applied = await set_bip39_passphrase(pw, bypass_tmp=bypass_tmp,
-                                                 summarize_ux=False)
-            if not applied:
-                return
-
-            xfp = settings.get('xfp')
-
-            # verification step
-            if xfp == expect_xfp:
-                # feedback that it worked
-                await ux_show_story("Passphrase restored.", title="[%s]" % xfp2str(xfp))
-            else:
-                got = xfp2str(xfp)
-                exp = xfp2str(expect_xfp)
-                await ux_show_story("XFP verification failed. Restored wallet XFP [%s] "
-                                    "does not match expected XFP [%s] from "
-                                    "saved passphrase file." % (got, exp))
-                return
-
-            goto_top_menu()
-
-
-        return MenuSystem((MenuItem(label or '(empty)', f=doit, arg=pw) for pw, label in zip(pws, parts)))
+        items = []
+        for i, (pw, label) in enumerate(zip(pws, parts)):
+            xfp_ui = "[%s]" % xfp2str(pw[1])
+            submenu = MenuSystem([
+                MenuItem(xfp_ui),
+                MenuItem("Restore", f=cls.apply, arg=pw),
+                MenuItem("Delete", f=cls.delete_entry, arg=(pw_saver, i)),
+            ])
+            items.append(MenuItem(label or "(empty)", menu=submenu))
+        return items
 
 #
 # Support for using MicroSD as second factor to the login PIN.
