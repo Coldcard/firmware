@@ -19,7 +19,7 @@ from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
 from actions import goto_top_menu
 from stash import SecretStash
 from ubinascii import hexlify as b2a_hex
-from pwsave import PassphraseSaver
+from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
@@ -1075,6 +1075,14 @@ class PassphraseMenu(MenuSystem):
         global pp_sofar
         pp_sofar = ''
 
+        items = self.construct()
+        super(PassphraseMenu, self).__init__(items)
+
+    def update_contents(self):
+        tmp = self.construct()
+        self.replace_items(tmp)
+
+    def construct(self):
         items = [
             #         xxxxxxxxxxxxxxxx
             MenuItem('Edit Phrase', f=self.view_edit_phrase),
@@ -1090,18 +1098,18 @@ class PassphraseMenu(MenuSystem):
                 with CardSlot() as card:
                     # check if passphrases file exists on SD
                     # if yes add menu item
-                    if card.exists(PassphraseSaver().filename(card)):
+                    if card.exists(PassphraseSaver.filename(card)):
                         items.insert(0, MenuItem('Restore Saved', menu=self.restore_saved))
 
             except: pass
 
-        super(PassphraseMenu, self).__init__(items)
+        return items
 
     @staticmethod
     async def restore_saved(*a):
         dis.fullscreen("Decrypting...")
         try:
-            menu = PassphraseSaver().make_menu()
+            items = PassphraseSaverMenu.construct()
         except CardMissingError:
             await needs_microsd()
             return
@@ -1109,11 +1117,11 @@ class PassphraseMenu(MenuSystem):
             await ux_show_story(title="Failure", msg=str(e) + problem_file_line(e))
             return
 
-        if not menu:
+        if not items:
             await ux_show_story("Nothing found")
             return
 
-        return menu
+        return PassphraseSaverMenu(items)
 
     def on_cancel(self):
         # zip to cancel item when they fail to exit via X button
@@ -1177,11 +1185,14 @@ class PassphraseMenu(MenuSystem):
         goto_top_menu()
 
     async def done_apply(self, *a):
-        # apply the passphrase.
-        # - important to work on empty string here too.
+        # apply the passphrase
         import stash
         from glob import settings
         from pincodes import pa
+
+        if not pp_sofar:
+            # empty string here - noop
+            return
 
         nv, xfp, parent_xfp = await calc_bip39_passphrase(pp_sofar, bypass_tmp=True)
 
