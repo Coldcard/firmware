@@ -8,6 +8,9 @@
 # - set coldcard for testnet chain
 # - command line: py.test test_hsm.py --dev -s --ff
 # - no microSD card installed
+# For testing on a REAL Coldcard Mk4:
+# - create development firmware via `make dev`
+# - enable HSM commands in `Advanced/Tools -> Enable HSM -> Enable`
 #
 import pytest, time, itertools, base64, re, json, struct
 from collections import OrderedDict
@@ -754,6 +757,22 @@ def test_big_txn(num_in, num_out, dev, quick_start_hsm, hsm_status, is_simulator
 
     for count in range(20):
         psbt = fake_txn(num_in, num_out, dev.master_xpub)
+        attempt_psbt(psbt)
+
+
+@pytest.mark.veryslow
+def test_multiple_signings(dev, quick_start_hsm, is_simulator,
+                           attempt_psbt, fake_txn, load_hsm_users,
+                           auth_user):
+    # signs 400 different PSBTs in loop
+    policy = DICT(warnings_ok=True, must_log=1, rules=[dict(users=['pw'])])
+    load_hsm_users()
+    quick_start_hsm(policy)
+
+    for count in range(400):
+        psbt = fake_txn(2, 2, dev.master_xpub, change_outputs=[0])
+        auth_user.psbt_hash = sha256(psbt).digest()
+        auth_user("pw")
         attempt_psbt(psbt)
 
 
