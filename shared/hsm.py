@@ -430,7 +430,7 @@ class AuditLogger:
 
             self.card = CardSlot().__enter__()
 
-            d  = self.card.get_sd_root() + '/' + self.dirname
+            d = self.card.get_sd_root() + '/' + self.dirname
 
             # mkdir if needed
             try: uos.stat(d)
@@ -667,7 +667,6 @@ class HSMPolicy:
     def activate(self, new_file):
         # user approved the HSM activation, so apply it.
         from glob import dis
-        from pincodes import pa
 
         import glob
         assert not glob.hsm_active

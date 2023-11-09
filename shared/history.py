@@ -3,7 +3,6 @@
 # history.py - store some history about past transactions and/or outputs they involved
 #
 import gc, chains
-from utils import B2A
 from uhashlib import sha256
 from ustruct import pack, unpack
 from exceptions import IncorrectUTXOAmount
