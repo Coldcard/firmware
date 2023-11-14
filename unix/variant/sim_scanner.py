@@ -4,6 +4,7 @@
 import os
 import uasyncio as asyncio
 from scanner import QRScanner
+from queues import Queue
 
 # unix/working/...
 DATA_FILE = 'qrdata.txt'
@@ -38,13 +39,15 @@ class SimulatedQRScanner(QRScanner):
 
             print("Got new QR scan data.")
             got = open(DATA_FILE, 'rb').read(8196)
-            self.q.push(got)
+            self.q.put_nowait(got)
 
             orig_mtime = mtime
             
-    async def scan_start(self, test=15):
+    async def scan_start(self, test=0):
         # returns a Q we append to as results come in
         self.q = rv = Queue()
+
+        print("Put QR data into file: work/%s" % DATA_FILE)
 
         self._scan_task = asyncio.create_task(self._read_results())
 

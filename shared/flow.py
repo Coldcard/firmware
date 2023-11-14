@@ -3,7 +3,7 @@
 # flow.py - Menu structure
 #
 from menu import MenuItem, ToggleMenuItem
-import version
+import version, charcodes
 from glob import settings
 
 from actions import *
@@ -209,6 +209,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
 
 DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
+    MenuItem("Lamp Test", f=lamp_test),
     MenuItem('Debug: assert', f=debug_assert),
     MenuItem('Debug: except', f=debug_except),
     MenuItem('Check: BL FW', f=check_firewall_read),
@@ -310,6 +311,8 @@ ImportWallet = [
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("24 Words", menu=start_seed_import, arg=24),
+    MenuItem('Scan QR Code', predicate=lambda: version.has_qr,
+             shortcut=charcodes.KEY_QR, f=scan_secret_import),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
@@ -338,6 +341,8 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
+    MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
+         shortcut=charcodes.KEY_QR, f=scan_any_qr),
     MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),

@@ -398,12 +398,13 @@ async def show_nickname(nick):
     dis.clear()
 
     if dis.has_lcd:
-        from lcd_display import CHARS_W
+        from lcd_display import CHARS_W, CHARS_H
         from utils import word_wrap
 
         lines = list(word_wrap(nick, CHARS_W))
-        for y,ln in enumerate(lines):
-            dis.text(None, 2+y, ln)
+        y = ((CHARS_H - len(lines) + 1) // 2)
+        for n, ln in enumerate(lines):
+            dis.text(None, y+n, ln)
     else:
         from display import FontLarge, FontSmall
 
@@ -2288,8 +2289,32 @@ async def microsd_2fa(*a):
 
     return MicroSD2FA.menu()
 
+async def lamp_test(*a):
+    # turn on all the lights
+    from machine import Pin
+    lamps = ['SD_ACTIVE', 'USB_ACTIVE', 'NFC_ACTIVE']
+    if version.num_sd_slots == 2:
+        lamps.append('SD_ACTIVE2')
+
+    lamps = [Pin(n, Pin.OUT, value=1) for n in lamps]
+    await ux_show_story('''All lights (except SE1) should be on.''')
+    [i(0) for i in lamps]
+
+#
+# Q wrappers; these will be present, but are very short on mk4
+#
+
 async def reflash_gpu(*a):
     from glob import dis
     await dis.gpu.reflash_gpu_ux()
+
+async def scan_any_qr(*a, expect_secret=False):
+    from ux_q1 import QRScannerInteraction
+    x = QRScannerInteraction()
+    await x.scan_anything(expect_secret=expect_secret)
+
+async def scan_secret_import(*a):
+    # trying to import a secret
+    return await scan_any_qr(expect_secret=True)
 
 # EOF

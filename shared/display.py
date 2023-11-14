@@ -288,9 +288,9 @@ class Display:
                 #    into: main.py:63  interact
                 ln = ln[6:].replace('", line ', ':').replace(', in ', '  ')
 
-            dis.text(0, y + (num*8), ln, FontTiny)
+            self.text(0, y + (num*8), ln, FontTiny)
 
-        dis.show()
+        self.show()
 
     def draw_story(self, lines, top, num_lines, is_sensitive):
         self.clear()

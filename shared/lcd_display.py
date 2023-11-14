@@ -154,7 +154,7 @@ class Display:
             kws = get_sys_status()
 
         if 'brand' in kws:
-            self.image(4, 0, 'brand')
+            self.image(8, 0, 'brand')
 
         b_x = 290
         if 'bat' in kws:

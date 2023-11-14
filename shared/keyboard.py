@@ -3,7 +3,7 @@
 # keyboard.py - Full qwerty keyboard found on the Q1 product.
 #
 import array, utime, pyb, sys
-from ucollections import deque
+import uasyncio
 from machine import Pin
 from random import shuffle
 from numpad import NumpadBase
@@ -65,7 +65,7 @@ class FullKeyboard(NumpadBase):
     def power_press(self, pin):
         # power btn has been pressed, probably by accident but maybe not?
         # - enforce some hold-down time, but not much
-        call_later_ms(250, self.power_press_held)
+        call_later_ms(500, self.power_press_held)
 
     async def power_press_held(self):
         if self.pwr_btn() == 1:
@@ -140,7 +140,7 @@ class FullKeyboard(NumpadBase):
 
     def process_chg_state(self):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
-        # - convert that into asci-like events in a Q for rest of system
+        # - convert that into ascii-like events in a Q for rest of system
         # - not trying to support multiple presses, just one
         shift_down = self.is_pressed[KEYNUM_SHIFT]
         symbol_down = self.is_pressed[KEYNUM_SYMBOL]
@@ -169,7 +169,7 @@ class FullKeyboard(NumpadBase):
                         # handle light button right here and now
                         self.torch_on = True
                         from glob import SCAN
-                        call_later_ms(0, SCAN.torch, 1)
+                        SCAN.torch_control_sync(True)
                     continue
 
                 # indicated key was found to be down and then back up
@@ -188,7 +188,7 @@ class FullKeyboard(NumpadBase):
         if self.torch_on and not self.is_pressed[KEYNUM_LAMP]:
             self.torch_on = False
             from glob import SCAN
-            call_later_ms(0, SCAN.torch, 0)
+            SCAN.torch_control_sync(False)
 
         if self.shift_down != shift_down:
             self.shift_down = shift_down
@@ -200,7 +200,7 @@ class FullKeyboard(NumpadBase):
 
         if status_chg:
             from glob import dis
-            call_later_ms(0, dis.async_draw_status, **status_chg)
+            uasyncio.create_task(dis.async_draw_status(**status_chg))
 
         none_active = (sum(self.is_pressed) == 0)
         if none_active:

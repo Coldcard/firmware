@@ -58,7 +58,7 @@ def start_chooser(chooser):
     the_ux.push(m)
 
 class MenuItem:
-    def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None):
+    def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None, shortcut=None):
         self.label = label
         self.arg = arg
         if menu:
@@ -69,6 +69,8 @@ class MenuItem:
             self.chooser = chooser
         if predicate:
             self.predicate = predicate
+        if shortcut:
+            self.shortcut_key = shortcut
     
     async def activate(self, menu, idx):
 
@@ -369,6 +371,13 @@ class MenuSystem:
                 # jump down, based on screen postion
                 self.goto_n(ord(key)-ord('1'))
             else:
+                # maybe a shortcut?
+                for n, item in enumerate(self.items):
+                    if getattr(item, 'shortcut_key', None) == key:
+                        # matched. do it
+                        self.goto_idx(n)
+                        return self.cursor
+
                 # search downwards for a menu item that starts with indicated letter
                 # if found, select it but dont drill down
                 lst = list(range(self.cursor+1, self.count)) + list(range(0, self.cursor))

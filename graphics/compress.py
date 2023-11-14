@@ -90,7 +90,7 @@ def make_icons():
     sm_font = ImageFont.truetype(FONT_PATH + 'iosevka-heavy.ttf')
 
     targets = [
-        ( 'brand', True, 'Q1', dict(col='#ffb000') ),
+        ( 'brand', True, 'Q', dict(col='#ffb000') ),
         ( 'shift', True, 'SHIFT', {} ),
         ( 'symbol', True, 'SYMB', {} ),
         ( 'caps', True, 'CAPS', {} ),
@@ -141,7 +141,7 @@ def make_icons():
 
             if h > MAX_HEIGHT:
                 h = MAX_HEIGHT
-                print(f'{vn} too tall, cropped')
+                print(f'"{vn}" too tall, cropped')
 
             d.text(tl, body, font=f, fill=col)
             rv = img.crop( (0, 0, w,h) )

@@ -2,11 +2,13 @@
 #
 # ux_q1.py - UX/UI interactions that are Q1 specific and use big screen, keyboard.
 #
+import uasyncio as asyncio
 from uasyncio import sleep_ms
-import utime, gc
+import utime, gc, ngu
 from charcodes import *
 from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE, CURSOR_DW_SOLID
 from exceptions import AbortInteraction
+from queues import QueueEmpty
 import bip39
 
 class PressRelease:
@@ -587,5 +589,162 @@ def ux_dice_rolling():
 
     # return funct to draw updating part
     return update
+
+class QRScannerInteraction:
+    def __init__(self):
+        pass
+
+    async def animation(self, prompt, line2=None):
+        # draw animation, while waiting for them to scan something
+        # - CANCEL to abort
+        from glob import dis, SCAN
+        from ux import ux_wait_keyup
+        frames = [ 1, 2, 3, 4, 5, 4, 3, 2 ]
+
+        assert SCAN         # hardware missing?
+
+        dis.clear()
+        dis.text(None, -2, prompt)
+        if line2:
+            dis.text(None, -1, line2, dark=True)
+        dis.show()
+
+        task = asyncio.create_task(SCAN.scan_once())
+
+        ph = 0
+        while 1:
+            dis.image(None, 40, 'scan_%d' % frames[ph])
+            ph  = (ph + 1) % len(frames)
+
+            if task.done():
+                data = await task
+                print("Scanned: %r" % data)
+                break
+
+            # wait for key or 250ms
+            try:
+                ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
+                print('key ' + repr(ch))
+            except asyncio.TimeoutError:
+                print('no key')
+                ch = None
+
+            if ch == KEY_CANCEL:
+                data = None
+                break
+
+        #await SCAN.scan_stop()
+        task.cancel()
+
+        dis.clear()
+
+        return data
+
+    @staticmethod
+    def decode_secret(got):
+        # Decode a few different ways to store a master secret, or raise
+        # - xprv / tprv
+        # - words (either full or prefixes, case insensitive)
+        # - SeedQR (github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md)
+        
+        taste = got.strip().lower()
+
+        # remove bitcoin: if present
+        if ':' in taste:
+            _, taste = taste.split(':', 1)
+
+        if taste[1:4] == 'prv':
+            # xprv or tprv: private key import for sure
+            # - verify checksum is right
+            try:
+                ngu.codecs.b58_decode(taste)  
+            except:
+                raise ValueError('corrupt xprv?')
+
+            return 'xprv', taste
+
+        if taste.isdigit():
+            # SeedQR: 4 digit groups of index into word list
+            parts = [taste[pos:pos+4] for pos in range(0, len(taste), 4)]
+            try:
+                assert len(parts) in (12, 18, 24)
+                words = [bip39.wordlist_en[int(n)] for n in parts]
+            except:
+                raise ValueError('corrupt SeedQR?')
+            return 'words', words
+
+        words = taste.decode().split(' ')
+        if len(words) in [ 12, 18, 24]:
+            # looks like bip-39 words, decode and re-expand
+            idx = [bip39.get_word_index(w) for w in words]
+            return 'words', [bip39.wordlist_en[n] for n in idx]
+
+        raise ValueError('no idea')
+
+    async def secret_import(self, mode, value):
+        # Import a private key: xprv or seed words
+        # - plausible value has been received
+        # - import as tmp or master
+        print("Secret: %s %r" % (mode, value))
+        if mode == 'xprv':
+            pass
+        elif mode == 'words':
+            pass
+
+    async def scan_anything(self, expect_secret=False):
+        # start a QR scan, and act on what we find, whatever it may be.
+        problem = None
+        while 1:
+            prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
+                        'Scan XPRV or Seed Words, or CANCEL'
+
+            got = await self.animation(prompt, line2=problem)
+            if got is None:
+                return
+
+            try:
+                # can we decode a master secret of some type?
+                mode, value = self.decode_secret(got)
+
+                return await self.secret_import(mode, value)
+            except BaseException as exc:
+                if expect_secret:
+                    problem = str(exc)
+                    continue
+
+            # Might be an address or pubkey? But not binary
+            got = got.decode().strip()
+
+            # remove URL scheme: if present
+            scheme = None
+            if ':' in got:
+                scheme, got = got.split(':', 1)
+
+            # old school
+            try:
+                raw = ngu.codecs.b58_decode(got)  
+                print("Valid base58")
+
+                # it's valid base58
+                if got[1:4] == 'pub':
+                    # xpub ... why tho?
+                    return
+                else:
+                    # an address, P2PKH
+                    return
+            except:
+                pass
+
+            # new school: bech32 or bech32m
+            try:
+                hrp, version, data = ngu.codecs.segwit_decode(got)
+                print("Valid bech32")
+                return
+            except:
+                raise
+                pass
+
+            problem = 'Sorry, can not make use of that!'
+            
 
 # EOF
