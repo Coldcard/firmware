@@ -11,14 +11,9 @@ DATA_FILE = 'qrdata.txt'
 
 class SimulatedQRScanner(QRScanner):
     def __init__(self):
-        self.q = None
         self.version = '4.20'
 
-    def hw_scan(self):
-        # trigger a scan
-        pass
-
-    async def _read_results(self):
+    async def _read_results(self, q):
         # be a task that reads incoming QR codes from scanner (already in operation)
         # - will be canceled when done/stopping
         try:
@@ -38,33 +33,29 @@ class SimulatedQRScanner(QRScanner):
                 continue
 
             print("Got new QR scan data.")
-            got = open(DATA_FILE, 'rb').read(8196)
-            self.q.put_nowait(got)
+            got = open(DATA_FILE, 'rt').read(8196).strip()
+            q.put_nowait(got)
 
             orig_mtime = mtime
             
-    async def scan_start(self, test=0):
+    async def scan_once(self):
         # returns a Q we append to as results come in
-        self.q = rv = Queue()
+        q = Queue()
 
         print("Put QR data into file: work/%s" % DATA_FILE)
 
-        self._scan_task = asyncio.create_task(self._read_results())
+        task = asyncio.create_task(self._read_results(q))
+
+        rv = await q.get()
+
+        task.cancel()
 
         return rv
-
-    async def scan_stop(self):
-        self._scan_task.cancel()
-        self._scan_task = None
-        self.q = None
 
     async def wakeup(self):
         return
 
-    async def sleep(self):
-        return
-
-    async def tx(self, msg):
+    async def goto_sleep(self):
         return
 
     async def torch(self, on):
