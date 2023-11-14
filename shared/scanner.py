@@ -1,6 +1,6 @@
 # (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# scanner.py - QR scanner submodule on Q1
+# scanner.py - QR scanner submodule on Q. Low level hardware stuff only.
 #
 import utime
 import uasyncio as asyncio
@@ -41,6 +41,11 @@ def unwrap(packed):
 
 # this is wrap(b'\x90\x00', fid=1) ... 9000 is ACK. silence is NACK
 OKAY = b'Z\x01\x00\x02\x90\x00\x93\xa5'
+RAW_OKAY = b'\x90\x00'
+LEN_OKAY = const(8)
+
+# TODO: constructor should leave it in reset for simple lower-power usage; then after
+#       login we can do full setup (2+ seconds) and then sleep again until needed.
 
 class QRScanner:
 
@@ -102,14 +107,30 @@ class QRScanner:
     async def _read_results(self):
         # be a task that reads incoming QR codes from scanner (already in operation)
         # - will be canceled when done/stopping
+        # - qr data is bare, (not wrapped) with CR at end ... so not gonna work w/ binary data
+        ln = bytearray()
         while 1:
-            ln = await self.sr.read(200)
-            if not ln: continue
-            print(repr(ln))
-            await self.q.put(ln)
+            print('rzzz')
+            ch = await self.sr.read(1)
+            print('got %r' % ch)
+
+            if ch == b'\r':
+                print('Scan RX: ' + B2A(ln))
+                await self.q.put(ln)
+
+                ln = bytearray()
+            else:
+                ln.append(ch[0])
+                
             
-    async def scan_start(self, test=15):
+    async def scan_start(self, test=0):
         # returns a Q we append to as results come in
+
+        # wait for reset process to complete (can be an issue right after boot)
+        while not self.version:
+            await asyncio.sleep(.25)
+            print('wait')
+
         await self.wakeup()
         await self.tx('S_CMD_020D')
 
@@ -159,6 +180,8 @@ class QRScanner:
     async def tx(self, msg):
         # send a command, get response
         # - has a long timeout, collects rx based on framing
+        print('Scan >> ' + msg)
+
         self.sr.write(wrap(msg))
         await self.sr.drain()
 
@@ -168,14 +191,22 @@ class QRScanner:
             try:
                 h = await asyncio.wait_for_ms(self.sr.read(-1), 500)
             except asyncio.TimeoutError:
+                if rx: break
                 raise RuntimeError("rx timeout")
 
             if h:
                 rx.extend(h)
-            if h[-1] == 0xA5:
-                break
+                if h[-1] == 0xA5:
+                    break
 
-        if rx == OKAY:
+        print('Scan << ' + B2A(rx))
+
+        if rx[-LEN_OKAY:] == OKAY:
+            # - can get scan data ahead of OK msg sometimes, so ignore any prefix
+            return
+
+        if rx == RAW_OKAY:
+            # I get this bare (unwrapped), in response to SRDF0051 (wakeup)
             return
 
         try:
@@ -183,8 +214,9 @@ class QRScanner:
             if extra:
                 raise RuntimeError("extra at end")
             return body
-        except:
+        except Exception as exc:
             print("Bad Rx: " + B2A(rx))
+            print("   exc: %s" % exc)
 
     async def torch(self, on):
         # be an expensive flashlight
