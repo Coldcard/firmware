@@ -91,7 +91,7 @@ if has_qwerty:
                 + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_CANCEL + KEY_SELECT + '\0'
         + '!@#$%^&*()'
         + '-_`\0\0\0[]{}'
-        + '+=\0\0:;~|\\"'
+        + '+\0\0=:;~|\\"'
         + KEY_F1 + KEY_F2 + KEY_F3 + KEY_F4 + KEY_F5 + KEY_F6 + '\0<>?'
         '\0\0\0\0' + KEY_CLEAR + '\0\0\0\0\0' )
 
