@@ -396,8 +396,6 @@ class LCDSimulator(SimulatedScreen):
         USB_LED = 0x4
         SD2_LED = 0x8
         NFC_LED = 0x10
-        # from ckcc import led_pipe; led_pipe.write(b'\x1f\x1f')
-        active_set = 0x1f
 
         if active_set & SE1_LED:
             self.draw_single_led(spriterenderer, 30, 35, red=False)
