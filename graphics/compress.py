@@ -92,10 +92,10 @@ def make_icons():
     targets = [
         ( 'brand', True, 'Q', dict(col='#ffb000') ),
         ( 'shift', True, 'SHIFT', {} ),
-        ( 'symbol', True, 'SYMB', {} ),
+        ( 'symbol', True, 'SYM', {} ),
         ( 'caps', True, 'CAPS', {} ),
         ( 'bip39', True, 'PASSPHRASE', {} ),
-        ( 'tmp', True, 'EPHEMERAL', dict(col_0='black', col_1='red') ),
+        ( 'tmp', True, 'TMP.SEED', dict(col_0='black', col_1='red') ),
         ( 'devmode', True, 'DEV', dict(col='yellow') ),
         ( 'edge', True, 'EDGE', dict(col='yellow') ),
         ( 'bat_0', False, '\uf244', dict(col='red', y=-1)),
