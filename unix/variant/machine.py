@@ -5,7 +5,8 @@ UNSPEC = object()
 class Pin:
     def __init__(self, name, *a, **kw):
         self.name = name
-        self.cur_value = 0
+        self.cur_value = int(kw.get('value', 0))
+        self.value(self.cur_value)
 
     def on(self):
         self.value(1)
@@ -13,7 +14,9 @@ class Pin:
         self.value(0)
 
     def value(self, n=None):
-        if n is None: return self.cur_value
+        if n is None:
+            return self.cur_value
+
         self.cur_value = int(n)
 
         bm = 0

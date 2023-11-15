@@ -396,20 +396,24 @@ class LCDSimulator(SimulatedScreen):
         USB_LED = 0x4
         SD2_LED = 0x8
         NFC_LED = 0x10
+        # from ckcc import led_pipe; led_pipe.write(b'\x1f\x1f')
+        active_set = 0x1f
 
         if active_set & SE1_LED:
-            self.draw_single_led(spriterenderer, 17, 0, red=False)
+            self.draw_single_led(spriterenderer, 30, 35, red=False)
         else:
-            self.draw_single_led(spriterenderer, 65, 0, red=True)
+            # Test with:
+            #   from ckcc import led_pipe; led_pipe.write(b'\x01\x00')
+            self.draw_single_led(spriterenderer, 85, 33, red=True)
 
         if active_set & SD1_LED:
-            self.draw_single_led(spriterenderer, -10, 125)
+            self.draw_single_led(spriterenderer, 8, 135)
         if active_set & SD2_LED:
-            self.draw_single_led(spriterenderer, -10, 215)
+            self.draw_single_led(spriterenderer, 8, 260)
         if active_set & USB_LED:
-            self.draw_single_led(spriterenderer, 195, 705)
+            self.draw_single_led(spriterenderer, 240, 805)
         if active_set & NFC_LED:
-            self.draw_single_led(spriterenderer, 400, 275)
+            self.draw_single_led(spriterenderer, 465, 315)
 
 class OLEDSimulator(SimulatedScreen):
     # top-left coord of OLED area; size is 1:1 with real pixels... 128x64 pixels
@@ -531,6 +535,7 @@ def special_q1_keys(ch):
     # special keys on Q1 keyboard that do not have anything similar on
     # normal desktop.
     # Press META + key
+    # - on MacOS META = flower (command) key
 
     if ch == 'n':
         return q1_charmap.KEY_NFC
@@ -585,9 +590,9 @@ def handle_q1_key_events(event, numpad_tx):
             kn = q1_charmap.DECODER_SYMBOL.find(ch)
             symbol_down = is_press
 
-    #print(f" .. => keynum={kn} => shift={shift_down} symb={symbol_down}")
+    #print(f"{ch=} => keynum={kn} => shift={shift_down} sym={symbol_down}")
 
-    if kn:
+    if kn is not None:
         if is_press:
             q1_pressed.add(kn)
         else:
@@ -622,10 +627,10 @@ def start():
     if is_q1:
         print('''\
 Q1 specials:
-  Right-Alt = AltGr => Symb (symbol key, blue)
+  Right-Alt = AltGr => SYM (symbol key)
   Meta-L - Lamp button
   Meta-N - NFC button
-  Meta-R - QR button
+  Meta-R - QR button  (not Meta-Q, because that's quit!)
 ''')
     sdl2.ext.init()
     sdl2.SDL_EnableScreenSaver()

@@ -58,8 +58,8 @@ class SimulatedQRScanner(QRScanner):
     async def goto_sleep(self):
         return
 
-    async def torch(self, on):
-        print("Torch is: " + 'ON' if on else 'off')
+    async def torch_control(self, on):
+        print("Torch is: " + ('ON' if on else 'off'))
 
 # close door behind ourselves
 QRScanner = SimulatedQRScanner
