@@ -451,7 +451,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
         return
     except Exception as e:
         from utils import problem_file_line
-        await ux_show_story('Failed to write!\n\n\n'+str(e) + problem_file_line(e))
+        await ux_show_story('Failed to write!\n\n\n%s\n%s' % (e, problem_file_line(e)))
         return
 
     msg = '''Address summary file written:\n\n%s''' % nice
