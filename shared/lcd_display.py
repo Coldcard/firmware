@@ -165,7 +165,7 @@ class Display:
             self.dis.backlight.intensity(250)     # full brightness when on VBUS
 
         if 'bip39' in kws:
-            self.image(108, 0, 'bip39_%d' % kws['bip39'])
+            self.image(102, 0, 'bip39_%d' % kws['bip39'])
 
         if 'tmp' in kws:
             self.image(165, 0, 'tmp_%d' % kws['tmp'])
@@ -184,7 +184,7 @@ class Display:
             self.image(x+5, 0, 'devmode')
 
         x = 16
-        for dx, meta in [(7, 'shift'), (38, 'symbol'), (65, 'caps')]:
+        for dx, meta in [(7, 'shift'), (37, 'symbol'), (58, 'caps')]:
             if meta in kws:
                 self.image(x+dx, 0, '%s_%d' % (meta, kws[meta]))
 
