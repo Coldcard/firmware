@@ -16,11 +16,11 @@ RASET = const(0x2b)
 RAMWR = const(0x2c)
 
 # Lots of drawing code now in C code:
-# - zlib expansion
 # - font lookups / a text-only layer
 # - QR module expansion
 # - clear to pixel value
 # - (MAYBE NOT) palette + xy/wh + nible-packed palette lookup (for font)
+# - (NOT) zlib expansion
 # - see stm32/COLDCARD_Q1/modlcd.c for code
 import lcd
 
@@ -31,11 +31,12 @@ class ST7788():
         from machine import Pin
         from pyb import LED
 
+        # - max baud of display is unclear, but 80Mhz SATSLINK works
+        # - 60Mhz is max on this chip, because it's half of 120Mhz which is APB1 freq
         self.spi = machine.SPI(1, baudrate=60_000_000, polarity=0, phase=0)
+
+        # do not change careful GPIO setup from bootloader (outputs)
         #reset_pin = Pin('LCD_RESET', Pin.OUT)        # not using
-        #self.dc = Pin('LCD_DATA_CMD', Pin.OUT, value=0)
-        #self.cs = Pin('LCD_CS', Pin.OUT, value=1)
-        # do not change careful GPIO setup from bootloader
         self.dc = Pin('LCD_DATA_CMD')
         self.cs = Pin('LCD_CS')
 
@@ -65,8 +66,8 @@ class ST7788():
         self.cs(1)
 
     def _set_window(self, x, y, w=320, h=240):
-        #self.write_cmd(0x2a, 0, LCD_WIDTH-1)         # CASET - Column address set range (x)
-        #self.write_cmd(0x2b, y, LCD_HEIGHT-1)        # RASET - Row address set range (y)
+        # CASET - Column address set range (x)
+        # RASET - Row address set range (y)
         a = struct.pack('>HH', x, x+w-1)
         self.write_cmd(CASET, a)
 
@@ -75,7 +76,7 @@ class ST7788():
 
         self.write_cmd(RAMWR)            # RAMWR - memory write
 
-        # .. follow with w*h*2 bytes of pixel data
+        # Must follow with w*h*2 bytes of pixel data.
 
     def fill_screen(self, pixel=0x0000):
         # clear ENTIRE screen to indicated pixel value
