@@ -91,7 +91,6 @@ class QRScanner:
             # get b'V2.3.0.7\r\n' or similar
             rx = await self.tx('T_OUT_CVER')
             self.version = rx.decode().strip()
-            #print("QR Scanner: " + self.version)
         except:
             raise
             #print("QR Scanner: missing")
@@ -112,17 +111,17 @@ class QRScanner:
     async def scan_once(self):
         # blocks until something is scanned. returns it
 
+        # wait for reset process to complete (can be an issue right after boot)
+        while not self.setup_done:
+            await asyncio.sleep(.25)
+
         async with self.lock: 
             self.busy_scanning = True
-
-            # wait for reset process to complete (can be an issue right after boot)
-            while not self.setup_done:
-                print('wait for setup')
-                await asyncio.sleep(.25)
 
             await self.wakeup()
             await self.tx('S_CMD_020D')
 
+            # these aren't useful (yet?)
             #await self.tx('S_CMD_05F1')         # add all information on
             #await self.tx('S_CMD_05L1')         # output decoding length info on
             #await self.tx('S_CMD_05S1')         # STX start char
@@ -152,13 +151,11 @@ class QRScanner:
         # - first one seems to fail 100%
         for retry in range(5):
             try:
-                await self.tx('SRDF0051', 50)       # 50 ok, 20 too short
+                await self.tx('SRDF0051', timeout=50)       # 50 ok, 20 too short
                 return
             except: 
                 # first try usually fails, that's okay... its asleep and groggy
                 pass
-
-        print("unable to wake QR")
 
     async def goto_sleep(self):
         # Had to decode hex to get this command! Does work tho, current consumption
@@ -172,12 +169,12 @@ class QRScanner:
         # - out going messages are text, and we wrap that w/ binary framing
         if msg is not None:
 
-            # fix framing by clearing anything already there before command
+            # fix framing problems by clearing anything already there before command
             while n := self.stream.s.any():
                 junk = await self.stream.readexactly(n)
-                print('Scan << (junk)  ' + B2A(junk))
+                #print('Scan << (junk)  ' + B2A(junk))
 
-            print('Scan >> ' + msg)
+            #print('Scan >> ' + msg)
             self.stream.write(wrap(msg))
             await self.stream.drain()
 
@@ -190,10 +187,9 @@ class QRScanner:
             except asyncio.TimeoutError:
                 if timeout is None:
                     continue
-                print("read t/o")
                 raise RuntimeError("no rx")
 
-            print('Scan << ' + B2A(rx))
+            #print('Scan << ' + B2A(rx))
 
             if rx == OKAY:
                 # - can get scan data ahead of OK msg sometimes, so ignore any prefix
@@ -206,7 +202,7 @@ class QRScanner:
             mlen = unwrap_hdr(rx)
             if mlen < 0:
                 # framing issue
-                print('Framing prob: %s=%s' % (rx, B2A(rx)))
+                #print('Framing prob: %s=%s' % (rx, B2A(rx)))
                 break
 
             more = mlen - len(rx)
@@ -219,8 +215,9 @@ class QRScanner:
                 raise RuntimeError("extra at end")
             return body
         except Exception as exc:
-            print("Bad Rx: " + B2A(rx))
-            print("   exc: %s" % exc)
+            #print("Bad Rx: " + B2A(rx))
+            #print("   exc: %s" % exc)
+            raise
 
     def torch_control_sync(self, on):
         # sync wrapper
