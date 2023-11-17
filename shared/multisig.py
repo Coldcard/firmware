@@ -4,7 +4,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str
-from utils import str_to_keypath, problem_file_line, export_prompt_builder, parse_extended_key
+from utils import str_to_keypath, problem_file_line, parse_extended_key
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
@@ -852,6 +852,7 @@ class MultisigWallet:
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
         from glob import NFC
+        from ux import import_export_prompt, show_qr_code
 
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
@@ -867,25 +868,24 @@ class MultisigWallet:
         hdr = '%s %s' % (mode, my_xfp)
         label = "%s multisig setup" % name
 
-        force_vdisk = False
-        prompt, escape = export_prompt_builder("%s file" % label)
-        if prompt:
-            ch = await ux_show_story(prompt, escape=escape)
-            if ch in "3"+KEY_NFC:
-                with uio.StringIO() as fp:
-                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
-                                       core=core, desc_pretty=desc_pretty)
-                    await NFC.share_text(fp.getvalue())
-                return
-            elif ch == "1":
-                force_vdisk = False
-            elif ch == "2":
-                force_vdisk = True
-            else:
-                return
+        choice = await import_export_prompt("%s file" % label, is_import=False)
+        if choice == KEY_CANCEL:
+            return
+        elif choice == KEY_NFC:
+            with uio.StringIO() as fp:
+                self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
+                                   core=core, desc_pretty=desc_pretty)
+                await NFC.share_text(fp.getvalue())
+            return
+        elif choice == KEY_QR:
+            with uio.StringIO() as fp:
+                self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
+                                   core=core, desc_pretty=desc_pretty)
+                await show_qr_code(fp.getvalue())
+            return
 
         try:
-            with CardSlot(force_vdisk=force_vdisk) as card:
+            with CardSlot(**choice) as card:
                 fname, nice = card.pick_filename(fname_pattern)
 
                 # do actual write
@@ -1407,13 +1407,10 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
     acct_num = await ux_enter_bip32_index('Account Number:') or 0
 
-    prompt, escape = export_prompt_builder("%s file" % label)
-    force_vdisk = False
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch == "2":
-            force_vdisk = True
-        if ch not in escape: return
+    choice = await import_export_prompt("%s file" % label, is_import=False, no_qr=True)
+
+    if choice == KEY_CANCEL:
+        return
 
     dis.fullscreen('Generating...')
 
@@ -1443,14 +1440,14 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)
 
-    if NFC and ch in "3"+KEY_NFC:
+    if choice == KEY_NFC:
         with uio.StringIO() as fp:
             render(fp)
             await NFC.share_json(fp.getvalue())
         return
 
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
             # do actual write: manual JSON here so more human-readable.
             with open(fname, 'w+') as fp:

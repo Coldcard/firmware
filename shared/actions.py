@@ -8,10 +8,10 @@ import ckcc, pyb, version, uasyncio, sys
 from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
-from utils import imported, pretty_short_delay, problem_file_line, import_prompt_builder
+from utils import imported, pretty_short_delay, problem_file_line
 from utils import xfp2str, decrypt_tapsigner_backup, B2A, addr_fmt_label
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index, ux_input_text
+from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
 from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
 from export import generate_unchained_export, generate_electrum_wallet
@@ -1332,29 +1332,24 @@ async def import_xprv(_1, _2, item):
             # directories?
             return False
 
-    force_vdisk = False
-    prompt, escape = import_prompt_builder("%s file" % label)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch in "3"+KEY_NFC:
-            force_vdisk = None
-            extended_key = await NFC.read_extended_private_key()
-            if not extended_key:
-                # failed to get any data - exit
-                # error already displayed in nfc.py
-                return
-        elif ch == "2":
-            force_vdisk = True
-        elif ch == "1":
-            force_vdisk = False
-        else:
-            return
+    choice = await import_export_prompt("%s file" % label, is_import=True)
 
-    if force_vdisk is not None:
+    if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_NFC:
+        extended_key = await NFC.read_extended_private_key()
+        if not extended_key:
+            # failed to get any data - exit
+            # error already displayed in nfc.py
+            return
+    elif choice == KEY_QR:
+        # TODO: scan something
+        pass
+    else:
         # only get here if NFC was not chosen
         # pick a likely-looking file.
         fn = await file_picker('Select file containing the %s to be imported.' % label, min_size=50,
-                               max_size=2000, taster=contains_xprv, force_vdisk=force_vdisk)
+                               max_size=2000, taster=contains_xprv, **choice)
 
         if not fn: return
 
@@ -1495,32 +1490,25 @@ async def import_tapsigner_backup_file(_1, _2, item):
         assert pa.is_secret_blank()  # "must not have secret"
 
     meta = "from "
-    force_vdisk = False
     label = "TAPSIGNER encrypted backup file"
-    meta += label
-    prompt, escape = import_prompt_builder(label)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch in "3"+KEY_NFC:
-            force_vdisk = None
-            data = await NFC.read_tapsigner_b64_backup()
-            if not data:
-                # failed to get any data - exit
-                # error already displayed in nfc.py
-                return
-        elif ch == "2":
-            force_vdisk = True
-        elif ch == "1":
-            force_vdisk = False
-        else:
-            return
+    choice = await import_export_prompt(label, is_import=False)
 
-    if force_vdisk is not None:
-        fn = await file_picker('Pick ' + label, suffix="aes", min_size=100, max_size=160,
-                               force_vdisk=force_vdisk)
+    if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_NFC:
+        data = await NFC.read_tapsigner_b64_backup()
+        if not data:
+            # failed to get any data - exit
+            # error already displayed in nfc.py
+            return
+    elif choice == KEY_QR:
+        # TODO: how is binary encoded? who made this QR??!
+        pass
+    else:
+        fn = await file_picker('Pick ' + label, suffix="aes", min_size=100, max_size=160, **choice)
         if not fn: return
         meta += (" (%s)" % fn)
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             with open(fn, 'rb') as fp:
                 data = fp.read()
 
@@ -1589,12 +1577,13 @@ async def list_files(*A):
 
 async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None,
                       choices=None, escape=None, none_msg=None, title=None,
-                      force_vdisk=False, batch_sign=False):
+                      force_vdisk=False, batch_sign=False, slot_b=None):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
     # - if choices is provided; skip search process
     # - escape: allow these chars to skip picking process
+    # - slot_b: None=>pick slot w/ card in it, or A if both.
     from menu import MenuSystem, MenuItem
     import uos
     from utils import get_filesize
@@ -1602,7 +1591,7 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     if choices is None:
         choices = []
         try:
-            with CardSlot(force_vdisk=force_vdisk) as card:
+            with CardSlot(force_vdisk=force_vdisk, slot_b=slot_b) as card:
                 sofar = set()
 
                 for path in card.get_paths():
