@@ -23,7 +23,7 @@ from onetimepass import get_hotp
 from objstruct import ObjectStruct as DICT
 from txn import render_address, fake_txn
 from psbt import ser_prop_key
-from helpers import sign_msg, prandom
+from helpers import sign_msg, prandom, xfp2str
 from ckcc_protocol.constants import *
 from ckcc_protocol.protocol import CCProtocolPacker
 from ckcc_protocol.protocol import CCUserRefused, CCProtoError
@@ -773,6 +773,128 @@ def test_multiple_signings(dev, quick_start_hsm, is_simulator,
         psbt = fake_txn(2, 2, dev.master_xpub, change_outputs=[0])
         auth_user.psbt_hash = sha256(psbt).digest()
         auth_user("pw")
+        attempt_psbt(psbt)
+
+
+@pytest.mark.veryslow
+@pytest.mark.parametrize("cc_first", [True, False])
+@pytest.mark.parametrize("M_N", [(2,3), (3,5), (15,15)])
+def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
+                                    is_simulator, attempt_psbt, fake_txn,
+                                    load_hsm_users, auth_user, bitcoind,
+                                    request):
+    # signs 400 different PSBTs in loop beaing one leg of multisig
+    # CC must be on regtest if testing with real thing
+    af = "bech32"
+    M, N = M_N
+    bitcoind.delete_wallet_files(pattern="bitcoind--signer")
+    bitcoind.delete_wallet_files(pattern="watch_only_")
+    # create multiple bitcoin wallets (N-1) as one signer is CC
+    bitcoind_signers = [
+        bitcoind.create_wallet(wallet_name=f"bitcoind--signer{i}", disable_private_keys=False, blank=False,
+                               passphrase=None, avoid_reuse=False, descriptors=True)
+        for i in range(N - 1)
+    ]
+    for signer in bitcoind_signers:
+        signer.keypoolrefill(405)
+    # watch only wallet where multisig descriptor will be imported
+    bitcoind_watch_only = bitcoind.create_wallet(
+        wallet_name=f"watch_only_{af}_{M}of{N}", disable_private_keys=True,
+        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+    )
+    # get keys from bitcoind signers
+    bitcoind_signers_xpubs = []
+    for signer in bitcoind_signers:
+        target_desc = ""
+        bitcoind_descriptors = signer.listdescriptors()["descriptors"]
+        for desc in bitcoind_descriptors:
+            if desc["desc"].startswith("pkh(") and desc["internal"] is False:
+                target_desc = desc["desc"]
+        core_desc, checksum = target_desc.split("#")
+        # remove pkh(....)
+        core_key = core_desc[4:-1]
+        bitcoind_signers_xpubs.append(core_key)
+
+    cc_deriv = "m/9999h/1h/0h"
+    cc_xpub = dev.send_recv(CCProtocolPacker.get_xpub(cc_deriv), timeout=None)
+    xfp_str = xfp2str(dev.master_fingerprint).lower()
+    cc_key_ext = f"[{xfp_str}/{cc_deriv.replace('m/','')}]{cc_xpub}/0/*"
+    cc_key_int = f"[{xfp_str}/{cc_deriv.replace('m/','')}]{cc_xpub}/1/*"
+    assert cc_xpub[1:4] == 'pub'
+    all_external = bitcoind_signers_xpubs + [cc_key_ext]
+    bitcoind_signers_xpubs_int = [i.replace("/0/*", "/1/*") for i in bitcoind_signers_xpubs]
+    all_internal = bitcoind_signers_xpubs_int + [cc_key_int]
+    template_ext = f"wsh(sortedmulti({M},{','.join(all_external)}))"
+    template_int = f"wsh(sortedmulti({M},{','.join(all_internal)}))"
+    desc_info_ext = bitcoind_watch_only.getdescriptorinfo(template_ext)
+    desc_info_int = bitcoind_watch_only.getdescriptorinfo(template_int)
+    desc_ext = desc_info_ext["descriptor"]  # external with checksum
+    desc_int = desc_info_int["descriptor"]  # internal with checksum
+
+    desc_obj_ext = {
+        "desc": desc_ext,
+        "active": True,
+        "timestamp": "now",
+        "internal": False,
+        "range": [0, 405],
+    }
+    desc_obj_int = {
+        "desc": desc_int,
+        "active": True,
+        "timestamp": "now",
+        "internal": True,
+        "range": [0, 405],
+    }
+    # import multisig wallet to bitcoin core watch only wallet
+    res = bitcoind_watch_only.importdescriptors([desc_obj_int, desc_obj_ext])
+    for obj in res:
+        assert obj["success"], obj
+
+    # uploading only external to CC
+    file_len, sha = dev.upload_file(desc_ext.encode('ascii'))
+    open('debug/last-config.txt', 'wt').write(desc_ext)
+    dev.send_recv(CCProtocolPacker.multisig_enroll(file_len, sha), timeout=30000)
+
+    time.sleep(.2)
+    if dev.is_simulator:
+        need_keypress = request.getfixturevalue('need_keypress')
+        need_keypress("y")
+    else:
+        import pdb;pdb.set_trace()  # user interaction required on real CC
+
+    multi_addr = bitcoind_watch_only.getnewaddress("", af)
+    # create spendable segwit utxo in multi wallet
+    bitcoind.supply_wallet.generatetoaddress(5, bitcoind.supply_wallet.getnewaddress())
+    bitcoind.supply_wallet.sendtoaddress(address=multi_addr, amount=250)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    policy = DICT(warnings_ok=True, must_log=1, rules=[dict(users=['pw'])])
+
+    load_hsm_users()
+    quick_start_hsm(policy)
+
+    for count in range(400):
+        # do a peel chain
+        dest_a = bitcoind.supply_wallet.getnewaddress("", af)
+        psbt_resp = bitcoind_watch_only.walletcreatefundedpsbt(
+            [], [{dest_a: 0.3}], 0, {"fee_rate": 10, "change_type": af}
+        )
+        psbt_str = psbt_resp.get("psbt")
+        if not cc_first:
+            signed = 0
+            for signer in bitcoind_signers:
+                resp = signer.walletprocesspsbt(psbt_str, True)
+                psbt_str = resp.get("psbt")
+                signed +=1
+                # do not want to finalize this
+                if signed == M - 1:
+                    break
+
+        psbt = base64.b64decode(psbt_str)
+
+        auth_user.psbt_hash = sha256(psbt).digest()
+        auth_user("pw")
+
         attempt_psbt(psbt)
 
 
