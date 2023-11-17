@@ -10,10 +10,6 @@ async def needs_microsd():
     from ux import ux_show_story
     return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
-def _is_ejected():
-    sd = pyb.SDCard()
-    return not sd.present()
-
 def is_dir(fname):
     if os.stat(fname)[0] & 0x4000:
         return True
@@ -26,7 +22,7 @@ def _try_microsd(bad_fs_ok=False):
 
     sd = pyb.SDCard()
 
-    if not sd.present():
+    if not sd.present():        # on Q will always be "present"
         return False
 
     if ckcc.is_simulator():
@@ -191,7 +187,8 @@ class CardSlot:
         # Watch the SD card-detect signal line... but very noisy
         # - this is called a few seconds after system startup
 
-        from pyb import Pin, ExtInt
+        from pyb import ExtInt
+        from machine import Pin
         from version import num_sd_slots
 
         def card_change(_):
@@ -201,32 +198,49 @@ class CardSlot:
         cls.last_change = utime.ticks_ms()
 
         if num_sd_slots == 2:
-            #XXX Q1 work needed here
-            cls.irq = None
-            cls.mux = Pin('SD_MUX')
-            cls.mux(0)      # top slot = A
-        else:
-            cls.irq = ExtInt(Pin('SD_DETECT'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
+            # Q has luxorious dual slots
+            cls.mux = Pin('SD_MUX', Pin.OUT, value=0)
+            cls.sd_detect2 = Pin('SD_DETECT2')
+            cls.irq2 = ExtInt(cls.sd_detect2, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
-        # mark 2+ boards have a light for SD activity.
-        from machine import Pin
-        cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+            cls.active_led2 = Pin('SD_ACTIVE2', Pin.OUT)
+            cls.active_led1 = Pin('SD_ACTIVE', Pin.OUT)
+            cls.active_led = cls.active_led1
+        else:
+            cls.mux = None
+            cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+
+        cls.sd_detect = Pin('SD_DETECT')
+        cls.irq = ExtInt(cls.sd_detect, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
+
 
 
     @classmethod
     def is_inserted(cls):
         # debounce?
-        return not _is_ejected()
+        if cls.mux:
+            return (cls.sd_detect() == 0) or (cls.sd_detect2() == 0)
+        else:
+            return cls.sd_detect() == 0
 
-    def __init__(self, force_vdisk=False, readonly=False):
+    def __init__(self, force_vdisk=False, readonly=False, slot_b=None):
         self.mountpt = None
         self.force_vdisk = force_vdisk
         self.readonly = readonly
         self.wrote_files = set()
+        if self.mux:
+            if slot_b is None:
+                # reading, and we don't care which, so pick slot with a card
+                # or default A if both installed
+                slot_b = (self.sd_detect2() == 0)
+                if self.sd_detect() == 0:
+                    slot_b = False
+            self.mux(1 if slot_b else 0)      # top slot = A
+            self.active_led = self.active_led2 if slot_b else self.active_led1
 
     def __enter__(self):
         # Mk4: maybe use our virtual disk in preference to SD Card
-        if glob.VD and (_is_ejected() or self.force_vdisk):
+        if glob.VD and (self.force_vdisk or not self.is_inserted()):
             self.mountpt = glob.VD.mount(self.readonly)
             return self
 
@@ -261,6 +275,10 @@ class CardSlot:
         self.active_led.off()           # required on simulator
         self.mountpt = None
 
+        # just in case?
+        if self.mux:
+            self.mux(0)
+
         return False
 
     def open(self, fname, mode='r', **kw):
@@ -281,7 +299,7 @@ class CardSlot:
             os.umount('/sd')
         except: pass
 
-        # previously important: turn off power so touch can work again (Mk1)
+        # turn off power to slot
         sd = pyb.SDCard()
         sd.power(0)
 

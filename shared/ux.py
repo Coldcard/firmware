@@ -183,7 +183,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
 
         # wait to do something
         ch = await pr.wait()
-        if escape and (ch == escape or ch in escape):
+        if escape and (ch in escape):
             # allow another way out for some usages
             return ch
         elif ch == KEY_SELECT:
@@ -293,7 +293,7 @@ async def show_qr_codes(addrs, is_alnum, start_n):
     o = QRDisplaySingle(addrs, is_alnum, start_n, sidebar=None)
     await o.interact_bare()
 
-async def show_qr_code(data, is_alnum):
+async def show_qr_code(data, is_alnum=False):
     from qrs import QRDisplaySingle
     o = QRDisplaySingle([data], is_alnum)
     await o.interact_bare()
@@ -306,5 +306,112 @@ async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
 
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
+def _import_prompt_builder(title, no_qr):
+    from version import has_qwerty, num_sd_slots, has_qr
+    from glob import NFC, VD
+
+    prompt, escape = None, None
+
+    if (NFC or VD) or num_sd_slots>1:
+        prompt = "Press (1) to import %s from SD Card" % title
+        escape = "1"
+        if num_sd_slots == 2:
+            prompt += ", (B) for lower slot"
+            escape += "ab"
+        if VD is not None:
+            prompt += ", press (2) to import from Virtual Disk"
+            escape += "2"
+        if NFC is not None:
+            if has_qwerty:
+                prompt += ", press (NFC) to import via NFC"
+                escape += KEY_NFC
+
+                if not no_qr:
+                    prompt += ", (QR) to scan QR code"
+                    escape += KEY_QR
+            else:
+                prompt += ", press (3) to import via NFC"
+                escape += "3"
+        prompt += "."
+
+    return prompt, escape
+
+
+def _export_prompt_builder(title, no_qr):
+    from version import has_qwerty, num_sd_slots, has_qr
+    from glob import NFC, VD
+
+    prompt, escape = None, None
+
+    if (NFC or VD) or num_sd_slots>1:
+        # no need to spam with another prompt, only option is SD card
+
+        prompt = "Press (1) to save %s to SD Card" % title
+        escape = "1"
+        if num_sd_slots == 2:
+            # MAYBE: show this only if both slots have cards inserted?
+            prompt += ", (B) for lower slot"
+            escape += "ab"
+
+        if VD is not None:
+            prompt += ", press (2) to save to Virtual Disk"
+            escape += "2"
+
+        if NFC is not None:
+            if has_qwerty:
+                prompt += ", press (NFC) to share via NFC"
+                escape += KEY_NFC 
+                if not no_qr:
+                    prompt += ", (QR) to show QR code"
+                    escape += KEY_QR
+            else:
+                prompt += ", press (3) to share via NFC"
+                escape += "3"
+
+        prompt += "."
+
+    return prompt, escape
+
+async def import_export_prompt(title, is_import=False, no_qr=False):
+    # Show story allowing user to select source for importing/exporting 
+    # - return either str(mode) OR dict(file_args) 
+    # - KEY_NFC or KEY_QR for those sources
+    # - KEY_CANCEL for abort by user
+    # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
+
+    if is_import:
+        prompt, escape = _import_prompt_builder(title, no_qr)
+    else:
+        prompt, escape = _export_prompt_builder(title, no_qr)
+
+    force_vdisk =  False
+    slot_b = None       # ie. don't care
+
+    if not prompt:
+        # they don't have NFC nor VD enabled, and no second slots... so will be file.
+        pass
+    else:
+        print('escape: ' + repr(escape))
+        ch = await ux_show_story(prompt, escape=escape)
+
+        if ch in "3"+KEY_NFC:
+            return KEY_NFC
+        elif ch == KEY_QR:
+            assert not no_qr
+            return KEY_QR
+        elif ch == "2":
+            force_vdisk = True
+        elif ch == 'b':
+            slot_b = True
+        elif ch == 'a':
+            # not documented on-screen? easter egg really.
+            slot_b = False
+        elif ch == '1':
+            slot_b = None
+        else:
+            return KEY_CANCEL
+
+    # return extra arguments to files.file_picker() or CardSlot()
+    return dict(force_vdisk=force_vdisk, slot_b=slot_b)
 
 # EOF

@@ -622,11 +622,10 @@ class QRScannerInteraction:
                 break
 
             # wait for key or 250ms
+            # XXX bug, key doesn't usually get noticed?
             try:
                 ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
-                print('key ' + repr(ch))
             except asyncio.TimeoutError:
-                print('no key')
                 ch = None
 
             if ch == KEY_CANCEL:
@@ -728,10 +727,10 @@ class QRScannerInteraction:
                 # it's valid base58
                 if got[1:4] == 'pub':
                     # xpub ... why tho?
-                    return
+                    return got
                 else:
                     # an address, P2PKH
-                    return
+                    return got
             except:
                 pass
 
@@ -739,9 +738,8 @@ class QRScannerInteraction:
             try:
                 hrp, version, data = ngu.codecs.segwit_decode(got)
                 print("Valid bech32")
-                return
+                return got
             except:
-                raise
                 pass
 
             problem = 'Sorry, can not make use of that!'

@@ -5,12 +5,12 @@
 import stash, chains, version, ujson, ngu
 from uio import StringIO
 from ucollections import OrderedDict
-from utils import xfp2str, swab32, export_prompt_builder, chunk_writer
+from utils import xfp2str, swab32, chunk_writer
 from ux import ux_show_story
 from glob import settings
 from auth import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
-from charcodes import KEY_NFC
+from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 
 
 def generate_public_contents():
@@ -116,28 +116,26 @@ be needed for different systems.
             del fp
 
 async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
-    # - total_parts does need not be precise
+    # Export data as a text file.
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
+    from ux import import_export_prompt
 
-    force_vdisk = False
-    prompt, escape = export_prompt_builder("%s file" % title)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch in '3'+KEY_NFC:
-            await NFC.share_text(body)
-            return
-        elif ch == "2":
-            force_vdisk = True
-        elif ch == '1':
-            force_vdisk = False
-        else:
-            return
+    choice = await import_export_prompt("%s file" % title, is_import=False, no_qr=True)
+
+    if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_NFC:
+        await NFC.share_text(body)
+        return
+
+    # too big anyway
+    assert choice != KEY_QR
 
     # choose a filename
     try:
         dis.fullscreen("Saving...")
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
@@ -426,28 +424,27 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
 
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
+    from ux import import_export_prompt, show_qr_code
 
     dis.fullscreen('Generating...')
     json_str, derive, addr_fmt = func()
     skip_sig = derive is False and addr_fmt is False
 
-    force_vdisk = False
-    prompt, escape = export_prompt_builder("%s file" % label)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch in '3'+KEY_NFC:
-            await NFC.share_json(json_str)
-            return
-        elif ch == '2':
-            force_vdisk = True
-        elif ch == '1':
-            force_vdisk = False
-        else:
-            return
+    choice = await import_export_prompt("%s file" % label, is_import=False)
+    if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_NFC:
+        await NFC.share_json(json_str)
+        return
+    elif choice == KEY_QR:
+        # render as QR and show on-screen
+        # - maybe block this option, if data too big to make it easy?
+        await show_qr_code(json_str)
+        return
 
     # choose a filename and save
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
@@ -468,6 +465,7 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     msg = '%s file written:\n\n%s' % (label, nice)
     if not skip_sig:
         msg += '\n\n%s signature file written:\n\n%s' % (label, sig_nice)
+
     await ux_show_story(msg)
 
 

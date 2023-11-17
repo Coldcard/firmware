@@ -8,8 +8,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-from charcodes import KEY_NFC
-from version import has_qwerty
+
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
@@ -482,47 +481,6 @@ def parse_extended_key(ln, private=False):
 
     return node, chain, addr_fmt
 
-
-def import_prompt_builder(title, no_nfc=False):
-    # TODO add has_qr check, and offer QR button (at least for short strings maybe add arg for that)
-    from glob import NFC, VD
-    prompt, escape = None, None
-    if (NFC and (not no_nfc)) or VD:
-        prompt = "Press (1) to import %s from SD Card" % title
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to import from Virtual Disk"
-            escape += "2"
-        if NFC is not None and not no_nfc:
-            if has_qwerty:
-                prompt += ", press (nfc) to import via NFC"
-                escape += KEY_NFC
-            else:
-                prompt += ", press (3) to import via NFC"
-                escape += "3"
-        prompt += "."
-    return prompt, escape
-
-
-def export_prompt_builder(title):
-    from glob import NFC, VD
-    prompt, escape = None, None
-    if NFC or VD:
-        # no need to spam with another prompt if VD and NFC not enabled
-        prompt = "Press (1) to save %s to SD Card" % title
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to save to Virtual Disk"
-            escape += "2"
-        if NFC is not None:
-            if has_qwerty:
-                prompt += ", press (nfc) to share via NFC"
-                escape += KEY_NFC
-            else:
-                prompt += ", press (3) to share via NFC"
-                escape += "3"
-        prompt += "."
-    return prompt, escape
 
 
 def chunk_writer(fd, body):
