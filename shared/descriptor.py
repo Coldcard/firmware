@@ -4,6 +4,7 @@
 #
 import ngu, chains
 from io import BytesIO
+from collections import OrderedDict
 from binascii import hexlify as b2a_hex
 from utils import cleanup_deriv_path, check_xpub, xfp2str
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
@@ -44,22 +45,21 @@ class Tapscript:
         return self._merkle_root
 
     @staticmethod
-    def _derive(tree, idx, key_map):
+    def _derive(tree, idx, key_map, change=False):
         if isinstance(tree, Miniscript):
-            return tree.derive(idx, key_map)
+            return tree.derive(idx, key_map, change=change)
         else:
             if len(tree) == 1 and isinstance(tree[0], Miniscript):
-                return tree[0].derive(idx, key_map)
+                return tree[0].derive(idx, key_map, change=change)
             l, r = tree
-            return [Tapscript._derive(l, idx, key_map),
-                    Tapscript._derive(r, idx, key_map)]
+            return [Tapscript._derive(l, idx, key_map, change=change),
+                    Tapscript._derive(r, idx, key_map, change=change)]
 
-    def derive(self, idx=0):
-        from collections import OrderedDict
+    def derive(self, idx=None, change=False):
         derived_keys = OrderedDict()
         for k in self.keys:
-            derived_keys[k] = k.derive(idx)
-        tree = Tapscript._derive(self.tree, idx, derived_keys)
+            derived_keys[k] = k.derive(idx, change=change)
+        tree = Tapscript._derive(self.tree, idx, derived_keys, change=change)
         return type(self)(tree, policy=self.policy, keys=list(derived_keys.values()))
 
     def process_tree(self):
@@ -139,6 +139,14 @@ class Tapscript:
 
     def parse_policy(self):
         self.policy, self.keys = self._parse_policy(self.tree, [])
+        orig_keys = OrderedDict()
+        for k in self.keys:
+            if k.origin not in orig_keys:
+                orig_keys[k.origin] = []
+            orig_keys[k.origin].append(k)
+        for i, k_lst in enumerate(orig_keys.values()):
+            subderiv = True if len(k_lst) == 1 else False
+            self.policy = self.policy.replace(k_lst[0].to_string(subderiv=subderiv), chr(64) + str(i))
 
     @staticmethod
     def _parse_policy(tree, all_keys):
@@ -147,9 +155,7 @@ class Tapscript:
             for k in keys:
                 if k not in all_keys:
                     all_keys.append(k)
-                k_str = k.to_string()
-                k_idx = all_keys.index(k)
-                leaf_str = leaf_str.replace(k_str, chr(64) + str(k_idx))
+
             return leaf_str, all_keys
         else:
             assert isinstance(tree, list)
@@ -158,9 +164,7 @@ class Tapscript:
                 for k in keys:
                     if k not in all_keys:
                         all_keys.append(k)
-                    k_str = k.to_string()
-                    k_idx = all_keys.index(k)
-                    leaf_str = leaf_str.replace(k_str, chr(64) + str(k_idx))
+
                 return leaf_str, all_keys
             else:
                 l, r = tree
@@ -251,8 +255,14 @@ class Descriptor:
             return self.tapscript.policy
 
         s = self.miniscript.to_string()
-        for i, k in enumerate(self.keys):
-            s = s.replace(k.to_string(), chr(64) + str(i))
+        orig_keys = OrderedDict()
+        for k in self.keys:
+            if k.origin not in orig_keys:
+                orig_keys[k.origin] = []
+            orig_keys[k.origin].append(k)
+        for i, k_lst in enumerate(orig_keys.values()):
+            subderiv = True if len(k_lst) == 1 else False
+            s = s.replace(k_lst[0].to_string(subderiv=subderiv), chr(64) + str(i))
         return s
 
     def ux_policy(self):
@@ -272,9 +282,14 @@ class Descriptor:
         return 25 # OP_DUP OP_HASH160 <20:pkh> OP_EQUALVERIFY OP_CHECKSIG
 
     def xfp_paths(self):
+        keys = self.keys
+        if self.taproot and self.key.origin:
+            # ignore provably unspendable
+            keys += [self.key]
+
         return [
             key.origin.psbt_derivation()
-            for key in self.keys
+            for key in keys
             if key.origin
         ]
 
@@ -380,20 +395,20 @@ class Descriptor:
         else:
             return "p2wsh"
 
-    def derive(self, idx=0):
+    def derive(self, idx=None, change=False):
         if self.taproot:
             return type(self)(
                 None,
                 self.sh,
                 self.wsh,
-                self.key.derive(idx),
+                self.key.derive(idx, change=change),
                 self.wpkh,
                 self.taproot,
-                tapscript=self.tapscript.derive(idx),
+                tapscript=self.tapscript.derive(idx, change=change),
             )
         if self.miniscript:
             return type(self)(
-                self.miniscript.derive(idx),
+                self.miniscript.derive(idx, change=change),
                 self.sh,
                 self.wsh,
                 None,
@@ -403,8 +418,9 @@ class Descriptor:
             )
         else:
             return type(self)(
-                None, self.sh, self.wsh, self.key.derive(idx), self.wpkh,
-                self.taproot, tapscript=None
+                None, self.sh, self.wsh,
+                self.key.derive(idx, change=change),
+                self.wpkh, self.taproot, tapscript=None
             )
 
     def witness_script(self):

@@ -120,6 +120,12 @@ class KeyOriginInfo:
         self.derivation = derivation
         self.cc_fp = swab32(int(b2a_hex(self.fingerprint).decode(), 16))
 
+    def __eq__(self, other):
+        return self.psbt_derivation() == other.psbt_derivation()
+
+    def __hash__(self):
+        return hash(tuple(self.psbt_derivation()))
+
     def str_derivation(self):
         return keypath_to_str(self.derivation, prefix='m/', skip=0)
 
@@ -145,34 +151,36 @@ class KeyOriginInfo:
 
 
 class KeyDerivationInfo:
-    def __init__(self, indexes=[[0, 1], WILDCARD]):
+
+    def __init__(self, indexes=None):
         self.indexes = indexes
-        self.validate()
+        if self.indexes is None:
+            self.indexes = [[0, 1], WILDCARD]
+            self.multi_path_index = 0
+        else:
+            self.multi_path_index = None
 
     @property
     def is_int_ext(self):
-        if isinstance(self.indexes[0], list):
+        if self.multi_path_index is not None:
             return True
         return False
 
     @property
     def is_external(self):
-        if self.is_int_ext or self.indexes[0] == 0:
+        if self.is_int_ext:
             return True
-        return False
+        elif self.indexes[-2] % 2 == 0:
+            return True
 
-    def validate(self):
-        # COLDCARD specific restrictions
-        assert len(self.indexes) == 2, "Key derivation too long"
-        assert self.indexes[0] in (0, 1) or self.indexes[0] == [0, 1], "Invalid key derivation - non standard"
-        assert self.indexes[1] == WILDCARD, "Key derivation missing wildcard (*)"
+        return False
 
     @property
     def branches(self):
         if self.is_int_ext:
-            return self.indexes[0]
+            return self.indexes[self.multi_path_index]
         else:
-            return [self.indexes[0]]
+            return [self.indexes[-2]]
 
     @classmethod
     def from_string(cls, s):
@@ -180,14 +188,20 @@ class KeyDerivationInfo:
         if not s:
             return cls()
         res = []
-        for i in s.split("/"):
+        mp = 0
+        mpi = None
+        for idx, i in enumerate(s.split("/")):
             start_i = i.find("<")
             if start_i != -1:
                 end_i = s.find(">")
                 assert end_i
                 inner = s[start_i+1:end_i]
                 assert ";" in inner
-                res.append([int(i) for i in inner.split(";")])
+                inner_split = inner.split(";")
+                assert len(inner_split) == 2, "wrong multipath"
+                res.append([int(i) for i in inner_split])
+                mp += 1
+                mpi = idx
             else:
                 if i == WILDCARD:
                     res.append(WILDCARD)
@@ -195,15 +209,33 @@ class KeyDerivationInfo:
                     assert "'" not in i, fail_msg
                     assert "h" not in i, fail_msg
                     res.append(int(i))
-        return cls(res)
+
+        # only one <x;y> allowed in subderivation
+        assert mp <= 1, "too many multipaths (%d)" % mp
+
+        if res == [0, WILDCARD]:
+            obj = cls()
+        else:
+            assert len(res) == 2, "Key derivation too long"
+            assert res[-1] == WILDCARD, "All keys must be ranged"
+            obj = cls(res)
+            obj.multi_path_index = mpi
+        return obj
 
     def to_string(self, external=True, internal=True):
-        if internal is True and external is False:
-            return "1/*"
-        elif internal is False and external is True:
-            return "0/*"
-        else:
-            return "<0;1>/*"
+        res = []
+        for i in self.indexes:
+            if isinstance(i, list):
+                if internal is True and external is False:
+                    i = str(i[1])
+                elif internal is False and external is True:
+                    i = str(i[0])
+                else:
+                    i = "<%d;%d>" % (i[0], i[1])
+            else:
+                i = str(i)
+            res.append(i)
+        return "/".join(res)
 
     def to_int_list(self, branch_idx, idx):
         assert branch_idx in self.indexes[0]
@@ -221,10 +253,16 @@ class Key:
             assert self.origin, "Key origin info is required"
 
     def __eq__(self, other):
-        return self.origin.psbt_derivation() == other.origin.psbt_derivation()
+        return self.origin.psbt_derivation() == other.origin.psbt_derivation() \
+                and self.derivation.indexes == other.derivation.indexes
 
     def __hash__(self):
-        return hash(tuple(self.origin.psbt_derivation()))
+        orig = tuple(self.origin.psbt_derivation())
+        der = self.derivation.indexes.copy()
+        if self.derivation.multi_path_index is not None:
+            der[self.derivation.multi_path_index] = tuple(der[self.derivation.multi_path_index])
+        der = tuple(der)
+        return hash(orig+der)
 
     def __len__(self):
         return 34 - int(self.taproot) # <33:sec> or <32:xonly>
@@ -317,9 +355,27 @@ class Key:
 
         return node, chain_type
 
-    def derive(self, idx=0):
+    def derive(self, idx=None, change=False):
         if isinstance(self.node, bytes):
             return self
+        if isinstance(idx, list):
+            for i in idx:
+                mp_i = self.derivation.multi_path_index or 0
+                if i in self.derivation.indexes[mp_i]:
+                    idx = i
+                    break
+            else:
+                assert False
+
+        elif idx is None:
+            # derive according to key subderivation if any
+            if self.derivation is None:
+                idx = 1 if change else 0
+            else:
+                if self.derivation.multi_path_index is not None:
+                    ext, inter = self.derivation.indexes[self.derivation.multi_path_index]
+                    idx = inter if change else ext
+
         new_node = self.node.copy()
         new_node.derive(idx, False)
         if self.origin:
@@ -372,11 +428,11 @@ class Key:
     def extended_public_key(self):
         return chains.current_chain().serialize_public(self.node)
 
-    def to_string(self, external=True, internal=True):
+    def to_string(self, external=True, internal=True, subderiv=True):
         key = self.prefix
         if isinstance(self.node, ngu.hdnode.HDNode):
             key += self.extended_public_key()
-            if self.derivation:
+            if self.derivation and subderiv:
                 key += "/" + self.derivation.to_string(external, internal)
         else:
             key += b2a_hex(self.node).decode()
@@ -390,24 +446,50 @@ class Key:
 
 
 def fill_policy(policy, keys, external=True, internal=True):
-    policy = policy
     keys_len = len(keys)
     for i in range(keys_len - 1, -1, -1):
         k = keys[i]
         ph = "@%d" % i
         ph_len = len(ph)
         while True:
+            subderiv = True
             ix = policy.find(ph)
             if ix == -1:
                 break
+            if policy[ix+ph_len] == "/":
+                # subderivation is part of the policy
+                subderiv = False
+                x = ix + ph_len
+                substr = policy[x:x+26]  # 26 is longest possible subderivation allowed "/<2147483647;2147483646>/*"
+                mp_start = substr.find("<")
+                assert mp_start != -1
+                mp_end = substr.find(">")
+                mp = substr[mp_start:mp_end + 1]
+                _ext, _int = mp[1:-1].split(";")
+                if external and not internal:
+                    sub = _ext
+                elif internal and not external:
+                    sub = _int
+                else:
+                    sub = None
+                if sub is not None:
+                    policy = policy[:x + mp_start] + sub + policy[x + mp_end + 1:]
+
             if not isinstance(k, str):
-                k_str = k.to_string(external, internal)
+                k_str = k.to_string(external, internal, subderiv=subderiv)
             else:
                 k_str = k
-                if external and not internal:
-                    k_str = k_str.replace("<0;1>", "0")
-                if internal and not external:
-                    k_str = k_str.replace("<0;1>", "1")
+                if not subderiv:
+                    k_str = "/".join(k_str.split("/")[:-2])
+                mp_start = k_str.find("<")
+                if mp_start != -1:
+                    mp_end = k_str.find(">")
+                    mp = k_str[mp_start:mp_end+1]
+                    ext, int = mp[1:-1].split(";")
+                    if external and not internal:
+                        k_str = k_str.replace(mp, ext)
+                    if internal and not external:
+                        k_str = k_str.replace(mp, int)
 
             x = policy[ix:ix + ph_len]
             assert x == ph

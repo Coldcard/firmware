@@ -2,7 +2,8 @@
 #
 # Copyright (c) 2020 Stepan Snigirev MIT License embit/miniscript.py
 #
-import ngu, ujson, uio, chains
+import ngu, ujson, uio, chains, ure
+from ucollections import OrderedDict
 from binascii import unhexlify as a2b_hex
 from binascii import hexlify as b2a_hex
 from serializations import ser_compact_size, ser_string
@@ -150,6 +151,10 @@ class MiniScriptWallet(BaseWallet):
     def xfp_paths(self):
         if self._desc is None:
             res = []
+            if self._key:
+                ik = Key.from_string(self.key)
+                if ik.origin:
+                    res.append(ik.origin.psbt_derivation())
             for k in self.keys:
                 k = Key.from_string(k)
                 if k.origin:
@@ -181,22 +186,25 @@ class MiniScriptWallet(BaseWallet):
         return True
 
     def subderivation_indexes(self, xfp_paths):
-        # we already knwo that thy do match
+        # we already know that they do match
         my_xfp_paths = self.desc.xfp_paths()
         res = set()
         for x in my_xfp_paths:
             prefix_len = len(x)
             for y in xfp_paths:
                 if x == y[:prefix_len]:
-                    derivation = y
-                    break
-            else:
-                assert False
+                    to_derive = tuple(y[prefix_len:])
+                    res.add(to_derive)
 
-            to_derive = tuple(derivation[prefix_len:])
-            res.add(to_derive)
-        assert len(res) == 1, "subderivation differ"
-        branch, idx = list(res)[0]
+        assert res
+        if len(res) == 1:
+            branch, idx = list(res)[0]
+        else:
+            branch = [i[0] for i in res]
+            indexes = set([i[1] for i in res])
+            assert len(indexes) == 1
+            idx = list(indexes)[0]
+
         return branch, idx
 
     def derive_desc(self, xfp_paths):
@@ -266,20 +274,30 @@ class MiniScriptWallet(BaseWallet):
                 s += "%s (provably unspendable)\n\n" % unspend
             else:
                 xfp, deriv, xpub = key.to_cc_data()
-                s += '%s:\n  %s\n\n%s\n\n' % (xfp2str(xfp), deriv, xpub)
+                s += '%s:\n  %s\n\n%s/%s\n\n' % (xfp2str(xfp), deriv, xpub,
+                                                 key.derivation.to_string())
             return s
 
     async def show_keys(self):
         msg = ""
         if self.taproot:
             msg = self.taproot_internal_key_detail()
+            msg += "Taproot tree keys:\n\n"
 
-        msg += "Taproot tree keys:\n\n"
-        for idx, k in enumerate(self.keys):
+        orig_keys = OrderedDict()
+        for k in self.keys:
+            if isinstance(k, str):
+                k = Key.from_string(k)
+            if k.origin not in orig_keys:
+                orig_keys[k.origin] = []
+            orig_keys[k.origin].append(k)
+
+        for idx, k_lst in enumerate(orig_keys.values()):
+            subderiv = True if len(k_lst) == 1 else False
             if idx:
                 msg += '\n---===---\n\n'
 
-            msg += '@%s:\n  %s\n\n' % (idx, k)
+            msg += '@%s:\n  %s\n\n' % (idx, k_lst[0].to_string(subderiv=subderiv))
 
         await ux_show_story(msg)
 
@@ -322,10 +340,9 @@ class MiniScriptWallet(BaseWallet):
 
         return ch
 
-    def yield_addresses(self, start_idx, count, change_idx=0, scripts=True):
+    def yield_addresses(self, start_idx, count, change=False, scripts=True):
         ch = chains.current_chain()
-
-        dd = self.desc.derive(change_idx)
+        dd = self.desc.derive(None, change=change)
         idx = start_idx
         while count:
             # make the redeem script, convert into address
@@ -364,7 +381,7 @@ class MiniScriptWallet(BaseWallet):
         addrs = []
 
         for i, paths, addr, _, ik, ikp in self.yield_addresses(start, n,
-                                                               change_idx=change,
+                                                               change=bool(change),
                                                                scripts=False):
             if i == 0 and ik:
                 ik = b2a_hex(ik).decode()
@@ -380,7 +397,11 @@ class MiniScriptWallet(BaseWallet):
             if i == 0 and len(paths) <= 4 and not ik:
                 msg += '\n'.join(paths) + '\n =>\n'
             else:
-                msg += '.../%d/%d =>\n' % (change, i)
+                change_idx = set([int(p.split("/")[-2]) for p in paths])
+                if len(change_idx) == 1:
+                    msg += '.../%d/%d =>\n' % (list(change_idx)[0], i)
+                else:
+                    msg += '.../%d =>\n' % i
 
             addrs.append(addr)
             msg += truncate_address(addr) + '\n\n'
@@ -395,7 +416,7 @@ class MiniScriptWallet(BaseWallet):
             + (["Internal Key"] if self.taproot else [])
         ) + '"\n'
         for (idx, derivs, addr, script, ik, ikp) in self.yield_addresses(start, n,
-                                                                         change_idx=change):
+                                                                         change=bool(change)):
             ln = '%d,"%s","%s","' % (idx, addr, script)
             ln += '","'.join(derivs)
             if ik:
@@ -423,9 +444,14 @@ class MiniScriptWallet(BaseWallet):
     def to_string(self, external=True, internal=True, checksum=True):
         if self._key:
             key = self._key
-            if internal != external:
-                to_replace = "0" if external else "1"
-                key = self._key.replace("<0;1>", to_replace)
+            multipath_rgx = ure.compile(r"<\d+;\d+>")
+            match = multipath_rgx.search(key)
+            if match:
+                mp = match.group(0)
+                ext, int = mp[1:-1].split(";")
+                if internal != external:
+                    to_replace = ext if external else int
+                    key = self._key.replace(mp, to_replace)
         if self._taproot:
             desc = "tr(%s" % key
             if self.policy:
@@ -809,23 +835,22 @@ class Miniscript:
             if isinstance(arg, Miniscript):
                 arg.is_sane(taproot=taproot)
 
-
     @staticmethod
-    def key_derive(key, idx, key_map=None):
+    def key_derive(key, idx, key_map=None, change=False):
         if key_map and key in key_map:
             kd = key_map[key]
         else:
-            kd = key.derive(idx)
+            kd = key.derive(idx, change=change)
         return kd
 
-    def derive(self, idx, key_map=None):
+    def derive(self, idx, key_map=None, change=False):
         args = []
         for arg in self.args:
             if hasattr(arg, "derive"):
                 if isinstance(arg, Key) or isinstance(arg, KeyHash):
-                    arg = self.key_derive(arg, idx, key_map)
+                    arg = self.key_derive(arg, idx, key_map, change=change)
                 else:
-                    arg = arg.derive(idx)
+                    arg = arg.derive(idx, change=change)
 
             args.append(arg)
         return type(self)(*args)
