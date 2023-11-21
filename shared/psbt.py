@@ -632,7 +632,7 @@ class psbtOutputProxy(psbtProxy):
                     try:
                         active_miniscript.validate_script_pubkey(
                             b"\x51\x20" + pkh,
-                            [v[1:] for v in self.taproot_subpaths.values() if v[0]]
+                            [v[1:] for v in self.taproot_subpaths.values() if len(v[1:]) > 1]
                         )
                         self.is_change = True
                         return
@@ -1034,7 +1034,7 @@ class psbtInputProxy(psbtProxy):
 
         if self.is_miniscript and which_key:
             try:
-                xfp_paths = [item[1:] for item in self.taproot_subpaths.values() if item[0]]
+                xfp_paths = [item[1:] for item in self.taproot_subpaths.values() if len(item[1:]) > 1]
             except AttributeError:
                 xfp_paths = list(self.subpaths.values())
 
@@ -1749,8 +1749,8 @@ class psbtObject(psbtProxy):
                 iss = "has different hardening pattern"
             elif path[0:len(path_prefix)] != path_prefix:
                 iss = "goes to diff path prefix"
-            elif (path[-2] & 0x7fffffff) not in {0, 1}:
-                iss = "2nd last component not 0 or 1"
+            # elif (path[-2] & 0x7fffffff) not in {0, 1}:
+            #     iss = "2nd last component not 0 or 1"
             elif (path[-1] & 0x7fffffff) > idx_max:
                 iss = "last component beyond reasonable gap"
             else:

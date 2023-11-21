@@ -103,11 +103,11 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
 
 @pytest.fixture
 def get_cc_key(dev):
-    def doit(path, int_ext=False):
+    def doit(path, subderiv=None):
         # cc device key
         master_xfp_str = struct.pack('<I', dev.master_fingerprint).hex()
         cc_key = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
-        return f"[{master_xfp_str}/{path}]{cc_key}{'/<0;1>/*' if int_ext else '/0/*'}"
+        return f"[{master_xfp_str}/{path}]{cc_key}{subderiv if subderiv else '/<0;1>/*'}"
     return doit
 
 
@@ -530,11 +530,12 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
 
 
 @pytest.fixture
-def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export, get_cc_key,
-                        pick_menu_item, goto_home, cap_menu, microsd_path, use_regtest,
-                        import_miniscript, bitcoin_core_signer, import_duplicate):
+def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
+                        pick_menu_item, goto_home, cap_menu, microsd_path,
+                        use_regtest, get_cc_key, import_miniscript,
+                        bitcoin_core_signer, import_duplicate):
     def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True, r=None,
-             tapscript_threshold=False, add_own_pk=False):
+             tapscript_threshold=False, add_own_pk=False, same_account=False):
 
         use_regtest()
         bitcoind_signers = []
@@ -562,9 +563,10 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export, get_cc_
         need_keypress("y")
         xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
         template = xpub_obj[script_type +"_desc"]
+        acct_deriv = xpub_obj[script_type + '_deriv']
 
         if tapscript_threshold:
-            me = f"[{xpub_obj['xfp']}/{xpub_obj[script_type + '_deriv'].replace('m/','')}]{xpub_obj[script_type]}/0/*"
+            me = f"[{xpub_obj['xfp']}/{acct_deriv.replace('m/','')}]{xpub_obj[script_type]}/<0;1>/*"
             signers_xp = [me] + bitcoind_signers_xpubs
             assert len(signers_xp) == N
             desc = f"tr({H},%s)"
@@ -588,7 +590,10 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export, get_cc_
 
             if add_own_pk:
                 if len(scripts) < 8:
-                    cc_key = get_cc_key("m/86h/1h/1000h")
+                    if same_account:
+                        cc_key = get_cc_key("m/86h/1h/0h", subderiv="/<2;3>/*")
+                    else:
+                        cc_key = get_cc_key("m/86h/1h/1000h")
                     cc_pk_leaf = f"pk({cc_key})"
                     scripts.append(cc_pk_leaf)
                 else:
@@ -601,9 +606,14 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export, get_cc_
 
         else:
             if add_own_pk:
-                ss = [get_cc_key("m/86h/1h/0h")] + bitcoind_signers_xpubs
+                if same_account:
+                    ss = [get_cc_key("m/86h/1h/0h", subderiv="/<4;5>/*")] + bitcoind_signers_xpubs
+                    cc_key = get_cc_key("m/86h/1h/0h", subderiv="/<6;7>/*")
+                else:
+                    ss = [get_cc_key("m/86h/1h/0h")] + bitcoind_signers_xpubs
+                    cc_key = get_cc_key("m/86h/1h/1000h")
+
                 tmplt = f"sortedmulti_a({M},{','.join(ss)})"
-                cc_key = get_cc_key("m/86h/1h/1000h")
                 cc_pk_leaf = f"pk({cc_key})"
                 desc = f"tr({H},{{{tmplt},{cc_pk_leaf}}})"
             else:
@@ -704,14 +714,22 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export, get_cc_
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("cc_first", [True, False])
 @pytest.mark.parametrize("add_pk", [True, False])
+@pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("M_N", [(3,4),(4,5),(5,6)])
 def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, need_keypress, pick_menu_item,
                    cap_menu, cap_story, microsd_path, use_regtest, bitcoind, microsd_wipe,
-                   load_export, bitcoind_miniscript, add_pk):
+                   load_export, bitcoind_miniscript, add_pk, same_acct, get_cc_key):
     M, N = M_N
     clear_miniscript()
     microsd_wipe()
-    wo, signers = bitcoind_miniscript(M, N, "p2tr", tapscript_threshold=True, add_own_pk=add_pk)
+    internal_key = None
+    if same_acct:
+        # provide internal key with same account derivation (change based derivation)
+        internal_key = get_cc_key("m/86h/1h/0h", subderiv='/<10;11>/*')
+
+    wo, signers = bitcoind_miniscript(M, N, "p2tr", tapscript_threshold=True,
+                                      add_own_pk=add_pk, internal_key=internal_key,
+                                      same_account=same_acct)
     addr = wo.getnewaddress("", "bech32m")
     bitcoind.supply_wallet.sendtoaddress(addr, 49)
     bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
@@ -732,7 +750,7 @@ def test_tapscript(M_N, cc_first, clear_miniscript, goto_home, need_keypress, pi
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "PSBT Signed"
-    fname = story.split("\n\n")[-1]
+    fname = [i for i in story.split("\n\n") if ".psbt" in i][0]
     with open(microsd_path(fname), "r") as f:
         psbt = f.read().strip()
     if cc_first:
@@ -1082,13 +1100,16 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
 
 def test_same_key_account_based_minisc(goto_home, need_keypress, pick_menu_item, cap_story,
                                        clear_miniscript, microsd_path, load_export, bitcoind,
-                                       import_miniscript, import_duplicate):
+                                       import_miniscript, use_regtest, import_duplicate):
     clear_miniscript()
+    use_regtest()
+
     desc = ("wsh("
             "or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
             "and_v("
             "v:pkh([0f056943/84'/1'/9']tpubDC7jGaaSE66QBAcX8TUD3JKWari1zmGH4gNyKZcrfq6NwCofKujNF2kyeVXgKshotxw5Yib8UxLrmmCmWd8NVPVTAL8rGfMdc7TsAKqsy6y/<0;1>/*),"
             "older(5))))#qmwvph5c")
+
     name = "mini-accounts"
     fname = f"{name}.txt"
     with open(microsd_path(fname), "w") as f:
@@ -1171,10 +1192,184 @@ def test_same_key_account_based_minisc(goto_home, need_keypress, pick_menu_item,
     assert txn_id
 
 
+CHANGE_BASED_DESCS = [
+    (
+        "wsh("
+            "or_d("
+                "pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
+                "and_v("
+                    "v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*),"
+                    "older(5)"
+                ")"
+            ")"
+        ")#aq0kpuae"
+    ),
+    (
+        "wsh(or_i("
+            "and_v("
+                "v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2147483646;2147483647>/*),"
+                "older(10)"
+            "),"
+            "or_d("
+                "multi("
+                    "3,"
+                    "[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<100;101>/*,"
+                    "[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<26;27>/*,"
+                    "[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<4;5>/*"
+                "),"
+                "and_v("
+                    "v:thresh("
+                        "2,"
+                        "pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<20;21>/*),"
+                        "a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<104;105>/*),"
+                        "a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<22;23>/*)"
+                    "),"
+                    "older(5)"
+                ")"
+            ")"
+        "))#a4nfkskx"
+    ),
+    "tr(50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0,{or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*),older(5))),or_i(and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2147483646;2147483647>/*),older(10)),or_d(multi_a(3,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<100;101>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<26;27>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<4;5>/*),and_v(v:thresh(2,pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<20;21>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<104;105>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<22;23>/*)),older(5))))})#z5x7409w",
+    "tr([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<66;67>/*,{or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2;3>/*),older(5))),or_i(and_v(v:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<2147483646;2147483647>/*),older(10)),or_d(multi_a(3,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<100;101>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<26;27>/*,[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<4;5>/*),and_v(v:thresh(2,pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<20;21>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<104;105>/*),a:pkh([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<22;23>/*)),older(5))))})#qqcy9jlr",
+]
+
+@pytest.mark.parametrize("desc", CHANGE_BASED_DESCS)
+def test_same_key_change_based_minisc(goto_home, need_keypress, pick_menu_item, cap_story,
+                                      clear_miniscript, microsd_path, load_export, bitcoind,
+                                      import_miniscript, address_explorer_check, use_regtest,
+                                      desc):
+    clear_miniscript()
+    use_regtest()
+    if desc.startswith("tr("):
+        af = "bech32m"
+    else:
+        af = "bech32"
+
+    name = "mini-change"
+    fname = f"{name}.txt"
+    with open(microsd_path(fname), "w") as f:
+        f.write(desc)
+
+    _, story = import_miniscript(fname)
+    assert "Create new miniscript wallet?" in story
+    assert fname.split(".")[0] in story
+    assert "Press (1) to see extended public keys" in story
+
+    need_keypress("y")
+    goto_home()
+    pick_menu_item('Settings')
+    pick_menu_item('Miniscript')
+    pick_menu_item(fname.split(".")[0])
+    pick_menu_item("Descriptors")
+    pick_menu_item("Bitcoin Core")
+    text = load_export("sd", label="Bitcoin Core miniscript", is_json=False, sig_check=False)
+    text = text.replace("importdescriptors ", "").strip()
+    # remove junk
+    r1 = text.find("[")
+    r2 = text.find("]", -1, 0)
+    text = text[r1: r2]
+    core_desc_object = json.loads(text)
+    # wo wallet
+    wo = bitcoind.create_wallet(
+        wallet_name=f"minsc-change", disable_private_keys=True,
+        blank=True, passphrase=None, avoid_reuse=False, descriptors=True
+    )
+    # import descriptors to watch only wallet
+    res = wo.importdescriptors(core_desc_object)
+    assert res[0]["success"]
+    assert res[1]["success"]
+
+    addr = wo.getnewaddress("", af)
+    assert bitcoind.supply_wallet.sendtoaddress(addr, 49)
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    dest_addr = wo.getnewaddress("", af)  # selfspend
+    psbt = wo.walletcreatefundedpsbt([], [{dest_addr: 1.0}], 0, {"fee_rate": 2})["psbt"]
+    fname = "msc-change-conso.psbt"
+    with open(microsd_path(fname), "w") as f:
+        f.write(psbt)
+
+    goto_home()
+    pick_menu_item("Ready To Sign")
+    time.sleep(0.5)
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        time.sleep(0.1)
+        pick_menu_item(fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert "OK TO SEND?" in title
+    assert "Consolidating" in story
+    need_keypress("y")  # confirm signing
+    time.sleep(0.5)
+    title, story = cap_story()
+    assert "PSBT Signed" == title
+    assert "Updated PSBT is:" in story
+    need_keypress("y")
+    fname_psbt = story.split("\n\n")[1]
+    with open(microsd_path(fname_psbt), "r") as f:
+        final_psbt = f.read().strip()
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
+    assert txn_id
+
+    bitcoind.supply_wallet.generatetoaddress(1, bitcoind.supply_wallet.getnewaddress())
+
+    dest_addr_0 = bitcoind.supply_wallet.getnewaddress()
+    dest_addr_1 = bitcoind.supply_wallet.getnewaddress()
+    dest_addr_2 = bitcoind.supply_wallet.getnewaddress()
+    psbt = wo.walletcreatefundedpsbt(
+        [],
+        [{dest_addr_0: 1.0}, {dest_addr_1: 2.56}, {dest_addr_2: 12.99}],
+        0, {"fee_rate": 2}
+    )["psbt"]
+    fname = "msc-change-send.psbt"
+    with open(microsd_path(fname), "w") as f:
+        f.write(psbt)
+
+    goto_home()
+    pick_menu_item("Ready To Sign")
+    time.sleep(0.5)
+    title, story = cap_story()
+    if "Choose PSBT file to be signed" in story:
+        need_keypress("y")
+        time.sleep(0.1)
+        pick_menu_item(fname)
+        time.sleep(0.1)
+        title, story = cap_story()
+    assert "OK TO SEND?" in title
+    assert "Consolidating" not in story
+    need_keypress("y")  # confirm signing
+    time.sleep(0.5)
+    title, story = cap_story()
+    assert "PSBT Signed" == title
+    assert "Updated PSBT is:" in story
+    need_keypress("y")
+    fname_psbt = story.split("\n\n")[1]
+    with open(microsd_path(fname_psbt), "r") as f:
+        final_psbt = f.read().strip()
+
+    res = wo.finalizepsbt(final_psbt)
+    assert res["complete"]
+    tx_hex = res["hex"]
+    res = wo.testmempoolaccept([tx_hex])
+    assert res[0]["allowed"]
+    txn_id = bitcoind.supply_wallet.sendrawtransaction(tx_hex)
+    assert txn_id
+
+    # check addresses
+    address_explorer_check("sd", af, wo, "mini-change")
+
+
 def test_same_key_account_based_multisig(goto_home, need_keypress, pick_menu_item, cap_story,
                                          clear_miniscript, microsd_path, load_export, bitcoind,
                                          import_miniscript):
-    # but still imported as miniscript - even tho it is basic multisig that can be imported legacy path
     clear_miniscript()
     desc = ("wsh(sortedmulti(2,"
             "[0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*,"
@@ -1228,6 +1423,7 @@ def test_tapscript_depth(get_cc_key, pick_menu_item, need_keypress, cap_story,
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("lt_type", ["older", "after"])
+@pytest.mark.parametrize("same_acct", [True, False])
 @pytest.mark.parametrize("recovery", [True, False])
 @pytest.mark.parametrize("leaf2_mine", [True, False])
 @pytest.mark.parametrize("minisc", [
@@ -1243,7 +1439,7 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
                        need_keypress, pick_menu_item, cap_menu, cap_story, microsd_path,
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
-                       bitcoin_core_signer, import_duplicate):
+                       bitcoin_core_signer, same_acct, import_duplicate):
 
     # needs this bitcoind branch https://github.com/bitcoin/bitcoin/pull/27255
     normal_cosign_core = False
@@ -1274,8 +1470,12 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
         signers.append(signer)
 
     # cc device key
-    cc_key = get_cc_key("86h/1h/0h")
-    cc_key1 = get_cc_key("86h/1h/1h")
+    if same_acct:
+        cc_key = get_cc_key("86h/1h/0h", subderiv="/<4;5>/*")
+        cc_key1 = get_cc_key("86h/1h/0h", subderiv="/<6;7>/*")
+    else:
+        cc_key = get_cc_key("86h/1h/0h")
+        cc_key1 = get_cc_key("86h/1h/1h")
 
     if recovery:
         # recevoery path is always B

@@ -224,7 +224,7 @@ class AddressListMenu(MenuSystem):
 
     async def pick_miniscript(self, _1, _2, item):
         msc_wallet = item.arg
-        settings.put('axi', item.label)       # update last clicked address
+        settings.put('axi', item.label)  # update last clicked address
         await self.show_n_addresses(None, None, msc_wallet)
 
     async def make_custom(self, *a):
@@ -253,7 +253,6 @@ Press (3) if you really understand and accept these risks.
         # - also for other {account} numbers
         # - or multisig case
         from glob import dis, NFC, VD
-        import version
 
         # speed up UI (do not recalculate addresses in while loop)
         # cache can only have 2 values external, internal (0,1)
