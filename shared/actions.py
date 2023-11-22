@@ -1672,7 +1672,7 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
                         if taster is not None:
                             try:
                                 yummy = taster(full_fname)
-                            except IOError:
+                            except OSError:
                                 #print("fail: %s" % full_fname)
                                 yummy = False
 
