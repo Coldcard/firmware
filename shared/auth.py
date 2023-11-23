@@ -967,7 +967,7 @@ def psbt_encoding_taster(taste, psbt_len):
     if taste[0:5] == b'psbt\xff':
         decoder = None
         output_encoder = lambda x: x
-    elif taste[0:10] == b'70736274ff' or taste[0:10] == b'70736274FF':
+    elif taste[0:10].lower() == b'70736274ff':
         decoder = HexStreamer()
         output_encoder = HexWriter
         psbt_len //= 2

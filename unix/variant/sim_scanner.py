@@ -11,9 +11,13 @@ DATA_FILE = 'qrdata.txt'
 
 class SimulatedQRScanner(QRScanner):
     def __init__(self):
+        self.setup_done = True
         self.version = '4.20'
+        self.lock = asyncio.Lock()
+        # returns a Q we append to as results come in
+        self._q = Queue()
 
-    async def _read_results(self, q):
+    async def _read_results(self):
         # be a task that reads incoming QR codes from scanner (already in operation)
         # - will be canceled when done/stopping
         try:
@@ -21,8 +25,15 @@ class SimulatedQRScanner(QRScanner):
         except OSError:
             orig_mtime = None
 
+        from ckcc import data_pipe
+
         while 1:
-            await asyncio.sleep_ms(250)
+            try:
+                got = await asyncio.wait_for(data_pipe.readline(), 250)
+                print("Got pasted QR data.")
+                self._q.put_nowait(got)
+            except asyncio.TimeoutError:
+                pass
 
             try:
                 _, mtime, _ = os.stat(DATA_FILE)[-3:]
@@ -32,31 +43,25 @@ class SimulatedQRScanner(QRScanner):
             if mtime == orig_mtime:
                 continue
 
-            print("Got new QR scan data.")
-            got = open(DATA_FILE, 'rt').read(8196).strip()
-            q.put_nowait(got)
+            print("Got new QR scan data from file.")
+            got = open(DATA_FILE, 'rb').read(8196)
+            self._q.put_nowait(got)
 
             orig_mtime = mtime
             
-    async def scan_once(self):
-        # returns a Q we append to as results come in
-        q = Queue()
-
-        print("Put QR data into file: work/%s" % DATA_FILE)
-
-        task = asyncio.create_task(self._read_results(q))
-
-        rv = await q.get()
-
-        task.cancel()
-
-        return rv
+    async def _readline(self):
+        rv = await self._q.get()
+        return rv.rstrip().decode()
 
     async def wakeup(self):
+        print("Click screen to paste QR data from clipboard,\nor write data into file: work/%s" % DATA_FILE)
+        self._task = asyncio.create_task(self._read_results())
+
+    async def tx(self, msg, timeout=250):
         return
 
     async def goto_sleep(self):
-        return
+        self._task.cancel()
 
     async def torch_control(self, on):
         print("Torch is: " + ('ON' if on else 'off'))

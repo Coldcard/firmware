@@ -4,7 +4,7 @@
 #
 # REMINDER: you must recompile coldcard-mpy if you change this file!
 #
-import ustruct, sys
+import ustruct, sys, uasyncio
 from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
 #import utime as time
@@ -16,10 +16,12 @@ rng_fd = open('/dev/urandom', 'rb')
 
 # Emulate the red/green LED
 global genuine_led
-
 led_pipe = open(int(sys.argv[3]), 'wb')
 led_pipe.write(b'\xff\x01')     # all off, except SE1 green
 genuine_led = True
+
+# Provide a way to dump few hundred/4k bytes of data from QR or NFC simulated read
+data_pipe = uasyncio.StreamReader(open(int(sys.argv[4]), 'rb'))
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!

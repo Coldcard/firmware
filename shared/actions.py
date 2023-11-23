@@ -21,7 +21,7 @@ from glob import settings
 from pincodes import pa
 from menu import start_chooser
 from version import MAX_TXN_LEN
-from charcodes import KEY_NFC, KEY_QR
+from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 
 
 CLEAR_PIN = '999999-999999'
@@ -690,7 +690,8 @@ async def view_seed_words(*a):
                                                   raw or sv.raw,
                                                   sv.node)
 
-        msg += '\n\nPress (1) to view as QR Code.'
+        if not version.has_qwerty:
+            msg += '\n\nPress (1) to view as QR Code.'
 
         while 1:
             ch = await ux_show_story(msg, sensitive=True, escape='1'+KEY_QR)
@@ -1343,8 +1344,11 @@ async def import_xprv(_1, _2, item):
             # error already displayed in nfc.py
             return
     elif choice == KEY_QR:
-        # TODO: scan something
-        pass
+        from ux_q1 import QRScannerInteraction
+        extended_key = await QRScannerInteraction.scan('Scan XPRV from a QR code')
+        if not extended_key:
+            # press pressed CANCEL
+            return
     else:
         # only get here if NFC was not chosen
         # pick a likely-looking file.
@@ -1491,7 +1495,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
 
     meta = "from "
     label = "TAPSIGNER encrypted backup file"
-    choice = await import_export_prompt(label, is_import=False)
+    choice = await import_export_prompt(label, is_import=True)
 
     if choice == KEY_CANCEL:
         return
@@ -1502,8 +1506,28 @@ async def import_tapsigner_backup_file(_1, _2, item):
             # error already displayed in nfc.py
             return
     elif choice == KEY_QR:
-        # TODO: how is binary encoded? who made this QR??!
-        pass
+        # how is binary encoded? who made this QR??!
+        from ux_q1 import QRScannerInteraction
+        from ubinascii import a2b_base64
+        from ubinascii import unhexlify as a2b_hex
+
+        prob = None
+        while 1:
+            data = await QRScannerInteraction.scan(
+                            'Scan TAPSIGNER backup data', prob)
+            if not data: return     # pressed cancel
+
+            # guess at serialization between Base64 and Hex
+            try:
+                # pure hex, the smarter encoding (when in caps)
+                data = a2b_hex(data)
+            except ValueError:
+                try:
+                    data = a2b_base64(data)
+                except ValueError:
+                    prob = 'Expected HEX digits or Base64 encoded binary'
+                    continue
+            break
     else:
         fn = await file_picker('Pick ' + label, suffix="aes", min_size=100, max_size=160, **choice)
         if not fn: return

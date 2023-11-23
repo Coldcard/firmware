@@ -94,7 +94,7 @@ static void write_data(const spi_t *spi, int len, const uint8_t *data)
 
 static void write_data_repeated(const spi_t *spi, int count, int len, const uint8_t *data)
 {
-    // Send a bunch of pixel data, and repeat it N tim.es
+    // Send a bunch of pixel data, and repeat it N times.
     mp_hal_pin_write(PIN_LCD_CS, 1);
     mp_hal_pin_write(PIN_LCD_DATA_CMD, 1);
     mp_hal_pin_write(PIN_LCD_CS, 0);

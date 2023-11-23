@@ -8,6 +8,7 @@ from struct import pack, unpack
 from utils import B2A
 from imptask import IMPT
 from queues import Queue
+from bbqr import BBQrState
 
 def calc_bcc(msg):
     bcc = 0
@@ -50,6 +51,7 @@ def unwrap(packed):
 OKAY = b'Z\x01\x00\x02\x90\x00\x93\xa5'
 RAW_OKAY = b'\x90\x00'
 LEN_OKAY = const(8)
+            
 
 # TODO: constructor should leave it in reset for simple lower-power usage; then after
 #       login we can do full setup (2+ seconds) and then sleep again until needed.
@@ -57,9 +59,12 @@ LEN_OKAY = const(8)
 class QRScanner:
 
     def __init__(self):
-        self.lock = asyncio.Lock()
 
+        # set when we are.. 
         self.busy_scanning = False
+
+        # hodl this lock when communicating w/ QR scanner
+        self.lock = asyncio.Lock()
 
         from machine import UART, Pin
         self.serial = UART(2, 9600)
@@ -84,29 +89,30 @@ class QRScanner:
         # setup device, and then stop
         await asyncio.sleep(2)
 
-        while self.serial.read():
-            pass        # ignore old data
+        async with self.lock: 
+            while self.serial.read():
+                pass        # ignore old data
 
-        try:
-            # get b'V2.3.0.7\r\n' or similar
-            rx = await self.tx('T_OUT_CVER')
-            self.version = rx.decode().strip()
-        except:
-            raise
-            #print("QR Scanner: missing")
+            try:
+                # get b'V2.3.0.7\r\n' or similar
+                rx = await self.tx('T_OUT_CVER')
+                self.version = rx.decode().strip()
+            except:
+                raise
+                #print("QR Scanner: missing")
 
-        # configure it like we want it
-        await self.tx('S_CMD_FFFF')         # factory reset of settings
-        await self.tx('S_CMD_MTRS5000')     # 5s to read before fail
-        await self.tx('S_CMD_MT11')         # trigger is edge-based (not level)
-        await self.tx('S_CMD_MT30')         # Same code reading without delay
-        await self.tx('S_CMD_MT20')         # Enable automatic sleep when idle
-        await self.tx('S_CMD_MTRF500')      # Idle time: 500ms
-        await self.tx('S_CMD_059A')         # add CR LF after QR data
+            # configure it like we want it
+            await self.tx('S_CMD_FFFF')         # factory reset of settings
+            await self.tx('S_CMD_MTRS5000')     # 5s to read before fail
+            await self.tx('S_CMD_MT11')         # trigger is edge-based (not level)
+            await self.tx('S_CMD_MT30')         # Same code reading without delay
+            await self.tx('S_CMD_MT20')         # Enable automatic sleep when idle
+            await self.tx('S_CMD_MTRF500')      # Idle time: 500ms
+            await self.tx('S_CMD_059A')         # add CR LF after QR data
 
-        self.setup_done = True
+            self.setup_done = True
 
-        await self.goto_sleep()
+            await self.goto_sleep()
             
     async def scan_once(self):
         # blocks until something is scanned. returns it
@@ -114,6 +120,8 @@ class QRScanner:
         # wait for reset process to complete (can be an issue right after boot)
         while not self.setup_done:
             await asyncio.sleep(.25)
+
+        bbqr = BBQrState()
 
         async with self.lock: 
             self.busy_scanning = True
@@ -134,16 +142,38 @@ class QRScanner:
             await self.tx('SR030301')
 
             try:
-                rv = await self.stream.readline()
+                while 1:
+                    rv = await self._readline()
+                    if not rv: continue
+
+                    if rv[0:2] == 'B$' and bbqr.collect(rv):
+                        # BBQr protocol detected; collect more data
+                        continue
+
+                    break 
             except asyncio.CancelledError:
-                rv = None
+                return None
             finally:
-                await self.tx('SR030300')
+                self.busy_scanning = False
+                try:
+                    await self.tx('SR030300')
+                except:
+                    await self.tx('SR030300')       # second try
                 await self.goto_sleep()
 
-        self.busy_scanning = False
+        if bbqr.is_valid():
+            # will return a tuple
+            return bbqr
 
         return rv
+
+    async def _readline(self):
+        # overridden in simulator
+        # - blocks for QR to be seen
+        # - must trim newline(s)
+        # - must convert to str
+        rv = await self.stream.readline()
+        return rv.rstrip().decode()
 
     async def wakeup(self):
         # send specific command until it responds
@@ -231,7 +261,7 @@ class QRScanner:
             return
 
         if self.busy_scanning:
-            # do nothing if scanning already
+            # during scanning, invert meaning... turn off light
             return
 
         async with self.lock: 

@@ -68,7 +68,7 @@ async def ux_confirm(msg):
     # confirmation screen, with stock title and Y=of course.
     from ux import ux_show_story
 
-    resp = await ux_show_story('\n' + msg, title="Are you SURE ?!?")
+    resp = await ux_show_story(msg, title="Are you SURE ?!?")
 
     return resp == 'y'
 
@@ -594,9 +594,11 @@ class QRScannerInteraction:
     def __init__(self):
         pass
 
-    async def animation(self, prompt, line2=None):
+    @staticmethod
+    async def scan(prompt, line2=None):
         # draw animation, while waiting for them to scan something
         # - CANCEL to abort
+        # - returns a proper string or None. newlines stripped. no binary support
         from glob import dis, SCAN
         from ux import ux_wait_keyup
         frames = [ 1, 2, 3, 4, 5, 4, 3, 2 ]
@@ -621,8 +623,7 @@ class QRScannerInteraction:
                 print("Scanned: %r" % data)
                 break
 
-            # wait for key or 250ms
-            # XXX bug, key doesn't usually get noticed?
+            # wait for key or 250ms delay
             try:
                 ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
             except asyncio.TimeoutError:
@@ -632,10 +633,11 @@ class QRScannerInteraction:
                 data = None
                 break
 
-        #await SCAN.scan_stop()
         task.cancel()
 
+        # clear screen right away so user knows we got it
         dis.clear()
+        dis.show()
 
         return data
 
@@ -697,9 +699,32 @@ class QRScannerInteraction:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
                         'Scan XPRV or Seed Words, or CANCEL'
 
-            got = await self.animation(prompt, line2=problem)
+            got = await self.scan(prompt, line2=problem)
             if got is None:
                 return
+
+            if hasattr(got, 'finalize'):
+                # BBQr object
+                ty, final_size, got = got.finalize()
+                if ty == 'P':
+                    print("Got a PSBT file: %d bytes" % final_size)
+                    await qr_psbt_sign(None, final_size, got)
+                    return
+                elif ty == 'T':
+                    problem = "No good use for transaction."
+                    continue
+                elif ty == 'C':
+                    problem = "Sorry, Q has no use CBOR"
+                    continue
+                elif ty == 'J':
+                    problem = "Sorry, Q has no use JSON yet"
+                    continue
+                elif ty == 'U':
+                    # continue text thru code below
+                    pass
+                else:
+                    problem = "Sorry, dont know filetype: " + ty
+                    continue
 
             try:
                 # can we decode a master secret of some type?
@@ -711,10 +736,20 @@ class QRScannerInteraction:
                     problem = str(exc)
                     continue
 
-            # Might be an address or pubkey? But not binary
-            got = got.decode().strip()
+            # might be a PSBT?
+            if len(got) > 100:
+                from auth import psbt_encoding_taster
+                try: 
+                    decoder, _, psbt_len = psbt_encoding_taster(got[0:10].encode(), len(got))
+                    print("Got a PSBT file")
+                    await qr_psbt_sign(decoder, psbt_len, got)
+                    return
+                except ValueError:
+                    pass
 
-            # remove URL scheme: if present
+            # Might be an address or pubkey or psbt? But not binary
+
+            # remove URL protocol: if present
             scheme = None
             if ':' in got:
                 scheme, got = got.split(':', 1)
@@ -744,5 +779,64 @@ class QRScannerInteraction:
 
             problem = 'Sorry, can not make use of that!'
             
+
+async def qr_psbt_sign(decoder, psbt_len, raw):
+    # Got a PSBT coming in from QR scanner. Assume single QR for now.
+    # - similar to auth.sign_psbt_file()
+    from auth import UserAuthorizedAction, ApproveTransaction
+    from utils import CapsHexWriter
+    from glob import dis, PSRAM
+    from ux import show_qr_code, the_ux
+    from sffile import SFFile
+    from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
+    from qrs import MAX_V40_SIZE
+
+    if isinstance(raw, str):
+        raw = raw.encode()
+
+    # copy to PSRAM, and convert encoding at same time
+    total = 0
+    with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
+        if not decoder:
+            total += out.write(raw)
+        else:
+            for here in decoder.more(raw):
+                out.write(here)
+                total += len(here)
+
+    # might have been whitespace inflating initial estimate of PSBT size
+    assert total <= psbt_len
+    psbt_len = total
+
+    async def done(psbt):
+        dis.fullscreen("Wait...")
+        txid = None
+
+        with SFFile(TXN_OUTPUT_OFFSET, max_size=MAX_TXN_LEN, message="Saving...") as psram:
+
+            # save transaction, as hex into PSRAM
+            with CapsHexWriter(psram) as fd:
+                if psbt.is_complete():
+                    txid = psbt.finalize(fd)
+                else:
+                    psbt.serialize(fd)
+
+            data_len = psram.tell()
+
+        UserAuthorizedAction.cleanup()
+
+        # SOON will be a loop here, that animates multiple QR's ... for now, one.
+        here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
+
+        if data_len >= MAX_V40_SIZE:
+            # too big for single version 40 QR
+            await ux_show_story("Resulting txn is too big for QR code")
+            return
+
+        await show_qr_code(here, is_alnum=True, msg=(txid or 'Partly Signed PSBT'))
+
+    UserAuthorizedAction.cleanup()
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    the_ux.push(UserAuthorizedAction.active_request)
 
 # EOF

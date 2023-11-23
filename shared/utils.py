@@ -114,7 +114,6 @@ class HexWriter:
     def write(self, b):
         self.checksum.update(b)
         self.pos += len(b)
-
         self.fd.write(b2a_hex(b))
 
     def seek(self, offset, whence=0):
@@ -134,6 +133,17 @@ class HexWriter:
         b = self.read(len(buf))
         buf[0:len(b)] = b
         return len(b)
+
+class CapsHexWriter(HexWriter):
+    # omit newlines at end, and do CAPS ... better for QR usage
+    def write(self, b):
+        self.checksum.update(b)
+        self.pos += len(b)
+        self.fd.write(b2a_hex(b).upper())
+
+    def __exit__(self, *a, **k):
+        self.fd.seek(0, 2)          # go to end
+        return self.fd.__exit__(*a, **k)
 
 class Base64Writer:
     # Emulate a file/stream but convert binary to Base64 as they write

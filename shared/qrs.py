@@ -10,6 +10,10 @@ from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
 from version import has_qwerty
 
 
+# TODO: This class has a terrible API!
+
+MAX_V40_SIZE = 4296
+
 class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
 
@@ -30,6 +34,7 @@ class QRDisplaySingle(UserInteraction):
         # - version=4..11 => single pixel per module
         # - not really providing enough space around these, shrug
         # - inverted QR (black/white swap) still readable by scanners, altho wrong
+        # - on Q: ver 23 => 109x109 is largest that can be pixel-doubled, can do v40 tho at 1:1
         if self.is_alnum:
             # targeting 'alpha numeric' mode, nice and dense; caps only tho
             enc = uqr.Mode_ALPHANUMERIC

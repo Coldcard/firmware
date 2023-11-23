@@ -89,9 +89,10 @@ def ux_clear_keys(no_aborts=False):
 async def ux_wait_keyup(expected=None):
     # Wait for single keypress in 'expected' set, return it
     # no visual feedback, no escape
+    # - can be canceled anytime, using wait_for to create a timeout
     from glob import numpad
 
-    armed = None
+    armed = numpad.key_pressed or False
     while 1:
         ch = await numpad.get()
 
@@ -126,6 +127,9 @@ def ux_poll_key():
 
     return ch
 
+def q1_reword(msg):
+    return msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'ENTER')
+
 async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
@@ -139,12 +143,19 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         # LATER: rarely used
         lines.append('\x01' + title)
 
+        if version.has_qwerty:
+            # big screen always needs blank after title
+            lines.append('')
+
     if hasattr(msg, 'readline'):
         # coming from in-memory file for larger messages
         msg.seek(0)
         for ln in msg:
             if ln[-1] == '\n': 
                 ln = ln[:-1]
+
+            if version.has_qwerty:
+                ln = q1_reword(ln)
 
             if len(ln) > CH_PER_W:
                 lines.extend(word_wrap(ln, CH_PER_W))
@@ -159,7 +170,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     else:
         # simple string being shown
         if version.has_qwerty:
-            msg = msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'SELECT')
+            msg = q1_reword(msg)
 
         for ln in msg.split('\n'):
             if len(ln) > CH_PER_W:
@@ -293,9 +304,9 @@ async def show_qr_codes(addrs, is_alnum, start_n):
     o = QRDisplaySingle(addrs, is_alnum, start_n, sidebar=None)
     await o.interact_bare()
 
-async def show_qr_code(data, is_alnum=False):
+async def show_qr_code(data, is_alnum=False, msg=None):
     from qrs import QRDisplaySingle
-    o = QRDisplaySingle([data], is_alnum)
+    o = QRDisplaySingle([data], is_alnum, sidebar=msg)
     await o.interact_bare()
 
 async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
@@ -384,14 +395,13 @@ async def import_export_prompt(title, is_import=False, no_qr=False):
     else:
         prompt, escape = _export_prompt_builder(title, no_qr)
 
-    force_vdisk =  False
-    slot_b = None       # ie. don't care
+    force_vdisk = False
+    slot_b = None       # ie. don't care / either
 
     if not prompt:
         # they don't have NFC nor VD enabled, and no second slots... so will be file.
         pass
     else:
-        print('escape: ' + repr(escape))
         ch = await ux_show_story(prompt, escape=escape)
 
         if ch in "3"+KEY_NFC:

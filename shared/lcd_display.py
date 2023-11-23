@@ -540,7 +540,8 @@ class Display:
         # - we need one more (white) pixel on all sides
         from utils import word_wrap
 
-        assert not sidebar
+        # maybe show something other than QR contents under it
+        msg = sidebar or msg
 
         if msg:
             if len(msg) <= CHARS_W:
@@ -595,6 +596,14 @@ class Display:
 
         # TODO: pass a "max_brightness" param here, which would be cleared after next show
         self.show()
+
+    def draw_bbqr_progress(self, new, gotem, num_parts, label):
+        # we've seen at least one BBQr QR, so update display w/ progress bar
+        # - lots of data so we can show nice animation
+        count = len(gotem) or 1
+        percent = int(count * 100.0 / num_parts)
+        self.text(None, -2, 'Keep scanning more...')
+        self.text(None, -1, '%s: %d of %d = %d%% ' % (label, count, num_parts, percent), dark=True)
 
     def draw_box(self, x, y, w, h):
         # using line-drawing chars, draw a box

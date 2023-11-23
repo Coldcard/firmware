@@ -544,67 +544,162 @@ def special_q1_keys(ch):
 
     return None
 
+def q1_click_to_keynum(x, y):
+    # convert on-screen position to a keynumber, or None if they missing
+
+    # handle screen click as "paste"
+    if (90 <= x <= 430) and (90 <= y <= 345):
+        # click on screen
+        return 'SCREEN'
+
+    # keypad area
+    left = 29
+    right = 490
+    top = 398
+    bottom = 790
+
+    if (y > bottom) or (y < top):
+        return None
+
+    # put onto a grid; better would have dead zones between them
+    pitch_x = (right-left) / 10
+    pitch_y = (bottom-top) / 7
+
+    gx = int((x - left) / pitch_x)
+    gy = int((y - top) / pitch_y)
+
+    #print(f'{x=} {y=} => {gx=} {gy=}')
+
+    # main qwerty area, nice grid
+    if 2 <= gy <= 5:
+        return ((gy-1) * 10) + gx
+
+    # top area; two rows really
+    if (0 <= gy <= 1):
+        if 2 <= gx <= 3:
+            return 0x03      # KEY_LEFT
+        if 6 <= gx <= 7:
+            return 0x06      # KEY_RIGHT
+
+    if gy == 0:
+        if gx == 0:
+            # power key?
+            raise SystemExit
+        if gx == 1:
+            return 0x02      # KEY_QR
+        if 4 <= gx <= 5:
+            return 0x04      # KEY_UP
+        if gx >= 8:
+            return 0x07      # KEY_CANCEL
+
+    if gy == 1:
+        if gx == 0:
+            return 0x00      # KEY_NFC
+        if gx == 1:
+            return 0x01      # KEY_TAB
+        if 4 <= gx <= 5:
+            return 0x05      # KEY_DOWN
+        if gx >= 8:
+            return 0x08      # KEY_ENTER
+        
+    if gy == 6:
+        # bottom row
+        if gx == 0:     # too narrow, but meh
+            return q1_charmap.KEYNUM_LAMP
+        if 1 <= gx <= 3:
+            return q1_charmap.KEYNUM_SHIFT
+        if 4 <= gx <= 6:
+            return 52       # space
+        if 7 <= gx <= 8:
+            return q1_charmap.KEYNUM_SYMBOL
+        if gx == 9:
+            return 54       # delete
+
+    return None
+
 q1_pressed = set()
-def handle_q1_key_events(event, numpad_tx):
+def handle_q1_key_events(event, numpad_tx, data_tx):
     # Map SDL2 (unix, desktop) keyscan code into keynumber on Q1
     # - allow Q1 to do shift logic
     # - support up to 5 keys down at once
     global q1_pressed
 
-    assert event.type in { sdl2.SDL_KEYUP, sdl2.SDL_KEYDOWN}
+    if event.type in (sdl2.SDL_MOUSEBUTTONDOWN, sdl2.SDL_MOUSEBUTTONUP):
+        is_press = (event.type == sdl2.SDL_MOUSEBUTTONDOWN)
+        kn = q1_click_to_keynum(event.button.x, event.button.y)
 
-    is_press = (event.type == sdl2.SDL_KEYDOWN)
+        if kn == 'SCREEN':
+            # click on screen to paste clipboard into QR scanner or NFC tag
+            if is_press:
+                txt = sdl2.SDL_GetClipboardText()
+                if txt:
+                    print(f"Doing paste: {txt.decode()}")
+                    data_tx.write(txt + b'\n')
+            return None
 
-    # first, see if we can convert to ascii char
-    scancode = event.key.keysym.sym & 0xffff
-    try:
-        ch = chr(event.key.keysym.sym)
-    except:
-        ch = scancode_remap(scancode)
+        if not kn: return
 
-    #print(f'scan 0x{scancode:04x} mod=0x{event.key.keysym.mod:04x}=> char={ch}=0x{ord(ch) if ch else 0:02x}')
-
-    shift_down = bool(event.key.keysym.mod & 0x3)         # left or right shift
-    symbol_down = bool(event.key.keysym.mod & 0x200)      # right ALT
-    special_down = bool(event.key.keysym.mod & 0xc00)     # left or right META
-
-    #print(f"modifier = 0x{event.key.keysym.mod:04x} => shift={shift_down} symb={symbol_down} spec={special_down}")
-
-    if special_down:
-        ch = special_q1_keys(ch)
-        if not ch:
-            return
-
-    # reverse char to a keynum, and perhaps the meta key too
-    kn = None
-
-    if ch:
-        if ch in q1_charmap.DECODER:
-            kn = q1_charmap.DECODER.find(ch)
-        elif ch in q1_charmap.DECODER_SHIFT:
-            kn = q1_charmap.DECODER_SHIFT.find(ch)
-            shift_down = is_press
-        elif ch in q1_charmap.DECODER_SYMBOL:
-            kn = q1_charmap.DECODER_SYMBOL.find(ch)
-            symbol_down = is_press
-
-    #print(f"{ch=} => keynum={kn} => shift={shift_down} sym={symbol_down}")
-
-    if kn is not None:
+        # do right click for shift+key, middle click for symb+key ... good luck
+        #shift_down = (event.button.button == sdl2.SDL_BUTTON_RIGHT)
+        #symbol_down = (event.button.button == sdl2.SDL_BUTTON_MIDDLE)
         if is_press:
             q1_pressed.add(kn)
         else:
             q1_pressed.discard(kn)
+    else:
+        assert event.type in { sdl2.SDL_KEYUP, sdl2.SDL_KEYDOWN}
+        is_press = (event.type == sdl2.SDL_KEYDOWN)
 
-    q1_pressed.discard(q1_charmap.KEYNUM_SHIFT)
-    q1_pressed.discard(q1_charmap.KEYNUM_SYMBOL)
+        # first, see if we can convert to ascii char
+        scancode = event.key.keysym.sym & 0xffff
+        try:
+            ch = chr(event.key.keysym.sym)
+        except:
+            ch = scancode_remap(scancode)
 
-    if shift_down: 
-        q1_pressed.add(q1_charmap.KEYNUM_SHIFT)
-    if symbol_down: 
-        q1_pressed.add(q1_charmap.KEYNUM_SYMBOL)
+        #print(f'scan 0x{scancode:04x} mod=0x{event.key.keysym.mod:04x}=> char={ch}=0x{ord(ch) if ch else 0:02x}')
 
-    #print(f" .. => pressed: {q1_pressed}")
+        shift_down = bool(event.key.keysym.mod & 0x3)         # left or right shift
+        symbol_down = bool(event.key.keysym.mod & 0x200)      # right ALT
+        special_down = bool(event.key.keysym.mod & 0xc00)     # left or right META
+
+        #print(f"modifier = 0x{event.key.keysym.mod:04x} => shift={shift_down} symb={symbol_down} spec={special_down}")
+
+        if special_down:
+            ch = special_q1_keys(ch)
+            if not ch:
+                return
+
+        # reverse char to a keynum, and perhaps the meta key too
+        kn = None
+
+        if ch:
+            if ch in q1_charmap.DECODER:
+                kn = q1_charmap.DECODER.find(ch)
+            elif ch in q1_charmap.DECODER_SHIFT:
+                kn = q1_charmap.DECODER_SHIFT.find(ch)
+                shift_down = is_press
+            elif ch in q1_charmap.DECODER_SYMBOL:
+                kn = q1_charmap.DECODER_SYMBOL.find(ch)
+                symbol_down = is_press
+
+        #print(f"{ch=} => keynum={kn} => shift={shift_down} sym={symbol_down}")
+
+        if kn is not None:
+            if is_press:
+                q1_pressed.add(kn)
+            else:
+                q1_pressed.discard(kn)
+
+        q1_pressed.discard(q1_charmap.KEYNUM_SHIFT)
+        q1_pressed.discard(q1_charmap.KEYNUM_SYMBOL)
+
+        if shift_down: 
+            q1_pressed.add(q1_charmap.KEYNUM_SHIFT)
+        if symbol_down: 
+            q1_pressed.add(q1_charmap.KEYNUM_SYMBOL)
+
+        #print(f" .. => pressed: {q1_pressed}")
 
     # see variant/touch.py where this is decoded.
     if len(q1_pressed) > 5:
@@ -629,6 +724,7 @@ Q1 specials:
   Meta-L - Lamp button
   Meta-N - NFC button
   Meta-R - QR button  (not Meta-Q, because that's quit!)
+  Click Screen - Send clipboard contents to QR/NFC
 ''')
     sdl2.ext.init()
     sdl2.SDL_EnableScreenSaver()
@@ -662,6 +758,7 @@ Q1 specials:
     display_r, display_w = os.pipe()      # fancy OLED display
     led_r, led_w = os.pipe()        # genuine LED
     numpad_r, numpad_w = os.pipe()  # keys
+    data_r, data_w = os.pipe()      # data dumps
 
     # manage unix socket cleanup for client
     def sock_cleanup():
@@ -677,7 +774,7 @@ Q1 specials:
     # - open the serial device
     # - get buffering/non-blocking right
     # - pass in open fd numbers
-    pass_fds = [display_w, numpad_r, led_w]
+    pass_fds = [display_w, numpad_r, led_w, data_r]
 
     if '--metal' in sys.argv:
         # bare-metal access: use a real Coldcard's bootrom+SE.
@@ -696,8 +793,7 @@ Q1 specials:
     os.chdir('./work')
     cc_cmd = ['../coldcard-mpy', 
                         '-X', 'heapsize=9m',
-                        '-i', '../sim_boot.py',
-                        str(display_w), str(numpad_r), str(led_w)] \
+                        '-i', '../sim_boot.py'] + [str(i) for i in pass_fds] \
                         + metal_args + sys.argv[1:]
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',
                                 '-geom', '132x40+650+40', '-e'] + cc_cmd,
@@ -710,6 +806,7 @@ Q1 specials:
     display_rx = open(display_r, 'rb', closefd=0, buffering=0)
     led_rx = open(led_r, 'rb', closefd=0, buffering=0)
     numpad_tx = open(numpad_w, 'wb', closefd=0, buffering=0)
+    data_tx = open(data_w, 'wb', closefd=0, buffering=0)
 
     # setup no blocking
     for r in [display_rx, led_rx]:
@@ -750,7 +847,7 @@ Q1 specials:
                     pass
                 else:
                     # all other key events for Q1 get handled here
-                    handle_q1_key_events(event, numpad_tx)
+                    handle_q1_key_events(event, numpad_tx, data_tx)
                     continue
 
             if event.type == sdl2.SDL_KEYUP or event.type == sdl2.SDL_KEYDOWN:
@@ -821,7 +918,7 @@ Q1 specials:
                 send_event(ch, event.type == sdl2.SDL_KEYDOWN)
 
             if is_q1 and event.type in (sdl2.SDL_MOUSEBUTTONDOWN, sdl2.SDL_MOUSEBUTTONUP):
-                print('NOTE: Click on sim keyboard not supported for Q1')
+                handle_q1_key_events(event, numpad_tx, data_tx)
             else:
                 if event.type == sdl2.SDL_MOUSEBUTTONDOWN:
                     #print('xy = %d, %d' % (event.button.x, event.button.y))
@@ -832,6 +929,19 @@ Q1 specials:
                 if event.type == sdl2.SDL_MOUSEBUTTONUP:
                     for ch in list(pressed):
                         send_event(ch, False)
+
+            if event.type == sdl2.SDL_DROPFILE:
+                # failed to get sdl2.SDL_DROPTEXT to work, but also not convenient to use
+                print(f"Sending file: {event.drop.file.decode()}")
+                try:
+                    data = open(event.drop.file, 'rb').read(4096)        # size limit < pipe depth
+                    if data[-1] != b'\n':
+                        data += b'\n'       # must end w/ NL, probably needs to be text too
+                    data_tx.write(data)
+                    print(f".. sent {len(data)} bytes")
+                except Exception as exc:
+                    print(repr(exc))
+                    
 
         rs, ws, es = select(readables, [], [], 0)
         for r in rs:

@@ -69,9 +69,11 @@
 
 // SD card detect switch
 // - open when card inserted, grounded when no card
+/* Q has dual slot, so multiple detect pins, this can't work
 #define MICROPY_HW_SDCARD_DETECT_PIN        (pin_C13)
 #define MICROPY_HW_SDCARD_DETECT_PULL       (GPIO_PULLUP)
 #define MICROPY_HW_SDCARD_DETECT_PRESENT    (GPIO_PIN_SET)
+*/
 
 
 // We have our own version of this code.
