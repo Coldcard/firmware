@@ -333,9 +333,8 @@ class SettingsObject:
                 continue
 
             # probably good, read it
-            aes = aes.cipher
-            json_data, expect, actual = self._read_slot(pos, aes)
             try:
+                json_data, expect, actual = self._read_slot(pos, aes.cipher)
                 # verify checksum in last 32 bytes
                 assert expect == actual
 
