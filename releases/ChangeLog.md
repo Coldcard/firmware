@@ -8,6 +8,7 @@
   deferring card read (and decryption) until after `Restore Saved` menu item is selected.
 - Enhancement: `12 Words` menu option preferred on the top of the menu in all the seed menus
   (rather than 24 words).
+- Bugfix: Handle any failures in slot reading when loading settings
 
 ## 5.2.0 - 2023-10-10
 
