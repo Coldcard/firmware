@@ -257,7 +257,7 @@ async def drv_entro_step2(_1, picked, _2):
         dis.fullscreen("Applying...")
         from actions import goto_top_menu
         from glob import settings
-        xfp_str = xfp2str(settings.get("xfp"))
+        xfp_str = xfp2str(settings.get("xfp", 0))
         await seed.set_ephemeral_seed(
             encoded,
             meta='BIP85 Derived from [%s], index=%d' % (xfp_str, index)

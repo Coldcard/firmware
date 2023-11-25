@@ -54,17 +54,19 @@ def test_b9p_basic(pw, set_bip39_pw):
 def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
                  sim_execfile):
 
-    def doit(pw, reset=True, seed_vault=False):
+    def doit(pw, reset=True, seed_vault=False, on_tmp=False):
         # reset from previous runs
         if reset:
             words = reset_seed_words()
         else:
             conts = sim_execfile('devtest/get-secrets.py')
-            assert 'mnemonic' in conts
-            for l in conts.split("\n"):
-                if l.startswith("mnemonic ="):
-                    words = l.split("=")[-1].strip().replace('"', '')
-                    break
+            if 'mnemonic' in conts:
+                for l in conts.split("\n"):
+                    if l.startswith("mnemonic ="):
+                        words = l.split("=")[-1].strip().replace('"', '')
+                        break
+            else:
+                words = simulator_fixed_words
 
         # optimization
         if pw == '':
@@ -84,8 +86,15 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
             time.sleep(0.050)
             title, body = cap_story()
             assert pw in body
+            need_keypress("y")  # go back
 
-        need_keypress('y')
+        time.sleep(.1)
+        title, body = cap_story()
+        if on_tmp:
+            assert "Press (1)" in body
+            need_keypress("1")
+        else:
+            need_keypress("y")
 
         time.sleep(.3)
         title, story = cap_story()
@@ -308,6 +317,46 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
         if on_eph:
             assert ("BIP-39 Passphrase on [%s]" % parent_fp) in story
         else:
-            assert "BIP-39 Passphrase on [0F056943]"  in story
+            assert "BIP-39 Passphrase on [0F056943]" in story
+
+
+@pytest.mark.parametrize("stype", ["words", "xprv", "b39pw"])
+def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_ephemeral_xprv,
+                                         need_keypress, pick_menu_item, goto_home,
+                                         reset_seed_words, goto_eph_seed_menu, stype,
+                                         cap_story, cap_menu, set_bip39_pw,
+                                         get_identity_story, settings_set):
+    settings_set("seedvault", 0)
+    passphrase = "@coinkite rulez!!"
+    reset_seed_words()
+
+    goto_eph_seed_menu()
+
+    if stype == "words":
+        # words
+        sec = generate_ephemeral_words(24, from_main=True, seed_vault=False)
+        parent_words = " ".join(sec)
+    elif stype == "b39pw":
+        base_pw = "random_pw"
+        parent_words = simulator_fixed_words
+        set_bip39_pw(base_pw, reset=False, on_tmp=False)
+    else:
+        # node
+        import_ephemeral_xprv("sd", from_main=True, seed_vault=False)
+
+    goto_home()
+    if stype == "xprv":
+        with pytest.raises(Exception) as e:
+            set_bip39_pw(passphrase, reset=False)
+        assert "no seed" in e.value.args[0]
+        return
+
+    parent = Mnemonic.to_seed(parent_words, passphrase=passphrase)
+    parent_node = BIP32Node.from_master_secret(parent, netcode="XTN")
+    xpub = parent_node.hwif()
+    set_bip39_pw(passphrase, reset=False, on_tmp=True if stype == "words" else False)
+    ident_story = get_identity_story()
+    assert xpub in ident_story
+
 
 # EOF
