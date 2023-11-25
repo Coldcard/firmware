@@ -619,10 +619,11 @@ class USBHandler:
         if cmd == 'pass':
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
+            import stash
             from auth import start_bip39_passphrase
             from glob import settings
 
-            assert settings.get('words', True), 'no seed'
+            assert settings.get('words', True) or stash.bip39_passphrase, 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
             assert len(pw) < 100, 'too long'

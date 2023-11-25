@@ -1199,29 +1199,24 @@ class NewPassphrase(UserAuthorizedAction):
         title = "Passphrase"
         bypass_tmp = True
         escape = "2"
-        showit = False
         while 1:
-            if showit:
-                ch = await ux_show_story('Given:\n\n%s\n\nShould we switch to that wallet now?'
-                                         '\n\nOK to continue, X to cancel.' % self._pw, title=title)
-            else:
-                msg = ('BIP-39 passphrase (%d chars long) has been provided over '
-                       'USB connection. Should we switch to that wallet now?\n\n')
-                if pa.tmp_value and settings.get("words", True):
-                    escape += "1"
-                    msg += "Press (1) to add passphrase to currently active temporary seed. "
+            msg = ('BIP-39 passphrase (%d chars long) has been provided over '
+                   'USB connection. Should we switch to that wallet now?\n\n')
+            if pa.tmp_value and settings.get("words", True):
+                escape += "1"
+                msg += "Press (1) to add passphrase to currently active temporary seed. "
 
-                msg += ('Press (2) to view the provided passphrase.\n\n'
-                        'OK to continue, X to cancel.')
-                ch = await ux_show_story(msg=msg % len(self._pw), title=title, escape=escape)
-
+            msg += ('Press (2) to view the provided passphrase.\n\n'
+                    'OK to continue, X to cancel.')
+            ch = await ux_show_story(msg=msg % len(self._pw), title=title, escape=escape)
             if ch == '2':
-                showit = True
+                await ux_show_story('Provided:\n\n%s\n\n' % self._pw, title=title)
                 continue
-            elif ch == '1':
-                bypass_tmp = False
+            else:
+                if ch == '1':
+                    bypass_tmp = False
 
-            break
+                break
 
         try:
             if ch not in 'y1':
@@ -1236,7 +1231,6 @@ class NewPassphrase(UserAuthorizedAction):
                                            summarize_ux=False)
 
                 self.result = settings.get('xpub')
-
 
         except BaseException as exc:
             self.failed = "Exception"
