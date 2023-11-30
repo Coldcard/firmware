@@ -173,7 +173,8 @@ class PressRelease:
 # (using FontSmall)
 CH_PER_W = const(17)
 
-async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
+async def ux_show_story(msg, title=None, escape=None, sensitive=False,
+                        strict_escape=False, scrollbar=True):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
@@ -239,7 +240,10 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
 
                 y += 13
 
-        dis.scroll_bar(top / len(lines))
+        if scrollbar:
+            # help in cases when last char in a row hidden by scroll bar
+            dis.scroll_bar(top / len(lines))
+
         dis.show()
 
         # wait to do something
