@@ -17,6 +17,18 @@ from ubinascii import unhexlify as a2b_hex
 
 TYPE_LABELS = dict(P='PSBT File', T='Transaction', J='JSON', C='CBOR', U='Unicode Text')
 
+def int2base36(n):
+    # convert an integer to two digits of base 36 string. 00 thu ZZ
+    # converse is just int(s, base=36)
+
+    tostr = lambda x: chr(48+x) if x < 10 else chr(65+x-10)
+
+    a, b = divmod(n, 36)
+    assert 0 <= a < 36
+
+    return tostr(a) + tostr(b)
+
+
 class BBQrHeader:
     def __init__(self, taste):
         # parse header based on standard
@@ -25,10 +37,10 @@ class BBQrHeader:
         assert taste[0:2] == 'B$'
 
         self.encoding, self.file_type = taste[2:4]
-        self.num_parts = int(taste[4:6], 16)
-        self.which = int(taste[6:8], 16)
+        self.num_parts = int(taste[4:6], 36)
+        self.which = int(taste[6:8], 36)
     
-        assert 1 <= self.num_parts <= 255
+        assert 1 <= self.num_parts
         assert 0 <= self.which < self.num_parts
 
     def __repr__(self):

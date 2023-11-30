@@ -790,11 +790,21 @@ Q1 specials:
         metal_args = []
         bare_metal = None
 
+    scan_args = []
+    if '--scan' in sys.argv:
+        import serial       # pyserial module
+        assert is_q1
+        port = serial.Serial('/dev/tty.usbserial-B001BC7Y', 9600, timeout=None)
+        #port = open('/dev/cu.usbmodem1234567890abcd1', 'w+b')
+        pass_fds.append(port.fileno())
+        scan_args = [ '--scan', str(port.fileno()) ]
+        sys.argv.remove('--scan')
+
     os.chdir('./work')
     cc_cmd = ['../coldcard-mpy', 
                         '-X', 'heapsize=9m',
                         '-i', '../sim_boot.py'] + [str(i) for i in pass_fds] \
-                        + metal_args + sys.argv[1:]
+                        + metal_args + scan_args + sys.argv[1:]
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',
                                 '-geom', '132x40+650+40', '-e'] + cc_cmd,
                                 env=env,
@@ -830,7 +840,6 @@ Q1 specials:
             pressed.discard(ch)
             if not pressed:
                 numpad_tx.write(b'\0')      # all up signal
-
 
     while running:
         events = sdl2.ext.get_events()

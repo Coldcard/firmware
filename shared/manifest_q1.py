@@ -5,6 +5,7 @@ freeze_as_mpy('', [
 	'q1.py',
 	'keyboard.py',
 	'scanner.py',
+	'bbqr.py',
 	'lcd_display.py',
 	'st7788.py',
 	'gpu.py',

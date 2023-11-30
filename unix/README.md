@@ -56,6 +56,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--eff` => (mk4) wipe setttings at startup, use simulator defaults
 - `--seq 1234yx34` => after start, enter those keypresses to get you to some submenu
 - `--bootup-movie` => begin a movie on startup, to capture boot sequence
+- `--scan` => use attached serial port connected to a QR scanner module (not simulation)
 
 See `variant/sim_settings.py` for the details of settings-related options.
 

@@ -1,7 +1,7 @@
 # Replace QR Scanner module interface.
 # TODO: support (optional) local real scanner over USB serial.
 #
-import os
+import os, sys
 import uasyncio as asyncio
 from scanner import QRScanner
 from queues import Queue
@@ -66,7 +66,31 @@ class SimulatedQRScanner(QRScanner):
     async def torch_control(self, on):
         print("Torch is: " + ('ON' if on else 'off'))
 
+class AttachedQRScanner(QRScanner):
+    def hardware_setup(self):
+        print("Using real attached scanner!")
+        pos = sys.argv.index('--scan')
+        assert pos > 0
+        fd = int(sys.argv[pos+1])
+        self.serial = open(fd, 'wb')
+
+        return 0
+
+    async def flush_junk(self):
+        # I am in lack of .any() member on my serial port
+        while 1:
+            try:
+                junk = await asyncio.wait_for_ms(self.stream.read(0), 10)
+                if not junk: break
+                print("flush_junk: " + repr(junk))
+            except asyncio.TimeoutError:
+                break
+
+
 # close door behind ourselves
-QRScanner = SimulatedQRScanner
+if '--scan' in sys.argv:
+    QRScanner = AttachedQRScanner
+else:
+    QRScanner = SimulatedQRScanner
 
 # EOF
