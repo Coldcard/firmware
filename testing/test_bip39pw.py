@@ -12,6 +12,7 @@ from ckcc_protocol.constants import *
 import json
 from mnemonic import Mnemonic
 from constants import simulator_fixed_xfp, simulator_fixed_words
+from helpers import xfp2str
 
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
@@ -109,6 +110,7 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
             else:
                 need_keypress("y")  # do not store
 
+            time.sleep(.2)
             title, story = cap_story()
 
         assert "Above is the master key fingerprint" in story
@@ -236,6 +238,8 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
 
     goto_eph_seed_menu()
 
+    sim_fp = xfp2str(simulator_fixed_xfp)
+
     if stype == "words":
         # words
         sec = generate_ephemeral_words(24, from_main=True, seed_vault=seed_vault)
@@ -258,31 +262,39 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     enter_complex(passphrase)
     pick_menu_item("APPLY")
     time.sleep(.1)
-    title, story = cap_story()
-    # title is xfp = simulator fixed words + pass (as first iteration is always from main seed)
-    xfp0 = title[1:-1]
-    seed0 = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
-    expect0 = BIP32Node.from_master_secret(seed0)
-    assert expect0.fingerprint().hex().upper() == xfp0
-    assert "press (2) to add passphrase to the current active temporary seed" in story
+    title, choice_story = cap_story()
+
+    tmp_seed = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
+    tmp_node = BIP32Node.from_master_secret(tmp_seed)
+    tmp_fp = tmp_node.fingerprint().hex().upper()
+
+    master_seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
+    master_node = BIP32Node.from_master_secret(master_seed)
+    master_fp = master_node.fingerprint().hex().upper()
+
+    choice_msg = "(1) master+pass:\n%s→%s\n\n" % (sim_fp, master_fp)
+    choice_msg += "(2) tmp+pass:\n%s→%s\n\n" % (parent_fp, tmp_fp)
+
+    assert choice_story == choice_msg
 
     if on_eph:
         need_keypress("2")
-        time.sleep(.5)
-        title, story = cap_story()
-        xfp1 = title[1:-1]
-        seed1 = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
-        expect1 = BIP32Node.from_master_secret(seed1)
-        assert expect1.fingerprint().hex().upper() == xfp1
-        assert "press (2)" not in story
-        need_keypress("y")
     else:
-        need_keypress("y")
+        need_keypress("1")
 
+    time.sleep(.2)
+    title, story = cap_story()
+    title_xfp = title[1:-1]
+
+    assert "created by adding passphrase to" in story
     if on_eph:
-        to_check = xfp1
+        assert tmp_fp == title_xfp
+        assert f"current active temporary seed [{parent_fp}]" in story
     else:
-        to_check = xfp0
+        assert master_fp == title_xfp
+        assert f"master seed [{sim_fp}]" in story
+
+    need_keypress("y")
 
     time.sleep(.3)
     title, story = cap_story()
@@ -292,7 +304,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
             time.sleep(.1)
             title, story = cap_story()
             assert "Saved to Seed Vault" in story
-            assert to_check in story
+            assert title_xfp in story
 
             need_keypress("y")
         else:
@@ -303,7 +315,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
         pick_menu_item("Seed Vault")
         m = cap_menu()
         for i in m:
-            if to_check in i:
+            if title_xfp in i:
                 pick_menu_item(i)
                 break
         else:
@@ -313,7 +325,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
         need_keypress("y")
         time.sleep(.1)
         _, story = cap_story()
-        assert to_check in story
+        assert title_xfp in story
         if on_eph:
             assert ("BIP-39 Passphrase on [%s]" % parent_fp) in story
         else:
