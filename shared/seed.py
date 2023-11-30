@@ -1212,30 +1212,41 @@ class PassphraseMenu(MenuSystem):
             # empty string here - noop
             return
 
-        nv, xfp, parent_xfp = await calc_bip39_passphrase(pp_sofar, bypass_tmp=True)
-
-        msg = ('Above is the master key fingerprint of the new wallet. '
-               'Press X to abort and keep editing passphrase, '
-               'OK to use the new wallet, (1) to use and save to MicroSD')
-
-        msg1 = ""
+        nv, xfp, parent_xfp = await calc_bip39_passphrase(pp_sofar,
+                                                          bypass_tmp=True)
+        parent_xfp_str = xfp2str(parent_xfp)
+        xfp_str = xfp2str(xfp)
+        msg0 = "master seed [%s]" % parent_xfp_str
         if pa.tmp_value and settings.get("words", True):
-            # we have ephemeral seed but can add passphrase to it as it is word based
-            msg1 = (", or press (2) to add passphrase to the current "
-                    "active temporary seed instead of the main seed.")
+            # we have ephemeral seed - can add passphrase to it as it is word based
+            t_nv, t_xfp, t_parent_xfp = await calc_bip39_passphrase(pp_sofar,
+                                                                    bypass_tmp=False)
+            t_parent_xfp_str = xfp2str(t_parent_xfp)
+            t_xfp_str = xfp2str(t_xfp)
+            choice_msg = "(1) master+pass:\n%s→%s\n\n" % (parent_xfp_str, xfp_str)
+            choice_msg += "(2) tmp+pass:\n%s→%s\n\n" % (t_parent_xfp_str, t_xfp_str)
+            ch = await ux_show_story(choice_msg, escape='12x', strict_escape=True,
+                                     scrollbar=False)
+            if ch == "x": return  # exit
+            if ch == "2":
+                parent_xfp_str = t_parent_xfp_str
+                xfp = t_xfp
+                xfp_str = t_xfp_str
+                msg0 = "current active temporary seed [%s]" % t_parent_xfp_str
+                nv = t_nv
 
-        ch = await ux_show_story(msg + msg1, title="[%s]" % xfp2str(xfp), escape='12')
+        msg = ('Above is the master key fingerprint of the new wallet'
+               ' created by adding passphrase to %s.'
+               ' Press X to abort and keep editing passphrase,'
+               ' OK to use the new wallet, (1) to use'
+               ' and save to MicroSD') % msg0
+
+        ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
         if ch == 'x':
             return
 
-        if ch == "2":
-            stash.SensitiveValues.clear_cache()
-            nv, xfp, parent_xfp = await calc_bip39_passphrase(pp_sofar, bypass_tmp=False)
-            ch = await ux_show_story(msg, title="[%s]" % xfp2str(xfp), escape='1')
-            if ch == "x": return
-
         await set_ephemeral_seed(nv, summarize_ux=False, bip39pw=pp_sofar,
-                                 meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
+                                 meta="BIP-39 Passphrase on [%s]" % parent_xfp_str)
         if ch == '1':
             await PassphraseSaver().append(xfp, pp_sofar)
 

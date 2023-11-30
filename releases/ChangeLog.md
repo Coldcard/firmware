@@ -17,6 +17,7 @@
 - Enhancement: One instant retry on SE1 comm failures
 - Enhancement: Allow passphrase via USB if passphrase already set - operates on master seed.
 - Enhancement: Continuation of removal of obsolete Mk2/Mk3 code-paths from master branch.
+- Enhancement: Improve BIP39 Passphrase UX when temporary seed is active and applicable.
 - Bugfix: Handle any failures in slot reading when loading settings
 - Bugfix: Add missing First Time UX for extended key import as master seed
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active

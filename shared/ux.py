@@ -138,7 +138,8 @@ def ux_poll_key():
     return ch
 
 
-async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
+async def ux_show_story(msg, title=None, escape=None, sensitive=False,
+                        strict_escape=False, scrollbar=True):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
@@ -376,7 +377,7 @@ def _export_prompt_builder(title, no_qr):
         if NFC is not None:
             if has_qwerty:
                 prompt += ", press (NFC) to share via NFC"
-                escape += KEY_NFC 
+                escape += KEY_NFC
                 if not no_qr:
                     prompt += ", (QR) to show QR code"
                     escape += KEY_QR
@@ -389,8 +390,8 @@ def _export_prompt_builder(title, no_qr):
     return prompt, escape
 
 async def import_export_prompt(title, is_import=False, no_qr=False):
-    # Show story allowing user to select source for importing/exporting 
-    # - return either str(mode) OR dict(file_args) 
+    # Show story allowing user to select source for importing/exporting
+    # - return either str(mode) OR dict(file_args)
     # - KEY_NFC or KEY_QR for those sources
     # - KEY_CANCEL for abort by user
     # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
