@@ -44,8 +44,8 @@ class BBQrHeader:
         assert 0 <= self.which < self.num_parts
 
     def __repr__(self):
-        return '<BBQr: %d of %d parts, enc=%s ft=%s>' % (self.which, self.num_parts,
-                                                    self.encoding, self.file_type)
+        return '<BBQr: %dof%d parts, enc=%s ft=%s>' % (self.which+1, self.num_parts,
+                                                        self.encoding, self.file_type)
 
     def is_compat(self, other):
         # Does this header match previous ones seen?
@@ -99,7 +99,7 @@ class BBQrState:
 
         hdr = BBQrHeader(scan)
 
-        print("Got " + repr(hdr))
+        print("Got %r have %r" % (hdr, self.parts))
 
         if not self.hdr or not self.hdr.is_compat(hdr):
             # New or incompatible header, they might have changed their
@@ -111,7 +111,13 @@ class BBQrState:
             # we've NOT YET seen this one
 
             # convert back to binary
-            raw = hdr.decode_body(scan)
+            try:
+                raw = hdr.decode_body(scan)
+            except:
+                # can happen if QR got corrupted between scanner and us (overlap)
+                # or back BBQr implementation
+                dis.draw_bbqr_progress(hdr, self.parts, bool(self.runt), corrupt=True)
+                return True
 
             if hdr.which and (hdr.which == hdr.num_parts-1) and not self.parts:
                 # Problem: this is a runt and we saw it first, we have no idea
@@ -134,8 +140,8 @@ class BBQrState:
                     self.parts.add(wh)
                     self.runt = None
 
-        # provide UX
-        dis.draw_bbqr_progress(hdr.which, list(self.parts), hdr.num_parts, hdr.file_label())
+        # provide UX -- even if we didn't use it
+        dis.draw_bbqr_progress(hdr, self.parts, bool(self.runt))
 
         # do we need more still?
         return (len(self.parts) < hdr.num_parts)
@@ -172,7 +178,10 @@ class BBQrState:
 
         if self.hdr.encoding == 'Z':
             # do in-place Zlib decompression (TODO)
-            raw = uzlib.decompress(raw, -10)
+            try:
+                raw = uzlib.decompress(raw, -10)
+            except:
+                raise RuntimeError("Zlib fail")
             final_size = len(raw)
 
         return self.hdr.file_type, final_size, raw

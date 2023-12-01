@@ -6,6 +6,7 @@ freeze_as_mpy('', [
 	'keyboard.py',
 	'scanner.py',
 	'bbqr.py',
+    'decoders.py',
 	'lcd_display.py',
 	'st7788.py',
 	'gpu.py',

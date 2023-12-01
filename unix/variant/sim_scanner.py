@@ -76,6 +76,18 @@ class AttachedQRScanner(QRScanner):
 
         return 0
 
+    def set_baud(self, br=None):
+        # change serial port baud rate
+        import termios
+        attr = termios.tcgetattr(self.serial.fileno())
+        # [4][5] are the baud rate
+        was = int(attr[4])
+        attr[4] = br         # assuming termios.B9600 = 9600 etc
+        attr[5] = br
+        if br is not None:
+            termios.tcsetattr(self.serial.fileno(), 0, attr)
+        return was
+
     async def flush_junk(self):
         # I am in lack of .any() member on my serial port
         while 1:

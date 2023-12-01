@@ -51,7 +51,10 @@ def unwrap(packed):
 OKAY = b'Z\x01\x00\x02\x90\x00\x93\xa5'
 RAW_OKAY = b'\x90\x00'
 LEN_OKAY = const(8)
-            
+
+# possible baud rates; unfortunately 115,200 doesn't appear to work
+SLOW_BAUD = const(9600)
+FAST_BAUD = const(57600)
 
 # TODO: constructor should leave it in reset for simple lower-power usage; then after
 #       login we can do full setup (2+ seconds) and then sleep again until needed.
@@ -79,7 +82,7 @@ class QRScanner:
     def hardware_setup(self):
         # setup hardware, reset scanner and return time to delay until ready
         from machine import UART, Pin
-        self.serial = UART(2, 9600)
+        self.serial = UART(2, SLOW_BAUD)
         self.reset = Pin('QR_RESET', Pin.OUT_OD, value=0)
         self.trigger = Pin('QR_TRIG', Pin.OUT_OD, value=1)      # wasn't needed
 
@@ -91,6 +94,10 @@ class QRScanner:
         # needs full 2 seconds of recovery time
         return 2
 
+    def set_baud(self, br):
+        # change serial port baud rate
+        self.serial.init(br)
+
     async def setup_task(self, start_delay):
         # Task to setup device, and then die.
         await asyncio.sleep(start_delay)
@@ -99,17 +106,29 @@ class QRScanner:
 
             # get b'V2.3.0.7\r\n' or similar
             # might need to repeat a few time to get into right state
-            for retry in range(3):
-                try:
-                    rx = await self.txrx('T_OUT_CVER')
-                    await self.txrx('S_CMD_FFFF')         # factory reset of settings
-                    self.version = rx.decode().strip()
-                    break
-                except:
-                    pass
+            for baud in [FAST_BAUD, SLOW_BAUD]:
+                self.set_baud(baud)
+
+                for retry in range(3):
+                    try:
+                        rx = await self.txrx('T_OUT_CVER', timeout=50)
+                        await self.txrx('S_CMD_FFFF')         # factory reset of settings
+                        self.version = rx.decode().strip()
+                        break
+                    except Exception as exc:
+                        #print('fail @ %d: %s' % (baud, exc))
+                        pass
+                else:
+                    continue
+                break
             else:
                 print("QR Scanner: missing")
                 return
+
+            # go to high speed!
+            if baud != FAST_BAUD:
+                await self.txrx('S_CMD_H3BR%d' % FAST_BAUD)
+                self.set_baud(FAST_BAUD)
 
             # configure it like we want it
             await self.txrx('S_CMD_MTRS5000')     # 5s to read before fail (unused)
@@ -121,14 +140,15 @@ class QRScanner:
             await self.txrx('S_CMD_03L0')         # light off all the time by default
 
             # ??
-            await self.txrx('S_CMD_MSRI0000')     # Modify the same code reading delay: 0ms
 
             # settings under continuous scan mode
             await self.txrx('S_CMD_MARS0000')    # "Modify the duration of single code reading" (ms)
             await self.txrx('S_CMD_MARR000')       # "Modify the time of the reading interval 0ms"
             await self.txrx('S_CMD_MA30')          # "Same code reading without delay"
             await self.txrx('S_CMD_MARI0000')      # "Modify the same code reading delay 0ms"
-            await self.txrx('S_CMD_MS30')          # "Duplicate detection-off"
+
+            await self.txrx('S_CMD_MS31')          # "Same code reading delay"
+            await self.txrx('S_CMD_MSRI0100')     # Modify the same code reading delay: 100ms
 
             # these aren't useful (yet?) and just make things harder to decode.
             #await self.txrx('S_CMD_05F1')         # add all information on
@@ -139,9 +159,10 @@ class QRScanner:
             #await self.txrx('S_CMD_0506')         # suffix
             #await self.txrx('S_CMD_05D0')         # tx total data
 
+            # prevent scanning magic QR to affect settings
+            await self.txrx('S_CMD_0000')         # close setting codes
 
             self.setup_done = True
-            print("QR scanner setup done.")
 
             await self.goto_sleep()
             
@@ -194,6 +215,7 @@ class QRScanner:
 
         return rv
 
+
     async def _readline(self):
         # overridden in simulator
         # - blocks for QR to be seen
@@ -239,9 +261,8 @@ class QRScanner:
         # - by sending these without binary wrapper, we get back a shorter reply
         # - just RAW_OKAY
         # - which we can easily filter out of any QR data we get back at the same time
-        #self.stream.write(msg)
-        #await self.stream.drain()
-        print('tx >> ' + msg)
+        # - do not use async self.stream because other tasks may be using it
+        #print('tx >> ' + msg)
         self.serial.write(msg)
 
     async def txrx(self, msg, timeout=250):
@@ -256,7 +277,7 @@ class QRScanner:
         await self.flush_junk()
 
         # Send the command
-        print('txrx >> ' + msg)
+        #print('txrx >> ' + msg)
         self.stream.write(wrap(msg))
         await self.stream.drain()
 
@@ -271,7 +292,7 @@ class QRScanner:
                     continue
                 raise RuntimeError("no rx after %s" % msg)
 
-            print('txrx << ' + B2A(rx))
+            #print('txrx << ' + B2A(rx))
 
             if rx == OKAY:
                 # good path
@@ -287,15 +308,15 @@ class QRScanner:
                     pos = rx.rindex(b'\n')
                     rx = rx[pos+1:]
 
-                if RAW_OKAY in rx:
+                while rx.startswith(RAW_OKAY):
                     # earlier bare commands' ACK's, remove them
-                    rx = rx.replace(RAW_OKAY, b'')
+                    rx = rx[2:]
 
                 mlen = unwrap_hdr(rx)
 
             if mlen < 0:
                 # framing issue, must be part way thru a QR
-                print('Framing prob (cmd=%s): %s=%s' % (msg, rx, B2A(rx)))
+                #print('Framing prob (cmd=%s): %s=%s' % (msg, rx, B2A(rx)))
                 rx = b''
                 expect = LEN_OKAY
                 continue
@@ -311,9 +332,10 @@ class QRScanner:
                     raise RuntimeError("extra at end")
                 return body
             except Exception as exc:
-                print("Bad Rx: %s=%r" % (B2A(rx), rx))
-                print("   exc: %s" % exc)
-                raise
+                #print("Bad Rx: %s=%r" % (B2A(rx), rx))
+                #print("   exc: %s" % exc)
+                # this generally does not happen with all above complexity
+                raise RuntimeError("bad frame after %s" % msg)
 
     def torch_control_sync(self, on):
         # sync wrapper
@@ -324,7 +346,6 @@ class QRScanner:
         # - S_CMD_03L1 => always light
         # - S_CMD_03L2 => when needed
         # - S_CMD_03L0 => no
-        print("torch=%d" % on)
         if not self.version:
             return
 

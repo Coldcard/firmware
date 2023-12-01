@@ -43,5 +43,8 @@ class IncorrectUTXOAmount(FatalPSBTIssue):
 class AbortInteraction(BaseException):
     pass
 
+# Useful text to show user when we can't handle a QR
+class QRDecodeExplained(ValueError):
+    pass
 
 # EOF

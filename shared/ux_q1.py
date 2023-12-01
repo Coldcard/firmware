@@ -2,14 +2,15 @@
 #
 # ux_q1.py - UX/UI interactions that are Q1 specific and use big screen, keyboard.
 #
+import utime, gc, ngu, sys
 import uasyncio as asyncio
 from uasyncio import sleep_ms
-import utime, gc, ngu
 from charcodes import *
 from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE, CURSOR_DW_SOLID
-from exceptions import AbortInteraction
+from exceptions import AbortInteraction, QRDecodeExplained
 from queues import QueueEmpty
 import bip39
+from decoders import decode_qr_result
 
 class PressRelease:
     def __init__(self, need_release=KEY_SELECT+KEY_CANCEL):
@@ -623,7 +624,7 @@ class QRScannerInteraction:
                 print("Scanned: %r" % data)
                 break
 
-            # wait for key or 250ms delay
+            # wait for key or 250ms animation delay
             try:
                 ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
             except asyncio.TimeoutError:
@@ -641,56 +642,6 @@ class QRScannerInteraction:
 
         return data
 
-    @staticmethod
-    def decode_secret(got):
-        # Decode a few different ways to store a master secret, or raise
-        # - xprv / tprv
-        # - words (either full or prefixes, case insensitive)
-        # - SeedQR (github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md)
-        
-        taste = got.strip().lower()
-
-        # remove bitcoin: if present
-        if ':' in taste:
-            _, taste = taste.split(':', 1)
-
-        if taste[1:4] == 'prv':
-            # xprv or tprv: private key import for sure
-            # - verify checksum is right
-            try:
-                ngu.codecs.b58_decode(taste)  
-            except:
-                raise ValueError('corrupt xprv?')
-
-            return 'xprv', taste
-
-        if taste.isdigit():
-            # SeedQR: 4 digit groups of index into word list
-            parts = [taste[pos:pos+4] for pos in range(0, len(taste), 4)]
-            try:
-                assert len(parts) in (12, 18, 24)
-                words = [bip39.wordlist_en[int(n)] for n in parts]
-            except:
-                raise ValueError('corrupt SeedQR?')
-            return 'words', words
-
-        words = taste.decode().split(' ')
-        if len(words) in [ 12, 18, 24]:
-            # looks like bip-39 words, decode and re-expand
-            idx = [bip39.get_word_index(w) for w in words]
-            return 'words', [bip39.wordlist_en[n] for n in idx]
-
-        raise ValueError('no idea')
-
-    async def secret_import(self, mode, value):
-        # Import a private key: xprv or seed words
-        # - plausible value has been received
-        # - import as tmp or master
-        print("Secret: %s %r" % (mode, value))
-        if mode == 'xprv':
-            pass
-        elif mode == 'words':
-            pass
 
     async def scan_anything(self, expect_secret=False):
         # start a QR scan, and act on what we find, whatever it may be.
@@ -703,85 +654,57 @@ class QRScannerInteraction:
             if got is None:
                 return
 
-            if hasattr(got, 'finalize'):
-                # BBQr object
-                ty, final_size, got = got.finalize()
-                if ty == 'P':
-                    print("Got a PSBT file: %d bytes" % final_size)
-                    await qr_psbt_sign(None, final_size, got)
-                    return
-                elif ty == 'T':
-                    problem = "No good use for transaction."
-                    continue
-                elif ty == 'C':
-                    problem = "Sorry, Q has no use CBOR"
-                    continue
-                elif ty == 'J':
-                    problem = "Sorry, Q has no use JSON yet"
-                    continue
-                elif ty == 'U':
-                    # continue text thru code below
-                    pass
-                else:
-                    problem = "Sorry, dont know filetype: " + ty
-                    continue
-
+            # Figure out what we got.
             try:
-                # can we decode a master secret of some type?
-                mode, value = self.decode_secret(got)
-
-                return await self.secret_import(mode, value)
-            except BaseException as exc:
-                if expect_secret:
-                    problem = str(exc)
-                    continue
-
-            # might be a PSBT?
-            if len(got) > 100:
-                from auth import psbt_encoding_taster
-                try: 
-                    decoder, _, psbt_len = psbt_encoding_taster(got[0:10].encode(), len(got))
-                    print("Got a PSBT file")
-                    await qr_psbt_sign(decoder, psbt_len, got)
-                    return
-                except ValueError:
-                    pass
-
-            # Might be an address or pubkey or psbt? But not binary
-
-            # remove URL protocol: if present
-            scheme = None
-            if ':' in got:
-                scheme, got = got.split(':', 1)
-
-            # old school
-            try:
-                raw = ngu.codecs.b58_decode(got)  
-                print("Valid base58")
-
-                # it's valid base58
-                if got[1:4] == 'pub':
-                    # xpub ... why tho?
-                    return got
-                else:
-                    # an address, P2PKH
-                    return got
+                what, vals = decode_qr_result(got, expect_secret=expect_secret)
+            except QRDecodeExplained as exc:
+                problem = str(exc)
+                continue
             except:
-                pass
+                problem = "Unable to decode QR"
+                continue
 
-            # new school: bech32 or bech32m
-            try:
-                hrp, version, data = ngu.codecs.segwit_decode(got)
-                print("Valid bech32")
-                return got
-            except:
-                pass
+            # Limitation: assuming ephemeral import here
+            if what == 'xprv':
+                from actions import import_extended_key_as_secret
+                text_xprv, = vals
+                await import_extended_key_as_secret(text_xprv, True)
+                return
 
-            problem = 'Sorry, can not make use of that!'
+            if what == 'words':
+                from seed import ephemeral_seed_import_done_cb       # dirty API
+                words, = vals
+                await ephemeral_seed_import_done_cb(words)
+                return
+
+            if what == 'psbt':
+                decoder, psbt_len, got = vals
+                await qr_psbt_sign(decoder, psbt_len, got)
+                return
+
+            if what == 'txn':
+                bin_txn, = vals
+                await ux_visualize_txn(bin_txn)
+                return 
+
+            if what == 'addr':
+                proto, addr, args = vals
+                await ux_visualize_bip21(proto, addr, args)
+                return 
+
+            if what == 'text' or what == 'xpub':
+                # we couldn't really decode it.
+                txt, = vals
+                await ux_visualize_textqr(txt)
+                return 
+
+
+            # not reached?
+            problem = 'Unhandled: ' + what
             
 
 async def qr_psbt_sign(decoder, psbt_len, raw):
-    # Got a PSBT coming in from QR scanner. Assume single QR for now.
+    # Got a PSBT coming in from QR scanner. Sign it.
     # - similar to auth.sign_psbt_file()
     from auth import UserAuthorizedAction, ApproveTransaction
     from utils import CapsHexWriter
@@ -830,7 +753,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
 
         if data_len >= MAX_V40_SIZE:
             # too big for single version 40 QR
-            await ux_show_story("Resulting txn is too big for QR code")
+            await ux_show_story("Resulting txn is too big for single QR code.")
             return
 
         await show_qr_code(here, is_alnum=True, msg=(txid or 'Partly Signed PSBT'))
@@ -838,5 +761,80 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
     the_ux.push(UserAuthorizedAction.active_request)
+
+async def ux_visualize_txn(bin_txn):
+    # Show the user a signed transaction on-screen.
+    # - longer-term we may offer more data about address ownership, etc
+    # - be careful not to claim things we cannot prove w/o UTXO from confirmed blocks
+    # - .. like the fee, which would be useful
+    from ux import ux_show_story
+    from io import BytesIO
+    from psbt import  calc_txid
+    from ubinascii import hexlify as b2a_hex
+    from serializations import CTransaction
+
+    txn = CTransaction()
+
+    try:
+        txn.deserialize(BytesIO(bin_txn))
+
+        if (n := len(txn.vin)) == 1:
+            msg = '1 input, '
+        else: 
+            msg = '%d inputs, ' % n
+
+        if (n := len(txn.vout)) == 1:
+            msg += '1 output'
+        else: 
+            msg += '%d outputs' % n
+
+        # add txid
+        txid = calc_txid(BytesIO(bin_txn), (0, len(bin_txn)))
+        msg += '\n\nTxid:\n' + b2a_hex(txid).decode()
+
+    except Exception as exc:
+        sys.print_exception(exc)
+        msg = "Unable to deserialize"
+
+    await ux_show_story(msg, title="Signed Transaction")
+
+
+async def ux_visualize_bip21(proto, addr, args):
+    # Show details of BIP-21 URL
+    # - imho, a bare address is a valid BIP-21 URL so we come here too
+    # - TODO: validate address ownership
+    from ux import ux_show_story
+
+    msg = addr + '\n\n'
+    args = args or {}
+
+    if 'amount' in args:
+        msg += 'Amount: '
+        try:
+            amt = args.pop('amount')
+            whole, frac = amt.split('.', 1)
+            frac = int(frac) if frac else 0
+            whole = int(whole) if whole else 0
+            msg += '%d.%08d BTC\n' % (whole, frac)
+        except:
+            msg += '(corrupt)\n'
+
+    for fn in ['label', 'message', 'lightning']:
+        if fn in args:
+            val = args.pop(fn)              # XXX needs url-decoding
+            msg += '%s%s: %s\n' % (fn[0].upper(), fn[1:], val)
+
+    if args:
+        msg += 'And values for: ' + ', '.join(args)
+    
+    await ux_show_story(msg, title="Payment Address")
+
+async def ux_visualize_textqr(txt):
+    from ux import ux_show_story
+    if len(txt) > 100:
+        txt = txt[0:100] + '...'
+
+    await ux_show_story("%s\n\nAbove is text that was scanned. "
+            "We can't do any more with it." % txt, title="Simple Text")
 
 # EOF

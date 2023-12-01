@@ -597,13 +597,22 @@ class Display:
         # TODO: pass a "max_brightness" param here, which would be cleared after next show
         self.show()
 
-    def draw_bbqr_progress(self, new, gotem, num_parts, label):
+    def draw_bbqr_progress(self, hdr, got_parts, has_runt=False, corrupt=False):
         # we've seen at least one BBQr QR, so update display w/ progress bar
         # - lots of data so we can show nice animation
-        count = len(gotem) or 1
-        percent = int(count * 100.0 / num_parts)
-        self.text(None, -2, 'Keep scanning more...')
-        self.text(None, -1, '%s: %d of %d = %d%% ' % (label, count, num_parts, percent), dark=True)
+        # - hdr:BBQrHeader instance
+        count = len(got_parts) + (1 if has_runt else 0)
+        if hdr.num_parts < (CHARS_W // 4):
+            pat = [('.' if i not in got_parts else str(i)) for i in range(hdr.num_parts)]
+            pat = ('  ' if hdr.num_parts < (CHARS_W//2) else ' ').join(pat)
+            self.text(None, -3, pat)
+
+        self.text(None, -2, 'Keep scanning more...' if count < hdr.num_parts else 'Got all parts!')
+        self.text(None, -1, '%s: %d of %d parts' % (hdr.file_label(), count, hdr.num_parts),
+                                                        dark=True)
+        percent = count / hdr.num_parts
+        self.progress_bar(percent)
+        self.show()
 
     def draw_box(self, x, y, w, h):
         # using line-drawing chars, draw a box
