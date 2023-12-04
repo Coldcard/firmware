@@ -398,6 +398,7 @@ class Display:
         self.text(None, CHARS_H // 3, msg)
         if percent is not None:
             self.progress_bar(percent)
+        self.show()
 
     def splash(self):
         # display a splash screen with some version numbers
@@ -597,13 +598,15 @@ class Display:
         # TODO: pass a "max_brightness" param here, which would be cleared after next show
         self.show()
 
-    def draw_bbqr_progress(self, hdr, got_parts, has_runt=False, corrupt=False):
+    def draw_bbqr_progress(self, hdr, got_parts, corrupt=False):
         # we've seen at least one BBQr QR, so update display w/ progress bar
         # - lots of data so we can show nice animation
         # - hdr:BBQrHeader instance
-        count = len(got_parts) + (1 if has_runt else 0)
+        count = len(got_parts)
         if hdr.num_parts < (CHARS_W // 4):
-            pat = [('.' if i not in got_parts else str(i)) for i in range(hdr.num_parts)]
+            pat = [('-' if i not in got_parts else str(i+1)) for i in range(hdr.num_parts)]
+            if corrupt:
+                pat[hdr.which] = 'X'
             pat = ('  ' if hdr.num_parts < (CHARS_W//2) else ' ').join(pat)
             self.text(None, -3, pat)
 
