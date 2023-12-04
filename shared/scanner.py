@@ -8,7 +8,7 @@ from struct import pack, unpack
 from utils import B2A
 from imptask import IMPT
 from queues import Queue
-from bbqr import BBQrState
+from bbqr import BBQrState, BBQrPsramStorage
 
 def calc_bcc(msg):
     bcc = 0
@@ -55,6 +55,7 @@ LEN_OKAY = const(8)
 # possible baud rates; unfortunately 115,200 doesn't appear to work
 SLOW_BAUD = const(9600)
 FAST_BAUD = const(57600)
+RX_BUF_SIZE = 4350              # big enough for v40
 
 # TODO: constructor should leave it in reset for simple lower-power usage; then after
 #       login we can do full setup (2+ seconds) and then sleep again until needed.
@@ -82,7 +83,7 @@ class QRScanner:
     def hardware_setup(self):
         # setup hardware, reset scanner and return time to delay until ready
         from machine import UART, Pin
-        self.serial = UART(2, SLOW_BAUD)
+        self.serial = UART(2, SLOW_BAUD, rxbuf=RX_BUF_SIZE)
         self.reset = Pin('QR_RESET', Pin.OUT_OD, value=0)
         self.trigger = Pin('QR_TRIG', Pin.OUT_OD, value=1)      # wasn't needed
 
@@ -96,7 +97,7 @@ class QRScanner:
 
     def set_baud(self, br):
         # change serial port baud rate
-        self.serial.init(br)
+        self.serial.init(br, rxbuf=RX_BUF_SIZE)
 
     async def setup_task(self, start_delay):
         # Task to setup device, and then die.
@@ -144,11 +145,8 @@ class QRScanner:
             # settings under continuous scan mode
             await self.txrx('S_CMD_MARS0000')    # "Modify the duration of single code reading" (ms)
             await self.txrx('S_CMD_MARR000')       # "Modify the time of the reading interval 0ms"
-            await self.txrx('S_CMD_MA30')          # "Same code reading without delay"
-            await self.txrx('S_CMD_MARI0000')      # "Modify the same code reading delay 0ms"
-
-            await self.txrx('S_CMD_MS31')          # "Same code reading delay"
-            await self.txrx('S_CMD_MSRI0100')     # Modify the same code reading delay: 100ms
+            await self.txrx('S_CMD_MA31')          # Enable "Same code reading delay"
+            await self.txrx('S_CMD_MARI0050')      # "Modify the same code reading delay 50ms"
 
             # these aren't useful (yet?) and just make things harder to decode.
             #await self.txrx('S_CMD_05F1')         # add all information on
@@ -174,7 +172,8 @@ class QRScanner:
         while not self.setup_done:
             await asyncio.sleep(.25)
 
-        bbqr = BBQrState()
+        storage = BBQrPsramStorage()
+        bbqr = BBQrState(storage)
 
         async with self.lock: 
             self.busy_scanning = True
@@ -209,7 +208,7 @@ class QRScanner:
                 await self.goto_sleep()
                 self.busy_scanning = False
 
-        if bbqr.is_valid():
+        if bbqr.is_complete():
             # return object instead of string
             return bbqr
 
@@ -228,7 +227,9 @@ class QRScanner:
         # - because binary, won't happen in body of QR
         rv = rv.replace(RAW_OKAY, b'')
 
-        print("Sc: " + repr(rv))
+        #print("Sc: " + repr(rv))
+        if hasattr(self.stream.s, 'any'):
+            print("Sc: got %d, waiting %d" % (len(rv), self.stream.s.any()))
         return rv.rstrip().decode()
 
     async def wakeup(self):
@@ -258,8 +259,8 @@ class QRScanner:
 
     async def tx(self, msg):
         # Send a command, don't wait for response
-        # - by sending these without binary wrapper, we get back a shorter reply
-        # - just RAW_OKAY
+        # - by sending these without binary wrapper, we get back a shorter reply,
+        #   just: RAW_OKAY
         # - which we can easily filter out of any QR data we get back at the same time
         # - do not use async self.stream because other tasks may be using it
         #print('tx >> ' + msg)

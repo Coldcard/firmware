@@ -616,13 +616,13 @@ class QRScannerInteraction:
 
         ph = 0
         while 1:
-            dis.image(None, 40, 'scan_%d' % frames[ph])
-            ph  = (ph + 1) % len(frames)
-
             if task.done():
                 data = await task
                 print("Scanned: %r" % data)
                 break
+
+            dis.image(None, 40, 'scan_%d' % frames[ph])
+            ph  = (ph + 1) % len(frames)
 
             # wait for key or 250ms animation delay
             try:
@@ -660,7 +660,8 @@ class QRScannerInteraction:
             except QRDecodeExplained as exc:
                 problem = str(exc)
                 continue
-            except:
+            except Exception as exc:
+                import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
 
@@ -709,27 +710,29 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
     from auth import UserAuthorizedAction, ApproveTransaction
     from utils import CapsHexWriter
     from glob import dis, PSRAM
-    from ux import show_qr_code, the_ux
+    from ux import show_qr_code, the_ux, ux_show_story
     from sffile import SFFile
     from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
     from qrs import MAX_V40_SIZE
 
-    if isinstance(raw, str):
-        raw = raw.encode()
+    if raw == 'PSRAM':      # might already be in place
 
-    # copy to PSRAM, and convert encoding at same time
-    total = 0
-    with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
-        if not decoder:
-            total += out.write(raw)
-        else:
-            for here in decoder.more(raw):
-                out.write(here)
-                total += len(here)
+        if isinstance(raw, str):
+            raw = raw.encode()
 
-    # might have been whitespace inflating initial estimate of PSBT size
-    assert total <= psbt_len
-    psbt_len = total
+        # copy to PSRAM, and convert encoding at same time
+        total = 0
+        with SFFile(TXN_INPUT_OFFSET, max_size=psbt_len) as out:
+            if not decoder:
+                total += out.write(raw)
+            else:
+                for here in decoder.more(raw):
+                    out.write(here)
+                    total += len(here)
+
+        # might have been whitespace inflating initial estimate of PSBT size
+        assert total <= psbt_len
+        psbt_len = total
 
     async def done(psbt):
         dis.fullscreen("Wait...")

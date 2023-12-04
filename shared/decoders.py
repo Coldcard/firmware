@@ -6,6 +6,7 @@ import uasyncio as asyncio
 import ngu, bip39
 from ubinascii import unhexlify as a2b_hex
 from exceptions import QRDecodeExplained
+from bbqr import TYPE_LABELS
 
 def txn_decoding_taster(txt):
     # look at first 4 bytes, and assume it's txn version number (LE32 0x1 or 0x2), then decode 
@@ -29,6 +30,9 @@ def decode_secret(got):
     # - xprv / tprv
     # - words (either full or prefixes, case insensitive)
     # - SeedQR (github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md)
+
+    if len(got) > 300:
+        raise ValueError("Too big.")
 
     # remove bitcoin: if present (unlikely)
     if ':' in got:
@@ -67,40 +71,36 @@ def decode_secret(got):
 def decode_qr_result(got, expect_secret=False):
     # Could be BBQr or text
 
-    if hasattr(got, 'finalize'):
+    if hasattr(got, 'storage'):
         # BBQr object
         try:
-            ty, final_size, got = got.finalize()
+            ty, final_size, got = got.storage.finalize()
         except BaseException as exc:
+            import sys; sys.print_exception(exc)
             raise QRDecodeExplained("BBQr decode failed: " + str(exc))
 
         if expect_secret and ty in 'PT':
             raise QRDecodeExplained('Expected secrets not PSBT/TXN')
 
         if ty == 'P':
+            # may already be in PSRAM, avoid a copy here
+            from glob import PSRAM
+            if PSRAM.is_at(got, 0):
+                got = 'PSRAM'       # see qr_psbt_sign()
 
             return 'psbt', (None, final_size, got)
 
         elif ty == 'T':
 
-            return 'txn', (None, final_size, got)
-
-        elif ty == 'C':
-
-            raise QRDecodeExplained("Sorry, CBOR not useful.")
-
-        elif ty == 'J':
-
-            # TODO: maybe multisig, hsm config setup??
-            raise QRDecodeExplained("Sorry, JSON not useful.")
+            return 'txn', (got,)
 
         elif ty == 'U':
-
             # continue thru code below for TEXT
             pass
 
         else:
-            raise QRDecodeExplained("Sorry, unknown file type: " + ty)
+            msg = TYPE_LABELS.get(ty, 'Unknown Type')
+            raise QRDecodeExplained("Sorry, %s not useful." % msg)
 
     # First can we decode a master secret of some type?
 
