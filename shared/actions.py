@@ -1042,7 +1042,7 @@ async def export_xpub(label, _2, item):
         if '{acct}' in path:
             msg += "Press (1) to select account other than zero. "
         if glob.NFC:
-            msg += "Press (" + ("nfc" if qwerty else "3") + ") to share via NFC. "
+            msg += "Press (" + ("nfc" if version.has_qwerty else "3") + ") to share via NFC. "
 
         ch = await ux_show_story(msg, escape='13')
         if ch == 'x': return
