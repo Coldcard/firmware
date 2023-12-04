@@ -7,6 +7,10 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
+## 6.2.2X - 2023-12-XX
+
+- Bugfix: Do not allow to import duplicate miniscript wallets
+
 ## 6.2.1X - 2023-10-26
 
 - New Feature: Enroll Miniscript wallet via USB (requires ckcc `v1.4.0`)

@@ -47,13 +47,17 @@ class MiniScriptWallet(BaseWallet):
     @property
     def keys(self):
         if not self._keys:
-            self._keys = [k.to_string() for k in self.desc.keys]
+            self._keys = self.desc.keys
+            if self._keys is not None:
+                self._keys = [k.to_string() for k in self._keys]
         return self._keys
 
     @property
     def key(self):
         if not self._key:
-            self._key = self.desc.key.to_string()
+            self._key = self.desc.key
+            if self._key is not None:
+                self._key = self._key.to_string()
         return self._key
 
     @property
@@ -220,7 +224,7 @@ class MiniScriptWallet(BaseWallet):
             return "Taproot tree keys:\n\n" + self.policy
         return self.policy
 
-    async def _detail(self, new_wallet=False):
+    async def _detail(self, new_wallet=False, is_duplicate=False):
 
         s = addr_fmt_label(self.af) + "\n\n"
         if self.taproot:
@@ -229,17 +233,20 @@ class MiniScriptWallet(BaseWallet):
         s += self.ux_policy()
 
         story = s + "\n\nPress (1) to see extended public keys"
-        if new_wallet:
+        if new_wallet and not is_duplicate:
             story += ", OK to approve, X to cancel."
         return story
 
-    async def show_detail(self, new_wallet=False):
+    async def show_detail(self, new_wallet=False, duplicates=None):
         title = self.name
         story = ""
-        if new_wallet:
+        if duplicates:
+            title = None
+            story += "This wallet is a duplicate of already saved wallet %s\n\n" % duplicates[0].name
+        elif new_wallet:
             title = None
             story += "Create new miniscript wallet?\n\nWallet Name:\n  %s\n\n" % self.name
-        story += await self._detail(new_wallet)
+        story += await self._detail(new_wallet, is_duplicate=duplicates)
         while True:
             ch = await ux_show_story(story, title=title, escape="1")
             if ch == "1":
@@ -288,10 +295,27 @@ class MiniScriptWallet(BaseWallet):
         wal = cls(desc_obj, name=name, chain_type=desc_obj.keys[0].chain_type)
         return wal
 
+    def find_duplicates(self):
+        matches = []
+        for rv in self.iter_wallets():
+            if self.key != rv.key:
+                continue
+            if self.policy != rv.policy:
+                continue
+            if len(self.keys) != len(rv.keys):
+                continue
+            if self.keys != rv.keys:
+                continue
+
+            matches.append(rv)
+
+        return matches
+
     async def confirm_import(self):
-        to_save = await self.show_detail(new_wallet=True)
+        dups = self.find_duplicates()
+        to_save = await self.show_detail(new_wallet=True, duplicates=dups)
         ch = "y" if to_save else "x"
-        if to_save:
+        if to_save and not dups:
             assert self.storage_idx == -1
             self.commit()
             await ux_dramatic_pause("Saved.", 2)

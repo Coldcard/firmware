@@ -22,6 +22,23 @@ TREE = {
     9: '{{{%s{%s,%s}},{%s,%s}},{{%s,%s},{%s,%s}}}'
 }
 
+
+@pytest.fixture
+def offer_minsc_import(cap_story, dev, need_keypress):
+    def doit(config):
+        # upload the file, trigger import
+        file_len, sha = dev.upload_file(config.encode())
+
+        open('debug/last-config-msc.txt', 'wt').write(config)
+        dev.send_recv(CCProtocolPacker.miniscript_enroll(file_len, sha))
+
+        time.sleep(.2)
+        title, story = cap_story()
+        return title, story
+
+    return doit
+
+
 @pytest.fixture
 def import_miniscript(goto_home, pick_menu_item, cap_story, need_keypress):
     def doit(fname, way="sd"):
@@ -44,6 +61,16 @@ def import_miniscript(goto_home, pick_menu_item, cap_story, need_keypress):
         pick_menu_item(fname)
         time.sleep(.1)
         return cap_story()
+
+    return doit
+
+@pytest.fixture
+def import_duplicate(import_miniscript, need_keypress):
+    def doit(fname, way="sd"):
+        _, story = import_miniscript(fname, way)
+        assert "duplicate of already saved wallet" in story
+        assert "OK to approve" not in story
+        need_keypress("x")
 
     return doit
 
@@ -80,7 +107,7 @@ def get_cc_key(dev):
         # cc device key
         master_xfp_str = struct.pack('<I', dev.master_fingerprint).hex()
         cc_key = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
-        return f"[{master_xfp_str}/{path}]{cc_key}{'<0;1>/*' if int_ext else '/0/*'}"
+        return f"[{master_xfp_str}/{path}]{cc_key}{'/<0;1>/*' if int_ext else '/0/*'}"
     return doit
 
 
@@ -207,7 +234,7 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
                                   need_keypress, pick_menu_item, cap_menu, cap_story, microsd_path,
                                   use_regtest, bitcoind, microsd_wipe, load_export, dev,
                                   address_explorer_check, get_cc_key, import_miniscript,
-                                  bitcoin_core_signer):
+                                  bitcoin_core_signer, import_duplicate):
     normal_cosign_core = False
     recovery_cosign_core = False
     if "multi(" in minisc.split("),", 1)[0]:
@@ -265,6 +292,7 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     need_keypress("y")
+    import_duplicate(fname)
     menu = cap_menu()
     assert menu[0] == name
     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
@@ -358,7 +386,8 @@ def test_liana_miniscripts_simple(addr_fmt, recovery, lt_type, minisc, clear_min
 def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear_miniscript,
                                    microsd_path, pick_menu_item, need_keypress, cap_story,
                                    load_export, goto_home, address_explorer_check, cap_menu,
-                                   get_cc_key, import_miniscript, bitcoin_core_signer):
+                                   get_cc_key, import_miniscript, bitcoin_core_signer,
+                                   import_duplicate):
     use_regtest()
     clear_miniscript()
 
@@ -413,6 +442,7 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     need_keypress("y")
+    import_duplicate(fname)
     menu = cap_menu()
     assert menu[0] == name
     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
@@ -500,9 +530,9 @@ def test_liana_miniscripts_complex(addr_fmt, minsc, bitcoind, use_regtest, clear
 
 
 @pytest.fixture
-def bitcoind_miniscript(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story, load_export,
-                        pick_menu_item, goto_home, cap_menu, microsd_path, use_regtest, get_cc_key,
-                        import_miniscript, bitcoin_core_signer):
+def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export, get_cc_key,
+                        pick_menu_item, goto_home, cap_menu, microsd_path, use_regtest,
+                        import_miniscript, bitcoin_core_signer, import_duplicate):
     def doit(M, N, script_type, internal_key=None, cc_account=0, funded=True, r=None,
              tapscript_threshold=False, add_own_pk=False):
 
@@ -604,6 +634,13 @@ def bitcoind_miniscript(bitcoind, bitcoind_d_sim_watch, need_keypress, cap_story
             assert "P2SH-P2WSH" in story
         # assert "Derivation:\n  Varies (2)" in story
         need_keypress("y")  # approve multisig import
+        if r:
+            # unspendable key is generated randomly
+            # descriptors will differ
+            with pytest.raises(AssertionError):
+                import_duplicate(name)
+        else:
+            import_duplicate(name)
         goto_home()
         pick_menu_item('Settings')
         pick_menu_item('Miniscript')
@@ -811,7 +848,7 @@ def test_tapscript_multisig(cc_first, m_n, internal_key_spendable, use_regtest, 
 def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bitcoind,
                       internal_key_spendable, dev, microsd_path, need_keypress, get_cc_key,
                       pick_menu_item, cap_story, goto_home, cap_menu, load_export,
-                      import_miniscript, bitcoin_core_signer):
+                      import_miniscript, bitcoin_core_signer, import_duplicate):
     use_regtest()
     clear_miniscript()
     microsd_wipe()
@@ -853,6 +890,7 @@ def test_tapscript_pk(num_leafs, use_regtest, clear_miniscript, microsd_wipe, bi
     assert "P2TR" in story
 
     need_keypress("y")
+    import_duplicate(fname)
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Miniscript')
@@ -946,7 +984,7 @@ def test_tapscript_import_export(clear_miniscript, pick_menu_item, cap_story, ne
 def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe, bitcoind, dev,
                                     goto_home, pick_menu_item, need_keypress, microsd_path,
                                     cap_story, load_export, get_cc_key, import_miniscript,
-                                    bitcoin_core_signer):
+                                    bitcoin_core_signer, import_duplicate):
     # works in core - but some discussions are ongoing
     # https://github.com/bitcoin/bitcoin/issues/27104
     # CC also allows this for now... (experimental branch)
@@ -974,6 +1012,7 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
     assert "P2TR" in story
 
     need_keypress("y")
+    import_duplicate(fname)
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Miniscript')
@@ -1043,7 +1082,7 @@ def test_duplicate_tapscript_leaves(use_regtest, clear_miniscript, microsd_wipe,
 
 def test_same_key_account_based_minisc(goto_home, need_keypress, pick_menu_item, cap_story,
                                        clear_miniscript, microsd_path, load_export, bitcoind,
-                                       import_miniscript):
+                                       import_miniscript, import_duplicate):
     clear_miniscript()
     desc = ("wsh("
             "or_d(pk([0f056943/84'/1'/0']tpubDC7jGaaSE66Pn4dgtbAAstde4bCyhSUs4r3P8WhMVvPByvcRrzrwqSvpF9Ghx83Z1LfVugGRrSBko5UEKELCz9HoMv5qKmGq3fqnnbS5E9r/<0;1>/*),"
@@ -1061,6 +1100,7 @@ def test_same_key_account_based_minisc(goto_home, need_keypress, pick_menu_item,
     assert "Press (1) to see extended public keys" in story
 
     need_keypress("y")
+    import_duplicate(fname)
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Miniscript')
@@ -1203,7 +1243,7 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
                        need_keypress, pick_menu_item, cap_menu, cap_story, microsd_path,
                        use_regtest, bitcoind, microsd_wipe, load_export, dev,
                        address_explorer_check, get_cc_key, import_miniscript,
-                       bitcoin_core_signer):
+                       bitcoin_core_signer, import_duplicate):
 
     # needs this bitcoind branch https://github.com/bitcoin/bitcoin/pull/27255
     normal_cosign_core = False
@@ -1268,6 +1308,7 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
     assert "Create new miniscript wallet?" in story
     # do some checks on policy --> helper function to replace keys with letters
     need_keypress("y")
+    import_duplicate(fname)
     menu = cap_menu()
     assert menu[0] == name
     pick_menu_item(menu[0]) # pick imported descriptor multisig wallet
@@ -1590,3 +1631,64 @@ def test_chain_switching(use_mainnet, use_regtest, settings_get, settings_set,
     assert fname_xtn0.split(".")[0] in m[1]
     for mi in m:
         assert fname_btc not in mi
+
+
+@pytest.mark.parametrize("taproot_ikspendable", [
+    (True, False), (True, True), (False, False)
+])
+@pytest.mark.parametrize("minisc", [
+    "or_d(pk(@A),and_v(v:pkh(@B),after(100)))",
+    "or_d(multi(2,@A,@C),and_v(v:pkh(@B),after(100)))",
+])
+def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
+                                                 clear_miniscript, use_regtest,
+                                                 get_cc_key, bitcoin_core_signer,
+                                                 offer_minsc_import, need_keypress,
+                                                 cap_menu, bitcoind, pick_menu_item):
+    use_regtest()
+    clear_miniscript()
+    taproot, ik_spendable = taproot_ikspendable
+    if taproot:
+        minisc = minisc.replace("multi(", "multi_a(")
+        if ik_spendable:
+            ik = get_cc_key("84h/1h/100h")
+            desc = f"tr({ik},{minisc})"
+        else:
+            desc = f"tr({H},{minisc})"
+    else:
+        desc = f"wsh({minisc})"
+
+    cc_key0 = get_cc_key("84h/1h/0h")
+    signer0, core_key0 = bitcoin_core_signer("s00")
+    # recevoery path is always B
+    desc0 = desc.replace("@A", cc_key0)
+    desc0 = desc0.replace("@B", core_key0)
+
+    if "@C" in desc:
+        signer1, core_key1 = bitcoin_core_signer("s11")
+        desc0 = desc0.replace("@C", core_key1)
+
+    # now just change order of the keys (A,B), but same keys same policy
+    desc1 = desc.replace("@B", cc_key0)
+    desc1 = desc1.replace("@A", core_key0)
+
+    if "@C" in desc:
+        desc1 = desc1.replace("@C", core_key1)
+
+    # checksum required if via USB
+    desc_info = bitcoind.supply_wallet.getdescriptorinfo(desc0)
+    desc0 = desc_info["descriptor"]  # with checksum
+    desc_info = bitcoind.supply_wallet.getdescriptorinfo(desc1)
+    desc1 = desc_info["descriptor"]  # with checksum
+
+    title, story = offer_minsc_import(desc0)
+    assert "Create new miniscript wallet?" in story
+    need_keypress("y")
+    time.sleep(.2)
+    title, story = offer_minsc_import(desc1)
+    assert "Create new miniscript wallet?" in story
+    need_keypress("y")
+    pick_menu_item("Settings")
+    pick_menu_item("Miniscript")
+    m = cap_menu()
+    assert len(m) == 3
