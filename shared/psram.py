@@ -25,6 +25,10 @@ class PSRAMWrapper:
         
         return memoryview(self._wr)[offset:offset+ln]
 
+    def is_at(self, ptr, offset):
+        # is bytes() object really one we created at read_at
+        return uctypes.addressof(ptr) == self.base+offset
+
     # Be compatible with SPIFlash class...
 
     def read(self, address, buf, cmd=None):
