@@ -248,7 +248,7 @@ STATIC mp_obj_t watchpoint(volatile mp_obj_t arg1)
 }
 MP_DEFINE_CONST_FUN_OBJ_1(watchpoint_obj, watchpoint);
 
-// See psram.c
+// See psramdisk.c
 extern const mp_obj_type_t psram_type;
 
 STATIC const mp_rom_map_elem_t ckcc_module_globals_table[] = {
