@@ -5,7 +5,7 @@
 import framebuf, uqr
 from ux import UserInteraction, ux_wait_keyup, the_ux 
 from utils import word_wrap
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC,
                         KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 from version import has_qwerty
 
@@ -37,14 +37,14 @@ class QRDisplaySingle(UserInteraction):
         # - on Q: ver 23 => 109x109 is largest that can be pixel-doubled, can do v40 tho at 1:1
         if self.is_alnum:
             # targeting 'alpha numeric' mode, nice and dense; caps only tho
-            enc = uqr.Mode_ALPHANUMERIC
+            enc = uqr.Mode_ALPHANUMERIC if not msg.isdigit() else uqr.Mode_NUMERIC
             msg = msg.upper()
         else:
             # has to be 'binary' mode, altho shorter msg, typical 34-36
             enc = uqr.Mode_BYTE
 
         # can fail if not enough space in QR
-        self.qr_data = uqr.make(msg, min_version=3,
+        self.qr_data = uqr.make(msg, min_version=2,
                                     max_version=11 if not has_qwerty else 40,
                                     encoding=enc)
 
