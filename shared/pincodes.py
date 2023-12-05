@@ -449,11 +449,12 @@ class PinAttempt:
                 if raw_secret is None:
                     # restore to main wallet's settings
                     settings.return_to_master_seed()
-                    xfp = 0  # TODO need secret xfp to provide to the draw_status
+                    xfp = settings.get("xfp", 0)
+                    dis.draw_status(xfp=xfp, tmp=0, bip39=0)
                 else:
-                    xfp = sv.capture_xpub()
 
-                dis.draw_status(xfp=xfp)
+                    xfp = sv.capture_xpub()
+                    dis.draw_status(xfp=xfp)
 
             settings.merge_previous_active(old_values)
 
@@ -488,7 +489,7 @@ class PinAttempt:
 
         # On Q1, update status icons
         from glob import dis
-        is_pass, is_tmp = (1,0) if bip39pw else (0,1)
+        is_pass, is_tmp = (1, 1) if bip39pw else (0, 1)
         dis.draw_status(bip39=is_pass, tmp=is_tmp)
 
         return True

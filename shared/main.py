@@ -33,11 +33,10 @@ datestamp,vers,_ = version.get_mpy_version()
 print("Version: %s / %s\n" % (vers, datestamp))
 
 # Setup OLED and get something onto it.
-try:
-    from display import Display
-except ImportError:
-    # for Q1
+if version.has_qwerty:
     from lcd_display import Display
+else:
+    from display import Display
 
 dis = Display()
 dis.splash()

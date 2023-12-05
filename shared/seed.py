@@ -10,7 +10,7 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, bip39, random, stash, pyb
+import ngu, uctypes, bip39, random, stash, pyb, version
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
@@ -677,7 +677,7 @@ async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
     nv, xfp, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
     ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
                                    meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
-    dis.draw_status(bip39=int(bool(pw)), xfp=xfp)
+    dis.draw_status(bip39=int(bool(pw)), xfp=xfp, tmp=1)
     return ret
 
     # Might need to bounce the USB connection, because our pubkey has changed,

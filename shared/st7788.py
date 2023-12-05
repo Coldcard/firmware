@@ -2,13 +2,8 @@
 #
 # st7788.py - LCD communications for Q1's 320x240 pixel *colour* display!
 #
-import machine, uzlib, ckcc, utime, struct, array, sys
-from version import is_devmode
-import framebuf
-import uasyncio
-from uasyncio import sleep_ms
-from graphics import Graphics
-import sram2
+import machine, uzlib, utime, struct, sys
+
 
 # few key commands for this display
 CASET = const(0x2a)
@@ -92,6 +87,7 @@ class ST7788():
     def show_pal_pixels(self, x, y, w, h, palette, pixels):
         # show 4-bit packed paletted lookup pixels; used for fonts
         assert len(palette) == 2 * 16
+        # TODO clean up
         if 0:
             buf = bytearray()
             for here in pixels:
@@ -116,6 +112,7 @@ class ST7788():
     def fill_rect(self, x,y, w,h, pixel=0x0000):
         # set a rectangle to a single colour
         if not w or not h: return
+        # TODO clean up
         if 0:
             assert h >= 1 and w >= 1
             pixel = struct.pack('>H', pixel)

@@ -2,13 +2,9 @@
 #
 # lcd_display.py - LCD rendering for Q1's 320x240 pixel *colour* display!
 #
-import machine, uzlib, ckcc, utime, struct, array, sys
-import framebuf
-import uasyncio
+import machine, uzlib, utime, array
 from uasyncio import sleep_ms
 from graphics_q1 import Graphics
-from graphics import Graphics as obsoleteGraphics
-import sram2
 from st7788 import ST7788
 from utils import xfp2str
 from ucollections import namedtuple
@@ -17,9 +13,6 @@ from ucollections import namedtuple
 from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT
 from font_iosevka import FontIosevka
 
-# free unused screen buffers, we don't work that way
-del sram2.display_buf
-del sram2.display2_buf
 
 #WIDTH = const(320)
 #HEIGHT = const(240)
