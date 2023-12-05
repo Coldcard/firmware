@@ -673,9 +673,9 @@ class QRScannerInteraction:
                 return
 
             if what == 'words':
-                from seed import ephemeral_seed_import_done_cb       # dirty API
+                from seed import set_ephemeral_seed_words       # dirty API
                 words, = vals
-                await ephemeral_seed_import_done_cb(words)
+                await set_ephemeral_seed_words(words, meta='From QR')
                 return
 
             if what == 'psbt':
