@@ -55,7 +55,7 @@ LEN_OKAY = const(8)
 # possible baud rates; unfortunately 115,200 doesn't appear to work
 SLOW_BAUD = const(9600)
 FAST_BAUD = const(57600)
-RX_BUF_SIZE = 4350              # big enough for v40
+RX_BUF_SIZE = const(4350)              # big enough for full v40 decoded
 
 # TODO: constructor should leave it in reset for simple lower-power usage; then after
 #       login we can do full setup (2+ seconds) and then sleep again until needed.
@@ -99,32 +99,38 @@ class QRScanner:
         # change serial port baud rate
         self.serial.init(br, rxbuf=RX_BUF_SIZE)
 
+    async def probe_baud(self):
+        # see what baud it's running at, and first contact
+        for baud in [FAST_BAUD, SLOW_BAUD]:
+            self.set_baud(baud)
+
+            try:
+                # get b'V2.3.0.7\r\n' or similar
+                rx = await self.txrx('T_OUT_CVER', timeout=250)
+                self.version = rx.decode().strip()
+                return baud
+            except Exception as exc:
+                #import sys; sys.print_exception(exc)
+                #print('fail @ %d: %s' % (baud, exc))
+                pass
+
+        return None
+
     async def setup_task(self, start_delay):
         # Task to setup device, and then die.
         await asyncio.sleep(start_delay)
 
         async with self.lock: 
 
-            # get b'V2.3.0.7\r\n' or similar
             # might need to repeat a few time to get into right state
-            for baud in [FAST_BAUD, SLOW_BAUD]:
-                self.set_baud(baud)
-
-                for retry in range(3):
-                    try:
-                        rx = await self.txrx('T_OUT_CVER', timeout=50)
-                        await self.txrx('S_CMD_FFFF')         # factory reset of settings
-                        self.version = rx.decode().strip()
-                        break
-                    except Exception as exc:
-                        #print('fail @ %d: %s' % (baud, exc))
-                        pass
-                else:
-                    continue
-                break
+            for retry in range(5):
+                baud = await self.probe_baud()
+                if baud: break
             else:
                 print("QR Scanner: missing")
                 return
+
+            await self.txrx('S_CMD_FFFF')         # factory reset of settings
 
             # go to high speed!
             if baud != FAST_BAUD:
@@ -139,8 +145,6 @@ class QRScanner:
             await self.txrx('S_CMD_MTRF500')      # Idle time: 500ms
             await self.txrx('S_CMD_059A')         # add CR LF after QR data (important)
             await self.txrx('S_CMD_03L0')         # light off all the time by default
-
-            # ??
 
             # settings under continuous scan mode
             await self.txrx('S_CMD_MARS0000')    # "Modify the duration of single code reading" (ms)
@@ -169,8 +173,12 @@ class QRScanner:
         self.scan_light = False
 
         # wait for reset process to complete (can be an issue right after boot)
-        while not self.setup_done:
+        # - few seconds of boot time needed
+        for retry in range(10):
+            if self.setup_done: break
             await asyncio.sleep(.25)
+        else:
+            return 'Scanner missing!'
 
         storage = BBQrPsramStorage()
         bbqr = BBQrState(storage)
@@ -227,10 +235,13 @@ class QRScanner:
         # - because binary, won't happen in body of QR
         rv = rv.replace(RAW_OKAY, b'')
 
-        #print("Sc: " + repr(rv))
-        if hasattr(self.stream.s, 'any'):
-            print("Sc: got %d, waiting %d" % (len(rv), self.stream.s.any()))
-        return rv.rstrip().decode()
+        try:
+            return rv.rstrip().decode()
+        except UnicodeError:
+            # probably binary QR, but we arent prepared for that and
+            # so framing is uncertain, we may have damaged 0x9000 sequences, etc
+            #print("Bin?: " + repr(rv))
+            return '(unsupported binary QR)'
 
     async def wakeup(self):
         # send specific command until it responds
