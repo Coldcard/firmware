@@ -180,7 +180,7 @@ def decode_qr_text(got):
     # new school: bech32 or bech32m
     try:
         hrp, version, data = ngu.codecs.segwit_decode(addr)
-        return 'addr', (proto, addr, args)
+        return 'addr', (proto, addr.lower(), args)
     except:
         pass
 
