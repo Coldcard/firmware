@@ -90,7 +90,7 @@ def make_icons():
     sm_font = ImageFont.truetype(FONT_PATH + 'iosevka-heavy.ttf')
 
     targets = [
-        ( 'brand', True, 'Q', dict(col='#ffb000') ),
+        #( 'brand', True, 'Q', dict(col='#ffb000') ),
         ( 'shift', True, 'SHIFT', {} ),
         ( 'symbol', True, 'SYM', {} ),
         ( 'caps', True, 'CAPS', {} ),

@@ -66,7 +66,7 @@ def get_sys_status():
     # - return a dict
     from q1 import get_batt_threshold
 
-    rv = dict(shift=0, caps=0, symbol=0, brand=1)
+    rv = dict(shift=0, caps=0, symbol=0)
     b = get_batt_threshold()
     if b is None:
         rv['plugged'] = True
@@ -146,8 +146,6 @@ class Display:
             self.dis.fill_rect(0, y-1, WIDTH, 1, grey_level(0.25))
             kws = get_sys_status()
 
-        if 'brand' in kws:
-            self.image(8, 0, 'brand')
 
         b_x = 290
         if 'bat' in kws:
@@ -176,7 +174,7 @@ class Display:
         elif 'devmode' in kws:
             self.image(x+5, 0, 'devmode')
 
-        x = 16
+        x = 8
         for dx, meta in [(7, 'shift'), (37, 'symbol'), (58, 'caps')]:
             if meta in kws:
                 self.image(x+dx, 0, '%s_%d' % (meta, kws[meta]))
