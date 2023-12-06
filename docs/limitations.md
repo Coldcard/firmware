@@ -127,17 +127,17 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
 
 
-# NFC Feature (Mk4)
+# NFC Feature
 
 - can share up to 8000 bytes of PSBT or signed transaction data.
 - NFC-V (ISO-15693) radio/modulation is common on mobile phones but very rare on desktops
 
-# Fast Wipe (Mk4)
+# Fast Wipe
 
 - each use of "fast wipe" feature consumes a MCU key slot, of which there are 256.
 - use _Advanced > Danger Zone > MCU Key Slots_ to view usage
 
-# Trick Pins (Mk4)
+# Trick Pins
 
 - "deltamode" PIN must be same length as true pin, and differ only in final 4 positions.
 - there are 14 trick "slots", but we avoid slot 10, so 13 available.
@@ -148,9 +148,24 @@ We will summarize transaction outputs as "change" back into same wallet, however
   is not compatible, the deltamode trick PIN is dropped and not restored
 - duress wallets are supported when derived from 24- or 12-word seed phrases
 
-# Debug Serial Port (Mk4)
+# Debug Serial Port
 
 - virtual USB serial port disabled completely by default, and even if enabled
   in Danger Zone, only echos output, and does not accept any input
 - use hardware serial port for interactive REPL access (3.3v TTL levels)
+
+# BBQr Scanning (Q)
+
+- files up to 2MiB in size can be accepted
+- when 14 or less parts, displays status of each part, above that, just percent complete
+
+# QR Scanning (Q)
+
+- if not BBQr (or sent as unicode inside BBQr) we auto detect these data types:
+    - PSBT in Base64 or hex
+    - Wire Transaction in Base64 or hex
+    - XPRV, XPUB, bare payment addresses, BIP-21 invoices
+    - seed words (truncated, or full)
+    - SeedQR (but not Compact SeedQR)
+- for Base58, Bech32 encoded values, if checksum is wrong then shown as text
 

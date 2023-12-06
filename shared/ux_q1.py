@@ -650,12 +650,12 @@ class QRScannerInteraction:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
                         'Scan XPRV or Seed Words, or CANCEL'
 
-            got = await self.scan(prompt, line2=problem)
-            if got is None:
-                return
-
-            # Figure out what we got.
             try:
+                got = await self.scan(prompt, line2=problem)
+                if got is None:
+                    return
+
+                # Figure out what we got.
                 what, vals = decode_qr_result(got, expect_secret=expect_secret)
             except QRDecodeExplained as exc:
                 problem = str(exc)

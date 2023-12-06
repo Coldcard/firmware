@@ -594,12 +594,26 @@ class Display:
         # - lots of data so we can show nice animation
         # - hdr:BBQrHeader instance
         count = len(got_parts)
-        if hdr.num_parts < (CHARS_W // 4):
-            pat = [('-' if i not in got_parts else str(i+1)) for i in range(hdr.num_parts)]
-            if corrupt:
-                pat[hdr.which] = 'X'
-            pat = ('  ' if hdr.num_parts < (CHARS_W//2) else ' ').join(pat)
-            self.text(None, -3, pat)
+        if hdr.num_parts < (CHARS_W // 2):
+            # if not too many parts, show - or 3 as they arrive
+            pat = []
+            for i in range(hdr.num_parts):
+                if i in got_parts:
+                    pat.append(str(i+1))
+                else:
+                    wl = 1 if i < 9 else 2
+                    if corrupt and i == hdr.which:
+                        pat.append('X'*wl)
+                    else:
+                        pat.append('-'*wl)
+
+            pat = ('  ' if hdr.num_parts <= 8 else ' ').join(pat)
+            if len(pat) > CHARS_W:
+                pat = ''
+        else:
+            pat = ''                # clear line
+
+        self.text(None, -3, pat)
 
         self.text(None, -2, 'Keep scanning more...' if count < hdr.num_parts else 'Got all parts!')
         self.text(None, -1, '%s: %d of %d parts' % (hdr.file_label(), count, hdr.num_parts),

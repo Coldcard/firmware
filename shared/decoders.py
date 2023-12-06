@@ -99,7 +99,7 @@ def decode_qr_result(got, expect_secret=False):
             pass
 
         else:
-            msg = TYPE_LABELS.get(ty, 'Unknown Type')
+            msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)
 
     # First can we decode a master secret of some type?

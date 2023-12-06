@@ -5,7 +5,7 @@
 import utime, uzlib
 import uasyncio as asyncio
 from struct import pack, unpack
-from utils import B2A
+from utils import B2A, problem_file_line
 from imptask import IMPT
 from queues import Queue
 from exceptions import QRDecodeExplained
@@ -98,7 +98,10 @@ class BBQrState:
         # - updates UX to show the progress
         from glob import dis
 
-        hdr = BBQrHeader(scan)
+        try:
+            hdr = BBQrHeader(scan)
+        except Exception as exc:
+            raise QRDecodeExplained("Bad header: %s" % problem_file_line(exc))
 
         #print("Got %r have %r" % (hdr, self.parts))
 
@@ -106,6 +109,7 @@ class BBQrState:
             # New or incompatible header, they might have changed their
             # minds and are now trying to scan something else; recover
             self.reset()
+            self.storage.reset()
             self.hdr = hdr
 
         if hdr.which not in self.parts:
@@ -154,6 +158,9 @@ class BBQrStorage:
     # override this on other projects... which don't have enough ram for whole thing
 
     def __init__(self):
+        self.reset()
+
+    def reset(self):
         self.buf = None
         self.hdr = None                 # could be any header in series
         self.runt_size = None
