@@ -29,9 +29,10 @@ class SimulatedQRScanner(QRScanner):
 
         while 1:
             try:
-                got = await asyncio.wait_for(data_pipe.readline(), 250)
+                got = await asyncio.wait_for_ms(data_pipe.readline(), 250)
                 print("Got pasted QR data.")
                 self._q.put_nowait(got)
+                continue
             except asyncio.TimeoutError:
                 pass
 
@@ -44,8 +45,8 @@ class SimulatedQRScanner(QRScanner):
                 continue
 
             print("Got new QR scan data from file.")
-            got = open(DATA_FILE, 'rb').read(8196)
-            self._q.put_nowait(got)
+            for ln in open(DATA_FILE, 'rb').readlines():
+                self._q.put_nowait(ln)
 
             orig_mtime = mtime
             
