@@ -734,7 +734,7 @@ async def export_seedqr(*a):
         dis.busy_bar(False)
         qr = ''.join('%04d'% bip39.get_word_index(w) for w in words)
 
-        del words, idx      # should be blanked too really
+        del words
 
     from ux import show_qr_code
     await show_qr_code(qr, True, msg="SeedQR")
