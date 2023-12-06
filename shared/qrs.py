@@ -29,14 +29,14 @@ class QRDisplaySingle(UserInteraction):
         # - inverted QR (black/white swap) still readable by scanners, altho wrong
         if self.is_alnum:
             # targeting 'alpha numeric' mode, nice and dense; caps only tho
-            enc = uqr.Mode_ALPHANUMERIC
+            enc = uqr.Mode_ALPHANUMERIC if not msg.isdigit() else uqr.Mode_NUMERIC
             msg = msg.upper()
         else:
             # has to be 'binary' mode, altho shorter msg, typical 34-36
             enc = uqr.Mode_BYTE
 
         # can fail if not enough space in QR
-        self.qr_data = uqr.make(msg, min_version=3, max_version=11, encoding=enc)
+        self.qr_data = uqr.make(msg, min_version=2, max_version=11, encoding=enc)
 
     def redraw(self):
         # Redraw screen.

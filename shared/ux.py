@@ -364,9 +364,9 @@ async def show_qr_codes(addrs, is_alnum, start_n):
     o = QRDisplaySingle(addrs, is_alnum, start_n, sidebar=None)
     await o.interact_bare()
 
-async def show_qr_code(data, is_alnum):
+async def show_qr_code(data, is_alnum, msg=None):
     from qrs import QRDisplaySingle
-    o = QRDisplaySingle([data], is_alnum)
+    o = QRDisplaySingle([data], is_alnum, sidebar=msg)
     await o.interact_bare()
 
 async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
