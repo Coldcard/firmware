@@ -167,5 +167,6 @@ We will summarize transaction outputs as "change" back into same wallet, however
     - XPRV, XPUB, bare payment addresses, BIP-21 invoices
     - seed words (truncated, or full)
     - SeedQR (but not Compact SeedQR)
-- for Base58, Bech32 encoded values, if checksum is wrong then shown as text
+- for Base58, Bech32 encoded values, if checksum is wrong then it is shown as text
+- binary QR codes are not supported
 
