@@ -91,6 +91,7 @@ def probe_system():
     has_qwerty = False
     is_edge = False
     supports_hsm = False
+    has_nfc = True
 
     cpuid = ckcc.get_cpu_id()
     assert cpuid == 0x470  # STM32L4S5VI
