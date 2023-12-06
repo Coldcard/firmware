@@ -719,6 +719,42 @@ async def view_seed_words(*a):
     stash.blank_object(msg)
     stash.blank_object(raw)
 
+async def export_seedqr(*a):
+    # see standard: <https://github.com/SeedSigner/seedsigner/blob/dev/docs/seed_qr/README.md>
+    import bip39, stash
+
+    if not await ux_confirm('The next screen will show the seed words in a QR code.'
+                            '\n\nAnyone with knowledge of those words '
+                            'can control all funds in this wallet.'):
+        return
+
+    from glob import dis
+    dis.fullscreen("Wait...")
+    dis.busy_bar(True)
+
+    # Note: cannot reach this menu item if no words. If they are tmp, that's cool.
+
+    with stash.SensitiveValues(bypass_tmp=False) as sv:
+        if sv.deltamode:
+            # give up and wipe self rather than show true seed values.
+            import callgate
+            callgate.fast_wipe()
+
+        if sv.mode != 'words':
+            raise ValueError(sv.mode)
+
+        words = bip39.b2a_words(sv.raw).split(' ')
+
+        dis.busy_bar(False)
+        qr = ''.join('%04d'% bip39.get_word_index(w) for w in words)
+
+        del words
+
+    from ux import show_qr_code
+    await show_qr_code(qr, True)
+
+    stash.blank_object(qr)
+
 async def damage_myself():
     # called when it's time to disable ourselves due to various
     # features related to duress and so on

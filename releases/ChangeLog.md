@@ -1,6 +1,7 @@
 ## 5.2.1 - 2023-11-XX
 
 - New Feature: Temporary Seed from COLDCARD encrypted backup.
+- New Feature: Export seed as SeedQR
 - Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
   If current seed is temporary and not saved yet, `Add current tmp` menu item is 
   shown in Seed Vault menu.
