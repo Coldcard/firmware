@@ -659,6 +659,46 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
 
     need_keypress('y')      # clear screen
 
+@pytest.mark.qrcode
+@pytest.mark.parametrize("data", [
+    (simulator_fixed_words, [2007, 1585, 123, 131, 745, 43, 1506, 1930, 664, 749, 1200, 113, 1321, 330, 1764, 698, 1160, 656, 647, 1424, 135, 767, 987, 335]),
+    ("task tube actor end cannon potato sign card occur donkey soup baby tooth bless barely pull gap priority", [1776, 1872, 21, 588, 267, 1350, 1602, 276, 1222, 521, 1663, 136, 1830, 189, 148, 1386, 762, 1367]),
+    ("vacuum bridge buddy supreme exclude milk consider tail expand wasp pattern nuclear", [1924,222,235,1743,631,1124,378,1770,641,1980,1290,1210]),
+    ("approve fruit lens brass ring actual stool coin doll boss strong rate", "008607501025021714880023171503630517020917211425"),
+    ("good battle boil exact add seed angle hurry success glad carbon whisper", "080301540200062600251559007008931730078802752004"),
+    ("forum undo fragile fade shy sign arrest garment culture tube off merit", "073318950739065415961602009907670428187212261116"),
+    ("sound federal bonus bleak light raise false engage round stock update render quote truck quality fringe palace foot recipe labor glow tortoise potato still", "166206750203018810361417065805941507171219081456140818651401074412730727143709940798183613501710"),
+    ("atom solve joy ugly ankle message setup typical bean era cactus various odor refuse element afraid meadow quick medal plate wisdom swap noble shallow", "011416550964188800731119157218870156061002561932122514430573003611011405110613292018175411971576"),
+    ("attack pizza motion avocado network gather crop fresh patrol unusual wild holiday candy pony ranch winter theme error hybrid van cereal salon goddess expire", "011513251154012711900771041507421289190620080870026613431420201617920614089619290300152408010643"),
+])
+def test_show_seed_qr(data, goto_home, pick_menu_item, cap_story, need_keypress,
+                      sim_exec, cap_menu, get_pp_sofar, get_secrets, cap_screen_qr,
+                      set_encoded_secret, qr_quality_check, set_seed_words):
+    n = 4  # SeedQr 4 str chars for each index
+    words, qr_expect = data
+    if isinstance(qr_expect, str):
+        qr_expect = [int(qr_expect[i:i+n]) for i in range(0, len(qr_expect), n)]
+    set_seed_words(words)
+
+    goto_home()
+    pick_menu_item('Advanced/Tools')
+    pick_menu_item('Danger Zone')
+    pick_menu_item('Seed Functions')
+    pick_menu_item('Export SeedQR')
+
+    time.sleep(.01)
+    title, body = cap_story()
+    assert 'Are you SURE' in body
+    assert 'can control all funds' in body
+    need_keypress('y')  # skip warning
+    time.sleep(0.01)
+
+    qr = cap_screen_qr().decode('ascii')
+    qr = [int(qr[i:i+n]) for i in range(0, len(qr), n)]
+    assert qr == qr_expect
+
+    need_keypress('y')  # clear screen
+
 def test_destroy_seed(goto_home, pick_menu_item, cap_story, need_keypress, sim_exec,
                                 cap_menu, get_secrets):
 

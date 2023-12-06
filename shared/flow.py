@@ -208,8 +208,9 @@ SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed),
-
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
+    MenuItem('Export SeedQR', f=export_seedqr,
+             predicate=lambda: settings.get('words', True)),
 ]
 
 DangerZoneMenu = [
