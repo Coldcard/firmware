@@ -688,7 +688,7 @@ def test_show_seed_qr(data, goto_home, pick_menu_item, cap_story, need_keypress,
 
     time.sleep(.01)
     title, body = cap_story()
-    assert 'Are you SURE' in title
+    assert 'Are you SURE' in body
     assert 'can control all funds' in body
     need_keypress('y')  # skip warning
     time.sleep(0.01)
