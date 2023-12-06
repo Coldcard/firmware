@@ -32,8 +32,7 @@ def init0():
     try:
         setup_adc()
         #print('Batt volt: %s' % get_batt_level())
-    except BaseException as exc:
-        sys.print_exception(exc)
+    except: pass
 
 def setup_adc():
     # configure VREF source as internal 2.5v 
