@@ -6,7 +6,7 @@ import framebuf, uqr
 from ux import UserInteraction, ux_wait_keyup, the_ux 
 from utils import word_wrap
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
 from version import has_qwerty
 
 
@@ -84,7 +84,7 @@ class QRDisplaySingle(UserInteraction):
                 await NFC.share_text(self.addrs[self.idx])
                 self.redraw()
                 continue
-            elif ch in 'xy'+KEY_SELECT+KEY_CANCEL:
+            elif ch in 'xy'+KEY_ENTER+KEY_CANCEL:
                 break
             elif len(self.addrs) == 1:
                 continue

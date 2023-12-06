@@ -11,7 +11,7 @@ from callgate import get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
 import version
 from glob import settings
-from charcodes import KEY_SELECT, KEY_CANCEL
+from charcodes import KEY_ENTER, KEY_CANCEL
 
 try:
     from display import FontLarge
@@ -19,8 +19,8 @@ except ImportError:
     FontLarge = None
 
 async def wait_ok():
-    k = await ux_wait_keyup('xy' + KEY_SELECT + KEY_CANCEL)
-    if k not in 'y' + KEY_SELECT:
+    k = await ux_wait_keyup('xy' + KEY_ENTER + KEY_CANCEL)
+    if k not in 'y' + KEY_ENTER:
         raise RuntimeError('Canceled')
 
 def label_test(line1, line2=''):

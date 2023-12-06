@@ -4,8 +4,6 @@
 #
 from uasyncio import sleep_ms
 import utime, gc
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
 from exceptions import AbortInteraction
 
 class PressRelease:

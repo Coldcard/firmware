@@ -8,13 +8,13 @@ from ux import PressRelease, ux_wait_keyup, ux_show_story, ux_show_pin
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
-from charcodes import KEY_DELETE, KEY_SELECT, KEY_CANCEL, KEY_CLEAR
+from charcodes import KEY_DELETE, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
 
 if not version.has_qwerty:
-    KEY_SELECT = 'y'
+    KEY_ENTER = 'y'
     KEY_CANCEL = 'x'
     KEY_DELETE = 'x'
 
@@ -66,7 +66,7 @@ class LoginUX:
             y = 4
             dis.text(x, y,   words[0])
             dis.text(x, y+1, words[1])
-            dis.text(None, -1, "CANCEL or SELECT to continue")
+            dis.text(None, -1, "CANCEL or ENTER to continue")
         else:
             # Old style
             from display import FontLarge, FontTiny
@@ -120,7 +120,7 @@ class LoginUX:
                     self.pin = ''
                     self.show_pin()
 
-            elif ch == KEY_SELECT:
+            elif ch == KEY_ENTER:
                 if len(self.pin) < MIN_PIN_PART_LEN:
                     # they haven't given enough yet
                     continue
@@ -131,7 +131,7 @@ class LoginUX:
 
                 self._show_words()
 
-                pattern = KEY_SELECT + KEY_CANCEL
+                pattern = KEY_ENTER + KEY_CANCEL
                 if self.kill_btn:
                     pattern += self.kill_btn
 
@@ -143,7 +143,7 @@ class LoginUX:
                     callgate.fast_wipe(False)
                     # not reached
 
-                if nxt == KEY_SELECT:
+                if nxt == KEY_ENTER:
                     self.pin_prefix = self.pin
                     self.pin = ''
 

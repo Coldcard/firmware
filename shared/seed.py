@@ -24,7 +24,7 @@ from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR, KEY_SELECT, KEY_CANCEL
+from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL
 
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -350,7 +350,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
             # only let them abort if it's early still
             if count < 10 and judge_them:
                 return 0, seed
-        elif ch == KEY_SELECT:
+        elif ch == KEY_ENTER:
             if count < threshold and judge_them:
                 if not count:
                     return 0, seed

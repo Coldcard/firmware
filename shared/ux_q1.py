@@ -13,7 +13,7 @@ import bip39
 from decoders import decode_qr_result
 
 class PressRelease:
-    def __init__(self, need_release=KEY_SELECT+KEY_CANCEL):
+    def __init__(self, need_release=KEY_ENTER+KEY_CANCEL):
         # Manage key-repeat: track last key, measure time it's held down, etc.
         self.need_release = need_release
         self.last_key = None
@@ -87,8 +87,8 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
     max_w = int(log(max_value, 10) + 1)
 
     dis.clear()
-    dis.text(None, -1, "CANCEL or SELECT when done." if can_cancel else
-                       "Enter number, SELECT when done.")
+    dis.text(None, -1, "CANCEL or ENTER when done." if can_cancel else
+                       "Enter number, ENTER when done.")
 
     while 1:
         # TODO: check width, go to two lines if needed? depends on prompt text
@@ -96,7 +96,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
         dis.show(cursor=CursorSpec(bx, 4, CURSOR_SOLID))
 
         ch = await press.wait()
-        if ch == KEY_SELECT:
+        if ch == KEY_ENTER:
 
             if not value:
                 return 0
@@ -144,7 +144,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
     if b39_complete:
         dis.text(None, -2, KEY_TAB + " to auto-complete. " + KEY_QR + " to scan.")
-    dis.text(None, -1, "CANCEL or SELECT when done.")
+    dis.text(None, -1, "CANCEL or ENTER when done.")
 
     # TODO:
     # - left/right to edit in middle
@@ -214,7 +214,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
         ch = await press.wait()
 
-        if ch == KEY_SELECT:
+        if ch == KEY_ENTER:
             if len(value) >= min_len:
                 break
             else:
@@ -336,9 +336,9 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
         if is_confirmation:
             cta = "Confirm pin value"
         if is_confirmation:
-            cta = "CANCEL or SELECT when done"
+            cta = "CANCEL or ENTER when done"
         else:
-            cta = "CANCEL or SELECT to continue"
+            cta = "CANCEL or ENTER to continue"
 
         dis.text(None, -1, cta)
 
@@ -458,8 +458,8 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
     while 1:
         if word_num == num_words:
             # useful to show final word on screen, even tho confirm not needed
-            err_msg = 'Press SELECT if all done.' if not has_checksum else \
-                      'Valid words! Press SELECT.'
+            err_msg = 'Press ENTER if all done.' if not has_checksum else \
+                      'Valid words! Press ENTER.'
             cur = None
         else:
             x, y = pos[word_num]
@@ -485,7 +485,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         ch = await press.wait()
 
         commit = False
-        if ch == KEY_SELECT:
+        if ch == KEY_ENTER:
             if word_num == num_words:
                 break
             commit = True

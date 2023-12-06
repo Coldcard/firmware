@@ -6,7 +6,7 @@ import gc
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_SPACE,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
 from version import has_qwerty
 
 # Number of full text lines per screen.
@@ -34,7 +34,7 @@ def numpad_remap(key):
     elif key == '0':
         return KEY_HOME
     elif key == 'y':
-        return KEY_SELECT
+        return KEY_ENTER
     elif key == 'x':
         return KEY_CANCEL
     else:
@@ -347,7 +347,7 @@ class MenuSystem:
             if not has_qwerty:
                 key = numpad_remap(key)
 
-            if key == KEY_SELECT or key == KEY_SPACE:
+            if key == KEY_ENTER or key == KEY_SPACE:
                 # selected - done
                 return self.cursor
             elif key == KEY_CANCEL:

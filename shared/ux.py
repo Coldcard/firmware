@@ -7,7 +7,7 @@ from queues import QueueEmpty
 import utime, gc, version
 from utils import word_wrap
 from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_SELECT, KEY_CANCEL)
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
 from exceptions import AbortInteraction
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
@@ -197,7 +197,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         if escape and (ch in escape):
             # allow another way out for some usages
             return ch
-        elif ch == KEY_SELECT:
+        elif ch == KEY_ENTER:
             if not strict_escape:
                 return 'y'      # translate for Mk4 code
         elif ch == KEY_CANCEL:

@@ -18,7 +18,7 @@ except ImportError:
 KEY_NFC = '\x0e'        # ctrl-N
 KEY_QR = '\x11'         # ctrl-Q
 KEY_TAB = '\t'          # tab = ctrl-I
-KEY_SELECT = '\r'       # = CR
+KEY_ENTER = '\r'       # = CR
 KEY_CANCEL = '\x1b'     # ESC = Cancel
 KEY_LEFT = '\x03'           # ^B = left (incompatible)
 KEY_UP = '\x0b'             # ^K = up on ADM-3A
@@ -56,7 +56,7 @@ if has_qwerty:
     # - these are unshifted values
     # - ten per row, gaps with zero
     DECODER = (KEY_NFC + KEY_TAB + KEY_QR 
-                + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_SELECT + '\0'
+                + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_ENTER + '\0'
         + '1234567890'
         + 'qwertyuiop'
         + 'asdfghjkl`'
@@ -77,7 +77,7 @@ if has_qwerty:
 
     # in caps mode: numbers unaffected, and also allow meta keys normally
     DECODER_CAPS = (KEY_NFC + KEY_TAB + KEY_QR
-                + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_SELECT + '\0'
+                + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_ENTER + '\0'
         + '1234567890'
         + 'QWERTYUIOP'
         + "ASDFGHJKL'"
@@ -88,7 +88,7 @@ if has_qwerty:
     # - be nice and allow number+symbol == number + shift
     # - also nicity: symb+cancel=clear
     DECODER_SYMBOL = (KEY_NFC + KEY_TAB + KEY_QR 
-                + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_CANCEL + KEY_SELECT + '\0'
+                + KEY_HOME + KEY_PAGE_UP + KEY_PAGE_DOWN + KEY_END + KEY_CANCEL + KEY_ENTER + '\0'
         + '!@#$%^&*()'
         + '-_`\0\0\0[]{}'
         + '+\0\0=:;~|\\"'
