@@ -604,7 +604,8 @@ class QRScannerInteraction:
         from ux import ux_wait_keyup
         frames = [ 1, 2, 3, 4, 5, 4, 3, 2 ]
 
-        assert SCAN, 'hardware missing?'         # hardware missing?
+        if not SCAN:
+            raise QRDecodeExplained("Hardware fault.")
 
         dis.clear()
         dis.text(None, -2, prompt)
