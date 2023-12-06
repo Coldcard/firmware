@@ -16,7 +16,6 @@ from drv_entro import drv_entro_start, password_entry
 from backups import clone_start, clone_write_data
 from xor_seed import xor_split_start, xor_restore_start
 from countdowns import countdown_chooser
-from hsm import hsm_policy_available
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 
