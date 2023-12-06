@@ -88,10 +88,10 @@ class QRDisplaySingle(UserInteraction):
                 break
             elif len(self.addrs) == 1:
                 continue
-            elif ch == '5' or ch == '7' or ch == KEY_UP:
+            elif ch in '57' + KEY_UP + KEY_LEFT:
                 if self.idx > 0:
                     self.idx -= 1
-            elif ch == '8' or ch == '9' or ch == KEY_DOWN:
+            elif ch in '89' + KEY_DOWN + KEY_RIGHT:
                 if self.idx != len(self.addrs)-1:
                     self.idx += 1
             elif ch == KEY_HOME:
