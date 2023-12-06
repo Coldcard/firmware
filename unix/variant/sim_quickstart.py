@@ -146,6 +146,7 @@ if '--xor' in sys.argv:
 if '--seq' in sys.argv:
     # inject a sequence of key presses to get you somewhere
     seq = sys.argv[sys.argv.index('--seq') + 1]
+    seq = seq.replace('ENTER', '\r')
     for ch in seq:
         numpad.inject(ch)
     assert not numpad._changes.full(), 'too full'
