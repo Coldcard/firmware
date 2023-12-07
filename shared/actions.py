@@ -510,8 +510,7 @@ you will be looking at an empty wallet.
 Limitations: 100 characters max length, ASCII \
 characters 32-126 (0x20-0x7e) only.
 
-OK to start.
-X to go back. Or press (2) to hide this message forever.
+OK to continue or press (2) to hide this message forever.
 ''', escape='2')
         if ch == '2':
             settings.set('b39skip', True)
