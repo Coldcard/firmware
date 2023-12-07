@@ -682,14 +682,9 @@ class QRScannerInteraction:
                 continue
 
 
-    async def scan_anything(self, expect_secret=False):
+    async def scan_anything(self, expect_secret=False, tmp=False):
         # start a QR scan, and act on what we find, whatever it may be.
-        from flow import has_secrets
-        from actions import goto_top_menu
         problem = None
-
-        had_master = has_secrets()
-
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
                         'Scan XPRV or Seed Words, or CANCEL'
@@ -709,23 +704,20 @@ class QRScannerInteraction:
                 problem = "Unable to decode QR"
                 continue
 
-            # Limitation: assuming ephemeral import here
             if what == 'xprv':
                 from actions import import_extended_key_as_secret
                 text_xprv, = vals
-                await import_extended_key_as_secret(text_xprv, had_master)
-                goto_top_menu(first_time=(not had_master))
+                await import_extended_key_as_secret(text_xprv, tmp)
                 return
 
             if what == 'words':
-                from seed import set_ephemeral_seed_words, set_seed_value
+                from seed import commit_new_words, set_ephemeral_seed_words       # dirty API
                 words, = vals
-                if had_master:
+                if tmp:
                     await set_ephemeral_seed_words(words, meta='From QR')
                 else:
-                    set_seed_value(words=words)
+                    await commit_new_words(words=words)
 
-                goto_top_menu(first_time=(not had_master))
                 return
 
             if what == 'psbt':

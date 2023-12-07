@@ -489,8 +489,7 @@ class PinAttempt:
 
         # On Q1, update status icons
         from glob import dis
-        is_pass, is_tmp = (1, 1) if bip39pw else (0, 1)
-        dis.draw_status(bip39=is_pass, tmp=is_tmp)
+        dis.draw_status(bip39=1 if bip39pw else 0, tmp=1)
 
         return True
 

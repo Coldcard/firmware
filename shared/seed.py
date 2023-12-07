@@ -400,9 +400,7 @@ async def new_from_dice(nwords):
 
     words = await approve_word_list(seed, nwords)
     if words:
-        set_seed_value(words)
-        # send them to home menu, now with a wallet enabled
-        goto_top_menu(first_time=True)
+        await commit_new_words(words)
 
 def in_seed_vault(encoded):
     # Test if indicated xfp (or currently active XFP) is in the seed vault already.
@@ -518,9 +516,7 @@ async def make_new_wallet(nwords):
     seed = generate_seed()
     words = await approve_word_list(seed, nwords)
     if words:
-        set_seed_value(words)
-        # send them to home menu, now with a wallet enabled
-        goto_top_menu(first_time=True)
+        await commit_new_words(words)
 
 
 async def ephemeral_seed_import(nwords):
@@ -546,7 +542,7 @@ async def ephemeral_seed_generate(nwords):
 async def set_seed_extended_key(extended_key):
     encoded, chain = xprv_to_encoded_secret(extended_key)
     set_seed_value(encoded=encoded, chain=chain)
-    goto_top_menu()
+    goto_top_menu(first_time=True)
 
 async def set_ephemeral_seed_extended_key(extended_key, meta=None):
     encoded, chain = xprv_to_encoded_secret(extended_key)
@@ -1025,8 +1021,8 @@ class EphemeralSeedMenu(MenuSystem):
     @classmethod
     def construct(cls):
         from glob import NFC
-        from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv, restore_temporary
-        from actions import scan_secret_import
+        from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv
+        from actions import restore_temporary, scan_any_qr
         from charcodes import KEY_QR
 
         import_ephemeral_menu = [
@@ -1045,7 +1041,7 @@ class EphemeralSeedMenu(MenuSystem):
         rv = [
             MenuItem("Generate Words", menu=gen_ephemeral_menu),
             MenuItem('Import from QR Scan', predicate=lambda: version.has_qr,
-                                                shortcut=KEY_QR, f=scan_secret_import),
+                     shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
             MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True), # ephemeral=True
