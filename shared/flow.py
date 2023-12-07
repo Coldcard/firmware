@@ -43,6 +43,10 @@ def nfc_enabled():
 def vdisk_enabled():
     return bool(settings.get('vidsk', 0))
 
+def is_not_tmp():
+    from pincodes import pa
+    return not bool(pa.tmp_value)
+
 def se2_and_real_secret():
     from pincodes import pa
     return (not pa.is_secret_blank()) and (not pa.tmp_value)
@@ -171,7 +175,7 @@ AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
-    MenuItem('Upgrade Firmware', menu=UpgradeMenu),
+    MenuItem('Upgrade Firmware', menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem('Secure Logout', f=logout_now),
@@ -181,7 +185,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
-    MenuItem("Upgrade Firmware", menu=UpgradeMenu),
+    MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
@@ -265,7 +269,7 @@ AdvancedNormalMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup", menu=BackupStuffMenu),
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),  # also inside FileMgmt
-    MenuItem("Upgrade Firmware", menu=UpgradeMenu),
+    MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
     MenuItem('Derive Seed B85', f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
