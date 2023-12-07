@@ -688,6 +688,8 @@ class QRScannerInteraction:
         from actions import goto_top_menu
         problem = None
 
+        had_master = has_secrets()
+
         while 1:
             prompt = 'Scan any QR code, or CANCEL' if not expect_secret else \
                         'Scan XPRV or Seed Words, or CANCEL'
@@ -711,19 +713,19 @@ class QRScannerInteraction:
             if what == 'xprv':
                 from actions import import_extended_key_as_secret
                 text_xprv, = vals
-                await import_extended_key_as_secret(text_xprv, has_secrets())
-                goto_top_menu(first_time=True)
+                await import_extended_key_as_secret(text_xprv, had_master)
+                goto_top_menu(first_time=(not had_master))
                 return
 
             if what == 'words':
                 from seed import set_ephemeral_seed_words, set_seed_value
                 words, = vals
-                if has_secrets():
+                if had_master:
                     await set_ephemeral_seed_words(words, meta='From QR')
                 else:
                     set_seed_value(words=words)
 
-                goto_top_menu(first_time=True)
+                goto_top_menu(first_time=(not had_master))
                 return
 
             if what == 'psbt':
