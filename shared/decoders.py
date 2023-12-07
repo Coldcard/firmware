@@ -68,8 +68,10 @@ def decode_secret(got):
 
     raise ValueError('no idea')
 
-def decode_qr_result(got, expect_secret=False):
+def decode_qr_result(got, expect_secret=False, expect_text=False):
     # Could be BBQr or text
+    # - if expect_text, just give us unparsed text back; after BBQr decode
+    # - otherwise, returns a tuple: (type, (*parsed_data))
 
     if hasattr(got, 'storage'):
         # BBQr object
@@ -81,6 +83,11 @@ def decode_qr_result(got, expect_secret=False):
 
         if expect_secret and ty in 'PT':
             raise QRDecodeExplained('Expected secrets not PSBT/TXN')
+
+        if expect_text:
+            if ty != 'U':
+                raise QRDecodeExplained('Expected text?')
+            return got.decode()
 
         if ty == 'P':
             # may already be in PSRAM, avoid a copy here
@@ -102,6 +109,11 @@ def decode_qr_result(got, expect_secret=False):
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)
 
+    elif expect_text:
+        # caller just wants text anyway, so we are done
+        #assert isinstance(got, str)
+        return got
+
     # First can we decode a master secret of some type?
 
     try:
@@ -117,6 +129,7 @@ def decode_qr_result(got, expect_secret=False):
     if expect_secret:
         raise QRDecodeExplained("Not a secret?")
 
+    # try to recognize various bitcoin-related text strings...
     return decode_qr_text(got)
 
 def decode_qr_text(got):

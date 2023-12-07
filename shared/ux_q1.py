@@ -183,6 +183,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     # no key-repeat on certain keys
     err_msg = last_err = None
     press = PressRelease()
+    exit_armed = False
     while 1:
         dis.clear_box(x, y, line_len, num_lines)
 
@@ -214,6 +215,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
         ch = await press.wait()
 
+        if ch != KEY_CANCEL:
+            exit_armed = False
+
         if ch == KEY_ENTER:
             if len(value) >= min_len:
                 break
@@ -227,12 +231,25 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
             value = ''
         elif ch == KEY_CANCEL:
             if confirm_exit:
-                pp = await ux_show_story(
-                    "OK to leave without any changes? Or CANCEL to avoid leaving.")
-                if pp == KEY_CANCEL:
-                    continue
-            value = None
-            break
+                if exit_armed:
+                    value = None
+                    break
+                err_msg = 'Confirm exit w/o change?'
+                exit_armed = True
+                continue
+            else:
+                value = None
+                break
+
+        elif ch == KEY_QR:
+            # Insert or replace? I think replace
+            ss = dis.save_state()
+            zz = QRScannerInteraction()
+            got = await zz.scan_text('Scan any QR or Barcode for text.')
+            if got:     # handle cancel, etc
+                value = got
+                err_msg = 'Replace w/ data from scan.'
+            dis.restore_state(ss)
 
         elif b39_complete and ch == KEY_TAB:
             # match case and auto-complete BIP-39 word if we can
@@ -642,6 +659,27 @@ class QRScannerInteraction:
         dis.show()
 
         return data
+
+    async def scan_text(self, prompt):
+        # Scan and return a text string. For things like BIP-39 passphrase
+        # and perhaps they are re-using a QR from something else. Don't act on contents.
+        problem = None
+
+        while 1:
+            try:
+                got = await self.scan(prompt, line2=problem)
+                if got is None:
+                    return None
+
+                # Decode BBQr but not anything more complex
+                return decode_qr_result(got, expect_text=True)
+            except QRDecodeExplained as exc:
+                problem = str(exc)
+                continue
+            except Exception as exc:
+                #import sys; sys.print_exception(exc)
+                problem = "Unable to decode QR"
+                continue
 
 
     async def scan_anything(self, expect_secret=False):

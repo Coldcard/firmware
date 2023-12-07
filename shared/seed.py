@@ -24,7 +24,7 @@ from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL
+from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
 
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -287,7 +287,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
         extra += 'Press (1) to view as QR Code. '
     else:
         escape = (escape or '') + KEY_QR
-        extra += 'Press QR button to view as QR Code. '
+        extra += 'Press '+ KEY_QR + ' to view as QR Code. '
 
     if extra:
         msg += '\n\n'
@@ -1089,8 +1089,8 @@ class PassphraseMenu(MenuSystem):
 
         if version.has_qwerty:
             items = [
-                MenuItem('Edit Phrase', f=self.view_edit_phrase),
-                MenuItem('Clear Phrase', f=self.empty_phrase),
+                MenuItem('Edit Phrase', f=self.view_edit_phrase, shortcut=KEY_QR),
+                MenuItem('Clear Phrase', f=self.empty_phrase, shortcut=KEY_CLEAR),
                 MenuItem('APPLY', f=self.done_apply),
                 MenuItem('CANCEL', f=self.done_cancel),
             ]
@@ -1104,8 +1104,8 @@ class PassphraseMenu(MenuSystem):
                 MenuItem('APPLY', f=self.done_apply),
                 MenuItem('CANCEL', f=self.done_cancel),
             ]
-        # quick SD card check
-        # TODO this needs to handle 2 SD cards now ?
+
+        # quick SD card check: will use A if both slots are stuffed
         if pyb.SDCard().present():
             try:
                 with CardSlot() as card:
@@ -1154,7 +1154,7 @@ class PassphraseMenu(MenuSystem):
         global pp_sofar
 
         if len(pp_sofar) >= 3:
-            if not await ux_confirm("Press OK to clear passphrase. X to cancel."):
+            if not await ux_confirm("Press OK to clear passphrase."):
                 return
 
         pp_sofar = ''
