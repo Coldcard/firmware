@@ -572,7 +572,7 @@ def get_secrets(sim_execfile):
 @pytest.fixture
 def press_select(need_keypress, has_qwerty):
     def doit():
-        need_keypress(KEY_SELECT if has_qwerty else 'y')
+        need_keypress(KEY_ENTER if has_qwerty else 'y')
     return doit
 
 @pytest.fixture
@@ -629,7 +629,7 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty):
                 need_keypress(KEY_UP if has_qwerty else '5')
                 time.sleep(.01)      # required
 
-            need_keypress(KEY_SELECT if has_qwerty else 'y')
+            need_keypress(KEY_ENTER if has_qwerty else 'y')
             time.sleep(.01)      # required
         else:
             # go down
@@ -637,7 +637,7 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty):
                 need_keypress(KEY_DOWN if has_qwerty else '8')
                 time.sleep(.01)      # required
 
-            need_keypress(KEY_SELECT if has_qwerty else 'y')
+            need_keypress(KEY_ENTER if has_qwerty else 'y')
             time.sleep(.01)      # required
 
     return doit
