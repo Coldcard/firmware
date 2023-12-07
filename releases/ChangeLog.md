@@ -12,6 +12,7 @@
 - Bugfix: Handle any failures in slot reading when loading settings
 - Bugfix: Add missing First Time UX for extended key import as master seed
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active
+- Bugfix: Disallow using master seed as temporary seed
 
 ## 5.2.0 - 2023-10-10
 

@@ -471,15 +471,16 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
         await add_seed_to_vault(encoded, meta=meta)
         dis.fullscreen("Wait...")
 
-    applied = pa.tmp_secret(encoded, chain=chain, bip39pw=bip39pw)
+    applied, err_msg = pa.tmp_secret(encoded, chain=chain, bip39pw=bip39pw)
+
     dis.progress_bar_show(1)
-    xfp = settings.get("xfp", None)
-    if xfp:
-        xfp = "[" + xfp2str(xfp) + "]"
+
     if not applied:
-        await ux_show_story(title=xfp, msg="Temporary master key already in use.")
+        await ux_show_story(title="FAILED", msg=err_msg)
         return
 
+
+    xfp = "[" + xfp2str(settings.get("xfp", 0)) + "]"
     if summarize_ux:
         await ux_show_story(title=xfp, msg="New temporary master key is in effect now.")
 
