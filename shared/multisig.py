@@ -13,8 +13,7 @@ from menu import MenuSystem, MenuItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
-from charcodes import KEY_NFC
-
+from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -1380,6 +1379,7 @@ async def export_multisig_xpubs(*a):
     # - however some 3rd parties are making use of it as well.
     #
     from glob import NFC, dis
+    from ux import import_export_prompt
 
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
