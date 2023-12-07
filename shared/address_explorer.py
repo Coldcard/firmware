@@ -273,6 +273,9 @@ Press (3) if you really understand and accept these risks.
                 export_msg += " Press (6) to show change addresses."  # 5 is needed to move up
             export_msg += '\n\n'
 
+            if version.has_qwerty:
+                export_msg = export_msg.replace('(2)', KEY_QR).replace('(3)', KEY_NFC)
+
             msg = ""
             if n > 1:
                 if start == 0:
