@@ -115,12 +115,25 @@ class SettingsObject:
         ctr = ustruct.pack('<4I', 4, 3, 2, pos)
         return aes256ctr.new(self.nvram_key, ctr)
 
+    @staticmethod
+    def hash_key(secret):
+        # hash up the secret... without decoding it or similar
+        assert len(secret) >= 32
+
+        s = sha256(secret)
+
+        for round in range(5):
+            s.update('pad')
+            s = sha256(s.digest())
+
+        return s.digest()
+
     def set_key(self, new_secret=None):
         # System settings (not secrets) are stored in flash, encrypted with this
         # key that is derived from main wallet secret. Call this method when the secret
         # is first loaded, or changes for some reason.
         from pincodes import pa
-        from stash import blank_object, SensitiveValues
+        from stash import blank_object
 
         key = None
         mine = False
@@ -136,15 +149,7 @@ class SettingsObject:
 
         if new_secret:
             # hash up the secret... without decoding it or similar
-            assert len(new_secret) >= 32
-            
-            s = sha256(new_secret)
-
-            for round in range(5):
-                s.update('pad')
-                s = sha256(s.digest())
-
-            key = s.digest()
+            key = self.hash_key(new_secret)
 
             if mine:
                 blank_object(new_secret)
