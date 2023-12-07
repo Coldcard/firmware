@@ -15,14 +15,13 @@
 # - you cannot move data between slots because AES-CTR with CTR seed based on slot #
 # - SHA-256 check on decrypted data
 # - (Mk4) each slot is a file on /flash/settings 
+# - os.sync() not helpful because block device under filesystem doesnt implement it
 #
 import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr
 from uhashlib import sha256
 from random import randbelow
 from utils import call_later_ms
-from version import mk_num, is_devmode
-
-# TODO fs.sync
+from version import is_devmode
 
 # Setting values:
 #   xfp = master xpub's fingerprint (32 bit unsigned)
@@ -468,7 +467,7 @@ class SettingsObject:
         if avail:
             return avail.pop()
 
-        # TODO destructive
+        # destructive
         victim = randbelow(NUM_SLOTS)
         self._wipe_slot(victim)
 
