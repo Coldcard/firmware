@@ -412,7 +412,8 @@ class PinAttempt:
         self.roundtrip(7, fw_upgrade=(start, length))
         # not-reached
 
-    def new_main_secret(self, raw_secret=None, chain=None, bip39pw='', blank=False):
+    def new_main_secret(self, raw_secret=None, chain=None, bip39pw='', blank=False,
+                        target_nvram_key = None):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
@@ -437,7 +438,13 @@ class PinAttempt:
                 settings.blank()
                 old_values = None
         else:
-            settings.set_key(raw_secret)
+            if target_nvram_key is None:
+                settings.set_key(raw_secret)
+            else:
+                # we already have hashed nvram key calculated
+                # from self.tmp_secret - use it
+                settings.nvram_key = target_nvram_key
+
             settings.load()
 
         # Recalculate xfp/xpub values (depends both on secret and chain)
@@ -465,17 +472,30 @@ class PinAttempt:
             settings.load()
             self.state_flags |= PA_ZERO_SECRET
 
-
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
+        from glob import settings
+
         val = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
         if self.tmp_value == val:
             # noop - already enabled
-            return False
+            return False, "Temporary master key already in use."
+
+        target_nvram_key = None
+        if encoded is not None:
+            # disallow using master seed as temporary
+            master_err = "Cannot use master seed as temporary."
+            target_nvram_key = settings.hash_key(encoded)
+            if settings.master_nvram_key:
+                assert self.tmp_value
+                if target_nvram_key == settings.master_nvram_key:
+                    return False, master_err
+            else:
+                if target_nvram_key == settings.nvram_key:
+                    return False, master_err
 
         if not self.tmp_value:
             # leaving from master seed, might capture some useful values
-            from glob import settings
             settings.leaving_master_seed()
 
         self.tmp_value = val
@@ -485,14 +505,14 @@ class PinAttempt:
 
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
-        self.new_main_secret(self.tmp_value, chain=chain, bip39pw=bip39pw)
+        self.new_main_secret(self.tmp_value, chain=chain, bip39pw=bip39pw,
+                             target_nvram_key=target_nvram_key)
 
         # On Q1, update status icons
         from glob import dis
-        is_pass, is_tmp = (1, 1) if bip39pw else (0, 1)
-        dis.draw_status(bip39=is_pass, tmp=is_tmp)
+        dis.draw_status(bip39=1 if bip39pw else 0, tmp=1)
 
-        return True
+        return True, None
 
     def trick_request(self, method_num, data):
         # send/recv a trick-pin related request (mk4 only)

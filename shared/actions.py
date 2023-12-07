@@ -2357,13 +2357,13 @@ async def reflash_gpu(*a):
     from glob import dis
     await dis.gpu.reflash_gpu_ux()
 
-async def scan_any_qr(*a, expect_secret=False):
+async def scan_any_qr(menu, label, item):
+    expect_secret, tmp = item.arg
+    await _scan_any_qr(expect_secret, tmp)
+
+async def _scan_any_qr(expect_secret=False, tmp=False):
     from ux_q1 import QRScannerInteraction
     x = QRScannerInteraction()
-    await x.scan_anything(expect_secret=expect_secret)
-
-async def scan_secret_import(*a):
-    # trying to import a secret
-    return await scan_any_qr(expect_secret=True)
+    await x.scan_anything(expect_secret=expect_secret, tmp=tmp)
 
 # EOF

@@ -320,7 +320,7 @@ ImportWallet = [
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem('Scan QR Code', predicate=lambda: version.has_qr,
-             shortcut=KEY_QR, f=scan_secret_import),
+             shortcut=charcodes.KEY_QR, f=scan_any_qr, arg=(True, False)),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
@@ -350,7 +350,7 @@ NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
     MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
-         shortcut=KEY_QR, f=scan_any_qr),
+         shortcut=charcodes.KEY_QR, f=scan_any_qr, arg=(False, True)),
     MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore, shortcut='x'),
