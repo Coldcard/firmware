@@ -277,7 +277,9 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
 
 @pytest.mark.parametrize('multiple_runs', range(3))
 @pytest.mark.parametrize('nwords', [12, 24])
-def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs, reset_seed_words, expect_ftux):
+def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress,
+                    cap_menu, get_secrets, unit_test, pass_word_quiz, multiple_runs,
+                    reset_seed_words, expect_ftux):
     # generate a random wallet, and check seeds are what's shown to user, etc
     
     unit_test('devtest/clear_seed.py')
@@ -313,7 +315,7 @@ def test_new_wallet(nwords, goto_home, pick_menu_item, cap_story, need_keypress,
 @pytest.mark.parametrize('testnet', [True, False])
 def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu,
                     word_menu_entry, get_secrets, microsd_path, multiple_runs, reset_seed_words,
-                    nfc_write_text, settings_set, virtdisk_path):
+                    nfc_write_text, settings_set, virtdisk_path, expect_ftux):
     if testnet:
         netcode = "XTN"
         settings_set('chain', 'XTN')
@@ -370,7 +372,7 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
         need_keypress("y")
         pick_menu_item(fname)
 
-    unit_test('devtest/abort_ux.py')
+    expect_ftux()
 
     v = get_secrets()
 
