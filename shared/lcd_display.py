@@ -117,9 +117,13 @@ class Display:
         self.last_buf = self.make_buf(0)
         self.next_buf = self.make_buf(32)
 
-        # state of progress bar
+        # state of progress bar (bottom edge)
         self.last_prog_x = -1
         self.next_prog_x = 0
+
+        # state of scroll bar (right side)
+        self.last_scroll = 0.0
+        self.next_scroll = None
 
         self.last_bar_update = 0
         #self.dis.fill_screen()     # defer a bit
@@ -298,12 +302,14 @@ class Display:
         self.last_buf = self.make_buf(32)
         self.next_buf = self.make_buf(32)
         self.next_prog_x = 0
+        self.next_scroll = None
 
     def clear(self):
         # clear text
         self.next_buf = self.make_buf(32)
-        # clear progress bar
+        # clear progress bar / scroll
         self.next_prog_x = 0
+        self.next_scroll = None
 
     def show(self, just_lines=None, cursor=None, max_bright=False):
         # Push internal screen representation to device, effeciently
@@ -358,6 +364,10 @@ class Display:
                 self.dis.fill_rect(x, HEIGHT-3, WIDTH-x, 3, COL_BLACK)
             self.last_prog_x = x
 
+        if self.next_scroll != self.last_scroll:
+            self._draw_scroll_bar(self.next_scroll)
+            self.last_scroll = self.next_scroll
+
         if cursor:
             # implement CursorSpec values
             assert 0 <= cursor.x < CHARS_W, 'cur x'
@@ -379,10 +389,10 @@ class Display:
     # When drawing another screen for a bit, then coming back, use these
     def save_state(self):
         # TODO: should be a dataclass w/ all our state details
-        return ([array.array('I', ln) for ln in self.last_buf], self.last_prog_x)
+        return ([array.array('I', ln) for ln in self.last_buf], self.last_prog_x, self.last_scroll)
 
     def restore_state(self, old_state):
-        rows, self.next_prog_x = old_state
+        rows, self.next_prog_x, self.next_scroll = old_state
         for y in range(CHARS_H):
             self.next_buf[y][:] = rows[y]
         self.show()
@@ -408,12 +418,18 @@ class Display:
         raise NotImplementedError
 
     def scroll_bar(self, fraction):
+        # next show(), we will show scroll bar on right edge
+        self.next_scroll = fraction
+
+    def _draw_scroll_bar(self, fraction):
         # Immediately draw bar along right edge.
         # - length means nothing, just vert position
-        # MAYBE TODO: make this internal, part of show and make fraction a var?
-        self.gpu.take_spi()
         bw = 2      # bar width, height
         bh = ACTIVE_H // 4
+        if fraction is None:
+            self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_BLACK)
+            return
+
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_DARK_TEXT)
         pos = int((ACTIVE_H-bh)*fraction)
         if pos+bh > ACTIVE_H:
