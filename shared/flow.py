@@ -19,6 +19,9 @@ from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
 
+# useful shortcut keys
+from charcodes import KEY_QR, KEY_NFC
+
 
 # Optional feature: HSM, depends on hardware
 # - code for HSM support wont exist on some platforms, so dont call it
@@ -163,7 +166,8 @@ FileMgmtMenu = [
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
-    MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file),
+    MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file,
+                                     shortcut=KEY_NFC),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('Format SD Card', f=wipe_sd_card),
     MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
@@ -295,7 +299,7 @@ AdvancedNormalMenu = [
                    story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
 By default these commands are disabled.", predicate=hsm_feature),
     MenuItem('User Management', menu=make_users_menu, predicate=hsm_feature),
-    MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu),
+    MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu),
 ]
 
@@ -313,7 +317,7 @@ ImportWallet = [
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem('Scan QR Code', predicate=lambda: version.has_qr,
-             shortcut=charcodes.KEY_QR, f=scan_secret_import),
+             shortcut=KEY_QR, f=scan_secret_import),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
@@ -343,7 +347,7 @@ NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
     MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
-         shortcut=charcodes.KEY_QR, f=scan_any_qr),
+         shortcut=KEY_QR, f=scan_any_qr),
     MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
