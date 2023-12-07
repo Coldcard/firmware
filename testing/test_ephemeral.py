@@ -4,7 +4,8 @@
 #
 
 import pytest, time, re, os, shutil, pdb, hashlib
-from constants import simulator_fixed_tpub, simulator_fixed_words, simulator_fixed_xfp, simulator_fixed_xpub
+from constants import simulator_fixed_tpub, simulator_fixed_xfp, simulator_fixed_xpub
+from constants import simulator_fixed_words, simulator_fixed_tprv
 from ckcc.protocol import CCProtocolPacker
 from txn import fake_txn
 from test_ux import word_menu_entry
@@ -763,8 +764,8 @@ def test_activate_current_tmp_secret(reset_seed_words, goto_eph_seed_menu,
     title, story = cap_story()
 
     assert "Temporary master key already in use" in story
-    already_used_xfp = title[1:-1]
-    assert already_used_xfp == in_effect_xfp == expected_xfp
+    assert title == "FAILED"
+    assert in_effect_xfp == expected_xfp
     need_keypress("y")
 
 
@@ -1316,5 +1317,87 @@ def test_tmp_upgrade_disabled(reset_seed_words, need_keypress, pick_menu_item,
     time.sleep(.1)
     m = cap_menu()
     assert "Upgrade Firmware" not in m
+
+
+def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
+                              ephemeral_seed_disabled, pick_menu_item, goto_home,
+                              need_keypress, word_menu_entry, settings_set,
+                              confirm_tmp_seed, cap_menu, microsd_path,
+                              restore_main_seed, get_identity_story):
+    reset_seed_words()
+
+    goto_eph_seed_menu()
+    ephemeral_seed_disabled()
+
+    # try import same seed as current simulator master
+    words, expected_xfp = simulator_fixed_words, simulator_fixed_xfp
+    xfp_str = xfp2str(expected_xfp)
+    pick_menu_item("Import Words")
+    pick_menu_item(f"24 Words")
+    time.sleep(0.1)
+
+    word_menu_entry(words.split())
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "FAILED" == title
+    assert 'Cannot use master seed as temporary.' in story
+    need_keypress("x")
+
+    # go to ephemeral seed and then try to create new ephemeral seed from master
+    # when in different temporary seed whatsoever
+    goto_eph_seed_menu()
+
+    # random temporary seed
+    pick_menu_item("Generate Words")
+    pick_menu_item(f"12 Words")
+    need_keypress("6")  # skip quiz
+    need_keypress("y")  # yes - I'm sure
+    confirm_tmp_seed(seedvault=False)
+
+    goto_home()
+    time.sleep(0.1)
+    menu = cap_menu()
+    # ephemeral seed chosen
+    assert "[" in menu[0]
+    goto_eph_seed_menu()
+    pick_menu_item("Import Words")
+    pick_menu_item(f"24 Words")
+    time.sleep(0.1)
+
+    word_menu_entry(words.split())
+    time.sleep(.1)
+    title, story = cap_story()
+    assert "FAILED" == title
+    assert 'Cannot use master seed as temporary.' in story
+    need_keypress("x")
+
+    # now import same seed but represented as master extended key
+    # this works and does not delete master settings as encoded
+    # secret is different and therefore nvram_key too
+    fname = "ek_sim.txt"
+    with open(microsd_path(fname), "w") as f:
+        f.write(simulator_fixed_tprv)
+
+    goto_eph_seed_menu()
+    pick_menu_item("Import XPRV")
+    title, story = cap_story()
+    if "Press (1)" in story:
+        need_keypress("1")
+
+    need_keypress("y")  # Select file containing...
+    pick_menu_item(fname)
+    confirm_tmp_seed(seedvault=False)  # allowed
+
+    # verify we are in temporary seed
+    goto_home()
+    time.sleep(0.1)
+    menu = cap_menu()
+    # ephemeral seed chosen
+    assert "[" in menu[0]
+    assert xfp_str in menu[0]
+    restore_main_seed(preserve_settings=False, seed_vault=False)
+    story = get_identity_story()
+    assert "00000000" not in story
+    assert xfp_str in story
 
 # EOF
