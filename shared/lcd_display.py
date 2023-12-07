@@ -10,7 +10,7 @@ from utils import xfp2str
 from ucollections import namedtuple
 
 # the one font: fixed-width (except for a few double-width chars)
-from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT
+from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT, COL_DARK_TEXT
 from font_iosevka import FontIosevka
 
 
@@ -408,14 +408,17 @@ class Display:
         raise NotImplementedError
 
     def scroll_bar(self, fraction):
-        # along right edge
+        # Immediately draw bar along right edge.
+        # - length means nothing, just vert position
         # MAYBE TODO: make this internal, part of show and make fraction a var?
-        # XXX not showing at all?!?
         self.gpu.take_spi()
-        self.dis.fill_rect(WIDTH-5, 0, 5, HEIGHT, 0)
-        mm = HEIGHT-6
-        pos = min(int(mm*fraction), mm)
-        self.dis.fill_rect(WIDTH-2, pos, 1, 16, 1)
+        bw = 2      # bar width, height
+        bh = ACTIVE_H // 4
+        self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_DARK_TEXT)
+        pos = int((ACTIVE_H-bh)*fraction)
+        if pos+bh > ACTIVE_H:
+            pos = ACTIVE_H - bh
+        self.dis.fill_rect(WIDTH-bw, TOP_MARGIN+pos, bw, bh, COL_TEXT)
 
     def fullscreen(self, msg, percent=None):
         # show a simple message "fullscreen". 

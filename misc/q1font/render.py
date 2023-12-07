@@ -58,8 +58,8 @@ NUM_CHARS = len(CHARSET)
 # use a different glyph for these unicode values
 # - useful for multi-codepoint sequences, which we want to encode as single char
 REMAPS = {
-    KEY_NFC: 'nfc',
-    KEY_QR:  'qr',
+    KEY_NFC: 'NFC',
+    KEY_QR:  'QR',
     KEY_TAB: '↦',
 }
 
@@ -100,7 +100,7 @@ def make_palette(shades, col, darken=1.0):
 
 def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     font = ImageFont.truetype(FONT, FONT_SIZE)
-    font2 = ImageFont.truetype(FONT, FONT_SIZE-5)
+    keycap_font = ImageFont.truetype(FONT, FONT_SIZE-7)     # see KEY_NFC
 
     left, top, right, bottom = font.getbbox("|")
     char_h = bottom - top
@@ -153,13 +153,13 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
         if ch in KEYCAP_SYMBOLS:
             if ch == KEY_NFC:
-                x_shift += 0
+                x_shift += 1
             elif ch == KEY_QR:
-                x_shift += 2
+                x_shift += 3
             else:
                 x_shift += 3
-            this_y += 3
-            draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font2)
+            this_y += 5
+            draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', keycap_font)
 
             # add a border
             draw.rounded_rectangle( ( 0,0, (CELL_W*2)-1, CELL_H-1), 4, outline='white')
@@ -249,7 +249,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     BRAND_TEXT_COLOUR = (255, 176, 0)       # amber phospher colour #ffb000
     pal_nums, pal_vals, text_pal = make_palette(shades, BRAND_TEXT_COLOUR)
     _, pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], BRAND_TEXT_COLOUR)
-    _, _, text_pal_dark =  make_palette(shades, BRAND_TEXT_COLOUR, 0.66)
+    pal_dark_nums, _, text_pal_dark =  make_palette(shades, BRAND_TEXT_COLOUR, 0.66)
 
     with open(out_fname, 'w') as fp:
         tmpl = open('template.py').read()
@@ -266,6 +266,7 @@ TEXT_PALETTES = [
 # same, but w/o byte swapping, packing (useful for simulator)
 #TEXT_PALETTE = [{pal_vals}]
 COL_TEXT = const(0x{pal_nums[15]:04x})   # text foreground colour
+COL_DARK_TEXT = const(0x{pal_dark_nums[15]:04x})   # "dark" pallette text foreground colour
 
 CELL_W = const({CELL_W})
 CELL_H = const({CELL_H})

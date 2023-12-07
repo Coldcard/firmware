@@ -169,8 +169,7 @@ FileMgmtMenu = [
     MenuItem('Batch Sign PSBT', predicate=has_secrets, f=batch_sign),
     MenuItem('List Files', f=list_files),
     MenuItem('Verify Sig File', f=verify_sig_file),
-    MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file,
-                                     shortcut=KEY_NFC),
+    MenuItem('NFC File Share', predicate=nfc_enabled, f=nfc_share_file, shortcut=KEY_NFC),
     MenuItem('Clone Coldcard', predicate=has_secrets, f=clone_write_data),
     MenuItem('Format SD Card', f=wipe_sd_card),
     MenuItem('Format RAM Disk', predicate=vdisk_enabled, f=wipe_vdisk),
@@ -320,7 +319,7 @@ ImportWallet = [
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("24 Words", menu=start_seed_import, arg=24),
     MenuItem('Scan QR Code', predicate=lambda: version.has_qr,
-             shortcut=charcodes.KEY_QR, f=scan_any_qr, arg=(True, False)),
+             shortcut=KEY_QR, f=scan_any_qr, arg=(True, False)),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
     MenuItem("Import XPRV", f=import_xprv, arg=False),  # ephemeral=False
@@ -346,21 +345,22 @@ EmptyWallet = [
 ]
 
 # In operation, normal system, after a good PIN received.
+# - key shortcuts in place for all items that will be shown on Q
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem('Ready To Sign', f=ready2sign),
+    MenuItem('Ready To Sign', f=ready2sign, shortcut='r'),
     MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
-         shortcut=charcodes.KEY_QR, f=scan_any_qr, arg=(False, True)),
-    MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
+         shortcut=KEY_QR, f=scan_any_qr, arg=(False, True)),
+    MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active, shortcut='p'),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore, shortcut='x'),
-    MenuItem('Type Passwords', f=password_entry,
+    MenuItem('Type Passwords', f=password_entry, shortcut='t',
              predicate=lambda: settings.get("emu", False) and has_secrets()),
-    MenuItem('Seed Vault', menu=make_seed_vault_menu,
+    MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),
     MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu, shortcut='t'),
-    MenuItem('Settings', menu=SettingsMenu),
+    MenuItem('Settings', menu=SettingsMenu, shortcut='s'),
 ]
 
 # Shown until unit is put into a numbered bag
