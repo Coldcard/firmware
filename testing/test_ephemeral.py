@@ -1280,4 +1280,41 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
     else:
         restore_main_seed(False)
 
+
+def test_tmp_upgrade_disabled(reset_seed_words, need_keypress, pick_menu_item,
+                              cap_story, cap_menu, goto_home, unit_test,
+                              import_ephemeral_xprv):
+    reset_seed_words()
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Upgrade Firmware" in m
+    node = BIP32Node.from_master_secret(os.urandom(32), netcode="XTN")
+    xfp = node.fingerprint().hex().upper()
+    k0 = node.hwif(as_private=True)
+    import_ephemeral_xprv("sd", extended_key=k0, seed_vault=True, from_main=True)
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Upgrade Firmware" not in m
+
+    # Virgin CC
+    unit_test('devtest/clear_seed.py')
+
+    m = cap_menu()
+    assert m[0] == 'New Seed Words'
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Upgrade Firmware" in m
+    import_ephemeral_xprv("sd", extended_key=k0, seed_vault=True, from_main=True)
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    time.sleep(.1)
+    m = cap_menu()
+    assert "Upgrade Firmware" not in m
+
 # EOF
