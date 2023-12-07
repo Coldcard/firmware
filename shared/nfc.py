@@ -9,14 +9,15 @@
 #
 import utime, ngu, ndef
 from uasyncio import sleep_ms
+import uasyncio as asyncio
 from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
-from ux import ux_show_story, ux_poll_key
+from ux import ux_show_story, ux_wait_keyup
 from utils import B2A, problem_file_line, parse_addr_fmt_str
 from public_constants import AF_CLASSIC
-
+from charcodes import KEY_ENTER, KEY_CANCEL
 
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = const(8000)
@@ -300,7 +301,10 @@ class NFCHandler:
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
-        from glob import dis
+        from glob import dis, numpad
+
+        # bugfix: ENTER that got us here may be seen by ux_wait_keyup()
+        numpad.key_pressed = ''
 
         await self.wait_ready()
         self.set_rf_disable(0)
@@ -320,6 +324,7 @@ class NFCHandler:
         # - user can press OK during this period if they know they are done
         min_delay = (3000 if write_mode else 1000)
 
+
         while 1:
             phase = (phase + 1) % 4
             dis.clear()
@@ -328,7 +333,12 @@ class NFCHandler:
             else:
                 dis.icon(0, 8, frames[phase])
             dis.show()
-            await sleep_ms(250)
+
+            # wait for key or 250ms animation delay
+            try:
+                ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
+            except asyncio.TimeoutError:
+                ch = None
 
             if self.last_edge:
                 self.last_edge = 0
@@ -346,9 +356,8 @@ class NFCHandler:
                     last_activity = utime.ticks_ms()
 
             # X or OK to quit, with slightly different meanings
-            ch = ux_poll_key()
-            if ch and ch in 'xy': 
-                aborted = (ch == 'x')
+            if ch and ch in 'xy'+KEY_ENTER+KEY_CANCEL: 
+                aborted = (ch in 'x'+KEY_CANCEL)
                 break
 
             if last_activity:
