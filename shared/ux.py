@@ -89,7 +89,7 @@ def ux_clear_keys(no_aborts=False):
 async def ux_wait_keyup(expected=None):
     # Wait for single keypress in 'expected' set, return it
     # no visual feedback, no escape
-    # - can be canceled anytime, using wait_for to create a timeout
+    # - can be canceled anytime, using wait_for_ms to create a timeout
     from glob import numpad
 
     armed = numpad.key_pressed or False
