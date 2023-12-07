@@ -43,7 +43,11 @@ def numpad_remap(key):
 
 def start_chooser(chooser):
     # get which one to show as selected, list of choices, and fcn to call after
-    selected, choices, setter = chooser()
+    # - optional: a function to preview a value
+    selected, choices, setter, *preview = chooser()
+
+    if preview:
+        preview, = preview
 
     async def picked(menu, picked, xx_self):
         menu.chosen = picked
@@ -55,6 +59,9 @@ def start_chooser(chooser):
 
     # make a new menu, just for the choices
     m = MenuSystem([MenuItem(c, f=picked) for c in choices], chosen=selected)
+    if preview:
+        m.late_draw = lambda dis: preview(m.cursor)
+
     the_ux.push(m)
 
 class MenuItem:

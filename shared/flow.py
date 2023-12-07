@@ -37,9 +37,10 @@ else:
 trick_pin_menu = TrickPinMenu.make_menu
 
 if version.has_battery:
-    from q1 import battery_idle_timeout_chooser
+    from q1 import battery_idle_timeout_chooser, brightness_chooser
 else:
     battery_idle_timeout_chooser = None
+    brightness_chooser = None
 
 
 #
@@ -110,6 +111,8 @@ SettingsMenu = [
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Idle Timeout (on battery)', chooser=battery_idle_timeout_chooser,
+                                                 predicate=lambda: version.has_battery),
+    MenuItem('LCD Brightness (on battery)', chooser=brightness_chooser,
                                                  predicate=lambda: version.has_battery),
     ToggleMenuItem('Delete PSBTs', 'del', ['Default Keep', 'Delete PSBTs'],
         story='''\
@@ -350,13 +353,13 @@ NormalSystem = [
          shortcut=KEY_QR, f=scan_any_qr),
     MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
-    MenuItem("Address Explorer", f=address_explore),
+    MenuItem("Address Explorer", f=address_explore, shortcut='x'),
     MenuItem('Type Passwords', f=password_entry,
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu,
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),
     MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
-    MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
+    MenuItem('Advanced/Tools', menu=AdvancedNormalMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu),
 ]
 

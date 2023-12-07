@@ -137,6 +137,31 @@ class Display:
     async def async_draw_status(self, **kws):
         self.draw_status(**kws)
 
+    def set_lcd_brightness(self, on_battery=None, tmp_override=None):
+        # Call when battery changes state, or if you want max for a bit (QR display)
+        # - call w/o args to get back to state we're supposed to be in.
+        from glob import settings
+        from q1 import get_batt_threshold, DEFAULT_BATT_BRIGHTNESS
+
+        if tmp_override is not None:
+            self.dis.backlight.intensity(tmp_override)
+            return
+
+        # otherwise: respect setting
+
+        if on_battery is None:
+            on_battery = (get_batt_threshold() != None)
+
+        if on_battery:
+            # user-defined brightness when running on batteries.
+            lvl = DEFAULT_BATT_BRIGHTNESS
+            if settings:
+                lvl = settings.get('bright', DEFAULT_BATT_BRIGHTNESS)
+            self.dis.backlight.intensity(lvl)
+        else:
+            # full brightness when on VBUS and when showing QR's
+            self.dis.backlight.intensity(255)
+
     def draw_status(self, full=False, **kws):
         self.gpu.take_spi()
 
@@ -150,10 +175,10 @@ class Display:
         b_x = 290
         if 'bat' in kws:
             self.image(b_x, 0, 'bat_%d' % kws['bat'])
-            self.dis.backlight.intensity(128)      # dim if running on batteries
+            self.set_lcd_brightness(True)
         if 'plugged' in kws:
             self.image(b_x, 0, 'plugged')
-            self.dis.backlight.intensity(250)     # full brightness when on VBUS
+            self.set_lcd_brightness(False)
 
         if 'bip39' in kws:
             self.image(102, 0, 'bip39_%d' % kws['bip39'])
@@ -280,7 +305,7 @@ class Display:
         # clear progress bar
         self.next_prog_x = 0
 
-    def show(self, just_lines=None, cursor=None):
+    def show(self, just_lines=None, cursor=None, max_bright=False):
         # Push internal screen representation to device, effeciently
         self.gpu.take_spi()
 
@@ -341,6 +366,15 @@ class Display:
             self.last_buf[cursor.y][cursor.x] = 0xfffd
             if (cursor.cur_type & CURSOR_DW_Mask) and (cursor.x < CHARS_W-1):
                 self.last_buf[cursor.y][cursor.x+1] = 0xfffd
+
+        # modulate the LCD brightness if we're showing QR or something
+        if max_bright:
+            self.set_lcd_brightness(tmp_override=255)
+            self._max_bright = True
+        elif hasattr(self, '_max_bright'):
+            self.set_lcd_brightness()       # back to normal
+            del self._max_bright
+            
 
     # When drawing another screen for a bit, then coming back, use these
     def save_state(self):
@@ -453,6 +487,7 @@ class Display:
     def set_brightness(self, val):
         # - was only used by HSM ux code
         # - QR code display brightness could be done in show_qr_data()
+        # - see self.set_lcd_brightness()
         return 
 
     def menu_draw(self, ry, msg, is_sel, is_checked, space_indicators):
@@ -586,8 +621,8 @@ class Display:
             # show path index number: just 1 or 2 digits
             self.text(-1, 0, idx_hint)
 
-        # TODO: pass a "max_brightness" param here, which would be cleared after next show
-        self.show()
+        # pass a "max_brightness" param here, which would be cleared after next show
+        self.show(max_bright=True)
 
     def draw_bbqr_progress(self, hdr, got_parts, corrupt=False):
         # we've seen at least one BBQr QR, so update display w/ progress bar

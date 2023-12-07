@@ -9,6 +9,9 @@ import os, sys, pyb, ckcc, version, glob, uctypes
 # value must exist in battery_idle_timeout_chooser() choices
 DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
 
+# 0..255 brightness value for when on batteries
+DEFAULT_BATT_BRIGHTNESS = const(180)
+
 def init0():
     # called very early
     from mk4 import init0 as mk4_init0
@@ -68,14 +71,37 @@ def get_batt_level():
     
 def get_batt_threshold():
     # return 0=empty, 1=low, 2=75% 3=full or None if no bat
+    # TODO check these ranges
     volts = get_batt_level()
     if volts is None:
         return None
-    if volts <= 2.0:
+    if volts <= 3.0:
         return 0
-    if volts > 4.5:
-        return 3
-    return 2 if volts > 3 else 1
+    if volts <= 3.5:
+        return 1
+    return 3 if volts > 4.5 else 2
+
+def brightness_chooser():
+    from glob import settings, dis
+
+    bright = settings.get('bright', DEFAULT_BATT_BRIGHTNESS)        # as %?
+
+    ch = [ '25%', '50%', '60%', '70% (default)', '80%', '100%']
+    va = [ 64, 128, 153, DEFAULT_BATT_BRIGHTNESS, 200, 255]
+
+    try:
+        which = va.index(bright)
+    except ValueError:
+        which = DEFAULT_BATT_BRIGHTNESS
+
+    def _set(idx, text):
+        settings.set('bright', va[idx])
+        dis.set_lcd_brightness()
+
+    def _preview(idx):
+        dis.set_lcd_brightness(tmp_override=va[idx])
+
+    return which, ch, _set, _preview
 
 def battery_idle_timeout_chooser():
     from glob import settings

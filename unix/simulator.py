@@ -637,7 +637,7 @@ def handle_q1_key_events(event, numpad_tx, data_tx):
                     data_tx.write(txt + b'\n')
             return None
 
-        if not kn: return
+        if kn is None: return
 
         # do right click for shift+key, middle click for symb+key ... good luck
         #shift_down = (event.button.button == sdl2.SDL_BUTTON_RIGHT)

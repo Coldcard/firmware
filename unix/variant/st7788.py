@@ -8,6 +8,7 @@ import uasyncio
 
 class mock_LED:
     def intensity(self, n):
+        print("Set LCD brightness: %d" % n)
         pass
     def on(self):
         pass

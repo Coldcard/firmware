@@ -56,6 +56,7 @@ from version import mk_num, is_devmode
 #   sighshchk = (bool) set if sighash checks are disabled
 #   seedvault = (bool) opt-in enable seed vault feature
 #   seeds = list of stored secrets for seedvault feature
+#   bright = (int:0-255) LCD brightness when on battery
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -76,7 +77,7 @@ from version import mk_num, is_devmode
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
 # keep these settings only if unspecified on the other end
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
-                          "axskip", "del", "pms", "idle_to", "b39skip"]
+                          "axskip", "del", "pms", "idle_to", "batt_to", "b39skip", "brite"]
 
 SEEDVAULT_FIELDS = [ 'seeds', 'seedvault', 'xfp' ]
 
