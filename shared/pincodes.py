@@ -413,7 +413,7 @@ class PinAttempt:
         # not-reached
 
     def new_main_secret(self, raw_secret=None, chain=None, bip39pw='', blank=False,
-                        target_nvram_key = None):
+                        target_nvram_key=None):
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
@@ -459,7 +459,6 @@ class PinAttempt:
                     xfp = settings.get("xfp", 0)
                     dis.draw_status(xfp=xfp, tmp=0, bip39=0)
                 else:
-
                     xfp = sv.capture_xpub()
                     dis.draw_status(xfp=xfp)
 

@@ -124,7 +124,7 @@ def test_lc():
 async def commit_new_words(new_words):
     # save the new seed value
     set_seed_value(new_words)
-    
+
     # clear menu stack
     goto_top_menu(first_time=True)
 
@@ -467,14 +467,15 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
         dis.fullscreen("Wait...")
 
     applied, err_msg = pa.tmp_secret(encoded, chain=chain, bip39pw=bip39pw)
+
     dis.progress_bar_show(1)
-    xfp = settings.get("xfp", None)
-    if xfp:
-        xfp = "[" + xfp2str(xfp) + "]"
+
     if not applied:
         await ux_show_story(title="FAILED", msg=err_msg)
         return
 
+
+    xfp = "[" + xfp2str(settings.get("xfp", 0)) + "]"
     if summarize_ux:
         await ux_show_story(title=xfp, msg="New temporary master key is in effect now.")
 

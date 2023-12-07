@@ -152,6 +152,7 @@ class SettingsObject:
                 mine = True
 
         if new_secret:
+            # hash up the secret... without decoding it or similar
             key = self.hash_key(new_secret)
 
             if mine:
