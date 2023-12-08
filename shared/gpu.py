@@ -295,6 +295,15 @@ class GPUAccess:
 
         return v
 
+    def upgrade_if_needed(self):
+        # called at boot time
+        from gpu_binary import VERSION
+        v = self.get_version()
+        if v == VERSION:
+            # correct version in place and running -- do nothing.
+            return
+        self.upgrade()
+
     async def reflash_gpu_ux(self):
         # Available from Advanced > Danger Zone > Reflash GPU
         from ux import ux_show_story
