@@ -113,6 +113,9 @@ class Display:
 
         from gpu import GPUAccess
         self.gpu = GPUAccess()
+        try:
+            self.gpu.upgrade_if_needed()
+        except: pass
 
         self.last_buf = self.make_buf(0)
         self.next_buf = self.make_buf(32)
