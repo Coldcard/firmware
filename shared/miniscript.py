@@ -315,7 +315,10 @@ class MiniScriptWallet(BaseWallet):
 
     def find_duplicates(self):
         matches = []
+        name_unique = True
         for rv in self.iter_wallets():
+            if self.name == rv.name:
+                name_unique = False
             if self.key != rv.key:
                 continue
             if self.policy != rv.policy:
@@ -327,10 +330,15 @@ class MiniScriptWallet(BaseWallet):
 
             matches.append(rv)
 
-        return matches
+        return matches, name_unique
 
     async def confirm_import(self):
-        dups = self.find_duplicates()
+        dups, name_unique = self.find_duplicates()
+        if not name_unique:
+            await ux_show_story(title="FAILED", msg=("Miniscript wallet with name '%s'"
+                                                     " already exists. All wallets MUST"
+                                                     " have unique names.") % self.name)
+            return "x"
         to_save = await self.show_detail(new_wallet=True, duplicates=dups)
         ch = "y" if to_save else "x"
         if to_save and not dups:
@@ -592,17 +600,12 @@ async def miniscript_wallet_detail(menu, label, item):
 
 async def import_miniscript(*a):
     # pick text file from SD card, import as multisig setup file
+    from utils import import_prompt_builder
     from actions import file_picker
-    from glob import VD, dis
+    from glob import dis
 
-    force_vdisk = False
-    if VD:
-        prompt = "Press (1) to import miniscript wallet file from SD Card"
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to import from Virtual Disk"
-            escape += "2"
-        prompt += "."
+    prompt, escape = import_prompt_builder("miniscript wallet file", no_nfc=True)
+    if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == "1":
             force_vdisk=False
@@ -618,8 +621,9 @@ async def import_miniscript(*a):
                     # descriptor import
                     return True
 
-    fn = await file_picker('Pick miniscript wallet file to import (.txt)', suffix='.txt', min_size=100,
-                            taster=possible, force_vdisk=force_vdisk)
+    fn = await file_picker('Pick miniscript wallet file to import (.txt,.json)',
+                           suffix=['.txt', '.json'], min_size=100,
+                           taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 
     try:
