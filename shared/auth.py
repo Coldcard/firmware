@@ -3,7 +3,7 @@
 # Operations that require user authorization, like our core features: signing messages
 # and signing bitcoin transactions.
 #
-import stash, ure, ux, chains, sys, gc, uio, version, ngu
+import stash, ure, chains, sys, gc, uio, ngu, ujson
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
@@ -1457,7 +1457,7 @@ class NewMiniscriptEnrollRequest(UserAuthorizedAction):
                 self.pop_menu()
 
 def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_index=None, miniscript=False):
-    # Offer to import (enroll) a new multisig wallet. Allow reject by user.
+    # Offer to import (enroll) a new multisig/miniscript wallet. Allow reject by user.
     from multisig import MultisigWallet
     from miniscript import MiniScriptWallet
 
@@ -1466,6 +1466,22 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
     if sf_len:
         with SFFile(TXN_INPUT_OFFSET, length=sf_len) as fd:
             config = fd.read(sf_len).decode()
+
+    try:
+        j_conf = ujson.loads(config)
+        assert "desc" in j_conf, "'desc' key required"
+        config = j_conf["desc"]
+        assert isinstance(config, str), "'desc' value not a str"
+        assert config, "'desc' empty"
+
+        if "name" in j_conf:
+            # name from json has preference over filenames and desc checksum
+            name = j_conf["name"]
+            assert isinstance(name, str), "'name' value not a str"
+            assert len(name) >= 2, "'name' too short"
+            assert len(name) <= 40, "'name' too long (max 40)"
+    except ValueError:
+        print("not a valid json string - proceeed to normal parse")
 
     # this call will raise on parsing errors, so let them rise up
     # and be shown on screen/over usb
