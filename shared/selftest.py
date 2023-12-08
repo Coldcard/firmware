@@ -243,68 +243,54 @@ async def test_lcd():
         dis.clear()
 
 async def test_microsd():
-    if ckcc.is_simulator(): return
+    #if ckcc.is_simulator(): return
+    from version import num_sd_slots
+    from files import CardSlot
+    import os
 
-    async def wait_til_state(want):
-        label_test('MicroSD Card:', 'Remove' if sd.present() else 'Insert')
+    async def wait_til_state(num, want):
+        title = 'MicroSD Card'
+        if num_sd_slots > 1:
+            title += ' ' + chr(65+num)
+        label_test(title +':', 'Remove' if CardSlot.is_inserted() else 'Insert')
 
         while 1:
-            if want == sd.present(): return
+            if want == CardSlot.is_inserted(): return
             await sleep_ms(100)
             if ux_poll_key():
                 raise RuntimeError("MicroSD test aborted")
 
-    # XXX slot 2 on Q1
-    try:
-        import pyb
-        sd = pyb.SDCard()
-        sd.power(0)
-
+    for slot_num in range(num_sd_slots):
         # test presence switch
         for ph in range(7):
-            await wait_til_state(not sd.present())
+            await wait_til_state(slot_num, not CardSlot.is_inserted())
 
-            if ph >= 2 and sd.present():
+            if ph >= 2 and CardSlot.is_inserted():
                 # debounce
                 await sleep_ms(100)
-                if sd.present(): break
+                if CardSlot.is_inserted(): break
                 if ux_poll_key():
                     raise RuntimeError("MicroSD test aborted")
 
         label_test('MicroSD Card:', 'Testing')
 
         # card inserted
-        assert sd.present()     #, "SD not present?"
+        assert CardSlot.is_inserted()     #, "SD not present?"
 
-        # power up?
-        await sleep_ms(100)     # required
-        ok = sd.power(1)
-        assert ok               #  "sd.power() fail"
-        await sleep_ms(100)     # prob'ly not required
+        with CardSlot(slot_b=slot_num) as card:
 
-        try:
-            blks, bsize, *unused = sd.info()
-            assert bsize == 512
-        except:
-            # sd.info() returns None if problem
-            assert 0        # , "card info"
+            _, fn = card.pick_filename('test-delme.txt')
 
-        # just read it a bit, writing would prove little
-        buf = bytearray(512)
-        msize = 256*1024
-        for addr in range(0, msize, 1024):
-            sd.readblocks(addr, buf)
-            dis.progress_bar_show(addr/msize)
+            with open(fn, 'wt') as fd:
+                fd.write("Hello")
+            with open(fn, 'rt') as fd:
+                assert fd.read() == "Hello"
 
-            if addr == 0:
-                assert buf[-2:] == b'\x55\xaa'      # "Bad read"
+            os.unlink(fn)
 
         # force removal, so cards don't get stuck in finished units
-        await wait_til_state(False)
+        await wait_til_state(slot_num, False)
 
-    finally:
-        # CRTICAL: power it back down
-        sd.power(0)
 
 
 async def start_selftest():
@@ -317,7 +303,6 @@ async def start_selftest():
         await test_psram()
         await test_nfc_light()
         await test_nfc()
-        await test_microsd()
         if version.has_qwerty:
             await test_keyboard()
         else:
@@ -327,6 +312,7 @@ async def start_selftest():
         await test_secure_element()
         await test_sd_active()
         await test_usb_light()
+        await test_microsd()
 
         # add more tests here
 
