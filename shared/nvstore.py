@@ -65,7 +65,7 @@ from version import is_devmode
 #   cd_lgto = [<=mk3] minutes to show in countdown (in countdown-to-brick mode)
 #   cd_mode = [<=mk3] set to enable some less-destructive modes
 #   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
-#   kbtn =  (1 char) '1'-'9' that will wipe seed during login process (mk4+)
+#   kbtn =  (1 char str) button will wipe seed during login process (mk4+, Q)
 #   terms_ok = customer has signed-off on the terms of sale
 
 # settings linked to seed
@@ -84,7 +84,6 @@ NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
 MK4_WORKDIR = '/flash/settings/'
 
-
 # for mk4: we store binary files on LFS2 filesystem
 def MK4_FILENAME(slot):
     return MK4_WORKDIR + ('%03x.aes' % slot)
@@ -94,6 +93,9 @@ class SettingsObject:
     # class vars: track a few values from master seed settings
     master_sv_data = {}
     master_nvram_key = None
+
+    # need to cache this: settings used before login
+    _prelogin = None
 
     def __init__(self, nvram_key=None):
         # NOTE: constructor no longer loads the values by default (too slow).
@@ -106,9 +108,10 @@ class SettingsObject:
     @classmethod
     def prelogin(cls):
         # make an instance of the pre-login settings (ie. w/o key)
-        rv = cls()
-        rv.load()
-        return rv
+        if not cls._prelogin:
+            cls._prelogin = cls()
+            cls._prelogin.load()
+        return cls._prelogin
 
     def get_aes(self, pos):
         # Build AES object for en/decrypt of specific block.
