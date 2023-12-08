@@ -419,11 +419,18 @@ async def show_nickname(nick):
 
 async def pick_killkey(*a):
     # Setting: kill seed sometimes (requires mk4)
-    if await ux_show_story('''\
+    if version.has_qwerty:
+        msg = '''\
+If you press this key at any point during login, \
+your seed phrase will be immediately wiped.'''
+    else:
+        msg = '''\
 If you press this key while the anti- phishing words are shown during login, \
 your seed phrase will be immediately wiped.
 
-Best if this does not match the first number of the second half of your PIN.''') != 'y':
+Best if this does not match the first number of the second half of your PIN.'''
+
+    if await ux_show_story(msg) != 'y':
         return
 
     from choosers import kill_key_chooser

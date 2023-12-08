@@ -105,6 +105,26 @@ class MenuItem:
             if m:
                 the_ux.push(m)
 
+class NonDefaultMenuItem(MenuItem):
+    # Show a checkmark if setting is defined and not the default ... so know know it's set
+    def __init__(self, label, nvkey, prelogin=False, default_value=None, **kws):
+        super().__init__(label, **kws)
+        self.nvkey = nvkey
+        self.prelogin = prelogin
+        self.def_value = default_value       # treated the same as missing
+
+    def is_chosen(self):
+        # should we show a check in parent menu?
+        if self.prelogin:
+            from nvstore import SettingsObject
+            s = SettingsObject.prelogin()
+        else:
+            from glob import settings
+            s = settings
+
+        return bool(s.get(self.nvkey, self.def_value))
+
+
 class ToggleMenuItem(MenuItem):
     # Handle toggles: must use undefined (missing) as default
     # - can remap values a little, but default is to store 0/1/2

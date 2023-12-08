@@ -2,7 +2,7 @@
 #
 # flow.py - Menu structure
 #
-from menu import MenuItem, ToggleMenuItem
+from menu import MenuItem, ToggleMenuItem, NonDefaultMenuItem
 import version, charcodes
 from glob import settings
 
@@ -93,12 +93,12 @@ with the Coldcard.''',
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=pin_changer, arg='main'),
-    MenuItem('Trick PINs', menu=trick_pin_menu),
-    MenuItem('Set Nickname', f=pick_nickname),
-    MenuItem('Scramble Keypad', f=pick_scramble),
-    MenuItem('Kill Key', f=pick_killkey),
-    MenuItem('Login Countdown', chooser=countdown_chooser),
-    MenuItem('MicroSD 2FA', menu=microsd_2fa, predicate=se2_and_real_secret),
+    NonDefaultMenuItem('Trick PINs', 'tp', menu=trick_pin_menu),
+    NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
+    NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble),
+    NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
+    NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),
+    NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=se2_and_real_secret),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
@@ -106,7 +106,7 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Login Settings', menu=LoginPrefsMenu),
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
-    MenuItem('Multisig Wallets', menu=make_multisig_menu),
+    NonDefaultMenuItem('Multisig Wallets', 'multisig', menu=make_multisig_menu),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
