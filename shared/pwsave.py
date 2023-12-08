@@ -2,7 +2,7 @@
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import stash, ujson, ngu, pyb
+import stash, ujson, ngu
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
 from utils import xfp2str
@@ -229,7 +229,7 @@ class MicroSD2FA(PassphraseSaver):
     def authorized_card_present(cls, nonces):
         # Check if good card present
         
-        if not pyb.SDCard().present():
+        if not CardSlot.is_inserted():
             # no card present, so nope
             return False
 
@@ -237,10 +237,7 @@ class MicroSD2FA(PassphraseSaver):
         got = s.read_card()
         if not got:
             # garbage seen, missing file, etc => fail
-            #print('2fa file decrypt fail')
             return False
-        #print(repr(got))
-        #print(repr(nonces))
 
         # check it is in the list of authorized cards
         return (got['nonce'] in nonces)
@@ -326,11 +323,9 @@ class MicroSD2FA(PassphraseSaver):
 
     @classmethod
     async def menu_enroll(cls, menu, label, item):
-        from files import _is_ejected
-
         count = item.arg
 
-        if _is_ejected():
+        if not CardSlot.is_inserted():
             return await needs_microsd()
 
         # careful: if they re-enrolled same card twice, confusion will result
