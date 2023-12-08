@@ -237,18 +237,20 @@ async def microsd_upgrade(menu, label, item):
     failed = None
     with CardSlot(force_vdisk=force_vdisk) as card:
         with card.open(fn, 'rb') as fp:
-            offset, size = dfu_parse(fp)
+            try:
+                offset, size = dfu_parse(fp)
 
-            # we also put a copy of special signed heaer at the end of the flash
+                # read just the signature header
+                hdr = bytearray(FW_HEADER_SIZE)
+                fp.seek(offset + FW_HEADER_OFFSET)
+                rv = fp.readinto(hdr)
+                assert rv == FW_HEADER_SIZE
 
-            # read just the signature header
-            hdr = bytearray(FW_HEADER_SIZE)
-            fp.seek(offset + FW_HEADER_OFFSET)
-            rv = fp.readinto(hdr)
-            assert rv == FW_HEADER_SIZE
-
-            # check header values
-            failed = check_firmware_hdr(hdr, size)
+                # check header values
+                failed = check_firmware_hdr(hdr, size)
+            except Exception as exc:
+                # recover from garbage DFU files.
+                failed = "Failed: " + str(exc)
 
             if not failed:
                 # copy binary into PSRAM
