@@ -10,7 +10,7 @@ import os, sys, pyb, ckcc, version, glob, uctypes
 DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
 
 # 0..255 brightness value for when on batteries
-DEFAULT_BATT_BRIGHTNESS = const(180)
+DEFAULT_BATT_BRIGHTNESS = const(200)
 
 def init0():
     # called very early
@@ -84,10 +84,10 @@ def get_batt_threshold():
 def brightness_chooser():
     from glob import settings, dis
 
-    bright = settings.get('bright', DEFAULT_BATT_BRIGHTNESS)        # as %?
+    bright = settings.get('bright', DEFAULT_BATT_BRIGHTNESS)
 
-    ch = [ '25%', '50%', '60%', '70% (default)', '80%', '100%']
-    va = [ 64, 128, 153, DEFAULT_BATT_BRIGHTNESS, 200, 255]
+    ch = [ '25%', '50%', '60%', '70%', '80% (default)', '90%','100%']
+    va = [ 64, 128, 153, 180, DEFAULT_BATT_BRIGHTNESS, 230, 255]
 
     try:
         which = va.index(bright)
