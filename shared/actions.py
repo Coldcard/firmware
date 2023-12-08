@@ -304,7 +304,7 @@ can be as long as 12 digits.
 The prefix part determines the anti-phishing words you will \
 see each time you login.
 
-Your new PIN protects access to \
+Your new PIN protects access to 
 this Coldcard device and is not a factor in the wallet's \
 seed words or private keys.
 
@@ -1931,143 +1931,53 @@ async def verify_sig_file(*a):
     await verify_txt_sig_file(fn)
 
 
-async def pin_changer(_1, _2, item):
-    # Help them to change pins with appropriate warnings.
-    # - forcing them to drill-down to get warning about secondary is on purpose
-    # - the bootloader maybe lying to us about weather we are main vs. duress
-    # - there is a duress wallet for both main/sec pins, and you need to know main pin for that(mk3)
+async def main_pin_changer(*a):
+    # Help them to change the main (true) PIN with appropriate warnings.
+    # - the bootloader maybe lying to us about main vs trick pin
     # - what may look like just policy here, is in fact enforced by the bootrom code
     #
     from glob import dis
     from login import LoginUX
     from pincodes import BootloaderError, EPIN_OLD_AUTH_FAIL
 
-    mode = item.arg
-
-    # NOTE: for mk4, only "main" is applicable.
-
-    warn = {'main': ('Main PIN',
-                    'You will be changing the main PIN used to unlock your Coldcard. '
-                    "It's the one you just used a moment ago to get in here."),
-            'duress': ('Duress PIN',
-                        'This PIN leads to a bogus wallet. Funds are recoverable '
-                        'from main seed backup, but not as easily.'),
-            'secondary': ('Second PIN',
-                        'This PIN protects the "secondary" wallet that can be used to '
-                         'segregate funds or other banking purposes. This other wallet is '
-                         'completely independant of the primary.'),
-            'brickme': ('Brickme PIN',
-                       'Use of this special PIN code at any prompt will destroy the '
-                       'Coldcard completely. It cannot be reused or salvaged, and '
-                       'the secrets it held are destroyed forever.\n\nDO NOT TEST THIS!'),
-    }
-
-    if pa.is_secondary:
-        # secondary wallet user can only change their own password, and the secondary
-        # duress pin...
-        # - now excluded from menu, but keep for Mark1/2 hardware!
-        if mode == 'main' or mode == 'brickme':
-            await needs_primary()
-            return
-
-    if mode == 'duress' and pa.is_secret_blank():
-        await ux_show_story("Please set wallet seed before creating duress wallet.")
-        return
-
-    # are we changing the pin used to login?
-    is_login_pin = (mode == 'main') or (mode == 'secondary' and pa.is_secondary)
-
     lll = LoginUX()
-    lll.offer_second = False
-    title, msg = warn[mode]
+    title = 'Main PIN'
+    msg = '''\
+You will be changing the main PIN used to unlock your Coldcard.
 
-    async def incorrect_pin():
-        await ux_show_story('You provided an incorrect value for the existing %s.' % title,
-                                title='Wrong PIN')
-        return
-
-    # standard threats for all PIN's
-    msg += '''\n\n\
-THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN! Write it down.
-
-We strongly recommend all PIN codes used be unique between each other.
-'''
-    if not is_login_pin:
-        msg += '''\nUse 999999-999999 to clear existing PIN.'''
+THERE IS ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN!\n
+Write it down.'''
 
     ch = await ux_show_story(msg, title=title)
     if ch != 'y': return
 
+
+    async def incorrect_pin():
+        await ux_show_story('You provided an incorrect value for the existing PIN.',
+                                title='Wrong PIN')
+        return
+
     args = {}
 
-    need_old_pin = True
-
-    if is_login_pin:
-        # Challenge them for old password; they probably have it, and we have it
-        # in memory already, because we wouldn't be here otherwise... but
-        # challenge them anyway as a policy choice.
-        need_old_pin = True
-    else:
-        # There may be no existing PIN, and we need to learn that
-
-        if mode == 'secondary':
-            args['is_secondary'] = True
-
-        elif mode == 'duress':
-
-            args['is_duress'] = True
-
-            need_old_pin = bool(pa.has_duress_pin())
-
-        elif mode == 'brickme':
-            args['is_brickme'] = True
-
-            need_old_pin = bool(pa.has_brickme_pin())
-
-        if need_old_pin and not version.has_608:
-            # Do an expensive check (mostly for secondary pin case?)
-            try:
-                dis.fullscreen("Check...")
-                pa.change(old_pin=b'', new_pin=b'', **args)
-                need_old_pin = False
-            except BootloaderError as exc:
-                # not an error: old pin in non-blank
-                need_old_pin = True
-
-    if not need_old_pin:
-        # It is blank
-        old_pin = ''
-    else:
-        # We need the existing pin, so prompt for that.
-        lll.subtitle = 'Old ' + title
-
-        old_pin = await lll.prompt_pin()
-        if old_pin is None:
-            return await ux_aborted()
+    # We need the existing pin, so prompt for that.
+    lll.subtitle = 'Old ' + title
+    old_pin = await lll.prompt_pin()
+    if old_pin is None:
+        return await ux_aborted()
 
     args['old_pin'] = old_pin.encode()
 
     # we can verify the main pin right away here. Be nice.
-    if is_login_pin and args['old_pin'] != pa.pin:
+    if args['old_pin'] != pa.pin:
         return await incorrect_pin()
 
     while 1:
         lll.reset()
         lll.subtitle = "New " + title
-        pin = await lll.get_new_pin(title, allow_clear=True)
+        pin = await lll.get_new_pin(title, allow_clear=False)
 
         if pin is None:
             return await ux_aborted()
-
-        is_clear = (pin == CLEAR_PIN)
-
-        args['new_pin'] = pin.encode() if not is_clear else b''
-
-        if args['new_pin'] == pa.pin and not is_login_pin:
-            await ux_show_story("Your new PIN matches the existing PIN used to get here. "
-                                "It would be a bad idea to use it for another purpose.",
-                                title="Try Again")
-            continue
 
         from trick_pins import tp
         prob = tp.check_new_main_pin(pin)
@@ -2075,11 +1985,12 @@ We strongly recommend all PIN codes used be unique between each other.
             await ux_show_story(prob, title="Try Again")
             continue
 
+        args['new_pin'] = pin.encode()
         break
 
     # install it.
     try:
-        dis.fullscreen("Clearing..." if is_clear else "Saving...")
+        dis.fullscreen("Saving PIN...")
         dis.busy_bar(True)
 
         pa.change(**args)
@@ -2090,20 +2001,19 @@ We strongly recommend all PIN codes used be unique between each other.
         code = exc.args[1]
 
         if code == EPIN_OLD_AUTH_FAIL:
-            # likely: wrong old pin, on anything but main PIN
+            # unlikely: but maybe we got tricked?
             return await incorrect_pin()
         else:
             return await ux_show_story("Unexpected low-level error: %s" % exc.args[0],
                                             title='Error')
 
     # Main pin is changed, and we use it lots, so update pa
-    # - also we need pa.has_duress_pin() and has_brickme_pin() to be correct
     # - this step can be super slow with 608, unfortunately
     try:
         dis.fullscreen("Verify...")
         dis.busy_bar(True)
 
-        pa.setup(args['new_pin'] if is_login_pin else pa.pin, pa.is_secondary)
+        pa.setup(args['new_pin'], pa.is_secondary)
 
         if not pa.is_successful():
             # typical: do need login, but if we just cleared the main PIN,
@@ -2113,23 +2023,6 @@ We strongly recommend all PIN codes used be unique between each other.
         # Deltamode trick pins need to track main pin
         from trick_pins import tp
         tp.main_pin_has_changed(pa.pin.decode())
-
-        if mode == 'duress':
-            # program the duress secret now... it's derived from real wallet contents
-            from stash import SensitiveValues, SecretStash, AE_SECRET_LEN
-
-            if is_clear:
-                # clear secret, using the new pin, which is empty string
-                pa.change(is_duress=True, new_secret=b'\0' * AE_SECRET_LEN, old_pin=b'')
-            else:
-                with SensitiveValues() as sv:
-                    # derive required key
-                    node, _ = sv.duress_root()
-                    d_secret = SecretStash.encode(xprv=node)
-                    sv.register(d_secret)
-
-                    # write it out.
-                    pa.change(is_duress=True, new_secret=d_secret, old_pin=args['new_pin'])
 
     finally:
         dis.busy_bar(False)

@@ -89,10 +89,10 @@ with the Coldcard.''',
         predicate=lambda: version.has_nfc),
 ]
 
-# all pre-login values
+# Mostly pre-login values here.
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem('Change Main PIN', f=pin_changer, arg='main'),
+    MenuItem('Change Main PIN', f=main_pin_changer),
     NonDefaultMenuItem('Trick PINs', 'tp', menu=trick_pin_menu),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble),
