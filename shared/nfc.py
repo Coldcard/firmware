@@ -303,9 +303,6 @@ class NFCHandler:
         # - return T if aborted by user
         from glob import dis, numpad
 
-        # bugfix: ENTER that got us here may be seen by ux_wait_keyup()
-        numpad.key_pressed = ''
-
         await self.wait_ready()
         self.set_rf_disable(0)
         await self.setup_gpio()
@@ -324,7 +321,7 @@ class NFCHandler:
         # - user can press OK during this period if they know they are done
         min_delay = (3000 if write_mode else 1000)
 
-
+        first = True
         while 1:
             phase = (phase + 1) % 4
             dis.clear()
@@ -336,7 +333,8 @@ class NFCHandler:
 
             # wait for key or 250ms animation delay
             try:
-                ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
+                ch = await asyncio.wait_for_ms(ux_wait_keyup(flush=first), 250)
+                first = False
             except asyncio.TimeoutError:
                 ch = None
 
