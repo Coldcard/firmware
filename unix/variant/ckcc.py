@@ -4,10 +4,9 @@
 #
 # REMINDER: you must recompile coldcard-mpy if you change this file!
 #
-import ustruct, sys, uasyncio
+import ustruct, sys, uasyncio, utime
 from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
-#import utime as time
 
 from uerrno import *
 ERANGE = const(34)
@@ -74,6 +73,7 @@ def gate(method, buf_io, arg2):
 
     if method == 16:
         if len(buf_io) < 8: return ERANGE
+        utime.sleep_ms(500)     # because is slow in real world
         return pin_prefix(buf_io[0:arg2], buf_io)
 
     if method == 18:
@@ -185,9 +185,8 @@ def oneway(method, arg2):
     # TODO: capture method/arg2 into an object so unit tests can read it back while we are dead
 
     print("\n\nNOTE: One-way callgate into bootloader: method=%d arg2=%d\n\n" % (method, arg2))
-    import time
     while 1:
-        time.sleep(60)
+        utime.sleep(60)
 
 def is_simulator():
     return True

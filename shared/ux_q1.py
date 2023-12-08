@@ -311,60 +311,77 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
     return value
 
+def ux_show_phish_words(dis, words):
+    # Show the anti-phishing words
+    x = 34//2
+    y = 6
+    if not words:
+        # just clear line
+        dis.clear_box(0, y, CHARS_W, 1)
+    else:
+        dis.text(x - len(words[0]) - 1, y,   words[0])
+        dis.text(x + 1, y, words[1])
 
-def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
+def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
                     footer=None, randomize=None):
 
     # Draw PIN during entry / reentry / changing or setting
-
-    msg = ('※ ' * len(pin))
-    y = 1 if randomize else 2
+    # - vertical locations should be fixed
 
     if force_draw:
         dis.clear()
 
-    if randomize and force_draw:
+    rnd_y = CHARS_H-2
+
+    if randomize:
         # screen redraw, when we are "randomized"
         # - only used at login, none of the other cases
         # - test w/ "simulator.py --q1 -g --eff --set rngk=1"
 
         # show mapping of numbers vs. PIN digits
-        dis.text(1, -5, '  ' + '  '.join(randomize[1:]) + '  ' + randomize[0] + '  ', invert=1)
-        dis.text(1, -4, '↳ 1  2  3  4  5  6  7  8  9  0')
+        dis.text(1, rnd_y+0, '  ' + '  '.join(randomize[1:]) +'  '+ randomize[0] + '  ', invert=1)
+        dis.text(1, rnd_y+1, '↳ 1  2  3  4  5  6  7  8  9  0')
+        foot_y = -3
+    else:
+        foot_y = -1
 
-    if force_draw:
+    prompt = "Enter FIRST part of PIN" if not prefix else "Enter SECOND part of PIN" 
 
-        if is_first_part:
-            prompt="Enter FIRST part of PIN (xxx-)" 
-        else:
-            prompt="Enter SECOND part of PIN (-yyy)" 
+    dis.text(None, 1, prompt)
+    if subtitle:
+        # "New Main PIN" and similar
+        dis.text(None, 2, subtitle, dark=True)
 
-        if subtitle:
-            # "New Main PIN" ... so not really a SUB title.
-            dis.text(None, 0, subtitle)
-            dis.text(None, y, prompt)
-        else:
-            dis.text(None, y, prompt)
+    if footer:
+        # ie. '1 failures, 12 tries left'
+        dis.text(None, foot_y, footer, dark=True)
+    elif is_confirmation:
+        dis.text(None, foot_y, "Confirm pin value")
 
-        if footer:
-            # ie. '1 failures, 12 tries left'
-            dis.text(None, -2, footer)
+    # for MAX_PIN_PART_LEN==6
+    x = 3
+    y = 4
+    w = 12      # double-wide * 6
+    dis.clear_box(0, y, CHARS_W, 1)
+    dis.draw_box(x, y-1, w, 1, dark=bool(prefix))
+    dis.text(x+w+2, y, '-', dark=True)
+    dis.draw_box(x+w+3, y-1, w, 1, dark=not bool(prefix))
+        
+    active = '◯' * len(prefix or pin)
 
-        if is_confirmation:
-            cta = "Confirm pin value"
-        if is_confirmation:
-            cta = "CANCEL or ENTER when done"
-        else:
-            cta = "CANCEL or ENTER to continue"
+    if prefix:
+        # show first part and second
+        dis.text(x+1, y, active)
 
-        dis.text(None, -1, cta)
+        msg = '◯' * len(pin)
+        cur_x = dis.text(x+w+4, y, msg)
+    else:
+        cur_x = dis.text(x+1, y, active)
 
-    y += 2
-    x = dis.text(None, y, msg)
-    if not msg:
-        x -= 1      # to get exactly in center when empty
+    if len(pin) == 6:
+        cur_x -= 2
 
-    dis.show(cursor=CursorSpec(x, y, CURSOR_DW_SOLID))
+    dis.show(cursor=CursorSpec(cur_x, y, CURSOR_DW_SOLID))
 
 async def ux_login_countdown(sec):
     # Show a countdown, which may need to

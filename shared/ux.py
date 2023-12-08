@@ -19,6 +19,10 @@ if version.has_qwerty:
     STORY_H = CHARS_H
     from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
     from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_q1 import ux_show_phish_words
+
+    def q1_reword(msg):
+        return msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'ENTER')
 else:
     # How many characters can we fit on each line? How many lines?
     # (using FontSmall)
@@ -26,6 +30,8 @@ else:
     STORY_H = 5
     from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
     from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_mk4 import ux_show_phish_words
+    q1_reword = lambda m: m
 
 class UserInteraction:
     def __init__(self):
@@ -86,13 +92,17 @@ def ux_clear_keys(no_aborts=False):
     except QueueEmpty:
         return
 
-async def ux_wait_keyup(expected=None):
+async def ux_wait_keyup(expected=None, flush=False):
     # Wait for single keypress in 'expected' set, return it
     # no visual feedback, no escape
     # - can be canceled anytime, using wait_for_ms to create a timeout
     from glob import numpad
 
-    armed = numpad.key_pressed or False
+    if flush:
+        armed = False
+    else:
+        armed = numpad.key_pressed or False
+
     while 1:
         ch = await numpad.get()
 
@@ -127,8 +137,6 @@ def ux_poll_key():
 
     return ch
 
-def q1_reword(msg):
-    return msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'ENTER')
 
 async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_escape=False):
     # show a big long string, and wait for XY to continue
@@ -140,7 +148,6 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
     lines = []
     if title:
         # kinda weak rendering but it works.
-        # LATER: rarely used
         lines.append('\x01' + title)
 
         if version.has_qwerty:
@@ -154,8 +161,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
             if ln[-1] == '\n': 
                 ln = ln[:-1]
 
-            if version.has_qwerty:
-                ln = q1_reword(ln)
+            ln = q1_reword(ln)
 
             if len(ln) > CH_PER_W:
                 lines.extend(word_wrap(ln, CH_PER_W))
@@ -169,8 +175,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False, strict_es
         gc.collect()
     else:
         # simple string being shown
-        if version.has_qwerty:
-            msg = q1_reword(msg)
+        msg = q1_reword(msg)
 
         for ln in msg.split('\n'):
             if len(ln) > CH_PER_W:

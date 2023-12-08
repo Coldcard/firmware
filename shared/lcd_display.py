@@ -569,8 +569,8 @@ class Display:
                 self.text(0, y, '─'*CHARS_W, dark=True)
                 continue
             elif ln and ln[0] == '\x01':
-                # title ... but we have no special font?
-                self.text(0, y, ln[1:], invert=1)
+                # ux_show_story: title ... but we have no special font? Inverse!
+                self.text(0, y, ' '+ln[1:]+' ', invert=1)
             else:
                 self.text(0, y, ln)
 
@@ -679,7 +679,7 @@ class Display:
         self.progress_bar(percent)
         self.show()
 
-    def draw_box(self, x, y, w, h):
+    def draw_box(self, x, y, w, h, **kw):
         # using line-drawing chars, draw a box
         # returns X pos of first inside char
         assert 0 <= h <= CHARS_H-2      # 8 max
@@ -688,13 +688,13 @@ class Display:
         if x is None:
             x = (CHARS_W - w - 2) // 2
         ln = '┏' + ('━'*w) + '┓'
-        self.text(x, y, ln)
+        self.text(x, y, ln, **kw)
         for yy in range(y+1, y+h+1):
-            self.text(x, yy,  '┃')
-            self.text(x+w+1,  yy, '┃')
+            self.text(x, yy,  '┃', **kw)
+            self.text(x+w+1,  yy, '┃', **kw)
 
         ln = '┗' + ln[1:-1] + '┛'
-        self.text(x, y+h+1, ln)
+        self.text(x, y+h+1, ln, **kw)
 
         return x+1
 

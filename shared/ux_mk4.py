@@ -347,12 +347,23 @@ Add more characters by moving past end (right side).'''
                 help_msg += '\nTo quit without changes, delete everything.'
             await ux_show_story(help_msg)
 
+def ux_show_phish_words(dis, words):
+    # Show the 2 words during login/pin change process
+    from display import FontLarge, FontTiny
 
-def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
+    y = 15
+    x = 18
+    dis.text(x, y,    words[0], FontLarge)
+    dis.text(x, y+18, words[1], FontLarge)
+    dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
+
+def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
                     footer=None, randomize=None):
 
     # Draw PIN (placeholder)
     from display import FontTiny, FontLarge
+
+    is_first_part = not bool(prefix)
 
     if randomize:
         # screen redraw, when we are "randomized"
@@ -380,7 +391,7 @@ def ux_show_pin(dis, pin, subtitle, is_first_part, is_confirmation, force_draw,
             dis.clear_rect(0, 40, 88, 20)
 
         # placeholder text
-        msg = '[' + ('*'*len(self.pin)) + ']'
+        msg = '[' + ('*'*len(pin)) + ']'
         x = 40 - ((10*len(msg))//2)
         dis.text(x, 40, msg, FontLarge)
 
