@@ -147,6 +147,45 @@ def miniscript_descriptors(goto_home, pick_menu_item, need_keypress, cap_story,
 
 
 @pytest.fixture
+def usb_miniscript_get(dev):
+    def doit(name):
+        dev.check_mitm()
+        resp = dev.send_recv(CCProtocolPacker.miniscript_get(name))
+        return json.loads(resp)
+
+    return doit
+
+
+@pytest.fixture
+def usb_miniscript_delete(dev):
+    def doit(name):
+        dev.check_mitm()
+        dev.send_recv(CCProtocolPacker.miniscript_delete(name))
+
+    return doit
+
+
+@pytest.fixture
+def usb_miniscript_ls(dev):
+    def doit():
+        dev.check_mitm()
+        resp = dev.send_recv(CCProtocolPacker.miniscript_ls())
+        return json.loads(resp)
+
+    return doit
+
+
+@pytest.fixture
+def usb_miniscript_addr(dev):
+    def doit(name, index, change=False):
+        dev.check_mitm()
+        resp = dev.send_recv(CCProtocolPacker.miniscript_address(name, change, index))
+        return resp
+
+    return doit
+
+
+@pytest.fixture
 def get_cc_key(dev):
     def doit(path, subderiv=None):
         # cc device key
@@ -177,7 +216,8 @@ def bitcoin_core_signer(bitcoind):
 
 @pytest.fixture
 def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
-                           cap_story, load_export, miniscript_descriptors):
+                           cap_story, load_export, miniscript_descriptors,
+                           usb_miniscript_addr):
     def doit(way, addr_fmt, wallet, cc_minsc_name, export_check=True):
         goto_home()
         pick_menu_item("Address Explorer")
@@ -257,6 +297,21 @@ def address_explorer_check(goto_home, pick_menu_item, need_keypress, cap_menu,
                     _start, _end = _start[1:], _end[:-1]
                 assert core[idx].startswith(_start)
                 assert core[idx].endswith(_end)
+
+        # check few USB addresses
+        for i in range(5):
+            addr = usb_miniscript_addr(cc_minsc_name, i, change=False)
+            time.sleep(.1)
+            title, story = cap_story()
+            assert addr in story
+            assert addr == bitcoind_addrs[i]
+
+        for i in range(5):
+            addr = usb_miniscript_addr(cc_minsc_name, i, change=True)
+            time.sleep(.1)
+            title, story = cap_story()
+            assert addr in story
+            assert addr == bitcoind_addrs_change[i]
 
     return doit
 
@@ -689,7 +744,7 @@ def bitcoind_miniscript(bitcoind, need_keypress, cap_story, load_export,
             assert "P2SH-P2WSH" in story
         # assert "Derivation:\n  Varies (2)" in story
         need_keypress("y")  # approve multisig import
-        if r:
+        if r == "@":
             # unspendable key is generated randomly
             # descriptors will differ
             with pytest.raises(AssertionError):
@@ -1486,7 +1541,7 @@ def test_minitapscript(leaf2_mine, recovery, lt_type, minisc, clear_miniscript, 
                        address_explorer_check, get_cc_key, import_miniscript,
                        bitcoin_core_signer, same_acct, import_duplicate):
 
-    # needs this bitcoind branch https://github.com/bitcoin/bitcoin/pull/27255
+    # needs bitcoind 26.0
     normal_cosign_core = False
     recovery_cosign_core = False
     if "multi_a(" in minisc.split("),", 1)[0]:
@@ -1896,14 +1951,14 @@ def test_import_same_policy_same_keys_diff_order(taproot_ikspendable, minisc,
     if taproot:
         minisc = minisc.replace("multi(", "multi_a(")
         if ik_spendable:
-            ik = get_cc_key("84h/1h/100h")
+            ik = get_cc_key("84h/1h/100h", subderiv="/0/*")
             desc = f"tr({ik},{minisc})"
         else:
             desc = f"tr({H},{minisc})"
     else:
         desc = f"wsh({minisc})"
 
-    cc_key0 = get_cc_key("84h/1h/0h")
+    cc_key0 = get_cc_key("84h/1h/0h", subderiv="/0/*")
     signer0, core_key0 = bitcoin_core_signer("s00")
     # recevoery path is always B
     desc0 = desc.replace("@A", cc_key0)
@@ -2082,3 +2137,81 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     assert "FAILED" == title
     assert "MUST have unique names" in story
 
+
+def test_usb_workflow(usb_miniscript_get, usb_miniscript_ls, clear_miniscript,
+                      usb_miniscript_addr, usb_miniscript_delete, use_regtest,
+                      reset_seed_words, offer_minsc_import, need_keypress,
+                      cap_story):
+    use_regtest()
+    reset_seed_words()
+    clear_miniscript()
+    assert [] == usb_miniscript_ls()
+    for i, desc in enumerate(CHANGE_BASED_DESCS):
+        _, story = offer_minsc_import(json.dumps({"name": f"w{i}", "desc": desc}))
+        assert "Create new miniscript wallet?" in story
+        need_keypress("y")
+        time.sleep(.2)
+
+    msc_wallets = usb_miniscript_ls()
+    assert len(msc_wallets) == 4
+    assert sorted(msc_wallets) == ["w0", "w1", "w2", "w3"]
+    import pdb;pdb.set_trace()
+    # try to get/delete nonexistent wallet
+    with pytest.raises(Exception) as err:
+        usb_miniscript_get("w4")
+    assert err.value.args[0] == "Coldcard Error: Miniscript wallet not found"
+
+    with pytest.raises(Exception) as err:
+        usb_miniscript_delete("w4")
+    assert err.value.args[0] == "Coldcard Error: Miniscript wallet not found"
+
+    for i, w in enumerate(msc_wallets):
+        assert usb_miniscript_get(w)["desc"].split("#")[0] == CHANGE_BASED_DESCS[i].split("#")[0].replace("'", 'h')
+
+    usb_miniscript_delete("w3")
+    time.sleep(.2)
+    _, story = cap_story()
+    assert "Delete miniscript wallet" in story
+    assert "'w3'" in story
+    need_keypress("y")
+    time.sleep(.2)
+    assert len(usb_miniscript_ls()) == 3
+    with pytest.raises(Exception) as err:
+        usb_miniscript_get("w3")
+    assert err.value.args[0] == "Coldcard Error: Miniscript wallet not found"
+
+    usb_miniscript_delete("w2")
+    time.sleep(.2)
+    _, story = cap_story()
+    assert "Delete miniscript wallet" in story
+    assert "'w2'" in story
+    need_keypress("y")
+    time.sleep(.2)
+    assert len(usb_miniscript_ls()) == 2
+    with pytest.raises(Exception) as err:
+        usb_miniscript_get("w2")
+    assert err.value.args[0] == "Coldcard Error: Miniscript wallet not found"
+
+    usb_miniscript_delete("w1")
+    time.sleep(.2)
+    _, story = cap_story()
+    assert "Delete miniscript wallet" in story
+    assert "'w1'" in story
+    need_keypress("y")
+    time.sleep(.2)
+    assert len(usb_miniscript_ls()) == 1
+    with pytest.raises(Exception) as err:
+        usb_miniscript_get("w1")
+    assert err.value.args[0] == "Coldcard Error: Miniscript wallet not found"
+
+    usb_miniscript_delete("w0")
+    time.sleep(.2)
+    _, story = cap_story()
+    assert "Delete miniscript wallet" in story
+    assert "'w0'" in story
+    need_keypress("y")
+    time.sleep(.2)
+    assert len(usb_miniscript_ls()) == 0
+    with pytest.raises(Exception) as err:
+        usb_miniscript_get("w0")
+    assert err.value.args[0] == "Coldcard Error: Miniscript wallet not found"

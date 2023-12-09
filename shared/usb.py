@@ -500,6 +500,64 @@ class USBHandler:
 
             return None
 
+        if cmd == "msls":
+            # list all registered miniscript wallet names
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+            wallets = [w.name for w in MiniScriptWallet.iter_wallets()]
+            import ujson
+            return b'asci' + ujson.dumps(wallets)
+
+        if cmd == "msdl":
+            # delete miniscript wallet by its name (unique id)
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+
+            assert len(args) < 40, "len args"
+            for w in MiniScriptWallet.iter_wallets():
+                if w.name == str(args, 'ascii'):
+                    break
+            else:
+                return b'err_Miniscript wallet not found'
+
+            from auth import maybe_delete_miniscript
+            maybe_delete_miniscript(w)
+            return None
+
+        if cmd == "msgt":
+            # takes name and returns descriptor + name json
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+
+            assert len(args) < 40, "len args"
+            for w in MiniScriptWallet.iter_wallets():
+                if w.name == str(args, 'ascii'):
+                    import ujson
+                    return b'asci' + ujson.dumps({"name": w.name, "desc": w.to_string()})
+            return b'err_Miniscript wallet not found'
+
+        if cmd == "msas":
+            # get miniscript address based on int/ext index
+            assert self.encrypted_req, 'must encrypt'
+            from miniscript import MiniScriptWallet
+
+            change, idx, = unpack_from('<II', args)
+            assert change in (0,1), "change not bool"
+            assert 0 <= idx < (2 ** 31), "child idx"
+
+            name = args[8:]
+
+            msc = None
+            for w in MiniScriptWallet.iter_wallets():
+                if w.name == str(name, 'ascii'):
+                    msc = w
+                    break
+            else:
+                return b'err_Miniscript wallet not found'
+
+            from auth import start_show_miniscript_address
+            return b'asci' + start_show_miniscript_address(msc, change, idx)
+
         if cmd == 'msck':
             # Quick check to test if we have a wallet already installed.
             from multisig import MultisigWallet

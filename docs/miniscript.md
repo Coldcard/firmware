@@ -20,8 +20,8 @@ item with `<name>` is added to `Address Explorer` menu.
 
 
 ## Limitations
-* no duplicate keys in miniscript (at least account in origin derivation has to be different)
-* subderivation must be `<0;1>/*` (may be omitted during the import - is implied)
+* no duplicate keys in miniscript (at least change indexes in subderivation has to be different)
+* subderivation may be omitted during the import - default `<0;1>/*` is implied
 * only keys with key origin info `[xfp/p/a/t/h]xpub`
 * maximum number of keys allowed in segwit v0 miniscript is 20
 * check MiniTapscript limitations in `docs/taproot.md`
