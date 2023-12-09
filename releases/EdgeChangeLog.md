@@ -9,6 +9,10 @@
 
 ## 6.2.2X - 2023-12-XX
 
+- New Feature: Miniscript USB interface
+- New Feature: Named miniscript imports. Wrap descriptor in json `{"name:"n0", "desc":"<descriptor>"}`
+  with `name` key to use this name instead of the filename. Mostly usefull for USB and NFC
+  imports that have no file, in which case name was created from descriptor checksum.
 - Enhancement: Allow keys with same origin, differentiated only by change index derivation
   in miniscript descriptor.
 - Bugfix: Do not allow to import duplicate miniscript wallets (thanks to [AnchorWatch](https://www.anchorwatch.com/))

@@ -572,17 +572,18 @@ class MiniScriptWallet(BaseWallet):
 async def no_miniscript_yet(*a):
     await ux_show_story("You don't have any miniscript wallets yet.")
 
-
-async def miniscript_wallet_delete(menu, label, item):
-    msc = item.arg
-
-    # delete
-    if not await ux_confirm("Delete this miniscript wallet?\n\nFunds may be impacted."):
+async def miniscript_delete(msc):
+    if not await ux_confirm("Delete miniscript wallet '%s'?\n\nFunds may be impacted." % msc.name):
         await ux_dramatic_pause('Aborted.', 3)
         return
 
     msc.delete()
     await ux_dramatic_pause('Deleted.', 3)
+
+async def miniscript_wallet_delete(menu, label, item):
+    msc = item.arg
+
+    await miniscript_delete(msc)
 
     from ux import the_ux
     # pop stack
@@ -604,11 +605,12 @@ async def import_miniscript(*a):
     from actions import file_picker
     from glob import dis
 
+    force_vdisk = False
     prompt, escape = import_prompt_builder("miniscript wallet file", no_nfc=True)
     if prompt:
         ch = await ux_show_story(prompt, escape=escape)
         if ch == "1":
-            force_vdisk=False
+            force_vdisk = False
         elif ch == "2":
             force_vdisk = True
         else:

@@ -1346,6 +1346,42 @@ Paths:
 {sp}'''.format(addr=self.address, name=self.ms.name,
                         M=self.ms.M, N=self.ms.N, sp='\n\n'.join(self.subpath_help))
 
+class ShowMiniscriptAddress(ShowAddressBase):
+
+    def setup(self, msc, change, idx):
+        self.msc = msc
+        self.change = change
+        self.idx = idx
+
+        d = self.msc.desc.derive(None, change=change).derive(idx)
+        self.address = chains.current_chain().render_address(d.script_pubkey())
+
+    def get_msg(self):
+        return '''\
+{addr}
+
+Wallet:
+
+  {name}
+  
+Index:
+
+  {idx}
+  
+Change:
+
+  {change}'''.format(addr=self.address, name=self.msc.name, idx=self.idx, change=bool(self.change))
+
+def start_show_miniscript_address(msc, change, index):
+    UserAuthorizedAction.check_busy(ShowAddressBase)
+    UserAuthorizedAction.active_request = ShowMiniscriptAddress(msc, change, index)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
+
+    # provide the value back to attached desktop
+    return UserAuthorizedAction.active_request.address
+
 def start_show_p2sh_address(M, N, addr_format, xfp_paths, witdeem_script):
     # Show P2SH address to user, also returns it.
     # - first need to find appropriate multisig wallet associated
@@ -1402,6 +1438,25 @@ def usb_show_address(addr_format, subpath):
     abort_and_goto(active_request)
     # provide the value back to attached desktop
     return active_request.address
+
+
+class MiniscriptDeleteRequest(UserAuthorizedAction):
+    def __init__(self, msc):
+        super().__init__()
+        self.wallet = msc
+
+    async def interact(self):
+        from miniscript import miniscript_delete
+        await miniscript_delete(self.wallet)
+        self.done()
+
+
+def maybe_delete_miniscript(msc):
+    UserAuthorizedAction.cleanup()
+    UserAuthorizedAction.active_request = MiniscriptDeleteRequest(msc)
+
+    # kill any menu stack, and put our thing at the top
+    abort_and_goto(UserAuthorizedAction.active_request)
 
 
 class NewMiniscriptEnrollRequest(UserAuthorizedAction):
@@ -1480,8 +1535,7 @@ def maybe_enroll_xpub(sf_len=None, config=None, name=None, ux_reset=False, bsms_
             assert isinstance(name, str), "'name' value not a str"
             assert len(name) >= 2, "'name' too short"
             assert len(name) <= 40, "'name' too long (max 40)"
-    except ValueError:
-        print("not a valid json string - proceeed to normal parse")
+    except ValueError: pass
 
     # this call will raise on parsing errors, so let them rise up
     # and be shown on screen/over usb
