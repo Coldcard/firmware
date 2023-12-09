@@ -1971,7 +1971,7 @@ Write it down.'''
         dis.fullscreen("Verify...")
         dis.busy_bar(True)
 
-        pa.setup(args['new_pin'], pa.is_secondary)
+        pa.setup(args['new_pin'])
 
         if not pa.is_successful():
             # typical: do need login, but if we just cleared the main PIN,
