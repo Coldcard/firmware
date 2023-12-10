@@ -15,7 +15,7 @@ from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
 from utils import addr_fmt_label
-from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME
+from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -325,14 +325,14 @@ Press (3) if you really understand and accept these risks.
                     stash.blank_object(node)
 
             if n > 1:
-                msg += "Press (9) to see next group, (7) to go back. X to quit."
+                msg += "Press RIGHT to see next group, LEFT to go back. X to quit."
 
             return msg, addrs
 
         msg, addrs = make_msg()
         change = 0
         while 1:
-            ch = await ux_show_story(msg, escape='1234679' + KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_HOME)
+            ch = await ux_show_story(msg, escape='12346' + KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_HOME+KEY_LEFT+KEY_RIGHT)
 
             if ch == 'x':
                 return
@@ -369,10 +369,10 @@ Press (3) if you really understand and accept these risks.
             elif ch == '6' and allow_change:
                 change = 1
 
-            elif start > 0 and (ch == '7' or ch == KEY_PAGE_UP):
+            elif start > 0 and (ch == KEY_LEFT):
                 # go backwards in explorer
                 start -= n
-            elif ch == '9' or ch == KEY_PAGE_DOWN:
+            elif ch == KEY_RIGHT:
                 # go forwards
                 start += n
             elif ch == KEY_HOME:
