@@ -39,7 +39,8 @@ const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
 const int NUM_PIXELS = (LCD_WIDTH*LCD_HEIGHT);
 
-const int PROGRESS_BAR_Y = (LCD_HEIGHT - 3);
+const int PROGRESS_BAR_H = 5;
+const int PROGRESS_BAR_Y = (LCD_HEIGHT - PROGRESS_BAR_H);
 
 // doing RGB565, but swab16
 const uint16_t COL_BLACK = 0;
@@ -474,9 +475,9 @@ oled_show_progress(const uint8_t *pixels, int progress)
 
     wait_vsync();
 
-    lcd_write_rows(PROGRESS_BAR_Y+0, 1, row);
-    lcd_write_rows(PROGRESS_BAR_Y+1, 1, row);
-    lcd_write_rows(PROGRESS_BAR_Y+2, 1, row);
+    for(int i=0; i<PROGRESS_BAR_H; i++) {
+        lcd_write_rows(PROGRESS_BAR_Y+i, 1, row);
+    }
 
     rng_delay();
 }

@@ -19,6 +19,7 @@ TEXT_PALETTES = [
 #TEXT_PALETTE = [0x0000, 0x0840, 0x18a0, 0x2900, 0x3940, 0x49a0, 0x5a00, 0x6a60, 0x7aa0, 0x8b00, 0x9b60, 0xabc0, 0xbc00, 0xdcc0, 0xed00, 0xfd60]
 COL_TEXT = const(0xfd60)   # text foreground colour
 COL_DARK_TEXT = const(0xa380)   # "dark" pallette text foreground colour
+COL_SCROLL_DARK = const(0x51c0)   # "dark" colour for scrollbar
 
 CELL_W = const(9)
 CELL_H = const(22)

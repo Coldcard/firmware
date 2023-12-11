@@ -99,7 +99,8 @@ class LCDSimulator(SimulatedScreen):
     background_img = 'q1-images/background.png'
 
     # where the simulated screen is, relative to fixed background
-    TOPLEFT = (90, 91)
+    #TOPLEFT = (90, 91)
+    TOPLEFT = (95, 96)
 
     @dataclass
     class CursorSpec:
@@ -173,7 +174,7 @@ class LCDSimulator(SimulatedScreen):
 
     def gpu_draw_busy(self):
         # infinite progress bar
-        PROG_HEIGHT = 3
+        PROG_HEIGHT = 5
         PROG_Y = 240 - PROG_HEIGHT
         NUM_PHASES = 16
         LCD_WIDTH = 320

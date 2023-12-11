@@ -10,13 +10,13 @@ from utils import xfp2str
 from ucollections import namedtuple
 
 # the one font: fixed-width (except for a few double-width chars)
-from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT, COL_DARK_TEXT
+from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT, COL_DARK_TEXT, COL_SCROLL_DARK
 from font_iosevka import FontIosevka
 
 
 #WIDTH = const(320)
 #HEIGHT = const(240)
-LEFT_MARGIN = const(7)
+LEFT_MARGIN = const(7)      # equal on right side, but used for scroll bar
 TOP_MARGIN = const(15)
 ACTIVE_H = const(240 - TOP_MARGIN)
 CHARS_W = const(34)
@@ -362,10 +362,11 @@ class Display:
         if self.next_prog_x != self.last_prog_x:
             # NOTE: misc/gpu/lcd.c must be updated to match any changes here
             x = self.next_prog_x
+            h = 5
             if x:
-                self.dis.fill_rect(0, HEIGHT-3, x, 3, COL_PROGRESS)
+                self.dis.fill_rect(0, HEIGHT-h, x, h, COL_PROGRESS)
             if x != WIDTH:
-                self.dis.fill_rect(x, HEIGHT-3, WIDTH-x, 3, COL_BLACK)
+                self.dis.fill_rect(x, HEIGHT-h, WIDTH-x, h, COL_BLACK)
             self.last_prog_x = x
 
         if self.next_scroll != self.last_scroll:
@@ -428,15 +429,15 @@ class Display:
     def _draw_scroll_bar(self, fraction):
         # Immediately draw bar along right edge.
         # - length means nothing, just vert position
-        bw = 2      # bar width, height
+        bw = 5      # bar width
         bh = ACTIVE_H // 4
         if fraction is None:
             self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_BLACK)
             return
 
-        self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_DARK_TEXT)
+        self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_SCROLL_DARK)
         pos = int((ACTIVE_H-bh)*fraction)
-        if pos+bh > ACTIVE_H:
+        if (pos+bh > ACTIVE_H) or (fraction > .8):
             pos = ACTIVE_H - bh
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN+pos, bw, bh, COL_TEXT)
 

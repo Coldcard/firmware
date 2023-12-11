@@ -7,6 +7,7 @@
 import os, sys, pdb, math, zlib
 from PIL import Image, ImageDraw, ImageFont, ImageColor
 from collections import Counter
+from struct import pack, unpack
 
 FONT = 'iosevka-extrabold.ttf'
 FONT_SIZE = 18
@@ -75,9 +76,22 @@ print(f"Total font memory: {NUM_CHARS * MEM_PER_CHAR // 1024} KiBytes")
 # plus lots of overhead, so don't do that.
 
 
+def remap_colour(c, amt):
+    # take colour (RGB tuple) and give it intensity (amt) and then return RGB565
+    amt /= 255.0
+    r = int(c[0] * amt * 0x1f)
+    g = int(c[1] * amt * 0x3f)
+    b = int(c[2] * amt * 0x1f)
+
+    return (r<<11) | (g << 5) | b
+
+def device_endian(col):
+    # take a RGB565 value and swap endian for real device
+    # XXX unneeded?
+    return unpack('<H', pack('>H', col))[0]
+
 def make_palette(shades, col, darken=1.0):
     # make bytes representing a NUM_GREYS palette to map back to a RGB565 colour
-    from struct import pack
 
     assert len(col) == 3, 'want RGB'
     assert col[0] > 20, 'expect 8-bit RGB values'
@@ -85,16 +99,8 @@ def make_palette(shades, col, darken=1.0):
     assert max(col) <= 1.0
     assert 0 <= min(col)
 
-    def remap(c, amt):
-        amt /= 255.0
-        r = int(c[0] * amt * 0x1f)
-        g = int(c[1] * amt * 0x3f)
-        b = int(c[2] * amt * 0x1f)
-
-        return (r<<11) | (g << 5) | b
-
     assert len(shades) == NUM_GREYS
-    vals = [remap(col, s*darken) for s in shades]
+    vals = [remap_colour(col, s*darken) for s in shades]
     txt = ', '.join('0x%04x'% i for i in vals)
     return vals, txt, pack('>%dH' % NUM_GREYS, *vals)
 
@@ -212,6 +218,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     shades = shades[0:3*NUM_GREYS]
     assert shades[0::3] == shades[1::3] == shades[2::3], 'not all greyscale?'
 
+
     # remap palette so it's in order by luma
     by_luma = sorted([(n, gl) for n, gl in enumerate(shades[0::3])], key=lambda x:x[1])
     mapping = list(n for n,gl in by_luma)
@@ -219,7 +226,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     # apply new palette
     cells = cells.remap_palette(mapping)
     nsh = cells.getpalette('RGB')[0::3]
-    assert sorted(nsh) == nsh
+    assert sorted(nsh) == nsh       # error here means wrong/no virtual env
     print(f'Shades: {nsh}')
     shades = nsh
 
@@ -251,6 +258,9 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     _, pal_vals_inv, text_pal_inv = make_palette([255-i for i in shades], BRAND_TEXT_COLOUR)
     pal_dark_nums, _, text_pal_dark =  make_palette(shades, BRAND_TEXT_COLOUR, 0.66)
 
+    # the "background" colour for the scroll bar
+    scroll_dark = remap_colour(BRAND_TEXT_COLOUR, 0.33)
+
     with open(out_fname, 'w') as fp:
         tmpl = open('template.py').read()
         fp.write(tmpl)
@@ -267,6 +277,7 @@ TEXT_PALETTES = [
 #TEXT_PALETTE = [{pal_vals}]
 COL_TEXT = const(0x{pal_nums[15]:04x})   # text foreground colour
 COL_DARK_TEXT = const(0x{pal_dark_nums[15]:04x})   # "dark" pallette text foreground colour
+COL_SCROLL_DARK = const(0x{scroll_dark:04x})   # "dark" colour for scrollbar
 
 CELL_W = const({CELL_W})
 CELL_H = const({CELL_H})

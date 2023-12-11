@@ -25,7 +25,7 @@ const uint16_t COL_RED = 0x00f8;            //SWAP16(0xf800);
 const uint16_t COL_FOREGROUND = 0x60fd;     //SWAB16(0xfd60);     // brand orange
 
 // progress bar specs
-const uint16_t PROG_HEIGHT = 3;
+const uint16_t PROG_HEIGHT = 5;
 const uint16_t PROG_Y = LCD_HEIGHT - PROG_HEIGHT;
 
 static const int NUM_PHASES = 16;
