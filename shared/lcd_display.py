@@ -115,7 +115,8 @@ class Display:
         self.gpu = GPUAccess()
         try:
             self.gpu.upgrade_if_needed()
-        except: pass
+        except:
+            print("GPU upgrade failed")
 
         self.last_buf = self.make_buf(0)
         self.next_buf = self.make_buf(32)

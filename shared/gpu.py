@@ -35,10 +35,10 @@ class GPUAccess:
         # much sharing/overlap in these pins!
         # - pins are already setup in bootloader, no need to change here
         self.g_reset = Pin('G_RESET')           #, mode=Pin.OPEN_DRAIN, pull=Pin.PULL_UP)
-        self.g_boot0 = Pin('G_SWCLK_B0')        #, mode=Pin.IN)
         self.g_ctrl = Pin('G_CTRL')             #, mode=Pin.OUT_PP, value=1)
         self.mosi_pin = Pin('LCD_MOSI')
         self.sclk_pin = Pin('LCD_SCLK')
+        self.g_busy = Pin('G_BUSY', Pin.IN, pull=Pin.PULL_DOWN) 
 
         from machine import I2C
         self.i2c = I2C(1, freq=400000)      # same bus & speed as nfc.py
@@ -137,17 +137,16 @@ class GPUAccess:
 
     def reset(self):
         # Pulse reset and let it run
-        self.g_boot0.init(mode=Pin.IN)
         self.g_reset(0)
         self.g_reset(1)
 
     def enter_bl(self):
         # Get it into bootloader. Reliable. Still allows SWD to work.
+        # XXX doesn't seem to work anymore?
         self.g_reset(0)
-        self.g_boot0.init(mode=Pin.OUT_PP)
-        self.g_boot0(1)
+        g_boot0 = Pin('G_BUSY', mode=Pin.OUT_PP, value=1)
         self.g_reset(1)
-        self.g_boot0.init(mode=Pin.IN)
+        g_boot0.init(mode=Pin.IN, pull=Pin.PULL_DOWN)       # restore self.g_busy operation
 
     def bl_version(self):
         # assume already in bootloader
@@ -223,13 +222,24 @@ class GPUAccess:
     def take_spi(self):
         # change the MOSI/SCLK lines to be input so we don't interfere
         # with the GPU.. other lines are OD
-        # - signal by G_CTRL that GPU can take over
-        if self.g_ctrl() == 1: return
+        # - signal by G_CTRL that CPU will take over
+        # - but first, wait until GPU is done if it's doing something (G_BUSY)
+        if self.g_ctrl() == 1:
+            # we already have control
+            return
+
+        # say we will take control
         self.g_ctrl(1)
+
+        while self.g_busy() == 1:
+            # let GPU finish
+            pass
+
         self.mosi_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
         self.sclk_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
 
     def give_spi(self):
+        # give up SPI and let GPU control things
         self.mosi_pin.init(mode=Pin.IN)
         self.sclk_pin.init(mode=Pin.IN)
         self.g_ctrl(0)
@@ -262,6 +272,11 @@ class GPUAccess:
         try:
             self.cmd_resp(cmd)
         except: pass
+        self.give_spi()
+
+    def show_test_pattern(self):
+        # show a barcode used to validate that GPU has access to LCD
+        self.cmd_resp(b't')
         self.give_spi()
 
     def upgrade(self):
