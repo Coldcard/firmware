@@ -32,16 +32,15 @@ gpio_setup(void)
 
     LL_GPIO_Init(GPIOA, &init);
 
-#if 0
-    // setup shared open-drain pins
-    init.Pin = OUTPUT_OD_PINS;
+    // one output PIN: tells CPU we are controlling the bus
+    init.Pin = OUTPUT_PINS;
     init.Mode = LL_GPIO_MODE_OUTPUT;
-    init.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
     init.Speed = LL_GPIO_SPEED_FREQ_HIGH;
     init.Pull = LL_GPIO_PULL_NO;
-
     LL_GPIO_Init(GPIOA, &init);
-#endif
+
+    // clear output signal
+    LL_GPIO_ResetOutputPin(GPIOA, PIN_GPU_BUSY);
 }
 
 // i2c_setup()

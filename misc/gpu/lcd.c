@@ -222,10 +222,14 @@ lcd_setup(void)
 // take_control()
 //
 // Make the shared SPI bus ours. All push-pull, because we need the speed.
+// - force PIN_G_CTRL low while we are in control, so CPU knows we are actively
+//   speaking to the LCD
 //
     static void
 take_control(void)
 {
+    LL_GPIO_SetOutputPin(GPIOA, PIN_GPU_BUSY);
+
     LL_GPIO_InitTypeDef init = {0};
 
     init.Pin =  SPI_PINS;
@@ -263,6 +267,8 @@ release_control(void)
     init.Pull = LL_GPIO_PULL_NO;
 
     LL_GPIO_Init(GPIOA, &init);
+
+    LL_GPIO_ResetOutputPin(GPIOA, PIN_GPU_BUSY);
 }
 
 // send_window()

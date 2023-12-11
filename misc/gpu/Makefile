@@ -126,7 +126,6 @@ checksums.txt: $(DELIVERABLES)
 	shasum -a 256 $(DELIVERABLES) > $@
 
 lcd.o: barcode.h
-#barcode.h: version.h make_barcode.py Makefile
 barcode.h: make_barcode.py Makefile
 	python3 make_barcode.py
 
@@ -157,7 +156,7 @@ BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 SHA_VERSION = $(shell git rev-parse --short HEAD)
 GIT_HASH = "$(BRANCH)@$(SHA_VERSION)"
 version.o: CFLAGS += -DBUILD_TIME='"$(BUILD_TIME)"' -DGIT_HASH='$(GIT_HASH)'
-version.o: Makefile version.h
+version.o main.o: Makefile version.h
 
 clean:
 	$(RM) $(OBJS)

@@ -84,6 +84,8 @@ Set EMPTY bit, so goes into BL:
 - SPI bus to the display is shared by the GPU and main micro.
 - Main micro configures its pins as pull-up, open-drain outputs (there is no input except TEAR).
 - GPU does the same, but no pull-ups (so open drain).
+- Later turns out we need push-pull I/O to get the SPI speeds involved (rise times too slow
+  with built-in resistors)
 
 ## Other References
 

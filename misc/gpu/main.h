@@ -23,8 +23,10 @@
 #define PIN_DATA_CMD      LL_GPIO_PIN_3
 #define PIN_CS            LL_GPIO_PIN_4
 #define PIN_TEAR          LL_GPIO_PIN_5
+#define PIN_GPU_BUSY      LL_GPIO_PIN_14        // G_SWCLK_B0 pin to CPU
 
 #define INPUT_PINS          (PIN_TEAR | PIN_G_CTRL)
+#define OUTPUT_PINS         (PIN_GPU_BUSY)
 #define SPI_PINS            (PIN_MOSI | PIN_SCLK)
 #define SPI_CTRL_PINS       (PIN_DATA_CMD | PIN_CS)
 
