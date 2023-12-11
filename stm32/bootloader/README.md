@@ -34,6 +34,7 @@ your key storage per-system unique.
     - ``stm32l4x mass_erase 0`` in openocd monitor to bulk-erase whole chip
 
 - To clear flash with write protect on... FLASH regs at 0x40022000 base
+    # XXX this process no longer works?
     FLASH->CR = 0x40022014
     FLASH->WRP1AR = 0x4002202c
 
@@ -55,6 +56,18 @@ your key storage per-system unique.
     mdw 0x1FFF7818
     # launch changes? (causes weird reset)
     mww 0x40022014 0x8000000
+
+- newer approach, with later OpenOCD versions:
+
+    # boot into DFU, gain control
+    halt
+    stm32l4x option_write 0 0x2c 0xff00ffff 0xffffffff
+    stm32l4x option_load 0
+    # (system resets, might run)
+    # check it worked
+    stm32l4x option_read 0 0x2c
+    # says: Option Register: <0x4002202c> = 0xff00ffff
+
 
 - "stm32l4x.cpu mdb" is nice hexdump, much better than regular mdb
 

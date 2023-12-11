@@ -197,12 +197,12 @@ results = [
     #( 'dfu', 'DFU', None, dict(text_pos=37) ), # removed
     ( 'downgrade', 'Downgrade?', 'history', {} ),
     ( 'corrupt', 'Firmware?', 'lemon', {} ),
-    ( 'logout', 'Logout Done', 'logout', {}),
-    ( 'poweroff', 'Power Off', 'power', {}),
+    ( 'logout', 'Logout Done', 'logout', {'tight_mode': 1}),
+    ( 'poweroff', 'Power Off', 'power', {'tight_mode': 1}),
     ( 'devmode', 'Danger! Custom!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
     ( 'red_light', 'Danger! Caution!', 'bomb-spook', dict(icon_xpos=0)),       # was 2
-    ( 'upgrading', 'Upgrading', 'graph-up', {}),
-    ( 'replug', 'Power Cycle', None, {}),        # visible in factory only
+    ( 'upgrading', 'Upgrading', 'graph-up', { 'tight_mode': 1}),
+    ( 'replug', 'SE1 Setup Done', None, {}),        # visible in factory only
     ( 'search', 'Searching...', 'search-card', {}),
     ( 'recovery', 'Insert Card', 'insert-card', {}),
     #( 'recovery', 'Recovery!', 'sdcard', {}),

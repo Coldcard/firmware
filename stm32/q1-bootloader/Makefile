@@ -8,7 +8,7 @@
 #	clobber - delete all build products
 #
 
-# any file it cant file, look in ../mk4-bootloader
+# for any file it cant find, look in ../mk4-bootloader
 VPATH = ../mk4-bootloader
 
 # Toolchain

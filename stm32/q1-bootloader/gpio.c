@@ -149,18 +149,26 @@ gpio_setup(void)
         HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);    // turn on Backlight,
     }
 
-    // GPU control: Port E: PE2=G_SWCLK_BOOT0, PE5=G_CTRL, PE6=G_RESET outputs
+    // GPU control: Port E: PE2=G_SWCLK_BOOT0=G_BUSY, PE5=G_CTRL, PE6=G_RESET
     // - want open-drain on these outputs, so the SWD debugger can override
+    // - and PE2 needs to be pull-down input, because active high signal and
+    //   GPU may not be running yet
     {   GPIO_InitTypeDef setup = {
-            .Pin = GPIO_PIN_2 | GPIO_PIN_5 | GPIO_PIN_6,
+            .Pin =  GPIO_PIN_5 | GPIO_PIN_6,
             .Mode = GPIO_MODE_OUTPUT_OD,
             .Pull = GPIO_PULLUP,
             .Speed = GPIO_SPEED_FREQ_LOW,
         };
+
+        HAL_GPIO_Init(GPIOE, &setup);
+
+        // G_BUSY: input, pull down
+        setup.Pin = GPIO_PIN_2;
+        setup.Pull = GPIO_PULLDOWN;
         HAL_GPIO_Init(GPIOE, &setup);
 
         // assert reset, leave others high
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2|GPIO_PIN_5, 1);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, 1);
         HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, 0);
     }
 

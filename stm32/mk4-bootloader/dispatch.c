@@ -229,15 +229,14 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
 #ifdef FOR_Q1_ONLY
             if(arg2 == 3) {
-                // need some time to show OLED contents
+                // need some time for user to see message
                 delay_ms(100);
 
-                // pulse a one to TURN_OFF pin: PC0
                 turn_power_off();
             }
 #endif
             if(arg2 == 2) {
-                // need some time to show OLED contents
+                // need some time for user to see message
                 delay_ms(100);
 
                 // reboot so we can "login" again

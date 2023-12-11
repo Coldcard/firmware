@@ -395,8 +395,7 @@ flash_save_bag_number(const uint8_t new_number[32])
     flash_setup0();
     flash_unlock();
 
-    // NOTE: can only write once! No provision for read/check, and write
-    // when non-ones will fail.
+    // NOTE: can only write once! No provision for read/check/update.
     for(int i=0; i<(32/8); i++, dest+=8, src++) {
         if(flash_burn(dest, *src)) {
             INCONSISTENT("fail write");
