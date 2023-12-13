@@ -1776,9 +1776,8 @@ async def bless_flash(*a):
         await needs_primary()
         return
 
-    # bugfix
-    if dis.has_lcd: 
-        await dis.bootrom_takeover()
+    # impt: bugfix
+    dis.bootrom_takeover()
 
     # do it
     pa.greenlight_firmware()
@@ -2101,6 +2100,7 @@ async def ship_wo_bag(*a):
             callgate.set_rdp_level(2)
 
         # bag number affects green light status (as does RDP level)
+        dis.bootrom_takeover()
         pa.greenlight_firmware()
         dis.fullscreen('No Bag. DONE')
         callgate.show_logout(1)

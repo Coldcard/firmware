@@ -708,13 +708,12 @@ class Display:
                 assert 0 <= Y < CHARS_H
                 self.next_buf[Y][X] = 32
 
-    async def bootrom_takeover(self):
+    def bootrom_takeover(self):
         # we are going to go into the bootrom and have it do stuff on the
         # screen... we need to redraw completely on return
-        self.gpu.take_spi()
+        self.gpu.take_spi()     # blocks until xfer complete
         self.last_buf = self.make_buf(0)
         self.last_prog_x = -1
-        await sleep_ms(20)      # at least one frame (60Hz) so GPU stops
 
         
 # here for mpy reasons

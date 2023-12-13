@@ -49,6 +49,15 @@ async def test_numpad():
             raise RuntimeError("numpad test aborted")
         assert k == ch
 
+async def test_gpu():
+    dis.gpu.take_spi()
+    dis.clear()
+    dis.text(0,-1, "GPU Test okay?")
+    dis.show()
+    dis.gpu.show_test_pattern()
+
+    await wait_ok()
+
 async def test_keyboard():
     # for Q1
     # XXX
@@ -78,6 +87,7 @@ def set_genuine():
             assert pa.is_successful()       # "PIN not blank?"
 
     # do verify step
+    dis.bootrom_takeover()
     pa.greenlight_firmware()
 
     dis.show()
@@ -85,9 +95,6 @@ def set_genuine():
 async def test_secure_element():
 
     assert not get_is_bricked()         # bricked already
-
-    # test right chips installed
-    assert version.has_608          # expect 608
 
     if ckcc.is_simulator(): return
 
@@ -300,6 +307,7 @@ async def start_selftest():
             await test_oled()
         else:
             await test_lcd()
+            await test_gpu()
         await test_psram()
         await test_nfc_light()
         await test_nfc()

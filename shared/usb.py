@@ -823,7 +823,7 @@ class USBHandler:
         from glob import dis, settings
         from pincodes import pa
 
-        if version.is_factory_mode and bag_num:
+        if version.is_factory_mode and not version.has_rq and bag_num:
             # check state first
             assert settings.get('tested', False)
             assert pa.is_blank()

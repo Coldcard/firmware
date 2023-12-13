@@ -395,4 +395,9 @@ class Display:
 
         self.busy_bar(False)     # includes show
 
+    def bootrom_takeover(self):
+        # we are going to go into the bootrom and have it do stuff on the
+        # screen... nothing needed on here, since we redraw completely
+        pass
+
 # EOF
