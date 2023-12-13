@@ -11,7 +11,7 @@
 #include "stm32l4xx_hal.h"
 #include <string.h>
 #include "misc.h"
-#include "assets/screens.h"
+#include "assets/q1_screens.h"
 
 // OLED pins block use of MCO for testing
 #undef DISABLE_LCD
@@ -173,67 +173,13 @@ lcd_spi_setup(void)
 #endif
 }
 
-// oled_setup()
-//
-// Ok to call this lots.
+// lcd_full_setup()
 //
     void
-oled_setup(void)
+lcd_full_setup(void)
 {
-#ifdef DISABLE_LCD
-    puts("lcd disabled");return;     // disable so I can use MCO
-#endif
-
-    static uint32_t inited;
-
-    if(inited == 0x238a572F) {
-        return;
-    }
-    inited = 0x238a572F;
-
-    // enable some internal clocks
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_SPI1_CLK_ENABLE();
-
-    // take over from GPU
-    // - can be issue when coming in via callgate from mpy which might have been showing menu
-    HAL_GPIO_WritePin(GPIOE, G_CTRL, 1);        // set G_CTRL pin -- we have control
-
-    // .. wait for GPU to finish it's work
-    for(int i=0; i<100000; i++) {
-        if(HAL_GPIO_ReadPin(GPIOE, G_BUSY) == 0) break;
-    }
-
-    // Simple pins
-    // - must be opendrain to allow GPU to share
-    GPIO_InitTypeDef setup = {
-        .Pin = RESET_PIN | CS_PIN | DC_PIN,
-        .Mode = GPIO_MODE_OUTPUT_OD,
-        .Pull = GPIO_PULLUP,
-        .Speed = GPIO_SPEED_FREQ_MEDIUM,
-        .Alternate = 0,
-    };
-    HAL_GPIO_Init(GPIOA, &setup);
-
-    // starting values
-    HAL_GPIO_WritePin(GPIOA, RESET_PIN | CS_PIN | DC_PIN, 1);
-
-
-    // SPI pins (same but with AF)
-    setup.Pin = SPI_SCK | SPI_MOSI;
-    setup.Alternate = GPIO_AF5_SPI1;
-    setup.Mode = GPIO_MODE_AF_PP;
-    setup.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    HAL_GPIO_Init(GPIOA, &setup);
-
-#if 0
-    // lock the LCD pins so nothing else can set them wrong
-    // LATER: no, while GPU in action, we need to tri-state
-    HAL_GPIO_LockPin(GPIOA, RESET_PIN | CS_PIN | DC_PIN);
-#endif
-
-    // config SPI port
-    lcd_spi_setup();
+    // configure SPI port and associated pins
+    oled_setup();
 
     // => attempt to avoid flash of garbage at boot/powerup
     lcd_write_cmd(0x28);            // DISPOFF
@@ -332,19 +278,73 @@ oled_setup(void)
     lcd_write_cmd(0x35);            // TEON - Tear signal on
     lcd_write_data1(0x0);
 
-    // kill garbage on display before shown first time
-    //lcd_fill_solid(COL_BLACK);
-
     // finally
     lcd_write_cmd(0x21);            // INVON 
     lcd_write_cmd(0x29);            // DISPON
     delay_ms(50);
 
     last_screen = NULL;
+}
 
+// oled_setup()
+//
+// Ok to call this lots.
+//
+    void
+oled_setup(void)
+{
+#ifdef DISABLE_LCD
+    puts("lcd disabled");return;     // disable so I can use MCO
+#endif
+
+    static uint32_t inited;
+
+    if(inited == 0x238a572F) {
+        return;
+    }
+    inited = 0x238a572F;
+
+    // enable some internal clocks
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_SPI1_CLK_ENABLE();
+
+    // take over from GPU
+    // - can be issue when coming in via callgate from mpy which might have been showing menu
+    HAL_GPIO_WritePin(GPIOE, G_CTRL, 1);        // set G_CTRL pin -- we have control
+
+    // .. wait for GPU to finish it's work
+    for(int i=0; i<100000; i++) {
+        if(HAL_GPIO_ReadPin(GPIOE, G_BUSY) == 0) break;
+    }
+
+    // Simple pins
+    // - must be opendrain to allow GPU to share
+    GPIO_InitTypeDef setup = {
+        .Pin = RESET_PIN | CS_PIN | DC_PIN,
+        .Mode = GPIO_MODE_OUTPUT_OD,
+        .Pull = GPIO_PULLUP,
+        .Speed = GPIO_SPEED_FREQ_MEDIUM,
+        .Alternate = 0,
+    };
+    HAL_GPIO_Init(GPIOA, &setup);
+
+    // starting values
+    HAL_GPIO_WritePin(GPIOA, RESET_PIN | CS_PIN | DC_PIN, 1);
+
+
+    // SPI pins (same but with AF)
+    setup.Pin = SPI_SCK | SPI_MOSI;
+    setup.Alternate = GPIO_AF5_SPI1;
+    setup.Mode = GPIO_MODE_AF_PP;
+    setup.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOA, &setup);
+
+    // config SPI port
+    lcd_spi_setup();
     rng_delay();
 }
 
+#if 0
 // oled_show_raw()
 //
 // No decompression. Just used for factory show. 1k bytes
@@ -356,6 +356,7 @@ oled_show_raw(uint32_t len, const uint8_t *pixels)
     lcd_write_rows(LCD_HEIGHT-3, 1, (uint16_t *)pixels);
     lcd_write_rows(LCD_HEIGHT-2, 1, (uint16_t *)pixels);
 }
+#endif
 
 // lcd_fill_solid()
 //
@@ -403,15 +404,18 @@ oled_show(const uint8_t *pixels)
     wait_vsync();
     lcd_write_cmd(0x28);            // DISPOFF
 
-    // always full update
+    // always full update: minus part we aren't saving "TOP_CROP" at top edge
     lcd_write_cmd4(0x2a, 0, LCD_WIDTH-1);         // CASET - Column address set range (x)
-    lcd_write_cmd4(0x2b, 0, LCD_HEIGHT-1);        // RASET - Row address set range (y)
+    // RASET - Row address set range (y) 
+    lcd_write_cmd4(0x2b, SCREEN_TOP_CROP, LCD_HEIGHT-1);
+    lcd_write_cmd(0x2c);            // RAMWR - memory write
 
     uint8_t         buf[127];
     uint16_t        expand[sizeof(buf)*8];
     const uint8_t *p = pixels;
 
-    lcd_write_cmd(0x2c);            // RAMWR - memory write
+    uint16_t    blk_row[LCD_WIDTH];
+    memset2(blk_row, COL_BLACK, sizeof(blk_row));
 
     while(1) {
         uint8_t hdr = *(p++);
@@ -422,13 +426,22 @@ oled_show(const uint8_t *pixels)
             // random bytes follow
             memcpy(buf, p, len);
             p += len;
+        } else if(hdr == 0x7f) {
+            // special: number of black lines follow
+            uint8_t nl = *(p++);
+
+            for(int i=0; i<nl; i++) {
+                lcd_write_data(2 * LCD_WIDTH, (uint8_t *)blk_row);
+            }
+
+            continue;
         } else {
             // repeat same byte
             memset(buf, *p, len);
             p++;
         }
 
-        // expand 'len' packed monochrom into BGR565 16-bit data: buf => expand
+        // expand 'len' packed monochrome into BGR565 16-bit data: buf => expand
         uint16_t *out = expand;
         for(int i=0; i<len; i++) {
             uint8_t packed = buf[i];
@@ -456,8 +469,6 @@ oled_show(const uint8_t *pixels)
     void
 oled_show_progress(const uint8_t *pixels, int progress)
 {
-    //if(pixels == screen_verify) return;         // XXX disable screen
-
     oled_setup();
 
     if(last_screen != pixels) {
