@@ -100,6 +100,12 @@ PIN_ATTEMPT_SIZE  = const(248+32)
 # small cache of pin-prefix to words, for 608a based systems
 _word_cache = []
 
+def retry_ae_fail(*args):
+    err = ckcc.gate(*args)
+    if err == -106:  # AE_FAIL
+        err = ckcc.gate(*args)
+    return err
+
 class BootloaderError(RuntimeError):
     pass
 
@@ -252,7 +258,7 @@ class PinAttempt:
 
         #print("> tx: %s" % b2a_hex(buf))
 
-        err = ckcc.gate(18, buf, method_num)
+        err = retry_ae_fail(18, buf, method_num)
 
         #print("[%d] rx: %s" % (err, b2a_hex(buf)))
         

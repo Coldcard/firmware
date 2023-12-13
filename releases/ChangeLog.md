@@ -9,6 +9,7 @@
   deferring card read (and decryption) until after `Restore Saved` menu item is selected.
 - Enhancement: `12 Words` menu option preferred on the top of the menu in all the seed menus
   (rather than 24 words).
+- Enhancement: One instant retry on SE1 comm failures
 - Bugfix: Handle any failures in slot reading when loading settings
 - Bugfix: Add missing First Time UX for extended key import as master seed
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active
