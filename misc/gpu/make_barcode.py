@@ -3,6 +3,7 @@
 # Render a little barcode we need for selftest process.
 #
 # - packed bytes
+#
 import barcode
 from io import BytesIO
 from barcode import Code128
@@ -59,6 +60,7 @@ def doit(ofile='barcode.h'):
                     break
         assert version
         msg = f'GPU={version}'
+
     msg = f'GPU'
     bc = Code128(msg, writer=Packer())
     rv = bc.render()
