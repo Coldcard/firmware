@@ -59,6 +59,12 @@ class GPUAccess:
         import gpu_binary
         return gpu_binary.VERSION
 
+    def show_test_pattern(self):
+        glob.dis.dis.gpu_send('P')
+
+    def upgrade_if_needed(self):
+        return
+
     async def reflash_gpu_ux(self):
         # nope
         return

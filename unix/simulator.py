@@ -359,13 +359,16 @@ class LCDSimulator(SimulatedScreen):
                     for x in range(X, X+w):
                         self.mv[x][y] = px
 
-            elif mode in 'TBC':        
+            elif mode in 'TPBC':
                 # emulated GPU commands
                 # see vsync_handler() for implementation
                 if mode == 'T':
                     # stop animating: "taking" the SPI bus away from GPU
                     self.cursor = None
                     self.busy_bar = False
+                elif mode == 'P':
+                    # test pattern: a fixed bar code is shown in real deal
+                    pass
                 elif mode == 'B':
                     # show busy bar (infinite progress bar)
                     self.busy_bar = True
