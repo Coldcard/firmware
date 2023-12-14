@@ -98,13 +98,22 @@ system_startup(void)
     rng_delay();
 #endif
 
+#ifdef FOR_Q1_ONLY
+    extern void lcd_full_setup(void);
+
+    // clear and setup LCD display - includes long config process
+    lcd_full_setup();
+#else
+    // clear and OLED display
+    oled_setup();
+#endif
+
     // Workaround to get into DFU from micropython
     // LATER: none of this is useful with RDP=2, but okay in the office/factory
     if(memcmp(dfu_flag->magic, REBOOT_TO_DFU, sizeof(dfu_flag->magic)) == 0) {
         dfu_flag->magic[0] = 0;
 
         // still see a flash here, but that's proof it works.
-        oled_setup();
         oled_show(dfu_flag->screen);
 
         enter_dfu();
@@ -112,8 +121,7 @@ system_startup(void)
     }
     rng_delay();
 
-    // clear and setup OLED display
-    oled_setup();
+    // Show main boot-up screen
     oled_show_progress(screen_verify, 0);
 
     // wipe all of SRAM (except our own memory, which was already wiped)

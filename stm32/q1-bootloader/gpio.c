@@ -154,7 +154,7 @@ gpio_setup(void)
     // - and PE2 needs to be pull-down input, because active high signal and
     //   GPU may not be running yet
     {   GPIO_InitTypeDef setup = {
-            .Pin =  GPIO_PIN_5 | GPIO_PIN_6,
+            .Pin =  PIN_G_CTRL | PIN_G_RESET,
             .Mode = GPIO_MODE_OUTPUT_OD,
             .Pull = GPIO_PULLUP,
             .Speed = GPIO_SPEED_FREQ_LOW,
@@ -163,13 +163,13 @@ gpio_setup(void)
         HAL_GPIO_Init(GPIOE, &setup);
 
         // G_BUSY: input, pull down
-        setup.Pin = GPIO_PIN_2;
+        setup.Pin = PIN_G_BUSY;
         setup.Pull = GPIO_PULLDOWN;
         HAL_GPIO_Init(GPIOE, &setup);
 
         // assert reset, leave others high
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, 1);
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, 0);
+        HAL_GPIO_WritePin(GPIOE, PIN_G_CTRL, 1);
+        HAL_GPIO_WritePin(GPIOE, PIN_G_RESET, 0);
     }
 
 

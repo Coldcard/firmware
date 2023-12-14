@@ -27,17 +27,9 @@ from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 CLEAR_PIN = '999999-999999'
 
 async def start_selftest(*args):
-
-    if len(args) and not version.is_factory_mode:
-        # called from inside menu, not directly
-        # - mk4 doesn't damage settings, only earlier marks
-        if not await ux_confirm('''Selftest may destroy settings on other profiles (not seeds). Requires MicroSD card and might have other consequences. Recommended only for factory.'''):
-            return await ux_aborted()
-
+    # selftest is harmless, no need to warn anymore
     with imported('selftest') as st:
         await st.start_selftest()
-
-    settings.save()
 
 
 async def needs_primary():

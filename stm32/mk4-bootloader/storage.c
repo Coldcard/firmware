@@ -264,6 +264,10 @@ pick_pairing_secret(void)
     // important the RNG works here. ok to call setup multiple times.
     rng_setup();
 
+#ifdef FOR_Q1_ONLY
+    // nicer, simpler screen for Q
+    oled_show(screen_se_setup);
+#else
     // Demo to anyone watching that the RNG is working, but likely only
     // to be seen by production team during initial powerup.
     uint8_t    tmp[1024];
@@ -274,6 +278,7 @@ pick_pairing_secret(void)
     }
 
     oled_factory_busy();
+#endif
 
     // .. but don't use those numbers, because those are semi-public now.
     uint32_t secret[8];
@@ -499,10 +504,16 @@ flash_setup(void)
         }
 
         // real power cycle required now.
+#ifdef FOR_Q1_ONLY
+        // Q: just do it (we warned them)
+        extern void turn_power_off(void);
+        turn_power_off();
+#else
+        // Mk: operator must do it
         oled_show(screen_replug);
         puts("replug required");
-
         LOCKUP_FOREVER();
+#endif
     }
 
     rng_delay();

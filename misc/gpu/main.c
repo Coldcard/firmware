@@ -179,6 +179,8 @@ i2c_poll(void)
                 case 't':       // test feature: draw a single test pattern
                     if(argLen != 0) goto bad_args;
                     lcd_state.test_pattern = true;
+                    lcd_state.activity_bar = false;
+                    lcd_state.cursor_type = NO_CURSOR;
                     break;
 
                 case 0:

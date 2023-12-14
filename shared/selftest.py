@@ -50,13 +50,23 @@ async def test_numpad():
         assert k == ch
 
 async def test_gpu():
-    dis.gpu.take_spi()
-    dis.clear()
-    dis.text(0,-1, "GPU Test okay?")
-    dis.show()
-    dis.gpu.show_test_pattern()
+    import gpu_binary
 
-    await wait_ok()
+    try:
+        dis.gpu.take_spi()
+        dis.clear()
+        dis.text(0,-1, "GPU Test okay?")
+        dis.show()
+
+        dis.bootrom_takeover()
+        assert dis.gpu.get_version() == gpu_binary.VERSION
+        dis.gpu.show_test_pattern()
+
+        await wait_ok()
+    finally:
+        dis.real_clear()
+        dis.draw_status(full=1)
+        dis.clear()
 
 async def test_keyboard():
     # for Q1
@@ -143,19 +153,18 @@ async def test_sd_active():
             gg = not ph
             led.value(gg)
 
+            dis.clear()
             if version.has_qwerty:
-                dis.clear()
                 if num == 0:
                     dis.text(0, 2, "<-- SD A is %s?  " % ('ON' if gg else 'off'))
                 else:
                     dis.text(0, 7, "<-- SD B is %s?  " % ('ON' if gg else 'off'))
             else:
-                dis.clear()
                 if gg:
                     dis.text(0,16, "<-- Green ON?")
                 else:
                     dis.text(0,16, "<-- Green off?")
-                dis.show()
+            dis.show()
 
             await wait_ok()
 
@@ -204,7 +213,7 @@ async def test_psram():
 
     test_len = PSRAM.length * 2
     chk = bytearray(32)
-    spots = set()
+    spots = []
     for pos in range(0, PSRAM.length, 800 * 17):
         if pos >= PSRAM.length: break
         rnd = ngu.hash.sha256s(pack('I', pos))
@@ -213,14 +222,13 @@ async def test_psram():
         PSRAM.read(pos, chk)
         assert chk == rnd, "bad @ 0x%x" % pos
         dis.progress_bar_show(pos / test_len)
-        spots.add(pos)
+        spots.append(pos)
 
     for pos in spots:
         rnd = ngu.hash.sha256s(pack('I', pos))
         PSRAM.read(pos, chk)
         assert chk == rnd, "RB bad @ 0x%x" % pos
         dis.progress_bar_show((PSRAM.length + pos) / test_len)
-
 
 async def test_oled():
     # all on/off tests

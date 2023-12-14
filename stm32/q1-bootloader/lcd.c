@@ -11,6 +11,7 @@
 #include "stm32l4xx_hal.h"
 #include <string.h>
 #include "misc.h"
+#include "gpio.h"
 #include "assets/q1_screens.h"
 
 // OLED pins block use of MCO for testing
@@ -30,10 +31,6 @@
 
 // port B
 #define TEAR_PIN        GPIO_PIN_11
-
-// port E - GPU connections
-#define G_BUSY          GPIO_PIN_2
-#define G_CTRL          GPIO_PIN_6
 
 const int LCD_WIDTH = 320;
 const int LCD_HEIGHT = 240;
@@ -181,8 +178,11 @@ lcd_full_setup(void)
     // configure SPI port and associated pins
     oled_setup();
 
-    // => attempt to avoid flash of garbage at boot/powerup
+    // Attempt to avoid flash of garbage at boot/powerup
+    // - just enough to clear screen based on default power-up config of LCD
     lcd_write_cmd(0x28);            // DISPOFF
+    lcd_write_cmd(0x36);            // MADCTL: memory addr ctrl, page 215
+    lcd_write_data1(0x60);          // MV=1 => horz mode, first byte=top-left corner, RGB order
     lcd_fill_solid(COL_BLACK);
 
     // Need 10us+ low-going pulse on reset pin; do 1ms.
@@ -305,16 +305,17 @@ oled_setup(void)
     inited = 0x238a572F;
 
     // enable some internal clocks
-    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_SPI1_CLK_ENABLE();
 
     // take over from GPU
     // - can be issue when coming in via callgate from mpy which might have been showing menu
-    HAL_GPIO_WritePin(GPIOE, G_CTRL, 1);        // set G_CTRL pin -- we have control
+    HAL_GPIO_WritePin(GPIOE, PIN_G_CTRL, 1);        // set G_CTRL pin -- we have control
 
     // .. wait for GPU to finish it's work
-    for(int i=0; i<100000; i++) {
-        if(HAL_GPIO_ReadPin(GPIOE, G_BUSY) == 0) break;
+    // - might take 16+ms because waiting for next vsync, etc
+    for(int i=0; i<100; i++) {
+        if(HAL_GPIO_ReadPin(GPIOE, PIN_G_BUSY) == 0) break;
+        delay_ms(1);
     }
 
     // Simple pins
@@ -330,7 +331,6 @@ oled_setup(void)
 
     // starting values
     HAL_GPIO_WritePin(GPIOA, RESET_PIN | CS_PIN | DC_PIN, 1);
-
 
     // SPI pins (same but with AF)
     setup.Pin = SPI_SCK | SPI_MOSI;
