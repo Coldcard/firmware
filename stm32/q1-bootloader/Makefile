@@ -1,6 +1,6 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# "Bootloader" Makefile for Mk4 Hardware
+# "Bootloader" Makefile for Q Hardware. Only slightly different from Mk4.
 #
 # Targets:
 #	all - make everything, look for dafu.elf inparticular
@@ -191,7 +191,7 @@ capture: version.txt version-full.txt $(DELIVERABLES) checksums.txt
 	@echo
 	@echo "      Version: " `cat version.txt`
 	@echo
-	V=`cat version.txt` && git tag -am "Mk4 Bootloader version $$V" "q-bootloader-"$$V
+	V=`cat version.txt` && git tag -am "Q Bootloader version $$V" "q-bootloader-"$$V
 	git add -f releases/*/bootloader.* releases/*.txt
 
 # Pull out the version string from binary object (already linked in) and 
