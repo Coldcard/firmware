@@ -22,6 +22,7 @@
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active
 - Bugfix: Disallow using master seed as temporary seed
 - Bugfix: Do not allow to `APPLY` empty BIP-39 passphrase
+- Bugfix: Fix yikes in `Clone Coldcard` (thanks to AnchorWatch)
 
 ## 5.2.0 - 2023-10-10
 
