@@ -464,14 +464,6 @@ class Display:
         self.text(-1, -1, timestamp)
         self.show([y, CHARS_H-1])
 
-
-    def splash_text(self, msg):
-        # additional progress during splash/startup screen
-        # - not sure any of this occurs during normal login sequence
-        y = 1
-        self.text(None, y, msg)
-        self.show([y])
-
     def progress_bar(self, percent):
         # Horizontal progress bar
         # takes 0.0 .. 1.0 as fraction of doneness

@@ -167,10 +167,6 @@ class Display:
         
         self.show()
 
-    def splash_text(self, msg):
-        # additional progress during splash/startup screen
-        self.fullscreen(msg)
-
     def progress_bar(self, percent):
         # Horizontal progress bar
         # takes 0.0 .. 1.0 as fraction of doneness

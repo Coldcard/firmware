@@ -358,7 +358,6 @@ Press 6 to prove you read to the end of this message.''', title='WARNING', escap
 async def block_until_login():
     #
     # Force user to enter a valid PIN.
-    # - or accept a bogus one and return T iff mk<4 and "countdown" pin used
     # 
     from login import LoginUX
     from ux import AbortInteraction
@@ -388,6 +387,7 @@ async def show_nickname(nick):
     # - no keys here, just show it until they press anything
     from glob import dis
     from ux import ux_wait_keyup
+    import callgate
 
     dis.clear()
 
@@ -396,7 +396,7 @@ async def show_nickname(nick):
         from utils import word_wrap
 
         lines = list(word_wrap(nick, CHARS_W))
-        y = ((CHARS_H - len(lines) + 1) // 2)
+        y = ((CHARS_H - len(lines) + 1) // 2) - 1
         for n, ln in enumerate(lines):
             dis.text(None, y+n, ln)
     else:
@@ -409,14 +409,18 @@ async def show_nickname(nick):
 
     dis.show()
 
-    await ux_wait_keyup()
+    ch = await ux_wait_keyup(flush=True)
+
+    if ch.upper() == settings.get('kbtn', None):
+        # support kill btn on nick screen too
+        callgate.fast_wipe(False)
+        
 
 async def pick_killkey(*a):
     # Setting: kill seed sometimes (requires mk4)
     if version.has_qwerty:
         msg = '''\
-If you press this key at any point during login, \
-your seed phrase will be immediately wiped.'''
+If you press this key at any point during login, your seed phrase will be immediately wiped.'''
     else:
         msg = '''\
 If you press this key while the anti- phishing words are shown during login, \
@@ -741,44 +745,6 @@ async def export_seedqr(*a):
 
     stash.blank_object(qr)
 
-async def damage_myself():
-    # called when it's time to disable ourselves due to various
-    # features related to duress and so on
-    # - mk2 cannot do this
-    # - mk4 doesn't call this, done by bootrom
-    mode = settings.get('cd_mode', 0)
-    #['Brick', 'Final PIN', 'Test Mode']
-
-    if mode == 2:
-        # test mode, do no damage
-        return
-
-    from glob import dis
-    dis.fullscreen("Wait...")
-    dis.busy_bar(True)
-
-    if mode == 1:
-        # leave single attempt; careful!
-        # - always consume one attempt, regardless
-        todo = max(1, pa.attempts_left - 1)
-    else:
-        # brick ourselves, by consuming all PIN attempts
-        todo = pa.attempts_left
-
-    # do a bunch of failed attempts
-    pa.setup('hfsp', False)
-    for i in range(todo):
-        try:
-            pa.login()
-        except:
-            # expecting EPIN_AUTH_FAIL
-            pass
-
-        # Try to keep UX responsive? But callgate stuff blocks everything,
-        # so just go as fast as possible.
-
-    dis.busy_bar(False)
-
 async def version_migration():
     # Handle changes between upgrades, and allow downgrades when possible.
     # - long term we generally cannot delete code from here, because we
@@ -840,7 +806,7 @@ async def start_login_sequence():
     guess = settings.get('_skip_pin', None)
     if guess is not None:
         try:
-            dis.splash_text("Skip PIN...")
+            dis.fullscreen("Skip PIN...")
             pa.setup(guess)
             pa.login()
         except: pass
@@ -854,8 +820,7 @@ async def start_login_sequence():
         wants_countdown = await block_until_login()
 
         # Do we need to do countdown delay? (real or otherwise)
-        delay = 0
-        # Mk4 approach:
+        # Q/Mk4 approach:
         # - wiping has already occured if that was picked
         # - delay is variable, stored in tc_arg
         from trick_pins import tp
@@ -888,7 +853,7 @@ async def start_login_sequence():
     # Successful login...
 
     # Must re-read settings after login
-    dis.splash_text("Startup...")
+    dis.fullscreen("Startup...")
     settings.set_key()
     settings.load(dis)
 
