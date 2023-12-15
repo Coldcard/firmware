@@ -208,6 +208,7 @@ async def psram_upgrade(filename, size):
         from pincodes import pa
         assert pa.is_successful()
         print("dev.dfu being installed")
+        dis.bootrom_takeover()
         pa.firmware_upgrade(offset, size)
         return
 
