@@ -107,7 +107,9 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
         # use standard menus and UX to change a PIN 
         title, story = cap_story()
         assert title == hdr_text
-        assert ('We strongly recommend' in story) or (CLR_PIN in story)
+        assert "changing the main PIN used to unlock your Coldcard" in story
+        assert "ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN!" in story
+        assert "Write it down" in story
         need_keypress('y')
         time.sleep(0.01)      # required
 
