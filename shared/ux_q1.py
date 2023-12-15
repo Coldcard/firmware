@@ -314,7 +314,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 def ux_show_phish_words(dis, words):
     # Show the anti-phishing words
     x = 34//2
-    y = 6
+    y = 7
     if not words:
         # just clear line
         dis.clear_box(0, y, CHARS_W, 1)
@@ -331,7 +331,8 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
     if force_draw:
         dis.clear()
 
-    rnd_y = CHARS_H-2
+    rnd_y = 0           # jammed in at top; doesn't look great but rarely used?
+    foot_y = -1         # footer at foot
 
     if randomize:
         # screen redraw, when we are "randomized"
@@ -341,16 +342,15 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
         # show mapping of numbers vs. PIN digits
         dis.text(1, rnd_y+0, '  ' + '  '.join(randomize[1:]) +'  '+ randomize[0] + '  ', invert=1)
         dis.text(1, rnd_y+1, '↳ 1  2  3  4  5  6  7  8  9  0')
-        foot_y = -3
+
+    prompt = "Enter first part of PIN" if not prefix else "Enter second part of PIN" 
+
+    if not subtitle:
+        dis.text(None, 2, prompt)
     else:
-        foot_y = -1
-
-    prompt = "Enter FIRST part of PIN" if not prefix else "Enter SECOND part of PIN" 
-
-    dis.text(None, 1, prompt)
-    if subtitle:
         # "New Main PIN" and similar
-        dis.text(None, 2, subtitle, dark=True)
+        dis.text(None, 1, subtitle, dark=False)
+        dis.text(None, 2, prompt, dark=True)
 
     if footer:
         # ie. '1 failures, 12 tries left'
@@ -359,24 +359,25 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
         dis.text(None, foot_y, "Confirm pin value")
 
     # for MAX_PIN_PART_LEN==6
-    x = 3
+    x = 0
     y = 4
-    w = 12      # double-wide * 6
+    w = 14      # (double-wide * 6) + margin
     dis.clear_box(0, y, CHARS_W, 1)
     dis.draw_box(x, y-1, w, 1, dark=bool(prefix))
-    dis.text(x+w+2, y, '-', dark=True)
-    dis.draw_box(x+w+3, y-1, w, 1, dark=not bool(prefix))
+    dis.text(x+w+2, y, '⋯', dark=True)
+    dis.draw_box(x+w+4, y-1, w, 1, dark=not bool(prefix))
         
-    active = '◯' * len(prefix or pin)
+    active = '•' * len(prefix or pin)
 
     if prefix:
-        # show first part and second
-        dis.text(x+1, y, active)
+        # show both first part and second
+        dis.text(x+2, y, active, dark=True)
 
-        msg = '◯' * len(pin)
-        cur_x = dis.text(x+w+4, y, msg)
+        msg = '•' * len(pin)
+        cur_x = dis.text(x+w+6, y, msg)
     else:
-        cur_x = dis.text(x+1, y, active)
+        # just showing first part
+        cur_x = dis.text(x+2, y, active)
 
     if len(pin) == 6:
         cur_x -= 2

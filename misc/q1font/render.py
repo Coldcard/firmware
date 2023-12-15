@@ -43,14 +43,14 @@ CHARSET = [chr(x) for x in range(32,127)] \
                 '₿', '✔', '✓', '↦', '␣',
                 '◉', '◯', '◌', '⬚', '░',
                 '™', '©', '⬧', '※',
-                '─',
+                '─', '—',
                 '━', '┃', '┓', '┏', '┛','┗',        # 'heavy' versions
                 KEY_NFC, KEY_QR, KEY_TAB,
           ]
 
 # these are be better as double-wide chars
 DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
-                '◉', '◯', '◌', '※',
+                '◉', '◯', '◌', '※', '•', '—',
                 KEY_NFC, KEY_QR, KEY_TAB,
             ]
 
@@ -156,6 +156,10 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             # this one up a little, so arrow is more mid-line-ish
             # - looks awesome for random keyboard PIN entry mode
             this_y = -4
+        if ch == '•':
+            # double-wide bullet; needs perfect alignment inside full-cell box cursor
+            x_shift += 4.6      # right side of perfect
+            this_y = 1          # perfect
 
         if ch in KEYCAP_SYMBOLS:
             if ch == KEY_NFC:
@@ -187,7 +191,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
         # track actual pixels we'll use
         cells.paste(img, box=(out_x, 0))
-        assert ch not in pos
+        assert ch not in pos, repr(ch)
         pos[ch] = out_x
         out_x += img.width
 
