@@ -16,13 +16,17 @@ assert not glob.dis, "main reimport"
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
-if 1: #XXX
-    # useful for debug: keep this stub!
+# useful for debug: start serial port early
+try:
+    from h import *
     import ckcc
     ckcc.vcp_enabled(True)
-    from h import *
-if 1:
-    from h import dfu
+except:
+    # above will fail on release build, because:
+    # - 'h.py' not included
+    # - excludes serial port code access completely (see vcp_lockdown.c)
+    pass
+
 if 0:
     raise SystemExit
 
