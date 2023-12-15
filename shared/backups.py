@@ -74,7 +74,7 @@ def render_backup_contents(bypass_tmp=False):
             for k,v in pairs:
                 ADD(k, v)
 
-        if bypass_tmp:
+        if bypass_tmp and pa.tmp_value:
             current_tmp = pa.tmp_value[:]
             pa.tmp_value = None
             # we also need correct settings from main seed
@@ -110,7 +110,7 @@ def render_backup_contents(bypass_tmp=False):
 
     rv.write('\n# EOF\n')
 
-    if bypass_tmp:
+    if bypass_tmp and current_tmp:
         # go back to tmp secret and its settings
         stash.SensitiveValues.clear_cache()
         pa.tmp_value = current_tmp
@@ -281,7 +281,7 @@ async def make_complete_backup(fname_pattern='backup.7z', write_sflash=False):
             bypass_tmp = True
 
     elif pa.tmp_value:
-        if not await ux_confirm("An temporary seed is in effect, "
+        if not await ux_confirm("A temporary seed is in effect, "
                                 "so backup will be of that seed."):
             return
 
@@ -593,7 +593,6 @@ file with an ephemeral public key will be written.''')
     try:
         with CardSlot() as card:
             fname, nice = card.pick_filename('ccbk-start.json', overwrite=True)
-
             with card.open(fname, 'wb') as fd:
                 fd.write(ujson.dumps(dict(pubkey=b2a_hex(my_pubkey))))
             
