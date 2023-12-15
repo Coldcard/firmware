@@ -1510,6 +1510,8 @@ Binary checksum and signature will be further verified before any changes are ma
                 # - reboot to start process
                 from glob import dis
                 dis.fullscreen('Upgrading...', percent=1)
+                dis.bootrom_takeover()
+
                 # Mk4 copies from PSRAM to flash inside bootrom, we have
                 # nothing to do here except start that process.
                 from pincodes import pa
