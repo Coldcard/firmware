@@ -1,4 +1,4 @@
-import pytest, time, json
+import pytest, time, json, os, shutil
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
@@ -533,3 +533,21 @@ def test_seed_vault_backup_frozen(reset_seed_words, settings_set, repl):
     assert 'Coldcard backup file' in bk
     target = json.dumps(sv)
     assert target in bk
+
+
+def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
+    sd_dir = "../unix/work/MicroSD"
+    num_7z = len([i for i in os.listdir(sd_dir) if i.endswith(".7z")])
+    fname = "ccbk-start.json"
+    reset_seed_words()
+    shutil.copy(f"data/{fname}", sd_dir)
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Backup")
+    pick_menu_item("Clone Coldcard")
+    time.sleep(1)
+    title, story = cap_story()
+    assert "Done" in story
+    assert "Take this MicroSD card back to other Coldcard" in story
+    goto_home()
+    assert len([i for i in os.listdir(sd_dir) if i.endswith(".7z")]) > num_7z
+    os.remove(f"{sd_dir}/{fname}")
