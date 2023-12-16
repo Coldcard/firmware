@@ -264,16 +264,16 @@ def seconds2human_readable(s):
     hours = s % (3600 * 24) // 3600
     minutes = (s % 3600) // 60
     seconds = (s % 3600) % 60
-    msg = ""
+    msg = []
     if days:
-        msg += "%dd" % days
+        msg.append("%dd" % days)
     if hours:
-        msg += " %dh" % hours
+        msg.append("%dh" % hours)
     if minutes:
-        msg += " %dm" % minutes
+        msg.append("%dm" % minutes)
     if seconds:
-        msg += " %ds" % seconds
+        msg.append("%ds" % seconds)
 
-    return msg
+    return " ".join(msg)
 
 # EOF
