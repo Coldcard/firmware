@@ -49,7 +49,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                 assert "ignores passphrases and produces backup of main seed" in body
                 assert "(2) to back-up BIP39 passphrase wallet" in body
             if st == "eph":
-                assert "An temporary seed is in effect" in body
+                assert "A temporary seed is in effect" in body
                 assert "so backup will be of that seed" in body
 
             need_keypress("y")
@@ -238,7 +238,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     pick_menu_item("Backup System")
     time.sleep(.1)
     title, story = cap_story()
-    assert "An temporary seed is in effect" in story
+    assert "A temporary seed is in effect" in story
     assert "so backup will be of that seed" in story
     need_keypress("y")
     time.sleep(.1)
@@ -540,6 +540,7 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
     num_7z = len([i for i in os.listdir(sd_dir) if i.endswith(".7z")])
     fname = "ccbk-start.json"
     reset_seed_words()
+    goto_home()
     shutil.copy(f"data/{fname}", sd_dir)
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Backup")
