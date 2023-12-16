@@ -226,7 +226,8 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
 def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
-                    derive_bip85_secret):
+                    derive_bip85_secret, reset_seed_words):
+    reset_seed_words()
     # Uses any key on Simulator; just checking for operation + entropy level
     _, story = derive_bip85_secret(mode, index)
 
@@ -278,6 +279,8 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
 
         elif 'WIF' in mode:
             assert qr == got
+
+    need_keypress("x")
 
 
 def test_type_passwords(dev, cap_menu, pick_menu_item,
