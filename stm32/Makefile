@@ -16,10 +16,8 @@
 
 clean clobber rc1:
 	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
-	$(MAKE) -f MK3-Makefile $(MAKECMDGOALS)
 
 release repro:
 	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
-	#NOTYET#$(MAKE) -f MK3-Makefile $(MAKECMDGOALS)
 
 # EOF
