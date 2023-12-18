@@ -77,7 +77,7 @@ from version import mk_num, is_devmode
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
                           "axskip", "del", "pms", "idle_to", "b39skip"]
 
-SEEDVAULT_FIELDS = [ 'seeds', 'seedvault', 'xfp' ]
+SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words']
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
