@@ -19,7 +19,7 @@ if 1:
     comments = 0
     blanks = 0
     checklist = set('mnemonic chain xprv xpub raw_secret fw_date fw_version fw_timestamp serial '
-                'setting.terms_ok setting.idle_to setting.chain'.split(' '))
+                'hardware setting.terms_ok setting.idle_to setting.chain'.split(' '))
     optional = set('setting.nfc setting.pms setting.axi setting.nick setting.lgto setting.usr hsm_policy setting.words long_secret multisig setting.multisig setting.fee_limit setting.tp setting.check duress_xprv duress_xpub duress_1001_words duress_1002_words duress_1003_words'.split(' '))
 
     for ln in render_backup_contents().split('\n'):

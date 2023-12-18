@@ -88,7 +88,9 @@ def render_backup_contents(bypass_tmp=False):
     ADD('fw_date', date)
     ADD('fw_version', vers)
     ADD('fw_timestamp', timestamp)
+    COMMENT('Coldcard Hardware')
     ADD('serial', version.serial_number())
+    ADD('hardware', version.hw_label)
 
     COMMENT('User preferences')
 
