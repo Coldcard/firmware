@@ -343,7 +343,7 @@ def cap_menu(sim_exec):
 
 @pytest.fixture(scope='module')
 def is_ftux_screen(sim_exec):
-    "are we presenting a view from ftux.py"
+    "are we presenting a view from ftux.py??"
     def doit():
         rv = sim_exec('from ux import the_ux; RV.write(repr('
                             'type(the_ux.top_of_stack())))')
@@ -360,15 +360,7 @@ def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
             _, story = cap_story()
             if not story: 
                 break
-            # XXX test more here
-            if 'Enable NFC' in story:
-                need_keypress('x')
-            elif 'Enable USB' in story:
-                need_keypress('y')
-            elif 'Disable USB' in story:
-                need_keypress('x')
-            else:
-                raise ValueError(story)
+            need_keypress('y')
 
         m = cap_menu()
         assert m[0] == 'Ready To Sign'
