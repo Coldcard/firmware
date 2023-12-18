@@ -891,10 +891,12 @@ async def ux_visualize_bip21(proto, addr, args):
     
     await ux_show_story(msg, title="Payment Address")
 
-async def ux_visualize_textqr(txt):
+async def ux_visualize_textqr(txt, maxlen=200):
+    # Show simple text. Don't crash on huge things, but be
+    # able to show a full xpub.
     from ux import ux_show_story
-    if len(txt) > 100:
-        txt = txt[0:100] + '...'
+    if len(txt) > maxlen:
+        txt = txt[0:maxlen] + '...'
 
     await ux_show_story("%s\n\nAbove is text that was scanned. "
             "We can't do any more with it." % txt, title="Simple Text")
