@@ -17,12 +17,13 @@
 - Enhancement: Allow passphrase via USB if passphrase already set - operates on master seed.
 - Enhancement: Improve BIP39 Passphrase UX when temporary seed is active and applicable.
 - Enhancement: Continuation of removal of obsolete Mk2/Mk3 code-paths from master branch.
+- Bugfix: Confusing first-time UX replaced with simple welcome screen.
 - Bugfix: One instant retry on SE1 commumication failures
 - Bugfix: Handle any failures in slot reading when loading settings
 - Bugfix: Add missing "First Time UX" for extended key import as master seed
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active (it cannot work)
 - Bugfix: Disallow using master seed as temporary seed
-- Bugfix: Do not allow `APPLY` of empty BIP-39 passphrase
+- Bugfix: Do not allow `APPLY` of empty BIP-39 passphrase. Use "Restore Master" instead.
 - Bugfix: Fix yikes in `Clone Coldcard` (thanks to AnchorWatch)
 
 ## 5.2.0 - 2023-10-10
