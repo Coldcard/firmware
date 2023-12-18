@@ -334,9 +334,9 @@ NormalSystem = [
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu,
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),
-    MenuItem('Secure Logout', f=logout_now),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu),
     MenuItem('Settings', menu=SettingsMenu),
+    MenuItem('Secure Logout', f=logout_now),
 ]
 
 # Shown until unit is put into a numbered bag
