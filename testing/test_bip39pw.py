@@ -11,7 +11,7 @@ from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
 import json
 from mnemonic import Mnemonic
-from constants import simulator_fixed_xfp, simulator_fixed_words
+from constants import simulator_fixed_xfp, simulator_fixed_words, simulator_fixed_tprv
 from helpers import xfp2str
 
 # add the BIP39 test vectors
@@ -370,5 +370,64 @@ def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_epheme
     ident_story = get_identity_story()
     assert xpub in ident_story
 
+
+@pytest.mark.parametrize("usb", [True, False])
+def test_tmp_on_xprv_master(generate_ephemeral_words, goto_home, cap_menu,
+                            pick_menu_item, need_keypress, enter_complex,
+                            cap_story, unit_test, microsd_path, expect_ftux,
+                            set_bip39_pw, usb):
+    passphrase = "jfkdsfdks"
+    fname = "ek.txt"
+    fpath = microsd_path("ek.txt")
+    with open(fpath, "w") as f:
+        f.write(simulator_fixed_tprv)
+    unit_test('devtest/clear_seed.py')
+    time.sleep(.2)
+    pick_menu_item('Import Existing')
+    pick_menu_item("Import XPRV")
+    time.sleep(.2)
+    title, story = cap_story()
+    if "Press (1)" in story:
+        need_keypress("1")
+
+    need_keypress("y")  # Select file containing...
+    pick_menu_item(fname)
+    time.sleep(.2)
+    expect_ftux()
+    m = cap_menu()
+    assert "Passphrase" not in m
+    sec = generate_ephemeral_words(24, from_main=True, seed_vault=False)
+    parent = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
+    parent_node = BIP32Node.from_master_secret(parent, netcode="XTN")
+    parent_fp = parent_node.fingerprint().hex().upper()
+    m = cap_menu()
+    # temporary seed is word-based - offer passphrase
+    assert "Passphrase" in m
+    if usb:
+        res_fp = set_bip39_pw(passphrase, reset=False, seed_vault=False, on_tmp=True)
+        assert xfp2str(res_fp) == parent_fp
+        with pytest.raises(Exception):
+            set_bip39_pw(passphrase, reset=False, seed_vault=False, on_tmp=True)
+
+        return
+
+    pick_menu_item("Passphrase")
+    need_keypress("y")
+    enter_complex(passphrase)
+    pick_menu_item("APPLY")
+    time.sleep(.1)
+    title, story = cap_story()
+
+
+    assert parent_fp in title  # no choice story
+    assert "current active temporary seed" in story
+    need_keypress("y")
+    time.sleep(.2)
+    title, story = cap_story()
+    if "Press (1)" in story:
+        need_keypress("y")
+
+    m = cap_menu()
+    assert "Passphrase" not in m
 
 # EOF

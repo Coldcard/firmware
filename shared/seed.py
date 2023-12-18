@@ -657,14 +657,14 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
     # get xfp of parent reliably - cannot go to settings for this if in ephemeral
     if pa.tmp_value:
         with stash.SensitiveValues(bypass_tmp=bypass_tmp) as sv:
-            assert sv.mode == 'words'
+            assert sv.mode == 'words', sv.mode
             current_xfp = swab32(sv.node.my_fp())
     else:
         current_xfp = settings.get("xfp", 0)
 
     with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
-        assert sv.mode == 'words'
+        assert sv.mode == 'words', sv.mode
         nv = SecretStash.encode(xprv=sv.node)
         xfp = swab32(sv.node.my_fp())
 
@@ -1212,34 +1212,58 @@ class PassphraseMenu(MenuSystem):
             # empty string here - noop
             return
 
-        nv, xfp, parent_xfp = await calc_bip39_passphrase(pp_sofar,
-                                                          bypass_tmp=True)
-        parent_xfp_str = xfp2str(parent_xfp)
-        xfp_str = xfp2str(xfp)
-        msg0 = "master seed [%s]" % parent_xfp_str
+        mdata = None
+        tdata = None
+
+        try:
+            m_nv, m_xfp, m_parent_xfp = await calc_bip39_passphrase(pp_sofar,
+                                                                    bypass_tmp=True)
+            m_parent_xfp_str = xfp2str(m_parent_xfp)
+            m_xfp_str = xfp2str(m_xfp)
+            mdata = (
+                m_nv, m_xfp, m_xfp_str, m_parent_xfp_str,
+                "master seed [%s]" % m_parent_xfp_str,
+                "(1) master+pass:\n%s→%s\n\n" % (m_parent_xfp_str, m_xfp_str),
+            )
+        except AssertionError: pass
+
         if pa.tmp_value and settings.get("words", True):
             # we have ephemeral seed - can add passphrase to it as it is word based
             t_nv, t_xfp, t_parent_xfp = await calc_bip39_passphrase(pp_sofar,
                                                                     bypass_tmp=False)
             t_parent_xfp_str = xfp2str(t_parent_xfp)
             t_xfp_str = xfp2str(t_xfp)
-            choice_msg = "(1) master+pass:\n%s→%s\n\n" % (parent_xfp_str, xfp_str)
-            choice_msg += "(2) tmp+pass:\n%s→%s\n\n" % (t_parent_xfp_str, t_xfp_str)
-            ch = await ux_show_story(choice_msg, escape='12x', strict_escape=True,
-                                     scrollbar=False)
+            tdata = (
+                t_nv, t_xfp, t_xfp_str, t_parent_xfp_str,
+                "current active temporary seed [%s]" % t_parent_xfp_str,
+                "(2) tmp+pass:\n%s→%s\n\n" % (t_parent_xfp_str, t_xfp_str),
+            )
+
+        if tdata is None and mdata is None:
+            # if master is not word based, temporary has to be, otherwise "Passphrase"
+            # not offered in menu
+            # should never be seen by user because flow.py::bip39_passphrase_active
+            await ux_show_story(title="FAILED", msg="Need word based secret")
+            return
+
+        tmp = False
+        if tdata and mdata:
+            ch = await ux_show_story(mdata[-1] + tdata[-1], escape='12x',
+                                     strict_escape=True, scrollbar=False)
             if ch == "x": return  # exit
             if ch == "2":
-                parent_xfp_str = t_parent_xfp_str
-                xfp = t_xfp
-                xfp_str = t_xfp_str
-                msg0 = "current active temporary seed [%s]" % t_parent_xfp_str
-                nv = t_nv
+                tmp = True
+        elif tdata:
+            tmp = True
+
+        data = tdata if tmp else mdata
+        nv, xfp, xfp_str, parent_xfp_str, msg, _ = data
 
         msg = ('Above is the master key fingerprint of the new wallet'
                ' created by adding passphrase to %s.'
                ' Press X to abort and keep editing passphrase,'
                ' OK to use the new wallet, (1) to use'
-               ' and save to MicroSD') % msg0
+               ' and save to MicroSD') % msg
 
         ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
         if ch == 'x':

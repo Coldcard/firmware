@@ -115,13 +115,24 @@ class PassphraseSaverMenu(MenuSystem):
 
         bypass_tmp = True
         pw, expect_xfp = item.arg
-        if pa.tmp_value and settings.get("words", None):
+        if pa.tmp_value and settings.get("words", True):
             xfp = settings.get("xfp", 0)
             title = "[%s]" % xfp2str(xfp)
-            ch = await ux_show_story("Temporary seed is active. Press (1)"
-                                     " to add passphrase to the current active"
-                                     " temporary seed instead of the main seed.",
-                                     title=title, escape='1')
+            msg = (
+                "Temporary seed is active. Press (1)"
+                " to add passphrase to the current active"
+                " temporary seed."
+            )
+            escape = "1x"
+            if settings.master_get("words", True):
+                escape += "y"
+                msg += " Press OK to add to master seed."
+
+            msg += "Press X to exit."
+
+            ch = await ux_show_story(msg, title=title, escape=escape,
+                                     strict_escape=True)
+            if ch == "x": return
             if ch == '1':
                 bypass_tmp = False
 
@@ -130,7 +141,7 @@ class PassphraseSaverMenu(MenuSystem):
         if not applied:
             return
 
-        xfp = settings.get('xfp')
+        xfp = settings.get('xfp', 0)
 
         # verification step
         if xfp == expect_xfp:

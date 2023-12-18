@@ -1204,7 +1204,7 @@ class NewPassphrase(UserAuthorizedAction):
 
         title = "Passphrase"
         bypass_tmp = True
-        escape = "2"
+        escape = "x2"
         while 1:
             msg = ('BIP-39 passphrase (%d chars long) has been provided over '
                    'USB connection. Should we switch to that wallet now?\n\n')
@@ -1212,9 +1212,15 @@ class NewPassphrase(UserAuthorizedAction):
                 escape += "1"
                 msg += "Press (1) to add passphrase to currently active temporary seed. "
 
+            if settings.master_get("words", True):
+                escape += "y"
+                msg += "Press OK to add passphrase to master seed. "
+
             msg += ('Press (2) to view the provided passphrase.\n\n'
-                    'OK to continue, X to cancel.')
-            ch = await ux_show_story(msg=msg % len(self._pw), title=title, escape=escape)
+                    'X to cancel.')
+
+            ch = await ux_show_story(msg=msg % len(self._pw), title=title,
+                                     escape=escape, strict_escape=True)
             if ch == '2':
                 await ux_show_story('Provided:\n\n%s\n\n' % self._pw, title=title)
                 continue
