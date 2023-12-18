@@ -52,9 +52,9 @@ def se2_and_real_secret():
     return (not pa.is_secret_blank()) and (not pa.tmp_value)
 
 def bip39_passphrase_active():
-    from stash import bip39_passphrase
-    from pincodes import pa
-    return settings.get('words', True) or (bip39_passphrase and pa.tmp_value)
+    import stash
+    return settings.get('words', True) \
+        or (settings.master_get('words', True) and stash.bip39_passphrase)
 
 
 HWTogglesMenu = [

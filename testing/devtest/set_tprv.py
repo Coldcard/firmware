@@ -7,6 +7,7 @@ import stash, chains
 from h import b2a_hex
 from pincodes import pa
 from glob import settings
+from nvstore import SettingsObject
 from stash import SecretStash, SensitiveValues
 from utils import xfp2str, swab32
 
@@ -20,19 +21,21 @@ v = node.deserialize(main.TPRV)
 assert v == b32_version_priv
 assert node
 
-if settings.get('xfp') == swab32(node.my_fp()):
-    print("right xfp already")
+settings.current = sim_defaults
+settings.set('chain', 'XTN')
+settings.set('words', False)
 
-else:
-    settings.current = sim_defaults
-    settings.set('chain', 'XTN')
+pa.tmp_value = None
+SettingsObject.master_sv_data = {}
+SettingsObject.master_nvram_key = None
 
-    raw = SecretStash.encode(xprv=node)
-    pa.change(new_secret=raw)
-    pa.new_main_secret(raw)
+raw = SecretStash.encode(xprv=node)
+pa.change(new_secret=raw)
+pa.new_main_secret(raw)
+settings.set('words', False)
 
-    print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
-    print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
+print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
+print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))
 
-    assert settings.get('xfp', 0) == swab32(node.my_fp())
+assert settings.get('xfp', 0) == swab32(node.my_fp())
 
