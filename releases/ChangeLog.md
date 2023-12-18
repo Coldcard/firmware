@@ -1,28 +1,28 @@
-## 5.2.1 - 2023-11-XX
+## 5.2.1 - 2023-12-19
 
-- New Feature: Temporary Seed from COLDCARD encrypted backup.
-- New Feature: Export seed as SeedQR
+- New Feature: Temporary Seed import from a COLDCARD encrypted backup.
+- New Feature: Export seed words in SeedQR format (on screen QR).
 - New Feature: Provide user with info about transaction level timelocks 
   ([nLockTime](https://en.bitcoin.it/wiki/NLockTime),
   [nSequence](https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki))
-  when signing
-- Enhancement: New submenu for saved BIP-39 Passphrases allowing to delete saved entries.
+  when signing.
+- Enhancement: New submenu for saved BIP-39 Passphrases allowing delete of saved entries.
 - Enhancement: Add current temporary seed to Seed Vault from within Seed Vault menu.
   If current seed is temporary and not saved yet, `Add current tmp` menu item is 
   shown in Seed Vault menu.
-- Enhancement: Speed up opening `Passphrase` menu, when MicroSD card is available, by
+- Enhancement: Speed up opening `Passphrase` menu when MicroSD card is available, by
   deferring card read (and decryption) until after `Restore Saved` menu item is selected.
 - Enhancement: `12 Words` menu option preferred on the top of the menu in all the seed menus
   (rather than 24 words).
-- Enhancement: One instant retry on SE1 comm failures
 - Enhancement: Allow passphrase via USB if passphrase already set - operates on master seed.
-- Enhancement: Continuation of removal of obsolete Mk2/Mk3 code-paths from master branch.
 - Enhancement: Improve BIP39 Passphrase UX when temporary seed is active and applicable.
+- Enhancement: Continuation of removal of obsolete Mk2/Mk3 code-paths from master branch.
+- Bugfix: One instant retry on SE1 commumication failures
 - Bugfix: Handle any failures in slot reading when loading settings
-- Bugfix: Add missing First Time UX for extended key import as master seed
-- Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active
+- Bugfix: Add missing "First Time UX" for extended key import as master seed
+- Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active (it cannot work)
 - Bugfix: Disallow using master seed as temporary seed
-- Bugfix: Do not allow to `APPLY` empty BIP-39 passphrase
+- Bugfix: Do not allow `APPLY` of empty BIP-39 passphrase
 - Bugfix: Fix yikes in `Clone Coldcard` (thanks to AnchorWatch)
 
 ## 5.2.0 - 2023-10-10
