@@ -22,7 +22,7 @@ class FirstTimeUX:
 
             await ux_show_story('''
 Your COLDCARD has been configured for \
-best security practises: 
+best security practices: 
 
 - USB disabled
 - NFC disabled
