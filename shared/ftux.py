@@ -9,10 +9,18 @@ from actions import change_usb_disable
 
 class FirstTimeUX:
     async def interact(self):
-        # Help them enable the good stuff.
-        # - they might have already enabled things
+        # Force USB to be disabled by default, but also warn/tell user
+        # how to enable it, plus NFC and VirtDisk (already disabled by default)
+        if settings.get('du', None) is None:
 
-        await ux_show_story('''
+            if not ckcc.is_simulator():
+                settings.set('du', 1)       # disable USB
+                await change_usb_disable(1)
+
+            #settings.set('nfc', 0)     # default already
+            #settings.set('vidsk', 0)   # same as default
+
+            await ux_show_story('''
 Your COLDCARD has been configured for \
 best security practises: 
 
@@ -22,14 +30,7 @@ best security practises:
 
 You can change these under Settings > Hardware On/Off.''', title="Welcome!")
 
-        if not ckcc.is_simulator():
-            settings.set('du', 1)       # disable USB
-            await change_usb_disable(1)
-
-        #settings.set('nfc', 0)     # default already
-        #settings.set('vidsk', 0)   # same as default
-
-        # done
+        # done, clear UX
         the_ux.pop()
 
 # EOF
