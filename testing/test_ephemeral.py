@@ -119,11 +119,11 @@ def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story, nfc_r
 
         if nfc:
             need_keypress("1")  # show QR code
-            time.sleep(.1)
+            time.sleep(.2)
             need_keypress("3")  # any QR can be exported via NFC
-            time.sleep(.1)
+            time.sleep(.2)
             str_words = nfc_read_text()
-            time.sleep(.1)
+            time.sleep(.5)
             need_keypress("y")  # exit NFC animation
             return str_words.split(" ")  # always truncated
 
