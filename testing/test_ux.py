@@ -748,6 +748,10 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, need_keypress, cap_
     # home
     for i in range(10):  # settings on 5th in home (10 is way past that)
         need_keypress(DOWN)
+
+    # sitting at Logout
+    # one up to get to settings
+    need_keypress(UP)
     need_keypress("y")
     menu = cap_menu()
     # assert we are in settings, meaning we found bottom of home menu
@@ -755,6 +759,7 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, need_keypress, cap_
 
     for i in range(10):
         need_keypress(UP)
+
     need_keypress("y")
     menu = cap_menu()
     # assert we are in Login settings, meaning we found top of settings menu
