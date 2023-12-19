@@ -18,7 +18,7 @@
 - Enhancement: Improve BIP39 Passphrase UX when temporary seed is active and applicable.
 - Enhancement: Continuation of removal of obsolete Mk2/Mk3 code-paths from master branch.
 - Bugfix: Confusing first-time UX replaced with simple welcome screen.
-- Bugfix: One instant retry on SE1 commumication failures
+- Bugfix: One instant retry on SE1 communication failures
 - Bugfix: Handle any failures in slot reading when loading settings
 - Bugfix: Add missing "First Time UX" for extended key import as master seed
 - Bugfix: Hide `Upgrade Firmware` menu item if temporary seed is active (it cannot work)
