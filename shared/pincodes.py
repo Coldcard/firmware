@@ -363,7 +363,8 @@ class PinAttempt:
 
     def change(self, **kws):
         # change various values, stored in secure element
-        if self.tmp_value: return
+        if not kws.pop("tmp_lockdown", False):
+            if self.tmp_value: return
 
         self.roundtrip(3, **kws)
 
