@@ -682,18 +682,29 @@ async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
 async def remember_ephemeral_seed():
     # Compute current xprv and switch to using that as root secret.
     import stash
-    from glob import dis
+    from nvstore import SettingsObject
+    from glob import dis, settings
 
-    dis.fullscreen('Check...')
-    with stash.SensitiveValues() as sv:
-        nv = sv.encoded_secret()
+    # we are already at temporary seed, with correct
+    # settings in use - no need to call new_main_secret
+    # at the end
+
+    # locking down temporary as new master
+    # old master settings are destroyed
+    dis.fullscreen("Cleanup...")
+    assert pa.tmp_value, "no tmp"
+    assert settings.master_nvram_key, "master nvram k"
+    old_master = SettingsObject(settings.master_nvram_key)
+    old_master.load()
+    old_master.blank()
+    del old_master
 
     dis.fullscreen('Saving...')
-    pa.change(new_secret=nv)
+    pa.change(new_secret=pa.tmp_value, tmp_lockdown=True)
 
-    # re-read settings since key is now different
-    # - also captures xfp, xpub at this point
-    pa.new_main_secret(nv)
+    # not needed - will be handled by reboot
+    settings.master_nvram_key = None
+    settings.master_sv_data = {}
 
     # check and reload secret
     pa.reset()
