@@ -138,7 +138,14 @@ def decode_qr_text(got):
     # - not binary, but might be some other encoding than BBQr
     # - if bad checksum on bitcoin addr, we treat as text... since might be
     # return: what-it-is, (tuple)
-    orig_got = got
+
+    if not isinstance(got, str):
+        # decode utf-8
+        try:
+            got = got.decode()
+        except UnicodeError:
+            raise QRDecodeExplained('UTF-8 decode failed')
+
 
     # might be a PSBT?
     if len(got) > 100:
@@ -158,7 +165,14 @@ def decode_qr_text(got):
             # was something else.
             pass
 
+    # Things with newlines in them are not URL's
+    # - working URLs are not >4k
+    # - might be a story in text, etc.
+    if  (len(got) > 4096) or ('\n' in got):
+        return 'text', (got,)
+
     # Might be an address or pubkey?
+    orig_got = got
 
     # remove URL protocol: if present
     proto, args, addr = None, None, None
