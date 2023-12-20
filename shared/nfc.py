@@ -308,7 +308,8 @@ class NFCHandler:
         await self.setup_gpio()
 
         if dis.has_lcd:
-            pass        # TODO
+            dis.real_clear()        # bugfix
+            dis.text(None, -2, 'Tap phone to screen, or CANCEL.', dark=True)
         else:
             from graphics_mk4 import Graphics
             frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
@@ -323,13 +324,14 @@ class NFCHandler:
 
         first = True
         while 1:
-            phase = (phase + 1) % 4
-            dis.clear()
             if dis.has_lcd:
-                dis.text(None, 4, 'NFC animation fr#%d' % phase)
+                phase = (phase + 1) % 2
+                dis.image(None, 59, 'nfc_%d' % phase)
             else:
+                dis.clear()
+                phase = (phase + 1) % 4
                 dis.icon(0, 8, frames[phase])
-            dis.show()
+                dis.show()
 
             # wait for key or 250ms animation delay
             try:

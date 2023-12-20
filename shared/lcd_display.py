@@ -215,7 +215,7 @@ class Display:
     def image(self, x, y, name):
         # display a graphics image, immediately
         w,h, data = getattr(Graphics, name)
-        if x == None:
+        if x is None:
             x = max(0, (WIDTH - w) // 2)
         self.gpu.take_spi()
         self.dis.show_zpixels(x, y, w, h, data)
