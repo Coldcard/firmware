@@ -216,11 +216,8 @@ class QRScanner:
                 await self.goto_sleep()
                 self.busy_scanning = False
 
-        if bbqr.is_complete():
-            # return object instead of string
-            return bbqr
-
-        return rv
+        # return BBQr object or string if simple QR
+        return bbqr if bbqr.is_complete() else rv
 
 
     async def _readline(self):
@@ -352,6 +349,7 @@ class QRScanner:
     def torch_control_sync(self, on):
         # sync wrapper
         asyncio.create_task(self.torch_control(on))
+
 
     async def torch_control(self, on):
         # be an expensive flashlight
