@@ -792,7 +792,7 @@ async def start_login_sequence():
     except: pass
 
     if version.has_battery:
-        from q1 import batt_idle_logout
+        from battery import batt_idle_logout
         IMPT.start_task('b-idle', batt_idle_logout())
 
     # maybe show a nickname before we do anything

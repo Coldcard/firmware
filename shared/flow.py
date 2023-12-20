@@ -34,10 +34,9 @@ else:
     hsm_feature = lambda: False
     make_users_menu = lambda: []
 
-trick_pin_menu = TrickPinMenu.make_menu
-
+# Battery related items
 if version.has_battery:
-    from q1 import battery_idle_timeout_chooser, brightness_chooser
+    from battery import battery_idle_timeout_chooser, brightness_chooser
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
@@ -93,7 +92,7 @@ with the Coldcard.''',
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=main_pin_changer),
-    NonDefaultMenuItem('Trick PINs', 'tp', menu=trick_pin_menu),
+    NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble),
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
@@ -349,9 +348,11 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign, shortcut='r'),
+    MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active, shortcut='p'),
     MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
          shortcut=KEY_QR, f=scan_any_qr, arg=(False, True)),
-    MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active, shortcut='p'),
+    MenuItem('NFC Tools', predicate=lambda: nfc_enabled() and version.has_qwerty,
+                                menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore, shortcut='x'),
     MenuItem('Type Passwords', f=password_entry, shortcut='t',

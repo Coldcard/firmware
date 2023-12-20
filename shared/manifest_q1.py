@@ -15,6 +15,7 @@ freeze_as_mpy('', [
 	'ndef.py',
 	'trick_pins.py',
 	'ux_q1.py',
+	'battery.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

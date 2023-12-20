@@ -35,6 +35,8 @@ def start():
     import atexit
     atexit.register(cleanup)
 
+    # XXX obsolete w/ Q changes?
+
     os.chdir('./work')
     cc_cmd = ['../coldcard-mpy',
                         '-X', 'heapsize=9m',

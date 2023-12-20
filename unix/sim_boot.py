@@ -33,7 +33,7 @@ if '--sflash' not in sys.argv:
 # Install various hacks and workarounds
 import mk4
 import sim_mk4
-import sim_q1
+import sim_battery
 import sim_psram
 import sim_vdisk
 

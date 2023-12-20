@@ -16,7 +16,7 @@ assert not glob.dis, "main reimport"
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
-# useful for debug: start serial port early
+# useful for debug: start serial port early, when possible
 try:
     from h import *
     import ckcc

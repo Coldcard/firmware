@@ -64,14 +64,10 @@ def get_sys_status():
     # Read current values for all status-bar items
     # - normally we update as we go along.
     # - return a dict
-    from q1 import get_batt_threshold
+    from battery import get_batt_threshold
 
     rv = dict(shift=0, caps=0, symbol=0)
-    b = get_batt_threshold()
-    if b is None:
-        rv['plugged'] = True
-    else:
-        rv['bat'] = b
+    rv['bat'] = get_batt_threshold()
 
     from stash import bip39_passphrase
     rv['bip39'] = int(bool(bip39_passphrase))
@@ -149,7 +145,7 @@ class Display:
         # Call when battery changes state, or if you want max for a bit (QR display)
         # - call w/o args to get back to state we're supposed to be in.
         from glob import settings
-        from q1 import get_batt_threshold, DEFAULT_BATT_BRIGHTNESS
+        from battery import get_batt_threshold, DEFAULT_BATT_BRIGHTNESS
 
         if tmp_override is not None:
             self.dis.backlight.intensity(tmp_override)
@@ -182,11 +178,12 @@ class Display:
 
         b_x = 290
         if 'bat' in kws:
-            self.image(b_x, 0, 'bat_%d' % kws['bat'])
-            self.set_lcd_brightness(True)
-        if 'plugged' in kws:
-            self.image(b_x, 0, 'plugged')
-            self.set_lcd_brightness(False)
+            if kws['bat'] is None:
+                self.image(b_x, 0, 'plugged')
+                self.set_lcd_brightness(False)
+            else:
+                self.image(b_x, 0, 'bat_%d' % kws['bat'])
+                self.set_lcd_brightness(True)
 
         if 'bip39' in kws:
             self.image(102, 0, 'bip39_%d' % kws['bip39'])
@@ -502,7 +499,7 @@ class Display:
 
     def set_brightness(self, val):
         # - was only used by HSM ux code
-        # - QR code display brightness could be done in show_qr_data()
+        # - QR code display brightness is done in show_qr_data() now
         # - see self.set_lcd_brightness()
         return 
 
