@@ -566,7 +566,7 @@ async def convert_ephemeral_to_master(*a):
         return
 
     words = settings.get("words", True)
-    _type = 'BIP-39 passphrase ' if bip39_passphrase else 'temporary seed '
+    _type = 'BIP-39 passphrase' if bip39_passphrase else 'temporary seed'
     msg = 'Convert currently used %s to master seed. Old master seed' % _type
     if words or bip39_passphrase:
         msg += ' words themselves are erased forever, '
@@ -585,7 +585,7 @@ async def convert_ephemeral_to_master(*a):
         msg += 'The resulting wallet cannot be used with any other passphrase. '
 
     msg += 'A reboot is part of this process. '
-    msg += ('PIN code, and %s funds are not affected.' % _type)
+    msg += 'PIN code, and %s funds are not affected.' % _type
     if not await ux_confirm(msg):
 
         return await ux_aborted()
