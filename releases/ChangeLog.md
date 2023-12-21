@@ -1,6 +1,6 @@
 ## 5.2.2 - 2023-12-21
 
-- Bugfix: Re-enable `Lock Down Seed` which was disabled by accident
+- Bugfix: Re-enable `Lock Down Seed` feature which was disabled by accident
 
 ## 5.2.1 - 2023-12-19
 
