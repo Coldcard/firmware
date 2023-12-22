@@ -94,15 +94,15 @@ def make_icons():
         ( 'shift', True, 'SHIFT', {} ),
         ( 'symbol', True, 'SYM', {} ),
         ( 'caps', True, 'CAPS', {} ),
-        ( 'bip39', True, 'PASSPHRASE', {} ),
+        ( 'bip39', True, 'PASSPHRASE', dict(col_1='yellow') ),
         ( 'tmp', True, 'TMP.SEED', dict(col_0='black', col_1='red') ),
-        ( 'devmode', True, 'DEV', dict(col='yellow') ),
-        ( 'edge', True, 'EDGE', dict(col='yellow') ),
+        ( 'devmode', True, 'DEV', dict(col='blue') ),
+        ( 'edge', True, 'EDGE', dict(col='blue') ),
         ( 'bat_0', False, '\uf244', dict(col='red', y=-1)),
         ( 'bat_1', False, '\uf243', dict(col='yellow', y=-1)),
-        ( 'bat_2', False, '\uf242', dict(col='#0f0', y=-1)),
-        ( 'bat_3', False, '\uf240', dict(col='green', y=-1)),
-        ( 'plugged', False, '\uf1e6', dict(col='green')),
+        ( 'bat_2', False, '\uf242', dict(col='amber', y=-1)),
+        ( 'bat_3', False, '\uf240', dict(col='amber', y=-1)),
+        ( 'plugged', False, '\uf1e6', dict(col='amber', x=3, w=16)),   # to match width of bat_*
         #( 'locked', False, '\uf023', dict(col='green')),
         #( 'unlocked', False, '\uf3c1', dict(col='green')),      # why tho?
     ]
@@ -139,9 +139,15 @@ def make_icons():
             tl = (x, y)
             _,_, w,h = d.textbbox(tl, body, font=f)
 
+            w = opts.get('w', w)
+
             if h > MAX_HEIGHT:
                 h = MAX_HEIGHT
                 print(f'"{vn}" too tall, cropped')
+
+            if col == 'amber':
+                # brand colour
+                col = '#ffb000'
 
             d.text(tl, body, font=f, fill=col)
             rv = img.crop( (0, 0, w,h) )
