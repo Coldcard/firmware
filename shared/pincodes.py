@@ -478,6 +478,7 @@ class PinAttempt:
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
         from glob import settings
+        from nvstore import SettingsObject
 
         val = bytes(encoded + bytes(AE_SECRET_LEN - len(encoded)))
         if self.tmp_value == val:
@@ -489,9 +490,9 @@ class PinAttempt:
             # disallow using master seed as temporary
             master_err = "Cannot use master seed as temporary."
             target_nvram_key = settings.hash_key(encoded)
-            if settings.master_nvram_key:
+            if SettingsObject.master_nvram_key:
                 assert self.tmp_value
-                if target_nvram_key == settings.master_nvram_key:
+                if target_nvram_key == SettingsObject.master_nvram_key:
                     return False, master_err
             else:
                 if target_nvram_key == settings.nvram_key:

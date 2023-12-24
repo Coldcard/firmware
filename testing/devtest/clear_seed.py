@@ -6,6 +6,7 @@ from pincodes import pa
 from glob import settings
 from pincodes import AE_SECRET_LEN, PA_IS_BLANK
 from sim_settings import sim_defaults
+from nvstore import SettingsObject
 
 if not pa.is_secret_blank():
     # clear settings associated with this key, since it will be no more
@@ -23,8 +24,8 @@ if not pa.is_secret_blank():
 
     assert pa.is_secret_blank()
 
-settings.master_sv_data = {}
-settings.master_nvram_key = None
+SettingsObject.master_sv_data = {}
+SettingsObject.master_nvram_key = None
 # reset top menu and go there
 from actions import goto_top_menu
 goto_top_menu()
