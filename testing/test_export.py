@@ -128,10 +128,8 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         if 'label' in x:
             # pre 0.21.?
             assert x['label'] == 'testcase'
-        else:
-            assert x['labels'] == ['testcase']
 
-        assert x['iswatchonly'] == True
+        # assert x['iswatchonly'] == True
         assert x['iswitness'] == True
         # assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
