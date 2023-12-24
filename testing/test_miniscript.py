@@ -2155,7 +2155,6 @@ def test_usb_workflow(usb_miniscript_get, usb_miniscript_ls, clear_miniscript,
     msc_wallets = usb_miniscript_ls()
     assert len(msc_wallets) == 4
     assert sorted(msc_wallets) == ["w0", "w1", "w2", "w3"]
-    import pdb;pdb.set_trace()
     # try to get/delete nonexistent wallet
     with pytest.raises(Exception) as err:
         usb_miniscript_get("w4")
