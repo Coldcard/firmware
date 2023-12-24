@@ -693,8 +693,8 @@ async def remember_ephemeral_seed():
     # old master settings are destroyed
     dis.fullscreen("Cleanup...")
     assert pa.tmp_value, "no tmp"
-    assert settings.master_nvram_key, "master nvram k"
-    old_master = SettingsObject(settings.master_nvram_key)
+    assert SettingsObject.master_nvram_key, "master nvram k"
+    old_master = SettingsObject(SettingsObject.master_nvram_key)
     old_master.load()
     old_master.blank()
     del old_master
@@ -703,8 +703,8 @@ async def remember_ephemeral_seed():
     pa.change(new_secret=pa.tmp_value, tmp_lockdown=True)
 
     # not needed - will be handled by reboot
-    settings.master_nvram_key = None
-    settings.master_sv_data = {}
+    SettingsObject.master_nvram_key = None
+    SettingsObject.master_sv_data = {}
 
     # check and reload secret
     pa.reset()
