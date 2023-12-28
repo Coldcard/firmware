@@ -26,6 +26,12 @@ This lists the new changes that have not yet been published in a normal release.
 # Mk4 Specific Changes
 
 ## 5.4.1 - 2024-??-??
+- Change: If derivation path is omitted during message signing, default is used 
+  based on address format (`m/44h/0h/0h/0/0` for p2pkh, and `m/84h/0h/0h/0/0` for p2wpkh). 
+  Default is no longer root (m).
+
+
+## 5.4.? - 2024-??-??
 
 - Enhancement: Export single sig descriptor with simple QR.
 
