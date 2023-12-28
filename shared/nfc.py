@@ -753,21 +753,11 @@ class NFCHandler:
         if not winner:
             return
 
-        if len(winner) == 1:
-            text = winner[0]
-            subpath = "m"
-            addr_fmt = AF_CLASSIC
-        elif len(winner) == 2:
-            text, subpath = winner
-            addr_fmt = AF_CLASSIC  # maybe default to native segwit?
-        else:
-            # len(winner) == 3
-            text, subpath, addr_fmt = winner
-
         UserAuthorizedAction.check_busy(ApproveMessageSign)
         try:
             UserAuthorizedAction.active_request = ApproveMessageSign(
-                text, subpath, addr_fmt, approved_cb=self.msg_sign_done
+                None, None, None, approved_cb=self.msg_sign_done,
+                msg_sign_request=winner
             )
             the_ux.push(UserAuthorizedAction.active_request)
         except AssertionError as exc:

@@ -13,6 +13,14 @@ from public_constants import AF_P2WSH, AF_P2WSH_P2SH
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
 
+STD_DERIVATIONS = {
+    "p2pkh": "m/44h/{chain}h/0h/0/0",
+    "p2sh-p2wpkh": "m/49h/{chain}h/0h/0/0",
+    "p2wpkh-p2sh": "m/49h/{chain}h/0h/0/0",
+    "p2wpkh": "m/84h/{chain}h/0h/0/0",
+    "p2tr": "m/86h/{chain}h/0h/0/0",
+}
+
 try:
     from font_iosevka import FontIosevka
     DOUBLE_WIDE = FontIosevka.DOUBLE_WIDE
@@ -421,7 +429,7 @@ def check_firmware_hdr(hdr, binary_size):
             ok = (hw_compat & MK_4_OK)
         elif hw_label == 'q1':
             ok = (hw_compat & MK_Q1_OK)
-        
+
         if not ok:
             return "That firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
 
@@ -790,5 +798,28 @@ def truncate_address(addr):
 def encode_seed_qr(words):
     return ''.join('%04d' % bip39.get_word_index(w) for w in words)
 
+def parse_msg_sign_request(data):
+    lines = data.split("\n")
+    assert len(lines) >= 1, "min 1 line"
+    assert len(lines) <= 3, "max 3 lines"
+
+    subpath = ""
+    addr_fmt = "p2pkh"
+    if len(lines) == 1:
+        text = lines[0]
+    elif len(lines) == 2:
+        text, subpath = lines
+    else:
+        text, subpath, addr_fmt = lines
+        if not addr_fmt:
+            addr_fmt = "p2pkh"
+
+    if not subpath:
+        subpath = STD_DERIVATIONS[addr_fmt]
+        subpath = subpath.format(
+            chain=chains.current_chain().b44_cointype
+        )
+
+    return text, subpath, addr_fmt
 
 # EOF

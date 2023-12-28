@@ -16,7 +16,7 @@ from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_
 from ux import show_qr_code, OK, X
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
-from utils import B2A, parse_addr_fmt_str, to_ascii_printable
+from utils import B2A, parse_addr_fmt_str, to_ascii_printable, parse_msg_sign_request
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from files import CardSlot
 from exceptions import HSMDenied
@@ -303,8 +303,13 @@ def validate_text_for_signing(text):
     return result
 
 class ApproveMessageSign(UserAuthorizedAction):
-    def __init__(self, text, subpath, addr_fmt, approved_cb=None):
+    def __init__(self, text, subpath, addr_fmt, approved_cb=None,
+                 msg_sign_request=None):
         super().__init__()
+
+        if msg_sign_request:
+            text, subpath, addr_fmt = parse_msg_sign_request(msg_sign_request)
+
         self.text = validate_text_for_signing(text)
         self.subpath = cleanup_deriv_path(subpath)
         self.addr_fmt = parse_addr_fmt_str(addr_fmt)
@@ -366,24 +371,7 @@ async def sign_txt_file(filename):
     # sign a one-line text file found on a MicroSD card
     # - not yet clear how to do address types other than 'classic'
     from files import CardSlot, CardMissingError
-
     from ux import the_ux
-
-    UserAuthorizedAction.cleanup()
-
-    # copy message into memory
-    with CardSlot() as card:
-        with card.open(filename, 'rt') as fd:
-            text = fd.readline().strip()
-            subpath = fd.readline().strip()
-            addr_fmt = fd.readline().strip()
-
-    if not subpath:
-        # default: top of wallet.
-        subpath = 'm'
-
-    if not addr_fmt:
-        addr_fmt = AF_CLASSIC
 
     async def done(signature, address, text):
         # complete. write out result
@@ -446,9 +434,19 @@ async def sign_txt_file(filename):
         msg = "Created new file:\n\n%s" % out_fn
         await ux_show_story(msg, title='File Signed')
 
+    UserAuthorizedAction.cleanup()
     UserAuthorizedAction.check_busy()
+
+    # copy message into memory
+    with CardSlot() as card:
+        with card.open(filename, 'rt') as fd:
+            res = fd.read()
+
     try:
-        UserAuthorizedAction.active_request = ApproveMessageSign(text, subpath, addr_fmt, approved_cb=done)
+        UserAuthorizedAction.active_request = ApproveMessageSign(
+            None, None, None, approved_cb=done,
+            msg_sign_request=res
+        )
         # do not kill the menu stack!
         the_ux.push(UserAuthorizedAction.active_request)
     except AssertionError as exc:
@@ -1043,7 +1041,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             msg.write("\n")
 
-        # if we didn't already show all outputs, then give user a chance to 
+        # if we didn't already show all outputs, then give user a chance to
         # view them individually
         return needs_txn_explorer
 
@@ -1400,7 +1398,7 @@ class ShowAddressBase(UserAuthorizedAction):
 
         else:
             # finish the Wait...
-            dis.progress_bar_show(1)     
+            dis.progress_bar_show(1)
 
         if self.restore_menu:
             self.pop_menu()
