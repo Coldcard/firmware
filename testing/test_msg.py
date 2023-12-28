@@ -11,6 +11,20 @@ from ckcc_protocol.constants import *
 from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
 
 
+def default_derivation_by_af(addr_fmt, testnet=True):
+    b44ct = "1" if testnet else "0"
+    if addr_fmt == AF_CLASSIC:
+        path = "m/44h/{chain}h/0h/0/0"
+    elif addr_fmt == AF_P2WPKH_P2SH:
+        path = "m/49h/{chain}h/0h/0/0"
+    elif addr_fmt == AF_P2WPKH:
+        path = "m/84h/{chain}h/0h/0/0"
+    else:
+        assert False, "unsupported address format"
+
+    return path.format(chain=b44ct)
+
+
 @pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23h/22h'])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
@@ -82,7 +96,7 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 
     # sign a file on the microSD card
 
-    def doit(msg, subpath=None, addr_fmt=None, expect_fail=False):
+    def doit(msg, subpath="", addr_fmt=None, expect_fail=False, testnet=True):
         fname = 't-msgsign.txt'
         result_fname = 't-msgsign-signed.txt'
 
@@ -92,10 +106,10 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 
         with open_microsd(fname, 'wt') as sd:
             sd.write(msg + '\n')
-            if subpath is not None:
-                sd.write(subpath + '\n')
-            if addr_fmt is not None:
-                sd.write(addr_fmt_names[addr_fmt] + '\n')
+            if subpath or addr_fmt:
+                sd.write((subpath or "") + '\n')
+                if addr_fmt is not None:
+                    sd.write(addr_fmt_names[addr_fmt])
 
         goto_home()
         pick_menu_item('Advanced/Tools')
@@ -120,7 +134,9 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
         assert msg in story
         assert 'Using the key associated' in story
         if not subpath:
-            assert 'm =>' in story
+            assert 'm =>' not in story
+            pth = default_derivation_by_af(addr_fmt or AF_CLASSIC, testnet)
+            assert pth in story
         else:
             x_subpath = subpath.lower().replace("'", "h")
             assert ('%s =>' % x_subpath) in story
@@ -148,6 +164,7 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
 
     return doit
 
+@pytest.mark.bitcoind  # only for testnet and p2pkh
 @pytest.mark.parametrize('msg', [ 'ab', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [
         "m/84'/0'/22'",
@@ -163,24 +180,29 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
         AF_CLASSIC,
         AF_P2WPKH_P2SH,
     ])
-def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path, addr_fmt):
+@pytest.mark.parametrize("testnet", [True, False])
+def test_sign_msg_microsd_good(sign_on_microsd, msg, path, addr_vs_path,
+                               addr_fmt, testnet, settings_set, bitcoind):
 
-    if (path is None) and (addr_fmt is not None):
-        # must give path if addr fmt is to be specified
-        return
-
+    settings_set("chain", "XTN" if testnet else "BTC")
     # cases we expect to work
-    sig, addr = sign_on_microsd(msg, path, addr_fmt)
+    sig, addr = sign_on_microsd(msg, path, addr_fmt, testnet=testnet)
 
     raw = b64decode(sig)
     assert 40 <= len(raw) <= 65
 
-    if path is None:
-        path = 'm'
+    if addr_fmt is None:
+        addr_fmt = AF_CLASSIC
+
+    if not path:
+        path = default_derivation_by_af(addr_fmt, testnet=testnet)
 
     # check expected addr was used
-    addr_vs_path(addr, path, addr_fmt)
+    addr_vs_path(addr, path, addr_fmt, testnet=testnet)
     assert verify_message(addr, sig, msg) is True
+    if addr_fmt == AF_CLASSIC and testnet:
+        res = bitcoind.rpc.verifymessage(addr, sig, msg)
+        assert res is True
 
 
 @pytest.fixture
@@ -210,7 +232,8 @@ def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story):
     ('testêtest', "must be ascii printable", 0),
 ])
 @pytest.mark.parametrize('transport', ['sd', 'usb', 'nfc'])
-def test_sign_msg_fails(dev, sign_on_microsd, msg, concern, no_file, transport, sign_using_nfc, path='m/12/34'):
+def test_sign_msg_fails(dev, sign_on_microsd, msg, concern, no_file,
+                        transport, sign_using_nfc, path='m/12/34'):
 
     if transport == 'usb':
         with pytest.raises(CCProtoError) as ee:
@@ -229,7 +252,7 @@ def test_sign_msg_fails(dev, sign_on_microsd, msg, concern, no_file, transport, 
                 assert ("No suitable files found" in str(e)) or story == 'NO-FILE'
                 return
     elif transport == 'nfc':
-        title, story = sign_using_nfc(msg, expect_fail=True)
+        title, story = sign_using_nfc(msg+"\n"+path, expect_fail=True)
         assert title == 'ERROR' or "Problem" in story
     else:
         raise ValueError(transport)
@@ -301,11 +324,16 @@ def test_nfc_msg_signing_invalid(body, goto_home, pick_menu_item, nfc_write_text
     title, story = cap_story()
     assert title == 'ERROR' or "Problem" in story
 
+
+@pytest.mark.bitcoind  # only for testnet and p2pkh
+@pytest.mark.parametrize("testnet", [True, False])
 @pytest.mark.parametrize("msg", ["coinkite", "Coldcard Signing Device!", 200 * "a"])
 @pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800h/0h", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
 def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
-                         goto_home, cap_story, press_select, press_cancel, addr_vs_path, OK):
+                         goto_home, cap_story, press_select, press_cancel, addr_vs_path, OK,
+                         testnet, settings_set, bitcoind):
+    settings_set("chain", "XTN" if testnet else "BTC")
 
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack
@@ -325,6 +353,9 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
         addr_fmt = AF_CLASSIC
         body = "\n".join([msg, path])
 
+    if not path:
+        path = default_derivation_by_af(addr_fmt, testnet=testnet)
+
     nfc_write_text(body)
     time.sleep(0.5)
     _, story = cap_story()
@@ -339,7 +370,7 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     press_select()  # exit NFC animation
     pmsg, addr, sig = parse_signed_message(signed_msg)
     assert pmsg == msg
-    addr_vs_path(addr, path, addr_fmt)
+    addr_vs_path(addr, path, addr_fmt, testnet=testnet)
     assert verify_message(addr, sig, msg) is True
     time.sleep(0.5)
     _, story = cap_story()
@@ -349,9 +380,12 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     assert signed_msg == signed_msg_again
     press_cancel()  # exit NFC animation
     press_cancel()  # do not want to share again
+    if addr_fmt == AF_CLASSIC and testnet:
+        res = bitcoind.rpc.verifymessage(addr, sig, msg)
+        assert res is True
 
 @pytest.fixture
-def verify_armored_signature(pick_menu_item, nfc_write_text, press_select,
+def verify_armored_signature(pick_menu_item, nfc_write_text,
                              cap_story, goto_home):
     def doit(way, fname=None, signed_msg=None):
         goto_home()
