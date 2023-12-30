@@ -357,7 +357,7 @@ def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_epheme
         import_ephemeral_xprv("sd", from_main=True, seed_vault=False)
 
     goto_home()
-    if stype == "xprv":
+    if stype in ("xprv", "b39pw"):
         with pytest.raises(Exception) as e:
             set_bip39_pw(passphrase, reset=False)
         assert "no seed" in e.value.args[0]
@@ -417,7 +417,6 @@ def test_tmp_on_xprv_master(generate_ephemeral_words, goto_home, cap_menu,
     pick_menu_item("APPLY")
     time.sleep(.1)
     title, story = cap_story()
-
 
     assert parent_fp in title  # no choice story
     assert "current active temporary seed" in story

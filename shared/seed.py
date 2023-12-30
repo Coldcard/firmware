@@ -1235,7 +1235,7 @@ class PassphraseMenu(MenuSystem):
         if tdata is None and mdata is None:
             # if master is not word based, temporary has to be, otherwise "Passphrase"
             # not offered in menu
-            # should never be seen by user because flow.py::bip39_passphrase_active
+            # should never be seen by user because flow.py::word_based_seed
             await ux_show_story(title="FAILED", msg="Need word based secret")
             return
 

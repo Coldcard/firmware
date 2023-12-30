@@ -51,10 +51,8 @@ def se2_and_real_secret():
     from pincodes import pa
     return (not pa.is_secret_blank()) and (not pa.tmp_value)
 
-def bip39_passphrase_active():
-    import stash
-    return settings.get('words', True) \
-        or (settings.master_get('words', True) and stash.bip39_passphrase)
+def word_based_seed():
+    return settings.get("words", True)
 
 
 HWTogglesMenu = [
@@ -204,7 +202,7 @@ DebugFunctionsMenu = [
 
 SeedXORMenu = [
     #         xxxxxxxxxxxxxxxx
-    MenuItem("Split Existing", f=xor_split_start, predicate=lambda: settings.get('words', True)),
+    MenuItem("Split Existing", f=xor_split_start, predicate=word_based_seed),
     MenuItem("Restore Seed XOR", f=xor_restore_start),
 ]
 
@@ -213,8 +211,7 @@ SeedFunctionsMenu = [
     MenuItem('Seed XOR', menu=SeedXORMenu),
     MenuItem("Destroy Seed", f=clear_seed),
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
-    MenuItem('Export SeedQR', f=export_seedqr,
-             predicate=lambda: settings.get('words', True)),
+    MenuItem('Export SeedQR', f=export_seedqr, predicate=word_based_seed),
 ]
 
 DangerZoneMenu = [
@@ -324,7 +321,7 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign),
-    MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active),
+    MenuItem('Passphrase', f=start_b39_pw, predicate=word_based_seed),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore),
     MenuItem('Type Passwords', f=password_entry,

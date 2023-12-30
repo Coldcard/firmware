@@ -1,3 +1,9 @@
+## 5.2.3 - 2024-XX-XX
+
+- Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
+  already in use. Use `Restore Master` with ability to keep or purge current
+  passphrase wallet settings.
+
 ## 5.2.2 - 2023-12-21
 
 - Bugfix: Re-enable `Lock Down Seed` feature which was disabled by accident
