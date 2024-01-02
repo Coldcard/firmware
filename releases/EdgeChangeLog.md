@@ -7,7 +7,7 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
-## 6.2.2X - 2023-12-XX
+## 6.2.2X - 2024-01-XX
 
 - New Feature: Miniscript USB interface
 - New Feature: Named miniscript imports. Wrap descriptor in json `{"name:"n0", "desc":"<descriptor>"}`
@@ -17,6 +17,7 @@
   in miniscript descriptor.
 - Enhancement: HW Accelerated AES CTR for BSMS and passphrase saver
 - Bugfix: Do not allow to import duplicate miniscript wallets (thanks to [AnchorWatch](https://www.anchorwatch.com/))
+- Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 
 ## 6.2.1X - 2023-10-26
 

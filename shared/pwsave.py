@@ -36,66 +36,61 @@ class PassphraseSaver:
     def _read(self, card):
         # Return a list of saved passphrases, or empty list if fail.
         # Fail silently in all cases. Expect to see lots of noise here.
+        assert self.key
         decrypt = aes256ctr.new(self.key)
 
         try:
             fname = self.filename(card)
-            msg = open(fname, 'rb').read()
+            with open(fname, 'rb') as f:
+                msg = f.read()
             txt = decrypt.cipher(msg)
 
             return ujson.loads(txt)
         except:
             return []
 
-    async def read_and_save(self):
-        from glob import dis
+    async def _save(self, card, data):
+        assert self.key
+        encrypt = ngu.aes.CTR(self.key)
+        msg = encrypt.cipher(ujson.dumps(data))
 
-        while 1:
-            dis.fullscreen('Saving...')
-
-            try:
-                with CardSlot() as card:
-                    self._calc_key(card)
-
-                    data = self._read(card) if self.key else []
-                    yield data  # yield data that can be modified
-
-                    encrypt = aes256ctr.new(self.key)
-
-                    msg = encrypt.cipher(ujson.dumps(data))
-
-                    with open(self.filename(card), 'wb') as fd:
-                        fd.write(msg)
-
-                await ux_dramatic_pause("Saved.", 1)
-                return
-
-            except CardMissingError:
-                ch = await needs_microsd()
-                if ch == 'x':  # undocumented, but needs escape route
-                    break
+        # overwrites whatever already there
+        with open(self.filename(card), 'wb') as fd:
+            fd.write(msg)
 
     async def delete(self, idx):
-        c = self.read_and_save()
-        data = next(c)
-        del data[idx]
-        # resume generator - save
         try:
-            next(c)
-        except StopIteration: pass
-        if not data:
-            return True
+            with CardSlot() as card:
+                self._calc_key(card)
+                data = self._read(card)
+
+                try:
+                    del data[idx]
+                except IndexError: pass
+
+                await self._save(card, data)
+                if not data:
+                    return True  # is empty
+
+        except CardMissingError:
+            await needs_microsd()
 
     async def append(self, xfp, bip39pw):
-        c = self.read_and_save()
-        data = next(c)
-        to_add = dict(xfp=xfp, pw=bip39pw)
-        if to_add not in data:
-            data.append(to_add)
-            # resume generator - save
-            try:
-                next(c)
-            except StopIteration: pass
+        from glob import dis
+        dis.fullscreen('Reading...')
+        try:
+            with CardSlot() as card:
+                self._calc_key(card)
+                data = self._read(card)
+
+                to_add = dict(xfp=xfp, pw=bip39pw)
+                if to_add not in data:
+                    dis.fullscreen('Saving...')
+                    data.append(to_add)
+                    await self._save(card, data)
+
+        except CardMissingError:
+            await needs_microsd()
 
 
 class PassphraseSaverMenu(MenuSystem):
@@ -160,8 +155,11 @@ class PassphraseSaverMenu(MenuSystem):
     @staticmethod
     async def delete_entry(menu, idx, item):
         from ux import the_ux
+        from glob import dis
+
         pw_saver, i = item.arg
         if await ux_confirm("Delete saved passphrase?"):
+            dis.fullscreen("Wait...")
             is_empty = await pw_saver.delete(i)
             the_ux.pop()
             if not is_empty:
