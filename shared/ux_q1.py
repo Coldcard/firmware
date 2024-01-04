@@ -356,7 +356,7 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
         # ie. '1 failures, 12 tries left'
         dis.text(None, foot_y, footer, dark=True)
     elif is_confirmation:
-        dis.text(None, foot_y, "Confirm pin value")
+        dis.text(None, foot_y, "Confirm PIN value")
 
     # for MAX_PIN_PART_LEN==6
     x = 0
