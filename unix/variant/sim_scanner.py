@@ -12,7 +12,7 @@ DATA_FILE = 'qrdata.txt'
 class SimulatedQRScanner(QRScanner):
     def __init__(self):
         self.setup_done = True
-        self.version = '4.20'
+        self.version = 'V2.3.420'
         self.lock = asyncio.Lock()
         # returns a Q we append to as results come in
         self._q = Queue()

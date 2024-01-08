@@ -4,14 +4,13 @@
 #
 import ckcc
 from uasyncio import sleep_ms
-from glob import dis
+from glob import dis, settings
 from ux import ux_wait_keyup, ux_clear_keys, ux_poll_key
 from ux import ux_show_story
 from callgate import get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
 import version
-from glob import settings
-from charcodes import KEY_ENTER, KEY_CANCEL
+from charcodes import KEY_ENTER, KEY_CANCEL, KEY_QR
 
 try:
     from display import FontLarge
@@ -19,7 +18,7 @@ except ImportError:
     FontLarge = None
 
 async def wait_ok():
-    k = await ux_wait_keyup('xy' + KEY_ENTER + KEY_CANCEL)
+    k = await ux_wait_keyup('xy' + KEY_ENTER + KEY_CANCEL, flush=True)
     if k not in 'y' + KEY_ENTER:
         raise RuntimeError('Canceled')
 
@@ -44,7 +43,7 @@ async def test_numpad():
         dis.text(None,24, ch if ch != 'y' else 'OK', FontLarge)
         dis.show()
 
-        k = await ux_wait_keyup(ch + 'x')
+        k = await ux_wait_keyup(ch + 'x', flush=True)
         if k == 'x' and ch != 'x':
             raise RuntimeError("numpad test aborted")
         assert k == ch
@@ -69,15 +68,44 @@ async def test_gpu():
         dis.clear()
 
 async def test_keyboard():
-    # for Q1
-    # XXX
-    pass
+    # for Q1 - just some of them: one in each row and column
+
+    keys = list('1wdvgy7k.p '+KEY_QR)
+    
+    for ch in keys:
+        dis.clear()
+        dis.text(None,2, "Keyboard Test. Press:")
+        dis.text(None,4, 'SPACE' if ch == ' ' else ch.upper())
+        dis.show()
+
+        k = await ux_wait_keyup(ch + KEY_CANCEL, flush=True)
+        if k == KEY_CANCEL:
+            raise RuntimeError("kbd test aborted")
+        assert k == ch
 
 async def test_qr_scanner():
-    # QR Scanner module: assume pretested, just testing connection
+    # QR Scanner module: assume pretested, just testing connection really
     from glob import SCAN
-    assert SCAN
-    assert SCAN.version.startswith('V2.3.')
+    assert SCAN and SCAN.version and SCAN.version.startswith('V2.3.'), 'QR Scanner Missing'
+
+async def test_battery():
+    from battery import get_batt_level
+
+    while 1:
+        lvl = get_batt_level()
+
+        if lvl and 3.2 <= lvl <= 3.4:
+            # pass
+            return 
+
+        dis.clear()
+        dis.text(None, 2, "Remove USB cable &")
+        dis.text(None, 3, "connect 3.3v reference.")
+        dis.text(None, 4, "Then press ENTER.")
+        if lvl:
+            dis.text(None, -1, "VIN Sense reads: %.1f volts" % lvl, dark=True)
+        dis.show()
+        await wait_ok()
 
 def set_genuine():
     # PIN must be blank for this to work
@@ -111,11 +139,11 @@ async def test_secure_element():
     for ph in range(5):
         gg = get_genuine()
 
+        dis.clear()
+
         if version.has_qwerty:
-            dis.clear()
             dis.text(0, 0, "^^-- Green?      " if gg else "   ^^-- Red?")
         else:
-            dis.clear()
             if gg:
                 dis.text(-1, 8, "Green ON? -->")
             else:
@@ -258,7 +286,7 @@ async def test_lcd():
         dis.clear()
 
 async def test_microsd():
-    #if ckcc.is_simulator(): return
+    if ckcc.is_simulator(): return
     from version import num_sd_slots
     from files import CardSlot
     import os
@@ -311,20 +339,24 @@ async def test_microsd():
 async def start_selftest():
 
     try:
+        if version.has_qr:
+            await test_qr_scanner()
+
         if not version.has_qwerty:
             await test_oled()
         else:
             await test_lcd()
             await test_gpu()
+
         await test_psram()
         await test_nfc_light()
         await test_nfc()
+
         if version.has_qwerty:
             await test_keyboard()
         else:
             await test_numpad()
-        if version.has_qr:
-            await test_qr_scanner()
+
         await test_secure_element()
         await test_sd_active()
         await test_usb_light()
@@ -332,9 +364,12 @@ async def start_selftest():
 
         # add more tests here
 
+        # last, because required a DC power supply
+        if version.has_battery:
+            await test_battery()
+
         settings.set('tested', True)
         await ux_show_story("Selftest complete", 'PASS')
-        dis.clear()
 
     except (RuntimeError, AssertionError) as e:
         e = str(e) or problem_file_line(e)

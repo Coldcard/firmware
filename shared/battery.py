@@ -1,8 +1,6 @@
 # (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# battery.py - Q-specific code related to batteries and monitoring that.
-#
-# NOTE: Lots of hardware overlap with Mk4, so see mk4.py too!
+# battery.py - Q-specific code related to batteries, their settings, and monitoring them.
 #
 from imptask import IMPT
 import uasyncio as asyncio
@@ -14,7 +12,11 @@ DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
 # 0..255 brightness value for when on batteries
 DEFAULT_BATT_BRIGHTNESS = const(200)
 
-nbat_pin = Pin('NOT_BATTERY')
+# had to move this pin in RevD
+# - TODO: remove this support once rev D's are around
+rev_d_later = not Pin('REV_D', mode=Pin.IN, pull=Pin.PULL_UP)
+nbat_pin = Pin('NOT_BATTERY_OLD' if not rev_d_later else 'NOT_BATTERY',
+                            mode=Pin.IN, pull=Pin.PULL_UP)
 
 def setup_battery():
     # setup and monitor things.
@@ -22,22 +24,27 @@ def setup_battery():
 
     IMPT.start_task('battery', batt_monitor_task())
     
-    #nbat_pin.irq(_nbatt_irq, Pin.IRQ_FALLING|Pin.IRQ_RISING)
 
 async def batt_monitor_task():
-    last_lvl = None
+    # Long-lived task to watch battery level and USB vs. battery power source
+    # TODO: be a class
+    from glob import dis
 
+    def maybe_update(unused_arg=None, last_lvl=-100):
+        lvl = get_batt_threshold()
+        if lvl != last_lvl:
+            dis.draw_status(bat=lvl)
+        return lvl
+
+    if rev_d_later:
+        nbat_pin.irq(maybe_update, Pin.IRQ_FALLING|Pin.IRQ_RISING)
+
+    last_lvl = None
     while 1:
         # slowly track battery level
-        await asyncio.sleep(5)
+        await asyncio.sleep(30 if rev_d_later else 5)
 
-        lvl = get_batt_threshold()
-
-        if lvl != last_lvl:
-            from glob import dis
-
-            dis.draw_status(bat=lvl)
-            last_lvl = lvl
+        last_lvl = maybe_update(last_lvl=last_lvl)
 
 def setup_adc():
     # configure VREF source as internally generated
@@ -58,12 +65,11 @@ def setup_adc():
 def get_batt_level():
     # return voltage from batteries, as a float
     # - will only work on battery power, else return None
-    # - reads a bit low (3.3v in => 2.7v here)
     try:
         from machine import ADC, Pin
     except ImportError:
         # simulator
-        return 2.99
+        return 3.3
 
     if nbat_pin() == 1:
         # not getting power from batteries, so don't know level
@@ -79,9 +85,9 @@ def get_batt_threshold():
     volts = get_batt_level()
     if volts is None:
         return None
-    if volts <= 2.1:
+    if volts <= 2.9:
         return 0
-    if volts <= 3.0:
+    if volts <= 3.5:
         return 1
     if volts <= 4.0:
         return 2
