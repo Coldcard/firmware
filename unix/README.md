@@ -57,7 +57,8 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--seq 1234yx34` => after start, enter those keypresses to get you to some submenu
 - `--seq 2ENTER` => (Q) press 2 then ENTER, does QR at startup
 - `--bootup-movie` => begin a movie on startup, to capture boot sequence
-- `--scan` => use attached serial port connected to a QR scanner module (not simulation)
+- `--scan` => (Q) use attached serial port connected to a QR scanner module (not simulation)
+- `--plugged` => (Q) assume the USB cable is connected (not on battery power)
 
 See `variant/sim_settings.py` for the details of settings-related options.
 
