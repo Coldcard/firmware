@@ -20,13 +20,13 @@ class FirstTimeUX:
             #settings.set('nfc', 0)     # default already
             #settings.set('vidsk', 0)   # same as default
 
-            await ux_show_story('''
+            await ux_show_story('''\
 Your COLDCARD has been configured for \
 best security practices: 
 
 - USB disabled
 - NFC disabled
-- VDisk disabled
+- VirtDisk disabled
 
 You can change these under Settings > Hardware On/Off.''', title="Welcome!")
 
