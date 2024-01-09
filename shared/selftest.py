@@ -91,6 +91,10 @@ async def test_qr_scanner():
 async def test_battery():
     from battery import get_batt_level
 
+    dis.clear()
+    dis.text(None, 1, "Battery Test")
+    dis.text(None, 3, "Connect 3.3v reference cells.")
+
     while 1:
         lvl = get_batt_level()
 
@@ -98,14 +102,16 @@ async def test_battery():
             # pass
             return 
 
-        dis.clear()
-        dis.text(None, 2, "Remove USB cable &")
-        dis.text(None, 3, "connect 3.3v reference.")
-        dis.text(None, 4, "Then press ENTER.")
         if lvl:
             dis.text(None, -1, "VIN Sense reads: %.1f volts" % lvl, dark=True)
+        else:
+            dis.text(None, -1, "Remove USB plug.", dark=True)
         dis.show()
-        await wait_ok()
+
+        await sleep_ms(100)
+
+        if ux_poll_key():
+            raise RuntimeError("Battery test aborted")
 
 def set_genuine():
     # PIN must be blank for this to work
@@ -339,6 +345,11 @@ async def test_microsd():
 async def start_selftest():
 
     try:
+
+        # last, because requires a special power supply
+        if version.has_battery:
+            await test_battery()
+
         if version.has_qr:
             await test_qr_scanner()
 
@@ -363,10 +374,6 @@ async def start_selftest():
         await test_microsd()
 
         # add more tests here
-
-        # last, because required a DC power supply
-        if version.has_battery:
-            await test_battery()
 
         settings.set('tested', True)
         await ux_show_story("Selftest complete", 'PASS')

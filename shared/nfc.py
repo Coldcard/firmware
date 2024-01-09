@@ -252,26 +252,26 @@ class NFCHandler:
 
         return await self.share_start(n)
         
-    async def share_deposit_address(self, addr):
+    async def share_deposit_address(self, addr, **kws):
         n = ndef.ndefMaker()
         n.add_text('Deposit Address')
         n.add_custom('bitcoin.org:addr', addr.encode())
-        return await self.share_start(n)
+        return await self.share_start(n, **kws)
 
-    async def share_json(self, json_data):
+    async def share_json(self, json_data, **kws):
         # a text file of JSON for programs to read
         n = ndef.ndefMaker()
         n.add_mime_data('application/json', json_data)
 
-        return await self.share_start(n)
+        return await self.share_start(n, **kws)
 
-    async def share_text(self, data):
+    async def share_text(self, data, **kws):
         # share text from a list of values
         # - just a text file, no multiple records; max usability!
         n = ndef.ndefMaker()
         n.add_text(data)
 
-        return await self.share_start(n)
+        return await self.share_start(n, **kws)
 
     async def wait_ready(self):
         # block until chip ready to continue (ACK happens)
@@ -297,7 +297,7 @@ class NFCHandler:
         self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
         self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
-    async def ux_animation(self, write_mode):
+    async def ux_animation(self, write_mode, allow_enter=True):
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
@@ -336,9 +336,10 @@ class NFCHandler:
             # wait for key or 250ms animation delay
             try:
                 ch = await asyncio.wait_for_ms(ux_wait_keyup(flush=first), 250)
-                first = False
             except asyncio.TimeoutError:
                 ch = None
+
+            first = False
 
             if self.last_edge:
                 self.last_edge = 0
@@ -355,10 +356,14 @@ class NFCHandler:
                     # 0x2 = RF activity
                     last_activity = utime.ticks_ms()
 
-            # X or OK to quit, with slightly different meanings
-            if ch and ch in 'xy'+KEY_ENTER+KEY_CANCEL: 
-                aborted = (ch in 'x'+KEY_CANCEL)
-                break
+            # X or OK to quit, but with slightly different meanings
+            if ch:
+                if ch in 'y'+KEY_CANCEL: 
+                    aborted = True
+                    break
+                elif allow_enter and ch in 'y'+KEY_ENTER:
+                    aborted = False
+                    break
 
             if last_activity:
                 dt = utime.ticks_diff(utime.ticks_ms(), last_activity)
@@ -374,21 +379,21 @@ class NFCHandler:
 
         return aborted
 
-    async def share_start(self, ndef_obj):
+    async def share_start(self, ndef_obj, **kws):
         # do the UX while we are sharing a value over NFC
         # - assumpting is people know what they are scanning
         # - x key to abort early, but also self-clears
 
         await self.big_write(ndef_obj.bytes())
 
-        return await self.ux_animation(False)
+        return await self.ux_animation(False, **kws)
 
-    async def start_nfc_rx(self):
+    async def start_nfc_rx(self, **kws):
         # Pretend to be a big warm empty tag ready to be stuffed with data
         await self.big_write(ndef.CC_WR_FILE)
 
         # wait until something is written
-        aborted = await self.ux_animation(True)
+        aborted = await self.ux_animation(True, **kws)
         if aborted: return
 
         # read CCFILE area (header)
@@ -504,12 +509,13 @@ class NFCHandler:
 
     @classmethod
     async def selftest(cls):
-        # check for chip present, field present .. and that it works
+        # Check for chip present, field present .. and that it works
+        # - important: do not allow user (tester) to quit without sending anything over link
         n = cls()
         n.setup()
         assert n.uid
 
-        aborted = await n.share_text("NFC is working: %s" % n.get_uid())
+        aborted = await n.share_text("NFC is working: %s" % n.get_uid(), allow_enter=False)
         assert not aborted, "Aborted"
 
     
