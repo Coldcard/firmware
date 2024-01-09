@@ -8,15 +8,16 @@ export MTOOLSRC=mtools.conf
 MFORMAT=mformat
 MCOPY=mcopy
 
-RELEASES = $(wildcard ../../releases/*-mk4-*.dfu) $(wildcard ../*-mk4-RC1*.dfu)
+RELEASES = $(wildcard ../../releases/*-mk4-*.dfu) $(wildcard ../*-mk4-RC1*.dfu) \
+           $(wildcard ../../releases/*-q1-*.dfu) $(wildcard ../*-q1-RC1*.dfu)
 
-OUTPUT = mk4-recovery-$(shell date +%F).img.xz
+OUTPUT = cc-recovery-$(shell date +%F).img.xz
 
 all: output.img
 
 output.img: $(RELEASES) Makefile
 	dd if=/dev/zero of=output.img bs=1024 count=160
-	$(MFORMAT) -v MK4RECOVER -f 160 -N 2022 -C z:
+	$(MFORMAT) -v CCRECOVER -f 160 -N 2022 -C z:
 	ls -1 $(RELEASES) | sort -n > flist.txt
 	cat internal-readme.txt flist.txt > tmp.txt
 	$(MCOPY) -bsmp tmp.txt z:README.TXT

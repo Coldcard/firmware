@@ -14,4 +14,4 @@ side-loading or up/downgrade attacks.
 
 This directory holds data and code to build a special SD-card disk
 image with all possible releases. The goal is a single disk image that
-can be used restore a Mk4 Coldcard of any (intended) version.
+can be used restore a Coldcard of any (intended) version.
