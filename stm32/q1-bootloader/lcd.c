@@ -183,7 +183,7 @@ lcd_full_setup(void)
     lcd_write_cmd(0x28);            // DISPOFF
     lcd_write_cmd(0x36);            // MADCTL: memory addr ctrl, page 215
     lcd_write_data1(0x60);          // MV=1 => horz mode, first byte=top-left corner, RGB order
-    lcd_fill_solid(COL_BLACK);
+    lcd_fill_solid(COL_BLACK);      // works only on second+ reboots/resets
 
     // Need 10us+ low-going pulse on reset pin; do 1ms.
     delay_ms(1);
@@ -277,6 +277,9 @@ lcd_full_setup(void)
 
     lcd_write_cmd(0x35);            // TEON - Tear signal on
     lcd_write_data1(0x0);
+
+    // clear screen memory, including top status lines
+    lcd_fill_solid(COL_BLACK);
 
     // finally
     lcd_write_cmd(0x21);            // INVON 
