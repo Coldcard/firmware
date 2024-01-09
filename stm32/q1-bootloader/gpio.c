@@ -27,7 +27,7 @@ gpio_setup(void)
 {
     // NOTES:
     // - try not to limit PCB changes for future revs; leave unused unchanged.
-    // - oled_setup() uses pins on PA4 thru PA8
+    // - lcd.c controls some pins as well.
 
     // enable clock to GPIO's ... we will be using them all at some point
     __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -145,8 +145,8 @@ gpio_setup(void)
         };
         HAL_GPIO_Init(GPIOE, &setup);
 
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, 0);    // turn off NFC LED,
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);    // turn on Backlight,
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, 0);    // turn off NFC LED
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_3, 1);    // turn on Backlight: 100%
     }
 
     // GPU control: Port E: PE2=G_SWCLK_BOOT0=G_BUSY, PE5=G_CTRL, PE6=G_RESET
@@ -228,8 +228,10 @@ q1_wait_powerdown(void)
         delay_ms(100);
     }
 
+    // turn off power
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
 
+    // not reached.
     while(1) {
         __WFI();
     }
