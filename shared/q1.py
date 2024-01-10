@@ -43,6 +43,7 @@ async def scan_and_bag(*a):
     import callgate
     from ux import ux_show_story
     from ux_q1 import QRScannerInteraction
+    from uasyncio import sleep
 
     try:
         assert settings.get('tested', False), 'Not tested yet'
@@ -77,12 +78,13 @@ async def scan_and_bag(*a):
     pa.greenlight_firmware()
 
     # we are done.
-    dis.clear()
+    dis.real_clear()
     dis.text(None, 3, bag_num, invert=1)
     dis.text(None, 6, "Put into bag and seal now.")
     dis.show()
 
+    # lockup but keep the power btn working...
     while 1:
-        pass
+        await sleep(10)
 
 # EOF
