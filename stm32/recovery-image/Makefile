@@ -8,10 +8,10 @@ export MTOOLSRC=mtools.conf
 MFORMAT=mformat
 MCOPY=mcopy
 
-RELEASES = $(wildcard ../../releases/*-mk4-*.dfu) $(wildcard ../*-mk4-RC1*.dfu) \
+RELEASES ?= $(wildcard ../../releases/*-mk4-*.dfu) $(wildcard ../*-mk4-RC1*.dfu) \
            $(wildcard ../../releases/*-q1-*.dfu) $(wildcard ../*-q1-RC1*.dfu)
 
-OUTPUT = cc-recovery-$(shell date +%F).img.xz
+OUTPUT ?= cc-recovery-$(shell date +%F).img.xz
 
 all: output.img
 
@@ -26,5 +26,7 @@ output.img: $(RELEASES) Makefile
 	cat flist.txt
 	ls -l $(OUTPUT)
 	
+dev:
+	$(MAKE) RELEASES=../dev.dfu OUTPUT=dev-recovery.img.xz
 
 # EOF
