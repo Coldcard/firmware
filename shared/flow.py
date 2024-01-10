@@ -37,9 +37,11 @@ else:
 # Battery related items
 if version.has_battery:
     from battery import battery_idle_timeout_chooser, brightness_chooser
+    from q1 import scan_and_bag
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
+    scan_and_bag = None
 
 
 #
@@ -370,7 +372,7 @@ NormalSystem = [
 
 # Shown until unit is put into a numbered bag
 FactoryMenu = [
-    MenuItem('Bag Me Now'),     # nice to have NOP at top of menu
+    MenuItem('Bag Me Now', f=scan_and_bag),
     MenuItem('DFU Upgrade', f=start_dfu),
     MenuItem('Show Version', f=show_version),
     MenuItem('Ship W/O Bag', f=ship_wo_bag),
