@@ -1,6 +1,6 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Shared values and target rules for Mk3 and Mk4.
+# Shared values and target rules for Mk4 and Q.
 #
 include version.mk
 
@@ -32,6 +32,7 @@ all: $(BOARD)/file_time.c
 
 clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
+	$(RM) dev.dfu dev.bin
 	git clean -xf built
 
 clobber: clean
@@ -73,7 +74,7 @@ relink:
 dev: dev.dfu
 	ckcc upgrade dev.dfu
 
-# Requires special bootorm w/ DFU still enabled
+# Requires special bootrom w/ DFU still enabled
 .PHONY: up-dfu
 up-dfu: dev.dfu
 	$(PYTHON_DO_DFU) -u dev.dfu
