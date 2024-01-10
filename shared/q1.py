@@ -22,9 +22,6 @@ def init0():
 
     mk4_init0()
 
-    # XXX do not ship like this XXX
-    ckcc.vcp_enabled(True); print("REPL enabled")
-
     # Setup various hardware features of the Q1
     # - try to continue in case of errors/hardware faults
     try:
@@ -37,5 +34,55 @@ def init0():
         battery.setup_battery()
         #print('Batt volt: %s' % get_batt_level())
     except: pass
+
+async def scan_and_bag(*a):
+    # Mk4 took a bag number over USB from a prod test station,
+    # but on Q we can scan the barcode ourselves.
+    from pincodes import pa
+    from glob import dis, settings
+    import callgate
+    from ux import ux_show_story
+    from ux_q1 import QRScannerInteraction
+
+    try:
+        assert settings.get('tested', False), 'Not tested yet'
+        assert pa.is_blank() or version.is_factory_mode, 'Bad mode'
+    except Exception as exc:
+        await ux_show_story(str(exc), 'Cannot Bag')
+        return
+
+    zz = QRScannerInteraction()
+    while 1: 
+        # Get our bag number
+        got = await zz.scan_text('Scan barcode on new bag.')
+
+        if not got or not got.isdigit():
+            continue
+
+        if not (8 <= len(got) <= 32):
+            continue
+
+        break
+    
+    bag_num = got
+
+    # do the change
+    failed = callgate.set_bag_number(bag_num.encode())
+    assert not failed
+
+    # lock down bootrom against further changes.
+    callgate.set_rdp_level(2 if not version.is_devmode else 0)
+
+    # set genuine light
+    pa.greenlight_firmware()
+
+    # we are done.
+    dis.clear()
+    dis.text(None, 3, bag_num, invert=1)
+    dis.text(None, 6, "Put into bag and seal now.")
+    dis.show()
+
+    while 1:
+        pass
 
 # EOF
