@@ -189,13 +189,6 @@ class SettingsObject:
             # "old" slot was not in use
             pass
 
-    def _deny_slot(self, pos):
-        # write garbage to look legit in a slot
-        with self._open_file(pos, 'wb') as fd:
-            for i in range(0, 4096, 256):
-                h = ngu.random.bytes(256)
-                fd.write(h)
-
     def _read_slot(self, pos, decryptor):
         # Mk4 is just reading a binary file and decrypt as we go.
         with self._open_file(pos) as fd:
