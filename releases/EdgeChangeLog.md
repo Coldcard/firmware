@@ -15,6 +15,7 @@
   imports that have no file, in which case name was created from descriptor checksum.
 - Enhancement: Allow keys with same origin, differentiated only by change index derivation
   in miniscript descriptor.
+- Enhancement: HW Accelerated AES CTR for BSMS and passphrase saver
 - Bugfix: Do not allow to import duplicate miniscript wallets (thanks to [AnchorWatch](https://www.anchorwatch.com/))
 
 ## 6.2.1X - 2023-10-26
