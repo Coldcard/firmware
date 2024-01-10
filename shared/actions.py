@@ -534,13 +534,13 @@ async def start_seed_import(menu, label, item):
     else:
         return seed.WordNestMenu(item.arg)
 
-def pick_new_seed(menu, label, item):
+async def pick_new_seed(menu, label, item):
     import seed
-    return seed.make_new_wallet(item.arg)
+    return await seed.make_new_wallet(item.arg)
 
-def new_from_dice(menu, label, item):
+async def new_from_dice(menu, label, item):
     import seed
-    return seed.new_from_dice(item.arg)
+    return await seed.new_from_dice(item.arg)
 
 async def convert_ephemeral_to_master(*a):
     import seed
