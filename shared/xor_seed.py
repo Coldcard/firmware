@@ -86,7 +86,7 @@ Otherwise, press OK to continue.'''.format(n=num_parts), escape='2')
         parts = []
         for i in range(num_parts-1):
             if use_rng:
-                here = random.bytes(vlen)
+                here = ngu.random.bytes(vlen)
                 assert len(set(here)) > 4       # TRNG failure?
                 mask = ngu.hash.sha256d(here)
             else:

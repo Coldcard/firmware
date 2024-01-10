@@ -505,11 +505,13 @@ async def ephemeral_seed_generate_from_dice(nwords):
         await set_ephemeral_seed_words(words, meta='Dice')
 
 def generate_seed():
-    seed = random.bytes(32)
+    # Generate 32 bytes of best-quality high entropy TRNG bytes.
+
+    seed = ngu.random.bytes(32)
     assert len(set(seed)) > 4       # TRNG failure
-    # hash to mitigate possible bias in TRNG
-    seed = ngu.hash.sha256s(seed)
-    return seed
+
+    # hash to mitigate any possible bias in TRNG
+    return ngu.hash.sha256d(seed)
 
 async def make_new_wallet(nwords):
     # Pick a new random seed.
