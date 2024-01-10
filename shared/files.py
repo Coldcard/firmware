@@ -198,7 +198,7 @@ class CardSlot:
         cls.last_change = utime.ticks_ms()
 
         if num_sd_slots == 2:
-            # Q has luxorious dual slots
+            # Q has luxurious dual slots
             cls.mux = Pin('SD_MUX', Pin.OUT, value=0)
             cls.sd_detect2 = Pin('SD_DETECT2')
             cls.irq2 = ExtInt(cls.sd_detect2, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
