@@ -5,7 +5,7 @@
 # For faster testing...
 #   ./simulator.py --seq 99y3y4y
 #
-import ngu, os, stash, chains
+import ngu, os, stash, chains, aes256ctr
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
@@ -82,7 +82,7 @@ def msg_auth_code(key, token_hex, data):
 def bsms_decrypt(key, data_bytes):
     mac, ciphertext = data_bytes[:32], data_bytes[32:]
     iv = mac[:16]
-    decrypt = ngu.aes.CTR(key, iv)
+    decrypt = aes256ctr.new(key, iv)
     decrypted = decrypt.cipher(ciphertext)
     try:
         plaintext = decrypted.decode()
@@ -98,7 +98,7 @@ def bsms_encrypt(key, token_hex, data_str):
     hmac_k = hmac_key(key)
     mac = msg_auth_code(hmac_k, token_hex, data_str)
     iv = mac[:16]
-    encrypt = ngu.aes.CTR(key, iv)
+    encrypt = aes256ctr.new(key, iv)
     ciphertext = encrypt.cipher(data_str)
 
     return mac + ciphertext
