@@ -18,6 +18,10 @@ BOOTLOADER_DIR = q1-bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-q1-*.dfu | head -1)
 
+# Remove this closer to shipping.
+$(warning "Forcing debug build")
+DEBUG_BUILD ?= 1
+
 # keep near top, because defined default target (all)
 include shared.mk
 
