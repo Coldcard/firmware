@@ -30,8 +30,15 @@ NUM_GREYS = 16
 KEY_NFC = '\x0e'        # ctrl-N
 KEY_QR = '\x11'         # ctrl-Q
 KEY_TAB = '\t'          # tab = ctrl-I
+KEY_F1 = '\x0f'
+KEY_F2 = '\x12'
+KEY_F3 = '\x13'
+KEY_F4 = '\x14'
+KEY_F5 = '\x16'
+KEY_F6 = '\x17'
+KEYS_FUNCTION = KEY_F1 + KEY_F2 + KEY_F3 + KEY_F4 + KEY_F5 + KEY_F6
 
-KEYCAP_SYMBOLS = [ KEY_NFC, KEY_QR, KEY_TAB, ]
+KEYCAP_SYMBOLS = [ KEY_NFC, KEY_QR, KEY_TAB ] + list(KEYS_FUNCTION)
 
 # TODO: 
 # - needed _ but for blank space; never found one, and may not need anyway
@@ -45,14 +52,12 @@ CHARSET = [chr(x) for x in range(32,127)] \
                 '™', '©', '⬧', '※',
                 '─', '—',
                 '━', '┃', '┓', '┏', '┛','┗',        # 'heavy' versions
-                KEY_NFC, KEY_QR, KEY_TAB,
-          ]
+          ] + KEYCAP_SYMBOLS
 
 # these are be better as double-wide chars
 DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
                 '◉', '◯', '◌', '※', '•', '—',
-                KEY_NFC, KEY_QR, KEY_TAB,
-            ]
+            ] + KEYCAP_SYMBOLS
 
 NUM_CHARS = len(CHARSET)
 
@@ -63,6 +68,8 @@ REMAPS = {
     KEY_QR:  'QR',
     KEY_TAB: '↦',
 }
+for n, fn in enumerate(KEYS_FUNCTION):
+    REMAPS[fn] = f'F{n+1}'
 
 # find hidden zero-width junk
 assert all(len(ch) == 1 for ch in CHARSET), [ch for ch in CHARSET if len(ch) > 1]
