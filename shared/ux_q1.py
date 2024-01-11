@@ -128,28 +128,21 @@ async def ux_input_numbers(val, validate_func):
     pass
 
 async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
-            prompt='Enter value', min_len=0, b39_complete=False, scan_ok=True):
+            prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
+            placeholder=None, funct_keys=None):
     # Get a text string.
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
     # - no control chars allowed either
-    # - TODO: press QR -> do scan and use that text
+    # - press QR -> do scan and use that text
+    # - funct_keys => CTA msg, and map of Fn key to async-function which takes and returns new text
     # - TODO: regex validation for derviation paths?
+    # - TODO: arrowing around
     from glob import dis
     from ux import ux_show_story
+    MAX_LINES = 7
 
     value = value or ''
-
-    dis.clear()
-
-    if b39_complete:
-        dis.text(None, -2, KEY_TAB + " to auto-complete. " + KEY_QR + " to scan.")
-    dis.text(None, -1, "CANCEL or ENTER when done.")
-
-    # TODO:
-    # - left/right to edit in middle
-    # - multi line support
-    # - add prompt text?
 
     # map from what they entered, to allowed char. None if not allowed char
     # - can case fold if desired
@@ -157,9 +150,13 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     if hex_only:
         ch_remap = lambda ch: ch.lower() if ch in '0123456789abcdefABCDEF' else None
 
-
+    line_len = CHARS_W-2
     y = 2
-    if max_len <= CHARS_W-2:
+    if max_len is None:
+        # whatever the max is we can support
+        num_lines = MAX_LINES
+        max_len = num_lines * line_len
+    elif max_len <= line_len:
         # single-line or perhaps shorter value
         line_len = max_len
         num_lines = 1
@@ -170,15 +167,35 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         num_lines = 4
     else:
         # multi-line mode: just do a box for most of screen
-        num_lines = 6
-        line_len = CHARS_W-2
+        num_lines, runt = divmod(max_len, line_len)
+        if runt:
+            num_lines += 1
+        assert num_lines <= MAX_LINES, num_lines       # too big to fit w/o scroll
+
+    dis.clear()
+
+    if funct_keys:
+        msg, funct_keys = funct_keys
+        dis.text(None, -2, msg, dark=True)
+
+    if b39_complete or scan_ok:
+        msg = []
+        if b39_complete:
+            msg.append(KEY_TAB + " to auto-complete.")
+        if scan_ok:
+            msg.append(KEY_QR + " to scan.")
+        dis.text(None, -1, ' '.join(msg), dark=True)
+
+    elif num_lines <= 2:
+        # show this dumb CTA only if screen mostly blank
+        dis.text(None, -1, "CANCEL or ENTER when done.", dark=True)
 
     dis.text(None, y-2, prompt)
-    x = dis.draw_box(None, y-1, line_len, num_lines)
+    x = dis.draw_box(None, y-1, line_len, num_lines, dark=True)
 
     # NOTE:
     #  - x,y here are top left of entry area
-    #  - not allow cursor movement, always appending to end
+    #  - does not allow cursor movement, always appending to end
 
     # no key-repeat on certain keys
     err_msg = last_err = None
@@ -199,6 +216,8 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         if not value:
             bx = 0
             n = 0
+            if placeholder:
+                dis.text(x, y, placeholder, dark=True)
         else:
             for n, ln_pos in enumerate(range(0, len(value), line_len)):
                 ln = value[ln_pos:ln_pos+line_len]
@@ -206,9 +225,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                 bx = len(ln)
 
         # decide cursor appearance
-        cur = CursorSpec(x+bx, y+n, CURSOR_SOLID)
+        cur = CursorSpec(x+bx, y+n, CURSOR_OUTLINE)
         if cur.x >= x+line_len:
-            # outline mode if on final possible location
+            # if on final possible location, adjust over top of final char
             cur = CursorSpec(x+line_len-1, y+n, CURSOR_OUTLINE)
 
         dis.show(cursor=cur)
@@ -301,6 +320,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
             else:
                 err_msg = 'Need more letters.'
 
+        elif funct_keys and (ch in funct_keys):
+            # replace w/ function output ... might do a transform, or not
+            value = await funct_keys[ch](value)
         else:
             ch = ch_remap(ch)
             if ch is not None:

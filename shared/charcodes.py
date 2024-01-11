@@ -38,16 +38,18 @@ KEY_SYMBOL = '\x02'
 KEY_DELETE = '\x08'          # ^H = backspace
 KEY_CLEAR = '\x15'           # ^U = clear entry
 
-# function keys, filling gaps, running out of space!
-KEY_F1 = '\x0f'
-KEY_F2 = '\x12'
-KEY_F3 = '\x13'
-KEY_F4 = '\x14'
-KEY_F5 = '\x16'
-KEY_F6 = '\x17'
-
 # save memory on Mk4
 if has_qwerty:
+
+    # function keys, filling gaps, running out of space!
+    KEY_F1 = '\x0f'
+    KEY_F2 = '\x12'
+    KEY_F3 = '\x13'
+    KEY_F4 = '\x14'
+    KEY_F5 = '\x16'
+    KEY_F6 = '\x17'
+    KEYS_FUNCTION = KEY_F1 + KEY_F2 + KEY_F3 + KEY_F4 + KEY_F5 + KEY_F6
+
     NUM_ROWS = const(6)
     NUM_COLS = const(10)
 

@@ -34,14 +34,16 @@ else:
     hsm_feature = lambda: False
     make_users_menu = lambda: []
 
-# Battery related items
+# Q related items
 if version.has_battery:
     from battery import battery_idle_timeout_chooser, brightness_chooser
     from q1 import scan_and_bag
+    from notes import make_notes_menu
 else:
     battery_idle_timeout_chooser = None
     brightness_chooser = None
     scan_and_bag = None
+    make_notes_menu = None
 
 
 #
@@ -298,6 +300,8 @@ AdvancedNormalMenu = [
     MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),  # also inside FileMgmt
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
+    NonDefaultMenuItem('Secure Notes & Passwords', 'notes', menu=make_notes_menu,
+                            predicate=lambda: version.has_qwerty),
     MenuItem('Derive Seed B85', f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
@@ -361,6 +365,8 @@ NormalSystem = [
                                 menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore, shortcut='x'),
+    MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
+                 predicate=lambda: (settings.get("notes", False) != False)),
     MenuItem('Type Passwords', f=password_entry, shortcut='t',
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',

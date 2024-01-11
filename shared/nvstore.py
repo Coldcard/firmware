@@ -56,6 +56,7 @@ from version import is_devmode
 #   seedvault = (bool) opt-in enable seed vault feature
 #   seeds = list of stored secrets for seedvault feature
 #   bright = (int:0-255) LCD brightness when on battery
+#   notes = (complex) Secure notes held for user
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

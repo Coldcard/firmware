@@ -47,6 +47,7 @@ still backed-up.''')
         if not await ux_confirm(msg):
             return
 
+    # XXX changes in this order will break lots of stuff
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
                 'XPRV (BIP-32)', '32-bytes hex', '64-bytes hex', 'Passwords']
 
@@ -112,7 +113,11 @@ def bip85_pwd(secret):
     secret_b64 = b2a_base64(secret).decode().strip()
     return secret_b64[:BIP85_PWD_LEN]
 
-async def drv_entro_step2(_1, picked, _2):
+async def pick_bip85_password():
+    # ask for index and then return the pw (see notes.py)
+    return await drv_entro_step2(None, 7, None, just_pick=True)
+
+async def drv_entro_step2(_1, picked, _2, just_pick=False):
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
 
@@ -126,6 +131,9 @@ async def drv_entro_step2(_1, picked, _2):
 
     dis.fullscreen("Working...")
     new_secret, width, s_mode, path = bip85_derive(picked, index)
+
+    if just_pick:
+        return bip85_pwd(new_secret)
 
     # Reveal to user!
     encoded = None

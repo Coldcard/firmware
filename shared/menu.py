@@ -122,7 +122,7 @@ class NonDefaultMenuItem(MenuItem):
             from glob import settings
             s = settings
 
-        return bool(s.get(self.nvkey, self.def_value))
+        return (s.get(self.nvkey, self.def_value) != self.def_value)
 
 
 class ToggleMenuItem(MenuItem):
@@ -412,7 +412,5 @@ class MenuSystem:
                     if self.items[n].label[0].upper() == key.upper():
                         self.goto_idx(n)
                         break
-                else:
-                    print("Unused menu key: %s=0x%02x" % (key, ord(key)))
 
 # EOF

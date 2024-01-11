@@ -216,6 +216,10 @@ def restore_from_dict_ll(vals):
             # saving into settings
             continue
 
+        if k == 'notes' and not version.has_qwerty:
+            # Secure notes only supported on keyboard-equiped units
+            continue
+
         settings.set(k, vals[key])
 
     # write out
