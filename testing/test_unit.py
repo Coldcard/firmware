@@ -272,4 +272,8 @@ def test_is_dir(microsd_path, sim_exec):
     shutil.rmtree(microsd_path("my_dir"))
 
 
+def test_aes_compatibility(sim_execfile):
+    res = sim_execfile('devtest/unit_aes_compat.py')
+    assert res == ""
+
 # EOF
