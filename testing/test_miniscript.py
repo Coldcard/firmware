@@ -2138,10 +2138,11 @@ def test_unique_name(clear_miniscript, use_regtest, offer_minsc_import,
     assert "MUST have unique names" in story
 
 
+@pytest.mark.qrcode
 def test_usb_workflow(usb_miniscript_get, usb_miniscript_ls, clear_miniscript,
                       usb_miniscript_addr, usb_miniscript_delete, use_regtest,
                       reset_seed_words, offer_minsc_import, need_keypress,
-                      cap_story):
+                      cap_story, cap_screen_qr):
     use_regtest()
     reset_seed_words()
     clear_miniscript()
@@ -2155,6 +2156,7 @@ def test_usb_workflow(usb_miniscript_get, usb_miniscript_ls, clear_miniscript,
     msc_wallets = usb_miniscript_ls()
     assert len(msc_wallets) == 4
     assert sorted(msc_wallets) == ["w0", "w1", "w2", "w3"]
+
     # try to get/delete nonexistent wallet
     with pytest.raises(Exception) as err:
         usb_miniscript_get("w4")
@@ -2166,6 +2168,14 @@ def test_usb_workflow(usb_miniscript_get, usb_miniscript_ls, clear_miniscript,
 
     for i, w in enumerate(msc_wallets):
         assert usb_miniscript_get(w)["desc"].split("#")[0] == CHANGE_BASED_DESCS[i].split("#")[0].replace("'", 'h')
+
+    #check random address
+    addr = usb_miniscript_addr("w0", 55, False)
+    time.sleep(0.1)
+    need_keypress('4')
+    time.sleep(0.1)
+    qr = cap_screen_qr().decode('ascii')
+    assert qr == addr.upper()
 
     usb_miniscript_delete("w3")
     time.sleep(.2)
