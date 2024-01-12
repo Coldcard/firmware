@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, ngu, chains, ure, time
+import gc, sys, ustruct, chains, ure, time, aes256ctr
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -543,7 +543,7 @@ def chunk_writer(fd, body):
 def decrypt_tapsigner_backup(backup_key, data):
     try:
         backup_key = a2b_hex(backup_key)
-        decrypt = ngu.aes.CTR(backup_key, bytes(16))  # IV 0
+        decrypt = aes256ctr.new(backup_key, bytes(16))  # IV 0
         decrypted = decrypt.cipher(data).decode().strip()
         # format of TAPSIGNER backup is known in advance
         # extended private key is expected at the beginning of the first line

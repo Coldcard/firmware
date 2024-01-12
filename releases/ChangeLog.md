@@ -1,5 +1,7 @@
 ## 5.2.3 - 2024-XX-XX
 
+- Enhancement: HW Accelerated AES CTR for passphrase saver, MiscroSD 2FA,
+  and Tapsigner backup decryption
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 - Bugfix: Properly handle and finalize framing error response
 - Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes
