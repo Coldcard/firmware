@@ -2,7 +2,7 @@
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import stash, ujson, ngu, pyb, os, version
+import stash, ujson, ngu, pyb, os, version, aes256ctr
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
 from utils import xfp2str, problem_file_line, B2A
@@ -49,7 +49,7 @@ class PassphraseSaver:
         # Return a list of saved passphrases, or empty list if fail.
         # Fail silently in all cases. Expect to see lots of noise here.
         assert self.key
-        decrypt = ngu.aes.CTR(self.key)
+        decrypt = aes256ctr.new(self.key)
 
         try:
             fname = self.filename(card)
@@ -63,7 +63,7 @@ class PassphraseSaver:
 
     async def _save(self, card, data):
         assert self.key
-        encrypt = ngu.aes.CTR(self.key)
+        encrypt = aes256ctr.new(self.key)
         msg = encrypt.cipher(ujson.dumps(data))
 
         # overwrites whatever already there
@@ -331,7 +331,7 @@ class MicroSD2FA(PassphraseSaver):
 
                 data = dict(nonce=nonce)
 
-                encrypt = ngu.aes.CTR(self.key)
+                encrypt = aes256ctr.new(self.key)
                 msg = encrypt.cipher(ujson.dumps(data))
 
                 with open(self.filename(card), 'wb') as fd:
