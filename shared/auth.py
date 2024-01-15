@@ -260,7 +260,7 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
         sig_nice = sig_name + ".sig"
         sig_fpath = fpath.rsplit("/", 1)[0] + "/" + sig_nice
     else:
-        sig_fpath = fpath.rsplit(".")[0] + ".sig"
+        sig_fpath = fpath.rsplit(".", 1)[0] + ".sig"
         sig_nice = sig_fpath.split("/")[-1]
 
     sig_gen = sign_export_contents([(h, f.split("/")[-1]) for h, f in content_list],
