@@ -848,6 +848,55 @@ class USBHandler:
 class EmulatedKeyboard:
     # be a context manager, used during kbd emulation
 
+    # <https://usb.org/sites/default/files/hut1_3_0.pdf> page 88+
+    char_map = {
+        "a": 0x04,
+        "b": 0x05,
+        "c": 0x06,
+        "d": 0x07,
+        "e": 0x08,
+        "f": 0x09,
+        "g": 0x0A,
+        "h": 0x0B,
+        "i": 0x0C,
+        "j": 0x0D,
+        "k": 0x0E,
+        "l": 0x0F,
+        "m": 0x10,
+        "n": 0x11,
+        "o": 0x12,
+        "p": 0x13,
+        "q": 0x14,
+        "r": 0x15,
+        "s": 0x16,
+        "t": 0x17,
+        "u": 0x18,
+        "v": 0x19,
+        "w": 0x1A,
+        "x": 0x1B,
+        "y": 0x1C,  # qwerty
+        "z": 0x1D,
+        # numbers (top row - USA centric)
+        "1": 0x1e,
+        "2": 0x1f,
+        "3": 0x20,
+        "4": 0x21,
+        "5": 0x22,
+        "6": 0x23,
+        "7": 0x24,
+        "8": 0x25,
+        "9": 0x26,
+        "0": 0x27,
+        " ": 0x2C,      # spacebar
+        # HACK: Keypad symbols work w/o concern for language, shift state
+        "/": 0x54,
+        "*": 0x55,
+        "-": 0x56,
+        "+": 0x57,
+        # Keyboard Enter
+        "\r": 0x28,
+    }
+
     def __enter__(self):
         return self
 
@@ -900,6 +949,11 @@ class EmulatedKeyboard:
             # enable usb only if it was previously enabled, otherwise keep disabled
             enable_usb()
 
+    @classmethod
+    def can_type(cls, s):
+        # do we know how to type all the chars in "s"
+        return all(ch in cls.char_map for ch in s)
+
     async def send_keystrokes(self, keystroke_string):
         from glob import dis
         # Send keystrokes to enter a password... only expected to support Base64 charset
@@ -907,62 +961,19 @@ class EmulatedKeyboard:
             print("Simulating keystrokes: " + repr(keystroke_string))
             return
 
-        # <https://usb.org/sites/default/files/hut1_3_0.pdf> page 88+
-        char_map = {
-            "a": 0x04,
-            "b": 0x05,
-            "c": 0x06,
-            "d": 0x07,
-            "e": 0x08,
-            "f": 0x09,
-            "g": 0x0A,
-            "h": 0x0B,
-            "i": 0x0C,
-            "j": 0x0D,
-            "k": 0x0E,
-            "l": 0x0F,
-            "m": 0x10,
-            "n": 0x11,
-            "o": 0x12,
-            "p": 0x13,
-            "q": 0x14,
-            "r": 0x15,
-            "s": 0x16,
-            "t": 0x17,
-            "u": 0x18,
-            "v": 0x19,
-            "w": 0x1A,
-            "x": 0x1B,
-            "y": 0x1C,  # qwerty
-            "z": 0x1D,
-            # numbers (top row - USA centric)
-            "1": 0x1e,
-            "2": 0x1f,
-            "3": 0x20,
-            "4": 0x21,
-            "5": 0x22,
-            "6": 0x23,
-            "7": 0x24,
-            "8": 0x25,
-            "9": 0x26,
-            "0": 0x27,
-            # only symbols required for b64 without padding
-            "+": 0x57,  # Keypad
-            "/": 0x54,  # Keypad
-            # Keyboard Enter
-            "\r": 0x28,
-        }
         buf = bytearray(8)
         pwd_len = len(keystroke_string)
         dis.fullscreen('Typing...')
 
         for i, ch in enumerate(keystroke_string, start=1):
             cap = False
-            if ch in char_map:
-                to_press = char_map[ch]
-            else:
+            to_press = self.char_map.get(ch, None)
+            if ch is None:
                 cap = True
-                to_press = char_map[ch.lower()]
+                to_press = self.char_map.get(ch.lower(), None)
+            if ch is None:
+                # problem: we don't know how to type this char
+                to_press = 0x1B     # X
 
             buf[2] = to_press
             if cap:
