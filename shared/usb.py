@@ -53,7 +53,7 @@ HSM_WHITELIST = frozenset({
     'blkc', 'hsts',             # report status values
     'stok', 'smok',             # completion check: sign txn or msg
     'xpub', 'msck',             # quick status checks
-    'p2sh', 'show',             # limited by HSM policy
+    'p2sh', 'show', 'msas',     # limited by HSM policy
     'user',                     # auth HSM user, other user cmds not allowed
     'gslr',                     # read storage locker; hsm mode only, limited usage
 })
@@ -539,6 +539,9 @@ class USBHandler:
         if cmd == "msas":
             # get miniscript address based on int/ext index
             assert self.encrypted_req, 'must encrypt'
+            if hsm_active and not hsm_active.approve_address_share(miniscript=True):
+                raise HSMDenied
+
             from miniscript import MiniScriptWallet
 
             change, idx, = unpack_from('<II', args)
