@@ -194,6 +194,7 @@ def main():
                         help="Choose how much to sleep after simulator is started")
     parser.add_argument("-m", "--module", action="append", help="Choose only n modules to run")
     parser.add_argument("--pdb", action="store_true", help="Go to debugger on failure")
+    parser.add_argument("--q1", action="store_true", help="Simulate a Q instead of Mk COLDCARD")
     parser.add_argument("--psbt2", action="store_true", help="`fake_txn` produces PSBTv2")
     parser.add_argument("--ff", action="store_true", help="Run the last failures first")
     parser.add_argument("--onetime", action="store_true", default=False,
@@ -214,9 +215,14 @@ def main():
         # when collect is in argument - do just collect and exit
         print(collect_marked_tests(args.collect))
         return
+
     if args.module is None and (args.onetime is False and args.veryslow is False):
         args.module = ["all"]
+
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
+    if args.q1:
+        DEFAULT_SIMULATOR_ARGS.append('--q1')
+
     if args.module is None:
         test_modules = []
     elif len(args.module) == 1 and args.module[0].lower() == "all":
@@ -227,6 +233,7 @@ def main():
             if not os.path.exists(fn):
                 raise RuntimeError(f"{fn} does not exist")
         test_modules = sorted(args.module)
+
     result = []
     for test_module in test_modules:
         test_args = DEFAULT_SIMULATOR_ARGS
@@ -250,6 +257,10 @@ def main():
             test_args = ["--set", "nfc=1"]
         if test_module == "test_ephemeral.py":
             test_args = ["--set", "nfc=1", "--set", "vidsk=1"]
+
+        if args.q1 and '--q1' not in test_args:
+            test_args.append('--q1')
+
         ec, failed_tests = run_tests_with_simulator(test_module, simulator_args=test_args,
                                                     pytest_k=args.pytest_k, pdb=args.pdb,
                                                     failed_first=args.ff, psbt2=args.psbt2)
@@ -265,25 +276,30 @@ def main():
                                                     simulator_args=DEFAULT_SIMULATOR_ARGS,
                                                     failed_first=args.ff, psbt2=args.psbt2)
         result.append(("veryslow", ec, failed_tests))
+
     # run onetime is specified (each test against its own simulator)
     if args.onetime:
         print("started onetime tests")
         onetime_tests = collect_marked_tests("onetime")
         for onetime_test in onetime_tests:
             ec, failed_tests = run_tests_with_simulator(test_module=onetime_test, pdb=args.pdb,
-                                                        failed_first=args.ff, pytest_marks="onetime",
-                                                        simulator_args=DEFAULT_SIMULATOR_ARGS,
-                                                        psbt2=args.psbt2)
+                                            failed_first=args.ff, pytest_marks="onetime",
+                                            simulator_args=DEFAULT_SIMULATOR_ARGS,
+                                            psbt2=args.psbt2)
             result.append((f"onetime: {onetime_test}", ec, failed_tests))
+
     print("All done")
+
     any_failed = False
     for module, ec, failed in result:
         if not failed:
             continue
         print(f"FAILED {module:40s} {failed}")
         any_failed = True
+
     if any_failed is False:
         print("SUCCESS")
+
     print()
 
 
