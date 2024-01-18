@@ -7,9 +7,13 @@ import framebuf
 import uasyncio
 
 class mock_LED:
+    bright = -1
+
     def intensity(self, n):
-        print("Set LCD brightness: %d" % n)
-        pass
+        if n != self.bright:
+            print("Set LCD brightness: %d" % n)
+            self.bright = n
+
     def on(self):
         pass
     def off(self):

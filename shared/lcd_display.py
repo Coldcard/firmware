@@ -217,6 +217,7 @@ class Display:
         self.gpu.take_spi()
         self.dis.show_zpixels(x, y, w, h, data)
         self.mark_correct(x, y, w, h)
+        self.show()
 
     def mark_correct(self, px, py, w, h):
         # mark a subset of the screen as already drawn correctly
@@ -238,7 +239,6 @@ class Display:
                     self.last_buf[y][x] = self.next_buf[y][x] = 0xfffe
                 except IndexError:
                     pass
-        self.show()
 
     def icon(self, x, y, name, invert=0):
         # plan is these are chars or images
@@ -419,23 +419,32 @@ class Display:
         # but see clear_box() instead
         raise NotImplementedError
 
-    def scroll_bar(self, fraction):
-        # next show(), we will show scroll bar on right edge
-        self.next_scroll = fraction
+    def scroll_bar(self, offset, count, per_page=CHARS_H):
+        # next show(), we will draw a scroll bar on right edge
+        assert count >= 1
+        self.next_scroll = (offset, count, per_page)
 
-    def _draw_scroll_bar(self, fraction):
+    def _draw_scroll_bar(self, values):
         # Immediately draw bar along right edge.
-        # - length means nothing, just vert position
         bw = 5      # bar width
-        bh = ACTIVE_H // 4
-        if fraction is None:
+        if values is None:
+            # clear old display
             self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_BLACK)
             return
 
-        self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_SCROLL_DARK)
-        pos = int((ACTIVE_H-bh)*fraction)
-        if (pos+bh > ACTIVE_H) or (fraction > .8):
+        offset, count, per_page = values
+
+        assert 0 <= offset <= count, (offset, count, per_page)
+        num_pages = max(count / per_page, 2)
+        bh = max(int(ACTIVE_H / num_pages), 4)
+        pos = int((ACTIVE_H - bh) * (offset / count))
+
+        # "round up" the final page so touches bottom always
+        is_last = offset and (offset + per_page >= count)
+        if is_last:
             pos = ACTIVE_H - bh
+
+        self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_SCROLL_DARK)
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN+pos, bw, bh, COL_TEXT)
 
     def fullscreen(self, msg, percent=None):
@@ -551,7 +560,7 @@ class Display:
 
         self.show()
 
-    def draw_story(self, lines, top, num_lines, is_sensitive):
+    def draw_story(self, lines, top, num_lines, is_sensitive, hint_icons=''):
         self.clear()
 
         y=0
@@ -560,8 +569,11 @@ class Display:
                 self.text(0, y, '─'*CHARS_W, dark=True)
                 continue
             elif ln and ln[0] == '\x01':
-                # ux_show_story: title ... but we have no special font? Inverse!
-                self.text(0, y, ' '+ln[1:]+' ', invert=1)
+                # title ... but we have no special font? Inverse!
+                self.text(0, y, ' '+ln[1:]+' ', invert=True)
+                if hint_icons:
+                    # maybe show that [QR] can do something
+                    self.text(-1, y, hint_icons, dark=True)
             else:
                 self.text(0, y, ln)
 
@@ -570,15 +582,19 @@ class Display:
             if is_sensitive and len(ln) > 3 and ln[2] == ':':
                 self.mark_sensitive(y, y+13)
 
-        self.scroll_bar(top / num_lines)
+        self.scroll_bar(top, num_lines, CHARS_H)
         self.show()
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert):
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, progress=None):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
         # - we need one more (white) pixel on all sides
         from utils import word_wrap
+
+        self.real_clear()
+        if progress is not None:
+            self.progress_bar(progress)
 
         # maybe show something other than QR contents under it
         msg = sidebar or msg
@@ -604,7 +620,9 @@ class Display:
             num_lines = 0
             del parts
 
-        w = qr_data.width()
+        # send packed pixel data to C level to decode and expand onto LCD
+        # - 8-bit aligned rows of data
+        scan_w, w, data = qr_data.packed() if hasattr(qr_data, 'packed') else qr_data
 
         # always draw as large as possible (vertical is limit)
         expand = max(1, (ACTIVE_H - (num_lines * CELL_H))  // (w+2))
@@ -614,12 +632,7 @@ class Display:
         y = (ACTIVE_H - (num_lines * CELL_H) - qw) // 2
         x = (WIDTH - qw) // 2
 
-        # send packed pixel data to C level to decode and expand onto LCD
-        # - 8-bit aligned rows of data
-        scan_w, _, data = qr_data.packed()
-
         self.gpu.take_spi()
-        self.real_clear()
         self.dis.show_qr_data(x, TOP_MARGIN + y, w, expand, scan_w, data)
         self.mark_correct(x, TOP_MARGIN + y, qw, qw)
 
@@ -634,7 +647,7 @@ class Display:
             # show path index number: just 1 or 2 digits
             self.text(-1, 0, idx_hint)
 
-        # pass a "max_brightness" param here, which would be cleared after next show
+        # pass a max brightness flag here, which will be cleared after next show
         self.show(max_bright=True)
 
     def draw_bbqr_progress(self, hdr, got_parts, corrupt=False):
@@ -682,7 +695,7 @@ class Display:
         self.text(x, y, ln, **kw)
         for yy in range(y+1, y+h+1):
             self.text(x, yy,  '┃', **kw)
-            self.text(x+w+1,  yy, '┃', **kw)
+            self.text(x+w+1,  yy, '┇', **kw)
 
         ln = '┗' + ln[1:-1] + '┛'
         self.text(x, y+h+1, ln, **kw)
@@ -693,8 +706,8 @@ class Display:
         # clear (w/ spaces) a box on screen
         for Y in range(y, y+h):
             for X in range(x, x+w):
-                assert 0 <= X < CHARS_W
-                assert 0 <= Y < CHARS_H
+                assert 0 <= X < CHARS_W, X
+                assert 0 <= Y < CHARS_H, Y
                 self.next_buf[Y][X] = 32
 
     def bootrom_takeover(self):

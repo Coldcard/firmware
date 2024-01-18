@@ -139,11 +139,12 @@ def ux_poll_key():
 
 
 async def ux_show_story(msg, title=None, escape=None, sensitive=False,
-                        strict_escape=False, scrollbar=True):
+                        strict_escape=False, scrollbar=True, hint_icons=None):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
     # - accepts a stream or string
+    # - on Q, will show icons in top-right if hint_icons is provided
     from glob import dis
 
     lines = []
@@ -196,7 +197,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
     pr = PressRelease()
     while 1:
         # redraw
-        dis.draw_story(lines[top:top+STORY_H], top, len(lines), sensitive)
+        dis.draw_story(lines[top:top+STORY_H], top, len(lines), sensitive, hint_icons=hint_icons)
 
         # wait to do something
         ch = await pr.wait()
@@ -354,7 +355,7 @@ def _import_prompt_builder(title, no_qr):
     return prompt, escape
 
 
-def _export_prompt_builder(title, no_qr):
+def _export_prompt_builder(what_it_is, no_qr):
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
@@ -363,7 +364,7 @@ def _export_prompt_builder(title, no_qr):
     if (NFC or VD) or num_sd_slots>1:
         # no need to spam with another prompt, only option is SD card
 
-        prompt = "Press (1) to save %s to SD Card" % title
+        prompt = "Press (1) to save %s to SD Card" % what_it_is
         escape = "1"
         if num_sd_slots == 2:
             # MAYBE: show this only if both slots have cards inserted?
@@ -376,10 +377,10 @@ def _export_prompt_builder(title, no_qr):
 
         if NFC is not None:
             if has_qwerty:
-                prompt += ", press (NFC) to share via NFC"
+                prompt += ", press " + KEY_NFC + " to share via NFC"
                 escape += KEY_NFC
                 if not no_qr:
-                    prompt += ", (QR) to show QR code"
+                    prompt += ", "+KEY_QR+" to show QR code"
                     escape += KEY_QR
             else:
                 prompt += ", press (3) to share via NFC"
@@ -389,7 +390,7 @@ def _export_prompt_builder(title, no_qr):
 
     return prompt, escape
 
-async def import_export_prompt(title, is_import=False, no_qr=False):
+async def import_export_prompt(what_it_is, is_import=False, no_qr=False, title=None, footnotes=''):
     # Show story allowing user to select source for importing/exporting
     # - return either str(mode) OR dict(file_args)
     # - KEY_NFC or KEY_QR for those sources
@@ -397,9 +398,9 @@ async def import_export_prompt(title, is_import=False, no_qr=False):
     # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
 
     if is_import:
-        prompt, escape = _import_prompt_builder(title, no_qr)
+        prompt, escape = _import_prompt_builder(what_it_is, no_qr)
     else:
-        prompt, escape = _export_prompt_builder(title, no_qr)
+        prompt, escape = _export_prompt_builder(what_it_is, no_qr)
 
     force_vdisk = False
     slot_b = None       # ie. don't care / either
@@ -408,7 +409,7 @@ async def import_export_prompt(title, is_import=False, no_qr=False):
         # they don't have NFC nor VD enabled, and no second slots... so will be file.
         pass
     else:
-        ch = await ux_show_story(prompt, escape=escape)
+        ch = await ux_show_story(prompt+footnotes, escape=escape, title=title)
 
         if ch in "3"+KEY_NFC:
             return KEY_NFC

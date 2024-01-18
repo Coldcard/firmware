@@ -175,8 +175,8 @@ class FullKeyboard(NumpadBase):
                 # indicated key was found to be down and then back up
                 key = decoder[kn]
                 if key == '\0':
-                    # dead/unused key: do nothing
-                    print("KEYNUM %d is no-op (in this state)" % kn)
+                    # dead/unused key: do nothing - like SYM+D
+                    #print("KEYNUM %d is no-op (in this state)" % kn)
                     continue
 
                 if key != self.key_pressed:

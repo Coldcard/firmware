@@ -3,15 +3,17 @@
 # notes.py - Store some short notes, securely.
 #
 import ngu, bip39
-from menu import MenuItem, MenuSystem
+from menu import MenuItem, MenuSystem, ShortcutItem
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, the_ux
-from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
+from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code, import_export_prompt
+from ux_q1 import QRScannerInteraction
 from actions import goto_top_menu
 from glob import settings, dis
 from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
+from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
+from decoders import url_decode
 
 ONE_LINE = CHARS_W-2
 
@@ -79,7 +81,7 @@ async def get_a_password(old_value):
         return rv
 
     def _toggle_case(was):
-        # undocumented
+        # undocumented, not very useful
         return was.upper() if was[0].islower() else was.lower()
         
 
@@ -89,7 +91,7 @@ async def get_a_password(old_value):
     handlers = {KEY_F1: _pick_12, KEY_F2: _pick_24, KEY_F3: _pick_dense,
                 KEY_F4: _do_dumb, KEY_F6: _toggle_case, KEY_F5: _bip85}
 
-    return await ux_input_text(old_value, confirm_exit=True, max_len=128, scan_ok=True,
+    return await ux_input_text(old_value, confirm_exit=False, max_len=128, scan_ok=True,
                     b39_complete=True, prompt='Password',  placeholder='(optional)',
                     funct_keys=(fmsg, handlers))
 
@@ -100,7 +102,8 @@ class NotesMenu(MenuSystem):
         # Dynamic menu with user-defined names of notes shown
 
         news = [ MenuItem('New Note', f=cls.new_note, arg='n'),
-                 MenuItem('New Password', f=cls.new_note, arg='p') ]
+                 MenuItem('New Password', f=cls.new_note, arg='p'),
+                 ShortcutItem(KEY_QR, f=cls.quick_import)]
 
         if not NoteContent.count():
             rv = news + [ MenuItem('Disable Feature', f=cls.disable_notes) ]
@@ -111,8 +114,44 @@ class NotesMenu(MenuSystem):
 
             rv.extend(news)
 
-        rv.append(MenuItem('Import from File', f=None))
+            rv.append(MenuItem('Export All', f=cls.export_all))
+
+        rv.append(MenuItem('Import from File', f=cls.import_from_file))
+
         return rv
+
+    @classmethod
+    async def export_all(cls, *a):
+        await start_export(NoteContent.get_all())
+
+    @classmethod
+    async def quick_import(cls, menu, _, item):
+        # using QR, import a Note (never a password) with auto-generated title.
+        tmp = NoteContent()
+        tmp.title = 'Scanned'
+
+        zz = QRScannerInteraction()
+        got = await zz.scan_text('Scan any QR or Barcode for text.')
+        if not got or len(got) < 5: return
+
+        # aways save it, and attempt to guess a nice name for it too
+        tmp.misc = got
+
+        if got.startswith('otpauth://totp/'):
+            # see <https://github.com/google/google-authenticator/wiki/Key-Uri-Format>
+            tmp.title = url_decode(got[15:]).split('?', 1)[0]
+        elif got.startswith('otpauth-migration://offline'):
+            # see <https://github.com/qistoph/otp_export>
+            tmp.title = 'Google Auth'
+        elif '://' in got:
+            tmp.title = got.split('://', 1)[0]
+
+        await tmp._save_ux(menu)
+        await cls.drill_to(menu, tmp)
+
+    @classmethod
+    async def import_from_file(cls, *a):
+        choice = await import_export_prompt('Import Notes', is_import=True)
 
     def update_contents(self):
         # Reconstruct the list of notes on this dynamic menu, because
@@ -134,7 +173,17 @@ class NotesMenu(MenuSystem):
     async def new_note(cls, menu, _, item):
         # Create a new note. Wizard style
         tmp = PasswordContent() if item.arg == 'p' else NoteContent()
-        await tmp.edit(menu, _, item)
+        didit = await tmp.edit(menu, _, item)
+
+        if didit:
+            await cls.drill_to(menu, tmp)
+
+    @classmethod
+    async def drill_to(cls, menu, item):
+        # make it so looks like we drilled down into the new note
+        menu.goto_idx(item.idx)
+        m = MenuSystem(await item.make_menu())
+        the_ux.push(m)
 
 
 class NoteContentBase:
@@ -146,6 +195,8 @@ class NoteContentBase:
 
     def serialize(self):
         return {fld:getattr(self, fld, '') for fld in self.flds}
+
+    to_json = serialize
 
     @classmethod
     def get_all(cls):
@@ -183,15 +234,20 @@ class NoteContentBase:
 
         await ux_dramatic_pause('Deleted.', 3)
 
-    async def export(self, *a):
-        pass
+    async def share_nfc(self, menu, _, item):
+        # share something via NFC
+        from glob import NFC
+        if not NFC: return
+        v = getattr(self, item.arg)
+        await NFC.share_text(v)
 
     async def _save_ux(self, menu):
         is_new = self.save()
 
         if not is_new:
             # change our own menu (only one thing: title line)
-            menu.items[0].label = '"%s"' % self.title
+            #menu.items[0].label = '"%s"' % self.title
+            menu.replace_items(await self.make_menu())
 
             # update parent
             parent = the_ux.parent_of(menu)
@@ -215,26 +271,43 @@ class NoteContentBase:
 
         return is_new
 
+    async def export(self, *a):
+        # single export
+        await start_export([self])
+
 class PasswordContent(NoteContentBase):
     # "Passwords" have a few more fields and are more structured
     flds = ['title', 'user', 'password', 'site', 'misc' ]
+    type_label = 'password'
 
     async def make_menu(self, *a):
-        return [
-            MenuItem('"%s"' % self.title, f=self.view),
+        rv = [MenuItem('"%s"' % self.title, f=self.view)]
+        if self.user:
+            rv.append(MenuItem('↳ %s' % self.user, f=self.view))
+        if self.site:
+            rv.append(MenuItem('↳ %s' % self.site, f=self.view))
+        #if self.misc: rv.append(MenuItem('↳ (notes)', f=self.view))
+        return rv + [
             MenuItem('View Password', f=self.view_pw),
-            MenuItem('Change Password', f=self.change_pw),
-            MenuItem('Send Password', f=self.send_pw),
-            MenuItem('Edit', f=self.edit),
-            MenuItem('Delete', f=self.delete),
+            MenuItem('Send Password', f=self.send_pw, predicate=lambda: settings.get('du', True)),
             MenuItem('Export', f=self.export),
+            MenuItem('Edit Metadata', f=self.edit),
+            MenuItem('Delete', f=self.delete),
+            MenuItem('Change Password', f=self.change_pw),
+            ShortcutItem(KEY_QR, f=self.view_qr),
+            ShortcutItem(KEY_NFC, f=self.share_nfc, arg='password'),
         ]
 
     async def view(self, *a):
         pl = len(self.password)
-        m = 'Site: %s''' % self.site
-        m = 'User: %s''' % self.user
-        m += '\nPassword: (%d chars long)' % pl
+        m = ''
+        if self.user:
+            m += 'User: %s\n' % self.user
+
+        m += 'Password: (%d chars)\n' % pl
+
+        if self.site:
+            m += 'Site: %s\n' % self.site
 
         if self.misc:
             m += '\nNotes:\n' + self.misc
@@ -242,14 +315,15 @@ class PasswordContent(NoteContentBase):
         await ux_show_story(m, title=self.title)
 
     async def change_pw(self, *a):
-        # change password
+        # Change password
         npw = await get_a_password(self.password)
 
         if npw == self.password: return
+        if npw is None: return
 
-        msg = 'Old Password:\n%s\n\nNew Password:\n%s' % (
-                    self.password or '<EMPTY>', npw or '<EMPTY>')
-        ch = await ux_show_story(msg, title='Confirm Change')
+        msg = 'New Password:\n%s\n\nOld Password:\n%s' % (
+                    npw or '<EMPTY>', self.password or '<EMPTY>')
+        ch = await ux_show_story(msg, title='Confirm Change?')
         if ch == 'y':
             self.password = npw
             self.save()
@@ -259,39 +333,52 @@ class PasswordContent(NoteContentBase):
 
     async def view_pw(self, *a):
         msg = self.password or '<EMPTY>'
-        msg += '\n\nPress (1) to change, (6) to send over USB.'
-        ch = await ux_show_story(msg, title='Password', escape='16')
-        if ch == '1':
-            await self.change_pw()
-        elif ch == '6':
-            await self.send_pw()
+        ch = await ux_show_story(msg, title=self.title, escape=KEY_QR, hint_icons=KEY_QR)
+        if ch == KEY_QR:
+            await self.view_qr()
             
-
     async def send_pw(self, *a):
-        pass
+        # use USB to send it -- weak at present
+        from drv_entro import single_send_keystrokes
+        from usb import EmulatedKeyboard
+
+        if not EmulatedKeyboard.can_type(self.password):
+            return await ux_show_story("Sorry, your password contains a character that "
+                                            "we cannot type at this time.")
+        await single_send_keystrokes(self.password)
+
+    async def view_qr(self, *a):
+        # full screen QR
+        await show_qr_code(self.password, msg=self.title)
 
     async def edit(self, menu, _, item):
         # Edit, also used for add new
 
-        title = await ux_input_text(self.title, confirm_exit=False, max_len=ONE_LINE,
+        title = await ux_input_text(self.title, max_len=ONE_LINE, confirm_exit=False,
                         prompt='Title', placeholder='(required for menu)')
         if not title:
-            return
+            return None
 
         # blank is OK for all other values
 
-        user = await ux_input_text(self.site, confirm_exit=True, max_len=ONE_LINE, scan_ok=True,
+        user = await ux_input_text(self.user, max_len=ONE_LINE, scan_ok=True, confirm_exit=False,
                                 prompt='Username', placeholder='(optional)')
+        if user is None:
+            user = self.user
 
         if self.idx == -1:
             # prompt for password only on new records.
             self.password = await get_a_password(self.password)
 
-        site = await ux_input_text(self.site, confirm_exit=True, max_len=ONE_LINE, scan_ok=True,
+        site = await ux_input_text(self.site, max_len=ONE_LINE, scan_ok=True, confirm_exit=False,
                                 prompt='Website', placeholder='(optional)')
+        if site is None:
+            site = self.site
 
-        misc = await ux_input_text(self.misc, confirm_exit=True, max_len=None, scan_ok=True,
+        misc = await ux_input_text(self.misc, max_len=None, scan_ok=True, confirm_exit=False,
                                             prompt='More Notes', placeholder='(optional)')
+        if misc is None:
+            misc = self.misc
 
         if self.idx != -1:
             # confirm changes, don't for new records
@@ -309,36 +396,50 @@ class PasswordContent(NoteContentBase):
                 await ux_dramatic_pause('No changes.', 3)
                 return
 
-            ok = await ux_confirm("Save changes?\n- " + ('\n - '.join(chgs)))
+            ok = await ux_confirm("Save changes?\n- " + ('\n- '.join(chgs)))
             if not ok:
-                return
+                return None
 
         self.title = title
+        self.user = user
         self.site = site
         self.misc = misc
-        self.user = user
 
         await self._save_ux(menu)
+        return self
 
 
 class NoteContent(NoteContentBase):
     # Pure "notes" have just a title and free-form text
     flds = ['title', 'misc' ]
+    type_label = 'note'
 
     async def make_menu(self, *a):
-        # details and actions for this Note
-        # details and actions for this Note
+        # Details and actions for this Note
         return [
             MenuItem('"%s"' % self.title, f=self.view),
-            MenuItem('View Notes', f=self.view),
-            #MenuItem('Send Password', f=self.send_pw),
+            MenuItem('View Note', f=self.view),
             MenuItem('Edit', f=self.edit),
             MenuItem('Delete', f=self.delete),
             MenuItem('Export', f=self.export),
+            ShortcutItem(KEY_QR, f=self.view_qr),
+            ShortcutItem(KEY_NFC, f=self.share_nfc, arg='misc'),
         ]
 
     async def view(self, *a):
-        await ux_show_story(self.misc, title=self.title)
+        ch = await ux_show_story(self.misc, title=self.title, escape=KEY_QR, hint_icons=KEY_QR)
+        if ch == KEY_QR:
+            await self.view_qr()
+
+    async def view_qr(self, *a):
+        # full screen QR
+        try:
+            await show_qr_code(self.misc, msg=self.title)
+        except Exception as exc:
+            # - not all data can be a QR (non-text, binary, zeros)
+            # - might be too big for single QR
+            # - may be a RuntimeError(n) where n is line number inside uqr
+            await ux_show_story("Unable to display as QR.\n\nError: "+str(exc))
 
     async def edit(self, menu, _, item):
         # Edit, also used for add new
@@ -348,10 +449,11 @@ class NoteContent(NoteContentBase):
         if not title:
             return
 
-        # blank is OK for all other values
-
-        misc = await ux_input_text(self.misc, confirm_exit=True, max_len=None, scan_ok=True,
+        misc = await ux_input_text(self.misc, confirm_exit=False,
+                                    max_len=None, scan_ok=True,
                                     prompt='Your Notes', placeholder='(freeform text)')
+        if misc is None:
+            misc = self.misc
 
         if self.idx != -1:
             # confirm changes, don't for new records
@@ -365,8 +467,9 @@ class NoteContent(NoteContentBase):
                 await ux_dramatic_pause('No changes.', 3)
                 return
 
-            ok = await ux_confirm("Save changes?\n- " + ('\n - '.join(chgs)))
+            ok = await ux_confirm("Save changes?\n- " + ('\n- '.join(chgs)))
             if not ok:
+                await ux_dramatic_pause('Not saved. Change aborted.', 3)
                 return
 
         self.title = title
@@ -374,7 +477,57 @@ class NoteContent(NoteContentBase):
 
         await self._save_ux(menu)
 
+        return self
+
+async def start_export(notes):
+    # Save out notes/passwords
+    from glob import NFC
+    from auth import write_sig_file
+    import ujson as json
+    from ux_q1 import show_bbqr_codes
+
+    singular = (len(notes) == 1)
+
+    item = notes[0].type_label if singular else  'all notes & passwords'
+    choice = await import_export_prompt(item, is_import=False, title="Data Export",
+                    footnotes="\n\nWARNING: No encryption happens here. Your secrets will be cleartext.")
+    if choice == KEY_CANCEL:
+        return
+
+    # render it
+    data = json.dumps(dict(coldcard_notes=[i.serialize() for i in notes]))
+
+    if choice == KEY_NFC:
+        await NFC.share_json(data)
+        return
+
+    if choice == KEY_QR:
+        # Always do BBRq.
+        await show_bbqr_codes('J', data, 'Notes & Passwords Export')
+        return
+
+    # ideally, we'd use the title to make a filename, but meh...
+    fname_pattern = 'cc-notes.json' if not singular else 'cc-note.json'
+
+    try:
+        with CardSlot(**choice) as card:
+            fname, nice = card.pick_filename(fname_pattern)
+
+            with open(fname, 'w+') as fp:
+                fp.write(data)
+
+            h = ngu.hash.sha256s(data)
+            sig_nice = write_sig_file([(h, fname)])
+
+    except CardMissingError:
+        await needs_microsd()
+        return
+    except Exception as e:
+        await ux_show_story('Failed to write!\n\n\n'+str(e))
+        return
+
+    msg = 'Export file written:\n\n%s' % nice
+    await ux_show_story(msg)
+
 
 # EOF
-
-

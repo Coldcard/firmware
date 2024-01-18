@@ -105,6 +105,14 @@ class MenuItem:
             if m:
                 the_ux.push(m)
 
+class ShortcutItem(MenuItem):
+    # Add these to a menu to define action when a single special key is pressed.
+    # - typically NFC and QR keys
+    # - never displayed
+    # - can have predicate
+    def __init__(self, key, **kws):
+        super().__init__('SHORTCUT', shortcut=key, **kws)
+
 class NonDefaultMenuItem(MenuItem):
     # Show a checkmark if setting is defined and not the default ... so know know it's set
     def __init__(self, label, nvkey, prelogin=False, default_value=None, **kws):
@@ -199,7 +207,9 @@ class ToggleMenuItem(MenuItem):
 
 class MenuSystem:
 
-    def __init__(self, menu_items, chosen=None, should_cont=None, space_indicators=False):
+    def __init__(self, menu_items, chosen=None, should_cont=None,
+                        space_indicators=False):
+        self.shortcuts = {}
         self.should_continue = should_cont or (lambda: True)
         self.replace_items(menu_items)
         self.space_indicators = space_indicators
@@ -222,7 +232,12 @@ class MenuSystem:
             self.cursor = 0
             self.ypos = 0
 
-        self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
+        self.items = [m for m in menu_items if not isinstance(m, ShortcutItem) and
+                (not getattr(m, 'predicate', None) or m.predicate())]
+        for m in menu_items:
+            if isinstance(m, ShortcutItem):
+                self.shortcuts[m.shortcut_key] = m
+
         self.count = len(self.items)
 
     def goto_label(self, label):
@@ -263,7 +278,7 @@ class MenuSystem:
         self.late_draw(dis)
 
         if self.count > PER_M:
-            dis.scroll_bar(self.ypos / (self.count-PER_M))
+            dis.scroll_bar(self.ypos, self.count, PER_M)
 
         dis.menu_show(cursor_y)
 
@@ -332,17 +347,14 @@ class MenuSystem:
             # top of stack (main top-level menu)
             self.top()
 
-    async def activate(self, idx):
+    async def activate(self, picked):
         # Activate a specific choice in our menu.
         #
-        if idx is None:
+        if picked is None:
             # "go back" or cancel or something
             self.on_cancel()
         else:
-            assert idx < self.count
-            ch = self.items[idx]
-
-            await ch.activate(self, idx)
+            await picked.activate(self, self.cursor)
 
 
     async def interact(self):
@@ -354,14 +366,14 @@ class MenuSystem:
             await self.activate(ch)
             
     async def wait_choice(self):
-        #
         # Wait until a menu choice is picked; let them move around
         # the menu, keep redrawing it and so on.
+        # returns the item picked, or None for cancel=Back
 
         key = None
 
         # 5,8 have key-repeat, not others
-        pr = PressRelease('790xy')      # TODO: q1 needs
+        pr = PressRelease('790xy')      # on Q, arg is ignored
 
         while 1:
             self.show()
@@ -376,7 +388,7 @@ class MenuSystem:
 
             if key == KEY_ENTER or key == KEY_SPACE:
                 # selected - done
-                return self.cursor
+                return self.items[self.cursor]
             elif key == KEY_CANCEL:
                 # abort/nothing selected/back out?
                 return None
@@ -397,13 +409,16 @@ class MenuSystem:
             elif '1' <= key <= '9':
                 # jump down, based on screen postion
                 self.goto_n(ord(key)-ord('1'))
+            elif key in self.shortcuts:
+                # run the function directly
+                return self.shortcuts[key]
             else:
                 # maybe a shortcut?
                 for n, item in enumerate(self.items):
                     if getattr(item, 'shortcut_key', None) == key:
                         # matched. do it
                         self.goto_idx(n)
-                        return self.cursor
+                        return self.items[self.cursor]
 
                 # search downwards for a menu item that starts with indicated letter
                 # if found, select it but dont drill down

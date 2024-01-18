@@ -2,7 +2,7 @@
 #
 # flow.py - Menu structure
 #
-from menu import MenuItem, ToggleMenuItem, NonDefaultMenuItem
+from menu import MenuItem, ToggleMenuItem, NonDefaultMenuItem, ShortcutItem
 import version, charcodes
 from glob import settings
 
@@ -302,7 +302,8 @@ AdvancedNormalMenu = [
     MenuItem("File Management", menu=FileMgmtMenu),
     NonDefaultMenuItem('Secure Notes & Passwords', 'notes', menu=make_notes_menu,
                             predicate=lambda: version.has_qwerty),
-    MenuItem('Derive Seed B85', f=drv_entro_start),
+    MenuItem('Derive Seed B85' if not version.has_qwerty else 'Derive Seeds (BIP-85)',
+                            f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
@@ -361,8 +362,6 @@ NormalSystem = [
     MenuItem('Passphrase', f=start_b39_pw, predicate=bip39_passphrase_active, shortcut='p'),
     MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
          shortcut=KEY_QR, f=scan_any_qr, arg=(False, True)),
-    MenuItem('NFC Tools', predicate=lambda: nfc_enabled() and version.has_qwerty,
-                                menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
     MenuItem("Address Explorer", f=address_explore, shortcut='x'),
     MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
@@ -374,6 +373,7 @@ NormalSystem = [
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu, shortcut='s'),
     MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
+    ShortcutItem(KEY_NFC, predicate=lambda: nfc_enabled(), menu=NFCToolsMenu),
 ]
 
 # Shown until unit is put into a numbered bag

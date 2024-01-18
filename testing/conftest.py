@@ -168,8 +168,11 @@ def enter_number(need_keypress):
     return doit
 
 @pytest.fixture(scope='module')
-def enter_hex(need_keypress):
+def enter_hex(need_keypress, enter_text, is_q1):
     def doit(hex_str):
+        if is_q1:
+            return enter_text(hex_str)
+
         for ch in hex_str:
             int_ch = int(ch, 16)
             for i in range(int_ch):
@@ -180,22 +183,49 @@ def enter_hex(need_keypress):
     return doit
 
 @pytest.fixture(scope='module')
-def enter_pin(enter_number, need_keypress, cap_screen):
+def enter_pin(enter_number, need_keypress, cap_screen, is_q1):
     def doit(pin):
         assert '-' in pin
         a,b = pin.split('-')
         enter_number(a)
 
-        # capture words? hard to know in general what they should be tho
-        words = cap_screen().split('\n')[2:4]
+        scr = cap_screen().split('\n')
+        if is_q1:
+            words = [i.strip() for i in scr[6].split()]     # XXX untested
+        else:
+            # capture words? hard to know in general what they should be tho
+            words = scr[2:4]
 
-        need_keypress('y')
+            need_keypress('y')
+
         enter_number(b)
 
         return words
 
     return doit
+
+
+@pytest.fixture(scope='module')
+def do_keypresses(need_keypress):
+    def doit(value):
+        for ch in value:
+            need_keypress(ch)
+
+    return doit
     
+
+@pytest.fixture(scope='module')
+def enter_text(need_keypress, is_q1):
+    def doit(value, multiline=False):
+        assert is_q1
+        if not multiline:
+            assert '\r' not in value
+        for ch in value:
+            need_keypress(ch)
+        need_keypress('\r' if not multiline else '\b')
+
+    return doit
+
     
 @pytest.fixture(scope='module')
 def master_xpub(dev):
@@ -372,7 +402,7 @@ def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
 @pytest.fixture(scope='module')
 def cap_screen(sim_exec):
     def doit():
-        # capture text shown; 4 lines or so?
+        # capture text shown; 4-10 lines or so?
         return sim_exec('RV.write(sim_display.full_contents)')
 
     return doit
@@ -399,22 +429,22 @@ def cap_image(sim_exec, is_q1):
                     j += 1
         return bytes(reorg)
 
-    # returns Pillow image  of whatever story is being actively shown on OLED/LCD
+    # returns Pillow image of whatever pixels are being actively shown on OLED/LCD
     def doit():
         from PIL import Image
 
         if is_q1:
             # trigger simulator to capture a snapshot into a named file, read it.
-            fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9e6)}.png')
+            fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
             try:
                 sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
-                time.sleep(0.250)
+                #time.sleep(0.250)
                 rv = Image.open(fn)
             finally:
                 os.remove(fn)
             return rv
         else:
-            # reads internal memory buffer intended screen contents
+            # reads internal memory buffer of intended screen contents
             raw = a2b_hex(sim_exec('''
 from glob import dis;
 from ubinascii import hexlify as b2a_hex;
@@ -574,7 +604,7 @@ def press_cancel(need_keypress, has_qwerty):
     return doit
 
 @pytest.fixture
-def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty):
+def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty, cap_screen):
 
     def doit():
         # get to top, force a redraw
@@ -583,6 +613,12 @@ def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty):
             time.sleep(.1)      # required
 
             m = cap_menu()
+
+            chk = cap_screen()
+            if m[0] not in chk:
+                # menu vs. screen wrong ... happens if looking at a story, not a menu
+                press_cancel()
+                continue
 
             if 'CANCEL' in m:
                 # special case to get out of passphrase menu
@@ -603,7 +639,7 @@ def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty):
     return doit
 
 @pytest.fixture
-def pick_menu_item(cap_menu, need_keypress, has_qwerty):
+def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen):
     WRAP_IF_OVER = 16       # see ../shared/menu.py
 
     def doit(text):
@@ -612,6 +648,9 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty):
         m = cap_menu()
         if text not in m:
             raise KeyError(text, "%r not in menu: %r" % (text, m))
+
+        # double check we're looking at this menu, not stale data
+        assert m[0] in cap_screen(), 'not in menu mode'
 
         m_pos = m.index(text)
 
@@ -1463,8 +1502,9 @@ def nfc_read(request, needs_nfc):
     # - perfer to do over NFC reader, but can work over USB too
     def doit_usb():
         sim_exec = request.getfixturevalue('sim_exec')
-        rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"")', binary=True)
+        rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"DISABLED")', binary=True)
         if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
+        if rv == b'DISABLED': raise pytest.xfail('NFC disabled')
         return rv
 
     try:

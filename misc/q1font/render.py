@@ -40,8 +40,8 @@ KEYS_FUNCTION = KEY_F1 + KEY_F2 + KEY_F3 + KEY_F4 + KEY_F5 + KEY_F6
 
 KEYCAP_SYMBOLS = [ KEY_NFC, KEY_QR, KEY_TAB ] + list(KEYS_FUNCTION)
 
-# TODO: 
-# - needed _ but for blank space; never found one, and may not need anyway
+# we override these w/ our own art, but the chars involved are still these
+LINEDRAW_SYMBOLS = [ '━', '┃', '┇', '┓', '┏', '┛','┗' ]        # 'heavy' versions
 
 CHARSET = [chr(x) for x in range(32,127)] \
             + ['→', '←', '↳', '•', '⋯',
@@ -51,8 +51,7 @@ CHARSET = [chr(x) for x in range(32,127)] \
                 '◉', '◯', '◌', '⬚', '░',
                 '™', '©', '⬧', '※',
                 '─', '—',
-                '━', '┃', '┓', '┏', '┛','┗',        # 'heavy' versions
-          ] + KEYCAP_SYMBOLS
+          ] + KEYCAP_SYMBOLS + LINEDRAW_SYMBOLS
 
 # these are be better as double-wide chars
 DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
@@ -111,6 +110,41 @@ def make_palette(shades, col, darken=1.0):
     txt = ', '.join('0x%04x'% i for i in vals)
     return vals, txt, pack('>%dH' % NUM_GREYS, *vals)
 
+def draw_linedrawing(ch, img, draw):
+    # Draw box-drawing chars
+    # PROBLEM: cell is odd width, so no way to pixel-align veritcals
+    # SOLUTION: leftwards on left of box, and rightwards on right side... two vertical lines
+    lw = 2      # line width
+    w, h = CELL_W, CELL_H
+    mw = (w // 2) - (lw//2)
+    mh = (h // 2) - lw
+    if ch == '┃':
+        print(f"{mw=} {mh=}  CELL={CELL_W}x{CELL_H}")
+        
+    # erase old attempt from font
+    draw.rectangle( (0,0, w, h), fill=0)
+
+    # order of points matters (but it shouldn't)
+    # - cannot do subpixel here, must be integer
+    if ch == '┃':       # for left side of box
+        draw.line( (mw-1, 0, mw-1, h), width=lw, fill=255)
+    elif ch == '┇':     # for right side of box
+        draw.line( (mw+2, 0, mw+2, h), width=lw, fill=255)
+    elif ch == '━':
+        draw.line( (0, mh, w, mh), width=lw, fill=255)
+    elif ch == '┓':
+        draw.line( [(0, mh), (mw+2, mh), (mw+2, h)], width=lw, fill=255, joint='curve')
+    elif ch == '┏':
+        draw.line( [(mw, h), (mw, mh), (w, mh)], width=lw, fill=255, joint='curve')
+    elif ch == '┛':
+        draw.line( [(mw+2, 0), (mw+2, mh+1), (0, mh+1)], width=lw, fill=255, joint='curve')
+    elif ch == '┗':
+        draw.line( [(mw-1, 0), (mw-1, mh), (w, mh)], width=lw, fill=255, joint='curve')
+
+    else:
+        raise ValueError(ch)
+    
+
 def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     font = ImageFont.truetype(FONT, FONT_SIZE)
     keycap_font = ImageFont.truetype(FONT, FONT_SIZE-7)     # see KEY_NFC
@@ -129,7 +163,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
     NUM_COL = 24
     samples = Image.new('L', (((CELL_W + 1) * NUM_COL) + 1,
-                                ((CELL_H+1) * (NUM_CHARS//NUM_COL + 3))), 255)
+                                ((CELL_H+1) * (NUM_CHARS//NUM_COL + 4))), 255)
 
     cells = Image.new('L', (CELL_W*NUM_CHARS*2, CELL_H), 0)
 
@@ -183,6 +217,10 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
         else:
             draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font)
 
+        if 1 and ch in LINEDRAW_SYMBOLS:
+            # replace line draw stuff w/ own art (altho normal works)
+            draw_linedrawing(ch, img, draw)
+
         # check 
         actual = img.getcolors()
         if ch not in ' █':
@@ -209,6 +247,14 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
 
     x, y = 0, (samples.height-CELL_H)
     for ch in 'Lazy dog jumpsX123':
+        samples.paste(data[ch], box=(x, y))
+        x += CELL_W
+
+    x, y = (samples.width-(CELL_W*4)), (samples.height-(CELL_H*3))
+    for n, ch in enumerate('┏━┓┃ ┇┗━┛'):
+        if n in { 3, 6}:
+            y += CELL_H
+            x -= CELL_W * 3
         samples.paste(data[ch], box=(x, y))
         x += CELL_W
 

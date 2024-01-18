@@ -47,7 +47,7 @@ still backed-up.''')
         if not await ux_confirm(msg):
             return
 
-    # XXX changes in this order will break lots of stuff
+    # XXX any change in this ordering will break lots of stuff! Bad design.
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
                 'XPRV (BIP-32)', '32-bytes hex', '64-bytes hex', 'Passwords']
 
@@ -306,11 +306,15 @@ async def password_entry(*args, **kwargs):
     the_ux.pop()        # WHY?
 
 async def send_keystrokes(kbd, password, path):
-    ch = await ux_show_story(
-        "Place mouse at required password prompt, then press OK to send keystrokes.\n\n"
-        "Password:\n%s\n\n"
-        "Path:\n%s" % (password, path),
-    )
+    # Prompt them for timing reasons, then send.
+    msg = "Place mouse at required password prompt, then press OK to send keystrokes."
+
+    if path:
+        # for BIP-85 usage, be chatty and confirm p/w value on screen (debatable)
+        msg += "\n\nPassword:\n%s" % password
+        msg += "\n\nPath:\n%s" % path
+
+    ch = await ux_show_story(msg)
 
     if ch == 'y':
         await kbd.send_keystrokes(password + '\r')
@@ -322,7 +326,7 @@ async def send_keystrokes(kbd, password, path):
 
     return False
 
-async def single_send_keystrokes(password, path):
+async def single_send_keystrokes(password, path=None):
     # switches to USB mode required, then does send
     from usb import EmulatedKeyboard
 
