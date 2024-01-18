@@ -72,7 +72,7 @@ class QRDisplaySingle(UserInteraction):
         self.redraw()
 
         while 1:
-            ch = await ux_wait_keyup()
+            ch = await ux_wait_keyup(flush=True)
 
             was = self.idx
             if ch == '1' or ch == 'i':

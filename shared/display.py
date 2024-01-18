@@ -127,13 +127,19 @@ class Display:
     def vline(self, x):
         self.dis.line(x, 0, x, 64, 1)
 
-    def scroll_bar(self, fraction):
-        # along right edge
+    def scroll_bar(self, offset, count, per_page):
+        # along right edge, height is proportional to page size
+        num_pages = max(count / per_page, 2)
+        bh = max(int(64 / num_pages), 4)
+        pos = int((64 - bh) * (offset / count))
+
+        if offset and (offset + per_page >= count):
+            # force last page to be at end
+            pos = 64 - bh
+
         self.dis.fill_rect(128-5, 0, 5, 64, 0)
-        self.icon(128-3, 1, 'scroll');
-        mm = 64-6
-        pos = min(int(mm*fraction), mm)
-        self.dis.fill_rect(128-2, pos, 1, 8, 1)
+        self.icon(128-3, 1, 'scroll')
+        self.dis.fill_rect(128-2, pos, 1, bh, 1)
 
         if is_devmode and not ckcc.is_simulator():
             self.dis.fill_rect(128-6, 20, 5, 21, 1)
@@ -288,7 +294,7 @@ class Display:
 
         self.show()
 
-    def draw_story(self, lines, top, num_lines, is_sensitive):
+    def draw_story(self, lines, top, num_lines, is_sensitive, **ignored):
         self.clear()
 
         y=0
@@ -306,7 +312,7 @@ class Display:
 
                 y += 13
 
-        self.scroll_bar(top / num_lines)
+        self.scroll_bar(top, num_lines, 4)
         self.show()
 
     def draw_status(self, **k):

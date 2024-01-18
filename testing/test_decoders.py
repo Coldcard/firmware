@@ -128,4 +128,20 @@ def test_detector_xp(code, try_decode):
     assert ft == code[0:4]
     assert vals[0] == code
 
+
+@pytest.mark.parametrize('url', [
+    'sldkfjslk%20d%40fj',
+    'to+sp%65ce+ed',
+    # add some more cases?
+])
+def test_urldecode(url, sim_exec):
+    from urllib.parse import unquote_plus
+
+    cmd = "from decoders import url_decode;  " + \
+                f"RV.write(url_decode({url!r}))"
+    result = sim_exec(cmd)
+
+    assert result == unquote_plus(url)
+    
+
 # EOF

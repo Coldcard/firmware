@@ -124,7 +124,7 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
 
 async def ux_input_numbers(val, validate_func):
     # collect a series of digits
-    # - not wanted on Q1; just get the digits w/ the text.
+    # - not wanted on Q1; just get the digits mixed in w/ the text.
     pass
 
 async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
@@ -138,9 +138,14 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     # - funct_keys => CTA msg, and map of Fn key to async-function which takes and returns new text
     # - TODO: regex validation for derviation paths?
     # - TODO: arrowing around
+    # - if unlimited length, then we allow newlines and CANCEL is only way out.
+    # - multiline entries don't mean newlines are allowed, because we often have to wrap
+    #   to make longer single-line value onto screen
     from glob import dis
     from ux import ux_show_story
-    MAX_LINES = 7
+
+    MAX_LINES = 7        # without scroll
+    can_scroll = False
 
     value = value or ''
 
@@ -153,9 +158,10 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     line_len = CHARS_W-2
     y = 2
     if max_len is None:
-        # whatever the max is we can support
-        num_lines = MAX_LINES
-        max_len = num_lines * line_len
+        # try hard to support "unlimited" entry, with scrolling and all that.
+        num_lines = CHARS_H-2
+        line_len = CHARS_W
+        can_scroll = True
     elif max_len <= line_len:
         # single-line or perhaps shorter value
         line_len = max_len
@@ -166,7 +172,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         line_len = 25
         num_lines = 4
     else:
-        # multi-line mode: just do a box for most of screen
+        # non-scrolling but still multi-line mode
         num_lines, runt = divmod(max_len, line_len)
         if runt:
             num_lines += 1
@@ -174,28 +180,46 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
 
     dis.clear()
 
-    if funct_keys:
-        msg, funct_keys = funct_keys
-        dis.text(None, -2, msg, dark=True)
+    if not can_scroll:
+        # Normal, no-scrolling case
+        if funct_keys:
+            msg, funct_keys = funct_keys
+            dis.text(None, -2, msg, dark=True)
 
-    if b39_complete or scan_ok:
-        msg = []
-        if b39_complete:
-            msg.append(KEY_TAB + " to auto-complete.")
+        if b39_complete or scan_ok:
+            msg = []
+            if b39_complete:
+                msg.append(KEY_TAB + " to auto-complete.")
+            if scan_ok:
+                msg.append(KEY_QR + " to scan.")
+            dis.text(None, -1, ' '.join(msg), dark=True)
+
+        elif num_lines <= 2:
+            # show this dumb CTA only if screen mostly blank
+            dis.text(None, -1, "CANCEL or ENTER when done.", dark=True)
+
+        dis.text(None, y-2, prompt)
+        x = dis.draw_box(None, y-1, line_len, num_lines, dark=True)
+    else:
+        # Scrolling, max-screen space mode (unlimited length for notes)
+        dis.text(None, 0, prompt)
+
+        # maybe some guide "icons" in top-left
+        msg = ''
         if scan_ok:
-            msg.append(KEY_QR + " to scan.")
-        dis.text(None, -1, ' '.join(msg), dark=True)
+            msg += KEY_QR
+        if b39_complete:
+            msg += KEY_TAB
+        if msg:
+            dis.text(-1, 0, msg, dark=True)
 
-    elif num_lines <= 2:
-        # show this dumb CTA only if screen mostly blank
-        dis.text(None, -1, "CANCEL or ENTER when done.", dark=True)
-
-    dis.text(None, y-2, prompt)
-    x = dis.draw_box(None, y-1, line_len, num_lines, dark=True)
+        dis.text(None, 1, '━'*CHARS_W, dark=True)
+        x = 0
+        y = 2
 
     # NOTE:
     #  - x,y here are top left of entry area
-    #  - does not allow cursor movement, always appending to end
+    #  - does not allow cursor movement, always appending to end (for now)
 
     # no key-repeat on certain keys
     err_msg = last_err = None
@@ -204,32 +228,48 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     while 1:
         dis.clear_box(x, y, line_len, num_lines)
 
-        # show error msg, until they type anything to clear it
-        if err_msg:
-            dis.text(None, y+num_lines+1, err_msg, dark=True)
-            err_msg = None
-            last_err = True
-        elif last_err:
-            dis.text(None, y+num_lines+1, '')
-            last_err = False
+        if not can_scroll:
+            # show error msg, until they type anything to clear it
+            if err_msg:
+                dis.text(None, y+num_lines+1, err_msg, dark=True)
+                err_msg = None
+                last_err = True
+            elif last_err:
+                dis.text(None, y+num_lines+1, '')
+                last_err = False
 
-        if not value:
-            bx = 0
-            n = 0
-            if placeholder:
-                dis.text(x, y, placeholder, dark=True)
+        if not can_scroll or not value:
+            if not value:
+                bx = 0
+                n = 0
+                if placeholder:
+                    dis.text(x, y, placeholder, dark=True)
+            elif not can_scroll:
+                for n, ln_pos in enumerate(range(0, len(value), line_len)):
+                    ln = value[ln_pos:ln_pos+line_len]
+                    dis.text(x, y+n, ln)
+                    bx = len(ln)
         else:
-            for n, ln_pos in enumerate(range(0, len(value), line_len)):
-                ln = value[ln_pos:ln_pos+line_len]
+            # scrollable case
+            lines = []
+            for ln in value.split('\n'):
+                if len(ln) <= line_len:
+                    lines.append(ln)
+                else:
+                    for pp in range(0, len(ln), line_len):
+                        lines.append(ln[pp:pp+line_len])
+
+            for n, ln in enumerate(lines[-MAX_LINES:]):
                 dis.text(x, y+n, ln)
                 bx = len(ln)
 
-        # decide cursor appearance
-        cur = CursorSpec(x+bx, y+n, CURSOR_OUTLINE)
-        if cur.x >= x+line_len:
-            # if on final possible location, adjust over top of final char
-            cur = CursorSpec(x+line_len-1, y+n, CURSOR_OUTLINE)
+            top_y = max(0, len(lines) - MAX_LINES)
+            if top_y:
+                dis.scroll_bar(top_y, len(lines), MAX_LINES)
 
+        # decide cursor location
+        # - if on final possible location, adjust over top of final char
+        cur = CursorSpec(min(x+bx, x+line_len-1), y+n, CURSOR_OUTLINE)
         dis.show(cursor=cur)
 
         ch = await press.wait()
@@ -238,10 +278,13 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
             exit_armed = False
 
         if ch == KEY_ENTER:
-            if len(value) >= min_len:
-                break
+            if can_scroll:
+                value += '\n'
             else:
-                err_msg = 'Need %d characters at least.' % min_len
+                if len(value) >= min_len:
+                    break
+                else:
+                    err_msg = 'Need %d characters at least.' % min_len
         elif ch == KEY_DELETE or ch == KEY_LEFT:
             if len(value) > 0:
                 # delete last char
@@ -257,17 +300,37 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                 exit_armed = True
                 continue
             else:
+                if can_scroll:
+                    # CANCEL is only way out in scrolling mode
+                    # - cleanup blank lines at end, etc
+                    value = value.strip()
+                    break
                 value = None
                 break
 
-        elif ch == KEY_QR:
-            # Insert or replace? I think replace
+        elif ch == KEY_QR and scan_ok:
+            # Insert or replace? I think replace in most cases, but not if long msg.
+            # - always show result
             ss = dis.save_state()
             zz = QRScannerInteraction()
             got = await zz.scan_text('Scan any QR or Barcode for text.')
-            if got:     # handle cancel, etc
-                value = got
-                err_msg = 'Replace w/ data from scan.'
+            if got:     # not canceled, etc
+                if not value or not can_scroll:
+                    # whole QR should be it, no more editing
+                    # - but not if too long
+                    if not max_len or len(got) <= max_len:
+                        value = got
+                        if len(value) >= 60:
+                            break
+                    else:
+                        err_msg = "QR data too long! (max %d)" % max_len
+                else:
+                    # add onto end, if inf length supported, and they aren't on first char
+                    # - adds a line break for them too
+                    if value[-1] != '\n':
+                        value += '\n'
+                    value += got
+
             dis.restore_state(ss)
 
         elif b39_complete and ch == KEY_TAB:
@@ -326,7 +389,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         else:
             ch = ch_remap(ch)
             if ch is not None:
-                if len(value) < max_len:
+                if not max_len or len(value) < max_len:
                     value += ch
                 else:
                     value = value[0:max_len-1] + ch
@@ -792,6 +855,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
     from utils import CapsHexWriter
     from glob import dis, PSRAM
     from ux import show_qr_code, the_ux, ux_show_story
+    from ux_q1 import show_bbqr_codes
     from sffile import SFFile
     from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
     from qrs import MAX_V40_SIZE
@@ -835,12 +899,11 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         # SOON will be a loop here, that animates multiple QR's ... for now, one.
         here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
 
-        if data_len >= MAX_V40_SIZE:
-            # too big for single version 40 QR
-            await ux_show_story("Resulting txn is too big for single QR code.")
-            return
-
-        await show_qr_code(here, is_alnum=True, msg=(txid or 'Partly Signed PSBT'))
+        if data_len < MAX_V40_SIZE:
+            await show_qr_code(here, is_alnum=True, msg=(txid or 'Partly Signed PSBT'))
+        else:
+            # too big for single version 40 QR - do BBQr animated QR
+            await show_bbqr_codes(here, 'T' if txid else 'P', (txid or 'Partly Signed PSBT'))
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
@@ -922,5 +985,100 @@ async def ux_visualize_textqr(txt, maxlen=200):
 
     await ux_show_story("%s\n\nAbove is text that was scanned. "
             "We can't do any more with it." % txt, title="Simple Text")
+
+async def show_bbqr_codes(type_code, data, msg):
+    # Compress, encode and split data.  Then show it animated
+    # - happily goes to version 40 if needed
+    # - needs to pre-render the QR to get animation to be faster
+    # - version of first QR is used for all ther others
+    # - on Q: ver 23 => 109x109 is largest that can be pixel-doubled, can do v40 tho at 1:1
+    # - data may point to output side of PSRAM area
+    # - Should always doZlib compression (because it nearly always helps)
+    #    - BUT: need zlib compress (not present)
+    #    - SO: write C code that compresses from one area memory (or PSRAM) into PSRAM
+    #      and also does Base32 expansion at same time.
+    # - doing HEX encoding because it is easier
+    from bbqr import TYPE_LABELS, int2base36
+    from glob import PSRAM, dis
+    from ux import ux_wait_keyup
+    from ubinascii import hexlify as b2a_hex
+    import uqr
+
+    PAYLOAD_PER_V40 = 2144      # if HEX encoed, active payload (max) per v40 QR
+
+    assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work
+    assert type_code in TYPE_LABELS
+
+    data_len = len(data)
+
+    # assume V40 and split
+    num_parts = int(round((data_len / PAYLOAD_PER_V40) + 0.5, 0))
+    part_size = data_len // num_parts
+    runt_size = data_len - (num_parts * part_size)
+    if runt_size:
+        num_parts += 1
+        part_size = (data_len+1) // num_parts
+
+    # render QR's into PSRAM at zero
+    dis.fullscreen('Generating BBQr...', .1)
+
+    print('num_parts=%d runt_size=%d' % (num_parts, runt_size))
+
+    pos = 0
+    for pkt in range(num_parts):
+        # BBQr header
+        hdr = 'B$H' + type_code + int2base36(num_parts) + int2base36(pkt)
+
+        # encode the hex
+        body = b2a_hex(data[pos:pos+part_size]).upper().decode()
+        pos += part_size
+
+        if pkt < 4 or pkt == num_parts-1:
+            print('pkt=%d => pos=%d len(b)=%d' % (pkt, pos, len(body)))
+
+        # do the hard work
+        qr_data = uqr.make(hdr+body, min_version=(20 if num_parts == 1 else 40),
+                                        max_version=40, encoding=uqr.Mode_ALPHANUMERIC)
+
+        # save the rendered QR
+        if pkt == 0:
+            # common values for all parts
+            scan_w, w, raw = qr_data.packed()
+            raw_qr_size = len(raw)
+            qr_size = (raw_qr_size + 3) & ~0x3        # align4
+            print('w=%d  sz=%d>%d' % (w, raw_qr_size, qr_size))
+        else:
+            _, _, raw = qr_data.packed()
+
+        PSRAM.write_at(qr_size * pkt, qr_size)[0:raw_qr_size] = raw
+
+        del qr_data
+
+        dis.progress_bar_show(pkt / num_parts)
+    
+    # display
+    ms_per_each = 200
+
+    while 1:
+        for pkt in range(num_parts):
+            buf = PSRAM.read_at(qr_size * pkt, raw_qr_size)
+            dis.draw_qr_display( (scan_w, w, buf), msg, True, None, None, False, 
+                    progress=(pkt / num_parts))
+
+            if num_parts == 1:
+                # no need for animation
+                await ux_wait_keyup(flush=True)
+                return
+
+            # wait for key or animation delay
+            try:
+                ch = await asyncio.wait_for_ms(ux_wait_keyup(flush=True), ms_per_each)
+            except asyncio.TimeoutError:
+                ch = None
+
+            if ch: return
+
+    # not reached
+
 
 # EOF

@@ -107,9 +107,10 @@ def gate(method, buf_io, arg2):
             buf_io[0:32] = b'CSIM0000' + b'\0'*(32-8)
         if arg2 == 1:
             # not supported: write
-            return buf_io
+            print("Write BAG NUMBER: %r" % buf_io)
+            return 0
         if arg2 == 2:
-            # in factory mode?
+            # query RDP level, ie. in factory mode?
             buf_io[0] = 0xff if ('-f' in sys.argv) else 2
 
     if method == 21:

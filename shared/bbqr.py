@@ -20,8 +20,8 @@ TYPE_LABELS = dict(P='PSBT File', T='Transaction', J='JSON', C='CBOR', U='Unicod
                         X='Executable', B='Binary')
 
 def int2base36(n):
-    # convert an integer to two digits of base 36 string. 00 thu ZZ
-    # converse is just int(s, base=36)
+    # convert an integer to two digits of base 36 string. 00 thu ZZ as bytes
+    # - converse is just int(s, base=36)
 
     tostr = lambda x: chr(48+x) if x < 10 else chr(65+x-10)
 
@@ -155,7 +155,7 @@ class BBQrState:
         return (len(self.parts) < hdr.num_parts) or self.runt
 
 class BBQrStorage:
-    # override this on other projects... which don't have enough ram for whole thing
+    # Store BBQr in normal RAM. Simple. Pure.
 
     def __init__(self):
         self.reset()
@@ -252,7 +252,7 @@ class BBQrPsramStorage(BBQrStorage):
     def write_pkt(self, offset, data):
         # Save indicated data, but problems:
         # - writes to PSRAM must be 4-aligned
-        # - due to base32 math, typically incoming data will not be
+        # - due to base32 math, typically incoming data will not be aligned
         # - write what we can, keep the rest around in normal memory
         from glob import PSRAM
 

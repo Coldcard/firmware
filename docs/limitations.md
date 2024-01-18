@@ -169,4 +169,5 @@ We will summarize transaction outputs as "change" back into same wallet, however
     - SeedQR (but not Compact SeedQR)
 - for Base58, Bech32 encoded values, if checksum is wrong then it is shown as text
 - binary QR codes are not supported
+- when pasting into a secure note, if the QR's data is > 60 chars long, we assume done
 

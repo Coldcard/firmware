@@ -86,7 +86,7 @@ def decode_qr_result(got, expect_secret=False, expect_text=False):
 
         if expect_text:
             if ty != 'U':
-                raise QRDecodeExplained('Expected text?')
+                raise QRDecodeExplained('Expected text, got ' + TYPE_LABELS.get(ty, ty))
             return got.decode()
 
         if ty == 'P':
@@ -213,5 +213,27 @@ def decode_qr_text(got):
 
     # catch-all ... was text. Can still show on-screen perhaps useful for other applications
     return 'text', (orig_got,)
+
+def url_decode(u):
+    # expand control chars from %XX and '+'
+    # - equiv to urllib.parse.unquote_plus
+    # - ure.sub is missing, so not being clever here.
+    # - give up on syntax errors, and return unchanged
+    import ure
+
+    u = u.replace('+', ' ')
+    while 1:
+        pos = u.find('%')
+        if pos < 0: break
+
+        try:
+            ch = chr(int(u[pos+1:pos+3], 16))
+            assert ch != '\0'
+        except:
+            return u
+
+        u = u[0:pos] + ch + u[pos+3:]
+
+    return u
 
 # EOF

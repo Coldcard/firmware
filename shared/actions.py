@@ -1358,7 +1358,7 @@ async def import_xprv(_1, _2, item):
 
         if not fn: return
 
-        with CardSlot(force_vdisk=force_vdisk, readonly=True) as card:
+        with CardSlot(readonly=True, **choice) as card:
             with open(fn, 'rt') as fd:
                 for ln in fd.readlines():
                     if 'prv' in ln:
@@ -1616,7 +1616,7 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     if choices is None:
         choices = []
         try:
-            with CardSlot(force_vdisk=force_vdisk, slot_b=slot_b) as card:
+            with CardSlot(force_vdisk=force_vdisk, slot_b=slot_b, readonly=True) as card:
                 sofar = set()
 
                 for path in card.get_paths():
