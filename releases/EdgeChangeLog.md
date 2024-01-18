@@ -7,19 +7,21 @@
 - for experimental use.  DO NOT use for large Bitcoin amounts.
 ```
 
-## 6.2.2X - 2024-01-XX
+## 6.2.2X - 2024-01-18
 
 - New Feature: Miniscript [USB interface](https://github.com/Coldcard/ckcc-protocol/blob/master/README.md#miniscript)
-- New Feature: Named miniscript imports. Wrap descriptor in json `{"name:"n0", "desc":"<descriptor>"}`
-  with `name` key to use this name instead of the filename. Mostly usefull for USB and NFC
-  imports that have no file, in which case name was created from descriptor checksum.
+- New Feature: Named miniscript imports. Wrap descriptor in json
+  `{"name:"n0", "desc":"<descriptor>"}` with `name` key to use this name instead of the
+  filename. Mostly usefull for USB and NFC imports that have no file, in which case name
+  was created from descriptor checksum.
 - Enhancement: Allow keys with same origin, differentiated only by change index derivation
   in miniscript descriptor.
 - Enhancement: HSM `wallet` rule enabled for miniscript
 - Enhancement: Add `msas` in to the `share_addrs` HSM [rule](https://coldcard.com/docs/hsm/rules/)
   to be able to check miniscript addresses in HSM mode.
 - Enhancement: HW Accelerated AES CTR for BSMS and passphrase saver
-- Bugfix: Do not allow to import duplicate miniscript wallets (thanks to [AnchorWatch](https://www.anchorwatch.com/))
+- Bugfix: Do not allow to import duplicate miniscript
+  wallets (thanks to [AnchorWatch](https://www.anchorwatch.com/))
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 
 ## 6.2.1X - 2023-10-26
