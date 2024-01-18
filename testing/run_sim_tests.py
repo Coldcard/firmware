@@ -243,6 +243,7 @@ def main():
             # test_rolls.py should be run alone as it does not need simulator
             print("Skipped", test_module)
             continue
+
         print("Started", test_module)
         if test_module in ["test_bsms.py", "test_address_explorer.py", "test_export.py",
                            "test_multisig.py", "test_ux.py"]:
