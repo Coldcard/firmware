@@ -1265,7 +1265,15 @@ class PassphraseMenu(MenuSystem):
         await set_ephemeral_seed(nv, summarize_ux=False, bip39pw=pp_sofar,
                                  meta="BIP-39 Passphrase on [%s]" % parent_xfp_str)
         if ch == '1':
-            await PassphraseSaver().append(xfp, pp_sofar)
+            try:
+                await PassphraseSaver().append(xfp, pp_sofar)
+            except CardMissingError:
+                await needs_microsd()
+            except Exception as e:
+                await ux_show_story(
+                    title="ERROR",
+                    msg='Save failed!\n\n%s\n%s' % (e, problem_file_line(e))
+                )
 
         goto_top_menu()
 
