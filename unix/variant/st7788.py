@@ -66,4 +66,15 @@ class ST7788:
         hdr = struct.pack('<s5H', 's', 0, 0, 0, 0, len(full_path))
         self.pipe.write(hdr + full_path.encode())
 
+    async def test_cap_qr(self):
+        # replaces ux.ux_wait_keyup
+        # - capture QR on screen
+        # - do either a Timeout, or KEY_ENTER
+        print("test_cap_qr: ")
+        n = getattr(self, '_frnum', 0)
+        self.save_snapshot('cap%d.png' % n)
+        self._frnum = n + 1
+
+        return None if n < 10 else '\r'
+
 # EOF 
