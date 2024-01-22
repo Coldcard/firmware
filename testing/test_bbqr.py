@@ -3,20 +3,79 @@
 # BBQr and secure notes.
 #
 
-import pytest, os, time
+import pytest, os, time, random
 from helpers import B2A, prandom
 from binascii import b2a_hex, a2b_hex
+from bbqr import split_qrs, join_qrs
+from charcodes import KEY_QR
 
-@pytest.mark.parametrize('size', [ 20, 990] )
-def XXX_test_show_bbqr_codes(size, sim_execfile, need_keypress, cap_screen_qr, sim_exec):
-    sim_exec('import main; main.BBQR_SIZE = %r; ' % size)
-    rv = sim_execfile('devtest/bbqr.py')
-    assert 'Error' not in rv
-    readback = cap_screen_qr()
-    assert readback == 'sdf'
+# All tests in this file are exclusively meant for Q
+#
+@pytest.fixture(autouse=True)
+def THIS_FILE_requires_q1(is_q1):
+    if not is_q1:
+        raise pytest.skip('Q1 only')
+
+@pytest.fixture
+def readback_bbqr(need_keypress, cap_screen_qr, sim_exec):
+    def doit():
+        num_parts = None
+        encoding, file_type = None, None
+        parts = {}
+
+        for retries in range(1000):
+            #time.sleep(0.05)       # not really sync'ed
+            try:
+                rb = cap_screen_qr(no_history=True).decode('ascii')
+            except RuntimeError:
+                time.sleep(0.1)
+                continue
+
+            #print(rb[0:20]+'...')
+
+            if len(rb) > 2 and rb[0:2] != 'B$':
+                # it sent a non-BBQr QR which isn't wrong.. but let caller decode
+                return 0, None, None, rb
+
+            assert rb[0:2] == 'B$'
+            if not encoding:
+                encoding = rb[2]
+            else:
+                assert encoding == rb[2]
+
+            if not file_type:
+                file_type = rb[3]
+            else:
+                assert file_type == rb[3]
+
+            if num_parts is None:
+                num_parts = int(rb[4:6], 36)
+                assert num_parts >= 1
+            else:
+                assert num_parts == int(rb[4:6], 36)
+
+            part = int(rb[6:8], 36)
+            assert part < num_parts
+
+            if part in parts:
+                assert parts[part] == rb
+            else:
+                parts[part] = rb
+
+            if len(parts) >= num_parts:
+                break
+
+        if len(parts) != num_parts:
+            # timed out
+            raise pytest.fail(f'Could not read all parts of BBQr: '\
+                                f'got {[parts.keys()]} of {num_parts}')
+
+        return num_parts, encoding, file_type, parts
+
+    return doit
     
 @pytest.fixture
-def render_bbqr(need_keypress, cap_screen_qr, sim_exec):
+def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr):
     def doit(data=None, str_expr=None, file_type='B', msg=None, setup=''):
         assert data or str_expr
 
@@ -35,46 +94,11 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec):
         print(f"RESP: {resp}")
         assert 'error' not in resp.lower()
 
-        num_parts = None
-        encoding = None
-        parts = {}
-        for retries in range(1000):
-            time.sleep(0.005)       # not really sync'ed
-            try:
-                rb = cap_screen_qr().decode('ascii')
-            except RuntimeError:
-                time.sleep(0.1)
-                continue
-
-            print(rb[0:20])
-            assert rb[0:2] == 'B$'
-            if not encoding:
-                encoding = rb[2]
-            else:
-                assert encoding == rb[2]
-            assert rb[3] == file_type
-
-            if num_parts is None:
-                num_parts = int(rb[4:6], 36)
-                assert num_parts >= 1
-            else:
-                assert num_parts == int(rb[4:6], 36)
-            part = int(rb[6:8], 36)
-            assert part < num_parts
-
-            parts[part] = rb
-
-            if len(parts) >= num_parts:
-                break
+        num_parts, encoding, rb_ft, parts = readback_bbqr()
+        assert rb_ft == file_type
 
         print(sim_exec(f'import main; main.TT.cancel()'))
-
-        need_keypress('\r')
         need_keypress('0')      # for menu to redraw
-
-        if len(parts) != num_parts:
-            # timed out
-            raise pytest.fail(f'Could not read all parts of BBQr: got {[parts.keys()]} of {num_parts}')
 
         # we only can decode simple BBQr here
         assert encoding == 'H'
@@ -97,22 +121,107 @@ def test_show_bbqr_sizes(size, need_keypress, cap_screen_qr, sim_exec, render_bb
     assert len(data) == size
     assert data == 'a' * size
 
-@pytest.mark.parametrize('src', [ 'rng', 'gpu'] )
+    ft, data2 = join_qrs(parts.values())
+    assert data2.decode('utf-8') == data
+    assert ft == 'U'
+
+@pytest.mark.parametrize('src', [ 'rng', 'gpu', 'bigger'] )
 def test_show_bbqr_contents(src, need_keypress, cap_screen_qr, sim_exec, render_bbqr, load_shared_mod):
 
     args = dict(msg=f'Test {src}', file_type='B')
     if src == 'rng':
         args['data'] = expect = prandom(500)        # limited by simulated USB path
-    elif src == 'gpu':
+    elif src in { 'gpu', 'bigger' }:
         args['setup'] = 'from gpu_binary import BINARY'
-        args['str_expr'] = '"BINARY"'
         cc_gpu_bin = load_shared_mod('cc_gpu_bin', '../shared/gpu_binary.py')
-        expect = cc_gpu_bin.BINARY
+        if src == 'gpu':
+            args['str_expr'] = 'BINARY'
+            expect = cc_gpu_bin.BINARY
+        elif src == 'bigger':
+            args['str_expr'] = 'BINARY*10'
+            expect = cc_gpu_bin.BINARY*10
 
     data, parts = render_bbqr(**args)
 
-    assert len(parts) > 1
     assert len(data) == len(expect)
     assert data == expect
+    ft, data2 = join_qrs(parts.values())
+    assert data2 == data
+    assert ft == 'B'
+
+@pytest.mark.parametrize('size', [ 10 ] )
+@pytest.mark.parametrize('max_ver', [ 10, 20 ] )
+@pytest.mark.parametrize('encoding', '2HZ' )
+@pytest.mark.parametrize('partial', [False, True])
+def test_bbqr_psbt(size, encoding, max_ver, partial, 
+                    need_keypress, scan_a_qr, readback_bbqr,
+                    cap_screen_qr, render_bbqr, goto_home, use_regtest, decode_psbt_with_bitcoind,
+                    decode_with_bitcoind, fake_txn, dev, cap_story, start_sign, end_sign):
+
+    num_in = size
+    num_out = size*10
+
+    def hack(psbt):
+        if partial:
+            # change first input to not be ours
+            pk = list(psbt.inputs[0].bip32_paths.keys())[0]
+            pp = psbt.inputs[0].bip32_paths[pk]
+            psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
+
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack)
+    open('debug/last.psbt', 'wb').write(psbt)
+
+    goto_home()
+    need_keypress(KEY_QR)
+
+    actual_vers, parts = split_qrs(psbt, 'P',  max_version=max_ver, encoding=encoding)
+    # def split_qrs(raw, type_code, encoding=None, 
+    #  min_split=1, max_split=1295, min_version=5, max_version=40
+
+    random.shuffle(parts)
+
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(4.0 / len(parts))       # just so we can watch
+
+    for r in range(20):
+        title, story = cap_story()
+        if 'OK TO SEND' in title:
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('never saw it?')
+
+    # approve it
+    need_keypress('y')
+
+    time.sleep(.2)
+
+    # expect signed txn back
+    num_parts, encoding, file_type, parts = readback_bbqr()
+    if num_parts == 0:
+        # not sent as BBQr .. assume Hex
+        rb = a2b_hex(parts)
+        file_type = 'P' if rb[0:4] == b'psbt' else 'T'
+    else:
+        assert file_type in 'TP'
+        _, rb = join_qrs(parts.values())
+
+    if file_type == 'T':
+        assert not partial
+        decoded = decode_with_bitcoind(rb)
+    elif file_type == 'P':
+        assert partial
+        assert rb[0:4] == b'psbt'
+        decoded = decode_psbt_with_bitcoind(rb)
+        assert not decoded['unknown']
+        decoded = decoded['tx']
+
+    # just smoke test; syntax not content
+    assert len(decoded['vin']) == num_in
+    assert len(decoded['vout']) == num_out
+
+    need_keypress('x')      # back to menu
+    
 
 # EOF

@@ -20,3 +20,6 @@ pyscard==2.0.2
 # BSMS library
 git+https://github.com/coinkite/bsms-bitcoin-secure-multisig-setup.git@master#egg=bsms-bitcoin-secure-multisig-setup
 
+# BBQr library
+git+https://github.com/coinkite/BBQr.git@master#egg=bbqr
+

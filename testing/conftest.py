@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT
@@ -438,8 +438,14 @@ def cap_image(sim_exec, is_q1):
             fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
             try:
                 sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
-                time.sleep(0.250)       # need this but I don't see why
-                rv = Image.open(fn)
+                while 1:
+                    time.sleep(0.010)
+                    try:
+                        rv = Image.open(fn)
+                        break
+                    except:
+                        # PIL parsing errors and FileNotFoundError
+                        continue
             finally:
                 os.remove(fn)
             return rv
@@ -514,7 +520,7 @@ def qr_quality_check():
 
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit():
+    def doit(no_history=False):
         # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
         # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
         global QR_HISTORY
@@ -530,9 +536,10 @@ def cap_screen_qr(cap_image):
 
         orig_img = cap_image()
 
-        # document it
-        tname = os.environ.get('PYTEST_CURRENT_TEST')
-        QR_HISTORY.append( (tname, orig_img) )
+        if not no_history:
+            # document it
+            tname = os.environ.get('PYTEST_CURRENT_TEST')
+            QR_HISTORY.append( (tname, orig_img) )
 
         if orig_img.width == 128:
             # Mk3/4 - pull out just the QR, blow it up 16x
@@ -543,18 +550,32 @@ def cap_screen_qr(cap_image):
         else:
             # Q1 - trim status line, convert to greyscale
             w, h = orig_img.size        # 320x240
-            img = orig_img.convert('L')
+            # - remove status bar (harmless)
+            # - and progress bar (does cause readability issues)
+            # - MAYBE: blow up the size, helps on fine QR.
+            # - but some are still unreadable!?!?
+            img = orig_img.crop( (0, 15, w, h-5) ).convert('L')
+            #w, h = img.size 
+            #img = img.resize( (w*9, h*9))
 
         img.save('debug/last-qr.png')
         #img.show()
 
-        # Important: w/h reversed in shape of NP array
-        np = numpy.array(img.getdata(), 'uint8').reshape(img.height, img.width)
+        # Above usually works @ zoom=1, but not always!
+        # - simulate what users do... move phone back and forth until it scans
+        oo = img
+        for zoom in range(1, 7):
+            if zoom > 1:
+                w, h = oo.size
+                img = oo.resize( (w*zoom, h*zoom) )
 
-        scanner = zbar.Scanner()
-        for sym, value, *_ in scanner.scan(np):
-            assert sym == 'QR-Code', 'unexpected symbology: ' + sym
-            return value            # bytes, could be binary
+            # Important: w/h reversed in shape of NP array
+            np = numpy.array(img.getdata(), 'uint8').reshape(img.height, img.width)
+
+            scanner = zbar.Scanner()
+            for sym, value, *_ in scanner.scan(np):
+                assert sym == 'QR-Code', 'unexpected symbology: ' + sym
+                return value            # bytes, could be binary
 
         # for debug, check debug/last-qr.png
         raise RuntimeError('qr code not found')
@@ -1062,7 +1083,7 @@ def decode_with_bitcoind(bitcoind):
             return bitcoind.rpc.decoderawtransaction(B2A(raw_txn))
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
-            return bitcoind.decoderawtransaction(B2A(raw_txn))
+            return bitcoind.rpc.decoderawtransaction(B2A(raw_txn))
 
     return doit
 
@@ -1074,10 +1095,10 @@ def decode_psbt_with_bitcoind(bitcoind):
         from base64 import b64encode
 
         try:
-            return bitcoind.decodepsbt(b64encode(raw_psbt).decode('ascii'))
+            return bitcoind.rpc.decodepsbt(b64encode(raw_psbt).decode('ascii'))
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
-            return bitcoind.decodepsbt(b64encode(raw_psbt).decode('ascii'))
+            return bitcoind.rpc.decodepsbt(b64encode(raw_psbt).decode('ascii'))
 
     return doit
 
@@ -1530,6 +1551,20 @@ def nfc_write(request, needs_nfc):
         return rf.write_nfc
     except:
         return doit_usb
+
+@pytest.fixture()
+def scan_a_qr(sim_exec, is_q1):
+    if not is_q1:
+        raise pytest.xfail('needs scanner')
+
+    def doit(qr):
+        assert isinstance(qr, str)
+        qr = qr.encode('ascii')
+        rv = sim_exec(f'glob.SCAN._q.put_nowait({qr!r})')
+        if 'Traceback' in rv: raise pytest.fail(rv)
+
+    return doit
+
 
 def ccfile_wrap(recs):
     from struct import pack
