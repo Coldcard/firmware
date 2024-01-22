@@ -4,7 +4,7 @@
 #
 
 import pytest, os, time
-from helpers import B2A
+from helpers import B2A, prandom
 from binascii import b2a_hex, a2b_hex
 
 @pytest.mark.parametrize('size', [ 20, 990] )
@@ -17,7 +17,7 @@ def XXX_test_show_bbqr_codes(size, sim_execfile, need_keypress, cap_screen_qr, s
     
 @pytest.fixture
 def render_bbqr(need_keypress, cap_screen_qr, sim_exec):
-    def doit(data=None, str_expr=None, file_type='B', msg=None):
+    def doit(data=None, str_expr=None, file_type='B', msg=None, setup=''):
         assert data or str_expr
 
         if data:
@@ -27,13 +27,18 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec):
             data = str_expr
 
         num_parts = None
-        sim_exec(f'import ux_q1, main; main.TT = asyncio.create_task(ux_q1.show_bbqr_codes'\
-                    f'("{file_type}", {data}, {msg!r}));')
+        cmd = f'{setup};' if setup else ''
+        cmd += f'import ux_q1,main; main.TT = asyncio.create_task(ux_q1.show_bbqr_codes'\
+                        f'("{file_type}", {data}, {msg!r}));'
+        print(f"CMD: {cmd}")
+        resp = sim_exec(cmd)
+        print(f"RESP: {resp}")
+        assert 'error' not in resp.lower()
 
         num_parts = None
         encoding = None
         parts = {}
-        for retries in range(200):
+        for retries in range(1000):
             time.sleep(0.005)       # not really sync'ed
             try:
                 rb = cap_screen_qr().decode('ascii')
@@ -82,11 +87,32 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec):
 
     return doit
 
-@pytest.mark.parametrize('size', [ 20, 990, 5000] )
-def test_show_bbqr_codes(size, need_keypress, cap_screen_qr, sim_exec, render_bbqr):
+@pytest.mark.parametrize('size', [ 1, 20, 990, 2060*2,  5000, 65537] )
+def test_show_bbqr_sizes(size, need_keypress, cap_screen_qr, sim_exec, render_bbqr):
+    # test lengths
     data, parts = render_bbqr(str_expr=f"'a'*{size}", msg=f'Size {size}', file_type='U')
+
     if size < 2000:
         assert len(parts) == 1 
+    assert len(data) == size
     assert data == 'a' * size
+
+@pytest.mark.parametrize('src', [ 'rng', 'gpu'] )
+def test_show_bbqr_contents(src, need_keypress, cap_screen_qr, sim_exec, render_bbqr, load_shared_mod):
+
+    args = dict(msg=f'Test {src}', file_type='B')
+    if src == 'rng':
+        args['data'] = expect = prandom(500)        # limited by simulated USB path
+    elif src == 'gpu':
+        args['setup'] = 'from gpu_binary import BINARY'
+        args['str_expr'] = '"BINARY"'
+        cc_gpu_bin = load_shared_mod('cc_gpu_bin', '../shared/gpu_binary.py')
+        expect = cc_gpu_bin.BINARY
+
+    data, parts = render_bbqr(**args)
+
+    assert len(parts) > 1
+    assert len(data) == len(expect)
+    assert data == expect
 
 # EOF
