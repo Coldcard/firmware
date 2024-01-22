@@ -997,14 +997,15 @@ async def show_bbqr_codes(type_code, data, msg):
     #    - BUT: need zlib compress (not present)
     #    - SO: write C code that compresses from one area memory (or PSRAM) into PSRAM
     #      and also does Base32 expansion at same time.
-    # - doing HEX encoding because it is easier
+    # - just doing HEX encoding because it is easier for now
+    # - this code needs better home
     from bbqr import TYPE_LABELS, int2base36
     from glob import PSRAM, dis
     from ux import ux_wait_keyup
     from ubinascii import hexlify as b2a_hex
     import uqr
 
-    PAYLOAD_PER_V40 = 2144      # if HEX encoed, active payload (max) per v40 QR
+    PAYLOAD_PER_V40 = 2144      # if HEX encoded, active payload (max) per v40 QR
 
     assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work
     assert type_code in TYPE_LABELS
@@ -1016,15 +1017,19 @@ async def show_bbqr_codes(type_code, data, msg):
     part_size = data_len // num_parts
     runt_size = data_len - (num_parts * part_size)
     if runt_size:
+        # spread data evenly between min-required parts
         num_parts += 1
-        part_size = (data_len+1) // num_parts
+        part_size = (data_len+num_parts-1) // num_parts
+        assert part_size <= PAYLOAD_PER_V40
 
-    # render QR's into PSRAM at zero
+    assert num_parts * part_size >= data_len
+
     dis.fullscreen('Generating BBQr...', .1)
 
     print('num_parts=%d runt_size=%d' % (num_parts, runt_size))
 
     pos = 0
+    force_version = 40
     for pkt in range(num_parts):
         # BBQr header
         hdr = 'B$H' + type_code + int2base36(num_parts) + int2base36(pkt)
@@ -1037,8 +1042,8 @@ async def show_bbqr_codes(type_code, data, msg):
             print('pkt=%d => pos=%d len(b)=%d' % (pkt, pos, len(body)))
 
         # do the hard work
-        qr_data = uqr.make(hdr+body, min_version=(20 if num_parts == 1 else 40),
-                                        max_version=40, encoding=uqr.Mode_ALPHANUMERIC)
+        qr_data = uqr.make(hdr+body, min_version=(10 if pkt == 0 else force_version),
+                                        max_version=force_version, encoding=uqr.Mode_ALPHANUMERIC)
 
         # save the rendered QR
         if pkt == 0:
@@ -1046,7 +1051,8 @@ async def show_bbqr_codes(type_code, data, msg):
             scan_w, w, raw = qr_data.packed()
             raw_qr_size = len(raw)
             qr_size = (raw_qr_size + 3) & ~0x3        # align4
-            print('w=%d  sz=%d>%d' % (w, raw_qr_size, qr_size))
+            force_version = qr_data.version()
+            print('w=%d  sz=%d>%d  vers=%d' % (w, raw_qr_size, qr_size, force_version))
         else:
             _, _, raw = qr_data.packed()
 
@@ -1063,7 +1069,7 @@ async def show_bbqr_codes(type_code, data, msg):
         for pkt in range(num_parts):
             buf = PSRAM.read_at(qr_size * pkt, raw_qr_size)
             dis.draw_qr_display( (scan_w, w, buf), msg, True, None, None, False, 
-                    progress=(pkt / num_parts))
+                                    partial_bar=((pkt, num_parts) if num_parts else None))
 
             if num_parts == 1:
                 # no need for animation
@@ -1073,6 +1079,9 @@ async def show_bbqr_codes(type_code, data, msg):
             # wait for key or animation delay
             try:
                 ch = await asyncio.wait_for_ms(ux_wait_keyup(flush=True), ms_per_each)
+            except asyncio.CancelledError:
+                # during testing
+                return
             except asyncio.TimeoutError:
                 ch = None
 

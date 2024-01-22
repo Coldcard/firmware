@@ -13,12 +13,12 @@ from ucollections import namedtuple
 from font_iosevka import CELL_W, CELL_H, TEXT_PALETTES, COL_TEXT, COL_DARK_TEXT, COL_SCROLL_DARK
 from font_iosevka import FontIosevka
 
-
 #WIDTH = const(320)
 #HEIGHT = const(240)
 LEFT_MARGIN = const(7)      # equal on right side, but used for scroll bar
 TOP_MARGIN = const(15)
-ACTIVE_H = const(240 - TOP_MARGIN)
+PROGRESS_BAR_H = const(5)
+ACTIVE_H = const(240 - TOP_MARGIN - PROGRESS_BAR_H)
 CHARS_W = const(34)
 CHARS_H = const(10)
 
@@ -119,7 +119,9 @@ class Display:
 
         # state of progress bar (bottom edge)
         self.last_prog_x = -1
+        self.last_prog_w = -1
         self.next_prog_x = 0
+        self.next_prog_w = 0
 
         # state of scroll bar (right side)
         self.last_scroll = 0.0
@@ -282,7 +284,7 @@ class Display:
             y = CHARS_H + y
 
         if y >= CHARS_H: 
-            print("BAD Draw '%s' at y=%d" % (msg, y))
+            #print("BAD Draw '%s' at y=%d" % (msg, y))
             return     # past bottom
 
         for ch in msg:
@@ -302,14 +304,14 @@ class Display:
             self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
         self.last_buf = self.make_buf(32)
         self.next_buf = self.make_buf(32)
-        self.next_prog_x = 0
+        self.next_prog_w = 0
         self.next_scroll = None
 
     def clear(self):
         # clear text
         self.next_buf = self.make_buf(32)
         # clear progress bar / scroll
-        self.next_prog_x = 0
+        self.next_prog_w = 0
         self.next_scroll = None
 
     def show(self, just_lines=None, cursor=None, max_bright=False):
@@ -356,15 +358,17 @@ class Display:
             self.last_buf[y][:] = self.next_buf[y]
 
         # maybe update progress bar
-        if self.next_prog_x != self.last_prog_x:
+        if (self.next_prog_x, self.next_prog_w) != (self.last_prog_x, self.last_prog_w):
             # NOTE: misc/gpu/lcd.c must be updated to match any changes here
             x = self.next_prog_x
-            h = 5
-            if x:
-                self.dis.fill_rect(0, HEIGHT-h, x, h, COL_PROGRESS)
-            if x != WIDTH:
-                self.dis.fill_rect(x, HEIGHT-h, WIDTH-x, h, COL_BLACK)
+            w = self.next_prog_w
+            h = PROGRESS_BAR_H
+            self.dis.fill_rect(0, HEIGHT-h, WIDTH, h, COL_BLACK)
+            if w:
+                self.dis.fill_rect(x, HEIGHT-h, w, h, COL_PROGRESS)
+
             self.last_prog_x = x
+            self.last_prog_w = w
 
         if self.next_scroll != self.last_scroll:
             self._draw_scroll_bar(self.next_scroll)
@@ -391,10 +395,12 @@ class Display:
     # When drawing another screen for a bit, then coming back, use these
     def save_state(self):
         # TODO: should be a dataclass w/ all our state details
-        return ([array.array('I', ln) for ln in self.last_buf], self.last_prog_x, self.last_scroll)
+        return ([array.array('I', ln) for ln in self.last_buf],
+                    self.last_prog_x, self.last_prog_w,
+                    self.last_scroll)
 
     def restore_state(self, old_state):
-        rows, self.next_prog_x, self.next_scroll = old_state
+        rows, self.next_prog_x, self.next_prog_w, self.next_scroll = old_state
         for y in range(CHARS_H):
             self.next_buf[y][:] = rows[y]
         self.show()
@@ -474,7 +480,15 @@ class Display:
         # Horizontal progress bar
         # takes 0.0 .. 1.0 as fraction of doneness
         percent = max(0, min(1.0, percent))
-        self.next_prog_x = int(WIDTH * percent)
+        self.next_prog_x = 0
+        self.next_prog_w = int(WIDTH * percent)
+
+    def progress_part_bar(self, n_of_m):
+        # for BBQr: a part of a bar
+        n, m = n_of_m
+        w = WIDTH // m
+        self.next_prog_x = (n * w)
+        self.next_prog_w = w
 
     def progress_sofar(self, done, total):
         # Update progress bar, but only if it's been a while since last update
@@ -503,7 +517,9 @@ class Display:
             # - self.show will stop animation
             # - and redraw w/ no bar visible
             self.last_prog_x = -1
+            self.last_prog_w = -1
             self.next_prog_x = 0
+            self.next_prog_w = 0
             self.show()
 
     def set_brightness(self, val):
@@ -585,7 +601,7 @@ class Display:
         self.scroll_bar(top, num_lines, CHARS_H)
         self.show()
 
-    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, progress=None):
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert, partial_bar=None):
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
@@ -593,8 +609,8 @@ class Display:
         from utils import word_wrap
 
         self.real_clear()
-        if progress is not None:
-            self.progress_bar(progress)
+        if partial_bar is not None:
+            self.progress_part_bar(partial_bar)
 
         # maybe show something other than QR contents under it
         msg = sidebar or msg
@@ -616,7 +632,7 @@ class Display:
             num_lines = 0
 
         if num_lines > 2:
-            # show no text if it would be too big (case: 18, 24 seed words)
+            # show no text if it would be too big (example: 18, 24 seed words)
             num_lines = 0
             del parts
 
