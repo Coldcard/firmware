@@ -410,8 +410,10 @@ class MenuSystem:
                 # jump down, based on screen postion
                 self.goto_n(ord(key)-ord('1'))
             elif key in self.shortcuts:
-                # run the function directly
-                return self.shortcuts[key]
+                # run the function, if predicate allows
+                m = self.shortcuts[key]
+                if not getattr(m, 'predicate', None) or m.predicate():
+                    return m
             else:
                 # maybe a shortcut?
                 for n, item in enumerate(self.items):
