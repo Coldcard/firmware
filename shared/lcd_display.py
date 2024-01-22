@@ -359,7 +359,7 @@ class Display:
 
         # maybe update progress bar
         if (self.next_prog_x, self.next_prog_w) != (self.last_prog_x, self.last_prog_w):
-            # NOTE: misc/gpu/lcd.c must be updated to match any changes here
+            # NOTE: misc/gpu/lcd.c may need update to follow future changes here
             x = self.next_prog_x
             w = self.next_prog_w
             h = PROGRESS_BAR_H
