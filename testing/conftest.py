@@ -438,7 +438,7 @@ def cap_image(sim_exec, is_q1):
             fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
             try:
                 sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
-                #time.sleep(0.250)
+                time.sleep(0.250)       # need this but I don't see why
                 rv = Image.open(fn)
             finally:
                 os.remove(fn)
@@ -556,8 +556,8 @@ def cap_screen_qr(cap_image):
             assert sym == 'QR-Code', 'unexpected symbology: ' + sym
             return value            # bytes, could be binary
 
-        # debug: check debug/last-qr.png
-        raise pytest.fail('qr code not found')
+        # for debug, check debug/last-qr.png
+        raise RuntimeError('qr code not found')
 
     return doit
 
@@ -1598,6 +1598,7 @@ def load_shared_mod():
         import importlib.util
         spec = importlib.util.spec_from_file_location(name, path)
         mod = importlib.util.module_from_spec(spec)
+        mod.const = int         # pre-define const() to improve portability
         spec.loader.exec_module(mod)
         return mod
     return doit
