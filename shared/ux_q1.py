@@ -11,6 +11,7 @@ from exceptions import AbortInteraction, QRDecodeExplained
 from queues import QueueEmpty
 import bip39
 from decoders import decode_qr_result
+from ubinascii import hexlify as b2a_hex
 
 class PressRelease:
     def __init__(self, need_release=KEY_ENTER+KEY_CANCEL):
@@ -896,14 +897,17 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
 
         UserAuthorizedAction.cleanup()
 
-        # SOON will be a loop here, that animates multiple QR's ... for now, one.
+        # Show the result as a QR, perhaps many BBQr's
+        # - note: already HEX here!
         here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
 
         if data_len < MAX_V40_SIZE:
+            # and can fit into single QR hex-encoded QR
             await show_qr_code(here, is_alnum=True, msg=(txid or 'Partly Signed PSBT'))
         else:
             # too big for single version 40 QR - do BBQr animated QR
-            await show_bbqr_codes(here, 'T' if txid else 'P', (txid or 'Partly Signed PSBT'))
+            await show_bbqr_codes('T' if txid else 'P', here,
+                                        (txid or 'Partly Signed PSBT'), already_hex=True)
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
@@ -917,7 +921,6 @@ async def ux_visualize_txn(bin_txn):
     from ux import ux_show_story
     from io import BytesIO
     from psbt import  calc_txid
-    from ubinascii import hexlify as b2a_hex
     from serializations import CTransaction
 
     txn = CTransaction()
@@ -986,7 +989,7 @@ async def ux_visualize_textqr(txt, maxlen=200):
     await ux_show_story("%s\n\nAbove is text that was scanned. "
             "We can't do any more with it." % txt, title="Simple Text")
 
-async def show_bbqr_codes(type_code, data, msg):
+async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     # Compress, encode and split data.  Then show it animated
     # - happily goes to version 40 if needed
     # - needs to pre-render the QR to get animation to be faster
@@ -998,11 +1001,10 @@ async def show_bbqr_codes(type_code, data, msg):
     #    - SO: write C code that compresses from one area memory (or PSRAM) into PSRAM
     #      and also does Base32 expansion at same time.
     # - just doing HEX encoding because it is easier for now
-    # - this code needs better home
+    # - TODO this code needs better home
     from bbqr import TYPE_LABELS, int2base36
     from glob import PSRAM, dis
     from ux import ux_wait_keyup
-    from ubinascii import hexlify as b2a_hex
     import uqr
 
     PAYLOAD_PER_V40 = 2144      # if HEX encoded, active payload (max) per v40 QR
@@ -1011,6 +1013,8 @@ async def show_bbqr_codes(type_code, data, msg):
     assert type_code in TYPE_LABELS
 
     data_len = len(data)
+    if already_hex:
+        data_len //= 2
 
     # assume V40 and split
     num_parts = int(round((data_len / PAYLOAD_PER_V40) + 0.5, 0))
@@ -1026,8 +1030,6 @@ async def show_bbqr_codes(type_code, data, msg):
 
     dis.fullscreen('Generating BBQr...', .1)
 
-    print('num_parts=%d runt_size=%d' % (num_parts, runt_size))
-
     pos = 0
     force_version = 40
     for pkt in range(num_parts):
@@ -1035,11 +1037,11 @@ async def show_bbqr_codes(type_code, data, msg):
         hdr = 'B$H' + type_code + int2base36(num_parts) + int2base36(pkt)
 
         # encode the hex
-        body = b2a_hex(data[pos:pos+part_size]).upper().decode()
+        if already_hex:
+            body = data[pos*2:(pos+part_size)*2].decode()
+        else:
+            body = b2a_hex(data[pos:pos+part_size]).upper().decode()
         pos += part_size
-
-        if pkt < 4 or pkt == num_parts-1:
-            print('pkt=%d => pos=%d len(b)=%d' % (pkt, pos, len(body)))
 
         # do the hard work
         qr_data = uqr.make(hdr+body, min_version=(10 if pkt == 0 else force_version),
@@ -1052,7 +1054,6 @@ async def show_bbqr_codes(type_code, data, msg):
             raw_qr_size = len(raw)
             qr_size = (raw_qr_size + 3) & ~0x3        # align4
             force_version = qr_data.version()
-            print('w=%d  sz=%d>%d  vers=%d' % (w, raw_qr_size, qr_size, force_version))
         else:
             _, _, raw = qr_data.packed()
 
@@ -1062,7 +1063,7 @@ async def show_bbqr_codes(type_code, data, msg):
 
         dis.progress_bar_show(pkt / num_parts)
     
-    # display
+    # display rate (plus time to send to display, etc)
     ms_per_each = 200
 
     while 1:

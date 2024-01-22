@@ -373,7 +373,7 @@ NormalSystem = [
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu, shortcut='s'),
     MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
-    ShortcutItem(KEY_NFC, predicate=lambda: nfc_enabled(), menu=NFCToolsMenu),
+    ShortcutItem(KEY_NFC, predicate=nfc_enabled, menu=NFCToolsMenu),
 ]
 
 # Shown until unit is put into a numbered bag
