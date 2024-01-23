@@ -68,18 +68,6 @@ def truncate_seed_words(words):
     return ' '.join(w[0:4] for w in words)
 
 
-def seed_story_to_words(story: str):
-    # filter those that starts with space, number and colon --> actual words
-    # NOTE: will show xprv/tprv in full if we are not storing
-    #       words (ie. BIP-32 loaded as master secret). So just return that string.
-    if story[1:4] == 'prv':
-        return story.split()[0]
-
-    # Q may display in a number of different ways to get them all onto the screen
-    words = [(int(idx), word) for idx, word in re.findall(r'(\d{1,2}):\s?(\w+)', story)]
-    return [w for _,w in sorted(words)]
-
-
 @pytest.fixture
 def ephemeral_seed_disabled(sim_exec):
     def doit():
@@ -100,7 +88,7 @@ def ephemeral_seed_disabled_ui(cap_menu):
 
 
 @pytest.fixture
-def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story, nfc_read_text):
+def get_seed_value_ux(goto_home, pick_menu_item, need_keypress, cap_story, nfc_read_text, seed_story_to_words):
     def doit(nfc=False):
         goto_home()
         pick_menu_item("Advanced/Tools")
@@ -347,7 +335,7 @@ def verify_ephemeral_secret_ui(cap_story, need_keypress, cap_menu, dev, fake_txn
 
 @pytest.fixture
 def generate_ephemeral_words(goto_eph_seed_menu, pick_menu_item,
-                             need_keypress, cap_story, settings_set,
+                             need_keypress, cap_story, settings_set, seed_story_to_words,
                              ephemeral_seed_disabled_ui, confirm_tmp_seed):
     def doit(num_words, dice=False, from_main=False, seed_vault=None, testnet=True):
         if testnet:

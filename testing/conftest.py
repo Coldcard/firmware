@@ -217,12 +217,16 @@ def do_keypresses(need_keypress):
 @pytest.fixture(scope='module')
 def enter_text(need_keypress, is_q1):
     def doit(value, multiline=False):
-        assert is_q1
         if not multiline:
             assert '\r' not in value
+
         for ch in value:
             need_keypress(ch)
-        need_keypress('\r' if not multiline else '\b')
+
+        if is_q1:
+            need_keypress('\r' if not multiline else '\b')
+        else:
+            need_keypress('y')
 
     return doit
 
@@ -1927,6 +1931,23 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
 
         # avoid simulator reboot; restore normal state
         unit_test('devtest/abort_ux.py')
+
+    return doit
+
+@pytest.fixture
+def seed_story_to_words():
+    # Q may display words in a number of different ways to get them all onto the screen,
+    # so need to be more general about searching screen for the words.
+
+    def doit(story: str):
+        # filter those that starts with space, number and colon --> actual words
+        # NOTE: will show xprv/tprv in full if we are not storing
+        #       words (ie. BIP-32 loaded as master secret). So just return that string.
+        if story[1:4] == 'prv':
+            return story.split()[0]
+
+        words = [(int(idx), word) for idx, word in re.findall(r'(\d{1,2}):\s?(\w+)', story)]
+        return [w for _,w in sorted(words)]
 
     return doit
 
