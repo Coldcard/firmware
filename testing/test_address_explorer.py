@@ -6,7 +6,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
 from pycoin.encoding import a2b_hashed_base58, hash160
 from helpers import detruncate_address
-
+from charcodes import KEY_QR, KEY_NFC
 
 @pytest.fixture
 def mk_common_derivations():
@@ -57,15 +57,12 @@ def parse_display_screen(cap_story, is_mark3):
         title, body = cap_story()
         lines = body.split('\n')
         if start == 0:
-            assert 'Press (1) to save Address summary file to SD Card.' in lines[0]
-            if is_mark3:
-                assert '(2) to view QR Codes' in lines[0]
-            assert lines[2] == 'Addresses %d..%d:' % (start, start + n - 1)
-            raw_addrs = lines[4:-1] # Remove header & last line
-        else:
             # no header after first page
-            assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
-            raw_addrs = lines[2:-1]
+            assert 'to save address summary file' in body
+            assert 'show QR code' in body
+
+        assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
+        raw_addrs = lines[2:-1]
 
         d = dict()
         for path_raw, addr, empty in zip(*[iter(raw_addrs)]*3):
@@ -95,7 +92,7 @@ def validate_address():
     return doit
 
 @pytest.fixture
-def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path,
+def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path, is_q1,
                             virtdisk_path, nfc_read_text, load_export_and_verify_signature):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
@@ -105,25 +102,25 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
         time.sleep(.3)
         title, story = cap_story()
         if change:
-            need_keypress("6")
+            need_keypress("0")
         if way == "sd":
             need_keypress('1')
         elif way == "vdisk":
-            if "Press (4) to save to Virtual Disk." not in story:
-                pytest.skip("Vdisk disabled")
-            need_keypress("4")
+            if "save to Virtual Disk." not in story:
+                raise pytest.skip("Vdisk disabled")
+            need_keypress("2")
         else:
             # NFC
-            if "Press (3) to share via NFC." not in story:
-                pytest.skip("NFC disabled")
-            need_keypress("3")
+            if "share via NFC" not in story:
+                raise pytest.skip("NFC disabled")
+            need_keypress("3" if not is_q1 else KEY_NFC)
             time.sleep(0.3)
             addresses = nfc_read_text()
             time.sleep(0.3)
             need_keypress("y")
             # nfc just returns 10 addresses
             assert len(addresses.split("\n")) == 10
-            pytest.xfail("PASSED - different export format for NFC")
+            raise pytest.xfail("PASSED - different export format for NFC")
 
         time.sleep(.5)  # always long enough to write the file?
         title, body = cap_story()
@@ -158,6 +155,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
     need_keypress('4')
     time.sleep(.01)
     m = cap_menu()
+
     gap = iter(range(1, 10))
     for idx, (path, addr_format) in enumerate(common_derivs):
         # derive index=0 address
@@ -168,8 +166,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         # capture full index=0 address from display screen & validate it
         goto_address_explorer(click_idx=_id)
         addr_dict = parse_display_screen(0, 10)
-        if subpath not in addr_dict:
-            raise Exception('Subpath ("%s") not found in address explorer display' % subpath)
+        assert subpath in addr_dict, 'subpath ("%s") not found' % subpath
         expected_addr = addr_dict[subpath]
         validate_address(expected_addr, sk)
 
