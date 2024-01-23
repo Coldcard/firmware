@@ -292,6 +292,7 @@ class Display:
             self.next_buf[y][x] = ord(ch) + attr
             x += 1
             if ch in FontIosevka.DOUBLE_WIDE:
+                if x >= CHARS_W: break              # XXX will that look right?
                 self.next_buf[y][x] = 0
                 x += 1
 
