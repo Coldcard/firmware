@@ -14,6 +14,7 @@ from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
 from decoders import url_decode
+from utils import problem_file_line
 
 ONE_LINE = CHARS_W-2
 
@@ -103,7 +104,7 @@ class NotesMenu(MenuSystem):
 
         news = [ MenuItem('New Note', f=cls.new_note, arg='n'),
                  MenuItem('New Password', f=cls.new_note, arg='p'),
-                 ShortcutItem(KEY_QR, f=cls.quick_import)]
+                 ShortcutItem(KEY_QR, f=cls.quick_create)]
 
         if not NoteContent.count():
             rv = news + [ MenuItem('Disable Feature', f=cls.disable_notes) ]
@@ -116,7 +117,7 @@ class NotesMenu(MenuSystem):
 
             rv.append(MenuItem('Export All', f=cls.export_all))
 
-        rv.append(MenuItem('Import from File', f=cls.import_from_file))
+        rv.append(MenuItem('Import', f=import_from_other))
 
         return rv
 
@@ -125,8 +126,9 @@ class NotesMenu(MenuSystem):
         await start_export(NoteContent.get_all())
 
     @classmethod
-    async def quick_import(cls, menu, _, item):
-        # using QR, import a Note (never a password) with auto-generated title.
+    async def quick_create(cls, menu, _, item):
+        # using QR, created a Note (never a password) with auto-generated title.
+        # - we are auto-detecting some common QR formats here but only to get a title
         tmp = NoteContent()
         tmp.title = 'Scanned'
 
@@ -149,9 +151,6 @@ class NotesMenu(MenuSystem):
         await tmp._save_ux(menu)
         await cls.drill_to(menu, tmp)
 
-    @classmethod
-    async def import_from_file(cls, *a):
-        choice = await import_export_prompt('Import Notes', is_import=True)
 
     def update_contents(self):
         # Reconstruct the list of notes on this dynamic menu, because
@@ -189,9 +188,15 @@ class NotesMenu(MenuSystem):
 class NoteContentBase:
     def __init__(self, json={}, idx=-1):
         # no args will make a blank record, else we are deserializing json
+        # - called only by subclasses
         for fld in self.flds:
             setattr(self, fld, json.get(fld, ''))
         self.idx = idx
+
+    @classmethod
+    def constructor(cls, j, idx):
+        # create correct class based on JSON content
+        return PasswordContent(j, idx) if 'user' in j else NoteContent(j, idx)
 
     def serialize(self):
         return {fld:getattr(self, fld, '') for fld in self.flds}
@@ -203,7 +208,7 @@ class NoteContentBase:
         # list of all notes/passwords
         rv = []
         for idx, j in enumerate(settings.get('notes', [])):
-            rv.append(PasswordContent(j, idx) if 'user' in j else NoteContent(j, idx))
+            rv.append(cls.constructor(j, idx))
         return rv
 
     @classmethod
@@ -245,8 +250,7 @@ class NoteContentBase:
         is_new = self.save()
 
         if not is_new:
-            # change our own menu (only one thing: title line)
-            #menu.items[0].label = '"%s"' % self.title
+            # change our own menu contents
             menu.replace_items(await self.make_menu())
 
             # update parent
@@ -489,17 +493,14 @@ async def start_export(notes):
     singular = (len(notes) == 1)
 
     item = notes[0].type_label if singular else  'all notes & passwords'
-    choice = await import_export_prompt(item, is_import=False, title="Data Export",
-                    footnotes="\n\nWARNING: No encryption happens here. Your secrets will be cleartext.")
+    choice = await import_export_prompt(item, is_import=False, title="Data Export", no_nfc=True,
+                    footnotes="\n\nWARNING: No encryption happens here. "
+                                            "Your secrets will be cleartext.")
     if choice == KEY_CANCEL:
         return
 
     # render it
     data = json.dumps(dict(coldcard_notes=[i.serialize() for i in notes]))
-
-    if choice == KEY_NFC:
-        await NFC.share_json(data)
-        return
 
     if choice == KEY_QR:
         # Always do BBRq.
@@ -529,5 +530,62 @@ async def start_export(notes):
     msg = 'Export file written:\n\n%s' % nice
     await ux_show_story(msg)
 
+
+async def import_from_other(menu, *a):
+    # Suck in a bunch of notes/passwords. Has to be coming from a Coldcard
+    # - but it's also just simple JSON
+    from actions import file_picker
+    import json
+
+    choice = await import_export_prompt('secure notes and/or passwords', no_nfc=True,
+                                            is_import=True, title='Data Import')
+    if choice == KEY_CANCEL:
+        return
+
+    elif choice == KEY_QR:
+        # Always do BBRq.
+        zz = QRScannerInteraction()
+        records = await zz.scan_json('Scan BBQr from other COLDCARD.')
+        if records is None: return
+
+    else:
+        def contains_json(fname):
+            if not fname.endswith('.json'): return False
+            print(fname)
+            try:
+                obj = json.load(open(fname, 'rt'))
+                assert 'coldcard_notes' in obj
+                return True
+            except Exception as exc:
+                import sys; sys.print_exception(exc)
+                pass
+
+        fn = await file_picker('Select file containing the items to be imported.',
+                                min_size=8, max_size=100000, taster=contains_json, **choice)
+        if not fn: return
+
+        with CardSlot(readonly=True, **choice) as card:
+            records = json.load(open(fn, 'rt'))
+
+    # We have some JSON, parsed now.
+    # - should dedup, but we aren't
+    try:
+        assert 'coldcard_notes' in records, 'Incorrect format'
+
+        # de-and-re-serialize each one (just in case? backwards compat?)
+        new = [NoteContentBase.constructor(rec, -1).serialize()
+                    for rec in records['coldcard_notes']]
+
+        was = list(settings.get('notes', []))
+        was.extend(new)
+        settings.put('notes', was)
+        settings.save()
+
+    except Exception as e:
+        await ux_show_story(title="Failure", msg=str(e) + '\n\n' + problem_file_line(e))
+        
+    await ux_dramatic_pause('Saved.', 3)
+    menu.update_contents()
+    
 
 # EOF
