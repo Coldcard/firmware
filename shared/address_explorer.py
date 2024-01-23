@@ -6,6 +6,7 @@
 #
 import chains, stash, version
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
+from ux import export_prompt_builder, import_export_prompt_decode
 from menu import MenuSystem, MenuItem
 from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
@@ -16,6 +17,7 @@ from glob import settings
 from auth import write_sig_file
 from utils import addr_fmt_label
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
+from charcodes import KEY_CANCEL
 
 def truncate_address(addr):
     # Truncates address to width of screen, replacing middle chars
@@ -262,29 +264,12 @@ Press (3) if you really understand and accept these risks.
         from glob import dis, NFC, VD
 
         def make_msg(change=0):
-            export_msg = "Press (1) to save Address summary file to SD Card."
-            if not ms_wallet:
-                export_msg += " Press (2) to view QR Codes."
-            if NFC:
-                export_msg += " Press (3) to share via NFC."
-            if VD:
-                export_msg += " Press (4) to save to Virtual Disk."
-            if allow_change and change == 0:
-                export_msg += " Press (6) to show change addresses."  # 5 is needed to move up
-            export_msg += '\n\n'
-
-            if version.has_qwerty:
-                export_msg = export_msg.replace('(2)', KEY_QR).replace('(3)', KEY_NFC)
-
-            msg = ""
+            # Build message and CTA about export, plus the actual addresses.
             if n > 1:
-                if start == 0:
-                    msg = export_msg
-                msg += "Addresses %d..%d:\n\n" % (start, start + n - 1)
+                msg = "Addresses %d..%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
-                msg = "Showing single address. "
-                msg += export_msg
+                msg = "Showing single address.\n\n"
 
             addrs = []
             chain = chains.current_chain()
@@ -308,7 +293,7 @@ Press (3) if you really understand and accept these risks.
                     dis.progress_bar_show(i/n)
 
             else:
-                # single-singer wallets
+                # single-signer wallets
 
                 with stash.SensitiveValues() as sv:
 
@@ -324,31 +309,41 @@ Press (3) if you really understand and accept these risks.
 
                     stash.blank_object(node)
 
+            # export options
+            k0 = 'to show change addresses' if allow_change and change == 0 else None
+            export_msg, escape = export_prompt_builder('address summary file',
+                                                    no_qr=bool(ms_wallet), key0=k0)
+            escape += KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_HOME+KEY_LEFT+KEY_RIGHT
+
+            if start == 0:
+                # Show CTA about export at bottom, and only for first page -- it can be huge!
+                msg += export_msg
+                if n > 1:
+                    msg += '\n\n'
             if n > 1:
                 msg += "Press RIGHT to see next group, LEFT to go back. X to quit."
 
-            return msg, addrs
+            return msg, addrs, escape
 
-        msg, addrs = make_msg()
+        msg, addrs, escape = make_msg()
         change = 0
         while 1:
-            ch = await ux_show_story(msg, escape='12346' + KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_HOME+KEY_LEFT+KEY_RIGHT)
+            ch = await ux_show_story(msg, escape=escape)
 
-            if ch == 'x':
+            choice = import_export_prompt_decode(ch)
+
+            if choice == KEY_CANCEL:
                 return
 
-            elif ch in "14":
-                if ch == '1':
-                    force_vdisk = False
-                else:
-                    force_vdisk = True
+            if isinstance(choice, dict):
                 # save addresses to MicroSD/VirtDisk
                 await make_address_summary_file(path, addr_fmt, ms_wallet,
                                         self.account_num, count=(250 if n!=1 else 1),
-                                        change=change, force_vdisk=force_vdisk)
+                                        change=change, **choice)
+
                 # continue on same screen in case they want to write to multiple cards
 
-            elif ch == '2' or ch == KEY_QR:
+            elif choice == KEY_QR:
                 # switch into a mode that shows them as QR codes
                 if ms_wallet:
                     # requires not multisig
@@ -358,7 +353,7 @@ Press (3) if you really understand and accept these risks.
                 await show_qr_codes(addrs, bool(addr_fmt & AFC_BECH32), start)
                 continue
 
-            elif NFC and (ch == '3' or ch == KEY_NFC):
+            elif NFC and (choice == KEY_NFC):
                 # share table over NFC
                 if n > 1:
                     await NFC.share_text('\n'.join(addrs))
@@ -366,7 +361,7 @@ Press (3) if you really understand and accept these risks.
                     await NFC.share_deposit_address(addrs[0])
                 continue
 
-            elif ch == '6' and allow_change:
+            elif choice == '0' and allow_change:
                 change = 1
 
             elif start > 0 and (ch == KEY_LEFT):
@@ -380,7 +375,7 @@ Press (3) if you really understand and accept these risks.
             else:
                 continue        # 3 in non-NFC mode
 
-            msg, addrs = make_msg(change)
+            msg, addrs, escape = make_msg(change)
 
 def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, change=0):
     # Produce CSV file contents as a generator
@@ -413,7 +408,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
         stash.blank_object(node)
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
-                                        count=250, change=0, force_vdisk=False):
+                                        count=250, change=0, **save_opts):
 
     # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
@@ -430,7 +425,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
 
     # pick filename and write
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**save_opts) as card:
             fname, nice = card.pick_filename(fname_pattern)
             h = sha256()
             # do actual write
