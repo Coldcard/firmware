@@ -19,6 +19,7 @@ from utils import B2A, parse_addr_fmt_str
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
+from charcodes import KEY_QR, KEY_NFC
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -1287,28 +1288,35 @@ class ShowAddressBase(UserAuthorizedAction):
         if not hsm_active:
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
-            if NFC:
-                msg += ' Press (3) to share via NFC.'
 
-            msg += ' Press (4) to view QR Code.'
+            if not version.has_qwerty:
+                if NFC:
+                    msg += ' Press (3) to share via NFC.'
+                msg += ' Press (4) to view QR Code.'
 
             while 1:
-                ch = await ux_show_story(msg, title=self.title, escape='34')
+                ch = await ux_show_story(msg, title=self.title, escape='34',
+                                        hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
 
-                if ch == '4':
+                if ch in '4'+KEY_QR:
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
-                if ch == '3' and NFC:
+
+                if NFC and (ch in '3'+KEY_NFC):
                     await NFC.share_text(self.address)
                     continue
+
                 break
+
         else:
             # finish the Wait...
             dis.progress_bar_show(1)     
+
         if self.restore_menu:
             self.pop_menu()
         else:
             self.done()
+
         UserAuthorizedAction.cleanup()      # because no results to store
 
     
