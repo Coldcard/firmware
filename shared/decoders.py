@@ -68,9 +68,10 @@ def decode_secret(got):
 
     raise ValueError('no idea')
 
-def decode_qr_result(got, expect_secret=False, expect_text=False):
+def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=False):
     # Could be BBQr or text
     # - if expect_text, just give us unparsed text back; after BBQr decode
+    # - if expect_bbqr, always return tuple: (file_type, len, data)
     # - otherwise, returns a tuple: (type, (*parsed_data))
 
     if hasattr(got, 'storage'):
@@ -80,6 +81,9 @@ def decode_qr_result(got, expect_secret=False, expect_text=False):
         except BaseException as exc:
             import sys; sys.print_exception(exc)
             raise QRDecodeExplained("BBQr decode failed: " + str(exc))
+
+        if expect_bbqr:
+            return (ty, final_size, got)
 
         if expect_secret and ty in 'PT':
             raise QRDecodeExplained('Expected secrets not PSBT/TXN')
@@ -98,20 +102,24 @@ def decode_qr_result(got, expect_secret=False, expect_text=False):
             return 'psbt', (None, final_size, got)
 
         elif ty == 'T':
-
             return 'txn', (got,)
 
         elif ty == 'U':
             # continue thru code below for TEXT
             pass
 
+        elif ty == 'J':
+            return 'json', (got,)
         else:
             msg = TYPE_LABELS.get(ty, 'Unknown FileType')
             raise QRDecodeExplained("Sorry, %s not useful." % msg)
 
+    elif expect_bbqr:
+        # convert as if it was BBQr of text
+        return ('U', len(got), got)
+
     elif expect_text:
         # caller just wants text anyway, so we are done
-        #assert isinstance(got, str)
         return got
 
     # First can we decode a master secret of some type?
