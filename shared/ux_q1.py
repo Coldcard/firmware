@@ -720,7 +720,7 @@ class QRScannerInteraction:
     async def scan(prompt, line2=None):
         # draw animation, while waiting for them to scan something
         # - CANCEL to abort
-        # - returns a proper string or None. newlines stripped. no binary support
+        # - returns a string, BBQr object or None.
         from glob import dis, SCAN
         from ux import ux_wait_keyup
         frames = [ 1, 2, 3, 4, 5, 4, 3, 2 ]
@@ -764,9 +764,9 @@ class QRScannerInteraction:
 
         return data
 
-    async def scan_text(self, prompt):
-        # Scan and return a text string. For things like BIP-39 passphrase
-        # and perhaps they are re-using a QR from something else. Don't act on contents.
+    async def scan_general(self, prompt, convertor):
+        # Scan stuff, and parse it .. raise QRDecodeExplained if you don't like it
+        # continues until something is accepted
         problem = None
 
         while 1:
@@ -776,7 +776,7 @@ class QRScannerInteraction:
                     return None
 
                 # Decode BBQr but not anything more complex
-                return decode_qr_result(got, expect_text=True)
+                return convertor(got)
             except QRDecodeExplained as exc:
                 problem = str(exc)
                 continue
@@ -784,6 +784,32 @@ class QRScannerInteraction:
                 #import sys; sys.print_exception(exc)
                 problem = "Unable to decode QR"
                 continue
+
+
+    async def scan_text(self, prompt):
+        # Scan and return a text string. For things like BIP-39 passphrase
+        # and perhaps they are re-using a QR from something else. Don't act on contents.
+        def convertor(got):
+            return decode_qr_result(got, expect_text=True)
+        return await self.scan_general(prompt, convertor)
+
+    async def scan_json(self, prompt):
+        # Scan for a BBQr and a BBQr object. Converts sometimes?
+        def convertor(got):
+            file_type, _, data = decode_qr_result(got, expect_bbqr=True)
+            if file_type == 'U':
+                data = data.strip()
+                if data[0] == '{' and data[-1] == '}':
+                    file_type = 'J'
+            if file_type != 'J':
+                raise QRDecodeExplained('Expected JSON data')
+            try:
+                import json
+                return json.loads(data)
+            except:
+                raise QRDecodeExplained('Unable to decode JSON data')
+            
+        return await self.scan_general(prompt, convertor)
 
 
     async def scan_anything(self, expect_secret=False, tmp=False):

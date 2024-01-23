@@ -324,7 +324,7 @@ async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
 
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
-def _import_prompt_builder(title, no_qr):
+def _import_prompt_builder(title, no_qr, no_nfc):
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
@@ -339,29 +339,32 @@ def _import_prompt_builder(title, no_qr):
         if VD is not None:
             prompt += ", press (2) to import from Virtual Disk"
             escape += "2"
-        if NFC is not None:
+        if (NFC is not None) and not no_nfc:
             if has_qwerty:
                 prompt += ", press (NFC) to import via NFC"
                 escape += KEY_NFC
-
-                if not no_qr:
-                    prompt += ", (QR) to scan QR code"
-                    escape += KEY_QR
             else:
                 prompt += ", press (3) to import via NFC"
                 escape += "3"
+
+        if has_qwerty and not no_qr:
+            prompt += ", (QR) to scan QR code"
+            escape += KEY_QR
+
         prompt += "."
 
     return prompt, escape
 
 
-def _export_prompt_builder(what_it_is, no_qr):
+def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
+    # Build the prompt for export
+    # - key0 can be for special stuff
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
     prompt, escape = None, None
 
-    if (NFC or VD) or num_sd_slots>1:
+    if (NFC or VD) or num_sd_slots>1 or key5:
         # no need to spam with another prompt, only option is SD card
 
         prompt = "Press (1) to save %s to SD Card" % what_it_is
@@ -375,22 +378,62 @@ def _export_prompt_builder(what_it_is, no_qr):
             prompt += ", press (2) to save to Virtual Disk"
             escape += "2"
 
-        if NFC is not None:
+        if (NFC is not None) and not no_nfc:
             if has_qwerty:
                 prompt += ", press " + KEY_NFC + " to share via NFC"
                 escape += KEY_NFC
-                if not no_qr:
-                    prompt += ", "+KEY_QR+" to show QR code"
-                    escape += KEY_QR
             else:
                 prompt += ", press (3) to share via NFC"
                 escape += "3"
+
+        if not no_qr:
+            if has_qwerty:
+                prompt += ", "+KEY_QR+" to show QR code"
+                escape += KEY_QR
+            else:
+                prompt += ", (4) to show QR code"
+                escape += '4'
+
+        if key0:
+            prompt += ', (0) ' + key0
+            escape += '0'
 
         prompt += "."
 
     return prompt, escape
 
-async def import_export_prompt(what_it_is, is_import=False, no_qr=False, title=None, footnotes=''):
+def import_export_prompt_decode(ch):
+    # We showed a prompt from _import_prompt_builder() and now need to 
+    # figure out what they want to do.
+    # - illegal choices should have been already blocked by "escape" on ux_story
+
+    force_vdisk = False
+    slot_b = None       # ie. don't care / either
+
+    if ch in "3"+KEY_NFC:
+        return KEY_NFC
+    elif ch in "4"+ KEY_QR:
+        return KEY_QR
+    elif ch == "2":
+        force_vdisk = True
+    elif ch == 'b':
+        slot_b = True
+    elif ch == 'a':
+        # not documented on-screen? easter egg really. forces slot A if both in use.
+        slot_b = False
+    elif ch == '1':
+        slot_b = None
+    elif ch == '0':
+        # special "other" case
+        return '0'
+    else:
+        return KEY_CANCEL
+
+    # return extra arguments to files.file_picker() or CardSlot()
+    return dict(force_vdisk=force_vdisk, slot_b=slot_b)
+
+async def import_export_prompt(what_it_is, is_import=False,
+                                        no_qr=False, no_nfc=False, title=None, footnotes=''):
     # Show story allowing user to select source for importing/exporting
     # - return either str(mode) OR dict(file_args)
     # - KEY_NFC or KEY_QR for those sources
@@ -398,37 +441,16 @@ async def import_export_prompt(what_it_is, is_import=False, no_qr=False, title=N
     # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
 
     if is_import:
-        prompt, escape = _import_prompt_builder(what_it_is, no_qr)
+        prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc)
     else:
-        prompt, escape = _export_prompt_builder(what_it_is, no_qr)
-
-    force_vdisk = False
-    slot_b = None       # ie. don't care / either
+        prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc)
 
     if not prompt:
         # they don't have NFC nor VD enabled, and no second slots... so will be file.
-        pass
+        return dict(force_vdisk=False, slot_b=None)
     else:
         ch = await ux_show_story(prompt+footnotes, escape=escape, title=title)
 
-        if ch in "3"+KEY_NFC:
-            return KEY_NFC
-        elif ch == KEY_QR:
-            assert not no_qr
-            return KEY_QR
-        elif ch == "2":
-            force_vdisk = True
-        elif ch == 'b':
-            slot_b = True
-        elif ch == 'a':
-            # not documented on-screen? easter egg really.
-            slot_b = False
-        elif ch == '1':
-            slot_b = None
-        else:
-            return KEY_CANCEL
-
-    # return extra arguments to files.file_picker() or CardSlot()
-    return dict(force_vdisk=force_vdisk, slot_b=slot_b)
+        return import_export_prompt_decode(ch)
 
 # EOF

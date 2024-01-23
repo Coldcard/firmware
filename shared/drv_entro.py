@@ -13,7 +13,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 from auth import write_sig_file
 from utils import chunk_writer, xfp2str
-
+from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 
 BIP85_PWD_LEN = 21
 
@@ -120,6 +120,7 @@ async def pick_bip85_password():
 async def drv_entro_step2(_1, picked, _2, just_pick=False):
     from glob import dis
     from files import CardSlot, CardMissingError, needs_microsd
+    from ux import ux_render_words, export_prompt_builder, import_export_prompt_decode
 
     msg = "Index Number?"
     if picked == 7:
@@ -155,7 +156,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
-        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+        msg += ux_render_words(words)
 
         encoded = stash.SecretStash.encode(seed_phrase=new_secret)
 
@@ -198,31 +199,24 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
 
-    prompt = '\n\nPress (1) to save to MicroSD card'
-    if encoded is not None:
-        prompt += ', (2) to switch to derived secret'
-    elif s_mode == 'pw':
-        prompt += ', (2) to type password over USB'
-    if qr is not None:
-        prompt += ', (3) to view as QR code'
-        if glob.NFC:
-            prompt += ', (4) to share via NFC'
-    if glob.VD:
-        prompt += ", (6) to save to Virtual Disk"
+    # Add the standard export prompt at the end, with extra (5) option sometimes.
 
-    prompt += '.'
+    key0 = None
+    if encoded is not None:
+        key0 = 'to switch to derived secret'
+    elif s_mode == 'pw':
+        key0 = 'to type password over USB'
+    prompt, escape = export_prompt_builder('data', key0=key0, no_qr=(not qr), no_nfc=(not qr))
 
     while 1:
-        ch = await ux_show_story(msg+prompt, sensitive=True, escape='12346')
+        ch = await ux_show_story(msg+'\n\n'+prompt, sensitive=True, escape=escape)
 
-        if ch in "16":
+        choice = import_export_prompt_decode(ch)
+
+        if isinstance(choice, dict):
             # write to SD card or Virtual Disk: simple text file
-            if ch == "1":
-                force_vdisk = False
-            else:
-                force_vdisk = True
             try:
-                with CardSlot(force_vdisk=force_vdisk) as card:
+                with CardSlot(**choice) as card:
                     fname, out_fn = card.pick_filename('drv-%s-idx%d.txt' % (s_mode, index))
                     body = msg + "\n"
                     with open(fname, 'wt') as fp:
@@ -241,18 +235,17 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
             story = "Filename is:\n\n%s" % out_fn
             story += "\n\nSignature filename is:\n\n%s" % sig_nice
             await ux_show_story(story, title='Saved')
-        elif ch == '3':
+        elif choice == KEY_CANCEL:
+            break
+        elif choice == KEY_QR:
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum)
-            continue
-        elif ch == '2' and s_mode == 'pw':
+        elif choice == '0' and s_mode == 'pw':
             # gets confirmation then types it
             await single_send_keystrokes(qr, path)
-            continue
-        elif ch == '4' and glob.NFC and qr:
+        elif choice == KEY_NFC:
             # Share any of these over NFC
             await glob.NFC.share_text(qr)
-            continue
         else:
             break
 
@@ -260,7 +253,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
         stash.blank_object(new_secret)
     stash.blank_object(msg)
 
-    if ch == '2' and (encoded is not None):
+    if choice == '0' and (encoded is not None):
         # switch over to new secret!
         dis.fullscreen("Applying...")
         from actions import goto_top_menu

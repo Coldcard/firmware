@@ -8,6 +8,7 @@ from helpers import B2A
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.key.Key import Key
 from mnemonic import Mnemonic
+from charcodes import KEY_QR
 
 HISTORY = set()
 
@@ -16,8 +17,8 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
 
 
 @pytest.fixture
-def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
-                        set_encoded_secret, set_seed_words, settings_set):
+def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story, enter_text,
+                    set_encoded_secret, set_seed_words, settings_set, seed_story_to_words, is_q1):
     def doit(mode, index, expect=None, entropy=None, sim_sec=None, chain="BTC"):
         if sim_sec:
             if len(sim_sec.split(" ")) in (12,18,24):
@@ -32,7 +33,7 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
         time.sleep(.1)
         pick_menu_item('Advanced/Tools')
         time.sleep(.1)
-        pick_menu_item('Derive Seed B85')
+        pick_menu_item('Derive Seed B85' if not is_q1 else 'Derive Seeds (BIP-85)')
 
         time.sleep(0.1)
         title, story = cap_story()
@@ -49,12 +50,7 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
         time.sleep(0.1)
         pick_menu_item(mode)
 
-        if index is not None:
-            time.sleep(0.1)
-            for n in str(index):
-                need_keypress(n)
-
-        need_keypress('y')
+        enter_text(str(index) if index is not None else '')
 
         time.sleep(0.1)
         title, story = cap_story()
@@ -72,9 +68,9 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
             num_words = int(mode.split()[0])
             assert f'Seed words ({num_words}):' in story
             assert f"m/83696968'/39'/0'/{num_words}'/{index}'" in story
-            assert '\n 1: ' in story
-            assert f'\n{num_words}: ' in story
-            got = [ln[4:] for ln in story.split('\n') if len(ln) > 5 and ln[2] == ':']
+            assert '1:' in story
+            assert f'{num_words}:' in story
+            got = seed_story_to_words(story)
             if expect:
                 assert ' '.join(got) == expect
             can_import = 'words'
@@ -105,7 +101,7 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story,
             assert f"m/83696968'/707764'/21'/{index}'" in story
             if expect:
                 assert expect in story
-            assert "(2) to type password over USB" in story
+            assert "(0) to type password over USB" in story
 
         else:
             raise ValueError(mode)
@@ -120,11 +116,11 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
                              confirm_tmp_seed):
     def doit(do_import, reset=True, expect=None, entropy=None, save_to_vault=False):
         _, story = cap_story()
-        assert '(2) to switch to derived secret' in story
+        assert '(0) to switch to derived secret' in story
 
         try:
             time.sleep(0.1)
-            need_keypress('2')
+            need_keypress('0')
 
             confirm_tmp_seed(seedvault=save_to_vault)
 
@@ -206,9 +202,8 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
 
     if do_import:
         activate_bip85_ephemeral(do_import, expect=expect, entropy=entropy)
-
     else:
-        assert '(3) to view as QR code' in story
+        assert 'show QR code' in story
 
     need_keypress('x')
 
@@ -225,8 +220,8 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
     ('Passwords', r'[a-zA-Z0-9+/]{21}'),
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
-def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
-                    derive_bip85_secret, reset_seed_words):
+def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_story_to_words,
+                    derive_bip85_secret, reset_seed_words, is_q1):
     reset_seed_words()
     # Uses any key on Simulator; just checking for operation + entropy level
     _, story = derive_bip85_secret(mode, index)
@@ -250,7 +245,7 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
         assert exp == got
     elif 'words' in mode:
         exp = Mnemonic('english').to_mnemonic(a2b_hex(got)).split()
-        assert '\n'.join(f'{n+1:2d}: {w}' for n, w in enumerate(exp)) in story
+        assert seed_story_to_words(story) == exp
     elif 'XPRV' in mode:
         node = BIP32Node.from_hwif(got)
         assert str(b2a_hex(node.chain_code()), 'ascii') in story
@@ -260,8 +255,8 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
         assert hex(key.secret_exponent())[2:] in story
 
     if index == 0:
-        assert '(3) to view as QR code' in story
-        need_keypress('3')
+        assert 'show QR code' in story
+        need_keypress('4' if not is_q1 else KEY_QR)
 
         qr = cap_screen_qr().decode('ascii')
 
@@ -284,7 +279,7 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr,
 
 
 def test_type_passwords(dev, cap_menu, pick_menu_item,
-        goto_home, cap_story, need_keypress, cap_screen
+        goto_home, cap_story, need_keypress, cap_screen, enter_text
 ):
     goto_home()
     pick_menu_item('Settings')
@@ -303,9 +298,7 @@ def test_type_passwords(dev, cap_menu, pick_menu_item,
     # here we accessed index loop and can derive
     for index in [0, 10, 100, 1000, 9999]:
         time.sleep(0.5)
-        for n in str(index):
-            need_keypress(n)
-        need_keypress("y")
+        enter_text(str(index))
         time.sleep(1)
         _, story = cap_story()
         assert "Place mouse at required password prompt, then press OK to send keystrokes." in story
@@ -317,8 +310,9 @@ def test_type_passwords(dev, cap_menu, pick_menu_item,
         assert "=" not in pwd
         need_keypress("y")  # does nothing on simulator
         time.sleep(0.2)
+
     # exit Enter Password menu
-    need_keypress("x")
+    goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Keyboard EMU')
     pick_menu_item('Default Off')
