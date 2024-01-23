@@ -423,11 +423,12 @@ def import_export_prompt_decode(ch):
         slot_b = False
     elif ch == '1':
         slot_b = None
-    elif ch == '0':
-        # special "other" case
-        return '0'
-    else:
+    elif ch == 'x':
         return KEY_CANCEL
+    else:
+        # Includes: '0': special "other" case
+        # - cancel, enter, etc
+        return ch
 
     # return extra arguments to files.file_picker() or CardSlot()
     return dict(force_vdisk=force_vdisk, slot_b=slot_b)
