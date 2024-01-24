@@ -16,6 +16,9 @@ from lcd_display import CHARS_W
 from decoders import url_decode
 from utils import problem_file_line
 
+# title, username and such are limited to this so they fit on one line both in
+# text entry (W-2) and also in menu display (W-3)
+# - but W-3 is not centered .. so just lose some extra chars on right side if too long in menu
 ONE_LINE = CHARS_W-2
 
 async def make_notes_menu(*a):
@@ -81,8 +84,9 @@ async def get_a_password(old_value):
         dis.restore_state(s)
         return rv
 
-    def _toggle_case(was):
+    async def _toggle_case(was):
         # undocumented, not very useful
+        if not was: return ''
         return was.upper() if was[0].islower() else was.lower()
         
 
@@ -240,11 +244,14 @@ class NoteContentBase:
         await ux_dramatic_pause('Deleted.', 3)
 
     async def share_nfc(self, menu, _, item):
-        # share something via NFC
+        # share something via NFC -- if small enough and enabled
         from glob import NFC
+
         if not NFC: return
+
         v = getattr(self, item.arg)
-        await NFC.share_text(v)
+        if len(v) < 8000:       # see MAX_NFC_SIZE
+            await NFC.share_text(v)
 
     async def _save_ux(self, menu):
         is_new = self.save()
