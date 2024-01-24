@@ -17,7 +17,8 @@ def THIS_FILE_requires_q1(is_q1):
         raise pytest.skip('Q1 only')
 
 @pytest.fixture
-def readback_bbqr(need_keypress, cap_screen_qr, sim_exec):
+def readback_bbqr_ll(need_keypress, cap_screen_qr, sim_exec):
+    # low level version
     def doit():
         num_parts = None
         encoding, file_type = None, None
@@ -71,6 +72,23 @@ def readback_bbqr(need_keypress, cap_screen_qr, sim_exec):
                                 f'got {[parts.keys()]} of {num_parts}')
 
         return num_parts, encoding, file_type, parts
+
+    return doit
+
+@pytest.fixture
+def readback_bbqr(readback_bbqr_ll):
+    # give back just the decoded data and file_type
+    def doit():
+        num_parts, encoding, file_type, parts = readback_bbqr_ll()
+
+        if num_parts == 0:
+            # not sent as BBQr .. assume Hex
+            rb = a2b_hex(parts)
+            file_type = 'P' if rb[0:4] == b'psbt' else 'T'
+        else:
+            _, rb = join_qrs(parts.values())
+
+        return file_type, rb
 
     return doit
     
@@ -174,10 +192,9 @@ def test_bbqr_psbt(size, encoding, max_ver, partial,
     goto_home()
     need_keypress(KEY_QR)
 
-    actual_vers, parts = split_qrs(psbt, 'P',  max_version=max_ver, encoding=encoding)
     # def split_qrs(raw, type_code, encoding=None, 
     #  min_split=1, max_split=1295, min_version=5, max_version=40
-
+    actual_vers, parts = split_qrs(psbt, 'P',  max_version=max_ver, encoding=encoding)
     random.shuffle(parts)
 
     for p in parts:
@@ -198,14 +215,8 @@ def test_bbqr_psbt(size, encoding, max_ver, partial,
     time.sleep(.2)
 
     # expect signed txn back
-    num_parts, encoding, file_type, parts = readback_bbqr()
-    if num_parts == 0:
-        # not sent as BBQr .. assume Hex
-        rb = a2b_hex(parts)
-        file_type = 'P' if rb[0:4] == b'psbt' else 'T'
-    else:
-        assert file_type in 'TP'
-        _, rb = join_qrs(parts.values())
+    file_type, rb = readback_bbqr()
+    assert file_type in 'TP'
 
     if file_type == 'T':
         assert not partial
@@ -222,6 +233,5 @@ def test_bbqr_psbt(size, encoding, max_ver, partial,
     assert len(decoded['vout']) == num_out
 
     need_keypress('x')      # back to menu
-    
 
 # EOF

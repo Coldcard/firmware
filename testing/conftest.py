@@ -207,6 +207,7 @@ def enter_pin(enter_number, need_keypress, cap_screen, is_q1):
 
 @pytest.fixture(scope='module')
 def do_keypresses(need_keypress):
+    # do a series of keypresses, any kind
     def doit(value):
         for ch in value:
             need_keypress(ch)
@@ -216,15 +217,20 @@ def do_keypresses(need_keypress):
 
 @pytest.fixture(scope='module')
 def enter_text(need_keypress, is_q1):
+    # enter a text value, might be a number or string ... on Q can be multiline
     def doit(value, multiline=False):
         if not multiline:
-            assert '\r' not in value
+            assert KEY_ENTER not in value
+        if not is_q1:
+            assert value.isdigit(), f'bad value: {value}'
+            assert not multiline
 
         for ch in value:
             need_keypress(ch)
 
         if is_q1:
-            need_keypress('\r' if not multiline else '\b')
+            time.sleep(0.010)
+            need_keypress(KEY_ENTER if not multiline else KEY_CANCEL)
         else:
             need_keypress('y')
 
@@ -408,6 +414,22 @@ def cap_screen(sim_exec):
     def doit():
         # capture text shown; 4-10 lines or so?
         return sim_exec('RV.write(sim_display.full_contents)')
+
+    return doit
+
+@pytest.fixture(scope='module')
+def cap_text_box(cap_screen):
+    # provides text inside a lined box on the screen right now - Q1 only
+    def doit():
+        # capture text shown; 4-10 lines or so?
+        lines = cap_screen().split('\n')
+        rv = []
+        for ln in lines:
+            ll = ln.find('\x03')        # left-side vertical line
+            rr = ln.find('\x07')        # right-side vertical line (dashed)
+            if ll >=0 and rr >= ll:
+                rv.append(ln[ll+1:rr])
+        return rv
 
     return doit
 
@@ -675,7 +697,7 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen):
             raise KeyError(text, "%r not in menu: %r" % (text, m))
 
         # double check we're looking at this menu, not stale data
-        assert m[0] in cap_screen(), 'not in menu mode'
+        assert m[0][0:33] in cap_screen(), 'not in menu mode'
 
         m_pos = m.index(text)
 
@@ -928,8 +950,8 @@ def settings_set(sim_exec):
 @pytest.fixture()
 def settings_get(sim_exec):
 
-    def doit(key):
-        cmd = f"RV.write(repr(settings.get('{key}')))"
+    def doit(key, def_val=None):
+        cmd = f"RV.write(repr(settings.get('{key}', {def_val!r})))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -1558,6 +1580,8 @@ def nfc_write(request, needs_nfc):
 
 @pytest.fixture()
 def scan_a_qr(sim_exec, is_q1):
+    # simulate a QR being scanned 
+    # XXX limitation: our USB protocol can't send a v40 QR, limit is more like 30 or so
     if not is_q1:
         raise pytest.xfail('needs scanner')
 
