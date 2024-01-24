@@ -328,11 +328,11 @@ def _import_prompt_builder(title, no_qr, no_nfc):
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
-    prompt, escape = None, None
+    prompt, escape = None, KEY_CANCEL
 
     if (NFC or VD) or num_sd_slots>1:
         prompt = "Press (1) to import %s from SD Card" % title
-        escape = "1"
+        escape += "1"
         if num_sd_slots == 2:
             prompt += ", (B) for lower slot"
             escape += "ab"
@@ -362,13 +362,13 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
-    prompt, escape = None, None
+    prompt, escape = None, KEY_CANCEL
 
     if (NFC or VD) or num_sd_slots>1 or key5:
         # no need to spam with another prompt, only option is SD card
 
         prompt = "Press (1) to save %s to SD Card" % what_it_is
-        escape = "1"
+        escape += "1"
         if num_sd_slots == 2:
             # MAYBE: show this only if both slots have cards inserted?
             prompt += ", (B) for lower slot"
@@ -450,7 +450,7 @@ async def import_export_prompt(what_it_is, is_import=False,
         # they don't have NFC nor VD enabled, and no second slots... so will be file.
         return dict(force_vdisk=False, slot_b=None)
     else:
-        ch = await ux_show_story(prompt+footnotes, escape=escape, title=title)
+        ch = await ux_show_story(prompt+footnotes, escape=escape, title=title, strict_escape=True)
 
         return import_export_prompt_decode(ch)
 
