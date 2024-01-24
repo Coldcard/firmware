@@ -487,9 +487,12 @@ class Display:
     def progress_part_bar(self, n_of_m):
         # for BBQr: a part of a bar
         n, m = n_of_m
-        w = WIDTH // m
-        self.next_prog_x = (n * w)
-        self.next_prog_w = w
+        if m == 1:
+            self.next_prog_x = self.next_prog_w = 0
+        else:
+            w = WIDTH // m
+            self.next_prog_x = (n * w)
+            self.next_prog_w = w
 
     def progress_sofar(self, done, total):
         # Update progress bar, but only if it's been a while since last update
