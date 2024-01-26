@@ -12,6 +12,7 @@ from queues import QueueEmpty
 import bip39
 from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
+from glob import numpad         # may be None depending on import order, careful
 
 class PressRelease:
     def __init__(self, need_release=KEY_ENTER+KEY_CANCEL):
@@ -20,27 +21,32 @@ class PressRelease:
         self.last_key = None
         self.num_repeats = 0
 
+        global numpad
+        if not numpad:
+            from glob import numpad
+
     async def wait(self):
-        from glob import numpad
 
         armed = None
-
         while 1:
             # two values here:
             #  - (ms) time to wait before first key-repeat
             #  - (ms) time between 2nd and Nth repeated events
             #  - these values approved by @nvk
-            rep_delay = 200 if not self.num_repeats else 20
-            so_far = 0
+            rep_delay = 20 if self.num_repeats else 200
 
-            while numpad.empty():
-                if self.last_key and numpad.key_pressed == self.last_key:
-                    if so_far >= rep_delay:
-                        self.num_repeats += 1
-                        return self.last_key
-
+            # busy-wait on key arrivial
+            for i in range(rep_delay):
+                if not numpad.empty():
+                    break
                 await sleep_ms(1)
-                so_far += 1
+
+            if numpad.empty():
+                # nothing changed, do key repeat
+                if self.last_key and numpad.key_pressed == self.last_key:
+                    self.num_repeats += 1
+                    return self.last_key
+                continue
 
             ch = numpad.get_nowait()
 
@@ -56,6 +62,7 @@ class PressRelease:
                 continue
 
             if ch == '':
+                # all keys are now UP
                 self.last_key = None
                 if armed:
                     return armed
