@@ -323,8 +323,7 @@ cursor_draw(int char_x, int char_y, uint8_t ctype, bool phase)
     int y = TOP_MARGIN + (char_y * CELL_H);
     int cell_w = CELL_W + (dbl_wide?CELL_W:0);
 
-    // make some pixels big enough for either vert or horz lines
-    uint16_t colour = phase ? COL_FOREGROUND : COL_BLACK;
+    uint16_t colour = phase ? COL_BLACK : COL_FOREGROUND;
 
     if(ctype == CURSOR_OUTLINE) {
         // horz
