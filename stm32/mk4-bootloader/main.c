@@ -171,12 +171,10 @@ system_startup(void)
     // .. will reboot if it works; only helps w/ reset pulses, not power downs.
     psram_recover_firmware();
 
-#ifdef RELEASE
     if(!flash_is_security_level2()) {
         // in factory, DFU is prefered; can't work if flash locked tho
         enter_dfu();
     }
-#endif
 
     // use SDCard to recover
     while(1) sdcard_recovery();
