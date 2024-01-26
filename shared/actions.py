@@ -2205,8 +2205,15 @@ async def lamp_test(*a):
         lamps.append('SD_ACTIVE2')
 
     lamps = [Pin(n, Pin.OUT, value=1) for n in lamps]
-    await ux_show_story('''All lights (except SE1) should be on.''')
+    await ux_show_story('''All lights should be on, except yellow.''')
     [i(0) for i in lamps]
+
+async def keyboard_test(*a):
+    # to aid keyboard testing/dev
+    from ux import ux_input_text
+    await ux_input_text('', max_len=128, scan_ok=True, confirm_exit=False,
+                        prompt='Keyboard Test', placeholder='(type whatever)')
+    
 
 #
 # Q wrappers; these will be present, but are very short on mk4
