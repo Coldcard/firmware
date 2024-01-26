@@ -157,7 +157,7 @@ We will summarize transaction outputs as "change" back into same wallet, however
 # BBQr Scanning (Q)
 
 - files up to 2MiB in size can be accepted
-- when 14 or less parts, displays status of each part, above that, just percent complete
+- when 14 or less parts, we display status of each part, above that number, just percent complete
 
 # QR Scanning (Q)
 
@@ -170,4 +170,12 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - for Base58, Bech32 encoded values, if checksum is wrong then it is shown as text
 - binary QR codes are not supported
 - when pasting into a secure note, if the QR's data is > 60 chars long, we assume done
+
+# Secure Notes & Passwords (Q)
+
+- when Q picks a password for you (using F1 thru F5), the entropy is 126 bits or more,
+  except F3 which makes an easier to type password of around 48 bits entropy.
+- Title, Sitename and Username fields are limited to 32 characters in length.
+- Passwords are limited to 128 characters.
+- Note text is unlimited, but holding very large notes may affect performance in other areas.
 
