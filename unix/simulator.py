@@ -89,7 +89,7 @@ class SimulatedScreen:
             self.movie.append((dt, img))
 
     def vsync_handler(self, sr, w):
-        # called at 61Hz, just like the real LCD's TEAR output signal
+        # subclass thing
         return
 
 class LCDSimulator(SimulatedScreen):
@@ -137,6 +137,7 @@ class LCDSimulator(SimulatedScreen):
         self.busy_bar = False
         self.cursor = None
         self.phase = 0
+        self.animate = False
 
         # GPU stuff needs to know implementation details... because it re-implements
         self.COL_BLACK = 0
@@ -146,7 +147,7 @@ class LCDSimulator(SimulatedScreen):
 
     def vsync_handler(self, spriterenderer, window):
         # will be called at 61Hz, just like the real LCD's TEAR output signal
-        if not (self.busy_bar or self.cursor):
+        if not self.animate:
             return
 
         activity = False
@@ -165,6 +166,8 @@ class LCDSimulator(SimulatedScreen):
 
         # maybe save
         if self.movie is not None:
+            # problem: other stuff may be in mid-update; should look at 
+            # time since last save, and if longer than 60Hz, save then?
             self.new_frame()
 
         # draw to screen
@@ -230,7 +233,7 @@ class LCDSimulator(SimulatedScreen):
         cell_w = CELL_W + (CELL_W if dbl_wide else 0)
 
         # make some pixels big enough for either vert or horz lines
-        colour = self.COL_FOREGROUND if phase else self.COL_BLACK
+        colour = self.COL_FOREGROUND if not phase else self.COL_BLACK
 
         def fill_solid(X,Y, w, h, col):
             for x in range(X, X+w):
@@ -359,23 +362,27 @@ class LCDSimulator(SimulatedScreen):
                     for x in range(X, X+w):
                         self.mv[x][y] = px
 
-            elif mode in 'TPBC':
+            elif mode in 'TPBCG':
                 # emulated GPU commands
                 # see vsync_handler() for implementation
                 if mode == 'T':
                     # stop animating: "taking" the SPI bus away from GPU
-                    self.cursor = None
-                    self.busy_bar = False
+                    self.animate = False
+                elif mode == 'G':
+                    # continue animating
+                    self.animate = True
                 elif mode == 'P':
                     # test pattern: a fixed bar code is shown in real deal
                     pass
                 elif mode == 'B':
                     # show busy bar (infinite progress bar)
                     self.busy_bar = True
+                    self.animate = True
                 elif mode == 'C':
                     # show a cursor
                     self.cursor = self.CursorSpec(X,Y, cur_type=w)
                     self.phase = 0      # make update happen immediately
+                    self.animate = True
 
             else:
                 raise ValueError(mode)

@@ -25,6 +25,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `-q` => boot and drop into REPL; does nothing else, no setup
 - `-f -w` => boot like a unit that hasn't left factory yet
 - `-p` => pretend we don't know the seed words (xprv import) and so menus are different
+- `-g` => don't skip login sequence
 - `--ms` => define a 2-of-4 multisig wallet, and start off in multisig wallet menu; cosigners are
             "Me", "Myself", "And I" and empty string. BIP45 path.
         - add `--p2wsh` or `--wrap` for the other two address types
@@ -33,7 +34,6 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--mk3` => emulate mark3 hardware
 - `--mk4` => emulate mark4 hardware
 - `--q1` => emulate Q1 hardware
-- `-g` => don't skip login sequence
 - `--addr` => go to the address explorer at startup
 - `--xw` => go to the wallet export submenu
 - `--paper` => go to the Paper Wallet menu at startup

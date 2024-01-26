@@ -24,13 +24,15 @@ class GPUAccess:
     def take_spi(self):
         # stop any on-going animation
         if self.i_have_spi:
-            return
+            return False
         glob.dis.dis.gpu_send('T')
         self.i_have_spi = True
+        return True
 
     def give_spi(self):
-        # not used, implicit in other cmds
-        raise NotImplementedError
+        # continue previously on-going animation
+        self.i_have_spi = False
+        glob.dis.dis.gpu_send('G')
 
     def have_spi(self):
         # do we control the display?
@@ -50,7 +52,7 @@ class GPUAccess:
         self.take_spi()
         
     def cursor_at(self, x, y, cur_type):
-        # use outline to leave most of the cell unaffects (just 1px inside border)
+        # show a cursor, there are several types and sizes
         glob.dis.dis.gpu_send('C', x, y, cur_type)
         self.i_have_spi = False
 
