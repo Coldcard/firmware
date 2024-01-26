@@ -222,6 +222,7 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
 DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Lamp Test", f=lamp_test),
+    MenuItem("Keyboard Test", f=keyboard_test),
     MenuItem('Debug: assert', f=debug_assert),
     MenuItem('Debug: except', f=debug_except),
     MenuItem('Check: BL FW', f=check_firewall_read),
@@ -379,9 +380,9 @@ NormalSystem = [
 # Shown until unit is put into a numbered bag
 FactoryMenu = [
     MenuItem('Bag Me Now', f=scan_and_bag),
-    MenuItem('DFU Upgrade', f=start_dfu),
+    MenuItem('DFU Upgrade', f=start_dfu, shortcut='u'),
     MenuItem('Show Version', f=show_version),
     MenuItem('Ship W/O Bag', f=ship_wo_bag),
-    MenuItem("Debug Functions", menu=DebugFunctionsMenu),
-    MenuItem("Perform Selftest", f=start_selftest),
+    MenuItem("Debug Functions", menu=DebugFunctionsMenu, shortcut='f'),
+    MenuItem("Perform Selftest", f=start_selftest, shortcut='s'),
 ]
