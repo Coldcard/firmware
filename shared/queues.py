@@ -1,98 +1,96 @@
-# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+# from https://github.com/peterhinch/micropython-async/blob/master/v3/primitives/queue.py @ 07108cc
 #
-# See also: <https://github.com/micropython/micropython-lib/blob/master/LICENSE>
+# queue.py: adapted from uasyncio V2
 #
-from ucollections import deque
-from uasyncio.core import sleep_ms
+# Copyright (c) 2018-2020 Peter Hinch
+# Released under the MIT License (MIT) - see LICENSE file
+
+# Code is based on Paul Sokolovsky's work.
+# This is a temporary solution until uasyncio V3 gets an efficient official version
+
+import uasyncio as asyncio
 
 
-class QueueEmpty(BaseException):
-    """Exception raised by get_nowait()."""
+# Exception raised by get_nowait().
+class QueueEmpty(Exception):
+    pass
 
 
-class QueueFull(BaseException):
-    """Exception raised by put_nowait()."""
-
+# Exception raised by put_nowait().
+class QueueFull(Exception):
+    pass
 
 class Queue:
-    """A queue, useful for coordinating producer and consumer coroutines.
-
-    If maxsize is less than or equal to zero, the queue size is infinite. If it
-    is an integer greater than 0, then "yield from put()" will block when the
-    queue reaches maxsize, until an item is removed by get().
-
-    Unlike the standard library Queue, you can reliably know this Queue's size
-    with qsize(), since your single-threaded uasyncio application won't be
-    interrupted between calling qsize() and doing an operation on the Queue.
-    """
-    _attempt_delay = 10         # milliseconds
 
     def __init__(self, maxsize=0):
         self.maxsize = maxsize
-        self._queue = deque((), 20)
+        self._queue = []
+        self._evput = asyncio.Event()  # Triggered by put, tested by get
+        self._evget = asyncio.Event()  # Triggered by get, tested by put
+
+        self._jncnt = 0
+        self._jnevt = asyncio.Event()
+        self._upd_jnevt(0) #update join event
 
     def _get(self):
-        return self._queue.popleft()
+        self._evget.set()  # Schedule all tasks waiting on get
+        self._evget.clear()
+        return self._queue.pop(0)
 
-    def get(self):
-        """Returns generator, which can be used for getting (and removing)
-        an item from a queue.
-
-        Usage::
-
-            item = yield from queue.get()
-        """
-        while not self._queue:
-            yield from sleep_ms(self._attempt_delay)
+    async def get(self):  #  Usage: item = await queue.get()
+        while self.empty():  # May be multiple tasks waiting on get()
+            # Queue is empty, suspend task until a put occurs
+            # 1st of N tasks gets, the rest loop again
+            await self._evput.wait()
         return self._get()
 
-    def get_nowait(self):
-        """Remove and return an item from the queue.
-
-        Return an item if one is immediately available, else raise QueueEmpty.
-        """
-        if not self._queue:
+    def get_nowait(self):  # Remove and return an item from the queue.
+        # Return an item if one is immediately available, else raise QueueEmpty.
+        if self.empty():
             raise QueueEmpty()
         return self._get()
 
     def _put(self, val):
+        self._upd_jnevt(1) # update join event
+        self._evput.set()  # Schedule tasks waiting on put
+        self._evput.clear()
         self._queue.append(val)
 
-    def put(self, val):
-        """Returns generator which can be used for putting item in a queue.
-
-        Usage::
-
-            yield from queue.put(item)
-        """
-        while self.qsize() >= self.maxsize and self.maxsize:
-            yield from sleep_ms(self._attempt_delay)
+    async def put(self, val):  # Usage: await queue.put(item)
+        while self.full():
+            # Queue full
+            await self._evget.wait()
+            # Task(s) waiting to get from queue, schedule first Task
         self._put(val)
 
-    def put_nowait(self, val):
-        """Put an item into the queue without blocking.
-
-        If no free slot is immediately available, raise QueueFull.
-        """
-        if self.qsize() >= self.maxsize and self.maxsize:
+    def put_nowait(self, val):  # Put an item into the queue without blocking.
+        if self.full():
             raise QueueFull()
         self._put(val)
 
-    def qsize(self):
-        """Number of items in the queue."""
+    def qsize(self):  # Number of items in the queue.
         return len(self._queue)
 
-    def empty(self):
-        """Return True if the queue is empty, False otherwise."""
-        return not self._queue
+    def empty(self):  # Return True if the queue is empty, False otherwise.
+        return len(self._queue) == 0
 
-    def full(self):
-        """Return True if there are maxsize items in the queue.
+    def full(self):  # Return True if there are maxsize items in the queue.
+        # Note: if the Queue was initialized with maxsize=0 (the default) or
+        # any negative number, then full() is never True.
+        return self.maxsize > 0 and self.qsize() >= self.maxsize
 
-        Note: if the Queue was initialized with maxsize=0 (the default),
-        then full() is never True.
-        """
-        if self.maxsize <= 0:
-            return False
+
+    def _upd_jnevt(self, inc:int): # #Update join count and join event
+        self._jncnt += inc
+        if self._jncnt <= 0:
+            self._jnevt.set()
         else:
-            return self.qsize() >= self.maxsize
+            self._jnevt.clear()
+
+    def task_done(self): # Task Done decrements counter
+        self._upd_jnevt(-1)
+
+    async def join(self): # Wait for join event
+        await self._jnevt.wait()
+
+
