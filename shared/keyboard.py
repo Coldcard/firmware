@@ -126,19 +126,21 @@ class FullKeyboard(NumpadBase):
 
         # collect results
         self._scan_count = 0
+        new_presses = set()
 
         # handle debounce, which happens in both directions: press and release
         # - all samples must be in agreement to count as either up or down
         for kn in range(NUM_ROWS * NUM_COLS):
             if self._history[kn] == NUM_SAMPLES:
                 self.is_pressed[kn] = 1
+                new_presses.add(kn)
             elif self._history[i] == 0:
                 self.is_pressed[kn] = 0
             self._history[kn] = 0
 
-        self.process_chg_state()
+        self.process_chg_state(new_presses)
 
-    def process_chg_state(self):
+    def process_chg_state(self, new_presses):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
         # - convert that into ascii-like events in a Q for rest of system
         # - not trying to support multiple presses, just one
@@ -155,35 +157,35 @@ class FullKeyboard(NumpadBase):
         else:
             decoder = DECODER
 
-        for kn in range(NUM_ROWS * NUM_COLS):
-            if self.is_pressed[kn]:
-                if kn == KEYNUM_SHIFT:
-                    if symbol_down:
-                        self.caps_lock = not self.caps_lock
-                        status_chg['caps'] = int(self.caps_lock)
-                    continue
-                elif kn == KEYNUM_SYMBOL:
-                    continue
-                elif kn == KEYNUM_LAMP:
-                    if not self.torch_on:
-                        # handle light button right here and now
-                        self.torch_on = True
-                        from glob import SCAN
-                        SCAN.torch_control_sync(True)
-                    continue
+        for kn in new_presses:
+            #assert self.is_pressed[kn]:
+            if kn == KEYNUM_SHIFT:
+                if symbol_down:
+                    self.caps_lock = not self.caps_lock
+                    status_chg['caps'] = int(self.caps_lock)
+                continue
+            elif kn == KEYNUM_SYMBOL:
+                continue
+            elif kn == KEYNUM_LAMP:
+                if not self.torch_on:
+                    # handle light button right here and now
+                    self.torch_on = True
+                    from glob import SCAN
+                    SCAN.torch_control_sync(True)
+                continue
 
-                # indicated key was found to be down and then back up
-                key = decoder[kn]
-                if key == '\0':
-                    # dead/unused key: do nothing - like SYM+D
-                    #print("KEYNUM %d is no-op (in this state)" % kn)
-                    continue
+            # indicated key was found to be down and then back up
+            key = decoder[kn]
+            if key == '\0':
+                # dead/unused key: do nothing - like SYM+D
+                #print("KEYNUM %d is no-op (in this state)" % kn)
+                continue
 
-                if key != self.key_pressed:
-                    #print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
-                    self._key_event(key)
+            if key != self.key_pressed:
+                #print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
+                self._key_event(key)
 
-                self.lp_time = utime.ticks_ms()
+            self.lp_time = utime.ticks_ms()
 
         if self.torch_on and not self.is_pressed[KEYNUM_LAMP]:
             self.torch_on = False
@@ -202,8 +204,7 @@ class FullKeyboard(NumpadBase):
             from glob import dis
             uasyncio.create_task(dis.async_draw_status(**status_chg))
 
-        none_active = (sum(self.is_pressed) == 0)
-        if none_active:
+        if not any(self.is_pressed):
             if self.key_pressed:
                 self._key_event('')
 
