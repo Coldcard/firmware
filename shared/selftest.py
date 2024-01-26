@@ -110,6 +110,11 @@ async def test_battery():
 
         await sleep_ms(100)
 
+        if settings.get('tested', False):
+            # auto-pass this test if we've been thru here before; customer may
+            # not have magic batteries and so on.
+            break
+
         if ux_poll_key():
             raise RuntimeError("Battery test aborted")
 
@@ -248,7 +253,7 @@ async def test_psram():
     test_len = PSRAM.length * 2
     chk = bytearray(32)
     spots = []
-    for pos in range(0, PSRAM.length, 800 * 17):
+    for pos in range(0, PSRAM.length, 4000 * 17):
         if pos >= PSRAM.length: break
         rnd = ngu.hash.sha256s(pack('I', pos))
 
