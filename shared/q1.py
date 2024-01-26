@@ -57,10 +57,12 @@ async def scan_and_bag(*a):
         # Get our bag number
         got = await zz.scan_text('Scan barcode on new bag.')
 
-        if not got or not got.isdigit():
-            continue
+        if not got:
+            return
 
-        if not (8 <= len(got) <= 32):
+        if not got.isdigit() or not (8 <= len(got) <= 32):
+            # bad scan/not a bag
+            await ux_show_story(got, "Bad Scan")
             continue
 
         break
