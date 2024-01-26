@@ -93,7 +93,7 @@ def readback_bbqr(readback_bbqr_ll):
     return doit
     
 @pytest.fixture
-def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr):
+def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr_ll):
     def doit(data=None, str_expr=None, file_type='B', msg=None, setup=''):
         assert data or str_expr
 
@@ -112,7 +112,7 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr):
         print(f"RESP: {resp}")
         assert 'error' not in resp.lower()
 
-        num_parts, encoding, rb_ft, parts = readback_bbqr()
+        num_parts, encoding, rb_ft, parts = readback_bbqr_ll()
         assert rb_ft == file_type
 
         print(sim_exec(f'import main; main.TT.cancel()'))
