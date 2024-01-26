@@ -13,8 +13,8 @@ DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
 DEFAULT_BATT_BRIGHTNESS = const(200)
 
 # had to move this pin in RevD
-# - TODO: remove this support once rev D's are around
-rev_d_later = not Pin('REV_D', mode=Pin.IN, pull=Pin.PULL_UP)
+# - TODO: remove this support once older boards are gone
+rev_d_later = not Pin('REV_D', mode=Pin.IN, pull=Pin.PULL_UP).value()
 nbat_pin = Pin('NOT_BATTERY_OLD' if not rev_d_later else 'NOT_BATTERY',
                             mode=Pin.IN, pull=Pin.PULL_UP)
 
