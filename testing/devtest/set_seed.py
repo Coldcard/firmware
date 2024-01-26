@@ -16,16 +16,17 @@ tn = chains.BitcoinTestnet
 
 stash.bip39_passphrase = ''
 settings.current = sim_defaults
-settings.set('chain', 'XTN')
-settings.set('words', True)
-settings.set('terms_ok', True)
-settings.set('idle_to', 0)
 
 import main
 pa.tmp_value = None
 SettingsObject.master_sv_data = {}
 SettingsObject.master_nvram_key = None
 set_seed_value(main.WORDS)
+
+settings.set('chain', 'XTN')
+settings.set('words', True)
+settings.set('terms_ok', True)
+settings.set('idle_to', 0)
 
 print("New key in effect: %s" % settings.get('xpub', 'MISSING'))
 print("Fingerprint: %s" % xfp2str(settings.get('xfp', 0)))

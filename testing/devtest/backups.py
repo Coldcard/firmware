@@ -6,10 +6,6 @@
 # run manually with:
 #   execfile('../../testing/devtest/backups.py')
 
-from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
-
-import ngu, ustruct
 from glob import settings
 
 if 1:
@@ -52,7 +48,7 @@ async def test_7z():
     from pincodes import pa
     from glob import settings
 
-    if version.has_fatram:
+    if version.supports_hsm:
         import hsm
         had_policy = hsm.hsm_policy_available()
     else:
