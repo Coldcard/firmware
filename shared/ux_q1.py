@@ -36,10 +36,11 @@ class PressRelease:
             rep_delay = 20 if self.num_repeats else 200
 
             # busy-wait on key arrivial
-            for i in range(rep_delay):
+            # - would like to use asyncio.wait_for_ms but causes random CancelledError's elsewhere
+            for i in range(rep_delay//2):
                 if not numpad.empty():
                     break
-                await sleep_ms(1)
+                await sleep_ms(2)
 
             if numpad.empty():
                 # nothing changed, do key repeat

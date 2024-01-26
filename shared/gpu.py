@@ -224,9 +224,10 @@ class GPUAccess:
         # with the GPU.. other lines are OD
         # - signal by G_CTRL that CPU will take over
         # - but first, wait until GPU is done if it's doing something (G_BUSY)
+        # - return T if GPU had control before
         if self.g_ctrl() == 1:
             # we already have control
-            return
+            return False
 
         # say we will take control
         self.g_ctrl(1)
@@ -237,6 +238,8 @@ class GPUAccess:
 
         self.mosi_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
         self.sclk_pin.init(mode=Pin.ALT, pull=Pin.PULL_DOWN, af=Pin.AF5_SPI1)
+
+        return True
 
     def give_spi(self):
         # give up SPI and let GPU control things

@@ -169,7 +169,7 @@ class Display:
             self.dis.backlight.intensity(255)
 
     def draw_status(self, full=False, **kws):
-        self.gpu.take_spi()
+        animating = self.gpu.take_spi()
 
         if full:
             y = TOP_MARGIN
@@ -210,6 +210,10 @@ class Display:
         for dx, meta in [(7, 'shift'), (37, 'symbol'), (58, 'caps')]:
             if meta in kws:
                 self.image(x+dx, 0, '%s_%d' % (meta, kws[meta]))
+
+        if animating:
+            self.gpu.give_spi()
+        
 
     def image(self, x, y, name):
         # display a graphics image, immediately
@@ -360,23 +364,30 @@ class Display:
 
         # maybe update progress bar
         if (self.next_prog_x, self.next_prog_w) != (self.last_prog_x, self.last_prog_w):
-            # NOTE: misc/gpu/lcd.c may need update to follow future changes here
             x = self.next_prog_x
             w = self.next_prog_w
-            h = PROGRESS_BAR_H
-            self.dis.fill_rect(0, HEIGHT-h, WIDTH, h, COL_BLACK)
+            h = PROGRESS_BAR_H          # NOTE: misc/gpu/lcd.c will need update if H changes
+            if x == 0 and self.last_prog_x == x and self.last_prog_w <= w:
+                # no need to undraw, we can just draw on top
+                pass
+            else:
+                # erase under
+                self.dis.fill_rect(0, HEIGHT-h, WIDTH, h, COL_BLACK)
+
+            # draw new bar
             if w:
                 self.dis.fill_rect(x, HEIGHT-h, w, h, COL_PROGRESS)
 
             self.last_prog_x = x
             self.last_prog_w = w
 
+        # maybe update right hand scroll bar
         if self.next_scroll != self.last_scroll:
             self._draw_scroll_bar(self.next_scroll)
             self.last_scroll = self.next_scroll
 
+        # implement cursor based on CursorSpec values
         if cursor:
-            # implement CursorSpec values
             assert 0 <= cursor.x < CHARS_W, 'cur x'
             assert 0 <= cursor.y < CHARS_H, 'cur y'
             self.gpu.cursor_at(cursor.x, cursor.y, cursor.cur_type)
@@ -485,9 +496,11 @@ class Display:
         self.next_prog_w = int(WIDTH * percent)
 
     def progress_part_bar(self, n_of_m):
-        # for BBQr: a part of a bar
+        # for BBQr: a part of a bar (segment N of M parts)
         n, m = n_of_m
-        if m == 1:
+        assert n <= m
+        if m <= 1:
+            # turn off bar segment if one or none of them
             self.next_prog_x = self.next_prog_w = 0
         else:
             w = WIDTH // m
