@@ -253,9 +253,10 @@ def sign_msg(key, msg, addr_fmt, b64 = False):
         return sig
 
 def detruncate_address(s):
-    if s[0] == "↳":
-        s = s[1:]
-    start, end = s.split('⋯')
+    _idx = s.index("↳")
+    if _idx != -1:
+        s = s[_idx+1:]
+    start, end = s.strip().split('⋯')
     return start, end
 
 def seconds2human_readable(s):
