@@ -4,6 +4,8 @@
 #
 import ckcc, pyb
 from uasyncio import sleep_ms
+from version import has_qwerty
+from charcodes import *
         
 async def usb_keypad_emu():
     # Take keypresses on USB virtual serial port (when not in REPL mode)
@@ -22,12 +24,21 @@ async def usb_keypad_emu():
 
     u = pyb.USB_VCP()
 
-    remap = {  '\r': 'y',
+    remap_mk4 = {  '\r': 'y',
              '\x1b': 'x', 
            '\x1b[A': '5', 
            '\x1b[B': '8', 
            '\x1b[C': '9', 
            '\x1b[D': '7' }
+
+    remap_q1 = {  
+            '\r': KEY_ENTER,
+           '\x1b': KEY_CANCEL,
+           '\x1b[A': KEY_UP,
+           '\x1b[B': KEY_DOWN,
+           '\x1b[C': KEY_RIGHT,
+           '\x1b[D': KEY_LEFT,
+    }
 
     while 1:
         await sleep_ms(100)
@@ -37,26 +48,23 @@ async def usb_keypad_emu():
 
             k = u.read(3).decode()
 
-            if k in '\x04':     # ^D
+            if k =='\x04':     # ^D
                 # warm reset
                 from machine import soft_reset
                 soft_reset()
 
-            if k == 'T':
-                ckcc.vcp_enabled(True)
-                print("Repl")
-                continue
+            if has_qwerty:
+                numpad.inject(remap_q1.get(k, k))
+            else:
+                if k == 'T':
+                    ckcc.vcp_enabled(True)
+                    print("Repl")
+                    continue
 
-            if k == 'm':
-                print("free = %d" % gc.mem_free())
-                continue
-
-            if k in remap:
-                k = remap[k]
-
-            if k in '0123456789xy':
-                numpad.inject(k)
-                continue
+                if k in remap_mk4:
+                    k = remap_mk4[k]
+                if k in '0123456789xy':
+                    numpad.inject(k)
 
 def setup():
     from imptask import IMPT
