@@ -102,7 +102,7 @@ def make_icons():
         ( 'bat_1', False, '\uf243', dict(col='yellow', y=-1)),
         ( 'bat_2', False, '\uf242', dict(col='amber', y=-1)),
         ( 'bat_3', False, '\uf240', dict(col='amber', y=-1)),
-        ( 'plugged', False, '\uf1e6', dict(col='amber', x=3, w=16)),   # to match width of bat_*
+        ( 'plugged', False, '\uf1e6', dict(col='amber', x=3, w=16, y=-2)),   # to match width of bat_*
         #( 'locked', False, '\uf023', dict(col='green')),
         #( 'unlocked', False, '\uf3c1', dict(col='green')),      # why tho?
     ]

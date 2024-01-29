@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+#
+# Generate some data for hsm_ux.py animation
+#
 from math import sin, pi
 from collections import Counter
 

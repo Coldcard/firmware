@@ -6,7 +6,7 @@ import machine, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
 from version import is_devmode
 import framebuf
-from graphics import Graphics
+from graphics_mk4 import Graphics
 
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
