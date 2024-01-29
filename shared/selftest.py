@@ -101,7 +101,8 @@ async def test_battery():
 
     try:
         from machine import ADC
-        assert ADC(ADC.CORE_VREF).read_u16() < 65534, 'ADC bodge not done'
+        # expect 11500 or so, and certainly not 65535
+        assert max(ADC(ADC.CORE_VREF).read_u16() for i in range(10)) < 60000, 'VREF fix not done'
     except ImportError:
         # simulator
         pass
@@ -113,7 +114,7 @@ async def test_battery():
     while 1:
         lvl = get_batt_level()
 
-        if lvl and 3.2 < lvl < 3.4:
+        if lvl and 3.2 <= lvl <= 3.4:
             # pass
             return 
 
