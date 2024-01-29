@@ -6,7 +6,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
 from pycoin.encoding import a2b_hashed_base58, hash160
 from helpers import detruncate_address
-from charcodes import KEY_QR, KEY_NFC
+from charcodes import KEY_QR, KEY_NFC, KEY_LEFT, KEY_RIGHT, KEY_ENTER
 
 @pytest.fixture
 def mk_common_derivations():
@@ -27,25 +27,18 @@ def mk_common_derivations():
     return doit
 
 @pytest.fixture
-def goto_address_explorer(goto_home, pick_menu_item, need_keypress):
-    def doit(click_idx=None):
+def goto_address_explorer(goto_home, pick_menu_item, need_keypress,
+                          cap_story):
+    def doit():
         goto_home()
         pick_menu_item('Address Explorer')
 
-        if click_idx is not None:
+        _, story = cap_story()
+        # axi - below msg can be disabled
+        if "menu lists the first payment address" in story:
             need_keypress('4') # click into stub menu
             time.sleep(0.01)
 
-            for _ in range(2): # top of menu (requires two left clicks)
-                need_keypress('7')
-                time.sleep(0.01)
-
-            for _ in range(click_idx): # iterate down
-                need_keypress('8')
-                time.sleep(0.01)
-
-            need_keypress('y')
-            time.sleep(0.01)
     return doit
 
 @pytest.fixture
@@ -96,10 +89,8 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
                             virtdisk_path, nfc_read_text, load_export_and_verify_signature):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
-    def doit(click_idx=None, expected_qty=250, way="sd", change=False):
-        if click_idx is not None:
-            goto_address_explorer(click_idx=click_idx)
-        time.sleep(.3)
+    def doit(expected_qty=250, way="sd", change=False):
+        time.sleep(.1)
         title, story = cap_story()
         if change:
             need_keypress("0")
@@ -142,7 +133,8 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
     return doit
 
 
-def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu, mk_common_derivations,
+def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress,
+                   cap_menu, mk_common_derivations, pick_menu_item,
                    parse_display_screen, validate_address):
     # For a given wallet, ensure the explorer shows the correct stub addresses
     node_prv = BIP32Node.from_wallet_key(
@@ -164,7 +156,8 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         sk = node_prv.subkey_for_path(subpath[2:])
 
         # capture full index=0 address from display screen & validate it
-        goto_address_explorer(click_idx=_id)
+        mi = m[_id]
+        pick_menu_item(mi)
         addr_dict = parse_display_screen(0, 10)
         assert subpath in addr_dict, 'subpath ("%s") not found' % subpath
         expected_addr = addr_dict[subpath]
@@ -174,6 +167,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
         start, end = detruncate_address(m[_id])
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
+        need_keypress("x")
 
 @pytest.mark.parametrize("chain", ["BTC", "XRT", "XTN"])
 @pytest.mark.parametrize("change", [True, False])
@@ -182,8 +176,10 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress, cap_menu,
     # ("Bad Bank", "2147483644'"),  not released yet
     ("Post-mix", "2147483646'")
 ])
-def test_applications_samourai(chain, change, option, goto_address_explorer, cap_menu, pick_menu_item, validate_address,
-                               parse_display_screen, sim_execfile, settings_set, need_keypress, generate_addresses_file):
+def test_applications_samourai(chain, change, option, goto_address_explorer, cap_menu,
+                               pick_menu_item, validate_address, parse_display_screen,
+                               sim_execfile, settings_set, need_keypress,
+                               generate_addresses_file):
     menu_option, account_num = option
     if chain in ["XTN", "XRT"]:
         coin_type = "1'"
@@ -193,7 +189,8 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
-    goto_address_explorer(click_idx=6)  # "applications" at index 3
+    goto_address_explorer()
+    pick_menu_item("Applications")
     menu = cap_menu()
     assert "Samourai" in menu
     pick_menu_item("Samourai")
@@ -201,7 +198,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     assert menu_option in menu
     pick_menu_item(menu_option)
     if change:
-        need_keypress("6")  # change (internal)
+        need_keypress("0")  # change (internal)
         time.sleep(.1)
     screen_addrs = parse_display_screen(0, 10)
     file_addr_gen = generate_addresses_file(None)
@@ -220,7 +217,9 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
     (['7', '7', '9'], 10, 10), # backwards at start is idempotent
     (['9', '9', '9', '9', '9', '9', '9', '9', '9', '9'], 100, 10)
 ])
-def test_address_display(goto_address_explorer, parse_display_screen, mk_common_derivations, need_keypress, sim_execfile, validate_address, press_seq, expected_start, expected_n):
+def test_address_display(goto_address_explorer, parse_display_screen, mk_common_derivations,
+                         need_keypress, sim_execfile, validate_address, press_seq, expected_n,
+                         expected_start, pick_menu_item, cap_menu, is_q1):
     # The proper addresses are displayed
     # given the sequence of  keys pressed
     node_prv = BIP32Node.from_wallet_key(
@@ -228,13 +227,18 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
     )
     common_derivs = mk_common_derivations(node_prv.netcode())
     gap = iter(range(1, 10))
+    goto_address_explorer()
+    m = cap_menu()
     for click_idx, (path, addr_format) in enumerate(common_derivs):
         # Click on specified derivation idx in explorer
         _id = next(gap) + click_idx
-        goto_address_explorer(click_idx=click_idx)
+        mi = m[_id]
+        pick_menu_item(mi)
 
         # perform keypad press sequence
         for key in press_seq:
+            if is_q1:
+                key = KEY_RIGHT if key == "9" else KEY_LEFT
             need_keypress(key)
             time.sleep(0.01)
 
@@ -244,17 +248,22 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(given_addr, sk)
 
-@pytest.mark.parametrize('click_idx', [1,3,5])
+        need_keypress("x")  # back
+
+@pytest.mark.parametrize('click_idx', ["Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
 @pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivations, sim_execfile, validate_address,
-                        click_idx):
+def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivations,
+                        sim_execfile, validate_address, click_idx, pick_menu_item,
+                        goto_address_explorer):
     # Validate  addresses dumped to text file
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
     )
+    goto_address_explorer()
+    pick_menu_item(click_idx)
     # Generate the addresses file and get each line in a list
-    for subpath, addr in generate_addresses_file(click_idx, way=way, change=change):
+    for subpath, addr in generate_addresses_file(way=way, change=change):
         # derive the subkey and validate the corresponding address
         assert subpath.split("/")[-2] == "1" if change else "0"
         sk = node_prv.subkey_for_path(subpath[2:])
@@ -262,8 +271,10 @@ def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivati
 
 @pytest.mark.parametrize('account_num', [ 34, 100, 9999, 1])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_address_explorer, need_keypress, cap_menu,
-                      mk_common_derivations, parse_display_screen, validate_address, generate_addresses_file):
+def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
+                      goto_address_explorer, need_keypress, cap_menu,
+                      mk_common_derivations, parse_display_screen,
+                      validate_address, generate_addresses_file, is_q1):
     # Try a few sub-accounts
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -284,7 +295,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item, goto_addre
     time.sleep(0.1)
     for d in str(account_num):
         need_keypress(d)
-    need_keypress('y')
+    need_keypress(KEY_ENTER if is_q1 else 'y')
     time.sleep(0.1)
 
     m = cap_menu()
@@ -411,6 +422,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
     assert path in body
 
     need_keypress('3')      # approve risk
+    time.sleep(.2)
 
     if is_single:
         time.sleep(.2)
