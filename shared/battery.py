@@ -5,6 +5,7 @@
 from imptask import IMPT
 import uasyncio as asyncio
 from machine import Pin
+import uctypes
 
 # value must exist in battery_idle_timeout_chooser() choices
 DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
@@ -19,8 +20,6 @@ nbat_pin = Pin('NOT_BATTERY_OLD' if not rev_d_later else 'NOT_BATTERY',
                             mode=Pin.IN, pull=Pin.PULL_UP)
 
 def setup_battery():
-    # setup and monitor things.
-    setup_adc()
 
     IMPT.start_task('battery', batt_monitor_task())
     
@@ -46,27 +45,12 @@ async def batt_monitor_task():
 
         last_lvl = maybe_update(last_lvl=last_lvl)
 
-def setup_adc():
-    # configure VREF source as internally generated
-    import uctypes
-
-    VREF_LAYOUT = {
-        "CSR": 0 | uctypes.UINT32,
-        "CCR": 4 | uctypes.UINT32,
-    }
-    VREFBUF_CSR = 0x40010030
-
-    vref = uctypes.struct(VREFBUF_CSR, VREF_LAYOUT)
-    vref.CSR = 0x05     # VRS=1, HIZ=0, ENVR=1  2.5v ref
-
-    # could delay here until reads back as 0x9 (VRR==1)
-    # but no need 
-
 def get_batt_level():
     # return voltage from batteries, as a float
     # - will only work on battery power, else return None
+    # - uses system VCC as reference (3.3) and signal is divided by 2
     try:
-        from machine import ADC, Pin
+        from machine import ADC
     except ImportError:
         # simulator
         return 3.3
@@ -75,10 +59,18 @@ def get_batt_level():
         # not getting power from batteries, so don't know level
         return None
 
-    adc = ADC(Pin('VIN_SENSE'))
-    avg = sum(adc.read_u16() for i in range(13)) / 13.0
+    adc = ADC('VIN_SENSE')
 
-    return round((avg / 65535.0) * 2.5 * 2, 1)
+    # VREFINT calibration value; production measured in ST factory and written to flash
+    # - measures 1.212v internal bandgap ref against 3.0v in 12 bits
+    # - cal * 3.0 / (2**12) => 1.2xx
+    #cal = uctypes.struct(0x1FFF75AA, dict(VREFINT=0 | uctypes.UINT16)).VREFINT
+
+    # Errata 2.10.6 - skip first reading
+    vals = [adc.read_u16() for i in range(5)]
+    avg = sum(vals[1:]) / 4.0
+
+    return round((avg / 65535.0) * 3.3 * 2, 2)
     
 def get_batt_threshold():
     # return 0=empty, 1=low, 2=75% 3=full or None if no bat
