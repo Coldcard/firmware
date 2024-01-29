@@ -26,21 +26,11 @@ def decode_backup(txt):
 
     return vals, trimmed
 
-@pytest.fixture
-def parse_q1_words():
-    def doit(body):
-        wrd_d = {}
-        for mtch in re.findall(r"\d{1,2}: [a-z]+", body):
-            num, word = mtch.split(":")
-            wrd_d[num] = word.strip()
-
-        return list(OrderedDict(sorted(wrd_d.items(), key=lambda t: int(t[0]))).values())
-    return doit
 
 @pytest.fixture
 def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                   cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
-                  get_setting, is_q1, parse_q1_words):
+                  get_setting, is_q1, seed_story_to_words):
     def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
         # st -> seed type
         # ct -> cleartext backup
@@ -95,7 +85,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
             assert 'password:' in body
 
             if is_q1:
-                words = parse_q1_words(body)
+                words = seed_story_to_words(body)
             else:
                 words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
 
@@ -238,7 +228,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
                                  verify_backup_file, microsd_path, check_and_decrypt_backup,
                                  sim_execfile, unit_test, word_menu_entry, cap_menu,
                                  restore_backup_cs, generate_ephemeral_words,
-                                 import_ephemeral_xprv, reset_seed_words, parse_q1_words,
+                                 import_ephemeral_xprv, reset_seed_words, seed_story_to_words,
                                  is_q1):
     reset_seed_words()
     goto_home()
@@ -269,7 +259,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     assert 'password:' in story
 
     if is_q1:
-        words = parse_q1_words(story)
+        words = seed_story_to_words(story)
     else:
         words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
     assert len(words) == 12
@@ -324,7 +314,7 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
                              verify_backup_file, microsd_path, check_and_decrypt_backup,
                              sim_execfile, unit_test, word_menu_entry, cap_menu,
                              restore_backup_cs, seedvault, settings_set, reset_seed_words,
-                             is_q1, parse_q1_words):
+                             is_q1, seed_story_to_words):
     reset_seed_words()
     goto_home()
     settings_set("seedvault", int(seedvault))
@@ -351,7 +341,7 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     assert 'Record this' in story
     assert 'password:' in story
     if is_q1:
-        words = parse_q1_words(story)
+        words = seed_story_to_words(story)
     else:
         words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
     assert len(words) == 12
@@ -455,7 +445,7 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
                            repl, pick_menu_item, need_keypress, cap_story, get_setting,
                            pass_word_quiz, verify_backup_file, check_and_decrypt_backup,
                            restore_backup_cs, cap_menu, verify_ephemeral_secret_ui,
-                           is_q1, parse_q1_words):
+                           is_q1, seed_story_to_words):
     reset_seed_words()
     settings_set("seedvault", 1)
     settings_set("seeds", [])
@@ -496,7 +486,7 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     assert 'Record this' in story
     assert 'password:' in story
     if is_q1:
-        words = parse_q1_words(story)
+        words = seed_story_to_words(story)
     else:
         words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
     assert len(words) == 12
