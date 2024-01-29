@@ -86,10 +86,25 @@ async def test_keyboard():
 async def test_qr_scanner():
     # QR Scanner module: assume pretested, just testing connection really
     from glob import SCAN
+
+    # Can take 2+ seconds to setup the QR scanner (from powerup), and
+    # if batteries are right, we can hit that timeframe in this test.
+    for i in range(25):
+        if SCAN.version is not None:
+            break
+        await sleep_ms(100)
+
     assert SCAN and SCAN.version and SCAN.version.startswith('V2.3.'), 'QR Scanner Missing'
 
 async def test_battery():
     from battery import get_batt_level
+
+    try:
+        from machine import ADC
+        assert ADC(ADC.CORE_VREF).read_u16() < 65534, 'ADC bodge not done'
+    except ImportError:
+        # simulator
+        pass
 
     dis.clear()
     dis.text(None, 1, "Battery Test")
@@ -98,7 +113,7 @@ async def test_battery():
     while 1:
         lvl = get_batt_level()
 
-        if lvl and 3.2 <= lvl <= 3.4:
+        if lvl and 3.2 < lvl < 3.4:
             # pass
             return 
 
