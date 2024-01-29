@@ -30,7 +30,7 @@ def decode_backup(txt):
 @pytest.fixture
 def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                   cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
-                  get_setting, is_q1, seed_story_to_words):
+                  get_setting, seed_story_to_words, is_q1):
     def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
         # st -> seed type
         # ct -> cleartext backup
@@ -84,10 +84,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
             assert 'Record this' in body
             assert 'password:' in body
 
-            if is_q1:
-                words = seed_story_to_words(body)
-            else:
-                words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+            words = seed_story_to_words(body)
 
             assert len(words) == 12
 
@@ -228,8 +225,7 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
                                  verify_backup_file, microsd_path, check_and_decrypt_backup,
                                  sim_execfile, unit_test, word_menu_entry, cap_menu,
                                  restore_backup_cs, generate_ephemeral_words,
-                                 import_ephemeral_xprv, reset_seed_words, seed_story_to_words,
-                                 is_q1):
+                                 import_ephemeral_xprv, reset_seed_words, seed_story_to_words):
     reset_seed_words()
     goto_home()
     if "words" in stype:
@@ -258,10 +254,8 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     assert 'Record this' in story
     assert 'password:' in story
 
-    if is_q1:
-        words = seed_story_to_words(story)
-    else:
-        words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    words = seed_story_to_words(story)
+
     assert len(words) == 12
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
@@ -314,7 +308,7 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
                              verify_backup_file, microsd_path, check_and_decrypt_backup,
                              sim_execfile, unit_test, word_menu_entry, cap_menu,
                              restore_backup_cs, seedvault, settings_set, reset_seed_words,
-                             is_q1, seed_story_to_words):
+                             seed_story_to_words):
     reset_seed_words()
     goto_home()
     settings_set("seedvault", int(seedvault))
@@ -340,10 +334,7 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     assert title == 'NO-TITLE'
     assert 'Record this' in story
     assert 'password:' in story
-    if is_q1:
-        words = seed_story_to_words(story)
-    else:
-        words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    words = seed_story_to_words(story)
     assert len(words) == 12
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
@@ -445,7 +436,7 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
                            repl, pick_menu_item, need_keypress, cap_story, get_setting,
                            pass_word_quiz, verify_backup_file, check_and_decrypt_backup,
                            restore_backup_cs, cap_menu, verify_ephemeral_secret_ui,
-                           is_q1, seed_story_to_words):
+                           seed_story_to_words):
     reset_seed_words()
     settings_set("seedvault", 1)
     settings_set("seeds", [])
@@ -485,10 +476,7 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     assert title == 'NO-TITLE'
     assert 'Record this' in story
     assert 'password:' in story
-    if is_q1:
-        words = seed_story_to_words(story)
-    else:
-        words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    words = seed_story_to_words(story)
     assert len(words) == 12
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
