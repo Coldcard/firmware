@@ -70,7 +70,7 @@ def get_batt_level():
     vals = [adc.read_u16() for i in range(5)]
     avg = sum(vals[1:]) / 4.0
 
-    return round((avg / 65535.0) * 3.3 * 2, 2)
+    return round((avg / 65535.0) * 3.3 * 2, 1)
     
 def get_batt_threshold():
     # return 0=empty, 1=low, 2=75% 3=full or None if no bat
