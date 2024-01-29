@@ -189,9 +189,10 @@ def enter_pin(enter_number, need_keypress, cap_screen, is_q1):
         a,b = pin.split('-')
         enter_number(a)
 
+        need_keypress(KEY_ENTER)
         scr = cap_screen().split('\n')
         if is_q1:
-            words = [i.strip() for i in scr[6].split()]     # XXX untested
+            words = [i.strip() for i in scr[7].split()]
         else:
             # capture words? hard to know in general what they should be tho
             words = scr[2:4]
@@ -199,6 +200,7 @@ def enter_pin(enter_number, need_keypress, cap_screen, is_q1):
             need_keypress('y')
 
         enter_number(b)
+        need_keypress(KEY_ENTER)
 
         return words
 
@@ -979,8 +981,8 @@ def settings_remove(sim_exec):
     return doit
 
 @pytest.fixture(scope='module')
-def repl(request, is_mark4):
-    return request.getfixturevalue('mk4_repl' if is_mark4 else 'old_mk_repl')
+def repl(request):
+    return request.getfixturevalue('mk4_repl')
     
 
 @pytest.fixture(scope='module')

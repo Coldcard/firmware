@@ -52,24 +52,22 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
     need_keypress('x')
 
 @pytest.fixture
-def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
+def word_menu_entry(cap_menu, pick_menu_item, is_q1, cap_screen, need_keypress):
     def doit(words):
         if is_q1:
             # easier for us on Q, but have to anticipate the autocomplete
-            for n, w in enumerate(words):
-                do_keypresses(w[0:3])
-                time.sleep(0.50)
-                if 'Next key' in cap_screen():
-                    do_keypresses(w[4])
-                pat = rf'{n+1}:\s?{w}'
-                for x in range(10):
-                    if re.search(pat, cap_screen()):
+            for w in words:
+                for i in range(len(w)):
+                    time.sleep(.3)
+                    menu = cap_menu()
+                    time.sleep(.3)
+                    if w in menu:
+                        pick_menu_item(w)
                         break
-                    time.sleep(0.20)
-                else:
-                    raise RuntimeError('timeout')
-            assert 'Valid words' in cap_screen()
-            do_keypresses('\r')
+                    v = f"{w[:i+1]}-"
+                    if v in menu:
+                        pick_menu_item(v)
+
             return
 
         # do the massive drilling-down to pick a specific pass phrase
