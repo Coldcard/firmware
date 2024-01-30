@@ -41,7 +41,8 @@ KEYS_FUNCTION = KEY_F1 + KEY_F2 + KEY_F3 + KEY_F4 + KEY_F5 + KEY_F6
 KEYCAP_SYMBOLS = [ KEY_NFC, KEY_QR, KEY_TAB ] + list(KEYS_FUNCTION)
 
 # we override these w/ our own art, but the chars involved are still these
-LINEDRAW_SYMBOLS = [ '━', '┃', '┇', '┓', '┏', '┛','┗' ]        # 'heavy' versions
+# - dashed version for bottom/right sides of things
+LINEDRAW_SYMBOLS = [ '━', '┅', '┃', '┇', '┓', '┏', '┛','┗' ]        # 'heavy' versions
 
 CHARSET = [chr(x) for x in range(32,127)] \
             + ['→', '←', '↳', '•', '⋯',
@@ -55,7 +56,7 @@ CHARSET = [chr(x) for x in range(32,127)] \
 
 # these are be better as double-wide chars
 DBL_WIDTH = ['⋯', '✔', '✓','→', '←', '↦',        
-                '◉', '◯', '◌', '※', '•', '—',
+                '◉', '◯', '◌', '※', '—',
             ] + KEYCAP_SYMBOLS
 
 NUM_CHARS = len(CHARSET)
@@ -117,9 +118,10 @@ def draw_linedrawing(ch, img, draw):
     lw = 2      # line width
     w, h = CELL_W, CELL_H
     mw = (w // 2) - (lw//2)
-    mh = (h // 2) - lw
+    mh1 = (h // 2) - lw + 3+4    # top
+    mh2 = (h // 2) - lw - 5    # bot
     if ch == '┃':
-        print(f"{mw=} {mh=}  CELL={CELL_W}x{CELL_H}")
+        print(f"{mw=} {mh1=} {mh2=}  CELL={CELL_W}x{CELL_H}")
         
     # erase old attempt from font
     draw.rectangle( (0,0, w, h), fill=0)
@@ -130,16 +132,18 @@ def draw_linedrawing(ch, img, draw):
         draw.line( (mw-1, 0, mw-1, h), width=lw, fill=255)
     elif ch == '┇':     # for right side of box
         draw.line( (mw+2, 0, mw+2, h), width=lw, fill=255)
-    elif ch == '━':
-        draw.line( (0, mh, w, mh), width=lw, fill=255)
+    elif ch == '━':     # top lines
+        draw.line( (0, mh1, w, mh1), width=lw, fill=255)
+    elif ch == '┅':     # bottom lines
+        draw.line( (0, mh2, w, mh2), width=lw, fill=255)
     elif ch == '┓':
-        draw.line( [(0, mh), (mw+2, mh), (mw+2, h)], width=lw, fill=255, joint='curve')
+        draw.line( [(0, mh1), (mw+2, mh1), (mw+2, h)], width=lw, fill=255, joint='curve')
     elif ch == '┏':
-        draw.line( [(mw, h), (mw, mh), (w, mh)], width=lw, fill=255, joint='curve')
+        draw.line( [(mw, h), (mw, mh1), (w, mh1)], width=lw, fill=255, joint='curve')
     elif ch == '┛':
-        draw.line( [(mw+2, 0), (mw+2, mh+1), (0, mh+1)], width=lw, fill=255, joint='curve')
+        draw.line( [(mw+2, 0), (mw+2, mh2+1), (0, mh2+1)], width=lw, fill=255, joint='curve')
     elif ch == '┗':
-        draw.line( [(mw-1, 0), (mw-1, mh), (w, mh)], width=lw, fill=255, joint='curve')
+        draw.line( [(mw-1, 0), (mw-1, mh2), (w, mh2)], width=lw, fill=255, joint='curve')
 
     else:
         raise ValueError(ch)
@@ -198,8 +202,8 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             # - looks awesome for random keyboard PIN entry mode
             this_y = -4
         if ch == '•':
-            # double-wide bullet; needs perfect alignment inside full-cell box cursor
-            x_shift += 4.6      # right side of perfect
+            # bullet; needs perfect alignment inside full-cell box cursor
+            #x_shift += 4.6      # right side of perfect (FOR DOUBLE WIDE)
             this_y = 1          # perfect
 
         if ch in KEYCAP_SYMBOLS:
