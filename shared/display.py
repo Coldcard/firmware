@@ -197,13 +197,13 @@ class Display:
             ln = max(2, ckcc.rng() % 32)
             self.dis.line(wx-ln, y, wx, y, 1)
 
-    def busy_bar(self, enable, speed_code=5):
+    def busy_bar(self, enable):
         # Render a continuous activity (not progress) bar in lower 8 lines of display
         # - using OLED itself to do the animation, so smooth and CPU free
         # - cannot preserve bottom 8 lines, since we have to destructively write there
         # - assumes normal horz addr mode: 0x20, 0x00
         # - speed_code=>framedelay: 0=5fr, 1=64fr, 2=128, 3=256, 4=3, 5=4, 6=25, 7=2frames
-        assert 0 <= speed_code <= 7
+        #   unused: assert 0 <= speed_code <= 7
 
         setup = bytes([
             0x21, 0x00, 0x7f,       # setup column address range (start, end): 0-127
@@ -214,7 +214,7 @@ class Display:
             0x26,               # scroll leftwards (stock ticker mode)
                 0,              # placeholder
                 7,              # start 'page' (vertical)
-                speed_code,     # scroll speed: 7=fastest, but no order to it
+                5,              # "speed_code" # scroll speed: 7=fastest, but no order to it
                 7,              # end 'page'
                 0, 0xff,        # placeholders
             0x2f                # start
