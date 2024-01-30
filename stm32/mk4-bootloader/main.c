@@ -69,6 +69,8 @@ system_startup(void)
     ) {
         // yikes. recovery: do lockdown... we should be/(thought we were) locked already
         flash_lockdown_hard(OB_RDP_LEVEL_2);
+        // CONCERN: this code has only been called once, and it left the unit with RDP=0xff(1)
+        // and not functional. See issue #1268.
     }
 #else
 # warning "Built for debug."

@@ -554,6 +554,7 @@ flash_setup(void)
     void
 flash_lockdown_hard(uint8_t rdp_level_code)
 {
+#if RELEASE
     flash_setup0();
 
     // see FLASH_OB_WRPConfig()
@@ -578,6 +579,11 @@ flash_lockdown_hard(uint8_t rdp_level_code)
         FLASH->OPTR = was | rdp_level_code;    // select level X, other values as observed
 
     flash_ob_lock(true);
+#else
+    puts2("flash_lockdown_hard(");
+    puthex2(rdp_level_code);
+    puts(") skipped");
+#endif
 }
 
 // record_highwater_version()
