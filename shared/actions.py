@@ -2053,7 +2053,7 @@ async def ship_wo_bag(*a):
         await ux_dramatic_pause('FAILED', 30)
     else:
         # lock the bootrom firmware forever
-        callgate.set_rdp_level(2 if not is_devmode else 0)
+        callgate.set_rdp_level(2)
 
         # bag number affects green light status (as does RDP level)
         dis.bootrom_takeover()

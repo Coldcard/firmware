@@ -834,7 +834,7 @@ class USBHandler:
             failed = callgate.set_bag_number(bag_num)
             assert not failed
 
-            callgate.set_rdp_level(2 if not is_devmode else 0)
+            callgate.set_rdp_level(2)
             pa.greenlight_firmware()
             dis.fullscreen(bytes(bag_num).decode())
 
