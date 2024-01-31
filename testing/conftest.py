@@ -1946,7 +1946,8 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
             pick_menu_item(fn)
 
         time.sleep(.1)
-        word_menu_entry(passphrase)
+        word_menu_entry(passphrase, has_checksum=False)
+        time.sleep(.3)
         title, body = cap_story()
         assert title == 'Success!'
         assert 'has been successfully restored' in body
