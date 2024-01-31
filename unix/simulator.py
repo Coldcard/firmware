@@ -376,12 +376,14 @@ class LCDSimulator(SimulatedScreen):
                     pass
                 elif mode == 'B':
                     # show busy bar (infinite progress bar)
+                    self.cursor = None
                     self.busy_bar = True
                     self.animate = True
                 elif mode == 'C':
                     # show a cursor
                     self.cursor = self.CursorSpec(X,Y, cur_type=w)
                     self.phase = 0      # make update happen immediately
+                    self.busy_bar = False
                     self.animate = True
 
             else:
@@ -650,9 +652,6 @@ def handle_q1_key_events(event, numpad_tx, data_tx):
 
         if kn is None: return
 
-        # do right click for shift+key, middle click for symb+key ... good luck
-        #shift_down = (event.button.button == sdl2.SDL_BUTTON_RIGHT)
-        #symbol_down = (event.button.button == sdl2.SDL_BUTTON_MIDDLE)
         if is_press:
             q1_pressed.add(kn)
         else:
@@ -911,7 +910,7 @@ Q1 specials:
                             simdis.movie_end()
                         continue
 
-                    if ch == 'm':
+                    if not is_q1 and ch == 'm':
                         # do many OK's in a row ... for word nest menu
                         for i in range(30):
                             numpad_tx.write(b'y\n')

@@ -36,7 +36,13 @@ class Touch:
                 # - pad with -1
                 pressed = await s.read(5)
 
-                new_presses = set(kn for kn in pressed if kn!=255 and not numpad.is_pressed[kn])
+                try:
+                    new_presses = set(kn for kn in pressed if kn!=255 and not numpad.is_pressed[kn])
+                except IndexError:
+                    # some bug brings us here
+                    print("wrong kn: %r" % kn)
+                    continue
+
                 for kn in range(NUM_ROWS * NUM_COLS):
                     numpad.is_pressed[kn] = (0 if kn not in pressed else 1)
 
