@@ -14,7 +14,7 @@ def sim_plug_toggler():
     global fake_voltage
 
     # defined by battery.get_batt_threshold()
-    levels = [0, 2.9, 3.5, 4.0, 4.5]
+    levels = [0, 4.5, 4.0, 3.5, 2.9 ]
 
     fake_voltage = levels[(levels.index(fake_voltage) + 1) % len(levels)]
 
