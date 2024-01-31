@@ -367,6 +367,18 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
                 goto_trick_menu, new_pin_confirmed, need_keypress, enter_pin):
     # wrong pin choices, not implementation
     goto_trick_menu()
+    m = cap_menu()
+
+    if not ('Add If Wrong' in m):
+        # already has "if wrong"
+        pick_menu_item('↳WRONG PIN')
+        pick_menu_item('Delete Trick')
+        time.sleep(.1)
+        _, story = cap_story()
+        assert "Are you SURE" in story
+        assert "Remove special handling of wrong PINs?" in story
+        need_keypress("y")
+        time.sleep(.1)
 
     pick_menu_item('Add If Wrong')
     time.sleep(.1)
@@ -379,9 +391,12 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     time.sleep(.1)
     m = cap_menu()
 
+    real_num_wrong = num_wrong
     if num_wrong <= 1:
+        real_num_wrong = 1
         assert m[0] == '[ANY WRONG PIN]'
     elif num_wrong >= 12:
+        real_num_wrong = 12
         assert m[0] == '[12th WRONG PIN]'
     else:
         assert m[0][0:2] == f'[{num_wrong}'
@@ -394,9 +409,17 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     assert expect in story
 
     time.sleep(.1)
-    need_keypress('x')
+    need_keypress('y')
     time.sleep(.1)
-    need_keypress('x')
+    _, story = cap_story()
+    assert f"{real_num_wrong} Wrong PINs" in story
+    assert op_mode in story
+    assert "Ok?" in story
+    need_keypress('y')
+    time.sleep(.1)
+    m = cap_menu()
+    assert 'Add If Wrong' not in m
+
 
 @pytest.mark.parametrize('subchoice, expect, xflags', [
     ( 'Wipe & Reboot', 'wiped and Coldcard reboots', TC_WIPE|TC_REBOOT ),
