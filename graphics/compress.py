@@ -98,10 +98,10 @@ def make_icons():
         ( 'tmp', True, 'TMP.SEED', dict(col_0='black', col_1='red') ),
         ( 'devmode', True, 'DEV', dict(col='#66E6FF') ),
         ( 'edge', True, 'EDGE', dict(col='#66E6FF') ),
-        ( 'bat_0', False, '\uf244', dict(col='red', y=-1)),
-        ( 'bat_1', False, '\uf243', dict(col='yellow', y=-1)),
-        ( 'bat_2', False, '\uf242', dict(col='amber', y=-1)),
-        ( 'bat_3', False, '\uf240', dict(col='amber', y=-1)),
+        ( 'bat_0', False, '\uf244', dict(col='red', y=-1, pad=1)),
+        ( 'bat_1', False, '\uf243', dict(col='yellow', y=-1, pad=1)),
+        ( 'bat_2', False, '\uf242', dict(col='amber', y=-1, pad=1)),
+        ( 'bat_3', False, '\uf240', dict(col='amber', y=-1, pad=1)),
         ( 'plugged', False, '\uf1e6', dict(col='amber', x=3, w=16, y=-2)),   # to match width of bat_*
         #( 'locked', False, '\uf023', dict(col='green')),
         #( 'unlocked', False, '\uf3c1', dict(col='green')),      # why tho?
@@ -144,6 +144,8 @@ def make_icons():
             if h > MAX_HEIGHT:
                 h = MAX_HEIGHT
                 print(f'"{vn}" too tall, cropped')
+            elif opts.get('pad'):
+                h = MAX_HEIGHT
 
             if col == 'amber':
                 # brand colour
