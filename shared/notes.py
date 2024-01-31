@@ -150,7 +150,11 @@ class NotesMenu(MenuSystem):
             # see <https://github.com/qistoph/otp_export>
             tmp.title = 'Google Auth'
         elif '://' in got:
-            tmp.title = got.split('://', 1)[0]
+            # might be a URL, try to get the domain name as title
+            try:
+                tmp.title = got.split('://', 1)[1].split('/', 1)[0]
+            except:
+                tmp.title = 'Scanned URL'
 
         await tmp._save_ux(menu)
         await cls.drill_to(menu, tmp)
