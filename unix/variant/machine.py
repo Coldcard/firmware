@@ -43,7 +43,11 @@ class Pin:
         if self.name == 'LCD_TEAR':
             from touch import Touch
             Touch()
-        pass
+        else:
+            self.irq_handler = a[0]
+
+    def simulate_irq(self):
+        self.irq_handler(self)
 
     def __call__(self, new_val=UNSPEC):
         if new_val==UNSPEC:

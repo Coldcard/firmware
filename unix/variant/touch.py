@@ -36,10 +36,16 @@ class Touch:
                 # - pad with -1
                 pressed = await s.read(5)
 
+                if 0xfe in pressed:
+                    # see PLUGGER in simulator.py
+                    from sim_battery import sim_plug_toggler
+                    sim_plug_toggler()
+                    continue
+
                 try:
                     new_presses = set(kn for kn in pressed if kn!=255 and not numpad.is_pressed[kn])
                 except IndexError:
-                    # some bug brings us here
+                    # some bugs bring us here
                     print("wrong kn: %r" % kn)
                     continue
 

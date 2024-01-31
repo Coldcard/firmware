@@ -62,6 +62,19 @@ wallet (on testnet, always with the same seed). But there are other options:
 
 See `variant/sim_settings.py` for the details of settings-related options.
 
+## Clicking on Simulated Device
+
+### Q
+
+- send keystrokes when clicking on keys, but much easier to use real keyboard
+- click screen to send current clipboard contents as a QR reading
+- click on area near USB plug to cycle through battery levels and USB plugged/not
+
+### Mk4
+
+- sends keystrokes 
+
+
 ## Requirements
 
 - uses good olde `xterm` for console input and output

@@ -564,6 +564,11 @@ def q1_click_to_keynum(x, y):
     if (90 <= x <= 430) and (90 <= y <= 345):
         # click on screen
         return 'SCREEN'
+    
+    # detect click near USB to simulate unplug/plug events
+    if (230 <= x <= 290) and (810 <= y <= 852):
+        # click near USB connector
+        return 'PLUGGER'
 
     # keypad area
     left = 29
@@ -649,6 +654,9 @@ def handle_q1_key_events(event, numpad_tx, data_tx):
                     print(f"Doing paste: {txt.decode()}")
                     data_tx.write(txt + b'\n')
             return None
+
+        if kn == 'PLUGGER':
+            kn = 0xfe       # see variant/touch.py
 
         if kn is None: return
 

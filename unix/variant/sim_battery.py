@@ -4,14 +4,21 @@
 #
 import battery, sys
 
-battery.setup_battery = lambda: None
-
-battery.setup_adc = lambda: None
+fake_voltage = 0 if ('--plugged' in sys.argv) else 4.0
 
 def mock_get_batt_level():
-    if '--plugged' in sys.argv:
-        return None
-    return 3.3
+    return fake_voltage if fake_voltage != 0 else None
+
+def sim_plug_toggler():
+    # user clicked on simulator's plug, so show different voltages
+    global fake_voltage
+
+    # defined by battery.get_batt_threshold()
+    levels = [0, 2.9, 3.5, 4.0, 4.5]
+
+    fake_voltage = levels[(levels.index(fake_voltage) + 1) % len(levels)]
+
+    battery.nbat_pin.simulate_irq()
 
 battery.get_batt_level = mock_get_batt_level
 
