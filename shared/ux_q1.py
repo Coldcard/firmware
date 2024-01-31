@@ -222,7 +222,9 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
         if msg:
             dis.text(-1, 0, msg, dark=True)
 
-        dis.text(None, 1, '━'*CHARS_W, dark=True)
+        dis.text(0, 0, KEY_TAB, dark=True)
+
+        dis.text(None, 1, '┅'*CHARS_W, dark=True)
         x = 0
         y = 2
 
@@ -310,12 +312,16 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
                 continue
             else:
                 if can_scroll:
-                    # CANCEL is only way out in scrolling mode
+                    # CANCEL/TAB are only way out in scrolling mode
                     # - cleanup blank lines at end, etc
                     value = value.strip()
                     break
                 value = None
                 break
+        elif can_scroll and ch == KEY_TAB:
+            # allow tab as escape from multiline mode
+            value = value.strip()
+            break
 
         elif ch == KEY_QR and scan_ok:
             # Insert or replace? I think replace in most cases, but not if long msg.
@@ -420,63 +426,76 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
                     footer=None, randomize=None):
 
     # Draw PIN during entry / reentry / changing or setting
-    # - vertical locations should be fixed
+
+    # verticals
+    rnd_y = 0           # jammed in at top; doesn't look great but rarely used?
+    foot_y = -1         # footer at foot
+    y = 4               # main focus area, center line
+    if randomize: 
+        y += 1
+
+    # for MAX_PIN_PART_LEN==6, and one char margin both sides
+    x = 6
+    w = 8
+
+    # position of prefix/suffix digits
+    ppx = x + 2
+    ssx = x + w + 6
 
     if force_draw:
         dis.clear()
 
-    rnd_y = 0           # jammed in at top; doesn't look great but rarely used?
-    foot_y = -1         # footer at foot
+        if randomize:
+            # screen redraw, when we are "randomized"
+            # - only used at login, none of the other cases
+            # - test w/ "simulator.py --q1 -g --eff --set rngk=1"
 
-    if randomize:
-        # screen redraw, when we are "randomized"
-        # - only used at login, none of the other cases
-        # - test w/ "simulator.py --q1 -g --eff --set rngk=1"
+            # show mapping of numbers vs. PIN digits
+            dis.text(1, rnd_y+0, '  ' + '  '.join(randomize[1:]) +'  '+ randomize[0] + '  ', invert=1)
+            dis.text(1, rnd_y+1, '↳ 1  2  3  4  5  6  7  8  9  0')
 
-        # show mapping of numbers vs. PIN digits
-        dis.text(1, rnd_y+0, '  ' + '  '.join(randomize[1:]) +'  '+ randomize[0] + '  ', invert=1)
-        dis.text(1, rnd_y+1, '↳ 1  2  3  4  5  6  7  8  9  0')
+        dis.text(x+w+2, y, '⋯', dark=True)
+
+        if footer:
+            # ie. '1 failures, 12 tries left'
+            dis.text(None, foot_y, footer, dark=True)
+        elif is_confirmation:
+            dis.text(None, foot_y, "Confirm PIN value")
+    else:
+        dis.clear_box(ppx, y, 6, 1)
+        dis.clear_box(ssx, y, 6, 1)
+
+    # prefix/not prefix can change anytime, so redraw this stuff
+    dis.draw_box(x, y-1, w, 1, dark=bool(prefix))
+    dis.draw_box(x+w+4, y-1, w, 1, dark=not bool(prefix))
 
     prompt = "Enter first part of PIN" if not prefix else "Enter second part of PIN" 
 
     if not subtitle:
-        dis.text(None, 2, prompt)
+        dis.text(None, y-2, prompt)
     else:
         # "New Main PIN" and similar
-        dis.text(None, 1, subtitle, dark=False)
-        dis.text(None, 2, prompt, dark=True)
+        dis.text(None, y-3, subtitle, dark=False)
+        dis.text(None, y-2, prompt, dark=True)
 
-    if footer:
-        # ie. '1 failures, 12 tries left'
-        dis.text(None, foot_y, footer, dark=True)
-    elif is_confirmation:
-        dis.text(None, foot_y, "Confirm PIN value")
-
-    # for MAX_PIN_PART_LEN==6
-    x = 0
-    y = 4
-    w = 14      # (double-wide * 6) + margin
-    dis.clear_box(0, y, CHARS_W, 1)
-    dis.draw_box(x, y-1, w, 1, dark=bool(prefix))
-    dis.text(x+w+2, y, '⋯', dark=True)
-    dis.draw_box(x+w+4, y-1, w, 1, dark=not bool(prefix))
-        
+    # show dots            
     active = '•' * len(prefix or pin)
 
     if prefix:
         # show both first part and second
-        dis.text(x+2, y, active, dark=True)
-
-        msg = '•' * len(pin)
-        cur_x = dis.text(x+w+6, y, msg)
+        suffix = '•' * len(pin)
+        dis.text(ppx, y, active, dark=True)
+        cur_x = dis.text(ssx, y, suffix)
     else:
         # just showing first part
-        cur_x = dis.text(x+2, y, active)
+        cur_x = dis.text(ppx, y, active)
+        dis.clear_box(ssx, y, 6, 1)
 
     if len(pin) == 6:
-        cur_x -= 2
-
-    dis.show(cursor=CursorSpec(cur_x, y, CURSOR_DW_SOLID))
+        # cursor on final 6th digit
+        dis.show(cursor=CursorSpec(cur_x-1, y, CURSOR_OUTLINE))
+    else:
+        dis.show(cursor=CursorSpec(cur_x, y, CURSOR_SOLID))
 
 async def ux_login_countdown(sec):
     # Show a countdown, which may need to

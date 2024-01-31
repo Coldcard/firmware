@@ -8,7 +8,7 @@ from ux import PressRelease, ux_wait_keyup, ux_show_story, ux_show_pin, ux_show_
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
-from charcodes import KEY_DELETE, KEY_ENTER, KEY_CANCEL, KEY_CLEAR, KEY_LEFT, KEY_RIGHT
+from charcodes import KEY_DELETE, KEY_ENTER, KEY_CANCEL, KEY_CLEAR, KEY_LEFT, KEY_RIGHT, KEY_TAB
 from version import has_qwerty
 
 MAX_PIN_PART_LEN = 6
@@ -59,6 +59,7 @@ class LoginUX:
         # - show as busy for 1-2 seconds
         dis.busy_bar(True)
         words = pincodes.PinAttempt.prefix_words(self.pin.encode())
+        dis.busy_bar(False)
 
         # - show rest of screen and CTA
         ux_show_phish_words(dis, words)
@@ -121,7 +122,7 @@ class LoginUX:
                     self.pin = ''
                     self.show_pin()
 
-            elif ch in KEY_ENTER+' -_'+KEY_RIGHT:
+            elif ch in KEY_ENTER+' -_'+KEY_RIGHT+KEY_TAB:
                 if len(self.pin) < MIN_PIN_PART_LEN:
                     # they haven't given enough yet - ignore
                     continue

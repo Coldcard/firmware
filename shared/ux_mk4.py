@@ -360,7 +360,7 @@ def ux_show_phish_words(dis, words):
 def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
                     footer=None, randomize=None):
 
-    # Draw PIN (placeholder)
+    # Draw PIN during login process, as they enter it.
     from display import FontTiny, FontLarge
 
     is_first_part = not bool(prefix)

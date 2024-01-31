@@ -523,7 +523,7 @@ class Display:
         # XXX maybe TODO ? or remove ... LCD doesnt have issue
         return
 
-    def busy_bar(self, enable, speed_code=5):
+    def busy_bar(self, enable):
         # activate the GPU to render/animate this.
         # - show() in this funct is relied-upon by callers
         if enable:
@@ -599,7 +599,7 @@ class Display:
         y=0
         for ln in lines:
             if ln == 'EOT':
-                self.text(0, y, '─'*CHARS_W, dark=True)
+                self.text(0, y, '┅'*CHARS_W, dark=True)
                 continue
             elif ln and ln[0] == '\x01':
                 # title ... but we have no special font? Inverse!
@@ -730,18 +730,18 @@ class Display:
             self.text(x, yy,  '┃', **kw)
             self.text(x+w+1,  yy, '┇', **kw)
 
-        ln = '┗' + ln[1:-1] + '┛'
+        ln = '┗' + ('┅'*w) + '┛'
         self.text(x, y+h+1, ln, **kw)
 
         return x+1
 
-    def clear_box(self, x, y, w, h):
+    def clear_box(self, x, y, w, h, fill=32):
         # clear (w/ spaces) a box on screen
         for Y in range(y, y+h):
             for X in range(x, x+w):
                 assert 0 <= X < CHARS_W, X
                 assert 0 <= Y < CHARS_H, Y
-                self.next_buf[Y][X] = 32
+                self.next_buf[Y][X] = fill
 
     def bootrom_takeover(self):
         # we are going to go into the bootrom and have it do stuff on the

@@ -74,7 +74,7 @@ async def scan_and_bag(*a):
     assert not failed
 
     # lock down bootrom against further changes.
-    callgate.set_rdp_level(2 if not version.is_devmode else 0)
+    callgate.set_rdp_level(2)
 
     # set genuine light
     pa.greenlight_firmware()

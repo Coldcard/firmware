@@ -49,11 +49,7 @@ def get_batt_level():
     # return voltage from batteries, as a float
     # - will only work on battery power, else return None
     # - uses system VCC as reference (3.3) and signal is divided by 2
-    try:
-        from machine import ADC
-    except ImportError:
-        # simulator
-        return 3.3
+    from machine import ADC
 
     if nbat_pin() == 1:
         # not getting power from batteries, so don't know level
