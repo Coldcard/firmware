@@ -2,6 +2,7 @@
 #
 import pytest, time, os, re, hashlib
 from helpers import xfp2str, prandom
+from charcodes import KEY_DOWN
 from constants import AF_CLASSIC, simulator_fixed_words
 from mnemonic import Mnemonic
 from pycoin.key.BIP32Node import BIP32Node
@@ -52,22 +53,37 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
     need_keypress('x')
 
 @pytest.fixture
-def word_menu_entry(cap_menu, pick_menu_item, is_q1, cap_screen, need_keypress):
-    def doit(words):
+def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
+    def doit(words, has_checksum=True):
         if is_q1:
             # easier for us on Q, but have to anticipate the autocomplete
-            for w in words:
-                for i in range(len(w)):
-                    time.sleep(.3)
-                    menu = cap_menu()
-                    time.sleep(.3)
-                    if w in menu:
-                        pick_menu_item(w)
-                        break
-                    v = f"{w[:i+1]}-"
-                    if v in menu:
-                        pick_menu_item(v)
+            for n, w in enumerate(words, start=1):
+                do_keypresses(w[0:2])
+                time.sleep(0.50)
+                if 'Next key' in cap_screen():
+                    do_keypresses(w[2])
+                    time.sleep(.1)
+                if 'Next key' in cap_screen():
+                    if len(w) > 3:
+                        do_keypresses(w[3])
+                    else:
+                        do_keypresses(KEY_DOWN)
+                    time.sleep(.1)
 
+                pat = rf'{n}:\s?{w}'
+                for x in range(10):
+                    if re.search(pat, cap_screen()):
+                        break
+                    time.sleep(0.20)
+                else:
+                    raise RuntimeError('timeout')
+
+            cap_scr = cap_screen()
+            if has_checksum:
+                assert 'Valid words' in cap_scr
+            else:
+                assert 'Press ENTER if all done' in cap_scr
+            do_keypresses('\r')
             return
 
         # do the massive drilling-down to pick a specific pass phrase

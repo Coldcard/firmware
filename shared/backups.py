@@ -503,6 +503,10 @@ async def restore_complete(fname_or_fd, temporary=False):
         if prob:
             await ux_show_story(prob, title='FAILED')
 
+    if version.has_qwerty:
+        from ux_q1 import seed_word_entry
+        return await seed_word_entry('Enter Password:', num_pw_words,
+                                     done_cb=done, has_checksum=False)
     # give them a menu to pick from, and start picking
     m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
 
