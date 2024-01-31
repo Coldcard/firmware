@@ -633,7 +633,7 @@ setting) the Coldcard will always brick after 13 failed PIN attempts.''')
                             arg=num, flags=TC_WIPE|TC_REBOOT),
             StoryMenuItem('Silent Wipe', "Seed is silently wiped and Coldcard acts as if PIN code was just wrong.",
                             arg=num, flags=TC_WIPE|TC_FAKE_OUT),
-            StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK),
+            StoryMenuItem('Brick Self', "Become a brick instantly and forever.", flags=TC_BRICK, arg=num),
             StoryMenuItem('Last Chance', "Wipe seed, then give one more try and then brick if wrong PIN.", arg=num, flags=TC_WIPE|TC_BRICK),
             StoryMenuItem('Just Reboot', "Reboot when this happens. Doesn't do anything else.", arg=num, flags=TC_REBOOT),
         ])
