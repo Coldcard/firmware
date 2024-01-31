@@ -2,6 +2,7 @@
 
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 - Bugfix: Properly handle and finalize framing error response
+- Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes
 
 ## 5.2.2 - 2023-12-21
 
