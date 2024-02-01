@@ -145,6 +145,7 @@ class QRScanner:
             await self.txrx('S_CMD_MTRF500')      # Idle time: 500ms
             await self.txrx('S_CMD_059A')         # add CR LF after QR data (important)
             await self.txrx('S_CMD_03L0')         # light off all the time by default
+            await self.txrx('S_CMD_0407')         # turn on signal for our yellow led
 
             # settings under continuous scan mode
             await self.txrx('S_CMD_MARS0000')    # "Modify the duration of single code reading" (ms)
@@ -192,7 +193,6 @@ class QRScanner:
             await self.wakeup()
 
             # begin scan, in continuous mode
-            await self.txrx('S_CMD_0407')       # turn on signal for our yellow led
             await self.tx('S_CMD_020E')         # Continuous scanning mode start
 
             try:
@@ -214,7 +214,6 @@ class QRScanner:
                     try:
                         await self.txrx('S_CMD_020D')         # return to "Command mode"
                         await self.txrx('S_CMD_03L0')         # turn off bright light
-                        await self.txrx('S_CMD_0406')         # turn off signal for our yellow led
                         #print('rest after %d retries' % retry)
                         break
                     except: pass
