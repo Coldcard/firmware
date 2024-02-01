@@ -313,7 +313,7 @@ AdvancedNormalMenu = [
 By default these commands are disabled.", predicate=hsm_feature),
     MenuItem('User Management', menu=make_users_menu, predicate=hsm_feature),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
-    MenuItem("Danger Zone", menu=DangerZoneMenu),
+    MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
 
 # needs to create main wallet PIN
