@@ -88,9 +88,9 @@ async def test_qr_scanner():
     from glob import SCAN
 
     # Can take 2+ seconds to setup the QR scanner (from powerup), and
-    # if batteries are right, we can hit that timeframe in this test.
+    # if batteries are right, we can hit that timeframe in factory test case.
     for i in range(25):
-        if SCAN.version is not None:
+        if SCAN.setup_done:
             break
         await sleep_ms(100)
 

@@ -189,6 +189,7 @@ class QRScanner:
             await self.wakeup()
 
             # begin scan, in continuous mode
+            await self.txrx('S_CMD_0407')       # turn on signal for our yellow led
             await self.tx('S_CMD_020E')         # Continuous scanning mode start
 
             try:
@@ -206,12 +207,17 @@ class QRScanner:
             finally:
                 # Problem: another valid scan can come in just as we are trying
                 # to get out of scanner mode
-                for retry in range(3):
+                for retry in range(10):
                     try:
                         await self.txrx('S_CMD_020D')         # return to "Command mode"
-                        await self.txrx('S_CMD_03L0')         # turn off light
+                        await self.txrx('S_CMD_03L0')         # turn off bright light
+                        await self.txrx('S_CMD_0406')         # turn off signal for our yellow led
+                        print('rest after %d retries' % retry)
                         break
                     except: pass
+                    await asyncio.sleep_ms(25)
+                else:
+                    print('reset failed')
 
                 await self.goto_sleep()
                 self.busy_scanning = False
@@ -263,7 +269,7 @@ class QRScanner:
     async def flush_junk(self):
         while n := self.stream.s.any():
             junk = await self.stream.readexactly(n)
-            #print('Scan << (junk)  ' + B2A(junk))
+            print('Scan << (junk)  ' + B2A(junk))
 
     async def tx(self, msg):
         # Send a command, don't wait for response
@@ -299,7 +305,8 @@ class QRScanner:
             except asyncio.TimeoutError:
                 if timeout is None:
                     continue
-                raise RuntimeError("no rx after %s" % msg)
+                print("no rx after %s" % msg)
+                raise RuntimeError
 
             #print('txrx << ' + B2A(rx))
 
@@ -344,7 +351,8 @@ class QRScanner:
                 #print("Bad Rx: %s=%r" % (B2A(rx), rx))
                 #print("   exc: %s" % exc)
                 # this generally does not happen with all above complexity
-                raise RuntimeError("bad frame after %s" % msg)
+                print("bad frame after %s" % msg)
+                raise RuntimeError
 
     def torch_control_sync(self, on):
         # sync wrapper

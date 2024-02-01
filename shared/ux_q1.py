@@ -767,7 +767,7 @@ class QRScannerInteraction:
         while 1:
             if task.done():
                 data = await task
-                print("Scanned: %r" % data)
+                #print("Scanned: %r" % data)
                 break
 
             dis.image(None, 40, 'scan_%d' % frames[ph])

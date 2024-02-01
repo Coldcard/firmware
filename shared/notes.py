@@ -149,10 +149,10 @@ class NotesMenu(MenuSystem):
         elif got.startswith('otpauth-migration://offline'):
             # see <https://github.com/qistoph/otp_export>
             tmp.title = 'Google Auth'
-        elif '://' in got:
+        elif '://' in got[0:20]:
             # might be a URL, try to get the domain name as title
             try:
-                tmp.title = got.split('://', 1)[1].split('/', 1)[0]
+                tmp.title = (got.split('://', 1)[1].split('/', 1)[0])[0:32]
             except:
                 tmp.title = 'Scanned URL'
 
