@@ -127,7 +127,7 @@ class QRScanner:
                 baud = await self.probe_baud()
                 if baud: break
             else:
-                print("QR Scanner: missing")
+                #print("QR Scanner: missing")
                 return
 
             await self.txrx('S_CMD_FFFF')         # factory reset of settings
@@ -169,7 +169,10 @@ class QRScanner:
             await self.goto_sleep()
             
     async def scan_once(self):
-        # blocks until something is scanned. returns it
+        # Blocks until something is scanned. Returns it as string
+        # - will keep scanning if BBRq detected
+        # - updates UX via BBQrState.collect() while BBQr is being received
+        # - returns a BBQr object at that point
         self.scan_light = False
 
         # wait for reset process to complete (can be an issue right after boot)
@@ -212,12 +215,13 @@ class QRScanner:
                         await self.txrx('S_CMD_020D')         # return to "Command mode"
                         await self.txrx('S_CMD_03L0')         # turn off bright light
                         await self.txrx('S_CMD_0406')         # turn off signal for our yellow led
-                        print('rest after %d retries' % retry)
+                        #print('rest after %d retries' % retry)
                         break
                     except: pass
                     await asyncio.sleep_ms(25)
                 else:
-                    print('reset failed')
+                    pass
+                    #print('reset failed')
 
                 await self.goto_sleep()
                 self.busy_scanning = False
@@ -263,13 +267,19 @@ class QRScanner:
     async def goto_sleep(self):
         # Had to decode hex to get this command! Does work tho, current consumption
         # is near zero, and wakeup is near instant
-        #await self.txrx('SRDF0050')
+        # - need blind retries here
+        # - might be two layers of sleep, and we need this second command after the first
+        # - helps to turn off the yellow LED, and save power as well
         await self.tx('SRDF0050')
+        async def later():
+            await asyncio.sleep_ms(150)
+            await self.tx('SRDF0050')
+        asyncio.create_task(later())
 
     async def flush_junk(self):
         while n := self.stream.s.any():
             junk = await self.stream.readexactly(n)
-            print('Scan << (junk)  ' + B2A(junk))
+            #print('Scan << (junk)  ' + B2A(junk))
 
     async def tx(self, msg):
         # Send a command, don't wait for response
@@ -284,7 +294,7 @@ class QRScanner:
         # Send a command, get the corresponding response.
         # - has a long timeout, collects rx based on framing
         # - but optimized for normal case, which is just "ok" back
-        # - out going messages are text, and we wrap that w/ binary framing
+        # - outgoing messages are text, and we wrap that w/ binary framing
         # - doing the binary wrap will cause the longer response w/ framing
         # - ignore QR data (text+\r\n) and RAW_OKAY packets ... they are not us
 
@@ -305,7 +315,7 @@ class QRScanner:
             except asyncio.TimeoutError:
                 if timeout is None:
                     continue
-                print("no rx after %s" % msg)
+                #print("no rx after %s" % msg)
                 raise RuntimeError
 
             #print('txrx << ' + B2A(rx))
@@ -348,10 +358,8 @@ class QRScanner:
                     raise RuntimeError("extra at end")
                 return body
             except Exception as exc:
-                #print("Bad Rx: %s=%r" % (B2A(rx), rx))
-                #print("   exc: %s" % exc)
-                # this generally does not happen with all above complexity
-                print("bad frame after %s" % msg)
+                # this generally does not happen with above complexity in place
+                #print("bad frame after %s" % msg)
                 raise RuntimeError
 
     def torch_control_sync(self, on):
