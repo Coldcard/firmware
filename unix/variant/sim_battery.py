@@ -4,7 +4,7 @@
 #
 import battery, sys
 
-fake_voltage = 0 if ('--plugged' in sys.argv) else 4.0
+fake_voltage = 4.0 if ('--battery' in sys.argv) else 0
 
 def mock_get_batt_level():
     return fake_voltage if fake_voltage != 0 else None
