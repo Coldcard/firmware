@@ -422,7 +422,7 @@ class LCDSimulator(SimulatedScreen):
         if active_set & SD2_LED:
             self.draw_single_led(spriterenderer, 8, 260)
         if active_set & USB_LED:
-            self.draw_single_led(spriterenderer, 240, 805)
+            self.draw_single_led(spriterenderer, 240, 805, red=True)
         if active_set & NFC_LED:
             self.draw_single_led(spriterenderer, 465, 315)
 
