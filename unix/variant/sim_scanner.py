@@ -58,7 +58,10 @@ class SimulatedQRScanner(QRScanner):
         print("Click screen to paste QR data from clipboard,\nor write data into file: work/%s" % DATA_FILE)
         self._task = asyncio.create_task(self._read_results())
 
-    async def tx(self, msg, timeout=250):
+    async def tx(self, msg):
+        return
+
+    async def txrx(self, msg, timeout=250):
         return
 
     async def goto_sleep(self):
@@ -66,6 +69,14 @@ class SimulatedQRScanner(QRScanner):
 
     async def torch_control(self, on):
         print("Torch is: " + ('ON' if on else 'off'))
+
+    async def flush_junk(self):
+        # clear Q
+        try:
+            while self._q.get_nowait():
+                pass
+        except:
+            return
 
 class AttachedQRScanner(QRScanner):
     def hardware_setup(self):
