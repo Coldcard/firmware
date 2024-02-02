@@ -148,6 +148,8 @@ code-committed:
 	@echo "Are all changes commited already?"
 	git diff --stat --exit-code .
 	@echo '... yes'
+	@echo 'Submodule changes? But some of these are expected...'
+	git submodule foreach git diff --stat .
 
 # Sign a message with the contents of ../releases on the developer's machine
 .PHONY: sign-release
