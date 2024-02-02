@@ -8,11 +8,12 @@ set -ex
 
 # arguments, all required
 VERSION_STRING=$1
-MK_NUM=$2
+HW_MODEL=$2
+PARENT_MKFILE=$3
 
 VENV_PATH="/tmp/ENV"
 
-MAKE="make -f MK$MK_NUM-Makefile"
+MAKE="make -f $PARENT_MKFILE"
 
 TARGETS="firmware-signed.bin firmware-signed.dfu production.bin dev.dfu firmware.lss firmware.elf"
 
@@ -41,12 +42,12 @@ python -m pip install --editable .
 cd ../stm32
 
 cd ../releases
-if [ -f *-v$VERSION_STRING-mk$MK_NUM-coldcard.dfu ]; then
+if [ -f *-v$VERSION_STRING-$HW_MODEL-coldcard.dfu ]; then
     echo "Using existing binary in ../releases, not downloading."
-    PUBLISHED_BIN=`realpath *-v$VERSION_STRING-mk$MK_NUM-coldcard.dfu`
+    PUBLISHED_BIN=`realpath *-v$VERSION_STRING-$HW_MODEL-coldcard.dfu`
 else
     # fetch a copy of the required binary
-    PUBLISHED_BIN=`grep -F v$VERSION_STRING-mk$MK_NUM-coldcard.dfu signatures.txt | dd bs=66 skip=1`
+    PUBLISHED_BIN=`grep -F v$VERSION_STRING-$HW_MODEL-coldcard.dfu signatures.txt | dd bs=66 skip=1`
     if [ -z "$PUBLISHED_BIN" ]; then
         # may indicate first attempt to build this release
         echo "Cannot determine release date / full file name."

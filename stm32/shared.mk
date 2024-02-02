@@ -242,7 +242,7 @@ DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 repro: code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build
-	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(HW_MODEL))
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(HW_MODEL) $(PARENT_MKFILE))
 
 # debug: shell into docker container
 shell:
