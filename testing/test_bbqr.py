@@ -167,8 +167,8 @@ def test_show_bbqr_contents(src, need_keypress, cap_screen_qr, sim_exec, render_
     assert data2 == data
     assert ft == 'B'
 
-@pytest.mark.parametrize('size', [ 10 ] )
-@pytest.mark.parametrize('max_ver', [ 10, 20 ] )
+@pytest.mark.parametrize('size', [ 2, 10 ] )
+@pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
 @pytest.mark.parametrize('partial', [False, True])
 def test_bbqr_psbt(size, encoding, max_ver, partial, 
