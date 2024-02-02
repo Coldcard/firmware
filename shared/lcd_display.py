@@ -688,7 +688,7 @@ class Display:
         # - lots of data so we can show nice animation
         # - hdr:BBQrHeader instance
         count = len(got_parts)
-        if hdr.num_parts < (CHARS_W // 2):
+        if 2 <= hdr.num_parts < (CHARS_W // 2):
             # if not too many parts, show - or 3 as they arrive
             pat = []
             for i in range(hdr.num_parts):
