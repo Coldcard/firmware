@@ -280,4 +280,29 @@ else
 endif
 
 
+# Various debug firmware upload methods. Won't work on production units generally.
+#
+
+# This is fast for Coinkite devs, but no DFU support in the wild.
+dfu-up: dev.dfu
+	echo 'dfu' | nc localhost 4444
+	$(PYTHON_DO_DFU) -u dev.dfu
+
+# When device already in DFU mode
+dfu up2: dev.dfu
+	$(PYTHON_DO_DFU) -u dev.dfu
+
+# Slowest DFU, but easier w/ stock tools
+dfu-slow: dev.dfu
+	dfu-util -d 0483:df11 -a 0 -D $< -R
+
+# Super fast, assumes Coldcard already attached and unlocked on this Mac.
+up: dev.dfu
+	cp dev.dfu /Volumes/COLDCARD/.
+	diskutil eject /Volumes/COLDCARD
+
+# Fairly fast, assumes openocd already running, and its current directory is here.
+ocp-up: dev.dfu
+	echo "load_image dev.dfu $(FIRMWARE_BASE) bin; reset run" | nc localhost 4444
+
 # EOF
