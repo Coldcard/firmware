@@ -24,12 +24,13 @@ value = ((today.year - 1980) << 25) | (today.month << 21) | (today.day << 16)
 
 # only 2second resolution for times, so can only support minor verion up to x.x.5 and hard to see
 # anyway, let's omit ... worst case, use the date instead
-h, m, _ = [int(x) for x in version.split('b')[0].split('.')]
+ver = ''.join(v for v in version if v in '0123456789.')     # strip letter codes from end
+h, m, _ = [int(x) for x in ver.split('b')[0].split('.')]
 value |= (h << 11) | (m << 5)
 
 with open(out_fname, 'wt') as fd:
     fd.write('''\
-// (c) Copyright 2020-2022 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+// (c) Copyright 2020-%d by Coinkite Inc. This file is covered by license found in COPYING-CC.
 //
 // AUTO-generated.
 //
@@ -42,4 +43,4 @@ with open(out_fname, 'wt') as fd:
 uint32_t get_fattime(void) {
     return 0x%08xUL;
 }
-''' % (today.isoformat(), version, value))
+''' % (today.year, today.isoformat(), version, value))
