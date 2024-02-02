@@ -125,7 +125,7 @@ release-products: built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin $(RELEASE_FNAME)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
-		factory-$(RELEASE_FNAME)
+		$(RELEASE_FNAME:%.dfu=%-factory.dfu)
 	@echo
 	@echo 'Made release: ' $(RELEASE_FNAME)
 	@echo
