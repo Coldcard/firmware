@@ -177,5 +177,5 @@ We will summarize transaction outputs as "change" back into same wallet, however
   except F3 which makes an easier to type password of around 48 bits entropy.
 - Title, Sitename and Username fields are limited to 32 characters in length.
 - Passwords are limited to 128 characters.
-- Note text is unlimited, but holding very large notes may affect performance in other areas.
+- Note text is unlimited, but storing very large notes may affect performance in other areas.
 
