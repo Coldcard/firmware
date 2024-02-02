@@ -90,7 +90,7 @@ def get_sys_status():
 
 class Display:
 
-    # XXX move  to global, but rest of system looks at these member vars
+    # TODO: move to global, but rest of system looks at these member vars
     WIDTH = 320
     HEIGHT = 240
 
