@@ -27,8 +27,8 @@ except:
     # - excludes serial port code access completely (see vcp_lockdown.c)
     pass
 
-if 0:
-    raise SystemExit
+# Sometimes useful: die early for debug
+#raise SystemExit
 
 print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2023.")
 
