@@ -106,8 +106,10 @@ rc1:
 	$(SUBMAKE) DEBUG_BUILD=0 all
 	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
-		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
 		`signit version rc1.bin`-$(HW_MODEL)-RC1-coldcard.dfu
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
+		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
+		`signit version rc1.bin`-$(HW_MODEL)-RC1-factory-coldcard.dfu
 	ls -1 *-RC1-*.dfu
 
 # This target just combines latest version of production firmware with bootrom into a DFU
@@ -120,9 +122,10 @@ release-products: built/production.bin
 	cp built/file_time.c $(BOARD)/file_time.c
 	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
 	$(SIGNIT) sign -m $(HW_MODEL) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
+	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin $(RELEASE_FNAME)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
-		$(RELEASE_FNAME)
+		factory-$(RELEASE_FNAME)
 	@echo
 	@echo 'Made release: ' $(RELEASE_FNAME)
 	@echo
@@ -279,8 +282,13 @@ else
 	@echo "You have built a bit-for-bit identical copy of Coldcard firmware for v$(VERSION_STRING)"
 endif
 
+# revert "make release" and it's actions
+unrelease: BAD_VERSIONS ?= $(shell git tag --contains HEAD^^)
+unrelease:
+	echo "Trying to forget: $(BAD_VERSIONS)"
 
-# Various debug firmware upload methods. Won't work on production units generally.
+#
+# Various debug firmware upload methods. Won't work on production units due to bootrom.
 #
 
 # This is fast for Coinkite devs, but no DFU support in the wild.
