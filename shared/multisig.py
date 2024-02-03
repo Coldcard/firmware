@@ -694,7 +694,7 @@ class MultisigWallet:
         #
         expect_chain = chains.current_chain().ctype
         if "sortedmulti(" in config or MultisigDescriptor.is_descriptor(config):
-            # assume descriptor, classic config should not contain sertedmulti( and check for checksum separator
+            # assume descriptor, classic config should not contain sortedmulti( and check for checksum separator
             # ignore name
             _, addr_fmt, xpubs, has_mine, M, N = cls.from_descriptor(config)
         else:
