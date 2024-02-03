@@ -237,6 +237,8 @@ class USBHandler:
                     # prefer to catch at higher layers, but sometimes can't
                     resp = b'err_Out of RAM'
                     msg_len = 0
+                except FramingError as exc:
+                    raise exc
                 except Exception as exc:
                     # catch bugs and fuzzing too
                     if is_simulator() or is_devmode:
@@ -250,8 +252,8 @@ class USBHandler:
 
             except FramingError as exc:
                 reason = exc.args[0]
-                #print("Framing: %s" % reason)
-                self.framing_error(reason)
+                # print("Framing: %s" % reason)
+                await self.framing_error(reason)
                 msg_len = 0
 
             except BaseException as exc:
@@ -326,10 +328,10 @@ class USBHandler:
                 # Let other stuff run during this delay.
                 await sleep_ms(10)
 
-    def framing_error(self, why):
+    async def framing_error(self, why):
         # send error about framing, and recover
-        self.dev.send(b'%cfram%-59s' % (4+len(why), why))
-
+        resp = b'fram' + why.encode()
+        await self.send_response(resp)
 
     async def handle(self, cmd, args):
         # Dispatch incoming message, and provide reply.
