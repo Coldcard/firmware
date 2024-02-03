@@ -1,6 +1,7 @@
 ## 5.2.3 - 2024-XX-XX
 
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
+- Bugfix: Properly handle and finalize framing error response
 
 ## 5.2.2 - 2023-12-21
 
