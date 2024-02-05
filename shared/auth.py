@@ -15,7 +15,7 @@ from ux import ux_aborted, ux_show_story, abort_and_goto, ux_dramatic_pause, ux_
 from ux import show_qr_code
 from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
-from utils import B2A, parse_addr_fmt_str
+from utils import B2A, parse_addr_fmt_str, to_ascii_printable
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
@@ -279,27 +279,14 @@ def validate_text_for_signing(text):
     # - messages must be short and ascii only. Our charset is limited
     # - too many spaces, leading/trailing can be an issue
 
-    MSG_CHARSET = range(32, 127)
     MSG_MAX_SPACES = 4      # impt. compared to -=- positioning
 
-    try:
-        result = str(text, 'ascii')
-    except UnicodeError:
-        raise AssertionError('must be ascii')
+    result = to_ascii_printable(text)
 
     length = len(result)
     assert length >= 2, "msg too short (min. 2)"
     assert length <= MSG_SIGNING_MAX_LENGTH, "msg too long (max. %d)" % MSG_SIGNING_MAX_LENGTH
-    run = 0
-    for ch in result:
-        assert ord(ch) in MSG_CHARSET, "bad char: 0x%02x in msg" % ord(ch)
-
-        if ch == ' ':
-            run += 1
-            assert run < MSG_MAX_SPACES, 'too many spaces together in msg(max. 4)'
-        else:
-            run = 0
-
+    assert "   " not in result, 'too many spaces together in msg(max. 3)'
     # other confusion w/ whitepace
     assert result[0] != ' ', 'leading space(s) in msg'
     assert result[-1] != ' ', 'trailing space(s) in msg'

@@ -186,6 +186,30 @@ def str2xfp(txt):
     # Inverse of xfp2str
     return ustruct.unpack('<I', a2b_hex(txt))[0]
 
+def is_ascii(s):
+    if len(s) == len(s.encode()):
+        return True
+    return False
+
+def is_printable(s):
+    PRINTABLE = range(32, 127)
+    for ch in s:
+        if ord(ch) not in PRINTABLE:
+            return False
+    return True
+
+def to_ascii_printable(s, strip=False):
+    try:
+        s = str(s, 'ascii')
+        if strip:
+            s = s.strip()
+        assert is_ascii(s)
+        assert is_printable(s)
+        return s
+    except:
+        raise AssertionError('must be ascii printable')
+
+
 def problem_file_line(exc):
     # return a string of just the filename.py and line number where
     # an exception occured. Best used on AssertionError.
@@ -222,10 +246,8 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # - if allow_star, then final position can be * or *' (wildcard)
     import ure
     from public_constants import MAX_PATH_DEPTH
-    try:
-        s = str(bin_path, 'ascii').lower()
-    except UnicodeError:
-        raise AssertionError('must be ascii')
+
+    s = to_ascii_printable(bin_path, strip=True).lower()
 
     # empty string is valid
     if s == '': return 'm'

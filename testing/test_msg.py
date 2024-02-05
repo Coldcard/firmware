@@ -65,7 +65,7 @@ def test_sign_msg_refused(dev, press_cancel):
     ('23234pp', 'bad component'),
     ("23234p'", 'bad component'),
     ("m/1p/3455343434443534543345p", 'bad component'),
-    ("m/\n34p", 'invalid characters'),
+    ("m/\n34p", 'must be ascii printable'),
     ("2147483648/1/2/3", 'bad component'),    # 2**31 = 0x80000000 not allowed (because that's 0')
     ("214748364800/1/2/3", 'bad component'),
     ('/'.join('0' for i in range(13)), 'too deep'),
@@ -212,14 +212,19 @@ def sign_using_nfc(goto_home, pick_menu_item, nfc_write_text, cap_story):
     ('hello%20sworld'%'', 'many spaces', 0),        # spaces
     ('hello%10sworld'%'', 'many spaces', 0),        # spaces
     ('hello%5sworld'%'', 'many spaces', 0),        # spaces
-    ('test\ttest', "bad char: 0x09", 0),
-    ])
+    ('test\ttest', "must be ascii printable", 0),
+    ('testêtest', "must be ascii printable", 0),
+])
 @pytest.mark.parametrize('transport', ['sd', 'usb', 'nfc'])
 def test_sign_msg_fails(dev, sign_on_microsd, msg, concern, no_file, transport, sign_using_nfc, path='m/12/34'):
 
     if transport == 'usb':
         with pytest.raises(CCProtoError) as ee:
-            dev.send_recv(CCProtocolPacker.sign_message(msg.encode('ascii'), path), timeout=None)
+            try:
+                encoded_msg = msg.encode('ascii')
+            except UnicodeEncodeError:
+                encoded_msg = msg.encode()
+            dev.send_recv(CCProtocolPacker.sign_message(encoded_msg, path), timeout=None)
         story = ee.value.args[0]
     elif transport == 'sd':
         try:

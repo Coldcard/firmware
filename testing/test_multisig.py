@@ -144,9 +144,9 @@ def make_multisig(dev, sim_execfile):
 
 @pytest.fixture
 def offer_ms_import(cap_story, dev):
-    def doit(config):
+    def doit(config, allow_non_ascii=False):
         # upload the file, trigger import
-        file_len, sha = dev.upload_file(config.encode('ascii'))
+        file_len, sha = dev.upload_file(config.encode('utf-8' if allow_non_ascii else 'ascii'))
 
         open('debug/last-config.txt', 'wt').write(config)
 
@@ -241,7 +241,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select, is_q1):
 def test_ms_import_variations(N, make_multisig, offer_ms_import, press_cancel, is_q1):
     # all the different ways...
     keys = make_multisig(N, N)
-    
+
 
     # bare, no fingerprints
     # - no xfps
@@ -436,6 +436,7 @@ def test_ms_show_addr(dev, cap_story, press_select, addr_vs_path, bitcoind_p2sh,
         assert B2A(scr) == core_scr
         assert core_addr == got_addr
 
+
     return doit
     
 
@@ -590,7 +591,7 @@ def test_bad_common_prefix(cpp, use_regtest, clear_ms, import_ms_wallet,
 def test_import_detail(clear_ms, import_ms_wallet, need_keypress,
                        cap_story, is_q1, press_cancel):
     # check all details are shown right
-    
+
     M,N = 14, 15
 
     keys = import_ms_wallet(M, N)
@@ -619,7 +620,7 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress,
 def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
                        need_keypress, microsd_path, load_export, use_mainnet,
                        testnet, way, is_q1, press_select):
-    
+
 
     if not testnet:
         use_mainnet()
@@ -828,7 +829,7 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
 
 @pytest.mark.parametrize('N', [ 3, 15])
 def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num, is_q1):
-    
+
     clear_ms()
     M = N
     name = 'a'*20       # longest possible
@@ -886,7 +887,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
                          need_keypress, cap_story, goto_home, pick_menu_item,
                          cap_menu, is_q1, press_select):
     # import wallet, rename it, (check that indicated, works), attempt same w/ addr fmt different
-    
+
     M = N
 
     clear_ms()
@@ -1072,7 +1073,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
 
     # construct a wallet (M of 4) using different bip39 passwords, and default sim
     def doit(M, addr_fmt=None, do_import=True):
-        
+
         passwords = ['Me', 'Myself', 'And I', '']
 
         if 0:
@@ -1357,8 +1358,6 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
                         need_keypress, microsd_path, set_bip39_pw, clear_ms,
                         get_settings, load_export, is_q1, press_select, press_cancel):
     # test UX and math for bip45 export
-    
-    
 
     # cleanup
     from glob import glob
@@ -1814,7 +1813,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
                                goto_home, load_export, is_q1):
     # try config file with different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
-    
+
     actual = "m/48'/0'/0'/1'/0"
     derivs = [ actual, 'm', "m/45'/0'/99'", "m/45'/34/34'/34"]
 
@@ -1983,7 +1982,7 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wa
                            clear_ms, is_q1):
     M = 2
     N = 3
-    
+
     deriv = ["m/48'/1'/0'/69'/1"]*N
     fmts = [ 'p2wsh', 'p2sh-p2wsh']
 
@@ -2142,7 +2141,7 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
                                               pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign,
                                               is_q1, press_select):
-    
+
     use_regtest()
     clear_ms()
     microsd_wipe()
@@ -2255,7 +2254,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
                                 microsd_wipe, load_export, settings_set, psbt_v2, is_q1,
                                 finalize_v2_v0_convert, press_select):
     # 2of2 case here is described in docs with tutorial
-    
+
     M, N = m_n
     settings_set("sighshchk", 1)  # disable checks
     use_regtest()
@@ -2679,5 +2678,22 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
         else:
             assert obj["desc"] == bare_desc
     clear_ms()
+
+
+def test_multisig_name_validation(microsd_path, offer_ms_import):
+    with open("data/multisig/export-p2wsh-myself.txt", "r") as f:
+        config = f.read()
+
+    c0 = config.replace("Name: CC-2-of-4", "Name: eê")
+
+    with pytest.raises(Exception) as e:
+        offer_ms_import(c0, allow_non_ascii=True)
+    assert "must be ascii" in e.value.args[0]
+
+    c0 = config.replace("Name: CC-2-of-4", "Name: eee\teee")
+
+    with pytest.raises(Exception) as e:
+        offer_ms_import(c0, allow_non_ascii=True)
+    assert "must be ascii" in e.value.args[0]
 
 # EOF
