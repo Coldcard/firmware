@@ -3,7 +3,7 @@
 # multisig.py - support code for multisig signing and p2sh in general.
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
-from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str
+from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
 from utils import str_to_keypath, problem_file_line, export_prompt_builder, parse_extended_key
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
@@ -716,7 +716,7 @@ class MultisigWallet:
             name = '%d-of-%d' % (M, N)
 
         try:
-            name = str(name, 'ascii')
+            name = to_ascii_printable(name)
             assert 1 <= len(name) <= 20
         except:
             raise AssertionError('name must be ascii, 1..20 long')
