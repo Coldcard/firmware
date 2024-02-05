@@ -9,3 +9,5 @@ Github is nearly free, so why not capture all the actual bits!
 # Change log
 
 - V1.0.0 - first version built
+- V1.0.1 - first version almost released to production
+- V1.0.2 - bugfix w/ power btn release

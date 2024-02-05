@@ -220,6 +220,16 @@ q1_wait_powerdown(void)
 {
     gpio_setup();
 
+    // wait for release (often problem occurs close to power up)
+    for(uint32_t i=0; i<AUTO_POWERDOWN_TIME*10; i++) {
+        if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_12) == 1) {
+            break;
+        }
+
+        delay_ms(100);
+    }
+
+    // wait for press
     for(uint32_t i=0; i<AUTO_POWERDOWN_TIME*10; i++) {
         if(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_12) == 0) {
             break;
