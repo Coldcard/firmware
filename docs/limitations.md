@@ -71,6 +71,7 @@
   the active multisig wallet, and cannot be used to describe an unrelated (multisig) wallet.
 - derivation path for each cosigner must be known and consistent with PSBT
 - XFP values (fingerprints) MUST be unique for each of the co-signers
+- multisig wallet `name` can only contain printable ASCII characters `range(32, 127)`
 
 
 # Taproot
