@@ -4,7 +4,7 @@
 #
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
 from ubinascii import hexlify as b2a_hex
-from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, truncate_address
+from utils import xfp2str, str2xfp, cleanup_deriv_path, keypath_to_str, truncate_address, to_ascii_printable
 from utils import str_to_keypath, problem_file_line, export_prompt_builder, check_xpub
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
 from files import CardSlot, CardMissingError, needs_microsd
@@ -723,7 +723,7 @@ class MultisigWallet(BaseWallet):
             name = '%d-of-%d' % (M, N)
 
         try:
-            name = str(name, 'ascii')
+            name = to_ascii_printable(name)
             assert 1 <= len(name) <= 20
         except:
             raise AssertionError('name must be ascii, 1..20 long')
