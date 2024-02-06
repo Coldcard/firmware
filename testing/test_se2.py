@@ -383,19 +383,6 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
                       new_pin_confirmed, press_select, enter_pin):
     # wrong pin choices, not implementation
     goto_trick_menu()
-    m = cap_menu()
-
-    if not ('Add If Wrong' in m):
-        # already has "if wrong"
-        pick_menu_item('↳WRONG PIN')
-        pick_menu_item('Delete Trick')
-        time.sleep(.1)
-        _, story = cap_story()
-        assert "Are you SURE" in story
-        assert "Remove special handling of wrong PINs?" in story
-        press_select()
-        time.sleep(.1)
-
     pick_menu_item('Add If Wrong')
     time.sleep(.1)
     _, story = cap_story()
@@ -435,6 +422,14 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     time.sleep(.1)
     m = cap_menu()
     assert 'Add If Wrong' not in m
+    pick_menu_item('↳WRONG PIN')
+    pick_menu_item('Delete Trick')
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Are you SURE" in story
+    assert "Remove special handling of wrong PINs?" in story
+    press_select()
+    time.sleep(.1)
 
 
 @pytest.mark.parametrize('subchoice, expect, xflags', [
