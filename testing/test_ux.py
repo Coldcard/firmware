@@ -2,7 +2,7 @@
 #
 import pytest, time, os, re, hashlib
 from helpers import xfp2str, prandom
-from charcodes import KEY_DOWN
+from charcodes import KEY_DOWN, KEY_ENTER
 from constants import AF_CLASSIC, simulator_fixed_words
 from mnemonic import Mnemonic
 from pycoin.key.BIP32Node import BIP32Node
@@ -550,14 +550,21 @@ def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story
     assert chk == ''
 
 @pytest.fixture
-def enter_complex(get_pp_sofar, need_keypress, pick_menu_item):
+def enter_complex(get_pp_sofar, need_keypress, pick_menu_item, is_q1):
     def doit(target):
         # full entry mode
         # - just left to right here
         # - not testing case swap, because might remove that
-        symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-
         pick_menu_item('Edit Phrase')
+
+        if is_q1:
+            for ch in target:
+                need_keypress(ch)
+                time.sleep(.1)
+            need_keypress(KEY_ENTER)
+            return
+
+        symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 
         for pos, d in enumerate(target):
             time.sleep(.01)      # required

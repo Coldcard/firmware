@@ -13,6 +13,8 @@ import json
 from mnemonic import Mnemonic
 from constants import simulator_fixed_xfp, simulator_fixed_words, simulator_fixed_tprv
 from helpers import xfp2str
+from charcodes import KEY_ENTER
+
 
 # add the BIP39 test vectors
 vectors = json.load(open('bip39-vectors.json'))['english']
@@ -161,7 +163,12 @@ def test_b39p_refused(dev, need_keypress, pw='testing 123'):
             done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
 
-def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, need_keypress, cap_menu):
+def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, need_keypress,
+                                       cap_menu, is_q1):
+    if is_q1:
+        # there is no Enter Number dialog on Q1
+        pytest.skip("'Enter Number' not available on Q1")
+
     goto_home()
     pick_menu_item('Passphrase')
     need_keypress("y")  # intro story
@@ -176,7 +183,8 @@ def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, need_keypress,
 @pytest.mark.parametrize('stype', ["bip39pw", "words", "xprv", None])
 def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
                   need_keypress, sim_exec, get_settings, reset_seed_words,
-                  get_setting, generate_ephemeral_words, import_ephemeral_xprv):
+                  get_setting, generate_ephemeral_words, import_ephemeral_xprv,
+                  is_q1):
     # test UX and operation of the 'seed lockdown' option
     if stype:
         if stype == "bip39pw":
@@ -199,7 +207,8 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
     title, story = cap_story()
 
     if stype:
-        assert 'Are you SURE' in story
+        where = title if is_q1 else story
+        assert 'Are you SURE' in where
     else:
         assert 'do not have an active temporary seed' in story
         need_keypress('x')
@@ -208,7 +217,7 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
     # real code does reboot, which is poorly simulated; avoid that
     sim_exec('import callgate; callgate.show_logout = lambda x:0')
     # commit change
-    need_keypress('y')
+    need_keypress(KEY_ENTER if is_q1 else 'y')
 
     time.sleep(0.25)
 
@@ -230,7 +239,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
                                      need_keypress, pick_menu_item, goto_home,
                                      reset_seed_words, goto_eph_seed_menu, stype,
                                      enter_complex, cap_story, cap_menu, on_eph,
-                                     settings_set, seed_vault):
+                                     settings_set, seed_vault, is_q1):
     passphrase = "@coinkite rulez!!"
     reset_seed_words()
     settings_set("seedvault", 1)
@@ -294,7 +303,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
         assert master_fp == title_xfp
         assert f"master seed [{sim_fp}]" in story
 
-    need_keypress("y")
+    need_keypress(KEY_ENTER if is_q1 else "y")
 
     time.sleep(.3)
     title, story = cap_story()
@@ -306,9 +315,9 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
             assert "Saved to Seed Vault" in story
             assert title_xfp in story
 
-            need_keypress("y")
+            need_keypress(KEY_ENTER if is_q1 else "y")
         else:
-            need_keypress("y")  # do not store
+            need_keypress(KEY_ENTER if is_q1 else "y")  # do not store
 
     if seed_vault:
         # check correct meta in seed vault
@@ -322,7 +331,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
             pytest.fail("not in menu")
 
         # choose first info item in submenu
-        need_keypress("y")
+        need_keypress(KEY_ENTER if is_q1 else "y")
         time.sleep(.1)
         _, story = cap_story()
         assert title_xfp in story
