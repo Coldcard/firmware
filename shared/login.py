@@ -76,7 +76,7 @@ class LoginUX:
             self.shuffle_keys()
 
         self.show_pin(True)
-        pr = PressRelease('y')
+        pr = PressRelease('0123456789y'+KEY_ENTER)
         while 1:
             ch = await pr.wait()
 
