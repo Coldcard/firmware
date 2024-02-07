@@ -24,7 +24,7 @@
 
 # Releases
 
-## 1.0.0 - 2024-02-07
+## 6.0.0 - 2024-02-07
 
 - first test-only release to production; not planning to ship to customers
 
