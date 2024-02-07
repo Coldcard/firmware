@@ -440,7 +440,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
 
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 
-        need_keypress(KEY_QR if is_q1 else '2')
+        need_keypress(KEY_QR if is_q1 else '4')
         qr = cap_screen_qr().decode('ascii')
         if which_fmt == AF_P2WPKH:
             assert qr == addr.upper()
