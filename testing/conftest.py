@@ -1564,14 +1564,14 @@ def nfc_read(request, needs_nfc):
         return doit_usb
 
 @pytest.fixture()
-def nfc_write(request, needs_nfc):
+def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
         sim_exec = request.getfixturevalue('sim_exec')
         need_keypress = request.getfixturevalue('need_keypress')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
         if 'Traceback' in rv: raise pytest.fail(rv)
-        need_keypress('y')      # to end the animation and have it check value immediately
+        need_keypress(KEY_ENTER if is_q1 else 'y')      # to end the animation and have it check value immediately
 
     try:
         raise NotImplementedError
