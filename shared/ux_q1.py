@@ -100,8 +100,14 @@ async def ux_enter_number(prompt, max_value, can_cancel=False):
                        "Enter number, ENTER when done.")
 
     while 1:
-        # TODO: check width, go to two lines if needed? depends on prompt text
-        bx = dis.text(2, 4, prompt + ' ' + value)
+        # check width, go to two lines if needed? depends on prompt text
+        if len(prompt) + 1 + max_w >= CHARS_W:
+            dis.text(0, 3, prompt[-CHARS_W:])      # may still be truncated, oh well.
+            if len(prompt) > CHARS_W:
+                dis.text(0, 3, '⋯')
+            bx = dis.text(2, 4, value)
+        else:
+            bx = dis.text(2, 4, prompt + ' ' + value)
         dis.show(cursor=CursorSpec(bx, 4, CURSOR_SOLID))
 
         ch = await press.wait()
