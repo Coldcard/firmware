@@ -21,3 +21,11 @@
 - detects Google Auth app export QR and provides title
 - detects OTP 2FA (RFC ?) QR code and provides nice title
 - detects URL in QR, and uses domain name as title
+
+# Releases
+
+## 1.0.0 - 2024-02-07
+
+- first test-only release to production; not planning to ship to customers
+
+

@@ -2001,7 +2001,7 @@ async def show_version(*a):
 
     # this UID is exposed over NFC interface, but only when enabled and in active use
     if NFC:
-        serial += '\n\nNFC UID:\n' + NFC.get_uid().replace(':', '')
+        serial += '\n\nNFC UID:\n  ' + NFC.get_uid().replace(':', '')
 
     hw = version.hw_label
     if not version.has_nfc:

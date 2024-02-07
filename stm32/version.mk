@@ -1,4 +1,4 @@
 
 # Our version for this release.
-VERSION_STRING = 5.2.1Q
+VERSION_STRING = 1.0.0Q
 
