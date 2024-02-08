@@ -1822,8 +1822,7 @@ from your desktop wallet software or command line tools.\n\n'''
 any signature is performed."
 
         ch = await ux_show_story(msg, title=title, escape='3')
-        target_nfc = KEY_NFC if version.has_qwerty else "3"
-        if ch == target_nfc and NFC:
+        if NFC and ch in KEY_NFC+'3':
             await NFC.start_psbt_rx()
 
         return
