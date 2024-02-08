@@ -5,7 +5,7 @@
 import stash, ujson, ngu, pyb, os
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
-from utils import xfp2str
+from utils import xfp2str, problem_file_line
 from menu import MenuItem, MenuSystem
 
 
@@ -59,38 +59,30 @@ class PassphraseSaver:
             fd.write(msg)
 
     async def delete(self, idx):
-        try:
-            with CardSlot() as card:
-                self._calc_key(card)
-                data = self._read(card)
+        with CardSlot() as card:
+            self._calc_key(card)
+            data = self._read(card)
 
-                try:
-                    del data[idx]
-                except IndexError: pass
+            try:
+                del data[idx]
+            except IndexError: pass
 
-                await self._save(card, data)
-                if not data:
-                    return True  # is empty
-
-        except CardMissingError:
-            await needs_microsd()
+            await self._save(card, data)
+            if not data:
+                return True  # is empty
 
     async def append(self, xfp, bip39pw):
         from glob import dis
         dis.fullscreen('Reading...')
-        try:
-            with CardSlot() as card:
-                self._calc_key(card)
-                data = self._read(card)
+        with CardSlot() as card:
+            self._calc_key(card)
+            data = self._read(card)
 
-                to_add = dict(xfp=xfp, pw=bip39pw)
-                if to_add not in data:
-                    dis.fullscreen('Saving...')
-                    data.append(to_add)
-                    await self._save(card, data)
-
-        except CardMissingError:
-            await needs_microsd()
+            to_add = dict(xfp=xfp, pw=bip39pw)
+            if to_add not in data:
+                dis.fullscreen('Saving...')
+                data.append(to_add)
+                await self._save(card, data)
 
 
 class PassphraseSaverMenu(MenuSystem):
@@ -160,20 +152,28 @@ class PassphraseSaverMenu(MenuSystem):
         pw_saver, i = item.arg
         if await ux_confirm("Delete saved passphrase?"):
             dis.fullscreen("Wait...")
-            is_empty = await pw_saver.delete(i)
-            the_ux.pop()
-            if not is_empty:
-                m = the_ux.top_of_stack()
-                m.update_contents()
-            else:
-                # remove .tmp.tmp file after last passphrase
-                # is deleted
-                with CardSlot() as card:
-                    f_path = pw_saver.filename(card)
-                    os.remove(f_path)
+            try:
+                is_empty = await pw_saver.delete(i)
                 the_ux.pop()
-                m = the_ux.top_of_stack()
-                m.update_contents()
+                if not is_empty:
+                    m = the_ux.top_of_stack()
+                    m.update_contents()
+                else:
+                    # remove .tmp.tmp file after last passphrase
+                    # is deleted
+                    with CardSlot() as card:
+                        f_path = pw_saver.filename(card)
+                        os.remove(f_path)
+                    the_ux.pop()
+                    m = the_ux.top_of_stack()
+                    m.update_contents()
+            except CardMissingError:
+                await needs_microsd()
+            except Exception as e:
+                await ux_show_story(
+                    title="ERROR",
+                    msg='Delete failed!\n\n%s\n%s' % (e, problem_file_line(e))
+                )
 
     @classmethod
     def construct(cls):
