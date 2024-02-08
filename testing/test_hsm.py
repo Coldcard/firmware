@@ -114,7 +114,7 @@ def compute_policy_hash(policy):
     return b2a_hex(sha256(json_.encode()).digest()).decode()
 
 @pytest.fixture(autouse=True)
-def enable_hsm_commands(dev, sim_exec):
+def enable_hsm_commands(dev, sim_exec, only_mk4):
     cmd = 'from glob import settings; settings.set("hsmcmd", 1)'
     sim_exec(cmd)
     yield

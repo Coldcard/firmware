@@ -90,7 +90,7 @@ def probe_system():
     has_battery = False
     has_qwerty = False
     is_edge = False
-    supports_hsm = False
+    supports_hsm = True
     has_nfc = True
 
     cpuid = ckcc.get_cpu_id()
