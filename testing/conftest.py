@@ -158,12 +158,12 @@ def need_keypress(dev, request):
     return doit
 
 @pytest.fixture(scope='module')
-def enter_number(need_keypress):
+def enter_number(need_keypress, is_q1):
     def doit(number):
         number = str(number) if not isinstance(number, str) else number
         for d in number:
             need_keypress(d)
-        need_keypress('y')
+        need_keypress(KEY_ENTER if is_q1 else 'y')
 
     return doit
 
@@ -1564,14 +1564,14 @@ def nfc_read(request, needs_nfc):
         return doit_usb
 
 @pytest.fixture()
-def nfc_write(request, needs_nfc):
+def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
         sim_exec = request.getfixturevalue('sim_exec')
         need_keypress = request.getfixturevalue('need_keypress')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
         if 'Traceback' in rv: raise pytest.fail(rv)
-        need_keypress('y')      # to end the animation and have it check value immediately
+        need_keypress(KEY_ENTER if is_q1 else 'y')      # to end the animation and have it check value immediately
 
     try:
         raise NotImplementedError
@@ -1753,14 +1753,14 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
-                load_export_and_verify_signature):
+                load_export_and_verify_signature, is_q1):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
              fpattern=None):
         key_map = {
             "sd": sd_key or "1",
             "vdisk": vdisk_key or "2",
-            "nfc": nfc_key or "3",
+            "nfc": nfc_key or (KEY_NFC if is_q1 else "(3)"),
         }
         time.sleep(0.2)
         title, story = cap_story()
@@ -1769,7 +1769,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 need_keypress(key_map['sd'])
 
         elif way == "nfc":
-            if f"({key_map['nfc']}) to share via NFC" not in story:
+            if f"{key_map['nfc']} to share via NFC" not in story:
                 pytest.skip("NFC disabled")
             else:
                 need_keypress(key_map['nfc'])
@@ -1779,7 +1779,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 else:
                     nfc_export = nfc_read_text()
                 time.sleep(0.3)
-                need_keypress("x")  # exit NFC animation
+                need_keypress(KEY_CANCEL if is_q1 else "x")  # exit NFC animation
                 return nfc_export
         else:
             # virtual disk
@@ -1815,7 +1815,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 if is_json:
                     export = json.loads(export)
 
-            need_keypress("y")
+            need_keypress(KEY_ENTER if is_q1 else "y")
 
         if ret_sig_addr and sig_addr:
             return export, sig_addr

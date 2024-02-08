@@ -1,7 +1,7 @@
 import pytest, time, json, os, shutil, re
 from collections import OrderedDict
 from constants import simulator_fixed_words, simulator_fixed_tprv
-from charcodes import KEY_QR
+from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL
 from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
 
@@ -54,14 +54,14 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                 assert "A temporary seed is in effect" in body
                 assert "so backup will be of that seed" in body
 
-            need_keypress("y")
+            need_keypress(KEY_ENTER if is_q1 else "y")
             time.sleep(.1)
             title, body = cap_story()
 
         if ct:
             # cleartext backup
             if ' 1: zoo' in body:
-                need_keypress("x")
+                need_keypress(KEY_CANCEL if is_q1 else "x")
 
             need_keypress("6")
             time.sleep(.1)

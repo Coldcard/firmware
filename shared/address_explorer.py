@@ -358,7 +358,7 @@ Press (3) if you really understand and accept these risks.
                 if n > 1:
                     await NFC.share_text('\n'.join(addrs))
                 elif n == 1:
-                    await NFC.share_deposit_address(addrs[0])
+                    await NFC.share_text(addrs[0])
                 continue
 
             elif choice == '0' and allow_change:
