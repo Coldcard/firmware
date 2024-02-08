@@ -10,7 +10,7 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, bip39, random, stash, pyb, version
+import ngu, uctypes, bip39, random, stash, version
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
@@ -1112,7 +1112,7 @@ class PassphraseMenu(MenuSystem):
                 MenuItem('CANCEL', f=self.done_cancel),
             ]
         # quick SD card check
-        if pyb.SDCard().present():
+        if CardSlot.is_inserted():
             try:
                 with CardSlot() as card:
                     # check if passphrases file exists on SD
