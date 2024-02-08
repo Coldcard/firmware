@@ -528,7 +528,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
             need_keypress(confirm)
             got_pub = cap_screen_qr().decode('ascii')
         else:
-            assert f'Press ({"nfc" if is_q1 else "3"})' in story
+            assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
             assert 'NFC' in story
             need_keypress(k_nfc)
             time.sleep(0.2)

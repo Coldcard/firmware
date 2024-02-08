@@ -811,7 +811,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 tmsg = txid + '\n\nPress (1) for QR Code of TXID. '
 
                 if NFC:
-                    tmsg += 'Press (%s) to share signed txn via NFC.' % ("nfc" if version.has_qwerty else "3")
+                    tmsg += 'Press %s to share signed txn via NFC.' % (KEY_NFC if version.has_qwerty else "(3)")
 
                 ch = await ux_show_story(tmsg, "Final TXID", escape='13')
 
@@ -1292,7 +1292,7 @@ class ShowAddressBase(UserAuthorizedAction):
 
             if not version.has_qwerty:
                 if NFC:
-                    msg += ' Press (%s) to share via NFC.' % ("nfc" if version.has_qwerty else "3")
+                    msg += ' Press %s to share via NFC.' % (KEY_NFC if version.has_qwerty else "(3)")
                 msg += ' Press (4) to view QR Code.'
 
             while 1:
