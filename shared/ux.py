@@ -122,15 +122,19 @@ async def ux_wait_keyup(expected=None, flush=False):
 
         armed = ch
 
-async def ux_wait_keydown(allowed, timeout_ms):
+async def ux_wait_keydown(allowed=None, timeout_ms=None):
     # Wait for PRESS (not press+release) of any key. Return it and arrange so
     # that the later release doesn't cause confusion.
     # - no key repeat here
     from glob import numpad
 
-    for t in range(timeout_ms):
+    t = 0
+    while 1:
         if numpad.empty():
             await sleep_ms(1)
+            t += 1
+            if timeout_ms and t >= timeout_ms:
+                return None
             continue
 
         ch = numpad.get_nowait()
@@ -144,9 +148,6 @@ async def ux_wait_keydown(allowed, timeout_ms):
 
         numpad.clear_pressed()
         return ch
-
-    # timeout
-    return None
 
 def ux_poll_key():
     # non-blocking check if any key is pressed

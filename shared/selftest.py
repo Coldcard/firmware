@@ -5,7 +5,7 @@
 import ckcc
 from uasyncio import sleep_ms
 from glob import dis, settings
-from ux import ux_wait_keyup, ux_clear_keys, ux_poll_key
+from ux import ux_wait_keydown, ux_clear_keys, ux_poll_key
 from ux import ux_show_story
 from callgate import get_is_bricked, get_genuine, clear_genuine
 from utils import problem_file_line
@@ -18,7 +18,7 @@ except ImportError:
     FontLarge = None
 
 async def wait_ok():
-    k = await ux_wait_keyup('xy' + KEY_ENTER + KEY_CANCEL, flush=True)
+    k = await ux_wait_keydown('xy' + KEY_ENTER + KEY_CANCEL)
     if k not in 'y' + KEY_ENTER:
         raise RuntimeError('Canceled')
 
@@ -43,7 +43,7 @@ async def test_numpad():
         dis.text(None,24, ch if ch != 'y' else 'OK', FontLarge)
         dis.show()
 
-        k = await ux_wait_keyup(ch + 'x', flush=True)
+        k = await ux_wait_keydown(ch + 'x')
         if k == 'x' and ch != 'x':
             raise RuntimeError("numpad test aborted")
         assert k == ch
@@ -57,15 +57,14 @@ async def test_gpu():
         dis.text(0,-1, "GPU Test okay?")
         dis.show()
 
-        dis.bootrom_takeover()
         assert dis.gpu.get_version() == gpu_binary.VERSION
+        dis.bootrom_takeover()
         dis.gpu.show_test_pattern()
 
         await wait_ok()
     finally:
+        # not required?
         dis.real_clear()
-        dis.draw_status(full=1)
-        dis.clear()
 
 async def test_keyboard():
     # for Q1 - just some of them: one in each row and column
@@ -78,7 +77,7 @@ async def test_keyboard():
         dis.text(None,4, 'SPACE' if ch == ' ' else ch.upper())
         dis.show()
 
-        k = await ux_wait_keyup(ch + KEY_CANCEL, flush=True)
+        k = await ux_wait_keydown(ch + KEY_CANCEL)
         if k == KEY_CANCEL:
             raise RuntimeError("kbd test aborted")
         assert k == ch
@@ -129,10 +128,17 @@ async def test_battery():
             # not have magic batteries and so on.
             break
 
-        await sleep_ms(100)
+        # show for 100ms or until they press key
+        ch = await ux_wait_keydown(KEY_CANCEL+'s', 100)
+        if not ch: continue
 
-        if ux_poll_key():
+        if ch == 's':
+            # undocumented: 'skip'
+            return
+        elif ch == KEY_CANCEL:
             raise RuntimeError("Battery test aborted")
+        else:
+            raise ValueError(ch)
 
 def set_genuine():
     # PIN must be blank for this to work

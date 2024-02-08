@@ -27,7 +27,8 @@ from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 CLEAR_PIN = '999999-999999'
 
 async def start_selftest(*args):
-    # selftest is harmless, no need to warn anymore
+    # selftest is harmless, no need to warn anymore,
+    # but this layer saves memory in typical cases
     with imported('selftest') as st:
         await st.start_selftest()
 

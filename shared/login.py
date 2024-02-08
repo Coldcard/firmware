@@ -77,8 +77,8 @@ class LoginUX:
 
         self.show_pin(True)
         while 1:
-            ch = await ux_wait_keydown(None, 10000)
-            if ch is None: continue
+            ch = await ux_wait_keydown()
+            if ch is None: continue     # not expected
 
             if has_qwerty and not self.is_setting and ch.upper() == self.kill_btn:
                 # wipe the seed if they press a special key

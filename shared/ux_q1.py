@@ -1130,12 +1130,11 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
             if num_parts == 1:
                 # no need for animation
-                await ux_wait_keyup(flush=True)
+                await ux_wait_keydown()
                 return
 
             # wait for key or animation delay
             ch = await ux_wait_keydown(None, ms_per_each)
-
             if ch: return
 
     # not reached
