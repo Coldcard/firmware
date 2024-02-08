@@ -389,7 +389,7 @@ def quick_start_hsm(hsm_reset, start_hsm, hsm_status, change_hsm, sim_eval):
     return doit
 
 @pytest.fixture
-def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
+def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress, press_select):
     
     def doit(policy):
         try:
@@ -415,7 +415,7 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
 
         if cap_story:
             # approve it
-            need_keypress('y')
+            press_select()
             time.sleep(.1)
 
             title, body2 = cap_story()
@@ -444,7 +444,7 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
 
         else:
             # do keypresses blindly
-            need_keypress('y')
+            press_select()
             time.sleep(.1)
             for ch in '12346':
                 need_keypress(ch, timeout=10000)
@@ -857,8 +857,8 @@ def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
 
     time.sleep(.2)
     if dev.is_simulator:
-        need_keypress = request.getfixturevalue('need_keypress')
-        need_keypress("y")
+        press_select = request.getfixturevalue('press_select')
+        press_select()
     else:
         import pdb;pdb.set_trace()  # user interaction required on real CC
 
@@ -1547,7 +1547,7 @@ def test_op_return_output_bitcoind(op_return_data, start_hsm, attempt_psbt, bitc
     start_hsm(policy)
     attempt_psbt(base64.b64decode(psbt), refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN
 
-def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, need_keypress, hsm_reset, start_hsm,
+def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, hsm_reset, start_hsm,
                                sim_exec, enable_hsm_commands):
     dev.send_recv(CCProtocolPacker.create_user(b"xxx", 3, 32 * b"y"))
     dev.send_recv(CCProtocolPacker.delete_user(b"xxx"))

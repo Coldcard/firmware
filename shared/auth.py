@@ -19,7 +19,7 @@ from utils import B2A, parse_addr_fmt_str
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
-from charcodes import KEY_QR, KEY_NFC
+from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -1206,7 +1206,7 @@ class NewPassphrase(UserAuthorizedAction):
 
         title = "Passphrase"
         bypass_tmp = True
-        escape = "x2"
+        escape = "x2" + KEY_CANCEL
         while 1:
             msg = ('BIP-39 passphrase (%d chars long) has been provided over '
                    'USB connection. Should we switch to that wallet now?\n\n')
@@ -1215,7 +1215,7 @@ class NewPassphrase(UserAuthorizedAction):
                 msg += "Press (1) to add passphrase to currently active temporary seed. "
 
             if settings.master_get("words", True):
-                escape += "y"
+                escape += "y" + KEY_ENTER
                 msg += "Press OK to add passphrase to master seed. "
 
             msg += ('Press (2) to view the provided passphrase.\n\n'
@@ -1233,7 +1233,7 @@ class NewPassphrase(UserAuthorizedAction):
                 break
 
         try:
-            if ch not in 'y1':
+            if ch not in 'y1'+ KEY_ENTER:
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 1)

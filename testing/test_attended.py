@@ -22,7 +22,7 @@ def bkpw(settings_set):
 
 
 @pytest.mark.parametrize("last_saved", [True, False])
-def test_backup_refuse(last_saved, dev, need_keypress, bkpw):
+def test_backup_refuse(last_saved, dev, press_cancel, bkpw):
     time.sleep(0.050)
 
     if last_saved:
@@ -34,8 +34,8 @@ def test_backup_refuse(last_saved, dev, need_keypress, bkpw):
     assert r is None
 
     if last_saved:
-        need_keypress("x")
-    need_keypress('x')
+        press_cancel()
+    press_cancel()
 
     with pytest.raises(CCUserRefused):
         done = None
@@ -45,7 +45,7 @@ def test_backup_refuse(last_saved, dev, need_keypress, bkpw):
 
 
 @pytest.mark.parametrize("last_saved", [True, False])
-def test_backup_accept(last_saved, dev, need_keypress, bkpw):
+def test_backup_accept(last_saved, dev, need_keypress, press_select, bkpw):
     time.sleep(0.050)
     if last_saved:
         bkpw()
@@ -54,7 +54,7 @@ def test_backup_accept(last_saved, dev, need_keypress, bkpw):
     r = dev.send_recv(CCProtocolPacker.start_backup())
     assert r is None
 
-    need_keypress('y')
+    press_select()
     if last_saved:
         time.sleep(1)  # needed
         done = dev.send_recv(CCProtocolPacker.get_backup_file(), timeout=5000)

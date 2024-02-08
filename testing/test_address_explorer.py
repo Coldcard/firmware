@@ -6,7 +6,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.contrib.segwit_addr import encode as sw_encode
 from pycoin.encoding import a2b_hashed_base58, hash160
 from helpers import detruncate_address
-from charcodes import KEY_QR, KEY_NFC, KEY_LEFT, KEY_RIGHT, KEY_ENTER, KEY_CANCEL
+from charcodes import KEY_QR, KEY_LEFT, KEY_RIGHT
 
 @pytest.fixture
 def mk_common_derivations():
@@ -51,7 +51,7 @@ def parse_display_screen(cap_story, is_mark3):
         lines = body.split('\n')
         if start == 0:
             # no header after first page
-            assert 'to save address summary file' in body
+            assert 'to save Address summary file' in body
             assert 'show QR code' in body
 
         assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
@@ -85,8 +85,9 @@ def validate_address():
     return doit
 
 @pytest.fixture
-def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path, is_q1,
-                            virtdisk_path, nfc_read_text, load_export_and_verify_signature):
+def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, microsd_path,
+                            virtdisk_path, nfc_read_text, load_export_and_verify_signature,
+                            press_select, press_nfc):
     # Generates the address file through the simulator, reads the file and
     # returns a list of tuples of the form (subpath, address)
     def doit(expected_qty=250, way="sd", change=False):
@@ -97,18 +98,18 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
         if way == "sd":
             need_keypress('1')
         elif way == "vdisk":
-            if "save to Virtual Disk." not in story:
+            if "save to Virtual Disk" not in story:
                 raise pytest.skip("Vdisk disabled")
             need_keypress("2")
         else:
             # NFC
             if "share via NFC" not in story:
                 raise pytest.skip("NFC disabled")
-            need_keypress("3" if not is_q1 else KEY_NFC)
+            press_nfc()
             time.sleep(0.3)
             addresses = nfc_read_text()
             time.sleep(0.3)
-            need_keypress(KEY_ENTER if is_q1 else "y")
+            press_select()
             # nfc just returns 10 addresses
             assert len(addresses.split("\n")) == 10
             raise pytest.xfail("PASSED - different export format for NFC")
@@ -135,7 +136,7 @@ def generate_addresses_file(goto_address_explorer, need_keypress, cap_story, mic
 
 def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress,
                    cap_menu, mk_common_derivations, pick_menu_item,
-                   parse_display_screen, validate_address, is_q1):
+                   parse_display_screen, validate_address, press_cancel):
     # For a given wallet, ensure the explorer shows the correct stub addresses
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -167,7 +168,7 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress,
         start, end = detruncate_address(m[_id])
         assert expected_addr.startswith(start)
         assert expected_addr.endswith(end)
-        need_keypress(KEY_CANCEL if is_q1 else "x")
+        press_cancel()
 
 @pytest.mark.parametrize("chain", ["BTC", "XRT", "XTN"])
 @pytest.mark.parametrize("change", [True, False])
@@ -219,7 +220,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
 ])
 def test_address_display(goto_address_explorer, parse_display_screen, mk_common_derivations,
                          need_keypress, sim_execfile, validate_address, press_seq, expected_n,
-                         expected_start, pick_menu_item, cap_menu, is_q1):
+                         expected_start, pick_menu_item, cap_menu, is_q1, press_cancel):
     # The proper addresses are displayed
     # given the sequence of  keys pressed
     node_prv = BIP32Node.from_wallet_key(
@@ -248,7 +249,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(given_addr, sk)
 
-        need_keypress(KEY_CANCEL if is_q1 else "x")  # back
+        press_cancel()  # back
 
 @pytest.mark.parametrize('click_idx', ["Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
 @pytest.mark.parametrize("change", [True, False])
@@ -274,7 +275,8 @@ def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivati
 def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
                       goto_address_explorer, need_keypress, cap_menu,
                       mk_common_derivations, parse_display_screen,
-                      validate_address, generate_addresses_file, is_q1):
+                      validate_address, generate_addresses_file,
+                      press_cancel, press_select):
     # Try a few sub-accounts
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -295,7 +297,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
     time.sleep(0.1)
     for d in str(account_num):
         need_keypress(d)
-    need_keypress(KEY_ENTER if is_q1 else 'y')
+    press_select()
     time.sleep(0.1)
 
     m = cap_menu()
@@ -334,8 +336,8 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
             sk = node_prv.subkey_for_path(subpath[2:])
             validate_address(addr, sk)
 
-        need_keypress(KEY_CANCEL if is_q1 else 'x')
-        need_keypress(KEY_CANCEL if is_q1 else 'x')
+        press_cancel()
+        press_cancel()
 
 # NOTE: (2**31)-1 = 0x7fff_ffff = 2147483647
 
@@ -351,7 +353,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
 def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer,
                      need_keypress, cap_menu, parse_display_screen, validate_address, cap_story,
                      cap_screen_qr, qr_quality_check, is_mark4plus, nfc_read_text, get_setting,
-                     press_select, is_q1):
+                     press_select, press_cancel, is_q1, press_nfc):
 
     is_single = '{idx}' not in path
 
@@ -449,13 +451,13 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
 
         if is_mark4plus and get_setting('nfc', 0):
             # this is actually testing NFC export in qr code menu
-            need_keypress(KEY_NFC if is_q1 else '3')
+            press_nfc()
             time.sleep(.1)
             assert nfc_read_text() == addr
-            need_keypress(KEY_CANCEL if is_q1 else "x")  # leave NFC animation
-            need_keypress(KEY_CANCEL if is_q1 else "x")  # leave QR code display
+            press_cancel()  # leave NFC animation
+            press_cancel()  # leave QR code display
             # test NFC export in address explorer
-            need_keypress(KEY_NFC if is_q1 else '3')
+            press_nfc()
             time.sleep(.1)
             assert nfc_read_text() == addr
 

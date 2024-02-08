@@ -17,8 +17,9 @@ EXAMPLE_XPRV = '011b67969d1ec69bdfeeae43213da8460ba34b92d0788c8f7bfcfa44906e8a58
 
 
 @pytest.fixture
-def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story, enter_text,
-                    set_encoded_secret, set_seed_words, settings_set, seed_story_to_words, is_q1):
+def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, enter_text,
+                        set_encoded_secret, set_seed_words, settings_set, is_q1,
+                        seed_story_to_words):
     def doit(mode, index, expect=None, entropy=None, sim_sec=None, chain="BTC"):
         if sim_sec:
             if len(sim_sec.split(" ")) in (12,18,24):
@@ -41,11 +42,11 @@ def derive_bip85_secret(goto_home, need_keypress, pick_menu_item, cap_story, ent
         assert 'seed value' in story
         assert 'other wallet systems' in story
 
-        need_keypress('y')
+        press_select()
         time.sleep(0.1)
         title, story = cap_story()
         if "You have a temporary seed active - deriving from temporary" in story:
-            need_keypress("y")
+            press_select()
 
         time.sleep(0.1)
         pick_menu_item(mode)
@@ -183,7 +184,7 @@ def activate_bip85_ephemeral(need_keypress, cap_story, sim_exec, reset_seed_word
 ])
 def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
                      load_export_and_verify_signature, derive_bip85_secret,
-                     activate_bip85_ephemeral):
+                     activate_bip85_ephemeral, press_select, press_cancel):
 
     do_import, story = derive_bip85_secret(mode, index, expect, entropy, sim_sec=EXAMPLE_XPRV)
 
@@ -196,7 +197,7 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
     title, story = cap_story()
     contents,_ = load_export_and_verify_signature(story, "sd", fpattern="drv", label=None)
     assert contents.strip() == msg.strip()
-    need_keypress("y")
+    press_select()
     time.sleep(0.1)
     title, story = cap_story()
 
@@ -205,7 +206,7 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
     else:
         assert 'show QR code' in story
 
-    need_keypress('x')
+    press_cancel()
 
 
 @pytest.mark.qrcode
@@ -221,7 +222,7 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
 ])
 @pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
 def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_story_to_words,
-                    derive_bip85_secret, reset_seed_words, is_q1):
+                    derive_bip85_secret, reset_seed_words, is_q1, press_cancel):
     reset_seed_words()
     # Uses any key on Simulator; just checking for operation + entropy level
     _, story = derive_bip85_secret(mode, index)
@@ -256,7 +257,7 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
 
     if index == 0:
         assert 'show QR code' in story
-        need_keypress('4' if not is_q1 else KEY_QR)
+        need_keypress(KEY_QR if is_q1 else '4')
 
         qr = cap_screen_qr().decode('ascii')
 
@@ -275,19 +276,18 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
         elif 'WIF' in mode:
             assert qr == got
 
-    need_keypress("x")
+    press_cancel()
 
 
-def test_type_passwords(dev, cap_menu, pick_menu_item,
-        goto_home, cap_story, need_keypress, cap_screen, enter_text
-):
+def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home,
+                        cap_story, press_select, cap_screen, enter_text):
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Keyboard EMU')
     _, story = cap_story()
     story1 = "This mode adds a top-level menu item for typing deterministically-generated passwords (BIP-85), directly into an attached USB computer (as an emulated keyboard)."
     assert story1 == story
-    need_keypress("y")
+    press_select()
     pick_menu_item('Enable')
     time.sleep(0.3)
     goto_home()
@@ -308,7 +308,7 @@ def test_type_passwords(dev, cap_menu, pick_menu_item,
         assert path == f"m/83696968'/707764'/21'/{index}'"
         assert len(pwd) == 21
         assert "=" not in pwd
-        need_keypress("y")  # does nothing on simulator
+        press_select()  # does nothing on simulator
         time.sleep(0.2)
 
     # exit Enter Password menu

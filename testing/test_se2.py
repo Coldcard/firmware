@@ -241,7 +241,8 @@ def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress
 
 
 @pytest.fixture(scope='function')
-def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_story, enter_pin, se2_gate, is_simulator):
+def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
+                  cap_story, enter_pin, se2_gate, is_simulator):
     # using menus and UX, setup a new trick PIN
     def doit(new_pin, op_mode, expect=None):
         goto_trick_menu()
@@ -258,7 +259,7 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_
             if 'on this duress wallet' in story:
                 # extra confirm step, seen only for trick pins which lead to duress wallet
                 time.sleep(.1)
-                need_keypress('y')
+                press_select()
 
                 time.sleep(.1)
                 _,story = cap_story()
@@ -266,7 +267,7 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_
 
             assert new_pin in story
             time.sleep(.1)
-            need_keypress('y')
+            press_select()
 
             time.sleep(.1)
             m = cap_menu()
@@ -295,7 +296,7 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_
         _, story = cap_story()
         if expect:
             assert expect in story
-        need_keypress('y')
+        press_select()
 
     return doit
 
@@ -480,13 +481,13 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
-        stop_after_activated=False,
+        press_select, press_cancel, stop_after_activated=False,
 ):
 
     # import multisig
     clear_ms()
     import_ms_wallet(2, 2)
-    need_keypress('y')
+    press_select()
     time.sleep(.1)
     assert len(get_setting('multisig')) == 1
 
@@ -500,7 +501,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         pick_menu_item('Wipe -> Wallet')
         _, story = cap_story()
         assert 'Seed is silently wiped, and' in story
-        need_keypress('y')
+        press_select()
     else:
         new_trick_pin(new_pin, 'Duress Wallet', 'Goes directly to a specific duress wallet')
         xflags &= ~TC_WIPE
@@ -508,7 +509,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
     pick_menu_item(subchoice)
     _, story = cap_story()
     assert expect in story
-    need_keypress('y')
+    press_select()
 
     op_mode = subchoice 
     if with_wipe:
@@ -546,14 +547,14 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         seed = Mnemonic.to_seed(' '.join(words), passphrase='')
         wallet = BIP32Node.from_master_secret(seed, netcode='XTN')      # dev might be BTC
 
-    need_keypress('x')
+    press_cancel()
     time.sleep(.1)
     pick_menu_item('Activate Wallet')
     time.sleep(.1)
     _, story = cap_story()
     assert 'This will temporarily load' in story
 
-    need_keypress('y')
+    press_select()
     time.sleep(.1)
     if stop_after_activated: return
     _, story = cap_story()
@@ -818,12 +819,13 @@ def build_duress_wallets(request, seed_vault=False):
     # fixtures I need directly
     cap_story = request.getfixturevalue('cap_story')
     need_keypress = request.getfixturevalue('need_keypress')
+    press_select = request.getfixturevalue('press_select')
     restore_main_seed = request.getfixturevalue('restore_main_seed')
 
     # fixtures I need in test_ux_duress_choices
     args = {f: request.getfixturevalue(f)
               for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_ms',
-                        'import_ms_wallet', 'get_setting',
+                        'import_ms_wallet', 'get_setting', 'press_select', 'press_cancel',
                         'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress']}
 
     for (subchoice, expect, xflags, xargs) in [
@@ -842,11 +844,11 @@ def build_duress_wallets(request, seed_vault=False):
         _, story = cap_story()
         assert 'Saved to Seed Vault' in story
 
-        need_keypress('y')
+        press_select()
         time.sleep(0.1)
         _, story = cap_story()
         assert 'temporary master key is in effect now' in story
-        need_keypress("y")
+        press_select()
 
         # re-login to reset to normal seed
         # .. because cant get into trick menu when non-master seed is set (says Unavailable)

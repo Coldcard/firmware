@@ -12,11 +12,11 @@ from constants import msg_sign_unmap_addr_fmt
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt, is_simulator):
+def test_show_addr_usb(dev, press_select, addr_vs_path, path, addr_fmt, is_simulator):
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
 
-    need_keypress('y')
+    press_select()
 
     if "'" in path and not is_simulator():
         raise pytest.skip('we cant confirm hardened-derived keypaths')
@@ -28,7 +28,9 @@ def test_show_addr_usb(dev, need_keypress, addr_vs_path, path, addr_fmt, is_simu
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 @pytest.mark.parametrize('show_qr', [ False, True ])
-def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, cap_story, show_qr, cap_screen_qr, qr_quality_check):
+def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
+                             cap_story, show_qr, cap_screen_qr, qr_quality_check,
+                             press_cancel):
     time.sleep(0.1)
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
@@ -36,7 +38,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
     time.sleep(0.1)
     title, story = cap_story()
 
-    #need_keypress('x')
+    #press_cancel()
 
     # check expected addr was used
     addr_vs_path(addr, path, addr_fmt)
@@ -56,7 +58,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt, c
         assert qr == addr or qr == addr.upper()
 
 @pytest.mark.bitcoind
-def test_addr_vs_bitcoind(use_regtest, need_keypress, dev, bitcoind_d_sim_sign):
+def test_addr_vs_bitcoind(use_regtest, press_select, dev, bitcoind_d_sim_sign):
     # check our p2wpkh wrapped in p2sh is right
     use_regtest()
     for i in range(5):
@@ -68,7 +70,7 @@ def test_addr_vs_bitcoind(use_regtest, need_keypress, dev, bitcoind_d_sim_sign):
         path = resp['hdkeypath']
 
         addr = dev.send_recv(CCProtocolPacker.show_address(path, AF_P2WPKH_P2SH), timeout=None)
-        need_keypress('y')
+        press_select()
         assert addr == core_addr
 
 @pytest.mark.parametrize("body_err", [
@@ -91,8 +93,9 @@ def test_show_addr_nfc_invalid(body_err, goto_home, pick_menu_item, nfc_write_te
 
 @pytest.mark.parametrize("path", ["m/84'/0'/0'/300/0", "m/800'", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
-def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item, goto_home, cap_story,
-                         need_keypress, addr_vs_path):
+def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
+                       goto_home, cap_story, press_nfc, addr_vs_path, press_select, is_q1,
+                       cap_screen):
     # import pdb;pdb.set_trace()
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack
@@ -115,17 +118,19 @@ def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_m
     nfc_write_text(body)
     time.sleep(0.5)
     _, story = cap_story()
+
     split_story = story.split("\n\n")
     story_addr = split_story[0]
     story_path = split_story[1][2:]  # remove "= "
-    assert "Press (3) to share via NFC" in story
+    if not is_q1:
+        assert "Press (3) to share via NFC" in story
     assert story_path == path
-    need_keypress("3")  # share over NFC
+    press_nfc()  # share over NFC
     addr = nfc_read_text()
     if addr == body:
         # missed it - again
         addr = nfc_read_text()
-    need_keypress("y")  # exit NFC animation
+    press_select()  # exit NFC animation
     assert story_addr == addr
     addr_vs_path(addr, path, addr_fmt)
 

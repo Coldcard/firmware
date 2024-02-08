@@ -3,9 +3,9 @@
 # BBQr and secure notes.
 #
 
-import pytest, os, time, random
-from helpers import B2A, prandom
-from binascii import b2a_hex, a2b_hex
+import pytest, time, random
+from helpers import prandom
+from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
 from charcodes import KEY_QR
 
@@ -17,7 +17,7 @@ def THIS_FILE_requires_q1(is_q1):
         raise pytest.skip('Q1 only')
 
 @pytest.fixture
-def readback_bbqr_ll(need_keypress, cap_screen_qr, sim_exec):
+def readback_bbqr_ll(cap_screen_qr, sim_exec):
     # low level version
     def doit():
         num_parts = None
@@ -130,7 +130,7 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr_ll):
     return doit
 
 @pytest.mark.parametrize('size', [ 1, 20, 990, 2060*2,  5000, 65537] )
-def test_show_bbqr_sizes(size, need_keypress, cap_screen_qr, sim_exec, render_bbqr):
+def test_show_bbqr_sizes(size, cap_screen_qr, sim_exec, render_bbqr):
     # test lengths
     data, parts = render_bbqr(str_expr=f"'a'*{size}", msg=f'Size {size}', file_type='U')
 
@@ -144,7 +144,7 @@ def test_show_bbqr_sizes(size, need_keypress, cap_screen_qr, sim_exec, render_bb
     assert ft == 'U'
 
 @pytest.mark.parametrize('src', [ 'rng', 'gpu', 'bigger'] )
-def test_show_bbqr_contents(src, need_keypress, cap_screen_qr, sim_exec, render_bbqr, load_shared_mod):
+def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shared_mod):
 
     args = dict(msg=f'Test {src}', file_type='B')
     if src == 'rng':
@@ -171,10 +171,10 @@ def test_show_bbqr_contents(src, need_keypress, cap_screen_qr, sim_exec, render_
 @pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
 @pytest.mark.parametrize('partial', [False, True])
-def test_bbqr_psbt(size, encoding, max_ver, partial, 
-                    need_keypress, scan_a_qr, readback_bbqr,
-                    cap_screen_qr, render_bbqr, goto_home, use_regtest, decode_psbt_with_bitcoind,
-                    decode_with_bitcoind, fake_txn, dev, cap_story, start_sign, end_sign):
+def test_bbqr_psbt(size, encoding, max_ver, partial, scan_a_qr, readback_bbqr,
+                   cap_screen_qr, render_bbqr, goto_home, use_regtest, cap_story,
+                   decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
+                   start_sign, end_sign, press_cancel, press_select, need_keypress):
 
     num_in = size
     num_out = size*10
@@ -210,7 +210,7 @@ def test_bbqr_psbt(size, encoding, max_ver, partial,
         raise pytest.fail('never saw it?')
 
     # approve it
-    need_keypress('y')
+    press_select()
 
     time.sleep(.2)
 
@@ -232,6 +232,6 @@ def test_bbqr_psbt(size, encoding, max_ver, partial,
     assert len(decoded['vin']) == num_in
     assert len(decoded['vout']) == num_out
 
-    need_keypress('x')      # back to menu
+    press_cancel()      # back to menu
 
 # EOF

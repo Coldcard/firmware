@@ -7,7 +7,7 @@ import pytest
 from binascii import a2b_hex, b2a_hex
 from base64 import b64encode
 from urllib.parse import urlparse, parse_qs
-from helpers import prandom
+
 
 from mnemonic import Mnemonic
 wordlist = Mnemonic('english').wordlist
@@ -142,6 +142,6 @@ def test_urldecode(url, sim_exec):
     result = sim_exec(cmd)
 
     assert result == unquote_plus(url)
-    
+
 
 # EOF

@@ -157,13 +157,14 @@ def need_keypress(dev, request):
 
     return doit
 
+
 @pytest.fixture(scope='module')
-def enter_number(need_keypress, is_q1):
+def enter_number(need_keypress, press_select):
     def doit(number):
         number = str(number) if not isinstance(number, str) else number
         for d in number:
             need_keypress(d)
-        need_keypress(KEY_ENTER if is_q1 else 'y')
+        press_select()
 
     return doit
 
@@ -183,24 +184,21 @@ def enter_hex(need_keypress, enter_text, is_q1):
     return doit
 
 @pytest.fixture(scope='module')
-def enter_pin(enter_number, need_keypress, cap_screen, is_q1):
+def enter_pin(enter_number, press_select, cap_screen, is_q1):
     def doit(pin):
         assert '-' in pin
         a,b = pin.split('-')
         enter_number(a)
 
-        need_keypress(KEY_ENTER)
         scr = cap_screen().split('\n')
         if is_q1:
             words = [i.strip() for i in scr[7].split()]
         else:
             # capture words? hard to know in general what they should be tho
             words = scr[2:4]
-
-            need_keypress('y')
+            press_select()
 
         enter_number(b)
-        need_keypress(KEY_ENTER)
 
         return words
 
@@ -640,16 +638,52 @@ def get_secrets(sim_execfile):
 
     return doit
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def press_select(need_keypress, has_qwerty):
     def doit():
         need_keypress(KEY_ENTER if has_qwerty else 'y')
     return doit
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def press_cancel(need_keypress, has_qwerty):
     def doit():
         need_keypress(KEY_CANCEL if has_qwerty else 'x')
+    return doit
+
+@pytest.fixture(scope='module')
+def press_delete(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_DELETE if has_qwerty else 'x')
+    return doit
+
+@pytest.fixture(scope='module')
+def press_nfc(need_keypress, has_qwerty):
+    def doit(num=3):
+        need_keypress(KEY_NFC if has_qwerty else str(num))
+    return doit
+
+@pytest.fixture(scope='module')
+def press_up(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_UP if has_qwerty else "5")
+    return doit
+
+@pytest.fixture(scope='module')
+def press_down(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_DOWN if has_qwerty else "8")
+    return doit
+
+@pytest.fixture(scope='module')
+def press_left(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_LEFT if has_qwerty else "7")
+    return doit
+
+@pytest.fixture(scope='module')
+def press_right(need_keypress, has_qwerty):
+    def doit():
+        need_keypress(KEY_RIGHT if has_qwerty else "9")
     return doit
 
 @pytest.fixture
@@ -688,7 +722,7 @@ def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty, 
     return doit
 
 @pytest.fixture
-def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen):
+def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen, press_select, press_up, press_down):
     WRAP_IF_OVER = 16       # see ../shared/menu.py
 
     def doit(text):
@@ -706,18 +740,18 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen):
         if len(m) > WRAP_IF_OVER and m_pos > (len(m)//2):
             # use wrap around, work up from bottom
             for n in range(len(m) - m_pos):
-                need_keypress(KEY_UP if has_qwerty else '5')
+                press_up()
                 time.sleep(.01)      # required
 
-            need_keypress(KEY_ENTER if has_qwerty else 'y')
+            press_select()
             time.sleep(.01)      # required
         else:
             # go down
             for n in range(m_pos):
-                need_keypress(KEY_DOWN if has_qwerty else '8')
+                press_down()
                 time.sleep(.01)      # required
 
-            need_keypress(KEY_ENTER if has_qwerty else 'y')
+            press_select()
             time.sleep(.01)      # required
 
     return doit
@@ -1568,10 +1602,10 @@ def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
         sim_exec = request.getfixturevalue('sim_exec')
-        need_keypress = request.getfixturevalue('need_keypress')
+        press_select = request.getfixturevalue('press_select')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
         if 'Traceback' in rv: raise pytest.fail(rv)
-        need_keypress(KEY_ENTER if is_q1 else 'y')      # to end the animation and have it check value immediately
+        press_select()      # to end the animation and have it check value immediately
 
     try:
         raise NotImplementedError
@@ -1753,14 +1787,14 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
-                load_export_and_verify_signature, is_q1):
+                load_export_and_verify_signature, is_q1, press_cancel, press_select):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
              fpattern=None):
         key_map = {
             "sd": sd_key or "1",
             "vdisk": vdisk_key or "2",
-            "nfc": nfc_key or (KEY_NFC if is_q1 else "(3)"),
+            "nfc": nfc_key or (KEY_NFC if is_q1 else "3"),
         }
         time.sleep(0.2)
         title, story = cap_story()
@@ -1769,7 +1803,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 need_keypress(key_map['sd'])
 
         elif way == "nfc":
-            if f"{key_map['nfc']} to share via NFC" not in story:
+            if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
                 pytest.skip("NFC disabled")
             else:
                 need_keypress(key_map['nfc'])
@@ -1779,7 +1813,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 else:
                     nfc_export = nfc_read_text()
                 time.sleep(0.3)
-                need_keypress(KEY_CANCEL if is_q1 else "x")  # exit NFC animation
+                press_cancel()  # exit NFC animation
                 return nfc_export
         else:
             # virtual disk
@@ -1815,7 +1849,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 if is_json:
                     export = json.loads(export)
 
-            need_keypress(KEY_ENTER if is_q1 else "y")
+            press_select()
 
         if ret_sig_addr and sig_addr:
             return export, sig_addr

@@ -53,7 +53,7 @@ def goto_pin_options(pick_menu_item, goto_home):
     return doit
 
 @pytest.fixture
-def my_enter_pin(cap_screen, need_keypress, is_q1):
+def my_enter_pin(cap_screen, need_keypress, is_q1, press_right, press_select):
     def doit(pin):
         time.sleep(.01)  # required?
         scr = cap_screen().split('\n')
@@ -67,7 +67,7 @@ def my_enter_pin(cap_screen, need_keypress, is_q1):
                 time.sleep(.1)
 
             # move second part
-            need_keypress(KEY_RIGHT)
+            press_right()
             time.sleep(.1)
             scr = cap_screen().split('\n')
 
@@ -79,7 +79,7 @@ def my_enter_pin(cap_screen, need_keypress, is_q1):
                 need_keypress(n)
                 time.sleep(.1)
 
-            need_keypress(KEY_ENTER)
+            press_select()
 
         else:
             assert scr[2] == 'Enter PIN Prefix'
@@ -91,20 +91,20 @@ def my_enter_pin(cap_screen, need_keypress, is_q1):
                     continue
 
                 if ch == '-':
-                    need_keypress('y')
+                    press_select()
                     time.sleep(.1)      # required
 
                     scr = cap_screen().split('\n')
 
                     assert ('Recognize these?' in scr) or ('Write these down:' in scr)
                     words = scr[2:4]
-                    need_keypress('y')
+                    press_select()
 
                     time.sleep(.1)      # required
                     scr = cap_screen().split('\n')
                     assert scr[-1] == 'Enter rest of PIN'
 
-                    need_keypress('y')
+                    press_select()
 
         time.sleep(0.1)
         return title, words
@@ -113,7 +113,7 @@ def my_enter_pin(cap_screen, need_keypress, is_q1):
 
 
 @pytest.fixture
-def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
+def change_pin(cap_screen, cap_story, cap_menu, press_select, my_enter_pin, press_cancel):
     def doit(old_pin, new_pin, hdr_text, expect_fail=None):
         # use standard menus and UX to change a PIN 
         title, story = cap_story()
@@ -121,7 +121,7 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
         assert "changing the main PIN used to unlock your Coldcard" in story
         assert "ABSOLUTELY NO WAY TO RECOVER A FORGOTTEN PIN!" in story
         assert "Write it down" in story
-        need_keypress('y')
+        press_select()
         time.sleep(0.01)      # required
 
         assert max(len(i) for i in new_pin.split('-')) <= 6
@@ -147,7 +147,7 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
             title, story = cap_story()
             assert title == 'Try Again'
             assert expect_fail in story
-            need_keypress('x')
+            press_cancel()
             return
 
         # saving/verifying can take tens of seconds.
@@ -168,7 +168,7 @@ def change_pin(cap_screen, cap_story, cap_menu, need_keypress, my_enter_pin):
     return doit
 
 @pytest.mark.parametrize('new_pin', ['77-77', '123456-654321', '79-654321', '123456-12'])
-def test_main_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen, need_keypress,
+def test_main_pin(goto_pin_options, pick_menu_item, cap_story, cap_screen,
                   change_pin, new_pin, verify_pin_set, under_duress):
     goto_pin_options()
     pick_menu_item("Change Main PIN")

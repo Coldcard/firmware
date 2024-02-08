@@ -368,7 +368,7 @@ def _import_prompt_builder(title, no_qr, no_nfc):
             escape += "2"
         if (NFC is not None) and not no_nfc:
             if has_qwerty:
-                prompt += ", press (NFC) to import via NFC"
+                prompt += ", press " + KEY_NFC + " to import via NFC"
                 escape += KEY_NFC
             else:
                 prompt += ", press (3) to import via NFC"

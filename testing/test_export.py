@@ -16,7 +16,7 @@ from helpers import xfp2str, slip132undo
 from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH
 from pprint import pprint
-from charcodes import KEY_ENTER, KEY_CANCEL, KEY_NFC
+from charcodes import KEY_NFC
 
 
 @pytest.mark.bitcoind
@@ -24,7 +24,7 @@ from charcodes import KEY_ENTER, KEY_CANCEL, KEY_NFC
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
-                     enter_number, nfc_read_text, load_export, bitcoind, is_q1):
+                     enter_number, nfc_read_text, load_export, bitcoind, press_select):
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
     use_regtest()
@@ -47,7 +47,7 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         enter_number(acct_num)
     else:
         acct_num = '0'
-        need_keypress(KEY_ENTER if is_q1 else 'y')
+        press_select()
 
     export = load_export(way, label="Bitcoin Core", is_json=False, addr_fmt=AF_P2WPKH)
     fp = io.StringIO(export).readlines()
@@ -162,8 +162,8 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('testnet', [True, False])
-def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
-                       nfc_read_json, virtdisk_path, testnet, use_mainnet, load_export, is_q1):
+def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_select, microsd_path,
+                       nfc_read_json, virtdisk_path, testnet, use_mainnet, load_export):
     # test UX and operation of the 'wasabi wallet export'
     if not testnet:
         use_mainnet()
@@ -178,7 +178,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
     title, story = cap_story()
 
     assert 'This saves a skeleton Wasabi' in story
-    need_keypress(KEY_ENTER if is_q1 else 'y')
+    press_select()
 
     obj = load_export(way, label="Wasabi wallet", is_json=True, addr_fmt=AF_P2WPKH)
 
@@ -203,7 +203,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
-                         is_q1):
+                         press_select):
     # lightly test electrum wallet export
     if not testnet:
         use_mainnet()
@@ -231,7 +231,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
         for n in acct_num:
             need_keypress(n)
 
-    need_keypress(KEY_ENTER if is_q1 else 'y')
+    press_select()
 
     time.sleep(0.1)
     pick_menu_item(mode)
@@ -275,7 +275,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet, is_q1):
+                         load_export, testnet, use_mainnet, press_select):
     if not testnet:
         use_mainnet()
 
@@ -298,7 +298,7 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         enter_number(acct_num)
     else:
         acct_num = '0'
-        need_keypress(KEY_ENTER if is_q1 else 'y')
+        press_select()
 
     obj = load_export(way, label=app_f_name, is_json=True, addr_fmt=AF_CLASSIC)
 
@@ -356,7 +356,7 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
                           microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
-                          load_export, settings_set, use_mainnet, is_q1):
+                          load_export, settings_set, use_mainnet, press_select):
     # test UX and operation of the 'unchained export'
     if not testnet:
         use_mainnet()
@@ -378,7 +378,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         enter_number(acct_num)
     else:
         acct_num = '0'
-        need_keypress(KEY_ENTER if is_q1 else 'y')
+        press_select()
 
     obj = load_export(way, label="Unchained", is_json=True, sig_check=False)
 
@@ -405,9 +405,9 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
 
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('testnet', [True, False])
-def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, microsd_path,
+def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
                            addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
-                           load_export, testnet, is_q1):
+                           load_export, testnet):
     # test UX and values produced.
     if not testnet:
         use_mainnet()
@@ -421,7 +421,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, m
     title, story = cap_story()
 
     assert 'Saves a text file' in story
-    need_keypress(KEY_ENTER if is_q1 else 'y')
+    press_select()
 
     contents = load_export(way, label="Summary", is_json=False, addr_fmt=AF_CLASSIC)
     fp = io.StringIO(contents).readlines()
@@ -470,12 +470,9 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, m
 @pytest.mark.parametrize('use_nfc', [False, True])
 def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home,
                      cap_story, need_keypress, enter_number, cap_screen_qr,
-                     use_mainnet, nfc_read_text, is_q1):
+                     use_mainnet, nfc_read_text, is_q1, press_select, press_cancel,
+                     press_nfc):
     # XPUB's via QR
-    confirm = KEY_ENTER if is_q1 else "y"
-    cancel = KEY_CANCEL if is_q1 else "x"
-    k_nfc = KEY_NFC if is_q1 else "3"
-
     use_mainnet()
 
     goto_home()
@@ -502,9 +499,9 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
             if use_nfc:
-                need_keypress(k_nfc)
+                press_nfc()
             assert got == xfp2str(simulator_fixed_xfp).upper()
-            need_keypress(cancel)
+            press_cancel()
             continue
 
         time.sleep(0.3)
@@ -525,16 +522,16 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
         expect = expect.format(acct=0)
         if not use_nfc:
-            need_keypress(confirm)
+            press_select()
             got_pub = cap_screen_qr().decode('ascii')
         else:
             assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
             assert 'NFC' in story
-            need_keypress(k_nfc)
+            press_nfc()
             time.sleep(0.2)
             got_pub = nfc_read_text()
             time.sleep(0.1)
-            #need_keypress(confirm)
+            #press_select()
 
         if got_pub[0] not in 'xt':
             got_pub,*_ = slip132undo(got_pub)
@@ -546,7 +543,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
             wallet = wallet.subkey_for_path(expect[2:])
         assert got.sec() == wallet.sec()
 
-        need_keypress(cancel)
+        press_cancel()
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
@@ -555,8 +552,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
                                    pick_menu_item, way, cap_story, cap_menu, nfc_read_text, int_ext,
-                                   microsd_path, settings_get, virtdisk_path, load_export, is_q1):
-    confirm = KEY_ENTER if is_q1 else "y"
+                                   microsd_path, settings_get, virtdisk_path, load_export, press_select):
+    
 
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0
@@ -576,16 +573,16 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
         need_keypress("1")        # chosse account number
         for ch in str(acct_num):
             need_keypress(ch)     # input num
-        need_keypress(confirm)        # confirm selection
+        press_select()        # confirm selection
     else:
-        need_keypress(confirm)  # confirm story
+        press_select()  # confirm story
 
     time.sleep(.1)
     _, story = cap_story()
     assert "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK" in story
     assert "press (1) to export receiving and change descriptors separately" in story
     if int_ext:
-        need_keypress(confirm)
+        press_select()
     else:
         need_keypress("1")
 
@@ -632,10 +629,7 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
 @pytest.mark.parametrize("account", ["Postmix", "Premix"])
 def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_home,
                              need_keypress, cap_story, microsd_path, nfc_read_text,
-                             load_export, is_q1):
-    confirm = KEY_ENTER if is_q1 else "y"
-    cancel = KEY_CANCEL if is_q1 else "x"
-
+                             load_export, press_select, press_cancel):
     if account == "Postmix":
         acct_num = 2147483646
         in_story = "Samourai POST-MIX"
@@ -652,12 +646,12 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
     need_keypress("1")
     for ch in str(acct_num):
         need_keypress(ch)
-    need_keypress(confirm)
-    need_keypress(confirm)  # int_ext <0;1>
+    press_select()
+    press_select()  # int_ext <0;1>
     pick_menu_item("Segwit P2WPKH")  #  both postmix and premix are p2wpkh only
     file_desc_generic = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
-    need_keypress(confirm)  # written
-    need_keypress(cancel)  # go back to advanced
+    press_select()  # written
+    press_cancel()  # go back to advanced
     pick_menu_item("Export Wallet")
     pick_menu_item(f"Samourai {account}")
     time.sleep(.1)
@@ -668,7 +662,7 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
     assert "Press 1 to enter a non-zero account number" not in story  # NOT
     assert "sensitive--in terms of privacy" in story
     assert "not compromise your funds directly" in story
-    need_keypress(confirm)
+    press_select()
     file_desc = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
     assert file_desc.strip() == file_desc_generic.strip()
 
