@@ -1816,13 +1816,14 @@ or upload a transaction to be signed \
 from your desktop wallet software or command line tools.\n\n'''
 
         if NFC:
-            msg += 'Press (3) to send PSBT using NFC.\n\n'
+            msg += 'Press (%s) to send PSBT using NFC.\n\n' % ("nfc" if version.has_qwerty else "3")
 
         msg += "You will always be prompted to confirm the details before \
 any signature is performed."
 
         ch = await ux_show_story(msg, title=title, escape='3')
-        if ch == '3' and NFC:
+        target_nfc = KEY_NFC if version.has_qwerty else "3"
+        if ch == target_nfc and NFC:
             await NFC.start_psbt_rx()
 
         return

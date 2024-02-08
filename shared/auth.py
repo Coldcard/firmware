@@ -811,7 +811,7 @@ class ApproveTransaction(UserAuthorizedAction):
                 tmsg = txid + '\n\nPress (1) for QR Code of TXID. '
 
                 if NFC:
-                    tmsg += 'Press (3) to share signed txn via NFC.'
+                    tmsg += 'Press (%s) to share signed txn via NFC.' % ("nfc" if version.has_qwerty else "3")
 
                 ch = await ux_show_story(tmsg, "Final TXID", escape='13')
 
@@ -819,7 +819,8 @@ class ApproveTransaction(UserAuthorizedAction):
                     await show_qr_code(txid, True)
                     continue
 
-                if ch == '3' and NFC:
+                target_nfc = KEY_NFC if version.has_qwerty else "3"
+                if ch == target_nfc and NFC:
                     await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
                                                             self.result[0], self.result[1])
                     continue
@@ -971,7 +972,7 @@ def psbt_encoding_taster(taste, psbt_len):
     # look at first 10 bytes, and detect file encoding (binary, hex, base64)
     # - return len is upper bound on size because of unknown whitespace
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
-
+    taste = bytes(taste)
     if taste[0:5] == b'psbt\xff':
         decoder = None
         output_encoder = lambda x: x
@@ -1291,7 +1292,7 @@ class ShowAddressBase(UserAuthorizedAction):
 
             if not version.has_qwerty:
                 if NFC:
-                    msg += ' Press (3) to share via NFC.'
+                    msg += ' Press (%s) to share via NFC.' % ("nfc" if version.has_qwerty else "3")
                 msg += ' Press (4) to view QR Code.'
 
             while 1:

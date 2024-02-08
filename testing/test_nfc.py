@@ -11,6 +11,7 @@ from struct import pack, unpack
 import ndef
 from hashlib import sha256
 from txn import *
+from charcodes import KEY_NFC, KEY_ENTER, KEY_CANCEL
     
 @pytest.mark.parametrize('case', range(6))
 def test_ndef(case, load_shared_mod):
@@ -145,9 +146,13 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 
 
 @pytest.fixture
-def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, nfc_read, nfc_write, nfc_block4rf):
+def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
+                 sim_exec, nfc_read, nfc_write, nfc_block4rf, is_q1):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
+    confirm = KEY_ENTER if is_q1 else "y"
+    cancel = KEY_CANCEL if is_q1 else "x"
+    k_nfc = KEY_NFC if is_q1 else "3"
 
     sim_exec('from pyb import SDCard; SDCard.ejected = True; import nfc; nfc.NFCHandler.startup()')
 
@@ -198,7 +203,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
         _, story = cap_story()
         assert 'NFC' in story
 
-        need_keypress('3')
+        need_keypress(k_nfc)
         time.sleep(.1)
         nfc_write(ccfile)
             
@@ -206,14 +211,14 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
         
         if accept_ms_import:
             # would be better to do cap_story here
-            need_keypress('y')
+            need_keypress(confirm)
             time.sleep(0.050)
 
         title, story = cap_story()
         assert title == 'OK TO SEND?'
 
         if accept != None:
-            need_keypress('y' if accept else 'x')
+            need_keypress(confirm if accept else cancel)
 
         if accept == False:
             time.sleep(0.050)
@@ -235,14 +240,14 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
             if 'Final TXID:' in lines:
                 txid = lines[-1]
 
-            need_keypress('3')
+            need_keypress(k_nfc)
             time.sleep(.1)
             contents = nfc_read()
-            need_keypress('y')
+            need_keypress(confirm)
         else:
             nfc_block4rf()
             contents = nfc_read()
-            need_keypress('y')
+            need_keypress(confirm)
             txid = None
 
         got_txid = None
@@ -320,7 +325,11 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
     sim_exec('from pyb import SDCard; SDCard.ejected = False')
 
 @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
-def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
+def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
+                   cap_story, is_q1):
+    k_nfc = KEY_NFC if is_q1 else "3"
+    # import pdb;pdb.set_trace()
+
     # Read signing result (transaction) over NFC, decode it.
     psbt = fake_txn(1, num_outs)
     orig, result = try_sign(psbt, accept=True, finalize=True)
@@ -334,8 +343,8 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
     title, story = cap_story()
     assert 'TXID' in title, story
     txid = a2b_hex(story.split()[0])
-    assert 'Press (3)' in story
-    need_keypress('3')
+    assert f'Press ({"nfc" if is_q1 else "3"})' in story
+    need_keypress(k_nfc)
 
     if too_big:
         title, story = cap_story()
@@ -343,7 +352,7 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
         return
 
     contents = nfc_read()
-    #need_keypress('x')
+    need_keypress(KEY_CANCEL if is_q1 else 'x')
 
     #print("contents = " + B2A(contents))
     for got in ndef.message_decoder(contents):
