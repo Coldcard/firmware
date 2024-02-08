@@ -283,14 +283,18 @@ class PinAttempt:
         assert 1 <= len(pin_prefix) <= MAX_PIN_LEN, len(pin_prefix)
         global _word_cache
 
-        if version.has_608:
-            for k,v in _word_cache:
-                if pin_prefix == k:
-                    return v
+        for k,v in _word_cache:
+            if pin_prefix == k:
+                return v
 
-        buf = bytearray(pin_prefix + b'\0'*MAX_PIN_LEN)
-        err = ckcc.gate(16, buf, len(pin_prefix))
-        if err:
+        for retry in range(3):
+            buf = bytearray(pin_prefix + b'\0'*MAX_PIN_LEN)
+            err = ckcc.gate(16, buf, len(pin_prefix))
+            if not err:
+                break
+            if err == 5:        # EIO
+                # serial comm error; can be noise.
+                continue
             raise RuntimeError(err)
 
         # use just 22 bits of that
@@ -300,19 +304,12 @@ class PinAttempt:
 
         rv = wordlist_en[w1], wordlist_en[w2]
 
-        if version.has_608:
-            # MRU: keep only a few
-            if len(_word_cache) > 4:
-                _word_cache.pop()
-            _word_cache.insert(0, (pin_prefix, rv))
+        # MRU: keep only a few
+        if len(_word_cache) > 4:
+            _word_cache.pop()
+        _word_cache.insert(0, (pin_prefix, rv))
 
         return rv
-
-    def is_delay_needed(self):
-        # obsolete starting w/ mk3 and values re-used for other stuff
-        if version.has_608:
-            return False
-        return self.delay_achieved < self.delay_required
 
     def is_blank(self):
         # device has no PIN at this point

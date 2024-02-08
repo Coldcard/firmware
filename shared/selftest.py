@@ -124,12 +124,12 @@ async def test_battery():
             dis.text(None, -1, "Remove USB plug.", dark=True)
         dis.show()
 
-        await sleep_ms(100)
-
         if settings.get('tested', False):
             # auto-pass this test if we've been thru here before; customer may
             # not have magic batteries and so on.
             break
+
+        await sleep_ms(100)
 
         if ux_poll_key():
             raise RuntimeError("Battery test aborted")
@@ -145,7 +145,6 @@ def set_genuine():
     if not pa.is_successful():
         # assume blank pin during factory selftest
         pa.setup(b'')
-        assert not pa.is_delay_needed()     # "PIN failures?"
 
         if not pa.is_successful():
             pa.login()
@@ -366,8 +365,6 @@ async def test_microsd():
 async def start_selftest():
 
     try:
-
-        # last, because requires a special power supply
         if version.has_battery:
             await test_battery()
 
