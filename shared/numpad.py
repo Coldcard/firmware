@@ -43,6 +43,11 @@ class NumpadBase:
             self._changes.put_nowait(key)
             self._changes.put_nowait('')
 
+    def clear_pressed(self):
+        # clear any key that is down right now, but don't generate
+        # a key-up event for it either
+        self.key_pressed = ''
+
     def _key_event(self, key):
         if key != self.key_pressed:
             # annouce change

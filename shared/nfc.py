@@ -14,7 +14,7 @@ from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
-from ux import ux_show_story, ux_wait_keyup
+from ux import ux_show_story, ux_wait_keydown
 from utils import B2A, problem_file_line, parse_addr_fmt_str
 from public_constants import AF_CLASSIC
 from charcodes import KEY_ENTER, KEY_CANCEL
@@ -322,7 +322,6 @@ class NFCHandler:
         # - user can press OK during this period if they know they are done
         min_delay = (3000 if write_mode else 1000)
 
-        first = True
         while 1:
             if dis.has_lcd:
                 phase = (phase + 1) % 2
@@ -334,12 +333,7 @@ class NFCHandler:
                 dis.show()
 
             # wait for key or 250ms animation delay
-            try:
-                ch = await asyncio.wait_for_ms(ux_wait_keyup(flush=first), 250)
-            except asyncio.TimeoutError:
-                ch = None
-
-            first = False
+            ch = await ux_wait_keydown(KEY_ENTER+KEY_CANCEL+'xy', 250)
 
             if self.last_edge:
                 self.last_edge = 0

@@ -4,7 +4,7 @@
 #
 import pincodes, version, random
 from glob import dis
-from ux import PressRelease, ux_wait_keyup, ux_show_story, ux_show_pin, ux_show_phish_words
+from ux import ux_wait_keyup, ux_wait_keydown, ux_show_story, ux_show_pin, ux_show_phish_words
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
@@ -76,9 +76,9 @@ class LoginUX:
             self.shuffle_keys()
 
         self.show_pin(True)
-        pr = PressRelease('0123456789y'+KEY_ENTER)
         while 1:
-            ch = await pr.wait()
+            ch = await ux_wait_keydown(None, 10000)
+            if ch is None: continue
 
             if has_qwerty and not self.is_setting and ch.upper() == self.kill_btn:
                 # wipe the seed if they press a special key

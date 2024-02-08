@@ -755,7 +755,7 @@ class QRScannerInteraction:
         # - CANCEL to abort
         # - returns a string, BBQr object or None.
         from glob import dis, SCAN
-        from ux import ux_wait_keyup
+        from ux import ux_wait_keydown
         frames = [ 1, 2, 3, 4, 5, 4, 3, 2 ]
 
         if not SCAN:
@@ -780,10 +780,7 @@ class QRScannerInteraction:
             ph  = (ph + 1) % len(frames)
 
             # wait for key or 250ms animation delay
-            try:
-                ch = await asyncio.wait_for_ms(ux_wait_keyup(), 250)
-            except asyncio.TimeoutError:
-                ch = None
+            ch = await ux_wait_keydown(KEY_CANCEL, 250)
 
             if ch == KEY_CANCEL:
                 data = None
@@ -1063,7 +1060,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     # - TODO this code needs better home
     from bbqr import TYPE_LABELS, int2base36
     from glob import PSRAM, dis
-    from ux import ux_wait_keyup
+    from ux import ux_wait_keyup, ux_wait_keydown
     import uqr
 
     PAYLOAD_PER_V40 = 2144      # if HEX encoded, active payload (max) per v40 QR
@@ -1137,13 +1134,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
                 return
 
             # wait for key or animation delay
-            try:
-                ch = await asyncio.wait_for_ms(ux_wait_keyup(flush=True), ms_per_each)
-            except asyncio.CancelledError:
-                # during testing
-                return
-            except asyncio.TimeoutError:
-                ch = None
+            ch = await ux_wait_keydown(None, ms_per_each)
 
             if ch: return
 

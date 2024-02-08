@@ -30,6 +30,7 @@ class FullKeyboard(NumpadBase):
 
         # after full scan, these flags are set for each key
         self.is_pressed = bytearray(NUM_ROWS * NUM_COLS)
+        self._char_reported = set()
 
         # what meta keys are currently pressed 
         self.active_meta_keys = set()
@@ -88,7 +89,6 @@ class FullKeyboard(NumpadBase):
 
     def _wait_any(self):
         # wait for any press.
-        #self.timer.deinit()
         self.waiting_for_any = True
 
         for r in self.rows:
@@ -102,7 +102,7 @@ class FullKeyboard(NumpadBase):
         self._scan_count = 0
         self.waiting_for_any = False
 
-    def _measure_irq(self, _timer):
+    def _measure_irq(self, _unused):
         # CHALLENGE: Called at high rate (61Hz), but can do memory alloc.
         # - sample all keys once, record any that are pressed
         if self.waiting_for_any:
@@ -143,7 +143,7 @@ class FullKeyboard(NumpadBase):
     def process_chg_state(self, new_presses):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
         # - convert that into ascii-like events in a Q for rest of system
-        # - not trying to support multiple presses, just one
+        # - during multiple presses, each reported once, then when "all up", another event
         shift_down = self.is_pressed[KEYNUM_SHIFT]
         symbol_down = self.is_pressed[KEYNUM_SYMBOL]
         status_chg = dict()
@@ -175,15 +175,17 @@ class FullKeyboard(NumpadBase):
                 continue
 
             # indicated key was found to be down and then back up
-            key = decoder[kn]
-            if key == '\0':
+            # - now it is a character, not a key anymore
+            ch = decoder[kn]
+            if ch == '\0':
                 # dead/unused key: do nothing - like SYM+D
                 #print("KEYNUM %d is no-op (in this state)" % kn)
                 continue
 
-            if key != self.key_pressed:
-                #print("KEY: event=%d => %c=0x%x" % (kn, key, ord(key)))
-                self._key_event(key)
+            if ch not in self._char_reported:
+                #print("KEY: event=%d => %c=0x%x" % (kn, ch, ord(ch)))
+                self._char_reported.add(ch)
+                self._key_event(ch)
 
             self.lp_time = utime.ticks_ms()
 
@@ -205,7 +207,8 @@ class FullKeyboard(NumpadBase):
             uasyncio.create_task(dis.async_draw_status(**status_chg))
 
         if not any(self.is_pressed):
-            if self.key_pressed:
+            if self._char_reported:
+                self._char_reported.clear()
                 self._key_event('')
 
             if utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
