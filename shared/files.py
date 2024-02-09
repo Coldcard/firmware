@@ -267,12 +267,11 @@ class CardSlot:
         return self
 
     def __exit__(self, *a):
-        if self.mountpt == '/sd':
+        if self.mountpt == self.get_sd_root():
             self._recover()
         elif glob.VD:
             glob.VD.unmount(self.wrote_files)
 
-        self.active_led.off()           # required on simulator
         self.mountpt = None
 
         # just in case?

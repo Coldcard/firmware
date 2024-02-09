@@ -982,7 +982,7 @@ Q1 specials:
                 spriterenderer.render(simdis.sprite)
                 window.refresh()
             elif r is led_rx:
-                # was 4+4 bits, now two bytes: [active, mask]
+                # was 4+4 bits, now two bytes: [mask, state]
                 c = r.read(2)
                 if not c:
                     break

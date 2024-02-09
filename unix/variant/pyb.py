@@ -120,8 +120,6 @@ class SDCard:
 
     @classmethod
     def power(cls, st=0):
-        from ckcc import led_pipe
-        led_pipe.write(bytes([0x2, (0x2 if st else 0x0)]))
         if st:
             time.sleep(0.100)       # drama
         return False

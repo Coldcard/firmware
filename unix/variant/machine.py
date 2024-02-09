@@ -20,7 +20,7 @@ class Pin:
         self.cur_value = int(n)
 
         bm = 0
-        # 0x01 => SE1 light
+        # 0x01 => SE1 light, done elsewhere
         if self.name == 'SD_ACTIVE':
             bm = 0x02
         elif self.name == 'USB_ACTIVE':
