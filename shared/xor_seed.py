@@ -150,7 +150,7 @@ async def xor_all_done(new_words):
 
     msg += "Press (1) to enter next list of words, or (2) if done with all words."
 
-    ch = await ux_show_story(msg, strict_escape=True, escape='12x', sensitive=True)
+    ch = await ux_show_story(msg, strict_escape=True, escape='12x'+KEY_CANCEL, sensitive=True)
 
     if ch == 'x':
         # give up

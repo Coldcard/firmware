@@ -24,7 +24,7 @@ SettingsObject.master_nvram_key = None
 set_seed_value(main.WORDS)
 
 settings.set('chain', 'XTN')
-settings.set('words', True)
+settings.set('words', len(main.WORDS))
 settings.set('terms_ok', True)
 settings.set('idle_to', 0)
 
