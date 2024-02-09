@@ -1760,12 +1760,10 @@ def is_psbt(filename):
 
 async def _batch_sign(choices=None):
     force_vdisk = False
-    prompt, escape = import_prompt_builder("PSBTs", no_nfc=True)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch == "x": return
-        if ch == "2":
-            force_vdisk = True
+    ch = await import_export_prompt("PSBTs", is_import=True, no_nfc=True)
+    if ch == "x": return
+    if ch == "2":
+        force_vdisk = True
 
     if not choices:
         choices = await file_picker(None, suffix='psbt', min_size=50,
@@ -1787,7 +1785,11 @@ async def _batch_sign(choices=None):
             await the_ux.top_of_stack().interact()
 
 async def batch_sign(*a):
-    await _batch_sign()
+    try:
+        await _batch_sign()
+    except Exception as e:
+        import sys
+        await ux_show_story("FAILURE: batch sign failed\n\n" + problem_file_line(e))
 
 
 async def ready2sign(*a):

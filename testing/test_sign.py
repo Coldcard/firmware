@@ -23,14 +23,12 @@ SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
 
 
 @pytest.mark.parametrize('finalize', [ False, True ])
-def test_sign1(dev, need_keypress, finalize):
+def test_sign1(dev, finalize):
     in_psbt = a2b_hex(open('data/p2pkh-in-scriptsig.psbt', 'rb').read())
 
     ll, sha = dev.upload_file(in_psbt)
 
     dev.send_recv(CCProtocolPacker.sign_transaction(ll, sha, finalize))
-
-    #need_keypress('y')
 
     with pytest.raises(CCProtoError) as ee:
         while dev.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None) == None:
@@ -133,8 +131,8 @@ def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     assert oo == rb
 
 @pytest.mark.unfinalized
-def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign, need_keypress):
-    import time
+def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign,
+                    press_select):
     # measure time to sign a larger txn
     if is_mark4:
         # Mk4: expect 
@@ -157,7 +155,7 @@ def test_speed_test(dev, fake_txn, is_mark3, is_mark4, start_sign, end_sign, nee
 
     tx_time = time.time() - dt
 
-    need_keypress('y', timeout=None)
+    press_select(timeout=None)
 
     dt = time.time()
     done = None
@@ -294,7 +292,8 @@ def test_real_signing(fake_txn, use_regtest, try_sign, dev, num_ins, segwit, dec
 @pytest.mark.parametrize('we_finalize', [ False, True ])
 @pytest.mark.parametrize('num_dests', [ 1, 10, 25 ])
 @pytest.mark.bitcoind
-def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind, start_sign, end_sign, we_finalize, num_dests):
+def test_vs_bitcoind(match_key, use_regtest, check_against_bitcoind, bitcoind,
+                     start_sign, end_sign, we_finalize, num_dests):
 
     wallet_xfp = match_key
     use_regtest()
@@ -468,7 +467,8 @@ def test_sign_p2sh_p2wpkh(match_key, use_regtest, start_sign, end_sign, bitcoind
 
 @pytest.mark.bitcoind
 @pytest.mark.unfinalized
-def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign, end_sign, decode_psbt_with_bitcoind, offer_ms_import, need_keypress, clear_ms):
+def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign, end_sign,
+                           decode_psbt_with_bitcoind, offer_ms_import, press_select, clear_ms):
     # Use the private key given in BIP 174 and do similar signing
     # as the examples.
 
@@ -495,7 +495,7 @@ def test_sign_p2sh_example(set_master_key, use_regtest, sim_execfile, start_sign
     clear_ms()
     offer_ms_import(config)
     time.sleep(.1)
-    need_keypress('y')
+    press_select()
 
     psbt = a2b_hex(open('data/worked-unsigned.psbt', 'rb').read())
 
@@ -1609,7 +1609,8 @@ def test_foreign_utxo_missing(segwit_in, num_not_ours, dev, fake_txn, start_sign
 
 @pytest.mark.parametrize("segwit_in", [True, False])
 @pytest.mark.parametrize("num_missing", [1, 3, 4])
-def test_own_utxo_missing(segwit_in, num_missing, dev, fake_txn, start_sign, cap_story, end_sign, need_keypress):
+def test_own_utxo_missing(segwit_in, num_missing, dev, fake_txn, start_sign, cap_story, end_sign,
+                          press_cancel):
     def hack(psbt):
         for i in range(num_missing):
             # no utxo provided for our input
@@ -1622,7 +1623,7 @@ def test_own_utxo_missing(segwit_in, num_missing, dev, fake_txn, start_sign, cap
     title, story = cap_story()
     assert title == "Failure"
     assert "Missing own UTXO(s)" in story
-    need_keypress("x")
+    press_cancel()
 
 @pytest.mark.bitcoind
 def test_bitcoind_missing_foreign_utxo(bitcoind, bitcoind_d_sim_watch, microsd_path, try_sign):
@@ -1793,7 +1794,7 @@ def test_duplicate_unknow_values_in_psbt(dev, start_sign, end_sign, fake_txn):
 
 
 @pytest.fixture
-def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, need_keypress,
+def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, press_select,
                              bitcoind, bitcoind_d_sim_watch, settings_set, finalize_v2_v0_convert):
     def doit(addr_fmt, sighash, num_inputs=2, num_outputs=2, consolidation=False, sh_checks=False,
              psbt_v2=False):
@@ -1855,7 +1856,7 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
 
         with open(microsd_path("sighash.psbt"), "w") as f:
             f.write(psbt_sh)
-        need_keypress("y")
+        press_select()
         time.sleep(0.2)
         title, story = cap_story()
 
@@ -1883,11 +1884,11 @@ def _test_single_sig_sighash(microsd_wipe, microsd_path, goto_home, cap_story, n
             assert "Caution" in story
             assert "Some inputs have unusual SIGHASH values not used in typical cases." in story
 
-        need_keypress("y")
+        press_select()
         time.sleep(0.5)
         title, story = cap_story()
         time.sleep(0.1)
-        need_keypress("y")  # confirm success or failure
+        press_select()  # confirm success or failure
         # now not just legacy but also segwit prohibits SINGLE out of bounds
         # consensus allows it but it really is just bad usage - restricted
         if (num_outputs < num_inputs) and any("SINGLE" in sh for sh in sighash):
@@ -2012,7 +2013,7 @@ def test_sighash_nonexistent(_test_single_sig_sighash):
     assert "'Failure' == 'OK TO SEND?'" in exc.value.args[0]
 
 
-def test_no_outputs_tx(fake_txn, microsd_path, goto_home, need_keypress, pick_menu_item, cap_story):
+def test_no_outputs_tx(fake_txn, microsd_path, goto_home, press_select, pick_menu_item, cap_story):
     goto_home()
     psbt = fake_txn(3, 0)  # no outputs
     fname = "zero_outputs.psbt"
@@ -2025,7 +2026,7 @@ def test_no_outputs_tx(fake_txn, microsd_path, goto_home, need_keypress, pick_me
     time.sleep(0.1)
     title, story = cap_story()
     if "Choose PSBT file to be signed" in story:
-        need_keypress("y")
+        press_select()
         pick_menu_item(fname)
         time.sleep(0.1)
         title, story = cap_story()
@@ -2058,7 +2059,7 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
 @pytest.mark.parametrize("action", ["sign", "skip", "refuse"])
 def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
                     pick_menu_item, cap_story, microsd_path,
-                    microsd_wipe, goto_home):
+                    microsd_wipe, goto_home, press_select, press_cancel):
 
     goto_home()
     microsd_wipe()
@@ -2077,7 +2078,7 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
         pick_menu_item("Ready To Sign")
         time.sleep(.1)
         if num_tx == 1:
-            need_keypress("x")
+            press_cancel()
             pytest.skip("classic sign")
 
         _, story = cap_story()
@@ -2101,21 +2102,21 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
             title, story = cap_story()
             continue
 
-        need_keypress("y")  # sign this PSBT
+        press_select()  # sign this PSBT
         time.sleep(.5)
         title, story = cap_story()
         assert title == "OK TO SEND?"
         if action == "refuse":
-            need_keypress("x")  # refuse
+            press_cancel()  # refuse
             time.sleep(.5)
             title, story = cap_story()
             continue
 
-        need_keypress("y")  # confirm send
+        press_select()  # confirm send
         time.sleep(.5)
         title, story = cap_story()
         assert "-signed.psbt" in story
-        need_keypress("y")
+        press_select()
         time.sleep(.5)
         title, story = cap_story()
 
@@ -2230,7 +2231,7 @@ def test_psbt_v2_global_quantities(way, fake_txn, start_sign, end_sign, cap_stor
     1748671747,  # 2025-05-31 07:09:07
 ])
 def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
-                     microsd_path, cap_story, goto_home, need_keypress,
+                     microsd_path, cap_story, goto_home, press_select,
                      pick_menu_item, bitcoind, locktime):
     use_regtest()
     sim = bitcoind_d_sim_watch
@@ -2264,7 +2265,7 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     pick_menu_item('Ready To Sign')
     title, story = cap_story()
     if "Choose PSBT file to be signed" in story:
-        need_keypress("y")
+        press_select()
         pick_menu_item(psbt_fname)
         time.sleep(0.1)
         title, story = cap_story()
@@ -2283,7 +2284,7 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
     else:
         assert "LOCKTIMES" not in story
 
-    need_keypress("y")  # confirm signing
+    press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
     assert title == 'PSBT Signed'
@@ -2321,7 +2322,7 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
 @pytest.mark.parametrize("sequence", [0, 1, 50, 65534])
 def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitcoind_d_sim_watch,
                                                     start_sign, end_sign, microsd_path, cap_story,
-                                                    goto_home, need_keypress, pick_menu_item,
+                                                    goto_home, press_select, pick_menu_item,
                                                     bitcoind, num_ins, differ):
     if differ and (sequence == 0):
         # this case makes no sense
@@ -2375,7 +2376,7 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
     pick_menu_item('Ready To Sign')
     title, story = cap_story()
     if "Choose PSBT file to be signed" in story:
-        need_keypress("y")
+        press_select()
         pick_menu_item(psbt_fname)
         time.sleep(0.1)
         title, story = cap_story()
@@ -2397,7 +2398,7 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
     else:
         assert "TX LOCKTIMES" not in story
 
-    need_keypress("y")  # confirm signing
+    press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
     assert title == 'PSBT Signed'
@@ -2441,7 +2442,7 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
 @pytest.mark.parametrize("differ", [True, False])
 @pytest.mark.parametrize("seconds", [512, 10000, 1000000, 33554431])
 def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind_d_sim_watch, start_sign,
-                                                  microsd_path, cap_story, goto_home, need_keypress,
+                                                  microsd_path, cap_story, goto_home, press_select,
                                                   pick_menu_item, bitcoind, end_sign, num_ins, differ):
     sequence = SEQUENCE_LOCKTIME_TYPE_FLAG | (seconds >> 9)
     use_regtest()
@@ -2489,7 +2490,7 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
     pick_menu_item('Ready To Sign')
     title, story = cap_story()
     if "Choose PSBT file to be signed" in story:
-        need_keypress("y")
+        press_select()
         pick_menu_item(psbt_fname)
         time.sleep(0.1)
         title, story = cap_story()
@@ -2510,7 +2511,7 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
             msg1 = "%d inputs have " % num_ins_locked
             assert (msg1 + base_msg) in story
 
-    need_keypress("y")  # confirm signing
+    press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
     assert title == 'PSBT Signed'
@@ -2554,7 +2555,7 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
 @pytest.mark.parametrize("abs_lock", [True, False])
 @pytest.mark.parametrize("num_rtl", [(2,3),(4,7),(8,3),(6,7)])
 def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
-                             microsd_path, cap_story, goto_home, need_keypress,
+                             microsd_path, cap_story, goto_home, press_select,
                              pick_menu_item, bitcoind, end_sign, abs_lock):
     tb, bb = num_rtl
     num_ins = tb + bb
@@ -2604,7 +2605,7 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
     pick_menu_item('Ready To Sign')
     title, story = cap_story()
     if "Choose PSBT file to be signed" in story:
-        need_keypress("y")
+        press_select()
         pick_menu_item(psbt_fname)
         time.sleep(0.1)
         title, story = cap_story()
@@ -2625,7 +2626,7 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
     else:
         assert "Abs Locktime" not in story
 
-    need_keypress("y")  # confirm signing
+    press_select()  # confirm signing
     time.sleep(0.1)
     title, story = cap_story()
     assert title == 'PSBT Signed'

@@ -640,8 +640,8 @@ def get_secrets(sim_execfile):
 
 @pytest.fixture(scope='module')
 def press_select(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_ENTER if has_qwerty else 'y')
+    def doit(timeout=1000):
+        need_keypress(KEY_ENTER if has_qwerty else 'y', timeout=timeout)
     return doit
 
 @pytest.fixture(scope='module')
