@@ -107,11 +107,11 @@ Extended Master Key:
         msg += '\nShipping Bag:\n  %s\n' % bn
 
     if xpub:
-        msg += '\nPress (3) to show QR code of xpub.'
+        msg += '\nPress %s to show QR code of xpub.' % (KEY_QR if version.has_qwerty else "(3)")
 
-    ch = await ux_show_story(msg, escape=('3' if xpub else None))
+    ch = await ux_show_story(msg, escape=('3'+KEY_QR if xpub else None))
 
-    if ch == '3':
+    if ch in '3'+KEY_QR:
         # show the QR
         from ux import show_qr_code
         await show_qr_code(xpub, False)
