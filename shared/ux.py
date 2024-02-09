@@ -473,6 +473,10 @@ async def import_export_prompt(what_it_is, is_import=False,
     else:
         prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc)
 
+    # TODO: detect if we're only asking A or B, when just one card is inserted
+    # - assume that's what they want to do
+    # - but if NFC, QR or Virtdisk is option, then we need to prompt
+
     if not prompt:
         # they don't have NFC nor VD enabled, and no second slots... so will be file.
         return dict(force_vdisk=False, slot_b=None)

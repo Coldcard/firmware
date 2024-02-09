@@ -1759,16 +1759,16 @@ def is_psbt(filename):
         return False
 
 async def _batch_sign(choices=None):
-    force_vdisk = False
-    ch = await import_export_prompt("PSBTs", is_import=True, no_nfc=True)
-    if ch == "x": return
-    if ch == "2":
-        force_vdisk = True
-
     if not choices:
+        picked = await import_export_prompt("PSBTs", is_import=True, no_nfc=True, no_qr=True)
+
+        if picked == KEY_CANCEL:
+            return
+        assert isinstance(picked, dict)
+
         choices = await file_picker(None, suffix='psbt', min_size=50,
-                                    force_vdisk=force_vdisk,
-                                    max_size=MAX_TXN_LEN, taster=is_psbt)
+                                    max_size=MAX_TXN_LEN, taster=is_psbt, **picked)
+
     if not choices:
         await ux_show_story("No PSBTs found. Need to have '.psbt' suffix.")
 
@@ -1831,10 +1831,11 @@ any signature is performed."
         return
 
     if len(choices) == 1:
-        # skip the menu
+        # single - skip the menu
         label,path,fn = choices[0]
         input_psbt = path + '/' + fn
     else:
+        # multiples - ask which, and offer batch to sign them all
         input_psbt = await file_picker('Choose PSBT file to be signed.',
                                        choices=choices, title=title,
                                        batch_sign=True, escape="9")
