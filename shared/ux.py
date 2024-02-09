@@ -375,7 +375,7 @@ def _import_prompt_builder(title, no_qr, no_nfc):
                 escape += "3"
 
         if has_qwerty and not no_qr:
-            prompt += ", (QR) to scan QR code"
+            prompt += ", " + KEY_QR + " to scan QR code"
             escape += KEY_QR
 
         prompt += "."
