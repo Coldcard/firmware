@@ -640,50 +640,50 @@ def get_secrets(sim_execfile):
 
 @pytest.fixture(scope='module')
 def press_select(need_keypress, has_qwerty):
-    def doit(timeout=1000):
-        need_keypress(KEY_ENTER if has_qwerty else 'y', timeout=timeout)
+    def doit(**kws):
+        need_keypress(KEY_ENTER if has_qwerty else 'y', **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_cancel(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_CANCEL if has_qwerty else 'x')
+    def doit(**kws):
+        need_keypress(KEY_CANCEL if has_qwerty else 'x', **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_delete(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_DELETE if has_qwerty else 'x')
+    def doit(**kws):
+        need_keypress(KEY_DELETE if has_qwerty else 'x', **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_nfc(need_keypress, has_qwerty):
-    def doit(num=3):
-        need_keypress(KEY_NFC if has_qwerty else str(num))
+    def doit(num=3, **kws):
+        need_keypress(KEY_NFC if has_qwerty else str(num), **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_up(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_UP if has_qwerty else "5")
+    def doit(**kws):
+        need_keypress(KEY_UP if has_qwerty else "5", **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_down(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_DOWN if has_qwerty else "8")
+    def doit(**kws):
+        need_keypress(KEY_DOWN if has_qwerty else "8", **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_left(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_LEFT if has_qwerty else "7")
+    def doit(**kws):
+        need_keypress(KEY_LEFT if has_qwerty else "7", **kws)
     return doit
 
 @pytest.fixture(scope='module')
 def press_right(need_keypress, has_qwerty):
-    def doit():
-        need_keypress(KEY_RIGHT if has_qwerty else "9")
+    def doit(**kws):
+        need_keypress(KEY_RIGHT if has_qwerty else "9", **kws)
     return doit
 
 @pytest.fixture
