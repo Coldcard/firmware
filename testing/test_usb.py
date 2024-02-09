@@ -4,9 +4,9 @@
 # 
 # - not working well on simulator right now, but that's not key
 #
-import pytest, time, struct
+import pytest, struct
 from pycoin.key.BIP32Node import BIP32Node
-from binascii import b2a_hex, a2b_hex
+from binascii import b2a_hex
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 
 @pytest.mark.skip
@@ -99,7 +99,7 @@ def test_xpub_invalid(dev, path):
         xpub = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
     
 
-def test_version(dev):
+def test_version(dev, is_q1):
     # read the version, yawn.
     v = dev.send_recv(CCProtocolPacker.version())
     assert '\n' in v
@@ -107,7 +107,10 @@ def test_version(dev):
     assert '-' in date
     assert '.' in label
     assert '.' in bl
-    assert 'mk' in hw_label
+    if is_q1:
+        assert "q1" in hw_label
+    else:
+        assert 'mk' in hw_label
     print("date=%s" % date)
     assert build_date.startswith(date[2:].replace('-', ''))
     assert not extras

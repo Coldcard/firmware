@@ -393,7 +393,7 @@ def is_ftux_screen(sim_exec):
     return doit
 
 @pytest.fixture
-def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
+def expect_ftux(cap_menu, cap_story, press_select, is_ftux_screen):
     # seed was entered, FTUX happens, get to main menu
     def doit():
         # first time UX here
@@ -401,7 +401,7 @@ def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
             _, story = cap_story()
             if not story: 
                 break
-            need_keypress('y')
+            press_select()
 
         m = cap_menu()
         assert m[0] == 'Ready To Sign'
