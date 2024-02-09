@@ -733,7 +733,9 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen, press_select
             raise KeyError(text, "%r not in menu: %r" % (text, m))
 
         # double check we're looking at this menu, not stale data
-        assert m[0][0:33] in cap_screen(), 'not in menu mode'
+        # added strip as cap_screen does not contain whitespaces
+        # that are present in coundown chooser
+        assert m[0][0:33].strip() in cap_screen(), 'not in menu mode'
 
         m_pos = m.index(text)
 

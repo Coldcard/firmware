@@ -31,7 +31,7 @@ SLOTS = [i for i in range(NUM_TRICKS) if i != BUG_SLOT]
 
 # everything in this file is mk4 only
 @pytest.fixture(autouse=True)
-def THIS_FILE_requires_mark4(only_mk4):
+def THIS_FILE_requires_mk4plus(only_mk4plus):
     pass
 
 
@@ -169,36 +169,49 @@ def test_blank_slots(se2_gate):
 @pytest.fixture
 def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
     def doit():
-        menu = cap_menu()
         menu = cap_menu()       # bugfix
         if menu[0] in {'Trick PINs:', 'Add New Trick'}:
             return
         if 'New Seed Words' in menu:
             raise pytest.skip("need seed set first for these tests")
 
-        goto_home()
+        if "Ready To Sign" not in menu:
+            goto_home()
+            time.sleep(.1)
+
         pick_menu_item('Settings')
+        time.sleep(.1)
+        menu = cap_menu()
+        while "Login Settings" not in menu:
+            time.sleep(.3)
+            menu = cap_menu()
         pick_menu_item('Login Settings')
+        time.sleep(.1)
+        menu = cap_menu()
+        while "Trick PINs" not in menu:
+            time.sleep(.3)
+            menu = cap_menu()
         pick_menu_item('Trick PINs')
 
     return doit
 
 @pytest.fixture
-def clear_all_tricks(goto_trick_menu, pick_menu_item, need_keypress, cap_story):
+def clear_all_tricks(goto_trick_menu, pick_menu_item, press_select, cap_story):
     def doit():
         goto_trick_menu()
         pick_menu_item('Delete All')
         time.sleep(.1)
-        need_keypress('y')
+        press_select()
         time.sleep(.1)
         _, story = cap_story()
         if 'duress wallet' in story:
             time.sleep(.1)
-            need_keypress('y')
+            press_select()
 
     return doit
 
-def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress, cap_story):
+def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu,
+                        press_select, cap_story):
     # get there, and wipe any existing
     goto_trick_menu()
 
@@ -227,14 +240,14 @@ def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress
         assert step == 0
         pick_menu_item('Delete All')
         time.sleep(.1)
-        need_keypress('y')
+        press_select()
         time.sleep(.1)
         title, story = cap_story()
 
         if 'SURE' in story:
             time.sleep(.1)
             assert 'duress wallet' in story
-            need_keypress('y')
+            press_select()
             time.sleep(.1)
 
     # all clear now
@@ -242,7 +255,7 @@ def test_ux_trick_menus(goto_trick_menu, pick_menu_item, cap_menu, need_keypress
 
 @pytest.fixture(scope='function')
 def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
-                  cap_story, enter_pin, se2_gate, is_simulator):
+                  cap_story, enter_pin, se2_gate, is_simulator, is_q1):
     # using menus and UX, setup a new trick PIN
     def doit(new_pin, op_mode, expect=None):
         goto_trick_menu()
@@ -254,16 +267,18 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
             pick_menu_item('Delete Trick')
 
             time.sleep(.1)
-            _,story = cap_story()
-            assert 'Are you SURE' in story
+            title, story = cap_story()
+            where = title if is_q1 else story
+            assert 'Are you SURE' in where
             if 'on this duress wallet' in story:
                 # extra confirm step, seen only for trick pins which lead to duress wallet
                 time.sleep(.1)
                 press_select()
 
                 time.sleep(.1)
-                _,story = cap_story()
-                assert 'Are you SURE' in story
+                title, story = cap_story()
+                where = title if is_q1 else story
+                assert 'Are you SURE' in where
 
             assert new_pin in story
             time.sleep(.1)
@@ -301,7 +316,7 @@ def new_trick_pin(goto_trick_menu, pick_menu_item, cap_menu, press_select,
     return doit
 
 @pytest.fixture(scope='function')
-def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
+def new_pin_confirmed(cap_menu, press_select, cap_story, se2_gate):
     # from Ok? screen, check it worked right
     def doit(new_pin, op_mode, xflags, xargs=0, confirm=True):
         if confirm:
@@ -311,7 +326,7 @@ def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
             assert op_mode in story
             assert story.endswith('Ok?')
 
-            need_keypress('y')
+            press_select()
 
         # should be back on trick-menu page, with new one there
         m = cap_menu()
@@ -343,13 +358,13 @@ def new_pin_confirmed(cap_menu, need_keypress, cap_story, se2_gate):
     ('11-99', 'Delta Mode', 'Logs into REAL seed', True, 0), 
 ])
 def test_ux_add_simple(new_pin, op_mode, expect, but_dont, xflags, 
-                new_trick_pin, new_pin_confirmed, need_keypress, enter_pin
+                new_trick_pin, new_pin_confirmed, press_cancel, enter_pin
 ):
     # Do the simple ones, test the first level of the others
     new_trick_pin(new_pin, op_mode, expect)
 
     if but_dont:
-        need_keypress('x')
+        press_cancel()
     else:
         new_pin_confirmed(new_pin, op_mode, xflags)
 
@@ -364,8 +379,8 @@ def test_ux_add_simple(new_pin, op_mode, expect, but_dont, xflags,
     ('Just Reboot', 'Reboot when this ', TC_REBOOT), 
 ])
 def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
-                cap_menu, pick_menu_item, cap_story,
-                goto_trick_menu, new_pin_confirmed, need_keypress, enter_pin):
+                cap_menu, pick_menu_item, cap_story, press_cancel,
+                goto_trick_menu, new_pin_confirmed, press_select, enter_pin):
     # wrong pin choices, not implementation
     goto_trick_menu()
 
@@ -374,7 +389,7 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     _, story = cap_story()
     assert 'After X incorrect' in story
 
-    need_keypress('y')
+    press_select()
     enter_number(num_wrong)
 
     time.sleep(.1)
@@ -395,9 +410,9 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     assert expect in story
 
     time.sleep(.1)
-    need_keypress('x')
+    press_cancel()
     time.sleep(.1)
-    need_keypress('x')
+    press_cancel()
 
 @pytest.mark.parametrize('subchoice, expect, xflags', [
     ( 'Wipe & Reboot', 'wiped and Coldcard reboots', TC_WIPE|TC_REBOOT ),
@@ -405,7 +420,8 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     ( 'Say Wiped, Stop', 'message is shown', TC_WIPE ),
 ])
 def test_ux_wipe_choices_1(subchoice, expect, xflags,  new_trick_pin,
-                           new_pin_confirmed, pick_menu_item, cap_story, need_keypress):
+                           new_pin_confirmed, pick_menu_item, cap_story,
+                           press_select):
 
     # first level only, see test_duress_choices() for wipe+duress/other choices
 
@@ -417,7 +433,7 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,  new_trick_pin,
     _, story = cap_story()
     assert expect in story
 
-    need_keypress('y')
+    press_select()
 
     new_pin_confirmed(new_pin, subchoice, xflags)
 
@@ -428,7 +444,8 @@ def test_ux_wipe_choices_1(subchoice, expect, xflags,  new_trick_pin,
     ('Just Countdown', 'has no effect on seed', TC_COUNTDOWN),
 ])
 def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_confirmed,
-                              pick_menu_item, cap_story, need_keypress):
+                              pick_menu_item, cap_story, need_keypress, press_select,
+                              press_cancel):
 
     # first level only, see test_duress_choices() for wipe+duress/other choices
     new_pin = '11-123'
@@ -440,7 +457,7 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
     _, story = cap_story()
     assert expect in story
 
-    need_keypress('y')
+    press_select()
 
     new_pin_confirmed(new_pin, subchoice, xflags, default_duration)
 
@@ -464,8 +481,8 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
         _, story = cap_story()
         active_duration = "(" + label.strip() + ")"
         assert active_duration in story
-        need_keypress("x")
-        need_keypress("x")
+        press_cancel()
+        press_cancel()
         new_pin_confirmed(new_pin, subchoice, xflags, val, confirm=False)
         prev = active_duration
 
@@ -481,7 +498,7 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
 def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
-        press_select, press_cancel, stop_after_activated=False,
+        press_select, press_cancel, seed_story_to_words, is_q1, stop_after_activated=False,
 ):
 
     # import multisig
@@ -541,9 +558,13 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
         assert TC_XPRV_WALLET & xflags
         wallet = BIP32Node.from_wallet_key(story)
     else:
-        ln = story.split('\n')
-        assert ln[0] == 'Seed words (24):'
-        words = [i[4:] for i in ln[1:25]]
+        if is_q1:
+            words = seed_story_to_words(story)
+        else:
+            ln = story.split('\n')
+            assert ln[0] == 'Seed words (24):'
+            words = [i[4:] for i in ln[1:25]]
+
         seed = Mnemonic.to_seed(' '.join(words), passphrase='')
         wallet = BIP32Node.from_master_secret(seed, netcode='XTN')      # dev might be BTC
 
@@ -682,8 +703,9 @@ def force_main_pin(change_pin, goto_pin_options, pick_menu_item, repl):
     ( '123-124', '124-444', False, 0x312f), 
 ])
 def test_ux_deltamode_wrong(true_pin, fake_pin, is_prob, expect_arg, repl,
-        force_main_pin, clear_all_tricks,
-        new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress):
+                            force_main_pin, clear_all_tricks, new_trick_pin,
+                            new_pin_confirmed, cap_menu, pick_menu_item,
+                            cap_story, press_select, press_cancel):
 
     force_main_pin(true_pin)
 
@@ -694,18 +716,18 @@ def test_ux_deltamode_wrong(true_pin, fake_pin, is_prob, expect_arg, repl,
     if is_prob:
         _, story = cap_story()
         assert 'must be' in story
-        need_keypress('x')
+        press_cancel()
 
     else:
         new_pin_confirmed(fake_pin, 'Delta Mode', TC_DELTA_MODE, expect_arg)
 
         pick_menu_item('Delete All')
         time.sleep(.1)
-        need_keypress('y')
+        press_select()
 
 @pytest.mark.parametrize('true_pin', ['12-12', '123456-123456'])
 def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
-        clear_all_tricks, new_trick_pin, new_pin_confirmed, pick_menu_item, need_keypress):
+        clear_all_tricks, new_trick_pin, new_pin_confirmed, pick_menu_item):
 
     # main vs. tricks
     force_main_pin(true_pin)
@@ -738,7 +760,7 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
     clear_all_tricks()
 
 def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test, 
-        new_trick_pin, new_pin_confirmed, pick_menu_item, need_keypress):
+        new_trick_pin, new_pin_confirmed, pick_menu_item, press_select):
 
     clear_all_tricks()
 
@@ -752,7 +774,7 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
         new_trick_pin(pin, 'Duress Wallet', None)
         item = 'BIP-85 Wallet #%d' % (n%4) if (n%4 != 0) else 'Legacy Wallet'
         pick_menu_item(item)
-        need_keypress('y')
+        press_select()
         new_pin_confirmed(pin, item, None, None)
 
     for pin, op_mode, expect, _, xflags in [
