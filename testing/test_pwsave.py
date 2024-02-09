@@ -21,7 +21,7 @@ def set_pw_phrase(pick_menu_item, word_menu_entry):
 
 
 @pytest.fixture
-def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
+def get_to_pwmenu(cap_story, press_select, goto_home, pick_menu_item):
     # drill to the enter passphrase menu
     def doit():
         goto_home()
@@ -29,7 +29,9 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
 
         _, story = cap_story()
         if 'your BIP-39 seed words' in story:
-            time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
+            time.sleep(.01)
+            press_select()  # skip warning
+            time.sleep(.01)
 
     return doit
 
@@ -46,7 +48,7 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
         'ab'*25,
     ])
 def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex,
-                    cap_menu, get_to_pwmenu, reset_seed_words):
+                    cap_menu, get_to_pwmenu, reset_seed_words, press_select):
     try:    os.unlink(SIM_FNAME)
     except: pass
 
@@ -99,7 +101,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
         xfp = title[1:-1]
 
         assert xfp == xfps[uniq[n]]
-        need_keypress('y')
+        press_select()
         reset_seed_words()
 
 
@@ -156,7 +158,7 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     assert j[0]['xfp']
 
 def test_delete_one_by_one(get_to_pwmenu, pick_menu_item, cap_menu,
-                           cap_story, need_keypress):
+                           cap_story, press_select):
     # delete it one by one
     # when all deleted - we must be back in Passphrase
     # menu without Restore Saved option visible
@@ -175,7 +177,7 @@ def test_delete_one_by_one(get_to_pwmenu, pick_menu_item, cap_menu,
         time.sleep(.1)
         _, story = cap_story()
         assert "Delete saved passphrase?" in story
-        need_keypress("y")
+        press_select()
         mm = cap_menu()
         if i == (len_m - 1):
             # last item - back to passphrase menu
