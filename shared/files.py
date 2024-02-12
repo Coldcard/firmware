@@ -240,7 +240,8 @@ class CardSlot:
 
     def __enter__(self):
         # Mk4: maybe use our virtual disk in preference to SD Card
-        if glob.VD and (self.force_vdisk or not self.is_inserted()):
+        inserted = pyb.SDCard().present() if ckcc.is_simulator() else self.is_inserted()
+        if glob.VD and (self.force_vdisk or not inserted):
             self.mountpt = glob.VD.mount(self.readonly)
             return self
 

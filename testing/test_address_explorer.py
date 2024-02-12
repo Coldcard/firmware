@@ -51,7 +51,7 @@ def parse_display_screen(cap_story, is_mark3):
         lines = body.split('\n')
         if start == 0:
             # no header after first page
-            assert 'to save Address summary file' in body
+            assert 'to save address summary file' in body
             assert 'show QR code' in body
 
         assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
@@ -202,7 +202,7 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
         need_keypress("0")  # change (internal)
         time.sleep(.1)
     screen_addrs = parse_display_screen(0, 10)
-    file_addr_gen = generate_addresses_file(None)
+    file_addr_gen = generate_addresses_file(change=change)
     for subpath, addr in screen_addrs.items():
         f_subpath, f_addr = next(file_addr_gen)
         assert f_subpath == subpath

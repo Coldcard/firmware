@@ -1793,6 +1793,11 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
              fpattern=None):
+        
+        s_label = None
+        if label == "Address summary":
+            s_label = "address summary"
+
         key_map = {
             "sd": sd_key or "1",
             "vdisk": vdisk_key or "2",
@@ -1801,7 +1806,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
         time.sleep(0.2)
         title, story = cap_story()
         if way == "sd":
-            if f"({key_map['sd']}) to save {label} file to SD Card" in story:
+            if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
                 need_keypress(key_map['sd'])
 
         elif way == "nfc":

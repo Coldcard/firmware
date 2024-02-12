@@ -761,6 +761,25 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
 
 def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test, 
         new_trick_pin, new_pin_confirmed, pick_menu_item, press_select):
+    def decode_backup(txt):
+        import json
+        vals = dict()
+        trimmed = dict()
+        for ln in txt.split('\n'):
+            if not ln: continue
+            if ln[0] == '#': continue
+
+            k, v = ln.split(' = ', 1)
+
+            v = json.loads(v)
+
+            if k.startswith('duress_') or k.startswith('fw_'):
+                # no space in USB xfer for thesE!
+                trimmed[k] = v
+            else:
+                vals[k] = v
+
+        return vals, trimmed
 
     clear_all_tricks()
 
@@ -790,26 +809,6 @@ def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
 
     assert 'Coldcard backup file' in bk
-
-    def decode_backup(txt):
-        import json
-        vals = dict()
-        trimmed = dict()
-        for ln in txt.split('\n'):
-            if not ln: continue
-            if ln[0] == '#': continue
-
-            k,v = ln.split(' = ', 1)
-
-            v = json.loads(v)
-
-            if k.startswith('duress_') or k.startswith('fw_'):
-                # no space in USB xfer for thesE!
-                trimmed[k] = v
-            else:
-                vals[k] = v
-
-        return vals, trimmed
 
     # decode it
     vals, trimmed = decode_backup(bk)

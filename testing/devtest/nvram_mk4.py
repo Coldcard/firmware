@@ -6,8 +6,6 @@
 # run manually with:
 #   execfile('../../testing/devtest/nvram_mk4.py')
 import os
-from ubinascii import hexlify as b2a_hex
-from ubinascii import unhexlify as a2b_hex
 
 import ustruct
 from glob import settings
