@@ -1995,7 +1995,8 @@ async def show_version(*a):
     from glob import NFC
 
     built, rel, *_ = version.get_mpy_version()
-    bl = callgate.get_bl_version()[0]
+    bl = callgate.get_bl_version()
+    bl_dev = dict(bl[1]).get('DEV', 0)
     chk = str(b2a_hex(callgate.get_bl_checksum(0))[-8:], 'ascii')
 
     se = '\n  '.join(callgate.get_se_parts())
@@ -2032,7 +2033,7 @@ Secure Elements:
   {se}
 '''
 
-    msg = msg.format(rel=rel, built=built, bl=bl, chk=chk,
+    msg = msg.format(rel=rel, built=built, bl=bl[0]+(' DEV' if bl_dev else''), chk=chk,
                      se=se, ser=serial, hw=hw)
     if version.has_qr:
         from glob import SCAN, dis
