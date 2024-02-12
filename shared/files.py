@@ -213,8 +213,6 @@ class CardSlot:
         cls.sd_detect = Pin('SD_DETECT')
         cls.irq = ExtInt(cls.sd_detect, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
-
-
     @classmethod
     def is_inserted(cls):
         # debounce?
@@ -240,8 +238,7 @@ class CardSlot:
 
     def __enter__(self):
         # Mk4: maybe use our virtual disk in preference to SD Card
-        inserted = pyb.SDCard().present() if ckcc.is_simulator() else self.is_inserted()
-        if glob.VD and (self.force_vdisk or not inserted):
+        if glob.VD and (self.force_vdisk or not self.is_inserted()):
             self.mountpt = glob.VD.mount(self.readonly)
             return self
 

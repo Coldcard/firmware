@@ -4,7 +4,7 @@
 # on real system. Equivilent to a few lines of code found in stm32/COLDCARD/initfs.c
 #
 
-import machine, pyb, sys, os
+import machine, pyb, sys, os, files
 
 if '--metal' in sys.argv:
     # next in argv will be two open file descriptors to use for serial I/O to a real Coldcard
@@ -29,6 +29,16 @@ if '--sflash' not in sys.argv:
         # limitation: pre-login values arent stored even during operation
 
         #glob.settings.current = dict(sim_defaults)
+
+if '--eject' in sys.argv:
+    is_ejected = True
+    class SimulatedCardSlot(files.CardSlot):
+        def is_inserted(cls):
+            # debounce?
+            global is_ejected
+            return not is_ejected
+
+    files.CardSlot = SimulatedCardSlot
 
 # Install various hacks and workarounds
 import mk4
