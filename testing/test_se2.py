@@ -846,8 +846,9 @@ def build_duress_wallets(request, seed_vault=False):
     # fixtures I need in test_ux_duress_choices
     args = {f: request.getfixturevalue(f)
               for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_ms',
-                        'import_ms_wallet', 'get_setting', 'press_select', 'press_cancel',
-                        'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress']}
+                        'import_ms_wallet', 'get_setting', 'press_select', 'press_cancel', 'is_q1',
+                        'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress',
+                        'seed_story_to_words']}
 
     for (subchoice, expect, xflags, xargs) in [
         ( 'BIP-85 Wallet #1', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1001 ),
