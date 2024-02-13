@@ -175,8 +175,9 @@ def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, pre
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_txn, dev):
+def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_txn, dev, sd_cards_eject):
     xp = dev.master_xpub
+    sd_cards_eject()
 
     def hack(psbt):
         if partial:

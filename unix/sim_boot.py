@@ -30,16 +30,6 @@ if '--sflash' not in sys.argv:
 
         #glob.settings.current = dict(sim_defaults)
 
-if '--eject' in sys.argv:
-    is_ejected = True
-    class SimulatedCardSlot(files.CardSlot):
-        def is_inserted(cls):
-            # debounce?
-            global is_ejected
-            return not is_ejected
-
-    files.CardSlot = SimulatedCardSlot
-
 # Install various hacks and workarounds
 import mk4
 import sim_mk4

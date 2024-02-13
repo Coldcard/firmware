@@ -2019,6 +2019,17 @@ def seed_story_to_words():
 
     return doit
 
+@pytest.fixture
+def sd_cards_eject(is_q1, sim_exec):
+    def doit(slot_a=1, slot_b=1):
+        cmd = (f'from machine import Pin;'
+               f'import files;'
+               f'files.CardSlot.sd_detect = Pin("SD_DETECT",value={slot_a});')
+        if is_q1:
+            cmd += f'files.CardSlot.sd_detect2 = Pin("SD_DETECT2",value={slot_b});'
+        assert sim_exec(cmd) == ''
+    return doit
+
 
 # useful fixtures
 from test_backup import backup_system
