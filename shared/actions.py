@@ -1797,7 +1797,6 @@ async def ready2sign(*a):
     # - check if any signable in SD card, if so do it
     # - if no card, check virtual disk for PSBT
     # - if still nothing, then talk about USB connection
-    import stash
     from pincodes import pa
     from glob import NFC
 

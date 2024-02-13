@@ -2096,7 +2096,7 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
         assert "change addresses." not in story
         assert "(0)" not in story
 
-    contents = load_export(way, label="Address summary", is_json=False, sig_check=False, vdisk_key="4")
+    contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
     addr_cont = contents.strip()
     goto_home()
     pick_menu_item('Settings')

@@ -213,8 +213,6 @@ class CardSlot:
         cls.sd_detect = Pin('SD_DETECT')
         cls.irq = ExtInt(cls.sd_detect, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
-
-
     @classmethod
     def is_inserted(cls):
         # debounce?

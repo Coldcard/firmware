@@ -91,7 +91,7 @@ def test_nvram(unit_test, only_mk3):
     # exercise nvram simulation: not mk4
     unit_test('devtest/nvram.py')
 
-def test_nvram_mk4(unit_test, only_mk4):
+def test_nvram_mk4(unit_test, only_mk4plus):
     # exercise nvram simulation: only mk4
     unit_test('devtest/nvram_mk4.py')
 

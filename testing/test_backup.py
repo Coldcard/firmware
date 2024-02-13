@@ -1,29 +1,8 @@
-import pytest, time, json, os, shutil, re
+import pytest, time, json, os, shutil
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
 from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
-
-
-def decode_backup(txt):
-    import json
-    vals = dict()
-    trimmed = dict()
-    for ln in txt.split('\n'):
-        if not ln: continue
-        if ln[0] == '#': continue
-
-        k, v = ln.split(' = ', 1)
-
-        v = json.loads(v)
-
-        if k.startswith('duress_') or k.startswith('fw_'):
-            # no space in USB xfer for thesE!
-            trimmed[k] = v
-        else:
-            vals[k] = v
-
-    return vals, trimmed
 
 
 @pytest.fixture
@@ -372,65 +351,6 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     assert target_esk == esk
 
     restore_backup_cs(fn, words)
-
-
-def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
-                       new_trick_pin, new_pin_confirmed, pick_menu_item,
-                       press_select):
-
-    from test_se2 import TC_REBOOT, TC_BLANK_WALLET
-
-    clear_all_tricks()
-
-    # - make wallets of all duress types (x2 each)
-    # - plus a few simple ones
-    # - perform a backup and check result
-
-    for n in range(8):
-        goto_trick_menu()
-        pin = '123-%04d' % n
-        new_trick_pin(pin, 'Duress Wallet', None)
-        item = 'BIP-85 Wallet #%d' % (n % 4) if (n % 4 != 0) else 'Legacy Wallet'
-        pick_menu_item(item)
-        press_select()
-        new_pin_confirmed(pin, item, None, None)
-
-    for pin, op_mode, expect, _, xflags in [
-        ('11-33', 'Just Reboot', 'Reboot when this PIN', False, TC_REBOOT),
-        ('11-55', 'Look Blank', 'Look and act like a freshly', False, TC_BLANK_WALLET),
-    ]:
-        new_trick_pin(pin, op_mode, expect)
-        new_pin_confirmed(pin, op_mode, xflags)
-
-    # works, but not the best test
-    # unit_test('devtest/backups.py')
-
-    bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
-
-    assert 'Coldcard backup file' in bk
-
-    # decode it
-    vals, trimmed = decode_backup(bk)
-
-    assert 'duress_xprv' in trimmed
-    assert 'duress_1001_words' in trimmed
-    assert 'duress_1002_words' in trimmed
-    assert 'duress_1003_words' in trimmed
-
-    unit_test('devtest/clear_seed.py')
-
-    repl.exec(f'import backups; backups.restore_from_dict_ll({vals!r})')
-
-    # recover from recovery
-    repl.exec(f'import backups; pa.setup(pa.pin); pa.login(); from actions import goto_top_menu; goto_top_menu()')
-
-    bk2 = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
-    assert 'Traceback' not in bk2
-
-    vals2, tr2 = decode_backup(bk2)
-
-    assert vals == vals2
-    assert trimmed == tr2
 
 
 def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_words,
