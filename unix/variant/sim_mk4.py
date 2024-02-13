@@ -6,7 +6,6 @@
 #
 import sys, uos, pyb, glob, mk4
 
-
 def mff_noop():
     print("Skip FS rebuild (simulator)")
 mk4.make_flash_fs = mff_noop

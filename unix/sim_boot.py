@@ -4,7 +4,7 @@
 # on real system. Equivilent to a few lines of code found in stm32/COLDCARD/initfs.c
 #
 
-import machine, pyb, sys, os, files
+import machine, pyb, sys
 
 if '--metal' in sys.argv:
     # next in argv will be two open file descriptors to use for serial I/O to a real Coldcard

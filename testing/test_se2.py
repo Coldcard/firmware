@@ -759,7 +759,7 @@ def test_ux_changing_pins(true_pin, repl, force_main_pin, goto_trick_menu,
 
     clear_all_tricks()
 
-def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test, 
+def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
         new_trick_pin, new_pin_confirmed, pick_menu_item, press_select):
     def decode_backup(txt):
         import json
