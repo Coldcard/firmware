@@ -209,7 +209,10 @@ class GPUAccess:
     def get_version(self):
         # see if running, and what version
         try:
-            resp = self.cmd_resp(b'v', 20)
+            for retry in range(3):
+                resp = self.cmd_resp(b'v', 20)
+                if resp[0] != 0xff: break       # bugfix for intermittent issue
+                utime.sleep_ms(10)
         except OSError:
             try:
                 # check bootloader is running
