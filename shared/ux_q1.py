@@ -470,6 +470,8 @@ def ux_show_pin(dis, pin, subtitle, prefix, is_confirmation, force_draw,
     else:
         dis.clear_box(ppx, y, 6, 1)
         dis.clear_box(ssx, y, 6, 1)
+        if not prefix:
+            ux_show_phish_words(dis, None)
 
     # prefix/not prefix can change anytime, so redraw this stuff
     dis.draw_box(x, y-1, w, 1, dark=bool(prefix))
