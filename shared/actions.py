@@ -220,6 +220,14 @@ async def microsd_upgrade(menu, label, item):
     from utils import check_firmware_hdr
     from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_MAX_LENGTH_MK4
 
+    if version.has_battery:
+        import battery
+        lvl = battery.get_batt_threshold()
+        if lvl is not None and lvl <= 1:
+            await ux_show_story("Battery power is somewhat low right now. "
+"Please install fresh batteries or connect USB power during upgrade process.", title="Low Battery")
+            return
+
     force_vdisk = item.arg
     fn = await file_picker('Pick firmware image to use (.DFU)', suffix='.dfu',
                            min_size=0x7800, max_size=FW_MAX_LENGTH_MK4,
