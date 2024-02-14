@@ -2033,6 +2033,7 @@ def sd_cards_eject(is_q1, sim_exec):
 
 # useful fixtures
 from test_backup import backup_system
+from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll
 from test_bip39pw import set_bip39_pw
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
