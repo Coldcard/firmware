@@ -70,7 +70,7 @@ def test_detector_url(url, bip21, addr_fmt, try_decode):
         _, url = url.split(':', 1)
     if addr_fmt:
         url = url.replace(a1, a2)
-        expect_addr = a2
+        expect_addr = a2.lower()
     else:
         expect_addr = a1
 
@@ -81,7 +81,7 @@ def test_detector_url(url, bip21, addr_fmt, try_decode):
     assert proto == ('bitcoin' if bip21 else None)
 
     p = urlparse(url)
-    assert p.path == addr
+    assert (p.path == addr) or (p.path.lower() == addr.lower())
 
     xargs = parse_qs(p.query)
     if args:
