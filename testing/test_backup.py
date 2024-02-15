@@ -1,3 +1,7 @@
+# (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
+# Testing backups.
+#
 import pytest, time, json, os, shutil
 from constants import simulator_fixed_words, simulator_fixed_tprv
 from charcodes import KEY_QR
@@ -478,3 +482,7 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
     goto_home()
     assert len([i for i in os.listdir(sd_dir) if i.endswith(".7z")]) > num_7z
     os.remove(f"{sd_dir}/{fname}")
+
+    # TODO check file made is a good backup, with correct password
+
+# EOF
