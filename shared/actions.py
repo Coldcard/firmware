@@ -1808,6 +1808,8 @@ async def ready2sign(*a):
     from pincodes import pa
     from glob import NFC
 
+    opt = {}
+
     # just check if we have candidates, no UI
     choices = await file_picker(None, suffix='psbt', min_size=50,
                                 max_size=MAX_TXN_LEN, taster=is_psbt)
@@ -1825,17 +1827,30 @@ in PSBT format (Partially Signed Bitcoin Transaction) \
 or upload a transaction to be signed \
 from your desktop wallet software or command line tools.\n\n'''
 
-        if NFC:
-            msg += 'Press %s to send PSBT using NFC.\n\n' % (KEY_NFC if version.has_qwerty else "(3)")
+        footnotes = ("\n\nYou will always be prompted to confirm the details "
+                     "before any signature is performed.")
 
-        msg += "You will always be prompted to confirm the details before \
-any signature is performed."
+        # if we have only one SD card inserted, at this point, we know no PSBTs on them
+        # as above file_picker already checked
+        # if we have both inserted, A was already checked - so only care about B
+        picked = await import_export_prompt("PSBT", is_import=True, intro=msg,
+                                        footnotes=footnotes, slot_b_only=True)
+        if isinstance(picked, dict):
+            opt = picked  # reset options to what was chosen by user
+            choices = await file_picker(None, suffix='psbt', min_size=50,
+                                        max_size=MAX_TXN_LEN, taster=is_psbt,
+                                        **opt)
+            if not choices:
+                await ux_show_story('Unable to find any suitable files for this operation.'
+                                    ' The filename must end in psbt".')
+                return
+        else:
+            if NFC and picked == KEY_NFC:
+                await NFC.start_psbt_rx()
+            if picked == KEY_QR:
+                await _scan_any_qr()
 
-        ch = await ux_show_story(msg, title=title, escape='3')
-        if NFC and ch in KEY_NFC+'3':
-            await NFC.start_psbt_rx()
-
-        return
+            return
 
     if len(choices) == 1:
         # single - skip the menu
@@ -1852,7 +1867,7 @@ any signature is performed."
     # start the process
     from auth import sign_psbt_file
 
-    await sign_psbt_file(input_psbt)
+    await sign_psbt_file(input_psbt, **opt)
 
 
 async def sign_message_on_sd(*a):

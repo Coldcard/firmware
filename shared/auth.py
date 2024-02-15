@@ -989,7 +989,7 @@ def psbt_encoding_taster(taste, psbt_len):
 
     return decoder, output_encoder, psbt_len
     
-async def sign_psbt_file(filename, force_vdisk=False):
+async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
     from files import CardSlot, CardMissingError
@@ -1001,7 +1001,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
     # copy file into PSRAM
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
-    with CardSlot(force_vdisk, readonly=True) as card:
+    with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
         with card.open(filename, 'rb') as fd:
             dis.fullscreen('Reading...')
 
