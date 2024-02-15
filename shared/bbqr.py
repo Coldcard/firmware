@@ -2,19 +2,17 @@
 #
 # bbqr.py - Implement BBQr protocol for multiple QR support (also compression and filetype info)
 #
-import utime, uzlib
+import utime, uzlib, ngu
 import uasyncio as asyncio
 from struct import pack, unpack
 from utils import B2A, problem_file_line
 from imptask import IMPT
 from queues import Queue
 from exceptions import QRDecodeExplained
+from ubinascii import unhexlify as a2b_hex
 
-# For BBQr support
-import ngu
 b32encode = ngu.codecs.b32_encode
 b32decode = ngu.codecs.b32_decode
-from ubinascii import unhexlify as a2b_hex
 
 TYPE_LABELS = dict(P='PSBT File', T='Transaction', J='JSON', C='CBOR', U='Unicode Text',
                         X='Executable', B='Binary')
