@@ -485,4 +485,6 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
     # TODO check file made is a good backup, with correct password
 
+# TODO: test larger backup files > 10,000 bytes
+
 # EOF

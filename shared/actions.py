@@ -1386,7 +1386,7 @@ async def restore_temporary(*A):
 
     fn = await file_picker('Select file containing the backup '
                            'to be restored as temporary seed.',
-                           suffix=".7z", max_size=10000)
+                           suffix=".7z")
 
     if fn:
         import backups
@@ -1400,7 +1400,7 @@ async def restore_everything(*A):
 
     # restore everything, using a password, from single encrypted 7z file
     fn = await file_picker('Select file containing the backup to be restored, and '
-                            'then enter the password.', suffix='.7z', max_size=10000)
+                            'then enter the password.', suffix='.7z')
 
     if fn:
         import backups
@@ -1415,7 +1415,7 @@ async def restore_everything_cleartext(*A):
 
     # restore everything, using NO password, from single text file, like would be wrapped in 7z
     fn = await file_picker('Select the cleartext file containing the backup to be restored.',
-                             suffix='.txt', max_size=10000)
+                             suffix='.txt')
 
     if fn:
         import backups

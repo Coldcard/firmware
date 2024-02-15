@@ -357,7 +357,7 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
     for got in ndef.message_decoder(contents):
         if got.type == 'urn:nfc:wkt:T':
             assert 'Transaction' in got.text
-            assert b2a_hex(txid).decode() in got.text
+            assert txid.hex() in got.text
         elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
             assert got.data == txid
         elif got.type == 'urn:nfc:ext:bitcoin.org:txn':
