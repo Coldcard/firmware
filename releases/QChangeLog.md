@@ -24,8 +24,18 @@
 
 # Releases
 
-## 6.0.0 - 2024-02-07
+## 0.0.3 - 2024-02-08
 
-- first test-only release to production; not planning to ship to customers
+- first test-only release 
+
+## 0.0.4 - 2024-02-15
+
+- BBQr animation display smoother
+- test cases fixed, bugs that were exposed, fixed.
+- lots of bugfixes: batch signing, seed XOR, big backups
+- "Ready to Sign" messaging improved, slot B support.
+- block firmware upgrade when battery very low
+
+
 
 
