@@ -2598,7 +2598,7 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
 
     psbt_resp = sim.walletcreatefundedpsbt(ins, [{dest_addr: (num_ins - 0.1)}], locktime, {"fee_rate": 20})
     psbt = psbt_resp.get("psbt")
-    psbt_fname = "rtl-mixin-time.psbt"
+    psbt_fname = "mixed-locktimes.psbt"
     with open(microsd_path(psbt_fname), "w") as f:
         f.write(psbt)
     goto_home()

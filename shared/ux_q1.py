@@ -961,11 +961,13 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
 
         if data_len < MAX_V40_SIZE:
             # and can fit into single QR hex-encoded QR
-            await show_qr_code(here, is_alnum=True, msg=(txid or 'Partly Signed PSBT'))
+            await show_qr_code(here.decode(), is_alnum=True,
+                               msg=(txid or 'Partly Signed PSBT'))
         else:
             # too big for single version 40 QR - do BBQr animated QR
             await show_bbqr_codes('T' if txid else 'P', here,
-                                        (txid or 'Partly Signed PSBT'), already_hex=True)
+                                  (txid or 'Partly Signed PSBT'),
+                                  already_hex=True)
 
     UserAuthorizedAction.cleanup()
     UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
