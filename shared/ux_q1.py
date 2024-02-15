@@ -6,12 +6,12 @@ import utime, gc, ngu, sys
 import uasyncio as asyncio
 from uasyncio import sleep_ms
 from charcodes import *
-from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE, CURSOR_DW_SOLID
+from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE
 from exceptions import AbortInteraction, QRDecodeExplained
-from queues import QueueEmpty
 import bip39
 from decoders import decode_qr_result
 from ubinascii import hexlify as b2a_hex
+from utils import problem_file_line
 from glob import numpad         # may be None depending on import order, careful
 
 class PressRelease:
@@ -895,7 +895,18 @@ class QRScannerInteraction:
             if what == 'addr':
                 proto, addr, args = vals
                 await ux_visualize_bip21(proto, addr, args)
-                return 
+                return
+
+            if what == "multi":
+                from auth import maybe_enroll_xpub
+                from ux import ux_show_story
+                ms_config, = vals
+                try:
+                    maybe_enroll_xpub(config=ms_config)
+                except Exception as e:
+                    await ux_show_story(
+                        'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+                return
 
             if what == 'text' or what == 'xpub':
                 # we couldn't really decode it.

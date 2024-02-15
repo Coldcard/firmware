@@ -219,6 +219,9 @@ def decode_qr_text(got):
     except:
         pass
 
+    if "sortedmulti(" in orig_got:
+        return 'multi', (orig_got,)
+
     # catch-all ... was text. Can still show on-screen perhaps useful for other applications
     return 'text', (orig_got,)
 
