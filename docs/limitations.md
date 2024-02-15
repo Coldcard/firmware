@@ -157,7 +157,7 @@ We will summarize transaction outputs as "change" back into same wallet, however
 # BBQr Scanning (Q)
 
 - files up to 2MiB in size can be accepted
-- when 14 or less parts, we display status of each part, above that number, just percent complete
+- when 14 or less parts, we display status of each part, if more, just percent complete
 
 # QR Scanning (Q)
 
@@ -177,5 +177,6 @@ We will summarize transaction outputs as "change" back into same wallet, however
   except F3 which makes an easier to type password of around 48 bits entropy.
 - Title, Sitename and Username fields are limited to 32 characters in length.
 - Passwords are limited to 128 characters.
-- Note text is unlimited, but storing very large notes may affect performance in other areas.
+- Note text is unlimited, but storing very large notes may affect performance system-wide.
+- Q Backup files restored onto Mk4 will lose their notes, since notes feature is not supported.
 
