@@ -629,10 +629,6 @@ class Display:
         # - we need one more (white) pixel on all sides
         from utils import word_wrap
 
-        self.real_clear()
-        if partial_bar is not None:
-            self.progress_part_bar(partial_bar)
-
         # maybe show something other than QR contents under it
         msg = sidebar or msg
 
@@ -656,6 +652,10 @@ class Display:
             # show no text if it would be too big (example: 18, 24 seed words)
             num_lines = 0
             del parts
+
+        self.clear()
+        if partial_bar is not None:
+            self.progress_part_bar(partial_bar)
 
         # send packed pixel data to C level to decode and expand onto LCD
         # - 8-bit aligned rows of data

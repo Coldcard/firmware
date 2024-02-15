@@ -34,8 +34,9 @@
 
 #define SWAB16(n)     (( ((n)>>8) | ((n) << 8) )&0xffff)
 
-/* have not needed
-static inline void wait_vsync(void) {
+/* works, but not needed.
+static void wait_vsync(void)
+{
     // PB11 is TEAR input: a positive pulse every 60Hz that
     // corresponds to vertical blanking time
     uint32_t timeout = 1000000;
@@ -162,7 +163,11 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
     // - expands it by "expand"
     // - adds one-unit border to all sides
     // - scan_w: scanline width (packed to mod 8)
-    //lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data)
+    // - called: lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data)
+    // - tearing should happen, but because we draw line-wise, seems invisible.
+    // - test with:
+    //     from h import *; from ux_q1 import *; arun(show_bbqr_codes('B', bytes(ngu.random.bytes(4096)), 'foo'))
+    //
 
     const uint16_t COL_WHITE = 0xffff; 
     const uint16_t COL_BLACK = 0x0000; 
@@ -188,13 +193,16 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
         line[i] = COL_WHITE;
     }
 
-    // top, bot blank lines
+    // top, bot white lines, around the QR body
     set_window(spi, x, y, W, expand);
     write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
     set_window(spi, x, y+W-expand, W, expand);
     write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
 
-    const uint8_t *ptr=boxes.buf;
+    // body of QR
+    set_window(spi, x, y+expand, W, expand*w);
+
+    const uint8_t *ptr = boxes.buf;
     for(int Y=0; Y < w; Y++, ptr += (scan_w/8)) {
         const uint8_t *p = ptr;
         for(int X=0; X<w; ) {
@@ -208,7 +216,6 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
             p++;
         }
 
-        set_window(spi, x, y+((Y+1)*expand), W, expand);
         write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
     }
 

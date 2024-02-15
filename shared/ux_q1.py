@@ -1121,7 +1121,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
         del qr_data
 
-        dis.progress_bar_show(pkt / num_parts)
+        dis.progress_bar_show((pkt+1) / num_parts)
     
     # display rate (plus time to send to display, etc)
     ms_per_each = 200
