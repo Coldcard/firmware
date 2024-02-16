@@ -154,4 +154,20 @@ def test_multisig_descriptors(desc, try_decode):
     assert ft == "multi"
     assert vals[0] == desc
 
+@pytest.mark.parametrize('data', [
+    ('5J9Gfy2FNTw2EpkkQu41S9CTBBVij123kYPkbYAnaQkUHtMuv2Q', False, False),
+    ('L2TgtddYM9ueK2auJVkNaNEF3egMMK1MTMkng5RBAcBWXnCMnxcb', True, False),
+    ('cUfNdkyMXhggsqB1FvijAQ9ETcZrGdLEtzbdsWdSRUtVLHPGPpak', True, True),
+    ('92DhqVmmSAhyhW8HzgL8DDGFn2ZH6fk1wh9mEK4fjNn8f7mJyAC', False, True),
+])
+def test_wif(data, try_decode):
+    wif, compressed, testnet = data
+    ft, vals = try_decode(wif)
+
+    assert ft == "wif"
+    twif, _, tcompressed, ttestnet = vals[0]
+    assert wif == twif
+    assert compressed == tcompressed
+    assert testnet == ttestnet
+
 # EOF

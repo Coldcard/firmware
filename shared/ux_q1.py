@@ -908,6 +908,12 @@ class QRScannerInteraction:
                         'Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
                 return
 
+            if what == "wif":
+                data, = vals
+                wif_str, key_pair, compressed, testnet = data
+                await ux_visualize_wif(wif_str, key_pair, compressed, testnet)
+                return
+
             if what == 'text' or what == 'xpub':
                 # we couldn't really decode it.
                 txt, = vals
@@ -1049,6 +1055,14 @@ async def ux_visualize_bip21(proto, addr, args):
         msg += 'And values for: ' + ', '.join(args)
     
     await ux_show_story(msg, title="Payment Address")
+
+async def ux_visualize_wif(wif_str, kp, compressed, testnet):
+    from ux import ux_show_story
+    msg = wif_str + "\n\n"
+    msg += "chain: %s\n\n" % ("XTN" if testnet else "BTC")
+    msg += "private key hex:\n" + b2a_hex(kp.privkey()).decode() + "\n\n"
+    msg += "public key sec:\n" + b2a_hex(kp.pubkey().to_bytes(not compressed)).decode() + "\n\n"
+    await ux_show_story(msg, title="WIF")
 
 async def ux_visualize_textqr(txt, maxlen=200):
     # Show simple text. Don't crash on huge things, but be
