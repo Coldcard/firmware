@@ -38,7 +38,7 @@ class VirtDisk:
         VBLKDEV.callback(None)
         glob.VD = None
 
-    def unmount(self, written_files):
+    def unmount(self, written_files, readonly=False):
         # just unmount; ignore errors
         try:
             os.umount('/vdisk')
@@ -51,9 +51,10 @@ class VirtDisk:
                 self.ignore.add(fn)
 
         # allow host to change again
-        enable_usb()
-        if glob.VD:
-            VBLKDEV.set_inserted(True)
+        if not readonly:
+            enable_usb()
+            if glob.VD:
+                VBLKDEV.set_inserted(True)
 
     def mount(self, readonly=False):
         # Prepare to read the filesystem. Block host. Return mount pt.
@@ -69,7 +70,7 @@ class VirtDisk:
         try:
             if not readonly:
                 disable_usb()
-            VBLKDEV.set_inserted(False)
+                VBLKDEV.set_inserted(False)
             os.mount(VBLKDEV, '/vdisk', readonly=readonly)
             st = os.statvfs('/vdisk')
 

@@ -242,6 +242,10 @@ class CardSlot:
             self.mountpt = glob.VD.mount(self.readonly)
             return self
 
+        if not self.is_inserted():
+            # bugfix on Q: #618
+            raise CardMissingError
+
         # Get ready!
         self.active_led.on()
 
@@ -268,7 +272,7 @@ class CardSlot:
         if self.mountpt == self.get_sd_root():
             self._recover()
         elif glob.VD:
-            glob.VD.unmount(self.wrote_files)
+            glob.VD.unmount(self.wrote_files, self.readonly)
 
         self.mountpt = None
 
