@@ -45,5 +45,8 @@
 - bugfix: cant detect SD card in Ready to Sign...
 - WIF private key detected when scaning QR (display only for now)
 
+## 0.0.6 - 2024-02-1?
+
+- bugfix: randomize keys for PIN entry
 
 
