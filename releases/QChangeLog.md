@@ -36,6 +36,12 @@
 - "Ready to Sign" messaging improved, slot B support.
 - block firmware upgrade when battery very low
 
+## 0.0.5 - 2024-02-16
+
+- fixes and changes from version 5.2.2 of Mk4 encorporated
+- bugfix: save bip-39 password to absent SD card
+- import multisig wallet via descriptor inside a QR
+- too much whitespace in locktime details
 
 
 
