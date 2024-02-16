@@ -692,7 +692,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             fee = self.psbt.calculate_fee()
             if fee is not None:
-                msg.write("\nNetwork fee:\n%s %s\n" % self.chain.render_value(fee))
+                msg.write("Network fee:\n%s %s\n\n" % self.chain.render_value(fee))
 
             # NEW: show where all the change outputs are going
             self.output_change_text(msg)
@@ -700,13 +700,14 @@ class ApproveTransaction(UserAuthorizedAction):
 
             if self.psbt.ux_notes:
                 # currently we only have locktimes in ux_notes
-                msg.write('\nTX LOCKTIMES\n\n')
+                msg.write('TX LOCKTIMES\n\n')
 
                 for label, m in self.psbt.ux_notes:
-                    msg.write('- %s: %s\n\n' % (label, m))
+                    msg.write('- %s: %s\n' % (label, m))
+                msg.write("\n")
 
             if self.psbt.warnings:
-                msg.write('\n---WARNING---\n\n')
+                msg.write('---WARNING---\n\n')
 
                 for label, m in self.psbt.warnings:
                     msg.write('- %s: %s\n\n' % (label, m))
@@ -721,7 +722,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                msg.write("\nPress OK to approve and sign transaction. X to abort.")
+                msg.write("Press OK to approve and sign transaction. X to abort.")
                 ch = await ux_show_story(msg, title="OK TO SEND?")
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
@@ -862,7 +863,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
         total_val = ' '.join(self.chain.render_value(total))
 
-        msg.write("\nChange back:\n%s\n" % total_val)
+        msg.write("Change back:\n%s\n" % total_val)
 
         if len(addrs) == 1:
             msg.write(' - to address -\n%s\n' % addrs[0])
@@ -870,6 +871,8 @@ class ApproveTransaction(UserAuthorizedAction):
             msg.write(' - to addresses -\n')
             for a in addrs:
                 msg.write('%s\n' % a)
+
+        msg.write("\n")
 
     def output_summary_text(self, msg):
         # Produce text report of where their cash is going. This is what
@@ -881,7 +884,7 @@ class ApproveTransaction(UserAuthorizedAction):
             # consolidating txn that doesn't change balance of account.
             msg.write("Consolidating\n%s %s\nwithin wallet.\n\n" %
                             self.chain.render_value(self.psbt.total_value_out))
-            msg.write("%d ins - fee\n = %d outs\n" % (
+            msg.write("%d ins - fee\n = %d outs\n\n" % (
                         self.psbt.num_inputs, self.psbt.num_outputs))
 
             return
@@ -901,6 +904,7 @@ class ApproveTransaction(UserAuthorizedAction):
 
                 msg.write(self.render_output(tx_out))
 
+            msg.write("\n")
             return
 
         # Too many to show them all, so
@@ -941,6 +945,8 @@ class ApproveTransaction(UserAuthorizedAction):
                                         if self.psbt.outputs[i].is_change)
 
             msg.write('%s %s\n' % self.chain.render_value(mtot))
+
+        msg.write("\n")
 
 
 def sign_transaction(psbt_len, flags=0x0, psbt_sha=None):

@@ -1309,7 +1309,6 @@ class psbtObject(psbtProxy):
                 msg += "\n\n"
                 for idx, num_blocks in bb:
                     msg += " %d.  %d blocks\n" % (idx, num_blocks)
-                msg += "\n"
 
             self.ux_notes.append(("Block height RTL", msg))
 
@@ -1333,7 +1332,6 @@ class psbtObject(psbtProxy):
                 for idx, seconds in tb:
                     hr = seconds2human_readable(seconds)
                     msg += " %d.  %s\n" % (idx, hr)
-                msg += "\n"
 
             self.ux_notes.append(("Time-based RTL", msg))
 
@@ -1430,6 +1428,7 @@ class psbtObject(psbtProxy):
                         msg += "%d (unix timestamp)" % self.lock_time
 
                     msg += " (MTP)"  # median time past
+                msg += "\n"
                 self.ux_notes.append(("Abs Locktime", msg))
 
         # create UX for users about tx level relative timelocks (nSequence)
