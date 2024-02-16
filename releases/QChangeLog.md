@@ -42,6 +42,8 @@
 - bugfix: save bip-39 password to absent SD card
 - import multisig wallet via descriptor inside a QR
 - too much whitespace in locktime details
+- bugfix: cant detect SD card in Ready to Sign...
+- WIF private key detected when scaning QR (display only for now)
 
 
 
