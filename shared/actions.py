@@ -1835,7 +1835,8 @@ from your desktop wallet software or command line tools.\n\n'''
         # as above file_picker already checked
         # if we have both inserted, A was already checked - so only care about B
         picked = await import_export_prompt("PSBT", is_import=True, intro=msg,
-                                        footnotes=footnotes, slot_b_only=True)
+                                            footnotes=footnotes, slot_b_only=True,
+                                            title=title)
         if isinstance(picked, dict):
             opt = picked  # reset options to what was chosen by user
             choices = await file_picker(None, suffix='psbt', min_size=50,
