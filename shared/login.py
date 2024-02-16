@@ -163,7 +163,9 @@ class LoginUX:
                     self.pin = ''
                     if self.randomize:
                         self.shuffle_keys()
-                    self.show_pin(False)
+                        self.show_pin(True)     # critical so mapping is redrawn.
+                    else:
+                        self.show_pin(False)
 
             elif '0' <= ch <= '9':
                 # digit pressed
