@@ -327,8 +327,12 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
 
     # draws initial screen, and returns funct to update count and/or hash
     screen_updater = ux_dice_rolling()
-
+    redraw = False
     while 1:
+        if redraw:
+            # redraw basic dice screen after different story was shown
+            screen_updater = ux_dice_rolling()
+
         # Note: cannot scroll this msg because 5=up arrow
         hx = str(b2a_hex(md.digest()), 'ascii')
         screen_updater(count, hx)
@@ -360,12 +364,14 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
                     ch = await ux_show_story("Not enough dice rolls!!!\n\n" + story +
                                              "\n\nPress OK to add more dice rolls. X to exit")
                     if ch == "y":
+                        redraw = True
                         continue
                     else:
                         return 0, seed
                 else:
                     ok = await ux_confirm(story)
                     if not ok:
+                        redraw = True
                         continue
 
             if judge_them:
@@ -379,6 +385,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
                     else:
                         ok = await ux_confirm(bad_dist_msg)
                         if not ok:
+                            redraw = True
                             continue
             break
 
