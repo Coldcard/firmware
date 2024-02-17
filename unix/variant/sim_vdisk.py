@@ -67,7 +67,7 @@ class SimulatedVirtDisk(vdisk.VirtDisk):
     def mount(self, readonly=False):
         return SIMDIR_PATH[:-1]
 
-    def unmount(self, written_files):
+    def unmount(self, written_files, readonly=False):
         #print("sim-virtdisk: CC unmounted; ready to view")
         for fn in written_files:
             self.ignore.add(fn.split('/')[-1])

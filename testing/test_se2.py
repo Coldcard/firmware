@@ -379,8 +379,8 @@ def test_ux_add_simple(new_pin, op_mode, expect, but_dont, xflags,
     ('Just Reboot', 'Reboot when this ', TC_REBOOT), 
 ])
 def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
-                cap_menu, pick_menu_item, cap_story, goto_trick_menu,
-                      new_pin_confirmed, press_select, enter_pin):
+                      cap_menu, pick_menu_item, cap_story, goto_trick_menu,
+                      new_pin_confirmed, press_select, enter_pin, is_q1):
     # wrong pin choices, not implementation
     goto_trick_menu()
     pick_menu_item('Add If Wrong')
@@ -425,8 +425,9 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     pick_menu_item('↳WRONG PIN')
     pick_menu_item('Delete Trick')
     time.sleep(.1)
-    _, story = cap_story()
-    assert "Are you SURE" in story
+    title, story = cap_story()
+    where = title if is_q1 else story
+    assert "Are you SURE" in where
     assert "Remove special handling of wrong PINs?" in story
     press_select()
     time.sleep(.1)
