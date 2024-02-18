@@ -48,6 +48,9 @@ class Bitcoind:
         self.bitcoind_proc = subprocess.Popen(
             [
                 self.bitcoind_path,
+                # needed for newest master
+                # TODO legacy wallet will be deprecated in 26
+                "-deprecatedrpc=create_bdb",
                 "-regtest",
                 f"-datadir={self.datadir}",
                 "-noprinttoconsole",
