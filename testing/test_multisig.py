@@ -141,9 +141,9 @@ def make_multisig(dev, sim_execfile):
 
 @pytest.fixture
 def offer_ms_import(cap_story, dev, need_keypress):
-    def doit(config):
+    def doit(config, allow_non_ascii=False):
         # upload the file, trigger import
-        file_len, sha = dev.upload_file(config.encode('ascii'))
+        file_len, sha = dev.upload_file(config.encode('utf-8' if allow_non_ascii else 'ascii'))
 
         open('debug/last-config.txt', 'wt').write(config)
 
@@ -2710,5 +2710,22 @@ def test_same_key_account_based_multisig(goto_home, need_keypress, pick_menu_ite
         _, story = offer_ms_import(desc)
     except Exception as e:
         assert "my key included more than once" in str(e)
+
+
+def test_multisig_name_validation(microsd_path, offer_ms_import):
+    with open("data/multisig/export-p2wsh-myself.txt", "r") as f:
+        config = f.read()
+
+    c0 = config.replace("Name: CC-2-of-4", "Name: eê")
+
+    with pytest.raises(Exception) as e:
+        offer_ms_import(c0, allow_non_ascii=True)
+    assert "must be ascii" in e.value.args[0]
+
+    c0 = config.replace("Name: CC-2-of-4", "Name: eee\teee")
+
+    with pytest.raises(Exception) as e:
+        offer_ms_import(c0, allow_non_ascii=True)
+    assert "must be ascii" in e.value.args[0]
 
 # EOF
