@@ -51,6 +51,7 @@ class QRDisplaySingle(UserInteraction):
     def redraw(self):
         # Redraw screen.
         from glob import dis
+        dis.clear()
 
         # what we are showing inside the QR
         msg = self.addrs[self.idx]
@@ -63,8 +64,9 @@ class QRDisplaySingle(UserInteraction):
 
         # draw display
         idx_hint = str(self.start_n + self.idx) if len(self.addrs) > 1 else None
+        dis.busy_bar(False)
         dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
-                                        self.sidebar, idx_hint, self.invert)
+                            self.sidebar, idx_hint, self.invert)
 
 
     async def interact_bare(self):
