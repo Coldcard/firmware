@@ -15,15 +15,11 @@ def is_dir(fname):
         return True
     return False
 
-def _try_microsd(bad_fs_ok=False):
+def _try_microsd():
     # Power up, mount the SD card, return False if we can't for some reason.
+    # - we know card is there already, and mux set appropriately
     #
-    # If we're about to reformat, we don't need a working filesystem
-
     sd = pyb.SDCard()
-
-    if not sd.present():        # on Q will always be "present"
-        return False
 
     if ckcc.is_simulator():
         return True
