@@ -7,7 +7,7 @@
 # - replaces old "duress wallet" and "brickme" features 
 # - changes require knowledge of real PIN code (it is checked)
 # 
-import uctypes, errno, ngu, sys, stash, bip39
+import uctypes, errno, ngu, sys, stash, bip39, version
 from menu import MenuSystem, MenuItem
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux, ux_aborted
 from stash import SecretStash
@@ -163,8 +163,9 @@ class TrickPinMgmt:
 
         blk = slot.blank_slots
 
-        # bug workaround: don't use slot 10, in bootrom 3.1.4 and earlier
-        blk &= ~(1<<10)
+        if not version.has_qwerty:
+            # bug workaround: don't use slot 10, in Mk4 bootrom 3.1.4 and earlier
+            blk &= ~(1<<10)
 
         return [i for i in range(NUM_TRICKS) if (1<<i & blk)]
 
