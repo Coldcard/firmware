@@ -319,7 +319,7 @@ class Display:
     def clear(self):
         # clear text
         self.next_buf = self.make_buf(32)
-        # clear progress bar / scroll
+        # clear progress bar & scroll bar
         self.next_prog_w = 0
         self.next_scroll = None
 
@@ -329,6 +329,7 @@ class Display:
 
         lines = just_lines or range(CHARS_H)
         for y in lines:
+            py = TOP_MARGIN + (y * CELL_H)
             x = 0
             while x < CHARS_W:
                 if self.next_buf[y][x] == self.last_buf[y][x]:
@@ -336,7 +337,6 @@ class Display:
                     x += 1
                     continue
 
-                py = TOP_MARGIN + (y * CELL_H)
                 px = LEFT_MARGIN + (x * CELL_W)
                 ch = chr(self.next_buf[y][x] & ~ATTR_MASK)
                 attr = (self.next_buf[y][x] & ATTR_MASK)
@@ -344,8 +344,9 @@ class Display:
                 if ch == ' ':
                     # space - look for horz runs & fill w/ blank
                     run = 1
+                    here = self.next_buf[y][x]
                     for x2 in range(x+1, CHARS_W):
-                        if self.next_buf[y][x] != self.next_buf[y][x2]:
+                        if self.next_buf[y][x2] != here:
                             break                                        
                         run += 1
 
