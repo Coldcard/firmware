@@ -141,7 +141,7 @@ class FullKeyboard(NumpadBase):
         self.process_chg_state(new_presses)
 
     def process_chg_state(self, new_presses):
-        # we're done a full scan (mulitple times: NUM_SAMPLES)
+        # we've done a full scan (mulitple times: NUM_SAMPLES)
         # - convert that into ascii-like events in a Q for rest of system
         # - during multiple presses, each reported once, then when "all up", another event
         shift_down = self.is_pressed[KEYNUM_SHIFT]
@@ -187,7 +187,7 @@ class FullKeyboard(NumpadBase):
                 self._char_reported.add(ch)
                 self._key_event(ch)
 
-            self.lp_time = utime.ticks_ms()
+                self.lp_time = utime.ticks_ms()
 
         if self.torch_on and not self.is_pressed[KEYNUM_LAMP]:
             self.torch_on = False
@@ -206,13 +206,18 @@ class FullKeyboard(NumpadBase):
             from glob import dis
             uasyncio.create_task(dis.async_draw_status(**status_chg))
 
-        if not any(self.is_pressed):
-            if self._char_reported:
+        if self._char_reported:
+            # Is any key still pressed right now, with the exception of shift/sym?
+            # If "all up" then report that.
+            any_non_meta_pressed = any(True for kn,dn in enumerate(self.is_pressed)
+                                    if dn and kn not in {KEYNUM_SHIFT, KEYNUM_SYMBOL, KEYNUM_LAMP})
+
+            if not any_non_meta_pressed:
                 self._char_reported.clear()
                 self._key_event('')
 
-            if utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
-                # stop scanning now... nothing happening
-                self._wait_any()
+        if (utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250) and not any(self.is_pressed):
+            # stop scanning now... nothing happening
+            self._wait_any()
     
 # EOF

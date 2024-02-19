@@ -152,7 +152,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     # - press QR -> do scan and use that text
     # - funct_keys => CTA msg, and map of Fn key to async-function which takes and returns new text
     # - TODO: regex validation for derviation paths?
-    # - TODO: arrowing around
+    # - TODO: arrowing around, insertion cursor, delete-left vs -right, etc
     # - if unlimited length, then we allow newlines and CANCEL is only way out.
     # - multiline entries don't mean newlines are allowed, because we often have to wrap
     #   to make longer single-line value onto screen
