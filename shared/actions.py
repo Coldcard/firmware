@@ -4,11 +4,11 @@
 #
 # Every function here is called directly by a menu item. They should all be async.
 #
-import ckcc, pyb, version, uasyncio, sys
+import ckcc, pyb, version, uasyncio, sys, uos
 from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
-from utils import imported, pretty_short_delay, problem_file_line
+from utils import imported, pretty_short_delay, problem_file_line, get_filesize
 from utils import xfp2str, decrypt_tapsigner_backup, B2A, addr_fmt_label
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
@@ -19,7 +19,7 @@ from files import CardSlot, CardMissingError, needs_microsd
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from glob import settings
 from pincodes import pa
-from menu import start_chooser
+from menu import start_chooser, MenuSystem, MenuItem
 from version import MAX_TXN_LEN
 from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 
@@ -229,8 +229,7 @@ async def microsd_upgrade(menu, label, item):
             return
 
     force_vdisk = item.arg
-    fn = await file_picker('Pick firmware image to use (.DFU)', suffix='.dfu',
-                           min_size=0x7800, max_size=FW_MAX_LENGTH_MK4,
+    fn = await file_picker(suffix='.dfu', min_size=0x7800, max_size=FW_MAX_LENGTH_MK4,
                            force_vdisk=force_vdisk)
 
     if not fn: return
@@ -1268,7 +1267,7 @@ async def verify_backup(*A):
     # read 7z header, and measure checksums
     import backups
 
-    fn = await file_picker('Select file containing the backup to be verified. No password will be required.', suffix='.7z', max_size=backups.MAX_BACKUP_FILE_SIZE)
+    fn = await file_picker(suffix='.7z', max_size=backups.MAX_BACKUP_FILE_SIZE)
 
     if not fn:
         return
@@ -1332,8 +1331,8 @@ async def import_xprv(_1, _2, item):
     else:
         # only get here if NFC was not chosen
         # pick a likely-looking file.
-        fn = await file_picker('Select file containing the %s to be imported.' % label, min_size=50,
-                               max_size=2000, taster=contains_xprv, **choice)
+        fn = await file_picker(suffix='txt', min_size=50, max_size=2000, taster=contains_xprv,
+                               none_msg="Must contain " + label + ".", **choice)
 
         if not fn: return
 
@@ -1354,9 +1353,7 @@ Visit the advanced menu and choose 'Destroy Seed'.'''
 
 async def restore_temporary(*A):
 
-    fn = await file_picker('Select file containing the backup '
-                           'to be restored as temporary seed.',
-                           suffix=".7z")
+    fn = await file_picker(suffix=".7z")
 
     if fn:
         import backups
@@ -1369,8 +1366,7 @@ async def restore_everything(*A):
         return
 
     # restore everything, using a password, from single encrypted 7z file
-    fn = await file_picker('Select file containing the backup to be restored, and '
-                            'then enter the password.', suffix='.7z')
+    fn = await file_picker(suffix='.7z')
 
     if fn:
         import backups
@@ -1384,8 +1380,7 @@ async def restore_everything_cleartext(*A):
         return
 
     # restore everything, using NO password, from single text file, like would be wrapped in 7z
-    fn = await file_picker('Select the cleartext file containing the backup to be restored.',
-                             suffix='.txt')
+    fn = await file_picker(suffix='.txt')
 
     if fn:
         import backups
@@ -1509,7 +1504,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
                     continue
             break
     else:
-        fn = await file_picker('Pick ' + label, suffix="aes", min_size=100, max_size=160, **choice)
+        fn = await file_picker(suffix="aes", min_size=100, max_size=160, **choice)
         if not fn: return
         meta += (" (%s)" % fn)
         with CardSlot(**choice) as card:
@@ -1539,9 +1534,7 @@ async def import_tapsigner_backup_file(_1, _2, item):
     await import_extended_key_as_secret(extended_key, ephemeral, meta=meta)
 
 async def list_files(*A):
-    # list files, don't do anything with them?
-    fn = await file_picker('Lists all files, select one and SHA256(file contents) will be shown.',
-                           min_size=0)
+    fn = await file_picker(min_size=0)
     if not fn: return
 
     chk = sha256()
@@ -1579,18 +1572,15 @@ async def list_files(*A):
                     msg = msg_base + msg_delete
     return
 
-async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=None,
-                      choices=None, escape=None, none_msg=None, title=None,
-                      force_vdisk=False, batch_sign=False, slot_b=None):
+async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
+                      choices=None, none_msg=None, force_vdisk=False, slot_b=None,
+                      allow_batch_sign=False, ux=True):
     # present a menu w/ a list of files... to be read
     # - optionally, enforce a max size, and provide a "tasting" function
     # - if msg==None, don't prompt, just do the search and return list
     # - if choices is provided; skip search process
     # - escape: allow these chars to skip picking process
     # - slot_b: None=>pick slot w/ card in it, or A if both.
-    from menu import MenuSystem, MenuItem
-    import uos
-    from utils import get_filesize
 
     if choices is None:
         choices = []
@@ -1641,41 +1631,25 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
 
         except CardMissingError:
             # don't show anything if we're just gathering data
-            if msg is not None:
+            if ux is not False:
                 await needs_microsd()
             return None
 
-    if msg is None:
+    if ux is False:
         return choices
 
     if not choices:
-        msg = none_msg or 'Unable to find any suitable files for this operation. '
+        msg = 'No suitable files found. '
 
-        if not none_msg:
-            if suffix:
-                msg += 'The filename must end in "%s". ' % suffix
+        if none_msg:
+            msg += none_msg
+        if suffix:
+            msg += '\n\nThe filename must end in "%s". ' % suffix
 
-            msg += '\n\nMaybe insert (another) SD card and try again?'
+        msg += '\n\nMaybe insert (another) SD card and try again?'
 
         await ux_show_story(msg)
         return
-
-    # tell them they need to pick; can quit here too, but that's obvious.
-    if len(choices) != 1:
-        msg += '\n\nThere are %d files to pick from.' % len(choices)
-        if batch_sign:
-            msg += '\n\nPress (9) to select all files for potential signing.'
-
-    else:
-        msg += '\n\nThere is only one file to pick from.'
-
-    ch = await ux_show_story(msg, escape=escape, title=title)
-    if batch_sign and (ch == escape == "9"):
-        await _batch_sign(choices=choices)
-        return
-
-    if escape and ch in escape: return ch
-    if ch == 'x': return
 
     picked = []
     async def clicked(_1,_2,item):
@@ -1685,6 +1659,10 @@ async def file_picker(msg, suffix=None, min_size=1, max_size=1000000, taster=Non
     choices.sort()
 
     items = [MenuItem(label, f=clicked, arg=(path, fn)) for label, path, fn in choices]
+    if allow_batch_sign and len(choices) > 1:
+        # we know that each choices member is psbt as allow_batch_sign is only True
+        # in Ready To Sign
+        items.insert(0, MenuItem("[Sign All]", f=batch_sign, arg=choices))
 
     menu = MenuSystem(items)
     the_ux.push(menu)
@@ -1744,7 +1722,7 @@ async def _batch_sign(choices=None):
             return
         assert isinstance(picked, dict)
 
-        choices = await file_picker(None, suffix='psbt', min_size=50,
+        choices = await file_picker(suffix='psbt', min_size=50, ux=False,
                                     max_size=MAX_TXN_LEN, taster=is_psbt, **picked)
 
     if not choices:
@@ -1762,9 +1740,9 @@ async def _batch_sign(choices=None):
             await sleep_ms(100)
             await the_ux.top_of_stack().interact()
 
-async def batch_sign(*a):
+async def batch_sign(_1, _2, item):
     try:
-        await _batch_sign()
+        await _batch_sign(item.arg)
     except Exception as e:
         import sys
         await ux_show_story("FAILURE: batch sign failed\n\n" + problem_file_line(e))
@@ -1781,7 +1759,7 @@ async def ready2sign(*a):
     opt = {}
 
     # just check if we have candidates, no UI
-    choices = await file_picker(None, suffix='psbt', min_size=50,
+    choices = await file_picker(suffix='psbt', min_size=50, ux=False,
                                 max_size=MAX_TXN_LEN, taster=is_psbt)
 
     if pa.tmp_value:
@@ -1808,7 +1786,7 @@ from your desktop wallet software or command line tools.\n\n'''
                                             title=title)
         if isinstance(picked, dict):
             opt = picked  # reset options to what was chosen by user
-            choices = await file_picker(None, suffix='psbt', min_size=50,
+            choices = await file_picker(suffix='psbt', min_size=50, ux=False,
                                         max_size=MAX_TXN_LEN, taster=is_psbt,
                                         **opt)
             if not choices:
@@ -1829,9 +1807,7 @@ from your desktop wallet software or command line tools.\n\n'''
         input_psbt = path + '/' + fn
     else:
         # multiples - ask which, and offer batch to sign them all
-        input_psbt = await file_picker('Choose PSBT file to be signed.',
-                                       choices=choices, title=title,
-                                       batch_sign=True, escape="9")
+        input_psbt = await file_picker(choices=choices, allow_batch_sign=True)
         if not input_psbt:
             return
 
@@ -1852,10 +1828,10 @@ async def sign_message_on_sd(*a):
             # min 1 line max 3 lines
             return 1 <= len(lines) <= 3
 
-    fn = await file_picker('Choose text file to be signed.', suffix='txt',
-                            min_size=2, max_size=500, taster=is_signable, none_msg=
-'No suitable files found. Must be one line of text, in a .TXT file, optionally '
-'followed by a subkey derivation path on a second line and/or address format on third line.')
+    fn = await file_picker(suffix='txt', min_size=2, max_size=500, taster=is_signable,
+                           none_msg=('Must be one line of text, optionally '
+                                     'followed by a subkey derivation path on a second line '
+                                     'and/or address format on third line.'))
 
     if not fn:
         return
@@ -1873,10 +1849,8 @@ async def verify_sig_file(*a):
                 return True
             return False
 
-    fn = await file_picker(
-        'Choose signature file.', min_size=220, max_size=10000, taster=is_sig_file,
-        none_msg='No suitable files found. Must be file with ascii armor.'
-    )
+    fn = await file_picker(min_size=220, max_size=10000, taster=is_sig_file,
+                           none_msg='Must be file with ascii armor.')
 
     if not fn:
         return

@@ -713,21 +713,14 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
         pick_menu_item('Import from File')
         time.sleep(0.5)
         _, story = cap_story()
-        if vdisk and "Unable to find any suitable files for this operation" in story:
-            pytest.skip("Vdisk disabled")
-        if "Press (1) to import multisig wallet file from SD Card" in story:
-            if vdisk:
-                if "press (2) to import from Virtual Disk" not in story:
-                    pytest.skip("Vdisk disabled")
-                else:
-                    need_keypress("2")
+        if vdisk:
+            if "(2) to import from Virtual Disk" not in story:
+                pytest.skip("Vdisk disabled")
             else:
+                need_keypress("2")
+        else:
+            if "(1) to import multisig wallet file from SD Card" in story:
                 need_keypress("1")
-
-        time.sleep(.1)
-        _, story = cap_story()
-        assert "Pick multisig wallet" in story
-        press_select()
 
         time.sleep(.1)
         pick_menu_item(fname.rsplit('/', 1)[1])
@@ -1476,8 +1469,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     _, story = cap_story()
     if "Press (1) to import multisig wallet file from SD Card" in story:
         need_keypress("1")
-    time.sleep(.05)
-    press_select()
+
     time.sleep(.05)
     pick_menu_item(cc_fname.rsplit('/', 1)[1])
 
@@ -2188,8 +2180,8 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     if "Press (1) to import multisig wallet file from SD Card" in story:
         # in case Vdisk is enabled
         need_keypress("1")
+
     time.sleep(0.5)
-    press_select()
     pick_menu_item(name)
     _, story = cap_story()
     assert "Create new multisig wallet?" in story
@@ -2321,7 +2313,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
         # in case Vdisk is enabled
         need_keypress("1")
     time.sleep(0.5)
-    press_select()
+
     pick_menu_item(name)
     _, story = cap_story()
     assert "Create new multisig wallet?" in story
@@ -2401,18 +2393,10 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     pick_menu_item("Ready To Sign")
     time.sleep(0.5)
     title, story = cap_story()
-    if "OK TO SEND?" in title:
-        # multiple files
-        pass
-    else:
-        try:
-            pick_menu_item(name)
-        except:
-            time.sleep(0.5)
-            press_select()
-            pick_menu_item(name)
-            time.sleep(0.5)
-            title, story = cap_story()
+    if not "OK TO SEND?" in title:
+        pick_menu_item(name)
+        title, story = cap_story()
+
     assert title == "OK TO SEND?"
     if sighash != "ALL":
         assert "(1 warning below)" in story
@@ -2466,18 +2450,10 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     pick_menu_item("Ready To Sign")
     time.sleep(0.5)
     title, _ = cap_story()
-    if "OK TO SEND?" in title:
-        # multiple files
-        pass
-    else:
-        try:
-            pick_menu_item(name)
-        except:
-            time.sleep(0.5)
-            press_select()
-            pick_menu_item(name)
-            time.sleep(0.5)
-            title, story = cap_story()
+    if not "OK TO SEND?" in title:
+        pick_menu_item(name)
+        title, story = cap_story()
+
     assert title == "OK TO SEND?"
     press_select()  # confirm signing
     time.sleep(0.5)
@@ -2544,13 +2520,13 @@ def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
     pick_menu_item('Import from File')
-    time.sleep(0.5)
+    time.sleep(0.1)
     _, story = cap_story()
     if "Pick multisig wallet file to import" not in story:
         assert "Press (1) to import multisig wallet file from SD Card" in story
         need_keypress("1")
-    time.sleep(0.5)
-    press_select()
+
+    time.sleep(0.1)
     pick_menu_item(name)
     _, story = cap_story()
     assert "Failed to import" in story

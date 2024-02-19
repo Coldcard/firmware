@@ -431,9 +431,6 @@ def test_import_prv(way, testnet, pick_menu_item, cap_story, need_keypress, unit
 
     if way != "nfc":
         time.sleep(0.1)
-        _, story = cap_story()
-        assert "Select file containing the extended private key" in story
-        press_select()
         pick_menu_item(fname)
 
     expect_ftux()
@@ -487,9 +484,6 @@ def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, go
 
     if way != "nfc":
         time.sleep(0.1)
-        _, story = cap_story()
-        assert "Pick TAPSIGNER encrypted backup file" in story
-        press_select()
         pick_menu_item(fname)
 
     time.sleep(0.1)
@@ -939,9 +933,6 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
     pick_menu_item('File Management')
     pick_menu_item('List Files')
     time.sleep(0.1)
-    _, story = cap_story()
-    assert 'Lists all files, select one and SHA256(file contents) will be shown' in story
-    press_select()
     pick_menu_item(fname)
     time.sleep(0.1)
     _, story = cap_story()

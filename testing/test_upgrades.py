@@ -77,10 +77,6 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_sele
         pick_menu_item('From MicroSD')
 
         time.sleep(.1)
-        _, story = cap_story()
-        assert 'Pick firmware image to use' in story
-        press_select()
-        time.sleep(.1)
             
         pick_menu_item(os.path.basename(dfu))
 

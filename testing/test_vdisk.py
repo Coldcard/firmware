@@ -290,12 +290,7 @@ def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress,
     title, body = cap_story()
     assert "press (2) to import from Virtual Disk" in body
     need_keypress("2")
-    time.sleep(0.2)
-    title, body = cap_story()
-    assert 'Select file' in body
-    press_select()
     time.sleep(.01)
-
     pick_menu_item(fname)
     unit_test('devtest/abort_ux.py')
 

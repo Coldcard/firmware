@@ -1257,10 +1257,8 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         pick_menu_item('Ready To Sign')
 
         time.sleep(.1)
-        _, story = cap_story()
-        if 'Choose PSBT file' in story:
-            need_keypress('y')
-            time.sleep(.1)
+        title, story = cap_story()
+        if not "OK TO SEND" in title:
             pick_menu_item(psbtname+'.psbt')
 
         time.sleep(.1)
@@ -1925,10 +1923,6 @@ def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
         pick_menu_item('Backup')
         pick_menu_item('Verify Backup')
         time.sleep(0.1)
-        title, body = cap_story()
-        assert "Select file" in body
-        need_keypress('y')
-        time.sleep(0.1)
         pick_menu_item(os.path.basename(fn))
 
         time.sleep(0.1)
@@ -1978,13 +1972,8 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         pick_menu_item('Import Existing')
         pick_menu_item('Restore Backup')
 
-        # skip
-        title, body = cap_story()
-        if ('files to pick from' in body) or ("only one file to pick from" in body):
-            need_keypress('y')
-            time.sleep(.01)
-
-            pick_menu_item(fn)
+        time.sleep(.1)
+        pick_menu_item(fn)
 
         time.sleep(.1)
         word_menu_entry(passphrase, has_checksum=False)

@@ -447,9 +447,6 @@ def import_ephemeral_xprv(microsd_path, virtdisk_path, goto_eph_seed_menu,
 
         if way != "nfc":
             time.sleep(0.1)
-            _, story = cap_story()
-            assert "Select file containing the extended private key" in story
-            press_select()
             pick_menu_item(fname)
 
         confirm_tmp_seed(expect_xfp=node.fingerprint().hex().upper(),
@@ -587,9 +584,6 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
 
     if way != "nfc":
         time.sleep(0.1)
-        _, story = cap_story()
-        assert "Pick TAPSIGNER encrypted backup file" in story
-        press_select()
         pick_menu_item(fname)
 
     time.sleep(0.1)
@@ -639,9 +633,6 @@ def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail, c
         need_keypress("1")
 
     time.sleep(0.1)
-    _, story = cap_story()
-    assert "Pick TAPSIGNER encrypted backup file" in story
-    press_select()
     pick_menu_item(fname)
 
     time.sleep(0.1)
@@ -702,9 +693,6 @@ def test_ephemeral_seed_import_tapsigner_real(data, pick_menu_item, cap_story, m
         need_keypress("1")
 
     time.sleep(0.1)
-    _, story = cap_story()
-    assert "Pick TAPSIGNER encrypted backup file" in story
-    press_select()
     pick_menu_item(fname)
 
     time.sleep(0.1)
@@ -1289,11 +1277,7 @@ def test_temporary_from_backup(multisig, backup_system, import_ms_wallet, get_se
     pick_menu_item("Coldcard Backup")
 
     time.sleep(.1)
-    _, story = cap_story()
-    if "Select file containing the backup" in story:
-        press_select()
-        time.sleep(.1)
-        pick_menu_item(fname)
+    pick_menu_item(fname)
 
     word_menu_entry(bk_pw, has_checksum=False)
 
@@ -1416,7 +1400,6 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     if "Press (1)" in story:
         need_keypress("1")
 
-    press_select()  # Select file containing...
     pick_menu_item(fname)
     confirm_tmp_seed(seedvault=False)  # allowed
 

@@ -1673,8 +1673,8 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt', min_size=100,
-                           max_size=20*200, taster=possible, force_vdisk=force_vdisk)
+    fn = await file_picker(suffix='.txt', min_size=100, max_size=20*200,
+                           taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 
     try:

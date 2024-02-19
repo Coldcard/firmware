@@ -104,11 +104,6 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
         pick_menu_item('Sign Text File')
 
         time.sleep(.1)
-        _, story = cap_story()
-        assert 'Choose text file to be signed' in story
-        press_select()
-        time.sleep(.1)
-            
         try:
             pick_menu_item(fname)
         except KeyError:
@@ -371,9 +366,6 @@ def verify_armored_signature(pick_menu_item, nfc_write_text, press_select,
         if way == "nfc":
             nfc_write_text(signed_msg)
         else:
-            _, story = cap_story()
-            assert 'Choose signature file.' in story
-            press_select()
             time.sleep(.1)
             pick_menu_item(fname)
 
@@ -498,13 +490,13 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("List Files")
-    press_select()
+    time.sleep(.1)
     pick_menu_item(fname)
     need_keypress("4")  # create detached sig
     press_select()
     press_cancel()
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -519,7 +511,7 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
 
     mod_digest = hashlib.sha256(mod_contents if binary else mod_contents.encode()).digest().hex()
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -533,7 +525,7 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     # remove file
     os.remove(fpath)
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -578,7 +570,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -594,7 +586,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
         f.write(new_contetns)
 
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -616,7 +608,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
         f.write(new_contetns)
 
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -632,7 +624,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     # remove 1st file too
     os.remove(fpath)
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -650,7 +642,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
             f.write(conts)
 
     pick_menu_item("Verify Sig File")
-    press_select()
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()

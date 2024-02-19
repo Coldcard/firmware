@@ -522,10 +522,8 @@ class NFCHandler:
             f = fname.lower()
             return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
 
-        msg = "Lists PSBT, text, and TXN files on MicroSD. Select to share contents via NFC."
-
         while 1:
-            fn = await file_picker(msg, min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
+            fn = await file_picker(min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
             if not fn: return
 
             basename = fn.split('/')[-1]

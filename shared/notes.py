@@ -571,8 +571,7 @@ async def import_from_other(menu, *a):
                 import sys; sys.print_exception(exc)
                 pass
 
-        fn = await file_picker('Select file containing the items to be imported.',
-                                min_size=8, max_size=100000, taster=contains_json, **choice)
+        fn = await file_picker(min_size=8, max_size=100000, taster=contains_json, **choice)
         if not fn: return
 
         with CardSlot(readonly=True, **choice) as card:

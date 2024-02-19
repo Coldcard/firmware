@@ -54,10 +54,6 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
         pick_menu_item(mx)
 
         time.sleep(0.2)
-        title, story = cap_story()
-        assert 'Pick PDF' in story
-        press_select()
-
         pick_menu_item('paperwallet.pdf')
 
 

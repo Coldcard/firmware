@@ -53,9 +53,8 @@ class PaperWalletMaker:
         self.is_segwit = False
 
     async def pick_template(self, *a):
-        fn = await file_picker('Pick PDF template to use, or X for none.',
-                                suffix='.pdf', min_size=20000,
-                                taster=template_taster, none_msg=no_templates_msg)
+        fn = await file_picker(suffix='.pdf', min_size=20000, taster=template_taster,
+                               none_msg=no_templates_msg)
         self.template_fn = fn
 
         self.update_menu()

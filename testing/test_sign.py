@@ -2022,14 +2022,11 @@ def test_no_outputs_tx(fake_txn, microsd_path, goto_home, press_select, pick_men
     with open(fpath, "wb") as f:
         f.write(psbt)
 
-    pick_menu_item("Ready To Sign")
+    pick_menu_item('Ready To Sign')
+    time.sleep(0.1)
+    pick_menu_item(fname)
     time.sleep(0.1)
     title, story = cap_story()
-    if "Choose PSBT file to be signed" in story:
-        press_select()
-        pick_menu_item(fname)
-        time.sleep(0.1)
-        title, story = cap_story()
 
     assert title == "Failure"
     assert "Invalid PSBT" in story
@@ -2058,7 +2055,7 @@ def test_send2taproot_addresss(fake_txn , start_sign, end_sign, cap_story):
 @pytest.mark.parametrize("ui_path", [True, False])
 @pytest.mark.parametrize("action", ["sign", "skip", "refuse"])
 def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
-                    pick_menu_item, cap_story, microsd_path,
+                    pick_menu_item, cap_story, microsd_path, cap_menu,
                     microsd_wipe, goto_home, press_select, press_cancel):
 
     goto_home()
@@ -2081,9 +2078,10 @@ def test_batch_sign(num_tx, ui_path, action, fake_txn, need_keypress,
             press_cancel()
             pytest.skip("classic sign")
 
-        _, story = cap_story()
-        assert "Press (9) to select all files for potential signing" in story
-        need_keypress("9")
+        m = cap_menu()
+        mi = "[Sign All]"
+        assert mi in m
+        pick_menu_item(mi)
 
     time.sleep(.1)
     title, story = cap_story()
@@ -2263,12 +2261,10 @@ def test_locktime_ux(use_regtest, bitcoind_d_sim_watch, start_sign, end_sign,
         f.write(psbt)
     goto_home()
     pick_menu_item('Ready To Sign')
+    time.sleep(0.1)
+    pick_menu_item(psbt_fname)
+    time.sleep(0.1)
     title, story = cap_story()
-    if "Choose PSBT file to be signed" in story:
-        press_select()
-        pick_menu_item(psbt_fname)
-        time.sleep(0.1)
-        title, story = cap_story()
 
     assert "WARNING" not in story
     if locktime != 0:
@@ -2374,12 +2370,10 @@ def test_nsequence_blockheight_relative_locktime_ux(sequence, use_regtest, bitco
         f.write(psbt)
     goto_home()
     pick_menu_item('Ready To Sign')
+    time.sleep(0.1)
+    pick_menu_item(psbt_fname)
+    time.sleep(0.1)
     title, story = cap_story()
-    if "Choose PSBT file to be signed" in story:
-        press_select()
-        pick_menu_item(psbt_fname)
-        time.sleep(0.1)
-        title, story = cap_story()
 
     assert "WARNING" not in story
     if sequence:
@@ -2488,12 +2482,10 @@ def test_nsequence_timebased_relative_locktime_ux(seconds, use_regtest, bitcoind
         f.write(psbt)
     goto_home()
     pick_menu_item('Ready To Sign')
+    time.sleep(0.1)
+    pick_menu_item(psbt_fname)
+    time.sleep(0.1)
     title, story = cap_story()
-    if "Choose PSBT file to be signed" in story:
-        press_select()
-        pick_menu_item(psbt_fname)
-        time.sleep(0.1)
-        title, story = cap_story()
 
     assert "WARNING" not in story
     assert "TX LOCKTIMES" in story
@@ -2603,12 +2595,10 @@ def test_mixed_locktimes(num_rtl, use_regtest, bitcoind_d_sim_watch, start_sign,
         f.write(psbt)
     goto_home()
     pick_menu_item('Ready To Sign')
+    time.sleep(0.1)
+    pick_menu_item(psbt_fname)
+    time.sleep(0.1)
     title, story = cap_story()
-    if "Choose PSBT file to be signed" in story:
-        press_select()
-        pick_menu_item(psbt_fname)
-        time.sleep(0.1)
-        title, story = cap_story()
 
     assert "WARNING" not in story
     assert "TX LOCKTIMES" in story

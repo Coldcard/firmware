@@ -397,7 +397,6 @@ def test_tmp_on_xprv_master(generate_ephemeral_words, goto_home, cap_menu,
     if "Press (1)" in story:
         need_keypress("1")
 
-    press_select()  # Select file containing...
     pick_menu_item(fname)
     time.sleep(.2)
     expect_ftux()
