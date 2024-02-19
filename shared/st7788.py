@@ -86,23 +86,8 @@ class ST7788():
 
     def show_pal_pixels(self, x, y, w, h, palette, pixels):
         # show 4-bit packed paletted lookup pixels; used for fonts
-        assert len(palette) == 2 * 16
-        # TODO clean up
-        if 0:
-            buf = bytearray()
-            for here in pixels:
-                px1 = (here >> 4) * 2
-                px2 = (here & 0xf) * 2
-                buf.extend(palette[px1:px1+2])
-                buf.extend(palette[px2:px2+2])
-
-            if (w*h) % 2 == 1:
-                buf = memoryview(buf[0:-2])
-
-            self._set_window(x, y, w, h)
-            self.write_data(buf)
-        else:
-            lcd.send_packed(self.spi, x, y, w, h, palette, pixels)
+        #assert len(palette) == 2 * 16
+        lcd.send_packed(self.spi, x, y, w, h, palette, pixels)
 
     def show_qr_data(self, x, y, w, expand, scan_w, packed_data):
         # 8-bit packed QR data, and where to draw it, expanded by 'expand'
@@ -112,15 +97,6 @@ class ST7788():
     def fill_rect(self, x,y, w,h, pixel=0x0000):
         # set a rectangle to a single colour
         if not w or not h: return
-        # TODO clean up
-        if 0:
-            assert h >= 1 and w >= 1
-            pixel = struct.pack('>H', pixel)
-            ln = pixel * w
-            self._set_window(x, y, w, h)
-            for y in range(h):
-                self.write_data(ln)
-        else:
-            lcd.fill_rect(self.spi, x, y, w, h, pixel)
+        lcd.fill_rect(self.spi, x, y, w, h, pixel)
 
 # EOF 
