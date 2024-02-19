@@ -1331,6 +1331,8 @@ async def ms_wallet_ckcc_export(menu, label, item):
     await ms.export_wallet_file(**kwargs)
 
 async def ms_wallet_show_descriptor(menu, label, item):
+    from glob import dis
+    dis.fullscreen("Wait...")
     ms = item.arg
     desc = ms.to_descriptor()
     desc_str = desc.serialize()
