@@ -113,6 +113,8 @@ class SDCard:
 
     @classmethod
     def present(cls):
+        # after Q, this should not really be called anymore
+        raise RuntimeError("avoid sd.present")
         if cls.ejected:
             return False
         SDCard.power(1)
@@ -120,6 +122,7 @@ class SDCard:
 
     @classmethod
     def power(cls, st=0):
+        # on real hardware, this resets the sdcard h/w module, which is important
         if st:
             time.sleep(0.100)       # drama
         return False
@@ -130,6 +133,11 @@ class SDCard:
         return (493879296, 512, 0,
                     b'2\x00^\x00\xd6\x81Y[\x8f\xff\xb7\xed\x94\x00@\x16',
                     b'APA\tDU F\xd9\x92\x11\x10\x9a\x1a\x01\xdf')
+
+    # so wipe_microsd_card() can pretend to work
+    @classmethod
+    def writeblocks(*a):
+        pass
 
 
 class ExtInt:

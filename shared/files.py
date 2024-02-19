@@ -89,43 +89,64 @@ def wipe_microsd_card():
     # Erase and re-format SD card. Not secure erase, because that is too slow.
     import ckcc, pyb
     from glob import dis
+    from version import num_sd_slots
+
+    if not CardSlot.is_inserted():
+        return
     
     try:
+        # just in case
         os.umount('/sd')
     except:
         pass
 
-    sd = pyb.SDCard()
-    assert sd
+    if num_sd_slots == 2:
+        # pick slot with a card or default A if both installed
+        slot_b = (CardSlot.sd_detect2() == 0)
+        if CardSlot.sd_detect() == 0:
+            slot_b = False
+        CardSlot.mux(1 if slot_b else 0)      # top slot = A
+        active_led = CardSlot.active_led2 if slot_b else CardSlot.active_led1
+    else:
+        active_led = CardSlot.active_led
+        slot_b = False
 
-    if not sd.present():
+    try:
+        active_led.on()
 
-        return
+        sd = pyb.SDCard()
+        assert sd
 
-    # power cycle so card details (like size) are re-read from current card
-    sd.power(0)
-    sd.power(1)
+        # power cycle so card details (like size) are re-read from current card
+        sd.power(0)
+        sd.power(1)
 
-    dis.fullscreen('Part Erase...')
-    cutoff = 1024       # arbitrary
-    blk = bytearray(512)
-
-    for  bnum in range(cutoff):
+        dis.fullscreen('Part Erase...')
+        cutoff = 1024       # arbitrary
+        blk = bytearray(512)
         ckcc.rng_bytes(blk)
-        sd.writeblocks(bnum, blk)
-        dis.progress_bar_show(bnum/cutoff)
 
-    dis.fullscreen('Formatting...')
+        for bnum in range(cutoff):
+            sd.writeblocks(bnum, blk)
+            dis.progress_bar_show(bnum/cutoff)
 
-    # remount, with newfs option
-    os.mount(sd, '/sd', readonly=0, mkfs=1)
+        dis.fullscreen('Formatting...')
 
-    # done, cleanup
-    os.umount('/sd')
+        # remount, with newfs option -- this does the formating (very quick)
+        os.mount(sd, '/sd', readonly=0, mkfs=1)
 
-    # important: turn off power
-    sd = pyb.SDCard()
-    sd.power(0)
+        # done, cleanup
+        os.umount('/sd')
+    finally:
+        active_led.off()
+
+        # important: turn off power
+        sd = pyb.SDCard()
+        sd.power(0)
+
+        if slot_b:
+            # optional?
+            CardSlot.mux(0)      # top slot = A
 
 def dfu_parse(fd):
     # do just a little parsing of DFU headers, to find start/length of main binary
