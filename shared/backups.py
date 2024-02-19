@@ -168,14 +168,17 @@ def restore_from_dict_ll(vals):
                                 'restore the seed value!\n\n\n'+str(e))
 
     dis.fullscreen("Saving...")
-    dis.progress_bar_show(.25)
+    dis.progress_bar_show(.1)
 
     # clear (in-memory) settings and change also nvram key
     # - also captures xfp, xpub at this point
     pa.change(new_secret=raw)
+    dis.progress_bar_show(.25)
 
     # force the right chain
     pa.new_main_secret(raw, chain)         # updates xfp/xpub
+    pb = .45  # last Progress Bar value
+    dis.progress_bar_show(pb)
 
     # NOTE: don't fail after this point... they can muddle thru w/ just right seed
     ls = extract_long_secret(vals)
@@ -185,14 +188,18 @@ def restore_from_dict_ll(vals):
         except Exception as exc:
             sys.print_exception(exc)
             # but keep going
+        pb = .70
+        dis.progress_bar_show(pb)
 
     # if sd2fa is encountered during backup restore - purge it
     settings.remove_key("sd2fa")
 
     # restore settings from backup file
     vals_len = len(vals)
-    for idx, key in enumerate(vals):
-        dis.progress_bar_show(idx / vals_len)
+    g = (1-pb) / vals_len
+    for key in vals:
+        pb += g
+        dis.progress_bar_show(pb)
         if not key[:8] == "setting.":
             continue
 
@@ -224,6 +231,7 @@ def restore_from_dict_ll(vals):
 
     # write out
     settings.save()
+    dis.progress_bar_show(1)
 
     if version.supports_hsm and ('hsm_policy' in vals):
         import hsm
@@ -616,7 +624,7 @@ file with an ephemeral public key will be written.''')
     
     # Wait for incoming clone file, allow retries
     ch = await ux_show_story('''Keep power on this Coldcard, and take MicroSD card \
-to source Coldcard. Select Advanced > MicroSD > Clone Coldcard to write to card. Bring that card \
+to source Coldcard. Select Advanced/Tools > Backup > Clone Coldcard to write to card. Bring that card \
 back and press OK to complete clone process.''')
 
     while 1:
