@@ -121,7 +121,7 @@ def wipe_microsd_card():
         sd.power(0)
         sd.power(1)
 
-        dis.fullscreen('Part Erase...')
+        dis.fullscreen('Formatting...')
         cutoff = 1024       # arbitrary
         blk = bytearray(512)
         ckcc.rng_bytes(blk)
@@ -129,8 +129,6 @@ def wipe_microsd_card():
         for bnum in range(cutoff):
             sd.writeblocks(bnum, blk)
             dis.progress_bar_show(bnum/cutoff)
-
-        dis.fullscreen('Formatting...')
 
         # remount, with newfs option -- this does the formating (very quick)
         os.mount(sd, '/sd', readonly=0, mkfs=1)
