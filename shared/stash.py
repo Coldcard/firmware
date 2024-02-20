@@ -303,7 +303,7 @@ class SensitiveValues:
         from glob import settings
 
         # Implicit in the values is the BIP-39 encryption passphrase,
-        # which we might not want to actually store.
+        # which we not want to actually store.
         xfp = swab32(self.node.my_fp())
         xpub = self.chain.serialize_public(self.node)
 

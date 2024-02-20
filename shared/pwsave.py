@@ -23,6 +23,18 @@ class PassphraseSaver:
         # - some very minor obscurity, but we aren't relying on that.
         return card.get_sd_root() + '/.tmp.tmp'
 
+    @classmethod
+    def has_file(cls):
+        # Is a card inserted with the required file(name) in place?
+        if CardSlot.is_inserted():
+            try:
+                with CardSlot() as card:
+                    # check if passphrases file exists on SD (dont read it)
+                    if card.exists(cls.filename(card)):
+                        return True
+            except: pass
+        return False
+
     def _calc_key(self, card, force=False):
         # calculate the key to be used.
         if not force and self.key:
@@ -216,6 +228,7 @@ class PassphraseSaverMenu(MenuSystem):
                 MenuItem("Restore", f=cls.apply, arg=pw),
                 MenuItem("Delete", f=cls.delete_entry, arg=(pw_saver, i)),
             ])
+            submenu.goto_idx(1)     # skip cursor to "Restore"
             items.append(MenuItem(label or "(empty)", menu=submenu))
         return items
 

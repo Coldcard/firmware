@@ -142,7 +142,7 @@ async def ux_input_numbers(val, validate_func):
     # - not wanted on Q1; just get the digits mixed in w/ the text.
     pass
 
-async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
+async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
             placeholder=None, funct_keys=None):
     # Get a text string.
@@ -156,6 +156,7 @@ async def ux_input_text(value, confirm_exit=True, hex_only=False, max_len=100,
     # - if unlimited length, then we allow newlines and CANCEL is only way out.
     # - multiline entries don't mean newlines are allowed, because we often have to wrap
     #   to make longer single-line value onto screen
+     # - confirm_exit default False here, because so easy to re-enter w/ qwerty, True on mk4
     from glob import dis
     from ux import ux_show_story
 

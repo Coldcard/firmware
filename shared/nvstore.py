@@ -17,11 +17,10 @@
 # - (Mk4) each slot is a file on /flash/settings 
 # - os.sync() not helpful because block device under filesystem doesnt implement it
 #
-import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr
+import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr, version
 from uhashlib import sha256
 from random import randbelow
 from utils import call_later_ms
-from version import is_devmode
 
 # Setting values:
 #   xfp = master xpub's fingerprint (32 bit unsigned)
@@ -367,8 +366,6 @@ class SettingsObject:
 
         # pick a (new) random home
         self.my_pos = self.find_spot(-1)
-        if is_devmode:
-            self.current['chain'] = 'XTN'
 
     def get(self, kn, default=None):
         return self.current.get(kn, default)
@@ -396,6 +393,7 @@ class SettingsObject:
     def merge_previous_active(self, previous):
         if previous:
             for k in KEEP_IF_BLANK_SETTINGS:
+                # XXX this assumes all default values are falsy, better would be "defined" vs not
                 if previous.get(k, None) and not self.current.get(k, None):
                     self.current[k] = previous[k]
 
@@ -489,10 +487,10 @@ class SettingsObject:
 
     def blank(self):
         # erase current copy of values in nvram; older ones may exist still
-        # - use when clearing the seed value
+        # - used when clearing the current seed value
         if self.my_pos is not None:
             self._wipe_slot(self.my_pos)
-            self.my_pos = 0
+            self.my_pos = None
 
         # act blank too, just in case.
         self.current.clear()
@@ -500,8 +498,11 @@ class SettingsObject:
 
     @staticmethod
     def default_values():
-        # Please try to avoid defaults here... It's better to put into code
+        # Please try to avoid adding defaults here... It's better to put into code
         # where value is used, and treat undefined as the default state.
-        return dict(_age=0)
+        rv = dict(_age=0)
+        if version.is_devmode:
+            rv['chain'] = 'XTN'
+        return rv
 
 # EOF

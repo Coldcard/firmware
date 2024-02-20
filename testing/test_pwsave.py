@@ -62,14 +62,12 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
 
         get_to_pwmenu()
 
-        enter_complex(pw)
-
-        pick_menu_item('APPLY')
+        enter_complex(pw, apply=True)
 
         time.sleep(.01)
         title, story = cap_story()
         xfp = title[1:-1]
-        assert '(1) to use and save to MicroSD' in story
+        assert '(1) to apply and save to MicroSD' in story
 
         need_keypress('1')
         xfps[pw] = xfp

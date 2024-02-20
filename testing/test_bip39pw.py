@@ -267,8 +267,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
 
     pick_menu_item("Passphrase")
     press_select()
-    enter_complex(passphrase)
-    pick_menu_item("APPLY")
+    enter_complex(passphrase, apply=True)
     time.sleep(.1)
     title, choice_story = cap_story()
 
@@ -421,8 +420,7 @@ def test_tmp_on_xprv_master(generate_ephemeral_words, goto_home, cap_menu,
 
     pick_menu_item("Passphrase")
     press_select()
-    enter_complex(passphrase)
-    pick_menu_item("APPLY")
+    enter_complex(passphrase, apply=True)
     time.sleep(.1)
     title, story = cap_story()
 

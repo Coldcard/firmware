@@ -589,11 +589,15 @@ def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story
 @pytest.fixture
 def enter_complex(get_pp_sofar, need_keypress, pick_menu_item, is_q1,
                   press_select):
-    def doit(target):
+    def doit(target, apply=False):
         # full entry mode
         # - just left to right here
         # - not testing case swap, because might remove that
-        pick_menu_item('Edit Phrase')
+
+        try:
+            pick_menu_item('Edit Phrase')
+        except:
+            assert is_q1
 
         if is_q1:
             for ch in target:
@@ -601,6 +605,7 @@ def enter_complex(get_pp_sofar, need_keypress, pick_menu_item, is_q1,
                 time.sleep(.1)
             press_select()
             return
+
 
         symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
 
@@ -641,6 +646,9 @@ def enter_complex(get_pp_sofar, need_keypress, pick_menu_item, is_q1,
 
         time.sleep(0.01)      # required
         press_select()
+
+        if apply:
+            pick_menu_item("APPLY")
 
     return doit
 
