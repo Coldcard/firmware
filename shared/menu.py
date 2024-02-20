@@ -90,8 +90,8 @@ class MenuItem:
             if f:
                 rv = await f(menu, idx, self)
                 if isinstance(rv, MenuSystem):
-                    # XXX the function should do this itself
-                    # go to new menu
+                    # XXX the function should do this itself, as the_ux.push(rv)
+                    # replace current with new menu from function
                     the_ux.replace(rv)
 
             m = getattr(self, 'next_menu', None)
