@@ -503,37 +503,6 @@ More on our website:
            .com
 """)
 
-async def start_b39_pw(menu, label, item):
-    if not settings.get('b39skip', False):
-        ch = await ux_show_story('''\
-You may add a passphrase to your BIP-39 seed words. \
-This creates an entirely new wallet, for every possible passphrase.
-
-By default, the Coldcard uses an empty string as the passphrase.
-
-On the next menu, you can enter a passphrase by selecting \
-individual letters, choosing from the word list (recommended), \
-or by typing numbers.
-
-Please write down the fingerprint of all your wallets, so you can \
-confirm when you've got the right passphrase. (If you are writing down \
-the passphrase as well, it's okay to put them together.) There is no way for \
-the Coldcard to know if your password is correct, and if you have it wrong, \
-you will be looking at an empty wallet.
-
-Limitations: 100 characters max length, ASCII \
-characters 32-126 (0x20-0x7e) only.
-
-OK to continue or press (2) to hide this message forever.
-''', escape='2')
-        if ch == '2':
-            settings.set('b39skip', True)
-        if ch == 'x':
-            return
-
-    import seed
-    return seed.PassphraseMenu()
-
 async def start_seed_import(menu, label, item):
     import seed
     if version.has_qwerty:
@@ -982,7 +951,7 @@ def make_top_menu():
                 if active_xfp:
                     ui_xfp = "[" + xfp2str(active_xfp) + "]"
                     _cls.insert(0, MenuItem(ui_xfp, f=ready2sign))
-                    _cls.append(MenuItem("Restore Master", f=restore_main_secret))
+                    _cls.append(MenuItem("Restore Master", f=restore_main_secret, shortcut='m'))
         else:
             _cls = EmptyWallet
 

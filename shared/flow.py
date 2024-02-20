@@ -10,7 +10,7 @@ from actions import *
 from choosers import *
 from mk4 import dev_enable_repl
 from multisig import make_multisig_menu, import_multisig_nfc
-from seed import make_ephemeral_seed_menu, make_seed_vault_menu
+from seed import make_ephemeral_seed_menu, make_seed_vault_menu, start_b39_pw
 from address_explorer import address_explore
 from drv_entro import drv_entro_start, password_entry
 from backups import clone_start, clone_write_data
