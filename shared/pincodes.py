@@ -470,7 +470,7 @@ class PinAttempt:
 
         except stash.ZeroSecretException:
             # secret is zero - using ephemeral secrets in CC
-            # with no se2 secret
+            # with blank secure element
             settings.nvram_key = b'\0'*32
             settings.load()
             self.state_flags |= PA_ZERO_SECRET
