@@ -282,7 +282,7 @@ def verify_ephemeral_secret_ui(cap_story, press_select, cap_menu, dev, fake_txn,
                                get_identity_story, try_sign, get_seed_value_ux,
                                pick_menu_item, goto_home):
     def doit(mnemonic=None, xpub=None, expected_xfp=None, seed_vault=False,
-             testnet=True):
+             testnet=True, is_b39pw=False):
 
         goto_home()
         menu = cap_menu()
@@ -319,7 +319,10 @@ def verify_ephemeral_secret_ui(cap_story, press_select, cap_menu, dev, fake_txn,
 
         ident_story = get_identity_story()
         ident_xfp = ident_story.split("\n\n")[1].strip()
-        assert "Temporary seed is in effect" in ident_story
+        if is_b39pw:
+            assert "BIP-39 passphrase is in effect" in ident_story
+        else:
+            assert "Temporary seed is in effect" in ident_story
         assert ident_xfp == in_effect_xfp
 
         if mnemonic:

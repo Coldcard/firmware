@@ -587,8 +587,7 @@ def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story
     assert chk == ''
 
 @pytest.fixture
-def enter_complex(get_pp_sofar, need_keypress, pick_menu_item, is_q1,
-                  press_select):
+def enter_complex(need_keypress, pick_menu_item, is_q1, press_select):
     def doit(target, apply=False):
         # full entry mode
         # - just left to right here
@@ -652,36 +651,37 @@ def enter_complex(get_pp_sofar, need_keypress, pick_menu_item, is_q1,
 
     return doit
 
-@pytest.mark.parametrize('target', ['abc123', 'AbcZz1203', 'Test 123',
-        '&*!#^$*&@#^*&^$abcdABCD^%182736',
-        'I be stacking sats!! Come at me bro....',
-        'Aa'*50,
+@pytest.mark.parametrize('target', [
+    'abc123', 'AbcZz1203', 'Test 123', 'Aa'*50,
+    '&*!#^$*&@#^*&^$abcdABCD^%182736',
+    'I be stacking sats!! Come at me bro....',
 ])
 def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
-                       cap_menu, word_menu_entry, get_pp_sofar, press_select,
-                       enter_complex):
-
-    # failed run recovery; gets out of edit screen
-    #press_select()
-    #press_cancel()
+                       press_select, enter_complex, restore_main_seed,
+                       verify_ephemeral_secret_ui):
     goto_home()
     pick_menu_item('Passphrase')
     time.sleep(.01)
     press_select()
     time.sleep(.01)      # skip warning
 
-    enter_complex(target)
+    from mnemonic import Mnemonic
 
-    time.sleep(0.01)      # required
-    assert get_pp_sofar() == target
+    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=target)
+    expect = BIP32Node.from_master_secret(seed, netcode="XTN")
+
+    enter_complex(target, apply=True)
+    press_select()
+    # import pdb;pdb.set_trace()
+    verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
 
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('mode', ['words', 'xprv', 'ms'])
 @pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
 def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress,
-                   sim_exec, cap_menu, get_pp_sofar, get_secrets, cap_screen_qr,
-                   set_encoded_secret, qr_quality_check, reset_seed_words, set_bip39_pw,
+                   sim_exec, cap_menu, get_secrets, cap_screen_qr, set_bip39_pw,
+                   set_encoded_secret, qr_quality_check, reset_seed_words,
                    press_select, is_q1, seed_story_to_words):
 
     reset_seed_words()
@@ -775,7 +775,7 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     ("attack pizza motion avocado network gather crop fresh patrol unusual wild holiday candy pony ranch winter theme error hybrid van cereal salon goddess expire", "011513251154012711900771041507421289190620080870026613431420201617920614089619290300152408010643"),
 ])
 def test_show_seed_qr(data, goto_home, pick_menu_item, cap_story, press_select,
-                      sim_exec, cap_menu, get_pp_sofar, get_secrets, cap_screen_qr,
+                      sim_exec, cap_menu, get_secrets, cap_screen_qr,
                       set_encoded_secret, qr_quality_check, set_seed_words, is_q1):
     n = 4  # SeedQr 4 str chars for each index
     words, qr_expect = data
@@ -968,8 +968,7 @@ def test_bip39_pw_signing_xfp_ux(goto_home, pick_menu_item, press_select, cap_st
     goto_home()
     pick_menu_item("Passphrase")
     press_select()
-    enter_complex("21coinkite21")
-    pick_menu_item("APPLY")
+    enter_complex("21coinkite21", apply=True)
     time.sleep(0.3)
     title, story = cap_story()
     assert title == "[0C9DC99D]"
