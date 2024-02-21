@@ -474,6 +474,7 @@ You can give this Coldcard a nickname and it will be shown before login.''')
     nn = nn.strip() if nn else None
     s.set('nick', nn)
     s.save()
+    dis.busy_bar(False)
     del s
 
 
