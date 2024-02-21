@@ -45,8 +45,17 @@
 - bugfix: cant detect SD card in Ready to Sign...
 - WIF private key detected when scaning QR (display only for now)
 
-## 0.0.6 - 2024-02-1?
+## 0.0.6 - 2024-02-22
 
 - bugfix: randomize keys for PIN entry
+- when picking files, we just skip to showing you the files options (or picking the
+  single winner) rather than talking about it first.
+- BIP-39 passphrase process completely streamlined
+- batch signing now offered when we see two or more signable PSBT's on the card
+- bugfix: can now reformat SD card in B slot
+- move away from `44'` (prime) for hardened derivation paths, in favour of `44h`; both accepted
+  for input, but we are going to display `44h` style going forward.
+- bugfix: (QR) or other double-wide chars would be garbled if half off right edge
+- cleanups, bugfixes
 
 
