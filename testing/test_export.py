@@ -69,9 +69,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             imd_js = ln[19:-2]
         elif '=>' in ln:
             path, addr = ln.strip().split(' => ', 1)
-            assert path.startswith(f"m/84'/1'/{acct_num}'/0")
+            assert path.startswith(f"m/84h/1h/{acct_num}h/0")
             assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
-            sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path[2:])
+            sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path[2:].replace("h", "'"))
             h20 = sk.hash160()
             assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
             addrs.append(addr)
@@ -247,7 +247,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
     deriv = ks['derivation']
     assert deriv.startswith('m/')
     assert int(deriv.split("/")[1][:-1]) in {44, 84, 49}        # weak
-    assert deriv.split("/")[3] == (acct_num or '0')+"'"
+    assert deriv.split("/")[3] == (acct_num or '0')+"h"
 
     xpub = ks['xpub']
     assert xpub[1:4] == 'pub'
@@ -260,7 +260,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
         # no slip132 here
 
         got = BIP32Node.from_wallet_key(xpub)
-        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(deriv[2:])
+        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(deriv[2:].replace("h", "'"))
 
         assert got.sec() == expect.sec()
 
@@ -317,12 +317,12 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         assert all([i in v for i in ['deriv', 'name', 'xpub', 'xfp']])
 
         if fn == 'bip45':
-            assert v['deriv'] == "m/45'"
+            assert v['deriv'] == "m/45h"
         elif 'bip48' not in fn:
-            assert v['deriv'].endswith(f"'/{acct_num}'")
+            assert v['deriv'].endswith(f"h/{acct_num}h")
         else:
             b48n = fn[-1]
-            assert v['deriv'].endswith(f"'/{acct_num}'/{b48n}'")
+            assert v['deriv'].endswith(f"h/{acct_num}h/{b48n}h")
 
         node = BIP32Node.from_wallet_key(v['xpub'])
         assert v['xpub'] == node.hwif(as_private=False)
@@ -388,7 +388,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
     assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
     assert obj['account'] == int(acct_num)
     if acct_num == "0":
-        assert obj['p2sh_deriv'] == "m/45'"
+        assert obj['p2sh_deriv'] == "m/45h"
         addr_formats = ['p2sh_p2wsh', 'p2sh', 'p2wsh']
     else:
         assert 'p2sh_deriv' not in obj
@@ -398,7 +398,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         xpub = slip132undo(obj[k])[0] if k != 'p2sh' else obj[k]
         node = BIP32Node.from_wallet_key(xpub)
         assert xpub == node.hwif(as_private=False)
-        sk = root.subkey_for_path(obj[f'{k}_deriv'][2:] + '.pub')
+        sk = root.subkey_for_path(obj[f'{k}_deriv'][2:].replace("h", "'") + '.pub')
         #assert node.chain_code() == sk.chain_code()
         assert node.hwif() == sk.hwif()
 
@@ -448,7 +448,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, mi
             f = None
 
         if rhs[1:4] == 'pub':
-            expect = root.subkey_for_path(lhs[2:])
+            expect = root.subkey_for_path(lhs[2:].replace("h", "'"))
             assert expect.hwif(as_private=False) == rhs
             continue
 
@@ -553,8 +553,6 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
                                    pick_menu_item, way, cap_story, cap_menu, nfc_read_text, int_ext,
                                    microsd_path, settings_get, virtdisk_path, load_export, press_select):
-    
-
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0
     goto_home()

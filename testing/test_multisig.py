@@ -110,7 +110,7 @@ def make_multisig(dev, sim_execfile):
             else:
                 path = deriv.format(idx=i).replace('m/', '')
                 try:
-                    sub = pk.subkey_for_path(path)
+                    sub = pk.subkey_for_path(path.replace("h", "'"))
                 except IndexError:
                     # some test cases are using bogus paths
                     sub = pk
@@ -131,7 +131,7 @@ def make_multisig(dev, sim_execfile):
         else:
             path = deriv.format(idx=N-1).replace('m/', '')
             try:
-                sub = pk.subkey_for_path(path)
+                sub = pk.subkey_for_path(path.replace("h", "'"))
             except IndexError:
                 # some test cases are using bogus paths
                 sub = pk
@@ -176,7 +176,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select, is_q1):
         if descriptor:
             if not derivs:
                 if not common:
-                    common = "m/45'"
+                    common = "m/45h"
                 key_list = [(xfp, common, dd.hwif(as_private=False)) for xfp, m, dd in keys]
             else:
                 assert len(derivs) == N
@@ -633,9 +633,9 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
     time.sleep(.1)
     title, story = cap_story()
     assert 'BIP-48' in story
-    assert "m/45'" not in story
-    assert f"m/48'/{int(testnet)}'" in story
-    assert "acct'" in story
+    assert "m/45h" not in story
+    assert f"m/48h/{int(testnet)}h" in story
+    assert "{acct}h" in story
     
     press_select()
 
@@ -668,8 +668,8 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         assert expect.hwif() == n.hwif()
 
     for name, deriv in [ 
-        ('p2sh_p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/1'"),
-        ('p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/2'"),
+        ('p2sh_p2wsh', f"m/48h/{int(testnet)}h/{acct_num}h/1h"),
+        ('p2wsh', f"m/48h/{int(testnet)}h/{acct_num}h/2h"),
     ]:
         e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
         if not testnet:
@@ -681,7 +681,7 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         assert n.tree_depth() == 4
         assert n.child_index() & (1<<31)
         assert n.child_index() & 0xff == int(deriv[-2])
-        expect = e.subkey_for_path(deriv[2:] + ".pub") 
+        expect = e.subkey_for_path(deriv[2:].replace("h", "'") + ".pub")
         assert expect.hwif() == n.hwif()
 
         # TODO add tests for descriptor template
@@ -742,7 +742,7 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
 
 @pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-@pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45'"])
+@pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45h"])
 def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, press_select,
                           microsd_path, import_ms_wallet, addr_fmt, clear_ms, way, load_export, is_q1):
 
@@ -785,7 +785,7 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
             assert value == f'{M} of {N}'
             got.add(label)
         elif label == 'Derivation':
-            assert value == (comm_prefix or "m/45'")
+            assert value == (comm_prefix or "m/45h")
             got.add(label)
         elif label == 'Format':
             assert value == addr_fmt.upper()
@@ -828,7 +828,7 @@ def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num
     name = 'a'*20       # longest possible
     for count in range(1, 10):
         keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=0,
-                                    common="m/45'/0'/34'")
+                                    common="m/45h/0h/34h")
 
         time.sleep(.1)
         press_select()
@@ -1478,7 +1478,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     assert "Create new multisig" in story
     assert f"Policy: {M} of {N}" in story
     if addr_fmt != 'p2sh':
-        assert f"/{acct_num}'/" in story
+        assert f"/{acct_num}h/" in story
 
     need_keypress('1')
     time.sleep(.05)
@@ -1541,10 +1541,12 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     M,N=2,2
 
     clear_ms()
-    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45'"])
+    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45h"])
 
-    cc_deriv = "m/45'/55"
-    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(cc_deriv[2:]).sec())
+    cc_deriv = "m/45h/55"
+    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(
+        cc_deriv[2:].replace("h", "'")
+    ).sec())
 
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
     resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
@@ -1759,7 +1761,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     assert xfp == expect_xfp
 
     # check Coldcard derives expected Upub
-    derivation = "m/48'/1'/0'/1'"       # part of devtest/unit_iss6743.py 
+    derivation = "m/48h/1h/0h/1h"       # part of devtest/unit_iss6743.py
     expect_xpub = 'Upub5SJWbuhs5tM4mkJST69tnpGGaf8dDTqByx3BLSocWFpq5YLh1fky4DQTFGQVG6nCSqZfUiAAeStdxSQteUcfMsWjDkhniZx4GdwpB18Tnbq'
 
     pub = sim_execfile('devtest/unit_iss6743.py')
@@ -1784,7 +1786,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
 def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import):
     # try various synonyms for unknown/any derivation styles
 
-    keys = make_multisig(N, N, deriv="m/48'/0'/0'/1'/0", unique=1)
+    keys = make_multisig(N, N, deriv="m/48h/0h/0h/1h/0", unique=1)
 
     # just fingerprints, no deriv paths
     config = 'Format: p2sh-p2wsh\n'
@@ -1806,8 +1808,8 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
     # try config file with different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
 
-    actual = "m/48'/0'/0'/1'/0"
-    derivs = [ actual, 'm', "m/45'/0'/99'", "m/45'/34/34'/34"]
+    actual = "m/48h/0h/0h/1h/0"
+    derivs = [ actual, 'm', "m/45h/0h/99h", "m/45h/34/34h/34"]
 
     keys = make_multisig(M, N, deriv=actual, unique=1)
 
@@ -1862,7 +1864,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
         co = el[kk]
         assert 'Coldcard' in co['label']
         dd = co['derivation']
-        assert (dd in derivs) or (dd == actual) or ("42069'" in dd) or (dd == 'm')
+        assert (dd in derivs) or (dd == actual) or ("42069h" in dd) or (dd == 'm')
 
     clear_ms()
 
@@ -1904,9 +1906,9 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
     M = min(M, N)
 
     dd = {
-        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
-        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+        AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45h/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48h/1h/0h/1h/{idx}", 'p2sh-p2wsh'),
     }
     deriv, text_a_fmt = dd[addr_fmt]
 
@@ -1975,7 +1977,7 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wa
     M = 2
     N = 3
 
-    deriv = ["m/48'/1'/0'/69'/1"]*N
+    deriv = ["m/48h/1h/0h/69h/1"]*N
     fmts = [ 'p2wsh', 'p2sh-p2wsh']
 
     clear_ms()
@@ -2051,9 +2053,9 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
     dd = {
-        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
-        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+        AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45h/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48h/1h/0h/1h/{idx}", 'p2sh-p2wsh'),
     }
     deriv, text_a_fmt = dd[addr_fmt]
 
@@ -2600,16 +2602,16 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     wal_name = f"reexport_{M}-{N}-{addr_fmt}"
 
     dd = {
-        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
-        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+        AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45h/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48h/1h/0h/1h/{idx}", 'p2sh-p2wsh'),
     }
     deriv, text_a_fmt = dd[addr_fmt]
     keys = make_multisig(M, N, unique=1, deriv=None if cmn_pth_from_root else deriv)
     derivs = [deriv.format(idx=i) for i in range(N)]
     clear_ms()
     import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=None if cmn_pth_from_root else derivs,
-                     addr_fmt=text_a_fmt, descriptor=False, common="m/45'" if cmn_pth_from_root else None)
+                     addr_fmt=text_a_fmt, descriptor=False, common="m/45h" if cmn_pth_from_root else None)
     # get bare descriptor
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
@@ -2621,7 +2623,14 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("View Descriptor")
-    need_keypress("1")
+    for _ in range(5):
+        _, story = cap_story()
+        if "Press (1) to export" in story:
+            need_keypress("1")
+            break
+        else:
+            time.sleep(1)
+
     contents = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
     pretty_desc = contents.strip()
 
@@ -2642,7 +2651,14 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("View Descriptor")
-    _, story = cap_story()
+    for _ in range(5):
+        try:
+            _, story = cap_story()
+            if "Press (1)" in story:
+                break
+        except:
+            time.sleep(1)
+
     view_desc = story.strip().split("\n\n")[1]
 
     # assert that bare and pretty are the same after parse

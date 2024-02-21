@@ -67,9 +67,10 @@ def test_usb_fuzz(dev):
 
 # note: 0x80000000 = 2147483648
 
-@pytest.mark.parametrize('path', [ '', 'm', 'm/1', "m/1'", "m/1'/0/1'",
-    "m/2147483647", "m/2147483647'",
-    'm/1/2/3/4/5/6/7/8/9/10'])
+@pytest.mark.parametrize('path', [
+    '', 'm', 'm/1', "m/1'", "m/1'/0/1'", "m/2147483647", "m/2147483647'", 'm/1/2/3/4/5/6/7/8/9/10',
+    "m/1h", "m/1h/0/1h", "m/2147483647", "m/2147483647h", 'm/1/2/3/4/5/6/7/8/9/10',
+])
 def test_xpub_good(dev, master_xpub, path):
     # get some xpubs and validate the derivations
 
@@ -83,10 +84,9 @@ def test_xpub_good(dev, master_xpub, path):
 
     assert k.hwif() == xpub
 
-    if "'" not in path:
-        mk = BIP32Node.from_wallet_key(master_xpub)
-        sk = mk.subkey_for_path(path[2:])
-        assert sk.hwif() == xpub
+    mk = BIP32Node.from_wallet_key(master_xpub)
+    sk = mk.subkey_for_path(path[2:].replace("h", "'"))
+    assert sk.hwif() == xpub
 
     if len(path) <= 2:
         assert mk.fingerprint() == struct.pack('<I', dev.master_fingerprint)

@@ -25,11 +25,10 @@ def test_show_addr_usb(dev, press_select, addr_vs_path, path, addr_fmt, is_simul
     addr_vs_path(addr, path, addr_fmt)
 
 @pytest.mark.qrcode
-@pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
+@pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", "m/0h/500h"])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-@pytest.mark.parametrize('show_qr', [ False, True ])
 def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
-                             cap_story, show_qr, cap_screen_qr, qr_quality_check,
+                             cap_story, cap_screen_qr, qr_quality_check,
                              press_cancel):
     time.sleep(0.1)
 
@@ -38,24 +37,27 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
     time.sleep(0.1)
     title, story = cap_story()
 
-    #press_cancel()
+    assert title == 'Address:'
+    if "'" in path:
+        assert path not in story  # we normalize to h
+        assert path.replace("'", "h") in story
+    else:
+        assert path in story
+        path = path.replace("h", "'")  # needed for pycoin
+
+    assert addr in story
+    assert addr in story.split('\n')
 
     # check expected addr was used
     addr_vs_path(addr, path, addr_fmt)
 
     print('addr_fmt = 0x%x' % addr_fmt)
 
-    assert title == 'Address:'
-    assert path in story
-    assert addr in story
-    assert addr in story.split('\n')
+    need_keypress('4')
+    time.sleep(0.1)
+    qr = cap_screen_qr().decode('ascii')
 
-    if show_qr:
-        need_keypress('4')
-        time.sleep(0.1)
-        qr = cap_screen_qr().decode('ascii')
-
-        assert qr == addr or qr == addr.upper()
+    assert qr == addr or qr == addr.upper()
 
 @pytest.mark.bitcoind
 def test_addr_vs_bitcoind(use_regtest, press_select, dev, bitcoind_d_sim_sign):
@@ -91,7 +93,7 @@ def test_show_addr_nfc_invalid(body_err, goto_home, pick_menu_item, nfc_write_te
     _, story = cap_story()
     assert err in story
 
-@pytest.mark.parametrize("path", ["m/84'/0'/0'/300/0", "m/800'", "m/0/0/0/0/1/1/1"])
+@pytest.mark.parametrize("path", ["m/84'/0'/0'/300/0", "m/800h/0h", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
 def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
                        goto_home, cap_story, press_nfc, addr_vs_path, press_select, is_q1,
@@ -124,7 +126,14 @@ def test_show_addr_nfc(path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_m
     story_path = split_story[1][2:]  # remove "= "
     if not is_q1:
         assert "Press (3) to share via NFC" in story
-    assert story_path == path
+
+    if "'" in path:
+        assert path != story_path  # normalized to h
+        assert story_path.replace("'", "h") == story_path
+    else:
+        assert story_path == path
+        path = path.replace("h", "'")  # pycoin
+
     press_nfc()  # share over NFC
     addr = nfc_read_text()
     if addr == body:

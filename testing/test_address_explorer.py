@@ -20,9 +20,9 @@ def mk_common_derivations():
             # Removed in v4.1.3: ( "m/{change}/{idx}", AF_CLASSIC ),
             #( "m/{account}'/{change}'/{idx}'", AF_CLASSIC ),
             #( "m/{account}'/{change}'/{idx}'", AF_P2WPKH ),
-            ( "m/44'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_CLASSIC ),
-            ( "m/49'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH_P2SH ),
-            ( "m/84'/{coin_type}'/{account}'/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH )
+            ( "m/44h/{coin_type}h/{account}h/{change}/{idx}".replace('{coin_type}', coin_type), AF_CLASSIC ),
+            ( "m/49h/{coin_type}h/{account}h/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH_P2SH ),
+            ( "m/84h/{coin_type}h/{account}h/{change}/{idx}".replace('{coin_type}', coin_type), AF_P2WPKH )
         ]
     return doit
 
@@ -54,7 +54,7 @@ def parse_display_screen(cap_story, is_mark3):
             assert 'to save address summary file' in body
             assert 'show QR code' in body
 
-        assert lines[0] == 'Addresses %d..%d:' % (start, start + n - 1)
+        assert lines[0] == 'Addresses %d⋯%d:' % (start, start + n - 1)
         raw_addrs = lines[2:-1]
 
         d = dict()
@@ -153,8 +153,8 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress,
     for idx, (path, addr_format) in enumerate(common_derivs):
         # derive index=0 address
         _id = next(gap) + idx
-        subpath = path.format(account=0, change=0, idx=0) # e.g. "m/44'/1'/0'/0/0"
-        sk = node_prv.subkey_for_path(subpath[2:])
+        subpath = path.format(account=0, change=0, idx=0) # e.g. "m/44h/1h/0h/0/0"
+        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
 
         # capture full index=0 address from display screen & validate it
         mi = m[_id]
@@ -173,9 +173,9 @@ def test_stub_menu(sim_execfile, goto_address_explorer, need_keypress,
 @pytest.mark.parametrize("chain", ["BTC", "XRT", "XTN"])
 @pytest.mark.parametrize("change", [True, False])
 @pytest.mark.parametrize("option", [
-    ("Pre-mix", "2147483645'"),
+    ("Pre-mix", "2147483645h"),
     # ("Bad Bank", "2147483644'"),  not released yet
-    ("Post-mix", "2147483646'")
+    ("Post-mix", "2147483646h")
 ])
 def test_applications_samourai(chain, change, option, goto_address_explorer, cap_menu,
                                pick_menu_item, validate_address, parse_display_screen,
@@ -183,9 +183,9 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
                                generate_addresses_file):
     menu_option, account_num = option
     if chain in ["XTN", "XRT"]:
-        coin_type = "1'"
+        coin_type = "1h"
     else:
-        coin_type = "0'"
+        coin_type = "0h"
     settings_set('chain', chain)
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -207,9 +207,9 @@ def test_applications_samourai(chain, change, option, goto_address_explorer, cap
         f_subpath, f_addr = next(file_addr_gen)
         assert f_subpath == subpath
         assert f_addr == addr
-        assert subpath.startswith(f"m/84'/{coin_type}/{account_num}/{1 if change else 0}")
+        assert subpath.startswith(f"m/84h/{coin_type}/{account_num}/{1 if change else 0}")
         # derive the subkey and validate the corresponding address
-        sk = node_prv.subkey_for_path(subpath[2:])
+        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
         validate_address(addr, sk)
 
 @pytest.mark.parametrize('press_seq, expected_start, expected_n', [
@@ -246,7 +246,7 @@ def test_address_display(goto_address_explorer, parse_display_screen, mk_common_
         # validate each address on screen
         addr_dict = parse_display_screen(expected_start, expected_n)
         for subpath, given_addr in addr_dict.items():
-            sk = node_prv.subkey_for_path(subpath[2:])
+            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
             validate_address(given_addr, sk)
 
         press_cancel()  # back
@@ -267,7 +267,7 @@ def test_dump_addresses(way, change, generate_addresses_file, mk_common_derivati
     for subpath, addr in generate_addresses_file(way=way, change=change):
         # derive the subkey and validate the corresponding address
         assert subpath.split("/")[-2] == "1" if change else "0"
-        sk = node_prv.subkey_for_path(subpath[2:])
+        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
         validate_address(addr, sk)
 
 @pytest.mark.parametrize('account_num', [ 34, 100, 9999, 1])
@@ -311,7 +311,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
         assert '{account}' in path
 
         subpath = path.format(account=account_num, change=0, idx=0) # e.g. "m/44'/1'/X'/0/0"
-        sk = node_prv.subkey_for_path(subpath[2:])
+        sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
 
         # capture full index=0 address from display screen & validate it
 
@@ -332,8 +332,8 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
         assert expected_addr.endswith(end)
 
         for subpath, addr in generate_addresses_file(way=way):
-            assert subpath.split('/')[-3] == str(account_num)+"'"
-            sk = node_prv.subkey_for_path(subpath[2:])
+            assert subpath.split('/')[-3] == str(account_num)+"h"
+            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
             validate_address(addr, sk)
 
         press_cancel()
@@ -343,11 +343,11 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
 
 @pytest.mark.qrcode
 @pytest.mark.parametrize('path', [
-    "m/1'/{idx}",
-    "m/2147483647/2147483647/2147483647'/2147483647/2147483647/2147483647'/2147483647/2147483647",
+    "m/1h/{idx}",
+    "m/2147483647/2147483647/2147483647h/2147483647/2147483647/2147483647h/2147483647/2147483647",
     "m/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647/2147483647",
     "m/1/2/3/4/5",
-    "m/1'/2'/3'/4'/5'",
+    "m/1h/2h/3h/4h/5h",
 ])
 @pytest.mark.parametrize('which_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address_explorer,
@@ -375,20 +375,20 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         time.sleep(.01)
         m = cap_menu()
         if depth == 0:
-            assert m[0] == 'm/..'
+            assert m[0] == 'm/⋯'
             pick_menu_item(m[0])
         elif part == '{idx}':
             break
         else:
-            assert m[0].endswith("'/..")
-            assert m[1].endswith("/..")
+            assert m[0].endswith("h/⋯")
+            assert m[1].endswith("/⋯")
             assert m[0] != m[1]
 
-            pick_menu_item(m[0 if last_part[-1] == "'" else 1])
+            pick_menu_item(m[0 if last_part[-1] == "h" else 1])
 
         # enter path component
         for d in part:
-            if d == "'": break
+            if d == "h": break
             need_keypress(d)
         press_select()
 
@@ -400,7 +400,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         if len(last) <= 3:
             assert m[2].endswith(f"/{last}") or m[3].endswith(f"/{last}")
 
-        pick_menu_item(m[2 if part[-1] == "'" else 3])
+        pick_menu_item(m[2 if part[-1] == "h" else 3])
     else:
         assert last == '{idx}'
         iis = [i for i in m if i.endswith(f"/{last_part}"+"/{idx}")]

@@ -294,7 +294,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
 
 def keypath_to_str(bin_path, prefix='m/', skip=1):
     # take binary path, like from a PSBT and convert into text notation
-    rv = prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
+    rv = prefix + '/'.join(str(i & 0x7fffffff) + ("h" if i & 0x80000000 else "")
                             for i in bin_path[skip:])
     return 'm' if rv == 'm/' else rv
 
@@ -320,9 +320,14 @@ def str_to_keypath(xfp, path):
 def match_deriv_path(patterns, path):
     # check for exact string match, or wildcard match (star in last position)
     # - both args must be cleaned by cleanup_deriv_path() already
+    # - this is only used in hsm.py for approving {address, msg_sign, xpub}
     # - will accept any path, if 'any' in patterns
     if 'any' in patterns:
         return True
+    elif path == "*":
+        return False
+    elif path == "any":
+        return False
 
     for pat in patterns:
         if pat == path:

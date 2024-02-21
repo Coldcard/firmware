@@ -152,7 +152,7 @@ def parse_change_back(story):
     return val, addrs
 
 def path_to_str(bin_path, prefix='m/', skip=1):
-    return prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
+    return prefix + '/'.join(str(i & 0x7fffffff) + ("h" if i & 0x80000000 else "")
                             for i in bin_path[skip:])
 
 def str_to_path(path):
@@ -166,7 +166,7 @@ def str_to_path(path):
         if p == 'm': continue
         if not p: continue      # trailing or duplicated slashes
 
-        if p[-1] == "'":
+        if p[-1] in "'h":
             here = int(p[:-1]) | 0x80000000
         else:
             here = int(p)

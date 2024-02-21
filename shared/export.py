@@ -72,8 +72,8 @@ be needed for different systems.
                 subpath = path.format(account=0, change=0, idx=i)
 
                 # find the prefix of the path that is hardneded
-                if "'" in subpath:
-                    hard_sub = subpath.rsplit("'", 1)[0] + "'"
+                if "h" in subpath:
+                    hard_sub = subpath.rsplit("h", 1)[0] + "h"
                 else:
                     hard_sub = 'm'
 
@@ -165,7 +165,7 @@ async def make_summary_file(fname_pattern='public.txt'):
     # generator function:
     body = "".join(list(generate_public_contents()))
     ch = chains.current_chain()
-    await write_text_file(fname_pattern, body, 'Summary', "m/44'/%d'/0'/0/0" % ch.b44_cointype,
+    await write_text_file(fname_pattern, body, 'Summary', "m/44h/%dh/0h/0/0" % ch.b44_cointype,
                           AF_CLASSIC)
 
 async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
@@ -217,7 +217,7 @@ importmulti '{imp_multi}'
     body += '\n'
 
     ch = chains.current_chain()
-    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=ch.b44_cointype)
+    derive = "84h/{coin_type}h/{account}h".format(account=account_num, coin_type=ch.b44_cointype)
     await write_text_file(fname_pattern, body, 'Bitcoin Core', derive + "/0/0", AF_P2WPKH)
 
 def generate_bitcoin_core_wallet(account_num, example_addrs):
@@ -227,7 +227,8 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
 
     chain = chains.current_chain()
 
-    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=chain.b44_cointype)
+    derive = "84h/{coin_type}h/{account}h".format(account=account_num,
+                                                  coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
         prefix = sv.derive_path(derive)
@@ -271,7 +272,7 @@ def generate_wasabi_wallet():
     btc = chains.BitcoinMain
 
     with stash.SensitiveValues() as sv:
-        dd = "84'/%d'/0'" % chains.current_chain().b44_cointype
+        dd = "84h/%dh/0h" % chains.current_chain().b44_cointype
         xpub = btc.serialize_public(sv.derive_path(dd))
 
     xfp = settings.get('xfp')
@@ -297,9 +298,9 @@ def generate_unchained_export(account_num=0):
 
     chain = chains.current_chain()
     todo = [
-        ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
-        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        ( "m/45'", 'p2sh', AF_P2SH),  # if acct_num == 0
+        ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
+        ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        ( "m/45h", 'p2sh', AF_P2SH),  # if acct_num == 0
     ]
 
     xfp = xfp2str(settings.get('xfp', 0))
@@ -336,12 +337,12 @@ def generate_generic_export(account_num=0):
     with stash.SensitiveValues() as sv:
         # each of these paths would have /{change}/{idx} in usage (not hardened)
         for name, deriv, fmt, atype, is_ms in [
-            ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh', False ),
-            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
-            ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh', False ),
-            ( 'bip48_1', "m/48'/{ct}'/{acc}'/1'", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
-            ( 'bip48_2', "m/48'/{ct}'/{acc}'/2'", AF_P2WSH, 'p2wsh', True ),
-            ( 'bip45', "m/45'", AF_P2SH, 'p2sh', True ),
+            ( 'bip44', "m/44h/{ct}h/{acc}h", AF_CLASSIC, 'p2pkh', False ),
+            ( 'bip49', "m/49h/{ct}h/{acc}h", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
+            ( 'bip84', "m/84h/{ct}h/{acc}h", AF_P2WPKH, 'p2wpkh', False ),
+            ( 'bip48_1', "m/48h/{ct}h/{acc}h/1h", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
+            ( 'bip48_2', "m/48h/{ct}h/{acc}h/2h", AF_P2WSH, 'p2wsh', True ),
+            ( 'bip45', "m/45h", AF_P2SH, 'p2sh', True ),
         ]:
             if fmt == AF_P2SH and account_num:
                 continue
@@ -370,7 +371,7 @@ def generate_generic_export(account_num=0):
                 node.derive(0, False).derive(0, False)
                 rv[name]['first'] = chain.address(node, fmt)
 
-    sig_deriv = "m/44'/{ct}'/{acc}'".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
+    sig_deriv = "m/44h/{ct}h/{acc}h".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
     return ujson.dumps(rv), sig_deriv, AF_CLASSIC
 
 def generate_electrum_wallet(addr_type, account_num):
@@ -393,7 +394,7 @@ def generate_electrum_wallet(addr_type, account_num):
     else:
         raise ValueError(addr_type)
 
-    derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
+    derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
@@ -489,7 +490,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
         else:
             raise ValueError(addr_type)
 
-    derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
+    derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
     dis.progress_bar_show(0.2)
     with stash.SensitiveValues() as sv:

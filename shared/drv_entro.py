@@ -61,27 +61,27 @@ def bip85_derive(picked, index):
         # BIP-39 seed phrases (we only support English)
         num_words = (12, 18, 24)[picked]
         width = (16, 24, 32)[picked]        # of bytes
-        path = "m/83696968'/39'/0'/{num_words}'/{index}'".format(num_words=num_words, index=index)
+        path = "m/83696968h/39h/0h/{num_words}h/{index}h".format(num_words=num_words, index=index)
         s_mode = 'words'
     elif picked == 3:
         # HDSeed for Bitcoin Core: but really a WIF of a private key, can be used anywhere
         s_mode = 'wif'
-        path = "m/83696968'/2'/{index}'".format(index=index)
+        path = "m/83696968h/2h/{index}h".format(index=index)
         width = 32
     elif picked == 4:
         # New XPRV
-        path = "m/83696968'/32'/{index}'".format(index=index)
+        path = "m/83696968h/32h/{index}h".format(index=index)
         s_mode = 'xprv'
         width = 64
     elif picked in (5, 6):
         width = 32 if picked == 5 else 64
-        path = "m/83696968'/128169'/{width}'/{index}'".format(width=width, index=index)
+        path = "m/83696968h/128169h/{width}h/{index}h".format(width=width, index=index)
         s_mode = 'hex'
     elif picked == 7:
         width = 64
         # hardcoded width for now
         # b"pwd".hex() --> 707764
-        path = "m/83696968'/707764'/{pwd_len}'/{index}'".format(pwd_len=BIP85_PWD_LEN, index=index)
+        path = "m/83696968h/707764h/{pwd_len}h/{index}h".format(pwd_len=BIP85_PWD_LEN, index=index)
         s_mode = 'pw'
     else:
         raise ValueError(picked)
@@ -102,7 +102,7 @@ def bip85_pwd(secret):
     # Convert raw secret (64 bytes) into type-able password text.
 
     # See BIP85 specification.
-    #   path --> m/83696968'/707764'/{pwd_len}'/{index}'
+    #   path --> m/83696968h/707764h/{pwd_len}h/{index}h
     #
     # Base64 encode whole 64 bytes of entropy.
     # Slice pwd_len from base64 encoded string [0:pwd_len]

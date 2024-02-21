@@ -48,7 +48,7 @@ def test_public(sim_execfile):
         if ln[0:1] == 'm' and '=>' in ln:
             subpath, result = ln.split(' => ', 1)
 
-            sk = node_prv.subkey_for_path(subpath[2:])
+            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
 
             if result[1:4] == 'pub' and result[0] not in 'xt':
                 # SLIP-132 garbage
@@ -199,12 +199,12 @@ def test_hmac_key(dev, sim_exec, count=10):
 @pytest.mark.parametrize('path,ans', [
     ("m", "m"),
     ("", "m"),
-    ("55555p/66666", "m/55555'/66666"),
+    ("55555p/66666", "m/55555h/66666"),
     ("m/1/2/3", "m/1/2/3"),
-    ("m/1'/2h/3p/4H/5P", "m/1'/2'/3'/4'/5'"),
-    ("m/1'/2h/3p/4H/*'", "m/1'/2'/3'/4'/*'"),
-    ("m/1'/2h/3p/4H/*", "m/1'/2'/3'/4'/*"),
-    ("m/10000000/5'/*", "m/10000000/5'/*"),
+    ("m/1'/2h/3p/4H/5P", "m/1h/2h/3h/4h/5h"),
+    ("m/1'/2h/3p/4H/*'", "m/1h/2h/3h/4h/*h"),
+    ("m/1'/2h/3p/4H/*", "m/1h/2h/3h/4h/*"),
+    ("m/10000000/5'/*", "m/10000000/5h/*"),
 ])
 @pytest.mark.parametrize('star', [False, True])
 def test_cleanup_deriv_path_good(path, ans, star, sim_exec):
@@ -240,13 +240,16 @@ def test_cleanup_deriv_path_fails(path, ans, sim_exec, star=True):
 
 @pytest.mark.parametrize('patterns, paths, answers', [
     (["m"], ("m", "m/2", "*", "any"), [True, False, False, False]),
-    (["any"], ("m", "m/2", "*", "1/2/3/4/5/6'/55'"), [True]*4),
-    (["m/1", "m/2/*'"], ("m", "m/1", "m/3/4", "m/2/4'", "m/2/4"), 
+    (["any"], ("m", "m/2", "*", "1/2/3/4/5/6h/55h"), [True]*4),
+    (["m/1", "m/2/*h"], ("m", "m/1", "m/3/4", "m/2/4h", "m/2/4"),
                         [0,    1,    0,       1,        0]),
-    (["m/1/*", "m/2/*'"], ("m/1/2", "m/1/2'", "m/2/1", "m/2/1'"), 
+    (["m/1/*", "m/2/*h"], ("m/1/2", "m/1/2h", "m/2/1", "m/2/1h"),
                            [1,       0,       0,       1]),
+    (["m/20/*", "m/30h/*h"], ("m/20/2", "m/30/2h", "m/2h/1", "m/30h/1h"),
+                              [1,       0,       0,       1]),
 ])
 def test_match_deriv_path(patterns, paths, answers, sim_exec):
+    # only testing internal function which inputs are already normalized by cleanu_deriv_path
     for path, ans in zip(paths, answers):
         cmd = f'from utils import match_deriv_path; RV.write(str(match_deriv_path({repr(patterns)}, {repr(path)})))'
         rv = sim_exec(cmd)

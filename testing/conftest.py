@@ -300,6 +300,8 @@ def addr_vs_path(master_xpub):
     from hashlib import sha256
 
     def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
+        if path:
+            path = path.replace("h", "'")
         if not script:
             try:
                 # prefer using xpub if we can
@@ -735,7 +737,12 @@ def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen, press_select
         # double check we're looking at this menu, not stale data
         # added strip as cap_screen does not contain whitespaces
         # that are present in coundown chooser
-        assert m[0][0:33].strip() in cap_screen(), 'not in menu mode'
+        # find menu item that does not contain triple dot char
+        target = [mi for mi in m if "⋯" not in mi]
+        if target:
+            assert target[0][0:33].strip() in cap_screen(), 'not in menu mode'
+        else:
+            print("⋯ in all menu items - not sure about free - but continue")
 
         m_pos = m.index(text)
 
@@ -1385,7 +1392,7 @@ def end_sign(dev, need_keypress):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
-            need_keypress('y')
+            need_keypress('y', timeout=None)
             time.sleep(0.050)
 
         if accept != None:

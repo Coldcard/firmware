@@ -1397,9 +1397,9 @@ a multisig wallet using the 'Create Airgapped' feature.
 Public keys for BIP-48 conformant paths are used:
 
 P2SH-P2WSH:
-   m/48h/{coin}h/{{acct}}h/1'
+   m/48h/{coin}h/{{acct}}h/1h
 P2WSH:
-   m/48h/{coin}h/{{acct}}h/2'
+   m/48h/{coin}h/{{acct}}h/2h
 
 OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
@@ -1417,7 +1417,7 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
     dis.fullscreen('Generating...')
 
     todo = [
-        ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
+        ( "m/45h", 'p2sh', AF_P2SH),       # iff acct_num == 0
         ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
         ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
     ]

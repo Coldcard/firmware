@@ -57,8 +57,8 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
         title, story = cap_story()
 
         assert f'Path Used (index={index}):' in story
-        assert "m/83696968'/" in story
-        assert f"/{index}'" in story
+        assert "m/83696968h/" in story
+        assert f"/{index}h" in story
 
         if entropy is not None:
             assert f"Raw Entropy:\n{entropy}" in story
@@ -68,7 +68,7 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
         if ' words' in mode:
             num_words = int(mode.split()[0])
             assert f'Seed words ({num_words}):' in story
-            assert f"m/83696968'/39'/0'/{num_words}'/{index}'" in story
+            assert f"m/83696968h/39h/0h/{num_words}h/{index}h" in story
             assert '1:' in story
             assert f'{num_words}:' in story
             got = seed_story_to_words(story)
@@ -78,14 +78,14 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
 
         elif 'XPRV' in mode:
             assert 'Derived XPRV:' in story
-            assert f"m/83696968'/32'/{index}'" in story
+            assert f"m/83696968h/32h/{index}h" in story
             if expect:
                 assert expect in story
             can_import = 'xprv'
 
         elif 'WIF' in mode:
             assert 'WIF (privkey)' in story
-            assert f"m/83696968'/2'/{index}'" in story
+            assert f"m/83696968h/2h/{index}h" in story
             if expect:
                 assert expect in story
 
@@ -93,13 +93,13 @@ def derive_bip85_secret(goto_home, press_select, pick_menu_item, cap_story, ente
             width = int(mode.split('-')[0])
             assert width in {32, 64}
             assert f'Hex ({width} bytes):' in story
-            assert f"m/83696968'/128169'/{width}'/{index}'" in story
+            assert f"m/83696968h/128169h/{width}h/{index}h" in story
             if expect:
                 assert expect in story
 
         elif 'Passwords' == mode:
             assert "Password:" in story
-            assert f"m/83696968'/707764'/21'/{index}'" in story
+            assert f"m/83696968h/707764h/21h/{index}h" in story
             if expect:
                 assert expect in story
             assert "(0) to type password over USB" in story
@@ -228,8 +228,8 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
     _, story = derive_bip85_secret(mode, index)
 
     assert f'Path Used (index={index}):' in story
-    assert "m/83696968'/" in story
-    assert f"/{index}'" in story
+    assert "m/83696968h/" in story
+    assert f"/{index}h" in story
 
     got = re.findall(pattern, story)[0]
 
@@ -305,7 +305,7 @@ def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home,
         split_story = story.split("\n\n")
         _, pwd = split_story[1].split("\n")
         _, path = split_story[2].split("\n")
-        assert path == f"m/83696968'/707764'/21'/{index}'"
+        assert path == f"m/83696968h/707764h/21h/{index}h"
         assert len(pwd) == 21
         assert "=" not in pwd
         press_select()  # does nothing on simulator

@@ -130,7 +130,7 @@ class PickAddrFmtMenu(MenuSystem):
 class ApplicationsMenu(MenuSystem):
     def __init__(self, parent):
         self.parent = parent
-        self.chain = str(chains.current_chain().b44_cointype) + "'"
+        self.chain = str(chains.current_chain().b44_cointype) + "h"
         items = [
             MenuItem("Samourai", menu=SamouraiAppMenu(self)),
             MenuItem("Wasabi", f=self.done,
