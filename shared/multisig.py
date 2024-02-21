@@ -595,7 +595,7 @@ class MultisigWallet:
             if ':' not in ln:
                 if 'pub' in ln:
                     # pointless optimization: allow bare xpub if we can calc xfp
-                    label = '0' * 8
+                    label = '00000000'
                     value = ln
                 else:
                     # complain?
@@ -681,7 +681,7 @@ class MultisigWallet:
         #       name: nameforwallet
         #       policy: M of N
         #       format: p2sh  (+etc)
-        #       derivation: m/45'/0     (common prefix)
+        #       derivation: m/45h/0     (common prefix)
         #       (8digithex): xpub of cosigner
         #
         # Descriptor support
@@ -949,9 +949,9 @@ class MultisigWallet:
         # based on indicated numeric subkey path observed.
         # - return None if unsure, no errors
         #
-        #( "m/45'", 'p2sh', AF_P2SH), 
-        #( "m/48'/{coin}'/0'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        #( "m/48'/{coin}'/0'/2'", 'p2wsh', AF_P2WSH)
+        #( "m/45h", 'p2sh', AF_P2SH), 
+        #( "m/48h/{coin}h/0h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        #( "m/48h/{coin}h/0h/2h", 'p2wsh', AF_P2WSH)
 
         top = npath[0] & 0x7fffffff
         if top == npath[0]:
@@ -1344,7 +1344,7 @@ async def ms_wallet_electrum_export(menu, label, item):
     # create a JSON file that Electrum can use. Challenges:
     # - file contains derivation paths for each co-signer to use
     # - electrum is using BIP-43 with purpose=48 (purpose48_derivation) to make paths like:
-    #       m/48'/1'/0'/2'
+    #       m/48h/1h/0h/2h
     # - above is now called BIP-48
     # - other signers might not be coldcards (we don't know)
     # solution: 
@@ -1397,9 +1397,9 @@ a multisig wallet using the 'Create Airgapped' feature.
 Public keys for BIP-48 conformant paths are used:
 
 P2SH-P2WSH:
-   m/48'/{coin}'/acct'/1'
+   m/48h/{coin}h/{{acct}}h/1'
 P2WSH:
-   m/48'/{coin}'/acct'/2'
+   m/48h/{coin}h/{{acct}}h/2'
 
 OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
@@ -1418,8 +1418,8 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
     todo = [
         ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
-        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
-        ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
+        ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
+        ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
     ]
 
     def render(fp):

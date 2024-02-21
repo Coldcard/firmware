@@ -367,11 +367,10 @@ def slip32_deserialize(xp):
 # - single signer only
 CommonDerivations = [
     # name, path.format(), addr format
-    ( 'BIP-44 / Electrum', "m/44'/{coin_type}'/{account}'/{change}/{idx}", AF_CLASSIC ),
-    ( 'BIP-49 (P2WPKH-nested-in-P2SH)', "m/49'/{coin_type}'/{account}'/{change}/{idx}",
+    ( 'BIP-44 / Electrum', "m/44h/{coin_type}h/{account}h/{change}/{idx}", AF_CLASSIC ),
+    ( 'BIP-49 (P2WPKH-nested-in-P2SH)', "m/49h/{coin_type}h/{account}h/{change}/{idx}",
             AF_P2WPKH_P2SH ),   # generates 3xxx/2xxx p2sh-looking addresses
-
-    ( 'BIP-84 (Native Segwit P2WPKH)', "m/84'/{coin_type}'/{account}'/{change}/{idx}",
+    ( 'BIP-84 (Native Segwit P2WPKH)', "m/84h/{coin_type}h/{account}h/{change}/{idx}",
             AF_P2WPKH ),           # generates bc1 bech32 addresses
 ]
 

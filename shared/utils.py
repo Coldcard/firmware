@@ -9,8 +9,13 @@ from ubinascii import a2b_base64, b2a_base64
 from uhashlib import sha256
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
-
 B2A = lambda x: str(b2a_hex(x), 'ascii')
+
+try:
+    from font_iosevka import FontIosevka
+    DOUBLE_WIDE = FontIosevka.DOUBLE_WIDE
+except ImportError:
+    DOUBLE_WIDE = ''
 
 class imported:
     # Context manager that temporarily imports
@@ -240,10 +245,10 @@ def problem_file_line(exc):
 def cleanup_deriv_path(bin_path, allow_star=False):
     # Clean-up path notation as string.
     # - raise exceptions on junk
-    # - standardize on 'prime' notation (34' not 34p, or 34h)
+    # - standardize on 'hard' notation, not 'prime' (34h not 34' nor 34p)
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
-    # - if allow_star, then final position can be * or *' (wildcard)
+    # - if allow_star, then final position can be * or *h (wildcard)
     import ure
     from public_constants import MAX_PATH_DEPTH
 
@@ -252,8 +257,11 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # empty string is valid
     if s == '': return 'm'
 
-    s = s.replace('p', "'").replace('h', "'")
-    mat = ure.match(r"(m|m/|)[0-9/']*" + ('' if not allow_star else r"(\*'|\*|)"), s)
+    # convert to "hard" rather that "prime" notations
+    s = s.replace('p', "h").replace("'", 'h')
+
+    # regex for valid chars, m at start, maybe /*h or /* at end sometimes
+    mat = ure.match(r"(m|m/|)[0-9/h]*" + ('' if not allow_star else r"(\*h|\*|)"), s)
     assert mat.group(0) == s, "invalid characters"
 
     parts = s.split('/')
@@ -262,19 +270,19 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     if parts and parts[0] == 'm':
         parts = parts[1:]
 
+    # master key, just 'm', rather than: 'm/'
     if not parts:
-        # rather than: m/
         return 'm'
 
     assert len(parts) <= MAX_PATH_DEPTH, "too deep"
 
     for p in parts:
-        assert p != '' and p != "'", "empty path component"
+        assert p and p != 'h', "empty path component"
         if allow_star and '*' in p:
-            # - star or star' can be last only (checked by regex above)
-            assert p == '*' or p == "*'", "bad wildcard"
+            # star or '*h' can be last only (checked by regex above)
+            assert p == '*' or p == "*h", "bad wildcard"
             continue
-        if p[-1] == "'":
+        if p[-1] == "h":
             p = p[0:-1]
         try:
             ip = int(p, 10)
@@ -300,7 +308,7 @@ def str_to_keypath(xfp, path):
         if i == 'm': continue
         if not i: continue      # trailing or duplicated slashes
 
-        if i[-1] == "'":
+        if i[-1] in "'h":
             here = int(i[:-1]) | 0x80000000
         else:
             here = int(i)
@@ -320,9 +328,9 @@ def match_deriv_path(patterns, path):
         if pat == path:
             return True
 
-        if pat.endswith("/*") or pat.endswith("/*'"):
-            if pat[-1] == "'" and path[-1] != "'": continue
-            if pat[-1] == "*" and path[-1] == "'": continue
+        if pat.endswith('/*') or pat.endswith('/*h'):
+            if pat[-1] == 'h' and path[-1] != 'h': continue     # mismatch: want hard, it's not
+            if pat[-1] == '*' and path[-1] == 'h': continue     # mismatch: want unhard, it is
 
             # same hardness so check up to last component of path
             if pat.split('/')[:-1] == path.split('/')[:-1]:
@@ -447,23 +455,45 @@ def call_later_ms(delay, cb, *args, **kws):
         
     uasyncio.create_task(doit())
 
+def txtlen(s):
+    # width of string in chars, accounting for
+    # double-wide characters which happen on Q.
+    rv = len(s)
+
+    if DOUBLE_WIDE:
+        rv += sum(1 for ch in s if ch in DOUBLE_WIDE)
+
+    return rv
+
 def word_wrap(ln, w):
+    # Generate the lines needed to wrap one line into X "width"-long lines.
+    # test:  
+    #  from charcodes import *; from utils import *
+    #  list(word_wrap('Disk, press ' + KEY_NFC + ' to share via NFC, ' + KEY_QR + ' to share', 34))
+    # => should be 2 lines with QR in second line
     while ln:
-        sp = ln.rfind(' ', 0, w)
+        if txtlen(ln) <= w:
+            yield ln
+            return
+
+        # find a space in (width) first part of remainder
+        sp = ln.rfind(' ', 0, w-1)
 
         if sp == -1:
             # bad-break the line
-            sp = min(len(ln), w)
+            sp = min(txtlen(ln), w)
             nsp = sp
             if ln[nsp:nsp+1] == ' ':
                 nsp += 1
         else:
+            # split on found space
             nsp = sp+1
 
         left = ln[0:sp]
         ln = ln[nsp:]
 
-        if len(left) + 1 + len(ln) <= w:
+        if txtlen(left) + 1 + txtlen(ln) <= w:
+            # not clear when this would happen? final bit??
             left = left + ' ' + ln
             ln = ''
 
@@ -486,7 +516,6 @@ def parse_addr_fmt_str(addr_fmt):
     else:
         raise ValueError("Invalid address format: '%s'\n\n"
                            "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
-
 
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
@@ -513,8 +542,6 @@ def parse_extended_key(ln, private=False):
 
     return node, chain, addr_fmt
 
-
-
 def chunk_writer(fd, body):
     from glob import dis
     dis.fullscreen("Saving...")
@@ -525,19 +552,6 @@ def chunk_writer(fd, body):
         dis.progress_bar_show(idx / 10)
     dis.progress_bar_show(1)
 
-
-def decrypt_tapsigner_backup(backup_key, data):
-    try:
-        backup_key = a2b_hex(backup_key)
-        decrypt = ngu.aes.CTR(backup_key, bytes(16))  # IV 0
-        decrypted = decrypt.cipher(data).decode().strip()
-        # format of TAPSIGNER backup is known in advance
-        # extended private key is expected at the beginning of the first line
-        assert decrypted[1:4] == "prv"
-    except Exception:
-        raise ValueError("Decryption failed - wrong key?")
-
-    return decrypted.split("\n")
 
 def addr_fmt_label(addr_fmt):
     return {

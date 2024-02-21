@@ -300,7 +300,10 @@ class Display:
             self.next_buf[y][x] = ord(ch) + attr
             x += 1
             if ch in FontIosevka.DOUBLE_WIDE:
-                if x >= CHARS_W: break              # XXX will that look right?
+                if x >= CHARS_W-1:
+                    # trying to draw double-wide in last (half) of right edge: avoid
+                    #self.next_buf[y][x-1] = 32
+                    continue
                 self.next_buf[y][x] = 0
                 x += 1
 
@@ -524,10 +527,6 @@ class Display:
         self.progress_bar(percent)
         self.show()
 
-    def mark_sensitive(self, from_y, to_y):
-        # XXX maybe TODO ? or remove ... LCD doesnt have issue
-        return
-
     def busy_bar(self, enable):
         # activate the GPU to render/animate this.
         # - show() in this funct is relied-upon by callers
@@ -616,9 +615,6 @@ class Display:
                 self.text(0, y, ln)
 
             y += 1
-
-            if is_sensitive and len(ln) > 3 and ln[2] == ':':
-                self.mark_sensitive(y, y+13)
 
         self.scroll_bar(top, num_lines, CHARS_H)
         self.show()

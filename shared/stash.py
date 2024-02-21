@@ -353,7 +353,7 @@ class SensitiveValues:
         # Return a bip32 node for the duress wallet linked to this wallet.
         # 0x80000000 - 0xCC10 = 2147431408
         # Obsoleted in Mk4: use BIP-85 instead
-        p = "m/2147431408'/0'/0'"
+        p = "m/2147431408h/0h/0h"
         dirty = self.derive_path(p)
 
         # clear the parent linkage by rebuilding it.
@@ -370,7 +370,7 @@ class SensitiveValues:
     def encryption_key(self, salt):
         # Return a 32-byte derived secret to be used for our own internal encryption purposes
         # 0x80000000 - 0xCC30 = 2147431376
-        node = self.derive_path("m/2147431408'/0'")     # plan: 0' will be an index for other apps
+        node = self.derive_path("m/2147431408h/0h")     # plan: 0h will be an index for other apps
 
         acc = sha256(salt)
         acc.update(node.privkey())

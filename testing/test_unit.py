@@ -271,5 +271,25 @@ def test_is_dir(microsd_path, sim_exec):
     assert rv == "False"
     shutil.rmtree(microsd_path("my_dir"))
 
+@pytest.mark.parametrize('txt, x_line2', [
+    ('Disk, press \x0e to share via NFC, \x11 to share', '\x11 to share'),
+])
+def test_word_wrap(txt, x_line2, sim_exec, only_q1, width=34):
+    # one tricky double-wide char word-wrapping case .. but add others
+    assert '\n' not in txt
+
+    cmd = f'from utils import word_wrap; RV.write("\\n".join(word_wrap({txt!r}, {width})))'
+    got = sim_exec(cmd)
+    assert 'Traceback' not in got
+
+    lines = got.split('\n')
+
+    assert width*2//3 <= len(lines[0]) <= width
+    assert lines[1] == x_line2
+
+    want_words = [i.strip() for i in txt.split()]
+    got_words = [i.strip() for i in got.split()]
+
+    assert want_words == got_words
 
 # EOF

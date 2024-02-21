@@ -484,11 +484,11 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
     for m in top_items:
         is_xfp = False
         if '-84' in m:
-            expect = "m/84'/0'/{acct}'"
+            expect = "m/84h/0h/{acct}h"
         elif '-44' in m:
-            expect = "m/44'/0'/{acct}'"
+            expect = "m/44h/0h/{acct}h"
         elif '49' in m:
-            expect = "m/49'/0'/{acct}'"
+            expect = "m/49h/0h/{acct}h"
         elif 'Master' in m:
             expect = "m"
         elif 'XFP' in m:
@@ -540,7 +540,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
         wallet = BIP32Node.from_wallet_key(simulator_fixed_tprv)
         if expect != 'm':
-            wallet = wallet.subkey_for_path(expect[2:])
+            wallet = wallet.subkey_for_path(expect[2:].replace('h', "'"))
         assert got.sec() == wallet.sec()
 
         press_cancel()

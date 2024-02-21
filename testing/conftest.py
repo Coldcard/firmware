@@ -1490,6 +1490,11 @@ def only_mk4(is_mark4):
         raise pytest.skip("Mk4 only")
 
 @pytest.fixture(scope='session')
+def only_q1(is_q1):
+    if not is_q1:
+        raise pytest.skip("Q only")
+
+@pytest.fixture(scope='session')
 def needs_nfc(is_mark4, is_q1):
     if is_mark4 or is_q1:
         return

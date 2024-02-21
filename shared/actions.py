@@ -9,7 +9,7 @@ from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
 from utils import imported, pretty_short_delay, problem_file_line, get_filesize
-from utils import xfp2str, decrypt_tapsigner_backup, B2A, addr_fmt_label
+from utils import xfp2str, B2A, addr_fmt_label
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
 from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
@@ -1460,78 +1460,6 @@ async def nfc_recv_ephemeral(*A):
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to import temporary seed via NFC. %s" % str(e))
 
-
-async def import_tapsigner_backup_file(_1, _2, item):
-    from glob import NFC
-
-    ephemeral = item.arg
-    if not ephemeral:
-        assert pa.is_secret_blank()  # "must not have secret"
-
-    meta = "from "
-    label = "TAPSIGNER encrypted backup file"
-    choice = await import_export_prompt(label, is_import=True)
-
-    if choice == KEY_CANCEL:
-        return
-    elif choice == KEY_NFC:
-        data = await NFC.read_tapsigner_b64_backup()
-        if not data:
-            # failed to get any data - exit
-            # error already displayed in nfc.py
-            return
-    elif choice == KEY_QR:
-        # how is binary encoded? who made this QR??!
-        from ux_q1 import QRScannerInteraction
-        from ubinascii import a2b_base64
-        from ubinascii import unhexlify as a2b_hex
-
-        prob = None
-        while 1:
-            data = await QRScannerInteraction.scan(
-                            'Scan TAPSIGNER backup data', prob)
-            if not data: return     # pressed cancel
-
-            # guess at serialization between Base64 and Hex
-            try:
-                # pure hex, the smarter encoding (when in caps)
-                data = a2b_hex(data)
-            except ValueError:
-                try:
-                    data = a2b_base64(data)
-                except ValueError:
-                    prob = 'Expected HEX digits or Base64 encoded binary'
-                    continue
-            break
-    else:
-        fn = await file_picker(suffix="aes", min_size=100, max_size=160, **choice)
-        if not fn: return
-        meta += (" (%s)" % fn)
-        with CardSlot(**choice) as card:
-            with open(fn, 'rb') as fp:
-                data = fp.read()
-
-    if await ux_show_story("Make sure to have your TAPSIGNER handy as you will need to provide "
-                           "'Backup Password' from the back of the card in the next step.\n\n"
-                           "Press OK to continue X to cancel.") != "y":
-        return
-
-    while True:
-        backup_key = await ux_input_text("", confirm_exit=False, hex_only=True,
-                            min_len=32, max_len=32, prompt='Backup Password (32 hex digits)')
-        if backup_key is None:
-            return
-
-        assert len(backup_key) == 32
-
-        try:
-            extended_key, derivation = decrypt_tapsigner_backup(backup_key, data)
-            break
-        except ValueError as e:
-            await ux_show_story(title="FAILURE", msg=str(e))
-            continue
-
-    await import_extended_key_as_secret(extended_key, ephemeral, meta=meta)
 
 async def list_files(*A):
     fn = await file_picker(min_size=0)

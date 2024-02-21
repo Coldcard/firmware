@@ -18,6 +18,7 @@ from xor_seed import xor_split_start, xor_restore_start
 from countdowns import countdown_chooser
 from paper import make_paper_wallet
 from trick_pins import TrickPinMenu
+from tapsigner import import_tapsigner_backup_file
 
 # useful shortcut keys
 from charcodes import KEY_QR, KEY_NFC

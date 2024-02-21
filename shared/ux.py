@@ -192,11 +192,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
 
             ln = q1_reword(ln)
 
-            if len(ln) > CH_PER_W:
-                lines.extend(word_wrap(ln, CH_PER_W))
-            else:
-                # ok if empty string, just a blank line
-                lines.append(ln)
+            lines.extend(word_wrap(ln, CH_PER_W))
 
         # no longer needed & rude to our caller, but let's save the memory
         msg.close()
@@ -207,11 +203,7 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
         msg = q1_reword(msg)
 
         for ln in msg.split('\n'):
-            if len(ln) > CH_PER_W:
-                lines.extend(word_wrap(ln, CH_PER_W))
-            else:
-                # ok if empty string, just a blank line
-                lines.append(ln)
+            lines.extend(word_wrap(ln, CH_PER_W))
 
     # trim blank lines at end, add our own marker
     while not lines[-1]:

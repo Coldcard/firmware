@@ -37,10 +37,10 @@ class KeypathMenu(MenuSystem):
         if path is None:
             # Top level menu; useful shortcuts, and special case just "m"
             items = [
-                MenuItem("m/..", f=self.deeper),
-                MenuItem("m/44'/..", f=self.deeper),
-                MenuItem("m/49'/..", f=self.deeper),
-                MenuItem("m/84'/..", f=self.deeper),
+                MenuItem("m/⋯", f=self.deeper),
+                MenuItem("m/44h/⋯", f=self.deeper),
+                MenuItem("m/49h/⋯", f=self.deeper),
+                MenuItem("m/84h/⋯", f=self.deeper),
                 MenuItem("m/0/{idx}", menu=self.done),
                 MenuItem("m/{idx}", menu=self.done),
                 MenuItem("m", f=self.done),
@@ -50,24 +50,27 @@ class KeypathMenu(MenuSystem):
             # - hardened choice first
             p = '%s/%d' % (path, nl)
             items = [ 
-                MenuItem(p+"'/..", menu=self.deeper),
-                MenuItem(p+"/..",  menu=self.deeper),
-                MenuItem(p+"'", menu=self.done),
+                MenuItem(p+"h/⋯", menu=self.deeper),
+                MenuItem(p+"/⋯",  menu=self.deeper),
+                MenuItem(p+"h", menu=self.done),
                 MenuItem(p, menu=self.done),
-                MenuItem(p+"'/0/{idx}", menu=self.done),
+                MenuItem(p+"h/0/{idx}", menu=self.done),
                 MenuItem(p+"/0/{idx}", menu=self.done),      #useful shortcut?
-                MenuItem(p+"'/{idx}", menu=self.done),
+                MenuItem(p+"h/{idx}", menu=self.done),
                 MenuItem(p+"/{idx}", menu=self.done),
             ]
 
         # simple consistent truncation when needed
         max_wide = max(len(mi.label) for mi in items)
-        if max_wide >= 16:
-            self.prefix = p
-            pl = len(p)-2
+        if max_wide >= (32 if version.has_qwerty else 16):
+            if version.has_qwerty:
+                pl = p[0:p.rfind('/')].rfind('/')
+            else:
+                self.prefix = p         # displayed on mk4 only
+                pl = len(p)-2 
             for mi in items:
                 mi.arg = mi.label
-                mi.label = '-'+mi.label[pl:]
+                mi.label = '⋯'+mi.label[pl:]
 
         super().__init__(items)
 
@@ -100,8 +103,8 @@ class KeypathMenu(MenuSystem):
 
     async def deeper(self, _1, _2, item):
         val = item.arg or item.label
-        assert val.endswith('/..')
-        cpath = val[:-3]
+        assert val.endswith('/⋯')
+        cpath = val[:-2]
         nl = await ux_enter_bip32_index('%s/' % cpath, unlimited=True)
         return KeypathMenu(cpath, nl)
 
@@ -114,9 +117,9 @@ class PickAddrFmtMenu(MenuSystem):
             MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=self.done, arg=(path, AF_P2WPKH_P2SH)),
         ]
         super().__init__(items)
-        if path.startswith("m/84'"):
+        if path.startswith("m/84h"):
             self.goto_idx(1)
-        if path.startswith("m/49'"):
+        if path.startswith("m/49h"):
             self.goto_idx(2)
 
     async def done(self, _1, _2, item):
@@ -131,7 +134,7 @@ class ApplicationsMenu(MenuSystem):
         items = [
             MenuItem("Samourai", menu=SamouraiAppMenu(self)),
             MenuItem("Wasabi", f=self.done,
-                     arg=("m/84'/" + self.chain + "/0'/{change}/{idx}", AF_P2WPKH)),
+                     arg=("m/84h/" + self.chain + "/0h/{change}/{idx}", AF_P2WPKH)),
         ]
         super().__init__(items)
 
@@ -147,11 +150,11 @@ class SamouraiAppMenu(MenuSystem):
         chain = self.parent.chain
         items = [
             MenuItem("Post-mix", f=self.parent.done,
-                     arg=("m/84'/" + chain + "/2147483646'/{change}/{idx}", AF_P2WPKH)),
+                     arg=("m/84h/" + chain + "/2147483646h/{change}/{idx}", AF_P2WPKH)),
             MenuItem("Pre-mix", f=self.parent.done,
-                     arg=("m/84'/" + chain + "/2147483645'/{change}/{idx}", AF_P2WPKH)),
+                     arg=("m/84h/" + chain + "/2147483645h/{change}/{idx}", AF_P2WPKH)),
             # MenuItem("Bad Bank", f=self.done,         # not released yet
-            #          arg=("m/84'/" + hardened_chain + "/2147483644'/{change}/{idx}", AF_P2WPKH)),
+            #          arg=("m/84h/" + hardened_chain + "/2147483644h/{change}/{idx}", AF_P2WPKH)),
         ]
         super().__init__(items)
 
@@ -266,7 +269,7 @@ Press (3) if you really understand and accept these risks.
         def make_msg(change=0):
             # Build message and CTA about export, plus the actual addresses.
             if n > 1:
-                msg = "Addresses %d..%d:\n\n" % (start, start + n - 1)
+                msg = "Addresses %d⋯%d:\n\n" % (start, start + n - 1)
             else:
                 # single address, from deep path given by user
                 msg = "Showing single address.\n\n"
@@ -286,7 +289,7 @@ Press (3) if you really understand and accept these risks.
                     if i == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
-                        msg += '.../%d/%d =>\n' % (change, i)
+                        msg += '⋯/%d/%d =>\n' % (change, i)
 
                     addrs.append(addr)
                     msg += truncate_address(addr) + '\n\n'
