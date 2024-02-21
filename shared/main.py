@@ -30,13 +30,13 @@ except:
 # Sometimes useful: die early for debug
 #raise SystemExit
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2023.")
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2024.")
 
 import version
 datestamp,vers,_ = version.get_mpy_version()
 print("Version: %s / %s\n" % (vers, datestamp))
 
-# Setup OLED and get something onto it.
+# Setup display and get something onto it.
 if version.has_qwerty:
     from lcd_display import Display
 else:
@@ -46,12 +46,12 @@ dis = Display()
 dis.splash()
 glob.dis = dis
 
-# slowish imports, some with side-effects
+# Slowish imports, some with side-effects
 import ckcc, uasyncio
 
-# early setup code needed on Mk4
+# Early setup code
 try:
-    if version.hw_label == 'q1':
+    if version.has_qwerty:
         import q1
         q1.init0()
     else:
@@ -66,7 +66,7 @@ except BaseException as exc:
     # continue tho
 
 # Setup keypad/keyboard
-if version.hw_label == 'q1':
+if version.has_qwerty:
     from keyboard import FullKeyboard
     numpad = FullKeyboard()
     glob.numpad = numpad
