@@ -287,6 +287,9 @@ class LCDSimulator(SimulatedScreen):
                 assert len(here) == count
             except AssertionError:
                 print(f"Bad LCD update: x,y={X},{Y} w,h={w}x{h} mode={mode}")
+                if 1: # these are serious, so crash..
+                    self.snapshot()
+                    raise
                 continue
 
             pos = 0
