@@ -467,14 +467,13 @@ def txtlen(s):
 
 def word_wrap(ln, w):
     # Generate the lines needed to wrap one line into X "width"-long lines.
-    # test:  
-    #  from charcodes import *; from utils import *
-    #  list(word_wrap('Disk, press ' + KEY_NFC + ' to share via NFC, ' + KEY_QR + ' to share', 34))
-    # => should be 2 lines with QR in second line
+    #  - tests in testing/test_unit.py
+
+    if txtlen(ln) <= w:
+        yield ln
+        return
+
     while ln:
-        if txtlen(ln) <= w:
-            yield ln
-            return
 
         # find a space in (width) first part of remainder
         sp = ln.rfind(' ', 0, w-1)
