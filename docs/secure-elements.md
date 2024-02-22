@@ -2,7 +2,7 @@
 
 ## Background
 
-The Mk4 **COLDCARD<sup>&reg;</sup>** has two secure elements:  
+The **COLDCARD<sup>&reg;</sup>** Mk4 and Q have two secure elements:  
 
 - SE1 (Secure Element 1): Microchip ATECC608B
 - SE2 (Secure Element 2): Maxim DS28C36B
@@ -21,14 +21,12 @@ HMAC-SHA256.
 Assume attackers have physical access to a COLDCARD, have opened
 the case, and can probe the bus connections between the MCU and SE1
 or SE2. They may even desolder SE1 and SE2 from the board, and put
-active circuits between them and the MCU &mdash; an active MiTM
-attack. (The Mk4 has improved goop on all three parts and all these
-critical signals run on internal layers of the PCBA.)
+active circuits between them and the MCU &mdash; an active MiTM attack.
 
 
 ### The Solutions
 
-Three parties hold secrets in the Mk4: the main MCU (microcontroller)
+Three parties hold secrets in the COLDCARD: the main MCU (microcontroller)
 and the two secure elements. Our goal is that **all three** must
 be fully compromised to access the seed words. Thus, if one part
 has a vulnerability, the COLDCARD as a whole is still secure.
@@ -37,7 +35,7 @@ if all three devices are cracked wide open. (This is a last line
 of defence, a brute-force attack on all PIN combinations will breach
 it.)
 
-The Mk4 also supports new Trick PIN codes with side effects such
+COLDCARD also supports new Trick PIN codes with side effects such
 as wiping or bricking the COLDCARD, or providing access to a decoy
 or duress wallet. Ideally, attackers will not detect using a false
 PIN, even while probing the signals on the board.
@@ -53,7 +51,7 @@ and the MicroPython code cannot read this area of the chip. Using
 an internal firewall feature and PCROP (proprietary code readout
 protection) achieves this result.
 
-Mk4 also shares a secret between SE2 and the MCU. Just like SE1,
+COLDCARD also shares a secret between SE2 and the MCU. Just like SE1,
 this authenticates SE2 to the MCU and encrypts their mutual
 communications. The Pairing Secret for SE2 is not stored in SE1 and
 is unique from the other Pairing Secret used for SE1.
@@ -195,7 +193,7 @@ user enters against all the slots and works silently to support the
 Trick features.
 
 The type of support depends on the type of Trick. Duress wallets
-require storing 32 bytes of seed words (generated from the true
+require storing 32 or 64 bytes of seed words (generated from the true
 seed via BIP-85). Other cases dictate encoding a short numeric code
 provided to higher layers for implementation. For example, a flag
 in that code can trigger the boot ROM to wipe the `mcu seed key`.
@@ -206,7 +204,8 @@ key` being zero makes the seed permanently inaccessible.
 
 The MCU code may continue speaking to SE1 to complete the fraud,
 but in general, SE1 will no longer store the duress wallet or Brick
-Me PINs. Mk4 implements those feature in SE2.
+Me PINs as in previous generations (Mk1-3). Mk4 and Q implement
+those feature in SE2.
 
 
 ### Trick PIN Operation
@@ -268,7 +267,7 @@ inside SE1. This storage is called Spare Secrets. Spare Secrets has
 3 &times; 72 bytes of space, protected by the same measures as the
 seed words.
 
-Mk4 still supports the Long Secret (416 bytes), but its API is
+Mk4/Q still supports the Long Secret (416 bytes), but its API is
 changed. The slow speed of fetching the Long Secret in 32-byte
 blocks due to the reconstructing the primary AES Seed Key for each
 call necessitated the change.
@@ -292,7 +291,7 @@ PINs that continue operation (duress PINs), unlike the average thug.
 
 ## Fast Brick
 
-On the Mk4, quickly bricking the system is done by rotating the SE1
+Quickly bricking the system is done by rotating the SE1
 pairing secret by mixing in a random nonce via the chip's key
 rotation process. Only a knowledge of the old pairing secret is
 needed for this change. This is similar the to `brick_me` PIN

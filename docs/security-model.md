@@ -1,4 +1,4 @@
-# COLDCARD Mk4 Security Model
+# COLDCARD Mk4/Q Security Model
 
 ## Abstract
 
@@ -8,11 +8,14 @@ seed words used to generate a deterministic wallet. This secure
 element is in a limited and read-only state until authorized by PIN entry.
 
 Clearing the secure element is impossible without first entering
-the correct PIN. The Mark 4 COLDCARD (Mk4) introduces several new
-security features, including a second secure element and Trick PINs
-which can render stored data unrecoverable, or brick the COLDCARD
-entirely if necessary, without entering the true authorization PIN
-(True PIN).
+the correct PIN. The Mk4 COLDCARD introduced several new security
+features, including a second secure element and Trick PINs which
+can render stored data unrecoverable, or brick the COLDCARD entirely
+if necessary, without entering the true authorization PIN (True
+PIN).
+
+The COLDCARD Q continues with the same security model introduced
+in Mk4.
 
 
 ## Introduction
@@ -187,9 +190,9 @@ customers suggested.
 
 ### Kill Key Feature
 
-This feature allows the user to execute a Fast Wipe when the
-anti-phishing words are displayed on the screen. This feature is
-turned off by default.
+On the Mk4, this feature allows the user to execute a Fast Wipe
+when the anti-phishing words are displayed on the screen. This
+feature is turned off by default.
 
 The user sets a particular key number to trigger Fast Wipe. If that
 key is pressed while viewing the anti-phishing words, the seed is
@@ -200,13 +203,19 @@ It is strongly recommended that the first digit for the second half
 of the True PIN is **not** used as the Kill Key. Missing a step
 would unintentionally wipe the seed.
 
+For the COLDCARD Q, the same feature exists: any letter may be
+specified but numbers are not supported. This change allows the
+"kill button" to be active through-out the entire login process.
+It can be even be pressed while the nickname is shown, and at any
+point during the PIN entry.
+
 
 ### SPI Serial Flash Removed
 
 The Mk3 and earlier had a dedicated, external chip to hold settings
-and the PSBT during operation.  Mk4 does not have that chip. The
-settings now reside inside the main MCU, increasing security.
-Settings are still AES-encrypted as before.
+and the PSBT during operation.  Mk4 and later, do not have that
+chip. The settings now reside inside the main MCU, increasing
+security. Settings are still AES-encrypted as before.
 
 The separate settings chip could be blanked externally or even
 removed/replaced. This possibility might enable getting around
@@ -234,11 +243,11 @@ COLDCARD's case to do so, but the option is there if needed.
 
 ## SD Card Recovery Mode
 
-Mk4 bootloader is smart enough to be able to read an SD card. You
+Mk4/Q bootloader is smart enough to be able to read an SD card. You
 will only be able to trigger the SD card loading code, if the
 COLDCARD was powered down during the upgrade process. At that point,
 the intended firmware image has been lost because it it held in
-PSRAM only during the flash writing process. The bootloader knows
+PSRAM only, during the flash writing process. The bootloader knows
 main flash (ie. Micropython code) is corrupt because it fails the
 checksum check (and/or signature check).
 
@@ -255,6 +264,9 @@ the anticipated version the user was attempting to install.
 If any other parts of flash---beyond the normal upgradable firmware
 area---have also been corrupted, this process will not work and the
 unit will be a brick.
+
+On the COLDCARD Q, only the top slot (A) is supported for this
+operation.
 
 
 ## Flash ECC (Error Detection/Correction Codes)
@@ -274,7 +286,7 @@ that it's an attack, such as exposing the bare die to targeted UV-C
 radiation.  If the attacker is able to flip 2 or more bits, then
 this will effectively brick the COLDCARD once the ECC error is detected.
 
-Critical flash cells, such as those that prevent both JTAG access,
-are not a single bit (it's a special bit pattern), and regardless
-are protected via ECC the same as other flash cells.
+Critical flash cells, such as those that prevent JTAG access, are
+not a single bit (it's a special bit pattern), and regardless are
+protected via ECC the same as other flash cells.
 
