@@ -320,7 +320,7 @@ There is ABSOLUTELY NO WAY to 'reset the PIN' or 'factory reset' the Coldcard if
 
 DO NOT FORGET THE PIN CODE.
 
-Press 6 to prove you read to the end of this message.''', title='WARNING', escape='6')
+Press (6) to prove you read to the end of this message.''', title='WARNING', escape='6')
 
         if ch == 'x': return
         if ch == '6': break
