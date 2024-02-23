@@ -1152,6 +1152,8 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     # display rate (plus time to send to display, etc)
     ms_per_each = 200
 
+    dis.clear()
+
     while 1:
         for pkt in range(num_parts):
             buf = PSRAM.read_at(qr_size * pkt, raw_qr_size)
