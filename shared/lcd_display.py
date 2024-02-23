@@ -660,6 +660,20 @@ class Display:
 
         # always draw as large as possible (vertical is limit)
         expand = max(1, (ACTIVE_H - (num_lines * CELL_H))  // (w+2))
+
+        if w == 109:
+            #     v23 => w=109 ACTIVE_H=220
+            # - to make v23 fit, have to loose one line of QR margin at bottom
+            # - and kill text
+            expand = 2
+            num_lines = 0
+        elif expand == 1 and num_lines:
+            # Maybe loose the text lines?
+            expand2 = max(1, ACTIVE_H // (w+2))
+            if expand2 > expand:
+                num_lines = 0
+                expand = expand2
+
         qw = (w+2) * expand
 
         # horz/vert center in available space

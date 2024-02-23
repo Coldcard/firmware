@@ -1094,6 +1094,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     import uqr
 
     PAYLOAD_PER_V40 = 2144      # if HEX encoded, active payload (max) per v40 QR
+    PAYLOAD_PER_V23 = 790         # if HEX encoded, active payload (max) per v23 QR
 
     assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work
     assert type_code in TYPE_LABELS
@@ -1103,14 +1104,19 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
         data_len //= 2
 
     # assume V40 and split
-    num_parts = int(round((data_len / PAYLOAD_PER_V40) + 0.5, 0))
+    for target_vers, capacity in [ (40, PAYLOAD_PER_V40), (23, PAYLOAD_PER_V23) ]:
+        num_parts = int(round((data_len / capacity) + 0.5, 0))
+        if num_parts == 1:
+            # use V40 only if whole thing fits, otherwise favour v23
+            break
+
     part_size = data_len // num_parts
     runt_size = data_len - (num_parts * part_size)
     if runt_size:
         # spread data evenly between min-required parts
         num_parts += 1
         part_size = (data_len+num_parts-1) // num_parts
-        assert part_size <= PAYLOAD_PER_V40
+        assert part_size <= capacity
 
     assert num_parts * part_size >= data_len
 
@@ -1140,6 +1146,8 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
             raw_qr_size = len(raw)
             qr_size = (raw_qr_size + 3) & ~0x3        # align4
             force_version = qr_data.version()
+            print('got %d wanted %d vers' % (force_version, target_vers))
+            assert force_version <= target_vers
         else:
             _, _, raw = qr_data.packed()
 
