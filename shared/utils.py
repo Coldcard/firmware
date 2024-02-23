@@ -144,10 +144,10 @@ class CapsHexWriter(HexWriter):
     def write(self, b):
         self.checksum.update(b)
         self.pos += len(b)
-        self.fd.write(b2a_hex(b).upper())
+        self.fd.write(b2a_hex(b).upper())       # uppercase
 
     def __exit__(self, *a, **k):
-        self.fd.seek(0, 2)          # go to end
+        # dont do the newline thing at end
         return self.fd.__exit__(*a, **k)
 
 class Base64Writer:
