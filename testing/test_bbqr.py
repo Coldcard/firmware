@@ -17,7 +17,7 @@ def THIS_FILE_requires_q1(is_q1):
         raise pytest.skip('Q1 only')
 
 @pytest.fixture
-def readback_bbqr_ll(cap_screen_qr, sim_exec):
+def readback_bbqr_ll(cap_screen_qr, sim_exec, cap_screen):
     # low level version
     def doit():
         num_parts = None
@@ -30,6 +30,8 @@ def readback_bbqr_ll(cap_screen_qr, sim_exec):
                 rb = cap_screen_qr(no_history=True).decode('ascii')
             except RuntimeError:
                 time.sleep(0.1)
+                x = cap_screen()
+                assert 'Yikes' not in x, x
                 continue
 
             #print(rb[0:20]+'...')
@@ -171,7 +173,8 @@ def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shar
 @pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
 @pytest.mark.parametrize('partial', [False, True])
-def test_bbqr_psbt(size, encoding, max_ver, partial, scan_a_qr, readback_bbqr,
+@pytest.mark.parametrize('segwit', [True, False])
+def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback_bbqr,
                    cap_screen_qr, render_bbqr, goto_home, use_regtest, cap_story,
                    decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
                    start_sign, end_sign, press_cancel, press_select, need_keypress):
@@ -186,7 +189,11 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, scan_a_qr, readback_bbqr,
             pp = psbt.inputs[0].bip32_paths[pk]
             psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack)
+    if not segwit:
+        psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack)
+    else:
+        psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack,
+                            segwit_in=True, outstyles=['p2wpkh'])
     open('debug/last.psbt', 'wb').write(psbt)
 
     goto_home()
