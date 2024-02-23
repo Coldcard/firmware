@@ -10,6 +10,10 @@ class SimulatedPSRAMWrapper(psram.PSRAMWrapper):
         # note: need heapsize=X with big number to get object so big on the heap
         self._wr = bytearray(self.length)
 
+        # help to find un-init memory bugs faster
+        for i in range(self.length):
+            self._wr[i] = 0x65
+
     def read_at(self, offset, ln):
         # one-copy byte-wise access
         return bytes(self._wr[offset:offset+ln])
