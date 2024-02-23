@@ -59,3 +59,10 @@
 - cleanups, bugfixes
 
 
+## 0.0.7 - 2024-02-23
+
+- bugfix: BBQr display of some segwit transactions would sometimes fail with message
+  about "non hex digit"
+- bugfix: very obscure bug in low level code could cause txid to be miscalculated
+  if all the conditions occured just right
+
