@@ -3,7 +3,7 @@
 # ux_mk4.py - UX/UI interactions that are Mk1-4 specific
 #
 from uasyncio import sleep_ms
-import utime, gc
+from utils import pretty_short_delay
 from exceptions import AbortInteraction
 
 class PressRelease:

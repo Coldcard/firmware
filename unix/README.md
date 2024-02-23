@@ -59,6 +59,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--bootup-movie` => begin a movie on startup, to capture boot sequence
 - `--scan` => (Q) use attached serial port connected to a QR scanner module (not simulation)
 - `--battery` => (Q) assume the USB cable is NOT connected (ie. on battery power)
+- `--early-usb` => start simulated USB interface even before user is login (useful for login testing)
 
 See `variant/sim_settings.py` for the details of settings-related options.
 

@@ -30,6 +30,10 @@ if '--sflash' not in sys.argv:
 
         #glob.settings.current = dict(sim_defaults)
 
+if '--early-usb' in sys.argv:
+    from usb import enable_usb
+    enable_usb()
+
 # Install various hacks and workarounds
 import mk4
 import sim_mk4

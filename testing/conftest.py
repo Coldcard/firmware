@@ -38,6 +38,8 @@ def pytest_addoption(parser):
                      default=False, help="Operate with multisig checks off")
     parser.addoption("--psbt2", action="store_true",
                      default=False, help="fake_txn produces PSBTv2")
+    parser.addoption("--Q", action="store_true", default=False,
+                     help="Uses Q simulator when running 'login_settings_tests' module")
     # to make bitcoind produce psbt v2 one currently needs https://github.com/achow101/bitcoin/tree/psbt2
     # or wait until https://github.com/bitcoin/bitcoin/pull/21283 merged and released
 

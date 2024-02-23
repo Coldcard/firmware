@@ -116,8 +116,7 @@ def _run_tests_with_simulator(test_module: str, simulator_args: List[str], pytes
     exit_code = pytest.main(cmd_list)
     sim.stop()
     time.sleep(1)
-    clean_sim_data()  # clean up work
-    remove_client_sockets()
+    clean_sim_data()
     return exit_code
 
 
@@ -161,7 +160,7 @@ class ColdcardSimulator:
         self.args = args
         self.path = "/tmp/ckcc-simulator.sock" if path is None else path
 
-    def start(self):
+    def start(self, start_wait=None):
         # here we are in testing directory
         cmd_list = [
             "python",
@@ -176,7 +175,7 @@ class ColdcardSimulator:
             cwd="../unix",
             preexec_fn=os.setsid
         )
-        time.sleep(SIM_INIT_WAIT)
+        time.sleep(start_wait or SIM_INIT_WAIT)
         atexit.register(self.stop)
 
     def stop(self):
@@ -186,6 +185,7 @@ class ColdcardSimulator:
             os.waitpid(os.getpgid(self.proc.pid), 0)
 
         atexit.unregister(self.stop)
+        remove_client_sockets()
 
 
 def main():
