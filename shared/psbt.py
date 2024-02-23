@@ -31,8 +31,6 @@ from public_constants import (
     PSBT_IN_REQUIRED_HEIGHT_LOCKTIME, MAX_PATH_DEPTH, MAX_SIGNERS
 )
 
-psbt_tmp256 = bytearray(256)
-
 # PSBT proprietary keytype
 PSBT_PROPRIETARY = const(0xFC)
 
@@ -137,16 +135,20 @@ def calc_txid(fd, poslen, body_poslen=None):
 
 def get_hash256(fd, poslen, hasher=None):
     # return the double-sha256 of a value, without loading it into memory
+    # - if hasher provided, just updates over region of file (not a sha256d)
     pos, ll = poslen
     rv = hasher or sha256()
 
+    tmp = bytearray(min(256, ll))
+
     fd.seek(pos)
     while ll:
-        here = fd.readinto(psbt_tmp256)
-        if not here: break
+        here = fd.readinto(tmp)
+        if not here:
+            raise ValueError
         if here > ll:
             here = ll
-        rv.update(memoryview(psbt_tmp256)[0:here])
+        rv.update(memoryview(tmp)[0:here])
         ll -= here
 
     if hasher:
