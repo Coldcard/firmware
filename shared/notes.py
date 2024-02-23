@@ -4,19 +4,19 @@
 #
 import ngu, bip39
 from menu import MenuItem, MenuSystem, ShortcutItem
-from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm, the_ux
-from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code, import_export_prompt
+from ux import ux_show_story, ux_dramatic_pause, ux_confirm, the_ux
+from ux import ux_input_text, show_qr_code, import_export_prompt
 from ux_q1 import QRScannerInteraction
 from actions import goto_top_menu
 from glob import settings, dis
 from files import CardMissingError, needs_microsd, CardSlot
-from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
+from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
 from decoders import url_decode
 from utils import problem_file_line
 
-# title, username and such are limited to this so they fit on one line both in
+# title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)
 # - but W-3 is not centered .. so just lose some extra chars on right side if too long in menu
 ONE_LINE = CHARS_W-2
@@ -173,7 +173,6 @@ class NotesMenu(MenuSystem):
         settings.remove_key('notes')
         settings.save()
 
-        from actions import goto_top_menu
         goto_top_menu()
 
     @classmethod
@@ -426,7 +425,7 @@ class PasswordContent(NoteContentBase):
 
 class NoteContent(NoteContentBase):
     # Pure "notes" have just a title and free-form text
-    flds = ['title', 'misc' ]
+    flds = ['title', 'misc']
     type_label = 'note'
 
     async def make_menu(self, *a):
