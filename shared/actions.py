@@ -1656,6 +1656,7 @@ async def _batch_sign(choices=None):
 
     if not choices:
         await ux_show_story("No PSBTs found. Need to have '.psbt' suffix.")
+        return
 
     from auth import sign_psbt_file
     from ux import the_ux
