@@ -461,8 +461,15 @@ def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get
     for p in parts:
         scan_a_qr(p)
 
-    time.sleep(.5)      # decompression time in some cases
+    time.sleep(.5)  # decompression time in some cases
     m = cap_menu()
+    for _ in range(3):
+        if "1:" in m[0]:
+            break
+        time.sleep(.2)
+        m = cap_menu()
+        continue
+
     mm = [n.split(":")[-1].strip() for n in m if ":" in n]
     for note in notes:
         assert note['title'] in mm
@@ -481,12 +488,11 @@ def test_top_import(goto_notes, cap_menu, cap_story, need_keypress, settings_get
 def test_top_qr(qr, title, goto_notes, pick_menu_item, cap_menu, cap_story, need_keypress,
                 settings_get, settings_set, scan_a_qr):
     # import some fun QR codes (will be notes) from top-level, undocumented
-
     goto_notes()
     need_keypress(KEY_QR)
 
     scan_a_qr(qr)
-    time.sleep(.5)
+    time.sleep(1)
 
     # lazy readback
     notes = settings_get('notes', [])
