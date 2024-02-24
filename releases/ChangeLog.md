@@ -1,6 +1,8 @@
 ## 5.2.3 - 2024-XX-XX
 
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
+- Bugfix: Very obscure bug in low level code could cause txid to be miscalculated
+  if all the conditions occured just right
 
 ## 5.2.2 - 2023-12-21
 
