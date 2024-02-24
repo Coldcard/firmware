@@ -5,6 +5,8 @@
 - Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes
 - Bugfix: Do not allow non-ascii or ascii non-printable characters in multisig
   wallet name
+- Bugfix: Very obscure bug in low level code could cause txid to be miscalculated
+  if all the conditions occured just right
 
 ## 5.2.2 - 2023-12-21
 

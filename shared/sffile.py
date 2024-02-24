@@ -1,29 +1,25 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# sffile.py - file-like objects stored in SPI Flash (Mk1-3) or PSRAM (Mk4+)
+# sffile.py - file-like objects stored in PSRAM (Mk4+) (used to be SPI Flash)
 #
 # - implements stream IO protoccol
-# - does erasing for you
 # - random read, sequential write
 # - only a few of these are possible
 # - the offset is the file name
-# - (<Mk3) last 64k of memory reserved for settings
 #
 from uhashlib import sha256
-
 
 # Use PSRAM chip
 from glob import PSRAM
 blksize = 4
-PADOUT = lambda n: n
 
 def ALIGN4(n):
      return n & ~0x3
 
 class SFFile:
-    def __init__(self, start, length=0, max_size=None, message=None, pre_erased=False):
-        if not pre_erased:
-            assert start % blksize == 0 # 'misaligned'
+    def __init__(self, start, length=0, max_size=None, message=None):
+        # Operate in PSRAM and pretend to be a filesystem's file
+        assert start % blksize == 0     # 'misaligned'
         self.start = start
         self.pos = 0
         self.length = length        # byte-wise length
@@ -32,13 +28,13 @@ class SFFile:
 
         if max_size != None:
             # Write
-            self.max_size = PADOUT(max_size) if not pre_erased else max_size
+            self.max_size = max_size
             self.readonly = False
             self.checksum = sha256()
 
             # up to 3 bytes that haven't been written-out yet
             self.runt = bytearray()
-            self._pos = 0
+            self.wr_pos = 0
         else:
             # Read
             self.readonly = True
@@ -73,8 +69,9 @@ class SFFile:
 
     async def erase(self):
         # must be used by caller before writing any bytes
+        # - now just checks, used to be a slow erase cycle
         assert not self.readonly
-        assert self.length == 0 # 'already wrote?'
+        assert self.length == 0         # 'already wrote?'
         return
 
     def __enter__(self):
@@ -97,12 +94,12 @@ class SFFile:
         if self.runt:
             # write final runt, might be up to 3 bytes (padding w/ zeros)
             assert len(self.runt) <= 3      # , 'rl=%d'%len(self.runt)
-            assert self._pos + len(self.runt) == self.pos
+            assert self.wr_pos + len(self.runt) == self.pos
             self.runt.extend(bytes(4-len(self.runt)))
-            PSRAM.write(self.start + self._pos, self.runt)
+            PSRAM.write(self.start + self.wr_pos, self.runt)
 
             self.runt = None
-            self._pos = self.pos
+            self.wr_pos = self.pos
 
     def write(self, b):
         # immediate write, no buffering
@@ -112,14 +109,14 @@ class SFFile:
 
         left = len(b)
 
-        # Mk4: memory-mapped, but can only do word-aligned writes
+        # PSRAM is memory-mapped, but can only do word-aligned writes!
         self.checksum.update(b)
 
         self.runt.extend(b)
         here = ALIGN4(len(self.runt))
         if here:
-            PSRAM.write(self.start + self._pos, self.runt[0:here])
-            self._pos += here
+            PSRAM.write(self.start + self.wr_pos, self.runt[0:here])
+            self.wr_pos += here
             self.runt = self.runt[here:]
 
         self.pos += left
@@ -144,6 +141,12 @@ class SFFile:
             return b''
 
         rv = bytearray(ll)
+        if self.runt and self.pos + ll > self.wr_pos:
+            # put the runt data into place, because we are about to read it
+            t = bytearray(self.runt)
+            t.extend(bytes(4-len(t)))
+            PSRAM.write(self.start + self.wr_pos, t)
+
         PSRAM.read(self.start + self.pos, rv)
 
         self.pos += ll
