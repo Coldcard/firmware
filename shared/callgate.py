@@ -86,10 +86,17 @@ def set_highwater(ts):
 def has_608():
     return ckcc.gate(6, None, 0) == 0
 
-def has_608b():
+def get_608_rev():
+    # return A, B, C and so on
     config = bytearray(128)
     ckcc.gate(20, config, 0)
-    return (config[7] >= 0x3)
+    if config[7] < 0x3:
+        return 'A'
+    if config[7] == 0x3:
+        return 'B'
+    if config[7] == 0x4:
+        return 'C'
+    return '?'
 
 def fast_wipe(silent=True):
     # mk4: wipe seed, also reboots immediately: can stop and show a screen or not
@@ -115,15 +122,18 @@ def read_rng(source=2):
     return arg[1:1+arg[0]]
 
 def get_se_parts():
-    # mk4: report part names
-    # - gets a nul-terminated string, w/ newline between them
-    arg = bytearray(80)
-    rv = ckcc.gate(27, arg, 0)
-    if rv:
-        # happens w/ obsolete versions of bootrom that never left Toronto
-        return ['SE1', 'SE2']
-    ln = bytes(arg).find(b'\0')
-    return arg[0:ln].decode().split('\n')
-    
+    # we know better than bootrom
+    return ['ATECC608'+get_608_rev(), 'DS28C36B']
+    if 0:
+        # mk4: report part names
+        # - gets a nul-terminated string, w/ newline between them
+        arg = bytearray(80)
+        rv = ckcc.gate(27, arg, 0)
+        if rv:
+            # happens w/ obsolete versions of bootrom that never left Toronto
+            return ['SE1', 'SE2']
+        ln = bytes(arg).find(b'\0')
+        return arg[0:ln].decode().split('\n')
+        
 
 # EOF
