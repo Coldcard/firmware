@@ -602,8 +602,8 @@ def cap_screen_qr(cap_image):
 
             scanner = zbar.Scanner()
             for sym, value, *_ in scanner.scan(np):
-                assert sym == 'QR-Code', 'unexpected symbology: ' + sym
-                return value            # bytes, could be binary
+                if sym == 'QR-Code':
+                    return value            # bytes, could be binary
 
         # for debug, check debug/last-qr.png
         raise RuntimeError('qr code not found')
