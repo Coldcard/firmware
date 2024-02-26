@@ -119,11 +119,19 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     # Export data as a text file.
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
-    from ux import import_export_prompt
+    from ux import import_export_prompt, show_qr_code
 
-    choice = await import_export_prompt("%s file" % title, is_import=False, no_qr=True)
+    choice = await import_export_prompt("%s file" % title, is_import=False,
+                        no_qr=(not version.has_qwerty))
 
     if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_QR:
+        try:
+            await show_qr_code(body, msg=title)
+        except ValueError:
+            from ux_q1 import show_bbqr_codes
+            await show_bbqr_codes('U', body, title)
         return
     elif choice == KEY_NFC:
         await NFC.share_text(body)
@@ -440,7 +448,13 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     elif choice == KEY_QR:
         # render as QR and show on-screen
         # - maybe block this option, if data too big to make it easy?
-        await show_qr_code(json_str)
+        try:
+            await show_qr_code(json_str)
+        except ValueError:
+            if version.has_qwerty:
+                # do BBQr on Q
+                from ux_q1 import show_bbqr_codes
+                await show_bbqr_codes('J', json_str, label)
         return
 
     # choose a filename and save

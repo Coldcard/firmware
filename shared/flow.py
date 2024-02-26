@@ -299,7 +299,7 @@ NFCToolsMenu = [
 AdvancedNormalMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Backup", menu=BackupStuffMenu),
-    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu),  # also inside FileMgmt
+    MenuItem('Export Wallet', predicate=has_secrets, menu=WalletExportMenu, shortcut='x'),  # also inside FileMgmt
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
     NonDefaultMenuItem('Secure Notes & Passwords', 'notes', menu=make_notes_menu,

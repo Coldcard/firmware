@@ -1147,8 +1147,8 @@ async def samourai_pre_mix_descriptor_export(*a):
 async def samourai_account_descriptor(name, account_num):
     ch = await ux_show_story(
         ss_descriptor_export_story(
-            addition=" for Samourai %s account" % name,
-            background="\n"),
+            addition=" for Samourai %s account." % name,
+            background=""),
         escape='1'
     )
 

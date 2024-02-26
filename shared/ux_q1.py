@@ -1103,7 +1103,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     if already_hex:
         data_len //= 2
 
-    # assume V40 and split
+    # assume V40 and split, if that doesn't work, drop to 23 for BBQr multiples
     for target_vers, capacity in [ (40, PAYLOAD_PER_V40), (23, PAYLOAD_PER_V23) ]:
         num_parts = int(round((data_len / capacity) + 0.5, 0))
         if num_parts == 1:
@@ -1146,7 +1146,6 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
             raw_qr_size = len(raw)
             qr_size = (raw_qr_size + 3) & ~0x3        # align4
             force_version = qr_data.version()
-            print('got %d wanted %d vers' % (force_version, target_vers))
             assert force_version <= target_vers
         else:
             _, _, raw = qr_data.packed()
@@ -1160,9 +1159,11 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
     # display rate (plus time to send to display, etc)
     ms_per_each = 200
 
-    dis.clear()
+    # hide Generating... text
+    dis.fullscreen(' ', 1)
 
-    while 1:
+    ch = None
+    while not ch:
         for pkt in range(num_parts):
             buf = PSRAM.read_at(qr_size * pkt, raw_qr_size)
             dis.draw_qr_display( (scan_w, w, buf), msg, True, None, None, False, 
@@ -1170,14 +1171,16 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
             if num_parts == 1:
                 # no need for animation
-                await ux_wait_keydown()
-                return
+                ch = await ux_wait_keydown()
+                break
 
             # wait for key or animation delay
             ch = await ux_wait_keydown(None, ms_per_each)
-            if ch: return
+            if ch: break
 
-    # not reached
+    # after QR drawing, we need to correct some pixels
+    dis.real_clear()
+    dis.draw_status(redraw_line=True)
 
 
 # EOF

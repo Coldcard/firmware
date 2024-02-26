@@ -59,10 +59,13 @@
 - cleanups, bugfixes
 
 
-## 0.0.7 - 2024-02-23
+## 0.0.7 - 2024-02-26
 
 - bugfix: BBQr display of some segwit transactions would sometimes fail with message
   about "non hex digit"
 - bugfix: very obscure bug in low level code could cause txid to be miscalculated
   if all the conditions occured just right
+- Animated BBQr are shown as chunkier QR's to make them easier for other devices to scan.
+- Supports QR export from Wallet Exports: will be either text file (U) or JSON (J)
+  BBQr sequence, but only if it cannot fit into normal single QR.
 

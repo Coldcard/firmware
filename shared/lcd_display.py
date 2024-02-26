@@ -170,15 +170,15 @@ class Display:
             # full brightness when on VBUS and when showing QR's
             self.dis.backlight.intensity(255)
 
-    def draw_status(self, full=False, **kws):
+    def draw_status(self, full=False, redraw_line=False, **kws):
         animating = self.gpu.take_spi()
 
         if full:
-            y = TOP_MARGIN
-            self.dis.fill_rect(0, 0, WIDTH, y-1, 0x0)
-            self.dis.fill_rect(0, y-1, WIDTH, 1, grey_level(0.25))
+            self.dis.fill_rect(0, 0, WIDTH, TOP_MARGIN-1, 0x0)
             kws = get_sys_status()
 
+        if full or redraw_line:
+            self.dis.fill_rect(0, TOP_MARGIN-1, WIDTH, 1, grey_level(0.25))
 
         b_x = 292
         if 'bat' in kws:
@@ -658,13 +658,16 @@ class Display:
         # - 8-bit aligned rows of data
         scan_w, w, data = qr_data.packed() if hasattr(qr_data, 'packed') else qr_data
 
+        self.gpu.take_spi()
+
         # always draw as large as possible (vertical is limit)
         expand = max(1, (ACTIVE_H - (num_lines * CELL_H))  // (w+2))
+
 
         if w == 109:
             #     v23 => w=109 ACTIVE_H=220
             # - to make v23 fit, have to loose one line of QR margin at bottom
-            # - and kill text
+            # - and kill text, and corrupt status line (y=-1)
             expand = 2
             num_lines = 0
         elif expand == 1 and num_lines:
@@ -674,13 +677,13 @@ class Display:
                 num_lines = 0
                 expand = expand2
 
+        # vert center in available space
         qw = (w+2) * expand
+        y = max(-1, (ACTIVE_H - (num_lines * CELL_H) - qw) // 2)
 
-        # horz/vert center in available space
-        y = (ACTIVE_H - (num_lines * CELL_H) - qw) // 2
+        # horz center
         x = (WIDTH - qw) // 2
 
-        self.gpu.take_spi()
         self.dis.show_qr_data(x, TOP_MARGIN + y, w, expand, scan_w, data)
         self.mark_correct(x, TOP_MARGIN + y, qw, qw)
 
