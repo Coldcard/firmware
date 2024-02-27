@@ -431,7 +431,7 @@ async def pick_killkey(*a):
 If you press this key at any point during login, your seed phrase will be immediately wiped.'''
     else:
         msg = '''\
-If you press this key while the anti-phishing words are shown during login, \
+If you press this key while the anti- phishing words are shown during login, \
 your seed phrase will be immediately wiped.
 
 Best if this does not match the first number of the second half of your PIN.'''
