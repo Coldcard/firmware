@@ -66,7 +66,10 @@ NUM_CHARS = len(CHARSET)
 REMAPS = {
     KEY_NFC: 'NFC',
     KEY_QR:  'QR',
-    KEY_TAB: '↦',
+    #KEY_TAB: '➔',
+    #KEY_TAB: '➜',
+    #KEY_TAB: '↦',
+    KEY_TAB: '➡︎',
 }
 for n, fn in enumerate(KEYS_FUNCTION):
     REMAPS[fn] = f'F{n+1}'
@@ -115,6 +118,7 @@ def draw_linedrawing(ch, img, draw):
     # Draw box-drawing chars
     # PROBLEM: cell is odd width, so no way to pixel-align veritcals
     # SOLUTION: leftwards on left of box, and rightwards on right side... two vertical lines
+    # - same for top/bottom lines; except in that case we wanted to move inwards
     lw = 2      # line width
     w, h = CELL_W, CELL_H
     mw = (w // 2) - (lw//2)
@@ -206,7 +210,15 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             #x_shift += 4.6      # right side of perfect (FOR DOUBLE WIDE)
             this_y = 1          # perfect
 
-        if ch in KEYCAP_SYMBOLS:
+        if ch == KEY_TAB:
+            # special code for tab keycap image
+            draw.text((x_shift, y_offset + 0), '➡︎', 'white', font)
+            draw.rectangle( ( 2,4, 2+2, CELL_H-7), 'white')
+            draw.rectangle( ( 1,4, 1+1, CELL_H-7), 'black')
+            img.save('tab-key.png')
+            draw.rounded_rectangle( ( 0,0, (CELL_W*2)-1, CELL_H-1), 4, outline='white')
+            img.save('tab-key-framed.png')
+        elif ch in KEYCAP_SYMBOLS:
             if ch == KEY_NFC:
                 x_shift += 1
             elif ch == KEY_QR:
@@ -214,6 +226,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             else:
                 x_shift += 3
             this_y += 5
+
             draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', keycap_font)
 
             # add a border
@@ -221,7 +234,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
         else:
             draw.text((x_shift, y_offset + this_y), REMAPS.get(ch, ch), 'white', font)
 
-        if 1 and ch in LINEDRAW_SYMBOLS:
+        if ch in LINEDRAW_SYMBOLS:
             # replace line draw stuff w/ own art (altho normal works)
             draw_linedrawing(ch, img, draw)
 
