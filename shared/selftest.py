@@ -145,9 +145,6 @@ def set_genuine():
     # - or logged in already as main
     from pincodes import pa
 
-    if pa.is_secondary:
-        return
-
     if not pa.is_successful():
         # assume blank pin during factory selftest
         pa.setup(b'')
