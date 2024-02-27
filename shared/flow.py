@@ -103,7 +103,7 @@ LoginPrefsMenu = [
     MenuItem('Change Main PIN', f=main_pin_changer),
     NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
-    NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble),
+    NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble, default_value=0),
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
     NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),
     NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=se2_and_real_secret),
