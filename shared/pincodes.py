@@ -308,12 +308,6 @@ class PinAttempt:
 
         return rv
 
-    def is_delay_needed(self):
-        # obsolete starting w/ mk3 and values re-used for other stuff
-        if version.has_608:
-            return False
-        return self.delay_achieved < self.delay_required
-
     def is_blank(self):
         # device has no PIN at this point
         return bool(self.state_flags & PA_IS_BLANK)

@@ -224,20 +224,6 @@ class LoginUX:
 
                 self.show_pin()
 
-    async def do_delay(self):
-        # show # of failures and implement the delay, which could be 
-        # very long.
-        dis.clear()
-        dis.text(None, 0, "Checking...", FontLarge)
-        dis.text(None, 24, 'Wait '+pretty_delay(pa.delay_required * pa.seconds_per_tick))
-        dis.text(None, 40, "(%d failures)" % pa.num_fails)
-
-        while pa.is_delay_needed():
-            dis.progress_bar(pa.delay_achieved / pa.delay_required)
-            dis.show()
-
-            pa.delay()
-
     async def we_are_ewaste(self, num_fails):
         msg = '''After %d failed PIN attempts this Coldcard is locked forever. \
 By design, there is no way to reset or recover the secure element, and its contents \
@@ -287,13 +273,10 @@ Press OK to continue, X to stop for now.
             dis.fullscreen("Wait...")
             pa.setup(pin, self.is_secondary)
 
-            if version.has_608 and pa.num_fails > 3:
+            if pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
                 await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
                 dis.fullscreen("Wait...")
-            elif pa.is_delay_needed():
-                # mark 1/2 might come here, never mark3
-                await self.do_delay()
 
             # do the actual login attempt now
             try:
