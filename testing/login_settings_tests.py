@@ -1,10 +1,15 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # to run it on both Mk4 and Q:
-#   python login_settings_tests.py; sleep 10; python --Q login_settings_tests.py
+#   pytest login_settings_tests.py; sleep 10; pytest --Q login_settings_tests.py
+#
+# or use test runner:
+#   python run_sim_tests --login
+#
+#   python run_sim_tests --q1 --login -k countdown --pdb
 #
 import pytest, time, pdb
-from charcodes import KEY_ENTER, KEY_DOWN, KEY_UP, KEY_HOME, KEY_DELETE
+from charcodes import KEY_ENTER, KEY_DOWN, KEY_UP, KEY_HOME
 from ckcc_protocol.client import ColdcardDevice, CCProtocolPacker, CKCC_SIMULATOR_PATH
 from run_sim_tests import ColdcardSimulator, clean_sim_data
 
@@ -215,6 +220,7 @@ def _login(device, pin, is_Q, scrambled=False, mk4_kbtn=None):
         _need_keypress(device, ch)
     _press_select(device, is_Q)
 
+
 @pytest.mark.parametrize("nick", [100*"$", "$", 10*"20"+ "  "+"8080"+ " " + "XX"+ "    "+ "YY"])
 def test_set_nickname(nick, request):
     is_Q = request.config.getoption('--Q')
@@ -243,6 +249,7 @@ def test_set_nickname(nick, request):
         nick = nick.replace(" " * 4, " " * 2)  # max two spaces in sequence (Mk4)
     assert nick == target
     sim.stop()
+
 
 def test_randomize_pin_keys(request):
     is_Q = request.config.getoption('--Q')
