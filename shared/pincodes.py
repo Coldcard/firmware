@@ -71,7 +71,7 @@ EPIN_OLD_AUTH_FAIL  = const(-113)
 # We are round-tripping this big structure, partially signed by bootloader.
 '''
     uint32_t    magic_value;            // = PA_MAGIC_V2 or V1 for older bootroms
-    int         is_secondary;           // (bool) primary or secondary OBSOLETE
+    int         is_secondary;           // (bool) primary or secondary
     char        pin[MAX_PIN_LEN];       // value being attempted
     int         pin_len;                // valid length of pin
     uint32_t    delay_achieved;         // so far, how much time wasted? [508a only]
