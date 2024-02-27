@@ -756,44 +756,6 @@ async def export_seedqr(*a):
 
     stash.blank_object(qr)
 
-async def damage_myself():
-    # called when it's time to disable ourselves due to various
-    # features related to duress and so on
-    # - mk2 cannot do this
-    # - mk4 doesn't call this, done by bootrom
-    mode = settings.get('cd_mode', 0)
-    #['Brick', 'Final PIN', 'Test Mode']
-
-    if mode == 2:
-        # test mode, do no damage
-        return
-
-    from glob import dis
-    dis.fullscreen("Wait...")
-    dis.busy_bar(True)
-
-    if mode == 1:
-        # leave single attempt; careful!
-        # - always consume one attempt, regardless
-        todo = max(1, pa.attempts_left - 1)
-    else:
-        # brick ourselves, by consuming all PIN attempts
-        todo = pa.attempts_left
-
-    # do a bunch of failed attempts
-    pa.setup('hfsp', False)
-    for i in range(todo):
-        try:
-            pa.login()
-        except:
-            # expecting EPIN_AUTH_FAIL
-            pass
-
-        # Try to keep UX responsive? But callgate stuff blocks everything,
-        # so just go as fast as possible.
-
-    dis.busy_bar(False)
-
 async def version_migration():
     # Handle changes between upgrades, and allow downgrades when possible.
     # - long term we generally cannot delete code from here, because we

@@ -2,8 +2,6 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
-# NOTE: Mark3+ hardware does not support secondary wallet concept.
-#
 import pincodes, version, random
 from glob import dis
 from display import FontLarge, FontTiny
@@ -23,7 +21,6 @@ class LoginUX:
         self.is_repeat = False
         self.subtitle = False
         self.kill_btn = kill_btn
-        self.offer_second = not version.has_608
         self.reset()
         self.randomize = randomize
 
@@ -36,7 +33,6 @@ class LoginUX:
         self.pin = ''       # just the part we're showing
         self.pin_prefix = None
         self.words_ok = False
-        self.is_secondary = False
         self.footer = None
 
     def show_pin_randomized(self, force_draw):
@@ -121,7 +117,7 @@ class LoginUX:
 
         dis.show()
 
-    def _show_words(self, has_secondary=False):
+    def _show_words(self):
 
         dis.clear()
         dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
@@ -136,10 +132,7 @@ class LoginUX:
         dis.text(x, y,    words[0], FontLarge)
         dis.text(x, y+18, words[1], FontLarge)
 
-        if self.offer_second:
-            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
-        else:
-            dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
+        dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
 
         dis.busy_bar(False)     # includes a dis.show()
         #dis.show()
@@ -187,8 +180,6 @@ class LoginUX:
                 self._show_words()
 
                 pattern = 'xy'
-                if self.offer_second:
-                    pattern += '2'
                 if self.kill_btn:
                     pattern += self.kill_btn
 
@@ -203,7 +194,6 @@ class LoginUX:
                 if nxt == 'y' or nxt == '2':
                     self.pin_prefix = self.pin
                     self.pin = ''
-                    self.is_secondary = (nxt == '2')
 
                     if self.randomize:
                         self.shuffle_keys()
@@ -253,16 +243,14 @@ Press OK to continue, X to stop for now.
     async def try_login(self, bypass_pin=None):
         while 1:
 
-            if version.has_608 and not pa.attempts_left:
+            if not pa.attempts_left:
                 # tell them it's futile
                 await self.we_are_ewaste(pa.num_fails)
 
             self.reset()
 
             if pa.num_fails:
-                self.footer = '%d failures' % pa.num_fails
-                if version.has_608:
-                    self.footer += ', %d tries left' % pa.attempts_left
+                self.footer = '%d failures, %d tries left' % (pa.num_fails, pa.attempts_left)
 
             pin = await self.interact()
 
@@ -271,7 +259,7 @@ Press OK to continue, X to stop for now.
                 continue
             
             dis.fullscreen("Wait...")
-            pa.setup(pin, self.is_secondary)
+            pa.setup(pin)
 
             if pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
@@ -298,24 +286,17 @@ Press OK to continue, X to stop for now.
                 dis.busy_bar(False)
 
             pa.num_fails += 1
-            if version.has_608:
-                pa.attempts_left -= 1
+            pa.attempts_left -= 1
 
-            msg = ""
+            if not pa.attempts_left:
+                await self.we_are_ewaste(pa.num_fails)
+                continue
+
+            msg = '%d attempts left' % (pa.attempts_left)
             nf = '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
-            if version.has_608:
-                if not pa.attempts_left:
-                    await self.we_are_ewaste(pa.num_fails)
-                    continue
-
-                msg += '%d attempts left' % (pa.attempts_left)
-            else:
-                msg += '%s' % nf
 
             msg += '''\n\nPlease check all digits carefully, and that prefix versus \
-suffix break point is correct.'''
-            if version.has_608:
-                msg += '\n\n' + nf
+suffix break point is correct.\n\n''' + nf
 
             await ux_show_story(msg, title='WRONG PIN')
 
@@ -328,7 +309,6 @@ suffix break point is correct.'''
     async def get_new_pin(self, title, story=None, allow_clear=False):
         # Do UX flow to get new (or change) PIN. Always does the double-entry thing
         self.is_setting = True
-        self.offer_second = False
 
         if story:
             # give them background
