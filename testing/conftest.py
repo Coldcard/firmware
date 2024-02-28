@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, pdb
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT
@@ -11,6 +11,9 @@ from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
 from charcodes import *
+from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen, _dev_hw_label
+from core_fixtures import _press_select, _pick_menu_item
+
 
 # lock down randomness
 random.seed(42)
@@ -79,14 +82,8 @@ def simulator(request):
 def sim_exec(dev):
     # run code in the simulator's interpretor
     # - can work on real product too, if "debug build" is used.
-
-    def doit(cmd, binary=False):
-        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
-        if binary: return s
-        #print(f'sim_exec: {cmd!r} -> {s!r}')
-        return s.decode('utf-8') if not isinstance(s, str) else s
-
-    return doit
+    f = functools.partial(_sim_exec, dev)
+    return f
 
 @pytest.fixture(scope='module')
 def sim_eval(dev):
@@ -147,7 +144,6 @@ def send_ux_abort(simulator):
 
 @pytest.fixture(scope='module')
 def need_keypress(dev, request):
-
     def doit(k, timeout=1000):
         if request.config.getoption("--manual"):
             # need actual user interaction
@@ -155,7 +151,7 @@ def need_keypress(dev, request):
             input()
         else:
             # simulator has special USB command, and can be used on real device in dev builds
-            dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
+            _need_keypress(dev, k, timeout=timeout)
 
     return doit
 
@@ -375,16 +371,10 @@ def capture_enabled(sim_eval):
     assert sim_eval("'sim_display' in sys.modules") == 'True'
 
 @pytest.fixture(scope='module')
-def cap_menu(sim_exec):
+def cap_menu(dev):
     "Return menu items as a list"
-    def doit():
-        rv = sim_exec('from ux import the_ux; RV.write(repr('
-                            '[i.label for i in the_ux.top_of_stack().items]))')
-        if 'Traceback' in rv:
-            raise RuntimeError(rv)      # not looking at a menu, typically
-        return eval(rv)
-
-    return doit
+    f = functools.partial(_cap_menu, dev)
+    return f
 
 @pytest.fixture(scope='module')
 def is_ftux_screen(sim_exec):
@@ -414,12 +404,9 @@ def expect_ftux(cap_menu, cap_story, press_select, is_ftux_screen):
 
 
 @pytest.fixture(scope='module')
-def cap_screen(sim_exec):
-    def doit():
-        # capture text shown; 4-10 lines or so?
-        return sim_exec('RV.write(sim_display.full_contents)')
-
-    return doit
+def cap_screen(dev):
+    f = functools.partial(_cap_screen, dev)
+    return f
 
 @pytest.fixture(scope='module')
 def cap_text_box(cap_screen):
@@ -438,13 +425,11 @@ def cap_text_box(cap_screen):
     return doit
 
 @pytest.fixture(scope='module')
-def cap_story(sim_exec):
+def cap_story(dev):
     # returns (title, body) of whatever story is being actively shown
-    def doit():
-        rv = sim_exec("RV.write('\0'.join(sim_display.story or []))")
-        return rv.split('\0', 1) if rv else ('','')
+    f = functools.partial(_cap_story, dev)
+    return f
 
-    return doit
 
 @pytest.fixture(scope='module')
 def cap_image(sim_exec, is_q1):
@@ -643,10 +628,9 @@ def get_secrets(sim_execfile):
     return doit
 
 @pytest.fixture(scope='module')
-def press_select(need_keypress, has_qwerty):
-    def doit(**kws):
-        need_keypress(KEY_ENTER if has_qwerty else 'y', **kws)
-    return doit
+def press_select(dev, has_qwerty):
+    f = functools.partial(_press_select, dev, has_qwerty)
+    return f
 
 @pytest.fixture(scope='module')
 def press_cancel(need_keypress, has_qwerty):
@@ -725,48 +709,10 @@ def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty, 
 
     return doit
 
-@pytest.fixture
-def pick_menu_item(cap_menu, need_keypress, has_qwerty, cap_screen, press_select, press_up, press_down):
-    WRAP_IF_OVER = 16       # see ../shared/menu.py
-
-    def doit(text):
-        print(f"PICK menu item: {text}")
-        need_keypress(KEY_HOME if has_qwerty else '0')
-        m = cap_menu()
-        if text not in m:
-            raise KeyError(text, "%r not in menu: %r" % (text, m))
-
-        # double check we're looking at this menu, not stale data
-        # added strip as cap_screen does not contain whitespaces
-        # that are present in coundown chooser
-        # find menu item that does not contain triple dot char
-        target = [mi for mi in m if "⋯" not in mi]
-        if target:
-            assert target[0][0:33].strip() in cap_screen(), 'not in menu mode'
-        else:
-            print("⋯ in all menu items - not sure about free - but continue")
-
-        m_pos = m.index(text)
-
-        if len(m) > WRAP_IF_OVER and m_pos > (len(m)//2):
-            # use wrap around, work up from bottom
-            for n in range(len(m) - m_pos):
-                press_up()
-                time.sleep(.01)      # required
-
-            press_select()
-            time.sleep(.01)      # required
-        else:
-            # go down
-            for n in range(m_pos):
-                press_down()
-                time.sleep(.01)      # required
-
-            press_select()
-            time.sleep(.01)      # required
-
-    return doit
-
+@pytest.fixture(scope="module")
+def pick_menu_item(dev, has_qwerty):
+    f = functools.partial(_pick_menu_item, dev, has_qwerty)
+    return f
 
 @pytest.fixture(scope='module')
 def virtdisk_path(request, is_simulator, needs_virtdisk):
@@ -1460,8 +1406,7 @@ def is_mark2(request):
 @pytest.fixture(scope='session')
 def dev_hw_label(dev):
     # gets a short string that labels product: mk4 / q1, etc
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    return v[4]
+    return _dev_hw_label(dev)
 
 @pytest.fixture(scope='session')
 def is_mark3(dev_hw_label):

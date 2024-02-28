@@ -9,130 +9,26 @@
 #   python run_sim_tests --q1 --login -k countdown --pdb
 #
 import pytest, time, pdb
-from charcodes import KEY_ENTER, KEY_DOWN, KEY_UP, KEY_HOME
-from ckcc_protocol.client import ColdcardDevice, CCProtocolPacker, CKCC_SIMULATOR_PATH
+from core_fixtures import _pick_menu_item, _cap_menu, _cap_story, _cap_screen
+from core_fixtures import _need_keypress, _enter_complex, _press_select
+from ckcc_protocol.client import ColdcardDevice, CKCC_SIMULATOR_PATH
 from run_sim_tests import ColdcardSimulator, clean_sim_data
 
-# Our own test fixtures are (mostly) session/module scoped
-# as multiple tests are intended to be run on single simulator instance
-# hence all this duplication below
-# ===
-def _sim_exec(device, cmd):
-    s = device.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
-    return s.decode('utf-8') if not isinstance(s, str) else s
 
-def _cap_story(device):
-    cmd = "RV.write('\0'.join(sim_display.story or []))"
-    rv = _sim_exec(device, cmd)
-    return rv.split('\0', 1) if rv else ('','')
-
-def _cap_menu(device):
-    rv = _sim_exec(device, 'from ux import the_ux; RV.write(repr('
-                           '[i.label for i in the_ux.top_of_stack().items]))')
-    if 'Traceback' in rv:
-        raise RuntimeError(rv)
-    return eval(rv)
-
-def _cap_screen(device):
-    return _sim_exec(device, 'RV.write(sim_display.full_contents)')
-
-def _need_keypress(device, k, timeout=None):
-    device.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
-
-def _press_select(device, is_Q, timeout=None):
-    _need_keypress(device, KEY_ENTER if is_Q else "y", timeout=timeout)
-
-def _pick_menu_item(device, text, is_Q):
-    _need_keypress(device, KEY_HOME if is_Q else "0")
-    m = _cap_menu(device)
-    if text not in m:
-        raise KeyError(text, "%r not in menu: %r" % (text, m))
-
-    target = [mi for mi in m if "⋯" not in mi]
-    if target:
-        assert target[0][0:33].strip() in _cap_screen(device), 'not in menu mode'
-    else:
-        print("⋯ in all menu items - not sure about free - but continue")
-
-    m_pos = m.index(text)
-
-    if len(m) > 16 and m_pos > (len(m)//2):
-        # use wrap around, work up from bottom
-        for n in range(len(m) - m_pos):
-            _need_keypress(device, KEY_UP)
-            time.sleep(.01)      # required
-
-        _press_select(device, is_Q)
-        time.sleep(.01)      # required
-    else:
-        # go down
-        for n in range(m_pos):
-            _need_keypress(device, KEY_DOWN)
-            time.sleep(.01)      # required
-
-        _press_select(device, is_Q)
-        time.sleep(.01)      # required
-
-def _mk4_enter_complex(device, target):
-    symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-
-    for pos, d in enumerate(target):
-        time.sleep(.01)  # required
-        if d.isalpha():
-            if pos != 0:  # A is already default first
-                _need_keypress(device, '1')
-
-            if d.islower():
-                time.sleep(.01)  # required
-                _need_keypress(device, '1')
-
-            cnt = ord(d.lower()) - ord('a')
-
-        elif d.isdigit():
-            _need_keypress(device, '2')
-            if d == '0':
-                time.sleep(.01)  # required
-                _need_keypress(device, '8')
-                cnt = 0
-            else:
-                cnt = ord(d) - ord('1')
-        else:
-            assert d in symbols
-            if pos == 0:
-                _need_keypress(device, '3')
-
-            cnt = symbols.find(d)
-
-        for i in range(cnt):
-            time.sleep(.01)  # required
-            _need_keypress(device, '5')
-
-        if pos != len(target) - 1:
-            time.sleep(.01)  # required
-            _need_keypress(device, '9')
-# ===
-
-def _set_nickname(device, nickname, is_Q):
+def _set_nickname(device, is_Q, nickname):
     # needs to be already in Login Settings
-    _pick_menu_item(device, "Set Nickname", is_Q)
+    _pick_menu_item(device, is_Q, "Set Nickname")
     time.sleep(.1)
     _, story = _cap_story(device)
     assert "give this Coldcard nickname and it will be shown before login"
     _press_select(device, is_Q)
     # enter nick
-    if is_Q:
-        for ch in nickname:
-            _need_keypress(device, ch)
-            time.sleep(.05)
-    else:
-        _mk4_enter_complex(device, nickname)
-
-    _press_select(device, is_Q)
+    _enter_complex(device, is_Q, nickname, b39pass=False)
     time.sleep(1)
 
 def _set_scramble_pin_entry(device, is_Q):
     # needs to be already in Login Settings
-    _pick_menu_item(device, "Scramble Keys", is_Q)
+    _pick_menu_item(device, is_Q, "Scramble Keys")
     time.sleep(.1)
     _, story = _cap_story(device)
     assert "randomize the order of the key" in story
@@ -140,15 +36,15 @@ def _set_scramble_pin_entry(device, is_Q):
     _press_select(device, is_Q)
     time.sleep(.1)
     # Choose scrambled
-    _pick_menu_item(device, "Scramble Keys", is_Q)
+    _pick_menu_item(device, is_Q, "Scramble Keys")
 
-def _set_login_countdown(device, val, is_Q):
+def _set_login_countdown(device, is_Q, val):
     # needs to be in Login Settings already
-    _pick_menu_item(device, "Login Countdown", is_Q)
-    _pick_menu_item(device, val, is_Q)
+    _pick_menu_item(device, is_Q, "Login Countdown")
+    _pick_menu_item(device, is_Q, val)
 
-def _set_kill_key(device, val, is_Q):
-    _pick_menu_item(device, "Kill Key", is_Q)
+def _set_kill_key(device, is_Q, val):
+    _pick_menu_item(device, is_Q, "Kill Key")
     time.sleep(.1)
     _, story = _cap_story(device)
     if is_Q:
@@ -160,7 +56,7 @@ def _set_kill_key(device, val, is_Q):
 
     assert "your seed phrase will be immediately wiped" in story
     _press_select(device, is_Q)
-    _pick_menu_item(device, val, is_Q)
+    _pick_menu_item(device, is_Q, val)
 
 def _remap_pin(pin, key_map):
     # remap pin
@@ -172,7 +68,7 @@ def _remap_pin(pin, key_map):
             remap_pin += ch
     return remap_pin
 
-def _login(device, pin, is_Q, scrambled=False, mk4_kbtn=None, num_failed=None):
+def _login(device, is_Q, pin, scrambled=False, mk4_kbtn=None, num_failed=None):
     orig_pin = pin
     scr = _cap_screen(device)
     if num_failed:
@@ -231,10 +127,10 @@ def test_set_nickname(nick, request):
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
 
-    _pick_menu_item(device, "Settings", is_Q)
-    _pick_menu_item(device, "Login Settings", is_Q)
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
     time.sleep(.1)
-    _set_nickname(device, nick, is_Q)
+    _set_nickname(device, is_Q, nick)
     time.sleep(1)
     sim.stop()  # power off
     # new simulator instance - but should get us directly to the last used settings
@@ -260,8 +156,8 @@ def test_randomize_pin_keys(request):
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
 
-    _pick_menu_item(device, "Settings", is_Q)
-    _pick_menu_item(device, "Login Settings", is_Q)
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
     _set_scramble_pin_entry(device, is_Q)
 
     time.sleep(1)
@@ -269,7 +165,7 @@ def test_randomize_pin_keys(request):
     sim = ColdcardSimulator(args=["--q1" if is_Q else "", "--pin", "22-22", "--early-usb"])
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
-    _login(device, "22-22", is_Q, scrambled=True)
+    _login(device, is_Q, "22-22", scrambled=True)
     time.sleep(3)
     m = _cap_menu(device)
     assert "Ready To Sign" in m
@@ -283,9 +179,9 @@ def test_login_countdown(lcdwn, request):
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
 
-    _pick_menu_item(device, "Settings", is_Q)
-    _pick_menu_item(device, "Login Settings", is_Q)
-    _set_login_countdown(device, lcdwn, is_Q)
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _set_login_countdown(device, is_Q, lcdwn)
 
     time.sleep(1)
     sim.stop()  # power off
@@ -293,14 +189,14 @@ def test_login_countdown(lcdwn, request):
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
     secs = int(lcdwn.strip().split()[0])
-    _login(device, "22-22", is_Q)
+    _login(device, is_Q, "22-22")
     time.sleep(.15)
     scr = " ".join(_cap_screen(device).split("\n"))
     assert "Login countdown in effect" in scr
     assert "Must wait:" in scr
     assert f"{secs}s" in scr
     time.sleep(secs + 1)
-    _login(device, "22-22", is_Q)
+    _login(device, is_Q, "22-22")
     time.sleep(3)
     m = _cap_menu(device)
     assert "Ready To Sign" in m
@@ -316,9 +212,9 @@ def test_kill_key(kbtn, when, request):
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
 
-    _pick_menu_item(device, "Settings", is_Q)
-    _pick_menu_item(device, "Login Settings", is_Q)
-    _set_kill_key(device, kbtn, is_Q)
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _set_kill_key(device, is_Q, kbtn)
 
     time.sleep(1)
     sim.stop()  # power off
@@ -400,16 +296,16 @@ def test_terms_ok(request):
     _need_keypress(device, "6")
     time.sleep(.2)
     # 1st PIN entry
-    _login(device, "22-22", is_Q)
+    _login(device, is_Q, "22-22")
     time.sleep(.5)
     # confirm PIN
-    _login(device, "22-22", is_Q)
+    _login(device, is_Q, "22-22")
     time.sleep(1)
     sim.stop()  # power off
     sim = ColdcardSimulator(args=["-l", "--q1" if is_Q else "", "--early-usb", "--pin", "22-22"])
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
-    _login(device, "22-22", is_Q)
+    _login(device, is_Q, "22-22")
     time.sleep(3)
     m = _cap_menu(device)
     assert "New Seed Words" in m
@@ -426,10 +322,9 @@ def test_wrong_pin_input(request, brick):
     time.sleep(.1)
     num_attmeptss = 13
     for ii, i in enumerate(range(31, 43), start=1):
-        # pdb.set_trace()
         pin = f"{i}-{i}"
         scr_num_failed = (ii - 1) if ii > 1 else None
-        _login(device, pin, is_Q, num_failed=scr_num_failed)
+        _login(device, is_Q, pin, num_failed=scr_num_failed)
         time.sleep(.5)
         title, story = _cap_story(device)
         if ii > 4:
@@ -449,7 +344,7 @@ def test_wrong_pin_input(request, brick):
 
     if brick:
         # one more wrong pin
-        _login(device, "91-11", is_Q, num_failed=12)
+        _login(device, is_Q, "91-11", num_failed=12)
         time.sleep(.5)
         title, story = _cap_story(device)
         assert "WARNING" == title
@@ -462,7 +357,7 @@ def test_wrong_pin_input(request, brick):
         assert "forever inaccessible" in story
         assert "Restore your seed words onto a new Coldcard" in story
     else:
-        _login(device, "22-22", is_Q, num_failed=12)
+        _login(device, is_Q, "22-22", num_failed=12)
         time.sleep(.5)
         title, story = _cap_story(device)
         assert "WARNING" == title
@@ -487,20 +382,20 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
     sim = ColdcardSimulator(args=["--q1"] if is_Q else [])
     sim.start(start_wait=6)
     device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
-    _pick_menu_item(device, "Settings", is_Q)
-    _pick_menu_item(device, "Login Settings", is_Q)
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
 
     if nick:
-        _set_nickname(device, nick, is_Q)
+        _set_nickname(device, is_Q, nick)
         time.sleep(.5)
     if randomize:
         _set_scramble_pin_entry(device, is_Q)
         time.sleep(.5)
     if kill_btn:
-        _set_kill_key(device, kill_btn, is_Q)
+        _set_kill_key(device, is_Q, kill_btn)
         time.sleep(.5)
     if login_ctdwn:
-        _set_login_countdown(device, login_ctdwn, is_Q)
+        _set_login_countdown(device, is_Q, login_ctdwn)
         time.sleep(.5)
 
     # at this point all is set - reboot and test
@@ -534,7 +429,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
         sim.stop()
         return  # done here
 
-    was_killed = _login(device, "22-22", is_Q, scrambled=randomize,
+    was_killed = _login(device, is_Q, "22-22", scrambled=randomize,
                         mk4_kbtn=kill_btn if kill_when else None)
     if was_killed:
         sim.stop()
@@ -556,7 +451,7 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
             return  # done here
 
         # second login after countdown is done
-        was_killed = _login(device, "22-22", is_Q, scrambled=randomize,
+        was_killed = _login(device, is_Q, "22-22", scrambled=randomize,
                             mk4_kbtn=None if kill_when else kill_btn)
         if was_killed:
             sim.stop()

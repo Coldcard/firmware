@@ -216,7 +216,9 @@ def main():
     parser.add_argument("--veryslow", action="store_true", default=False,
                         help="run 'login_settings_tests.py'")
     parser.add_argument("--login", action="store_true", default=False,
-                        help="run tests marked as 'veryslow'")
+                        help="run 'login_settings_tests'")
+    parser.add_argument("--clone", action="store_true", default=False,
+                        help="run 'clone_tests'")
     parser.add_argument("--collect", type=str, metavar="MARK",
                         help="Collect marked test and print them to stdout")
     parser.add_argument("-k", "--pytest-k", type=str, metavar="EXPRESSION", default=None,
@@ -232,7 +234,10 @@ def main():
         print(collect_marked_tests(args.collect))
         return
 
-    if args.module is None and (args.onetime is False and args.veryslow is False and args.login is False):
+    if args.module is None and (args.onetime is False
+                                and args.veryslow is False
+                                and args.login is False
+                                and args.clone is False):
         args.module = ["all"]
 
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
@@ -311,6 +316,12 @@ def main():
                                               failed_first=args.ff, pytest_k=args.pytest_k,
                                               is_Q=True if args.q1 else False)
         result.append((f"login_settings_tests", ec, failed_tests))
+
+    if args.clone:
+        print("start clone tests")
+        ec, failed_tests = run_coldcard_tests(test_module="clone_tests.py", pdb=args.pdb,
+                                              failed_first=args.ff, pytest_k=args.pytest_k)
+        result.append((f"clone_tests", ec, failed_tests))
 
     print("All done")
 
