@@ -221,14 +221,13 @@ Press OK to continue, X to stop for now.
             if pin is None:
                 # pressed X on empty screen ... RFU
                 continue
-            
-            dis.fullscreen("Wait...")
-            pa.setup(pin)
 
             if pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
                 await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
-                dis.fullscreen("Wait...")
+            
+            dis.fullscreen("Loading...")
+            pa.setup(pin)
 
             # do the actual login attempt now
             try:
