@@ -94,7 +94,7 @@ def get_608_rev():
         return 'A'
     if config[7] == 0x3:
         return 'B'
-    if config[7] == 0x4:
+    if config[7] == 0x5:
         return 'C'
     return '?'
 
