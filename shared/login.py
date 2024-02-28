@@ -189,7 +189,7 @@ Restore your seed words onto a new Coldcard.''' % num_fails
             ch = await ux_show_story(msg, title='I Am Brick!', escape='6')
             if ch == '6': break
 
-    async def confirm_attempt(self, attempts_left, num_fails, value):
+    async def confirm_attempt(self, attempts_left, value):
 
         ch = await ux_show_story('''You have %d attempts left before this Coldcard BRICKS \
 ITSELF FOREVER.
@@ -224,7 +224,7 @@ Press OK to continue, X to stop for now.
 
             if pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
-                await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
+                await self.confirm_attempt(pa.attempts_left, pin)
             
             dis.fullscreen("Loading...")
             pa.setup(pin)

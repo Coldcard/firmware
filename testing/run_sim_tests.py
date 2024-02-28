@@ -17,6 +17,7 @@ python run_sim_tests.py                                        # same as with '-
 python run_sim_tests.py -m all --onetime --veryslow            # run all tests (cca 252 minutes)
 python run_sim_tests.py -m test_multisig.py -k cosigning       # run only tests that match expression from test_multisig.py
 python run_sim_tests.py -m test_export.py --pdb                # run only export tests and attach debugger
+python run_sim_tests.py -m test_attended.py --q1 -w 6 --login  # run attended test + all login tests
 
 
 Onetime/veryslow tests are completely separated form the rest of the test suite.
@@ -96,13 +97,11 @@ def is_ok(ec: ExitCode) -> bool:
     return False
 
 
-def _run_tests_with_simulator(test_module: str, simulator_args: List[str], pytest_marks: str,
-                              pytest_k: str, pdb: bool, failed_first: bool, psbt2=False) -> ExitCode:
-    sim = ColdcardSimulator(args=simulator_args)
-    sim.start()
-    time.sleep(1)
+def _run_pytest_tests(test_module: str, pytest_marks: str, pytest_k: str, pdb: bool,
+               failed_first: bool, psbt2=False, is_Q=False) -> ExitCode:
     cmd_list = [
-        "--cache-clear", "-m", pytest_marks, "--sim", test_module if test_module is not None else ""
+        "--cache-clear", "-m", pytest_marks, "--sim",
+        test_module if test_module is not None else ""
     ]
     if pytest_k:
         cmd_list += ["-k", pytest_k]
@@ -112,28 +111,43 @@ def _run_tests_with_simulator(test_module: str, simulator_args: List[str], pytes
         cmd_list.append("--ff")
     if psbt2:
         cmd_list.append("--psbt2")
+    if is_Q:
+        cmd_list.insert(0, "--Q")  # only changes behavior in login_settings_test
 
-    exit_code = pytest.main(cmd_list)
-    sim.stop()
-    time.sleep(1)
-    clean_sim_data()
+    return pytest.main(cmd_list)
+
+def _run_coldcard_tests(test_module: str, simulator_args: List[str], pytest_marks: str,
+                        pytest_k: str, pdb: bool, failed_first: bool, psbt2=False,
+                        is_Q=False) -> ExitCode:
+    if simulator_args:
+        sim = ColdcardSimulator(args=simulator_args)
+        sim.start()
+        time.sleep(1)
+
+    exit_code = _run_pytest_tests(test_module, pytest_marks, pytest_k, pdb,
+                                  failed_first, psbt2, is_Q)
+
+    if simulator_args:
+        sim.stop()
+        time.sleep(1)
+        clean_sim_data()
     return exit_code
 
 
-def run_tests_with_simulator(test_module=None, simulator_args=None, pytest_k=None, pdb=False,
-                             failed_first=False, psbt2=False,
-                             pytest_marks="not onetime and not veryslow and not manual"):
+def run_coldcard_tests(test_module=None, simulator_args=None, pytest_k=None, pdb=False,
+                        failed_first=False, psbt2=False, is_Q=False,
+                        pytest_marks="not onetime and not veryslow and not manual"):
     failed = []
-    exit_code = _run_tests_with_simulator(test_module, simulator_args, pytest_marks, pytest_k,
-                                          pdb, failed_first, psbt2=psbt2)
+    exit_code = _run_coldcard_tests(test_module, simulator_args, pytest_marks, pytest_k,
+                                    pdb, failed_first, psbt2, is_Q)
     if not is_ok(exit_code):
         # no success, no nothing - give failed another try, each alone with its own simulator
         last_failed = get_last_failed()
         print("Running failed from last run", last_failed)
         exit_codes = []
         for failed_test in last_failed:
-            exit_code_2 = _run_tests_with_simulator(failed_test, simulator_args, pytest_marks,
-                                                    pytest_k, pdb, failed_first, psbt2=psbt2)
+            exit_code_2 = _run_coldcard_tests(failed_test, simulator_args, pytest_marks,
+                                              pytest_k, pdb, failed_first, psbt2, is_Q)
             exit_codes.append(exit_code_2)
             if not is_ok(exit_code_2):
                 failed.append(failed_test)
@@ -200,6 +214,8 @@ def main():
     parser.add_argument("--onetime", action="store_true", default=False,
                         help="run tests marked as 'onetime'")
     parser.add_argument("--veryslow", action="store_true", default=False,
+                        help="run 'login_settings_tests.py'")
+    parser.add_argument("--login", action="store_true", default=False,
                         help="run tests marked as 'veryslow'")
     parser.add_argument("--collect", type=str, metavar="MARK",
                         help="Collect marked test and print them to stdout")
@@ -216,7 +232,7 @@ def main():
         print(collect_marked_tests(args.collect))
         return
 
-    if args.module is None and (args.onetime is False and args.veryslow is False):
+    if args.module is None and (args.onetime is False and args.veryslow is False and args.login is False):
         args.module = ["all"]
 
     DEFAULT_SIMULATOR_ARGS = ["--eff", "--set", "nfc=1"]
@@ -262,9 +278,9 @@ def main():
         if args.q1 and '--q1' not in test_args:
             test_args.append('--q1')
 
-        ec, failed_tests = run_tests_with_simulator(test_module, simulator_args=test_args,
-                                                    pytest_k=args.pytest_k, pdb=args.pdb,
-                                                    failed_first=args.ff, psbt2=args.psbt2)
+        ec, failed_tests = run_coldcard_tests(test_module, simulator_args=test_args,
+                                              pytest_k=args.pytest_k, pdb=args.pdb,
+                                              failed_first=args.ff, psbt2=args.psbt2)
         result.append((test_module, ec, failed_tests))
         print("Done", test_module)
         print(80 * "=")
@@ -272,10 +288,10 @@ def main():
     # run veryslow is specified
     if args.veryslow:
         print("started veryslow tests")
-        ec, failed_tests = run_tests_with_simulator(test_module=None, pytest_marks="veryslow",
-                                                    pytest_k=args.pytest_k, pdb=args.pdb,
-                                                    simulator_args=DEFAULT_SIMULATOR_ARGS,
-                                                    failed_first=args.ff, psbt2=args.psbt2)
+        ec, failed_tests = run_coldcard_tests(test_module=None, pytest_marks="veryslow",
+                                              pytest_k=args.pytest_k, pdb=args.pdb,
+                                              simulator_args=DEFAULT_SIMULATOR_ARGS,
+                                              failed_first=args.ff, psbt2=args.psbt2)
         result.append(("veryslow", ec, failed_tests))
 
     # run onetime is specified (each test against its own simulator)
@@ -283,11 +299,18 @@ def main():
         print("started onetime tests")
         onetime_tests = collect_marked_tests("onetime")
         for onetime_test in onetime_tests:
-            ec, failed_tests = run_tests_with_simulator(test_module=onetime_test, pdb=args.pdb,
-                                            failed_first=args.ff, pytest_marks="onetime",
-                                            simulator_args=DEFAULT_SIMULATOR_ARGS,
-                                            psbt2=args.psbt2)
+            ec, failed_tests = run_coldcard_tests(test_module=onetime_test, pdb=args.pdb,
+                                                  failed_first=args.ff, pytest_marks="onetime",
+                                                  simulator_args=DEFAULT_SIMULATOR_ARGS,
+                                                  psbt2=args.psbt2)
             result.append((f"onetime: {onetime_test}", ec, failed_tests))
+
+    if args.login:
+        print("start login settings tests")
+        ec, failed_tests = run_coldcard_tests(test_module="login_settings_tests.py", pdb=args.pdb,
+                                              failed_first=args.ff, pytest_k=args.pytest_k,
+                                              is_Q=True if args.q1 else False)
+        result.append((f"login_settings_tests", ec, failed_tests))
 
     print("All done")
 

@@ -1,10 +1,15 @@
 # (c) Copyright 2024 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # to run it on both Mk4 and Q:
-#   python login_settings_tests.py; sleep 10; python --Q login_settings_tests.py
+#   pytest login_settings_tests.py; sleep 10; pytest --Q login_settings_tests.py
+#
+# or use test runner:
+#   python run_sim_tests --login
+#
+#   python run_sim_tests --q1 --login -k countdown --pdb
 #
 import pytest, time, pdb
-from charcodes import KEY_ENTER, KEY_DOWN, KEY_UP, KEY_HOME, KEY_DELETE
+from charcodes import KEY_ENTER, KEY_DOWN, KEY_UP, KEY_HOME
 from ckcc_protocol.client import ColdcardDevice, CCProtocolPacker, CKCC_SIMULATOR_PATH
 from run_sim_tests import ColdcardSimulator, clean_sim_data
 
@@ -149,7 +154,7 @@ def _set_kill_key(device, val, is_Q):
     if is_Q:
         assert "press this key at any point during login" in story
     else:
-        assert "press this key while the anti-phishing words are shown during login" in story
+        assert "press this key while the anti- phishing words are shown during login" in story
         assert ("Best if this does not match the first number"
                 " of the second half of your PIN.") in story
 
@@ -167,9 +172,11 @@ def _remap_pin(pin, key_map):
             remap_pin += ch
     return remap_pin
 
-def _login(device, pin, is_Q, scrambled=False, mk4_kbtn=None):
+def _login(device, pin, is_Q, scrambled=False, mk4_kbtn=None, num_failed=None):
     orig_pin = pin
     scr = _cap_screen(device)
+    if num_failed:
+        assert f"{num_failed} failures, {13-num_failed} tries left" in scr
     if is_Q:
         top = scr.split("\n")[0].split()
         is_scrambled = len(top) == 10
@@ -215,6 +222,7 @@ def _login(device, pin, is_Q, scrambled=False, mk4_kbtn=None):
         _need_keypress(device, ch)
     _press_select(device, is_Q)
 
+
 @pytest.mark.parametrize("nick", [100*"$", "$", 10*"20"+ "  "+"8080"+ " " + "XX"+ "    "+ "YY"])
 def test_set_nickname(nick, request):
     is_Q = request.config.getoption('--Q')
@@ -243,6 +251,7 @@ def test_set_nickname(nick, request):
         nick = nick.replace(" " * 4, " " * 2)  # max two spaces in sequence (Mk4)
     assert nick == target
     sim.stop()
+
 
 def test_randomize_pin_keys(request):
     is_Q = request.config.getoption('--Q')
@@ -404,6 +413,64 @@ def test_terms_ok(request):
     time.sleep(3)
     m = _cap_menu(device)
     assert "New Seed Words" in m
+    sim.stop()
+
+
+@pytest.mark.parametrize("brick", [True, False])
+def test_wrong_pin_input(request, brick):
+    is_Q = request.config.getoption('--Q')
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--early-usb", "--q1" if is_Q else "", "--pin", "22-22"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    time.sleep(.1)
+    num_attmeptss = 13
+    for ii, i in enumerate(range(31, 43), start=1):
+        # pdb.set_trace()
+        pin = f"{i}-{i}"
+        scr_num_failed = (ii - 1) if ii > 1 else None
+        _login(device, pin, is_Q, num_failed=scr_num_failed)
+        time.sleep(.5)
+        title, story = _cap_story(device)
+        if ii > 4:
+            assert title == "WARNING"
+            assert pin in story  # showing to user to double-check his input
+            assert "BRICKS ITSELF FOREVER" in story
+            assert f"{num_attmeptss - ii + 1} attempts left" in story
+            _press_select(device, is_Q)
+            time.sleep(.1)
+            title, story = _cap_story(device)
+
+        assert "WRONG PIN" in title
+        assert f"{num_attmeptss - ii} attempts left" in story
+        assert f"{ii} failure" in story
+        _press_select(device, is_Q)
+        time.sleep(.1)
+
+    if brick:
+        # one more wrong pin
+        _login(device, "91-11", is_Q, num_failed=12)
+        time.sleep(.5)
+        title, story = _cap_story(device)
+        assert "WARNING" == title
+        _press_select(device, is_Q)
+        time.sleep(.1)
+        title, story = _cap_story(device)
+        assert title == "I Am Brick!"
+        assert "After 13 failed PIN attempts this Coldcard is locked forever" in story
+        assert "no way to reset or recover the secure element" in story
+        assert "forever inaccessible" in story
+        assert "Restore your seed words onto a new Coldcard" in story
+    else:
+        _login(device, "22-22", is_Q, num_failed=12)
+        time.sleep(.5)
+        title, story = _cap_story(device)
+        assert "WARNING" == title
+        _press_select(device, is_Q)
+        time.sleep(.1)
+        m = _cap_menu(device)
+        assert "Ready To Sign" in m
+
     sim.stop()
 
 
