@@ -39,6 +39,7 @@ Press ENTER to enable and get started otherwise CANCEL.''',
         settings.set('notes', [])
 
         # need to correct top menu now, so this choice is there.
+        goto_top_menu()
 
     return NotesMenu(NotesMenu.construct())
 
