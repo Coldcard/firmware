@@ -145,7 +145,9 @@ class SEState:
                 return EPIN_BAD_REQUEST
             
             # what PIN will we change
-            pk = kk
+            pk = None
+            if change_flags & CHANGE_WALLET_PIN:
+                pk = kk
 
             if pk != None:
                 # Must match old pin correctly, if it is defined.
