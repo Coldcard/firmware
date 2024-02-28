@@ -1801,10 +1801,11 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
-                load_export_and_verify_signature, is_q1, press_cancel, press_select):
+                load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
+                cap_screen_qr):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None):
+             fpattern=None, qr_key=None):
         
         s_label = None
         if label == "Address summary":
@@ -1814,6 +1815,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
             "sd": sd_key or "1",
             "vdisk": vdisk_key or "2",
             "nfc": nfc_key or (KEY_NFC if is_q1 else "3"),
+            "qr": qr_key or (KEY_QR if is_q1 else "4"),
         }
         time.sleep(0.2)
         title, story = cap_story()
@@ -1834,6 +1836,23 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 time.sleep(0.3)
                 press_cancel()  # exit NFC animation
                 return nfc_export
+        elif way == "qr":
+            need_keypress(key_map["qr"])
+            time.sleep(0.3)
+            try:
+                file_type, data = readback_bbqr()
+                if file_type == "J":
+                    return json.loads(data)
+                elif file_type == "U":
+                    return data
+                else:
+                    raise NotImplementedError
+            except:
+                res = cap_screen_qr().decode('ascii')
+                try:
+                    return json.loads(res)
+                except:
+                    return res
         else:
             # virtual disk
             if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:

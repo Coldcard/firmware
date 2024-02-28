@@ -21,7 +21,7 @@ from charcodes import KEY_NFC
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
                      enter_number, nfc_read_text, load_export, bitcoind, press_select):
@@ -160,7 +160,7 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
 
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_select, microsd_path,
                        nfc_read_json, virtdisk_path, testnet, use_mainnet, load_export):
@@ -199,7 +199,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_sel
         
 @pytest.mark.parametrize('mode', [ "Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
 @pytest.mark.parametrize('acct_num', [ None, '0', '9897'])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
@@ -266,7 +266,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '1236'])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 @pytest.mark.parametrize('app', [
     ("Generic JSON", "Generic Export"),
@@ -351,7 +351,7 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
             else:
                 assert False
 
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
@@ -403,7 +403,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         assert node.hwif() == sk.hwif()
 
 
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
                            addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
@@ -546,7 +546,7 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         press_cancel()
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
