@@ -601,13 +601,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
         }
 
+#ifndef FOR_Q1_ONLY
         case 27:
             // Get versions/parts installed in SE1/SE2
             // - simple fact: we will be recompiling this code if/when 
             //   part revision happen!
+            // - OBSOLETE: unused on Q and only versions >= 5.2.3 on Mk4
             REQUIRE_OUT(80);
             strcpy((char *)buf_io, "ATECC608B\nDS28C36B");
             break;
+#endif
 
 #if 0
         // p256r1 test code
