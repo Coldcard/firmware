@@ -215,9 +215,9 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
             draw.text((x_shift, y_offset + 0), '➡︎', 'white', font)
             draw.rectangle( ( 2,4, 2+2, CELL_H-7), 'white')
             draw.rectangle( ( 1,4, 1+1, CELL_H-7), 'black')
-            img.save('tab-key.png')
+            #img.save('tab-key.png')
             draw.rounded_rectangle( ( 0,0, (CELL_W*2)-1, CELL_H-1), 4, outline='white')
-            img.save('tab-key-framed.png')
+            #img.save('tab-key-framed.png')
         elif ch in KEYCAP_SYMBOLS:
             if ch == KEY_NFC:
                 x_shift += 1
