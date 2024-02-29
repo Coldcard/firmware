@@ -14,10 +14,6 @@ MICROPY_VFS_FAT = 1
 CFLAGS_EXTRA += -DMP_CONFIGFILE=\"boards/$(BOARD)/ckcc-port.h\"
 CFLAGS_EXTRA += -DCOLDCARD_DEBUG=$(DEBUG_BUILD)
 
-# obsolete
-# need the CDC inf file to be built before this file
-#initfs.c: $(GEN_CDCINF_HEADER)
-
 # NgU and uQR libraries
 NGU_NEEDS_CIFRA = 1
 USER_C_MODULES = boards/$(BOARD)/c-modules

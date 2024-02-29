@@ -156,7 +156,7 @@ MP_DEFINE_CONST_FUN_OBJ_3(sec_gate_obj, sec_gate);
 
 
 // Since we cache state of green light, need a way for us
-// to be reset, altho has no bearing on real operation of 508a.
+// to be reset, altho has no bearing on real operation of SE1.
 STATIC mp_obj_t presume_green(void)
 {
     presumably_green_light = true;
