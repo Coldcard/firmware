@@ -12,9 +12,9 @@ from charcodes import KEY_QR
 # All tests in this file are exclusively meant for Q
 #
 @pytest.fixture(autouse=True)
-def THIS_FILE_requires_q1(is_q1):
-    if not is_q1:
-        raise pytest.skip('Q1 only')
+def THIS_FILE_requires_q1(is_q1, is_headless):
+    if not is_q1 or is_headless:
+        raise pytest.skip('Q1 only (not headless)')
 
 @pytest.fixture
 def readback_bbqr_ll(cap_screen_qr, sim_exec, cap_screen):

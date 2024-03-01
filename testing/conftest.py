@@ -434,7 +434,7 @@ def cap_story(dev):
 
 
 @pytest.fixture(scope='module')
-def cap_image(request, sim_exec, is_q1):
+def cap_image(request, sim_exec, is_q1, is_headless):
 
     def flip(raw):
         reorg = bytearray(128*64)
@@ -451,8 +451,8 @@ def cap_image(request, sim_exec, is_q1):
         from PIL import Image
 
         if is_q1:
-            if request.config.getoption('--headless'):
-                raise pytest.skip("headless mode")
+            if is_headless:
+                raise pytest.skip("headless mode: QR tests disabled")
             # trigger simulator to capture a snapshot into a named file, read it.
             fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
             try:
@@ -1419,6 +1419,11 @@ def is_mark4(dev_hw_label):
 @pytest.fixture(scope='session')
 def is_q1(dev_hw_label):
     return (dev_hw_label == 'q1')
+
+
+@pytest.fixture(scope="session")
+def is_headless(request):
+    return request.config.getoption('--headless')
 
 @pytest.fixture(scope='session')
 def is_mark4plus(is_mark4, is_q1):

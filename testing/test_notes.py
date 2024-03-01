@@ -92,7 +92,7 @@ def delete_note(press_select, goto_notes, cap_menu, pick_menu_item,
 @pytest.fixture
 def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
                need_keypress, cap_screen_qr, readback_bbqr, nfc_read_text,
-               press_select, press_cancel):
+               press_select, press_cancel, is_headless):
     def doit(n_title, n_body):
         # we don't try to preserve leading/trailing spaces on note bodies
         n_body= n_body.strip()
@@ -116,21 +116,25 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         for mi in ['View Note', f'"{n_title}"']:
             time.sleep(0.1)
             pick_menu_item(mi)
+            time.sleep(1)
             title, story = cap_story()
             assert title == n_title
             assert story == n_body
-            need_keypress(KEY_QR)
-            qr_rb = cap_screen_qr().decode('utf-8')
-            assert qr_rb == n_body
+            if not is_headless:
+                need_keypress(KEY_QR)
+                qr_rb = cap_screen_qr().decode('utf-8')
+                assert qr_rb == n_body
+
             press_cancel()
 
         # hidden QR button on menu feature
         m = cap_menu()
         assert m[1] == 'View Note'
-        need_keypress(KEY_QR)
-        qr_rb = cap_screen_qr().decode('utf-8')
-        assert qr_rb == n_body
-        press_cancel()
+        if not is_headless:
+            need_keypress(KEY_QR)
+            qr_rb = cap_screen_qr().decode('utf-8')
+            assert qr_rb == n_body
+            press_cancel()
 
         # hidden NFC button on menu feature
         m = cap_menu()
@@ -170,8 +174,9 @@ def build_note(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
 
 @pytest.fixture
 def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
-                   need_keypress, cap_screen_qr, readback_bbqr, nfc_read_text, cap_text_box,
-                   settings_get, settings_set, scan_a_qr, press_select, press_cancel):
+                   need_keypress, cap_screen_qr, nfc_read_text,
+                   cap_text_box, settings_get, settings_set, scan_a_qr,
+                   press_select, press_cancel, is_headless):
 
     def doit(n_title, n_user=None, n_pw=None, n_site=None, n_body=None, key_pw=None):
         goto_notes('New Password')
@@ -255,10 +260,11 @@ def build_password(goto_notes, pick_menu_item, enter_text, cap_menu, cap_story,
         assert title == n_title
         assert story == n_pw
 
-        need_keypress(KEY_QR)
-        qr_rb = cap_screen_qr().decode('utf-8')
-        assert qr_rb == n_pw
-        need_keypress(KEY_CANCEL)
+        if not is_headless:
+            need_keypress(KEY_QR)
+            qr_rb = cap_screen_qr().decode('utf-8')
+            assert qr_rb == n_pw
+            need_keypress(KEY_CANCEL)
 
     return doit
 

@@ -174,7 +174,7 @@ def pass_word_quiz(need_keypress, cap_story, press_select):
 def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test,
                      cap_menu, word_menu_entry, seed_words, xfp, get_secrets, is_q1,
                      reset_seed_words, cap_screen_qr, qr_quality_check, expect_ftux,
-                     request):
+                     is_headless):
     
     unit_test('devtest/clear_seed.py')
 
@@ -199,7 +199,7 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
     v = get_secrets()
 
     assert f'Press {KEY_QR if is_q1 else "(3)"} to show QR code' in body
-    if not request.config.getoption('--headless'):
+    if not is_headless:
         need_keypress(KEY_QR if is_q1 else '3')
         qr = cap_screen_qr().decode('ascii')
         assert qr == v['xpub']
@@ -261,7 +261,7 @@ def test_all_bip39_words(pos, goto_home, pick_menu_item, cap_story, unit_test,
 def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, need_keypress,
                           unit_test, cap_menu, word_menu_entry, get_secrets, reset_seed_words,
                           cap_screen, cap_screen_qr, qr_quality_check, expect_ftux, press_select,
-                          press_cancel, is_q1, seed_story_to_words, request):
+                          press_cancel, is_q1, seed_story_to_words, is_headless):
     import random
     from hashlib import sha256
     
@@ -310,7 +310,7 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
     else:
         words = [i[4:4+4].upper() for i in re.findall(r'[ 0-9][0-9]: \w*', body)]
 
-    if not request.config.getoption('--headless'):
+    if not is_headless:
         need_keypress(KEY_QR if is_q1 else '1')
 
         qr = cap_screen_qr()
@@ -623,7 +623,7 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
 def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_keypress,
                    sim_exec, cap_menu, get_secrets, cap_screen_qr, set_bip39_pw,
                    set_encoded_secret, qr_quality_check, reset_seed_words,
-                   press_select, is_q1, seed_story_to_words, request):
+                   press_select, is_q1, seed_story_to_words, is_headless):
 
     reset_seed_words()
     if mode == 'words':
@@ -698,7 +698,7 @@ def test_show_seed(mode, b39_word, goto_home, pick_menu_item, cap_story, need_ke
     if not is_q1:
         assert '(1) to view as QR Code' in body
 
-    if not request.config.getoption('--headless'):
+    if not is_headless:
         need_keypress(KEY_QR if is_q1 else '1')
         qr = cap_screen_qr().decode('ascii')
         assert qr == qr_expect

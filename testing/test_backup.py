@@ -13,7 +13,7 @@ from mnemonic import Mnemonic
 def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                   cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
                   get_setting, seed_story_to_words, press_cancel, is_q1,
-                  press_select, request):
+                  press_select, is_headless):
     def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
         # st -> seed type
         # ct -> cleartext backup
@@ -73,7 +73,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
             print("Passphrase: %s" % ' '.join(words))
 
-            if 'QR Code' in body and not request.config.getoption('--headless'):
+            if 'QR Code' in body and not is_headless:
                 need_keypress(KEY_QR if is_q1 else '1')
                 got_qr = cap_screen_qr().decode('ascii').lower().split()
                 assert [w[0:4] for w in words] == got_qr

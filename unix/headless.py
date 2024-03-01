@@ -24,6 +24,7 @@ def start():
     # placeholders for all UI objects
     oled_w = os.open('/dev/null', os.O_RDWR)
     led_w = os.open('/dev/null', os.O_RDWR)
+    data_r, data_w = os.pipe()
 
     # manage unix socket cleanup for client
     def cleanup():
@@ -39,11 +40,10 @@ def start():
 
     os.chdir('./work')
     cc_cmd = ['../coldcard-mpy',
-                        '-X', 'heapsize=9m',
-                        '-i', '../sim_boot.py',
-                        str(oled_w), '-1', str(led_w)] \
-                        + sys.argv[1:] + ["--headless"]
-
+              '-X', 'heapsize=9m',
+              '-i', '../sim_boot.py',
+              str(oled_w), '-1', str(led_w), str(data_r)
+    ] + sys.argv[1:]
 
     args = dict(env=env, pass_fds=[oled_w, led_w], shell=False)
 
