@@ -267,11 +267,11 @@ class LCDSimulator(SimulatedScreen):
     def new_contents(self, readable):
         # got bytes for new update. expect a header and packed pixels
         while 1:
-            prefix = readable.read(11)
+            prefix = readable.read(13)
             if not prefix:
                 break
 
-            mode, X,Y, w, h, count = struct.unpack('<s5H', prefix)
+            mode, X,Y, w, h, count, argX = struct.unpack('<s6H', prefix)
             mode = mode.decode('ascii')
             here = readable.read(count)
 
@@ -330,6 +330,8 @@ class LCDSimulator(SimulatedScreen):
                 expand = h
                 h = w
                 scan_w = (w+7)//8
+                trim_lines = argX
+
                 #print(f'QR: {scan_w=} {expand=} {w=}')
                 assert 21 <= w <= 177 and (w%2) == 1, w
 
@@ -341,9 +343,16 @@ class LCDSimulator(SimulatedScreen):
                 qr = ImageOps.expand(tmp, expand, 0)
                 assert qr.size == (W, W)
 
+                delme = {}
+                if trim_lines:
+                    # remove every 47th line, up to trim_lines qty
+                    delme = list(range(47, W, 47))[0:trim_lines]
+
                 pos = 0
                 pixels = list(qr.getdata(0))
-                for y in range(Y, Y+W):
+                for y in range(Y, Y+W-trim_lines):
+                    if y in delme:
+                        pos += W
                     for x in range(X, X+W):
                         self.mv[x][y] = 0x0000 if pixels[pos] else 0xffff
                         pos += 1

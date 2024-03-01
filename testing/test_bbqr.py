@@ -110,19 +110,21 @@ def render_bbqr(need_keypress, cap_screen_qr, sim_exec, readback_bbqr_ll):
         cmd += f'import ux_q1,main; main.TT = asyncio.create_task(ux_q1.show_bbqr_codes'\
                         f'("{file_type}", {data}, {msg!r}));'
         print(f"CMD: {cmd}")
-        resp = sim_exec(cmd)
-        print(f"RESP: {resp}")
-        assert 'error' not in resp.lower()
+        try:
+            resp = sim_exec(cmd)
+            print(f"RESP: {resp}")
+            assert 'error' not in resp.lower()
 
-        num_parts, encoding, rb_ft, parts = readback_bbqr_ll()
-        assert rb_ft == file_type
+            num_parts, encoding, rb_ft, parts = readback_bbqr_ll()
+            assert rb_ft == file_type
 
-        print(sim_exec(f'import main; main.TT.cancel()'))
-        need_keypress('0')      # for menu to redraw
+        finally:
+            print(sim_exec(f'import main; main.TT.cancel()'))
+            need_keypress('0')      # for menu to redraw
 
         # we only can decode simple BBQr here
-        assert encoding == 'H'
-        body = a2b_hex(''.join(p[8:] for p in [parts[i] for i in range(num_parts)]))
+        assert encoding in 'HZ2'
+        _, body = join_qrs(parts.values())
 
         if file_type == 'U':
             body = body.decode('utf-8')
@@ -240,5 +242,34 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
     assert len(decoded['vout']) == num_out
 
     press_cancel()      # back to menu
+
+@pytest.mark.parametrize('size', [7854, ] + list(range(1, (12*2680), 197)))
+@pytest.mark.parametrize('encoding', '2H')
+def test_split_unit(size, encoding, sim_exec, sim_eval):
+    # unit test for: bbqr.test_split_unit()
+
+    cmd = f'import bbqr; RV.write(repr(bbqr.num_qr_needed( {encoding!r}, {size} )))'
+    print(f"CMD: {cmd}")
+    resp = sim_exec(cmd)
+    print(f"RESP: {resp}")
+    assert 'error' not in resp.lower()
+
+    target_ver, num_parts, part_size = eval(resp)
+
+
+    assert num_parts * part_size >= size
+
+    if size == 7854 and encoding == '2':
+        assert target_ver == 25
+        assert num_parts == 7
+
+    if encoding == 'H':
+        assert 1 <= part_size <= 2144
+    elif encoding == '2':
+        assert 1 <= part_size <= 2680 
+
+    assert 15 <= target_ver <= 40
+    if num_parts > 12:
+        assert target_ver == 40
 
 # EOF

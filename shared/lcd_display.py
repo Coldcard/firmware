@@ -120,10 +120,8 @@ class Display:
         self.next_buf = self.make_buf(32)
 
         # state of progress bar (bottom edge)
-        self.last_prog_x = -1
-        self.last_prog_w = -1
-        self.next_prog_x = 0
-        self.next_prog_w = 0
+        self.last_prog = (-1, -1)
+        self.next_prog = (0, -1)
 
         # state of scroll bar (right side)
         self.last_scroll = 0.0
@@ -170,15 +168,13 @@ class Display:
             # full brightness when on VBUS and when showing QR's
             self.dis.backlight.intensity(255)
 
-    def draw_status(self, full=False, redraw_line=False, **kws):
+    def draw_status(self, full=False, **kws):
         animating = self.gpu.take_spi()
 
         if full:
             self.dis.fill_rect(0, 0, WIDTH, TOP_MARGIN-1, 0x0)
-            kws = get_sys_status()
-
-        if full or redraw_line:
             self.dis.fill_rect(0, TOP_MARGIN-1, WIDTH, 1, grey_level(0.25))
+            kws = get_sys_status()
 
         b_x = 292
         if 'bat' in kws:
@@ -316,19 +312,26 @@ class Display:
             self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
         self.last_buf = self.make_buf(32)
         self.next_buf = self.make_buf(32)
-        self.next_prog_w = 0
+        self.next_prog = (0, -1)
         self.next_scroll = None
 
     def clear(self):
         # clear text
         self.next_buf = self.make_buf(32)
         # clear progress bar & scroll bar
-        self.next_prog_w = 0
+        self.next_prog = (0, -1)
         self.next_scroll = None
 
     def show(self, just_lines=None, cursor=None, max_bright=False):
         # Push internal screen representation to device, effeciently
         self.gpu.take_spi()
+
+        if hasattr(self, '_full_redraw'):
+            # redraw every pixel, assume nothing about display contents
+            del self._full_redraw
+            self.dis.fill_rect(0, TOP_MARGIN, WIDTH, HEIGHT-TOP_MARGIN, 0x0)
+            self.draw_status(full=True)
+            self.last_buf = self.make_buf(0xfff0)
 
         lines = just_lines or range(CHARS_H)
         for y in lines:
@@ -371,23 +374,8 @@ class Display:
             self.last_buf[y][:] = self.next_buf[y]
 
         # maybe update progress bar
-        if (self.next_prog_x, self.next_prog_w) != (self.last_prog_x, self.last_prog_w):
-            x = self.next_prog_x
-            w = self.next_prog_w
-            h = PROGRESS_BAR_H          # NOTE: misc/gpu/lcd.c will need update if H changes
-            if x == 0 and self.last_prog_x == x and self.last_prog_w <= w:
-                # no need to undraw, we can just draw on top
-                pass
-            else:
-                # erase under
-                self.dis.fill_rect(0, HEIGHT-h, WIDTH, h, COL_BLACK)
-
-            # draw new bar
-            if w:
-                self.dis.fill_rect(x, HEIGHT-h, w, h, COL_PROGRESS)
-
-            self.last_prog_x = x
-            self.last_prog_w = w
+        if self.next_prog != self.last_prog:
+            self._draw_progress_bar()
 
         # maybe update right hand scroll bar
         if self.next_scroll != self.last_scroll:
@@ -414,13 +402,12 @@ class Display:
 
     # When drawing another screen for a bit, then coming back, use these
     def save_state(self):
-        # TODO: should be a dataclass w/ all our state details
+        # should really be a dataclass w/ all our state details
         return ([array.array('I', ln) for ln in self.last_buf],
-                    self.last_prog_x, self.last_prog_w,
-                    self.last_scroll)
+                    self.last_prog, self.last_scroll)
 
     def restore_state(self, old_state):
-        rows, self.next_prog_x, self.next_prog_w, self.next_scroll = old_state
+        rows, self.next_prog, self.next_scroll = old_state
         for y in range(CHARS_H):
             self.next_buf[y][:] = rows[y]
         self.show()
@@ -449,6 +436,29 @@ class Display:
         # next show(), we will draw a scroll bar on right edge
         assert count >= 1
         self.next_scroll = (offset, count, per_page)
+
+    def _draw_progress_bar(self):
+        # show the "part 1 of 10" style bar used for BBQr
+        h = PROGRESS_BAR_H          # NOTE: misc/gpu/lcd.c will need update if H changes
+        w, x = self.next_prog
+        if x == -1:
+            # normal old-style progress bar
+            lw, lx = self.last_prog
+            if lw <= w and lx == -1:
+                # no need to erase, we can just draw on top
+                pass
+            else:
+                # erase under / clear it
+                self.dis.fill_rect(0, HEIGHT-h, WIDTH, h, COL_BLACK)
+
+            if w:
+                self.dis.fill_rect(0, HEIGHT-h, w, h, COL_PROGRESS)
+        else:
+            # draw new bar
+            self.dis.fill_rect(0, HEIGHT-h, WIDTH, h, COL_DARK_TEXT)
+            self.dis.fill_rect(x, HEIGHT-h, w, h, COL_PROGRESS)
+
+        self.last_prog = self.next_prog
 
     def _draw_scroll_bar(self, values):
         # Immediately draw bar along right edge.
@@ -500,20 +510,22 @@ class Display:
         # Horizontal progress bar
         # takes 0.0 .. 1.0 as fraction of doneness
         percent = max(0, min(1.0, percent))
-        self.next_prog_x = 0
-        self.next_prog_w = int(WIDTH * percent)
+        self.next_prog = (int(WIDTH * percent), -1)
 
     def progress_part_bar(self, n_of_m):
         # for BBQr: a part of a bar (segment N of M parts)
         n, m = n_of_m
         assert n <= m
         if m <= 1:
-            # turn off bar segment if one or none of them
-            self.next_prog_x = self.next_prog_w = 0
+            # turn off bar segment display if one or none of them
+            self.next_prog = (0, -1)
         else:
             w = WIDTH // m
-            self.next_prog_x = (n * w)
-            self.next_prog_w = w
+            if n == m-1:
+                # be sure last bar touchs right edge
+                self.next_prog = (w, WIDTH-w)
+            else:
+                self.next_prog = (w, (n * w))
 
     def progress_sofar(self, done, total):
         # Update progress bar, but only if it's been a while since last update
@@ -531,16 +543,14 @@ class Display:
         # activate the GPU to render/animate this.
         # - show() in this funct is relied-upon by callers
         if enable:
-            self.last_prog_x = self.next_prog_x = -1
+            self.last_prog = (-1, -1)
             self.show()
             self.gpu.busy_bar(True)
         else:
             # - self.show will stop animation
             # - and redraw w/ no bar visible
-            self.last_prog_x = -1
-            self.last_prog_w = -1
-            self.next_prog_x = 0
-            self.next_prog_w = 0
+            self.last_prog = (WIDTH, -1)
+            self.next_prog = (0, -1)
             self.show()
 
     def set_brightness(self, val):
@@ -623,7 +633,6 @@ class Display:
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
-        # - we need one more (white) pixel on all sides
         from utils import word_wrap
 
         # maybe show something other than QR contents under it
@@ -650,26 +659,27 @@ class Display:
             num_lines = 0
             del parts
 
-        self.clear()
-        if partial_bar is not None:
-            self.progress_part_bar(partial_bar)
-
         # send packed pixel data to C level to decode and expand onto LCD
         # - 8-bit aligned rows of data
         scan_w, w, data = qr_data.packed() if hasattr(qr_data, 'packed') else qr_data
 
-        self.gpu.take_spi()
-
         # always draw as large as possible (vertical is limit)
+        # - even if that's a bit more than 240 and might even cover status bar
+        # - see bbqr.CHARS_PER_VERSION for specific versions to support
         expand = max(1, (ACTIVE_H - (num_lines * CELL_H))  // (w+2))
+        fullscreen = False
+        trim_lines = 0
 
-
-        if w == 109:
-            #     v23 => w=109 ACTIVE_H=220
-            # - to make v23 fit, have to loose one line of QR margin at bottom
-            # - and kill text, and corrupt status line (y=-1)
+        if w == 77:
+            # v15 =>  77px x 3: 77*3 = 231px
+            expand = 3
+            num_lines = 0
+            fullscreen = True
+        elif w == 117:
+            # v25 =>=117px x 2 => 234px
             expand = 2
             num_lines = 0
+            fullscreen = True
         elif expand == 1 and num_lines:
             # Maybe loose the text lines?
             expand2 = max(1, ACTIVE_H // (w+2))
@@ -679,27 +689,53 @@ class Display:
 
         # vert center in available space
         qw = (w+2) * expand
-        y = max(-1, (ACTIVE_H - (num_lines * CELL_H) - qw) // 2)
+        if fullscreen:
+            usable = HEIGHT - PROGRESS_BAR_H
+            if qw > usable:
+                # we will skip displaying some interior lines; slightly squishing it
+                y = 0
+                trim_lines = qw - usable
+            else:
+                y = max(0, (usable - (num_lines * CELL_H) - qw) // 2)
 
-        # horz center
+            if not hasattr(self, '_full_redraw'):
+                # blank status bar area, but only first time thru
+                self.dis.fill_rect(0, 0, WIDTH, TOP_MARGIN, 0x0)
+        else:
+            y = TOP_MARGIN + max(0, (ACTIVE_H - (num_lines * CELL_H) - qw) // 2)
+
+        # horz center - easy
         x = (WIDTH - qw) // 2
 
-        self.dis.show_qr_data(x, TOP_MARGIN + y, w, expand, scan_w, data)
-        self.mark_correct(x, TOP_MARGIN + y, qw, qw)
+        self.clear()
 
-        if num_lines:
-            # centered text under that
-            y = CHARS_H - num_lines
-            for line in parts:
-                self.text(None, y, line)
-                y += 1
+        self.dis.show_qr_data(x, y, w, expand, scan_w, data, trim_lines)
 
-        if idx_hint:
-            # show path index number: just 1 or 2 digits
-            self.text(-1, 0, idx_hint)
+        if partial_bar is not None:
+            self.progress_part_bar(partial_bar)
 
-        # pass a max brightness flag here, which will be cleared after next show
-        self.show(max_bright=True)
+        if not fullscreen:
+            self.mark_correct(x, y, qw, qw)
+
+            if num_lines:
+                # centered text under that
+                y = CHARS_H - num_lines
+                for line in parts:
+                    self.text(None, y, line)
+                    y += 1
+
+            if idx_hint:
+                # show path index number: just 1 or 2 digits
+                self.text(-1, 0, idx_hint)
+
+            # pass a max brightness flag here, which will be cleared after next show
+            self.show(max_bright=True)
+        else:
+            # not much left to draw: just the progress bar
+            self._draw_progress_bar()
+            self.set_lcd_brightness(tmp_override=255)
+            self._max_bright = True
+            self._full_redraw = True
 
     def draw_bbqr_progress(self, hdr, got_parts, corrupt=False):
         # we've seen at least one BBQr QR, so update display w/ progress bar
@@ -766,7 +802,7 @@ class Display:
         # screen... we need to redraw completely on return
         self.gpu.take_spi()     # blocks until xfer complete
         self.last_buf = self.make_buf(0)
-        self.last_prog_x = -1
+        self.last_prog = (-1, -1)
 
         
 # here for mpy reasons

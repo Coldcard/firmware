@@ -163,8 +163,9 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
     // - expands it by "expand"
     // - adds one-unit border to all sides
     // - scan_w: scanline width (packed to mod 8)
-    // - called: lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data)
+    // - called: lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data, trim_lines)
     // - tearing should happen, but because we draw line-wise, seems invisible.
+    // - if set, trim_lines randomly skips a few lines in their interior to make it work
     // - test with:
     //     from h import *; from ux_q1 import *; arun(show_bbqr_codes('B', bytes(ngu.random.bytes(4096)), 'foo'))
     //
@@ -185,6 +186,12 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
         mp_raise_ValueError(NULL);
     }
 
+    mp_int_t trim_lines = mp_obj_get_int(args[7]);
+    if(trim_lines && expand == 1) {
+        // need to have some space to work
+        mp_raise_ValueError(NULL);
+    }
+
     // operate line by line
     const uint32_t W = (w+2) * expand;
     uint16_t line[(w+2) * expand];
@@ -196,11 +203,11 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
     // top, bot white lines, around the QR body
     set_window(spi, x, y, W, expand);
     write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
-    set_window(spi, x, y+W-expand, W, expand);
+    set_window(spi, x, y+W-expand-trim_lines, W, expand);
     write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
 
     // body of QR
-    set_window(spi, x, y+expand, W, expand*w);
+    set_window(spi, x, y+expand, W, (expand*w)-trim_lines);
 
     const uint8_t *ptr = boxes.buf;
     for(int Y=0; Y < w; Y++, ptr += (scan_w/8)) {
@@ -216,12 +223,17 @@ STATIC mp_obj_t send_qr(size_t n_args, const mp_obj_t *args)
             p++;
         }
 
-        write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
+        if(trim_lines && Y && ((Y % 23) == 0)) {
+            trim_lines--;
+            write_data_repeated(spi, expand-1, sizeof(line), (const uint8_t *)line);
+        } else {
+            write_data_repeated(spi, expand, sizeof(line), (const uint8_t *)line);
+        }
     }
 
     return mp_const_none;
 }
-MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(send_qr_obj, 7, 7, send_qr);
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(send_qr_obj, 8, 8, send_qr);
 
 STATIC mp_obj_t fill_rect(size_t n_args, const mp_obj_t *args)
 {

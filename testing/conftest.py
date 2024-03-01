@@ -578,15 +578,11 @@ def cap_screen_qr(cap_image):
             img = ImageOps.expand(img, 16, 0)       # add border
             img = img.resize( (256, 256))
         else:
-            # Q1 - trim status line, convert to greyscale
+            # Q - convert to greyscale
+            # - and trim progress bar (does cause readability issues)
+            # - MAYBE: blow up the size, helps on fine 1:1 QR cases.
             w, h = orig_img.size        # 320x240
-            # - remove status bar (harmless)
-            # - and progress bar (does cause readability issues)
-            # - MAYBE: blow up the size, helps on fine QR.
-            # - but some are still unreadable!?!?
-            img = orig_img.crop( (0, 15, w, h-5) ).convert('L')
-            #w, h = img.size 
-            #img = img.resize( (w*9, h*9))
+            img = orig_img.crop( (0, 0, w, h-5) ).convert('L')
 
         img.save('debug/last-qr.png')
         #img.show()

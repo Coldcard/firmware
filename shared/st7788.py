@@ -89,10 +89,10 @@ class ST7788():
         #assert len(palette) == 2 * 16
         lcd.send_packed(self.spi, x, y, w, h, palette, pixels)
 
-    def show_qr_data(self, x, y, w, expand, scan_w, packed_data):
+    def show_qr_data(self, x, y, w, expand, scan_w, packed_data, trim_lines=0):
         # 8-bit packed QR data, and where to draw it, expanded by 'expand'
         assert len(packed_data) == (scan_w*w) // 8
-        lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data)
+        lcd.send_qr(self.spi, x, y, w, expand, scan_w, packed_data, trim_lines)
 
     def fill_rect(self, x,y, w,h, pixel=0x0000):
         # set a rectangle to a single colour

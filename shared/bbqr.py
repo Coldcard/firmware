@@ -28,6 +28,94 @@ def int2base36(n):
 
     return tostr(a) + tostr(b)
 
+def num_qr_needed_ll(char_capacity, ll, split_mod):
+    # Determine number of QR's would be needed to hold ll alnum characters,
+    # if each QR holds char_capacity of chars.
+    # - when 2 or more QR, consider the exact split point cannot be between encoded symbols
+    # - ok to return huge numbers for unlikely cases
+    # - returns (number of QR needed), (# of chars in each), (# of bytes in each)
+    from math import ceil
+
+    cap = char_capacity - 8         # 8==HEADER_LEN
+
+    if ll < cap:
+        # no alignment concerns
+        return 1, ll
+
+    # max per non-final qr
+    cap2 = cap - (cap % split_mod)
+    need = ceil(ll / cap2)
+
+    assert need >= 2
+
+    # going to be 2 or more, gotta be precise
+    # - final part doesn't need to be "encoding aligned"
+    actual = ((need - 1) * cap2) + cap
+    #print("act=%d ll=%d   need=%d  c=%d c2=%d" % (actual, ll, need, cap, cap2))
+
+    if ll > actual:
+        need += 1
+
+    # TODO: the final QR might have just a a few chars in it, if we redistribute
+    # the data into the request (need) parts, then each QR can have more forward
+    # error correction and be more robust. subject to split_mod
+
+    return need, cap2
+
+def num_qr_needed(encoding, data_len):
+    # returns (QR version, num_parts, part_size[bytes]) 
+    # - lots of Q-related policy here
+
+    # Just a few key values, picked because the height of the QR must
+    # fit vertically (240 px tall) ... see "bbqr table"
+    CHARS_PER_VERSION = [
+        # (QR version, alnum capacity)
+        (40, 4296),      # 177px tall, shown 1:1 pixels -- phones can scan fine
+        (15, 758),       # 77px x 3: 77*3 = 231px tall
+        (25, 1853),      # 117px, doubled: 234px tall
+        (40, 4296),      # give up and just make it work!
+    ]
+
+    if encoding == 'H':
+        char_len = data_len * 2
+        split_mod = 2
+    else:
+        # plan for Base32, always best option
+        # - five inputs bytes => 8 alnum chars
+        # - for final set of 1-5 we remove padding == , so between 2..7 chars
+        char_len = ((data_len//5) * 8) + { 0:0, 1:2, 2:4, 3:5, 4:7 }[data_len % 5]
+        split_mod = 8
+
+    # try a few select resolutions (sizes) in order such that we use either single QR
+    # or the least-dense option that gives reasonable number of QR's
+    for target_vers, capacity in CHARS_PER_VERSION:
+        num_parts, part_size = num_qr_needed_ll(capacity, char_len, split_mod)
+        if num_parts == 1:
+            # great, no animation needed!
+            break
+        if target_vers != 40 and num_parts <= 12:
+            # will be reasonable animation, so use this size
+            break
+
+    # convert # of chars per QR, into bytes per each (last one may be less)
+    if num_parts > 1:
+        assert part_size % split_mod == 0
+        if encoding == 'H':
+            pkt_size = part_size // 2
+        else:
+            pkt_size = part_size * 5 // 8
+    else:
+        pkt_size = data_len
+
+    #print('bbqr: %d bytes => %d chars (%s enc) => v%d in %d parts of %d char / %d bytes each'
+    #           % (data_len, char_len, encoding, target_vers, num_parts, part_size, pkt_size))
+
+    assert num_parts * pkt_size >= data_len
+
+    #assert part_size % split_mod == 0, (target_vers, part_size, split_mod, char_len, data_len)
+    return target_vers, num_parts, pkt_size
+
+
 
 class BBQrHeader:
     def __init__(self, taste):

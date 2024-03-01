@@ -1603,6 +1603,12 @@ async def file_picker(suffix=None, min_size=1, max_size=1000000, taster=None,
 async def debug_assert(*a):
     assert False, "failed assertion"
 
+async def debug_bbqr_test(*a):
+    # Q only: test BBQr w/ lots of data
+    from ux_q1 import show_bbqr_codes
+    from gpu_binary import BINARY
+    await show_bbqr_codes('B', BINARY*3, 'GPU binary')
+
 async def debug_except(*a):
     print(34 / 0)
 

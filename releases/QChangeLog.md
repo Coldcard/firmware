@@ -24,11 +24,11 @@
 
 # Releases
 
-## 0.0.3 - 2024-02-08
+## 0.0.3Q - 2024-02-08
 
 - first test-only release 
 
-## 0.0.4 - 2024-02-15
+## 0.0.4Q - 2024-02-15
 
 - BBQr animation display smoother
 - test cases fixed, bugs that were exposed, fixed.
@@ -36,7 +36,7 @@
 - "Ready to Sign" messaging improved, slot B support.
 - block firmware upgrade when battery very low
 
-## 0.0.5 - 2024-02-16
+## 0.0.5Q - 2024-02-16
 
 - fixes and changes from version 5.2.2 of Mk4 encorporated
 - bugfix: save bip-39 password to absent SD card
@@ -45,7 +45,7 @@
 - bugfix: cant detect SD card in Ready to Sign...
 - WIF private key detected when scaning QR (display only for now)
 
-## 0.0.6 - 2024-02-22
+## 0.0.6Q - 2024-02-22
 
 - bugfix: randomize keys for PIN entry
 - when picking files, we just skip to showing you the files options (or picking the
@@ -59,7 +59,7 @@
 - cleanups, bugfixes
 
 
-## 0.0.7 - 2024-02-26
+## 0.0.7Q - 2024-02-26
 
 - bugfix: BBQr display of some segwit transactions would sometimes fail with message
   about "non hex digit"
@@ -68,4 +68,16 @@
 - Animated BBQr are shown as chunkier QR's to make them easier for other devices to scan.
 - Supports QR export from Wallet Exports: will be either text file (U) or JSON (J)
   BBQr sequence, but only if it cannot fit into normal single QR.
+
+## 0.0.8Q - 2024-03-xx
+
+- BBQr display changes: 
+    - if less than 12 frames would result, uses simpliest QR that can fit on 
+      screen at 2x or 3x size. Result is easier to scan BBQr's.
+    - progress bar along bottom drawn differently
+    - in some cases, the status bar area (at top) will be used to show QR
+    - added: Advanced > Danger Zone > Debug Functions > BBQr Demo
+- Says "Loading..." not "Wait..." during login process.
+- Many more test cases.
+
 

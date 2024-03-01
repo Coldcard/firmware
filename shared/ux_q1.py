@@ -1076,68 +1076,58 @@ async def ux_visualize_textqr(txt, maxlen=200):
             "We can't do any more with it." % txt, title="Simple Text")
 
 async def show_bbqr_codes(type_code, data, msg, already_hex=False):
-    # Compress, encode and split data.  Then show it animated
+    # Compress, encode and split data, then show it animated...
     # - happily goes to version 40 if needed
     # - needs to pre-render the QR to get animation to be faster
     # - version of first QR is used for all ther others
-    # - on Q: ver 23 => 109x109 is largest that can be pixel-doubled, can do v40 tho at 1:1
+    # - screen resolution is considered when picking QR version number
     # - data may point to output side of PSRAM area
-    # - Should always doZlib compression (because it nearly always helps)
-    #    - BUT: need zlib compress (not present)
-    #    - SO: write C code that compresses from one area memory (or PSRAM) into PSRAM
-    #      and also does Base32 expansion at same time.
-    # - just doing HEX encoding because it is easier for now
-    # - TODO this code needs better home
-    from bbqr import TYPE_LABELS, int2base36
+    # - Should always do zlib compression (because it nearly always helps)
+    #    - BUT: need zlib compress (not present) .. delayed for now
+    from bbqr import TYPE_LABELS, int2base36, b32encode, num_qr_needed
     from glob import PSRAM, dis
     from ux import ux_wait_keyup, ux_wait_keydown
     import uqr
 
-    PAYLOAD_PER_V40 = 2144      # if HEX encoded, active payload (max) per v40 QR
-    PAYLOAD_PER_V23 = 790         # if HEX encoded, active payload (max) per v23 QR
-
     assert not PSRAM.is_at(data, 0)     # input data would be overwritten with our work
     assert type_code in TYPE_LABELS
 
-    data_len = len(data)
+    dis.fullscreen('Generating BBQr...', .1)
+
     if already_hex:
-        data_len //= 2
+        encoding = 'H'
+        data_len = len(data) // 2
+    else:
+        # default to Base32, because always best option
+        encoding = '2'
+        data_len = len(data)
 
-    # assume V40 and split, if that doesn't work, drop to 23 for BBQr multiples
-    for target_vers, capacity in [ (40, PAYLOAD_PER_V40), (23, PAYLOAD_PER_V23) ]:
-        num_parts = int(round((data_len / capacity) + 0.5, 0))
-        if num_parts == 1:
-            # use V40 only if whole thing fits, otherwise favour v23
-            break
-
-    part_size = data_len // num_parts
-    runt_size = data_len - (num_parts * part_size)
-    if runt_size:
-        # spread data evenly between min-required parts
-        num_parts += 1
-        part_size = (data_len+num_parts-1) // num_parts
-        assert part_size <= capacity
+    # try a few select resolutions (sizes) in order such that we use either single QR
+    # or the least-dense option that gives reasonable number of QR's
+    target_vers, num_parts, part_size = num_qr_needed(encoding, data_len)
 
     assert num_parts * part_size >= data_len
-
-    dis.fullscreen('Generating BBQr...', .1)
 
     pos = 0
     force_version = 40
     for pkt in range(num_parts):
         # BBQr header
-        hdr = 'B$H' + type_code + int2base36(num_parts) + int2base36(pkt)
+        hdr = 'B$' + encoding + type_code + int2base36(num_parts) + int2base36(pkt)
 
-        # encode the hex
+        # encode the bytes
+        assert pos < data_len
         if already_hex:
-            body = data[pos*2:(pos+part_size)*2].decode()
+            # not encoding, just chars->bytes
+            body = data[pos:pos+(part_size*2)].decode()
+            pos += part_size*2
         else:
-            body = b2a_hex(data[pos:pos+part_size]).upper().decode()
-        pos += part_size
+            # base32 encoding
+            body = b32encode(data[pos:pos+part_size])
+            pos += part_size
 
         # do the hard work
         qr_data = uqr.make(hdr+body, min_version=(10 if pkt == 0 else force_version),
-                                        max_version=force_version, encoding=uqr.Mode_ALPHANUMERIC)
+                                    max_version=force_version, encoding=uqr.Mode_ALPHANUMERIC)
 
         # save the rendered QR
         if pkt == 0:
@@ -1161,6 +1151,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
 
     # hide Generating... text
     dis.fullscreen(' ', 1)
+    dis.show()
 
     ch = None
     while not ch:
@@ -1179,8 +1170,7 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
             if ch: break
 
     # after QR drawing, we need to correct some pixels
-    dis.real_clear()
-    dis.draw_status(redraw_line=True)
+    dis.clear()
 
 
 # EOF

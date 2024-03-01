@@ -224,6 +224,7 @@ DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Lamp Test", f=lamp_test),
     MenuItem("Keyboard Test", f=keyboard_test),
+    MenuItem('BBQr Demo', f=debug_bbqr_test, predicate=lambda: version.has_qwerty),
     MenuItem('Debug: assert', f=debug_assert),
     MenuItem('Debug: except', f=debug_except),
     MenuItem('Check: BL FW', f=check_firewall_read),
