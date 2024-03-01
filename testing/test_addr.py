@@ -8,6 +8,7 @@
 import pytest, time
 from ckcc_protocol.protocol import CCProtocolPacker
 from ckcc_protocol.constants import *
+from charcodes import KEY_QR
 from constants import msg_sign_unmap_addr_fmt
 
 @pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'"])
@@ -29,7 +30,7 @@ def test_show_addr_usb(dev, press_select, addr_vs_path, path, addr_fmt, is_simul
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
 def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
                              cap_story, cap_screen_qr, qr_quality_check,
-                             press_cancel):
+                             press_cancel, is_q1):
     time.sleep(0.1)
 
     addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
@@ -53,7 +54,7 @@ def test_show_addr_displayed(dev, need_keypress, addr_vs_path, path, addr_fmt,
 
     print('addr_fmt = 0x%x' % addr_fmt)
 
-    need_keypress('4')
+    need_keypress(KEY_QR if is_q1 else '4')
     time.sleep(0.1)
     qr = cap_screen_qr().decode('ascii')
 

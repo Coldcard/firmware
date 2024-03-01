@@ -1,11 +1,12 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, os, re, hashlib
+import pytest, time, os, re, hashlib, functools
 from helpers import xfp2str, prandom
 from charcodes import KEY_DOWN, KEY_QR, KEY_NFC
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from pycoin.key.BIP32Node import BIP32Node
+from core_fixtures import _enter_complex
 
 
 def test_get_secrets(get_secrets, master_xpub):
@@ -581,69 +582,12 @@ def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story
     assert chk == ''
 
 @pytest.fixture
-def enter_complex(need_keypress, pick_menu_item, is_q1, press_select):
-    def doit(target, apply=False):
-        # full entry mode
-        # - just left to right here
-        # - not testing case swap, because might remove that
-
-        try:
-            pick_menu_item('Edit Phrase')
-        except:
-            assert is_q1
-
-        if is_q1:
-            for ch in target:
-                need_keypress(ch)
-                time.sleep(.1)
-            press_select()
-            return
-
-
-        symbols = ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-
-        for pos, d in enumerate(target):
-            time.sleep(.01)      # required
-            if d.isalpha():
-                if pos != 0:        # A is already default first
-                    need_keypress('1')
-
-                if d.islower():
-                    time.sleep(.01)      # required
-                    need_keypress('1')
-
-                cnt = ord(d.lower()) - ord('a')
-
-            elif d.isdigit():
-                need_keypress('2')
-                if d == '0':
-                    time.sleep(.01)      # required
-                    need_keypress('8')
-                    cnt = 0
-                else:
-                    cnt = ord(d) - ord('1')
-            else:
-                assert d in symbols
-                if pos == 0:
-                    need_keypress('3')
-
-                cnt = symbols.find(d)
-
-            for i in range(cnt):
-                time.sleep(.01)      # required
-                need_keypress('5')
-
-            if pos != len(target)-1:
-                time.sleep(.01)      # required
-                need_keypress('9')
-
-        time.sleep(0.01)      # required
-        press_select()
-
-        if apply:
-            pick_menu_item("APPLY")
-
-    return doit
+def enter_complex(dev, is_q1):
+    # full entry mode
+    # - just left to right here
+    # - not testing case swap, because might remove that
+    f = functools.partial(_enter_complex, dev, is_q1)
+    return f
 
 @pytest.mark.parametrize('target', [
     'abc123', 'AbcZz1203', 'Test 123', 'Aa'*50,
