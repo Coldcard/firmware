@@ -42,7 +42,7 @@ def start():
                         '-X', 'heapsize=9m',
                         '-i', '../sim_boot.py',
                         str(oled_w), '-1', str(led_w)] \
-                        + sys.argv[1:]
+                        + sys.argv[1:] + ["--headless"]
 
 
     args = dict(env=env, pass_fds=[oled_w, led_w], shell=False)

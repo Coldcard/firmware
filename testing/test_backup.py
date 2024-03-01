@@ -13,7 +13,7 @@ from mnemonic import Mnemonic
 def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                   cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
                   get_setting, seed_story_to_words, press_cancel, is_q1,
-                  press_select):
+                  press_select, request):
     def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
         # st -> seed type
         # ct -> cleartext backup
@@ -73,7 +73,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
             print("Passphrase: %s" % ' '.join(words))
 
-            if 'QR Code' in body:
+            if 'QR Code' in body and not request.config.getoption('--headless'):
                 need_keypress(KEY_QR if is_q1 else '1')
                 got_qr = cap_screen_qr().decode('ascii').lower().split()
                 assert [w[0:4] for w in words] == got_qr
@@ -108,11 +108,11 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, st,
                      open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry,
                      pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting,
-                     cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove,
+                     reuse_pw, save_pw, settings_set, settings_remove, press_select,
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel, press_select):
+                     press_cancel):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()

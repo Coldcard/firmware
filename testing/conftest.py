@@ -43,6 +43,8 @@ def pytest_addoption(parser):
                      default=False, help="fake_txn produces PSBTv2")
     parser.addoption("--Q", action="store_true", default=False,
                      help="Uses Q simulator when running 'login_settings_tests' module")
+    parser.addoption("--headless", action="store_true", default=False,
+                     help="Simulator is running in headless mode")
     # to make bitcoind produce psbt v2 one currently needs https://github.com/achow101/bitcoin/tree/psbt2
     # or wait until https://github.com/bitcoin/bitcoin/pull/21283 merged and released
 
@@ -432,7 +434,7 @@ def cap_story(dev):
 
 
 @pytest.fixture(scope='module')
-def cap_image(sim_exec, is_q1):
+def cap_image(request, sim_exec, is_q1):
 
     def flip(raw):
         reorg = bytearray(128*64)
@@ -449,11 +451,13 @@ def cap_image(sim_exec, is_q1):
         from PIL import Image
 
         if is_q1:
+            if request.config.getoption('--headless'):
+                raise pytest.skip("headless mode")
             # trigger simulator to capture a snapshot into a named file, read it.
             fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
             try:
                 sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
-                while 1:
+                for _ in range(20):
                     time.sleep(0.010)
                     try:
                         rv = Image.open(fn)

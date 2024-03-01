@@ -23,8 +23,9 @@ genuine_led = True
 from sim_secel import SEState
 SE_STATE = SEState()
 
-# Provide a way to dump few hundred/4k bytes of data from QR or NFC simulated read
-data_pipe = uasyncio.StreamReader(open(int(sys.argv[4]), 'rb'))
+if not "--headless" in sys.argv:
+    # Provide a way to dump few hundred/4k bytes of data from QR or NFC simulated read
+    data_pipe = uasyncio.StreamReader(open(int(sys.argv[4]), 'rb'))
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!
