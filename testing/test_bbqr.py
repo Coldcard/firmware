@@ -243,37 +243,47 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
 
     press_cancel()      # back to menu
 
-@pytest.mark.parametrize('size', [7854, 4592, 375,465, 922,1150 ] + list(range(1, (12*2680), 197)))
+@pytest.mark.parametrize('test_size', [7854, 4592,
+    758, 375, 465,       # v15 capacity
+    1853, 922, 1150,      # v25
+    2520, 1256, 1570,     # v30 (unlikely)
+    4296, 2144, 2680,     # v40
+])
 @pytest.mark.parametrize('encoding', '2H')
-def test_split_unit(size, encoding, sim_exec, sim_eval):
+def test_split_unit(test_size, encoding, sim_exec, sim_eval):
     # unit test for: bbqr.test_split_unit()
 
-    cmd = f'import bbqr; RV.write(repr(bbqr.num_qr_needed( {encoding!r}, {size} )))'
-    print(f"CMD: {cmd}")
-    resp = sim_exec(cmd)
-    print(f"RESP: {resp}")
-    assert 'error' not in resp.lower()
+    for multi in [1, 2, 5]:
+        for fuzz in range(-10, 11):
+            size = (test_size * multi) + fuzz
+            if size < 1: continue
 
-    target_ver, num_parts, part_size = eval(resp)
+            cmd = f'import bbqr; RV.write(repr(bbqr.num_qr_needed( {encoding!r}, {size} )))'
+            print(f"CMD: {cmd}")
+            resp = sim_exec(cmd)
+            print(f"RESP: {resp}")
+            assert 'error' not in resp.lower()
 
-    assert num_parts * part_size >= size
-    assert (num_parts-1) * part_size < size
+            target_ver, num_parts, part_size = eval(resp)
 
-    if size == 7854 and encoding == '2':
-        assert target_ver == 25
-        assert num_parts == 7
+            assert num_parts * part_size >= size
+            assert (num_parts-1) * part_size < size
 
-    if size == 4592 and encoding == '2':
-        assert target_ver == 15
-        assert num_parts == 10
+            if size == 7854 and encoding == '2':
+                assert target_ver == 25
+                assert num_parts == 7
 
-    if encoding == 'H':
-        assert 1 <= part_size <= 2144
-    elif encoding == '2':
-        assert 1 <= part_size <= 2680 
+            if size == 4592 and encoding == '2':
+                assert target_ver == 15
+                assert num_parts == 10
 
-    assert 15 <= target_ver <= 40
-    if num_parts > 12:
-        assert target_ver == 40
+            if encoding == 'H':
+                assert 1 <= part_size <= 2144
+            elif encoding == '2':
+                assert 1 <= part_size <= 2680 
+
+            assert 15 <= target_ver <= 40
+            if num_parts > 12:
+                assert target_ver == 40
 
 # EOF
