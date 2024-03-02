@@ -1115,15 +1115,16 @@ async def show_bbqr_codes(type_code, data, msg, already_hex=False):
         hdr = 'B$' + encoding + type_code + int2base36(num_parts) + int2base36(pkt)
 
         # encode the bytes
-        assert pos < data_len
+        assert pos < data_len, (pkt, pos, data_len)
         if already_hex:
             # not encoding, just chars->bytes
-            body = data[pos:pos+(part_size*2)].decode()
-            pos += part_size*2
+            hp = pos*2
+            body = data[hp:hp+(part_size*2)].decode()
         else:
             # base32 encoding
             body = b32encode(data[pos:pos+part_size])
-            pos += part_size
+
+        pos += part_size
 
         # do the hard work
         qr_data = uqr.make(hdr+body, min_version=(10 if pkt == 0 else force_version),

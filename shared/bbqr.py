@@ -28,37 +28,37 @@ def int2base36(n):
 
     return tostr(a) + tostr(b)
 
-def num_qr_needed_ll(char_capacity, ll, split_mod):
-    # Determine number of QR's would be needed to hold ll alnum characters,
+def num_qr_needed_ll(char_capacity, char_len, split_mod):
+    # Determine number of QR's would be needed to hold char_len alnum characters,
     # if each QR holds char_capacity of chars.
     # - when 2 or more QR, consider the exact split point cannot be between encoded symbols
-    # - ok to return huge numbers for unlikely cases
-    # - returns (number of QR needed), (# of chars in each), (# of bytes in each)
+    # - returns (number of QR needed), (# of chars in each)
     from math import ceil
 
     cap = char_capacity - 8         # 8==HEADER_LEN
 
-    if ll < cap:
+    if char_len < cap:
         # no alignment concerns
-        return 1, ll
+        return 1, char_len
 
     # max per non-final qr
     cap2 = cap - (cap % split_mod)
-    need = ceil(ll / cap2)
+    need = ceil(char_len / cap2)
 
     assert need >= 2
 
     # going to be 2 or more, gotta be precise
     # - final part doesn't need to be "encoding aligned"
     actual = ((need - 1) * cap2) + cap
-    #print("act=%d ll=%d   need=%d  c=%d c2=%d" % (actual, ll, need, cap, cap2))
+    #print("act=%d char_len=%d   need=%d  c=%d c2=%d" % (actual, char_len, need, cap, cap2))
 
-    if ll > actual:
+    if char_len > actual:
         need += 1
 
     # TODO: the final QR might have just a a few chars in it, if we redistribute
     # the data into the request (need) parts, then each QR can have more forward
     # error correction and be more robust. subject to split_mod
+    # - worse: the last QR might be empty, due to rounding/alignment
 
     return need, cap2
 
