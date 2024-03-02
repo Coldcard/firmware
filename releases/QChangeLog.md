@@ -69,7 +69,7 @@
 - Supports QR export from Wallet Exports: will be either text file (U) or JSON (J)
   BBQr sequence, but only if it cannot fit into normal single QR.
 
-## 0.0.8Q - 2024-03-xx
+## 0.0.8Q - 2024-03-02
 
 - BBQr display changes: 
     - if less than 12 frames would result, uses simpliest QR that can fit on 
