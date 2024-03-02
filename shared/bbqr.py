@@ -19,7 +19,7 @@ TYPE_LABELS = dict(P='PSBT File', T='Transaction', J='JSON', C='CBOR', U='Unicod
 
 def int2base36(n):
     # convert an integer to two digits of base 36 string. 00 thu ZZ as bytes
-    # - converse is just int(s, base=36)
+    # - converse is just: int(s, base=36)
 
     tostr = lambda x: chr(48+x) if x < 10 else chr(65+x-10)
 
@@ -28,16 +28,17 @@ def int2base36(n):
 
     return tostr(a) + tostr(b)
 
-def num_qr_needed_ll(char_capacity, char_len, split_mod):
+def calc_num_qr(char_capacity, char_len, split_mod):
     # Determine number of QR's would be needed to hold char_len alnum characters,
-    # if each QR holds char_capacity of chars.
+    # if each QR holds char_capacity of chars max.
     # - when 2 or more QR, consider the exact split point cannot be between encoded symbols
+    # - accounts for BBRq header
     # - returns (number of QR needed), (# of chars in each)
     from math import ceil
 
     cap = char_capacity - 8         # 8==HEADER_LEN
 
-    if char_len < cap:
+    if char_len <= cap:
         # no alignment concerns
         return 1, char_len
 
@@ -47,7 +48,7 @@ def num_qr_needed_ll(char_capacity, char_len, split_mod):
 
     assert need >= 2
 
-    # going to be 2 or more, gotta be precise
+    # Going to be 2 or more, gotta be precise
     # - final part doesn't need to be "encoding aligned"
     actual = ((need - 1) * cap2) + cap
     #print("act=%d char_len=%d   need=%d  c=%d c2=%d" % (actual, char_len, need, cap, cap2))
@@ -55,12 +56,17 @@ def num_qr_needed_ll(char_capacity, char_len, split_mod):
     if char_len > actual:
         need += 1
 
-    # TODO: the final QR might have just a a few chars in it, if we redistribute
-    # the data into the request (need) parts, then each QR can have more forward
-    # error correction and be more robust. subject to split_mod
-    # - worse: the last QR might be empty, due to rounding/alignment
+    # Challenge: the final QR might have just a a few chars in it, if we redistribute
+    # the data into the other parts, then each QR can have more forward error correction
+    # and be more robust. Must respect split_mod alignment tho.
+    level = ceil(char_len / need)
+    if level % split_mod:
+        level += split_mod - (level % split_mod)
 
-    return need, cap2
+    assert level % split_mod == 0, level
+    assert level <= cap2, (level, cap2)
+
+    return need, level
 
 def num_qr_needed(encoding, data_len):
     # returns (QR version, num_parts, part_size[bytes]) 
@@ -70,10 +76,11 @@ def num_qr_needed(encoding, data_len):
     # fit vertically (240 px tall) ... see "bbqr table"
     CHARS_PER_VERSION = [
         # (QR version, alnum capacity)
-        (40, 4296),      # 177px tall, shown 1:1 pixels -- phones can scan fine
+        # first entry will be used for tiny BBQr that don't need animation
         (15, 758),       # 77px x 3: 77*3 = 231px tall
         (25, 1853),      # 117px, doubled: 234px tall
-        (40, 4296),      # give up and just make it work!
+        (40, 4296),      # 177px tall, shown 1:1 pixels -- phones can scan fine
+        # last entry will be used for huge BBQr that have > 12 frames
     ]
 
     if encoding == 'H':
@@ -86,14 +93,17 @@ def num_qr_needed(encoding, data_len):
         char_len = ((data_len//5) * 8) + { 0:0, 1:2, 2:4, 3:5, 4:7 }[data_len % 5]
         split_mod = 8
 
-    # try a few select resolutions (sizes) in order such that we use either single QR
+    # Try a few select resolutions (sizes) in order such that we use either single QR
     # or the least-dense option that gives reasonable number of QR's
     for target_vers, capacity in CHARS_PER_VERSION:
-        num_parts, part_size = num_qr_needed_ll(capacity, char_len, split_mod)
+        num_parts, part_size = calc_num_qr(capacity, char_len, split_mod)
         if num_parts == 1:
             # great, no animation needed!
             break
-        if target_vers != 40 and num_parts <= 12:
+        if target_vers == 15 and num_parts == 2:
+            # it fits in two v15, but would be a single v25; so prefer that
+            continue
+        if target_vers < 40 and num_parts <= 12:
             # will be reasonable animation, so use this size
             break
 
@@ -189,8 +199,6 @@ class BBQrState:
         except Exception as exc:
             raise QRDecodeExplained("Bad header: %s" % problem_file_line(exc))
 
-        #print("Got %r have %r" % (hdr, self.parts))
-
         if not self.hdr or not self.hdr.is_compat(hdr):
             # New or incompatible header, they might have changed their
             # minds and are now trying to scan something else; recover
@@ -207,7 +215,7 @@ class BBQrState:
             except Exception as exc:
                 # can happen if QR got corrupted between scanner and us (overlap)
                 # or back BBQr implementation
-                print("corrupt QR: %s" % scan)
+                #print("corrupt QR: %s" % scan)
                 import sys; sys.print_exception(exc)
 
                 dis.draw_bbqr_progress(hdr, self.parts, corrupt=True)
@@ -341,8 +349,6 @@ class BBQrPsramStorage(BBQrStorage):
         # - due to base32 math, typically incoming data will not be aligned
         # - write what we can, keep the rest around in normal memory
         from glob import PSRAM
-
-        #print("write_pkt: @ %d for %d" % (offset, len(data)))
 
         # our offset into PSRAM
         offset += self.psr_offset       # will be aligned

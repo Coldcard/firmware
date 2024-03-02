@@ -138,7 +138,7 @@ def test_show_bbqr_sizes(size, cap_screen_qr, sim_exec, render_bbqr):
     # test lengths
     data, parts = render_bbqr(str_expr=f"'a'*{size}", msg=f'Size {size}', file_type='U')
 
-    if size < 2000:
+    if size < 330:
         assert len(parts) == 1 
     assert len(data) == size
     assert data == 'a' * size
@@ -243,7 +243,7 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
 
     press_cancel()      # back to menu
 
-@pytest.mark.parametrize('size', [7854, ] + list(range(1, (12*2680), 197)))
+@pytest.mark.parametrize('size', [7854, 4592, 375,465, 922,1150 ] + list(range(1, (12*2680), 197)))
 @pytest.mark.parametrize('encoding', '2H')
 def test_split_unit(size, encoding, sim_exec, sim_eval):
     # unit test for: bbqr.test_split_unit()
@@ -256,12 +256,16 @@ def test_split_unit(size, encoding, sim_exec, sim_eval):
 
     target_ver, num_parts, part_size = eval(resp)
 
-
     assert num_parts * part_size >= size
+    assert (num_parts-1) * part_size < size
 
     if size == 7854 and encoding == '2':
         assert target_ver == 25
         assert num_parts == 7
+
+    if size == 4592 and encoding == '2':
+        assert target_ver == 15
+        assert num_parts == 10
 
     if encoding == 'H':
         assert 1 <= part_size <= 2144
