@@ -73,7 +73,7 @@
 
 - BBQr display changes: 
     - if less than 12 frames would result, uses simpliest QR that can fit on 
-      screen at 2x or 3x size. Result is easier to scan BBQr's.
+      screen at 3x or 2x size. Result is easier to scan BBQr's.
     - progress bar along bottom drawn differently
     - in some cases, the status bar area (at top) will be used to show QR
     - added: Advanced > Danger Zone > Debug Functions > BBQr Demo
