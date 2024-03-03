@@ -3,7 +3,9 @@
 # (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Simulate the hardware of a Coldcard. Particularly the OLED display (128x32) and 
-# the number pad. 
+# the number pad.
+#
+# Can be run in headless mode (--headless) mostly useful for unit tests
 #
 # This is a normal python3 program, not micropython. It communicates with a running
 # instance of micropython that simulates the micropython that would be running in the main
@@ -12,7 +14,7 @@
 # Limitations:
 # - USB light not fully implemented, because happens at irq level on real product
 #
-import os, sys, tty, pty, termios, time, pdb, tempfile, struct, zlib
+import os, sys, signal, time, pdb, tempfile, struct, zlib
 import subprocess, asyncio
 from dataclasses import dataclass
 import sdl2.ext
@@ -20,7 +22,6 @@ import PIL
 from PIL import Image, ImageSequence, ImageOps
 from select import select
 import fcntl
-from binascii import b2a_hex, a2b_hex
 from bare import BareMetal
 from sdl2.scancode import *     # SDL_SCANCODE_F1.. etc
 
@@ -740,15 +741,23 @@ def handle_q1_key_events(event, numpad_tx, data_tx):
 
 def start():
     is_q1 = ('--q1' in sys.argv)
+    if "--headless" in sys.argv:
+        sys.argv.remove("--headless")
+        is_headless = True
+    else:
+        is_headless = False
 
-    print('''\nColdcard Simulator: Commands (over simulated window):
+    if is_headless:
+        print("\nColdcard Simulator (headless). Output below is from the simulated system:\n\n")
+    else:
+        print('''\nColdcard Simulator: Commands (over simulated window):
   - Control-Q to quit
   - ^Z to snapshot screen.
   - ^S/^E to start/end movie recording
   - ^N to capture NFC data (tap it)'''
 )
-    if is_q1:
-        print('''\
+        if is_q1:
+            print('''\
 Q1 specials:
   Right-Alt = AltGr => SYM (symbol key)
   Meta-L - Lamp button
@@ -756,39 +765,51 @@ Q1 specials:
   Meta-R - QR button  (not Meta-Q, because that's quit!)
   Click Screen - Send clipboard contents to QR/NFC
 ''')
-    sdl2.ext.init()
-    sdl2.SDL_EnableScreenSaver()
+        sdl2.ext.init()
+        sdl2.SDL_EnableScreenSaver()
 
 
-    factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
+        factory = sdl2.ext.SpriteFactory(sdl2.ext.SOFTWARE)
 
-    simdis = (OLEDSimulator if not is_q1 else LCDSimulator)(factory)
-    bg = factory.from_image(simdis.background_img)
+        simdis = (OLEDSimulator if not is_q1 else LCDSimulator)(factory)
+        bg = factory.from_image(simdis.background_img)
 
-    window = sdl2.ext.Window("Coldcard Simulator", size=bg.size, position=(100, 100))
-    window.show()
+        window = sdl2.ext.Window("Coldcard Simulator", size=bg.size, position=(100, 100))
+        window.show()
 
-    ico = factory.from_image('program-icon.png')
-    sdl2.SDL_SetWindowIcon(window.window, ico.surface)
+        ico = factory.from_image('program-icon.png')
+        sdl2.SDL_SetWindowIcon(window.window, ico.surface)
 
-    spriterenderer = factory.create_sprite_render_system(window)
+        spriterenderer = factory.create_sprite_render_system(window)
 
-    # initial state
-    spriterenderer.render(bg)
-    spriterenderer.render(simdis.sprite)
-    simdis.draw_leds(spriterenderer)
+        # initial state
+        spriterenderer.render(bg)
+        spriterenderer.render(simdis.sprite)
+        simdis.draw_leds(spriterenderer)
 
-    if ('--bootup-movie' in sys.argv):
-        simdis.movie_start()
+        if ('--bootup-movie' in sys.argv):
+            simdis.movie_start()
 
     # capture exec path and move into intended working directory
     env = os.environ.copy()
     env['MICROPYPATH'] = ':' + os.path.realpath('../shared')
 
-    display_r, display_w = os.pipe()      # fancy OLED display
-    led_r, led_w = os.pipe()        # genuine LED
-    numpad_r, numpad_w = os.pipe()  # keys
-    data_r, data_w = os.pipe()      # data dumps
+    # handle connection to real hardware, on command line
+    # - open the serial device
+    # - get buffering/non-blocking right
+    # - pass in open fd numbers
+
+    if is_headless:
+        display_w = os.open('/dev/null', os.O_RDWR)
+        led_w = os.open('/dev/null', os.O_RDWR)
+        data_r = os.open('/dev/null', os.O_RDWR)
+        pass_fds = [display_w, "-1", led_w, data_r]
+    else:
+        display_r, display_w = os.pipe()      # fancy OLED display
+        led_r, led_w = os.pipe()        # genuine LED
+        numpad_r, numpad_w = os.pipe()  # keys
+        data_r, data_w = os.pipe()      # data dumps
+        pass_fds = [display_w, numpad_r, led_w, data_r]
 
     # manage unix socket cleanup for client
     def sock_cleanup():
@@ -799,12 +820,6 @@ Q1 specials:
     sock_cleanup()
     import atexit
     atexit.register(sock_cleanup)
-
-    # handle connection to real hardware, on command line
-    # - open the serial device
-    # - get buffering/non-blocking right
-    # - pass in open fd numbers
-    pass_fds = [display_w, numpad_r, led_w, data_r]
 
     if '--metal' in sys.argv:
         # bare-metal access: use a real Coldcard's bootrom+SE.
@@ -835,6 +850,28 @@ Q1 specials:
                         '-X', 'heapsize=9m',
                         '-i', '../sim_boot.py'] + [str(i) for i in pass_fds] \
                         + metal_args + scan_args + sys.argv[1:]
+
+    if is_headless:
+        pass_fds.remove("-1")
+        args = dict(env=env, pass_fds=pass_fds, shell=False)
+
+        if '-i' not in sys.argv:
+            # we can do REPL, if given '-i' argument
+            args['stdin'] = subprocess.DEVNULL
+            # args['stdout'] = subprocess.DEVNULL
+
+        child = subprocess.Popen(cc_cmd, **args)
+
+        # always prefer to interrupt child, vs. us
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        rv = child.wait()
+        if rv:
+            print("\r\n<child stopped: %s>\r\n" % rv)
+
+        child.kill()
+        return
+
     xterm = subprocess.Popen(['xterm', '-title', 'Coldcard Simulator REPL',
                                 '-geom', '132x40+650+40', '-e'] + cc_cmd,
                                 env=env,

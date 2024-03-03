@@ -182,11 +182,12 @@ class ColdcardSimulator:
     def start(self, start_wait=None):
         # here we are in testing directory
         cmd_list = [
-            "python",
-            "headless.py" if self.headless else "simulator.py"
+            "python", "simulator.py"
         ]
         if self.args is not None:
             cmd_list.extend(self.args)
+        if self.headless:
+            cmd_list.append("--headless")
 
         self.proc = subprocess.Popen(
             cmd_list,
