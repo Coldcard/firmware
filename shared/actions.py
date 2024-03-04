@@ -2095,10 +2095,15 @@ async def microsd_2fa(*a):
     from pwsave import MicroSD2FA
     
     if not settings.get('sd2fa'):
-        ch = await ux_show_story('When enabled, this feature requires a specially prepared MicroSD card '
-                                 'to be inserted during login process. After correct PIN is provided, '
-                                 'if card slot is empty or unknown card present, the seed is wiped.')
+        msg = ('When enabled, this feature requires a specially prepared MicroSD card '
+               'to be inserted during login process. After correct PIN is provided, '
+               'if card slot is empty or unknown card present, the seed is wiped.')
 
+        if version.num_sd_slots > 1:
+            msg += ("\n\nIf multiple SD cards are present during login, make sure that"
+                    " authorized card is in the top slot (slot A).")
+
+        ch = await ux_show_story(msg)
         if ch != 'y':
             return
 
