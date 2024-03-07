@@ -2,10 +2,10 @@
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import stash, ujson, ngu, pyb, os
+import stash, ujson, ngu, pyb, os, version
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
-from utils import xfp2str, problem_file_line
+from utils import xfp2str, problem_file_line, B2A
 from menu import MenuItem, MenuSystem
 
 
@@ -244,8 +244,6 @@ class MicroSD2FA(PassphraseSaver):
         # - serial number of CC is nearly public but hmac anyway
         # - if this file was written from a trick pin situation, it would have
         #   correct filename but contents would not decrypt since AES key is based off seed
-        import version
-        from utils import B2A
 
         k = ngu.hash.sha256s(version.serial_number())
         h = ngu.hmac.hmac_sha256(k, b'silly?')
@@ -317,7 +315,6 @@ class MicroSD2FA(PassphraseSaver):
     
     async def enroll(self):
         # Write little file, update our settings to allow this card to auth.
-        from utils import B2A
         from glob import dis, settings
 
         nonce = B2A(ngu.random.bytes(8))
@@ -356,7 +353,7 @@ class MicroSD2FA(PassphraseSaver):
     async def remove(self, nonce):
         # remove indicated nonce from records
         # - doesn't delete file, since might not have card anymore and useless w/o nonce
-        from glob import dis, settings
+        from glob import settings
 
         v = self.get_nonces()
         assert nonce in v, 'missing card nonce'

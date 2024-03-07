@@ -7,6 +7,7 @@ import stash, ure, ux, chains, sys, gc, uio, version, ngu
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
+from uhashlib import sha256
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
@@ -234,10 +235,16 @@ def verify_signed_file_digest(msg):
                     warn.append((fname, None))
                     continue
                 path = card.abs_path(fname)
-                with open(path, "rb") as f:
-                    contents = f.read()
 
-                h = b2a_hex(ngu.hash.sha256s(contents)).decode().strip()
+                md = sha256()
+                with open(path, "rb") as f:
+                    while True:
+                        chunk = f.read(1024)
+                        if not chunk:
+                            break
+                        md.update(chunk)
+
+                h = b2a_hex(md.digest()).decode().strip()
                 if h != digest:
                     err.append((fname, h, digest))
     except:
