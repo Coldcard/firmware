@@ -81,3 +81,6 @@
 - Many more test cases.
 
 
+## 0.0.9Q - 2024-03-??
+
+- Bugfix: Yikes when saving words imported by QR.

@@ -877,9 +877,9 @@ class QRScannerInteraction:
                 from seed import commit_new_words, set_ephemeral_seed_words       # dirty API
                 words, = vals
                 if tmp:
-                    await set_ephemeral_seed_words(words, meta='From QR')
+                    await set_ephemeral_seed_words(words, 'From QR')
                 else:
-                    await commit_new_words(words=words)
+                    await commit_new_words(words)
 
                 return
 
