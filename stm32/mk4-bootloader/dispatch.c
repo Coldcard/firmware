@@ -679,7 +679,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
 fail:
 
-    // Precaution: we don't want to leave ATECC508A authorized for any specific keys,
+    // Precaution: we don't want to leave SE1 authorized for any specific keys,
     // perhaps due to an error path we didn't see. Always reset the chip.
     ae_reset_chip();
 
@@ -692,7 +692,6 @@ fail:
     __HAL_FLASH_INSTRUCTION_CACHE_DISABLE();
     __HAL_FLASH_INSTRUCTION_CACHE_RESET();
     __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
-    
 
     // authorize return from firewall into user's code
     __HAL_FIREWALL_PREARM_ENABLE();
