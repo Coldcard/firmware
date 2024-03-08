@@ -84,3 +84,5 @@
 ## 0.0.9Q - 2024-03-??
 
 - Bugfix: Yikes when saving words imported by QR.
+- Bugfix: Crash w/ blank screen sometimes, either on power-up or after upgrading firmware.
+
