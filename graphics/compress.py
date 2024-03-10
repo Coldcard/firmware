@@ -98,7 +98,6 @@ def make_icons():
         ( 'tmp', True, 'TMP.SEED', dict(col_0='black', col_1='red') ),
         ( 'devmode', True, 'DEV', dict(col='#66E6FF') ),
         ( 'edge', True, 'EDGE', dict(col='#66E6FF') ),
-        ( 'beta', True, 'BETA', dict(col='#66E6FF') ),
         ( 'bat_0', False, '\uf244', dict(col='red', y=-1, pad=1)),
         ( 'bat_1', False, '\uf243', dict(col='yellow', y=-1, pad=1)),
         ( 'bat_2', False, '\uf242', dict(col='amber', y=-1, pad=1)),
