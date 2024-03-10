@@ -722,7 +722,7 @@ async def bsms_coordinator_round2(menu, label, item):
         ch = await ux_show_story(prompt, escape=escape)
         if ch == '3':
             if et == "2":
-                for i, token in enumerate(tokens, start=1):
+                for i, token in enumerate(tokens):
                     ch = await ux_show_story("Exporting data for co-signer #%d with token %s"
                                                     % (i+1, token[:4]))
                     if ch != "y":
