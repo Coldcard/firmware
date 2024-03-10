@@ -84,8 +84,6 @@ def get_sys_status():
         rv['edge'] = 1
     elif is_devmode:
         rv['devmode'] = 1
-    else:
-        rv['beta'] = 1          # DELME 
 
     return rv
 
@@ -203,8 +201,6 @@ class Display:
             self.image(x, 0, 'edge')
         elif 'devmode' in kws:
             self.image(x+5, 0, 'devmode')
-        elif 'beta' in kws:
-            self.image(x+2, 0, 'beta')
 
         x = 8
         for dx, meta in [(7, 'shift'), (37, 'symbol'), (58, 'caps')]:

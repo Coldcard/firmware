@@ -81,8 +81,11 @@
 - Many more test cases.
 
 
-## 0.0.9Q - 2024-03-??
+## 1.0.0Q - 2024-03-10
 
-- Bugfix: Yikes when saving words imported by QR.
+- Bump major verison number, remove BETA marking.
+- Finalize version 1.0.4 bootrom (no real changes).
+- Bugfix: Yikes when saving seed words imported by QR.
 - Bugfix: Crash w/ blank screen sometimes, either on power-up or after upgrading firmware.
+- Testing: Accelerate internal testing by reviving "headless" mode of simulator.
 
