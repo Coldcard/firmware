@@ -89,3 +89,6 @@
 - Bugfix: Crash w/ blank screen sometimes, either on power-up or after upgrading firmware.
 - Testing: Accelerate internal testing by reviving "headless" mode of simulator.
 
+## 1.0.1 - 2024-03-XX
+
+- Enhancement: Move generating master seed from only dice rolls under `Advanced` submenu.

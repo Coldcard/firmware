@@ -268,6 +268,8 @@ def test_import_from_dice(count, nwords, goto_home, pick_menu_item, cap_story, n
     unit_test('devtest/clear_seed.py')
 
     pick_menu_item('New Seed Words')
+    pick_menu_item('Advanced')
+
     pick_menu_item(f'{nwords} Word Dice Roll')
 
     gave = ''

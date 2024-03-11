@@ -340,11 +340,15 @@ ImportWallet = [
     MenuItem("Seed XOR", f=xor_restore_start),
 ]
 
+SeedFromDiceMenu = [
+    MenuItem("12 Word Dice Roll", f=new_from_dice, arg=12),
+    MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
+]
+
 NewSeedMenu = [
     MenuItem("12 Words", f=pick_new_seed, arg=12),
     MenuItem("24 Words", f=pick_new_seed, arg=24),
-    MenuItem("12 Word Dice Roll", f=new_from_dice, arg=12),
-    MenuItem("24 Word Dice Roll", f=new_from_dice, arg=24),
+    MenuItem("Advanced", menu=SeedFromDiceMenu),
 ]
 
 # has PIN, but no secret seed yet
