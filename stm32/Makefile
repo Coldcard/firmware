@@ -15,6 +15,6 @@
 
 clean clobber rc1 release repro:
 	$(MAKE) -f Q1-Makefile $(MAKECMDGOALS)
-	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
+# 	$(MAKE) -f MK4-Makefile $(MAKECMDGOALS)
 
 # EOF

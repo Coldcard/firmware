@@ -243,7 +243,7 @@ setup:
 # - works from this repo, but starts with copy of HEAD
 DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 				-v $(realpath built):/work/built:rw \
-				--privileged coldcard-build
+				-u $$(id -u):$$(id -g) coldcard-build
 repro: code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build

@@ -8,7 +8,6 @@ mpy-files.timestamp
 firmware.lss
 firmware-signed.*
 firmware.elf
-file_time.c
 *-RC1-coldcard.dfu
 
 # somewhat useful binary snapshots
