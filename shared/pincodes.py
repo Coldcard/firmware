@@ -326,6 +326,9 @@ class PinAttempt:
         assert self.is_successful()
         return bool(self.state_flags & PA_ZERO_SECRET)
 
+    def has_secrets(self):
+        return not self.is_secret_blank() or self.tmp_value
+
     # Mk1/2/3 concepts, not used in Mk4
     def has_duress_pin(self):
         return bool(self.state_flags & PA_HAS_DURESS)
@@ -470,11 +473,7 @@ class PinAttempt:
             settings.merge_previous_active(old_values)
 
         except stash.ZeroSecretException:
-            # secret is zero - using ephemeral secrets in CC
-            # with no se2 secret
-            settings.nvram_key = b'\0'*32
-            settings.load()
-            self.state_flags |= PA_ZERO_SECRET
+            settings.return_to_master_seed()
 
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
@@ -504,9 +503,6 @@ class PinAttempt:
             settings.leaving_master_seed()
 
         self.tmp_value = val
-
-        # We're no longer blank. hard to say about duress secret and stuff tho
-        self.state_flags = PA_SUCCESSFUL
 
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.

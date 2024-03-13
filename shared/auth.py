@@ -1203,7 +1203,7 @@ class NewPassphrase(UserAuthorizedAction):
                 escape += "1"
                 msg += "Press (1) to add passphrase to currently active temporary seed. "
 
-            if settings.master_get("words", True):
+            if not pa.is_secret_blank() and settings.master_get("words", True):
                 escape += "y"
                 msg += "Press OK to add passphrase to master seed. "
 
