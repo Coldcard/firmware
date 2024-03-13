@@ -1,10 +1,7 @@
-# (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
-#
-# Build micropython for stm32 (an ARM processor). Also handles signing of resulting firmware images.
+# (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
 # Q1 .. mostly same as Mk4
 #
-include version.mk
 
 BOARD = COLDCARD_Q1
 FIRMWARE_BASE   = 0x08020000
@@ -17,6 +14,10 @@ BOOTLOADER_VERSION = 1.0.4
 BOOTLOADER_DIR = q1-bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-q1-*.dfu | head -1)
+
+# Our version for this release.
+# - caution, some bootroms (Q < 1.0.3) will not accept version < 3.0.0 (but that never shipped)
+VERSION_STRING = 1.0.1Q
 
 # Remove this closer to shipping.
 #$(warning "Forcing debug build")

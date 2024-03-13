@@ -2,7 +2,6 @@
 #
 # Shared values and target rules for Mk4 and Q.
 #
-include version.mk
 
 # Define these vars to suit board
 #BOARD = COLDCARD_MK4
@@ -79,9 +78,9 @@ dev: dev.dfu
 up-dfu: dev.dfu
 	$(PYTHON_DO_DFU) -u dev.dfu
 
-$(BOARD)/file_time.c: make_filetime.py version.mk
+$(BOARD)/file_time.c: make_filetime.py *-Makefile
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
-	cp $(BOARD)/file_time.c .
+	#WHY#cp $(BOARD)/file_time.c .
 
 # Make a factory release: using key #1
 # - when executed in a repro w/o the required key, it defaults to key zero
