@@ -78,9 +78,9 @@ dev: dev.dfu
 up-dfu: dev.dfu
 	$(PYTHON_DO_DFU) -u dev.dfu
 
-$(BOARD)/file_time.c: make_filetime.py *-Makefile
+$(BOARD)/file_time.c: make_filetime.py *-Makefile shared.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
-	#WHY#cp $(BOARD)/file_time.c .
+	cp $(BOARD)/file_time.c .
 
 # Make a factory release: using key #1
 # - when executed in a repro w/o the required key, it defaults to key zero
