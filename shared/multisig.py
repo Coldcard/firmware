@@ -438,7 +438,7 @@ class MultisigWallet:
         # possible deposit addresses for this wallet. Never show
         # user the resulting addresses because we cannot be certain
         # they are valid and could be signed. And yet, dont blank too many
-        # spots or else an attacker could grid out a suitable replacement.
+        # spots or else an attacker could grind out a suitable replacement.
         ch = self.chain
 
         assert self.addr_fmt, 'no addr fmt known'
