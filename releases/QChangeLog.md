@@ -94,3 +94,9 @@
 - Enhancement: Move dice rolls (for generating master seed) to `Advanced` submenu.
 - Cleanup reproducible building / start process of backporting to Mk4.
 
+
+## 1.0.2Q - 2024-04-xx
+
+- Enhancement: Scan any QR and report if it is part of a wallet this Coldcard knows
+  the key for. Includes Multisig and single sig wallets.
+

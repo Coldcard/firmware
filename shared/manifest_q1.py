@@ -17,6 +17,7 @@ freeze_as_mpy('', [
 	'ux_q1.py',
 	'battery.py',
 	'notes.py',
+	'ownership.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

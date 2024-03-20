@@ -14,6 +14,7 @@ from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
+from wallet import WalletABC
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -104,7 +105,7 @@ def make_redeem_script(M, nodes, subkey_idx):
 
     return b''.join(pubkeys)
 
-class MultisigWallet:
+class MultisigWallet(WalletABC):
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
     # - can be saved to nvram
@@ -433,7 +434,7 @@ class MultisigWallet:
         return set(xp_idx for xp_idx, (wxfp, _, _) in enumerate(self.xpubs)
                         if wxfp == xfp)
 
-    def yield_addresses(self, start_idx, count, change_idx=0):
+    def yield_addresses(self, start_idx, count, change_idx=0, censored=True):
         # Assuming a suffix of /0/0 on the defined prefix's, yield
         # possible deposit addresses for this wallet. Never show
         # user the resulting addresses because we cannot be certain
@@ -460,9 +461,12 @@ class MultisigWallet:
             # make the redeem script, convert into address
             script = make_redeem_script(self.M, nodes, idx)
             addr = ch.p2sh_address(self.addr_fmt, script)
-            addr = addr[0:12] + '___' + addr[12+3:]
-
-            yield idx, [p.format(idx=idx) for p in paths], addr, script
+            if censored:
+                addr = addr[0:12] + '___' + addr[12+3:]
+                yield idx, addr, [p.format(idx=idx) for p in paths], addr
+            else:
+                # internal use
+                yield idx, addr, 'ms'
 
             idx += 1
             count -= 1

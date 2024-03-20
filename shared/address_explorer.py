@@ -297,20 +297,14 @@ Press (3) if you really understand and accept these risks.
 
             else:
                 # single-signer wallets
+                from wallet import MasterSingleSigWallet
+                main = MasterSingleSigWallet(addr_fmt, path, self.account_num)
 
-                with stash.SensitiveValues() as sv:
-
-                    for idx in range(start, start + n):
-                        deriv = path.format(account=self.account_num, change=change, idx=idx)
-                        node = sv.derive_path(deriv, register=False)
-                        addr = chain.address(node, addr_fmt)
-                        addrs.append(addr)
-
-                        msg += "%s =>\n%s\n\n" % (deriv, addr)
-
-                        dis.progress_bar_show(idx/n)
-
-                    stash.blank_object(node)
+                for (idx, addr, deriv) in main.yield_addresses(start, n,
+                                            change_idx=(change if allow_change else None)):
+                    addrs.append(addr)
+                    msg += "%s =>\n%s\n\n" % (deriv, addr)
+                    dis.progress_bar_show(idx/n)
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
@@ -389,7 +383,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
                                     'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)]
                                     + (['Derivation'] * ms_wallet.N)) + '"\n'
 
-        for (idx, derivs, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+        for (idx, addr, derivs, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
             ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
             ln += '","'.join(derivs)
             ln += '"\n'
@@ -398,17 +392,13 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
 
         return
 
+    # build the "master" wallet based on indicated preferences
+    from wallet import MasterSingleSigWallet
+    main = MasterSingleSigWallet(addr_fmt, path, account_num)
+
     yield '"Index","Payment Address","Derivation"\n'
-    ch = chains.current_chain()
-
-    with stash.SensitiveValues() as sv:
-        for idx in range(start, start+n):
-            deriv = path.format(account=account_num, change=change, idx=idx)
-            node = sv.derive_path(deriv, register=False)
-
-            yield '%d,"%s","%s"\n' % (idx, ch.address(node, addr_fmt), deriv)
-
-        stash.blank_object(node)
+    for (idx, addr, deriv) in main.yield_addresses(start, n, change_idx=change):
+        yield '%d,"%s","%s"\n' % (idx, addr, deriv)
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                         count=250, change=0, **save_opts):

@@ -10,8 +10,8 @@ from ubinascii import b2a_base64, a2b_base64
 from serializations import COutPoint, uint256_from_str
 from glob import settings
 
-# Very limited space in serial flash, so we compress as much as possible:
-# - would be bad for privacy to store these **UTXO amounts** in plaintext
+# Very limited space in flash, so we compress as much as possible:
+# - would be very bad for privacy to store these **UTXO amounts** in plaintext
 # - result is stored in a JSON serialization, so needs to be text encoded
 # - using base64, in two parts, concatenated
 #       - 15 bytes are hash over txnhash:out_num => base64 => 20 chars text
