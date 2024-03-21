@@ -483,9 +483,11 @@ class Display:
         # show a simple message "fullscreen". 
         self.clear()
         y = CHARS_H // 3
-        self.text(None, y, msg)
         if line2:
-            self.text(None, y+2, line2)
+            x = self.text(None, y, msg)
+            self.text(x-self.width(msg), y+2, line2, dark=True)
+        else:
+            self.text(None, y, msg)
         if percent is not None:
             self.progress_bar(percent)
         self.show()
