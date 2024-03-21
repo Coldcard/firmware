@@ -47,4 +47,7 @@ class AbortInteraction(BaseException):
 class QRDecodeExplained(ValueError):
     pass
 
+class UnknownAddressExplained(ValueError):
+    pass
+
 # EOF

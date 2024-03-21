@@ -181,3 +181,9 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - Note text is unlimited, but storing very large notes may affect performance system-wide.
 - Q Backup files restored onto Mk4 will lose their notes, since notes feature is not supported.
 
+# Address Ownership (derivation from payment address)
+
+- only the first 1000 addresses, non-change from each "wallet" are considered
+- if you have used an sub account, without ever exploring it in the Address Explorer, nor
+  signing a PSBT with those account numbers, we do not search it.
+

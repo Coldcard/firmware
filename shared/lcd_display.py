@@ -479,10 +479,13 @@ class Display:
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN, bw, ACTIVE_H, COL_SCROLL_DARK)
         self.dis.fill_rect(WIDTH-bw, TOP_MARGIN+pos, bw, bh, COL_TEXT)
 
-    def fullscreen(self, msg, percent=None):
+    def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
         self.clear()
-        self.text(None, CHARS_H // 3, msg)
+        y = CHARS_H // 3
+        self.text(None, y, msg)
+        if line2:
+            self.text(None, y+2, line2)
         if percent is not None:
             self.progress_bar(percent)
         self.show()

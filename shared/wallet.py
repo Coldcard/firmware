@@ -16,8 +16,17 @@ class WalletABC:
     #   chain
 
     def yield_addresses(self, start_idx, count, change_idx=0, censored=True):
-        # TODO: expected tuples?
+        # TODO: returns various expected tuples?
         pass
+
+    def render_address(self, change_idx, idx):
+        # make one single address
+        tmp = list(self.yield_addresses(idx, 1, change_idx=change_idx, censored=False))
+
+        assert len(tmp) == 1
+        assert tmp[0][0] == idx
+
+        return tmp[0][1]
 
     def to_descriptor(self):
         pass
@@ -92,6 +101,16 @@ class MasterSingleSigWallet(WalletABC):
                     del here
 
                 yield idx, address, path+str(idx)
+
+    def render_address(self, change_idx, idx):
+        # Optimized for single address.
+        path = self._path + '/%d/%d' % (change_idx, idx)
+        with SensitiveValues() as sv:
+            node = sv.derive_path(path)
+            return self.chain.address(node, self.addr_fmt)
+
+    def render_path(self, change_idx, idx):
+        return self._path + '/%d/%d' % (change_idx, idx)
 
     def to_descriptor(self):
         from glob import settings

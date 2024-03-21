@@ -147,7 +147,7 @@ class Display:
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
             self.text(-2, 35, 'V', font=FontTiny, invert=1)
 
-    def fullscreen(self, msg, percent=None):
+    def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
         self.clear()
         y = 14

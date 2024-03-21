@@ -376,6 +376,8 @@ Press (3) if you really understand and accept these risks.
 
 def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, change=0):
     # Produce CSV file contents as a generator
+    # - maybe cache internally
+    from ownership import OWNERSHIP
 
     if ms_wallet:
         # For multisig, include redeem script and derivation for each signer
@@ -383,12 +385,23 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
                                     'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)]
                                     + (['Derivation'] * ms_wallet.N)) + '"\n'
 
+        if n > 100 and change == 0:
+            saver = OWNERSHIP.saver(ms_wallet, start)
+        else:
+            saver = None
+
         for (idx, addr, derivs, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+            if saver:
+                saver(addr)
+
             ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
             ln += '","'.join(derivs)
             ln += '"\n'
 
             yield ln
+
+        if saver:
+            saver(None)     # close
 
         return
 
@@ -396,9 +409,20 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
+    if n > 100 and change == 0:
+        saver = OWNERSHIP.saver(main, start)
+    else:
+        saver = None
+
     yield '"Index","Payment Address","Derivation"\n'
     for (idx, addr, deriv) in main.yield_addresses(start, n, change_idx=change):
+        if saver:
+            saver(addr)
+
         yield '%d,"%s","%s"\n' % (idx, addr, deriv)
+
+    if saver:
+        saver(None)     # close
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                         count=250, change=0, **save_opts):

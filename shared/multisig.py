@@ -151,6 +151,15 @@ class MultisigWallet(WalletABC):
                 return v.upper()
         return '?'
 
+    def render_path(self, change_idx, idx):
+        # assuming shared derivations for all cosigners. Wrongish.
+        derivs, _ = self.get_deriv_paths()
+        if len(derivs) > 1:
+            deriv = '(various)'
+        else:
+            deriv = derivs[0]
+        return deriv + '/%d/%d' % (change_idx, idx)
+
     @property
     def chain(self):
         return chains.get_chain(self.chain_type)

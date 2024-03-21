@@ -1030,7 +1030,7 @@ async def ux_visualize_txn(bin_txn):
 async def ux_visualize_bip21(proto, addr, args):
     # Show details of BIP-21 URL
     # - imho, a bare address is a valid BIP-21 URL so we come here too
-    # - TODO: validate address ownership
+    # - validate address ownership on request
     from ux import ux_show_story
 
     msg = addr + '\n\n'
@@ -1054,8 +1054,27 @@ async def ux_visualize_bip21(proto, addr, args):
 
     if args:
         msg += 'And values for: ' + ', '.join(args)
+
+    msg += 'Press (1) to verify ownership.'
     
-    await ux_show_story(msg, title="Payment Address")
+    ch = await ux_show_story(msg, title="Payment Address", escape='1')
+
+    if ch != '1': return
+
+    from ownership import OWNERSHIP
+    from exceptions import UnknownAddressExplained
+
+    try:
+        wallet, subpath = OWNERSHIP.search(addr)
+
+        msg = addr
+        msg += '\n\nFound in wallet:\n  ' + wallet.name
+        msg += '\nDerivation path:\n   ' + wallet.render_path(*subpath)
+        await ux_show_story(msg, title="Your Own Address")
+
+    except UnknownAddressExplained as exc:
+        await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")
+            
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     from ux import ux_show_story
