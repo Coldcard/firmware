@@ -39,10 +39,10 @@ class MasterSingleSigWallet(WalletABC):
         # - path can be overriden when we come here via address explorer
 
         if addr_fmt == AF_P2WPKH:
-            n = 'Segwit'
+            n = 'Segwit P2WPKH'
             prefix = path or 'm/84h/{coin_type}h/{account}h'
         elif addr_fmt == AF_CLASSIC:
-            n = 'Classic'
+            n = 'Classic P2PKH'
             prefix = path or 'm/44h/{coin_type}h/{account}h'
         elif addr_fmt == AF_P2WPKH_P2SH:
             n =  'P2WPKH-in-P2SH'
@@ -55,8 +55,10 @@ class MasterSingleSigWallet(WalletABC):
         else:
             self.chain = chains.current_chain()
 
-        if self.chain.ctype != 'BTC':
-            n += ' ' + self.chain.menu_name
+        if self.chain.ctype == 'XTN':
+            n += ' (TestNet)'
+        if self.chain.ctype == 'XRT':
+            n += ' (RegTest)'
 
         self.name = n
         self.addr_fmt = addr_fmt
@@ -103,13 +105,14 @@ class MasterSingleSigWallet(WalletABC):
                 yield idx, address, path+str(idx)
 
     def render_address(self, change_idx, idx):
-        # Optimized for single address.
+        # Optimized for a single address.
         path = self._path + '/%d/%d' % (change_idx, idx)
         with SensitiveValues() as sv:
             node = sv.derive_path(path)
             return self.chain.address(node, self.addr_fmt)
 
     def render_path(self, change_idx, idx):
+        # show the derivation path for an address
         return self._path + '/%d/%d' % (change_idx, idx)
 
     def to_descriptor(self):
