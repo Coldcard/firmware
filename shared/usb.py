@@ -470,6 +470,10 @@ class USBHandler:
             from auth import usb_show_address
 
             addr_fmt, = unpack_from('<I', args)
+            # regression patch of AFC_BECH32M flag
+            # fixed here https://github.com/Coldcard/ckcc-protocol/commit/a6d901f9fca50755835eca895586ca74d0ca81ed
+            if addr_fmt == 0x17:  # old P2TR
+                addr_fmt = 0x23   # new P2TR
             return b'asci' + usb_show_address(addr_fmt, subpath=args[4:])
 
         if cmd == 'enrl':

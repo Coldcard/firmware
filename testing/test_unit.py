@@ -276,4 +276,9 @@ def test_aes_compatibility(sim_execfile):
     res = sim_execfile('devtest/unit_aes_compat.py')
     assert res == ""
 
+
+def test_af(sim_execfile):
+    res = sim_execfile('devtest/unit_af.py')
+    assert res == ""
+
 # EOF
