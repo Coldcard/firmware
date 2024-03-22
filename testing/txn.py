@@ -268,8 +268,9 @@ def render_address(script, testnet=True):
     raise ValueError('Unknown payment script', repr(script))
 
 def fake_address(addr_fmt, testnet=False):
-    # make fake addresses of any time. contents are noise
+    # Make fake addresses of any type. Contents are noise... don't ever send to them!!
     # TODO add regtest option
+    # LATER: dup of helper.py fake_dest_addr
     from constants import AFC_WRAPPED, AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32M, AFC_SCRIPT
     from helpers import prandom
     from pycoin.encoding import b2a_hashed_base58

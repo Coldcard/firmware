@@ -1049,7 +1049,7 @@ async def ux_visualize_bip21(proto, addr, args):
 
     for fn in ['label', 'message', 'lightning']:
         if fn in args:
-            val = args.pop(fn)              # XXX needs url-decoding
+            val = args.pop(fn)
             msg += '%s%s: %s\n' % (fn[0].upper(), fn[1:], val)
 
     if args:
@@ -1059,22 +1059,9 @@ async def ux_visualize_bip21(proto, addr, args):
     
     ch = await ux_show_story(msg, title="Payment Address", escape='1')
 
-    if ch != '1': return
-
-    from ownership import OWNERSHIP
-    from exceptions import UnknownAddressExplained
-
-    try:
-        wallet, subpath = OWNERSHIP.search(addr)
-
-        msg = addr
-        msg += '\n\nFound in wallet:\n  ' + wallet.name
-        msg += '\nDerivation path:\n   ' + wallet.render_path(*subpath)
-        await ux_show_story(msg, title="Your Own Address")
-
-    except UnknownAddressExplained as exc:
-        await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")
-            
+    if ch == '1':
+        from ownership import OWNERSHIP
+        await OWNERSHIP.search_ux(addr)
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     from ux import ux_show_story

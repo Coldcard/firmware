@@ -56,7 +56,7 @@ from utils import call_later_ms
 #   seeds = list of stored secrets for seedvault feature
 #   bright = (int:0-255) LCD brightness when on battery
 #   notes = (complex) Secure notes held for user, see notes.py
-#   paths = (list of tuples: (addr_fmt, deriv_path)) Single-sig wallets we've seen them use
+#   accts = (list of tuples: (addr_fmt, account#)) Single-sig wallets we've seen them use
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

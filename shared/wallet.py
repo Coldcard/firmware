@@ -15,13 +15,13 @@ class WalletABC:
     #   addr_fmt
     #   chain
 
-    def yield_addresses(self, start_idx, count, change_idx=0, censored=True):
+    def yield_addresses(self, start_idx, count, change_idx=0):
         # TODO: returns various expected tuples?
         pass
 
     def render_address(self, change_idx, idx):
         # make one single address
-        tmp = list(self.yield_addresses(idx, 1, change_idx=change_idx, censored=False))
+        tmp = list(self.yield_addresses(idx, 1, change_idx=change_idx))
 
         assert len(tmp) == 1
         assert tmp[0][0] == idx
@@ -55,10 +55,14 @@ class MasterSingleSigWallet(WalletABC):
         else:
             self.chain = chains.current_chain()
 
+        if account_idx != 0:
+            n += ' Acct#%d' % account_idx
+
         if self.chain.ctype == 'XTN':
             n += ' (TestNet)'
         if self.chain.ctype == 'XRT':
             n += ' (RegTest)'
+
 
         self.name = n
         self.addr_fmt = addr_fmt
@@ -76,7 +80,7 @@ class MasterSingleSigWallet(WalletABC):
         self._path = p
 
 
-    def yield_addresses(self, start_idx, count, change_idx=None, censored=True):
+    def yield_addresses(self, start_idx, count, change_idx=None):
         # Render a range of addresses. Slow to start, since accesses SE in general
         # - if count==1, don't derive any subkey, just do path.
         path = self._path

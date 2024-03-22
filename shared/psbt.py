@@ -1802,6 +1802,7 @@ class psbtObject(psbtProxy):
         # - save partial inputs somewhere (append?)
         # - update our state with new partial sigs
         from glob import dis
+        from ownership import OWNERSHIP
 
         with stash.SensitiveValues() as sv:
             # Double check the change outputs are right. This is slow, but critical because
@@ -1813,7 +1814,7 @@ class psbtObject(psbtProxy):
 
                 for count, out_idx in enumerate(change_outs):
                     # only expecting single case, but be general
-                    dis.progress_bar_show(count / len(change_outs))
+                    dis.progress_sofar(count, len(change_outs))
 
                     oup = self.outputs[out_idx]
 
@@ -1832,6 +1833,8 @@ class psbtObject(psbtProxy):
                         if pubkey == node.pubkey():
                             good += 1
 
+                        OWNERSHIP.note_subpath_used(subpath)
+
                     if not good:
                         raise FraudulentChangeOutput(out_idx, 
                               "Deception regarding change output. "
@@ -1844,7 +1847,7 @@ class psbtObject(psbtProxy):
             sigs = 0
             success = set()
             for in_idx, txi in self.input_iter():
-                dis.progress_bar_show(in_idx / self.num_inputs)
+                dis.progress_sofar(in_idx, self.num_inputs)
 
                 inp = self.inputs[in_idx]
 
@@ -1882,6 +1885,7 @@ class psbtObject(psbtProxy):
                 else:
                     # single pubkey <=> single key
                     which_key = inp.required_key
+
     
                     assert not inp.added_sig, "already done??"
                     assert which_key in inp.subpaths, 'unk key'
@@ -1897,7 +1901,11 @@ class psbtObject(psbtProxy):
 
                     # expensive test, but works... and important
                     pu = node.pubkey()
-                    assert pu == which_key, "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+                    assert pu == which_key, \
+                        "Path (%s) led to wrong pubkey for input#%d"%(skp, in_idx)
+
+                    # track wallet usage
+                    OWNERSHIP.note_subpath_used(inp.subpaths[which_key])
 
                 if sv.deltamode:
                     # Current user is actually a thug with a slightly wrong PIN, so we

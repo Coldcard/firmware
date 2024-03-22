@@ -47,6 +47,7 @@ class AbortInteraction(BaseException):
 class QRDecodeExplained(ValueError):
     pass
 
+# Text about the problem w/ a address during search
 class UnknownAddressExplained(ValueError):
     pass
 

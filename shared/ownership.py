@@ -12,19 +12,18 @@ from ubinascii import hexlify as b2a_hex
 from exceptions import UnknownAddressExplained
 
 # Track many addresses, but in compressed form
-# - map from random Bech32/Base58 payment address to (wallet)/keypath
-# - does change and normal (internal, external) addresses, but won't consider
-#   any keypath that does not end in 0/* or 1/*
-# - store just hints, since we can re-construct any address and want to fully verify
+# - map from random Bech32/Base58 payment address to (wallet) + keypath
+# - only normal (external, not change) addresses, and won't consider
+#   any keypath that does not end in 0/*
+# - store only hints, since we can re-construct any address and want to fully verify
 # - try to keep private between different duress wallets, and seed vaults
 # - storing bulk data into LFS, not settings
 # - okay to wipe, can restore anytime; with CPU cost
-# - MAYBE: tracks "high water level" of wallets (highest used addr)
-# - MAYBE: enforces a gap limit concept, but would be better if it didn't
+# - doesn't really have a gap limit concept, but limited to first N addresses in a wallet
 # - cannot be used to accelerate address explorer because we don't store full addresses
 # - data stored in binary, fixed-length header, then fixed-length records
 # - multisig and single sig, and someday taproot, miniscript too
-# - searching is interruptable; and leaves behind a cache for next time
+# - searching leaves behind a cache for next time
 # - data building/saves happens when are searching, but might grab some during addr expl export?
 #
 
@@ -52,7 +51,7 @@ class AddressCacheFile:
     def __init__(self, wallet):
         self.wallet = wallet
         self.desc = wallet.to_descriptor().serialize()
-        h = b2a_hex(ngu.hash.sha256d(self.desc))
+        h = b2a_hex(ngu.hash.sha256d(wallet.chain.ctype + self.desc))
         self.fname = h[0:32] + '.own'
         self.salt = h[32:]
         self.count = 0
@@ -102,6 +101,7 @@ class AddressCacheFile:
             del self.fd
             return
 
+        assert '_' not in addr
         self.fd.write(encode_addr(addr, self.salt))
 
     def fast_search(self, addr):
@@ -206,7 +206,7 @@ class OwnershipCache:
 
         addr_fmt = ch.possible_address_fmt(addr)
         if not addr_fmt:
-            # might be valid address on testnet vs mainnet
+            # might be valid address over on testnet vs mainnet
             nm = ch.name if ch.ctype != 'BTC' else 'Bitcoin Mainnet'
             raise UnknownAddressExplained('That address is not valid on ' + nm)
 
@@ -218,23 +218,30 @@ class OwnershipCache:
             # defined, assume that that's the only p2sh address source.
             addr_fmt = AF_P2WPKH_P2SH
 
-        if addr_fmt & AFC_SCRIPT and MultisigWallet.exists():
+        if addr_fmt & AFC_SCRIPT:
             # multisig or script at least.. must exist already
             for w in MultisigWallet.iter_wallets(addr_fmt=addr_fmt):
                 possibles.append(w)
 
             # TODO: add tapscript and such fancy stuff here
 
-            if not possibles:
-                raise UnknownAddressExplained(
-                            "No suitable multisig wallets are currently defined.")
         else:
             # Construct possible single-signer wallets, always at least account=0 case
             from wallet import MasterSingleSigWallet
             w = MasterSingleSigWallet(addr_fmt, account_idx=0)
             possibles.append(w)
 
-            # TODO: add all account idx they have ever looked at
+            # add all account idx they have ever looked at, w/ this addr fmt (single sig)
+            ex = settings.get('accts', [])
+            for af, idx in ex:
+                if af == addr_fmt and idx:
+                    w = MasterSingleSigWallet(addr_fmt, account_idx=idx)
+                    possibles.append(w)
+
+        if not possibles:
+            # can only happen w/ scripts; for single-signer we have things to check
+            raise UnknownAddressExplained(
+                        "No suitable multisig wallets are currently defined.")
 
         # "quick" check first, before doing any generations
 
@@ -272,7 +279,77 @@ class OwnershipCache:
 
             count += f.count - b4
 
+        # possible phase 3: other seedvault... slow, rare and not implemented
+
         raise UnknownAddressExplained('Searched %d candidates without finding a match.' % count)
+
+    @classmethod
+    def search_ux(cls, addr):
+        # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
+        from ux import ux_show_story
+
+        try:
+            wallet, subpath = OWNERSHIP.search(addr)
+
+            msg = addr
+            msg += '\n\nFound in wallet:\n  ' + wallet.name
+            msg += '\nDerivation path:\n   ' + wallet.render_path(*subpath)
+            await ux_show_story(msg, title="Verified Address")
+
+        except UnknownAddressExplained as exc:
+            await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")
+
+    @classmethod
+    def note_subpath_used(cls, subpath):
+        # when looking at PSBT, the address format is only implied
+        # - but assume BIP-44/48/etc are being respected, and map to addr_fmt
+        # - subpath is integers from PSBT contents already
+        # - ignore coin_type
+        from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+
+        subpath = subpath[1:]       # ignore xfp
+        if len(subpath) < 3 or subpath[0] < 0x80000000 or subpath[2] < 0x80000000:
+            # weird path w/o expected hardened levels - ignore
+            return
+
+        top = subpath[0] & 0x7fffffff
+        acct = subpath[2] & 0x7fffffff
+        if top == 44:
+            af = AF_CLASSIC
+        elif top == 49:
+            af = AF_P2WPKH_P2SH
+        elif top == 84:
+            af = AF_P2WPKH
+        else:
+            return
+
+        cls.note_wallet_used(af, acct)
+
+    @classmethod
+    def note_wallet_used(cls, addr_fmt, subaccount):
+        # we track single-sig wallets they seem to use
+        # - if they explore it (non-zero subaccount)
+        # - if they sign those paths
+        # - but ignore testnet vs. not
+        from glob import settings
+        here = [addr_fmt, subaccount]
+
+        ex = settings.get('accts', [])
+
+        if here in ex:
+            # known.
+            return
+
+        ex = list(ex)
+        ex.append(here)
+        settings.set('accts', ex)
+                
+    @classmethod
+    def wipe(cls):
+        # maybe only for testing? clear all caches
+        for fn in os.listdir():
+            if fn.endswith('.own'):
+                os.remove(fn)
 
 # singleton, but also only created as needed; holds no state.
 OWNERSHIP = OwnershipCache()

@@ -36,6 +36,13 @@ def disassemble_multisig_mn(redeem_script):
 
     return M, N
 
+def censor_address(addr):
+    # We don't like to show the
+    # user multisig  addresses because we cannot be certain
+    # they are valid and could be signed. And yet, dont blank too many
+    # spots or else an attacker could grind out a suitable replacement.
+    return addr[0:12] + '___' + addr[12+3:]
+
 def disassemble_multisig(redeem_script):
     # Take apart a standard multisig's redeem/witness script, and return M/N and public keys
     # - only for multisig scripts, not general purpose
@@ -443,12 +450,9 @@ class MultisigWallet(WalletABC):
         return set(xp_idx for xp_idx, (wxfp, _, _) in enumerate(self.xpubs)
                         if wxfp == xfp)
 
-    def yield_addresses(self, start_idx, count, change_idx=0, censored=True):
+    def yield_addresses(self, start_idx, count, change_idx=0):
         # Assuming a suffix of /0/0 on the defined prefix's, yield
-        # possible deposit addresses for this wallet. Never show
-        # user the resulting addresses because we cannot be certain
-        # they are valid and could be signed. And yet, dont blank too many
-        # spots or else an attacker could grind out a suitable replacement.
+        # possible deposit addresses for this wallet.
         ch = self.chain
 
         assert self.addr_fmt, 'no addr fmt known'
@@ -470,12 +474,8 @@ class MultisigWallet(WalletABC):
             # make the redeem script, convert into address
             script = make_redeem_script(self.M, nodes, idx)
             addr = ch.p2sh_address(self.addr_fmt, script)
-            if censored:
-                addr = addr[0:12] + '___' + addr[12+3:]
-                yield idx, addr, [p.format(idx=idx) for p in paths], addr
-            else:
-                # internal use
-                yield idx, addr, 'ms'
+
+            yield idx, addr, [p.format(idx=idx) for p in paths], script
 
             idx += 1
             count -= 1

@@ -258,7 +258,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     if s == '': return 'm'
 
     # convert to "hard" rather that "prime" notations
-    s = s.replace('p', "h").replace("'", 'h')
+    s = s.replace('p', 'h').replace("'", 'h')
 
     # regex for valid chars, m at start, maybe /*h or /* at end sometimes
     mat = ure.match(r"(m|m/|)[0-9/h]*" + ('' if not allow_star else r"(\*h|\*|)"), s)
@@ -612,5 +612,75 @@ def datetime_to_str(dt, fmt="%d-%02d-%02d %02d:%02d:%02d"):
     y, mo, d, h, mi, s = dt[:6]
     dts = fmt % (y, mo, d, h, mi, s)
     return dts + " UTC"
+
+def url_decode(u):
+    # expand control chars from %XX and '+'
+    # - equiv to urllib.parse.unquote_plus
+    # - ure.sub is missing, so not being clever here.
+    # - give up on syntax errors, and return unchanged
+    import ure
+
+    u = u.replace('+', ' ')
+    while 1:
+        pos = u.find('%')
+        if pos < 0: break
+
+        try:
+            ch = chr(int(u[pos+1:pos+3], 16))
+            assert ch != '\0'
+        except:
+            return u
+
+        u = u[0:pos] + ch + u[pos+3:]
+
+    return u
+
+def decode_bip21_text(got):
+    # Assume text is a BIP-21 payment address (url), with amount, description
+    # and url protocol prefix ... all optional except the address.
+    # - also will detect correctly encoded & checksummed xpubs
+
+    proto, args, addr = None, None, None
+
+    # remove URL protocol: if present
+    if ':' in got:
+        proto, got = got.split(':', 1)
+
+    # looks like BIP-21 payment URL
+    if '?' in got:
+        addr, args = got.split('?', 1)
+
+        # full URL decode here, but assuming no repeated keys
+        parts = args.split('&')
+        args = dict()
+        for p in parts:
+            k, v = a.split('=', 1) 
+            args[k] = url_decode(v)
+
+    # assume it's an bare address for now
+    if not addr:
+        addr = got
+
+    # old school
+    try:
+        raw = ngu.codecs.b58_decode(addr)
+
+        # it's valid base58
+        # an address, P2PKH or xpub (xprv checked above)
+        if addr[1:4] == 'pub':
+            return 'xpub', (addr,)
+
+        return 'addr', (proto, addr, args)
+    except:
+        pass
+
+    # new school: bech32 or bech32m
+    try:
+        hrp, version, data = ngu.codecs.segwit_decode(addr)
+        return 'addr', (proto, addr.lower(), args)
+    except:
+        pass
+
+    raise ValueError('not bip-21')
 
 # EOF

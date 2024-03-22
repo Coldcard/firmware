@@ -50,6 +50,7 @@ freeze_as_mpy('', [
 	'xor_seed.py',
 	'tapsigner.py',
 	'wallet.py',
+	'ownership.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.

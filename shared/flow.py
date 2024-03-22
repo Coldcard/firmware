@@ -193,7 +193,6 @@ UpgradeMenu = [
 DevelopersMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Serial REPL", f=dev_enable_repl),
-    MenuItem("Wipe LFS", f=wipe_filesystem),                # kills settings, HSM stuff
     MenuItem('Warm Reset', f=reset_self),
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
 ]
@@ -279,6 +278,7 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
     MenuItem('Reflash GPU', f=reflash_gpu, predicate=lambda: version.has_qwerty),
+    MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
 ]
 
 BackupStuffMenu = [
@@ -293,6 +293,7 @@ NFCToolsMenu = [
     MenuItem('Show Address', f=nfc_show_address),
     MenuItem('Sign Message', f=nfc_sign_msg),
     MenuItem('Verify Sig File', f=nfc_sign_verify),
+    MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
     MenuItem('Import Multisig', f=import_multisig_nfc),
 ]

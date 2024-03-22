@@ -183,7 +183,10 @@ We will summarize transaction outputs as "change" back into same wallet, however
 
 # Address Ownership (derivation from payment address)
 
-- only the first 1000 addresses, non-change from each "wallet" are considered
-- if you have used an sub account, without ever exploring it in the Address Explorer, nor
+- only the first 764 addresses, non-change ('external'), from each "wallet" are considered
+- P2WPKH-P2SH addresses (single sig P2PWPKH wrapped in P2SH) are not searchable if you
+  have one or more multisig wallets defined.
+- if you have used an sub-account, without ever exploring it in the Address Explorer, nor
   signing a PSBT with those account numbers, we do not search it.
+- does not search Seed Vault, you'll need to load each of those and re-search
 

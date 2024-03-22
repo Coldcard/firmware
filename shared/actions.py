@@ -1392,8 +1392,8 @@ async def restore_everything_cleartext(*A):
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
-used for settings and HSM config file. Does not affect funds, or seed words but \
-will reset settings used with other BIP39 passphrases. \
+used for settings, address search cache, and HSM config file. Does not affect funds, \
+or seed words but will reset settings used with other BIP-39 passphrases. \
 Does not affect MicroSD card, if any.'''):
         return
 
@@ -1435,7 +1435,7 @@ async def nfc_show_address(*A):
 
 
 async def nfc_sign_msg(*A):
-    # Mk4: Receive data over NFC (text - follow sign txt file format)
+    # Receive data over NFC (text - follow sign txt file format)
     #      User approval on device
     #      Send signature RFC armored format back over NFC
     from glob import NFC
@@ -1445,13 +1445,17 @@ async def nfc_sign_msg(*A):
         await ux_show_story(title="ERROR", msg="Failed to sign message. %s" % str(e))
 
 async def nfc_sign_verify(*A):
-    # Mk4: Receive armored data over NFC
+    # Receive armored data over NFC
     from glob import NFC
     try:
         await NFC.verify_sig_nfc()
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to verify signed message. %s" % str(e))
 
+async def nfc_address_verify(*A):
+    # Receive any random address (just the address) and find out if we own it.
+    from glob import NFC
+    await NFC.verify_address_nfc()
 
 async def nfc_recv_ephemeral(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.

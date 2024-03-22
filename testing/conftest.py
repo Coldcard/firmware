@@ -296,7 +296,7 @@ def addr_vs_path(master_xpub):
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
     from bech32 import bech32_decode, convertbits, Encoding
     from pycoin.encoding import a2b_hashed_base58, hash160
-    from  pycoin.key.BIP32Node import PublicPrivateMismatchError
+    from pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
 
     def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
@@ -872,6 +872,12 @@ def use_mainnet(settings_set):
     yield doit
     settings_set('chain', 'XTN')
 
+@pytest.fixture(scope="function")
+def use_testnet(settings_set):
+    def doit(do_testnet):
+        settings_set('chain', 'XTN' if do_testnet else 'BTC')
+    yield doit
+    settings_set('chain', 'XTN')
 
 @pytest.fixture(scope="function")
 def use_regtest(request, settings_set):

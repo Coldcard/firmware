@@ -99,4 +99,6 @@
 
 - Enhancement: Scan any QR and report if it is part of a wallet this Coldcard knows
   the key for. Includes Multisig and single sig wallets.
-
+    - searches up to the first 764 external addresses (not change addresses)
+    - stores data as it goes to accelerate future uses
+- Cleanups in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
