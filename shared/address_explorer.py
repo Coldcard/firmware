@@ -7,7 +7,7 @@
 import chains, stash
 from ux import ux_show_story, the_ux, ux_enter_bip32_index
 from menu import MenuSystem, MenuItem
-from public_constants import AFC_BECH32, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from public_constants import AFC_BECH32, AFC_BECH32M, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 from multisig import MultisigWallet
 from uasyncio import sleep_ms
 from uhashlib import sha256
@@ -344,7 +344,8 @@ Press (3) if you really understand and accept these risks.
                     continue
 
                 from ux import show_qr_codes
-                await show_qr_codes(addrs, bool(addr_fmt & AFC_BECH32), start)
+                is_alnum = bool(addr_fmt & (AFC_BECH32|AFC_BECH32M))
+                await show_qr_codes(addrs, is_alnum, start)
                 continue
 
             elif ch == '3' and NFC:
