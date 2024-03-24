@@ -94,3 +94,6 @@
 - Enhancement: Move dice rolls (for generating master seed) to `Advanced` submenu.
 - Cleanup reproducible building / start process of backporting to Mk4.
 
+## 1.0.2Q - 2024-03-XX
+
+- Bugfix: AFC_BECH32M incorrectly sets AFC_WRAPPED and AFC_BECH32

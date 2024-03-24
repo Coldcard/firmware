@@ -295,4 +295,8 @@ def test_word_wrap(txt, x_line2, sim_exec, only_q1, width=34):
 
     assert want_words == got_words
 
+def test_af(sim_execfile):
+    res = sim_execfile('devtest/unit_af.py')
+    assert res == ""
+
 # EOF
