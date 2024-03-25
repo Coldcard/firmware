@@ -1,5 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
+# Test the address explorer.
+#
+# Only single-sig here. Multisig cases are elsewhere.
+#
 import pytest, time, os, io, csv, hashlib
 from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node

@@ -35,17 +35,26 @@ def test_negative(addr_fmt, testnet, sim_exec):
 
     assert 'Explained' in lst
 
-@pytest.mark.parametrize('addr_fmt', [
-    AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH,
-    #AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+@pytest.mark.parametrize('addr_fmt, testnet', [
+	(AF_CLASSIC, True),
+	(AF_CLASSIC, False),
+	(AF_P2WPKH, True),
+	(AF_P2WPKH, False),
+	(AF_P2WPKH_P2SH, True),
+	(AF_P2WPKH_P2SH, False),
+
+    # multisig - testnet only
+	(AF_P2WSH, True),
+	(AF_P2SH, True),
+	(AF_P2WSH_P2SH,True),
 ])
 @pytest.mark.parametrize('offset', [ 3, 760] )
 @pytest.mark.parametrize('subaccount', [ 0, 34] )
-@pytest.mark.parametrize('testnet', [ True, False ] )
-@pytest.mark.parametrize('from_empty', [ False] )
-def test_positive(addr_fmt, offset, subaccount, testnet, from_empty,
+@pytest.mark.parametrize('change_idx', [ 0, 1] )
+@pytest.mark.parametrize('from_empty', [ True, False] )
+def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
     sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
-    enter_number, press_cancel, settings_set
+    enter_number, press_cancel, settings_set, import_ms_wallet, clear_ms
 ):
     from pycoin.key.BIP32Node import BIP32Node
     from bech32 import encode as bech32_encode
@@ -63,13 +72,21 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty,
     coin_type = 1 if testnet else 0
 
     if addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
-        from test_multisig import make_ms_address
-        M = 1
-        keys, select_wallet = make_myself_wallet(M, addr_fmt=addr_fmt_names[addr_fmt])
-        expect_name = f'Myself-{M}of4'
-        addr, scriptPubKey, script, details = make_ms_address(M, keys, idx=offset, addr_fmt=addr_fmt, testnet=int(testnet))
-        path = fix + f'---/0/{offset}'
+        from test_multisig import make_ms_address, HARD
+        M, N = 1, 3
+
+        expect_name = f'search-test-{addr_fmt}'
+        clear_ms()
+        keys = import_ms_wallet(M, N, name=expect_name, accept=1, addr_fmt=addr_fmt_names[addr_fmt])
+
+        # iffy: no cosigner index in this wallet, so indicated that w/ path_mapper
+        addr, scriptPubKey, script, details = make_ms_address(M, keys,
+                    is_change=change_idx, idx=offset, addr_fmt=addr_fmt, testnet=int(testnet),
+                    path_mapper=lambda cosigner: [HARD(45), change_idx, offset])
+
+        path = f'.../{change_idx}/{offset}'
     else:
+
         if addr_fmt == AF_CLASSIC:
             menu_item = expect_name = 'Classic P2PKH'
             path = "m/44h/{ct}h/{acc}h"
@@ -77,6 +94,7 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty,
             expect_name = 'P2WPKH-in-P2SH'
             menu_item = 'P2SH-Segwit'
             path = "m/49h/{ct}h/{acc}h"
+            clear_ms()
         elif addr_fmt == AF_P2WPKH:
             menu_item = expect_name = 'Segwit P2WPKH'
             path = "m/84h/{ct}h/{acc}h"
@@ -84,7 +102,7 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty,
             raise ValueError(addr_fmt)
 
         path_prefix = path.format(ct=coin_type, acc=subaccount)
-        path = path_prefix + f'/0/{offset}'
+        path = path_prefix + f'/{change_idx}/{offset}'
         print(f'path = {path}')
 
         # see addr_vs_path
@@ -126,10 +144,11 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty,
 
     got_name, got_path = lst
     assert expect_name in got_name
-    if subaccount:
-        assert f'Acct#{subaccount}' in got_name
+    if subaccount and '...' not in path:
+        # not expected for multisig, since we have proper wallet name
+        assert f'Account#{subaccount}' in got_name
 
-    assert got_path == (0, offset)
+    assert got_path == (change_idx, offset)
 
 
 # EOF
