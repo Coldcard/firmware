@@ -68,7 +68,7 @@ def wipe_flash_filesystem():
     for n in range(bcount):
         fl.writeblocks(n, blk)
         ckcc.rng_bytes(blk)
-        dis.progress_bar_sofar(n, bcount)
+        dis.progress_sofar(n, bcount)
         
     # rebuild and mount /flash
     dis.fullscreen('Rebuilding...')
