@@ -2,7 +2,7 @@
 #
 # flow.py - Menu structure
 #
-from menu import MenuItem, ToggleMenuItem, NonDefaultMenuItem, ShortcutItem
+from menu import MenuItem, PreloginToggleMenuItem, ToggleMenuItem, NonDefaultMenuItem, ShortcutItem
 import version, charcodes
 from glob import settings
 
@@ -107,6 +107,8 @@ LoginPrefsMenu = [
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
     NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),
     NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=se2_and_real_secret),
+    PreloginToggleMenuItem('Calculator Login', 'calc', ['Default Off', 'Calculator Login'],
+            story='''Boots into calculator mode. Enter your PIN as formula to login, or 12- to see prefix words. Normal calculator math works too.'''),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 

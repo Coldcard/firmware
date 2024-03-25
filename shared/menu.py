@@ -136,7 +136,7 @@ class NonDefaultMenuItem(MenuItem):
 class ToggleMenuItem(MenuItem):
     # Handle toggles: must use undefined (missing) as default
     # - can remap values a little, but default is to store 0/1/2
-    def __init__(self, label, nvkey, choices, predicate=None, story=None, on_change=None, invert=False, value_map=None):
+    def __init__(self, label, nvkey, choices, predicate=None, story=None, on_change=None, invert=False, value_map=None, prelogin=False):
         self.label = label
         self.story = story
         self.nvkey = nvkey
@@ -149,31 +149,41 @@ class ToggleMenuItem(MenuItem):
         if predicate:
             self.predicate = predicate
 
+    def get(self, default=None):
+        from glob import settings
+        return settings.get(self.nvkey, default)
+
+    def set(self, v):
+        from glob import settings
+        return settings.set(self.nvkey, v)
+
+    def remove_key(self):
+        from glob import settings
+        return settings.remove_key(self.nvkey)
+
     def is_chosen(self):
         # should we show a check in parent menu?
-        from glob import settings
         if self.nvkey == "chain":
-            rv = True if settings.get(self.nvkey) in ["XRT", "XTN"] else False
+            rv = True if self.get() in ["XRT", "XTN"] else False
         else:
-            rv = bool(settings.get(self.nvkey, 0))
+            rv = bool(self.get(0))
         if getattr(self, 'invert', False):
             rv = not rv
         return rv
     
     async def activate(self, menu, idx):
-        from glob import settings
         from ux import ux_show_story
 
         # skip story if default value has been changed
         if self.nvkey == "chain":
-            default = settings.get(self.nvkey) == "BTC"
+            default = (self.get() == "BTC")
         else:
-            default = settings.get(self.nvkey, None) == None
+            default = (self.get(None) == None)
         if self.story and default:
             ch = await ux_show_story(self.story)
             if ch == 'x': return
 
-        value = settings.get(self.nvkey, 0)
+        value = self.get(0)
         if hasattr(self, 'value_map'):
             for n,v in enumerate(self.value_map):
                 if value == v:
@@ -186,24 +196,39 @@ class ToggleMenuItem(MenuItem):
         the_ux.push(m)
 
     async def picked(self, menu, picked, xx_self):
-        from glob import settings
-
         menu.chosen = picked
         menu.show()
         await sleep_ms(100)     # visual feedback that we changed it
 
         if picked == 0:
-            settings.remove_key(self.nvkey)
+            self.remove_key()
         else:
             if hasattr(self, 'value_map'):
                 picked = self.value_map[picked]     # want IndexError if wrong here
-            settings.set(self.nvkey, picked)
+            self.set(picked)
 
         if self.on_change:
             await self.on_change(picked)
 
         the_ux.pop()
 
+class PreloginToggleMenuItem(ToggleMenuItem):
+    # Handle toggle settings related to pre-login stuff
+
+    def get(self, default=None):
+        from nvstore import SettingsObject
+        s = SettingsObject.prelogin()
+        return s.get(self.nvkey, default)
+
+    def set(self, v):
+        from nvstore import SettingsObject
+        s = SettingsObject.prelogin()
+        return s.set(self.nvkey, v)
+
+    def remove_key(self):
+        from nvstore import SettingsObject
+        s = SettingsObject.prelogin()
+        return s.remove_key(self.nvkey)
 
 class MenuSystem:
 

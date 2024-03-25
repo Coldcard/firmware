@@ -102,3 +102,4 @@
     - searches up to the first 764 external addresses (not change addresses)
     - stores data as it goes to accelerate future uses
 - Cleanups in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
+- Bugfix: Key right of L was giving back quote, should have been single-quote.

@@ -58,6 +58,18 @@ def _set_kill_key(device, is_Q, val):
     _press_select(device, is_Q)
     _pick_menu_item(device, is_Q, val)
 
+def _set_calculator_login(device):
+    # needs to be already in Login Settings
+    is_Q = True
+    _pick_menu_item(device, is_Q, "Calculator Login")
+    time.sleep(.1)
+    _, story = _cap_story(device)
+    assert "Boots into calculator mode" in story
+    _press_select(device, is_Q)
+    time.sleep(.1)
+    # Choose scrambled
+    _pick_menu_item(device, is_Q, "Calculator Login")
+
 def _remap_pin(pin, key_map):
     # remap pin
     remap_pin = ""
@@ -461,5 +473,59 @@ def test_login_integration(request, nick, randomize, login_ctdwn, kill_btn, kill
     m = _cap_menu(device)
     assert "Ready To Sign" in m
     sim.stop()
+
+def test_calc_login(request):
+    is_Q = request.config.getoption('--Q')
+    if not is_Q: raise pytest.skip("Q only")
+    
+    clean_sim_data()  # remove all from previous
+    sim = ColdcardSimulator(args=["--q1"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+
+    _pick_menu_item(device, is_Q, "Settings")
+    _pick_menu_item(device, is_Q, "Login Settings")
+    _set_calculator_login(device)
+
+    time.sleep(1)
+    sim.stop()  # power off
+    sim = ColdcardSimulator(args=["--q1", "--pin", "22-22", "--early-usb"])
+    sim.start(start_wait=6)
+    device = ColdcardDevice(sn=CKCC_SIMULATOR_PATH)
+    scr = _cap_screen(device)
+    assert 'ECC Calculator' in scr
+
+    def entry(cmd, delay=.5):
+        _enter_complex(device, True, cmd, b39pass=False)
+        time.sleep(delay)
+        return _cap_screen(device)
+
+    scr = entry('45*22/55')
+    assert '>> 45*22/55' in scr
+    assert '18.0' in scr
+
+    for pfl in range(2,7):
+        entry('cls')
+        prefix = ''.join(chr(49 + i) for i in range(pfl)) + '-'
+        scr = entry(prefix)
+        assert f'>> {prefix}' in scr
+        assert "('" in scr
+
+    entry('cls')
+    scr = entry("123456-123456")
+    assert '# 11 tries remain' in scr
+
+    scr = entry("00-123456")
+    assert '# 10 tries remain' in scr
+
+    entry("22-22")
+    # no feedback just does login
+
+    time.sleep(3)
+    m = _cap_menu(device)
+
+    assert "Ready To Sign" in m
+    sim.stop()
+
 
 # EOF

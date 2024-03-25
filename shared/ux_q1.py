@@ -144,7 +144,7 @@ async def ux_input_numbers(val, validate_func):
 
 async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
-            placeholder=None, funct_keys=None):
+            placeholder=None, funct_keys=None, force_xy=None):
     # Get a text string.
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
@@ -194,9 +194,12 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             num_lines += 1
         assert num_lines <= MAX_LINES, num_lines       # too big to fit w/o scroll
 
-    dis.clear()
+    if force_xy:
+        x, y = force_xy
+    else:
+        dis.clear()
 
-    if not can_scroll:
+    if not can_scroll and not force_xy:
         # Normal, no-scrolling case
         if funct_keys:
             msg, funct_keys = funct_keys
@@ -216,7 +219,7 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
 
         dis.text(None, y-2, prompt)
         x = dis.draw_box(None, y-1, line_len, num_lines, dark=True)
-    else:
+    elif can_scroll:
         # Scrolling, max-screen space mode (unlimited length for notes)
         dis.text(None, 0, prompt)
 

@@ -370,6 +370,15 @@ async def block_until_login():
     from login import LoginUX
     from ux import AbortInteraction
 
+    # maybe show a calculator rather than login screen
+    try:
+        if version.has_qwerty and settings.get('calc', 0):
+            with imported('calc') as calc:
+                await calc.login_repl()
+            return 
+    except:
+        pass
+
     # do they want a randomized (shuffled) keypad?
     rnd_keypad = settings.get('rngk', 0)
 
@@ -796,7 +805,7 @@ async def start_login_sequence():
     try:
         # Get a PIN and try to use it to login
         # - does warnings about attempt usage counts
-        wants_countdown = await block_until_login()
+        await block_until_login()
 
         # Do we need to do countdown delay? (real or otherwise)
         # Q/Mk4 approach:
