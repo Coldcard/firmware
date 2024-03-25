@@ -481,7 +481,6 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
         await ux_show_story(title="FAILED", msg=err_msg)
         return
 
-
     xfp = "[" + xfp2str(settings.get("xfp", 0)) + "]"
     if summarize_ux:
         await ux_show_story(title=xfp, msg="New temporary master key is in effect now.")
