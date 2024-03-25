@@ -107,3 +107,4 @@
 - Cleanups in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
 - Bugfix: Key right of L was giving back quote, should have been single-quote.
 - Bugfix: `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`
+- Bugfix: base64 PSBT via QR was not properly decoded

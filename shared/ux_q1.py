@@ -940,7 +940,7 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
     from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
     from qrs import MAX_V40_SIZE
 
-    if raw == 'PSRAM':      # might already be in place
+    if raw != 'PSRAM':      # might already be in place
 
         if isinstance(raw, str):
             raw = raw.encode()

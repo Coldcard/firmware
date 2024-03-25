@@ -2,8 +2,7 @@
 #
 # BBQr and secure notes.
 #
-
-import pytest, time, random
+import pytest, time, random, base64
 from helpers import prandom
 from binascii import a2b_hex
 from bbqr import split_qrs, join_qrs
@@ -175,11 +174,13 @@ def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shar
 @pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
 @pytest.mark.parametrize('partial', [False, True])
+@pytest.mark.parametrize('base64str', [False, True])
 @pytest.mark.parametrize('segwit', [True, False])
 def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback_bbqr,
                    cap_screen_qr, render_bbqr, goto_home, use_regtest, cap_story,
                    decode_psbt_with_bitcoind, decode_with_bitcoind, fake_txn, dev,
-                   start_sign, end_sign, press_cancel, press_select, need_keypress):
+                   start_sign, end_sign, press_cancel, press_select, need_keypress,
+                   base64str):
 
     num_in = size
     num_out = size*10
@@ -196,14 +197,18 @@ def test_bbqr_psbt(size, encoding, max_ver, partial, segwit, scan_a_qr, readback
     else:
         psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack,
                             segwit_in=True, outstyles=['p2wpkh'])
-    open('debug/last.psbt', 'wb').write(psbt)
+    if base64str:
+        psbt = base64.b64encode(psbt).decode()
+
+    open('debug/last.psbt', 'w' if base64str else 'wb').write(psbt)
 
     goto_home()
     need_keypress(KEY_QR)
 
     # def split_qrs(raw, type_code, encoding=None, 
     #  min_split=1, max_split=1295, min_version=5, max_version=40
-    actual_vers, parts = split_qrs(psbt, 'P',  max_version=max_ver, encoding=encoding)
+    actual_vers, parts = split_qrs(psbt, 'U' if base64str else 'P',
+                                   max_version=max_ver, encoding=encoding)
     random.shuffle(parts)
 
     for p in parts:

@@ -17,6 +17,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from constants import ADDR_STYLES, ADDR_STYLES_SINGLE, SIGHASH_MAP
 from txn import *
 from ckcc_protocol.constants import STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
+from charcodes import KEY_QR
 
 
 SEQUENCE_LOCKTIME_TYPE_FLAG = (1 << 22)
@@ -2733,5 +2734,69 @@ def test_timelocks_visualize(start_sign, end_sign, dev, bitcoind, use_regtest,
         assert "Block height RTL: 5 inputs have relative block height timelock" in story
         # when i=0 in loop time based RTL is zero
         assert "Time-based RTL: 4 inputs have relative time-based timelock" in story
+
+
+@pytest.mark.parametrize('in_out', [(4,1),(2,2),(2,1)])
+@pytest.mark.parametrize('partial', [False, True])
+@pytest.mark.parametrize('segwit', [True, False])
+def test_bas64_psbt_qr(in_out, partial, segwit, scan_a_qr, readback_bbqr,
+                       goto_home, use_regtest, cap_story, fake_txn, dev,
+                       decode_psbt_with_bitcoind, decode_with_bitcoind,
+                       press_cancel, press_select, need_keypress):
+    def hack(psbt):
+        if partial:
+            # change first input to not be ours
+            pk = list(psbt.inputs[0].bip32_paths.keys())[0]
+            pp = psbt.inputs[0].bip32_paths[pk]
+            psbt.inputs[0].bip32_paths[pk] = b'what' + pp[4:]
+
+    num_in, num_out = in_out
+
+    if not segwit:
+        psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack)
+    else:
+        psbt = fake_txn(num_in, num_out, dev.master_xpub, psbt_hacker=hack,
+                            segwit_in=True, outstyles=['p2wpkh'])
+
+    psbt = base64.b64encode(psbt).decode()
+
+    open('debug/last.psbt', 'w').write(psbt)
+
+    goto_home()
+    need_keypress(KEY_QR)
+
+    scan_a_qr(psbt)
+
+    for r in range(20):
+        title, story = cap_story()
+        if 'OK TO SEND' in title:
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('never saw it?')
+
+    # approve it
+    press_select()
+
+    time.sleep(.2)
+
+    file_type, rb = readback_bbqr()
+    assert file_type in 'TP'
+
+    if file_type == 'T':
+        assert not partial
+        decoded = decode_with_bitcoind(rb)
+    elif file_type == 'P':
+        assert partial
+        assert rb[0:4] == b'psbt'
+        decoded = decode_psbt_with_bitcoind(rb)
+        assert not decoded['unknown']
+        decoded = decoded['tx']
+
+    # just smoke test; syntax not content
+    assert len(decoded['vin']) == num_in
+    assert len(decoded['vout']) == num_out
+
+    press_cancel()      # back to menu
 
 # EOF
