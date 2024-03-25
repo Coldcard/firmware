@@ -6,15 +6,12 @@
 import os, sys, pyb, ckcc, version, glob
 
 def make_flash_fs():
-    print("Rebuild /flash")
-
     # create our fav filesystem, and mount it
     fl = pyb.Flash(start=0)
     os.VfsLfs2.mkfs(fl)
 
     os.mount(fl, '/flash')
 
-    open('/flash/README.txt', 'wt').write("LFS Virt disk")
     os.mkdir('/flash/settings')
 
 def make_psram_fs():
