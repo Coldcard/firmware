@@ -36,13 +36,6 @@ def disassemble_multisig_mn(redeem_script):
 
     return M, N
 
-def censor_address(addr):
-    # We don't like to show the
-    # user multisig  addresses because we cannot be certain
-    # they are valid and could be signed. And yet, dont blank too many
-    # spots or else an attacker could grind out a suitable replacement.
-    return addr[0:12] + '___' + addr[12+3:]
-
 def disassemble_multisig(redeem_script):
     # Take apart a standard multisig's redeem/witness script, and return M/N and public keys
     # - only for multisig scripts, not general purpose

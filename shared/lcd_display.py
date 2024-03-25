@@ -6,7 +6,7 @@ import machine, uzlib, utime, array
 from uasyncio import sleep_ms
 from graphics_q1 import Graphics
 from st7788 import ST7788
-from utils import xfp2str
+from utils import xfp2str, word_wrap
 from ucollections import namedtuple
 
 # the one font: fixed-width (except for a few double-width chars)
@@ -483,11 +483,12 @@ class Display:
         # show a simple message "fullscreen". 
         self.clear()
         y = CHARS_H // 3
+        self.text(None, y, msg)
         if line2:
-            x = self.text(None, y, msg)
-            self.text(x-self.width(msg), y+2, line2, dark=True)
-        else:
-            self.text(None, y, msg)
+            y += 2
+            for ln in word_wrap(line2, CHARS_W):
+                self.text(None, y, ln, dark=True)
+                y += 1
         if percent is not None:
             self.progress_bar(percent)
         self.show()
@@ -586,7 +587,6 @@ class Display:
     def show_yikes(self, lines):
         # dump a stack trace
         # - intended for photos, sent to support!
-        from utils import word_wrap
 
         self.clear()
         self.text(None, 0, '>>>> Yikes!! <<<<')
@@ -634,7 +634,6 @@ class Display:
         # Show a QR code on screen w/ some text under it
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
-        from utils import word_wrap
 
         # maybe show something other than QR contents under it
         msg = sidebar or msg

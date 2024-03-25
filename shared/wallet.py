@@ -16,11 +16,12 @@ class WalletABC:
     #   chain
 
     def yield_addresses(self, start_idx, count, change_idx=0):
-        # TODO: returns various expected tuples?
+        # TODO: returns various tuples, with at least (idx, address, ...)
         pass
 
     def render_address(self, change_idx, idx):
-        # make one single address
+        # make one single address as text.
+
         tmp = list(self.yield_addresses(idx, 1, change_idx=change_idx))
 
         assert len(tmp) == 1
@@ -56,12 +57,12 @@ class MasterSingleSigWallet(WalletABC):
             self.chain = chains.current_chain()
 
         if account_idx != 0:
-            n += ' Acct#%d' % account_idx
+            n += ' Account#%d' % account_idx
 
         if self.chain.ctype == 'XTN':
-            n += ' (TestNet)'
+            n += ' (Testnet)'
         if self.chain.ctype == 'XRT':
-            n += ' (RegTest)'
+            n += ' (Regtest)'
 
 
         self.name = n

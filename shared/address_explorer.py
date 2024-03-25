@@ -382,6 +382,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     # Produce CSV file contents as a generator
     # - maybe cache internally
     from ownership import OWNERSHIP
+    from utils import censor_address
 
     if ms_wallet:
         # For multisig, include redeem script and derivation for each signer
@@ -389,8 +390,8 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
                     + ['Derivation (%d of %d)' % (i+1, ms_wallet.N) for i in range(ms_wallet.N)]
                     ) + '"\n'
 
-        if n > 100 and change == 0:
-            saver = OWNERSHIP.saver(ms_wallet, start)
+        if n > 100 and change in (0, 1):
+            saver = OWNERSHIP.saver(ms_wallet, change, start)
         else:
             saver = None
 
@@ -398,7 +399,8 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
             if saver:
                 saver(addr)
 
-            # XXX censor_address
+            # policy choice: never provide a complete multisig address to user.
+            addr = censor_address(addr)
 
             ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
             ln += '","'.join(derivs)
@@ -407,7 +409,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
             yield ln
 
         if saver:
-            saver(None)     # close
+            saver(None)     # close file
 
         return
 
@@ -415,8 +417,8 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
-    if n > 100 and change == 0:
-        saver = OWNERSHIP.saver(main, start)
+    if n > 100 and change in (0, 1):
+        saver = OWNERSHIP.saver(main, change, start)
     else:
         saver = None
 

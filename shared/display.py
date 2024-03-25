@@ -149,6 +149,7 @@ class Display:
 
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
+        # - 'line2' not supported on smaller screen sizes, ignore
         self.clear()
         y = 14
         self.text(None, y, msg, font=FontLarge)

@@ -683,4 +683,10 @@ def decode_bip21_text(got):
 
     raise ValueError('not bip-21')
 
+def censor_address(addr):
+    # We don't like to show the user multisig addresses because we cannot be certain
+    # they are valid and could actually be signed. And yet, dont blank too many
+    # spots or else an attacker could grind out a suitable replacement.
+    return addr[0:12] + '___' + addr[12+3:]
+
 # EOF

@@ -261,9 +261,10 @@ class ChainsBase:
     def possible_address_fmt(cls, addr):
         # Given a text (serialized) address, return what
         # address format applies to the address, but
-        # for AF_P2SH case, could be AF_P2WPKH_P2SH, AF_P2WSH_P2SH.
+        # for AF_P2SH case, could be: AF_P2SH,  AF_P2WPKH_P2SH, AF_P2WSH_P2SH. .. we don't know
         if addr.startswith(cls.bech32_hrp):
             if addr.startswith(cls.bech32_hrp+'1p'):
+                # really any ver=1 script or address, but for now...
                 return AF_P2TR
             else:
                 return AF_P2WPKH if len(addr) < 55 else AF_P2WSH

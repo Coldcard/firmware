@@ -31,7 +31,7 @@ from exceptions import UnknownAddressExplained
 HASH_ENC_LEN = const(2)
 
 # File header
-OwnershipFileHdr = namedtuple('OwnershipFileHdr', 'file_magic future flags')
+OwnershipFileHdr = namedtuple('OwnershipFileHdr', 'file_magic change_idx flags')
 OWNERSHIP_FILE_HDR = 'HHI'
 OWNERSHIP_FILE_HDR_LEN = 8
 
@@ -48,16 +48,23 @@ def encode_addr(addr, salt):
 
 class AddressCacheFile:
 
-    def __init__(self, wallet):
+    def __init__(self, wallet, change_idx):
         self.wallet = wallet
-        self.desc = wallet.to_descriptor().serialize()
-        h = b2a_hex(ngu.hash.sha256d(wallet.chain.ctype + self.desc))
-        self.fname = h[0:32] + '.own'
+        self.change_idx = change_idx
+        desc = wallet.to_descriptor().serialize()
+        h = b2a_hex(ngu.hash.sha256d(wallet.chain.ctype + desc))
+        self.fname = h[0:32] + '-%d.own' % change_idx
         self.salt = h[32:]
         self.count = 0
         self.hdr = None
 
         self.peek()
+
+    def nice_name(self):
+        rv = self.wallet.name
+        if self.change_idx:
+            rv += ' (change)'
+        return rv
 
     def exists(self):
         return bool(self.count)
@@ -71,6 +78,7 @@ class AddressCacheFile:
                 flen = fd.seek(0, 2)
             self.hdr = OwnershipFileHdr(*struct.unpack(OWNERSHIP_FILE_HDR, hdr))
             assert self.hdr.file_magic == OWNERSHIP_MAGIC
+            assert self.hdr.change_idx == self.change_idx
         except OSError:
             return
         except Exception as exc:
@@ -81,7 +89,9 @@ class AddressCacheFile:
 
         self.count = (flen - OWNERSHIP_FILE_HDR_LEN) // HASH_ENC_LEN
 
-    def setup(self, start_idx):
+    def setup(self, change_idx, start_idx):
+        assert self.change_idx == change_idx
+
         if self.count or self.hdr:
             assert start_idx == self.count, 'not an append'
 
@@ -90,7 +100,7 @@ class AddressCacheFile:
         else:
             # Start new file
             self.fd = open(self.fname, 'wb')
-            self.hdr = OwnershipFileHdr(OWNERSHIP_MAGIC, 0x0, 0x0)
+            self.hdr = OwnershipFileHdr(OWNERSHIP_MAGIC, self.change_idx, 0x0)
             hdr = struct.pack(OWNERSHIP_FILE_HDR, *self.hdr)
             self.fd.write(hdr)
 
@@ -122,19 +132,19 @@ class AddressCacheFile:
         chk = encode_addr(addr, self.salt)
         for idx in range(self.count):
             if buf[idx*HASH_ENC_LEN : (idx*HASH_ENC_LEN)+HASH_ENC_LEN] == chk:
-                yield (0, idx)
+                yield (self.change_idx, idx)
 
             dis.progress_sofar(idx, self.count)
 
     def check_match(self, want_addr, subpath):
         # need to double-check matches, to get rid of false positives.
-        chg, idx = subpath
         got = self.wallet.render_address(*subpath)
+        chg, idx = subpath
+        #print('(%d, %d) => %s ?= %s' % (chg, idx, got, want_addr))
         return want_addr == got
 
-    def rebuild(self, addr):
-        # build more addresses
-        # - maybe wipe incomplete stuff from csv export hack
+    def build_and_search(self, addr):
+        # build many more addresses
         # - return subpath for a hit or None
         from glob import dis
 
@@ -147,14 +157,14 @@ class AddressCacheFile:
         if count <= 0:
             return None
 
-        self.setup(start_idx)
+        self.setup(self.change_idx, start_idx)
 
-        for idx,here,*_ in self.wallet.yield_addresses(
-                                    start_idx, count, change_idx=0, censored=False):
+        for idx,here,*_ in self.wallet.yield_addresses(start_idx, count,
+                                                            change_idx=self.change_idx):
 
             if here == addr:
                 # Found it! But keep going a little for next time.
-                match = (0, idx)
+                match = (self.change_idx, idx)
 
             self.append(here)
             self.count += 1
@@ -174,11 +184,11 @@ class AddressCacheFile:
 class OwnershipCache:
 
     @classmethod
-    def saver(cls, wallet, start_idx):
+    def saver(cls, wallet, change_idx, start_idx):
         # when we are generating many addresses for export, capture them
         # as we go with this function
         # - not change -- only main addrs
-        file = AddressCacheFile(wallet)
+        file = AddressCacheFile(wallet, change_idx)
 
         if file.exists():
             # don't save to existing file, has some already
@@ -199,7 +209,7 @@ class OwnershipCache:
         # - if you start w/ testnet, we'll follow that
         from chains import current_chain
         from multisig import MultisigWallet
-        from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH
+        from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH
         from glob import dis
 
         ch = current_chain()
@@ -220,8 +230,11 @@ class OwnershipCache:
 
         if addr_fmt & AFC_SCRIPT:
             # multisig or script at least.. must exist already
-            for w in MultisigWallet.iter_wallets(addr_fmt=addr_fmt):
-                possibles.append(w)
+            possibles.extend(MultisigWallet.iter_wallets(addr_fmt=addr_fmt))
+
+            if addr_fmt == AF_P2SH:
+                # might look like P2SH but actually be AF_P2WSH_P2SH
+                possibles.extend(MultisigWallet.iter_wallets(addr_fmt=AF_P2WSH_P2SH))
 
             # TODO: add tapscript and such fancy stuff here
 
@@ -247,32 +260,34 @@ class OwnershipCache:
 
         count = 0
         phase2 = []
-        files = [AddressCacheFile(w) for w in possibles]
-        for f in files:
-            dis.fullscreen('Searching wallet(s)...', line2=f.wallet.name)
+        for change_idx in (0, 1):
+            files = [AddressCacheFile(w, change_idx) for w in possibles]
+            for f in files:
+                dis.fullscreen('Searching wallet(s)...', line2=f.nice_name())
 
-            for maybe in f.fast_search(addr):
-                ok = f.check_match(addr, maybe)
-                if not ok: continue
+                for maybe in f.fast_search(addr):
+                    ok = f.check_match(addr, maybe)
+                    if not ok: continue
 
-                # found winner.
-                return f.wallet, maybe
+                    # found winner.
+                    return f.wallet, maybe
 
-            if f.count < MAX_ADDRS_STORED:
-                phase2.append(f)
-            count += f.count
+                if f.count < MAX_ADDRS_STORED:
+                    phase2.append(f)
+
+                count += f.count
 
         # maybe we haven't rendered all the addresses yet, so do that
         # - very slow, but only needed once
         # - might stop when match found, or maybe go a bit beyond that?
-        # - MAYBE NOT: search all in parallel, rather than serially because
-        #   more likely to find a match with low index
+        # - we could search all in parallel, rather than serially because
+        #   more likely to find a match with low index... but seen as too much memory
 
         for f in phase2:
             b4 = f.count
-            dis.fullscreen("Generating addresses...", line2=f.wallet.name)
+            dis.fullscreen("Generating addresses...", line2=f.nice_name())
 
-            result = f.rebuild(addr)
+            result = f.build_and_search(addr)
             if result:
                 # found it, so report it and stop
                 return f.wallet, result
