@@ -1588,10 +1588,10 @@ def nfc_write(request, needs_nfc, is_q1):
 def scan_a_qr(sim_exec, is_q1):
     # simulate a QR being scanned 
     # XXX limitation: our USB protocol can't send a v40 QR, limit is more like 30 or so
-    if not is_q1:
-        raise pytest.xfail('needs scanner')
 
     def doit(qr):
+        if not is_q1:
+            raise pytest.xfail('needs scanner')
         assert isinstance(qr, str)
         qr = qr.encode('ascii')
         rv = sim_exec(f'glob.SCAN._q.put_nowait({qr!r})')
