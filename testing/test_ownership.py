@@ -12,7 +12,7 @@ from constants import simulator_fixed_xprv, simulator_fixed_tprv, addr_fmt_names
 @pytest.fixture
 def wipe_cache(sim_exec):
     def doit():
-        cmd = f'from ownership import OWNERSHIP; OWNERSHIP.wipe();'
+        cmd = f'from ownership import OWNERSHIP; OWNERSHIP.wipe_all();'
         sim_exec(cmd)
     return doit
 
@@ -59,6 +59,8 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
     from pycoin.key.BIP32Node import BIP32Node
     from bech32 import encode as bech32_encode
     from pycoin.encoding import b2a_hashed_base58, hash160
+
+    # API/Unit test, limited UX
 
     if not testnet and addr_fmt in { AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH }:
         # multisig jigs assume testnet
@@ -149,6 +151,76 @@ def test_positive(addr_fmt, offset, subaccount, testnet, from_empty, change_idx,
         assert f'Account#{subaccount}' in got_name
 
     assert got_path == (change_idx, offset)
+
+@pytest.mark.parametrize('valid', [ True, False] )
+@pytest.mark.parametrize('testnet', [ True, False] )
+@pytest.mark.parametrize('method', [ 'qr', 'nfc'] )
+def test_ux(valid, testnet, method, 
+    sim_exec, wipe_cache, make_myself_wallet, use_testnet, goto_home, pick_menu_item,
+    press_cancel, press_select, settings_set, is_q1, nfc_write, need_keypress,
+    cap_screen, cap_story, load_shared_mod, scan_a_qr
+):
+    from pycoin.key.BIP32Node import BIP32Node
+
+    addr_fmt = AF_CLASSIC
+
+    if valid:
+        mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if testnet else simulator_fixed_xprv)
+        path = "m/44h/{ct}h/{acc}h/0/3".format(acc=0, ct=(1 if testnet else 0))
+        sk = mk.subkey_for_path(path[2:].replace('h', "'"))
+        addr = sk.address()
+    else:
+        addr = fake_address(addr_fmt, testnet) 
+
+    if method == 'qr':
+        if not is_q1:
+            raise pytest.skip('no QR on Mk4')
+        goto_home()
+        pick_menu_item('Scan Any QR Code')
+        scan_a_qr(addr)
+        time.sleep(1)
+
+        title, story = cap_story()
+
+        assert addr in story
+        assert '(1) to verify ownership' in story
+        need_keypress('1')
+
+    elif method == 'nfc':
+        
+        cc_ndef = load_shared_mod('cc_ndef', '../shared/ndef.py')
+        n = cc_ndef.ndefMaker()
+        n.add_text(addr)
+        ccfile = n.bytes()
+
+        # run simulator w/ --set nfc=1 --eff
+        goto_home()
+        pick_menu_item('Advanced/Tools')
+        pick_menu_item('NFC Tools')
+        pick_menu_item('Verify Address')
+        open('debug/nfc-addr.ndef', 'wb').write(ccfile)
+        nfc_write(ccfile)
+        #press_select()
+
+    else:
+        raise ValueError(method)
+
+    time.sleep(1)
+    title, story = cap_story()
+
+    assert addr in story
+
+    if title == 'Unknown Address' and not testnet:
+        assert 'That address is not valid on Bitcoin Testnet' in story
+    elif valid:
+        assert title == 'Verified Address'
+        assert 'Found in wallet' in story
+        assert 'Derivation path' in story
+        assert 'P2PKH' in story
+    else:
+        assert title == 'Unknown Address'
+        assert 'Searched ' in story
+        assert 'candidates without finding a match' in story
 
 
 # EOF
