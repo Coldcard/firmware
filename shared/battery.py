@@ -8,7 +8,7 @@ from machine import Pin
 import uctypes
 
 # value must exist in battery_idle_timeout_chooser() choices
-DEFAULT_BATT_IDLE_TIMEOUT = const(30*60)
+DEFAULT_BATT_IDLE_TIMEOUT = const(10*60)
 
 # 0..255 brightness value for when on batteries
 DEFAULT_BATT_BRIGHTNESS = const(200)
