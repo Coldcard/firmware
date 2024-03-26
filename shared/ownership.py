@@ -2,7 +2,7 @@
 #
 # ownership.py - store a cache of hashes related to addresses we might control.
 #
-import sys, chains, stash, ngu, struct
+import os, sys, chains, stash, ngu, struct, version
 from uhashlib import sha256
 from ubinascii import b2a_base64, a2b_base64
 from glob import settings
@@ -25,6 +25,7 @@ from exceptions import UnknownAddressExplained
 # - multisig and single sig, and someday taproot, miniscript too
 # - searching leaves behind a cache for next time
 # - data building/saves happens when are searching, but might grab some during addr expl export?
+# - performance: 1m40s for one P2PKH wallet (change, and external addresses: 1528 in all)
 #
 
 # length of hashed & truncated address record
@@ -39,7 +40,7 @@ OWNERSHIP_MAGIC = 0x10A0            # "Address Ownership" v1.0
 # flags: none yet, but 32 bits reserved
 
 # target 3 flash blocks, max file size => 764 addresses
-MAX_ADDRS_STORED = ((3*512) - OWNERSHIP_FILE_HDR_LEN) // HASH_ENC_LEN
+MAX_ADDRS_STORED = const(764)       # =((3*512) - OWNERSHIP_FILE_HDR_LEN) // HASH_ENC_LEN
 BONUS_GAP_LIMIT = const(20)
 
 def encode_addr(addr, salt):
@@ -246,9 +247,9 @@ class OwnershipCache:
 
             # add all account idx they have ever looked at, w/ this addr fmt (single sig)
             ex = settings.get('accts', [])
-            for af, idx in ex:
-                if af == addr_fmt and idx:
-                    w = MasterSingleSigWallet(addr_fmt, account_idx=idx)
+            for af, acct_num in ex:
+                if af == addr_fmt and acct_num:
+                    w = MasterSingleSigWallet(addr_fmt, account_idx=acct_num)
                     possibles.append(w)
 
         if not possibles:
@@ -263,11 +264,14 @@ class OwnershipCache:
         for change_idx in (0, 1):
             files = [AddressCacheFile(w, change_idx) for w in possibles]
             for f in files:
-                dis.fullscreen('Searching wallet(s)...', line2=f.nice_name())
+                if dis.has_lcd:
+                    dis.fullscreen('Searching wallet(s)...', line2=f.nice_name())
+                else:
+                    dis.fullscreen('Searching...')
 
                 for maybe in f.fast_search(addr):
                     ok = f.check_match(addr, maybe)
-                    if not ok: continue
+                    if not ok: continue     # false positive - will happen
 
                     # found winner.
                     return f.wallet, maybe
@@ -277,15 +281,18 @@ class OwnershipCache:
 
                 count += f.count
 
-        # maybe we haven't rendered all the addresses yet, so do that
-        # - very slow, but only needed once
-        # - might stop when match found, or maybe go a bit beyond that?
+        # maybe we haven't calculated all the addresses yet, so do that
+        # - very slow, but only needed once; any negative (failed) search causes this
+        # - could stop when match found, but we go a bit beyond that for next time
         # - we could search all in parallel, rather than serially because
         #   more likely to find a match with low index... but seen as too much memory
 
         for f in phase2:
             b4 = f.count
-            dis.fullscreen("Generating addresses...", line2=f.nice_name())
+            if dis.has_lcd:
+                dis.fullscreen("Generating addresses...", line2=f.nice_name())
+            else:
+                dis.fullscreen("Generating...")
 
             result = f.build_and_search(addr)
             if result:
@@ -299,17 +306,30 @@ class OwnershipCache:
         raise UnknownAddressExplained('Searched %d candidates without finding a match.' % count)
 
     @classmethod
-    def search_ux(cls, addr):
+    async def search_ux(cls, addr):
         # Provide a simple UX. Called functions do fullscreen, progress bar stuff.
-        from ux import ux_show_story
+        from ux import ux_show_story, show_qr_code
+        from charcodes import KEY_QR
+        from public_constants import AFC_BECH32, AFC_BECH32M
 
         try:
             wallet, subpath = OWNERSHIP.search(addr)
 
             msg = addr
             msg += '\n\nFound in wallet:\n  ' + wallet.name
-            msg += '\nDerivation path:\n   ' + wallet.render_path(*subpath)
-            await ux_show_story(msg, title="Verified Address")
+            msg += '\nDerivation path:\n  ' + wallet.render_path(*subpath)
+            if version.has_qwerty:
+                esc = KEY_QR
+            else:
+                msg += '\n\nPress (1) for QR'
+                esc = '1'
+
+            while 1:
+                ch = await ux_show_story(msg, title="Verified Address",
+                                                        escape=esc, hint_icons=KEY_QR)
+                if ch != esc: break
+                await show_qr_code(addr, is_alnum=(wallet.addr_fmt & (AFC_BECH32 | AFC_BECH32M)),
+                                                msg=addr)
 
         except UnknownAddressExplained as exc:
             await ux_show_story(addr + '\n\n' + str(exc), title="Unknown Address")
@@ -347,6 +367,11 @@ class OwnershipCache:
         # - if they sign those paths
         # - but ignore testnet vs. not
         from glob import settings
+
+        if subaccount == 0:
+            # only interested in non-zero subaccounts
+            return
+
         here = [addr_fmt, subaccount]
 
         ex = settings.get('accts', [])
@@ -360,8 +385,8 @@ class OwnershipCache:
         settings.set('accts', ex)
                 
     @classmethod
-    def wipe(cls):
-        # maybe only for testing? clear all caches
+    def wipe_all(cls):
+        # clear all cached addresses. will affect other seeds in vault
         for fn in os.listdir():
             if fn.endswith('.own'):
                 os.remove(fn)
