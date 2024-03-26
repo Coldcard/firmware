@@ -729,7 +729,7 @@ class NFCHandler:
         for urn, msg, meta in ndef.record_parser(data):
             msg = bytes(msg).decode()  # from memory view
             try:
-                what, *vals = decode_bip21_text(msg)
+                what, vals = decode_bip21_text(msg)
                 if what == 'addr':
                     winner = vals[1]
                     break
