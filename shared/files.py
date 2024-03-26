@@ -44,7 +44,7 @@ def _try_microsd():
         #sys.print_exception(exc)
         return False
 
-def wipe_flash_filesystem():
+def wipe_flash_filesystem(do_rebuild=True):
     # erase and re-format the flash filesystem (/flash/**)
     import ckcc, pyb
     from glob import dis
@@ -67,9 +67,11 @@ def wipe_flash_filesystem():
 
     for n in range(bcount):
         fl.writeblocks(n, blk)
-        ckcc.rng_bytes(blk)
         dis.progress_sofar(n, bcount)
         
+    if not do_rebuild:
+        return
+
     # rebuild and mount /flash
     dis.fullscreen('Rebuilding...')
 

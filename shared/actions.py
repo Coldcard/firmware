@@ -601,6 +601,10 @@ consequences.''', escape='4')
     if ch != '4':
         return await ux_aborted()
 
+    # clear settings, address cache, settings from tmp seeds / seedvault seeds
+    from files import wipe_flash_filesystem
+    wipe_flash_filesystem(False)
+
     seed.clear_seed()
     # NOT REACHED -- reset happens
 
@@ -2018,8 +2022,16 @@ async def wipe_hsm_policy(*A):
     hsm_delete_policy()
     goto_top_menu()
 
+async def wipe_address_cache(*a):
+    ok = await ux_confirm('''Clear cached addresses used in ownership search. Harmless to erase, just costs time.''')
+    if not ok: return
+
+    from ownership import OWNERSHIP
+    OWNERSHIP.wipe_all()
+
+    await ux_dramatic_pause("Cleared.", 3)
+
 async def wipe_ovc(*a):
-    # Factory command: for dev and test units that have no bag number, and never will.
     ok = await ux_confirm('''Clear history of segwit UTXO input values we have seen already. \
 This data protects you against specific attacks. Use this only if certain a false-positive \
 has occured in the detection logic.''')
