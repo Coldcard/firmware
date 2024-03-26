@@ -358,6 +358,7 @@ NewSeedMenu = [
 # has PIN, but no secret seed yet
 EmptyWallet = [
     #         xxxxxxxxxxxxxxxx
+    MenuItem("Migrate COLDCARD", menu=clone_start),
     MenuItem('New Seed Words', menu=NewSeedMenu),
     MenuItem('Import Existing', menu=ImportWallet),
     MenuItem('Help', f=virgin_help, predicate=lambda: not version.has_qwerty),
