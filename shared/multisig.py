@@ -14,6 +14,7 @@ from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
+from wallet import WalletABC
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -104,7 +105,7 @@ def make_redeem_script(M, nodes, subkey_idx):
 
     return b''.join(pubkeys)
 
-class MultisigWallet:
+class MultisigWallet(WalletABC):
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
     # - can be saved to nvram
@@ -149,6 +150,15 @@ class MultisigWallet:
             if k == addr_fmt:
                 return v.upper()
         return '?'
+
+    def render_path(self, change_idx, idx):
+        # assuming shared derivations for all cosigners. Wrongish.
+        derivs, _ = self.get_deriv_paths()
+        if len(derivs) > 1:
+            deriv = '(various)'
+        else:
+            deriv = derivs[0]
+        return deriv + '/%d/%d' % (change_idx, idx)
 
     @property
     def chain(self):
@@ -435,10 +445,7 @@ class MultisigWallet:
 
     def yield_addresses(self, start_idx, count, change_idx=0):
         # Assuming a suffix of /0/0 on the defined prefix's, yield
-        # possible deposit addresses for this wallet. Never show
-        # user the resulting addresses because we cannot be certain
-        # they are valid and could be signed. And yet, dont blank too many
-        # spots or else an attacker could grid out a suitable replacement.
+        # possible deposit addresses for this wallet.
         ch = self.chain
 
         assert self.addr_fmt, 'no addr fmt known'
@@ -460,9 +467,8 @@ class MultisigWallet:
             # make the redeem script, convert into address
             script = make_redeem_script(self.M, nodes, idx)
             addr = ch.p2sh_address(self.addr_fmt, script)
-            addr = addr[0:12] + '___' + addr[12+3:]
 
-            yield idx, [p.format(idx=idx) for p in paths], addr, script
+            yield idx, addr, [p.format(idx=idx) for p in paths], script
 
             idx += 1
             count -= 1

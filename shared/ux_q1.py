@@ -144,7 +144,7 @@ async def ux_input_numbers(val, validate_func):
 
 async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             prompt='Enter value', min_len=0, b39_complete=False, scan_ok=False,
-            placeholder=None, funct_keys=None):
+            placeholder=None, funct_keys=None, force_xy=None):
     # Get a text string.
     # - Should allow full unicode, NKDN
     # - but our font is mostly just ascii
@@ -194,9 +194,12 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
             num_lines += 1
         assert num_lines <= MAX_LINES, num_lines       # too big to fit w/o scroll
 
-    dis.clear()
+    if force_xy:
+        x, y = force_xy
+    else:
+        dis.clear()
 
-    if not can_scroll:
+    if not can_scroll and not force_xy:
         # Normal, no-scrolling case
         if funct_keys:
             msg, funct_keys = funct_keys
@@ -216,7 +219,7 @@ async def ux_input_text(value, confirm_exit=False, hex_only=False, max_len=100,
 
         dis.text(None, y-2, prompt)
         x = dis.draw_box(None, y-1, line_len, num_lines, dark=True)
-    else:
+    elif can_scroll:
         # Scrolling, max-screen space mode (unlimited length for notes)
         dis.text(None, 0, prompt)
 
@@ -1030,7 +1033,7 @@ async def ux_visualize_txn(bin_txn):
 async def ux_visualize_bip21(proto, addr, args):
     # Show details of BIP-21 URL
     # - imho, a bare address is a valid BIP-21 URL so we come here too
-    # - TODO: validate address ownership
+    # - validate address ownership on request
     from ux import ux_show_story
 
     msg = addr + '\n\n'
@@ -1049,13 +1052,19 @@ async def ux_visualize_bip21(proto, addr, args):
 
     for fn in ['label', 'message', 'lightning']:
         if fn in args:
-            val = args.pop(fn)              # XXX needs url-decoding
+            val = args.pop(fn)
             msg += '%s%s: %s\n' % (fn[0].upper(), fn[1:], val)
 
     if args:
         msg += 'And values for: ' + ', '.join(args)
+
+    msg += 'Press (1) to verify ownership.'
     
-    await ux_show_story(msg, title="Payment Address")
+    ch = await ux_show_story(msg, title="Payment Address", escape='1')
+
+    if ch == '1':
+        from ownership import OWNERSHIP
+        await OWNERSHIP.search_ux(addr)
 
 async def ux_visualize_wif(wif_str, kp, compressed, testnet):
     from ux import ux_show_story

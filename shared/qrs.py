@@ -17,13 +17,14 @@ MAX_V40_SIZE = 4296
 class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
 
-    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None):
+    def __init__(self, addrs, is_alnum, start_n=0, sidebar=None, msg=None):
         self.is_alnum = is_alnum
         self.idx = 0             # start with first address
         self.invert = False      # looks better, but neither mode is ideal
         self.addrs = addrs
         self.sidebar = sidebar
         self.start_n = start_n
+        self.msg = msg
         self.qr_data = None
 
     def calc_qr(self, msg):
@@ -54,18 +55,18 @@ class QRDisplaySingle(UserInteraction):
         dis.clear()
 
         # what we are showing inside the QR
-        msg = self.addrs[self.idx]
+        body = self.addrs[self.idx]
 
         # make the QR, if needed.
         if not self.qr_data:
             dis.busy_bar(True)
 
-            self.calc_qr(msg)
+            self.calc_qr(body)
 
         # draw display
         idx_hint = str(self.start_n + self.idx) if len(self.addrs) > 1 else None
         dis.busy_bar(False)
-        dis.draw_qr_display(self.qr_data, msg, self.is_alnum,
+        dis.draw_qr_display(self.qr_data, self.msg or body, self.is_alnum,
                             self.sidebar, idx_hint, self.invert)
 
 

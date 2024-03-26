@@ -13,8 +13,7 @@ from files import CardMissingError, needs_microsd, CardSlot
 from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 from charcodes import KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6
 from lcd_display import CHARS_W
-from decoders import url_decode
-from utils import problem_file_line
+from utils import problem_file_line, url_decode
 
 # title, username and such are limited that they fit on the one line both in
 # text entry (W-2) and also in menu display (W-3)

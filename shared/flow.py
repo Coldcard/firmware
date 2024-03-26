@@ -2,7 +2,7 @@
 #
 # flow.py - Menu structure
 #
-from menu import MenuItem, ToggleMenuItem, NonDefaultMenuItem, ShortcutItem
+from menu import MenuItem, PreloginToggleMenuItem, ToggleMenuItem, NonDefaultMenuItem, ShortcutItem
 import version, charcodes
 from glob import settings
 
@@ -107,6 +107,8 @@ LoginPrefsMenu = [
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
     NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),
     NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=se2_and_real_secret),
+    PreloginToggleMenuItem('Calculator Login', 'calc', ['Default Off', 'Calculator Login'],
+            story='''Boots into calculator mode. Enter your PIN as formula to login, or 12- to see prefix words. Normal calculator math works too.''', predicate=lambda: version.has_qwerty),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
@@ -193,7 +195,6 @@ UpgradeMenu = [
 DevelopersMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Serial REPL", f=dev_enable_repl),
-    MenuItem("Wipe LFS", f=wipe_filesystem),                # kills settings, HSM stuff
     MenuItem('Warm Reset', f=reset_self),
     MenuItem("Restore Txt Bkup", f=restore_everything_cleartext),
 ]
@@ -264,6 +265,7 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
+    MenuItem("Clear Address cache", f=wipe_address_cache),
     ToggleMenuItem("Sighash Checks", "sighshchk", ["Default: Block", "Warn"], invert=True,
                    story='''\
 If you disable sighash flag restrictions, and ignore the \
@@ -279,6 +281,7 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
     MenuItem('Reflash GPU', f=reflash_gpu, predicate=lambda: version.has_qwerty),
+    MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
 ]
 
 BackupStuffMenu = [
@@ -293,6 +296,7 @@ NFCToolsMenu = [
     MenuItem('Show Address', f=nfc_show_address),
     MenuItem('Sign Message', f=nfc_sign_msg),
     MenuItem('Verify Sig File', f=nfc_sign_verify),
+    MenuItem('Verify Address', f=nfc_address_verify),
     MenuItem('File Share', f=nfc_share_file),
     MenuItem('Import Multisig', f=import_multisig_nfc),
 ]

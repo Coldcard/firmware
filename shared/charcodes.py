@@ -61,7 +61,7 @@ if has_qwerty:
                 + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_ENTER + '\0'
         + '1234567890'
         + 'qwertyuiop'
-        + 'asdfghjkl`'
+        + 'asdfghjkl\''
         + 'zxcvbnm,./'
         + KEY_LAMP + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_DELETE + '\0\0\0\0\0')
 
@@ -82,7 +82,7 @@ if has_qwerty:
                 + KEY_LEFT + KEY_UP + KEY_DOWN + KEY_RIGHT + KEY_CANCEL + KEY_ENTER + '\0'
         + '1234567890'
         + 'QWERTYUIOP'
-        + "ASDFGHJKL'"
+        + "ASDFGHJKL\'"
         + 'ZXCVBNM,./'
         + KEY_LAMP + KEY_SHIFT + KEY_SPACE + KEY_SYMBOL + KEY_DELETE + '\0\0\0\0\0')
 

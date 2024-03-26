@@ -7,6 +7,7 @@ import ngu, bip39
 from ubinascii import unhexlify as a2b_hex
 from exceptions import QRDecodeExplained
 from bbqr import TYPE_LABELS
+from utils import decode_bip21_text
 
 def txn_decoding_taster(txt):
     # look at first 4 bytes, and assume it's txn version number (LE32 0x1 or 0x2), then decode 
@@ -153,10 +154,10 @@ def decode_qr_result(got, expect_secret=False, expect_text=False, expect_bbqr=Fa
         raise QRDecodeExplained("Not a secret?")
 
     # try to recognize various bitcoin-related text strings...
-    return decode_qr_text(got)
+    return decode_short_text(got)
 
-def decode_qr_text(got):
-    # Study text received over QR, for useful things.
+def decode_short_text(got):
+    # Study short text received over QR or NFC, for useful things.
     # - case may be "wrong" but some values are case-sensitive (base58)
     # - not binary, but might be some other encoding than BBQr
     # - if bad checksum on bitcoin addr, we treat as text... since might be
@@ -191,75 +192,21 @@ def decode_qr_text(got):
     # Things with newlines in them are not URL's
     # - working URLs are not >4k
     # - might be a story in text, etc.
-    if  (len(got) > 4096) or ('\n' in got):
+    if (len(got) > 4096) or ('\n' in got):
         return 'text', (got,)
 
+    if "sortedmulti(" in got:
+        return 'multi', (got,)
+
     # Might be an address or pubkey?
-    orig_got = got
-
-    # remove URL protocol: if present
-    proto, args, addr = None, None, None
-    if ':' in got:
-        proto, got = got.split(':', 1)
-
-    # looks like BIP-21 payment URL
-    if '?' in got:
-        addr, args = got.split('?', 1)
-
-        # weak URL decode here.
-        args = args.split('&')
-        args = dict(a.split('=', 1) for a in args)
-
-    # assume it's an bare address for now
-    if not addr:
-        addr = got
-
-    # old school
     try:
-        raw = ngu.codecs.b58_decode(addr)
-
-        # it's valid base58
-        # an address, P2PKH or xpub (xprv checked above)
-        if addr[1:4] == 'pub':
-            return 'xpub', (addr,)
-
-        return 'addr', (proto, addr, args)
+        return decode_bip21_text(got)
     except:
+        # keep looking
         pass
 
-    # new school: bech32 or bech32m
-    try:
-        hrp, version, data = ngu.codecs.segwit_decode(addr)
-        return 'addr', (proto, addr.lower(), args)
-    except:
-        pass
+    # catch-all as text. Can still show on-screen perhaps useful for other applications
+    return 'text', (got,)
 
-    if "sortedmulti(" in orig_got:
-        return 'multi', (orig_got,)
-
-    # catch-all ... was text. Can still show on-screen perhaps useful for other applications
-    return 'text', (orig_got,)
-
-def url_decode(u):
-    # expand control chars from %XX and '+'
-    # - equiv to urllib.parse.unquote_plus
-    # - ure.sub is missing, so not being clever here.
-    # - give up on syntax errors, and return unchanged
-    import ure
-
-    u = u.replace('+', ' ')
-    while 1:
-        pos = u.find('%')
-        if pos < 0: break
-
-        try:
-            ch = chr(int(u[pos+1:pos+3], 16))
-            assert ch != '\0'
-        except:
-            return u
-
-        u = u[0:pos] + ch + u[pos+3:]
-
-    return u
 
 # EOF

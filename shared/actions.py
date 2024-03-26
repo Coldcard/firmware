@@ -370,6 +370,15 @@ async def block_until_login():
     from login import LoginUX
     from ux import AbortInteraction
 
+    # maybe show a calculator rather than login screen
+    try:
+        if version.has_qwerty and settings.get('calc', 0):
+            with imported('calc') as calc:
+                await calc.login_repl()
+            return 
+    except:
+        pass
+
     # do they want a randomized (shuffled) keypad?
     rnd_keypad = settings.get('rngk', 0)
 
@@ -592,6 +601,10 @@ consequences.''', escape='4')
     if ch != '4':
         return await ux_aborted()
 
+    # clear settings, address cache, settings from tmp seeds / seedvault seeds
+    from files import wipe_flash_filesystem
+    wipe_flash_filesystem(False)
+
     seed.clear_seed()
     # NOT REACHED -- reset happens
 
@@ -796,7 +809,7 @@ async def start_login_sequence():
     try:
         # Get a PIN and try to use it to login
         # - does warnings about attempt usage counts
-        wants_countdown = await block_until_login()
+        await block_until_login()
 
         # Do we need to do countdown delay? (real or otherwise)
         # Q/Mk4 approach:
@@ -1392,8 +1405,8 @@ async def restore_everything_cleartext(*A):
 async def wipe_filesystem(*A):
     if not await ux_confirm('''\
 Erase internal filesystem and rebuild it. Resets contents of internal flash area \
-used for settings and HSM config file. Does not affect funds, or seed words but \
-will reset settings used with other BIP39 passphrases. \
+used for settings, address search cache, and HSM config file. Does not affect funds, \
+or seed words but will reset settings used with other BIP-39 passphrases. \
 Does not affect MicroSD card, if any.'''):
         return
 
@@ -1435,7 +1448,7 @@ async def nfc_show_address(*A):
 
 
 async def nfc_sign_msg(*A):
-    # Mk4: Receive data over NFC (text - follow sign txt file format)
+    # Receive data over NFC (text - follow sign txt file format)
     #      User approval on device
     #      Send signature RFC armored format back over NFC
     from glob import NFC
@@ -1445,13 +1458,17 @@ async def nfc_sign_msg(*A):
         await ux_show_story(title="ERROR", msg="Failed to sign message. %s" % str(e))
 
 async def nfc_sign_verify(*A):
-    # Mk4: Receive armored data over NFC
+    # Receive armored data over NFC
     from glob import NFC
     try:
         await NFC.verify_sig_nfc()
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to verify signed message. %s" % str(e))
 
+async def nfc_address_verify(*A):
+    # Receive any random address (just the address) and find out if we own it.
+    from glob import NFC
+    await NFC.verify_address_nfc()
 
 async def nfc_recv_ephemeral(*A):
     # Mk4: Share txt, txn and PSBT files over NFC.
@@ -2005,8 +2022,16 @@ async def wipe_hsm_policy(*A):
     hsm_delete_policy()
     goto_top_menu()
 
+async def wipe_address_cache(*a):
+    ok = await ux_confirm('''Clear cached addresses used in ownership search. Harmless to erase, just costs time.''')
+    if not ok: return
+
+    from ownership import OWNERSHIP
+    OWNERSHIP.wipe_all()
+
+    await ux_dramatic_pause("Cleared.", 3)
+
 async def wipe_ovc(*a):
-    # Factory command: for dev and test units that have no bag number, and never will.
     ok = await ux_confirm('''Clear history of segwit UTXO input values we have seen already. \
 This data protects you against specific attacks. Use this only if certain a false-positive \
 has occured in the detection logic.''')

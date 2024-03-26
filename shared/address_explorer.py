@@ -190,7 +190,7 @@ class AddressListMenu(MenuSystem):
                 address = chain.address(node, addr_fmt)
                 choices.append( (truncate_address(address), path, addr_fmt) )
 
-                dis.progress_bar_show(len(choices) / len(chains.CommonDerivations))
+                dis.progress_sofar(len(choices), len(chains.CommonDerivations))
 
             stash.blank_object(node)
 
@@ -285,32 +285,30 @@ Press (3) if you really understand and accept these risks.
                 # - makes a redeem script
                 # - converts into addr
                 # - assumes 0/0 is first address.
-                for (i, paths, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+                for (i, addr, paths, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+                    addrs.append(addr)
+
                     if i == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
                     else:
                         msg += '⋯/%d/%d =>\n' % (change, i)
 
-                    addrs.append(addr)
                     msg += truncate_address(addr) + '\n\n'
-                    dis.progress_bar_show(i/n)
+                    dis.progress_sofar(i, n)
 
             else:
                 # single-signer wallets
+                from wallet import MasterSingleSigWallet
+                main = MasterSingleSigWallet(addr_fmt, path, self.account_num)
 
-                with stash.SensitiveValues() as sv:
+                from ownership import OWNERSHIP
+                OWNERSHIP.note_wallet_used(addr_fmt, self.account_num)
 
-                    for idx in range(start, start + n):
-                        deriv = path.format(account=self.account_num, change=change, idx=idx)
-                        node = sv.derive_path(deriv, register=False)
-                        addr = chain.address(node, addr_fmt)
-                        addrs.append(addr)
-
-                        msg += "%s =>\n%s\n\n" % (deriv, addr)
-
-                        dis.progress_bar_show(idx/n)
-
-                    stash.blank_object(node)
+                for (idx, addr, deriv) in main.yield_addresses(start, n,
+                                            change_idx=(change if allow_change else None)):
+                    addrs.append(addr)
+                    msg += "%s =>\n%s\n\n" % (deriv, addr)
+                    dis.progress_sofar(idx, n)
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
@@ -355,6 +353,7 @@ Press (3) if you really understand and accept these risks.
                 from ux import show_qr_codes
                 is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
                 await show_qr_codes(addrs, is_alnum, start)
+
                 continue
 
             elif NFC and (choice == KEY_NFC):
@@ -383,33 +382,57 @@ Press (3) if you really understand and accept these risks.
 
 def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, change=0):
     # Produce CSV file contents as a generator
+    # - maybe cache internally
+    from ownership import OWNERSHIP
+    from utils import censor_address
 
     if ms_wallet:
         # For multisig, include redeem script and derivation for each signer
-        yield '"' + '","'.join(['Index', 'Payment Address',
-                                    'Redeem Script (%d of %d)' % (ms_wallet.M, ms_wallet.N)]
-                                    + (['Derivation'] * ms_wallet.N)) + '"\n'
+        yield '"' + '","'.join(['Index', 'Payment Address', 'Redeem Script']
+                    + ['Derivation (%d of %d)' % (i+1, ms_wallet.N) for i in range(ms_wallet.N)]
+                    ) + '"\n'
 
-        for (idx, derivs, addr, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+        if n > 100 and change in (0, 1):
+            saver = OWNERSHIP.saver(ms_wallet, change, start)
+        else:
+            saver = None
+
+        for (idx, addr, derivs, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
+            if saver:
+                saver(addr)
+
+            # policy choice: never provide a complete multisig address to user.
+            addr = censor_address(addr)
+
             ln = '%d,"%s","%s","' % (idx, addr, b2a_hex(script).decode())
             ln += '","'.join(derivs)
             ln += '"\n'
 
             yield ln
 
+        if saver:
+            saver(None)     # close file
+
         return
 
+    # build the "master" wallet based on indicated preferences
+    from wallet import MasterSingleSigWallet
+    main = MasterSingleSigWallet(addr_fmt, path, account_num)
+
+    if n > 100 and change in (0, 1):
+        saver = OWNERSHIP.saver(main, change, start)
+    else:
+        saver = None
+
     yield '"Index","Payment Address","Derivation"\n'
-    ch = chains.current_chain()
+    for (idx, addr, deriv) in main.yield_addresses(start, n, change_idx=change):
+        if saver:
+            saver(addr)
 
-    with stash.SensitiveValues() as sv:
-        for idx in range(start, start+n):
-            deriv = path.format(account=account_num, change=change, idx=idx)
-            node = sv.derive_path(deriv, register=False)
+        yield '%d,"%s","%s"\n' % (idx, addr, deriv)
 
-            yield '%d,"%s","%s"\n' % (idx, ch.address(node, addr_fmt), deriv)
-
-        stash.blank_object(node)
+    if saver:
+        saver(None)     # close
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                                         count=250, change=0, **save_opts):
@@ -440,8 +463,7 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                     if not ms_wallet:
                         h.update(ep)
 
-                    if idx % 5 == 0:
-                        dis.progress_bar_show(idx / count)
+                    dis.progress_sofar(idx, count)
 
             sig_nice = None
             if not ms_wallet:

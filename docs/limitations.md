@@ -181,3 +181,15 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - Note text is unlimited, but storing very large notes may affect performance system-wide.
 - Q Backup files restored onto Mk4 will lose their notes, since notes feature is not supported.
 
+# Address Ownership
+
+- only the first 1528 addresses (764 each from internal and external (change/not) paths)
+  are considered
+- P2WPKH-P2SH addresses (single sig P2PWPKH wrapped in P2SH) are not searchable if you
+  have one or more multisig wallets defined, since we assume P2WPKH-P2SH is obsolete
+- if you have used an sub-account, without ever exploring it in the Address Explorer, nor
+  signing a PSBT with those account numbers, we do not search it.
+- does not search Seed Vault, you'll need to load each of those and re-search
+- if you have an XFP collision between multiple wallets in SeedVault (ie. two wallets
+  with same descriptors, but different seeds) you will get false negatives
+

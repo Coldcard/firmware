@@ -5,7 +5,8 @@
 import ngu
 from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
-from public_constants import AF_CLASSIC, AF_P2SH, AF_P2WPKH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
+from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2TR
+from public_constants import AF_P2SH, AF_P2WSH, AF_P2WPKH_P2SH, AF_P2WSH_P2SH
 from public_constants import AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32, AFC_SCRIPT
 from serializations import hash160, ser_compact_size, disassemble
 from ucollections import namedtuple
@@ -255,6 +256,32 @@ class ChainsBase:
                     pass
             return data_hex, data_ascii
         return None
+
+    @classmethod
+    def possible_address_fmt(cls, addr):
+        # Given a text (serialized) address, return what
+        # address format applies to the address, but
+        # for AF_P2SH case, could be: AF_P2SH,  AF_P2WPKH_P2SH, AF_P2WSH_P2SH. .. we don't know
+        if addr.startswith(cls.bech32_hrp):
+            if addr.startswith(cls.bech32_hrp+'1p'):
+                # really any ver=1 script or address, but for now...
+                return AF_P2TR
+            else:
+                return AF_P2WPKH if len(addr) < 55 else AF_P2WSH
+
+        try:
+            raw = ngu.codecs.b58_decode(addr)
+        except ValueError: 
+            # not base58, not an error
+            return 0
+
+        if raw[0] == cls.b58_addr[0]:
+            return AF_CLASSIC
+        if raw[0] == cls.b58_script[0]:
+            return AF_P2SH
+
+        return 0
+
 
 class BitcoinMain(ChainsBase):
     # see <https://github.com/bitcoin/bitcoin/blob/master/src/chainparams.cpp#L140>

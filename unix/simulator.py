@@ -714,7 +714,11 @@ def handle_q1_key_events(event, numpad_tx, data_tx):
                 kn = q1_charmap.DECODER_SYMBOL.find(ch)
                 symbol_down = is_press
 
+        # XXX handle shift+char where char doesn't exist, like + or {} 
+        # - basically all symbols not on top row?
+
         #print(f"{ch=} => keynum={kn} => shift={shift_down} sym={symbol_down}")
+
 
         if kn is not None:
             if is_press:

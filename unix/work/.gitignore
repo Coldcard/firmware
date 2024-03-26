@@ -2,3 +2,4 @@
 nfc-dump.ndef
 readback.psbt
 qrdata.txt
+*.own

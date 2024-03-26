@@ -1,5 +1,9 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
+# Test the address explorer.
+#
+# Only single-sig here. Multisig cases are elsewhere.
+#
 import pytest, time, os, io, csv, hashlib
 from ckcc_protocol.constants import *
 from pycoin.key.BIP32Node import BIP32Node
@@ -276,7 +280,8 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
                       goto_address_explorer, need_keypress, cap_menu,
                       mk_common_derivations, parse_display_screen,
                       validate_address, generate_addresses_file,
-                      press_cancel, press_select):
+                      press_cancel, press_select, enter_number
+):
     # Try a few sub-accounts
     node_prv = BIP32Node.from_wallet_key(
         sim_execfile('devtest/dump_private.py').strip()
@@ -294,11 +299,7 @@ def test_account_menu(way, account_num, sim_execfile, pick_menu_item,
     pick_menu_item([i for i in m if i.startswith('Account')][0])
 
     # enter account number
-    time.sleep(0.1)
-    for d in str(account_num):
-        need_keypress(d)
-    press_select()
-    time.sleep(0.1)
+    enter_number(account_num)
 
     m = cap_menu()
     assert f'Account: {account_num}' in m

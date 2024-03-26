@@ -1017,7 +1017,7 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
     clear_ms()
     keys = import_ms_wallet(M, N, name='cli-test', accept=1)
 
-    pmapper = lambda i: [HARD(45), i, 0,0]
+    pmapper = lambda i: [HARD(45), i, 0,3]
 
     scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper)
 
@@ -1084,6 +1084,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_m
             pprint(keys)
         else:
             # Much, FASTER!
+            # XXX assumes testnet
             assert dev.is_simulator
             keys = [(3503269483, None,
                         BIP32Node.from_hwif('tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9')),

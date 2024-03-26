@@ -573,7 +573,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Unable to find multisig descriptor.')
             return
 
         from auth import maybe_enroll_xpub
@@ -596,7 +596,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Unable to find seed words')
             return
 
         try:
@@ -620,9 +620,7 @@ class NFCHandler:
         from auth import show_address, ApproveMessageSign
 
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -633,7 +631,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Expected address and derivation path.')
             return
 
         if len(winner) == 1:
@@ -659,9 +657,7 @@ class NFCHandler:
         UserAuthorizedAction.cleanup()
 
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -672,7 +668,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Unable to find correctly formated message to sign.')
             return
 
         if len(winner) == 1:
@@ -707,9 +703,7 @@ class NFCHandler:
         from auth import verify_armored_signed_msg
 
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -718,13 +712,41 @@ class NFCHandler:
                 winner = msg.strip()
                 break
 
+        if not winner:
+            await ux_show_story('Unable to find signed message.')
+            return
+
         await verify_armored_signed_msg(winner, digest_check=False)
+
+    async def verify_address_nfc(self):
+        # Get an address or complete bip-21 url even and search it... slow.
+        from utils import decode_bip21_text
+
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            try:
+                what, vals = decode_bip21_text(msg)
+                if what == 'addr':
+                    winner = vals[1]
+                    break
+            except ValueError:
+                pass
+
+        if not winner:
+            await ux_show_story('Unable to find address from NFC data.')
+            return
+
+        from ownership import OWNERSHIP
+        await OWNERSHIP.search_ux(winner)
+
 
     async def read_extended_private_key(self):
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -734,16 +756,14 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find extended private key in NDEF data')
+            await ux_show_story('Unable to find extended private key.')
             return
 
         return winner
 
     async def read_tapsigner_b64_backup(self):
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -756,7 +776,7 @@ class NFCHandler:
                 pass
 
         if not winner:
-            await ux_show_story('Unable to find base64 encoded TAPSIGNER backup in NDEF data')
+            await ux_show_story('Unable to find base64 encoded TAPSIGNER backup.')
             return
 
         return winner

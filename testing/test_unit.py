@@ -295,8 +295,61 @@ def test_word_wrap(txt, x_line2, sim_exec, only_q1, width=34):
 
     assert want_words == got_words
 
+from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+
+@pytest.mark.parametrize('addr,net,fmt', [
+    ( 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', 'BTC', AF_P2WPKH ),
+])
+def test_addr_detect(addr, net, fmt, sim_exec):
+    cmd = f'from chains import AllChains; RV.write(repr([(ch.ctype, ch.possible_address_fmt({addr!r})) for ch in AllChains]))'
+    print(cmd)
+    lst = sim_exec(cmd)
+    assert 'Error' not in lst
+
+    for got_net, match in eval(lst):
+        if match:
+            assert net == got_net
+            assert match == fmt
+        else:
+            assert net != got_net
+            assert match == 0
+
+'''
+    >>> [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]
+        [14,       8,       26,            1,          7,         19]
+'''
+@pytest.mark.parametrize('addr_fmt', [
+    AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+])
+@pytest.mark.parametrize('testnet', [ False, True] )
+def test_addr_fake_detect(addr_fmt, testnet, sim_exec):
+    from txn import fake_address
+
+    addr = fake_address(addr_fmt, testnet)
+
+    cmd = f'from chains import AllChains; RV.write(repr([(ch.ctype, ch.possible_address_fmt({addr!r})) for ch in AllChains]))'
+    lst = sim_exec(cmd)
+    assert 'Error' not in lst
+    #print(lst)
+
+    expect_net = ('BTC' if not testnet else 'XTN')
+
+    expect_addr_fmt = addr_fmt if addr_fmt not in { AF_P2WSH_P2SH, AF_P2WPKH_P2SH } else AF_P2SH
+
+    for got_net, match in eval(lst):
+        if match:
+            if got_net == 'XRT':
+                assert expect_net == 'XTN'
+            else:
+                assert got_net == expect_net
+            assert match == expect_addr_fmt
+        else:
+            assert got_net != expect_net
+            assert match == 0
+
 def test_af(sim_execfile):
     res = sim_execfile('devtest/unit_af.py')
     assert res == ""
+
 
 # EOF

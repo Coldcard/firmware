@@ -98,7 +98,7 @@ class SecretStash:
             hd.from_chaincode_privkey(ch, pk)
             return 'xprv', ch+pk, hd
 
-        if marker & 0x80:
+        elif marker & 0x80:
             # seed phrase
             ll = ((marker & 0x3) + 2) * 8
 

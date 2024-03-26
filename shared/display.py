@@ -147,8 +147,9 @@ class Display:
             self.text(-2, 28, 'E', font=FontTiny, invert=1)
             self.text(-2, 35, 'V', font=FontTiny, invert=1)
 
-    def fullscreen(self, msg, percent=None):
+    def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
+        # - 'line2' not supported on smaller screen sizes, ignore
         self.clear()
         y = 14
         self.text(None, y, msg, font=FontLarge)
@@ -320,6 +321,8 @@ class Display:
         return
 
     def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert):
+        # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
+        # - 'msg' will appear to right if very short, else under in tiny
         from utils import word_wrap
 
         self.clear()
@@ -361,7 +364,9 @@ class Display:
             gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
             self.dis.blit(gly, XO, YO, 1)
 
-        if not sidebar and len(msg) > (5*7):
+        if not sidebar and not msg:
+            pass
+        elif not sidebar and len(msg) > (5*7):
             # use FontTiny and word wrap (will just split if no spaces)
             x = bw + lm + 4
             ww = ((128 - x)//4) - 1        # char width avail
