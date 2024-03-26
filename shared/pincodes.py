@@ -489,7 +489,7 @@ class PinAttempt:
         if encoded is not None:
             # disallow using master seed as temporary
             master_err = "Cannot use master seed as temporary."
-            target_nvram_key = settings.hash_key(encoded)
+            target_nvram_key = settings.hash_key(val)
             if SettingsObject.master_nvram_key:
                 assert self.tmp_value
                 if target_nvram_key == SettingsObject.master_nvram_key:

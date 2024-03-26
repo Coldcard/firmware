@@ -507,6 +507,7 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
 
 
 @pytest.mark.parametrize('with_wipe', [False, True])
+@pytest.mark.parametrize('words12', [False, True])
 @pytest.mark.parametrize('subchoice, expect, xflags, xargs', [
     ( 'BIP-85 Wallet #1', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1001 ),
     ( 'BIP-85 Wallet #2', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1002 ),
@@ -514,15 +515,23 @@ def test_ux_countdown_choices(subchoice, expect, xflags, new_trick_pin, new_pin_
     ( 'Legacy Wallet', 'fixed derivation', TC_WIPE|TC_XPRV_WALLET, 0 ),
     # ( 'Blank Coldcard', 'freshly wiped Coldcard', TC_WIPE|TC_BLANK_WALLET, 0 ),
 ])
-def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs,
+def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
         reset_seed_words, repl, clear_all_tricks, import_ms_wallet, get_setting, clear_ms,
         new_trick_pin, new_pin_confirmed, cap_menu, pick_menu_item, cap_story, need_keypress,
-        press_select, press_cancel, seed_story_to_words, is_q1, stop_after_activated=False,
+        press_select, press_cancel, seed_story_to_words, is_q1, set_seed_words,
+        stop_after_activated=False,
+
 ):
+    if words12:
+        # random 12 word mnemonic
+        set_seed_words("message upset stumble decorate measure milk "
+                       "east eternal soon hover middle mean")
+        if subchoice != 'Legacy Wallet':
+            xargs += 1000
 
     # import multisig
     clear_ms()
-    import_ms_wallet(2, 2)
+    import_ms_wallet(2, 2, dev_key=words12)
     press_select()
     time.sleep(.1)
     assert len(get_setting('multisig')) == 1

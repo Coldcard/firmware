@@ -302,7 +302,7 @@ class BBQrStorage:
             # corrupt data / data underruns trigger here
             raise RuntimeError("Zlib fail")
 
-        self.final_size = len(raw)
+        self.final_size = len(self.buf)
 
     def _finalize(self):
         pass
