@@ -108,7 +108,7 @@ LoginPrefsMenu = [
     NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),
     NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=se2_and_real_secret),
     PreloginToggleMenuItem('Calculator Login', 'calc', ['Default Off', 'Calculator Login'],
-            story='''Boots into calculator mode. Enter your PIN as formula to login, or 12- to see prefix words. Normal calculator math works too.'''),
+            story='''Boots into calculator mode. Enter your PIN as formula to login, or 12- to see prefix words. Normal calculator math works too.''', predicate=lambda: version.has_qwerty),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
@@ -265,6 +265,7 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
+    MenuItem("Clear Address cache", f=wipe_address_cache),
     ToggleMenuItem("Sighash Checks", "sighshchk", ["Default: Block", "Warn"], invert=True,
                    story='''\
 If you disable sighash flag restrictions, and ignore the \

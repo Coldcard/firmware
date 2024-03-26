@@ -22,10 +22,12 @@ async def login_repl():
 
     NUM_LINES = 7       # 10 - title - 2 for prompt
 
-    re_prefix = re.compile(r'^(\d\d+)-$')
-    re_pin = re.compile(r'^(\d\d+)-(\d\d+)$')
+    # recognise 12-12 / 12- but also accept underscore, or even space in pin: "12 12"
+    re_prefix = re.compile(r'^(\d\d+)[-_]$')
+    re_pin = re.compile(r'^(\d\d+)[-_ ](\d\d+)$')
 
-    blacklist = ['import', '__', ]
+    # in decreasing order of hazard...
+    blacklist = ['import', '__', 'exec', 'locals', 'globals', 'eval' ]
 
     lines = '''\
 
@@ -40,8 +42,10 @@ Example Commands:
 
     state = dict()
     state['sha256'] = lambda x: B2A(ngu.hash.sha256s(x))
+    state['sha512'] = lambda x: B2A(ngu.hash.sha512(x).digest())
+    state['ripemd'] = lambda x: B2A(ngu.hash.ripemd160(x))
     state['cls'] = lambda: lines.clear()
-    state['help'] = lambda: 'Sorry, no help!'
+    state['help'] = lambda: 'Commands: ' + (', '.join(state))
 
     while 1:
         dis.clear()
@@ -69,6 +73,9 @@ Example Commands:
                 ans = state[ln]()
             elif re_pin.match(ln) and len(ln) <= 13:
                 # try login
+                m = re_pin.match(ln)
+                ln = m.group(1)+ '-' + m.group(2)
+                print(ln)
                 try:
                     pa.setup(ln)
                     ok = pa.login()
