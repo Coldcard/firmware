@@ -40,7 +40,6 @@ def _try_microsd():
 
     except OSError as exc:
         # corrupt or unformated SD card (or something)
-        if bad_fs_ok: return True
         #sys.print_exception(exc)
         return False
 

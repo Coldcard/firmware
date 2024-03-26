@@ -295,7 +295,6 @@ def test_word_wrap(txt, x_line2, sim_exec, only_q1, width=34):
 
     assert want_words == got_words
 
-
 from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
 @pytest.mark.parametrize('addr,net,fmt', [
@@ -347,5 +346,10 @@ def test_addr_fake_detect(addr_fmt, testnet, sim_exec):
         else:
             assert got_net != expect_net
             assert match == 0
+
+def test_af(sim_execfile):
+    res = sim_execfile('devtest/unit_af.py')
+    assert res == ""
+
 
 # EOF

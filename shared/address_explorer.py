@@ -351,7 +351,9 @@ Press (3) if you really understand and accept these risks.
                     continue
 
                 from ux import show_qr_codes
-                await show_qr_codes(addrs, bool(addr_fmt & (AFC_BECH32|AFC_BECH32M)), start)
+                is_alnum = bool(addr_fmt & (AFC_BECH32 | AFC_BECH32M))
+                await show_qr_codes(addrs, is_alnum, start)
+
                 continue
 
             elif NFC and (choice == KEY_NFC):

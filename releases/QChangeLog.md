@@ -94,12 +94,16 @@
 - Enhancement: Move dice rolls (for generating master seed) to `Advanced` submenu.
 - Cleanup reproducible building / start process of backporting to Mk4.
 
-
 ## 1.0.2Q - 2024-04-xx
 
 - Enhancement: Scan any QR and report if it is part of a wallet this Coldcard knows
   the key for. Includes Multisig and single sig wallets.
-    - searches up to the first 764 external addresses (not change addresses)
+    - searches up to the first 1528 addresses (external and change addresses)
     - stores data as it goes to accelerate future uses
+    - worst case, it can take up to 2 minutes to rule out an address, but after that it is fast!
+- Enhancement: Calculator login mode. When enabled, the usual PIN entry screen is
+  replaced with a functional calculator. Enter your PIN as `12-12` or `12 12` to get it.
+  To verify anti-phishing words, use `12-`. 
 - Cleanups in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
 - Bugfix: Key right of L was giving back quote, should have been single-quote.
+- Bugfix: `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`
