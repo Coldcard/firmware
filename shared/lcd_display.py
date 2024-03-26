@@ -635,9 +635,9 @@ class Display:
         # - invert not supported on Q1
         # - sidebar not supported here (see users.py)
 
-        # maybe show something other than QR contents under it
-        msg = sidebar or msg
+        assert not sidebar
 
+        # maybe show something other than QR contents under it
         if msg:
             if len(msg) <= CHARS_W:
                 parts = [msg]
