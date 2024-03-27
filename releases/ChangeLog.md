@@ -10,6 +10,7 @@
 - Bugfix: Very obscure bug in low level code could cause txid to be miscalculated
   if all the conditions occured just right
 - Bugfix: AFC_BECH32M incorrectly sets AFC_WRAPPED and AFC_BECH32
+- Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set
 
 ## 5.2.2 - 2023-12-21
 

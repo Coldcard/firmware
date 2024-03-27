@@ -738,6 +738,7 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
+        from pincodes import pa
 
         # maintain a running SHA256 over what's received
         if offset == 0:
@@ -776,6 +777,7 @@ class USBHandler:
                     if prob:
                         raise ValueError(prob)
                     self.is_fw_upgrade = bytes(hdr)
+                    assert not pa.tmp_value, "tmp"
 
             if is_trailer and self.is_fw_upgrade:
                 # expect the trailer to exactly match the original one

@@ -99,7 +99,7 @@ class SettingsObject:
         self.is_dirty = 0
         self.my_pos = None
 
-        self.nvram_key = nvram_key or b'\0'*32
+        self.nvram_key = nvram_key or bytes(32)
         self.current = self.default_values()
 
     @classmethod
@@ -139,7 +139,7 @@ class SettingsObject:
         mine = False
 
         if not new_secret:
-            if not pa.is_successful() or pa.is_secret_blank():
+            if not pa.is_successful() or (not pa.has_secrets()):
                 # simple fixed key allows us to store a few things when logged out
                 key = bytes(32)
             else:

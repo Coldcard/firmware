@@ -422,7 +422,7 @@ async def add_seed_to_vault(encoded, meta=None):
         # seed vault disabled
         return
     if pa.is_secret_blank():
-        # do not save anything if no secrets yet
+        # do not save anything if no SE secret yet
         return
 
     # do not offer to store secrets that are already in vault
@@ -1218,7 +1218,7 @@ class PassphraseMenu(MenuSystem):
                 "master seed [%s]" % m_parent_xfp_str,
                 "(1) master+pass:\n%s→%s\n\n" % (m_parent_xfp_str, m_xfp_str),
             )
-        except AssertionError: pass
+        except Exception: pass
 
         if pa.tmp_value and settings.get("words", True):
             # we have ephemeral seed - can add passphrase to it as it is word based

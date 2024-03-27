@@ -1008,7 +1008,7 @@ def make_top_menu():
     else:
         assert pa.is_successful(), "nonblank but wrong pin"
 
-        if not pa.is_secret_blank():
+        if pa.has_secrets():
             _cls = NormalSystem[:]
             if pa.tmp_value:
                 active_xfp = settings.get("xfp", 0)
@@ -1609,14 +1609,21 @@ async def list_files(*A):
         await needs_microsd()
         return
 
+    from pincodes import pa
+
     digest = chk.digest()
     basename = fn.rsplit('/', 1)[-1]
     msg_base = 'SHA256(%s)\n\n%s\n\nPress ' % (basename, B2A(digest))
-    msg_sign = '(4) to sign file digest and export detached signature'
+    escape = "6"
+    if pa.has_secrets():
+        msg_sign = '(4) to sign file digest and export detached signature, '
+        escape += "4"
+    else:
+        msg_sign = ""
     msg_delete = '(6) to delete.'
-    msg = msg_base + msg_sign + ", press " + msg_delete
+    msg = msg_base + msg_sign + msg_delete
     while True:
-        ch = await ux_show_story(msg, escape='46')
+        ch = await ux_show_story(msg, escape=escape)
         if ch == "x": break
         if ch in '46':
             with CardSlot() as card:
