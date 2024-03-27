@@ -158,6 +158,8 @@ def restore_from_dict_ll(vals):
     # - low-level version, factored out for better testing
     from glob import dis
 
+    need_ftux = False
+
     #print("Restoring from: %r" % vals)
     chain = chains.get_chain(vals.get('chain', 'BTC'))
 
@@ -165,7 +167,7 @@ def restore_from_dict_ll(vals):
         raw = extract_raw_secret(chain, vals)
     except Exception as e:
         return ('Unable to decode raw_secret and '
-                                'restore the seed value!\n\n\n'+str(e))
+                'restore the seed value!\n\n\n'+str(e)), None
 
     dis.fullscreen("Saving...")
     dis.progress_bar_show(.1)
@@ -227,7 +229,26 @@ def restore_from_dict_ll(vals):
             # Secure notes only supported on keyboard-equiped units
             continue
 
+        # possible that user arrived into already set-up settings
+        # that he maybe used as an ephemeral before - we need to set
+        # proper values wrt HW switches
+        if k == 'du':
+            # inverted (Disable Usb)
+            if not vals[key]:
+                vals[key] = 1
+                need_ftux = True
+
+        if k in ('nfc', 'vidsk'):
+            if vals[key]:
+                vals[key] = 0
+                need_ftux = True
+
         settings.set(k, vals[key])
+
+    if not settings.get("du", None):
+        # settings.set("du", 1)
+        # above will be done in ftux
+        need_ftux = True
 
     # write out
     settings.save()
@@ -236,6 +257,8 @@ def restore_from_dict_ll(vals):
     if version.supports_hsm and ('hsm_policy' in vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
+
+    return None, need_ftux
 
 async def restore_tmp_from_dict_ll(vals):
     from glob import dis
@@ -266,8 +289,13 @@ async def restore_from_dict(vals):
     # Restore from a dict of values. Already JSON decoded (ie. dict object).
     # Need a Reboot on success, return string on failure
 
-    prob = restore_from_dict_ll(vals)
+    prob, need_ftux = restore_from_dict_ll(vals)
     if prob: return prob
+
+    if need_ftux:
+        from ftux import FirstTimeUX
+        # do not Welcome them as we are pre-reboot now
+        await FirstTimeUX().interact(title=None)
 
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '
