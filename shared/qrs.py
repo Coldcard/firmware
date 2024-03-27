@@ -35,7 +35,8 @@ class QRDisplaySingle(UserInteraction):
         # - version=4..11 => single pixel per module
         # - not really providing enough space around these, shrug
         # - inverted QR (black/white swap) still readable by scanners, altho wrong
-        # - on Q: ver 23 => 109x109 is largest that can be pixel-doubled, can do v40 tho at 1:1
+        # - on Q: ver 25 => 117x117 is largest that can be pixel-doubled, can do 
+        #   v40 tho at 1:1, but most find that unreadable
         if self.is_alnum:
             # targeting 'alpha numeric' mode, nice and dense; caps only tho
             enc = uqr.Mode_ALPHANUMERIC if not msg.isdigit() else uqr.Mode_NUMERIC
