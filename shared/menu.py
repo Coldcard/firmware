@@ -17,9 +17,6 @@ else:
     from lcd_display import CHARS_H
     PER_M = CHARS_H - 1
 
-# do wrap-around, but only for mega menus like seed words
-WRAP_IF_OVER = const(16)
-
 def numpad_remap(key):
     # map from numpad+2 (12 keys) into symbolic names
     # - might only make sense within context of menus.
@@ -307,13 +304,18 @@ class MenuSystem:
 
         dis.menu_show(cursor_y)
 
-    def get_wrap_length(self):
+    def should_wrap_menu(self):
         from glob import settings
-        # wa is boolean value from config
-        # True --> wrap around all menus with length greater than 1
-        # False --> wrap around is active only for menus with length > WRAP_IF_OVER
+        # "wa" is boolean value from config:
+        # True --> wrap around all menus
+        # False --> (default) wrap around is active only for menus with length > WRAP_IF_OVER
         wrap = settings.get("wa", 0)
-        return 1 if wrap else WRAP_IF_OVER
+        if wrap: return True
+
+        # Do wrap-around (by request from NVK) if longer than the screen itself (on Q),
+        # for mk4, limit is 16 which hits mostly the seed word menus.
+        limit = 10 it has_qwerty else 16
+        return self.count > limit
 
     def down(self):
         if self.cursor < self.count-1:
@@ -322,8 +324,7 @@ class MenuSystem:
             if self.cursor - self.ypos >= (PER_M-1):
                 self.ypos += 1
         else:
-            wrap_length = self.get_wrap_length()
-            if self.count > wrap_length:
+            if self.should_wrap_menu():
                 self.goto_idx(0)
 
     def up(self):
@@ -332,8 +333,7 @@ class MenuSystem:
             if self.cursor < self.ypos:
                 self.ypos -= 1
         else:
-            wrap_length = self.get_wrap_length()
-            if self.count > wrap_length:
+            if self.should_wrap_menu():
                 self.goto_idx(self.count - 1)
 
     def top(self):

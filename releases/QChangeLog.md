@@ -110,4 +110,5 @@
 - Bugfix: base64 PSBT via QR was not properly decoded
 - Bugfix: Fix inability to activate Duress Wallet as temporary seed
   when master seed is 12 words
-- Tweak: Default idle timeout, when on battery, reduced to 10 minutes from 30.
+- Tweak: Default idle timeout when on battery, was reduced to 10 minutes from 30.
+- Tweak: Cursor movements wrap around if menu is longer than screen height.
