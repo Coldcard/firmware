@@ -118,3 +118,4 @@
 - Tweak: Cursor movements wrap around if menu is longer than screen height.
 - Bugfix: fixed `Type Passwords` a.k.a emulated keystrokes
 - Tweak: Force default HW settings (USB,NFC,VDisk OFF) after clone/backup restore
+- Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set

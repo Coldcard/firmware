@@ -867,10 +867,16 @@ def test_chain_changes_settings_xpub(pick_menu_item, goto_home, cap_story,
     extended_key = story.split("\n\n")[5]
     assert extended_key.startswith("tpub")
 
+@pytest.mark.parametrize("clear", [1, 0])
 @pytest.mark.parametrize("f_len", [50, 500, 5000])
 def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, need_keypress,
                                    microsd_path, cap_menu, verify_detached_signature_file,
-                                   press_select):
+                                   press_select, clear, unit_test, reset_seed_words):
+    if clear:
+        unit_test('devtest/clear_seed.py')
+    else:
+        reset_seed_words()
+
     fname = "test_sign_listed.pdf"
     signame = "test_sign_listed.sig"
     fpath = microsd_path(fname)
@@ -889,17 +895,21 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
     _, story = cap_story()
     assert f"SHA256({fname})" in story
     assert digest in story
-    assert "(4) to sign file digest and export detached signature" in story
+    if clear:
+        assert "(4) to sign file digest and export detached signature" not in story
+    else:
+        assert "(4) to sign file digest and export detached signature" in story
+        need_keypress("4")
+        time.sleep(0.1)
+        _, story = cap_story()
+        assert f"Signature file {signame} written" in story
+        need_keypress("y")
+        verify_detached_signature_file([fname], signame, "sd", AF_CLASSIC)
+        _, story = cap_story()
+        assert "(4) to sign file digest and export detached signature" not in story
+
     assert "(6) to delete" in story
-    need_keypress("4")
-    time.sleep(0.1)
-    _, story = cap_story()
-    assert f"Signature file {signame} written" in story
-    press_select()
-    verify_detached_signature_file([fname], signame, "sd", AF_CLASSIC)
-    _, story = cap_story()
-    assert "(4) to sign file digest and export detached signature" not in story
-    assert "(6) to delete" in story
+
     need_keypress("6")
     menu = cap_menu()
     assert "List Files" in menu

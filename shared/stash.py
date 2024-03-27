@@ -186,7 +186,7 @@ class SensitiveValues:
             # - but that's real slow, so avoid if possible
             from pincodes import pa
 
-            if pa.is_secret_blank():
+            if not pa.has_secrets():
                 raise ZeroSecretException
             self.deltamode = pa.is_deltamode()
 

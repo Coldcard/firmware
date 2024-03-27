@@ -56,9 +56,19 @@ else:
 # Predicates
 #
 
-def has_secrets():
+def has_se_secrets():
+    # SE secret check, return False if only tmp secret is set
     from pincodes import pa
     return not pa.is_secret_blank()
+
+def has_pin():
+    from pincodes import pa
+    return not pa.is_blank()
+
+def has_secrets():
+    # Secret is loaded, may be from SE or tmp
+    from pincodes import pa
+    return pa.has_secrets()
 
 def nfc_enabled():
     from glob import NFC
@@ -101,7 +111,7 @@ with the Coldcard.''',
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=main_pin_changer),
-    NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu),
+    NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu, predicate=se2_and_real_secret),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble, default_value=0),
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
@@ -202,8 +212,6 @@ DevelopersMenu = [
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
-    MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
-    MenuItem('Upgrade Firmware', menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
@@ -242,7 +250,7 @@ SeedXORMenu = [
 SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
-    MenuItem("Destroy Seed", f=clear_seed),
+    MenuItem("Destroy Seed", f=clear_seed, predicate=se2_and_real_secret),
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
     MenuItem('Export SeedQR', f=export_seedqr,
              predicate=lambda: settings.get('words', True)),
@@ -260,13 +268,14 @@ DangerZoneMenu = [
                           "WARNING: Seed Vault is encrypted (AES-256-CTR) by your seed,"
                           " but not held directly inside secure elements. Backups are required"
                           " after any change to vault! Recommended for experiments or temporary use."),
-                   predicate=has_secrets),
+                   predicate=has_se_secrets),
     MenuItem('Perform Selftest', f=start_selftest),             # little harmful
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
     MenuItem("Clear Address cache", f=wipe_address_cache),
-    ToggleMenuItem("Sighash Checks", "sighshchk", ["Default: Block", "Warn"], invert=True,
+    ToggleMenuItem("Sighash Checks", "sighshchk", ["Default: Block", "Warn"],
+                   invert=True,
                    story='''\
 If you disable sighash flag restrictions, and ignore the \
 warnings, funds can be stolen by specially crafted PSBT or MitM.
@@ -315,9 +324,11 @@ AdvancedNormalMenu = [
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
-                   story="Enable HSM? Enables all user management commands, and other HSM-only USB commands. \
-By default these commands are disabled.", predicate=hsm_feature),
-    MenuItem('User Management', menu=make_users_menu, predicate=hsm_feature),
+                   story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
+                          "By default these commands are disabled."),
+                   predicate=lambda: hsm_feature() and se2_and_real_secret()),
+    MenuItem('User Management', menu=make_users_menu,
+             predicate=lambda: hsm_feature() and se2_and_real_secret()),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]

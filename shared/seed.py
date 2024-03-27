@@ -424,7 +424,7 @@ async def add_seed_to_vault(encoded, meta=None):
         # seed vault disabled
         return
     if pa.is_secret_blank():
-        # do not save anything if no secrets yet
+        # do not save anything if no SE secret yet
         return
 
     # do not offer to store secrets that are already in vault

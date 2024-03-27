@@ -1273,7 +1273,7 @@ async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
     from pincodes import pa
 
-    if pa.is_secret_blank():
+    if pa.has_secrets():
         await ux_show_story("You must have wallet seed before creating multisig wallets.")
         return
 
