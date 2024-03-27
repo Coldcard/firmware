@@ -314,7 +314,7 @@ class MenuSystem:
 
         # Do wrap-around (by request from NVK) if longer than the screen itself (on Q),
         # for mk4, limit is 16 which hits mostly the seed word menus.
-        limit = 10 it has_qwerty else 16
+        limit = 10 if has_qwerty else 16
         return self.count > limit
 
     def down(self):
