@@ -359,7 +359,6 @@ Press (6) to prove you read to the end of this message.''', title='WARNING', esc
     from usb import enable_usb
     enable_usb()
 
-    from menu import MenuSystem
     from flow import EmptyWallet
     return MenuSystem(EmptyWallet)
 
@@ -941,7 +940,6 @@ async def restore_main_secret(*a):
     goto_top_menu()
 
 def make_top_menu():
-    from menu import MenuSystem, MenuItem
     from flow import VirginSystem, NormalSystem, EmptyWallet, FactoryMenu
     from glob import hsm_active, settings
     from pincodes import pa
@@ -1084,10 +1082,7 @@ async def electrum_skeleton(*a):
         return
 
     # pick segwit or classic derivation+such
-    from menu import MenuSystem, MenuItem
-
-    # Ordering and terminology from similar screen in Electrum. I prefer
-    # 'classic' instead of 'legacy' personallly.
+    # - Ordering and terminology from similar screen in Electrum.
     rv = []
 
     rv.append(MenuItem(addr_fmt_label(AF_CLASSIC), f=electrum_skeleton_step2,
@@ -1097,7 +1092,7 @@ async def electrum_skeleton(*a):
     rv.append(MenuItem(addr_fmt_label(AF_P2WPKH), f=electrum_skeleton_step2,
                        arg=(AF_P2WPKH, account_num)))
 
-    return MenuSystem(rv)
+    the_ux.push(MenuSystem(rv))
 
 def ss_descriptor_export_story(addition="", background=None):
     # saves memory being in a function
@@ -1126,10 +1121,7 @@ async def ss_descriptor_skeleton(label, _, item):
         return
 
     # pick segwit or classic derivation+such
-    from menu import MenuSystem, MenuItem
-
-    # Ordering and terminology from similar screen in Electrum. I prefer
-    # 'classic' instead of 'legacy' personallly.
+    # - Ordering and terminology from similar screen in Electrum.
     rv = []
 
     rv.append(MenuItem(addr_fmt_label(AF_CLASSIC), f=descriptor_skeleton_step2,
@@ -1139,7 +1131,7 @@ async def ss_descriptor_skeleton(label, _, item):
     rv.append(MenuItem(addr_fmt_label(AF_P2WPKH), f=descriptor_skeleton_step2,
                        arg=(AF_P2WPKH, account_num, int_ext)))
 
-    return MenuSystem(rv)
+    the_ux.push(MenuSystem(rv))
 
 async def samourai_post_mix_descriptor_export(*a):
     name = "POST-MIX"
