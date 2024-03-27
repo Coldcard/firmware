@@ -1161,8 +1161,7 @@ async def samourai_account_descriptor(name, account_num):
     ch = await ux_show_story(
         ss_descriptor_export_story(
             addition=" for Samourai %s account." % name,
-            background=""),
-        escape='1'
+            background="\n")
     )
 
     if ch != 'y':
