@@ -974,10 +974,10 @@ class EmulatedKeyboard:
         for i, ch in enumerate(keystroke_string, start=1):
             cap = False
             to_press = self.char_map.get(ch, None)
-            if ch is None:
+            if to_press is None:
                 cap = True
                 to_press = self.char_map.get(ch.lower(), None)
-            if ch is None:
+            if to_press is None:
                 # problem: we don't know how to type this char
                 to_press = 0x1B     # X
 
