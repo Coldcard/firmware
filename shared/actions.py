@@ -1058,7 +1058,6 @@ async def export_xpub(label, _2, item):
         if glob.NFC and ch in '3'+KEY_NFC:
             await glob.NFC.share_text(xpub)
         else:
-            from ux import show_qr_code
             await show_qr_code(xpub, False)
 
         break
@@ -1161,7 +1160,7 @@ async def samourai_account_descriptor(name, account_num):
     ch = await ux_show_story(
         ss_descriptor_export_story(
             addition=" for Samourai %s account." % name,
-            background="\n")
+            background=" ")
     )
 
     if ch != 'y':

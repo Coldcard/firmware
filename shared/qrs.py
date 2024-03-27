@@ -12,7 +12,11 @@ from version import has_qwerty
 
 # TODO: This class has a terrible API!
 
-MAX_V40_SIZE = 4296
+# Alnum limit for a single QR, in chars. Min error correction (L).
+MAX_V40_SIZE = const(4296)
+
+# Max in a V11 as bytes (not alnum) ... the limit on Mk4 screen
+MAX_V11_CHAR_LIMIT = const(321)
 
 class QRDisplaySingle(UserInteraction):
     # Show a single QR code for (typically) a list of addresses, or a single value.
@@ -35,8 +39,8 @@ class QRDisplaySingle(UserInteraction):
         # - version=4..11 => single pixel per module
         # - not really providing enough space around these, shrug
         # - inverted QR (black/white swap) still readable by scanners, altho wrong
-        # - on Q: ver 25 => 117x117 is largest that can be pixel-doubled, can do 
-        #   v40 tho at 1:1, but most find that unreadable
+        # - on Q: ver 25 => 117x117 is largest that can be pixel-doubled
+        # - on Q: v40 is possible at at 1:1, but most find that unreadable, so avoid 1:1
         if self.is_alnum:
             # targeting 'alpha numeric' mode, nice and dense; caps only tho
             enc = uqr.Mode_ALPHANUMERIC if not msg.isdigit() else uqr.Mode_NUMERIC
@@ -47,7 +51,7 @@ class QRDisplaySingle(UserInteraction):
 
         # can fail if not enough space in QR
         self.qr_data = uqr.make(msg, min_version=2,
-                                    max_version=11 if not has_qwerty else 40,
+                                    max_version=11 if not has_qwerty else 25,
                                     encoding=enc)
 
     def redraw(self):

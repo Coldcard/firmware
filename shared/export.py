@@ -12,6 +12,21 @@ from auth import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 
+async def export_by_qr(body, label, is_json=False):
+    # render as QR and show on-screen
+    from ux import show_qr_code
+
+    try:
+        await show_qr_code(body, msg=label)
+    except ValueError:
+        if version.has_qwerty:
+            # do BBQr on Q
+            from ux_q1 import show_bbqr_codes
+            await show_bbqr_codes('J' if is_json else 'U', body, label)
+
+        # on Mk4, if too big ... just do nothing (but JSON should have fit?)
+
+    return
 
 def generate_public_contents():
     # Generate public details about wallet.
@@ -119,7 +134,7 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     # Export data as a text file.
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
-    from ux import import_export_prompt, show_qr_code
+    from ux import import_export_prompt
 
     choice = await import_export_prompt("%s file" % title, is_import=False,
                         no_qr=(not version.has_qwerty))
@@ -127,18 +142,11 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     if choice == KEY_CANCEL:
         return
     elif choice == KEY_QR:
-        try:
-            await show_qr_code(body, msg=title)
-        except ValueError:
-            from ux_q1 import show_bbqr_codes
-            await show_bbqr_codes('U', body, title)
+        await export_by_qr(body, title)
         return
     elif choice == KEY_NFC:
         await NFC.share_text(body)
         return
-
-    # too big anyway
-    assert choice != KEY_QR
 
     # choose a filename
     try:
@@ -433,13 +441,16 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
 
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
-    from ux import import_export_prompt, show_qr_code
+    from ux import import_export_prompt
+    from qrs import MAX_V11_CHAR_LIMIT
 
     dis.fullscreen('Generating...')
     json_str, derive, addr_fmt = func()
     skip_sig = derive is False and addr_fmt is False
 
-    choice = await import_export_prompt("%s file" % label, is_import=False)
+    choice = await import_export_prompt("%s file" % label, is_import=False,
+                    no_qr=(not version.has_qwerty and len(json_str) >= MAX_V11_CHAR_LIMIT))
+
     if choice == KEY_CANCEL:
         return
     elif choice == KEY_NFC:
@@ -447,14 +458,9 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
         return
     elif choice == KEY_QR:
         # render as QR and show on-screen
-        # - maybe block this option, if data too big to make it easy?
-        try:
-            await show_qr_code(json_str)
-        except ValueError:
-            if version.has_qwerty:
-                # do BBQr on Q
-                from ux_q1 import show_bbqr_codes
-                await show_bbqr_codes('J', json_str, label)
+        # - on mk4, this isn't offered if more than about 300 bytes because we can't
+        #   show that as a single QR
+        await export_by_qr(json_str, label, is_json=True)
         return
 
     # choose a filename and save

@@ -110,5 +110,9 @@
 - Bugfix: base64 PSBT via QR was not properly decoded
 - Bugfix: Fix inability to activate Duress Wallet as temporary seed
   when master seed is 12 words
+- Bugfix: Switch to BBQr for larger data exports at a new lower size threshold.
+    - generally, won't show tiny QR anymore with 1:1 pixel to module size.
+    - Sparrow wallet export will always be BBQr (if not saved to a card).
+    - most other exports fit into a reasonable QR (large / lower rez).
 - Tweak: Default idle timeout when on battery, was reduced to 10 minutes from 30.
 - Tweak: Cursor movements wrap around if menu is longer than screen height.
