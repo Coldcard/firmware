@@ -2,15 +2,12 @@
 #
 # tapsigner.py - TAPSIGNER backup file support
 #
-import gc, sys, ustruct, ngu, chains, ure, time
+import ustruct, ngu, ure
 from ubinascii import unhexlify as a2b_hex
-from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
-from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
-from export import make_json_wallet, make_summary_file, make_descriptor_wallet_export
-from export import make_bitcoin_core_wallet, generate_wasabi_wallet, generate_generic_export
-from export import generate_unchained_export, generate_electrum_wallet
+from ubinascii import a2b_base64
+from ux import ux_show_story
+from ux import ux_input_text, import_export_prompt
 from files import CardSlot, CardMissingError, needs_microsd
-from glob import settings
 from charcodes import KEY_NFC, KEY_QR, KEY_CANCEL
 from actions import file_picker, import_extended_key_as_secret
 
@@ -50,8 +47,6 @@ async def import_tapsigner_backup_file(_1, _2, item):
     elif choice == KEY_QR:
         # how is binary encoded? who made this QR??!
         from ux_q1 import QRScannerInteraction
-        from ubinascii import a2b_base64
-        from ubinascii import unhexlify as a2b_hex
 
         prob = None
         while 1:
@@ -74,9 +69,17 @@ async def import_tapsigner_backup_file(_1, _2, item):
         fn = await file_picker(suffix="aes", min_size=100, max_size=160, **choice)
         if not fn: return
         meta += (" (%s)" % fn)
-        with CardSlot(**choice) as card:
-            with open(fn, 'rb') as fp:
-                data = fp.read()
+        try:
+            with CardSlot(**choice) as card:
+                with open(fn, 'rb') as fp:
+                    data = fp.read()
+        except CardMissingError:
+            await needs_microsd()
+            return
+        except Exception as e:
+            from utils import problem_file_line
+            await ux_show_story('Failed to read!\n\n\n%s\n%s' % (e, problem_file_line(e)))
+            return
 
     if await ux_show_story("Make sure to have your TAPSIGNER handy as you will need to provide "
                            "'Backup Password' from the back of the card in the next step.\n\n"

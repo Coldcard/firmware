@@ -4,15 +4,7 @@
 #
 # Test with: ./simulator.py --q1 --eff -g --set calc=1 
 #
-import utime, gc, ngu, sys, re
-import uasyncio as asyncio
-from uasyncio import sleep_ms
-from charcodes import *
-from lcd_display import CHARS_W, CHARS_H, CursorSpec, CURSOR_SOLID, CURSOR_OUTLINE
-from exceptions import AbortInteraction, QRDecodeExplained
-import bip39
-from decoders import decode_qr_result
-from ubinascii import hexlify as b2a_hex
+import utime, ngu, re
 from utils import B2A, word_wrap
 from ux_q1 import ux_input_text
 
@@ -27,7 +19,7 @@ async def login_repl():
     re_pin = re.compile(r'^(\d\d+)[-_ ](\d\d+)$')
 
     # in decreasing order of hazard...
-    blacklist = ['import', '__', 'exec', 'locals', 'globals', 'eval' ]
+    blacklist = ['import', '__', 'exec', 'locals', 'globals', 'eval', 'input']
 
     lines = '''\
 
@@ -38,7 +30,6 @@ Example Commands:
 >> sha256('123456123456')
 >> cls()   # clear screen\
 '''.split('\n')
-
 
     state = dict()
     state['sha256'] = lambda x: B2A(ngu.hash.sha256s(x))
