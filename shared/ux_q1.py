@@ -938,7 +938,6 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
     from ux_q1 import show_bbqr_codes
     from sffile import SFFile
     from auth import MAX_TXN_LEN, TXN_INPUT_OFFSET, TXN_OUTPUT_OFFSET
-    from qrs import MAX_V40_SIZE
 
     if raw != 'PSRAM':      # might already be in place
 
@@ -980,12 +979,10 @@ async def qr_psbt_sign(decoder, psbt_len, raw):
         # - note: already HEX here!
         here = PSRAM.read_at(TXN_OUTPUT_OFFSET, data_len)
 
-        if data_len < MAX_V40_SIZE:
-            # and can fit into single QR hex-encoded QR
+        try:
             await show_qr_code(here.decode(), is_alnum=True,
                                msg=(txid or 'Partly Signed PSBT'))
-        else:
-            # too big for single version 40 QR - do BBQr animated QR
+        except (ValueError, RuntimeError):
             await show_bbqr_codes('T' if txid else 'P', here,
                                   (txid or 'Partly Signed PSBT'),
                                   already_hex=True)
