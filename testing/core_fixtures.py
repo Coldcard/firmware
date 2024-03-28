@@ -46,7 +46,7 @@ def _dev_hw_label(device):
 
 def _pick_menu_item(device, is_Q, text):
     print(f"PICK menu item: {text}")
-    WRAP_IF_OVER = 16  # see ../shared/menu.py
+    WRAP_IF_OVER = 16  # see ../shared/menu.py .. this is larger of 10 or 16
 
     _need_keypress(device, KEY_HOME if is_Q else "0")
     m = _cap_menu(device)

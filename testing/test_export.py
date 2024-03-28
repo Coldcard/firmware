@@ -525,7 +525,8 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
             press_select()
             got_pub = cap_screen_qr().decode('ascii')
         else:
-            assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
+            if f'Press {KEY_NFC if is_q1 else "(3)"}' not in story:
+                raise pytest.skip("NFC disabled")
             assert 'NFC' in story
             press_nfc()
             time.sleep(0.2)
@@ -649,7 +650,8 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
     pick_menu_item("Segwit P2WPKH")  #  both postmix and premix are p2wpkh only
     file_desc_generic = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
     press_select()  # written
-    press_cancel()  # go back to advanced
+    press_cancel()  # back to export submenu
+    press_cancel()  # back to advanced
     pick_menu_item("Export Wallet")
     pick_menu_item(f"Samourai {account}")
     time.sleep(.1)

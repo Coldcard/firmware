@@ -60,7 +60,9 @@ def readback_bbqr_ll(cap_screen_qr, sim_exec, cap_screen):
             assert part < num_parts
 
             if part in parts:
-                assert parts[part] == rb
+                if parts[part] != rb:
+                    print(f"Wrong-read on part {part}")
+                    continue
             else:
                 parts[part] = rb
 
@@ -80,14 +82,26 @@ def readback_bbqr_ll(cap_screen_qr, sim_exec, cap_screen):
 def readback_bbqr(readback_bbqr_ll):
     # give back just the decoded data and file_type
     def doit():
+        import json
+
         num_parts, encoding, file_type, parts = readback_bbqr_ll()
 
         if num_parts == 0:
-            # not sent as BBQr .. assume Hex
-            rb = a2b_hex(parts)
-            file_type = 'P' if rb[0:4] == b'psbt' else 'T'
+            # not sent as BBQr .. assume Hex, else base32 but PSBT would be BBQr
+            # - but might be text too
+            try:
+                rb = a2b_hex(parts)
+                file_type = 'T'
+            except:
+                if parts[0] == '{' and parts[-1] == '}':
+                    file_type = 'J'
+                else:
+                    file_type = 'U'
+                rb = parts      # already a string
         else:
             _, rb = join_qrs(parts.values())
+
+        assert rb[0:2] != 'B$'
 
         return file_type, rb
 

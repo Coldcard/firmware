@@ -458,7 +458,7 @@ def cap_image(request, sim_exec, is_q1, is_headless):
             try:
                 sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
                 for _ in range(20):
-                    time.sleep(0.010)
+                    time.sleep(0.10)
                     try:
                         rv = Image.open(fn)
                         break
@@ -1793,6 +1793,11 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 press_cancel()  # exit NFC animation
                 return nfc_export
         elif way == "qr":
+            if 'file written' in story:
+                assert not is_q1
+                # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
+                pytest.skip('no BBQr on Mk4')
+
             need_keypress(key_map["qr"])
             time.sleep(0.3)
             try:
@@ -1800,10 +1805,11 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 if file_type == "J":
                     return json.loads(data)
                 elif file_type == "U":
-                    return data
+                    return data.decode('utf-8') if not isinstance(data, str) else data
                 else:
                     raise NotImplementedError
             except:
+                raise
                 res = cap_screen_qr().decode('ascii')
                 try:
                     return json.loads(res)
