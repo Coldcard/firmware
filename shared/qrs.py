@@ -12,9 +12,6 @@ from version import has_qwerty
 
 # TODO: This class has a terrible API!
 
-# Alnum limit for a single QR, in chars. Min error correction (L).
-MAX_V40_SIZE = const(4296)
-
 # Max in a V11 as bytes (not alnum) ... the limit on Mk4 screen
 MAX_V11_CHAR_LIMIT = const(321)
 

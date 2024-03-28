@@ -876,7 +876,7 @@ def build_duress_wallets(request, seed_vault=False):
               for f in ['reset_seed_words', 'repl', 'clear_all_tricks', 'new_trick_pin', 'clear_ms',
                         'import_ms_wallet', 'get_setting', 'press_select', 'press_cancel', 'is_q1',
                         'new_pin_confirmed', 'cap_menu', 'pick_menu_item', 'cap_story', 'need_keypress',
-                        'seed_story_to_words']}
+                        'seed_story_to_words', 'set_seed_words']}
 
     for (subchoice, expect, xflags, xargs) in [
         ( 'BIP-85 Wallet #1', "functional 'duress' wallet", TC_WIPE|TC_WORD_WALLET, 1001 ),
@@ -885,7 +885,7 @@ def build_duress_wallets(request, seed_vault=False):
         ( 'Legacy Wallet', 'fixed derivation', TC_WIPE|TC_XPRV_WALLET, 0 )
     ]:
         test_ux_duress_choices(subchoice=subchoice, expect=expect, xflags=xflags, xargs=xargs,
-                               with_wipe=False, stop_after_activated=True, **args)
+                               with_wipe=False, stop_after_activated=True, words12=False, **args)
         time.sleep(.1)
         _, story = cap_story()
         assert '(1) to store temporary seed' in story

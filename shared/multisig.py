@@ -2,7 +2,7 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
+import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
 from utils import str_to_keypath, problem_file_line, parse_extended_key
 from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
@@ -876,17 +876,20 @@ class MultisigWallet(WalletABC):
         choice = await import_export_prompt("%s file" % label, is_import=False)
         if choice == KEY_CANCEL:
             return
-        elif choice == KEY_NFC:
+        elif choice in (KEY_NFC, KEY_QR):
             with uio.StringIO() as fp:
                 self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
                                    core=core, desc_pretty=desc_pretty)
-                await NFC.share_text(fp.getvalue())
-            return
-        elif choice == KEY_QR:
-            with uio.StringIO() as fp:
-                self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
-                                   core=core, desc_pretty=desc_pretty)
-                await show_qr_code(fp.getvalue())
+                if choice == KEY_NFC:
+                    await NFC.share_text(fp.getvalue())
+                else:
+                    try:
+                        await show_qr_code(fp.getvalue())
+                    except (ValueError, RuntimeError):
+                        if version.has_qwerty:
+                            # do BBQr on Q
+                            from ux_q1 import show_bbqr_codes
+                            await show_bbqr_codes('U', fp.getvalue(), label)
             return
 
         try:
@@ -1273,7 +1276,7 @@ async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
     from pincodes import pa
 
-    if pa.has_secrets():
+    if not pa.has_secrets():
         await ux_show_story("You must have wallet seed before creating multisig wallets.")
         return
 

@@ -17,8 +17,10 @@ async def export_by_qr(body, label, is_json=False):
     from ux import show_qr_code
 
     try:
-        await show_qr_code(body, msg=label)
-    except ValueError:
+        # ignore label/title - provides no useful info
+        # makes qr smaller and harder to read
+        await show_qr_code(body)
+    except (ValueError, RuntimeError):
         if version.has_qwerty:
             # do BBQr on Q
             from ux_q1 import show_bbqr_codes
