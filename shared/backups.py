@@ -471,7 +471,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False,
             while 1:
                 msg = '''Backup file written:\n\n%s\n\n\
 To view or restore the file, you must have the full password.\n\n\
-Insert another SD card and press 2 to make another copy.''' % nice
+Insert another SD card and press (2) to make another copy.''' % nice
     
                 ch = await ux_show_story(msg, escape='2')
 
