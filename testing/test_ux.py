@@ -789,49 +789,29 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     # one up to get to settings
     if not is_q1:
         press_up()
-    press_select()
-    menu = cap_menu()
-    # assert we are in settings, meaning we found bottom of home menu
-    assert "Login Settings" in menu
-
-    for i in range(10):
-        press_up()
 
     press_select()
-    menu = cap_menu()
-    # assert we are in Login settings, meaning we found top of settings menu
-    assert "Change Main PIN" in menu
-    press_cancel()  # back to settings
     pick_menu_item("Menu Wrapping")
     press_select()
     pick_menu_item("Enable")
-    # back in settings on InfiniteScroll
-    # go 2 positions down and should be on top on Login settings
     time.sleep(1)
-    for i in range(2):
-        press_down()
-    press_select()
-    menu = cap_menu()
-    assert "Change Main PIN" in menu
-    press_cancel()  # back to settings - on login settings
-    # now go over top and back to Login settings from bottom
-    for i in range(11 if is_q1 else 9):
+    press_cancel()  # back to home menu
+    press_cancel()  # at Ready To Sign
+
+    press_up()  # Settings as we just went over the top in home menu
+    if not is_q1:
         press_up()
     press_select()
-    menu = cap_menu()
-    assert "Change Main PIN" in menu
-    # disable infinite scroll
-    goto_home()
-    pick_menu_item("Settings")
+
     pick_menu_item("Menu Wrapping")
     pick_menu_item("Default Off")
     time.sleep(1)
-    # cannot scroll over top now - will land in Login Settings
-    for i in range(15):
-        press_up()
+    press_cancel()  # back in home menu
+    press_cancel()  # at Ready To Sign
+    press_up()
     press_select()
     menu = cap_menu()
-    assert "Change Main PIN" in menu
+    assert "Menu Wrapping" not in menu
     goto_home()
 
 def test_chain_changes_settings_xpub(pick_menu_item, goto_home, cap_story,

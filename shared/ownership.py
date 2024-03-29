@@ -2,12 +2,9 @@
 #
 # ownership.py - store a cache of hashes related to addresses we might control.
 #
-import os, sys, chains, stash, ngu, struct, version
-from uhashlib import sha256
-from ubinascii import b2a_base64, a2b_base64
+import os, sys, chains, ngu, struct, version
 from glob import settings
 from ucollections import namedtuple
-from wallet import WalletABC
 from ubinascii import hexlify as b2a_hex
 from exceptions import UnknownAddressExplained
 
@@ -208,12 +205,11 @@ class OwnershipCache:
         # Find it!
         # - returns wallet object, and tuple2 of final 2 subpath components
         # - if you start w/ testnet, we'll follow that
-        from chains import current_chain
         from multisig import MultisigWallet
         from public_constants import AFC_SCRIPT, AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH_P2SH
         from glob import dis
 
-        ch = current_chain()
+        ch = chains.current_chain()
 
         addr_fmt = ch.possible_address_fmt(addr)
         if not addr_fmt:
