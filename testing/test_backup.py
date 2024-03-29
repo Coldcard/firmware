@@ -112,12 +112,32 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
                      restore_main_seed, import_ephemeral_xprv, backup_system,
-                     press_cancel):
+                     press_cancel, sim_exec):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
     settings_set("seedvault", int(seedvault))
     settings_set("seeds", [] if seedvault else None)
+
+    # test larger backup files > 10,000 bytes
+    if multisig == False and st == None and not reuse_pw and not save_pw and not seedvault:
+        # pick just one test case.
+        # - to bypass USB msg limit, append as we go
+        print(">>> Making huge backup file")
+        notes = []
+        settings_set('notes', [])
+        for n in range(9):
+            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
+                    for fld in ['user', 'password', 'site', 'misc'] }
+            v['title'] = f'Note {n+1}'
+            notes.append(v)
+            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
+            print(rv)
+            assert 'error' not in rv.lower()
+        rv = sim_exec(cmd := f'settings.changed()')
+        assert 'error' not in rv.lower()
+    else:
+        notes = None
 
     # need to make multisig in my main wallet
     if multisig and st != "eph":
@@ -155,6 +175,11 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # must not be copied from main to b39pass
         # must not be available after backup done
         assert not get_setting('multisig', None)
+
+    if notes:
+        # verify large notes survived
+        rb_notes = get_setting('notes')
+        assert rb_notes == notes
 
     files = []
     for copy in range(2):
@@ -485,6 +510,5 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
 
     # TODO check file made is a good backup, with correct password
 
-# TODO: test larger backup files > 10,000 bytes
 
 # EOF
