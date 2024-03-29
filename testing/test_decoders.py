@@ -137,7 +137,7 @@ def test_detector_xp(code, try_decode):
 def test_urldecode(url, sim_exec):
     from urllib.parse import unquote_plus
 
-    cmd = "from decoders import url_decode;  " + \
+    cmd = "from utils import url_decode;  " + \
                 f"RV.write(url_decode({url!r}))"
     result = sim_exec(cmd)
 

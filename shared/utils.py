@@ -654,7 +654,7 @@ def decode_bip21_text(got):
         parts = args.split('&')
         args = dict()
         for p in parts:
-            k, v = a.split('=', 1) 
+            k, v = p.split('=', 1)
             args[k] = url_decode(v)
 
     # assume it's an bare address for now
