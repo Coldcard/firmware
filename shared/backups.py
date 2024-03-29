@@ -17,7 +17,8 @@ from pincodes import pa
 num_pw_words = const(12)
 
 # max size we expect for a backup data file (encrypted or cleartext)
-MAX_BACKUP_FILE_SIZE = const(10000)     # bytes
+# - limited by size of LFS area of flash, since all settings are held there
+MAX_BACKUP_FILE_SIZE = const(128*1024)     # bytes
 
 def render_backup_contents(bypass_tmp=False):
     # simple text format: 
@@ -412,21 +413,18 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False,
 
         hdr, footer = zz.save(fname)
 
-        filesize = len(body) + MAX_BACKUP_FILE_SIZE
-
         del body
 
         gc.collect()
     else:
         # cleartext dump
         zz = None
-        filesize = len(body)+10
 
     if write_sflash:
-        # for use over USB and unit testing: commit file into SPI flash
+        # for use over USB and unit testing: commit file into PSRAM
         from sffile import SFFile
 
-        with SFFile(0, max_size=filesize, message='Saving...') as fd:
+        with SFFile(0, max_size=MAX_BACKUP_FILE_SIZE, message='Saving...') as fd:
             await fd.erase()
 
             if zz:
