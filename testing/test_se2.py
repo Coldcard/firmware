@@ -175,10 +175,8 @@ def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
         if 'New Seed Words' in menu:
             raise pytest.skip("need seed set first for these tests")
 
-        if "Ready To Sign" not in menu:
-            goto_home()
-            time.sleep(.1)
-
+        goto_home()
+        time.sleep(.1)
         pick_menu_item('Settings')
         time.sleep(.1)
         menu = cap_menu()
@@ -199,6 +197,7 @@ def goto_trick_menu(goto_home, pick_menu_item, cap_menu):
 def clear_all_tricks(goto_trick_menu, pick_menu_item, press_select, cap_story):
     def doit():
         goto_trick_menu()
+        time.sleep(.1)
         pick_menu_item('Delete All')
         time.sleep(.1)
         press_select()
@@ -857,6 +856,13 @@ def test_se2_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
     assert 'Traceback' not in bk2
 
     vals2, tr2 = decode_backup(bk2)
+
+    # HW switches are set to default OFF after clone or backup
+    # changed here 7819f0b4d8d4e2c5efa666d0baf46817ad3000a7
+    if 'setting.nfc' in vals and vals['setting.nfc']:
+        vals['setting.nfc'] = 0  # restoring from backup always set NFC to default OFF
+    if 'setting.vidsk' in vals and vals['setting.vidsk']:
+        vals['setting.vidsk'] = 0  # restoring from backup always set VDisk to default OFF
 
     assert vals == vals2
     assert trimmed == tr2

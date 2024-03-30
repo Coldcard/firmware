@@ -15,7 +15,7 @@ from uhashlib import sha256
 from ubinascii import hexlify as b2a_hex
 from glob import settings
 from auth import write_sig_file
-from utils import addr_fmt_label
+from utils import addr_fmt_label, censor_address
 from charcodes import KEY_QR, KEY_NFC, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_HOME, KEY_LEFT, KEY_RIGHT
 from charcodes import KEY_CANCEL
 
@@ -286,7 +286,7 @@ Press (3) if you really understand and accept these risks.
                 # - converts into addr
                 # - assumes 0/0 is first address.
                 for (i, addr, paths, script) in ms_wallet.yield_addresses(start, n, change_idx=change):
-                    addrs.append(addr)
+                    addrs.append(censor_address(addr))
 
                     if i == 0 and ms_wallet.N <= 4:
                         msg += '\n'.join(paths) + '\n =>\n'
@@ -384,7 +384,6 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     # Produce CSV file contents as a generator
     # - maybe cache internally
     from ownership import OWNERSHIP
-    from utils import censor_address
 
     if ms_wallet:
         # For multisig, include redeem script and derivation for each signer

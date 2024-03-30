@@ -884,13 +884,16 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
         _, story = cap_story()
         assert f"Signature file {signame} written" in story
         need_keypress("y")
+        time.sleep(0.1)
         verify_detached_signature_file([fname], signame, "sd", AF_CLASSIC)
+        time.sleep(0.1)
         _, story = cap_story()
         assert "(4) to sign file digest and export detached signature" not in story
 
     assert "(6) to delete" in story
 
     need_keypress("6")
+    time.sleep(0.1)
     menu = cap_menu()
     assert "List Files" in menu
 

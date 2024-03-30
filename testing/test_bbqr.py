@@ -91,7 +91,10 @@ def readback_bbqr(readback_bbqr_ll):
             # - but might be text too
             try:
                 rb = a2b_hex(parts)
-                file_type = 'T'
+                if rb[0:5] == b'psbt\xff':
+                    file_type = 'P'
+                else:
+                    file_type = 'T'
             except:
                 if parts[0] == '{' and parts[-1] == '}':
                     file_type = 'J'
