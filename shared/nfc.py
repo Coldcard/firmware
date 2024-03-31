@@ -352,7 +352,7 @@ class NFCHandler:
 
             # X or OK to quit, but with slightly different meanings
             if ch:
-                if ch in 'y'+KEY_CANCEL: 
+                if ch in 'x'+KEY_CANCEL:
                     aborted = True
                     break
                 elif allow_enter and ch in 'y'+KEY_ENTER:
