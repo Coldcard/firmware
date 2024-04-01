@@ -314,7 +314,10 @@ Press (3) if you really understand and accept these risks.
             k0 = 'to show change addresses' if allow_change and change == 0 else None
             export_msg, escape = export_prompt_builder('address summary file',
                                                     no_qr=bool(ms_wallet), key0=k0)
-            escape += KEY_PAGE_UP+KEY_PAGE_DOWN+KEY_HOME+KEY_LEFT+KEY_RIGHT
+            if version.has_qwerty:
+                escape += KEY_LEFT+KEY_RIGHT+KEY_HOME+KEY_PAGE_UP+KEY_PAGE_DOWN
+            else:
+                escape += "79"
 
             if start == 0:
                 # Show CTA about export at bottom, and only for first page -- it can be huge!
@@ -367,10 +370,10 @@ Press (3) if you really understand and accept these risks.
             elif choice == '0' and allow_change:
                 change = 1
 
-            elif start > 0 and (ch == KEY_LEFT):
+            elif start > 0 and (ch in KEY_LEFT+"7"):
                 # go backwards in explorer
                 start -= n
-            elif ch == KEY_RIGHT:
+            elif ch in KEY_RIGHT+"9":
                 # go forwards
                 start += n
             elif ch == KEY_HOME:

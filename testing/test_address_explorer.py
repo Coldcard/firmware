@@ -436,10 +436,7 @@ def test_custom_path(path, which_fmt, addr_vs_path, pick_menu_item, goto_address
         assert 'Showing single addr' in body
         assert path in body
 
-        if is_q1:
-            addr = body.split("\n")[3]
-        else:
-            addr = body.split()[-1]
+        addr = body.split("\n")[3]
 
         addr_vs_path(addr, path, addr_fmt=which_fmt)
 
