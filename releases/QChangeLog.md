@@ -23,7 +23,7 @@
 
 # Releases - Most Recent First
 
-## 1.0.2Q - 2024-04-02
+## 1.1.0Q - 2024-04-02
 
 - Enhancement: Scan any QR and report if it is part of a wallet this Coldcard knows
   the key for. Includes Multisig and single sig wallets.
