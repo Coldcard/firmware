@@ -104,18 +104,17 @@
 - Enhancement: Calculator login mode. When enabled, the usual PIN entry screen is
   replaced with a functional calculator. Enter your PIN as `12-12` or `12 12` to get it.
   To verify anti-phishing words, use `12-`. 
-- Cleanups in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
-- Bugfix: Key right of L was giving back quote, should have been single-quote.
-- Bugfix: `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`
-- Bugfix: base64 PSBT via QR was not properly decoded
-- Bugfix: Fix inability to activate Duress Wallet as temporary seed
-  when master seed is 12 words
+- Bugfix: Key right of L was giving back quote, should have been single-quote. SYM+E for back quote.
+- Bugfix: Constant `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`.
+- Bugfix: Base64 PSBT via QR was not properly decoded.
+- Bugfix: Fix inability to activate Duress Wallet as temporary seed when master seed is 12 words.
 - Bugfix: Switch to BBQr for larger data exports at a new lower size threshold.
-    - generally, won't show tiny QR anymore with 1:1 pixel to module size.
-    - Sparrow wallet export will always be BBQr (if not saved to a card).
-    - most other exports fit into a reasonable QR (large / lower rez).
+    - Generally, won't show tiny QR anymore with 1:1 pixels.
+    - Sparrow wallet export will always be BBQr now.
+    - Most other exports fit into a reasonable single QR.
+- Bugfix: fixed `Type Passwords` a.k.a emulated keystrokes
+- Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set.
 - Tweak: Default idle timeout when on battery, was reduced to 10 minutes from 30.
 - Tweak: Cursor movements wrap around if menu is longer than screen height.
-- Bugfix: fixed `Type Passwords` a.k.a emulated keystrokes
-- Tweak: Force default HW settings (USB,NFC,VDisk OFF) after clone/backup restore
-- Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set
+- Tweak: Force default HW settings (USB,NFC,VDisk OFF) after clone/backup is restored.
+- Tweak: Cleanup in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
