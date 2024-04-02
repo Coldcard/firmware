@@ -800,24 +800,26 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import NFC
 
         if self.do_finalize and txid and not hsm_active:
+            kq, kn = "(1)", "(3)"
+            if version.has_qwerty:
+                kq, kn = KEY_QR, KEY_NFC
             while 1:
                 # Show txid when we can; advisory
                 # - maybe even as QR, hex-encoded in alnum mode
-                tmsg = txid + '\n\nPress (1) for QR Code of TXID. '
+                tmsg = txid + '\n\nPress %s for QR Code of TXID. ' % kq
 
                 if NFC:
-                    tmsg += 'Press %s to share signed txn via NFC.' % (KEY_NFC if version.has_qwerty else "(3)")
+                    tmsg += 'Press %s to share signed txn via NFC.' % kn
 
-                ch = await ux_show_story(tmsg, "Final TXID", escape='13')
+                ch = await ux_show_story(tmsg, "Final TXID", escape='13'+KEY_NFC+KEY_QR)
 
-                if ch == '1':
+                if ch in '1'+KEY_QR:
                     await show_qr_code(txid, True)
                     continue
 
-                target_nfc = KEY_NFC if version.has_qwerty else "3"
-                if ch == target_nfc and NFC:
+                if ch in KEY_NFC+"3" and NFC:
                     await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
-                                                            self.result[0], self.result[1])
+                                               self.result[0], self.result[1])
                     continue
                 break
 
