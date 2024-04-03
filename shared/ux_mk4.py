@@ -178,6 +178,7 @@ async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100, min_
     # - Q1 version of this function can do much more w/ more keyword args
     from glob import dis
     from display import FontTiny, FontSmall
+    from ux import ux_show_story
 
     # Should allow full unicode, NKDN
     # - but limited to what we can show in FontSmall

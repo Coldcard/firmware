@@ -17,7 +17,7 @@ from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
 from actions import goto_top_menu
-from stash import SecretStash
+from stash import SecretStash, ZeroSecretException
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
@@ -1141,28 +1141,15 @@ class PassphraseMenu(MenuSystem):
 
     # singleton (cls level) vars
     done_cb = None
+    pp_sofar = ''
 
     def __init__(self):
-        self.pp_sofar = ''
-
         items = self.construct()
         super(PassphraseMenu, self).__init__(items)
 
     def update_contents(self):
         tmp = self.construct()
         self.replace_items(tmp)
-
-    @classmethod
-    def pwsave_file_present(cls):
-        if CardSlot.is_inserted():
-            try:
-                with CardSlot() as card:
-                    # check if passphrases file exists on SD
-                    # if yes add menu item
-                    if card.exists(PassphraseSaver.filename(card)):
-                        items.insert(0, MenuItem('Restore Saved', menu=self.restore_saved))
-
-            except: pass
 
     def construct(self):
         if version.has_qwerty:
@@ -1216,62 +1203,67 @@ class PassphraseMenu(MenuSystem):
         # mk4: add a single word from the wordlist, maybe with space, various capitalizations
         return SingleWordMenu()
 
-    async def add_numbers(self, *a):
+    @classmethod
+    async def add_numbers(cls, *a):
         # Mk4 only: add some digits (quick, easy)
-        pw = await ux_input_numbers(self.pp_sofar, self.check_length)
+        pw = await ux_input_numbers(cls.pp_sofar, cls.check_length)
         if pw is not None:
-            self.pp_sofar = pw
-            self.check_length()
+            cls.pp_sofar = pw
+            cls.check_length()
 
-    async def empty_phrase(self, *a):
-        if len(self.pp_sofar) >= 3:
+    @classmethod
+    async def empty_phrase(cls, *a):
+        if len(cls.pp_sofar) >= 3:
             if not await ux_confirm("Press OK to clear passphrase."):
                 return
 
-        self.pp_sofar = ''
+        cls.pp_sofar = ''
         await ux_dramatic_pause('Cleared...', 0.25)
 
-    async def view_edit_phrase(self, *a):
+    @classmethod
+    async def view_edit_phrase(cls, *a):
         # let them control each character
-        pw = await ux_input_text(self.pp_sofar, prompt="Your BIP-39 Passphrase",
-                                    b39_complete=True, scan_ok=True, max_len=100)
+        pw = await ux_input_text(cls.pp_sofar, prompt="Your BIP-39 Passphrase",
+                                 b39_complete=True, scan_ok=True, max_len=100)
         if pw is not None:
-            self.pp_sofar = pw
-            self.check_length()
+            cls.pp_sofar = pw
+            cls.check_length()
 
-            if version.has_qwerty:
-                await apply_pass_value(self.pp_sofar)
+            if version.has_qwerty and cls.pp_sofar:
+                await apply_pass_value(cls.pp_sofar)
+                cls.pp_sofar = ''
 
-    def check_length(self):
+    @classmethod
+    def check_length(cls):
         # enforce a limit of 100 chars
-        self.pp_sofar = self.pp_sofar[0:100]
+        cls.pp_sofar = cls.pp_sofar[0:100]
 
-    @staticmethod
-    async def add_text(_1, _2, item):
-        self.pp_sofar += item.label
-        self.check_length()
+    @classmethod
+    async def add_text(cls, _1, _2, item):
+        cls.pp_sofar += item.label
+        cls.check_length()
 
         while not isinstance(the_ux.top_of_stack(), PassphraseMenu):
             the_ux.pop()
 
-    async def done_cancel(self, *a):
-        if len(self.pp_sofar) > 3:
+    @classmethod
+    async def done_cancel(cls, *a):
+        if len(cls.pp_sofar) > 3:
             if not await ux_confirm("What you have entered will be forgotten."):
                 return
 
+        cls.pp_sofar = ''
         goto_top_menu()
 
-    async def done_apply(self, *a):
+    @classmethod
+    async def done_apply(cls, *a):
         # apply the passphrase
-        import stash
-        from glob import settings
-        from pincodes import pa
-
-        if not self.pp_sofar:
+        if not cls.pp_sofar:
             # empty string here - noop
             return
 
-        await apply_pass_value(self.pp_sofar)
+        await apply_pass_value(cls.pp_sofar)
+        cls.pp_sofar = ''
 
 async def apply_pass_value(new_pp):
     # Apply provided BIP-39 passphrase to master seed, and go to top menu.
@@ -1288,7 +1280,7 @@ async def apply_pass_value(new_pp):
             "master seed [%s]" % m_parent_xfp_str,
             "(1) master+pass:\n%s→%s\n\n" % (m_parent_xfp_str, m_xfp_str),
         )
-    except AssertionError: pass
+    except (AssertionError, ZeroSecretException): pass
 
     if pa.tmp_value and settings.get("words", True):
         # we have ephemeral seed - can add passphrase to it as it is word based
@@ -1354,7 +1346,7 @@ class SingleWordMenu(WordNestMenu):
             super(SingleWordMenu, self).__init__(items=items, **kws)
         else:
             super(SingleWordMenu, self).__init__(num_words=1, has_checksum=False,
-                        done_cb=self.commit_value)
+                                                 done_cb=self.commit_value)
 
     @staticmethod
     async def commit_value(new_words):
@@ -1367,7 +1359,7 @@ class SingleWordMenu(WordNestMenu):
         # bugfix: in case they cancel from new menu
         WordNestMenu.words = []
 
-        return MenuSystem([MenuItem(w, f=PassphraseMenu.add_text) 
+        return MenuSystem([MenuItem(w, f=PassphraseMenu.add_text)
                                     for n,w in enumerate(options)], space_indicators=True)
 
 

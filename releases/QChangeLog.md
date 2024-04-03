@@ -23,6 +23,11 @@
 
 # Releases - Most Recent First
 
+## 1.1.1Q - 2024-04-XX
+
+- Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
+  seed without master secret.
+
 ## 1.1.0Q - 2024-04-02
 
 - Enhancement: Scan any QR and report if it is part of a wallet this Coldcard knows

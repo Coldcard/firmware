@@ -122,7 +122,7 @@ def _run_pytest_tests(test_module: str, pytest_marks: str, pytest_k: str, pdb: b
 def _run_coldcard_tests(test_module: str, simulator_args: List[str], pytest_marks: str,
                         pytest_k: str, pdb: bool, failed_first: bool, psbt2=False,
                         is_Q=False, headless=False) -> ExitCode:
-    if simulator_args:
+    if simulator_args is not None:
         sim = ColdcardSimulator(args=simulator_args, headless=headless)
         sim.start()
         time.sleep(1)
@@ -130,7 +130,7 @@ def _run_coldcard_tests(test_module: str, simulator_args: List[str], pytest_mark
     exit_code = _run_pytest_tests(test_module, pytest_marks, pytest_k, pdb,
                                   failed_first, psbt2, is_Q, headless)
 
-    if simulator_args:
+    if simulator_args is not None:
         sim.stop()
         time.sleep(1)
         clean_sim_data()
