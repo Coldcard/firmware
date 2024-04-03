@@ -138,13 +138,13 @@ async def batt_idle_logout():
     # - even before login
     import glob
     from uasyncio import sleep_ms
-    from glob import settings
+    from glob import settings, dis
     import utime
 
-    while not glob.hsm_active:
-        await sleep_ms(5000)
+    while True:
+        await sleep_ms(20000)  # 20 seconds
 
-        if get_batt_level() == None:
+        if get_batt_level() is None:
             # on USB power
             continue
 
@@ -158,6 +158,11 @@ async def batt_idle_logout():
         timeout = settings.get('batt_to', DEFAULT_BATT_IDLE_TIMEOUT)*1000        # ms
 
         if timeout and dt > timeout:
+            lbu = dis.last_bar_update
+            if lbu and utime.ticks_diff(utime.ticks_ms(), lbu) < 60000:
+                # if we are less than 60s after last pb update - do NOT kill it
+                continue
+
             # user has been idle for too long: do a logout (and powerdown)
             print("Batt Idle!")
 
