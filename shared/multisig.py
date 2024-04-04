@@ -5,7 +5,8 @@
 import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
 from utils import str_to_keypath, problem_file_line, parse_extended_key
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
+from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
@@ -859,7 +860,6 @@ class MultisigWallet(WalletABC):
                                  core=False, desc_pretty=True):
         # create a text file with the details; ready for import to next Coldcard
         from glob import NFC
-        from ux import import_export_prompt, show_qr_code
 
         my_xfp = xfp2str(settings.get('xfp'))
         if core:
@@ -1421,7 +1421,8 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
     acct_num = await ux_enter_bip32_index('Account Number:') or 0
 
-    choice = await import_export_prompt("%s file" % label, is_import=False, no_qr=True)
+    choice = await import_export_prompt("%s file" % label, is_import=False,
+                                        no_qr=not version.has_qwerty)
 
     if choice == KEY_CANCEL:
         return
@@ -1454,10 +1455,14 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)
 
-    if choice == KEY_NFC:
+    if choice in (KEY_NFC, KEY_QR):
         with uio.StringIO() as fp:
             render(fp)
-            await NFC.share_json(fp.getvalue())
+            if choice == KEY_NFC:
+                await NFC.share_json(fp.getvalue())
+            elif version.has_qwerty:
+                from ux_q1 import show_bbqr_codes
+                await show_bbqr_codes('J', fp.getvalue(), label)
         return
 
     try:

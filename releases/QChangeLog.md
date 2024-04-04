@@ -35,6 +35,7 @@
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret.
 - Bugfix: Battery idle timeout also considers last progress bar update
+- Enhancement: Allow export of multisig XPUBs via BBQr
 
 ## 1.1.0Q - 2024-04-02
 
