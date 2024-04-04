@@ -10,7 +10,7 @@ from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
-from menu import MenuSystem, MenuItem
+from menu import MenuSystem, MenuItem, ShortcutItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
@@ -875,7 +875,8 @@ class MultisigWallet(WalletABC):
         hdr = '%s %s' % (mode, my_xfp)
         label = "%s multisig setup" % name
 
-        choice = await import_export_prompt("%s file" % label, is_import=False)
+        choice = await import_export_prompt("%s file" % label, is_import=False,
+                                            no_qr=not version.has_qwerty)
         if choice == KEY_CANCEL:
             return
         elif choice in (KEY_NFC, KEY_QR):
@@ -1259,8 +1260,10 @@ class MultisigMenu(MenuSystem):
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
         from glob import NFC
         rv.append(MenuItem('Import from File', f=import_multisig))
+        rv.append(MenuItem('Import from QR', f=import_multisig_qr,
+                           predicate=version.has_qwerty, shortcut=KEY_QR))
         rv.append(MenuItem('Import via NFC', f=import_multisig_nfc,
-                           predicate=bool(NFC)))
+                           predicate=bool(NFC), shortcut=KEY_NFC))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
@@ -1309,8 +1312,10 @@ async def make_ms_wallet_descriptor_menu(menu, label, item):
 
     rv = [
         MenuItem('View Descriptor', f=ms_wallet_show_descriptor, arg=ms),
-        MenuItem('Export', f=ms_wallet_ckcc_export, arg=(ms, {"descriptor": True, "desc_pretty": False})),
-        MenuItem('Bitcoin Core', f=ms_wallet_ckcc_export, arg=(ms, {"descriptor": True, "core": True})),
+        MenuItem('Export', f=ms_wallet_ckcc_export,
+                 arg=(ms, {"descriptor": True, "desc_pretty": False})),
+        MenuItem('Bitcoin Core', f=ms_wallet_ckcc_export,
+                 arg=(ms, {"descriptor": True, "core": True})),
     ]
     return rv
 
@@ -1659,6 +1664,19 @@ async def import_multisig_nfc(*a):
         return await NFC.import_multisig_nfc()
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to import multisig. %s" % str(e))
+
+async def import_multisig_qr(*a):
+    from auth import maybe_enroll_xpub
+    from ux_q1 import QRScannerInteraction
+    data = await QRScannerInteraction().scan_text('Scan Multisig from a QR code')
+    if not data:
+        # pressed CANCEL
+        return
+
+    try:
+        maybe_enroll_xpub(config=data)
+    except Exception as e:
+        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
 
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file

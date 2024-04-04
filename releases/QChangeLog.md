@@ -36,6 +36,7 @@
   seed without master secret.
 - Bugfix: Battery idle timeout also considers last progress bar update
 - Enhancement: Allow export of multisig XPUBs via BBQr
+- Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
 
 ## 1.1.0Q - 2024-04-02
 

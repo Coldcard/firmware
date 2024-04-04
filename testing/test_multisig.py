@@ -22,6 +22,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.tx import Tx
 from io import BytesIO
 from hashlib import sha256
+from bbqr import split_qrs
 
 
 def HARD(n=0):
@@ -161,11 +162,12 @@ def offer_ms_import(cap_story, dev):
     return doit
 
 @pytest.fixture
-def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select, is_q1):
+def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
+                     is_q1, request, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None,
              keys=None, do_import=True, derivs=None, descriptor=False,
-             int_ext_desc=False, dev_key=False):
+             int_ext_desc=False, dev_key=False, way=None):
         keys = keys or make_multisig(M, N, unique=unique, dev_key=dev_key,
                                      deriv=common or (derivs[0] if derivs else None))
         name = name or f'test-{M}-{N}'
@@ -211,7 +213,73 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select, is_q1):
         #print(config)
         open('debug/last-ms.txt', 'wt').write(config)
 
-        title, story = offer_ms_import(config)
+        if way is None:  # USB
+            title, story = offer_ms_import(config)
+        else:
+            # only get those simulator related fixtures here, to be able to
+            # use this with real HW
+            cap_menu = request.getfixturevalue('cap_menu')
+            cap_story = request.getfixturevalue('cap_story')
+            goto_home = request.getfixturevalue('goto_home')
+            pick_menu_item = request.getfixturevalue('pick_menu_item')
+
+            if "Skip Checks?" not in cap_menu():
+                # we are not in multisig menu
+                goto_home()
+                pick_menu_item("Settings")
+                pick_menu_item("Multisig Wallets")
+                time.sleep(.1)
+
+            ms_menu = cap_menu()
+            if way == "qr":
+                if "Import from QR" not in ms_menu and not is_q1:
+                    pytest.skip("No QR support")
+
+                scan_a_qr = request.getfixturevalue('scan_a_qr')
+                pick_menu_item("Import from QR")
+
+                actual_vers, parts = split_qrs(config, 'U', max_version=20)
+                random.shuffle(parts)
+
+                for p in parts:
+                    scan_a_qr(p)
+                    time.sleep(2.0 / len(parts))
+
+            elif way == "nfc":
+                if "Import via NFC" not in ms_menu:
+                    pytest.skip("NFC disabled")
+
+                nfc_write_text = request.getfixturevalue('nfc_write_text')
+                pick_menu_item("Import via NFC")
+                nfc_write_text(config)
+                time.sleep(0.5)
+
+            else:
+                assert way in ("sd", "vdisk")
+                if way == "sd":
+                    path_f = request.getfixturevalue('microsd_path')
+                else:
+                    path_f = request.getfixturevalue('virtdisk_path')
+
+                fname = name + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
+
+                pick_menu_item("Import from File")
+                time.sleep(.1)
+                _, story = cap_story()
+                if way == "vdisk":
+                    if "(2) to import from Virtual Disk" not in story:
+                        pytest.skip("VDisk disabled")
+                    need_keypress("2")
+                else:
+                    if "Press (1)" in story:
+                        need_keypress("1")
+
+                pick_menu_item(fname)
+
+            time.sleep(.2)
+            title, story = cap_story()
 
         assert 'Create new multisig' in story \
                 or 'Update existing multisig wallet' in story \
@@ -614,7 +682,7 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress,
     press_cancel()
 
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", ["qr", "sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('acct_num', [0, 99, 123])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
@@ -740,7 +808,7 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
         try: os.unlink(fname)
         except: pass
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", [None, "sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
 @pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45h"])
 def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, press_select,
@@ -752,8 +820,9 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     clear_ms()
 
     name = 'ex-test-%d' % random.randint(10000,99999)
-    M,N = 3, 15
-    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1, common=comm_prefix)
+    M,N = 3, 5
+    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1,
+                            common=comm_prefix, way=way)
 
     goto_home()
     pick_menu_item('Settings')
@@ -764,7 +833,10 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     pick_menu_item(item)
 
     pick_menu_item('Coldcard Export')
-    contents = load_export(way, label="Coldcard multisig setup", is_json=False, sig_check=False)
+    contents = load_export(way or "sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
+    if way == "qr":
+        # QR code still displayed on screen
+        press_select()
 
     got = set()
     for ln in io.StringIO(contents).readlines():
@@ -902,7 +974,8 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
 
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
-        assert (len(menu) - num_wallets) in [5, 6]        # depending if NFC enabled or not
+        # depending if NFC enabled or not, and if Q (has QR)
+        assert (len(menu) - num_wallets) in [5, 6, 7]
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
