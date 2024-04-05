@@ -29,6 +29,9 @@ tools may or may not hide it from you based on Unix filename
 conventions. Reformating the card will certainly remove this file,
 so keep that in mind when managing your "special" cards.
 
+If using COLDCARD Q and both card slot are populated during login
+make sure that enrolled card is in top slot (slot A).
+
 ## Menu Settings
 
 See menu in: `Settings -> Login Settings -> MicroSD 2FA`
