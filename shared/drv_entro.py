@@ -118,15 +118,12 @@ async def pick_bip85_password():
     return await drv_entro_step2(None, 7, None, just_pick=True)
 
 async def drv_entro_step2(_1, picked, _2, just_pick=False):
-    from glob import dis
+    from glob import dis, settings
     from files import CardSlot, CardMissingError, needs_microsd
     from ux import ux_render_words, export_prompt_builder, import_export_prompt_decode
 
-    msg = "Index Number?"
-    if picked == 7:
-        # Passwords
-        msg = "Password Index?"
-    index = await ux_enter_bip32_index(msg)
+    msg = "Password Index?" if picked == 7 else "Index Number?"
+    index = await ux_enter_bip32_index(msg, unlimited=settings.get("b85max", 0))
     if index is None:
         return
 

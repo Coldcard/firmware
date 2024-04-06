@@ -209,6 +209,48 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
     press_cancel()
 
 
+def test_allow_bip32_max_int(pick_menu_item, goto_home, enter_number, is_q1,
+                             press_select, cap_screen, press_cancel, cap_story,
+                             settings_set):
+    max_int = 2147483647
+    to_input = 9999999999
+    mi = 'Derive Seed B85' if not is_q1 else 'Derive Seeds (BIP-85)'
+    goto_home()
+    # by default only indexes up to 9999 are allowed
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item(mi)
+    press_select()
+    pick_menu_item("12 words")
+    enter_number(to_input)
+    time.sleep(.1)
+    scr = cap_screen()
+    assert "index=9999" in scr  # does not allow to go over this value
+    press_cancel()
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Danger Zone")
+    pick_menu_item("B85 Max Int")
+    time.sleep(.1)
+    _, story = cap_story()
+    assert "Enable max int (BIP32) index for BIP85 derivation?" in story
+    assert "Only use if you know what you are doing" in story
+    press_select()
+    pick_menu_item("Enable")
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item(mi)
+    press_select()
+    pick_menu_item("12 words")
+    enter_number(to_input)
+    time.sleep(.1)
+    scr = cap_screen()
+    assert f"index={max_int}" in scr
+    press_cancel()
+    settings_set("b85max", 0)
+
+
 @pytest.mark.qrcode
 @pytest.mark.parametrize('mode,pattern', [ 
     ('WIF (privkey)', r'[1-9A-HJ-NP-Za-km-z]{51,52}' ),
@@ -220,10 +262,12 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
     ('24 words', r'[a-f0-9]{64}'),
     ('Passwords', r'[a-zA-Z0-9+/]{21}'),
 ])
-@pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999])
+@pytest.mark.parametrize('index', [0, 1, 10, 100, 1000, 9999, 2147483647])
 def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_story_to_words,
-                    derive_bip85_secret, reset_seed_words, is_q1, press_cancel):
+                    derive_bip85_secret, reset_seed_words, is_q1, press_cancel, settings_set):
     reset_seed_words()
+    settings_set("b85max", 1)
+
     # Uses any key on Simulator; just checking for operation + entropy level
     _, story = derive_bip85_secret(mode, index)
 
@@ -277,6 +321,7 @@ def test_path_index(mode, pattern, index, need_keypress, cap_screen_qr, seed_sto
             assert qr == got
 
     press_cancel()
+    settings_set("b85max", 0)
 
 
 def test_type_passwords(dev, cap_menu, pick_menu_item, goto_home,

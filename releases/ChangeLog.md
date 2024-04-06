@@ -3,6 +3,7 @@
 - Enhancement: When providing 12 or 18 word seed phrase, possible final word choices
   are presented in a new menu. (Mk4 only, Q does direct entry.)
 - Enhancement: Allow to specify start index for address explorer export and browsing
+- Enhancement: Allow (BIP-32) max int for BIP-85 derivations. Needs to be enabled first in `Danger Zone` 
 - Enhancement: Add `Nunchuk` option to `Export Wallet`
 - Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
   already in use. Use `Restore Master` with ability to keep or purge current

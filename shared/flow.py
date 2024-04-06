@@ -296,6 +296,11 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
               "WARNING: Some wallets will not recognize addresses that are past their gap limit."
               " Make sure you know what you're doing, otherwise keep this disabled."),
                    predicate=has_secrets),
+    ToggleMenuItem('B85 Max Int', 'b85max', ['Default Off', 'Enable'],
+                   story=("Enable max int (BIP-32) index for BIP-85 derivation? "
+                          "In case you forget the index this can become a hard search problem. "
+                          "Only use if you know what you are doing."),
+                   predicate=has_secrets),
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
