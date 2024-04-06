@@ -18,7 +18,7 @@ and record the corresponding payment address and private key (WIF) into a text f
 creating a so-called "paper wallet".
 {can_qr}
 
-Another option is to roll a D6 die many times to generate the key.
+Another option is to roll a D6 dice many times to generate the key.
 
 CAUTION: Paper wallets carry MANY RISKS and should only be used for SMALL AMOUNTS.'''
 
