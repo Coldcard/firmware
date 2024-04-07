@@ -386,7 +386,7 @@ def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
-    prompt, escape = None, KEY_CANCEL
+    prompt, escape = None, KEY_CANCEL+"x"
 
     if (NFC or VD) or num_sd_slots>1 or key0:
         # no need to spam with another prompt, only option is SD card

@@ -183,7 +183,8 @@ async def make_summary_file(fname_pattern='public.txt'):
     # generator function:
     body = "".join(list(generate_public_contents()))
     ch = chains.current_chain()
-    await write_text_file(fname_pattern, body, 'Summary', "m/44h/%dh/0h/0/0" % ch.b44_cointype,
+    await write_text_file(fname_pattern, body, 'Summary',
+                          "m/44h/%dh/0h/0/0" % ch.b44_cointype,
                           AF_CLASSIC)
 
 async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
@@ -259,7 +260,6 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
             example_addrs.append( ('m/%s/%s' % (derive, sp), a) )
 
     xfp = settings.get('xfp')
-    txt_xfp = xfp2str(xfp).lower()
     _, vers, _ = version.get_mpy_version()
 
     desc_obj = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=AF_P2WPKH)

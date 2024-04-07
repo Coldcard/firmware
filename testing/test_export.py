@@ -19,12 +19,23 @@ from pprint import pprint
 from charcodes import KEY_NFC
 
 
+@pytest.fixture
+def mk4_qr_not_allowed(is_q1):
+    def doit(way):
+        if way == "qr" and not is_q1:
+            pytest.skip("mk4 QR not allowed")
+    return doit
+
+
+
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
-                     enter_number, nfc_read_text, load_export, bitcoind, press_select):
+                     enter_number, nfc_read_text, load_export, bitcoind, press_select,
+                     mk4_qr_not_allowed):
+    mk4_qr_not_allowed(way)
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
     use_regtest()
@@ -203,8 +214,9 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_sel
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
-                         press_select):
+                         press_select, mk4_qr_not_allowed):
     # lightly test electrum wallet export
+    mk4_qr_not_allowed(way)
     if not testnet:
         use_mainnet()
     if "P2PKH" in mode:
@@ -275,7 +287,9 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet, press_select):
+                         load_export, testnet, use_mainnet, press_select, mk4_qr_not_allowed):
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
 
@@ -356,8 +370,10 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
                           microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
-                          load_export, settings_set, use_mainnet, press_select):
+                          load_export, settings_set, use_mainnet, press_select, mk4_qr_not_allowed):
     # test UX and operation of the 'unchained export'
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
     goto_home()
@@ -407,8 +423,10 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
                            addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
-                           load_export, testnet):
+                           load_export, testnet, mk4_qr_not_allowed):
     # test UX and values produced.
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
     goto_home()
@@ -553,7 +571,10 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
                                    pick_menu_item, way, cap_story, cap_menu, nfc_read_text, int_ext,
-                                   microsd_path, settings_get, virtdisk_path, load_export, press_select):
+                                   microsd_path, settings_get, virtdisk_path, load_export, press_select,
+                                   mk4_qr_not_allowed):
+    mk4_qr_not_allowed(way)
+
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0
     goto_home()

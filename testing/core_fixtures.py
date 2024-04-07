@@ -53,15 +53,16 @@ def _pick_menu_item(device, is_Q, text):
     if text not in m:
         raise KeyError(text, "%r not in menu: %r" % (text, m))
 
-    # double check we're looking at this menu, not stale data
-    # added strip as cap_screen does not contain whitespaces
-    # that are present in coundown chooser
-    # find menu item that does not contain triple dot char
-    target = [mi for mi in m if "⋯" not in mi]
-    if target:
-        assert target[0][0:33].strip() in _cap_screen(device), 'not in menu mode'
-    else:
-        print("⋯ in all menu items - not sure about free - but continue")
+    if is_Q:
+        # double check we're looking at this menu, not stale data
+        # added strip as cap_screen does not contain whitespaces
+        # that are present in coundown chooser
+        # find menu item that does not contain triple dot char
+        target = [mi for mi in m if "⋯" not in mi]
+        if target:
+            assert target[0][0:33].strip() in _cap_screen(device), 'not in menu mode'
+        else:
+            print("⋯ in all menu items - not sure about free - but continue")
 
     m_pos = m.index(text)
 
