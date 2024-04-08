@@ -349,12 +349,12 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
             # this is slow enough to see
             md.update(ch)
 
-        elif ch == KEY_CANCEL:
+        elif ch in KEY_CANCEL+"x":
             # Because the change (roll) has already been applied,
             # only let them abort if it's early still
             if count < 10 and judge_them:
                 return 0, seed
-        elif ch == KEY_ENTER:
+        elif ch in KEY_ENTER+"y":
             if count < threshold and judge_them:
                 if not count:
                     return 0, seed
@@ -1126,7 +1126,7 @@ OK to continue or press (2) to hide this message forever.
     if version.has_qwerty and not PassphraseSaver.has_file():
         # no need for any menus if Q and no card present
         pp = await ux_input_text('', prompt="Your BIP-39 Passphrase",
-                                        b39_complete=True, scan_ok=True, max_len=100)
+                                 b39_complete=True, scan_ok=True, max_len=100)
         if not pp: return
         
         await apply_pass_value(pp)

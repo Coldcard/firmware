@@ -608,7 +608,7 @@ def test_ephemeral_seed_import_tapsigner(way, testnet, pick_menu_item, cap_story
 def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail, cap_screen,
                                               need_keypress, reset_seed_words, enter_hex,
                                               tapsigner_encrypted_backup, goto_eph_seed_menu,
-                                              microsd_path, ephemeral_seed_disabled, is_q1,
+                                              microsd_path, ephemeral_seed_disabled,
                                               settings_set, press_select, press_cancel):
     
     
@@ -648,8 +648,8 @@ def test_ephemeral_seed_import_tapsigner_fail(pick_menu_item, cap_story, fail, c
     enter_hex(backup_key_hex)
     time.sleep(0.3)
 
-    if fail == "key_len" and is_q1:
-        assert "Need 32 char" in cap_screen()
+    if fail == "key_len":
+        assert "Need 32" in cap_screen()
         press_cancel()
         return
 
@@ -1043,8 +1043,9 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     # first entry again
     press_select()
     pick_menu_item("Rename")
-    for _ in range(11):
+    for _ in range(10 if is_q1 else 9):
         press_delete()
+
     if is_q1:
         do_keypresses("AA")
     else:
@@ -1054,7 +1055,7 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
         # name changed to AA
 
     press_select()
-
+    time.sleep(.1)
     m = cap_menu()
     assert m[0] == "AA"
     assert "Rename" in m
@@ -1083,7 +1084,7 @@ def test_seed_vault_modifications(settings_set, reset_seed_words, pick_menu_item
     assert "Delete" in m
 
     pick_menu_item("Rename")
-    for _ in range(11):
+    for _ in range(10 if is_q1 else 9):
         press_delete()
 
     if is_q1:

@@ -347,10 +347,10 @@ def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
     from version import has_qwerty, num_sd_slots, has_qr
     from glob import NFC, VD
 
-    prompt, escape = None, KEY_CANCEL
+    prompt, escape = None, KEY_CANCEL+"x"
 
     if (NFC or VD) or num_sd_slots>1:
-        if slot_b_only:
+        if slot_b_only and (num_sd_slots>1):
             prompt = "Press (B) to import %s from lower slot SD Card" % title
             escape += "b"
         else:

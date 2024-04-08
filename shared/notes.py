@@ -369,14 +369,14 @@ class PasswordContent(NoteContentBase):
         # Edit, also used for add new
 
         title = await ux_input_text(self.title, max_len=ONE_LINE, confirm_exit=False,
-                        prompt='Title', placeholder='(required for menu)')
+                                    prompt='Title', placeholder='(required for menu)')
         if not title:
             return None
 
         # blank is OK for all other values
 
         user = await ux_input_text(self.user, max_len=ONE_LINE, scan_ok=True, confirm_exit=False,
-                                prompt='Username', placeholder='(optional)')
+                                   prompt='Username', placeholder='(optional)')
         if user is None:
             user = self.user
 
@@ -385,12 +385,12 @@ class PasswordContent(NoteContentBase):
             self.password = await get_a_password(self.password)
 
         site = await ux_input_text(self.site, max_len=ONE_LINE, scan_ok=True, confirm_exit=False,
-                                prompt='Website', placeholder='(optional)')
+                                   prompt='Website', placeholder='(optional)')
         if site is None:
             site = self.site
 
         misc = await ux_input_text(self.misc, max_len=None, scan_ok=True, confirm_exit=False,
-                                            prompt='More Notes', placeholder='(optional)')
+                                   prompt='More Notes', placeholder='(optional)')
         if misc is None:
             misc = self.misc
 
@@ -459,13 +459,13 @@ class NoteContent(NoteContentBase):
         # Edit, also used for add new
 
         title = await ux_input_text(self.title, confirm_exit=False, max_len=CHARS_W-2,
-                        prompt='Title', placeholder='(required for menu)')
+                                    prompt='Title', placeholder='(required for menu)')
         if not title:
             return
 
         misc = await ux_input_text(self.misc, confirm_exit=False,
-                                    max_len=None, scan_ok=True,
-                                    prompt='Your Notes', placeholder='(freeform text)')
+                                   max_len=None, scan_ok=True,
+                                   prompt='Your Notes', placeholder='(freeform text)')
         if misc is None:
             misc = self.misc
 

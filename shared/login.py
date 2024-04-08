@@ -86,11 +86,11 @@ class LoginUX:
                 callgate.fast_wipe(False)
                 # NOT REACHED
 
-            if ch in KEY_DELETE+KEY_LEFT:
+            if has_qwerty and ch in KEY_DELETE+KEY_LEFT:
                 if self.pin:
                     self.pin = self.pin[:-1]
                     self.show_pin()
-                elif has_qwerty and self.pin_prefix:
+                elif self.pin_prefix:
                     # trying to delete past start of second half, take them
                     # to first part again. Q only
                     ux_show_phish_words(dis, None)
@@ -277,7 +277,6 @@ suffix break point is correct.\n\n'''
         if story:
             # give them background
             ch = await ux_show_story(story, title=title)
-
             if ch == 'x': return None
 
         # first first one

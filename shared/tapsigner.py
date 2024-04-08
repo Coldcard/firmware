@@ -88,7 +88,8 @@ async def import_tapsigner_backup_file(_1, _2, item):
 
     while True:
         backup_key = await ux_input_text("", confirm_exit=False, hex_only=True,
-                            min_len=32, max_len=32, prompt='Backup Password (32 hex digits)')
+                                         min_len=32, max_len=32,
+                                         prompt='Backup Password (32 hex digits)')
         if backup_key is None:
             return
 

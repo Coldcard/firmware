@@ -104,7 +104,7 @@ def my_enter_pin(cap_screen, need_keypress, is_q1, press_right, press_select):
                     scr = cap_screen().split('\n')
                     assert scr[-1] == 'Enter rest of PIN'
 
-                    press_select()
+            press_select()
 
         time.sleep(0.1)
         return title, words
@@ -115,7 +115,7 @@ def my_enter_pin(cap_screen, need_keypress, is_q1, press_right, press_select):
 @pytest.fixture
 def change_pin(cap_screen, cap_story, cap_menu, press_select, my_enter_pin, press_cancel):
     def doit(old_pin, new_pin, hdr_text, expect_fail=None):
-        # use standard menus and UX to change a PIN 
+        # use standard menus and UX to change a PIN
         title, story = cap_story()
         assert title == hdr_text
         assert "changing the main PIN used to unlock your Coldcard" in story

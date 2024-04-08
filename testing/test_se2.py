@@ -589,7 +589,7 @@ def test_ux_duress_choices(with_wipe, subchoice, expect, xflags, xargs, words12,
             words = seed_story_to_words(story)
         else:
             ln = story.split('\n')
-            assert ln[0] == 'Seed words (24):'
+            assert ln[0] == ('Seed words (12):' if words12 else 'Seed words (24):')
             words = [i[4:] for i in ln[1:25]]
 
         seed = Mnemonic.to_seed(' '.join(words), passphrase='')
@@ -699,7 +699,7 @@ from test_change_pins import change_pin, goto_pin_options, my_enter_pin
 def force_main_pin(change_pin, goto_pin_options, pick_menu_item, repl):
     # make main-pin match needs
     def doit(want_pin, expect_fail=None):
-        pin_b4 = repl.eval('pa.pin').decode('ascii') 
+        pin_b4 = repl.eval('pa.pin').decode('ascii')
         if pin_b4 == want_pin:
             assert not expect_fail
             return

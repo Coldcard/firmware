@@ -127,7 +127,7 @@ def sim_card_ejected(sim_exec, is_simulator):
                 return
 
         # see unix/frozen-modules/pyb.py class SDCard
-        cmd = f'import pyb; pyb.SDCard.ejected={ejected}; RV.write("ok")'
+        cmd = f'import files; files.CardSlot.sd_detect = lambda: int({ejected}); RV.write("ok")'
         assert sim_exec(cmd) == 'ok'
 
     yield doit
@@ -601,7 +601,7 @@ def cap_screen_qr(cap_image):
 def get_pp_sofar(sim_exec):
     # get entry value for bip39 passphrase
     def doit():
-        resp = sim_exec('import seed; RV.write(seed.pp_sofar)')
+        resp = sim_exec('import seed; RV.write(seed.PassphraseMenu.pp_sofar)')
         assert 'Error' not in resp
         return resp
 
@@ -675,7 +675,7 @@ def press_right(need_keypress, has_qwerty):
     return doit
 
 @pytest.fixture
-def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty, cap_screen):
+def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, cap_screen):
 
     def doit():
         # get to top, force a redraw
@@ -685,17 +685,18 @@ def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, has_qwerty, 
 
             m = cap_menu()
 
+            if 'CANCEL' in m:
+                # special case to get out of passphrase menu
+                pick_menu_item('CANCEL')
+                time.sleep(.01)
+                if "Are you SURE ?" in cap_screen():
+                    press_select()
+
             chk = cap_screen()
             if m[0] not in chk:
                 # menu vs. screen wrong ... happens if looking at a story, not a menu
                 press_cancel()
                 continue
-
-            if 'CANCEL' in m:
-                # special case to get out of passphrase menu
-                pick_menu_item('CANCEL')
-                time.sleep(.01)
-                press_select()
 
             if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break

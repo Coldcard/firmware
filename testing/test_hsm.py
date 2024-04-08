@@ -71,7 +71,7 @@ def compute_policy_hash(policy):
             if type_ == Deriv:
                 rv = []
                 for orig in value or []:
-                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "'").replace('h', "'"))
+                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "h").replace("'", 'h'))
             elif type_ == WhitelistOpts:
                 rv = OrderedDict()
                 rv["mode"] =  value.get("mode", "BASIC")
@@ -165,17 +165,17 @@ def hsm_reset(dev, sim_exec):
     (DICT(boot_to_hsm='123123'), 'Boot to HSM enabled'),
 
     # msg signing
-    (DICT(msg_paths=["m/1'/2p/3H"]), "m/1'/2'/3'"),
+    (DICT(msg_paths=["m/1'/2p/3H"]), "m/1h/2h/3h"),
     (DICT(msg_paths=["m/1", "m/2"]), "m/1 OR m/2"),
     (DICT(msg_paths=["any"]), "(any path)"),
 
     # data sharing
-    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1'/2'/3'"]),
+    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1h/2h/3h"]),
     (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
     (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
     (DICT(share_addrs=["p2sh", "any"]), ['Address values values will be shared', "(any P2SH)", "(any path"]),
 
-    (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1'/2'/3'"]),
+    (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1h/2h/3h"]),
     (DICT(share_xpubs=["m/1", "m/2"]), ['XPUB values will be shared', "m/1 OR m/2"]),
     (DICT(share_xpubs=["any"]), ['XPUB values will be shared', "(any path)"]),
 
@@ -898,7 +898,7 @@ def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
         attempt_psbt(psbt)
 
 
-def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign):
     # message signing, but only at certain derivations
     permit = ['m/73', "m/*'", 'm/1p/3h/4/5/6/7' ]
     block = ['m', 'm/72', permit[-1][:-2]]
@@ -907,15 +907,14 @@ def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=A
     policy = DICT(msg_paths=permit)
     quick_start_hsm(policy)
 
-    if 1:
-        for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
+    for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
 
-            for p in permit: 
-                p = p.replace('*', '75333')
-                attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
+        for p in permit:
+            p = p.replace('*', '75333')
+            attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-            for p in block:
-                attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
+        for p in block:
+            attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
 
     policy = DICT(msg_paths=['any'])
     change_hsm(policy)

@@ -135,7 +135,6 @@ async def xor_all_done(new_words):
     num_parts = len(import_xor_parts)
     enc_parts = [bip39.a2b_words(w) for w in import_xor_parts]
     seed = xor(*enc_parts)
-    num_parts = len(import_xor_parts)
 
     msg = "You've entered %d parts so far.\n\n" % num_parts
     if num_parts >= 2:
@@ -151,7 +150,6 @@ async def xor_all_done(new_words):
     msg += "Press (1) to enter next list of words, or (2) if done with all words."
 
     ch = await ux_show_story(msg, strict_escape=True, escape='12x'+KEY_CANCEL, sensitive=True)
-
     if ch == 'x':
         # give up
         import_xor_parts.clear()          # concern: we are contaminated w/ secrets
@@ -164,7 +162,7 @@ async def xor_all_done(new_words):
             await seed_word_entry("Part %s Words" % chr(65+len(import_xor_parts)),
                                                 target_words, done_cb=xor_all_done)
         else:
-            nxt = XORWordNestMenu(num_words=target_words)
+            nxt = XORWordNestMenu(num_words=target_words, done_cb=xor_all_done)
             the_ux.push(nxt)
 
     elif ch == '2':

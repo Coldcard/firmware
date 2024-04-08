@@ -6,7 +6,7 @@ import stash, chains
 from pincodes import pa
 from glob import settings
 import stash
-from seed import set_seed_value
+from seed import set_seed_value, PassphraseMenu
 from utils import xfp2str
 from actions import goto_top_menu
 from nvstore import SettingsObject
@@ -19,6 +19,7 @@ settings.current = sim_defaults
 
 import main
 pa.tmp_value = None
+PassphraseMenu.pp_sofar = ''
 SettingsObject.master_sv_data = {}
 SettingsObject.master_nvram_key = None
 set_seed_value(main.WORDS)

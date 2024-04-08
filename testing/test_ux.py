@@ -16,7 +16,7 @@ def test_get_secrets(get_secrets, master_xpub):
     assert v['xpub'] == master_xpub
 
 def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_words,
-                   press_select, press_cancel, is_q1):
+                   press_select, press_cancel, press_down, is_q1):
     reset_seed_words()
     # get to top, force a redraw
     press_cancel()
@@ -41,7 +41,17 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
     # check 4 lines of menu are shown right
     scr = cap_screen().rstrip()
     chk = '\n'.join(m)
-    assert scr == chk
+    if is_q1:
+        assert scr == chk
+    else:
+        # does not fit to single screen on mk4
+        assert scr in chk
+        # go down to the bottom
+        for i in range(6):
+            press_down()
+
+        scr = cap_screen().rstrip()
+        assert scr in chk
 
     # pick first item, expect a story
     need_keypress('0')
@@ -120,7 +130,8 @@ def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
                 assert which, "cant find: " + word
 
                 pick_menu_item(which)
-                if '-' not in which: break
+                if '-' not in which:
+                    break
 
     return doit
 
@@ -615,7 +626,6 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
 
     enter_complex(target, apply=True)
     press_select()
-    # import pdb;pdb.set_trace()
     verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
 
 
