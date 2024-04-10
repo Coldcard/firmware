@@ -119,8 +119,6 @@ def xxx_test_sign_truncated(dev):
 def test_psbt_proxy_parsing(fn, sim_execfile, sim_exec):
     # unit test: parsing by the psbt proxy object
 
-    raise pytest.xfail('issues on mk4 sim?')        # XXX fix me
-
     sim_exec('import main; main.FILENAME = %r; ' % ('../../testing/'+fn))
     rv = sim_execfile('devtest/unit_psbt.py')
     assert not rv, rv
