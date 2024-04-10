@@ -93,10 +93,11 @@ def set_bip39_pw(dev, need_keypress, reset_seed_words, cap_story,
         time.sleep(.1)
         title, body = cap_story()
         if on_tmp:
-            assert "Press (1)" in body
-            need_keypress("1")
+            assert "to current active temporary seed" in body
         else:
-            press_select()
+            assert "to master seed" in body
+
+        press_select()
 
         time.sleep(.3)
         title, story = cap_story()
@@ -232,12 +233,11 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
 
 
 @pytest.mark.parametrize("stype", ["words", "xprv"])
-@pytest.mark.parametrize("on_eph", [True, False])
 @pytest.mark.parametrize("seed_vault", [True, False])
 def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_xprv,
                                      need_keypress, pick_menu_item, goto_home,
                                      reset_seed_words, goto_eph_seed_menu, stype,
-                                     enter_complex, cap_story, cap_menu, on_eph,
+                                     enter_complex, cap_story, cap_menu,
                                      settings_set, seed_vault, press_select):
     passphrase = "@coinkite rulez!!"
     reset_seed_words()
@@ -245,8 +245,6 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     settings_set("seeds", [])
 
     goto_eph_seed_menu()
-
-    sim_fp = xfp2str(simulator_fixed_xfp)
 
     if stype == "words":
         # words
@@ -268,38 +266,18 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
     pick_menu_item("Passphrase")
     press_select()
     enter_complex(passphrase, apply=True)
-    time.sleep(.1)
-    title, choice_story = cap_story()
 
     tmp_seed = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
     tmp_node = BIP32Node.from_master_secret(tmp_seed)
     tmp_fp = tmp_node.fingerprint().hex().upper()
-
-    master_seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=passphrase)
-    master_node = BIP32Node.from_master_secret(master_seed)
-    master_fp = master_node.fingerprint().hex().upper()
-
-    choice_msg = "(1) master+pass:\n%s→%s\n\n" % (sim_fp, master_fp)
-    choice_msg += "(2) tmp+pass:\n%s→%s\n\n" % (parent_fp, tmp_fp)
-
-    assert choice_story == choice_msg
-
-    if on_eph:
-        need_keypress("2")
-    else:
-        need_keypress("1")
 
     time.sleep(.2)
     title, story = cap_story()
     title_xfp = title[1:-1]
 
     assert "created by adding passphrase to" in story
-    if on_eph:
-        assert tmp_fp == title_xfp
-        assert f"current active temporary seed [{parent_fp}]" in story
-    else:
-        assert master_fp == title_xfp
-        assert f"master seed [{sim_fp}]" in story
+    assert tmp_fp == title_xfp
+    assert f"current active temporary seed [{parent_fp}]" in story
 
     press_select()
 
@@ -333,10 +311,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
         time.sleep(.1)
         _, story = cap_story()
         assert title_xfp in story
-        if on_eph:
-            assert ("BIP-39 Passphrase on [%s]" % parent_fp) in story
-        else:
-            assert "BIP-39 Passphrase on [0F056943]" in story
+        assert ("BIP-39 Passphrase on [%s]" % parent_fp) in story
 
 
 @pytest.mark.parametrize("stype", ["words", "xprv", "b39pw"])
@@ -345,9 +320,9 @@ def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_epheme
                                          reset_seed_words, goto_eph_seed_menu, stype,
                                          cap_story, cap_menu, set_bip39_pw,
                                          get_identity_story, settings_set):
-    settings_set("seedvault", 0)
     passphrase = "@coinkite rulez!!"
     reset_seed_words()
+    settings_set("seedvault", 0)
 
     goto_eph_seed_menu()
 
@@ -364,7 +339,7 @@ def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_epheme
         import_ephemeral_xprv("sd", from_main=True, seed_vault=False)
 
     goto_home()
-    if stype == "xprv":
+    if stype in ("xprv", "b39pw"):
         with pytest.raises(Exception) as e:
             set_bip39_pw(passphrase, reset=False)
         assert "no seed" in e.value.args[0]

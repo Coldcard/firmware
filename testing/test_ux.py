@@ -627,6 +627,8 @@ def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
     enter_complex(target, apply=True)
     press_select()
     verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
+    pick_menu_item("Restore Master")
+    press_select()
 
 
 @pytest.mark.qrcode

@@ -25,6 +25,10 @@
 
 ## 1.1.1Q - 2024-04-XX
 
+- Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
+  already in use. Use `Restore Master` with ability to keep or purge current
+  passphrase wallet settings.
+- Change: Removed ability to add passphrase to master seed if active temporary seed.
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret.
 - Bugfix: Battery idle timeout also considers last progress bar update

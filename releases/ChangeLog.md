@@ -1,5 +1,9 @@
 ## 5.2.3 - 2024-XX-XX
 
+- Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
+  already in use. Use `Restore Master` with ability to keep or purge current
+  passphrase wallet settings.
+- Change: Removed ability to add passphrase to master seed if active temporary seed.
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 - Bugfix: Properly handle and finalize framing error response
 - Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes

@@ -662,12 +662,7 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
 
     dis.fullscreen("Working...")
 
-    # get xfp of parent reliably - cannot go to settings for this if in ephemeral
-    current_xfp = settings.get("xfp", 0) if not pa.tmp_value else 0
-    if not current_xfp:
-        with stash.SensitiveValues(bypass_tmp=bypass_tmp) as sv:
-            assert sv.mode == 'words', sv.mode
-            current_xfp = swab32(sv.node.my_fp())
+    current_xfp = settings.get("xfp", 0)
 
     with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
@@ -1266,53 +1261,14 @@ class PassphraseMenu(MenuSystem):
         cls.pp_sofar = ''
 
 async def apply_pass_value(new_pp):
-    # Apply provided BIP-39 passphrase to master seed, and go to top menu.
-    mdata = None
-    tdata = None
+    # Apply provided BIP-39 passphrase to master or current active tmp seed
+    # and go to top menu.
+    nv, xfp, parent_xfp = await calc_bip39_passphrase(new_pp)
+    xfp_str = xfp2str(xfp)
+    parent_xfp_str = xfp2str(parent_xfp)
 
-    try:
-        m_nv, m_xfp, m_parent_xfp = await calc_bip39_passphrase(new_pp,
-                                                                bypass_tmp=True)
-        m_parent_xfp_str = xfp2str(m_parent_xfp)
-        m_xfp_str = xfp2str(m_xfp)
-        mdata = (
-            m_nv, m_xfp, m_xfp_str, m_parent_xfp_str,
-            "master seed [%s]" % m_parent_xfp_str,
-            "(1) master+pass:\n%s→%s\n\n" % (m_parent_xfp_str, m_xfp_str),
-        )
-    except (AssertionError, ZeroSecretException): pass
-
-    if pa.tmp_value and settings.get("words", True):
-        # we have ephemeral seed - can add passphrase to it as it is word based
-        t_nv, t_xfp, t_parent_xfp = await calc_bip39_passphrase(new_pp,
-                                                                bypass_tmp=False)
-        t_parent_xfp_str = xfp2str(t_parent_xfp)
-        t_xfp_str = xfp2str(t_xfp)
-        tdata = (
-            t_nv, t_xfp, t_xfp_str, t_parent_xfp_str,
-            "current active temporary seed [%s]" % t_parent_xfp_str,
-            "(2) tmp+pass:\n%s→%s\n\n" % (t_parent_xfp_str, t_xfp_str),
-        )
-
-    if tdata is None and mdata is None:
-        # if master is not word based, temporary has to be, otherwise "Passphrase"
-        # not offered in menu
-        # should never be seen by user because flow.py::bip39_passphrase_active
-        await ux_show_story(title="FAILED", msg="Need word based secret")
-        return
-
-    tmp = False
-    if tdata and mdata:
-        ch = await ux_show_story(mdata[-1] + tdata[-1], escape='12x',
-                                 strict_escape=True, scrollbar=False)
-        if ch == "x": return  # exit
-        if ch == "2":
-            tmp = True
-    elif tdata:
-        tmp = True
-
-    data = tdata if tmp else mdata
-    nv, xfp, xfp_str, parent_xfp_str, msg, _ = data
+    msg = "current active temporary seed [%s]" if pa.tmp_value else "master seed [%s]"
+    msg = msg % parent_xfp_str
 
     msg = ('Above is the master key fingerprint of the new wallet'
            ' created by adding passphrase to %s.'

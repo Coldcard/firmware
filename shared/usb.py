@@ -552,11 +552,10 @@ class USBHandler:
         if cmd == 'pass':
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
-            from flow import bip39_passphrase_active
             from auth import start_bip39_passphrase
             from glob import settings
 
-            assert bip39_passphrase_active(), 'no seed'
+            assert settings.get("words", True), 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
             assert len(pw) < 100, 'too long'

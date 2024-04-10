@@ -1207,35 +1207,27 @@ class NewPassphrase(UserAuthorizedAction):
         from pincodes import pa
 
         title = "Passphrase"
-        bypass_tmp = True
-        escape = "x2" + KEY_CANCEL
+        escape = "yx2" + KEY_CANCEL + KEY_ENTER
         while 1:
             msg = ('BIP-39 passphrase (%d chars long) has been provided over '
-                   'USB connection. Should we switch to that wallet now?\n\n')
-            if pa.tmp_value and settings.get("words", True):
-                escape += "1"
-                msg += "Press (1) to add passphrase to currently active temporary seed. "
+                   'USB connection. Should we switch to that wallet now?\n\n'
+                   'Press OK to add passphrase ' % len(self._pw))
+            if pa.tmp_value:
+                msg += "to current active temporary seed. "
+            else:
+                msg += "to master seed. "
 
-            if not pa.is_secret_blank() and settings.master_get("words", True):
-                escape += "y" + KEY_ENTER
-                msg += "Press OK to add passphrase to master seed. "
+            msg += 'Press (2) to view the provided passphrase. X to cancel.'
 
-            msg += ('Press (2) to view the provided passphrase.\n\n'
-                    'X to cancel.')
-
-            ch = await ux_show_story(msg=msg % len(self._pw), title=title,
-                                     escape=escape, strict_escape=True)
+            ch = await ux_show_story(msg=msg, title=title, escape=escape,
+                                     strict_escape=True)
             if ch == '2':
                 await ux_show_story('Provided:\n\n%s\n\n' % self._pw, title=title)
                 continue
-            else:
-                if ch == '1':
-                    bypass_tmp = False
-
-                break
+            else: break
 
         try:
-            if ch not in 'y1'+ KEY_ENTER:
+            if ch not in ('y'+ KEY_ENTER):
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 1)
@@ -1243,9 +1235,7 @@ class NewPassphrase(UserAuthorizedAction):
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                await set_bip39_passphrase(self._pw, bypass_tmp=bypass_tmp,
-                                           summarize_ux=False)
-
+                await set_bip39_passphrase(self._pw, summarize_ux=False)
                 self.result = settings.get('xpub')
 
         except BaseException as exc:
