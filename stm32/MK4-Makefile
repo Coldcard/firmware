@@ -4,7 +4,6 @@
 #
 # MARK 4 with different chip and layout
 #
-include version.mk
 
 BOARD = COLDCARD_MK4
 FIRMWARE_BASE   = 0x08020000
@@ -20,7 +19,7 @@ LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
 
 # Our version for this release.
 # - caution, the bootrom will not accept version < 3.0.0
-VERSION_STRING = 5.3.0Q
+VERSION_STRING = 5.3.0
 
 # keep near top, because defined default target (all)
 include shared.mk
