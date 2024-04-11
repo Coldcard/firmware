@@ -1272,7 +1272,7 @@ async def apply_pass_value(new_pp):
 
     msg = ('Above is the master key fingerprint of the new wallet'
            ' created by adding passphrase to %s.'
-           '\n\nPress X to abort,  OK to use the new wallet, (1) to apply'
+           '\n\nPress X to abort, OK to use the new wallet, (1) to apply'
            ' and save to MicroSD for future.') % msg
 
     ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
