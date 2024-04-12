@@ -2032,6 +2032,22 @@ def sd_cards_eject(is_q1, sim_exec):
         assert sim_exec(cmd) == ''
     return doit
 
+@pytest.fixture
+def set_addr_exp_start_idx(pick_menu_item, cap_menu, enter_number):
+    def doit(start_idx):
+        start_idx_mi = "Start Idx: 0"
+        m = cap_menu()
+        if start_idx:
+            assert start_idx_mi in m
+            pick_menu_item(start_idx_mi)
+            enter_number(start_idx)
+            time.sleep(.1)
+            assert ("Start Idx: %d" % start_idx) in cap_menu()
+        else:
+            assert start_idx_mi not in m
+
+    return doit
+
 
 # useful fixtures
 from test_backup import backup_system

@@ -1894,17 +1894,19 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
     else:
         assert 'WARNING' not in story
 
-@pytest.mark.parametrize('descriptor', [True, False])
 @pytest.mark.parametrize('change', [True, False])
-@pytest.mark.parametrize('N', [ 3, 15])
-@pytest.mark.parametrize('M', [ 3, 15])
+@pytest.mark.parametrize('start_idx', [1000, MAX_BIP32_IDX, 0])
+@pytest.mark.parametrize('M_N', [(2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH] )
-def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, clear_ms, need_keypress, goto_home,
-                          pick_menu_item, cap_story, cap_menu, import_ms_wallet):
+def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
+                          need_keypress, goto_home, pick_menu_item, cap_story,
+                          import_ms_wallet, make_multisig, settings_set,
+                          enter_number, set_addr_exp_start_idx):
     clear_ms()
+    M, N = M_N
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
-    M = min(M, N)
+    settings_set("aei", True if start_idx else False)
 
     dd = {
         AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
@@ -1918,16 +1920,17 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
     derivs = [deriv.format(idx=i) for i in range(N)]
 
     clear_ms()
-    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs, addr_fmt=text_a_fmt, descriptor=descriptor)
+    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs,
+                            addr_fmt=text_a_fmt)
 
     goto_home()
     pick_menu_item("Address Explorer")
     need_keypress('4')      # warning
+
+    set_addr_exp_start_idx(start_idx)
+
     m = cap_menu()
-    if descriptor:
-        wal_name = m[-1]
-    else:
-        assert wal_name in m
+    assert wal_name in m
     pick_menu_item(wal_name)
 
     time.sleep(.5)
@@ -1957,8 +1960,12 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
 
         maps.append( (path, addr) )
 
-    assert len(maps) == 10
-    for idx, (subpath, addr) in enumerate(maps):
+    if start_idx <= 2147483638:
+        assert len(maps) == 10
+    else:
+        assert len(maps) == (MAX_BIP32_IDX - start_idx) + 1
+
+    for idx, (subpath, addr) in enumerate(maps, start=start_idx):
         chng_idx = 1 if change else 0
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
@@ -2039,18 +2046,23 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("change", [True, False])
-@pytest.mark.parametrize('descriptor', [True, False])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize("start_idx", [2147483540, MAX_BIP32_IDX, 0])
+@pytest.mark.parametrize('M_N', [(2, 2), (3, 5), (15, 15)])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
+def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
                              pick_menu_item, cap_menu, cap_story, make_multisig, import_ms_wallet,
                              microsd_path, bitcoind_d_wallet_w_sk, use_regtest, load_export, way,
-                             is_q1, press_select):
+                             is_q1, press_select, start_idx, settings_set, set_addr_exp_start_idx):
     use_regtest()
     clear_ms()
     bitcoind = bitcoind_d_wallet_w_sk
     M, N = M_N
+    # whether to import as descriptor or old school to CC
+    descriptor = random.choice([True, False])
+
+    settings_set("aei", True if start_idx else False)
+
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
     dd = {
@@ -2065,15 +2077,17 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     derivs = [deriv.format(idx=i) for i in range(N)]
 
     clear_ms()
-    import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs, addr_fmt=text_a_fmt,
-                            descriptor=descriptor)
+    import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs,
+                     addr_fmt=text_a_fmt, descriptor=descriptor)
 
     goto_home()
     pick_menu_item("Address Explorer")
     need_keypress('4')  # warning
+    set_addr_exp_start_idx(start_idx)
+
     m = cap_menu()
     if descriptor:
-        wal_name = m[-1]
+        wal_name = m[-2 if start_idx else -1]
     else:
         assert wal_name in m
     pick_menu_item(wal_name)
@@ -2113,14 +2127,24 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 
     if descriptor:
             assert "sortedmulti(" in desc_export
+
     if way == "nfc":
-        addr_range = [0, 9]
+        end_idx = start_idx + 9
+        if end_idx > MAX_BIP32_IDX:
+            end_idx = start_idx + (MAX_BIP32_IDX - start_idx)
+
+        addr_range = [start_idx, end_idx]
         cc_addrs = addr_cont.split("\n")
         part_addr_index = 0
     else:
-        addr_range = [0, 249]
+        end_idx = start_idx + 249
+        if end_idx > MAX_BIP32_IDX:
+            end_idx = start_idx + (MAX_BIP32_IDX - start_idx)
+
+        addr_range = [start_idx, end_idx]
         cc_addrs = addr_cont.split("\n")[1:]
         part_addr_index = 1
+
     bitcoind_addrs = bitcoind.deriveaddresses(desc_export, addr_range)
     for idx, cc_item in enumerate(cc_addrs):
         cc_item = cc_item.split(",")

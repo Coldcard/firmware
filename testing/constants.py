@@ -62,3 +62,6 @@ SIGHASH_MAP = {
     "NONE|ANYONECANPAY": 2 | 0x80,
     "SINGLE|ANYONECANPAY": 3 | 0x80,
 }
+
+# (2**31) - 1 --> max unhardened, but we handle hardened via h elsewhere
+MAX_BIP32_IDX = 2147483647
