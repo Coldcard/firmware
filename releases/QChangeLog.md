@@ -30,6 +30,7 @@
   already in use. Use `Restore Master` with ability to keep or purge current
   passphrase wallet settings.
 - Change: Removed ability to add passphrase to master seed if active temporary seed.
+- Change: Wipe LFS during `Lock Down Seed`
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret.
 - Bugfix: Battery idle timeout also considers last progress bar update

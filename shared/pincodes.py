@@ -326,12 +326,6 @@ class PinAttempt:
     def has_secrets(self):
         return not self.is_secret_blank() or self.tmp_value
 
-    # Mk1/2/3 concepts, not used in Mk4
-    def has_duress_pin(self):
-        return bool(self.state_flags & PA_HAS_DURESS)
-    def has_brickme_pin(self):
-        return bool(self.state_flags & PA_HAS_BRICKME)
-
     def reset(self):
         # start over, like when you commit a new seed
         return self.setup(self.pin, self.is_secondary)
