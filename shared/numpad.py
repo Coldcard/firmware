@@ -15,7 +15,7 @@ class NumpadBase:
     def __init__(self):
         # once pressed, and released; keys show up in this queue
         self._changes = Queue(64)
-        self.key_pressed = ''
+        self.key_pressed = ''         # internal to ABC, should not be used by subclasses
 
         self.debug = 0                # 0..2
 
@@ -55,7 +55,6 @@ class NumpadBase:
 
             if self._changes.full():
                 # no space, but do a "all up" and the new event
-                print('Q overflow')
                 self._changes.get_nowait()
                 self._changes.get_nowait()
                 if key != '':
