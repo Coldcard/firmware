@@ -1048,7 +1048,7 @@ class EphemeralSeedMenu(MenuSystem):
             MenuItem("12 Words", f=cls.ephemeral_seed_import, arg=12),
             MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
             MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
-            MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=lambda: NFC is not None),
+            MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=bool(NFC)),
         ]
         gen_ephemeral_menu = [
             MenuItem("12 Words", f=cls.ephemeral_seed_generate, arg=12),
@@ -1059,7 +1059,7 @@ class EphemeralSeedMenu(MenuSystem):
 
         rv = [
             MenuItem("Generate Words", menu=gen_ephemeral_menu),
-            MenuItem('Import from QR Scan', predicate=lambda: version.has_qr,
+            MenuItem('Import from QR Scan', predicate=version.has_qr,
                      shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
@@ -1131,8 +1131,7 @@ OK to continue or press (2) to hide this message forever.
         await apply_pass_value(pp)
     else:
         # provide a menu, especially on Mk4 where it offers a number of input methods
-        m = PassphraseMenu()
-        the_ux.push(m)
+        return PassphraseMenu()
 
 
 class PassphraseMenu(MenuSystem):

@@ -25,15 +25,13 @@ from charcodes import KEY_QR, KEY_NFC
 
 
 # Optional feature: HSM, depends on hardware
-# - code for HSM support wont exist on some platforms, so dont call it
+# - code for HSM support won't exist on some platforms, so don't call it
 if version.supports_hsm:
     from hsm import hsm_policy_available
     from users import make_users_menu
-    hsm_feature = lambda: True
 else:
-    hsm_policy_available = lambda: False
-    hsm_feature = lambda: False
-    make_users_menu = lambda: []
+    hsm_policy_available = False
+    make_users_menu = None
 
 # Q related items
 if version.has_battery:
@@ -53,7 +51,8 @@ else:
 # - try to keep harmless things as first item: so double-tap of OK does no harm
 
 #
-# Predicates
+# PREDICATES
+# all predicates has to be booleans, or immediately, or after __call__
 #
 
 def has_se_secrets():
@@ -81,12 +80,16 @@ def is_not_tmp():
     from pincodes import pa
     return not bool(pa.tmp_value)
 
-def se2_and_real_secret():
+def has_real_secret():
     from pincodes import pa
     return (not pa.is_secret_blank()) and (not pa.tmp_value)
 
 def word_based_seed():
     return settings.get("words", True)
+
+def hsm_available():
+    # contains hsm feature + can it be used (needs se2 secret and no tmp active)
+    return version.supports_hsm and has_real_secret()
 
 
 HWTogglesMenu = [
@@ -102,21 +105,23 @@ In "auto" mode, selects PSBT as soon as written.'''),
         story='''\
 NFC (Near Field Communications) allows a phone to "tap" to send and receive data \
 with the Coldcard.''',
-        predicate=lambda: version.has_nfc),
+        predicate=version.has_nfc),
 ]
 
 # Mostly pre-login values here.
 LoginPrefsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Change Main PIN', f=main_pin_changer),
-    NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu, predicate=se2_and_real_secret),
+    NonDefaultMenuItem('Trick PINs', 'tp', menu=TrickPinMenu.make_menu, predicate=has_real_secret),
     NonDefaultMenuItem('Set Nickname', 'nick', prelogin=True, f=pick_nickname),
     NonDefaultMenuItem('Scramble Keys', 'rngk', prelogin=True, f=pick_scramble, default_value=0),
     NonDefaultMenuItem('Kill Key', 'kbtn', prelogin=True, f=pick_killkey),
     NonDefaultMenuItem('Login Countdown', 'lgto', prelogin=True, chooser=countdown_chooser),
-    NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=se2_and_real_secret),
+    NonDefaultMenuItem('MicroSD 2FA', 'sd2fa', menu=microsd_2fa, predicate=has_real_secret),
     PreloginToggleMenuItem('Calculator Login', 'calc', ['Default Off', 'Calculator Login'],
-            story='''Boots into calculator mode. Enter your PIN as formula to login, or 12- to see prefix words. Normal calculator math works too.''', predicate=lambda: version.has_qwerty),
+                           story=('Boots into calculator mode. Enter your PIN as formula to login, '
+                                  'or 12- to see prefix words. Normal calculator math works too.'),
+                           predicate=version.has_qwerty),
     MenuItem('Test Login Now', f=login_now, arg=1),
 ]
 
@@ -124,14 +129,15 @@ SettingsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Login Settings', menu=LoginPrefsMenu),
     MenuItem('Hardware On/Off', menu=HWTogglesMenu),
-    NonDefaultMenuItem('Multisig Wallets', 'multisig', menu=make_multisig_menu),
+    NonDefaultMenuItem('Multisig Wallets', 'multisig',
+                       menu=make_multisig_menu, predicate=has_secrets),
     MenuItem('Display Units', chooser=value_resolution_chooser),
     MenuItem('Max Network Fee', chooser=max_fee_chooser),
     MenuItem('Idle Timeout', chooser=idle_timeout_chooser),
     MenuItem('Idle Timeout (on battery)', chooser=battery_idle_timeout_chooser,
-                                                 predicate=lambda: version.has_battery),
+                                                 predicate=version.has_battery),
     MenuItem('LCD Brightness (on battery)', chooser=brightness_chooser,
-                                                 predicate=lambda: version.has_battery),
+                                                 predicate=version.has_battery),
     ToggleMenuItem('Delete PSBTs', 'del', ['Default Keep', 'Delete PSBTs'],
         story='''\
 PSBT files (on SDCard) will be blanked & deleted after they are used. \
@@ -211,9 +217,9 @@ DevelopersMenu = [
 AdvancedVirginMenu = [                  # No PIN, no secrets yet (factory fresh)
     #         xxxxxxxxxxxxxxxx
     MenuItem("View Identity", f=view_ident),
-    MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
-    MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
+    MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
 ]
 
 AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
@@ -222,17 +228,17 @@ AdvancedPinnedVirginMenu = [            # Has PIN but no secrets yet
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
-    MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     MenuItem('Perform Selftest', f=start_selftest),
     MenuItem("I Am Developer.", menu=maybe_dev_menu),
-    MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
+    MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
 ]
 
 DebugFunctionsMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Lamp Test", f=lamp_test),
     MenuItem("Keyboard Test", f=keyboard_test),
-    MenuItem('BBQr Demo', f=debug_bbqr_test, predicate=lambda: version.has_qwerty),
+    MenuItem('BBQr Demo', f=debug_bbqr_test, predicate=version.has_qwerty),
     MenuItem('Debug: assert', f=debug_assert),
     MenuItem('Debug: except', f=debug_except),
     MenuItem('Check: BL FW', f=check_firewall_read),
@@ -249,7 +255,7 @@ SeedXORMenu = [
 SeedFunctionsMenu = [
     MenuItem('View Seed Words', f=view_seed_words),     # text is a little wrong sometimes, rare
     MenuItem('Seed XOR', menu=SeedXORMenu),
-    MenuItem("Destroy Seed", f=clear_seed, predicate=se2_and_real_secret),
+    MenuItem("Destroy Seed", f=clear_seed, predicate=has_real_secret),
     MenuItem('Lock Down Seed', f=convert_ephemeral_to_master),
     MenuItem('Export SeedQR', f=export_seedqr, predicate=word_based_seed),
 ]
@@ -293,7 +299,7 @@ correctly- crafted transactions signed on Testnet could be broadcast on Mainnet.
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?
-    MenuItem('Reflash GPU', f=reflash_gpu, predicate=lambda: version.has_qwerty),
+    MenuItem('Reflash GPU', f=reflash_gpu, predicate=version.has_qwerty),
     MenuItem("Wipe LFS", f=wipe_filesystem),    # kills other-seed settings, HSM stuff, addr cache
 ]
 
@@ -321,18 +327,18 @@ AdvancedNormalMenu = [
     MenuItem("Upgrade Firmware", menu=UpgradeMenu, predicate=is_not_tmp),
     MenuItem("File Management", menu=FileMgmtMenu),
     NonDefaultMenuItem('Secure Notes & Passwords', 'notes', menu=make_notes_menu,
-                            predicate=lambda: version.has_qwerty),
+                            predicate=version.has_qwerty),
     MenuItem('Derive Seed B85' if not version.has_qwerty else 'Derive Seeds (BIP-85)',
                             f=drv_entro_start),
     MenuItem("View Identity", f=view_ident),
     MenuItem("Temporary Seed", menu=make_ephemeral_seed_menu),
-    MenuItem('Paper Wallets', f=make_paper_wallet, predicate=lambda: make_paper_wallet),
+    MenuItem('Paper Wallets', f=make_paper_wallet),
     ToggleMenuItem('Enable HSM', 'hsmcmd', ['Default Off', 'Enable'],
                    story=("Enable HSM? Enables all user management commands, and other HSM-only USB commands. "
                           "By default these commands are disabled."),
-                   predicate=lambda: hsm_feature() and se2_and_real_secret()),
+                   predicate=hsm_available),
     MenuItem('User Management', menu=make_users_menu,
-             predicate=lambda: hsm_feature() and se2_and_real_secret()),
+             predicate=hsm_available),
     MenuItem('NFC Tools', predicate=nfc_enabled, menu=NFCToolsMenu, shortcut=KEY_NFC),
     MenuItem("Danger Zone", menu=DangerZoneMenu, shortcut='z'),
 ]
@@ -343,14 +349,14 @@ VirginSystem = [
     MenuItem('Choose PIN Code', f=initial_pin_setup),
     MenuItem('Advanced/Tools', menu=AdvancedVirginMenu),
     MenuItem('Bag Number', f=show_bag_number),
-    MenuItem('Help', f=virgin_help, predicate=lambda: not version.has_qwerty),
+    MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
 ]
 
 ImportWallet = [
     MenuItem("12 Words", menu=start_seed_import, arg=12),
     MenuItem("18 Words", menu=start_seed_import, arg=18),
     MenuItem("24 Words", menu=start_seed_import, arg=24),
-    MenuItem('Scan QR Code', predicate=lambda: version.has_qr,
+    MenuItem('Scan QR Code', predicate=version.has_qr,
              shortcut=KEY_QR, f=scan_any_qr, arg=(True, False)),
     MenuItem("Restore Backup", f=restore_everything),
     MenuItem("Clone Coldcard", menu=clone_start),
@@ -376,7 +382,7 @@ EmptyWallet = [
     MenuItem('New Seed Words', menu=NewSeedMenu),
     MenuItem("Migrate COLDCARD", menu=clone_start),
     MenuItem('Import Existing', menu=ImportWallet),
-    MenuItem('Help', f=virgin_help, predicate=lambda: not version.has_qwerty),
+    MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
     MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
     MenuItem('Settings', menu=SettingsMenu),
 ]
@@ -386,20 +392,20 @@ EmptyWallet = [
 NormalSystem = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('Ready To Sign', f=ready2sign, shortcut='r'),
-    MenuItem('Passphrase', f=start_b39_pw, predicate=word_based_seed, shortcut='p'),
-    MenuItem('Scan Any QR Code', predicate=lambda: version.has_qr,
+    MenuItem('Passphrase', menu=start_b39_pw, predicate=word_based_seed, shortcut='p'),
+    MenuItem('Scan Any QR Code', predicate=version.has_qr,
          shortcut=KEY_QR, f=scan_any_qr, arg=(False, True)),
     MenuItem('Start HSM Mode', f=start_hsm_menu_item, predicate=hsm_policy_available),
-    MenuItem("Address Explorer", f=address_explore, shortcut='x'),
+    MenuItem("Address Explorer", menu=address_explore, shortcut='x'),
     MenuItem('Secure Notes & Passwords', menu=make_notes_menu, shortcut='n',
-                 predicate=lambda: (settings.get("notes", False) != False)),
+                 predicate=lambda: version.has_qwerty and (settings.get("notes", False) != False)),
     MenuItem('Type Passwords', f=password_entry, shortcut='t',
              predicate=lambda: settings.get("emu", False) and has_secrets()),
     MenuItem('Seed Vault', menu=make_seed_vault_menu, shortcut='v',
              predicate=lambda: settings.master_get('seedvault') and has_secrets()),
     MenuItem('Advanced/Tools', menu=AdvancedNormalMenu, shortcut='t'),
     MenuItem('Settings', menu=SettingsMenu, shortcut='s'),
-    MenuItem('Secure Logout', f=logout_now, predicate=lambda: not version.has_battery),
+    MenuItem('Secure Logout', f=logout_now, predicate=not version.has_battery),
     ShortcutItem(KEY_NFC, predicate=nfc_enabled, menu=NFCToolsMenu),
 ]
 

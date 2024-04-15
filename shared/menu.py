@@ -5,8 +5,8 @@
 import gc
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
-from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_SPACE,
-                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
+from charcodes import (KEY_UP, KEY_DOWN, KEY_HOME, KEY_SPACE, KEY_END,
+                       KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
 from version import has_qwerty
 
 # Number of full text lines per screen.
@@ -62,7 +62,8 @@ def start_chooser(chooser):
     the_ux.push(m)
 
 class MenuItem:
-    def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None, shortcut=None):
+    def __init__(self, label, menu=None, f=None, chooser=None, arg=None,
+                 predicate=None, shortcut=None):
         self.label = label
         self.arg = arg
         if menu:
@@ -71,10 +72,17 @@ class MenuItem:
             self.next_function = f
         if chooser:
             self.chooser = chooser
-        if predicate:
-            self.predicate = predicate
+        if predicate is not None:
+            self._predicate = predicate
         if shortcut:
             self.shortcut_key = shortcut
+
+    def predicate(self):
+        if not hasattr(self, "_predicate"):
+            return True  # does not have predicate - allow
+        if callable(self._predicate):
+            return self._predicate()
+        return self._predicate
     
     async def activate(self, menu, idx):
 
@@ -133,8 +141,9 @@ class NonDefaultMenuItem(MenuItem):
 class ToggleMenuItem(MenuItem):
     # Handle toggles: must use undefined (missing) as default
     # - can remap values a little, but default is to store 0/1/2
-    def __init__(self, label, nvkey, choices, predicate=None, story=None, on_change=None, invert=False, value_map=None, prelogin=False):
-        self.label = label
+    def __init__(self, label, nvkey, choices, predicate=None, story=None,
+                 on_change=None, invert=False, value_map=None):
+        super().__init__(label, predicate=predicate)
         self.story = story
         self.nvkey = nvkey
         self.choices = choices          # list of strings, at least 2
@@ -143,8 +152,6 @@ class ToggleMenuItem(MenuItem):
             self.invert = True
         if value_map:
             self.value_map = value_map
-        if predicate:
-            self.predicate = predicate
 
     def get(self, default=None):
         from glob import settings
@@ -254,8 +261,11 @@ class MenuSystem:
             self.cursor = 0
             self.ypos = 0
 
-        self.items = [m for m in menu_items if not isinstance(m, ShortcutItem) and
-                (not getattr(m, 'predicate', None) or m.predicate())]
+        self.items = [
+            m
+            for m in menu_items
+            if not isinstance(m, ShortcutItem) and m.predicate()
+        ]
         for m in menu_items:
             if isinstance(m, ShortcutItem):
                 self.shortcuts[m.shortcut_key] = m
@@ -437,7 +447,7 @@ class MenuSystem:
             elif key in self.shortcuts:
                 # run the function, if predicate allows
                 m = self.shortcuts[key]
-                if not getattr(m, 'predicate', None) or m.predicate():
+                if m.predicate():
                     return m
             else:
                 # maybe a shortcut?

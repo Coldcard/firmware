@@ -7,14 +7,15 @@
 #   ../unix/work/menudump.txt
 
 async def doit():
+    import version
     async def dump_menu(fd, m, label, indent, menu_item=None, menu_idx=0, whs=False):
-        from menu import MenuItem, ToggleMenuItem, MenuSystem
+        from menu import MenuItem, ToggleMenuItem, MenuSystem, NonDefaultMenuItem
         from seed import WordNestMenu, EphemeralSeedMenu, SeedVaultMenu
-        from multisig import MultisigMenu
         from trick_pins import TrickPinMenu
         from users import UsersMenu
-        from flow import has_secrets, nfc_enabled, vdisk_enabled
-        from flow import hsm_policy_available
+        from flow import has_secrets, nfc_enabled, vdisk_enabled, word_based_seed
+        from flow import hsm_policy_available, is_not_tmp, has_real_secret
+        from flow import has_se_secrets, hsm_available
 
         print("%s%s"% (indent, label), file=fd)
 
@@ -23,11 +24,18 @@ async def doit():
             m = []
 
         # recursing into functions that do stuff doesn't work well, skip
-        avoid = {'Clone Coldcard', 'Debug Functions'}
+        avoid = {'Clone Coldcard', 'Debug Functions', 'Migrate COLDCARD'}
         if any(label.startswith(a) for a in avoid):
             return
 
         if callable(m):
+            if version.has_qwerty and m.__name__ == "start_seed_import":
+                print('%s[SEED WORD ENTRY]' % indent, file=fd)
+                return
+            if m.__name__ == "make_custom":
+                # address explorer custom path menu
+                return
+
             print("Calling: %r (%s)" % (m.__name__, label))
             m = await m(m, 0, menu_item)
             print("Done")
@@ -39,8 +47,7 @@ async def doit():
         if isinstance(m, WordNestMenu):
             print('%s[SEED WORD MENUS]' % indent, file=fd)
             return
-        if isinstance(m, EphemeralSeedMenu) or isinstance(m, MultisigMenu) \
-                or isinstance(m, SeedVaultMenu):
+        if isinstance(m, MenuSystem):
             m = [i for i in m.items]
         for xm in [TrickPinMenu, UsersMenu]:
             if isinstance(m, xm):
@@ -51,11 +58,26 @@ async def doit():
 
             if isinstance(mi, str):
                 here = mi
-            elif isinstance(mi, MenuItem):
+            elif isinstance(mi, MenuItem) or isinstance(mi, NonDefaultMenuItem):
                 here = mi.label
 
-                pred = getattr(mi, 'predicate', False)
-                if pred == has_secrets:
+                if here == "Trick PINs" and not whs:
+                    # trick pins are not available in EmptyWallet
+                    continue
+
+                pred = getattr(mi, 'predicate', None)
+                if pred in (True, False):
+                    if here in ("NFC Tools", "Import via NFC", "NFC File Share"):
+                        here += ' [IF NFC ENABLED]'
+                    if "QR" in here and "Scan" in here:
+                        here += ' [IF QR SCANNER]'
+                    if "battery" in here:
+                        here += ' [IF BATTERIES]'
+                    if here in ("Calculator Login", "Reflash GPU", "Secure Notes & Passwords"):
+                        here += ' [IF QWERTY KEYBOARD]'
+                    if here in ("Start HSM Mode", "Wipe HSM Policy"):
+                        here += ' [IF HSM POLICY]'
+                elif pred == has_secrets:
                     #here += ' [IF SEED DEFINED]'
                     if not whs:     # "would have secrets"
                         continue
@@ -65,10 +87,21 @@ async def doit():
                     here += ' [IF VIRTDISK ENABLED]'
                 elif pred == hsm_policy_available:
                     here += ' [IF HSM POLICY]'
-                elif 'lambda' in repr(pred):
-                    pass
+                elif pred == has_se_secrets:
+                    here += ' [IF SE2 SECRET]'
+                elif pred == word_based_seed:
+                    here += ' [IF WORD BASED SEED]'
+                elif pred == is_not_tmp:
+                    here += ' [IF NOT TMP SEED]'
+                elif pred == has_real_secret:
+                    here += ' [IF SE2 SECRET AND NOT TMP SEED]'
+                elif pred == hsm_available:
+                    here += ' [IF HSM AND SE2 SECRET]'
                 elif pred:
-                    here += ' [MAYBE]'
+                    if here == "Secure Notes & Passwords":
+                        here += ' [IF ENBALED]'
+                    else:
+                        here += ' [MAYBE]'
 
                 # NOTE: most attributes not present unless used
                 funct = getattr(mi, 'next_func', None)
@@ -78,8 +111,7 @@ async def doit():
                         rv = await funct(m, menu_idx, mi)
                         if isinstance(rv, MenuSystem):
                             await dump_menu(fd, rv, here, indent, menu_item=mi, menu_idx=menu_idx, whs=whs)
-                    except:
-                        pass
+                    except: pass
 
                 next_menu = getattr(mi, 'next_menu', None)
                 chooser = getattr(mi, 'chooser', None)
@@ -106,6 +138,7 @@ async def doit():
     # that need user interaction nad/or show hidden items
     settings.put("seedvault", 1)
     settings.put("axskip", 1)
+    settings.put("b39skip", 1)
     settings.put("sd2fa", ["a"])
 
     with open('menudump.txt', 'wt') as fd:

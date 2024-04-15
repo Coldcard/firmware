@@ -537,8 +537,7 @@ Press (4) to start or (6) to hide this message forever.''', escape='46')
 
     m = AddressListMenu()
     await m.render()        # slow
-
-    the_ux.push(m)
+    return m
 
 
 # EOF

@@ -1259,7 +1259,8 @@ class MultisigMenu(MenuSystem):
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
         from glob import NFC
         rv.append(MenuItem('Import from File', f=import_multisig))
-        rv.append(MenuItem('Import via NFC', f=import_multisig_nfc, predicate=lambda: NFC is not None))
+        rv.append(MenuItem('Import via NFC', f=import_multisig_nfc,
+                           predicate=bool(NFC)))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
