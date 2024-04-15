@@ -11,6 +11,7 @@
 #    - 'abandon' * 11 + 'about'
 #
 import ngu, uctypes, bip39, random, stash, version
+from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
@@ -170,7 +171,7 @@ class WordNestMenu(MenuSystem):
 
         assert len(words) <= self.target_words
 
-        if len(words) == 23 and self.has_checksum:
+        if self.has_checksum and len(words) == (self.target_words - 1):
             # we can provide final 8 choices, but only for 24-word case
             final_words = list(bip39.a2b_words_guess(words))
 
@@ -179,35 +180,31 @@ class WordNestMenu(MenuSystem):
                 words.append(choice.label)
                 await cls.done_cb(words.copy())
 
-            items = [MenuItem(w, f=picks_chk_word) for w in final_words]
-            items.append(MenuItem('(none above)', f=self.explain_error))
+            if len(final_words) <= 32:  # 23of24 or 17of18
+                items = [MenuItem(w, f=picks_chk_word) for w in final_words]
+                items.append(MenuItem('(none above)', f=self.explain_error))
+                return cls(is_commit=True, items=items)
+
+            # 11of12 (128 valid options)
+            # show start letter and under that valid words
+            d = OrderedDict()
+            for w in final_words:
+                if w[0] not in d:
+                    d[w[0]] = []
+                d[w[0]].append(w)
+
+            items = []
+            for s, w_lst in sorted(d.items()):
+                sub_items = [MenuItem(w, f=picks_chk_word) for w in w_lst]
+                sub_items.append(MenuItem('(none above)', f=self.explain_error))
+                items.append(MenuItem(s+"-", menu=cls(items=sub_items)))
             return cls(is_commit=True, items=items)
 
-        # add a few top-items in certain cases
         if len(words) == self.target_words:
-            if self.has_checksum:
-                try:
-                    bip39.a2b_words(' '.join(words))
-                    correct = True
-                except ValueError:
-                    correct = False
-            else:
-                correct = True
-
-            # they have checksum right, so they are certainly done.
-            if correct:
-                # they are done, don't force them to do any more!
-                return await cls.done_cb(words.copy())
-            else:
-                # give them a chance to confirm and/or start over
-                return cls(is_commit=True, items = [
-                            MenuItem('(INCORRECT)', f=self.explain_error),
-                            MenuItem('(start over)', f=self.start_over)])
-
+            return await cls.done_cb(words.copy())
 
         # pop stack to reset depth, and start again at a- .. z-
         cls.pop_all()
-
         return cls(items=None, is_commit=True)
 
     @classmethod
@@ -221,6 +218,7 @@ class WordNestMenu(MenuSystem):
         # - but keep them in our system until:
         # - when the word list is empty and they cancel, stop
         words = WordNestMenu.words
+
         if self.is_commit and words:
             words.pop()
 
