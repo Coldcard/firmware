@@ -1,4 +1,7 @@
-# items imported here may be useful to EVAL and EXEC commands, which test cases depend on.
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
+# Items imported here may be useful to EVAL and EXEC commands, which test cases depend on.
+#
 import uio, sys, version, nvstore, glob, callgate
 import uasyncio as asyncio
 try:
