@@ -81,10 +81,19 @@ settings = SettingsObject()
 settings.load(glob.dis)
 glob.settings = settings
 
+async def backstop_task():
+    # BUGFIX: This do-nothing loop is needed because uasyncio at this point
+    # cannot wake on hardware events, such as keyboard events from pin changes.
+    # - when system is blocked solely on keyboard input, this loop will wake
+    # - newer mpy versions can correctly wake from events/flags in those cases
+    while 1:
+        await uasyncio.sleep_ms(100)
+
 async def more_setup():
     # Boot up code; splash screen is being shown
                 
-    # MAYBE: check if we're a brick and die again? Or show msg?
+    # Need a fallback task that is always running.
+    IMPT.start_task('backstop_task', backstop_task())
 
     try:
         from files import CardSlot
@@ -117,30 +126,33 @@ async def more_setup():
             await accept_terms()
 
         # Prompt for PIN and then pick appropriate top-level menu,
-        # based on contents of secure chip (ie. is there
-        # a wallet defined)
+        # based on contents of secure chip (ie. is there a wallet defined)
         from actions import start_login_sequence
         await start_login_sequence()
     except BaseException as exc:
         die_with_debug(exc)
 
-    IMPT.start_task('mainline', mainline())
-
-async def mainline():
-    # Mainline of program, after startup
-    #
-    # - Do not add to this function, its vars are
-    #   in memory forever; instead, extend more_setup above.
+    # define contents of main menu
     from actions import goto_top_menu
-    from ux import the_ux
-
     goto_top_menu()
 
+    # fetch this function for mainline to use
+    from ux import the_ux
+    doit = the_ux.interact
+
+    IMPT.start_task('mainline', mainline(doit))
+
+async def mainline(doit):
+    # Mainline of program, after startup. Never stops.
+    #
+    # - Do not add to this function, its vars are
+    #   in memory forever; instead, extend more_setup() above.
+
     gc.collect()
-    #print("Free mem: %d" % gc.mem_free())      # 532656 on mk4!
+    #print("Free mem: %d" % gc.mem_free())      # 515536 on mk4!
 
     while 1:
-        await the_ux.interact()
+        await doit()
 
 
 def go():

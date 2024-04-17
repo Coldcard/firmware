@@ -2,7 +2,7 @@
 #
 # numpad.py - Base class for numeric keypads. Touch or membrane matrix.
 #
-import utime
+import utime, uasyncio
 from queues import Queue
 
 class NumpadBase:
@@ -49,19 +49,21 @@ class NumpadBase:
         self.key_pressed = ''
 
     def _key_event(self, key):
-        if key != self.key_pressed:
-            # annouce change
-            self.key_pressed = key
+        if key == self.key_pressed:
+            return
 
-            if self._changes.full():
-                # no space, but do a "all up" and the new event
-                self._changes.get_nowait()
-                self._changes.get_nowait()
-                if key != '':
-                    self._changes.put_nowait('')
+        # annouce change
+        self.key_pressed = key
 
-            self._changes.put_nowait(key)
+        if self._changes.full():
+            # no space, but do a "all up" and the new event
+            self._changes.get_nowait()
+            self._changes.get_nowait()
+            if key != '':
+                self._changes.put_nowait('')
 
-            self.last_event_time = utime.ticks_ms()
-    
+        self._changes.put_nowait(key)
+
+        self.last_event_time = utime.ticks_ms()
+
 # EOF

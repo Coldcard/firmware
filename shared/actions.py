@@ -837,9 +837,9 @@ async def start_login_sequence():
         # safe to do so. Remember the bootrom checks PIN on every access to
         # the secret, so "letting" them past this point is harmless if they don't know
         # the true pin.
+        sys.print_exception(exc)
         if not pa.is_successful():
             raise
-        sys.print_exception(exc)
 
     # Successful login...
 
