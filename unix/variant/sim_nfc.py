@@ -1,3 +1,5 @@
+# (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # Replace NFC tag chip w/ emulation
 from nfc import NFCHandler
 
