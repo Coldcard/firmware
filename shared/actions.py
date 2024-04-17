@@ -528,6 +528,15 @@ async def new_from_dice(menu, label, item):
     import seed
     return await seed.new_from_dice(item.arg)
 
+async def any_active_duress_ux():
+    from trick_pins import tp
+    if any(tp.get_duress_pins()):
+        await ux_show_story('You have one or more duress wallets defined '
+                            'under Trick PINs. Please empty them, and clear '
+                            'associated Trick PINs before continuing.')
+        return True
+    return False
+
 async def convert_ephemeral_to_master(*a):
     import seed
     from pincodes import pa
@@ -548,7 +557,8 @@ async def convert_ephemeral_to_master(*a):
         msg += ' is erased forever, '
 
     msg += ('and its settings blanked. This action is destructive '
-            'and may affect funds, if any, on old master seed. ')
+            'and may affect funds, if any, on old master seed. '
+            'Saved temporary seed settings and Seed Vault are lost. ')
 
     if bip39_passphrase:
         msg += ('BIP-39 passphrase '
@@ -561,13 +571,13 @@ async def convert_ephemeral_to_master(*a):
     msg += 'A reboot is part of this process. '
     msg += 'PIN code, and %s funds are not affected.' % _type
     if not await ux_confirm(msg):
-
         return await ux_aborted()
 
+    if await any_active_duress_ux():
+        return await ux_aborted()
+
+    # settings.save is part of re-building fs
     await seed.remember_ephemeral_seed()
-
-    settings.save()
-
     await login_now()
 
 async def clear_seed(*a):
@@ -575,21 +585,14 @@ async def clear_seed(*a):
     # This is super dangerous for the customer's money.
     import seed
 
-    if pa.has_duress_pin():
-        await ux_show_story('Please empty the duress wallet, and clear '
-                            'the duress PIN before clearing main seed.')
-        return
-
-    from trick_pins import tp
-    if any(tp.get_duress_pins()):
-        await ux_show_story('You have one or more duress wallets defined '
-                            'under Trick PINs. Please empty them, and clear '
-                            'associated Trick PINs before clearing main seed.')
-        return
+    if await any_active_duress_ux():
+        return await ux_aborted()
 
     if not await ux_confirm('Wipe seed words and reset wallet. '
                             'All funds will be lost. '
-                            'You better have a backup of the seed words.'):
+                            'You better have a backup of the seed words.'
+                            'All settings like multisig wallets are also wiped. '
+                            'Saved temporary seed settings and Seed Vault are lost.'):
         return await ux_aborted()
 
     ch = await ux_show_story('''Are you REALLY sure though???\n\n\

@@ -163,12 +163,13 @@ class AddressListMenu(MenuSystem):
 
     def __init__(self):
         self.account_num = 0
+        self.start = 0
         super().__init__([])
 
     async def render(self):
         # Choose from a truncated list of index 0 common addresses, remember
         # the last address the user selected and use it as the default
-        from glob import dis
+        from glob import dis, settings
         chain = chains.current_chain()
 
         dis.fullscreen('Wait...')
@@ -185,7 +186,7 @@ class AddressListMenu(MenuSystem):
                     # skip derivations that are not affected by account number
                     continue
 
-                deriv = path.format(account=self.account_num, change=0, idx=0)
+                deriv = path.format(account=self.account_num, change=0, idx=self.start)
                 node = sv.derive_path(deriv, register=False)
                 address = chain.address(node, addr_fmt)
                 choices.append( (truncate_address(address), path, addr_fmt) )
@@ -216,6 +217,9 @@ class AddressListMenu(MenuSystem):
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 
+        items.append(MenuItem("Start Idx: %d" % self.start, f=self.change_start_idx,
+                              predicate=lambda: settings.get('aei', False)))
+
         self.replace_items(items)
         axi = settings.get('axi', 0)
         if isinstance(axi, str):
@@ -227,6 +231,10 @@ class AddressListMenu(MenuSystem):
 
     async def change_account(self, *a):
         self.account_num = await ux_enter_bip32_index('Account Number:') or 0
+        await self.render()
+
+    async def change_start_idx(self, *a):
+        self.start = await ux_enter_bip32_index("Start index:", unlimited=True)
         await self.render()
 
     async def pick_single(self, _1, _2, item):
@@ -257,25 +265,27 @@ Press (3) if you really understand and accept these risks.
 
         if ch != '3': return
 
-        n = 10 if 'idx' in path else 1
+        n = 10 if 'idx' in path else None
         await self.show_n_addresses(path, addr_fmt, None, n=n, allow_change=False)
 
     async def show_n_addresses(self, path, addr_fmt, ms_wallet, start=0, n=10, allow_change=True):
         # Displays n addresses by replacing {idx} in path format.
         # - also for other {account} numbers
         # - or multisig case
-        from glob import dis, NFC, VD
+        from glob import dis, NFC
+        from wallet import MAX_BIP32_IDX
+
+        start = self.start
 
         def make_msg(change=0):
             # Build message and CTA about export, plus the actual addresses.
-            if n > 1:
-                msg = "Addresses %d⋯%d:\n\n" % (start, start + n - 1)
+            if n:
+                msg = "Addresses %d⋯%d:\n\n" % (start, min(start + n - 1, MAX_BIP32_IDX))
             else:
                 # single address, from deep path given by user
                 msg = "Showing single address.\n\n"
 
             addrs = []
-            chain = chains.current_chain()
 
             dis.fullscreen('Wait...')
 
@@ -308,7 +318,7 @@ Press (3) if you really understand and accept these risks.
                                             change_idx=(change if allow_change else None)):
                     addrs.append(addr)
                     msg += "%s =>\n%s\n\n" % (deriv, addr)
-                    dis.progress_sofar(idx, n)
+                    dis.progress_sofar(idx, n or 1)
 
             # export options
             k0 = 'to show change addresses' if allow_change and change == 0 else None
@@ -319,12 +329,12 @@ Press (3) if you really understand and accept these risks.
             else:
                 escape += "79"
 
-            if start == 0:
+            if start == self.start:
                 # Show CTA about export at bottom, and only for first page -- it can be huge!
                 msg += export_msg
-                if n > 1:
+                if n:
                     msg += '\n\n'
-            if n > 1:
+            if n:
                 msg += "Press RIGHT to see next group, LEFT to go back. X to quit."
 
             return msg, addrs, escape
@@ -341,9 +351,12 @@ Press (3) if you really understand and accept these risks.
 
             if isinstance(choice, dict):
                 # save addresses to MicroSD/VirtDisk
+                c = n if n is None else 250
+                if c and (self.start + c) > MAX_BIP32_IDX:
+                    c = MAX_BIP32_IDX - self.start + 1
                 await make_address_summary_file(path, addr_fmt, ms_wallet,
-                                        self.account_num, count=(250 if n!=1 else 1),
-                                        change=change, **choice)
+                                        self.account_num, count=c, start=self.start,
+                                        change=change if allow_change else None, **choice)
 
                 # continue on same screen in case they want to write to multiple cards
 
@@ -361,21 +374,30 @@ Press (3) if you really understand and accept these risks.
 
             elif NFC and (choice == KEY_NFC):
                 # share table over NFC
-                if n > 1:
-                    await NFC.share_text('\n'.join(addrs))
-                elif n == 1:
+                if len(addrs) == 1:
                     await NFC.share_text(addrs[0])
+                else:
+                    await NFC.share_text('\n'.join(addrs))
+
                 continue
 
             elif choice == '0' and allow_change:
                 change = 1
 
-            elif start > 0 and (ch in KEY_LEFT+"7"):
+            elif ch in (KEY_LEFT+"7"):
                 # go backwards in explorer
-                start -= n
-            elif ch in KEY_RIGHT+"9":
+                if start - n < 0:
+                    if start == 0:
+                        continue
+                    start = 0
+                else:
+                    start -= n
+            elif ch in (KEY_RIGHT+"9"):
                 # go forwards
-                start += n
+                if start + n > MAX_BIP32_IDX:
+                    continue
+                else:
+                    start += n
             elif ch == KEY_HOME:
                 start = 0
             else:
@@ -394,7 +416,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
                     + ['Derivation (%d of %d)' % (i+1, ms_wallet.N) for i in range(ms_wallet.N)]
                     ) + '"\n'
 
-        if n > 100 and change in (0, 1):
+        if (start == 0) and (n > 100) and change in (0, 1):
             saver = OWNERSHIP.saver(ms_wallet, change, start)
         else:
             saver = None
@@ -421,7 +443,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
     from wallet import MasterSingleSigWallet
     main = MasterSingleSigWallet(addr_fmt, path, account_num)
 
-    if n > 100 and change in (0, 1):
+    if n and (start == 0) and (n > 100) and change in (0, 1):
         saver = OWNERSHIP.saver(main, change, start)
     else:
         saver = None
@@ -437,7 +459,7 @@ def generate_address_csv(path, addr_fmt, ms_wallet, account_num, n, start=0, cha
         saver(None)     # close
 
 async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
-                                        count=250, change=0, **save_opts):
+                                    start=0, count=250, change=0, **save_opts):
 
     # write addresses into a text file on the MicroSD/VirtDisk
     from glob import dis
@@ -446,11 +468,12 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
     # simple: always set number of addresses.
     # - takes 60 seconds to write 250 addresses on actual hardware
 
-    dis.fullscreen('Saving 0-%d' % count)
+    dis.fullscreen('Saving 0-%d' % (count or 1))
     fname_pattern='addresses.csv'
 
     # generator function
-    body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count, change=change)
+    body = generate_address_csv(path, addr_fmt, ms_wallet, account_num, count,
+                                start=start, change=change)
 
     # pick filename and write
     try:
@@ -465,11 +488,11 @@ async def make_address_summary_file(path, addr_fmt, ms_wallet, account_num,
                     if not ms_wallet:
                         h.update(ep)
 
-                    dis.progress_sofar(idx, count)
+                    dis.progress_sofar(idx, count or 1)
 
             sig_nice = None
             if not ms_wallet:
-                derive = path.format(account=account_num, change=change, idx=0)  # first addr
+                derive = path.format(account=account_num, change=change, idx=start)  # first addr
                 sig_nice = write_sig_file([(h.digest(), fname)], derive, addr_fmt)
 
     except CardMissingError:

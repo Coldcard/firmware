@@ -777,6 +777,7 @@ def test_destroy_seed(goto_home, pick_menu_item, cap_story, press_select,
     where = title if is_q1 else body
     assert 'Are you SURE' in where
     assert 'All funds will be lost' in body
+    assert 'Saved temporary seed settings and Seed Vault are lost' in body
     press_select()
     time.sleep(0.01)
 

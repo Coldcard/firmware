@@ -180,12 +180,25 @@ def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, press_select,
     assert "Ready To Sign" in m[:3]
 
 
+@pytest.mark.parametrize("has_duress", [True, False])
 @pytest.mark.parametrize('stype', ["bip39pw", "words", "xprv", None])
-def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
-                  press_cancel, sim_exec, get_settings, reset_seed_words,
-                  get_setting, generate_ephemeral_words, import_ephemeral_xprv,
-                  press_select, is_q1):
+def test_lockdown_ux(stype, pick_menu_item, set_bip39_pw, goto_home,
+                     press_cancel, get_setting, reset_seed_words,
+                     generate_ephemeral_words, import_ephemeral_xprv,
+                     press_select, is_q1, cap_story, has_duress,
+                     goto_trick_menu, new_trick_pin, new_pin_confirmed,
+                     clear_all_tricks):
     # test UX and operation of the 'seed lockdown' option
+    if has_duress:
+        goto_trick_menu()
+        pin = '123-254'
+        new_trick_pin(pin, 'Duress Wallet', None)
+        item = 'BIP-85 Wallet #1'
+        pick_menu_item(item)
+        press_select()
+        new_pin_confirmed(pin, item, None, None)
+        goto_home()
+
     if stype:
         if stype == "bip39pw":
             set_bip39_pw('test')
@@ -209,27 +222,36 @@ def test_lockdown(stype, pick_menu_item, set_bip39_pw, goto_home, cap_story,
     if stype:
         where = title if is_q1 else story
         assert 'Are you SURE' in where
+        assert "erased forever" in story
+        assert "Saved temporary seed settings and Seed Vault are lost" in story
+        if stype == "bip39pw":
+            assert "Convert currently used BIP-39 passphrase to master seed" in story
+            assert "but the passphrase itself is erased" in story
     else:
         assert 'do not have an active temporary seed' in story
+
+    if has_duress and stype:
+        press_select() # confirm to get error
+        time.sleep(.1)
+        title, story = cap_story()
+        assert "You have one or more duress wallets defined" in story
+        assert "Please empty them" in story
+        press_select()
+
+        if stype:
+            # need to restore master to be able to see trick pin menu
+            goto_home()
+            pick_menu_item("Restore Master")
+            press_select()
+            time.sleep(.1)
+
+        clear_all_tricks()
+    else:
         press_cancel()
-        return
 
-    # real code does reboot, which is poorly simulated; avoid that
-    sim_exec('import callgate; callgate.show_logout = lambda x:0')
-    # commit change
-    press_select()
-
-    time.sleep(0.25)
-
-    # verify effect
-    nv = get_settings()
-    mem_xfp = get_setting('xfp')
-    assert hex(mem_xfp) == hex(xfp), "XFP or key correct after save"
-    assert nv['xfp'] == mem_xfp, "in-memory xfp different from saved value"
-
-    # not 100% sure this reset is complete enough
-    # goto_home()
     reset_seed_words()
+    # real code does reboot, which is poorly simulated; avoid that
+    # this needs to be tested with real HW !!!
 
 
 @pytest.mark.parametrize("stype", ["words", "xprv"])

@@ -164,6 +164,7 @@ WalletExportMenu = [
     #         xxxxxxxxxxxxxxxx
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
     MenuItem("Sparrow Wallet", f=named_generic_skeleton, arg="Sparrow"),
+    MenuItem("Nunchuk", f=named_generic_skeleton, arg="Nunchuk"),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained", f=unchained_capital_export),
@@ -283,6 +284,12 @@ Keep blocked unless you intend to sign special transactions.'''),
         on_change=change_which_chain,
         story="Testnet must only be used by developers because \
 correctly- crafted transactions signed on Testnet could be broadcast on Mainnet."),
+    ToggleMenuItem('AE Start IDX', 'aei', ['Default Off', 'Enable'],
+                   story=("Enable this option to add new menu item to Address Explorer "
+                          "allowing to tweak start index. By default start index is zero.\n\n"
+                          "DANGER: Some wallets may not recognize addresses that are past gap limit."
+                          " Make sure you know what you're doing, otherwise keep this disabled."),
+                   predicate=has_secrets),
     MenuItem('Settings Space', f=show_settings_space),
     MenuItem('MCU Key Slots', f=show_mcu_keys_left),
     MenuItem('Bless Firmware', f=bless_flash),          # no need for this anymore?

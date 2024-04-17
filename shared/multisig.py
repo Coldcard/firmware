@@ -14,7 +14,7 @@ from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
 from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
-from wallet import WalletABC
+from wallet import WalletABC, MAX_BIP32_IDX
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -464,6 +464,8 @@ class MultisigWallet(WalletABC):
 
         idx = start_idx
         while count:
+            if idx > MAX_BIP32_IDX:
+                break
             # make the redeem script, convert into address
             script = make_redeem_script(self.M, nodes, idx)
             addr = ch.p2sh_address(self.addr_fmt, script)

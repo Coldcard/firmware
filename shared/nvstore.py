@@ -57,6 +57,7 @@ from utils import call_later_ms
 #   bright = (int:0-255) LCD brightness when on battery
 #   notes = (complex) Secure notes held for user, see notes.py
 #   accts = (list of tuples: (addr_fmt, account#)) Single-sig wallets we've seen them use
+#   aei   = (bool) allow changing start index in Address Explorer
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)

@@ -5,7 +5,9 @@
 import chains
 from descriptor import Descriptor
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
-from stash import blank_object, SensitiveValues
+from stash import SensitiveValues
+
+MAX_BIP32_IDX = (2 ** 31) - 1
 
 class WalletABC:
     # How to make this ABC useful without consuming memory/code space??
@@ -33,7 +35,7 @@ class WalletABC:
         pass
 
 class MasterSingleSigWallet(WalletABC):
-    # Refers to current master seed phrase, whichever is loaded
+    # Refers to current seed phrase, whichever is loaded master or temporary
     def __init__(self, addr_fmt, path=None, account_idx=0, chain_name=None):
         # Construct a wallet based on current master secret, and chain.
         # - path is optional, and then we use standard path for addr_fmt
@@ -92,13 +94,15 @@ class MasterSingleSigWallet(WalletABC):
         with SensitiveValues() as sv:
             node = sv.derive_path(path)
 
-            if count == 1:
+            if count is None:  # special case - showing single, ignoring start_idx
                 address = self.chain.address(node, self.addr_fmt)
                 yield 0, address, path
                 return
 
             path += '/'
             for idx in range(start_idx, start_idx+count):
+                if idx > MAX_BIP32_IDX:
+                    break
                 try:
                     here = node.copy()
                     here.derive(idx, False)            # works in-place

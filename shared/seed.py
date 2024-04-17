@@ -685,9 +685,8 @@ async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
 
 async def remember_ephemeral_seed():
     # Compute current xprv and switch to using that as root secret.
-    import stash
     from nvstore import SettingsObject
-    from glob import dis, settings
+    from glob import dis
 
     # we are already at temporary seed, with correct
     # settings in use - no need to call new_main_secret
@@ -702,6 +701,11 @@ async def remember_ephemeral_seed():
     old_master.load()
     old_master.blank()
     del old_master
+
+    # address cache, settings from tmp seeds / seedvault seeds
+    # rebuild fs as we want to save current tmp settings immediately
+    from files import wipe_flash_filesystem
+    wipe_flash_filesystem(True)
 
     dis.draw_status(bip39=0, tmp=0)
     dis.fullscreen('Saving...')
