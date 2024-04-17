@@ -59,9 +59,9 @@ class Touch:
                 key = await s.read(1)
                 #print("Sim: %s" % key)
                 if key == b'\0':
-                    await numpad._changes.put('')       # all up
+                    numpad.inject('')       # all up
                 else:
-                    await numpad._changes.put(key.decode())
+                    numpad.inject(key.decode())
 
     def discharge(self):
         pass
