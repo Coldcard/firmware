@@ -26,6 +26,7 @@
 ## 1.1.1Q - 2024-04-XX
 
 - Enhancement: Allow to specify start index for address explorer export and browsing
+- Enhancement: Add `Nunchuk` option to `Export Wallet`
 - Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
   already in use. Use `Restore Master` with ability to keep or purge current
   passphrase wallet settings.
