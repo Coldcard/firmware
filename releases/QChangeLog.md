@@ -37,7 +37,7 @@
 - Bugfix: Battery idle timeout also considers last progress bar update
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
-- Enhancement: Allow (BIP-32) max int for BIP-85 derivations. Needs to be enabled first in `Danger Zone` 
+- Enhancement: Allow unlimited index for BIP-85 derivations. Needs to be enabled first in `Danger Zone` 
 
 ## 1.1.0Q - 2024-04-02
 
