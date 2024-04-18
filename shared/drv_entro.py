@@ -123,7 +123,7 @@ async def drv_entro_step2(_1, picked, _2, just_pick=False):
     from ux import ux_render_words, export_prompt_builder, import_export_prompt_decode
 
     msg = "Password Index?" if picked == 7 else "Index Number?"
-    index = await ux_enter_bip32_index(msg, unlimited=settings.get("b85max", 0))
+    index = await ux_enter_bip32_index(msg, unlimited=settings.get("b85max", False))
     if index is None:
         return
 
