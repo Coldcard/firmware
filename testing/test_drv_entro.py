@@ -230,13 +230,13 @@ def test_allow_bip32_max_int(pick_menu_item, goto_home, enter_number, is_q1,
     goto_home()
     pick_menu_item("Advanced/Tools")
     pick_menu_item("Danger Zone")
-    pick_menu_item("B85 Max Int")
+    pick_menu_item("B85 Idx Values")
     time.sleep(.1)
     _, story = cap_story()
-    assert "Enable max int (BIP32) index for BIP85 derivation?" in story
-    assert "Only use if you know what you are doing" in story
+    assert "Allow unlimited indexes for BIP-85 derivations?" in story
+    assert "DANGER" in story
     press_select()
-    pick_menu_item("Enable")
+    pick_menu_item("Unlimited")
 
     goto_home()
     pick_menu_item("Advanced/Tools")
