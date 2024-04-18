@@ -88,15 +88,15 @@ async def doit():
                 elif pred == hsm_policy_available:
                     here += ' [IF HSM POLICY]'
                 elif pred == has_se_secrets:
-                    here += ' [IF SE2 SECRET]'
+                    here += ' [IF SECRET]'
                 elif pred == word_based_seed:
                     here += ' [IF WORD BASED SEED]'
                 elif pred == is_not_tmp:
                     here += ' [IF NOT TMP SEED]'
                 elif pred == has_real_secret:
-                    here += ' [IF SE2 SECRET AND NOT TMP SEED]'
+                    here += ' [IF SECRET AND NOT TMP SEED]'
                 elif pred == hsm_available:
-                    here += ' [IF HSM AND SE2 SECRET]'
+                    here += ' [IF HSM AND SECRET]'
                 elif pred:
                     if here == "Secure Notes & Passwords":
                         here += ' [IF ENBALED]'

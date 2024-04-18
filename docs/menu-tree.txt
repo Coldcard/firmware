@@ -87,7 +87,7 @@
          3 days
          1 week
         28 days later
-      MicroSD 2FA [IF SE2 SECRET AND NOT TMP SEED]
+      MicroSD 2FA [IF SECRET AND NOT TMP SEED]
         Add Card
         Check Card
         Remove Card #1
@@ -315,10 +315,10 @@
       Tapsigner Backup
       Coldcard Backup
     Paper Wallets
-    Enable HSM [IF HSM AND SE2 SECRET]
+    Enable HSM [IF HSM AND SECRET]
       Default Off
       Enable
-    User Management [IF HSM AND SE2 SECRET]
+    User Management [IF HSM AND SECRET]
     NFC Tools [IF NFC ENABLED]
       Show Address
       Sign Message
@@ -333,14 +333,14 @@
         Seed XOR
           Split Existing [IF WORD BASED SEED]
           Restore Seed XOR
-        Destroy Seed [IF SE2 SECRET AND NOT TMP SEED]
+        Destroy Seed [IF SECRET AND NOT TMP SEED]
         Lock Down Seed
         Export SeedQR [IF WORD BASED SEED]
       I Am Developer.
         Serial REPL
         Warm Reset
         Restore Txt Bkup
-      Seed Vault [IF SE2 SECRET]
+      Seed Vault [IF SECRET]
         Default Off
         Enable
       Perform Selftest
@@ -366,7 +366,7 @@
   Settings
     Login Settings
       Change Main PIN
-      Trick PINs [IF SE2 SECRET AND NOT TMP SEED]
+      Trick PINs [IF SECRET AND NOT TMP SEED]
         Trick PINs:
         ↳123-254
           PIN 123-254
@@ -396,7 +396,7 @@
          3 days
          1 week
         28 days later
-      MicroSD 2FA [IF SE2 SECRET AND NOT TMP SEED]
+      MicroSD 2FA [IF SECRET AND NOT TMP SEED]
         Add Card
         Check Card
         Remove Card #1
