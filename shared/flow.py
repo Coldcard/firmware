@@ -52,7 +52,7 @@ else:
 
 #
 # PREDICATES
-# all predicates has to be booleans, or immediately, or after __call__
+# all predicates must be boolean value, or a callable to be evaluated at runtime
 #
 
 def has_se_secrets():
