@@ -172,7 +172,8 @@ class WordNestMenu(MenuSystem):
         assert len(words) <= self.target_words
 
         if self.has_checksum and len(words) == (self.target_words - 1):
-            # we can provide final 8 choices, but only for 24-word case
+            # we can provide final choices, but only for 18- and 24-word cases
+            # - otherwise, make new menu tree w/ all possible choices (128 total)
             final_words = list(bip39.a2b_words_guess(words))
 
             async def picks_chk_word(s, idx, choice):
@@ -180,12 +181,13 @@ class WordNestMenu(MenuSystem):
                 words.append(choice.label)
                 await cls.done_cb(words.copy())
 
-            if len(final_words) <= 32:  # 23of24 or 17of18
+            if len(final_words) <= 32:
+                # 18 or 24 word cases => 32 or 8 choices are valid
                 items = [MenuItem(w, f=picks_chk_word) for w in final_words]
                 items.append(MenuItem('(none above)', f=self.explain_error))
                 return cls(is_commit=True, items=items)
 
-            # 11of12 (128 valid options)
+            # 12 words => 128 valid final words
             # show start letter and under that valid words
             d = OrderedDict()
             for w in final_words:
@@ -198,6 +200,7 @@ class WordNestMenu(MenuSystem):
                 sub_items = [MenuItem(w, f=picks_chk_word) for w in w_lst]
                 sub_items.append(MenuItem('(none above)', f=self.explain_error))
                 items.append(MenuItem(s+"-", menu=cls(items=sub_items)))
+
             return cls(is_commit=True, items=items)
 
         if len(words) == self.target_words:
