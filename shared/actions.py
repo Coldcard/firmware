@@ -8,7 +8,7 @@ import ckcc, pyb, version, uasyncio, sys, uos
 from uhashlib import sha256
 from uasyncio import sleep_ms
 from ubinascii import hexlify as b2a_hex
-from utils import imported, pretty_short_delay, problem_file_line, get_filesize
+from utils import imported, problem_file_line, get_filesize
 from utils import xfp2str, B2A, addr_fmt_label
 from ux import ux_show_story, the_ux, ux_confirm, ux_dramatic_pause, ux_aborted
 from ux import ux_enter_bip32_index, ux_input_text, import_export_prompt
@@ -1079,29 +1079,29 @@ async def electrum_skeleton(*a):
     elif ch != 'y':
         return
 
-    # pick segwit or classic derivation+such
-    # - Ordering and terminology from similar screen in Electrum.
-    rv = []
-
-    rv.append(MenuItem(addr_fmt_label(AF_CLASSIC), f=electrum_skeleton_step2,
-                       arg=(AF_CLASSIC, account_num)))
-    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=electrum_skeleton_step2,
-                       arg=(AF_P2WPKH_P2SH, account_num)))
-    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH), f=electrum_skeleton_step2,
-                       arg=(AF_P2WPKH, account_num)))
-
+    rv = [
+        MenuItem(addr_fmt_label(af), f=electrum_skeleton_step2,
+                 arg=(af, account_num))
+        for af in [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH]
+    ]
     the_ux.push(MenuSystem(rv))
 
-def ss_descriptor_export_story(addition="", background=None):
+def ss_descriptor_export_story(addition="", background="", acct=True):
     # saves memory being in a function
     return ("This saves a ranged xpub descriptor" + addition
-            + (background or
-              '. Choose descriptor and address type for the wallet on next screens.'+PICK_ACCOUNT)
+            + background
+            + (PICK_ACCOUNT if acct else "")
             + SENSITIVE_NOT_SECRET)
 
-async def ss_descriptor_skeleton(label, _, item):
+async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
-    ch = await ux_show_story(ss_descriptor_export_story(), escape='1')
+    int_ext, addition = None, ""
+    allowed_af = [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH]
+    if item.arg:
+        int_ext, allowed_af, ll = item.arg
+        addition = " for " + ll
+
+    ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
 
     account_num = 0
     if ch == '1':
@@ -1109,27 +1109,24 @@ async def ss_descriptor_skeleton(label, _, item):
     elif ch != 'y':
         return
 
-    int_ext = True
-    ch = await ux_show_story(
-         "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK, "
-         "press (1) to export receiving and change descriptors separately.", escape='1')
-    if ch == "1":
-        int_ext = False
-    elif ch != "y":
-        return
+    if int_ext is None:
+        ch = await ux_show_story(
+            "To export receiving and change descriptors in one descriptor "
+            "(<0;1> notation) press OK, press (1) to export "
+            "receiving and change descriptors separately.", escape='1')
+        if ch == "x": return
+        int_ext = False if ch == "1" else True
 
-    # pick segwit or classic derivation+such
-    # - Ordering and terminology from similar screen in Electrum.
-    rv = []
-
-    rv.append(MenuItem(addr_fmt_label(AF_CLASSIC), f=descriptor_skeleton_step2,
-                       arg=(AF_CLASSIC, account_num, int_ext)))
-    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH_P2SH), f=descriptor_skeleton_step2,
-                       arg=(AF_P2WPKH_P2SH, account_num, int_ext)))
-    rv.append(MenuItem(addr_fmt_label(AF_P2WPKH), f=descriptor_skeleton_step2,
-                       arg=(AF_P2WPKH, account_num, int_ext)))
-
-    the_ux.push(MenuSystem(rv))
+    if len(allowed_af) == 1:
+        await make_descriptor_wallet_export(allowed_af[0], account_num,
+                                            int_ext=int_ext)
+    else:
+        rv = [
+            MenuItem(addr_fmt_label(af), f=descriptor_skeleton_step2,
+                     arg=(af, account_num, int_ext))
+            for af in allowed_af
+        ]
+        the_ux.push(MenuSystem(rv))
 
 async def samourai_post_mix_descriptor_export(*a):
     name = "POST-MIX"
@@ -1150,7 +1147,7 @@ async def samourai_account_descriptor(name, account_num):
     ch = await ux_show_story(
         ss_descriptor_export_story(
             addition=" for Samourai %s account." % name,
-            background=" ")
+            acct=False)
     )
 
     if ch != 'y':

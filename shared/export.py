@@ -139,8 +139,7 @@ async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
     from ux import import_export_prompt
 
     choice = await import_export_prompt("%s file" % title, is_import=False,
-                        no_qr=(not version.has_qwerty))
-
+                                        no_qr=(not version.has_qwerty))
     if choice == KEY_CANCEL:
         return
     elif choice == KEY_QR:

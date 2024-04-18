@@ -171,6 +171,8 @@ WalletExportMenu = [
     MenuItem("Bitcoin Core", f=bitcoin_core_skeleton),
     MenuItem("Sparrow Wallet", f=named_generic_skeleton, arg="Sparrow"),
     MenuItem("Nunchuk", f=named_generic_skeleton, arg="Nunchuk"),
+    MenuItem("Zeus", f=ss_descriptor_skeleton,
+             arg=(True, [AF_P2WPKH, AF_P2WPKH_P2SH], "Zeus Wallet")),
     MenuItem("Electrum Wallet", f=electrum_skeleton),
     MenuItem("Wasabi Wallet", f=wasabi_skeleton),
     MenuItem("Unchained", f=unchained_capital_export),
