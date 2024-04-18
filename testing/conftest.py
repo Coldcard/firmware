@@ -2042,7 +2042,8 @@ def set_addr_exp_start_idx(pick_menu_item, cap_menu, enter_number):
             pick_menu_item(start_idx_mi)
             enter_number(start_idx)
             time.sleep(.1)
-            assert ("Start Idx: %d" % start_idx) in cap_menu()
+            assert ("Start Idx: %d" % start_idx) in cap_menu() \
+                            or ("Start:%d" % start_idx) in cap_menu()
         else:
             assert start_idx_mi not in m
 

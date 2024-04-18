@@ -217,8 +217,11 @@ class AddressListMenu(MenuSystem):
         else:
             items.append(MenuItem("Account: %d" % self.account_num, f=self.change_account))
 
-        items.append(MenuItem("Start Idx: %d" % self.start, f=self.change_start_idx,
-                              predicate=lambda: settings.get('aei', False)))
+        if settings.get('aei', False) or self.start:
+            # optional feature: allow override of starting index
+            _mtxt = 'Start Idx: ' if version.has_qwerty or self.start < 100000 else 'Start:'
+            _mtxt += str(self.start)
+            items.append(MenuItem(_mtxt, f=self.change_start_idx))
 
         self.replace_items(items)
         axi = settings.get('axi', 0)
