@@ -104,6 +104,9 @@ async def ux_wait_keyup(expected=None, flush=False):
         armed = numpad.key_pressed or False
 
     while 1:
+        if numpad.empty():
+            await sleep_ms(5)
+            continue
         ch = await numpad.get()
 
         if ch == numpad.ABORT_KEY:

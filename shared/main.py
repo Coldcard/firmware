@@ -81,19 +81,8 @@ settings = SettingsObject()
 settings.load(glob.dis)
 glob.settings = settings
 
-async def backstop_task():
-    # BUGFIX: This do-nothing loop is needed because uasyncio at this point
-    # cannot wake on hardware events, such as keyboard events from pin changes.
-    # - when system is blocked solely on keyboard input, this loop will wake
-    # - newer mpy versions can correctly wake from events/flags in those cases
-    while 1:
-        await uasyncio.sleep_ms(100)
-
 async def more_setup():
     # Boot up code; splash screen is being shown
-                
-    # Need a fallback task that is always running.
-    IMPT.start_task('backstop_task', backstop_task())
 
     try:
         from files import CardSlot
