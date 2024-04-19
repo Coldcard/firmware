@@ -128,7 +128,23 @@ def get_identity_story(goto_home, pick_menu_item, cap_story):
         pick_menu_item("View Identity")
         time.sleep(0.1)
         title, story = cap_story()
-        return story
+        split_story = story.split("\n\n")
+        parsed_story = {}
+        if "is in effect" in split_story[0]:
+            parsed_story["tmp"] = True
+            if "BIP-39 passphrase" in split_story[0]:
+                passphrase = True
+            else:
+                passphrase = False
+                assert "Temporary seed" in split_story[0]
+            parsed_story["pass"] = passphrase
+            parsed_story["xfp"] = split_story[2].strip()
+            parsed_story["ek"] = split_story[6].strip()
+        else:
+            assert "Master Key Fingerprint" in split_story[0]
+            parsed_story["xfp"] = split_story[1].strip()
+            parsed_story["ek"] = split_story[5].strip()
+        return story, parsed_story
     return doit
 
 
@@ -317,12 +333,12 @@ def verify_ephemeral_secret_ui(cap_story, press_select, cap_menu, dev, fake_txn,
             m = cap_menu()
             assert "Seed Vault" not in m
 
-        ident_story = get_identity_story()
-        ident_xfp = ident_story.split("\n\n")[1].strip()
+        ident_story, parsed_ident = get_identity_story()
+        ident_xfp = parsed_ident["xfp"]
+        assert parsed_ident["tmp"]
         if is_b39pw:
-            assert "BIP-39 passphrase is in effect" in ident_story
-        else:
-            assert "Temporary seed is in effect" in ident_story
+            assert parsed_ident["pass"]
+
         assert ident_xfp == in_effect_xfp
 
         if mnemonic:
@@ -861,10 +877,10 @@ def test_seed_vault_menus(dev, data, settings_set, master_settings_get, pick_men
         assert node.chain_code() == ch
         assert node.secret_exponent() == int(pk.hex(), 16)
 
-    istory = get_identity_story()
-    assert "Temporary seed is in effect" in istory
+    istory, parsed_ident = get_identity_story()
+    assert parsed_ident["tmp"] and not parsed_ident["pass"]
 
-    ident_xfp = istory.split("\n\n")[1].strip()
+    ident_xfp = parsed_ident["xfp"]
     assert ident_xfp == xfp
 
     e_master_xpub = dev.send_recv(CCProtocolPacker.get_xpub(), timeout=5000)
@@ -1412,8 +1428,7 @@ def test_import_master_as_tmp(reset_seed_words, goto_eph_seed_menu, cap_story,
     assert "[" in menu[0]
     assert xfp_str in menu[0]
     restore_main_seed(preserve_settings=False, seed_vault=False)
-    story = get_identity_story()
-    assert "00000000" not in story
-    assert xfp_str in story
+    story, parsed_ident = get_identity_story()
+    assert xfp_str == parsed_ident["xfp"]
 
 # EOF

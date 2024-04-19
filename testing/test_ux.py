@@ -185,7 +185,7 @@ def pass_word_quiz(need_keypress, cap_story, press_select):
 def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_test,
                      cap_menu, word_menu_entry, seed_words, xfp, get_secrets, is_q1,
                      reset_seed_words, cap_screen_qr, qr_quality_check, expect_ftux,
-                     is_headless):
+                     is_headless, get_identity_story):
     
     unit_test('devtest/clear_seed.py')
 
@@ -200,16 +200,13 @@ def test_import_seed(goto_home, pick_menu_item, cap_story, need_keypress, unit_t
 
     expect_ftux()
 
-    pick_menu_item('Advanced/Tools')
-    pick_menu_item('View Identity')
+    istory, parsed_ident = get_identity_story()
 
-    title, body = cap_story()
-
-    assert '  '+xfp2str(xfp) in body
+    assert xfp2str(xfp) == parsed_ident["xfp"]
 
     v = get_secrets()
 
-    assert f'Press {KEY_QR if is_q1 else "(3)"} to show QR code' in body
+    assert f'Press {KEY_QR if is_q1 else "(3)"} to show QR code' in istory
     if not is_headless:
         need_keypress(KEY_QR if is_q1 else '3')
         qr = cap_screen_qr().decode('ascii')
@@ -827,38 +824,28 @@ def test_menu_wrapping(goto_home, pick_menu_item, cap_story, cap_menu,
     assert "Menu Wrapping" not in menu
     goto_home()
 
-def test_chain_changes_settings_xpub(pick_menu_item, goto_home, cap_story,
-                                     press_select, press_cancel):
-    goto_home()
-    pick_menu_item("Advanced/Tools")
-    pick_menu_item("View Identity")
-    _, story = cap_story()
-    extended_key = story.split("\n\n")[5]
-    assert extended_key.startswith("tpub")
+def test_chain_changes_settings_xpub(pick_menu_item, cap_story, press_select,
+                                     get_identity_story):
+    _, parsed_ident = get_identity_story()
+    assert parsed_ident["ek"].startswith("tpub")
     press_select()
     pick_menu_item("Danger Zone")
     pick_menu_item("Testnet Mode")
     pick_menu_item("Bitcoin")
-    press_cancel()  # go back to advanced
-    time.sleep(0.1)
-    pick_menu_item("View Identity")
-    _, story = cap_story()
-    extended_key = story.split("\n\n")[5]
-    assert extended_key.startswith("xpub")
+    time.sleep(0.2)
+    _, parsed_ident = get_identity_story()
+    assert parsed_ident["ek"].startswith("xpub")
     press_select()
     pick_menu_item("Danger Zone")
     pick_menu_item("Testnet Mode")
-    time.sleep(0.1)
+    time.sleep(0.2)
     _, story = cap_story()
     assert "Testnet must only be used by developers" in story
     press_select()
     pick_menu_item("Regtest")
-    press_cancel()  # go back to advanced
-    time.sleep(0.1)
-    pick_menu_item("View Identity")
-    _, story = cap_story()
-    extended_key = story.split("\n\n")[5]
-    assert extended_key.startswith("tpub")
+    time.sleep(0.2)
+    _, parsed_ident = get_identity_story()
+    assert parsed_ident["ek"].startswith("tpub")
 
 @pytest.mark.parametrize("clear", [1, 0])
 @pytest.mark.parametrize("f_len", [50, 500, 5000])

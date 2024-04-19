@@ -27,6 +27,7 @@
 
 - Enhancement: Allow to specify start index for address explorer export and browsing
 - Enhancement: Add `Nunchuk` option to `Export Wallet`
+- Enhancement: `View Identity` shows temporary seed active on the top
 - Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
   already in use. Use `Restore Master` with ability to keep or purge current
   passphrase wallet settings.

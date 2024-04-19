@@ -32,11 +32,6 @@ async def start_selftest(*args):
     with imported('selftest') as st:
         await st.start_selftest()
 
-
-async def needs_primary():
-    # Standard msg shown if action can't be done w/o main PIN
-    await ux_show_story("Only the holder of the main PIN (not the secondary) can perform this function. Please start over with the main PIN.")
-
 async def show_bag_number(*a):
     import callgate
     bn = callgate.get_bag_number() or 'UNBAGGED!'
@@ -75,6 +70,12 @@ async def view_ident(*a):
     # show the XPUB, and other ident on screen
     import callgate, stash
 
+    msg = ""
+    if stash.bip39_passphrase:
+        msg += 'BIP-39 passphrase is in effect.\n\n'
+    elif pa.tmp_value:
+        msg += 'Temporary seed is in effect.\n\n'
+
     tpl = '''\
 Master Key Fingerprint:
 
@@ -90,24 +91,18 @@ Extended Master Key:
 '''
     my_xfp = settings.get('xfp', 0)
     xpub = settings.get('xpub', None)
-    msg = tpl.format(xpub=(xpub or '(none yet)'),
-                            xfp=xfp2str(my_xfp),
-                            serial=version.serial_number())
-
-    if pa.is_secondary:
-        msg += '\n(Secondary wallet)\n'
-
-    if stash.bip39_passphrase:
-        msg += '\nBIP-39 passphrase is in effect.\n'
-    elif pa.tmp_value:
-        msg += '\nTemporary seed is in effect.\n'
+    msg += tpl.format(xpub=(xpub or '(none yet)'),
+                      xfp=xfp2str(my_xfp),
+                      serial=version.serial_number())
 
     bn = callgate.get_bag_number()
     if bn:
         msg += '\nShipping Bag:\n  %s\n' % bn
 
     if xpub:
-        msg += '\nPress %s to show QR code of xpub.' % (KEY_QR if version.has_qwerty else "(3)")
+        msg += '\nPress %s to show QR code of xpub.' % (
+            KEY_QR if version.has_qwerty else "(3)"
+        )
 
     ch = await ux_show_story(msg, escape=('3'+KEY_QR if xpub else None))
 
@@ -1637,10 +1632,6 @@ async def check_firewall_read(*a):
 async def bless_flash(*a):
     # make green LED turn on
     from glob import dis
-
-    if pa.is_secondary:
-        await needs_primary()
-        return
 
     # impt: bugfix
     dis.bootrom_takeover()

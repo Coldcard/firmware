@@ -371,8 +371,8 @@ def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_epheme
     parent_node = BIP32Node.from_master_secret(parent, netcode="XTN")
     xpub = parent_node.hwif()
     set_bip39_pw(passphrase, reset=False, on_tmp=True if stype == "words" else False)
-    ident_story = get_identity_story()
-    assert xpub in ident_story
+    ident_story, parsed_ident = get_identity_story()
+    assert xpub == parsed_ident["ek"]
 
 
 @pytest.mark.parametrize("usb", [True, False])
