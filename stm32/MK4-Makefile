@@ -11,8 +11,8 @@ BOOTLOADER_BASE = 0x08000000
 HW_MODEL = mk4
 PARENT_MKFILE = MK4-Makefile
 
-# This is release of the bootloader that will be built into the release firmware.
-BOOTLOADER_VERSION = 3.1.4
+# This is release of the bootloader that will be built into the factory.dfu
+BOOTLOADER_VERSION = 3.2.0
 BOOTLOADER_DIR = mk4-bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
