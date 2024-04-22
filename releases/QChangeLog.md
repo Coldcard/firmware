@@ -36,6 +36,7 @@
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret.
 - Bugfix: Battery idle timeout also considers last progress bar update
+- Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
 - Enhancement: Allow unlimited index for BIP-85 derivations. Needs to be enabled first in `Danger Zone` 

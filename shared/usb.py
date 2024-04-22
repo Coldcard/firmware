@@ -959,7 +959,8 @@ class EmulatedKeyboard:
     @classmethod
     def can_type(cls, s):
         # do we know how to type all the chars in "s"
-        return all(ch in cls.char_map for ch in s)
+        # .lower() has no effect on symbols, numbers, and escapes
+        return all(ch.lower() in cls.char_map for ch in s)
 
     async def send_keystrokes(self, keystroke_string):
         from glob import dis
