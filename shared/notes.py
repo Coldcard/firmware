@@ -518,7 +518,7 @@ async def start_export(notes):
         return
 
     # ideally, we'd use the title to make a filename, but meh...
-    fname_pattern = 'cc-notes.json' if not singular else 'cc-note.json'
+    fname_pattern = 'cc-notes.json' if not singular else ('cc-%s.json' % notes[0].type_label)
 
     try:
         with CardSlot(**choice) as card:
@@ -537,7 +537,9 @@ async def start_export(notes):
         await ux_show_story('Failed to write!\n\n\n'+str(e))
         return
 
-    msg = 'Export file written:\n\n%s' % nice
+    msg = 'Export file written:\n\n%s\n\nSignature file written:\n\n%s' % (
+        nice, sig_nice
+    )
     await ux_show_story(msg)
 
 
