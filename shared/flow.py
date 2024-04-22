@@ -385,8 +385,8 @@ NewSeedMenu = [
 EmptyWallet = [
     #         xxxxxxxxxxxxxxxx
     MenuItem('New Seed Words', menu=NewSeedMenu),
-    MenuItem("Migrate COLDCARD", menu=clone_start),
     MenuItem('Import Existing', menu=ImportWallet),
+    MenuItem("Migrate Coldcard", menu=clone_start),
     MenuItem('Help', f=virgin_help, predicate=not version.has_qwerty),
     MenuItem('Advanced/Tools', menu=AdvancedPinnedVirginMenu),
     MenuItem('Settings', menu=SettingsMenu),
