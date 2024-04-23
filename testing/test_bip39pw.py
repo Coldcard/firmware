@@ -2,9 +2,8 @@
 #
 # BIP-39 seed word encryption
 #
-import pdb
 
-import pytest, time, struct
+import pytest, time, struct, pdb
 from pycoin.key.BIP32Node import BIP32Node
 from binascii import a2b_hex
 from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
@@ -163,15 +162,110 @@ def test_b39p_refused(dev, press_cancel, pw='testing 123'):
             done = dev.send_recv(CCProtocolPacker.get_passphrase_done(), timeout=None)
 
 
-def test_cancel_on_empty_added_numbers(pick_menu_item, goto_home, press_select,
-                                       cap_menu, is_q1, press_cancel):
+@pytest.mark.parametrize('target', ['baby', 'struggle', 'youth'])
+@pytest.mark.parametrize('version', range(8))
+def test_bip39_pick_words(target, version, cap_menu, pick_menu_item, cap_story,
+                          word_menu_entry, get_pp_sofar, reset_seed_words,
+                          press_select, only_mk4, go_to_passphrase):
+    # Check we can pick words
+    reset_seed_words()
+
+    go_to_passphrase()
+    pick_menu_item('Add Word')
+
+    word_menu_entry([target])
+    if version%4 == 0:
+        mw = target
+    if version%4 == 1:
+        mw = target.upper()
+    if version%4 == 2:
+        mw = target.lower()
+    if version%4 == 3:
+        mw = target.title()
+    if version >= 4:
+        mw = ' ' + mw
+
+    pick_menu_item(mw)
+
+    chk = get_pp_sofar()
+
+    assert chk == mw
+
+@pytest.mark.parametrize('target', ['123', '1', '4'*32, '12'*8])
+@pytest.mark.parametrize('backspaces', [1, 0, 12])
+def test_bip39_add_nums(target, backspaces, pick_menu_item, cap_story, only_mk4,
+                        cap_menu, word_menu_entry, get_pp_sofar, need_keypress,
+                        press_select, press_cancel, go_to_passphrase):
+
+    # Check we can pick numbers (appended)
+    # - also the "clear all" menu item
+
+    go_to_passphrase()
+    pick_menu_item('Add Numbers')
+
+    for d in target:
+        time.sleep(.01)      # required
+        need_keypress(d)
+
+    if backspaces < len(target):
+        for x in range(backspaces):
+            time.sleep(.01)      # required
+            press_cancel()
+
+        if backspaces:
+            for d in target[-backspaces:]:
+                time.sleep(.01)      # required
+                need_keypress(d)
+
+    time.sleep(0.01)      # required
+    press_select()
+
+    time.sleep(0.01)      # required
+    chk = get_pp_sofar()
+    assert chk == target
+
+    # And clear it
+
+    pick_menu_item('Clear All')
+    time.sleep(0.01)      # required
+
+    press_select()
+    time.sleep(0.01)      # required
+    chk = get_pp_sofar()
+    assert chk == ''
+
+@pytest.mark.parametrize('target', [
+    'abc123', 'AbcZz1203', 'Test 123', 'Aa'*50,
+    '&*!#^$*&@#^*&^$abcdABCD^%182736',
+    'I be stacking sats!! Come at me bro....',
+])
+def test_bip39_complex(target, pick_menu_item, cap_story, goto_home,
+                       press_select, enter_complex, restore_main_seed,
+                       verify_ephemeral_secret_ui, go_to_passphrase):
+    go_to_passphrase()
+
+    from mnemonic import Mnemonic
+
+    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=target)
+    expect = BIP32Node.from_master_secret(seed, netcode="XTN")
+
+    enter_complex(target, apply=True)
+    press_select()
+    time.sleep(.1)
+    verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
+    goto_home()
+    time.sleep(.1)
+    pick_menu_item("Restore Master")
+    press_select()
+
+
+def test_cancel_on_empty_added_numbers(pick_menu_item, is_q1, cap_menu,
+                                       press_cancel, go_to_passphrase):
     if is_q1:
         # there is no Enter Number dialog on Q1
         pytest.skip("'Enter Number' not available on Q1")
 
-    goto_home()
-    pick_menu_item('Passphrase')
-    press_select()  # intro story
+    go_to_passphrase()
     pick_menu_item('Add Numbers')
     press_cancel()  # do not add any numbers and cancel with x
     pick_menu_item('CANCEL')
@@ -260,7 +354,8 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
                                      need_keypress, pick_menu_item, goto_home,
                                      reset_seed_words, goto_eph_seed_menu, stype,
                                      enter_complex, cap_story, cap_menu,
-                                     settings_set, seed_vault, press_select):
+                                     settings_set, seed_vault, press_select,
+                                     go_to_passphrase):
     passphrase = "@coinkite rulez!!"
     reset_seed_words()
     settings_set("seedvault", 1)
@@ -285,8 +380,7 @@ def test_bip39pass_on_ephemeral_seed(generate_ephemeral_words, import_ephemeral_
         assert "Passphrase" not in m
         return
 
-    pick_menu_item("Passphrase")
-    press_select()
+    go_to_passphrase()
     enter_complex(passphrase, apply=True)
 
     tmp_seed = Mnemonic.to_seed(" ".join(sec), passphrase=passphrase)
@@ -376,7 +470,7 @@ def test_bip39pass_on_ephemeral_seed_usb(generate_ephemeral_words, import_epheme
 
 
 @pytest.mark.parametrize("usb", [True, False])
-def test_tmp_on_xprv_master(generate_ephemeral_words, goto_home, cap_menu,
+def test_tmp_on_xprv_master(generate_ephemeral_words, cap_menu, go_to_passphrase,
                             pick_menu_item, need_keypress, enter_complex,
                             cap_story, unit_test, microsd_path, expect_ftux,
                             set_bip39_pw, usb, press_select):
@@ -414,8 +508,7 @@ def test_tmp_on_xprv_master(generate_ephemeral_words, goto_home, cap_menu,
 
         return
 
-    pick_menu_item("Passphrase")
-    press_select()
+    go_to_passphrase()
     enter_complex(passphrase, apply=True)
     time.sleep(.1)
     title, story = cap_story()

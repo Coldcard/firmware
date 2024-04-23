@@ -20,22 +20,6 @@ def set_pw_phrase(pick_menu_item, word_menu_entry):
     return doit
 
 
-@pytest.fixture
-def get_to_pwmenu(cap_story, press_select, goto_home, pick_menu_item):
-    # drill to the enter passphrase menu
-    def doit():
-        goto_home()
-        pick_menu_item('Passphrase')
-
-        _, story = cap_story()
-        if 'your BIP-39 seed words' in story:
-            time.sleep(.01)
-            press_select()  # skip warning
-            time.sleep(.01)
-
-    return doit
-
-
 @pytest.mark.parametrize('pws', [
         'abc abc def def 123',
         '1 2 3',
@@ -48,7 +32,7 @@ def get_to_pwmenu(cap_story, press_select, goto_home, pick_menu_item):
         'ab'*25,
     ])
 def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex,
-                    cap_menu, get_to_pwmenu, reset_seed_words, press_select):
+                    cap_menu, go_to_passphrase, reset_seed_words, press_select):
     try:    os.unlink(SIM_FNAME)
     except: pass
 
@@ -60,8 +44,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
         if pw not in uniq:
             uniq.append(pw)
 
-        get_to_pwmenu()
-
+        go_to_passphrase()
         enter_complex(pw, apply=True)
 
         time.sleep(.01)
@@ -74,7 +57,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
         reset_seed_words()
 
     for n, pw in enumerate(uniq):
-        get_to_pwmenu()
+        go_to_passphrase()
 
         pick_menu_item('Restore Saved')
 
@@ -155,17 +138,17 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     assert j[0]['pw']
     assert j[0]['xfp']
 
-def test_delete_one_by_one(get_to_pwmenu, pick_menu_item, cap_menu,
+def test_delete_one_by_one(go_to_passphrase, pick_menu_item, cap_menu,
                            cap_story, press_select):
     # delete it one by one
     # when all deleted - we must be back in Passphrase
     # menu without Restore Saved option visible
-    get_to_pwmenu()
+    go_to_passphrase()
     time.sleep(.1)
     m = cap_menu()
     if 'Restore Saved' not in m:
         shutil.copy2('data/pwsave.tmp', '../unix/work/MicroSD/.tmp.tmp')
-        get_to_pwmenu()
+        go_to_passphrase()
     pick_menu_item('Restore Saved')
     m = cap_menu()
     len_m = len(m)

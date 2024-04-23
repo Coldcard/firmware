@@ -6,7 +6,6 @@ from charcodes import KEY_DOWN, KEY_QR, KEY_NFC
 from constants import AF_CLASSIC, simulator_fixed_words, simulator_fixed_xfp
 from mnemonic import Mnemonic
 from pycoin.key.BIP32Node import BIP32Node
-from core_fixtures import _enter_complex
 
 
 def test_get_secrets(get_secrets, master_xpub):
@@ -516,118 +515,6 @@ def test_seed_import_tapsigner(way, retry, testnet, cap_menu, pick_menu_item, go
     reset_seed_words()
 
 
-@pytest.mark.parametrize('target', ['baby', 'struggle', 'youth'])
-@pytest.mark.parametrize('version', range(8))
-def test_bip39_pick_words(target, version, goto_home, pick_menu_item, cap_story,
-                          cap_menu, word_menu_entry, get_pp_sofar, reset_seed_words,
-                          press_select, only_mk4):
-    # Check we can pick words
-    reset_seed_words()
-
-    goto_home()
-    pick_menu_item('Passphrase')
-    time.sleep(.01)
-    press_select()
-    time.sleep(.01)      # skip warning
-    pick_menu_item('Add Word')
-
-    word_menu_entry([target])
-    if version%4 == 0:
-        mw = target
-    if version%4 == 1:
-        mw = target.upper()
-    if version%4 == 2:
-        mw = target.lower()
-    if version%4 == 3:
-        mw = target.title()
-    if version >= 4:
-        mw = ' ' + mw
-
-    pick_menu_item(mw)
-
-    chk = get_pp_sofar()
-
-    assert chk == mw
-
-@pytest.mark.parametrize('target', ['123', '1', '4'*32, '12'*8])
-@pytest.mark.parametrize('backspaces', [1, 0, 12])
-def test_bip39_add_nums(target, backspaces, goto_home, pick_menu_item, cap_story,
-                        cap_menu, word_menu_entry, get_pp_sofar, need_keypress,
-                        press_select, press_cancel, only_mk4):
-
-    # Check we can pick numbers (appended)
-    # - also the "clear all" menu item
-
-    goto_home()
-    pick_menu_item('Passphrase')
-    time.sleep(.01); press_select(); time.sleep(.01)      # skip warning
-    pick_menu_item('Add Numbers')
-
-    for d in target:
-        time.sleep(.01)      # required
-        need_keypress(d)
-
-    if backspaces < len(target):
-        for x in range(backspaces):
-            time.sleep(.01)      # required
-            press_cancel()
-
-        if backspaces:
-            for d in target[-backspaces:]:
-                time.sleep(.01)      # required
-                need_keypress(d)
-
-    time.sleep(0.01)      # required
-    press_select()
-
-    time.sleep(0.01)      # required
-    chk = get_pp_sofar()
-    assert chk == target
-
-    # And clear it
-
-    pick_menu_item('Clear All')
-    time.sleep(0.01)      # required
-
-    press_select()
-    time.sleep(0.01)      # required
-    chk = get_pp_sofar()
-    assert chk == ''
-
-@pytest.fixture
-def enter_complex(dev, is_q1):
-    # full entry mode
-    # - just left to right here
-    # - not testing case swap, because might remove that
-    f = functools.partial(_enter_complex, dev, is_q1)
-    return f
-
-@pytest.mark.parametrize('target', [
-    'abc123', 'AbcZz1203', 'Test 123', 'Aa'*50,
-    '&*!#^$*&@#^*&^$abcdABCD^%182736',
-    'I be stacking sats!! Come at me bro....',
-])
-def test_bip39_complex(target, goto_home, pick_menu_item, cap_story,
-                       press_select, enter_complex, restore_main_seed,
-                       verify_ephemeral_secret_ui):
-    goto_home()
-    pick_menu_item('Passphrase')
-    time.sleep(.01)
-    press_select()
-    time.sleep(.01)      # skip warning
-
-    from mnemonic import Mnemonic
-
-    seed = Mnemonic.to_seed(simulator_fixed_words, passphrase=target)
-    expect = BIP32Node.from_master_secret(seed, netcode="XTN")
-
-    enter_complex(target, apply=True)
-    press_select()
-    verify_ephemeral_secret_ui(xpub=expect.hwif(), is_b39pw=True)
-    pick_menu_item("Restore Master")
-    press_select()
-
-
 @pytest.mark.qrcode
 @pytest.mark.parametrize('mode', ['words', 'xprv', 'ms'])
 @pytest.mark.parametrize('b39_word', ['', 'AbcZz1203'])
@@ -898,11 +785,9 @@ def test_sign_file_from_list_files(f_len, goto_home, cap_story, pick_menu_item, 
     assert "List Files" in menu
 
 
-def test_bip39_pw_signing_xfp_ux(goto_home, pick_menu_item, press_select, cap_story,
-                                 enter_complex, reset_seed_words, cap_menu):
-    goto_home()
-    pick_menu_item("Passphrase")
-    press_select()
+def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_complex,
+                                 reset_seed_words, cap_menu, go_to_passphrase):
+    go_to_passphrase()
     enter_complex("21coinkite21", apply=True)
     time.sleep(0.3)
     title, story = cap_story()

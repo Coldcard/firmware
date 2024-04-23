@@ -344,6 +344,7 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
     txid = a2b_hex(story.split()[0])
     assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
     press_nfc()
+    time.sleep(.2)
 
     if too_big:
         title, story = cap_story()

@@ -11,8 +11,8 @@ from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
 from charcodes import *
-from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen, _dev_hw_label
-from core_fixtures import _press_select, _pick_menu_item
+from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen
+from core_fixtures import _press_select, _pick_menu_item, _enter_complex, _dev_hw_label
 
 
 # lock down randomness
@@ -167,6 +167,14 @@ def enter_number(need_keypress, press_select):
         press_select()
 
     return doit
+
+@pytest.fixture
+def enter_complex(dev, is_q1):
+    # full entry mode
+    # - just left to right here
+    # - not testing case swap, because might remove that
+    f = functools.partial(_enter_complex, dev, is_q1)
+    return f
 
 @pytest.fixture(scope='module')
 def enter_hex(need_keypress, enter_text, is_q1):
@@ -2050,6 +2058,23 @@ def set_addr_exp_start_idx(pick_menu_item, cap_menu, enter_number):
     return doit
 
 
+@pytest.fixture
+def go_to_passphrase(cap_story, press_select, goto_home, pick_menu_item):
+    # drill to the enter passphrase menu
+    def doit():
+        goto_home()
+        pick_menu_item('Passphrase')
+
+        _, story = cap_story()
+        if 'add a passphrase to your BIP-39 seed words' in story:
+            assert "100 characters max" in story
+            assert "ASCII" in story
+            press_select()  # skip warning
+            time.sleep(.1)
+
+    return doit
+
+
 # useful fixtures
 from test_backup import backup_system
 from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll
@@ -2062,7 +2087,7 @@ from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
-from test_ux import enter_complex, pass_word_quiz, word_menu_entry
+from test_ux import pass_word_quiz, word_menu_entry
 from txn import fake_txn
 
 # EOF
