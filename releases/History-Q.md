@@ -1,46 +1,4 @@
-# Q Unique Features / Improvements
-
-## Features
-
-- Secure Notes & Passwords: stash text and/or passwords in your Q. 
-- Scan Any QR: and the Q will figure something useful to do with it.
-- Press QR or NFC key in many contexts and useful things happen (may not be documented)
-- QR icon in corner: can paste into text field from QR
-
-## Little Things
-
-- whitens TRNG source for seed generation with double sha256 instead of single
-- "calculator login" mode
-
-## Secure Notes & Passwords
-
-- store notes (freeform text) and/or passwords
-- "note" has a title and freform text
-- "password" has title, username, website, and notes.
-- detects Google Auth app export QR and provides title
-- detects OTP 2FA (RFC ?) QR code and provides nice title
-- detects URL in QR, and uses domain name as title
-
-# Releases - Most Recent First
-
-## 1.1.1Q - 2024-04-XX
-
-- Enhancement: Allow to specify start index for address explorer export and browsing
-- Enhancement: Add `Nunchuk` option to `Export Wallet`
-- Enhancement: Add `Zeus` option to `Export Wallet`
-- Enhancement: `View Identity` shows temporary seed active on the top
-- Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
-  already in use. Use `Restore Master` with ability to keep or purge current
-  passphrase wallet settings.
-- Change: Removed ability to add passphrase to master seed if active temporary seed.
-- Change: Wipe LFS during `Lock Down Seed`
-- Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
-  seed without master secret.
-- Bugfix: Battery idle timeout also considers last progress bar update
-- Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
-- Enhancement: Allow export of multisig XPUBs via BBQr
-- Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
-- Enhancement: Allow unlimited index for BIP-85 derivations. Needs to be enabled first in `Danger Zone` 
+*See ChangeLog.md for more recent changes, these are historic versions*
 
 ## 1.1.0Q - 2024-04-02
 
