@@ -308,4 +308,48 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
             if num_parts > 12:
                 assert target_ver == 40
 
+
+@pytest.mark.parametrize("file", [
+    "data/sim_conso.psbt",
+    "data/sim_conso1.psbt",
+    "data/sim_conso2.psbt",
+    "data/sim_conso3.psbt",
+    "data/sim_conso4.psbt",
+    "data/sim_conso5.psbt",
+])
+def test_psbt_static(file, goto_home, cap_story, scan_a_qr, press_select,
+                     readback_bbqr, need_keypress, press_cancel):
+
+    goto_home()
+    need_keypress(KEY_QR)
+
+    with open(file, "rb") as f:
+        psbt = f.read()
+
+    # def split_qrs(raw, type_code, encoding=None,
+    #  min_split=1, max_split=1295, min_version=5, max_version=40
+    actual_vers, parts = split_qrs(psbt, 'P', max_version=20, encoding="2")
+    random.shuffle(parts)
+
+    for p in parts:
+        scan_a_qr(p)
+        time.sleep(4.0 / len(parts))       # just so we can watch
+
+    for r in range(20):
+        title, story = cap_story()
+        if 'OK TO SEND' in title:
+            break
+        time.sleep(.1)
+    else:
+        raise pytest.fail('never saw it?')
+
+    # approve it
+    press_select()
+    time.sleep(4)
+
+    # expect signed txn back
+    file_type, rb = readback_bbqr()
+    assert file_type in 'TP'
+
+    press_cancel()      # back to menu
 # EOF
