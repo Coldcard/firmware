@@ -231,11 +231,11 @@ class CardSlot:
 
     @classmethod
     def is_inserted(cls):
-        # debounce?
+        # Sense is inverted on Mk4, and true on Q.
         if cls.mux:
             return (cls.sd_detect() == 0) or (cls.sd_detect2() == 0)
         else:
-            return cls.sd_detect() == 0
+            return cls.sd_detect() == 1
 
     def __init__(self, force_vdisk=False, readonly=False, slot_b=None):
         self.mountpt = None
