@@ -17,7 +17,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Do not allow non-ascii or ascii non-printable characters in multisig wallet name
 - Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes.
 - Bugfix: Properly handle and finalize framing error response in USB protocol.
-- Recovery SD Card image building moved into it's own repo:
+- Recovery SD Card image building moved into its own repo:
   [github.com/Coldcard/recovery-images](https://github.com/Coldcard/recovery-images)
 
 
