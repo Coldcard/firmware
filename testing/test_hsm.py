@@ -934,7 +934,7 @@ def test_sign_msg_any(quick_start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     for p in permit+block: 
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-def test_must_log(dev, start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
+def test_must_log(dev, start_hsm, sd_cards_eject, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
     # stop everything if can't log
     policy = DICT(must_log=True, msg_paths=['m'], rules=[{}])
 
@@ -942,25 +942,28 @@ def test_must_log(dev, start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, 
 
     psbt = fake_txn(1, 1, dev.master_xpub)
 
-    sim_card_ejected(True)
+    sd_cards_eject(1)
     attempt_msg_sign('Could not log details', b'hello', 'm', addr_fmt=AF_CLASSIC)
     attempt_psbt(psbt, 'Could not log details')
 
     if is_simulator():
-        sim_card_ejected(False)
+        sd_cards_eject(0)
         attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
         attempt_psbt(psbt)
 
-def test_never_log(dev, start_hsm, attempt_msg_sign, fake_txn, attempt_psbt, sim_card_ejected):
+def test_never_log(dev, start_hsm, attempt_msg_sign, fake_txn, attempt_psbt, sd_cards_eject):
     # never try to log anything
     policy = DICT(never_log=True, msg_paths=['m'], rules=[{}])
 
     start_hsm(policy)
 
-    sim_card_ejected(True)
+    sd_cards_eject(1)
 
     # WEAK test
     attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
+
+    # clean-up
+    sd_cards_eject(0)
 
 @pytest.fixture
 def enter_local_code(need_keypress):

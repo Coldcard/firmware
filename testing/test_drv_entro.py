@@ -210,7 +210,7 @@ def test_bip_vectors(mode, index, entropy, expect, cap_story, need_keypress,
 
 
 def test_allow_bip32_max_int(pick_menu_item, goto_home, enter_number, is_q1,
-                             press_select, cap_screen, press_cancel, cap_story,
+                             press_select, press_cancel, cap_story,
                              settings_set):
     max_int = 2147483647
     to_input = 9999999999
@@ -223,8 +223,8 @@ def test_allow_bip32_max_int(pick_menu_item, goto_home, enter_number, is_q1,
     pick_menu_item("12 words")
     enter_number(to_input)
     time.sleep(.1)
-    scr = cap_screen()
-    assert "index=9999" in scr  # does not allow to go over this value
+    _, story = cap_story()
+    assert "index=9999" in story  # does not allow to go over this value
     press_cancel()
 
     goto_home()
@@ -245,8 +245,8 @@ def test_allow_bip32_max_int(pick_menu_item, goto_home, enter_number, is_q1,
     pick_menu_item("12 words")
     enter_number(to_input)
     time.sleep(.1)
-    scr = cap_screen()
-    assert f"index={max_int}" in scr
+    _, story = cap_story()
+    assert f"index={max_int}" in story
     press_cancel()
     settings_set("b85max", 0)
 

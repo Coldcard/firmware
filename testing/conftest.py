@@ -117,24 +117,6 @@ def is_simulator(dev):
     return doit
 
 @pytest.fixture(scope='module')
-def sim_card_ejected(sim_exec, is_simulator):
-    def doit(ejected):
-        if not is_simulator():
-            # assuming no card on device
-            if not ejected:
-                raise pytest.fail('cant insert on real dev')
-            else:
-                return
-
-        # see unix/frozen-modules/pyb.py class SDCard
-        cmd = f'import files; files.CardSlot.sd_detect = lambda: int({ejected}); RV.write("ok")'
-        assert sim_exec(cmd) == 'ok'
-
-    yield doit
-    if is_simulator():
-        doit(False)
-
-@pytest.fixture(scope='module')
 def send_ux_abort(simulator):
 
     def doit():
@@ -2030,8 +2012,12 @@ def seed_story_to_words():
     return doit
 
 @pytest.fixture
-def sd_cards_eject(is_q1, sim_exec):
+def sd_cards_eject(is_q1, sim_exec, is_simulator):
     def doit(slot_a=1, slot_b=1):
+        if not is_simulator():
+            return
+
+        slot_a = slot_a if is_q1 else not slot_a
         cmd = (f'from machine import Pin;'
                f'import files;'
                f'files.CardSlot.sd_detect = Pin("SD_DETECT",value={slot_a});')
@@ -2083,6 +2069,7 @@ from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
+from test_export import mk4_qr_not_allowed
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
