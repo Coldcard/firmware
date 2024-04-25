@@ -160,9 +160,6 @@ class FullKeyboard(NumpadBase):
         for kn in new_presses:
             #assert self.is_pressed[kn]:
             if kn == KEYNUM_SHIFT:
-                if symbol_down:
-                    self.caps_lock = not self.caps_lock
-                    status_chg['caps'] = int(self.caps_lock)
                 continue
             elif kn == KEYNUM_SYMBOL:
                 continue
@@ -194,13 +191,21 @@ class FullKeyboard(NumpadBase):
             from glob import SCAN
             SCAN.torch_control_sync(False)
 
+        # state change detect for SYM, SHIFT
+        meta_chg = False
         if self.shift_down != shift_down:
             self.shift_down = shift_down
             status_chg['shift'] = int(self.shift_down)
-
+            meta_chg = True
         if self.symbol_down != symbol_down:
             self.symbol_down = symbol_down
             status_chg['symbol'] = int(self.symbol_down)
+            meta_chg = True
+
+        if meta_chg and symbol_down and shift_down:
+            # press SYM+SHIFT to toggle CAPS
+            self.caps_lock = not self.caps_lock
+            status_chg['caps'] = int(self.caps_lock)
 
         if status_chg:
             from glob import dis

@@ -40,13 +40,14 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 ## 1.2.0Q - 2024-05-0X
 
+- Enhancement: Allow export of multisig XPUBs via BBQr
+- Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
+- Enhancement: Status bar text sharper now.
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret
 - Bugfix: Battery idle timeout also considers last progress bar update
 - Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
-- Enhancement: Allow export of multisig XPUBs via BBQr
-- Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
-- Enhancement: Status bar text sharper now.
+- Bugfix: Pressing SYM+SHIFT was toggling CAPS continuously. Now toggles once only.
 
 
 # Release History
