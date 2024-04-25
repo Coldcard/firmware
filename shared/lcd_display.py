@@ -675,8 +675,10 @@ class Display:
             expand = 3
             num_lines = 0
             fullscreen = True
-        elif w == 117:
-            # v25 =>=117px x 2 => 234px
+        elif w in (109, 113, 117):
+            # v23 => 109px x 2 = 218px
+            # v24 => 113px x 2 = 226px
+            # v25 => 117px x 2 = 234px
             expand = 2
             num_lines = 0
             fullscreen = True
@@ -684,6 +686,7 @@ class Display:
             # Maybe loose the text lines?
             expand2 = max(1, ACTIVE_H // (w+2))
             if expand2 > expand:
+                # v18,v19,v20,v21,v22
                 num_lines = 0
                 expand = expand2
 

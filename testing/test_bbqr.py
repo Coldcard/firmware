@@ -187,6 +187,7 @@ def test_show_bbqr_contents(src, cap_screen_qr, sim_exec, render_bbqr, load_shar
     assert data2 == data
     assert ft == 'B'
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize('size', [ 2, 10 ] )
 @pytest.mark.parametrize('max_ver', [ 20 ] )        # 20 max due to 4k USB buffer limit
 @pytest.mark.parametrize('encoding', '2HZ' )
@@ -309,6 +310,7 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
                 assert target_ver == 40
 
 
+@pytest.mark.bitcoind
 @pytest.mark.parametrize("file", [
     "data/sim_conso.psbt",
     "data/sim_conso1.psbt",
@@ -318,7 +320,8 @@ def test_split_unit(test_size, encoding, sim_exec, sim_eval):
     "data/sim_conso5.psbt",
 ])
 def test_psbt_static(file, goto_home, cap_story, scan_a_qr, press_select,
-                     readback_bbqr, need_keypress, press_cancel):
+                     readback_bbqr, need_keypress, press_cancel, start_sign,
+                     end_sign, bitcoind):
 
     goto_home()
     need_keypress(KEY_QR)
@@ -345,11 +348,20 @@ def test_psbt_static(file, goto_home, cap_story, scan_a_qr, press_select,
 
     # approve it
     press_select()
-    time.sleep(4)
+    time.sleep(.3)
 
     # expect signed txn back
     file_type, rb = readback_bbqr()
     assert file_type in 'TP'
 
     press_cancel()      # back to menu
+
+    # now verify signed tx are correct with bitcoind
+    # sign it first
+    start_sign(psbt)
+    signed_psbt = end_sign(True)
+    res = bitcoind.supply_wallet.finalizepsbt(base64.b64encode(signed_psbt).decode())
+    assert res["complete"] is True
+    assert rb.hex() == res["hex"]
+
 # EOF
