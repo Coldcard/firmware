@@ -44,6 +44,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
 - Enhancement: Status bar text sharper now.
 - Enhancement: Fullscreen display of v23 and v24 QRs (were too dense and hard to read previously)
+- Enhancement: Added ability to write signed PSBT/txn to lower (B) SD slot when both cards inserted.
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret
 - Bugfix: Battery idle timeout also considers last progress bar update
