@@ -191,7 +191,7 @@ class Display:
 
         xfp = kws.get('xfp', None)      # expects an integer
         if xfp != None:
-            x = 215
+            x = 217
             for ch in xfp2str(xfp).lower():
                 self.image(x, 0, 'ch_'+ch)
                 x += 6
@@ -203,7 +203,7 @@ class Display:
             self.image(x+5, 0, 'devmode')
 
         x = 8
-        for dx, meta in [(7, 'shift'), (37, 'symbol'), (58, 'caps')]:
+        for dx, meta in [(5, 'shift'), (39, 'symbol'), (61, 'caps')]:
             if meta in kws:
                 self.image(x+dx, 0, '%s_%d' % (meta, kws[meta]))
 

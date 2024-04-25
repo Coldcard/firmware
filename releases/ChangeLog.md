@@ -46,6 +46,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
+- Enhancement: Status bar text sharper now.
 
 
 # Release History

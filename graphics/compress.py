@@ -87,7 +87,8 @@ def make_icons():
     except:
         raise
 
-    sm_font = ImageFont.truetype(FONT_PATH + 'iosevka-heavy.ttf')
+    # use a bitmap font for best readability
+    sm_font = ImageFont.load('ter-powerline-x12b.pil')
 
     targets = [
         #( 'brand', True, 'Q', dict(col='#ffb000') ),
