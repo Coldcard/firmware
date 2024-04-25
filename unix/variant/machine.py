@@ -5,8 +5,11 @@ UNSPEC = object()
 
 class Pin:
     def __init__(self, name, *a, **kw):
+        default = 0
+        if name == "SD_DETECT" and not version.has_qwerty:
+            default = 1
         self.name = name
-        self.cur_value = int(kw.get('value', 0 if version.has_qwerty else 1))
+        self.cur_value = int(kw.get('value', default))
         self.value(self.cur_value)
 
     def on(self):
