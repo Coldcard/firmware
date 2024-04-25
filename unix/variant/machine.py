@@ -1,11 +1,12 @@
 from mock import Mock
+import version
 
 UNSPEC = object()
 
 class Pin:
     def __init__(self, name, *a, **kw):
         self.name = name
-        self.cur_value = int(kw.get('value', 0))
+        self.cur_value = int(kw.get('value', 0 if version.has_qwerty else 1))
         self.value(self.cur_value)
 
     def on(self):
