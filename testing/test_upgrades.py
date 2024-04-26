@@ -24,7 +24,7 @@ def upload_file(dev):
             assert chk == hashlib.sha256(data[0:pos+pkt_len]).digest(), 'bad hash'
     return doit
 
-@pytest.fixture()
+@pytest.fixture
 def make_firmware():
     def doit(hw_compat, fname='../stm32/firmware-signed.bin', outname='tmp-firmware.bin'):
         # os.system(f'signit sign 3.0.99 --keydir ../stm32/keys -r {fname} -o {outname} --hw-compat=0x{hw_compat:02x}')
@@ -50,7 +50,7 @@ def make_firmware():
     return doit
 
 @pytest.fixture
-def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress, microsd_path, sim_exec):
+def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, press_select, microsd_path, sim_exec):
 
     # send a firmware file over the microSD card
 
@@ -77,10 +77,6 @@ def upgrade_by_sd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypr
         pick_menu_item('From MicroSD')
 
         time.sleep(.1)
-        _, story = cap_story()
-        assert 'Pick firmware image to use' in story
-        need_keypress('y')
-        time.sleep(.1)
             
         pick_menu_item(os.path.basename(dfu))
 
@@ -99,8 +95,11 @@ def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware,
 
     # manually: run this test on all Mark1 thru 3 simulators
     hw_label = eval(sim_eval('version.hw_label'))
-    assert hw_label[0:2] == 'mk'
-    mkn = int(hw_label[2])
+    assert hw_label[0:2] in ['mk', 'q1']
+    try:
+        mkn = int(hw_label[2])
+    except IndexError:
+        mkn = "q1"  # q1
 
     print(f"Simulator is {hw_label}")
 
@@ -108,6 +107,9 @@ def test_hacky_upgrade(mode, cap_story, transport, dev, sim_exec, make_firmware,
         data = make_firmware(mkn)
     elif mode == 'incompat':
         with pytest.raises(RuntimeError) as err:
+            if mkn == "q1":
+                mkn = 4
+
             make_firmware(mkn-1)
         assert "too big for our USB upgrades" in str(err)
         return

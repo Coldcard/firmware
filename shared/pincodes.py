@@ -283,14 +283,18 @@ class PinAttempt:
         assert 1 <= len(pin_prefix) <= MAX_PIN_LEN, len(pin_prefix)
         global _word_cache
 
-        if version.has_608:
-            for k,v in _word_cache:
-                if pin_prefix == k:
-                    return v
+        for k,v in _word_cache:
+            if pin_prefix == k:
+                return v
 
-        buf = bytearray(pin_prefix + b'\0'*MAX_PIN_LEN)
-        err = ckcc.gate(16, buf, len(pin_prefix))
-        if err:
+        for retry in range(3):
+            buf = bytearray(pin_prefix + b'\0'*MAX_PIN_LEN)
+            err = ckcc.gate(16, buf, len(pin_prefix))
+            if not err:
+                break
+            if err == 5:        # EIO
+                # serial comm error; can be noise.
+                continue
             raise RuntimeError(err)
 
         # use just 22 bits of that
@@ -300,19 +304,12 @@ class PinAttempt:
 
         rv = wordlist_en[w1], wordlist_en[w2]
 
-        if version.has_608:
-            # MRU: keep only a few
-            if len(_word_cache) > 4:
-                _word_cache.pop()
-            _word_cache.insert(0, (pin_prefix, rv))
+        # MRU: keep only a few
+        if len(_word_cache) > 4:
+            _word_cache.pop()
+        _word_cache.insert(0, (pin_prefix, rv))
 
         return rv
-
-    def is_delay_needed(self):
-        # obsolete starting w/ mk3 and values re-used for other stuff
-        if version.has_608:
-            return False
-        return self.delay_achieved < self.delay_required
 
     def is_blank(self):
         # device has no PIN at this point
@@ -326,11 +323,8 @@ class PinAttempt:
         assert self.is_successful()
         return bool(self.state_flags & PA_ZERO_SECRET)
 
-    # Mk1/2/3 concepts, not used in Mk4
-    def has_duress_pin(self):
-        return bool(self.state_flags & PA_HAS_DURESS)
-    def has_brickme_pin(self):
-        return bool(self.state_flags & PA_HAS_BRICKME)
+    def has_secrets(self):
+        return not self.is_secret_blank() or self.tmp_value
 
     def reset(self):
         # start over, like when you commit a new seed
@@ -424,8 +418,7 @@ class PinAttempt:
         # Main secret has changed: reset the settings+their key,
         # and capture xfp/xpub
         # if None is provided as raw_secret -> restore to main seed
-        import nvstore
-        from glob import settings
+        from glob import settings, dis
         stash.SensitiveValues.clear_cache()
 
         bypass_tmp = False
@@ -464,17 +457,16 @@ class PinAttempt:
                 if raw_secret is None:
                     # restore to main wallet's settings
                     settings.return_to_master_seed()
+                    xfp = settings.get("xfp", 0)
+                    dis.draw_status(xfp=xfp, tmp=0, bip39=0)
                 else:
-                    sv.capture_xpub()
+                    xfp = sv.capture_xpub()
+                    dis.draw_status(xfp=xfp)
 
             settings.merge_previous_active(old_values)
 
         except stash.ZeroSecretException:
-            # secret is zero - using ephemeral secrets in CC
-            # with no se2 secret
-            settings.nvram_key = b'\0'*32
-            settings.load()
-            self.state_flags |= PA_ZERO_SECRET
+            settings.return_to_master_seed()
 
     def tmp_secret(self, encoded, chain=None, bip39pw=''):
         # Use indicated secret and stop using the SE; operate like this until reboot
@@ -490,7 +482,7 @@ class PinAttempt:
         if encoded is not None:
             # disallow using master seed as temporary
             master_err = "Cannot use master seed as temporary."
-            target_nvram_key = settings.hash_key(encoded)
+            target_nvram_key = settings.hash_key(val)
             if SettingsObject.master_nvram_key:
                 assert self.tmp_value
                 if target_nvram_key == SettingsObject.master_nvram_key:
@@ -505,13 +497,14 @@ class PinAttempt:
 
         self.tmp_value = val
 
-        # We're no longer blank. hard to say about duress secret and stuff tho
-        self.state_flags = PA_SUCCESSFUL
-
         # Copies system settings to new encrypted-key value, calculates
         # XFP, XPUB and saves into that, and starts using them.
         self.new_main_secret(self.tmp_value, chain=chain, bip39pw=bip39pw,
                              target_nvram_key=target_nvram_key)
+
+        # On Q1, update status icons
+        from glob import dis
+        dis.draw_status(bip39=1 if bip39pw else 0, tmp=1)
 
         return True, None
 

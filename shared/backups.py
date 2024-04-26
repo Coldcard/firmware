@@ -17,7 +17,8 @@ from pincodes import pa
 num_pw_words = const(12)
 
 # max size we expect for a backup data file (encrypted or cleartext)
-MAX_BACKUP_FILE_SIZE = const(10000)     # bytes
+# - limited by size of LFS area of flash, since all settings are held there
+MAX_BACKUP_FILE_SIZE = const(128*1024)     # bytes
 
 def render_backup_contents(bypass_tmp=False):
     # simple text format: 
@@ -88,7 +89,9 @@ def render_backup_contents(bypass_tmp=False):
     ADD('fw_date', date)
     ADD('fw_version', vers)
     ADD('fw_timestamp', timestamp)
+    COMMENT('Coldcard Hardware')
     ADD('serial', version.serial_number())
+    ADD('hardware', version.hw_label)
 
     COMMENT('User preferences')
 
@@ -104,9 +107,10 @@ def render_backup_contents(bypass_tmp=False):
         if k == 'seeds' and not v: continue
         ADD('setting.' + k, v)
 
-    import hsm
-    if hsm.hsm_policy_available():
-        ADD('hsm_policy', hsm.capture_backup())
+    if version.supports_hsm:
+        import hsm
+        if hsm.hsm_policy_available():
+            ADD('hsm_policy', hsm.capture_backup())
 
     rv.write('\n# EOF\n')
 
@@ -155,6 +159,8 @@ def restore_from_dict_ll(vals):
     # - low-level version, factored out for better testing
     from glob import dis
 
+    need_ftux = False
+
     #print("Restoring from: %r" % vals)
     chain = chains.get_chain(vals.get('chain', 'BTC'))
 
@@ -162,17 +168,20 @@ def restore_from_dict_ll(vals):
         raw = extract_raw_secret(chain, vals)
     except Exception as e:
         return ('Unable to decode raw_secret and '
-                                'restore the seed value!\n\n\n'+str(e))
+                'restore the seed value!\n\n\n'+str(e)), None
 
     dis.fullscreen("Saving...")
-    dis.progress_bar_show(.25)
+    dis.progress_bar_show(.1)
 
     # clear (in-memory) settings and change also nvram key
     # - also captures xfp, xpub at this point
     pa.change(new_secret=raw)
+    dis.progress_bar_show(.25)
 
     # force the right chain
     pa.new_main_secret(raw, chain)         # updates xfp/xpub
+    pb = .45  # last Progress Bar value
+    dis.progress_bar_show(pb)
 
     # NOTE: don't fail after this point... they can muddle thru w/ just right seed
     ls = extract_long_secret(vals)
@@ -182,14 +191,18 @@ def restore_from_dict_ll(vals):
         except Exception as exc:
             sys.print_exception(exc)
             # but keep going
+        pb = .70
+        dis.progress_bar_show(pb)
 
     # if sd2fa is encountered during backup restore - purge it
     settings.remove_key("sd2fa")
 
     # restore settings from backup file
     vals_len = len(vals)
-    for idx, key in enumerate(vals):
-        dis.progress_bar_show(idx / vals_len)
+    g = (1-pb) / vals_len
+    for key in vals:
+        pb += g
+        dis.progress_bar_show(pb)
         if not key[:8] == "setting.":
             continue
 
@@ -213,14 +226,40 @@ def restore_from_dict_ll(vals):
             # saving into settings
             continue
 
+        if k == 'notes' and not version.has_qwerty:
+            # Secure notes only supported on keyboard-equiped units
+            continue
+
+        # possible that user arrived into already set-up settings
+        # that he maybe used as an ephemeral before - we need to set
+        # proper values wrt HW switches
+        if k == 'du':
+            # inverted (Disable Usb)
+            if not vals[key]:
+                vals[key] = 1
+                need_ftux = True
+
+        if k in ('nfc', 'vidsk'):
+            if vals[key]:
+                vals[key] = 0
+                need_ftux = True
+
         settings.set(k, vals[key])
+
+    if not settings.get("du", None):
+        # settings.set("du", 1)
+        # above will be done in ftux
+        need_ftux = True
 
     # write out
     settings.save()
+    dis.progress_bar_show(1)
 
-    if 'hsm_policy' in vals:
+    if version.supports_hsm and ('hsm_policy' in vals):
         import hsm
         hsm.restore_backup(vals['hsm_policy'])
+
+    return None, need_ftux
 
 async def restore_tmp_from_dict_ll(vals):
     from glob import dis
@@ -251,8 +290,13 @@ async def restore_from_dict(vals):
     # Restore from a dict of values. Already JSON decoded (ie. dict object).
     # Need a Reboot on success, return string on failure
 
-    prob = restore_from_dict_ll(vals)
+    prob, need_ftux = restore_from_dict_ll(vals)
     if prob: return prob
+
+    if need_ftux:
+        from ftux import FirstTimeUX
+        # do not Welcome them as we are pre-reboot now
+        await FirstTimeUX().interact(title=None)
 
     await ux_show_story('Everything has been successfully restored. '
             'We must now reboot to install the '
@@ -369,21 +413,18 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False,
 
         hdr, footer = zz.save(fname)
 
-        filesize = len(body) + MAX_BACKUP_FILE_SIZE
-
         del body
 
         gc.collect()
     else:
         # cleartext dump
         zz = None
-        filesize = len(body)+10
 
     if write_sflash:
-        # for use over USB and unit testing: commit file into SPI flash
+        # for use over USB and unit testing: commit file into PSRAM
         from sffile import SFFile
 
-        with SFFile(0, max_size=filesize, message='Saving...') as fd:
+        with SFFile(0, max_size=MAX_BACKUP_FILE_SIZE, message='Saving...') as fd:
             await fd.erase()
 
             if zz:
@@ -428,7 +469,7 @@ async def write_complete_backup(words, fname_pattern, write_sflash=False,
             while 1:
                 msg = '''Backup file written:\n\n%s\n\n\
 To view or restore the file, you must have the full password.\n\n\
-Insert another SD card and press 2 to make another copy.''' % nice
+Insert another SD card and press (2) to make another copy.''' % nice
     
                 ch = await ux_show_story(msg, escape='2')
 
@@ -496,6 +537,10 @@ async def restore_complete(fname_or_fd, temporary=False):
         if prob:
             await ux_show_story(prob, title='FAILED')
 
+    if version.has_qwerty:
+        from ux_q1 import seed_word_entry
+        return await seed_word_entry('Enter Password:', num_pw_words,
+                                     done_cb=done, has_checksum=False)
     # give them a menu to pick from, and start picking
     m = seed.WordNestMenu(num_words=num_pw_words, has_checksum=False, done_cb=done)
 
@@ -605,7 +650,7 @@ file with an ephemeral public key will be written.''')
     
     # Wait for incoming clone file, allow retries
     ch = await ux_show_story('''Keep power on this Coldcard, and take MicroSD card \
-to source Coldcard. Select Advanced > MicroSD > Clone Coldcard to write to card. Bring that card \
+to source Coldcard. Select Advanced/Tools > Backup > Clone Coldcard to write to card. Bring that card \
 back and press OK to complete clone process.''')
 
     while 1:

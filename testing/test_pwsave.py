@@ -3,7 +3,7 @@
 # tests for ../shared/pwsave.py
 #
 import pytest, time, os, shutil
-from test_ux import word_menu_entry, enter_complex
+from test_ux import word_menu_entry
 from binascii import a2b_hex
 from constants import simulator_fixed_tprv
 
@@ -20,20 +20,6 @@ def set_pw_phrase(pick_menu_item, word_menu_entry):
     return doit
 
 
-@pytest.fixture
-def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
-    # drill to the enter passphrase menu
-    def doit():
-        goto_home()
-        pick_menu_item('Passphrase')
-
-        _, story = cap_story()
-        if 'your BIP-39 seed words' in story:
-            time.sleep(.01); need_keypress('y'); time.sleep(.01)      # skip warning
-
-    return doit
-
-
 @pytest.mark.parametrize('pws', [
         'abc abc def def 123',
         '1 2 3',
@@ -46,7 +32,7 @@ def get_to_pwmenu(cap_story, need_keypress, goto_home, pick_menu_item):
         'ab'*25,
     ])
 def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex,
-                    cap_menu, get_to_pwmenu, reset_seed_words):
+                    cap_menu, go_to_passphrase, reset_seed_words, press_select):
     try:    os.unlink(SIM_FNAME)
     except: pass
 
@@ -58,23 +44,20 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
         if pw not in uniq:
             uniq.append(pw)
 
-        get_to_pwmenu()
-
-        enter_complex(pw)
-
-        pick_menu_item('APPLY')
+        go_to_passphrase()
+        enter_complex(pw, apply=True)
 
         time.sleep(.01)
         title, story = cap_story()
         xfp = title[1:-1]
-        assert '(1) to use and save to MicroSD' in story
+        assert '(1) to apply and save to MicroSD' in story
 
         need_keypress('1')
         xfps[pw] = xfp
         reset_seed_words()
 
     for n, pw in enumerate(uniq):
-        get_to_pwmenu()
+        go_to_passphrase()
 
         pick_menu_item('Restore Saved')
 
@@ -99,7 +82,7 @@ def test_first_time(pws, need_keypress, cap_story, pick_menu_item, enter_complex
         xfp = title[1:-1]
 
         assert xfp == xfps[uniq[n]]
-        need_keypress('y')
+        press_select()
         reset_seed_words()
 
 
@@ -155,17 +138,17 @@ p=PassphraseSaver(); p._calc_key(cs); RV.write(b2a_hex(p.key)); cs.__exit__()'''
     assert j[0]['pw']
     assert j[0]['xfp']
 
-def test_delete_one_by_one(get_to_pwmenu, pick_menu_item, cap_menu,
-                           cap_story, need_keypress):
+def test_delete_one_by_one(go_to_passphrase, pick_menu_item, cap_menu,
+                           cap_story, press_select):
     # delete it one by one
     # when all deleted - we must be back in Passphrase
     # menu without Restore Saved option visible
-    get_to_pwmenu()
+    go_to_passphrase()
     time.sleep(.1)
     m = cap_menu()
     if 'Restore Saved' not in m:
         shutil.copy2('data/pwsave.tmp', '../unix/work/MicroSD/.tmp.tmp')
-        get_to_pwmenu()
+        go_to_passphrase()
     pick_menu_item('Restore Saved')
     m = cap_menu()
     len_m = len(m)
@@ -175,7 +158,7 @@ def test_delete_one_by_one(get_to_pwmenu, pick_menu_item, cap_menu,
         time.sleep(.1)
         _, story = cap_story()
         assert "Delete saved passphrase?" in story
-        need_keypress("y")
+        press_select()
         mm = cap_menu()
         if i == (len_m - 1):
             # last item - back to passphrase menu

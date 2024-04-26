@@ -11,6 +11,8 @@ from struct import pack, unpack
 import ndef
 from hashlib import sha256
 from txn import *
+from charcodes import KEY_NFC
+
     
 @pytest.mark.parametrize('case', range(6))
 def test_ndef(case, load_shared_mod):
@@ -145,14 +147,16 @@ def test_ndef_ccfile(ccfile, load_shared_mod):
 
 
 @pytest.fixture
-def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, nfc_read, nfc_write, nfc_block4rf):
+def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress,
+                 sim_exec, nfc_read, nfc_write, nfc_block4rf, press_select,
+                 press_cancel, press_nfc):
 
     # like "try_sign" but use NFC to send/receive PSBT/results
 
     sim_exec('from pyb import SDCard; SDCard.ejected = True; import nfc; nfc.NFCHandler.startup()')
 
-    def doit(f_or_data, accept=True, expect_finalize=False, accept_ms_import=False, complete=False, encoding='binary', over_nfc=True):
-
+    def doit(f_or_data, accept=True, expect_finalize=False, accept_ms_import=False,
+             complete=False, encoding='binary', over_nfc=True):
 
         if f_or_data[0:5] == b'psbt\xff':
             ip = f_or_data
@@ -198,7 +202,7 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
         _, story = cap_story()
         assert 'NFC' in story
 
-        need_keypress('3')
+        press_nfc()
         time.sleep(.1)
         nfc_write(ccfile)
             
@@ -206,14 +210,17 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
         
         if accept_ms_import:
             # would be better to do cap_story here
-            need_keypress('y')
+            press_select()
             time.sleep(0.050)
 
         title, story = cap_story()
         assert title == 'OK TO SEND?'
 
         if accept != None:
-            need_keypress('y' if accept else 'x')
+            if accept:
+                press_select()
+            else:
+                press_cancel()
 
         if accept == False:
             time.sleep(0.050)
@@ -235,14 +242,14 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
             if 'Final TXID:' in lines:
                 txid = lines[-1]
 
-            need_keypress('3')
+            press_nfc()
             time.sleep(.1)
             contents = nfc_read()
-            need_keypress('y')
+            press_select()
         else:
             nfc_block4rf()
             contents = nfc_read()
-            need_keypress('y')
+            press_select()
             txid = None
 
         got_txid = None
@@ -320,7 +327,8 @@ def try_sign_nfc(cap_story, pick_menu_item, goto_home, need_keypress, sim_exec, 
     sim_exec('from pyb import SDCard; SDCard.ejected = False')
 
 @pytest.mark.parametrize('num_outs', [ 1, 20, 250])
-def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_story, only_mk4):
+def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress,
+                   cap_story, is_q1, press_nfc, press_cancel):
     # Read signing result (transaction) over NFC, decode it.
     psbt = fake_txn(1, num_outs)
     orig, result = try_sign(psbt, accept=True, finalize=True)
@@ -334,8 +342,9 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
     title, story = cap_story()
     assert 'TXID' in title, story
     txid = a2b_hex(story.split()[0])
-    assert 'Press (3)' in story
-    need_keypress('3')
+    assert f'Press {KEY_NFC if is_q1 else "(3)"}' in story
+    press_nfc()
+    time.sleep(.2)
 
     if too_big:
         title, story = cap_story()
@@ -343,13 +352,13 @@ def test_nfc_after(num_outs, fake_txn, try_sign, nfc_read, need_keypress, cap_st
         return
 
     contents = nfc_read()
-    #need_keypress('x')
+    press_cancel()
 
     #print("contents = " + B2A(contents))
     for got in ndef.message_decoder(contents):
         if got.type == 'urn:nfc:wkt:T':
             assert 'Transaction' in got.text
-            assert b2a_hex(txid).decode() in got.text
+            assert txid.hex() in got.text
         elif got.type == 'urn:nfc:ext:bitcoin.org:txid':
             assert got.data == txid
         elif got.type == 'urn:nfc:ext:bitcoin.org:txn':

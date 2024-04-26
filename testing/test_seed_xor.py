@@ -51,7 +51,7 @@ def random_test_cases():
 def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
                      choose_by_word_length, need_keypress, get_secrets,
                      word_menu_entry, verify_ephemeral_secret_ui,
-                     confirm_tmp_seed, seed_vault_enable):
+                     confirm_tmp_seed, seed_vault_enable, press_select):
     def doit(parts, expect, incl_self=False, save_to_vault=False,
              is_master_tmp_fail=False):
         if expect is None:
@@ -89,7 +89,7 @@ def restore_seed_xor(set_seed_words, goto_home, pick_menu_item, cap_story,
             assert '(1) to include this Coldcard' in body
             need_keypress('1')
         else:
-            need_keypress('y')
+            press_select()
 
         for n, part in enumerate(parts):
             if n == 0 and incl_self:
@@ -169,12 +169,12 @@ def test_import_xor_zeros_ones(incl_self, parts, expect, restore_seed_xor):
                      is_master_tmp_fail=True if incl_self else False)
 
 
-
 @pytest.mark.parametrize('num_words', [12, 18, 24])
 @pytest.mark.parametrize('qty', [2, 3, 4])
 @pytest.mark.parametrize('trng', [False, True])
 def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, need_keypress,
-                   cap_menu, get_secrets, pass_word_quiz, set_seed_words):
+                   cap_menu, get_secrets, pass_word_quiz, set_seed_words, press_select,
+                   seed_story_to_words, is_q1):
 
     set_seed_words(proper[num_words])
 
@@ -198,18 +198,30 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
     assert f"Split Into {qty} Parts" in body
     # assert f"{qty*24} words" in body
 
-    need_keypress('2' if trng else 'y')
+    if trng:
+        need_keypress('2')
+    else:
+        press_select()
+
     time.sleep(.01)
     title, body = cap_story()
 
     assert f'Record these {qty} lists of {num_words}-words' in body
     assert all((f'Part {chr(n+65)}:' in body) for n in range(qty))
-    
-    words = [ln[4:] for ln in body.split('\n') if ln[2:4] == ': ']
-    assert len(words) == (num_words * qty) + 1  # check word
 
-    chk_word = words[-1]
-    parts = [words[pos:pos+num_words] for pos in range(0, num_words*qty, num_words)]
+    if is_q1:
+        *prts, _, chk_prt, _ = body.split("\n\n")
+        parts = [seed_story_to_words(prt) for prt in prts]
+        assert len(parts) == qty
+        assert all(len(prt) == num_words for prt in parts)
+        chk_word = seed_story_to_words(chk_prt)[0]
+        assert chk_word
+    else:
+        words = [ln[4:] for ln in body.split('\n') if ln[2:4] == ': ']
+        parts = [words[pos:pos + num_words] for pos in range(0, num_words * qty, num_words)]
+
+        assert len(words) == (num_words * qty) + 1  # check word
+        chk_word = words[-1]
 
     expect = get_secrets()['mnemonic'].split()
     assert expect[-1] == chk_word
@@ -240,9 +252,9 @@ def test_xor_split(num_words, qty, trng, goto_home, pick_menu_item, cap_story, n
     assert 'Quiz Passed' in body
 
 @pytest.mark.parametrize('num_words', [12, 18, 24])
-def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_keypress, cap_menu,
+def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_keypress,
                          get_secrets, word_menu_entry, reset_seed_words, set_seed_words,
-                         choose_by_word_length):
+                         choose_by_word_length, press_select, cap_menu):
 
     set_seed_words(proper[num_words])
 
@@ -266,7 +278,7 @@ def test_import_zero_set(num_words, goto_home, pick_menu_item, cap_story, need_k
     title, body = cap_story()
     assert 'you have a seed already' in body
     assert '(1) to include this Coldcard' in body
-    need_keypress('y')
+    press_select()
 
     #time.sleep(0.01)
     for n in range(2):

@@ -2,7 +2,7 @@
 #
 # Mk4 Virtual Disk related tests.
 #
-import pytest, glob, re, time, random
+import pytest, glob, re, time
 from binascii import b2a_hex, a2b_hex
 import ndef
 from hashlib import sha256
@@ -28,7 +28,7 @@ def test_vd_basics(dev, virtdisk_path, is_simulator):
     assert os.path.isfile(virtdisk_path(f'ident/ckcc-{sn}.txt'))
 
 @pytest.fixture
-def try_sign_virtdisk(need_keypress, virtdisk_path, cap_story, virtdisk_wipe):
+def try_sign_virtdisk(press_select, virtdisk_path, cap_story, virtdisk_wipe, press_cancel):
 
     # like "try_sign" but use Virtual Disk to send/receive PSBT/results
     # - on real dev, need user to manually say yes ... alot
@@ -66,13 +66,16 @@ def try_sign_virtdisk(need_keypress, virtdisk_path, cap_story, virtdisk_wipe):
         xfn = virtdisk_path('testcase.psbt')
         open(xfn, 'wb').write(ip)
 
-        need_keypress('y')      # ready to sign (hopefully)
+        press_select()      # ready to sign (hopefully)
 
         # CC scans drive, reads PSBT, verifies...
         time.sleep(1)
 
         # approve siging txn
-        need_keypress('y' if accept else 'x')
+        if accept:
+            press_select()
+        else:
+            press_cancel()
 
         if accept == False:
             time.sleep(0.050)
@@ -83,7 +86,7 @@ def try_sign_virtdisk(need_keypress, virtdisk_path, cap_story, virtdisk_wipe):
         # wait for it to finish signing
         title, story = cap_story()
         if "OK TO SEND" in title or "PSBT Signed" in title:
-            need_keypress('y')
+            press_select()
 
         result_fn = xfn.replace('.psbt', '-*.psbt')
         result_txn = xfn.replace('.psbt', '.txn')
@@ -172,8 +175,9 @@ def try_sign_virtdisk(need_keypress, virtdisk_path, cap_story, virtdisk_wipe):
 @pytest.mark.parametrize('encoding', ['binary', 'hex', 'base64'])
 @pytest.mark.parametrize('num_outs', [1,2])
 @pytest.mark.parametrize('partial', [1, 0])
-def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_txn, dev):
+def test_virtdisk_signing(encoding, num_outs, partial, try_sign_virtdisk, fake_txn, dev, sd_cards_eject):
     xp = dev.master_xpub
+    sd_cards_eject()
 
     def hack(psbt):
         if partial:
@@ -251,8 +255,10 @@ def test_macos_detection():
 
 @pytest.mark.parametrize('multiple_runs', range(3))
 @pytest.mark.parametrize('testnet', [True, False])
-def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress, unit_test, cap_menu, get_secrets,
-                    multiple_runs, reset_seed_words, virtdisk_path, virtdisk_wipe, settings_set):
+def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress,
+                             unit_test, cap_menu, get_secrets, multiple_runs,
+                             reset_seed_words, virtdisk_path, virtdisk_wipe,
+                             settings_set, press_select):
     # copied from test_ux as we need vdisk enabled and card ejected
     if testnet:
         netcode = "XTN"
@@ -260,6 +266,7 @@ def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress, 
     else:
         netcode = "BTC"
         settings_set('chain', 'XTN')
+
     unit_test('devtest/clear_seed.py')
 
     fname = 'test-%d.txt' % os.getpid()
@@ -283,12 +290,7 @@ def test_import_prv_virtdisk(testnet, pick_menu_item, cap_story, need_keypress, 
     title, body = cap_story()
     assert "press (2) to import from Virtual Disk" in body
     need_keypress("2")
-    time.sleep(0.2)
-    title, body = cap_story()
-    assert 'Select file' in body
-    need_keypress('y')
     time.sleep(.01)
-
     pick_menu_item(fname)
     unit_test('devtest/abort_ux.py')
 

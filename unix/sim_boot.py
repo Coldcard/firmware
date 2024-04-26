@@ -2,8 +2,9 @@
 #
 # Code for the simulator to run, to get it to the point where main.py is called
 # on real system. Equivilent to a few lines of code found in stm32/COLDCARD/initfs.c
+#
 
-import machine, pyb, sys, os
+import machine, pyb, sys
 
 if '--metal' in sys.argv:
     # next in argv will be two open file descriptors to use for serial I/O to a real Coldcard
@@ -29,9 +30,14 @@ if '--sflash' not in sys.argv:
 
         #glob.settings.current = dict(sim_defaults)
 
-# Install Mk4 hacks and workarounds
+if '--early-usb' in sys.argv:
+    from usb import enable_usb
+    enable_usb()
+
+# Install various hacks and workarounds
 import mk4
 import sim_mk4
+import sim_battery
 import sim_psram
 import sim_vdisk
 

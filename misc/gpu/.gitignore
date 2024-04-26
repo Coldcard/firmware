@@ -1,0 +1,10 @@
+
+# build products, see Makefile:
+gpu.lss
+gpu.sym
+gpu.bin.tmp
+
+checksums.txt
+version-full.txt
+version.txt
+

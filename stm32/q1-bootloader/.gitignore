@@ -1,0 +1,12 @@
+# build products, see Makefile:
+bootloader.lss
+bootloader.sym
+bootloader.dfu
+bootloader.bin.tmp
+checksums.txt
+version-full.txt
+version.txt
+
+# dev shortcut
+H
+I

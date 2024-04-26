@@ -33,7 +33,7 @@ def read_text(fname):
 def read_img(fn):
     img = Image.open(fn)
     w,h = img.size
-    assert 1 <= w < 128, w
+    assert 1 <= w < 128, (w, fn)
 
     img = img.convert('L')
     # fix colour issues: assume minority colour is white (1)
@@ -88,7 +88,7 @@ class Graphics:
         assert img.mode == '1'
         #img.show()
 
-        varname = fn.split('.')[0].replace('-', '_')
+        varname = fn.split('/')[-1].split('.')[0].replace('-', '_')
 
         w,h = img.size
         raw = img.tobytes()

@@ -3,9 +3,10 @@
 
 _This document applies only to the Mk4. Earlier COLDCARDs did not use this approach._
 
-On the new Mk4 COLDCARD, we have done away with the slow external
-SPI flash (serial flash) chip entirely. In it's place we use a much
-faster and huge 64 Mbit PSRAM chip (quad SPI RAM chip: ESP-PSRAM64H).
+On the COLDCARD, we have done away with the slow external SPI flash
+(serial flash) chip entirely (used in Mk1-Mk3). In it's place we
+use a much faster and huge 64 Mbit PSRAM chip (quad SPI RAM chip:
+ESP-PSRAM64H).
 
 This chip is volatile and forgets its contents at power down.
 
@@ -14,7 +15,7 @@ can be a problem during firmware upgrades. This document explains
 how we've solved the risks of firmware upgrades and possible bricking
 that can happen with power fails at just the wrong time.
 
-## Firmware Upgrade Process on Mk4
+## Firmware Upgrade Process
 
 Steps:
 
@@ -79,7 +80,7 @@ to main flash. The PSRAM will forget it's contents, and the COLDCARD
 no longer has a complete copy of firmware anywhere.
 
 Most products would be a "brick" at this point, and the docs would
-warn against power fails during upgrade.  However, the Mk4 can read
+warn against power fails during upgrade.  However, the COLCARD can read
 SD Cards to load replacement firmware. The card does not need to
 be specially prepared, but we recommend erasing it, formating with
 FAT32 and then copying just the firmware onto the card.

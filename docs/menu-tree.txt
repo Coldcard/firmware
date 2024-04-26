@@ -2,24 +2,6 @@
   Choose PIN Code
   Advanced/Tools
     View Identity
-    Temporary Seed
-      Generate Words
-        12 Words
-        24 Words
-        12 Word Dice Roll
-        24 Word Dice Roll
-      Import Words
-        12 Words
-        18 Words
-        24 Words
-        Import via NFC
-      Import XPRV
-      Tapsigner Backup
-    Upgrade Firmware
-      Show Version
-      From MicroSD
-      From VirtDisk [IF VIRTDISK ENABLED]
-      Bless Firmware
     Paper Wallets
     Perform Selftest
     Secure Logout
@@ -31,15 +13,18 @@
   New Seed Words
     12 Words
     24 Words
-    12 Word Dice Roll
-    24 Word Dice Roll
+    Advanced
+      12 Word Dice Roll
+      24 Word Dice Roll
+  Migrate COLDCARD
   Import Existing
     12 Words
-      [SEED WORD MENUS]
+    [SEED WORD ENTRY]
     18 Words
-      [SEED WORD MENUS]
+    [SEED WORD ENTRY]
     24 Words
-      [SEED WORD MENUS]
+    [SEED WORD ENTRY]
+    Scan QR Code [IF QR SCANNER]
     Restore Backup
     Clone Coldcard
     Import XPRV
@@ -54,18 +39,19 @@
         24 Words
         12 Word Dice Roll
         24 Word Dice Roll
+      Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words
         18 Words
         24 Words
-        Import via NFC
+        Import via NFC [IF NFC ENABLED]
       Import XPRV
       Tapsigner Backup
-    Upgrade Firmware
+      Coldcard Backup
+    Upgrade Firmware [IF NOT TMP SEED]
       Show Version
       From MicroSD
       From VirtDisk [IF VIRTDISK ENABLED]
-      Bless Firmware
     File Management
       Verify Backup
       List Files
@@ -77,19 +63,14 @@
     Perform Selftest
     I Am Developer.
       Serial REPL
-      Wipe LFS
       Warm Reset
       Restore Txt Bkup
     Secure Logout
   Settings
     Login Settings
       Change Main PIN
-      Trick PINs
-        Add New Trick
-        Add If Wrong
-        Delete All
       Set Nickname
-      Scramble Keypad
+      Scramble Keys
       Kill Key
       Login Countdown
         Disabled
@@ -106,10 +87,13 @@
          3 days
          1 week
         28 days later
-      MicroSD 2FA [MAYBE]
+      MicroSD 2FA [IF SECRET AND NOT TMP SEED]
         Add Card
         Check Card
         Remove Card #1
+      Calculator Login [IF QWERTY KEYBOARD]
+        Default Off
+        Calculator Login
       Test Login Now
     Hardware On/Off
       USB Port
@@ -122,23 +106,6 @@
       NFC Sharing
         Default Off
         Enable NFC
-    Multisig Wallets
-      2/2: core2of2_native
-        "core2of2_native"
-        View Details
-        Delete
-        Coldcard Export
-        Descriptors
-          View Descriptor
-          Export
-          Bitcoin Core
-        Electrum Wallet
-      Import from File
-      Import via NFC [MAYBE]
-      Export XPUB
-      Create Airgapped
-      Trust PSBT?
-      Skip Checks?
     Display Units
       BTC
       mBTC
@@ -157,6 +124,25 @@
        4 hours
        8 hours
        Never
+    Idle Timeout (on battery) [IF BATTERIES]
+       30 seconds
+       60 seconds
+       2 minutes
+       5 minutes
+      10 minutes
+      15 minutes
+      30 minutes
+       1 hour
+       4 hours
+       Never
+    LCD Brightness (on battery) [IF BATTERIES]
+      25%
+      50%
+      60%
+      70%
+      80% (default)
+      90%
+      100%
     Delete PSBTs
       Default Keep
       Delete PSBTs
@@ -167,26 +153,68 @@
 
 [NORMAL OPERATION]
   Ready To Sign
-  Passphrase
+  Passphrase [IF WORD BASED SEED]
+    Restore Saved [MAYBE]
+      A***********
+        [0C52BAD4]
+        Restore
+        Delete
+    Edit Phrase [MAYBE]
+    Add Word [IF NOT QWERTY]
+      [SEED WORD MENUS]
+    Add Numbers [IF NOT QWERTY]
+    Clear All [IF NOT QWERTY]
+    APPLY [IF NOT QWERTY]
+    CANCEL [IF NOT QWERTY]
+  Scan Any QR Code [IF QR SCANNER]
   Start HSM Mode [IF HSM POLICY]
   Address Explorer
-  Type Passwords
-  Seed Vault
-    (none saved yet)
-    Temporary Seed
-      Generate Words
-        12 Words
-        24 Words
-        12 Word Dice Roll
-        24 Word Dice Roll
-      Import Words
-        12 Words
-        18 Words
-        24 Words
-        Import via NFC
-      Import XPRV
-      Tapsigner Backup
-  Secure Logout
+    Classic P2PKH
+     ↳ mtHSVByP9EYZ⋯Vm19gvpecb5R
+    P2SH-Segwit
+     ↳ 2NCAJ5wD4Gvm⋯NphNU8UYoEJv
+    Segwit P2WPKH
+     ↳ tb1qupyd58nd⋯vu9jtdyws9n9
+    Applications
+      Samourai
+        Post-mix
+        Pre-mix
+      Wasabi
+    Account Number
+    Custom Path
+    CC-2-of-4
+  Secure Notes & Passwords [IF ENBALED]
+    1: note1
+      "note1"
+      View Note
+      Edit
+      Delete
+      Export
+      SHORTCUT
+      SHORTCUT
+    2: nostr
+      "nostr"
+      ↳ scg
+      ↳ brb.io
+      View Password
+      Send Password [MAYBE]
+      Export
+      Edit Metadata
+      Delete
+      Change Password
+      SHORTCUT
+      SHORTCUT
+    New Note
+    New Password
+    Export All
+    Import
+  Type Passwords [MAYBE]
+  Seed Vault [MAYBE]
+    1: [B14E9AE0]
+      [B14E9AE0]
+      Use This Seed
+      Rename
+      Delete
   Advanced/Tools
     Backup
       Backup System
@@ -211,11 +239,10 @@
         Master XPUB
         Current XFP
       Dump Summary
-    Upgrade Firmware
+    Upgrade Firmware [IF NOT TMP SEED]
       Show Version
       From MicroSD
       From VirtDisk [IF VIRTDISK ENABLED]
-      Bless Firmware
     File Management
       Verify Backup
       Backup System
@@ -245,7 +272,32 @@
       Clone Coldcard
       Format SD Card
       Format RAM Disk [IF VIRTDISK ENABLED]
-    Derive Seed B85
+    Secure Notes & Passwords [IF QWERTY KEYBOARD]
+      1: note1
+        "note1"
+        View Note
+        Edit
+        Delete
+        Export
+        SHORTCUT
+        SHORTCUT
+      2: nostr
+        "nostr"
+        ↳ scg
+        ↳ brb.io
+        View Password
+        Send Password [MAYBE]
+        Export
+        Edit Metadata
+        Delete
+        Change Password
+        SHORTCUT
+        SHORTCUT
+      New Note
+      New Password
+      Export All
+      Import
+    Derive Seeds (BIP-85)
     View Identity
     Temporary Seed
       Generate Words
@@ -253,23 +305,25 @@
         24 Words
         12 Word Dice Roll
         24 Word Dice Roll
+      Import from QR Scan [IF QR SCANNER]
       Import Words
         12 Words
         18 Words
         24 Words
-        Import via NFC
+        Import via NFC [IF NFC ENABLED]
       Import XPRV
       Tapsigner Backup
+      Coldcard Backup
     Paper Wallets
-    Enable HSM
+    Enable HSM [IF HSM AND SECRET]
       Default Off
       Enable
-    User Management
-      (no users yet)
+    User Management [IF HSM AND SECRET]
     NFC Tools [IF NFC ENABLED]
       Show Address
       Sign Message
       Verify Sig File
+      Verify Address
       File Share
       Import Multisig
     Danger Zone
@@ -277,22 +331,23 @@
       Seed Functions
         View Seed Words
         Seed XOR
-          Split Existing
+          Split Existing [IF WORD BASED SEED]
           Restore Seed XOR
-        Destroy Seed
+        Destroy Seed [IF SECRET AND NOT TMP SEED]
         Lock Down Seed
+        Export SeedQR [IF WORD BASED SEED]
       I Am Developer.
         Serial REPL
-        Wipe LFS
         Warm Reset
         Restore Txt Bkup
-      Seed Vault
+      Seed Vault [IF SECRET]
         Default Off
         Enable
       Perform Selftest
       Set High-Water
       Wipe HSM Policy [IF HSM POLICY]
       Clear OV cache
+      Clear Address cache
       Sighash Checks
         Default: Block
         Warn
@@ -300,17 +355,31 @@
         Bitcoin
         Testnet3
         Regtest
+      AE Start IDX
+        Default Off
+        Enable
       Settings Space
       MCU Key Slots
+      Bless Firmware
+      Reflash GPU [IF QWERTY KEYBOARD]
+      Wipe LFS
   Settings
     Login Settings
       Change Main PIN
-      Trick PINs
+      Trick PINs [IF SECRET AND NOT TMP SEED]
+        Trick PINs:
+        ↳123-254
+          PIN 123-254
+          ↳Duress Wallet
+          Activate Wallet
+          Hide Trick
+          Delete Trick
+          Change PIN
         Add New Trick
         Add If Wrong
         Delete All
       Set Nickname
-      Scramble Keypad
+      Scramble Keys
       Kill Key
       Login Countdown
         Disabled
@@ -327,10 +396,13 @@
          3 days
          1 week
         28 days later
-      MicroSD 2FA [MAYBE]
+      MicroSD 2FA [IF SECRET AND NOT TMP SEED]
         Add Card
         Check Card
         Remove Card #1
+      Calculator Login [IF QWERTY KEYBOARD]
+        Default Off
+        Calculator Login
       Test Login Now
     Hardware On/Off
       USB Port
@@ -344,8 +416,8 @@
         Default Off
         Enable NFC
     Multisig Wallets
-      2/2: core2of2_native
-        "core2of2_native"
+      2/4: CC-2-of-4
+        "CC-2-of-4"
         View Details
         Delete
         Coldcard Export
@@ -355,7 +427,7 @@
           Bitcoin Core
         Electrum Wallet
       Import from File
-      Import via NFC [MAYBE]
+      Import via NFC [IF NFC ENABLED]
       Export XPUB
       Create Airgapped
       Trust PSBT?
@@ -378,6 +450,25 @@
        4 hours
        8 hours
        Never
+    Idle Timeout (on battery) [IF BATTERIES]
+       30 seconds
+       60 seconds
+       2 minutes
+       5 minutes
+      10 minutes
+      15 minutes
+      30 minutes
+       1 hour
+       4 hours
+       Never
+    LCD Brightness (on battery) [IF BATTERIES]
+      25%
+      50%
+      60%
+      70%
+      80% (default)
+      90%
+      100%
     Delete PSBTs
       Default Keep
       Delete PSBTs
@@ -387,12 +478,20 @@
     Keyboard EMU
       Default Off
       Enable
+  Secure Logout
+  SHORTCUT [IF NFC ENABLED]
+    Show Address
+    Sign Message
+    Verify Sig File
+    Verify Address
+    File Share
+    Import Multisig
 ---
 
 [FACTORY MODE]
+  Version: 5.x.x
   Bag Me Now
   DFU Upgrade
-  Show Version
   Ship W/O Bag
   Debug Functions
   Perform Selftest

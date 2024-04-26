@@ -13,7 +13,7 @@ from ubinascii import hexlify as b2a_hex
 from ubinascii import b2a_base64
 from auth import write_sig_file
 from utils import chunk_writer, xfp2str
-
+from charcodes import KEY_QR, KEY_NFC, KEY_CANCEL
 
 BIP85_PWD_LEN = 21
 
@@ -47,6 +47,7 @@ still backed-up.''')
         if not await ux_confirm(msg):
             return
 
+    # XXX any change in this ordering will break lots of stuff! Bad design.
     choices = [ '12 words', '18 words', '24 words', 'WIF (privkey)',
                 'XPRV (BIP-32)', '32-bytes hex', '64-bytes hex', 'Passwords']
 
@@ -60,27 +61,27 @@ def bip85_derive(picked, index):
         # BIP-39 seed phrases (we only support English)
         num_words = (12, 18, 24)[picked]
         width = (16, 24, 32)[picked]        # of bytes
-        path = "m/83696968'/39'/0'/{num_words}'/{index}'".format(num_words=num_words, index=index)
+        path = "m/83696968h/39h/0h/{num_words}h/{index}h".format(num_words=num_words, index=index)
         s_mode = 'words'
     elif picked == 3:
         # HDSeed for Bitcoin Core: but really a WIF of a private key, can be used anywhere
         s_mode = 'wif'
-        path = "m/83696968'/2'/{index}'".format(index=index)
+        path = "m/83696968h/2h/{index}h".format(index=index)
         width = 32
     elif picked == 4:
         # New XPRV
-        path = "m/83696968'/32'/{index}'".format(index=index)
+        path = "m/83696968h/32h/{index}h".format(index=index)
         s_mode = 'xprv'
         width = 64
     elif picked in (5, 6):
         width = 32 if picked == 5 else 64
-        path = "m/83696968'/128169'/{width}'/{index}'".format(width=width, index=index)
+        path = "m/83696968h/128169h/{width}h/{index}h".format(width=width, index=index)
         s_mode = 'hex'
     elif picked == 7:
         width = 64
         # hardcoded width for now
         # b"pwd".hex() --> 707764
-        path = "m/83696968'/707764'/{pwd_len}'/{index}'".format(pwd_len=BIP85_PWD_LEN, index=index)
+        path = "m/83696968h/707764h/{pwd_len}h/{index}h".format(pwd_len=BIP85_PWD_LEN, index=index)
         s_mode = 'pw'
     else:
         raise ValueError(picked)
@@ -101,7 +102,7 @@ def bip85_pwd(secret):
     # Convert raw secret (64 bytes) into type-able password text.
 
     # See BIP85 specification.
-    #   path --> m/83696968'/707764'/{pwd_len}'/{index}'
+    #   path --> m/83696968h/707764h/{pwd_len}h/{index}h
     #
     # Base64 encode whole 64 bytes of entropy.
     # Slice pwd_len from base64 encoded string [0:pwd_len]
@@ -112,20 +113,25 @@ def bip85_pwd(secret):
     secret_b64 = b2a_base64(secret).decode().strip()
     return secret_b64[:BIP85_PWD_LEN]
 
-async def drv_entro_step2(_1, picked, _2):
-    from glob import dis
-    from files import CardSlot, CardMissingError, needs_microsd
+async def pick_bip85_password():
+    # ask for index and then return the pw (see notes.py)
+    return await drv_entro_step2(None, 7, None, just_pick=True)
 
-    msg = "Index Number?"
-    if picked == 7:
-        # Passwords
-        msg = "Password Index?"
-    index = await ux_enter_bip32_index(msg)
+async def drv_entro_step2(_1, picked, _2, just_pick=False):
+    from glob import dis, settings
+    from files import CardSlot, CardMissingError, needs_microsd
+    from ux import ux_render_words, export_prompt_builder, import_export_prompt_decode
+
+    msg = "Password Index?" if picked == 7 else "Index Number?"
+    index = await ux_enter_bip32_index(msg, unlimited=settings.get("b85max", False))
     if index is None:
         return
 
     dis.fullscreen("Working...")
     new_secret, width, s_mode, path = bip85_derive(picked, index)
+
+    if just_pick:
+        return bip85_pwd(new_secret)
 
     # Reveal to user!
     encoded = None
@@ -147,7 +153,7 @@ async def drv_entro_step2(_1, picked, _2):
         qr_alnum = True
 
         msg = 'Seed words (%d):\n' % len(words)
-        msg += '\n'.join('%2d: %s' % (i+1, w) for i,w in enumerate(words))
+        msg += ux_render_words(words)
 
         encoded = stash.SecretStash.encode(seed_phrase=new_secret)
 
@@ -190,31 +196,24 @@ async def drv_entro_step2(_1, picked, _2):
     if new_secret:
         msg += '\n\nRaw Entropy:\n' + str(b2a_hex(new_secret), 'ascii')
 
-    prompt = '\n\nPress (1) to save to MicroSD card'
-    if encoded is not None:
-        prompt += ', (2) to switch to derived secret'
-    elif s_mode == 'pw':
-        prompt += ', (2) to type password over USB'
-    if qr is not None:
-        prompt += ', (3) to view as QR code'
-        if glob.NFC:
-            prompt += ', (4) to share via NFC'
-    if glob.VD:
-        prompt += ", (6) to save to Virtual Disk"
+    # Add the standard export prompt at the end, with extra (5) option sometimes.
 
-    prompt += '.'
+    key0 = None
+    if encoded is not None:
+        key0 = 'to switch to derived secret'
+    elif s_mode == 'pw':
+        key0 = 'to type password over USB'
+    prompt, escape = export_prompt_builder('data', key0=key0, no_qr=(not qr), no_nfc=(not qr))
 
     while 1:
-        ch = await ux_show_story(msg+prompt, sensitive=True, escape='12346')
+        ch = await ux_show_story(msg+'\n\n'+prompt, sensitive=True, escape=escape)
 
-        if ch in "16":
+        choice = import_export_prompt_decode(ch)
+
+        if isinstance(choice, dict):
             # write to SD card or Virtual Disk: simple text file
-            if ch == "1":
-                force_vdisk = False
-            else:
-                force_vdisk = True
             try:
-                with CardSlot(force_vdisk=force_vdisk) as card:
+                with CardSlot(**choice) as card:
                     fname, out_fn = card.pick_filename('drv-%s-idx%d.txt' % (s_mode, index))
                     body = msg + "\n"
                     with open(fname, 'wt') as fp:
@@ -233,18 +232,17 @@ async def drv_entro_step2(_1, picked, _2):
             story = "Filename is:\n\n%s" % out_fn
             story += "\n\nSignature filename is:\n\n%s" % sig_nice
             await ux_show_story(story, title='Saved')
-        elif ch == '3':
+        elif choice == KEY_CANCEL:
+            break
+        elif choice == KEY_QR:
             from ux import show_qr_code
             await show_qr_code(qr, qr_alnum)
-            continue
-        elif ch == '2' and s_mode == 'pw':
+        elif choice == '0' and s_mode == 'pw':
             # gets confirmation then types it
             await single_send_keystrokes(qr, path)
-            continue
-        elif ch == '4' and glob.NFC and qr:
+        elif choice == KEY_NFC:
             # Share any of these over NFC
             await glob.NFC.share_text(qr)
-            continue
         else:
             break
 
@@ -252,7 +250,7 @@ async def drv_entro_step2(_1, picked, _2):
         stash.blank_object(new_secret)
     stash.blank_object(msg)
 
-    if ch == '2' and (encoded is not None):
+    if choice == '0' and (encoded is not None):
         # switch over to new secret!
         dis.fullscreen("Applying...")
         from actions import goto_top_menu
@@ -298,11 +296,15 @@ async def password_entry(*args, **kwargs):
     the_ux.pop()        # WHY?
 
 async def send_keystrokes(kbd, password, path):
-    ch = await ux_show_story(
-        "Place mouse at required password prompt, then press OK to send keystrokes.\n\n"
-        "Password:\n%s\n\n"
-        "Path:\n%s" % (password, path),
-    )
+    # Prompt them for timing reasons, then send.
+    msg = "Place mouse at required password prompt, then press OK to send keystrokes."
+
+    if path:
+        # for BIP-85 usage, be chatty and confirm p/w value on screen (debatable)
+        msg += "\n\nPassword:\n%s" % password
+        msg += "\n\nPath:\n%s" % path
+
+    ch = await ux_show_story(msg)
 
     if ch == 'y':
         await kbd.send_keystrokes(password + '\r')
@@ -314,7 +316,7 @@ async def send_keystrokes(kbd, password, path):
 
     return False
 
-async def single_send_keystrokes(password, path):
+async def single_send_keystrokes(password, path=None):
     # switches to USB mode required, then does send
     from usb import EmulatedKeyboard
 

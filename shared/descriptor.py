@@ -200,7 +200,7 @@ class Descriptor:
 
     def _serialize(self, internal=False, int_ext=False) -> str:
         """Serialize without checksum"""
-        assert len(self.keys) == 1, "Multiple keys for single signature script"
+        assert len(self.keys) == 1      # "Multiple keys for single signature script"
         desc_base = SINGLE_FMT_TO_SCRIPT[self.addr_fmt]
         inner = self.serialize_keys(internal=internal, int_ext=int_ext)[0]
         return desc_base % (inner)

@@ -2,7 +2,7 @@
 #
 # utils.py - Misc utils. My favourite kind of source file.
 #
-import gc, sys, ustruct, chains, ure, time, aes256ctr
+import gc, sys, ustruct, ngu, chains, ure, time
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import hexlify as b2a_hex
 from ubinascii import a2b_base64, b2a_base64
@@ -10,6 +10,12 @@ from uhashlib import sha256
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
 
 B2A = lambda x: str(b2a_hex(x), 'ascii')
+
+try:
+    from font_iosevka import FontIosevka
+    DOUBLE_WIDE = FontIosevka.DOUBLE_WIDE
+except ImportError:
+    DOUBLE_WIDE = ''
 
 class imported:
     # Context manager that temporarily imports
@@ -66,7 +72,7 @@ def pretty_delay(n):
     if n < 48:
         return '%.1f hours' % n
     n /= 24
-    return 'about %d days' % n
+    return 'about %.1f days' % n
 
 def pretty_short_delay(sec):
     # precise, shorter on screen display
@@ -113,7 +119,6 @@ class HexWriter:
     def write(self, b):
         self.checksum.update(b)
         self.pos += len(b)
-
         self.fd.write(b2a_hex(b))
 
     def seek(self, offset, whence=0):
@@ -133,6 +138,17 @@ class HexWriter:
         b = self.read(len(buf))
         buf[0:len(b)] = b
         return len(b)
+
+class CapsHexWriter(HexWriter):
+    # omit newlines at end, and do CAPS ... better for QR usage
+    def write(self, b):
+        self.checksum.update(b)
+        self.pos += len(b)
+        self.fd.write(b2a_hex(b).upper())       # uppercase
+
+    def __exit__(self, *a, **k):
+        # dont do the newline thing at end
+        return self.fd.__exit__(*a, **k)
 
 class Base64Writer:
     # Emulate a file/stream but convert binary to Base64 as they write
@@ -229,10 +245,10 @@ def problem_file_line(exc):
 def cleanup_deriv_path(bin_path, allow_star=False):
     # Clean-up path notation as string.
     # - raise exceptions on junk
-    # - standardize on 'prime' notation (34' not 34p, or 34h)
+    # - standardize on 'hard' notation, not 'prime' (34h not 34' nor 34p)
     # - assume 'm' prefix, so '34' becomes 'm/34', etc
     # - do not assume /// is m/0/0/0
-    # - if allow_star, then final position can be * or *' (wildcard)
+    # - if allow_star, then final position can be * or *h (wildcard)
     import ure
     from public_constants import MAX_PATH_DEPTH
 
@@ -241,8 +257,11 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     # empty string is valid
     if s == '': return 'm'
 
-    s = s.replace('p', "'").replace('h', "'")
-    mat = ure.match(r"(m|m/|)[0-9/']*" + ('' if not allow_star else r"(\*'|\*|)"), s)
+    # convert to "hard" rather that "prime" notations
+    s = s.replace('p', 'h').replace("'", 'h')
+
+    # regex for valid chars, m at start, maybe /*h or /* at end sometimes
+    mat = ure.match(r"(m|m/|)[0-9/h]*" + ('' if not allow_star else r"(\*h|\*|)"), s)
     assert mat.group(0) == s, "invalid characters"
 
     parts = s.split('/')
@@ -251,19 +270,19 @@ def cleanup_deriv_path(bin_path, allow_star=False):
     if parts and parts[0] == 'm':
         parts = parts[1:]
 
+    # master key, just 'm', rather than: 'm/'
     if not parts:
-        # rather than: m/
         return 'm'
 
     assert len(parts) <= MAX_PATH_DEPTH, "too deep"
 
     for p in parts:
-        assert p != '' and p != "'", "empty path component"
+        assert p and p != 'h', "empty path component"
         if allow_star and '*' in p:
-            # - star or star' can be last only (checked by regex above)
-            assert p == '*' or p == "*'", "bad wildcard"
+            # star or '*h' can be last only (checked by regex above)
+            assert p == '*' or p == "*h", "bad wildcard"
             continue
-        if p[-1] == "'":
+        if p[-1] == "h":
             p = p[0:-1]
         try:
             ip = int(p, 10)
@@ -275,7 +294,7 @@ def cleanup_deriv_path(bin_path, allow_star=False):
 
 def keypath_to_str(bin_path, prefix='m/', skip=1):
     # take binary path, like from a PSBT and convert into text notation
-    rv = prefix + '/'.join(str(i & 0x7fffffff) + ("'" if i & 0x80000000 else "")
+    rv = prefix + '/'.join(str(i & 0x7fffffff) + ("h" if i & 0x80000000 else "")
                             for i in bin_path[skip:])
     return 'm' if rv == 'm/' else rv
 
@@ -289,7 +308,7 @@ def str_to_keypath(xfp, path):
         if i == 'm': continue
         if not i: continue      # trailing or duplicated slashes
 
-        if i[-1] == "'":
+        if i[-1] in "'h":
             here = int(i[:-1]) | 0x80000000
         else:
             here = int(i)
@@ -301,17 +320,22 @@ def str_to_keypath(xfp, path):
 def match_deriv_path(patterns, path):
     # check for exact string match, or wildcard match (star in last position)
     # - both args must be cleaned by cleanup_deriv_path() already
+    # - this is only used in hsm.py for approving {address, msg_sign, xpub}
     # - will accept any path, if 'any' in patterns
     if 'any' in patterns:
         return True
+    elif path == "*":
+        return False
+    elif path == "any":
+        return False
 
     for pat in patterns:
         if pat == path:
             return True
 
-        if pat.endswith("/*") or pat.endswith("/*'"):
-            if pat[-1] == "'" and path[-1] != "'": continue
-            if pat[-1] == "*" and path[-1] == "'": continue
+        if pat.endswith('/*') or pat.endswith('/*h'):
+            if pat[-1] == 'h' and path[-1] != 'h': continue     # mismatch: want hard, it's not
+            if pat[-1] == '*' and path[-1] == 'h': continue     # mismatch: want unhard, it is
 
             # same hardness so check up to last component of path
             if pat.split('/')[:-1] == path.split('/')[:-1]:
@@ -359,7 +383,7 @@ def check_firmware_hdr(hdr, binary_size):
     # - hdr must be a bytearray(FW_HEADER_SIZE+more)
 
     from sigheader import FW_HEADER_SIZE, FW_HEADER_MAGIC, FWH_PY_FORMAT
-    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, MK_4_OK
+    from sigheader import MK_1_OK, MK_2_OK, MK_3_OK, MK_4_OK, MK_Q1_OK
     from ustruct import unpack_from
     from version import hw_label
     import callgate
@@ -388,6 +412,8 @@ def check_firmware_hdr(hdr, binary_size):
             ok = (hw_compat & MK_3_OK)
         elif hw_label == 'mk4':
             ok = (hw_compat & MK_4_OK)
+        elif hw_label == 'q1':
+            ok = (hw_compat & MK_Q1_OK)
         
         if not ok:
             return "That firmware doesn't support this version of Coldcard hardware (%s)."%hw_label
@@ -418,34 +444,60 @@ def clean_shutdown(style=0):
                 
     except: pass
 
+    # on Q1, must power down because annoying to do power cycle
+    # when micro is stopped
+    if style != 2 and version.has_battery:
+        style = 3
+
     callgate.show_logout(style)
 
-def call_later_ms(delay, cb, *args):
+def call_later_ms(delay, cb, *args, **kws):
     import uasyncio
 
     async def doit():
         await uasyncio.sleep_ms(delay)
-        await cb(*args)
+        await cb(*args, **kws)
         
     uasyncio.create_task(doit())
 
+def txtlen(s):
+    # width of string in chars, accounting for
+    # double-wide characters which happen on Q.
+    rv = len(s)
+
+    if DOUBLE_WIDE:
+        rv += sum(1 for ch in s if ch in DOUBLE_WIDE)
+
+    return rv
+
 def word_wrap(ln, w):
+    # Generate the lines needed to wrap one line into X "width"-long lines.
+    #  - tests in testing/test_unit.py
+
+    if txtlen(ln) <= w:
+        yield ln
+        return
+
     while ln:
-        sp = ln.rfind(' ', 0, w)
+
+        # find a space in (width) first part of remainder
+        sp = ln.rfind(' ', 0, w-1)
 
         if sp == -1:
             # bad-break the line
-            sp = min(len(ln), w)
+            sp = min(txtlen(ln), w)
             nsp = sp
             if ln[nsp:nsp+1] == ' ':
                 nsp += 1
         else:
+            # split on found space
             nsp = sp+1
 
         left = ln[0:sp]
         ln = ln[nsp:]
 
-        if len(left) + 1 + len(ln) <= w:
+        if txtlen(left) + 1 + txtlen(ln) <= w:
+            # not clear when this would happen? final bit??
             left = left + ' ' + ln
             ln = ''
 
@@ -468,7 +520,6 @@ def parse_addr_fmt_str(addr_fmt):
     else:
         raise ValueError("Invalid address format: '%s'\n\n"
                            "Choose from p2pkh, p2wpkh, p2sh-p2wpkh." % addr_fmt)
-
 
 def parse_extended_key(ln, private=False):
     # read an xpub/ypub/etc and return BIP-32 node and what chain it's on.
@@ -495,40 +546,6 @@ def parse_extended_key(ln, private=False):
 
     return node, chain, addr_fmt
 
-
-def import_prompt_builder(title, no_nfc=False):
-    from glob import NFC, VD
-    prompt, escape = None, None
-    if (NFC and (not no_nfc)) or VD:
-        prompt = "Press (1) to import %s from SD Card" % title
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to import from Virtual Disk"
-            escape += "2"
-        if NFC is not None and not no_nfc:
-            prompt += ", press (3) to import via NFC"
-            escape += "3"
-        prompt += "."
-    return prompt, escape
-
-
-def export_prompt_builder(title):
-    from glob import NFC, VD
-    prompt, escape = None, None
-    if NFC or VD:
-        # no need to spam with another prompt if VD and NFC not enabled
-        prompt = "Press (1) to save %s to SD Card" % title
-        escape = "1"
-        if VD is not None:
-            prompt += ", press (2) to save to Virtual Disk"
-            escape += "2"
-        if NFC is not None:
-            prompt += ", press (3) to share via NFC"
-            escape += "3"
-        prompt += "."
-    return prompt, escape
-
-
 def chunk_writer(fd, body):
     from glob import dis
     dis.fullscreen("Saving...")
@@ -539,19 +556,6 @@ def chunk_writer(fd, body):
         dis.progress_bar_show(idx / 10)
     dis.progress_bar_show(1)
 
-
-def decrypt_tapsigner_backup(backup_key, data):
-    try:
-        backup_key = a2b_hex(backup_key)
-        decrypt = aes256ctr.new(backup_key, bytes(16))  # IV 0
-        decrypted = decrypt.cipher(data).decode().strip()
-        # format of TAPSIGNER backup is known in advance
-        # extended private key is expected at the beginning of the first line
-        assert decrypted[1:4] == "prv"
-    except Exception:
-        raise ValueError("Decryption failed - wrong key?")
-
-    return decrypted.split("\n")
 
 def addr_fmt_label(addr_fmt):
     return {
@@ -608,5 +612,81 @@ def datetime_to_str(dt, fmt="%d-%02d-%02d %02d:%02d:%02d"):
     y, mo, d, h, mi, s = dt[:6]
     dts = fmt % (y, mo, d, h, mi, s)
     return dts + " UTC"
+
+def url_decode(u):
+    # expand control chars from %XX and '+'
+    # - equiv to urllib.parse.unquote_plus
+    # - ure.sub is missing, so not being clever here.
+    # - give up on syntax errors, and return unchanged
+    import ure
+
+    u = u.replace('+', ' ')
+    while 1:
+        pos = u.find('%')
+        if pos < 0: break
+
+        try:
+            ch = chr(int(u[pos+1:pos+3], 16))
+            assert ch != '\0'
+        except:
+            return u
+
+        u = u[0:pos] + ch + u[pos+3:]
+
+    return u
+
+def decode_bip21_text(got):
+    # Assume text is a BIP-21 payment address (url), with amount, description
+    # and url protocol prefix ... all optional except the address.
+    # - also will detect correctly encoded & checksummed xpubs
+
+    proto, args, addr = None, None, None
+
+    # remove URL protocol: if present
+    if ':' in got:
+        proto, got = got.split(':', 1)
+
+    # looks like BIP-21 payment URL
+    if '?' in got:
+        addr, args = got.split('?', 1)
+
+        # full URL decode here, but assuming no repeated keys
+        parts = args.split('&')
+        args = dict()
+        for p in parts:
+            k, v = p.split('=', 1)
+            args[k] = url_decode(v)
+
+    # assume it's an bare address for now
+    if not addr:
+        addr = got
+
+    # old school
+    try:
+        raw = ngu.codecs.b58_decode(addr)
+
+        # it's valid base58
+        # an address, P2PKH or xpub (xprv checked above)
+        if addr[1:4] == 'pub':
+            return 'xpub', (addr,)
+
+        return 'addr', (proto, addr, args)
+    except:
+        pass
+
+    # new school: bech32 or bech32m
+    try:
+        hrp, version, data = ngu.codecs.segwit_decode(addr)
+        return 'addr', (proto, addr.lower(), args)
+    except:
+        pass
+
+    raise ValueError('not bip-21')
+
+def censor_address(addr):
+    # We don't like to show the user multisig addresses because we cannot be certain
+    # they are valid and could actually be signed. And yet, dont blank too many
+    # spots or else an attacker could grind out a suitable replacement.
+    return addr[0:12] + '___' + addr[12+3:]
 
 # EOF

@@ -30,7 +30,7 @@
 #include "sdcard.h"
 #include "dispatch.h"
 #include "constant_time.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "stm32l4xx_hal.h"
 
 
@@ -69,6 +69,8 @@ system_startup(void)
     ) {
         // yikes. recovery: do lockdown... we should be/(thought we were) locked already
         flash_lockdown_hard(OB_RDP_LEVEL_2);
+        // CONCERN: this code has only been called once, and it left the unit with RDP=0xff(1)
+        // and not functional. See issue #1268.
     }
 #else
 # warning "Built for debug."
@@ -80,7 +82,7 @@ system_startup(void)
     // debug output and banner
     console_setup();
 
-    puts2("\r\n\nMk4 Bootloader: ");
+    puts2(BOOT_BANNER);
     puts(version_string);
 
     uint32_t reset_reason = RCC->CSR;
@@ -98,13 +100,22 @@ system_startup(void)
     rng_delay();
 #endif
 
+#ifdef FOR_Q1_ONLY
+    extern void lcd_full_setup(void);
+
+    // clear and setup LCD display - includes long config process
+    lcd_full_setup();
+#else
+    // clear and OLED display
+    oled_setup();
+#endif
+
     // Workaround to get into DFU from micropython
     // LATER: none of this is useful with RDP=2, but okay in the office/factory
     if(memcmp(dfu_flag->magic, REBOOT_TO_DFU, sizeof(dfu_flag->magic)) == 0) {
         dfu_flag->magic[0] = 0;
 
         // still see a flash here, but that's proof it works.
-        oled_setup();
         oled_show(dfu_flag->screen);
 
         enter_dfu();
@@ -112,8 +123,7 @@ system_startup(void)
     }
     rng_delay();
 
-    // clear and setup OLED display
-    oled_setup();
+    // Show main boot-up screen
     oled_show_progress(screen_verify, 0);
 
     // wipe all of SRAM (except our own memory, which was already wiped)

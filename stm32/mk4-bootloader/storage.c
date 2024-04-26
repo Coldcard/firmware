@@ -18,7 +18,8 @@
 #include "faster_sha256.h"
 #include <string.h>
 #include <errno.h>
-#include "assets/screens.h"
+#include "config.h"
+#include SCREENS_H
 #include "stm32l4xx_hal.h"
 #include "constant_time.h"
 #include "storage.h"
@@ -263,6 +264,10 @@ pick_pairing_secret(void)
     // important the RNG works here. ok to call setup multiple times.
     rng_setup();
 
+#ifdef FOR_Q1_ONLY
+    // nicer, simpler screen for Q
+    oled_show(screen_se_setup);
+#else
     // Demo to anyone watching that the RNG is working, but likely only
     // to be seen by production team during initial powerup.
     uint8_t    tmp[1024];
@@ -273,6 +278,7 @@ pick_pairing_secret(void)
     }
 
     oled_factory_busy();
+#endif
 
     // .. but don't use those numbers, because those are semi-public now.
     uint32_t secret[8];
@@ -394,8 +400,7 @@ flash_save_bag_number(const uint8_t new_number[32])
     flash_setup0();
     flash_unlock();
 
-    // NOTE: can only write once! No provision for read/check, and write
-    // when non-ones will fail.
+    // NOTE: can only write once! No provision for read/check/update.
     for(int i=0; i<(32/8); i++, dest+=8, src++) {
         if(flash_burn(dest, *src)) {
             INCONSISTENT("fail write");
@@ -499,10 +504,16 @@ flash_setup(void)
         }
 
         // real power cycle required now.
+#ifdef FOR_Q1_ONLY
+        // Q: just do it (we warned them)
+        extern void turn_power_off(void);
+        turn_power_off();
+#else
+        // Mk: operator must do it
         oled_show(screen_replug);
         puts("replug required");
-
         LOCKUP_FOREVER();
+#endif
     }
 
     rng_delay();
@@ -543,6 +554,7 @@ flash_setup(void)
     void
 flash_lockdown_hard(uint8_t rdp_level_code)
 {
+#if RELEASE
     flash_setup0();
 
     // see FLASH_OB_WRPConfig()
@@ -567,6 +579,11 @@ flash_lockdown_hard(uint8_t rdp_level_code)
         FLASH->OPTR = was | rdp_level_code;    // select level X, other values as observed
 
     flash_ob_lock(true);
+#else
+    puts2("flash_lockdown_hard(");
+    puthex2(rdp_level_code);
+    puts(") skipped");
+#endif
 }
 
 // record_highwater_version()

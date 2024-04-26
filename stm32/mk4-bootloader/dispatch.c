@@ -29,7 +29,7 @@
 #include "se2.h"
 #include "dispatch.h"
 #include "constant_time.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "stm32l4xx_hal.h"
 
 
@@ -214,6 +214,11 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
                 case 2:
                     oled_show(screen_logout);
                     break;
+#ifdef FOR_Q1_ONLY
+                case 3:
+                    oled_show(screen_poweroff);
+                    break;
+#endif
                 case 1:
                     // leave screen untouched
                     break;
@@ -222,8 +227,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             wipe_all_sram();
             psram_wipe();
 
+#ifdef FOR_Q1_ONLY
+            if(arg2 == 3) {
+                // need some time for user to see message
+                delay_ms(100);
+
+                turn_power_off();
+            }
+#endif
             if(arg2 == 2) {
-                // need some time to show OLED contents
+                // need some time for user to see message
                 delay_ms(100);
 
                 // reboot so we can "login" again
@@ -233,7 +246,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             }
 
             // wait for an interrupt which will never happen (ie. sleep)
-            LOCKUP_FOREVER()
+            LOCKUP_FOREVER();
             break;
 
         case 4:
@@ -588,13 +601,16 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
             break;
         }
 
+#ifndef FOR_Q1_ONLY
         case 27:
             // Get versions/parts installed in SE1/SE2
             // - simple fact: we will be recompiling this code if/when 
             //   part revision happen!
+            // - OBSOLETE: unused on Q and only versions >= 5.2.3 on Mk4
             REQUIRE_OUT(80);
             strcpy((char *)buf_io, "ATECC608B\nDS28C36B");
             break;
+#endif
 
 #if 0
         // p256r1 test code
@@ -663,7 +679,7 @@ firewall_dispatch(int method_num, uint8_t *buf_io, int len_in,
 
 fail:
 
-    // Precaution: we don't want to leave ATECC508A authorized for any specific keys,
+    // Precaution: we don't want to leave SE1 authorized for any specific keys,
     // perhaps due to an error path we didn't see. Always reset the chip.
     ae_reset_chip();
 
@@ -676,7 +692,6 @@ fail:
     __HAL_FLASH_INSTRUCTION_CACHE_DISABLE();
     __HAL_FLASH_INSTRUCTION_CACHE_RESET();
     __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
-    
 
     // authorize return from firewall into user's code
     __HAL_FIREWALL_PREARM_ENABLE();

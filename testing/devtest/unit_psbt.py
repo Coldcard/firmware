@@ -6,43 +6,34 @@
 # run manually with:
 #   execfile('../../testing/devtest/unit_psbt.py')
 
-from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
-
-import ustruct
-from glob import settings
+from psbt import psbtObject, FatalPSBTIssue
 from version import MAX_TXN_LEN
-
-# load PSBT into simulated SPI Flash
 from sffile import SFFile
-
-wr_fd = SFFile(0, max_size=MAX_TXN_LEN)
-list(wr_fd.erase())
-out_fd = SFFile(MAX_TXN_LEN, max_size=MAX_TXN_LEN)
-list(out_fd.erase())
-
-# read from MacOS filesystem
 import main
+
+
 fname = getattr(main, 'FILENAME', '../../testing/data/2-of-2.psbt')
 print("Input PSBT: " + fname)
 
 is_hex = False
 tl = 0
-with open(fname, 'rb') as orig:
-    while 1:
-        here = orig.read(256)
-        if not here: break
 
-        if here[0:10] == b'70736274ff':
-            is_hex = True
+with SFFile(0, max_size=MAX_TXN_LEN) as wr_fd:
+    list(wr_fd.erase())
+    with open(fname, 'rb') as orig:
+        while 1:
+            here = orig.read(256)
+            if not here: break
 
-        if is_hex:
-            here = a2b_hex(here)
+            if here[0:10] == b'70736274ff':
+                is_hex = True
 
-        wr_fd.write(here)
-        tl += len(here)
+            if is_hex:
+                here = a2b_hex(here)
 
-from psbt import psbtObject, FatalPSBTIssue
+            wr_fd.write(here)
+            tl += len(here)
 
 rd_fd = SFFile(0, tl)
 obj = psbtObject.read_psbt(rd_fd)
@@ -59,14 +50,16 @@ except FatalPSBTIssue as exc:
     print("hits FatalPSBTIssue: %s" % exc)
     pass
 
-obj.serialize(out_fd)
-out_tl = out_fd.tell()
-
-# copy back into MacOS filesystem
-with open('readback.psbt', 'wb') as rb:
+with SFFile(MAX_TXN_LEN, max_size=MAX_TXN_LEN) as out_fd:
+    list(out_fd.erase())
+    obj.serialize(out_fd)
     out_fd.seek(0)
-    while 1:
-        here = out_fd.read(256)
-        if not here: break
+    # copy back into filesystem
+    with open('readback.psbt', 'wb') as rb:
+        while 1:
+            here = out_fd.read(256)
+            if not here:
+                break
+            rb.write(here)
 
-        rb.write(here)
+rd_fd.close()

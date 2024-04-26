@@ -9,7 +9,7 @@
 #include "sigheader.h"
 #include "ae.h"
 #include "ae_config.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include <string.h>
 #include "delay.h"
 #include "rng.h"
@@ -53,6 +53,24 @@ sdcard_setup(void)
         HAL_GPIO_Init(GPIOC, &setup);
     }
 
+#ifdef FOR_Q1_ONLY
+    // Force mux to A slot only (we don't support B here at all)
+    { 
+        GPIO_InitTypeDef setup = {
+            .Pin = GPIO_PIN_13,
+            .Mode = GPIO_MODE_OUTPUT_PP,
+            .Pull = GPIO_NOPULL,
+            .Speed = GPIO_SPEED_FREQ_LOW,
+        };
+        HAL_GPIO_Init(GPIOC, &setup);
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, 0);    // select A
+    }
+
+    // PD3 = DETECT1 .. already configed in q1-bootrom/gpio.c
+    // Ignore DETECT2, and ACTIVE_LED2 (port D pins) because
+    // not using and default state (hiz input) will be fine.
+#endif
+
     // PD2 = CMD
     {   GPIO_InitTypeDef setup = {
             .Pin = GPIO_PIN_2,
@@ -76,7 +94,7 @@ sdcard_probe(uint32_t *num_blocks)
 {
     memset(&hsd, 0, sizeof(SD_HandleTypeDef));
 
-    puts2("SDCard: ");
+    puts2("sdcard_probe: ");
 
     hsd.Instance = SDMMC1;
     hsd.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
@@ -123,7 +141,11 @@ sdcard_probe(uint32_t *num_blocks)
     bool
 sdcard_is_inserted(void)
 {
-    return !!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13); 
+#ifdef FOR_Q1_ONLY
+    return !HAL_GPIO_ReadPin(GPIOD, GPIO_PIN_3);        // PD3 - inserted when low (Q)
+#else
+    return !!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);      // PC13 - inserted when high (Mk4)
+#endif
 }
 
 // dfu_hdr_parse()
@@ -192,7 +214,8 @@ sdcard_try_file(uint32_t blk_pos)
 
     // read full possible file into PSRAM, assume continguous, and big enough
     uint8_t *ps = (uint8_t *)PSRAM_BASE;
-    uint8_t buf[512*8];      // half of all our SRAM 0x00002000
+    //uint8_t buf[512*8];      // half of all our SRAM 0x00002000
+    uint8_t buf[512];      // slower, but works.
     
     for(uint32_t off = 0; off < FW_MAX_LENGTH_MK4; off += sizeof(buf)) {
         int rv = HAL_SD_ReadBlocks(&hsd, buf, blk_pos+(off/512), sizeof(buf)/512, 60000);
@@ -248,8 +271,9 @@ sdcard_search(void)
     uint32_t num_blocks;
 
     // open card (power it) and get details, do setup
-    puts2("SDCard: ");
+    puts2("sdcard_search: ");
     sdcard_setup();
+    delay_ms(100);
     if(!sdcard_probe(&num_blocks)) return;
 
     uint8_t     blk[512];

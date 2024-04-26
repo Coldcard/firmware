@@ -128,20 +128,20 @@ We will summarize transaction outputs as "change" back into same wallet, however
 - key derivatation paths must be 12 or less in depth (`MAX_PATH_DEPTH`)
 
 
-# NFC Feature (Mk4)
+# NFC Feature
 
 - can share up to 8000 bytes of PSBT or signed transaction data.
 - NFC-V (ISO-15693) radio/modulation is common on mobile phones but very rare on desktops
 
-# Fast Wipe (Mk4)
+# Fast Wipe
 
 - each use of "fast wipe" feature consumes a MCU key slot, of which there are 256.
 - use _Advanced > Danger Zone > MCU Key Slots_ to view usage
 
-# Trick Pins (Mk4)
+# Trick Pins
 
 - "deltamode" PIN must be same length as true pin, and differ only in final 4 positions.
-- there are 14 trick "slots", but we avoid slot 10, so 13 available.
+- there are 14 trick "slots", but on mk4, we avoid slot 10, so 13 available. (Q: 14)
 - duress wallets consume 2 slots (or 3 slots for legacy duress wallet) which must be contiguous
 - when restoring trick pins from backup files, "forgotten" pins are not restored,
   and any trick pin which matches the true PIN of the restored system will be dropped
@@ -149,9 +149,47 @@ We will summarize transaction outputs as "change" back into same wallet, however
   is not compatible, the deltamode trick PIN is dropped and not restored
 - duress wallets are supported when derived from 24- or 12-word seed phrases
 
-# Debug Serial Port (Mk4)
+# Debug Serial Port
 
 - virtual USB serial port disabled completely by default, and even if enabled
   in Danger Zone, only echos output, and does not accept any input
 - use hardware serial port for interactive REPL access (3.3v TTL levels)
+
+# BBQr Scanning (Q)
+
+- files up to 2MiB in size can be accepted
+- when 14 or less parts, we display status of each part, if more, just percent complete
+
+# QR Scanning (Q)
+
+- if not BBQr (or sent as unicode inside BBQr) we auto detect these data types:
+    - PSBT in Base64 or hex
+    - Wire Transaction in Base64 or hex
+    - XPRV, XPUB, bare payment addresses, BIP-21 invoices
+    - seed words (truncated, or full)
+    - SeedQR (but not Compact SeedQR)
+- for Base58, Bech32 encoded values, if checksum is wrong then it is shown as text
+- binary QR codes are not supported
+- when pasting into a secure note, if the QR's data is > 60 chars long, we assume done
+
+# Secure Notes & Passwords (Q)
+
+- when Q picks a password for you (using F1 thru F5), the entropy is 126 bits or more,
+  except F3 which makes an easier to type password of around 48 bits entropy.
+- Title, Sitename and Username fields are limited to 32 characters in length.
+- Passwords are limited to 128 characters.
+- Note text is unlimited, but storing very large notes may affect performance system-wide.
+- Q Backup files restored onto Mk4 will lose their notes, since notes feature is not supported.
+
+# Address Ownership
+
+- only the first 1528 addresses (764 each from internal and external (change/not) paths)
+  are considered
+- P2WPKH-P2SH addresses (single sig P2PWPKH wrapped in P2SH) are not searchable if you
+  have one or more multisig wallets defined, since we assume P2WPKH-P2SH is obsolete
+- if you have used an sub-account, without ever exploring it in the Address Explorer, nor
+  signing a PSBT with those account numbers, we do not search it.
+- does not search Seed Vault, you'll need to load each of those and re-search
+- if you have an XFP collision between multiple wallets in SeedVault (ie. two wallets
+  with same descriptors, but different seeds) you will get false negatives
 

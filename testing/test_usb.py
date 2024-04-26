@@ -4,9 +4,10 @@
 # 
 # - not working well on simulator right now, but that's not key
 #
-import pytest, time, struct
+import pytest, struct
 from pycoin.key.BIP32Node import BIP32Node
-from binascii import b2a_hex, a2b_hex
+from binascii import b2a_hex
+from constants import simulator_fixed_tprv
 from ckcc_protocol.protocol import MAX_MSG_LEN, CCProtocolPacker, CCProtoError
 
 @pytest.mark.skip
@@ -67,9 +68,10 @@ def test_usb_fuzz(dev):
 
 # note: 0x80000000 = 2147483648
 
-@pytest.mark.parametrize('path', [ '', 'm', 'm/1', "m/1'", "m/1'/0/1'",
-    "m/2147483647", "m/2147483647'",
-    'm/1/2/3/4/5/6/7/8/9/10'])
+@pytest.mark.parametrize('path', [
+    '', 'm', 'm/1', "m/1'", "m/1'/0/1'", "m/2147483647", "m/2147483647'", 'm/1/2/3/4/5/6/7/8/9/10',
+    "m/1h", "m/1h/0/1h", "m/2147483647", "m/2147483647h", 'm/1/2/3/4/5/6/7/8/9/10',
+])
 def test_xpub_good(dev, master_xpub, path):
     # get some xpubs and validate the derivations
 
@@ -83,9 +85,10 @@ def test_xpub_good(dev, master_xpub, path):
 
     assert k.hwif() == xpub
 
-    if "'" not in path:
-        mk = BIP32Node.from_wallet_key(master_xpub)
-        sk = mk.subkey_for_path(path[2:])
+    is_hard = ("'" in path) or ("h" in path)
+    if not is_hard or dev.is_simulator:
+        mk = BIP32Node.from_wallet_key(simulator_fixed_tprv if is_hard else master_xpub)
+        sk = mk.subkey_for_path(path[2:].replace("h", "'"))
         assert sk.hwif() == xpub
 
     if len(path) <= 2:
@@ -99,7 +102,7 @@ def test_xpub_invalid(dev, path):
         xpub = dev.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
     
 
-def test_version(dev):
+def test_version(dev, is_q1):
     # read the version, yawn.
     v = dev.send_recv(CCProtocolPacker.version())
     assert '\n' in v
@@ -107,7 +110,10 @@ def test_version(dev):
     assert '-' in date
     assert '.' in label
     assert '.' in bl
-    assert 'mk' in hw_label
+    if is_q1:
+        assert "q1" in hw_label
+    else:
+        assert 'mk' in hw_label
     print("date=%s" % date)
     assert build_date.startswith(date[2:].replace('-', ''))
     assert not extras

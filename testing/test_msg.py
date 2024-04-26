@@ -13,14 +13,14 @@ from constants import addr_fmt_names, msg_sign_unmap_addr_fmt
 
 
 @pytest.mark.parametrize('msg', [ 'aZ', 'hello', 'abc def eght', "x"*140, 'a'*240])
-@pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23H/22p'])
+@pytest.mark.parametrize('path', [ 'm', "m/1/2", "m/1'/100'", 'm/23h/22h'])
 @pytest.mark.parametrize('addr_fmt', [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH ])
-def test_sign_msg_good(dev, need_keypress, msg, path, addr_fmt, addr_vs_path):
+def test_sign_msg_good(dev, press_select, msg, path, addr_fmt, addr_vs_path):
 
     msg = msg.encode('ascii')
     dev.send_recv(CCProtocolPacker.sign_message(msg, path, addr_fmt=addr_fmt), timeout=None)
 
-    need_keypress('y')
+    press_select()
 
     done = None
     while done == None:
@@ -39,12 +39,14 @@ def test_sign_msg_good(dev, need_keypress, msg, path, addr_fmt, addr_vs_path):
     assert verify_message(addr, sig, msg.decode("ascii")) is True
 
 
-def test_sign_msg_refused(dev, need_keypress, msg=b'testing 123', path='m'):
+def test_sign_msg_refused(dev, press_cancel):
     # user can refuse to sign (cancel)
 
+    msg = b'testing 123'
+    path = 'm'
     dev.send_recv(CCProtocolPacker.sign_message(msg, path), timeout=None)
 
-    need_keypress('x')
+    press_cancel()
 
     with pytest.raises(CCUserRefused):
         done = None
@@ -76,7 +78,8 @@ def test_bad_paths(dev, path, expect):
     assert expect in str(ee)
 
 @pytest.fixture
-def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_keypress, microsd_path):
+def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home,
+                    press_select, microsd_path):
 
     # sign a file on the microSD card
 
@@ -101,11 +104,6 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
         pick_menu_item('Sign Text File')
 
         time.sleep(.1)
-        _, story = cap_story()
-        assert 'Choose text file to be signed' in story
-        need_keypress('y')
-        time.sleep(.1)
-            
         try:
             pick_menu_item(fname)
         except KeyError:
@@ -125,10 +123,10 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
         if not subpath:
             assert 'm =>' in story
         else:
-            x_subpath = subpath.lower().replace('p', "'").replace('h', "'")
+            x_subpath = subpath.lower().replace("'", "h")
             assert ('%s =>' % x_subpath) in story
 
-        need_keypress('y')
+        press_select()
 
         # wait for it to finish
         for r in range(10):
@@ -153,12 +151,12 @@ def sign_on_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_key
 
 @pytest.mark.parametrize('msg', [ 'ab', 'hello', 'abc def eght', "x"*140, 'a'*240])
 @pytest.mark.parametrize('path', [
-        "m/84p/0'/22p",
+        "m/84'/0'/22'",
         None,
         'm',
         "m/1/2",
         "m/1'/100'",
-        'm/23H/22p',
+        'm/23h/22h',
     ])
 @pytest.mark.parametrize('addr_fmt', [
         None ,
@@ -244,13 +242,14 @@ def test_sign_msg_fails(dev, sign_on_microsd, msg, concern, no_file, transport, 
     ('Test', 2, 'IDgMx1ljPhLHlKUOwnO/jBIgK+K8n8mvDUDROzTgU8gOaPDMs+eYXJpNXXINUx5WpeV605p5uO6B3TzBVcvs478='),
     ('Test1', 3, 'IEt/v9K95YVFuRtRtWaabPVwWOFv1FSA/e874I8ABgYMbRyVvHhSwLFz0RZuO87ukxDd4TOsRdofQwMEA90LCgI='),
 ])
-def test_low_R_cases(msg, num_iter, expect, dev, set_seed_words, use_mainnet, need_keypress):
+def test_low_R_cases(msg, num_iter, expect, dev, set_seed_words, use_mainnet,
+                     press_select):
     # Thanks to @craigraw of Sparrow for this test case, copied from:
     # <https://github.com/sparrowwallet/drongo/blob/master/src/test/java/com/sparrowwallet/drongo/crypto/ECKeyTest.java>
 
     set_seed_words('absent essay fox snake vast pumpkin height crouch silent bulb excuse razor')
     use_mainnet()
-    path = "m/44'/0'/0'/0/0"            # first address, P2PKH
+    path = "m/44h/0h/0h/0/0"            # first address, P2PKH
     addr_fmt = AF_CLASSIC
 
     #addr = dev.send_recv(CCProtocolPacker.show_address(path, addr_fmt), timeout=None)
@@ -259,7 +258,7 @@ def test_low_R_cases(msg, num_iter, expect, dev, set_seed_words, use_mainnet, ne
     msg = msg.encode('ascii')
     dev.send_recv(CCProtocolPacker.sign_message(msg, path, addr_fmt=addr_fmt), timeout=None)
 
-    need_keypress('y')
+    press_select()
 
     done = None
     while done == None:
@@ -304,11 +303,11 @@ def test_nfc_msg_signing_invalid(body, goto_home, pick_menu_item, nfc_write_text
     assert title == 'ERROR' or "Problem" in story
 
 @pytest.mark.parametrize("msg", ["coinkite", "Coldcard Signing Device!", 200 * "a"])
-@pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800'", "m/0/0/0/0/1/1/1"])
+@pytest.mark.parametrize("path", ["", "m/84'/0'/0'/300/0", "m/800h/0h", "m/0/0/0/0/1/1/1"])
 @pytest.mark.parametrize("str_addr_fmt", ["p2pkh", "", "p2wpkh", "p2wpkh-p2sh", "p2sh-p2wpkh"])
 def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text, pick_menu_item,
-                         goto_home, cap_story, need_keypress, addr_vs_path):
-    # import pdb;pdb.set_trace()
+                         goto_home, cap_story, press_select, press_cancel, addr_vs_path):
+
     for _ in range(5):
         # need to wait for ApproveMessageSign to be popped from ux stack
         try:
@@ -332,13 +331,13 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     _, story = cap_story()
     assert "Ok to sign this?" in story
     assert msg in story
-    assert path in story
-    need_keypress("y")
+    assert path.replace("'", "h") in story
+    press_select()
     signed_msg = nfc_read_text()
     if "BITCOIN SIGNED MESSAGE" not in signed_msg:
         # missed it? again
         signed_msg = nfc_read_text()
-    need_keypress("y")  # exit NFC animation
+    press_select()  # exit NFC animation
     pmsg, addr, sig = parse_signed_message(signed_msg)
     assert pmsg == msg
     addr_vs_path(addr, path, addr_fmt)
@@ -346,14 +345,15 @@ def test_nfc_msg_signing(msg, path, str_addr_fmt, nfc_write_text, nfc_read_text,
     time.sleep(0.5)
     _, story = cap_story()
     assert "Press OK to share again" in story
-    need_keypress("y")
+    press_select()
     signed_msg_again = nfc_read_text()
     assert signed_msg == signed_msg_again
-    need_keypress("x")  # exit NFC animation
-    need_keypress("x")  # do not want to share again
+    press_cancel()  # exit NFC animation
+    press_cancel()  # do not want to share again
 
 @pytest.fixture
-def verify_armored_signature(pick_menu_item, nfc_write_text, need_keypress, cap_story, goto_home):
+def verify_armored_signature(pick_menu_item, nfc_write_text, press_select,
+                             cap_story, goto_home):
     def doit(way, fname=None, signed_msg=None):
         goto_home()
         pick_menu_item('Advanced/Tools')
@@ -366,9 +366,6 @@ def verify_armored_signature(pick_menu_item, nfc_write_text, need_keypress, cap_
         if way == "nfc":
             nfc_write_text(signed_msg)
         else:
-            _, story = cap_story()
-            assert 'Choose signature file.' in story
-            need_keypress('y')
             time.sleep(.1)
             pick_menu_item(fname)
 
@@ -380,12 +377,12 @@ def verify_armored_signature(pick_menu_item, nfc_write_text, need_keypress, cap_
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("way", ("sd", "nfc"))
 @pytest.mark.parametrize("addr_fmt", ("p2pkh", "p2sh-p2wpkh", "p2wpkh"))
-@pytest.mark.parametrize("path", ("m/1'", "m/3'/2'/1'", "m/1000'/100'/10'/1"))
+@pytest.mark.parametrize("path", ("m/1'", "m/3h/2h/1h", "m/1000'/100'/10'/1"))
 @pytest.mark.parametrize("msg", (
         "coldcard", "blablablablablablablabla", "morecornfor us", 240 * "a",
 ))
 def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_home, pick_menu_item,
-                               need_keypress, cap_story, bitcoind, microsd_path, nfc_write_text,
+                               cap_story, bitcoind, microsd_path, nfc_write_text,
                                verify_armored_signature):
     sig, addr = sign_on_microsd(msg, path, msg_sign_unmap_addr_fmt[addr_fmt])
     fname = 't-msgsign-signed.txt'
@@ -442,7 +439,7 @@ def test_verify_signature_file_header_warning(way, addr_sig, microsd_path, verif
     ("bc1q2c8pym4m755pq4n4shu2wgzr7s58pygz8x6pg0mj0l6netq8am8qw69kss", "KPxCN2edt9w5ukd0feOlFS6PJjsKwm6ii/erZErKDIApIxjHqxBzoDvVqcTX0mtecNTGCkJPhxjRKCjNtdnTAp0=", 1),
 ])
 def test_verify_signature_file_fail(way, addr_sig, microsd_path, cap_story, goto_home, nfc_write_text,
-                                    pick_menu_item, need_keypress, verify_armored_signature):
+                                    pick_menu_item, verify_armored_signature):
     fname = "fail-signed.txt"
     addr, sig, err_no = addr_sig
 
@@ -469,7 +466,8 @@ def test_verify_signature_file_fail(way, addr_sig, microsd_path, cap_story, goto
 
 @pytest.mark.parametrize("binary", [True, False])
 def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick_menu_item,
-                                           need_keypress, goto_home):
+                                           need_keypress, goto_home, press_select, press_cancel):
+
     fpattern = "to_sign"
     if binary:
         suffix = ".pdf"
@@ -492,19 +490,19 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("List Files")
-    need_keypress("y")
+    time.sleep(.1)
     pick_menu_item(fname)
     need_keypress("4")  # create detached sig
-    need_keypress("y")
-    need_keypress("x")
+    press_select()
+    press_cancel()
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "CORRECT"
     assert "Good signature" in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
     # modify contents of the file
     with open(fpath, mode) as f:
@@ -513,7 +511,7 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
 
     mod_digest = hashlib.sha256(mod_contents if binary else mod_contents.encode()).digest().hex()
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -522,12 +520,12 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     assert ("'%s' has wrong contents" % fname) in story
     assert ("Got:\n%s" % orig_digest) in story
     assert ("Expected:\n%s" % mod_digest) in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
     # remove file
     os.remove(fpath)
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -535,12 +533,12 @@ def test_verify_signature_file_digest_prob(binary, microsd_path, cap_story, pick
     assert "Good signature" in story # sig is still correct
     assert ("'%s' is not present" % fname) in story
     assert 'Contents verification not possible' in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
 
 @pytest.mark.parametrize("f_num", [2, 10, 20])
 def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story, pick_menu_item,
-                                                 need_keypress, goto_home):
+                                                 press_select, goto_home):
     files = []
     msg = ""
     for i in range(f_num):
@@ -572,13 +570,13 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     pick_menu_item("Advanced/Tools")
     pick_menu_item("File Management")
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "CORRECT"
     assert "Good signature" in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
     # change contents of 0th file
     fname, orig_digest, fpath, _, _ = files[0]
@@ -588,7 +586,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
         f.write(new_contetns)
 
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -597,7 +595,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     assert ("'%s' has wrong contents" % fname) in story
     assert ("Got:\n%s" % orig_digest) in story
     assert ("Expected:\n%s" % mod_digest) in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
     # change contents of 1st file remove 0th file
     # both warnings must be visible
@@ -610,7 +608,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
         f.write(new_contetns)
 
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -621,12 +619,12 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     assert ("Expected:\n%s" % mod_digest) in story
     assert ("'%s' is not present" % fname0) in story
     assert 'Contents verification not possible' in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
     # remove 1st file too
     os.remove(fpath)
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
@@ -635,7 +633,7 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
     warn_msg = "Files:\n" + "\n".join("> %s" % fname for fname in (fname0, fname1))
     assert warn_msg in story
     assert 'Contents verification not possible' in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
     # reboult valid signed files
     for tup in files:
@@ -644,17 +642,18 @@ def test_verify_signature_file_digest_prob_multi(f_num, microsd_path, cap_story,
             f.write(conts)
 
     pick_menu_item("Verify Sig File")
-    need_keypress("y")
+    time.sleep(0.1)
     pick_menu_item(sig_name)
     time.sleep(0.1)
     title, story = cap_story()
     assert title == "CORRECT"
     assert "Good signature" in story
-    need_keypress("y")  # back in File Management
+    press_select()  # back in File Management
 
 @pytest.mark.parametrize("way", ("sd", "nfc"))
 @pytest.mark.parametrize("truncation_len", (0, 1))
-def test_verify_signature_truncated(way, microsd_path, cap_story, verify_armored_signature, truncation_len):
+def test_verify_signature_file_truncated(way, microsd_path, cap_story, verify_armored_signature,
+                                         truncation_len):
     # test: handle missing leading dash (at least)
     prob_file = '-----BEGIN BITCOIN SIGNED MESSAGE-----\nfb9b0c78e60d57434ad0914a075e9fcb7cfe81ba9cad9cbfa1207b3bc5fbdf98  n4Boam6gCNq281bNAd3MqETpExMNPzCi8z.txt\n-----BEGIN BITCOIN SIGNATURE-----\nn4Boam6gCNq281bNAd3MqETpExMNPzCi8z\nIIITr0zBmC65ZSn+2RFvQCegpfq07TxRuGVkggh+ehL3chgEBmcCDH5D5z6INvCQ7PrHLIWkGEw1JSMdbiBKRX4=\n-----END BITCOIN SIGNATURE-----'[truncation_len:]
 
@@ -672,6 +671,5 @@ def test_verify_signature_truncated(way, microsd_path, cap_story, verify_armored
         assert title == "FAILURE"
         assert "Armor text MUST be surrounded by exactly five (5) dashes" in story
         assert "auth.py" in story
-
 
 # EOF

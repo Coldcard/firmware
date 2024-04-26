@@ -17,7 +17,8 @@ simulator_fixed_xfp = 0x4369050f
 
 simulator_serial_number = 'F1F1F1F1F1F1'
 
-from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+from ckcc_protocol.constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2TR
+from ckcc_protocol.constants import AFC_WRAPPED, AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32M, AFC_SCRIPT
 
 unmap_addr_fmt = {
     'p2sh': AF_P2SH,
@@ -61,3 +62,6 @@ SIGHASH_MAP = {
     "NONE|ANYONECANPAY": 2 | 0x80,
     "SINGLE|ANYONECANPAY": 3 | 0x80,
 }
+
+# (2**31) - 1 --> max unhardened, but we handle hardened via h elsewhere
+MAX_BIP32_IDX = 2147483647

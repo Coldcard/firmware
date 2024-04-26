@@ -31,6 +31,7 @@ def show_logout(dont_clear=0):
     # wipe memory and die, shows standard message
     # dont_clear=1 => don't clear OLED
     # 2=> restart system after wipe
+    # 3=> Q1: power down after wipe
     ckcc.oneway(3, dont_clear)
 
 def get_genuine():
@@ -99,24 +100,24 @@ def get_608_rev():
 
 def fast_wipe(silent=True):
     # mk4: wipe seed, also reboots immediately: can stop and show a screen or not
-    ckcc.oneway(23, 0xBeef if silent else 0xdead);
+    ckcc.oneway(23, 0xBeef if silent else 0xdead)
 
 def fast_brick():
     # mk4: brick and reboot. Near instant. Shows brick screen.
-    ckcc.oneway(24, 0xDead);
+    ckcc.oneway(24, 0xDead)
 
 def mcu_key_usage():
     # mk4: avail/consumed/total stats, one will be in use typically
     from ustruct import unpack
     arg = bytearray(3*4)
-    ckcc.gate(25, arg, 0);
+    ckcc.gate(25, arg, 0)
     return unpack('3I', arg)
 
 def read_rng(source=2):
     # return random bytes from a secure source
     # - first byte is # of valid random bytes
     arg = bytearray(33)
-    rv = ckcc.gate(26, arg, source);
+    rv = ckcc.gate(26, arg, source)
     assert not rv
     return arg[1:1+arg[0]]
 
@@ -133,5 +134,6 @@ def get_se_parts():
             return ['SE1', 'SE2']
         ln = bytes(arg).find(b'\0')
         return arg[0:ln].decode().split('\n')
+        
 
 # EOF

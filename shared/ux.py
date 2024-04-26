@@ -4,18 +4,34 @@
 #
 from uasyncio import sleep_ms
 from queues import QueueEmpty
-import utime, gc
+import utime, gc, version
 from utils import word_wrap
+from charcodes import (KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_HOME, KEY_NFC, KEY_QR,
+                        KEY_END, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
+from exceptions import AbortInteraction
 
 DEFAULT_IDLE_TIMEOUT = const(4*3600)      # (seconds) 4 hours
 
-# This signals the need to switch from current
-# menu (or whatever) to show something new. The
-# stack has already been updated, but the old 
-# top-of-stack code was waiting for a key event.
-#
-class AbortInteraction(BaseException):
-    pass
+# See ux_mk or ux_q1 for some display functions now
+if version.has_qwerty:
+    from lcd_display import CHARS_W, CHARS_H
+    CH_PER_W = CHARS_W
+    STORY_H = CHARS_H
+    from ux_q1 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
+    from ux_q1 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_q1 import ux_show_phish_words
+
+    def q1_reword(msg):
+        return msg.replace('\nX ', 'CANCEL ').replace(' X ', ' CANCEL ').replace('OK', 'ENTER')
+else:
+    # How many characters can we fit on each line? How many lines?
+    # (using FontSmall)
+    CH_PER_W = 17
+    STORY_H = 5
+    from ux_mk4 import PressRelease, ux_enter_number, ux_input_numbers, ux_input_text, ux_show_pin
+    from ux_mk4 import ux_login_countdown, ux_confirm, ux_dice_rolling, ux_render_words
+    from ux_mk4 import ux_show_phish_words
+    q1_reword = lambda m: m
 
 class UserInteraction:
     def __init__(self):
@@ -76,13 +92,21 @@ def ux_clear_keys(no_aborts=False):
     except QueueEmpty:
         return
 
-async def ux_wait_keyup(expected=None):
+async def ux_wait_keyup(expected=None, flush=False):
     # Wait for single keypress in 'expected' set, return it
     # no visual feedback, no escape
+    # - can be canceled anytime, using wait_for_ms to create a timeout
     from glob import numpad
 
-    armed = None
+    if flush:
+        armed = False
+    else:
+        armed = numpad.key_pressed or False
+
     while 1:
+        if numpad.empty():
+            await sleep_ms(5)
+            continue
         ch = await numpad.get()
 
         if ch == numpad.ABORT_KEY:
@@ -101,6 +125,33 @@ async def ux_wait_keyup(expected=None):
 
         armed = ch
 
+async def ux_wait_keydown(allowed=None, timeout_ms=None):
+    # Wait for PRESS (not press+release) of any key. Return it and arrange so
+    # that the later release doesn't cause confusion.
+    # - no key repeat here
+    from glob import numpad
+
+    t = 0
+    while 1:
+        if numpad.empty():
+            await sleep_ms(1)
+            t += 1
+            if timeout_ms and t >= timeout_ms:
+                return None
+            continue
+
+        ch = numpad.get_nowait()
+
+        if ch == numpad.ABORT_KEY:
+            raise AbortInteraction()
+
+        if ch == '' or (allowed and (ch not in allowed)):
+            # keyup or unwanted
+            continue
+
+        numpad.clear_pressed()
+        return ch
+
 def ux_poll_key():
     # non-blocking check if any key is pressed
     # - responds to key down only
@@ -116,100 +167,46 @@ def ux_poll_key():
 
     return ch
 
-class PressRelease:
-    def __init__(self, need_release='xy'):
-        # Manage key-repeat: track last key, measure time it's held down, etc.
-        self.need_release = need_release
-        self.last_key = None
-        self.num_repeats = 0
-
-    async def wait(self):
-        from glob import numpad
-
-        armed = None
-
-        while 1:
-            # two values here:
-            #  - (ms) time to wait before first key-repeat
-            #  - (ms) time between 2nd and Nth repeated events
-            #  - these values approved by @nvk
-            rep_delay = 200 if not self.num_repeats else 20
-            so_far = 0
-
-            while numpad.empty():
-                if self.last_key and numpad.key_pressed == self.last_key:
-                    if so_far >= rep_delay:
-                        self.num_repeats += 1
-                        return self.last_key
-
-                await sleep_ms(1)
-                so_far += 1
-
-            ch = numpad.get_nowait()
-
-            if ch == numpad.ABORT_KEY:
-                raise AbortInteraction()
-
-            self.num_repeats = 0
-
-            if len(ch) > 1:
-                # multipress: cancel press/release cycle and be a keyup
-                # for other keys.
-                armed = None
-                continue
-
-            if ch == '':
-                self.last_key = None
-                if armed:
-                    return armed
-            elif ch in self.need_release:
-                # no key-repeat on these ones
-                armed = ch
-            else:
-                self.last_key = ch
-                return ch
-
-# how many characters can we fit on each line?
-# (using FontSmall)
-CH_PER_W = const(17)
 
 async def ux_show_story(msg, title=None, escape=None, sensitive=False,
-                        strict_escape=False, scrollbar=True):
+                        strict_escape=False, scrollbar=True, hint_icons=None):
     # show a big long string, and wait for XY to continue
     # - returns character used to get out (X or Y)
     # - can accept other chars to 'escape' as well.
     # - accepts a stream or string
-    from glob import dis, numpad
-    from display import FontLarge
+    # - on Q, will show icons in top-right if hint_icons is provided
+    from glob import dis
 
     lines = []
     if title:
         # kinda weak rendering but it works.
         lines.append('\x01' + title)
 
+        if version.has_qwerty:
+            # big screen always needs blank after title
+            lines.append('')
+
     if hasattr(msg, 'readline'):
+        # coming from in-memory file for larger messages
         msg.seek(0)
         for ln in msg:
             if ln[-1] == '\n': 
                 ln = ln[:-1]
 
-            if len(ln) > CH_PER_W:
-                lines.extend(word_wrap(ln, CH_PER_W))
-            else:
-                # ok if empty string, just a blank line
-                lines.append(ln)
+            ln = q1_reword(ln)
+
+            lines.extend(word_wrap(ln, CH_PER_W))
 
         # no longer needed & rude to our caller, but let's save the memory
         msg.close()
         del msg
         gc.collect()
     else:
+        # simple string being shown
+        msg = q1_reword(msg)
+
         for ln in msg.split('\n'):
-            if len(ln) > CH_PER_W:
-                lines.extend(word_wrap(ln, CH_PER_W))
-            else:
-                # ok if empty string, just a blank line
-                lines.append(ln)
+            lines.extend(word_wrap(ln, CH_PER_W))
 
     # trim blank lines at end, add our own marker
     while not lines[-1]:
@@ -218,52 +215,42 @@ async def ux_show_story(msg, title=None, escape=None, sensitive=False,
     lines.append('EOT')
 
     top = 0
-    H = 5
     ch = None
     pr = PressRelease()
     while 1:
         # redraw
-        dis.clear()
-
-        y=0
-        for ln in lines[top:top+H]:
-            if ln == 'EOT':
-                dis.hline(y+3)
-            elif ln and ln[0] == '\x01':
-                dis.text(0, y, ln[1:], FontLarge)
-                y += 21
-            else:
-                dis.text(0, y, ln)
-
-                if sensitive and len(ln) > 3 and ln[2] == ':':
-                    dis.mark_sensitive(y, y+13)
-
-                y += 13
-
-        if scrollbar:
-            # help in cases when last char in a row hidden by scroll bar
-            dis.scroll_bar(top / len(lines))
-
-        dis.show()
+        dis.draw_story(lines[top:top+STORY_H], top, len(lines), sensitive, hint_icons=hint_icons)
 
         # wait to do something
         ch = await pr.wait()
-        if escape and (ch == escape or ch in escape):
+        if escape and (ch in escape):
             # allow another way out for some usages
             return ch
+        elif ch == KEY_ENTER:
+            if not strict_escape:
+                return 'y'      # translate for Mk4 code
+        elif ch == KEY_CANCEL:
+            if not strict_escape:
+                return 'x'      # translate for Mk4 code
         elif ch in 'xy':
             if not strict_escape:
                 return ch
-        elif ch == '0':
+        elif ch == KEY_END:
+            top = max(0, len(lines)-(STORY_H//2))
+        elif ch == '0' or ch == KEY_HOME:
             top = 0
-        elif ch == '7':     # page up
-            top = max(0, top-H)
-        elif ch == '9':     # page dn
-            top = min(len(lines)-2, top+H)
-        elif ch == '5':     # scroll up
+        elif ch == '7' or ch == KEY_PAGE_UP or ch == KEY_UP:
+            top = max(0, top-STORY_H)
+        elif ch == '9' or ch == KEY_PAGE_DOWN or ch == KEY_DOWN:
+            top = min(len(lines)-2, top+STORY_H)
+        elif ch == '5':
+            # line up/down only on Mk4; too slow w/ Q1's big screen
             top = max(0, top-1)
-        elif ch == '8':     # scroll dn
+        elif ch == '8':
             top = min(len(lines)-2, top+1)
+        elif not strict_escape:
+            if ch in { KEY_NFC, KEY_QR }:
+                return ch
 
         
 
@@ -290,13 +277,6 @@ async def idle_logout():
             from actions import logout_now
             await logout_now()
             return              # not reached
-            
-async def ux_confirm(msg):
-    # confirmation screen, with stock title and Y=of course.
-
-    resp = await ux_show_story("Are you SURE ?!?\n\n" + msg)
-
-    return resp == 'y'
 
 
 async def ux_dramatic_pause(msg, seconds):
@@ -317,24 +297,9 @@ async def ux_dramatic_pause(msg, seconds):
 def show_fatal_error(msg):
     # show a multi-line error message, over some kinda "fatal" banner
     from glob import dis
-    from display import FontTiny
 
-    dis.clear()
     lines = msg.split('\n')[-6:]
-    dis.text(None, 1, '>>>> Yikes!! <<<<')
-
-    y = 13+2
-    for num, ln in enumerate(lines):
-        ln = ln.strip()
-
-        if ln[0:6] == 'File "':
-            # convert: File "main.py", line 63, in interact
-            #    into: main.py:63  interact
-            ln = ln[6:].replace('", line ', ':').replace(', in ', '  ')
-
-        dis.text(0, y + (num*8), ln, FontTiny)
-
-    dis.show()
+    dis.show_yikes(lines)
 
 async def ux_aborted():
     # use this when dangerous action is not performed due to confirmations
@@ -368,9 +333,9 @@ async def show_qr_codes(addrs, is_alnum, start_n):
     o = QRDisplaySingle(addrs, is_alnum, start_n, sidebar=None)
     await o.interact_bare()
 
-async def show_qr_code(data, is_alnum, msg=None):
+async def show_qr_code(data, is_alnum=False, msg=None):
     from qrs import QRDisplaySingle
-    o = QRDisplaySingle([data], is_alnum, sidebar=msg)
+    o = QRDisplaySingle([data], is_alnum, msg=msg)
     await o.interact_bare()
 
 async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
@@ -378,282 +343,148 @@ async def ux_enter_bip32_index(prompt, can_cancel=False, unlimited=False):
         max_value = (2 ** 31) - 1  # we handle hardened
     else:
         max_value = 9999
+
     return await ux_enter_number(prompt=prompt, max_value=max_value, can_cancel=can_cancel)
 
-async def ux_enter_number(prompt, max_value, can_cancel=False):
-    # return the decimal number which the user has entered
-    # - default/blank value assumed to be zero
-    # - clamps large values to the max
-    from glob import dis
-    from display import FontTiny
-    from math import log
+def _import_prompt_builder(title, no_qr, no_nfc, slot_b_only=False):
+    from version import has_qwerty, num_sd_slots, has_qr
+    from glob import NFC, VD
 
-    # allow key repeat on X only
-    press = PressRelease('1234567890y')
+    prompt, escape = None, KEY_CANCEL+"x"
 
-    y = 26
-    value = ''
-    max_w = int(log(max_value, 10) + 1)
-
-    dis.clear()
-    dis.text(0, 0, prompt)
-    dis.text(None, -1, ("X to CANCEL, or OK when DONE." if can_cancel else 
-                        "X to DELETE, or OK when DONE."), FontTiny)
-    dis.save()
-
-    while 1:
-        dis.restore()
-
-        # text centered
-        if value:
-            bx = dis.text(None, y, value)
-            dis.icon(bx+1, y+11, 'space')
+    if (NFC or VD) or num_sd_slots>1:
+        if slot_b_only and (num_sd_slots>1):
+            prompt = "Press (B) to import %s from lower slot SD Card" % title
+            escape += "b"
         else:
-            dis.icon(64-7, y+11, 'space')
+            prompt = "Press (1) to import %s from SD Card" % title
+            escape += "1"
+            if num_sd_slots == 2:
+                prompt += ", (B) for lower slot"
+                escape += "ab"
 
-        dis.show()
-
-        ch = await press.wait()
-        if ch == 'y':
-
-            if not value: return 0
-            return min(max_value, int(value))
-
-        elif ch == 'x':
-            if value:
-                value = value[0:-1]
-            elif can_cancel:
-                # quit if they press X on empty screen
-                return None
-        else:
-            if len(value) == max_w:
-                value = value[0:-1] + ch
+        if VD is not None:
+            prompt += ", press (2) to import from Virtual Disk"
+            escape += "2"
+        if (NFC is not None) and not no_nfc:
+            if has_qwerty:
+                prompt += ", press " + KEY_NFC + " to import via NFC"
+                escape += KEY_NFC
             else:
-                value += ch
+                prompt += ", press (3) to import via NFC"
+                escape += "3"
 
-            # cleanup leading zeros and such
-            value = str(min(int(value), max_value))
+        if has_qwerty and not no_qr:
+            prompt += ", " + KEY_QR + " to scan QR code"
+            escape += KEY_QR
 
-async def ux_input_numbers(val, validate_func):
-    # collect a series of digits
-    from glob import dis
-    from display import FontTiny
+        prompt += "."
 
-    # allow key repeat on X only
-    press = PressRelease('1234567890y')
+    return prompt, escape
 
-    footer = "X to DELETE, or OK when DONE."
-    lx = 6
-    y = 16
-    here = ''
 
-    dis.clear()
-    dis.text(None, -1, footer, FontTiny)
-    dis.save()
+def export_prompt_builder(what_it_is, no_qr=False, no_nfc=False, key0=None):
+    # Build the prompt for export
+    # - key0 can be for special stuff
+    from version import has_qwerty, num_sd_slots, has_qr
+    from glob import NFC, VD
 
-    while 1:
-        dis.restore()
+    prompt, escape = None, KEY_CANCEL+"x"
 
-        # text centered
-        msg = here
-        by = y
-        bx = dis.text(lx, y, msg[0:16])
-        dis.text(lx, y - 9, str(val, 'ascii').replace(' ', '_'), FontTiny)
+    if (NFC or VD) or num_sd_slots>1 or key0:
+        # no need to spam with another prompt, only option is SD card
 
-        if len(msg) > 16:
-            # second line when needed (left just)
-            by += 15
-            bx = dis.text(lx, by, msg[16:])
+        prompt = "Press (1) to save %s to SD Card" % what_it_is
+        escape += "1"
+        if num_sd_slots == 2:
+            # MAYBE: show this only if both slots have cards inserted?
+            prompt += ", (B) for lower slot"
+            escape += "ab"
 
-        if len(here) < 32:
-            dis.icon(bx, by - 2, 'sm_box')
+        if VD is not None:
+            prompt += ", press (2) to save to Virtual Disk"
+            escape += "2"
 
-        dis.show()
-
-        ch = await press.wait()
-        if ch == 'y':
-            val += here
-            validate_func()
-            return val
-        elif ch == 'x':
-            if here:
-                here = here[0:-1]
+        if (NFC is not None) and not no_nfc:
+            if has_qwerty:
+                prompt += ", press " + KEY_NFC + " to share via NFC"
+                escape += KEY_NFC
             else:
-                # quit if they press X on empty screen
-                return
-        else:
-            if len(here) < 32:
-                here += ch
+                prompt += ", press (3) to share via NFC"
+                escape += "3"
 
-async def ux_input_text(pw, confirm_exit=True, hex_only=False, max_len=100):
-    # Allow them to pick each digit using "D-pad"
-    from glob import dis
-    from display import FontTiny, FontSmall
+        if not no_qr:
+            if has_qwerty:
+                prompt += ", "+KEY_QR+" to show QR code"
+                escape += KEY_QR
+            else:
+                prompt += ", (4) to show QR code"
+                escape += '4'
 
-    # Should allow full unicode, NKDN
-    # - but limited to what we can show in FontSmall
-    # - so really just ascii; not even latin-1
-    # - 8-bit codepoints only
-    my_rng = range(32, 127)  # FontSmall.code_range
-    if hex_only:
-        new_expand = "0"
-        symbols = b"0123456789abcdef"
+        if key0:
+            prompt += ', (0) ' + key0
+            escape += '0'
+
+        prompt += "."
+
+    return prompt, escape
+
+def import_export_prompt_decode(ch):
+    # We showed a prompt from _import_prompt_builder() and now need to 
+    # figure out what they want to do.
+    # - illegal choices should have been already blocked by "escape" on ux_story
+
+    force_vdisk = False
+    slot_b = None       # ie. don't care / either
+
+    if ch in "3"+KEY_NFC:
+        return KEY_NFC
+    elif ch in "4"+ KEY_QR:
+        return KEY_QR
+    elif ch == "2":
+        force_vdisk = True
+    elif ch == 'b':
+        slot_b = True
+    elif ch == 'a':
+        # not documented on-screen? easter egg really. forces slot A if both in use.
+        slot_b = False
+    elif ch == '1':
+        slot_b = None
+    elif ch == 'x':
+        return KEY_CANCEL
     else:
-        new_expand = " "
-        symbols = b' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-        letters = b'abcdefghijklmnopqrstuvwxyz'
-        Letters = b'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        numbers = b'1234567890'
-    # assert len(set(symbols+letters+Letters+numbers)) == len(my_rng)
+        # Includes: '0': special "other" case
+        # - cancel, enter, etc
+        return ch
 
-    if hex_only:
-        footer1 = "Enter Hexidecimal Number"
-        footer2 = "58=Change 9=Next 7=Back"
+    # return extra arguments to files.file_picker() or CardSlot()
+    return dict(force_vdisk=force_vdisk, slot_b=slot_b)
+
+async def import_export_prompt(what_it_is, is_import=False, no_qr=False,
+                               no_nfc=False, title=None, intro='', footnotes='',
+                               slot_b_only=False):
+    # Show story allowing user to select source for importing/exporting
+    # - return either str(mode) OR dict(file_args)
+    # - KEY_NFC or KEY_QR for those sources
+    # - KEY_CANCEL for abort by user
+    # - dict() => do file system thing, using file_args to control vdisk vs. SD vs slot_b
+
+    if is_import:
+        prompt, escape = _import_prompt_builder(what_it_is, no_qr, no_nfc, slot_b_only)
     else:
-        footer1 = "1=Letters  2=Numbers  3=Symbols"
-        footer2 = "4=SwapCase  0=HELP"
+        prompt, escape = export_prompt_builder(what_it_is, no_qr, no_nfc)
 
-    y = 20
-    pw = bytearray(pw or ('0' if hex_only else 'A'))
+    # TODO: detect if we're only asking A or B, when just one card is inserted
+    # - assume that's what they want to do
+    # - but if NFC, QR or Virtdisk is option, then we need to prompt
 
-    pos = len(pw) - 1  # which part being changed
-    n_visible = const(9)
-    scroll_x = max(pos - n_visible, 0)
+    if not prompt:
+        # they don't have NFC nor VD enabled, and no second slots... so will be file.
+        return dict(force_vdisk=False, slot_b=None)
+    else:
+        ch = await ux_show_story(intro+prompt+footnotes, escape=escape, title=title,
+                                 strict_escape=True)
 
-    def cycle_set(which, direction=1):
-        # pick next item in set of choices
-        for n, s in enumerate(which):
-            if pw[pos] == s:
-                try:
-                    pw[pos] = which[n + direction]
-                except IndexError:
-                    pw[pos] = which[0 if direction == 1 else -1]
-                return
-        pw[pos] = which[0]
-
-    def change(dx):
-        # next/prev within the same subset of related chars
-        ch = pw[pos]
-        if hex_only:
-            return cycle_set(symbols, dx)
-        for subset in [symbols, letters, Letters, numbers]:
-            if ch in subset:
-                return cycle_set(subset, dx)
-
-        # probably unreachable code: numeric up/down
-        ch = pw[pos] + dx
-        if ch not in my_rng:
-            ch = (my_rng.stop - 1) if dx < 0 else my_rng.start
-            assert ch in my_rng
-        pw[pos] = ch
-
-    # pre-render the fixed stuff
-    dis.clear()
-    dis.text(None, -10, footer1, FontTiny)
-    dis.text(None, -1, footer2, FontTiny)
-    dis.save()
-
-    # no key-repeat on certain keys
-    press = PressRelease('4xy')
-    while 1:
-        dis.restore()
-
-        lr = pos - scroll_x  # left/right distance of cursor
-        if lr < 4 and scroll_x:
-            scroll_x -= 1
-        elif lr < 0:
-            scroll_x = pos
-        elif lr >= (n_visible - 1):
-            # past right edge
-            scroll_x += 1
-
-        for i in range(n_visible):
-            # calc abs position in string
-            ax = scroll_x + i
-            x = 4 + (13 * i)
-            try:
-                ch = pw[ax]
-            except IndexError:
-                continue
-
-            if ax == pos:
-                # draw cursor
-                if not hex_only and (len(pw) < 2 * n_visible):
-                    dis.text(x - 4, y - 19, '0x%02X' % ch, FontTiny)
-                dis.icon(x - 2, y - 10, 'spin')
-
-            if ch == 0x20:
-                dis.icon(x, y + 11, 'space')
-            else:
-                dis.text(x, y, chr(ch) if ch in my_rng else chr(215), FontSmall)
-
-        if scroll_x > 0:
-            dis.text(2, y - 14, str(pw, 'ascii')[0:scroll_x].replace(' ', '_'), FontTiny)
-        if scroll_x + n_visible < len(pw):
-            dis.text(-1, 1, "MORE>", FontTiny)
-
-        dis.show()
-
-        ch = await press.wait()
-        if ch == 'y':
-            return str(pw, 'ascii')
-        elif ch == 'x':
-            if len(pw) > 1:
-                # delete current char
-                pw = pw[0:pos] + pw[pos + 1:]
-                if pos >= len(pw):
-                    pos = len(pw) - 1
-            else:
-                if confirm_exit:
-                    pp = await ux_show_story(
-                        "OK to leave without any changes? Or X to cancel leaving.")
-                    if pp == 'x': continue
-                return None
-
-        elif ch == '7':  # left
-            pos -= 1
-            if pos < 0: pos = 0
-        elif ch == '9':  # right
-            pos += 1
-            if pos >= len(pw):
-                if len(pw) < max_len and pw[-3:] != b'   ':
-                    # expands with space in normal mode
-                    # expands with 0 in hex_only mode
-                    pw += new_expand
-                else:
-                    pos -= 1  # abort addition
-
-        elif ch == '5':  # up
-            change(1)
-        elif ch == '8':  # down
-            change(-1)
-        elif hex_only:
-            # just got back at the beginning of the loop
-            # below branches are unreachable for hex_only mode
-            pass
-        elif ch == '1':  # alpha
-            cycle_set(b'Aa')
-        elif ch == '4':  # toggle case
-            if (pw[pos] & ~0x20) in range(65, 91):
-                pw[pos] ^= 0x20
-        elif ch == '2':  # numbers
-            cycle_set(numbers)
-        elif ch == '3':  # symbols (all of them)
-            cycle_set(symbols)
-        elif ch == '0':  # help
-            help_msg = '''\
-Use arrow keys (5789) to select letter and move around. 
-
-1=Letters (Aa..)
-2=Numbers (12..)
-3=Symbols (!@#&*)
-4=Swap Case (q/Q)
-X=Delete char
-
-Add more characters by moving past end (right side).'''
-
-            if confirm_exit:
-                help_msg += '\nTo quit without changes, delete everything.'
-            await ux_show_story(help_msg)
+        return import_export_prompt_decode(ch)
 
 # EOF

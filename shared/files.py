@@ -10,24 +10,16 @@ async def needs_microsd():
     from ux import ux_show_story
     return await ux_show_story("Please insert a MicroSD card before attempting this operation.")
 
-def _is_ejected():
-    sd = pyb.SDCard()
-    return not sd.present()
-
 def is_dir(fname):
     if os.stat(fname)[0] & 0x4000:
         return True
     return False
 
-def _try_microsd(bad_fs_ok=False):
+def _try_microsd():
     # Power up, mount the SD card, return False if we can't for some reason.
+    # - we know card is there already, and mux set appropriately
     #
-    # If we're about to reformat, we don't need a working filesystem
-
     sd = pyb.SDCard()
-
-    if not sd.present():
-        return False
 
     if ckcc.is_simulator():
         return True
@@ -48,11 +40,10 @@ def _try_microsd(bad_fs_ok=False):
 
     except OSError as exc:
         # corrupt or unformated SD card (or something)
-        if bad_fs_ok: return True
         #sys.print_exception(exc)
         return False
 
-def wipe_flash_filesystem():
+def wipe_flash_filesystem(do_rebuild=True):
     # erase and re-format the flash filesystem (/flash/**)
     import ckcc, pyb
     from glob import dis
@@ -75,9 +66,11 @@ def wipe_flash_filesystem():
 
     for n in range(bcount):
         fl.writeblocks(n, blk)
-        ckcc.rng_bytes(blk)
-        dis.progress_bar_show(n/bcount)
+        dis.progress_sofar(n, bcount)
         
+    if not do_rebuild:
+        return
+
     # rebuild and mount /flash
     dis.fullscreen('Rebuilding...')
 
@@ -93,43 +86,62 @@ def wipe_microsd_card():
     # Erase and re-format SD card. Not secure erase, because that is too slow.
     import ckcc, pyb
     from glob import dis
+    from version import num_sd_slots
+
+    if not CardSlot.is_inserted():
+        return
     
     try:
+        # just in case
         os.umount('/sd')
     except:
         pass
 
-    sd = pyb.SDCard()
-    assert sd
+    if num_sd_slots == 2:
+        # pick slot with a card or default A if both installed
+        slot_b = (CardSlot.sd_detect2() == 0)
+        if CardSlot.sd_detect() == 0:
+            slot_b = False
+        CardSlot.mux(1 if slot_b else 0)      # top slot = A
+        active_led = CardSlot.active_led2 if slot_b else CardSlot.active_led1
+    else:
+        active_led = CardSlot.active_led
+        slot_b = False
 
-    if not sd.present():
+    try:
+        active_led.on()
 
-        return
+        sd = pyb.SDCard()
+        assert sd
 
-    # power cycle so card details (like size) are re-read from current card
-    sd.power(0)
-    sd.power(1)
+        # power cycle so card details (like size) are re-read from current card
+        sd.power(0)
+        sd.power(1)
 
-    dis.fullscreen('Part Erase...')
-    cutoff = 1024       # arbitrary
-    blk = bytearray(512)
-
-    for  bnum in range(cutoff):
+        dis.fullscreen('Formatting...')
+        cutoff = 1024       # arbitrary
+        blk = bytearray(512)
         ckcc.rng_bytes(blk)
-        sd.writeblocks(bnum, blk)
-        dis.progress_bar_show(bnum/cutoff)
 
-    dis.fullscreen('Formatting...')
+        for bnum in range(cutoff):
+            sd.writeblocks(bnum, blk)
+            dis.progress_bar_show(bnum/cutoff)
 
-    # remount, with newfs option
-    os.mount(sd, '/sd', readonly=0, mkfs=1)
+        # remount, with newfs option -- this does the formating (very quick)
+        os.mount(sd, '/sd', readonly=0, mkfs=1)
 
-    # done, cleanup
-    os.umount('/sd')
+        # done, cleanup
+        os.umount('/sd')
+    finally:
+        active_led.off()
 
-    # important: turn off power
-    sd = pyb.SDCard()
-    sd.power(0)
+        # important: turn off power
+        sd = pyb.SDCard()
+        sd.power(0)
+
+        if slot_b:
+            # optional?
+            CardSlot.mux(0)      # top slot = A
 
 def dfu_parse(fd):
     # do just a little parsing of DFU headers, to find start/length of main binary
@@ -191,7 +203,9 @@ class CardSlot:
         # Watch the SD card-detect signal line... but very noisy
         # - this is called a few seconds after system startup
 
-        from pyb import Pin, ExtInt
+        from pyb import ExtInt
+        from machine import Pin
+        from version import num_sd_slots
 
         def card_change(_):
             # Careful: these can come fast and furious!
@@ -199,28 +213,61 @@ class CardSlot:
 
         cls.last_change = utime.ticks_ms()
 
-        cls.irq = ExtInt(Pin('SD_SW'), ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
+        if num_sd_slots == 2:
+            # Q has luxurious dual slots
+            cls.mux = Pin('SD_MUX', Pin.OUT, value=0)
+            cls.sd_detect2 = Pin('SD_DETECT2')
+            cls.irq2 = ExtInt(cls.sd_detect2, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
-        # mark 2+ boards have a light for SD activity.
-        from machine import Pin
-        cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+            cls.active_led2 = Pin('SD_ACTIVE2', Pin.OUT)
+            cls.active_led1 = Pin('SD_ACTIVE', Pin.OUT)
+            cls.active_led = cls.active_led1
+        else:
+            cls.mux = None
+            cls.active_led = Pin('SD_ACTIVE', Pin.OUT)
+
+        cls.sd_detect = Pin('SD_DETECT')
+        cls.irq = ExtInt(cls.sd_detect, ExtInt.IRQ_RISING_FALLING, Pin.PULL_UP, card_change)
 
     @classmethod
     def is_inserted(cls):
-        # debounce?
-        return not _is_ejected()
+        # Sense is inverted on Mk4, and true on Q.
+        if cls.mux:
+            return (cls.sd_detect() == 0) or (cls.sd_detect2() == 0)
+        else:
+            return cls.sd_detect() == 1
 
-    def __init__(self, force_vdisk=False, readonly=False):
+    @classmethod
+    def both_inserted(cls):
+        # Predicate: Is there a card in both slots? If only one slot exists, return None
+        if cls.mux:
+            return (cls.sd_detect() == 0) and (cls.sd_detect2() == 0)
+        # return None (implicit)
+
+    def __init__(self, force_vdisk=False, readonly=False, slot_b=None):
         self.mountpt = None
         self.force_vdisk = force_vdisk
         self.readonly = readonly
         self.wrote_files = set()
+        if self.mux:
+            if slot_b is None:
+                # reading, and we don't care which, so pick slot with a card
+                # or default A if both installed
+                slot_b = (self.sd_detect2() == 0)
+                if self.sd_detect() == 0:
+                    slot_b = False
+            self.mux(1 if slot_b else 0)      # top slot = A
+            self.active_led = self.active_led2 if slot_b else self.active_led1
 
     def __enter__(self):
         # Mk4: maybe use our virtual disk in preference to SD Card
-        if glob.VD and (_is_ejected() or self.force_vdisk):
+        if glob.VD and (self.force_vdisk or not self.is_inserted()):
             self.mountpt = glob.VD.mount(self.readonly)
             return self
+
+        if not self.is_inserted():
+            # bugfix on Q: #618
+            raise CardMissingError
 
         # Get ready!
         self.active_led.on()
@@ -245,12 +292,17 @@ class CardSlot:
         return self
 
     def __exit__(self, *a):
-        if self.mountpt == '/sd':
+        if self.mountpt == self.get_sd_root():
             self._recover()
         elif glob.VD:
-            glob.VD.unmount(self.wrote_files)
+            glob.VD.unmount(self.wrote_files, self.readonly)
 
         self.mountpt = None
+
+        # just in case?
+        if self.mux:
+            self.mux(0)
+
         return False
 
     def open(self, fname, mode='r', **kw):
@@ -271,7 +323,7 @@ class CardSlot:
             os.umount('/sd')
         except: pass
 
-        # previously important: turn off power so touch can work again (Mk1)
+        # turn off power to slot
         sd = pyb.SDCard()
         sd.power(0)
 

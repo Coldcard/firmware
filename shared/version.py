@@ -74,20 +74,40 @@ def serial_number():
 
 def probe_system():
     # run-once code to determine what hardware we are running on
-    global hw_label, has_608, is_factory_mode
-    global mk_num, has_nfc, is_devmode
+    global hw_label, has_608, is_factory_mode, is_devmode, has_psram, is_edge
+    global has_se2, mk_num, has_nfc, has_qr, num_sd_slots, has_qwerty, has_battery, supports_hsm
     global MAX_UPLOAD_LEN, MAX_TXN_LEN
 
     from sigheader import RAM_BOOT_FLAGS, RBF_FACTORY_MODE
-    import ckcc, callgate
+    import ckcc, callgate, machine
 
     hw_label = 'mk4'
     has_608 = True
-    has_nfc = nfc_presence_check()  # hardware present; they might not be using it
+    nfc_presence_check()  # hardware present; they might not be using it
+    has_qr = False          # QR scanner
+    num_sd_slots = 1        # might have dual slots on Q1
     mk_num = 4
+    has_battery = False
+    has_qwerty = False
+    is_edge = False
+    supports_hsm = True
+    has_nfc = True
 
     cpuid = ckcc.get_cpu_id()
     assert cpuid == 0x470  # STM32L4S5VI
+
+    # detect Q1 based on pins.csv
+    try:
+        machine.Pin('LCD_TEAR')     # only defined on Q1 build, will error otherwise
+        has_qr = True
+        num_sd_slots = 2
+        hw_label = 'q1'
+        has_battery = True
+        has_qwerty = True
+        supports_hsm = False
+        # but, still mk_num = 4
+    except ValueError:
+        pass
 
     # Boot loader needs to tell us stuff about how we were booted, sometimes:
     # - did we just install a new version, for example (obsolete in mk4)

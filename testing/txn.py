@@ -267,4 +267,33 @@ def render_address(script, testnet=True):
 
     raise ValueError('Unknown payment script', repr(script))
 
+def fake_address(addr_fmt, testnet=False):
+    # Make fake addresses of any type. Contents are noise... don't ever send to them!!
+    # TODO add regtest option
+    # LATER: dup of helper.py fake_dest_addr
+    from constants import AFC_WRAPPED, AFC_PUBKEY, AFC_SEGWIT, AFC_BECH32M, AFC_SCRIPT
+    from helpers import prandom
+    from pycoin.encoding import b2a_hashed_base58
+    from bech32 import encode as bech32_encode
+
+    is_script = bool(addr_fmt & (AFC_SCRIPT | AFC_WRAPPED))
+    body = prandom(32 if is_script else 20)
+
+    if not testnet:
+        bech32_hrp = 'bc'
+        b58_addr    = bytes([0])
+        b58_script  = bytes([5])
+    else:
+        bech32_hrp = 'tb'
+        b58_addr    = bytes([111])
+        b58_script  = bytes([196])
+
+    if (addr_fmt & AFC_SEGWIT) and not (addr_fmt & AFC_WRAPPED):
+        # bech32
+        vers = 1 if (addr_fmt & AFC_BECH32M) == AFC_BECH32M else 0
+        return bech32_encode(bech32_hrp, vers, body)
+    else:
+        # base58
+        return b2a_hashed_base58((b58_script if is_script else b58_addr) + body[0:20])
+
 # EOF

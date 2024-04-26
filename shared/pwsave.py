@@ -2,10 +2,10 @@
 #
 # pwsave.py - Save bip39 passphrases into encrypted file on MicroSD (if desired)
 #
-import stash, ujson, ngu, pyb, os, aes256ctr
+import stash, ujson, ngu, pyb, os, version, aes256ctr
 from files import CardSlot, CardMissingError, needs_microsd
 from ux import ux_dramatic_pause, ux_confirm, ux_show_story
-from utils import xfp2str, problem_file_line
+from utils import xfp2str, problem_file_line, B2A
 from menu import MenuItem, MenuSystem
 
 
@@ -22,6 +22,18 @@ class PassphraseSaver:
         # Construct actual filename to use.
         # - some very minor obscurity, but we aren't relying on that.
         return card.get_sd_root() + '/.tmp.tmp'
+
+    @classmethod
+    def has_file(cls):
+        # Is a card inserted with the required file(name) in place?
+        if CardSlot.is_inserted():
+            try:
+                with CardSlot() as card:
+                    # check if passphrases file exists on SD (dont read it)
+                    if card.exists(cls.filename(card)):
+                        return True
+            except: pass
+        return False
 
     def _calc_key(self, card, force=False):
         # calculate the key to be used.
@@ -189,7 +201,7 @@ class PassphraseSaverMenu(MenuSystem):
 
         # Challenge: we need to hint at which is which, but don't want to
         # show the password on-screen.
-        # - simple algo: 
+        # - simple algo:
         #   - show either first N or last N chars only
         #   - pick which set which is all-unique, if neither, try N+1
         #
@@ -216,6 +228,7 @@ class PassphraseSaverMenu(MenuSystem):
                 MenuItem("Restore", f=cls.apply, arg=pw),
                 MenuItem("Delete", f=cls.delete_entry, arg=(pw_saver, i)),
             ])
+            submenu.goto_idx(1)     # skip cursor to "Restore"
             items.append(MenuItem(label or "(empty)", menu=submenu))
         return items
 
@@ -231,8 +244,6 @@ class MicroSD2FA(PassphraseSaver):
         # - serial number of CC is nearly public but hmac anyway
         # - if this file was written from a trick pin situation, it would have
         #   correct filename but contents would not decrypt since AES key is based off seed
-        import version
-        from utils import B2A
 
         k = ngu.hash.sha256s(version.serial_number())
         h = ngu.hmac.hmac_sha256(k, b'silly?')
@@ -289,7 +300,7 @@ class MicroSD2FA(PassphraseSaver):
     def authorized_card_present(cls, nonces):
         # Check if good card present
         
-        if not pyb.SDCard().present():
+        if not CardSlot.is_inserted():
             # no card present, so nope
             return False
 
@@ -297,17 +308,13 @@ class MicroSD2FA(PassphraseSaver):
         got = s.read_card()
         if not got:
             # garbage seen, missing file, etc => fail
-            #print('2fa file decrypt fail')
             return False
-        #print(repr(got))
-        #print(repr(nonces))
 
         # check it is in the list of authorized cards
         return (got['nonce'] in nonces)
     
     async def enroll(self):
         # Write little file, update our settings to allow this card to auth.
-        from utils import B2A
         from glob import dis, settings
 
         nonce = B2A(ngu.random.bytes(8))
@@ -346,7 +353,7 @@ class MicroSD2FA(PassphraseSaver):
     async def remove(self, nonce):
         # remove indicated nonce from records
         # - doesn't delete file, since might not have card anymore and useless w/o nonce
-        from glob import dis, settings
+        from glob import settings
 
         v = self.get_nonces()
         assert nonce in v, 'missing card nonce'
@@ -386,11 +393,9 @@ class MicroSD2FA(PassphraseSaver):
 
     @classmethod
     async def menu_enroll(cls, menu, label, item):
-        from files import _is_ejected
-
         count = item.arg
 
-        if _is_ejected():
+        if not CardSlot.is_inserted():
             return await needs_microsd()
 
         # careful: if they re-enrolled same card twice, confusion will result

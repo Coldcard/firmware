@@ -16,13 +16,26 @@ from helpers import xfp2str, slip132undo
 from conftest import simulator_fixed_xfp, simulator_fixed_tprv, simulator_fixed_words
 from ckcc_protocol.constants import AF_CLASSIC, AF_P2WPKH
 from pprint import pprint
+from charcodes import KEY_NFC, KEY_QR
+
+
+@pytest.fixture
+def mk4_qr_not_allowed(is_q1):
+    def doit(way):
+        if way == "qr" and not is_q1:
+            pytest.skip("mk4 QR not allowed")
+    return doit
+
+
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home, cap_story,
                      need_keypress, microsd_path, virtdisk_path, bitcoind_wallet, bitcoind_d_wallet,
-                     enter_number, nfc_read_text, load_export, bitcoind):
+                     enter_number, nfc_read_text, load_export, bitcoind, press_select,
+                     mk4_qr_not_allowed):
+    mk4_qr_not_allowed(way)
     # test UX and operation of the 'bitcoin core' wallet export
     from pycoin.contrib.segwit_addr import encode as sw_encode
     use_regtest()
@@ -45,7 +58,7 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         enter_number(acct_num)
     else:
         acct_num = '0'
-        need_keypress('y')
+        press_select()
 
     export = load_export(way, label="Bitcoin Core", is_json=False, addr_fmt=AF_P2WPKH)
     fp = io.StringIO(export).readlines()
@@ -67,9 +80,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
             imd_js = ln[19:-2]
         elif '=>' in ln:
             path, addr = ln.strip().split(' => ', 1)
-            assert path.startswith(f"m/84'/1'/{acct_num}'/0")
+            assert path.startswith(f"m/84h/1h/{acct_num}h/0")
             assert addr.startswith('bcrt1q') # TODO here we should differentiate if testnet or smthg
-            sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path[2:])
+            sk = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(path[2:].replace("h", "'"))
             h20 = sk.hash160()
             assert addr == sw_encode(addr[0:4], 0, h20) # TODO here we should differentiate if testnet or smthg
             addrs.append(addr)
@@ -158,9 +171,9 @@ def test_export_core(way, dev, use_regtest, acct_num, pick_menu_item, goto_home,
         #assert x['hdkeypath'] == f"m/84'/1'/{acct_num}'/0/%d" % (len(addrs)-1)
 
 
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
-def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, microsd_path,
+def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, press_select, microsd_path,
                        nfc_read_json, virtdisk_path, testnet, use_mainnet, load_export):
     # test UX and operation of the 'wasabi wallet export'
     if not testnet:
@@ -176,7 +189,7 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
     title, story = cap_story()
 
     assert 'This saves a skeleton Wasabi' in story
-    need_keypress('y')
+    press_select()
 
     obj = load_export(way, label="Wasabi wallet", is_json=True, addr_fmt=AF_P2WPKH)
 
@@ -197,11 +210,13 @@ def test_export_wasabi(way, dev, pick_menu_item, goto_home, cap_story, need_keyp
         
 @pytest.mark.parametrize('mode', [ "Classic P2PKH", "P2SH-Segwit", "Segwit P2WPKH"])
 @pytest.mark.parametrize('acct_num', [ None, '0', '9897'])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, cap_story, need_keypress,
-                         microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export):
+                         microsd_path, nfc_read_json, virtdisk_path, use_mainnet, testnet, load_export,
+                         press_select, mk4_qr_not_allowed):
     # lightly test electrum wallet export
+    mk4_qr_not_allowed(way)
     if not testnet:
         use_mainnet()
     if "P2PKH" in mode:
@@ -228,7 +243,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
         for n in acct_num:
             need_keypress(n)
 
-    need_keypress('y')
+    press_select()
 
     time.sleep(0.1)
     pick_menu_item(mode)
@@ -244,7 +259,7 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
     deriv = ks['derivation']
     assert deriv.startswith('m/')
     assert int(deriv.split("/")[1][:-1]) in {44, 84, 49}        # weak
-    assert deriv.split("/")[3] == (acct_num or '0')+"'"
+    assert deriv.split("/")[3] == (acct_num or '0')+"h"
 
     xpub = ks['xpub']
     assert xpub[1:4] == 'pub'
@@ -257,22 +272,25 @@ def test_export_electrum(way, dev, mode, acct_num, pick_menu_item, goto_home, ca
         # no slip132 here
 
         got = BIP32Node.from_wallet_key(xpub)
-        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(deriv[2:])
+        expect = BIP32Node.from_wallet_key(simulator_fixed_tprv).subkey_for_path(deriv[2:].replace("h", "'"))
 
         assert got.sec() == expect.sec()
 
 
 @pytest.mark.parametrize('acct_num', [ None, '99', '1236'])
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 @pytest.mark.parametrize('app', [
     ("Generic JSON", "Generic Export"),
     ("Lily Wallet", "Lily Wallet"),
-    ("Sparrow Wallet", "Sparrow Wallet")
+    ("Sparrow Wallet", "Sparrow Wallet"),
+    ("Nunchuk", "Nunchuk Wallet"),
 ])
 def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap_story, need_keypress,
                          microsd_path, nfc_read_json, virtdisk_path, addr_vs_path, enter_number,
-                         load_export, testnet, use_mainnet):
+                         load_export, testnet, use_mainnet, press_select, mk4_qr_not_allowed):
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
 
@@ -295,7 +313,7 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         enter_number(acct_num)
     else:
         acct_num = '0'
-        need_keypress('y')
+        press_select()
 
     obj = load_export(way, label=app_f_name, is_json=True, addr_fmt=AF_CLASSIC)
 
@@ -314,12 +332,12 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
         assert all([i in v for i in ['deriv', 'name', 'xpub', 'xfp']])
 
         if fn == 'bip45':
-            assert v['deriv'] == "m/45'"
+            assert v['deriv'] == "m/45h"
         elif 'bip48' not in fn:
-            assert v['deriv'].endswith(f"'/{acct_num}'")
+            assert v['deriv'].endswith(f"h/{acct_num}h")
         else:
             b48n = fn[-1]
-            assert v['deriv'].endswith(f"'/{acct_num}'/{b48n}'")
+            assert v['deriv'].endswith(f"h/{acct_num}h/{b48n}h")
 
         node = BIP32Node.from_wallet_key(v['xpub'])
         assert v['xpub'] == node.hwif(as_private=False)
@@ -348,13 +366,15 @@ def test_export_coldcard(way, dev, acct_num, app, pick_menu_item, goto_home, cap
             else:
                 assert False
 
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
 @pytest.mark.parametrize('acct_num', [None, '0', '99', '123'])
 def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_keypress, acct_num,
                           microsd_path, nfc_read_json, virtdisk_path, testnet, enter_number,
-                          load_export, settings_set, use_mainnet):
+                          load_export, settings_set, use_mainnet, press_select, mk4_qr_not_allowed):
     # test UX and operation of the 'unchained export'
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
     goto_home()
@@ -375,7 +395,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         enter_number(acct_num)
     else:
         acct_num = '0'
-        need_keypress('y')
+        press_select()
 
     obj = load_export(way, label="Unchained", is_json=True, sig_check=False)
 
@@ -385,7 +405,7 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
     assert obj['xfp'] == xfp2str(simulator_fixed_xfp)
     assert obj['account'] == int(acct_num)
     if acct_num == "0":
-        assert obj['p2sh_deriv'] == "m/45'"
+        assert obj['p2sh_deriv'] == "m/45h"
         addr_formats = ['p2sh_p2wsh', 'p2sh', 'p2wsh']
     else:
         assert 'p2sh_deriv' not in obj
@@ -395,17 +415,19 @@ def test_export_unchained(way, dev, pick_menu_item, goto_home, cap_story, need_k
         xpub = slip132undo(obj[k])[0] if k != 'p2sh' else obj[k]
         node = BIP32Node.from_wallet_key(xpub)
         assert xpub == node.hwif(as_private=False)
-        sk = root.subkey_for_path(obj[f'{k}_deriv'][2:] + '.pub')
+        sk = root.subkey_for_path(obj[f'{k}_deriv'][2:].replace("h", "'") + '.pub')
         #assert node.chain_code() == sk.chain_code()
         assert node.hwif() == sk.hwif()
 
 
-@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize('way', ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('testnet', [True, False])
-def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, microsd_path,
+def test_export_public_txt(way, dev, pick_menu_item, goto_home, press_select, microsd_path,
                            addr_vs_path, virtdisk_path, nfc_read_text, cap_story, use_mainnet,
-                           load_export, testnet):
+                           load_export, testnet, mk4_qr_not_allowed):
     # test UX and values produced.
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
     goto_home()
@@ -418,7 +440,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, m
     title, story = cap_story()
 
     assert 'Saves a text file' in story
-    need_keypress('y')
+    press_select()
 
     contents = load_export(way, label="Summary", is_json=False, addr_fmt=AF_CLASSIC)
     fp = io.StringIO(contents).readlines()
@@ -445,7 +467,7 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, m
             f = None
 
         if rhs[1:4] == 'pub':
-            expect = root.subkey_for_path(lhs[2:])
+            expect = root.subkey_for_path(lhs[2:].replace("h", "'"))
             assert expect.hwif(as_private=False) == rhs
             continue
 
@@ -465,10 +487,11 @@ def test_export_public_txt(way, dev, pick_menu_item, goto_home, need_keypress, m
 @pytest.mark.qrcode
 @pytest.mark.parametrize('acct_num', [ None, 0, 99, 8989])
 @pytest.mark.parametrize('use_nfc', [False, True])
-def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress, enter_number,
-                     cap_screen_qr, use_mainnet, nfc_read_text):
+def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home,
+                     cap_story, need_keypress, enter_number, cap_screen_qr,
+                     use_mainnet, nfc_read_text, is_q1, press_select, press_cancel,
+                     press_nfc):
     # XPUB's via QR
-
     use_mainnet()
 
     goto_home()
@@ -480,11 +503,11 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
     for m in top_items:
         is_xfp = False
         if '-84' in m:
-            expect = "m/84'/0'/{acct}'"
+            expect = "m/84h/0h/{acct}h"
         elif '-44' in m:
-            expect = "m/44'/0'/{acct}'"
+            expect = "m/44h/0h/{acct}h"
         elif '49' in m:
-            expect = "m/49'/0'/{acct}'"
+            expect = "m/49h/0h/{acct}h"
         elif 'Master' in m:
             expect = "m"
         elif 'XFP' in m:
@@ -495,9 +518,9 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
         if is_xfp:
             got = cap_screen_qr().decode('ascii')
             if use_nfc:
-                need_keypress('3')
+                press_nfc()
             assert got == xfp2str(simulator_fixed_xfp).upper()
-            need_keypress('x')
+            press_cancel()
             continue
 
         time.sleep(0.3)
@@ -518,16 +541,17 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
         expect = expect.format(acct=0)
         if not use_nfc:
-            need_keypress('y')
+            press_select()
             got_pub = cap_screen_qr().decode('ascii')
         else:
-            assert 'Press (3)' in story
+            if f'Press {KEY_NFC if is_q1 else "(3)"}' not in story:
+                raise pytest.skip("NFC disabled")
             assert 'NFC' in story
-            need_keypress('3')
+            press_nfc()
             time.sleep(0.2)
             got_pub = nfc_read_text()
             time.sleep(0.1)
-            #need_keypress('y')
+            #press_select()
 
         if got_pub[0] not in 'xt':
             got_pub,*_ = slip132undo(got_pub)
@@ -536,19 +560,21 @@ def test_export_xpub(use_nfc, acct_num, dev, cap_menu, pick_menu_item, goto_home
 
         wallet = BIP32Node.from_wallet_key(simulator_fixed_tprv)
         if expect != 'm':
-            wallet = wallet.subkey_for_path(expect[2:])
+            wallet = wallet.subkey_for_path(expect[2:].replace('h', "'"))
         assert got.sec() == wallet.sec()
 
-        need_keypress('x')
+        press_cancel()
 
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH, AF_CLASSIC])
 @pytest.mark.parametrize("acct_num", [None, 0,  1, (2 ** 31) - 1])
 @pytest.mark.parametrize("int_ext", [True, False])
 def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, settings_set, need_keypress,
-                                   pick_menu_item, way, cap_story, cap_menu, nfc_read_text, int_ext,
-                                   microsd_path, settings_get, virtdisk_path, load_export):
+                                   pick_menu_item, way, cap_story, cap_menu, int_ext, settings_get,
+                                   virtdisk_path, load_export, press_select, mk4_qr_not_allowed):
+    mk4_qr_not_allowed(way)
+
     settings_set('chain', chain)
     chain_num = 1 if chain in ["XTN", "XRT"] else 0
     goto_home()
@@ -558,7 +584,6 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
     time.sleep(.1)
     _, story = cap_story()
     assert "This saves a ranged xpub descriptor" in story
-    assert "Choose descriptor and address type for the wallet on next screens" in story
     assert "Press (1) to enter a non-zero account number" in story
     assert "sensitive--in terms of privacy" in story
     assert "not compromise your funds directly" in story
@@ -567,16 +592,16 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
         need_keypress("1")        # chosse account number
         for ch in str(acct_num):
             need_keypress(ch)     # input num
-        need_keypress("y")        # confirm selection
+        press_select()        # confirm selection
     else:
-        need_keypress("y")  # confirm story
+        press_select()  # confirm story
 
     time.sleep(.1)
     _, story = cap_story()
     assert "To export receiving and change descriptors in one descriptor (<0;1> notation) press OK" in story
     assert "press (1) to export receiving and change descriptors separately" in story
     if int_ext:
-        need_keypress("y")
+        press_select()
     else:
         need_keypress("1")
 
@@ -619,10 +644,94 @@ def test_generic_descriptor_export(chain, addr_fmt, acct_num, goto_home, setting
     assert xpub_target in xpub
 
 
+@pytest.mark.parametrize("chain", ["BTC", "XTN"])
+@pytest.mark.parametrize("way", ["nfc", "qr"])
+@pytest.mark.parametrize("addr_fmt", [AF_P2WPKH, AF_P2WPKH_P2SH])
+@pytest.mark.parametrize("acct_num", [None, 55])
+def test_zeus_descriptor_export(addr_fmt, acct_num, goto_home, need_keypress, pick_menu_item,
+                                way, cap_story, cap_menu, nfc_read_text, settings_get, chain,
+                                virtdisk_path, load_export, press_select, mk4_qr_not_allowed,
+                                settings_set, is_q1, press_cancel, cap_screen_qr, press_nfc):
+
+    mk4_qr_not_allowed(way)
+    settings_set('chain', chain)
+    chain_num = 1 if chain == "XTN" else 0
+
+    goto_home()
+    pick_menu_item("Advanced/Tools")
+    pick_menu_item("Export Wallet")
+    pick_menu_item("Zeus")
+    time.sleep(.1)
+    title, story = cap_story()
+
+    assert "This saves a ranged xpub descriptor" in story
+    assert "Press (1) to enter a non-zero account number" in story
+    assert "sensitive--in terms of privacy" in story
+    assert "not compromise your funds directly" in story
+
+    if isinstance(acct_num, int):
+        need_keypress("1")        # chosse account number
+        for ch in str(acct_num):
+            need_keypress(ch)     # input num
+        press_select()        # confirm selection
+    else:
+        press_select()  # confirm story
+
+    time.sleep(.1)
+    menu = cap_menu()
+    assert len(menu) == 2
+    if addr_fmt == AF_P2WPKH:
+        menu_item = "Segwit P2WPKH"
+        desc_prefix = "wpkh("
+        bip44_purpose = 84
+    else:
+        assert addr_fmt == AF_P2WPKH_P2SH
+        menu_item = "P2SH-Segwit"
+        desc_prefix = "sh(wpkh("
+        bip44_purpose = 49
+
+    assert menu_item in menu
+    pick_menu_item(menu_item)
+
+    time.sleep(.1)
+    title, story = cap_story()
+
+    if way == "qr":
+        assert ("%s to show QR" % (KEY_QR if is_q1 else "(4)")) in story
+        need_keypress(KEY_QR if is_q1 else "4")
+        time.sleep(.2)
+        contents = cap_screen_qr().decode('ascii')
+    else:
+        assert ("ress %s to share via NFC" % (KEY_NFC if is_q1 else "(3)")) in story
+        press_nfc()
+        time.sleep(.2)
+        contents = nfc_read_text()
+        time.sleep(.5)
+        press_cancel()  # exit NFC animation
+
+    descriptor = contents.strip()
+
+    assert descriptor.startswith(desc_prefix)
+    desc_obj = Descriptor.parse(descriptor)
+    assert desc_obj.serialize(int_ext=True) == descriptor
+    assert desc_obj.addr_fmt == addr_fmt
+    assert len(desc_obj.keys) == 1
+    xfp, derive, xpub = desc_obj.keys[0]
+    assert xfp == settings_get("xfp")
+    assert derive == f"m/{bip44_purpose}h/{chain_num}h/{acct_num if acct_num is not None else 0}h"
+    seed = Mnemonic.to_seed(simulator_fixed_words)
+    node = BIP32Node.from_master_secret(
+        seed, netcode="BTC" if chain == "BTC" else "XTN"
+    ).subkey_for_path(derive[2:].replace("h", "H"))
+    xpub_target = node.hwif()
+    assert xpub_target in xpub
+
+
 @pytest.mark.parametrize("chain", ["BTC", "XTN", "XRT"])
 @pytest.mark.parametrize("account", ["Postmix", "Premix"])
-def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_home, need_keypress,
-                             cap_story, microsd_path, nfc_read_text, load_export):
+def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_home,
+                             need_keypress, cap_story, microsd_path, nfc_read_text,
+                             load_export, press_select, press_cancel):
     if account == "Postmix":
         acct_num = 2147483646
         in_story = "Samourai POST-MIX"
@@ -639,23 +748,23 @@ def test_samourai_vs_generic(chain, account, settings_set, pick_menu_item, goto_
     need_keypress("1")
     for ch in str(acct_num):
         need_keypress(ch)
-    need_keypress("y")
-    need_keypress("y")  # int_ext <0;1>
+    press_select()
+    press_select()  # int_ext <0;1>
     pick_menu_item("Segwit P2WPKH")  #  both postmix and premix are p2wpkh only
     file_desc_generic = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
-    need_keypress("y")  # written
-    need_keypress("x")  # go back to advanced
+    press_select()  # written
+    press_cancel()  # back to export submenu
+    press_cancel()  # back to advanced
     pick_menu_item("Export Wallet")
     pick_menu_item(f"Samourai {account}")
     time.sleep(.1)
     _, story = cap_story()
     assert "This saves a ranged xpub descriptor" in story
     assert in_story in story
-    assert "Choose an address type for the wallet on the next screen" not in story  # NOT
     assert "Press 1 to enter a non-zero account number" not in story  # NOT
     assert "sensitive--in terms of privacy" in story
     assert "not compromise your funds directly" in story
-    need_keypress("y")
+    press_select()
     file_desc = load_export("sd", label="Descriptor", is_json=False, addr_fmt=AF_P2WPKH)
     assert file_desc.strip() == file_desc_generic.strip()
 

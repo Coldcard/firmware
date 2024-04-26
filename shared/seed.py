@@ -10,20 +10,22 @@
 #    - 'abandon' * 17 + 'agent'
 #    - 'abandon' * 11 + 'about'
 #
-import ngu, uctypes, bip39, random, stash, pyb
+import ngu, uctypes, bip39, random, stash, version
+from ucollections import OrderedDict
 from menu import MenuItem, MenuSystem
 from utils import xfp2str, parse_extended_key, swab32, pad_raw_secret, problem_file_line
 from uhashlib import sha256
 from ux import ux_show_story, the_ux, ux_dramatic_pause, ux_confirm
 from ux import PressRelease, ux_input_numbers, ux_input_text, show_qr_code
 from actions import goto_top_menu
-from stash import SecretStash
+from stash import SecretStash, ZeroSecretException
 from ubinascii import hexlify as b2a_hex
 from pwsave import PassphraseSaver, PassphraseSaverMenu
 from glob import settings, dis
 from pincodes import pa
 from nvstore import SettingsObject
 from files import CardMissingError, needs_microsd, CardSlot
+from charcodes import KEY_QR, KEY_ENTER, KEY_CANCEL, KEY_CLEAR
 
 
 # seed words lengths we support: 24=>256 bits, and recommended
@@ -120,6 +122,13 @@ def test_lc():
                     (thres, min(sizes), max(sizes), sum(sizes)/len(sizes), len(sizes)))
 '''
 
+async def commit_new_words(new_words):
+    # save the new seed value
+    set_seed_value(new_words)
+
+    # clear menu stack
+    goto_top_menu(first_time=True)
+
 
 class WordNestMenu(MenuSystem):
     # singleton (cls level) vars
@@ -128,13 +137,15 @@ class WordNestMenu(MenuSystem):
     has_checksum = True
     done_cb = None
 
-    def __init__(self, num_words=None, has_checksum=True, done_cb=None, items=None, is_commit=False):
+    def __init__(self, num_words=None, has_checksum=True, done_cb=commit_new_words,
+                        items=None, is_commit=False):
 
         if num_words is not None:
             WordNestMenu.target_words = num_words
             WordNestMenu.has_checksum = has_checksum
             WordNestMenu.words = []
-            WordNestMenu.done_cb = done_cb or self.all_done
+            assert done_cb
+            WordNestMenu.done_cb = done_cb
             is_commit = True
 
         if not items:
@@ -160,8 +171,9 @@ class WordNestMenu(MenuSystem):
 
         assert len(words) <= self.target_words
 
-        if len(words) == 23 and self.has_checksum:
-            # we can provide final 8 choices, but only for 24-word case
+        if self.has_checksum and len(words) == (self.target_words - 1):
+            # we can provide final choices, but only for 18- and 24-word cases
+            # - otherwise, make new menu tree w/ all possible choices (128 total)
             final_words = list(bip39.a2b_words_guess(words))
 
             async def picks_chk_word(s, idx, choice):
@@ -169,35 +181,33 @@ class WordNestMenu(MenuSystem):
                 words.append(choice.label)
                 await cls.done_cb(words.copy())
 
-            items = [MenuItem(w, f=picks_chk_word) for w in final_words]
-            items.append(MenuItem('(none above)', f=self.explain_error))
+            if len(final_words) <= 32:
+                # 18 or 24 word cases => 32 or 8 choices are valid
+                items = [MenuItem(w, f=picks_chk_word) for w in final_words]
+                items.append(MenuItem('(none above)', f=self.explain_error))
+                return cls(is_commit=True, items=items)
+
+            # 12 words => 128 valid final words
+            # show start letter and under that valid words
+            d = OrderedDict()
+            for w in final_words:
+                if w[0] not in d:
+                    d[w[0]] = []
+                d[w[0]].append(w)
+
+            items = []
+            for s, w_lst in sorted(d.items()):
+                sub_items = [MenuItem(w, f=picks_chk_word) for w in w_lst]
+                sub_items.append(MenuItem('(none above)', f=self.explain_error))
+                items.append(MenuItem(s+"-", menu=cls(items=sub_items)))
+
             return cls(is_commit=True, items=items)
 
-        # add a few top-items in certain cases
         if len(words) == self.target_words:
-            if self.has_checksum:
-                try:
-                    bip39.a2b_words(' '.join(words))
-                    correct = True
-                except ValueError:
-                    correct = False
-            else:
-                correct = True
-
-            # they have checksum right, so they are certainly done.
-            if correct:
-                # they are done, don't force them to do any more!
-                return await cls.done_cb(words.copy())
-            else:
-                # give them a chance to confirm and/or start over
-                return cls(is_commit=True, items = [
-                            MenuItem('(INCORRECT)', f=self.explain_error),
-                            MenuItem('(start over)', f=self.start_over)])
-
+            return await cls.done_cb(words.copy())
 
         # pop stack to reset depth, and start again at a- .. z-
         cls.pop_all()
-
         return cls(items=None, is_commit=True)
 
     @classmethod
@@ -211,6 +221,7 @@ class WordNestMenu(MenuSystem):
         # - but keep them in our system until:
         # - when the word list is empty and they cancel, stop
         words = WordNestMenu.words
+
         if self.is_commit and words:
             words.pop()
 
@@ -220,16 +231,6 @@ class WordNestMenu(MenuSystem):
             the_ux.push(nxt)
         else:
             the_ux.pop()
-
-    @staticmethod
-    async def all_done(new_words):
-        # save the new seed value
-        set_seed_value(new_words)
-        
-        # clear menu stack
-        goto_top_menu(first_time=True)
-
-        return None
 
     async def explain_error(self, *a):
 
@@ -252,6 +253,8 @@ individual words if you wish.''')
 
     def late_draw(self, dis):
         # add an overlay with "word N" in small text, top right.
+        if dis.has_lcd: return      # unreachable anyway?
+
         from display import FontTiny
 
         count = len(self.words)
@@ -271,14 +274,21 @@ individual words if you wish.''')
 
 async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False):
     msg = (prompt or 'Record these %d secret words!\n') % len(words)
-    msg += '\n'.join('%2d: %s' % (i, w) for i, w in enumerate(words, start=1))
+
+    from ux import ux_render_words
+    msg += ux_render_words(words)
+
     msg += '\n\nPlease check and double check your notes.'
     if not ephemeral:
         # user can skip quiz for ephemeral secrets
         msg += " There will be a test!"
 
-    escape = (escape or '') + '1'
-    extra += 'Press (1) to view as QR Code. '
+    if not version.has_qwerty:
+        escape = (escape or '') + '1'
+        extra += 'Press (1) to view as QR Code. '
+    else:
+        escape = (escape or '') + KEY_QR
+        extra += 'Press '+ KEY_QR + ' to view as QR Code. '
 
     if extra:
         msg += '\n\n'
@@ -286,7 +296,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
     while 1:
         ch = await ux_show_story(msg, escape=escape, sensitive=True)
-        if ch == '1':
+        if ch == '1' or ch == KEY_QR:
             await show_qr_code(' '.join(w[0:4] for w in words), True)
             continue
         break
@@ -295,8 +305,7 @@ async def show_words(words, prompt=None, escape=None, extra='', ephemeral=False)
 
 
 async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
-    from glob import dis
-    from display import FontTiny, FontLarge
+    from ux import ux_dice_rolling
 
     low_entropy_msg = "You only provided %d dice rolls, and each roll adds only 2.585 bits of entropy."
     low_entropy_msg += " For %d-bit security"
@@ -317,23 +326,17 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
     md = sha256(seed)
     pr = PressRelease()
 
-    # fixed parts of screen
-    dis.clear()
-    y = 38
-    dis.text(0, y, "Press 1-6 for each dice"); y += 13
-    dis.text(0, y, "roll to mix in.")
-    dis.save()
-
+    # draws initial screen, and returns funct to update count and/or hash
+    screen_updater = ux_dice_rolling()
+    redraw = False
     while 1:
+        if redraw:
+            # redraw basic dice screen after different story was shown
+            screen_updater = ux_dice_rolling()
+
         # Note: cannot scroll this msg because 5=up arrow
-        dis.restore()
-        dis.text(None, 0, '%d rolls' % count, FontLarge)
-
         hx = str(b2a_hex(md.digest()), 'ascii')
-        dis.text(0, 20, hx[0:32], FontTiny)
-        dis.text(0, 20+7, hx[32:], FontTiny)
-
-        dis.show()
+        screen_updater(count, hx)
 
         ch = await pr.wait()
 
@@ -341,19 +344,18 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
             count += 1
             counter[ch] = counter.get(ch, 0) + 1  # mimics defaultdict
 
-            dis.restore()
-            dis.text(None, 0, '%d rolls' % count, FontLarge)
-            dis.show()
+            # show udpated count immediately
+            screen_updater(count, None)
 
             # this is slow enough to see
             md.update(ch)
 
-        elif ch == 'x':
+        elif ch in KEY_CANCEL+"x":
             # Because the change (roll) has already been applied,
             # only let them abort if it's early still
             if count < 10 and judge_them:
                 return 0, seed
-        elif ch == 'y':
+        elif ch in KEY_ENTER+"y":
             if count < threshold and judge_them:
                 if not count:
                     return 0, seed
@@ -363,12 +365,14 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
                     ch = await ux_show_story("Not enough dice rolls!!!\n\n" + story +
                                              "\n\nPress OK to add more dice rolls. X to exit")
                     if ch == "y":
+                        redraw = True
                         continue
                     else:
                         return 0, seed
                 else:
                     ok = await ux_confirm(story)
                     if not ok:
+                        redraw = True
                         continue
 
             if judge_them:
@@ -382,6 +386,7 @@ async def add_dice_rolls(count, seed, judge_them, nwords=None, enforce=False):
                     else:
                         ok = await ux_confirm(bad_dist_msg)
                         if not ok:
+                            redraw = True
                             continue
             break
 
@@ -403,9 +408,7 @@ async def new_from_dice(nwords):
 
     words = await approve_word_list(seed, nwords)
     if words:
-        set_seed_value(words)
-        # send them to home menu, now with a wallet enabled
-        goto_top_menu(first_time=True)
+        await commit_new_words(words)
 
 def in_seed_vault(encoded):
     # Test if indicated xfp (or currently active XFP) is in the seed vault already.
@@ -422,7 +425,7 @@ async def add_seed_to_vault(encoded, meta=None):
         # seed vault disabled
         return
     if pa.is_secret_blank():
-        # do not save anything if no secrets yet
+        # do not save anything if no SE secret yet
         return
 
     # do not offer to store secrets that are already in vault
@@ -479,7 +482,6 @@ async def set_ephemeral_seed(encoded, chain=None, summarize_ux=True, bip39pw='',
         await ux_show_story(title="FAILED", msg=err_msg)
         return
 
-
     xfp = "[" + xfp2str(settings.get("xfp", 0)) + "]"
     if summarize_ux:
         await ux_show_story(title=xfp, msg="New temporary master key is in effect now.")
@@ -510,11 +512,13 @@ async def ephemeral_seed_generate_from_dice(nwords):
         await set_ephemeral_seed_words(words, meta='Dice')
 
 def generate_seed():
-    seed = random.bytes(32)
+    # Generate 32 bytes of best-quality high entropy TRNG bytes.
+
+    seed = ngu.random.bytes(32)
     assert len(set(seed)) > 4       # TRNG failure
-    # hash to mitigate possible bias in TRNG
-    seed = ngu.hash.sha256s(seed)
-    return seed
+
+    # hash to mitigate any possible bias in TRNG
+    return ngu.hash.sha256d(seed)
 
 async def make_new_wallet(nwords):
     # Pick a new random seed.
@@ -522,16 +526,19 @@ async def make_new_wallet(nwords):
     seed = generate_seed()
     words = await approve_word_list(seed, nwords)
     if words:
-        set_seed_value(words)
-        # send them to home menu, now with a wallet enabled
-        goto_top_menu(first_time=True)
+        await commit_new_words(words)
 
 
 async def ephemeral_seed_import(nwords):
     async def import_done_cb(words):
+        dis.fullscreen("Applying...")
         await set_ephemeral_seed_words(words, meta='Imported')
 
-    return WordNestMenu(nwords, done_cb=import_done_cb)
+    if version.has_qwerty:
+        from ux_q1 import seed_word_entry
+        await seed_word_entry('Ephemeral Seed Words', nwords, done_cb=import_done_cb)
+    else:
+        return WordNestMenu(nwords, done_cb=import_done_cb)
 
 async def ephemeral_seed_generate(nwords):
     await ux_dramatic_pause('Generating...', 3)
@@ -626,8 +633,8 @@ def xprv_to_encoded_secret(xprv):
 
 
 def set_seed_value(words=None, encoded=None, chain=None):
-    # Save the seed words into secure element, and reboot. BIP-39 password
-    # is not set at this point (empty string)
+    # Save the seed words (or other encoded private key) into secure element,
+    # and reboot. BIP-39 passphrase is not set at this point (empty string).
     if words:
         nv = seed_words_to_encoded_secret(words)
     else:
@@ -655,13 +662,8 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
     from pincodes import pa
 
     dis.fullscreen("Working...")
-    # get xfp of parent reliably - cannot go to settings for this if in ephemeral
-    if pa.tmp_value:
-        with stash.SensitiveValues(bypass_tmp=bypass_tmp) as sv:
-            assert sv.mode == 'words', sv.mode
-            current_xfp = swab32(sv.node.my_fp())
-    else:
-        current_xfp = settings.get("xfp", 0)
+
+    current_xfp = settings.get("xfp", 0)
 
     with stash.SensitiveValues(bip39pw=pw, bypass_tmp=bypass_tmp) as sv:
         # can't do it without original seed words (late, but caller has checked)
@@ -672,18 +674,20 @@ async def calc_bip39_passphrase(pw, bypass_tmp=False):
     return nv, xfp, current_xfp
 
 async def set_bip39_passphrase(pw, bypass_tmp=False, summarize_ux=True):
-    nv, _, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
-    return await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
-                                    meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
+    nv, xfp, parent_xfp = await calc_bip39_passphrase(pw, bypass_tmp=bypass_tmp)
+    ret = await set_ephemeral_seed(nv, summarize_ux=summarize_ux, bip39pw=pw,
+                                   meta="BIP-39 Passphrase on [%s]" % xfp2str(parent_xfp))
+    dis.draw_status(bip39=int(bool(pw)), xfp=xfp, tmp=1)
+    return ret
+
     # Might need to bounce the USB connection, because our pubkey has changed,
     # altho if they have already picked a shared session key, no need, and
     # would only affect MitM test, which has already been done.
 
 async def remember_ephemeral_seed():
     # Compute current xprv and switch to using that as root secret.
-    import stash
     from nvstore import SettingsObject
-    from glob import dis, settings
+    from glob import dis
 
     # we are already at temporary seed, with correct
     # settings in use - no need to call new_main_secret
@@ -699,6 +703,12 @@ async def remember_ephemeral_seed():
     old_master.blank()
     del old_master
 
+    # address cache, settings from tmp seeds / seedvault seeds
+    # rebuild fs as we want to save current tmp settings immediately
+    from files import wipe_flash_filesystem
+    wipe_flash_filesystem(True)
+
+    dis.draw_status(bip39=0, tmp=0)
     dis.fullscreen('Saving...')
     pa.change(new_secret=pa.tmp_value, tmp_lockdown=True)
 
@@ -772,8 +782,10 @@ async def word_quiz(words, limited=None, title='Word %d is?'):
 
         while 1:
             random.shuffle(choices)
-            
-            msg = '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
+
+            msg = '' if not dis.has_lcd else '\n'
+
+            msg += '\n'.join(' %d: %s' % (i+1, choices[i]) for i in range(3))
             msg += '\n\nWhich word is right?\n\nX to give up, OK to see all the words again.'
 
             ch = await ux_show_story(msg, title=title % (o+1), escape='123', sensitive=True)
@@ -1028,13 +1040,16 @@ class EphemeralSeedMenu(MenuSystem):
     @classmethod
     def construct(cls):
         from glob import NFC
-        from actions import nfc_recv_ephemeral, import_tapsigner_backup_file, import_xprv, restore_temporary
+        from actions import nfc_recv_ephemeral, import_xprv
+        from actions import restore_temporary, scan_any_qr
+        from tapsigner import import_tapsigner_backup_file
+        from charcodes import KEY_QR
 
         import_ephemeral_menu = [
             MenuItem("12 Words", f=cls.ephemeral_seed_import, arg=12),
             MenuItem("18 Words", f=cls.ephemeral_seed_import, arg=18),
             MenuItem("24 Words", f=cls.ephemeral_seed_import, arg=24),
-            MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=lambda: NFC is not None),
+            MenuItem("Import via NFC", f=nfc_recv_ephemeral, predicate=bool(NFC)),
         ]
         gen_ephemeral_menu = [
             MenuItem("12 Words", f=cls.ephemeral_seed_generate, arg=12),
@@ -1045,6 +1060,8 @@ class EphemeralSeedMenu(MenuSystem):
 
         rv = [
             MenuItem("Generate Words", menu=gen_ephemeral_menu),
+            MenuItem('Import from QR Scan', predicate=version.has_qr,
+                     shortcut=KEY_QR, f=scan_any_qr, arg=(True, True)),
             MenuItem("Import Words", menu=import_ephemeral_menu),
             MenuItem("Import XPRV", f=import_xprv, arg=True),  # ephemeral=True
             MenuItem("Tapsigner Backup", f=import_tapsigner_backup_file, arg=True), # ephemeral=True
@@ -1073,19 +1090,59 @@ async def make_ephemeral_seed_menu(*a):
     rv = EphemeralSeedMenu.construct()
     return EphemeralSeedMenu(rv)
 
+async def start_b39_pw(menu, label, item):
+    # Menu item for top-level "Passphrase" item - take in a BIP-39 passphrase
 
-pp_sofar = ''
+    if not settings.get('b39skip', False):
+        howto = '''\n\n\
+On the next menu, you can enter a passphrase by selecting \
+individual letters, choosing from the word list (recommended), \
+or by typing numbers.'''
+
+        msg = '''\
+You may add a passphrase to your BIP-39 seed words. \
+This creates an entirely new wallet, for every possible passphrase.
+
+By default, the Coldcard uses an empty string as the passphrase.\
+%s\
+
+Please write down the fingerprint of all your wallets, so you can \
+confirm when you've got the right passphrase. (If you are writing down \
+the passphrase as well, it's okay to put them together.) There is no way for \
+the Coldcard to know if your entry is correct, and if you have it wrong, \
+you will be looking at an empty wallet.
+
+Limitations: 100 characters max length, ASCII characters 32-126 (0x20-0x7e) only.
+
+OK to continue or press (2) to hide this message forever.
+''' % (howto if not version.has_qwerty else '')
+
+        ch = await ux_show_story(msg, escape='2')
+        if ch == '2':
+            settings.set('b39skip', True)
+        if ch == 'x':
+            return
+
+    if version.has_qwerty and not PassphraseSaver.has_file():
+        # no need for any menus if Q and no card present
+        pp = await ux_input_text('', prompt="Your BIP-39 Passphrase",
+                                 b39_complete=True, scan_ok=True, max_len=100)
+        if not pp: return
+        
+        await apply_pass_value(pp)
+    else:
+        # provide a menu, especially on Mk4 where it offers a number of input methods
+        return PassphraseMenu()
+
 
 class PassphraseMenu(MenuSystem):
     # Collect up to 100 chars as a BIP-39 passphrase
 
     # singleton (cls level) vars
     done_cb = None
+    pp_sofar = ''
 
     def __init__(self):
-        global pp_sofar
-        pp_sofar = ''
-
         items = self.construct()
         super(PassphraseMenu, self).__init__(items)
 
@@ -1094,25 +1151,24 @@ class PassphraseMenu(MenuSystem):
         self.replace_items(tmp)
 
     def construct(self):
-        items = [
-            #         xxxxxxxxxxxxxxxx
-            MenuItem('Edit Phrase', f=self.view_edit_phrase),
-            MenuItem('Add Word', menu=self.word_menu),
-            MenuItem('Add Numbers', f=self.add_numbers),
-            MenuItem('Clear All', f=self.empty_phrase),
-            MenuItem('APPLY', f=self.done_apply),
-            MenuItem('CANCEL', f=self.done_cancel),
-        ]
-        # quick SD card check
-        if pyb.SDCard().present():
-            try:
-                with CardSlot() as card:
-                    # check if passphrases file exists on SD
-                    # if yes add menu item
-                    if card.exists(PassphraseSaver.filename(card)):
-                        items.insert(0, MenuItem('Restore Saved', menu=self.restore_saved))
+        if version.has_qwerty:
+            items = [
+                MenuItem('Edit Phrase', f=self.view_edit_phrase, shortcut=KEY_QR),
+            ]
+        else:
+            items = [
+                #         xxxxxxxxxxxxxxxx
+                MenuItem('Edit Phrase', f=self.view_edit_phrase),
+                MenuItem('Add Word', menu=self.word_menu),
+                MenuItem('Add Numbers', f=self.add_numbers),
+                MenuItem('Clear All', f=self.empty_phrase),
+                MenuItem('APPLY', f=self.done_apply),
+                MenuItem('CANCEL', f=self.done_cancel),
+            ]
 
-            except: pass
+        # show Restore option only if required 'hidden' file is present (doesn't read it)
+        if PassphraseSaver.has_file():
+            items.insert(0, MenuItem('Restore Saved', menu=self.restore_saved))
 
         return items
 
@@ -1135,157 +1191,125 @@ class PassphraseMenu(MenuSystem):
         return PassphraseSaverMenu(items)
 
     def on_cancel(self):
-        # zip to cancel item when they fail to exit via X button
-        self.goto_idx(self.count - 1)
+        if not version.has_qwerty:
+            # zip to cancel item when they fail to exit via X button
+            self.goto_idx(self.count - 1)
+        else:
+            # for Q, just be a normal menu you can exit (but pop() didnt work here?)
+            the_ux.pop()
 
     async def word_menu(self, *a):
+        # mk4: add a single word from the wordlist, maybe with space, various capitalizations
         return SingleWordMenu()
 
-    async def add_numbers(self, *a):
-        global pp_sofar
-        pw = await ux_input_numbers(pp_sofar, self.check_length)
+    @classmethod
+    async def add_numbers(cls, *a):
+        # Mk4 only: add some digits (quick, easy)
+        pw = await ux_input_numbers(cls.pp_sofar, cls.check_length)
         if pw is not None:
-            pp_sofar = pw
-            self.check_length()
+            cls.pp_sofar = pw
+            cls.check_length()
 
-    async def empty_phrase(self, *a):
-        global pp_sofar
-
-        if len(pp_sofar) >= 3:
-            if not await ux_confirm("Press OK to clear passphrase. X to cancel."):
+    @classmethod
+    async def empty_phrase(cls, *a):
+        if len(cls.pp_sofar) >= 3:
+            if not await ux_confirm("Press OK to clear passphrase."):
                 return
 
-        pp_sofar = ''
+        cls.pp_sofar = ''
         await ux_dramatic_pause('Cleared...', 0.25)
 
-    async def backspace(self, *a):
-        global pp_sofar
-        if pp_sofar:
-            pp_sofar = pp_sofar[0:-1]
-
-    async def view_edit_phrase(self, *a):
+    @classmethod
+    async def view_edit_phrase(cls, *a):
         # let them control each character
-        global pp_sofar
-        pw = await ux_input_text(pp_sofar)
+        pw = await ux_input_text(cls.pp_sofar, prompt="Your BIP-39 Passphrase",
+                                 b39_complete=True, scan_ok=True, max_len=100)
         if pw is not None:
-            pp_sofar = pw
-            self.check_length()
+            cls.pp_sofar = pw
+            cls.check_length()
+
+            if version.has_qwerty and cls.pp_sofar:
+                await apply_pass_value(cls.pp_sofar)
+                cls.pp_sofar = ''
 
     @classmethod
     def check_length(cls):
         # enforce a limit of 100 chars
-        global pp_sofar
-        pp_sofar = pp_sofar[0:100]
+        cls.pp_sofar = cls.pp_sofar[0:100]
 
-    @staticmethod
-    async def add_text(_1, _2, item):
-        global pp_sofar
-        pp_sofar += item.label
-        PassphraseMenu.check_length()
+    @classmethod
+    async def add_text(cls, _1, _2, item):
+        cls.pp_sofar += item.label
+        cls.check_length()
 
         while not isinstance(the_ux.top_of_stack(), PassphraseMenu):
             the_ux.pop()
 
-    async def done_cancel(self, *a):
-        global pp_sofar
-
-        if len(pp_sofar) > 3:
+    @classmethod
+    async def done_cancel(cls, *a):
+        if len(cls.pp_sofar) > 3:
             if not await ux_confirm("What you have entered will be forgotten."):
                 return
 
+        cls.pp_sofar = ''
         goto_top_menu()
 
-    async def done_apply(self, *a):
+    @classmethod
+    async def done_apply(cls, *a):
         # apply the passphrase
-        import stash
-        from glob import settings
-        from pincodes import pa
-
-        if not pp_sofar:
+        if not cls.pp_sofar:
             # empty string here - noop
             return
 
-        mdata = None
-        tdata = None
+        await apply_pass_value(cls.pp_sofar)
+        cls.pp_sofar = ''
 
+async def apply_pass_value(new_pp):
+    # Apply provided BIP-39 passphrase to master or current active tmp seed
+    # and go to top menu.
+    nv, xfp, parent_xfp = await calc_bip39_passphrase(new_pp)
+    xfp_str = xfp2str(xfp)
+    parent_xfp_str = xfp2str(parent_xfp)
+
+    msg = "current active temporary seed [%s]" if pa.tmp_value else "master seed [%s]"
+    msg = msg % parent_xfp_str
+
+    msg = ('Above is the master key fingerprint of the new wallet'
+           ' created by adding passphrase to %s.'
+           '\n\nPress X to abort, OK to use the new wallet, (1) to apply'
+           ' and save to MicroSD for future.') % msg
+
+    ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
+    if ch == 'x':
+        return
+
+    await set_ephemeral_seed(nv, summarize_ux=False, bip39pw=new_pp,
+                             meta="BIP-39 Passphrase on [%s]" % parent_xfp_str)
+
+    if ch == '1':
         try:
-            m_nv, m_xfp, m_parent_xfp = await calc_bip39_passphrase(pp_sofar,
-                                                                    bypass_tmp=True)
-            m_parent_xfp_str = xfp2str(m_parent_xfp)
-            m_xfp_str = xfp2str(m_xfp)
-            mdata = (
-                m_nv, m_xfp, m_xfp_str, m_parent_xfp_str,
-                "master seed [%s]" % m_parent_xfp_str,
-                "(1) master+pass:\n%s→%s\n\n" % (m_parent_xfp_str, m_xfp_str),
-            )
-        except AssertionError: pass
-
-        if pa.tmp_value and settings.get("words", True):
-            # we have ephemeral seed - can add passphrase to it as it is word based
-            t_nv, t_xfp, t_parent_xfp = await calc_bip39_passphrase(pp_sofar,
-                                                                    bypass_tmp=False)
-            t_parent_xfp_str = xfp2str(t_parent_xfp)
-            t_xfp_str = xfp2str(t_xfp)
-            tdata = (
-                t_nv, t_xfp, t_xfp_str, t_parent_xfp_str,
-                "current active temporary seed [%s]" % t_parent_xfp_str,
-                "(2) tmp+pass:\n%s→%s\n\n" % (t_parent_xfp_str, t_xfp_str),
+            await PassphraseSaver().append(xfp, new_pp)
+        except CardMissingError:
+            await needs_microsd()
+        except Exception as e:
+            await ux_show_story(
+                title="ERROR",
+                msg='Save failed!\n\n%s\n%s' % (e, problem_file_line(e))
             )
 
-        if tdata is None and mdata is None:
-            # if master is not word based, temporary has to be, otherwise "Passphrase"
-            # not offered in menu
-            # should never be seen by user because flow.py::bip39_passphrase_active
-            await ux_show_story(title="FAILED", msg="Need word based secret")
-            return
-
-        tmp = False
-        if tdata and mdata:
-            ch = await ux_show_story(mdata[-1] + tdata[-1], escape='12x',
-                                     strict_escape=True, scrollbar=False)
-            if ch == "x": return  # exit
-            if ch == "2":
-                tmp = True
-        elif tdata:
-            tmp = True
-
-        data = tdata if tmp else mdata
-        nv, xfp, xfp_str, parent_xfp_str, msg, _ = data
-
-        msg = ('Above is the master key fingerprint of the new wallet'
-               ' created by adding passphrase to %s.'
-               ' Press X to abort and keep editing passphrase,'
-               ' OK to use the new wallet, (1) to use'
-               ' and save to MicroSD') % msg
-
-        ch = await ux_show_story(msg, title="[%s]" % xfp_str, escape='1')
-        if ch == 'x':
-            return
-
-        await set_ephemeral_seed(nv, summarize_ux=False, bip39pw=pp_sofar,
-                                 meta="BIP-39 Passphrase on [%s]" % parent_xfp_str)
-        if ch == '1':
-            try:
-                await PassphraseSaver().append(xfp, pp_sofar)
-            except CardMissingError:
-                await needs_microsd()
-            except Exception as e:
-                await ux_show_story(
-                    title="ERROR",
-                    msg='Save failed!\n\n%s\n%s' % (e, problem_file_line(e))
-                )
-
-        goto_top_menu()
+    goto_top_menu()
 
 class SingleWordMenu(WordNestMenu):
+    # NOTE: not used on Q1
     def __init__(self, items=None, **kws):
         if items:
             super(SingleWordMenu, self).__init__(items=items, **kws)
         else:
-            super(SingleWordMenu, self).__init__(num_words=1, has_checksum=False, done_cb=None)
+            super(SingleWordMenu, self).__init__(num_words=1, has_checksum=False,
+                                                 done_cb=self.commit_value)
 
     @staticmethod
-    async def all_done(new_words):
+    async def commit_value(new_words):
         # create one more menu w/ the word and some variations on that word
         word = new_words[0]
         options = [word, word[0].upper() + word[1:], word.upper()]
@@ -1295,11 +1319,8 @@ class SingleWordMenu(WordNestMenu):
         # bugfix: in case they cancel from new menu
         WordNestMenu.words = []
 
-        return MenuSystem([MenuItem(w, f=PassphraseMenu.add_text) 
+        return MenuSystem([MenuItem(w, f=PassphraseMenu.add_text)
                                     for n,w in enumerate(options)], space_indicators=True)
 
-    def late_draw(self, dis):
-        #PassphraseMenu.late_draw(self, dis)
-        pass
 
 # EOF

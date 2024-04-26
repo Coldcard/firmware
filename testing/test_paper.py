@@ -7,16 +7,12 @@
 #
 import random
 
-import pytest, time, struct, os, shutil, re, json
+import pytest, time, os, shutil, re
 from pycoin.key.Key import Key
 from pycoin.encoding import from_bytes_32
-from base64 import b64encode
-from binascii import b2a_hex, a2b_hex
+from binascii import a2b_hex
 from hashlib import sha256
-from ckcc_protocol.protocol import CCProtocolPacker, CCProtoError, CCUserRefused
 from ckcc_protocol.constants import *
-from helpers import xfp2str
-from conftest import simulator_fixed_xfp, simulator_fixed_tprv
 from bech32 import bech32_decode, convertbits, Encoding
 
 
@@ -24,7 +20,8 @@ from bech32 import bech32_decode, convertbits, Encoding
 @pytest.mark.parametrize('pdf', [False, True])
 @pytest.mark.parametrize('netcode', ["XTN", "BTC"])
 def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, cap_story,
-                  need_keypress, microsd_path, verify_detached_signature_file, settings_set):
+                  need_keypress, microsd_path, verify_detached_signature_file, settings_set,
+                  press_select):
     # test UX and operation of the 'bitcoin core' wallet export
     mx = "Don't make PDF"
 
@@ -43,7 +40,7 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
     assert 'pick a random' in story
     assert 'MANY RISKS' in story
 
-    need_keypress('y')
+    press_select()
 
     time.sleep(0.1)
     if mode == 'segwit':
@@ -57,10 +54,6 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
         pick_menu_item(mx)
 
         time.sleep(0.2)
-        title, story = cap_story()
-        assert 'Pick PDF' in story
-        need_keypress('y')
-
         pick_menu_item('paperwallet.pdf')
 
 
@@ -149,8 +142,9 @@ def test_generate(mode, pdf, netcode, dev, cap_menu, pick_menu_item, goto_home, 
         os.unlink(path)
 
 @pytest.mark.parametrize('rolls', [ '123123', '123'*30] )
-def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
-                                            microsd_path):
+def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item,
+                                            goto_home, cap_story, need_keypress,
+                                            microsd_path, press_select, press_cancel):
     # verify the math for dice rolling method
 
     goto_home()
@@ -166,7 +160,7 @@ def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item
     assert 'pick a random' in story
     assert 'MANY RISKS' in story
 
-    need_keypress('y')
+    press_select()
 
     time.sleep(0.1)
     pick_menu_item('Use Dice')
@@ -175,17 +169,18 @@ def test_dice_generate_failure_num_attempts(rolls, dev, cap_menu, pick_menu_item
         time.sleep(0.01)
         need_keypress(ch)
 
-    need_keypress('y')
+    press_select()
     time.sleep(0.1)
     title, story = cap_story()
     assert 'Not enough dice rolls!!!' in story
     assert 'For 256-bit security you need at least 99 rolls' in story
     assert 'Press OK to add more dice rolls. X to exit' in story
-    need_keypress('x')
+    press_cancel()
 
 @pytest.mark.parametrize('rolls', ['123'*34, "1"*99, "64"*50])
-def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item, goto_home, cap_story, need_keypress,
-                                            microsd_path):
+def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item,
+                                            goto_home, cap_story, need_keypress,
+                                            microsd_path, press_select):
     # verify the math for dice rolling method
 
     goto_home()
@@ -201,7 +196,7 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
     assert 'pick a random' in story
     assert 'MANY RISKS' in story
 
-    need_keypress('y')
+    press_select()
 
     time.sleep(0.1)
     pick_menu_item('Use Dice')
@@ -210,7 +205,7 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
         time.sleep(0.01)
         need_keypress(ch)
 
-    need_keypress('y')
+    press_select()
     time.sleep(0.1)
     title, story = cap_story()
     assert 'Distribution of dice rolls is not random' in story
@@ -224,7 +219,7 @@ def test_dice_generate_failure_distribution(rolls, dev, cap_menu, pick_menu_item
 ])
 @pytest.mark.parametrize('netcode', ["XTN", "BTC"])
 def test_dice_generate(rolls, netcode, dev, cap_menu, pick_menu_item, goto_home,
-                       cap_story, need_keypress, microsd_path,
+                       cap_story, need_keypress, microsd_path, press_select,
                        verify_detached_signature_file, settings_set):
     # verify the math for dice rolling method
 
@@ -243,7 +238,7 @@ def test_dice_generate(rolls, netcode, dev, cap_menu, pick_menu_item, goto_home,
     assert 'pick a random' in story
     assert 'MANY RISKS' in story
 
-    need_keypress('y')
+    press_select()
 
     time.sleep(0.1)
     pick_menu_item('Use Dice')
@@ -252,12 +247,12 @@ def test_dice_generate(rolls, netcode, dev, cap_menu, pick_menu_item, goto_home,
         time.sleep(0.01)
         need_keypress(ch)
 
-    need_keypress('y')
+    press_select()
     time.sleep(0.1)
     if len(rolls) < 99:
         title, story = cap_story()
         assert 'need 50' in story
-        need_keypress('y')
+        press_select()
 
     time.sleep(0.4)
 

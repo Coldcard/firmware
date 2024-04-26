@@ -1,8 +1,7 @@
 # (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-# Shared values and target rules for Mk3 and Mk4.
+# Shared values and target rules for Mk4 and Q.
 #
-include version.mk
 
 # Define these vars to suit board
 #BOARD = COLDCARD_MK4
@@ -10,7 +9,8 @@ include version.mk
 #FIRMWARE_BASE   = 0x08020000
 #BOOTLOADER_BASE = 0x08000000
 #BOOTLOADER_DIR = mk4-bootloader vs bootloader
-#MK_NUM = 4
+#HW_MODEL = mk4
+#PARENT_MKFILE = xx-Makefile
 
 MPY_TOP = ../external/micropython
 PORT_TOP = $(MPY_TOP)/ports/stm32
@@ -31,6 +31,7 @@ all: $(BOARD)/file_time.c
 
 clean:
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS) clean
+	$(RM) dev.dfu dev.bin
 	git clean -xf built
 
 clobber: clean
@@ -48,7 +49,7 @@ firmware.elf: $(BUILD_DIR)/firmware.elf
 # Sign and merge various parts
 #
 firmware-signed.bin: $(BUILD_DIR)/firmware0.bin $(BUILD_DIR)/firmware1.bin
-	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) -o $@
+	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) -o $@
 firmware-signed.dfu: firmware-signed.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):$< $@
 
@@ -60,7 +61,7 @@ dfu: firmware-signed.dfu
 .PHONY: dev.dfu
 dev.dfu: $(BUILD_DIR)/firmware0.bin
 	cd $(PORT_TOP) && $(MAKE) $(MAKE_ARGS)
-	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) $(PROD_KEYNUM) -o dev.bin
+	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) $(PROD_KEYNUM) -o dev.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):dev.bin dev.dfu
 
 .PHONY: relink
@@ -72,12 +73,12 @@ relink:
 dev: dev.dfu
 	ckcc upgrade dev.dfu
 
-# Requires special bootorm w/ DFU still enabled
+# Requires special bootrom w/ DFU still enabled
 .PHONY: up-dfu
 up-dfu: dev.dfu
 	$(PYTHON_DO_DFU) -u dev.dfu
 
-$(BOARD)/file_time.c: make_filetime.py version.mk
+$(BOARD)/file_time.c: make_filetime.py *-Makefile shared.mk
 	./make_filetime.py $(BOARD)/file_time.c $(VERSION_STRING)
 	cp $(BOARD)/file_time.c .
 
@@ -85,9 +86,9 @@ $(BOARD)/file_time.c: make_filetime.py version.mk
 # - when executed in a repro w/o the required key, it defaults to key zero
 # - and that's what happens inside the Docker build
 production.bin: firmware-signed.bin Makefile
-	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r firmware-signed.bin $(PROD_KEYNUM) -o $@
+	$(SIGNIT) sign -m $(HW_MODEL) $(VERSION_STRING) -r firmware-signed.bin $(PROD_KEYNUM) -o $@
 
-SUBMAKE = $(MAKE) -f MK$(MK_NUM)-Makefile
+SUBMAKE = $(MAKE) -f $(PARENT_MKFILE)
 
 .PHONY: release
 release: code-committed
@@ -102,23 +103,24 @@ release: code-committed
 rc1: 
 	$(SUBMAKE) clean 		# critical, or else you get a mix of debug/not
 	$(SUBMAKE) DEBUG_BUILD=0 all
-	$(SIGNIT) sign -b $(BUILD_DIR) -m $(MK_NUM) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
+	$(SIGNIT) sign -b $(BUILD_DIR) -m $(HW_MODEL) $(VERSION_STRING) $(PROD_KEYNUM) -o rc1.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
-		`signit version rc1.bin`-mk$(MK_NUM)-RC1-coldcard.dfu
+		`signit version rc1.bin`-$(HW_MODEL)-RC1-coldcard.dfu
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):rc1.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
-		`signit version rc1.bin`-mk$(MK_NUM)-RC1-coldcard-factory.dfu
+		`signit version rc1.bin`-$(HW_MODEL)-RC1-factory-coldcard.dfu
 	ls -1 *-RC1-*.dfu
 
 # This target just combines latest version of production firmware with bootrom into a DFU
 # file, stored in ../releases with appropriately dated file name.
 .PHONY: release-products
 release-products: NEW_VERSION = $(shell $(SIGNIT) version built/production.bin)
-release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-mk$(MK_NUM)-coldcard.dfu
+release-products: RELEASE_FNAME = ../releases/$(NEW_VERSION)-$(HW_MODEL)-coldcard.dfu
 release-products: built/production.bin
 	test ! -f $(RELEASE_FNAME)
 	cp built/file_time.c $(BOARD)/file_time.c
-	$(SIGNIT) sign -m $(MK_NUM) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
+	-git commit $(BOARD)/file_time.c -m "For $(NEW_VERSION)"
+	$(SIGNIT) sign -m $(HW_MODEL) $(VERSION_STRING) -r built/production.bin $(PROD_KEYNUM) -o built/production.bin
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin $(RELEASE_FNAME)
 	$(PYTHON_MAKE_DFU) -b $(FIRMWARE_BASE):built/production.bin \
 		-b $(BOOTLOADER_BASE):$(BOOTLOADER_DIR)/releases/$(BOOTLOADER_VERSION)/bootloader.bin \
@@ -143,14 +145,17 @@ latest:
 code-committed:
 	@echo ""
 	@echo "Are all changes commited already?"
-	git diff --stat --ignore-submodules=dirty --exit-code
+	git diff --stat --exit-code .
 	@echo '... yes'
+	@echo 'Submodule changes? But some of these are expected...'
+	git submodule foreach git diff --stat .
 
 # Sign a message with the contents of ../releases on the developer's machine
 .PHONY: sign-release
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
 		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
+	git commit -m "Signed for release." ../releases/signatures.txt
 
 # Tag source code associate with built release version.
 # - do "make release" before this step!
@@ -158,8 +163,8 @@ sign-release:
 # - update & sign signatures file
 # - and tag everything
 tag-source: PUBLIC_VERSION = $(shell $(SIGNIT) version built/production.bin)
-tag-source: sign-release
-	git commit -m "New release: "$(PUBLIC_VERSION) ../releases/signatures.txt $(BOARD)/file_time.c
+tag-source: sign-release code-committed
+	git commit  --allow-empty -am "New release: "$(PUBLIC_VERSION)
 	echo "Tagging version: " $(PUBLIC_VERSION)
 	git tag -a $(PUBLIC_VERSION) -m "Release "$(PUBLIC_VERSION)
 	git push
@@ -227,6 +232,8 @@ setup:
 		ln -s ../../../../../stm32/COLDCARD COLDCARD; fi
 	cd $(PORT_TOP)/boards; if [ ! -L COLDCARD_MK4 ]; then \
 		ln -s ../../../../../stm32/COLDCARD_MK4 COLDCARD_MK4; fi
+	cd $(PORT_TOP)/boards; if [ ! -L COLDCARD_Q1 ]; then \
+		ln -s ../../../../../stm32/COLDCARD_Q1 COLDCARD_Q1; fi
 	
 
 # Caution: docker container has read access to your source tree
@@ -239,7 +246,7 @@ DOCK_RUN_ARGS = -v $(realpath ..):/work/src:ro \
 repro: code-committed
 repro: 
 	docker build -t coldcard-build - < dockerfile.build
-	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(MK_NUM))
+	(cd ..; docker run $(DOCK_RUN_ARGS) sh src/stm32/repro-build.sh $(VERSION_STRING) $(HW_MODEL) $(PARENT_MKFILE))
 
 # debug: shell into docker container
 shell:
@@ -248,7 +255,7 @@ shell:
 # debug: allow docker to write into source tree
 #DOCK_RUN_ARGS := -v $(realpath ..):/work/src:rw --privileged coldcard-build
 
-PUBLISHED_BIN ?= $(wildcard ../releases/*-v$(VERSION_STRING)-mk$(MK_NUM)-coldcard.dfu)
+PUBLISHED_BIN ?= $(wildcard ../releases/*-v$(VERSION_STRING)-$(HW_MODEL)-coldcard.dfu)
 
 # final step in repro-building: check you got the right bytes
 # - but you don't have the production signing key, so that section is removed
@@ -276,5 +283,35 @@ else
 	@echo "You have built a bit-for-bit identical copy of Coldcard firmware for v$(VERSION_STRING)"
 endif
 
+# revert "make release" and it's actions
+unrelease: BAD_VERSIONS ?= $(shell git tag --contains HEAD^^)
+unrelease:
+	echo "Trying to forget: $(BAD_VERSIONS)"
+
+#
+# Various debug firmware upload methods. Won't work on production units due to bootrom.
+#
+
+# This is fast for Coinkite devs, but no DFU support in the wild.
+dfu-up: dev.dfu
+	echo 'dfu' | nc localhost 4444
+	$(PYTHON_DO_DFU) -u dev.dfu
+
+# When device already in DFU mode
+dfu up2: dev.dfu
+	$(PYTHON_DO_DFU) -u dev.dfu
+
+# Slowest DFU, but easier w/ stock tools
+dfu-slow: dev.dfu
+	dfu-util -d 0483:df11 -a 0 -D $< -R
+
+# Super fast, assumes Coldcard already attached and unlocked on this Mac.
+up: dev.dfu
+	cp dev.dfu /Volumes/COLDCARD/.
+	diskutil eject /Volumes/COLDCARD
+
+# Fairly fast, assumes openocd already running, and its current directory is here.
+ocp-up: dev.dfu
+	echo "load_image dev.dfu $(FIRMWARE_BASE) bin; reset run" | nc localhost 4444
 
 # EOF

@@ -53,9 +53,8 @@ class PaperWalletMaker:
         self.is_segwit = False
 
     async def pick_template(self, *a):
-        fn = await file_picker('Pick PDF template to use, or X for none.',
-                                suffix='.pdf', min_size=20000,
-                                taster=template_taster, none_msg=no_templates_msg)
+        fn = await file_picker(suffix='.pdf', min_size=20000, taster=template_taster,
+                               none_msg=no_templates_msg)
         self.template_fn = fn
 
         self.update_menu()
@@ -296,11 +295,6 @@ async def make_paper_wallet(*a):
 
     menu = MenuSystem([])
     rv = PaperWalletMaker(menu)
-
-    # annoying?
-    # always have them pick the template, because that's mostly required
-    #if rv.can_do_qr():
-    #    await rv.pick_template()
 
     rv.update_menu()
 

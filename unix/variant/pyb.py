@@ -1,6 +1,10 @@
+# (c) Copyright 2018 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 import utime as time
 import uerrno as errno
 import sys
+
+from machine import Pin
 
 class USB_VCP:
     @staticmethod
@@ -109,6 +113,8 @@ class SDCard:
 
     @classmethod
     def present(cls):
+        # after Q, this should not really be called anymore
+        raise RuntimeError("avoid sd.present")
         if cls.ejected:
             return False
         SDCard.power(1)
@@ -116,8 +122,7 @@ class SDCard:
 
     @classmethod
     def power(cls, st=0):
-        from ckcc import led_pipe
-        led_pipe.write(bytes([0x20 | (0x2 if st else 0x0)]))
+        # on real hardware, this resets the sdcard h/w module, which is important
         if st:
             time.sleep(0.100)       # drama
         return False
@@ -129,12 +134,11 @@ class SDCard:
                     b'2\x00^\x00\xd6\x81Y[\x8f\xff\xb7\xed\x94\x00@\x16',
                     b'APA\tDU F\xd9\x92\x11\x10\x9a\x1a\x01\xdf')
 
-class Pin:
-    PULL_NONE =1
-    PULL_UP =2
-    
-    def __init__(self, *a, **kw):
-        return
+    # so wipe_microsd_card() can pretend to work
+    @classmethod
+    def writeblocks(*a):
+        pass
+
 
 class ExtInt:
     def __init__(self, *a, **kw):
@@ -145,7 +149,7 @@ class ExtInt:
 
 class Timer:
     def __init__(self, n):
-        # hack in the fake "touch" for mark 2 boards.
+        # hack in the fake "touch" for mark 2-4 boards.
         assert n == 7
         from touch import Touch
         Touch()
@@ -153,4 +157,4 @@ class Timer:
     def deinit(self): pass
     def init(self, **k): pass
 
-
+# EOF

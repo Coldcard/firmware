@@ -26,4 +26,10 @@ def listdir(path="."):
 
     return res
 
+# so wipe_microsd_card() can pretend to work
+def mount(*a, **kws):
+    return
+def umount(*a):
+    return
+
 # EOF

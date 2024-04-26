@@ -1,34 +1,19 @@
+# (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
+# Testing backups.
+#
 import pytest, time, json, os, shutil
 from constants import simulator_fixed_words, simulator_fixed_tprv
+from charcodes import KEY_QR
 from pycoin.key.BIP32Node import BIP32Node
 from mnemonic import Mnemonic
-
-
-def decode_backup(txt):
-    import json
-    vals = dict()
-    trimmed = dict()
-    for ln in txt.split('\n'):
-        if not ln: continue
-        if ln[0] == '#': continue
-
-        k, v = ln.split(' = ', 1)
-
-        v = json.loads(v)
-
-        if k.startswith('duress_') or k.startswith('fw_'):
-            # no space in USB xfer for thesE!
-            trimmed[k] = v
-        else:
-            vals[k] = v
-
-    return vals, trimmed
 
 
 @pytest.fixture
 def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                   cap_story, need_keypress, cap_screen_qr, pass_word_quiz,
-                  get_setting):
+                  get_setting, seed_story_to_words, press_cancel, is_q1,
+                  press_select, is_headless):
     def doit(reuse_pw=False, save_pw=False, st=None, ct=False):
         # st -> seed type
         # ct -> cleartext backup
@@ -52,27 +37,27 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
                 assert "A temporary seed is in effect" in body
                 assert "so backup will be of that seed" in body
 
-            need_keypress("y")
+            press_select()
             time.sleep(.1)
             title, body = cap_story()
 
         if ct:
             # cleartext backup
             if ' 1: zoo' in body:
-                need_keypress("x")
+                press_cancel()
 
             need_keypress("6")
             time.sleep(.1)
             _, story = cap_story()
             assert "Are you SURE ?!?" in story
             assert "**NOT** be encrypted" in story
-            need_keypress("y")
+            press_select()
             return  # nothing more to be done
 
         if reuse_pw:
             assert ' 1: zoo' in body
             assert '12: zoo' in body
-            need_keypress('y')
+            press_select()
             words = ['zoo'] * 12
 
             time.sleep(0.1)
@@ -82,16 +67,17 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
             assert 'Record this' in body
             assert 'password:' in body
 
-            words = [w[3:].strip() for w in body.split('\n') if w and w[2] == ':']
+            words = seed_story_to_words(body)
+
             assert len(words) == 12
 
             print("Passphrase: %s" % ' '.join(words))
 
-            if 'QR Code' in body:
-                need_keypress('1')
+            if 'QR Code' in body and not is_headless:
+                need_keypress(KEY_QR if is_q1 else '1')
                 got_qr = cap_screen_qr().decode('ascii').lower().split()
                 assert [w[0:4] for w in words] == got_qr
-                need_keypress('y')
+                press_select()
 
             # pass the quiz!
             count, title, body = pass_word_quiz(words)
@@ -104,7 +90,7 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 
                 assert get_setting('bkpw') == ' '.join(words)
             else:
-                need_keypress('x')
+                press_cancel()
                 time.sleep(.01)
                 assert get_setting('bkpw', 'xxx') == 'xxx'
 
@@ -122,20 +108,41 @@ def backup_system(settings_set, settings_remove, goto_home, pick_menu_item,
 def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypress, st,
                      open_microsd, microsd_path, unit_test, cap_menu, word_menu_entry,
                      pass_word_quiz, reset_seed_words, import_ms_wallet, get_setting,
-                     cap_screen_qr, reuse_pw, save_pw, settings_set, settings_remove,
+                     reuse_pw, save_pw, settings_set, settings_remove, press_select,
                      generate_ephemeral_words, set_bip39_pw, verify_backup_file,
                      check_and_decrypt_backup, restore_backup_cs, clear_ms, seedvault,
-                     restore_main_seed, import_ephemeral_xprv, backup_system):
+                     restore_main_seed, import_ephemeral_xprv, backup_system,
+                     press_cancel, sim_exec):
     # Make an encrypted 7z backup, verify it, and even restore it!
     clear_ms()
     reset_seed_words()
     settings_set("seedvault", int(seedvault))
     settings_set("seeds", [] if seedvault else None)
 
+    # test larger backup files > 10,000 bytes
+    if multisig == False and st == None and not reuse_pw and not save_pw and not seedvault:
+        # pick just one test case.
+        # - to bypass USB msg limit, append as we go
+        print(">>> Making huge backup file")
+        notes = []
+        settings_set('notes', [])
+        for n in range(9):
+            v = { fld:('a'*30) if fld != 'misc' else 'b'*1800
+                    for fld in ['user', 'password', 'site', 'misc'] }
+            v['title'] = f'Note {n+1}'
+            notes.append(v)
+            rv = sim_exec(cmd := f'settings.current["notes"].append({v!r})')
+            print(rv)
+            assert 'error' not in rv.lower()
+        rv = sim_exec(cmd := f'settings.changed()')
+        assert 'error' not in rv.lower()
+    else:
+        notes = None
+
     # need to make multisig in my main wallet
     if multisig and st != "eph":
         import_ms_wallet(15, 15)
-        need_keypress('y')
+        press_select()
         time.sleep(.1)
         assert len(get_setting('multisig')) == 1
 
@@ -148,7 +155,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         if multisig:
             # make multisig in ephemeral wallet
             import_ms_wallet(15, 15, dev_key=True, common="605'/0'/0'")
-            need_keypress('y')
+            press_select()
             time.sleep(.1)
             assert len(get_setting('multisig')) == 1
     else:
@@ -168,6 +175,11 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         # must not be copied from main to b39pass
         # must not be available after backup done
         assert not get_setting('multisig', None)
+
+    if notes:
+        # verify large notes survived
+        rb_notes = get_setting('notes')
+        assert rb_notes == notes
 
     files = []
     for copy in range(2):
@@ -190,7 +202,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
     assert bk_a == bk_b, "contents mismatch"
 
-    need_keypress('x')
+    press_cancel()
     time.sleep(.01)
 
     verify_backup_file(fn)
@@ -206,7 +218,7 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
         assert "seeds" not in decrypted
 
     for i in range(10):
-        need_keypress('x')
+        press_cancel()
         time.sleep(.01)
 
     # test verify on device (CRC check)
@@ -217,12 +229,12 @@ def test_make_backup(multisig, goto_home, pick_menu_item, cap_story, need_keypre
 
 
 @pytest.mark.parametrize("stype", ["words12", "words24", "xprv"])
-def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home,
+def test_backup_ephemeral_wallet(stype, pick_menu_item, press_select, goto_home,
                                  cap_story, pass_word_quiz, get_setting,
                                  verify_backup_file, microsd_path, check_and_decrypt_backup,
                                  sim_execfile, unit_test, word_menu_entry, cap_menu,
-                                 restore_backup_cs, generate_ephemeral_words,
-                                 import_ephemeral_xprv, reset_seed_words):
+                                 restore_backup_cs, generate_ephemeral_words, press_cancel,
+                                 import_ephemeral_xprv, reset_seed_words, seed_story_to_words):
     reset_seed_words()
     goto_home()
     if "words" in stype:
@@ -240,25 +252,26 @@ def test_backup_ephemeral_wallet(stype, pick_menu_item, need_keypress, goto_home
     title, story = cap_story()
     assert "A temporary seed is in effect" in story
     assert "so backup will be of that seed" in story
-    need_keypress("y")
+    press_select()
     time.sleep(.1)
     title, story = cap_story()
     if "Use same backup file password as last time?" in story:
-        need_keypress("x")
+        press_cancel()
         time.sleep(.1)
         title, story = cap_story()
     assert title == 'NO-TITLE'
     assert 'Record this' in story
     assert 'password:' in story
 
-    words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    words = seed_story_to_words(story)
+
     assert len(words) == 12
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
     assert count >= 4
     assert "same words next time" in body
     assert "Press (1) to save" in body
-    need_keypress('x')
+    press_cancel()
     time.sleep(.01)
     assert get_setting('bkpw', 'xxx') == 'xxx'
     title, story = cap_story()
@@ -303,7 +316,8 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
                              goto_home, cap_story, pass_word_quiz, get_setting,
                              verify_backup_file, microsd_path, check_and_decrypt_backup,
                              sim_execfile, unit_test, word_menu_entry, cap_menu,
-                             restore_backup_cs, seedvault, settings_set, reset_seed_words):
+                             restore_backup_cs, seedvault, settings_set, reset_seed_words,
+                             seed_story_to_words, press_cancel):
     reset_seed_words()
     goto_home()
     settings_set("seedvault", int(seedvault))
@@ -323,21 +337,20 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     time.sleep(.1)
     title, story = cap_story()
     if "Use same backup file password as last time?" in story:
-        need_keypress("x")
+        press_cancel()
         time.sleep(.1)
         title, story = cap_story()
     assert title == 'NO-TITLE'
     assert 'Record this' in story
     assert 'password:' in story
-
-    words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    words = seed_story_to_words(story)
     assert len(words) == 12
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
     assert count >= 4
     assert "same words next time" in body
     assert "Press (1) to save" in body
-    need_keypress('x')
+    press_cancel()
     time.sleep(.01)
     assert get_setting('bkpw', 'xxx') == 'xxx'
     title, story = cap_story()
@@ -369,69 +382,12 @@ def test_backup_bip39_wallet(passphrase, set_bip39_pw, pick_menu_item, need_keyp
     restore_backup_cs(fn, words)
 
 
-def test_trick_backups(goto_trick_menu, clear_all_tricks, repl, unit_test,
-                       new_trick_pin, new_pin_confirmed, pick_menu_item, need_keypress):
-
-    from test_se2 import TC_REBOOT, TC_BLANK_WALLET
-
-    clear_all_tricks()
-
-    # - make wallets of all duress types (x2 each)
-    # - plus a few simple ones
-    # - perform a backup and check result
-
-    for n in range(8):
-        goto_trick_menu()
-        pin = '123-%04d' % n
-        new_trick_pin(pin, 'Duress Wallet', None)
-        item = 'BIP-85 Wallet #%d' % (n % 4) if (n % 4 != 0) else 'Legacy Wallet'
-        pick_menu_item(item)
-        need_keypress('y')
-        new_pin_confirmed(pin, item, None, None)
-
-    for pin, op_mode, expect, _, xflags in [
-        ('11-33', 'Just Reboot', 'Reboot when this PIN', False, TC_REBOOT),
-        ('11-55', 'Look Blank', 'Look and act like a freshly', False, TC_BLANK_WALLET),
-    ]:
-        new_trick_pin(pin, op_mode, expect)
-        new_pin_confirmed(pin, op_mode, xflags)
-
-    # works, but not the best test
-    # unit_test('devtest/backups.py')
-
-    bk = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
-
-    assert 'Coldcard backup file' in bk
-
-    # decode it
-    vals, trimmed = decode_backup(bk)
-
-    assert 'duress_xprv' in trimmed
-    assert 'duress_1001_words' in trimmed
-    assert 'duress_1002_words' in trimmed
-    assert 'duress_1003_words' in trimmed
-
-    unit_test('devtest/clear_seed.py')
-
-    repl.exec(f'import backups; backups.restore_from_dict_ll({vals!r})')
-
-    # recover from recovery
-    repl.exec(f'import backups; pa.setup(pa.pin); pa.login(); from actions import goto_top_menu; goto_top_menu()')
-
-    bk2 = repl.exec('import backups; RV.write(backups.render_backup_contents())', raw=1)
-    assert 'Traceback' not in bk2
-
-    vals2, tr2 = decode_backup(bk2)
-
-    assert vals == vals2
-    assert trimmed == tr2
-
-
 def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_words,
                            import_ephemeral_xprv, restore_main_seed, settings_get,
-                           repl, pick_menu_item, need_keypress, cap_story, get_setting,
+                           repl, pick_menu_item, press_cancel, cap_story, get_setting,
                            pass_word_quiz, verify_backup_file, check_and_decrypt_backup,
-                           restore_backup_cs, cap_menu, verify_ephemeral_secret_ui):
+                           restore_backup_cs, cap_menu, verify_ephemeral_secret_ui,
+                           seed_story_to_words):
     reset_seed_words()
     settings_set("seedvault", 1)
     settings_set("seeds", [])
@@ -465,21 +421,20 @@ def test_seed_vault_backup(settings_set, reset_seed_words, generate_ephemeral_wo
     time.sleep(.1)
     title, story = cap_story()
     if "Use same backup file password as last time?" in story:
-        need_keypress("x")
+        press_cancel()
         time.sleep(.1)
         title, story = cap_story()
     assert title == 'NO-TITLE'
     assert 'Record this' in story
     assert 'password:' in story
-
-    words = [w[3:].strip() for w in story.split('\n') if w and w[2] == ':']
+    words = seed_story_to_words(story)
     assert len(words) == 12
     # pass the quiz!
     count, title, body = pass_word_quiz(words)
     assert count >= 4
     assert "same words next time" in body
     assert "Press (1) to save" in body
-    need_keypress('x')
+    press_cancel()
     time.sleep(.01)
     assert get_setting('bkpw', 'xxx') == 'xxx'
     title, story = cap_story()
@@ -552,3 +507,8 @@ def test_clone_start(reset_seed_words, pick_menu_item, cap_story, goto_home):
     goto_home()
     assert len([i for i in os.listdir(sd_dir) if i.endswith(".7z")]) > num_7z
     os.remove(f"{sd_dir}/{fname}")
+
+    # TODO check file made is a good backup, with correct password
+
+
+# EOF

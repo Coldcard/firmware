@@ -1,6 +1,6 @@
 # Freeze everything in this list.
 # - not optimized because we need asserts to work
-# - for mk3 vs mk4, see manifest_mk[34].py
+# - for specific boards, see manifest_mk[34].py and manifest_q1.py
 freeze_as_mpy('', [
 	'actions.py',
 	'address_explorer.py',
@@ -22,12 +22,9 @@ freeze_as_mpy('', [
 	'ftux.py',
 	'glob.py',
 	'history.py',
-	'hsm.py',
-	'hsm_ux.py',
 	'imptask.py',
 	'login.py',
 	'main.py',
-	'mempad.py',
 	'menu.py',
 	'multisig.py',
 	'numpad.py',
@@ -47,19 +44,20 @@ freeze_as_mpy('', [
 	'ssd1306.py',
 	'stash.py',
 	'usb.py',
-	'users.py',
 	'utils.py',
 	'ux.py',
 	'version.py',
 	'xor_seed.py',
+	'tapsigner.py',
+	'wallet.py',
+	'ownership.py',
 ], opt=0)
 
 # Optimize data-like files, since no need to debug them.
 freeze_as_mpy('', [
 	'sigheader.py',
-	'graphics.py',
-	'zevvpeep.py',
 	'public_constants.py',
+	'charcodes.py',
 ], opt=3)
 
 # Maybe include test code.

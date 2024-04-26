@@ -2,18 +2,20 @@
 #
 # multisig.py - support code for multisig signing and p2sh in general.
 #
-import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson
+import stash, chains, ustruct, ure, uio, sys, ngu, uos, ujson, version
 from utils import xfp2str, str2xfp, swab32, cleanup_deriv_path, keypath_to_str, to_ascii_printable
-from utils import str_to_keypath, problem_file_line, export_prompt_builder, parse_extended_key
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys, ux_enter_bip32_index
+from utils import str_to_keypath, problem_file_line, parse_extended_key
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_clear_keys
+from ux import import_export_prompt, ux_enter_bip32_index, show_qr_code
 from files import CardSlot, CardMissingError, needs_microsd
 from descriptor import MultisigDescriptor, multisig_descriptor_template
 from public_constants import AF_P2SH, AF_P2WSH_P2SH, AF_P2WSH, AFC_SCRIPT, MAX_SIGNERS
-from menu import MenuSystem, MenuItem
+from menu import MenuSystem, MenuItem, ShortcutItem
 from opcodes import OP_CHECKMULTISIG
 from exceptions import FatalPSBTIssue
 from glob import settings
-
+from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
+from wallet import WalletABC, MAX_BIP32_IDX
 
 # PSBT Xpub trust policies
 TRUST_VERIFY = const(0)
@@ -104,7 +106,7 @@ def make_redeem_script(M, nodes, subkey_idx):
 
     return b''.join(pubkeys)
 
-class MultisigWallet:
+class MultisigWallet(WalletABC):
     # Capture the info we need to store long-term in order to participate in a
     # multisig wallet as a co-signer.
     # - can be saved to nvram
@@ -149,6 +151,15 @@ class MultisigWallet:
             if k == addr_fmt:
                 return v.upper()
         return '?'
+
+    def render_path(self, change_idx, idx):
+        # assuming shared derivations for all cosigners. Wrongish.
+        derivs, _ = self.get_deriv_paths()
+        if len(derivs) > 1:
+            deriv = '(various)'
+        else:
+            deriv = derivs[0]
+        return deriv + '/%d/%d' % (change_idx, idx)
 
     @property
     def chain(self):
@@ -435,10 +446,7 @@ class MultisigWallet:
 
     def yield_addresses(self, start_idx, count, change_idx=0):
         # Assuming a suffix of /0/0 on the defined prefix's, yield
-        # possible deposit addresses for this wallet. Never show
-        # user the resulting addresses because we cannot be certain
-        # they are valid and could be signed. And yet, dont blank too many
-        # spots or else an attacker could grid out a suitable replacement.
+        # possible deposit addresses for this wallet.
         ch = self.chain
 
         assert self.addr_fmt, 'no addr fmt known'
@@ -457,12 +465,13 @@ class MultisigWallet:
 
         idx = start_idx
         while count:
+            if idx > MAX_BIP32_IDX:
+                break
             # make the redeem script, convert into address
             script = make_redeem_script(self.M, nodes, idx)
             addr = ch.p2sh_address(self.addr_fmt, script)
-            addr = addr[0:12] + '___' + addr[12+3:]
 
-            yield idx, [p.format(idx=idx) for p in paths], addr, script
+            yield idx, addr, [p.format(idx=idx) for p in paths], script
 
             idx += 1
             count -= 1
@@ -595,7 +604,7 @@ class MultisigWallet:
             if ':' not in ln:
                 if 'pub' in ln:
                     # pointless optimization: allow bare xpub if we can calc xfp
-                    label = '0' * 8
+                    label = '00000000'
                     value = ln
                 else:
                     # complain?
@@ -681,7 +690,7 @@ class MultisigWallet:
         #       name: nameforwallet
         #       policy: M of N
         #       format: p2sh  (+etc)
-        #       derivation: m/45'/0     (common prefix)
+        #       derivation: m/45h/0     (common prefix)
         #       (8digithex): xpub of cosigner
         #
         # Descriptor support
@@ -866,25 +875,28 @@ class MultisigWallet:
         hdr = '%s %s' % (mode, my_xfp)
         label = "%s multisig setup" % name
 
-        force_vdisk = False
-        prompt, escape = export_prompt_builder("%s file" % label)
-        if prompt:
-            ch = await ux_show_story(prompt, escape=escape)
-            if ch == "3":
-                with uio.StringIO() as fp:
-                    self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
-                                       core=core, desc_pretty=desc_pretty)
+        choice = await import_export_prompt("%s file" % label, is_import=False,
+                                            no_qr=not version.has_qwerty)
+        if choice == KEY_CANCEL:
+            return
+        elif choice in (KEY_NFC, KEY_QR):
+            with uio.StringIO() as fp:
+                self.render_export(fp, hdr_comment=hdr, descriptor=descriptor,
+                                   core=core, desc_pretty=desc_pretty)
+                if choice == KEY_NFC:
                     await NFC.share_text(fp.getvalue())
-                return
-            elif ch == "1":
-                force_vdisk = False
-            elif ch == "2":
-                force_vdisk = True
-            else:
-                return
+                else:
+                    try:
+                        await show_qr_code(fp.getvalue())
+                    except (ValueError, RuntimeError):
+                        if version.has_qwerty:
+                            # do BBQr on Q
+                            from ux_q1 import show_bbqr_codes
+                            await show_bbqr_codes('U', fp.getvalue(), label)
+            return
 
         try:
-            with CardSlot(force_vdisk=force_vdisk) as card:
+            with CardSlot(**choice) as card:
                 fname, nice = card.pick_filename(fname_pattern)
 
                 # do actual write
@@ -949,9 +961,9 @@ class MultisigWallet:
         # based on indicated numeric subkey path observed.
         # - return None if unsure, no errors
         #
-        #( "m/45'", 'p2sh', AF_P2SH), 
-        #( "m/48'/{coin}'/0'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        #( "m/48'/{coin}'/0'/2'", 'p2wsh', AF_P2WSH)
+        #( "m/45h", 'p2sh', AF_P2SH), 
+        #( "m/48h/{coin}h/0h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        #( "m/48h/{coin}h/0h/2h", 'p2wsh', AF_P2WSH)
 
         top = npath[0] & 0x7fffffff
         if top == npath[0]:
@@ -1248,7 +1260,10 @@ class MultisigMenu(MenuSystem):
                             menu=make_ms_wallet_menu, arg=ms.storage_idx))
         from glob import NFC
         rv.append(MenuItem('Import from File', f=import_multisig))
-        rv.append(MenuItem('Import via NFC', f=import_multisig_nfc, predicate=lambda: NFC is not None))
+        rv.append(MenuItem('Import from QR', f=import_multisig_qr,
+                           predicate=version.has_qwerty, shortcut=KEY_QR))
+        rv.append(MenuItem('Import via NFC', f=import_multisig_nfc,
+                           predicate=bool(NFC), shortcut=KEY_NFC))
         rv.append(MenuItem('Export XPUB', f=export_multisig_xpubs))
         rv.append(MenuItem('Create Airgapped', f=create_ms_step1))
         rv.append(MenuItem('Trust PSBT?', f=trust_psbt_menu))
@@ -1267,7 +1282,7 @@ async def make_multisig_menu(*a):
     # list of all multisig wallets, and high-level settings/actions
     from pincodes import pa
 
-    if pa.is_secret_blank():
+    if not pa.has_secrets():
         await ux_show_story("You must have wallet seed before creating multisig wallets.")
         return
 
@@ -1297,8 +1312,10 @@ async def make_ms_wallet_descriptor_menu(menu, label, item):
 
     rv = [
         MenuItem('View Descriptor', f=ms_wallet_show_descriptor, arg=ms),
-        MenuItem('Export', f=ms_wallet_ckcc_export, arg=(ms, {"descriptor": True, "desc_pretty": False})),
-        MenuItem('Bitcoin Core', f=ms_wallet_ckcc_export, arg=(ms, {"descriptor": True, "core": True})),
+        MenuItem('Export', f=ms_wallet_ckcc_export,
+                 arg=(ms, {"descriptor": True, "desc_pretty": False})),
+        MenuItem('Bitcoin Core', f=ms_wallet_ckcc_export,
+                 arg=(ms, {"descriptor": True, "core": True})),
     ]
     return rv
 
@@ -1331,6 +1348,8 @@ async def ms_wallet_ckcc_export(menu, label, item):
     await ms.export_wallet_file(**kwargs)
 
 async def ms_wallet_show_descriptor(menu, label, item):
+    from glob import dis
+    dis.fullscreen("Wait...")
     ms = item.arg
     desc = ms.to_descriptor()
     desc_str = desc.serialize()
@@ -1342,7 +1361,7 @@ async def ms_wallet_electrum_export(menu, label, item):
     # create a JSON file that Electrum can use. Challenges:
     # - file contains derivation paths for each co-signer to use
     # - electrum is using BIP-43 with purpose=48 (purpose48_derivation) to make paths like:
-    #       m/48'/1'/0'/2'
+    #       m/48h/1h/0h/2h
     # - above is now called BIP-48
     # - other signers might not be coldcards (we don't know)
     # solution: 
@@ -1379,6 +1398,7 @@ async def export_multisig_xpubs(*a):
     # - however some 3rd parties are making use of it as well.
     #
     from glob import NFC, dis
+    from ux import import_export_prompt
 
     xfp = xfp2str(settings.get('xfp', 0))
     chain = chains.current_chain()
@@ -1394,9 +1414,9 @@ a multisig wallet using the 'Create Airgapped' feature.
 Public keys for BIP-48 conformant paths are used:
 
 P2SH-P2WSH:
-   m/48'/{coin}'/acct'/1'
+   m/48h/{coin}h/{{acct}}h/1h
 P2WSH:
-   m/48'/{coin}'/acct'/2'
+   m/48h/{coin}h/{{acct}}h/2h
 
 OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
@@ -1406,20 +1426,18 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
 
     acct_num = await ux_enter_bip32_index('Account Number:') or 0
 
-    prompt, escape = export_prompt_builder("%s file" % label)
-    force_vdisk = False
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch == "2":
-            force_vdisk = True
-        if ch not in escape: return
+    choice = await import_export_prompt("%s file" % label, is_import=False,
+                                        no_qr=not version.has_qwerty)
+
+    if choice == KEY_CANCEL:
+        return
 
     dis.fullscreen('Generating...')
 
     todo = [
-        ( "m/45'", 'p2sh', AF_P2SH),       # iff acct_num == 0
-        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
-        ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
+        ( "m/45h", 'p2sh', AF_P2SH),       # iff acct_num == 0
+        ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH ),
+        ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
     ]
 
     def render(fp):
@@ -1442,14 +1460,18 @@ OK to continue. X to abort.'''.format(coin=chain.b44_cointype)
         fp.write('  "account": "%d",\n' % acct_num)
         fp.write('  "xfp": "%s"\n}\n' % xfp)
 
-    if NFC and ch == '3':
+    if choice in (KEY_NFC, KEY_QR):
         with uio.StringIO() as fp:
             render(fp)
-            await NFC.share_json(fp.getvalue())
+            if choice == KEY_NFC:
+                await NFC.share_json(fp.getvalue())
+            elif version.has_qwerty:
+                from ux_q1 import show_bbqr_codes
+                await show_bbqr_codes('J', fp.getvalue(), label)
         return
 
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
             # do actual write: manual JSON here so more human-readable.
             with open(fname, 'w+') as fp:
@@ -1643,6 +1665,19 @@ async def import_multisig_nfc(*a):
     except Exception as e:
         await ux_show_story(title="ERROR", msg="Failed to import multisig. %s" % str(e))
 
+async def import_multisig_qr(*a):
+    from auth import maybe_enroll_xpub
+    from ux_q1 import QRScannerInteraction
+    data = await QRScannerInteraction().scan_text('Scan Multisig from a QR code')
+    if not data:
+        # pressed CANCEL
+        return
+
+    try:
+        maybe_enroll_xpub(config=data)
+    except Exception as e:
+        await ux_show_story('Failed to import.\n\n%s\n%s' % (e, problem_file_line(e)))
+
 async def import_multisig(*a):
     # pick text file from SD card, import as multisig setup file
     from actions import file_picker
@@ -1673,8 +1708,8 @@ async def import_multisig(*a):
                 if 'pub' in ln:
                     return True
 
-    fn = await file_picker('Pick multisig wallet file to import (.txt)', suffix='.txt', min_size=100,
-                           max_size=20*200, taster=possible, force_vdisk=force_vdisk)
+    fn = await file_picker(suffix='.txt', min_size=100, max_size=20*200,
+                           taster=possible, force_vdisk=force_vdisk)
     if not fn: return
 
     try:

@@ -5,12 +5,30 @@
 import stash, chains, version, ujson, ngu
 from uio import StringIO
 from ucollections import OrderedDict
-from utils import xfp2str, swab32, export_prompt_builder, chunk_writer
+from utils import xfp2str, swab32, chunk_writer
 from ux import ux_show_story
 from glob import settings
 from auth import write_sig_file
 from public_constants import AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH, AF_P2WSH, AF_P2WSH_P2SH, AF_P2SH
+from charcodes import KEY_NFC, KEY_CANCEL, KEY_QR
 
+async def export_by_qr(body, label, is_json=False):
+    # render as QR and show on-screen
+    from ux import show_qr_code
+
+    try:
+        # ignore label/title - provides no useful info
+        # makes qr smaller and harder to read
+        await show_qr_code(body)
+    except (ValueError, RuntimeError):
+        if version.has_qwerty:
+            # do BBQr on Q
+            from ux_q1 import show_bbqr_codes
+            await show_bbqr_codes('J' if is_json else 'U', body, label)
+
+        # on Mk4, if too big ... just do nothing (but JSON should have fit?)
+
+    return
 
 def generate_public_contents():
     # Generate public details about wallet.
@@ -71,8 +89,8 @@ be needed for different systems.
                 subpath = path.format(account=0, change=0, idx=i)
 
                 # find the prefix of the path that is hardneded
-                if "'" in subpath:
-                    hard_sub = subpath.rsplit("'", 1)[0] + "'"
+                if "h" in subpath:
+                    hard_sub = subpath.rsplit("h", 1)[0] + "h"
                 else:
                     hard_sub = 'm'
 
@@ -115,28 +133,26 @@ be needed for different systems.
             del fp
 
 async def write_text_file(fname_pattern, body, title, derive, addr_fmt):
-    # - total_parts does need not be precise
+    # Export data as a text file.
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
+    from ux import import_export_prompt
 
-    force_vdisk = False
-    prompt, escape = export_prompt_builder("%s file" % title)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch == '3':
-            await NFC.share_text(body)
-            return
-        elif ch == "2":
-            force_vdisk = True
-        elif ch == '1':
-            force_vdisk = False
-        else:
-            return
+    choice = await import_export_prompt("%s file" % title, is_import=False,
+                                        no_qr=(not version.has_qwerty))
+    if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_QR:
+        await export_by_qr(body, title)
+        return
+    elif choice == KEY_NFC:
+        await NFC.share_text(body)
+        return
 
     # choose a filename
     try:
         dis.fullscreen("Saving...")
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
@@ -166,7 +182,8 @@ async def make_summary_file(fname_pattern='public.txt'):
     # generator function:
     body = "".join(list(generate_public_contents()))
     ch = chains.current_chain()
-    await write_text_file(fname_pattern, body, 'Summary', "m/44'/%d'/0'/0/0" % ch.b44_cointype,
+    await write_text_file(fname_pattern, body, 'Summary',
+                          "m/44h/%dh/0h/0/0" % ch.b44_cointype,
                           AF_CLASSIC)
 
 async def make_bitcoin_core_wallet(account_num=0, fname_pattern='bitcoin-core.txt'):
@@ -218,7 +235,7 @@ importmulti '{imp_multi}'
     body += '\n'
 
     ch = chains.current_chain()
-    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=ch.b44_cointype)
+    derive = "84h/{coin_type}h/{account}h".format(account=account_num, coin_type=ch.b44_cointype)
     await write_text_file(fname_pattern, body, 'Bitcoin Core', derive + "/0/0", AF_P2WPKH)
 
 def generate_bitcoin_core_wallet(account_num, example_addrs):
@@ -228,7 +245,8 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
 
     chain = chains.current_chain()
 
-    derive = "84'/{coin_type}'/{account}'".format(account=account_num, coin_type=chain.b44_cointype)
+    derive = "84h/{coin_type}h/{account}h".format(account=account_num,
+                                                  coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
         prefix = sv.derive_path(derive)
@@ -241,7 +259,6 @@ def generate_bitcoin_core_wallet(account_num, example_addrs):
             example_addrs.append( ('m/%s/%s' % (derive, sp), a) )
 
     xfp = settings.get('xfp')
-    txt_xfp = xfp2str(xfp).lower()
     _, vers, _ = version.get_mpy_version()
 
     desc_obj = Descriptor(keys=[(xfp, derive, xpub)], addr_fmt=AF_P2WPKH)
@@ -272,7 +289,7 @@ def generate_wasabi_wallet():
     btc = chains.BitcoinMain
 
     with stash.SensitiveValues() as sv:
-        dd = "84'/%d'/0'" % chains.current_chain().b44_cointype
+        dd = "84h/%dh/0h" % chains.current_chain().b44_cointype
         xpub = btc.serialize_public(sv.derive_path(dd))
 
     xfp = settings.get('xfp')
@@ -298,9 +315,9 @@ def generate_unchained_export(account_num=0):
 
     chain = chains.current_chain()
     todo = [
-        ( "m/48'/{coin}'/{acct_num}'/2'", 'p2wsh', AF_P2WSH ),
-        ( "m/48'/{coin}'/{acct_num}'/1'", 'p2sh_p2wsh', AF_P2WSH_P2SH),
-        ( "m/45'", 'p2sh', AF_P2SH),  # if acct_num == 0
+        ( "m/48h/{coin}h/{acct_num}h/2h", 'p2wsh', AF_P2WSH ),
+        ( "m/48h/{coin}h/{acct_num}h/1h", 'p2sh_p2wsh', AF_P2WSH_P2SH),
+        ( "m/45h", 'p2sh', AF_P2SH),  # if acct_num == 0
     ]
 
     xfp = xfp2str(settings.get('xfp', 0))
@@ -337,12 +354,12 @@ def generate_generic_export(account_num=0):
     with stash.SensitiveValues() as sv:
         # each of these paths would have /{change}/{idx} in usage (not hardened)
         for name, deriv, fmt, atype, is_ms in [
-            ( 'bip44', "m/44'/{ct}'/{acc}'", AF_CLASSIC, 'p2pkh', False ),
-            ( 'bip49', "m/49'/{ct}'/{acc}'", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
-            ( 'bip84', "m/84'/{ct}'/{acc}'", AF_P2WPKH, 'p2wpkh', False ),
-            ( 'bip48_1', "m/48'/{ct}'/{acc}'/1'", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
-            ( 'bip48_2', "m/48'/{ct}'/{acc}'/2'", AF_P2WSH, 'p2wsh', True ),
-            ( 'bip45', "m/45'", AF_P2SH, 'p2sh', True ),
+            ( 'bip44', "m/44h/{ct}h/{acc}h", AF_CLASSIC, 'p2pkh', False ),
+            ( 'bip49', "m/49h/{ct}h/{acc}h", AF_P2WPKH_P2SH, 'p2sh-p2wpkh', False ),   # was "p2wpkh-p2sh"
+            ( 'bip84', "m/84h/{ct}h/{acc}h", AF_P2WPKH, 'p2wpkh', False ),
+            ( 'bip48_1', "m/48h/{ct}h/{acc}h/1h", AF_P2WSH_P2SH, 'p2sh-p2wsh', True ),
+            ( 'bip48_2', "m/48h/{ct}h/{acc}h/2h", AF_P2WSH, 'p2wsh', True ),
+            ( 'bip45', "m/45h", AF_P2SH, 'p2sh', True ),
         ]:
             if fmt == AF_P2SH and account_num:
                 continue
@@ -371,7 +388,7 @@ def generate_generic_export(account_num=0):
                 node.derive(0, False).derive(0, False)
                 rv[name]['first'] = chain.address(node, fmt)
 
-    sig_deriv = "m/44'/{ct}'/{acc}'".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
+    sig_deriv = "m/44h/{ct}h/{acc}h".format(ct=chain.b44_cointype, acc=account_num) + "/0/0"
     return ujson.dumps(rv), sig_deriv, AF_CLASSIC
 
 def generate_electrum_wallet(addr_type, account_num):
@@ -394,7 +411,7 @@ def generate_electrum_wallet(addr_type, account_num):
     else:
         raise ValueError(addr_type)
 
-    derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
+    derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
 
     with stash.SensitiveValues() as sv:
@@ -425,28 +442,31 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
 
     from glob import dis, NFC
     from files import CardSlot, CardMissingError, needs_microsd
+    from ux import import_export_prompt
+    from qrs import MAX_V11_CHAR_LIMIT
 
     dis.fullscreen('Generating...')
     json_str, derive, addr_fmt = func()
     skip_sig = derive is False and addr_fmt is False
 
-    force_vdisk = False
-    prompt, escape = export_prompt_builder("%s file" % label)
-    if prompt:
-        ch = await ux_show_story(prompt, escape=escape)
-        if ch == '3':
-            await NFC.share_json(json_str)
-            return
-        elif ch == '2':
-            force_vdisk = True
-        elif ch == '1':
-            force_vdisk = False
-        else:
-            return
+    choice = await import_export_prompt("%s file" % label, is_import=False,
+                    no_qr=(not version.has_qwerty and len(json_str) >= MAX_V11_CHAR_LIMIT))
+
+    if choice == KEY_CANCEL:
+        return
+    elif choice == KEY_NFC:
+        await NFC.share_json(json_str)
+        return
+    elif choice == KEY_QR:
+        # render as QR and show on-screen
+        # - on mk4, this isn't offered if more than about 300 bytes because we can't
+        #   show that as a single QR
+        await export_by_qr(json_str, label, is_json=True)
+        return
 
     # choose a filename and save
     try:
-        with CardSlot(force_vdisk=force_vdisk) as card:
+        with CardSlot(**choice) as card:
             fname, nice = card.pick_filename(fname_pattern)
 
             # do actual write
@@ -467,6 +487,7 @@ async def make_json_wallet(label, func, fname_pattern='new-wallet.json'):
     msg = '%s file written:\n\n%s' % (label, nice)
     if not skip_sig:
         msg += '\n\n%s signature file written:\n\n%s' % (label, sig_nice)
+
     await ux_show_story(msg)
 
 
@@ -490,7 +511,7 @@ async def make_descriptor_wallet_export(addr_type, account_num=0, mode=None, int
         else:
             raise ValueError(addr_type)
 
-    derive = "m/{mode}'/{coin_type}'/{account}'".format(mode=mode,
+    derive = "m/{mode}h/{coin_type}h/{account}h".format(mode=mode,
                                     account=account_num, coin_type=chain.b44_cointype)
     dis.progress_bar_show(0.2)
     with stash.SensitiveValues() as sv:

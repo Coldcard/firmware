@@ -4,6 +4,7 @@
 #
 # Copied from ../external/micropython/drivers/display/ssd1306.py
 #
+import time
 from micropython import const
 import framebuf
 
@@ -109,7 +110,6 @@ class SSD1306_SPI(SSD1306):
         self.dc = dc
         self.res = res
         self.cs = cs
-        import time
         self.res(1)
         time.sleep_ms(1)
         self.res(0)

@@ -4,6 +4,7 @@
 #
 from glob import settings
 from nvstore import SettingsObject
+from version import has_qwerty
 
 def max_fee_chooser():
     from psbt import DEFAULT_MAX_FEE_PERCENTAGE
@@ -86,11 +87,16 @@ def kill_key_chooser():
     #   kbtn = single keypress after anti-phishing words will wipe seed
 
     s = SettingsObject.prelogin()
-    which = s.get('kbtn', -1)
-    del s
-    which = int(which) + 1
 
-    ch = ['Disable'] + [str(d) for d in range(10)]
+    if not has_qwerty:
+        ch = ['Disable'] + [str(d) for d in range(10)]
+    else:
+        ch = ['Disable'] + [chr(65+i) for i in range(26)] + [i for i in '\',./']
+
+    try:
+        which = ch.index(s.get('kbtn', None))
+    except ValueError:
+        which = 0
 
     def set(idx, text):
         # save it, but "outside" of login PIN
@@ -98,7 +104,7 @@ def kill_key_chooser():
         if idx == 0:
             s.remove_key('kbtn')
         else:
-            s.set('kbtn', str(idx-1))
+            s.set('kbtn', text)
         s.save()
         del s
 

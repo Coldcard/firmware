@@ -6,7 +6,7 @@ import machine, uzlib, ckcc, utime
 from ssd1306 import SSD1306_SPI
 from version import is_devmode
 import framebuf
-from graphics import Graphics
+from graphics_mk4 import Graphics
 
 # we support 4 fonts
 from zevvpeep import FontSmall, FontLarge, FontTiny
@@ -22,6 +22,9 @@ class Display:
     # use these negative X values for auto layout features
     CENTER = -2
     RJUST = -1
+
+    # use this to know if on Q1 or earlier 
+    has_lcd = False
 
     def __init__(self):
         from machine import Pin
@@ -124,13 +127,19 @@ class Display:
     def vline(self, x):
         self.dis.line(x, 0, x, 64, 1)
 
-    def scroll_bar(self, fraction):
-        # along right edge
+    def scroll_bar(self, offset, count, per_page):
+        # along right edge, height is proportional to page size
+        num_pages = max(count / per_page, 2)
+        bh = max(int(64 / num_pages), 4)
+        pos = int((64 - bh) * (offset / count))
+
+        if offset and (offset + per_page >= count):
+            # force last page to be at end
+            pos = 64 - bh
+
         self.dis.fill_rect(128-5, 0, 5, 64, 0)
-        self.icon(128-3, 1, 'scroll');
-        mm = 64-6
-        pos = min(int(mm*fraction), mm)
-        self.dis.fill_rect(128-2, pos, 1, 8, 1)
+        self.icon(128-3, 1, 'scroll')
+        self.dis.fill_rect(128-2, pos, 1, bh, 1)
 
         if is_devmode and not ckcc.is_simulator():
             self.dis.fill_rect(128-6, 20, 5, 21, 1)
@@ -140,15 +149,11 @@ class Display:
 
     def fullscreen(self, msg, percent=None, line2=None):
         # show a simple message "fullscreen". 
+        # - 'line2' not supported on smaller screen sizes, ignore
         self.clear()
-        if line2:
-            y = 10
-            self.text(None, y, msg, font=FontLarge)
-            y += 24
-            self.text(None, y, line2, font=FontSmall)
-        else:
-            y = 14
-            self.text(None, y, msg, font=FontLarge)
+        y = 14
+        self.text(None, y, msg, font=FontLarge)
+
         if percent is not None:
             self.progress_bar(percent)
         self.show()
@@ -180,8 +185,7 @@ class Display:
         if utime.ticks_diff(utime.ticks_ms(), self.last_bar_update) < 100:
             return
         self.last_bar_update = utime.ticks_ms()
-        self.progress_bar(done / total)
-        self.show()
+        self.progress_bar_show(done / total)
 
     def progress_bar_show(self, percent):
         # useful as a callback
@@ -194,13 +198,13 @@ class Display:
             ln = max(2, ckcc.rng() % 32)
             self.dis.line(wx-ln, y, wx, y, 1)
 
-    def busy_bar(self, enable, speed_code=5):
+    def busy_bar(self, enable):
         # Render a continuous activity (not progress) bar in lower 8 lines of display
         # - using OLED itself to do the animation, so smooth and CPU free
         # - cannot preserve bottom 8 lines, since we have to destructively write there
         # - assumes normal horz addr mode: 0x20, 0x00
         # - speed_code=>framedelay: 0=5fr, 1=64fr, 2=128, 3=256, 4=3, 5=4, 6=25, 7=2frames
-        assert 0 <= speed_code <= 7
+        #   unused: assert 0 <= speed_code <= 7
 
         setup = bytes([
             0x21, 0x00, 0x7f,       # setup column address range (start, end): 0-127
@@ -211,7 +215,7 @@ class Display:
             0x26,               # scroll leftwards (stock ticker mode)
                 0,              # placeholder
                 7,              # start 'page' (vertical)
-                speed_code,     # scroll speed: 7=fastest, but no order to it
+                5,              # "speed_code" # scroll speed: 7=fastest, but no order to it
                 7,              # end 'page'
                 0, 0xff,        # placeholders
             0x2f                # start
@@ -251,5 +255,156 @@ class Display:
         # normal = 0x7f, brightness=0xff, dim=0x00 (but they are all very similar)
         self.dis.write_cmd(0x81)        # Set Contrast Control
         self.dis.write_cmd(val)
+
+    def menu_draw(self, ry, msg, is_sel, is_checked, space_indicators):
+        # draw a menu item, perhaps selected, checked.
+        x, y = (10, 2)
+        h = 14
+        y += ry * h
+
+        if is_sel:
+            self.dis.fill_rect(0, y, Display.WIDTH, h-1, 1)
+            self.icon(2, y, 'wedge', invert=1)
+            self.text(x, y, msg, invert=1)
+        else:
+            self.text(x, y, msg)
+
+        if msg[0] == ' ' and space_indicators:
+            self.icon(x-2, y+11, 'space', invert=is_sel)
+
+        if is_checked:
+            self.icon(108, y, 'selected', invert=is_sel)
+
+    def menu_show(self, *a):
+        self.show()
+
+    def show_yikes(self, lines):
+        self.clear()
+        self.text(None, 1, '>>>> Yikes!! <<<<')
+
+        y = 13+2
+        for num, ln in enumerate(lines):
+            ln = ln.strip()
+
+            if ln[0:6] == 'File "':
+                # convert: File "main.py", line 63, in interact
+                #    into: main.py:63  interact
+                ln = ln[6:].replace('", line ', ':').replace(', in ', '  ')
+
+            self.text(0, y + (num*8), ln, FontTiny)
+
+        self.show()
+
+    def draw_story(self, lines, top, num_lines, is_sensitive, **ignored):
+        self.clear()
+
+        y=0
+        for ln in lines:
+            if ln == 'EOT':
+                self.hline(y+3)
+            elif ln and ln[0] == '\x01':
+                self.text(0, y, ln[1:], FontLarge)
+                y += 21
+            else:
+                self.text(0, y, ln)
+
+                if is_sensitive and len(ln) > 3 and ln[2] == ':':
+                    self.mark_sensitive(y, y+13)
+
+                y += 13
+
+        self.scroll_bar(top, num_lines, 4)
+        self.show()
+
+    def draw_status(self, **k):
+        # no status bar on Mk4
+        return
+
+    def draw_qr_display(self, qr_data, msg, is_alnum, sidebar, idx_hint, invert):
+        # 'sidebar' is a pre-formated obj to show to right of QR -- oled life
+        # - 'msg' will appear to right if very short, else under in tiny
+        from utils import word_wrap
+
+        self.clear()
+
+        w = qr_data.width()
+        if w == 29:
+            # version 3 => we can double-up the pixels
+            XO,YO = 4, 3    # offsets
+            dbl = True
+            bw = 62
+            lm, tm = 2, 1           # left, top margin
+        else:
+            # v4+ => just one pixel per module, might not be easy to read
+            # - vert center, left justify; text on space to right
+            dbl = False
+            YO = max(0, (64 - w) // 2)
+            XO,lm = 6, 4
+            bw = w + lm
+            tm = (64 - bw) // 2
+
+        if dbl:
+            if not invert:
+                self.dis.fill_rect(lm, tm, bw, bw, 1)
+            else:
+                self.dis.fill_rect(lm, tm, bw, bw, 0)
+
+            for x in range(w):
+                for y in range(w):
+                    if not qr_data.get(x, y):
+                        continue
+                    X = (x*2) + XO
+                    Y = (y*2) + YO
+                    self.dis.fill_rect(X,Y, 2,2, invert)
+        else:
+            # direct "bilt" .. faster. Does not support inversion.
+            self.dis.fill_rect(lm, tm, bw, bw, 1)
+            _, _, packed = qr_data.packed()
+            packed = bytes(i^0xff for i in packed)
+            gly = framebuf.FrameBuffer(bytearray(packed), w, w, framebuf.MONO_HLSB)
+            self.dis.blit(gly, XO, YO, 1)
+
+        if not sidebar and not msg:
+            pass
+        elif not sidebar and len(msg) > (5*7):
+            # use FontTiny and word wrap (will just split if no spaces)
+            x = bw + lm + 4
+            ww = ((128 - x)//4) - 1        # char width avail
+            y = 1
+            parts = list(word_wrap(msg, ww))
+            if len(parts) > 8:
+                parts = parts[:8]
+                parts[-1] = parts[-1][0:-3] + '...'
+            elif len(parts) <= 5:
+                parts.insert(0, '')
+    
+            for line in parts:
+                self.text(x, y, line, FontTiny)
+                y += 8
+        else:
+            # hand-positioned for known cases
+            # - sidebar = (text, #of char per line)
+            x, y = 73, (0 if is_alnum else 2)
+            dy = 10 if is_alnum else 12
+            sidebar, ll = sidebar if sidebar else (msg, 7)
+
+            for i in range(0, len(sidebar), ll):
+                self.text(x, y, sidebar[i:i+ll], FontSmall)
+                y += dy
+
+        if not invert and idx_hint:
+            # show path number, very tiny: 1 or 2 digits, vertical left edge
+            if len(idx_hint) == 1:
+                self.text(0, 30, idx_hint[0], FontTiny)
+            else:
+                self.text(0, 27, idx_hint[0], FontTiny)
+                self.text(0, 27+7, idx_hint[1], FontTiny)
+
+        self.busy_bar(False)     # includes show
+
+    def bootrom_takeover(self):
+        # we are going to go into the bootrom and have it do stuff on the
+        # screen... nothing needed on here, since we redraw completely
+        pass
 
 # EOF

@@ -5,7 +5,8 @@
 #include <stdint.h>
 
 // Public version number for humans. Lots more version data added by Makefile.
-#define RELEASE_VERSION     "3.1.5"
+// - update ../MK4-Makefile BOOTLOADER_VERSION once this is qualified version
+#define RELEASE_VERSION     "3.2.0"
 
 extern const char version_string[];
 

@@ -14,7 +14,7 @@ def decode_firmware_header(hdr):
     return date, vers, ''.join(parts[:-2])
 
 def get_mpy_version():
-    return '2021-03-31', '5.x.x', '210331195308'
+    return '2023-02-31', '5.x.x', '230231195308'
 
 # pretend signed w/ dev key and allow debug
 is_factory_mode = bool('-f' in sys.argv)
@@ -32,42 +32,55 @@ def get_header_value(fld_name):
         return b'\x18\x07\x11\x19S\x08\x00\x00'
     return 0
 
-# default is latest hardware
+# default is Mk4 hardware
 hw_label = 'mk4'
 has_608 = True
 has_membrane = True
-has_fatram = True
+supports_hsm = True
 has_se2 = True
 has_psram = True
 has_nfc = True
+has_qr = False
+num_sd_slots = 1
+has_battery = False
+has_qwerty = False
+is_edge = False
 
 if  '--mk1' in sys.argv:
     # doubt this works still
     hw_label = 'mk1'
     has_608 = False
     has_membrane = False
-    has_fatram = False
     has_se2 = False
     has_psram = False
     has_nfc = False
+    supports_hsm = False
 
 if  '--mk2' in sys.argv:
     hw_label = 'mk2'
     has_608 = False
-    has_fatram = False
     has_se2 = False
     has_psram = False
     has_nfc = False
+    supports_hsm = False
 
 if  '--mk3' in sys.argv:
     hw_label = 'mk3'
     has_608 = True
-    has_fatram = True
     has_se2 = False
     has_psram = False
     has_nfc = False
+    supports_hsm = False
 
 mk_num = int(hw_label[2:])
+
+if '--q1' in sys.argv:
+    hw_label = 'q1'
+    has_qr = True
+    num_sd_slots = 2
+    has_battery = True
+    has_qwerty = True
+    supports_hsm = False
 
 from public_constants import MAX_TXN_LEN, MAX_UPLOAD_LEN
 from public_constants import MAX_TXN_LEN_MK4, MAX_UPLOAD_LEN_MK4

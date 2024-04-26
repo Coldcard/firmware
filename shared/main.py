@@ -16,33 +16,47 @@ assert not glob.dis, "main reimport"
 # this makes the GC run when larger objects are free in an attempt to reduce fragmentation.
 gc.threshold(4096)
 
-if 0:
-    # useful for debug: keep this stub!
+# useful for debug: start serial port early, when possible
+try:
+    from h import *
     import ckcc
     ckcc.vcp_enabled(True)
-    from h import *
-if 0:
-    raise SystemExit
+except:
+    # above will fail on release build, because:
+    # - 'h.py' not included
+    # - excludes serial port code access completely (see vcp_lockdown.c)
+    pass
 
-print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2022.")
+# Sometimes useful: die early for debug
+#raise SystemExit
+
+print("---\nColdcard Wallet from Coinkite Inc. (c) 2018-2024.")
 
 import version
 datestamp,vers,_ = version.get_mpy_version()
 print("Version: %s / %s\n" % (vers, datestamp))
 
-# Setup OLED and get something onto it.
-from display import Display
+# Setup display and get something onto it.
+if version.has_qwerty:
+    from lcd_display import Display
+else:
+    from display import Display
+
 dis = Display()
 dis.splash()
 glob.dis = dis
 
-# slowish imports, some with side-effects
+# Slowish imports, some with side-effects
 import ckcc, uasyncio
 
-# early setup code needed on Mk4
+# Early setup code
 try:
-    import mk4
-    mk4.init0()
+    if version.has_qwerty:
+        import q1
+        q1.init0()
+    else:
+        import mk4
+        mk4.init0()
 
     from psram import PSRAMWrapper
     glob.PSRAM = PSRAMWrapper()
@@ -51,10 +65,15 @@ except BaseException as exc:
     sys.print_exception(exc)
     # continue tho
 
-# Setup membrane numpad (mark 2+)
-from mempad import MembraneNumpad
-numpad = MembraneNumpad()
-glob.numpad = numpad
+# Setup keypad/keyboard
+if version.has_qwerty:
+    from keyboard import FullKeyboard
+    numpad = FullKeyboard()
+    glob.numpad = numpad
+else:
+    from mempad import MembraneNumpad
+    numpad = MembraneNumpad()
+    glob.numpad = numpad
 
 # NV settings
 from nvstore import SettingsObject
@@ -64,8 +83,6 @@ glob.settings = settings
 
 async def more_setup():
     # Boot up code; splash screen is being shown
-                
-    # MAYBE: check if we're a brick and die again? Or show msg?
 
     try:
         from files import CardSlot
@@ -98,30 +115,33 @@ async def more_setup():
             await accept_terms()
 
         # Prompt for PIN and then pick appropriate top-level menu,
-        # based on contents of secure chip (ie. is there
-        # a wallet defined)
+        # based on contents of secure chip (ie. is there a wallet defined)
         from actions import start_login_sequence
         await start_login_sequence()
     except BaseException as exc:
         die_with_debug(exc)
 
-    IMPT.start_task('mainline', mainline())
-
-async def mainline():
-    # Mainline of program, after startup
-    #
-    # - Do not add to this function, its vars are
-    #   in memory forever; instead, extend more_setup above.
+    # define contents of main menu
     from actions import goto_top_menu
-    from ux import the_ux
-
     goto_top_menu()
 
+    # fetch this function for mainline to use
+    from ux import the_ux
+    doit = the_ux.interact
+
+    IMPT.start_task('mainline', mainline(doit))
+
+async def mainline(doit):
+    # Mainline of program, after startup. Never stops.
+    #
+    # - Do not add to this function, its vars are
+    #   in memory forever; instead, extend more_setup() above.
+
     gc.collect()
-    #print("Free mem: %d" % gc.mem_free())      # 532656 on mk4!
+    #print("Free mem: %d" % gc.mem_free())      # 515536 on mk4!
 
     while 1:
-        await the_ux.interact()
+        await doit()
 
 
 def go():

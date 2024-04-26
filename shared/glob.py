@@ -17,14 +17,16 @@ hsm_active = None
 # setup by main.py, expected to always be present
 settings = None
 
-# PSRAM (on Mk4 only)
+# PSRAM
 PSRAM = None
 
-# Virtual Disk (Mk4)
+# Virtual Disk
 VD = None
 
-# NFC interface (Mk4, and can be disabled)
+# NFC interface (Mk4, can be disabled)
 NFC = None
 
+# QR scanner (Q1 only)
+SCAN = None
 
 # EOF

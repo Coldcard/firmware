@@ -8,7 +8,7 @@
 #include "verify.h"
 #include "psram.h"
 #include "faster_sha256.h"
-#include "assets/screens.h"
+#include SCREENS_H
 #include "oled.h"
 #include "console.h"
 #include "misc.h"
@@ -166,6 +166,7 @@ get_min_version(uint8_t min_version[8])
     bool
 check_is_downgrade(const uint8_t timestamp[8], const char *version)
 {
+#ifndef FOR_Q1_ONLY
     if(version) {
         int major = (version[1] == '.') ? (version[0]-'0') : 10;
         if(major < 3) {
@@ -173,6 +174,7 @@ check_is_downgrade(const uint8_t timestamp[8], const char *version)
             return true;
         }
     }
+#endif
 
     // look at FW_HDR->timestamp and compare to a growing list in main flash OTP
     uint8_t min[8];

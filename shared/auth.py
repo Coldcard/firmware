@@ -7,6 +7,7 @@ import stash, ure, ux, chains, sys, gc, uio, version, ngu
 from ubinascii import b2a_base64, a2b_base64
 from ubinascii import hexlify as b2a_hex
 from ubinascii import unhexlify as a2b_hex
+from uhashlib import sha256
 from public_constants import MSG_SIGNING_MAX_LENGTH, SUPPORTED_ADDR_FORMATS
 from public_constants import AFC_SCRIPT, AF_CLASSIC, AFC_BECH32, AF_P2WPKH, AF_P2WPKH_P2SH
 from public_constants import STXN_FLAGS_MASK, STXN_FINALIZE, STXN_VISUALIZE, STXN_SIGNED
@@ -17,8 +18,10 @@ from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from utils import B2A, parse_addr_fmt_str, to_ascii_printable
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
+from files import CardSlot
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
+from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL
 
 # Where in SPI flash/PSRAM the two PSBT files are (in and out)
 TXN_INPUT_OFFSET = 0
@@ -102,7 +105,7 @@ class UserAuthorizedAction:
 
         # do nothing more for HSM case: msg will be available over USB
         if hsm_active:
-            dis.progress_bar(1)     # finish the Validating... or whatever was up
+            dis.progress_bar_show(1)     # finish the Validating... or whatever was up
             return
 
         # may be a user-abort waiting, but we want to see error msg; so clear it
@@ -233,10 +236,16 @@ def verify_signed_file_digest(msg):
                     warn.append((fname, None))
                     continue
                 path = card.abs_path(fname)
-                with open(path, "rb") as f:
-                    contents = f.read()
 
-                h = b2a_hex(ngu.hash.sha256s(contents)).decode().strip()
+                md = sha256()
+                with open(path, "rb") as f:
+                    while True:
+                        chunk = f.read(1024)
+                        if not chunk:
+                            break
+                        md.update(chunk)
+
+                h = b2a_hex(md.digest()).decode().strip()
                 if h != digest:
                     err.append((fname, h, digest))
     except:
@@ -260,7 +269,7 @@ def write_sig_file(content_list, derive=None, addr_fmt=AF_CLASSIC, pk=None, sig_
         sig_nice = sig_name + ".sig"
         sig_fpath = fpath.rsplit("/", 1)[0] + "/" + sig_nice
     else:
-        sig_fpath = fpath.rsplit(".")[0] + ".sig"
+        sig_fpath = fpath.rsplit(".", 1)[0] + ".sig"
         sig_nice = sig_fpath.split("/")[-1]
 
     sig_gen = sign_export_contents([(h, f.split("/")[-1]) for h, f in content_list],
@@ -574,7 +583,7 @@ async def verify_txt_sig_file(filename):
 
 
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None):
+    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None, is_sd=None):
         super().__init__()
         self.psbt_len = psbt_len
         self.do_finalize = bool(flags & STXN_FINALIZE)
@@ -584,6 +593,7 @@ class ApproveTransaction(UserAuthorizedAction):
         self.psbt_sha = psbt_sha
         self.approved_cb = approved_cb
         self.result = None      # will be (len, sha256) of the resulting PSBT
+        self.is_sd = is_sd
         self.chain = chains.current_chain()
 
     def render_output(self, o):
@@ -647,6 +657,7 @@ class ApproveTransaction(UserAuthorizedAction):
             dis.progress_bar_show(0.66)
             self.psbt.consider_outputs()
             self.psbt.consider_dangerous_sighash()
+
             dis.progress_bar_show(0.85)
         except FraudulentChangeOutput as exc:
             print('FraudulentChangeOutput: ' + exc.args[0])
@@ -722,10 +733,14 @@ class ApproveTransaction(UserAuthorizedAction):
 
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                msg.write("Press OK to approve and sign transaction. X to abort.")
-                ch = await ux_show_story(msg, title="OK TO SEND?")
+                msg.write("Press OK to approve and sign transaction.")
+                if self.is_sd and CardSlot.both_inserted():
+                    msg.write(" (B) to write to lower SD slot.")
+                msg.write(" X to abort.")
+                ch = await ux_show_story(msg, title="OK TO SEND?", escape="b")
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
+                dis.progress_bar_show(1)     # finish the Validating...
 
         except MemoryError:
             # recovery? maybe.
@@ -738,7 +753,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg = "Transaction is too complex"
             return await self.failure(msg)
 
-        if ch != 'y':
+        if ch not in 'yb':
             # they don't want to!
             self.refused = True
 
@@ -764,7 +779,10 @@ class ApproveTransaction(UserAuthorizedAction):
 
         if self.approved_cb:
             # for micro sd case
-            await self.approved_cb(self.psbt)
+            kws = dict(psbt=self.psbt)
+            if self.is_sd and (ch == "b"):
+                kws["slot_b"] = True
+            await self.approved_cb(**kws)
             self.done()
             return
 
@@ -790,23 +808,26 @@ class ApproveTransaction(UserAuthorizedAction):
         from glob import NFC
 
         if self.do_finalize and txid and not hsm_active:
+            kq, kn = "(1)", "(3)"
+            if version.has_qwerty:
+                kq, kn = KEY_QR, KEY_NFC
             while 1:
                 # Show txid when we can; advisory
                 # - maybe even as QR, hex-encoded in alnum mode
-                tmsg = txid + '\n\nPress (1) for QR Code of TXID. '
+                tmsg = txid + '\n\nPress %s for QR Code of TXID. ' % kq
 
                 if NFC:
-                    tmsg += 'Press (3) to share signed txn via NFC.'
+                    tmsg += 'Press %s to share signed txn via NFC.' % kn
 
-                ch = await ux_show_story(tmsg, "Final TXID", escape='13')
+                ch = await ux_show_story(tmsg, "Final TXID", escape='13'+KEY_NFC+KEY_QR)
 
-                if ch == '1':
+                if ch in '1'+KEY_QR:
                     await show_qr_code(txid, True)
                     continue
 
-                if ch == '3' and NFC:
+                if ch in KEY_NFC+"3" and NFC:
                     await NFC.share_signed_txn(txid, TXN_OUTPUT_OFFSET,
-                                                            self.result[0], self.result[1])
+                                               self.result[0], self.result[1])
                     continue
                 break
 
@@ -961,11 +982,11 @@ def psbt_encoding_taster(taste, psbt_len):
     # look at first 10 bytes, and detect file encoding (binary, hex, base64)
     # - return len is upper bound on size because of unknown whitespace
     from utils import HexStreamer, Base64Streamer, HexWriter, Base64Writer
-
+    taste = bytes(taste)
     if taste[0:5] == b'psbt\xff':
         decoder = None
         output_encoder = lambda x: x
-    elif taste[0:10] == b'70736274ff' or taste[0:10] == b'70736274FF':
+    elif taste[0:10].lower() == b'70736274ff':
         decoder = HexStreamer()
         output_encoder = HexWriter
         psbt_len //= 2
@@ -978,7 +999,7 @@ def psbt_encoding_taster(taste, psbt_len):
 
     return decoder, output_encoder, psbt_len
     
-async def sign_psbt_file(filename, force_vdisk=False):
+async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
     # sign a PSBT file found on a MicroSD card
     # - or from VirtualDisk (mk4)
     from files import CardSlot, CardMissingError
@@ -990,7 +1011,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
     # copy file into PSRAM
     # - can't work in-place on the card because we want to support writing out to different card
     # - accepts hex or base64 encoding, but binary prefered
-    with CardSlot(force_vdisk, readonly=True) as card:
+    with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
         with card.open(filename, 'rb') as fd:
             dis.fullscreen('Reading...')
 
@@ -1032,7 +1053,8 @@ async def sign_psbt_file(filename, force_vdisk=False):
             assert total <= psbt_len
             psbt_len = total
 
-    async def done(psbt):
+    async def done(psbt, slot_b=None):
+        print(psbt, slot_b)
         dis.fullscreen("Wait...")
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
@@ -1057,7 +1079,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
 
             for path in [orig_path, None]:
                 try:
-                    with CardSlot(force_vdisk, readonly=True) as card:
+                    with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
                         out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
@@ -1071,7 +1093,7 @@ async def sign_psbt_file(filename, force_vdisk=False):
             else:
                 # attempt write-out
                 try:
-                    with CardSlot(force_vdisk) as card:
+                    with CardSlot(force_vdisk, slot_b=slot_b) as card:
                         if is_comp and del_after:
                             # don't write signed PSBT if we'd just delete it anyway
                             out_fn = None
@@ -1142,7 +1164,8 @@ async def sign_psbt_file(filename, force_vdisk=False):
         UserAuthorizedAction.cleanup()
 
     UserAuthorizedAction.cleanup()
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done,
+                                                             is_sd=not force_vdisk)
     the_ux.push(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):
@@ -1194,35 +1217,27 @@ class NewPassphrase(UserAuthorizedAction):
         from pincodes import pa
 
         title = "Passphrase"
-        bypass_tmp = True
-        escape = "x2"
+        escape = "yx2" + KEY_CANCEL + KEY_ENTER
         while 1:
             msg = ('BIP-39 passphrase (%d chars long) has been provided over '
-                   'USB connection. Should we switch to that wallet now?\n\n')
-            if pa.tmp_value and settings.get("words", True):
-                escape += "1"
-                msg += "Press (1) to add passphrase to currently active temporary seed. "
+                   'USB connection. Should we switch to that wallet now?\n\n'
+                   'Press OK to add passphrase ' % len(self._pw))
+            if pa.tmp_value:
+                msg += "to current active temporary seed. "
+            else:
+                msg += "to master seed. "
 
-            if settings.master_get("words", True):
-                escape += "y"
-                msg += "Press OK to add passphrase to master seed. "
+            msg += 'Press (2) to view the provided passphrase. X to cancel.'
 
-            msg += ('Press (2) to view the provided passphrase.\n\n'
-                    'X to cancel.')
-
-            ch = await ux_show_story(msg=msg % len(self._pw), title=title,
-                                     escape=escape, strict_escape=True)
+            ch = await ux_show_story(msg=msg, title=title, escape=escape,
+                                     strict_escape=True)
             if ch == '2':
                 await ux_show_story('Provided:\n\n%s\n\n' % self._pw, title=title)
                 continue
-            else:
-                if ch == '1':
-                    bypass_tmp = False
-
-                break
+            else: break
 
         try:
-            if ch not in 'y1':
+            if ch not in ('y'+ KEY_ENTER):
                 # they don't want to!
                 self.refused = True
                 await ux_dramatic_pause("Refused.", 1)
@@ -1230,9 +1245,7 @@ class NewPassphrase(UserAuthorizedAction):
                 from seed import set_bip39_passphrase
 
                 # full screen message shown: "Working..."
-                await set_bip39_passphrase(self._pw, bypass_tmp=bypass_tmp,
-                                           summarize_ux=False)
-
+                await set_bip39_passphrase(self._pw, summarize_ux=False)
                 self.result = settings.get('xpub')
 
         except BaseException as exc:
@@ -1278,28 +1291,35 @@ class ShowAddressBase(UserAuthorizedAction):
         if not hsm_active:
             msg = self.get_msg()
             msg += '\n\nCompare this payment address to the one shown on your other, less-trusted, software.'
-            if NFC:
-                msg += ' Press (3) to share via NFC.'
 
-            msg += ' Press (4) to view QR Code.'
+            if not version.has_qwerty:
+                if NFC:
+                    msg += ' Press %s to share via NFC.' % (KEY_NFC if version.has_qwerty else "(3)")
+                msg += ' Press (4) to view QR Code.'
 
             while 1:
-                ch = await ux_show_story(msg, title=self.title, escape='34')
+                ch = await ux_show_story(msg, title=self.title, escape='34',
+                                        hint_icons=KEY_QR+(KEY_NFC if NFC else ''))
 
-                if ch == '4':
+                if ch in '4'+KEY_QR:
                     await show_qr_code(self.address, (self.addr_fmt & AFC_BECH32))
                     continue
-                if ch == '3' and NFC:
+
+                if NFC and (ch in '3'+KEY_NFC):
                     await NFC.share_text(self.address)
                     continue
+
                 break
+
         else:
             # finish the Wait...
-            dis.progress_bar(1)     
+            dis.progress_bar_show(1)     
+
         if self.restore_menu:
             self.pop_menu()
         else:
             self.done()
+
         UserAuthorizedAction.cleanup()      # because no results to store
 
     
@@ -1508,6 +1528,8 @@ Binary checksum and signature will be further verified before any changes are ma
                 # - reboot to start process
                 from glob import dis
                 dis.fullscreen('Upgrading...', percent=1)
+                dis.bootrom_takeover()
+
                 # Mk4 copies from PSRAM to flash inside bootrom, we have
                 # nothing to do here except start that process.
                 from pincodes import pa

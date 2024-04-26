@@ -34,6 +34,7 @@ your key storage per-system unique.
     - ``stm32l4x mass_erase 0`` in openocd monitor to bulk-erase whole chip
 
 - To clear flash with write protect on... FLASH regs at 0x40022000 base
+    # XXX this process no longer works?
     FLASH->CR = 0x40022014
     FLASH->WRP1AR = 0x4002202c
 
@@ -56,6 +57,18 @@ your key storage per-system unique.
     # launch changes? (causes weird reset)
     mww 0x40022014 0x8000000
 
+- newer approach, with later OpenOCD versions:
+
+    # boot into DFU, gain control
+    halt
+    stm32l4x option_write 0 0x2c 0xff00ffff 0xffffffff
+    stm32l4x option_load 0
+    # (system resets, might run)
+    # check it worked
+    stm32l4x option_read 0 0x2c
+    # says: Option Register: <0x4002202c> = 0xff00ffff
+
+
 - "stm32l4x.cpu mdb" is nice hexdump, much better than regular mdb
 
 - If you're having trouble getting the debugger to started / link up right, try in DFU mode.
@@ -75,12 +88,12 @@ Mk1-3:
 
     dfu-util -d 0483:df11 -a 0 -s 0x08007800:256 -U pairing.bin
 
-Mk4:
+Mk4 & Q1:
 
-    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:16384 -U pairing.bin
 
 - but that file is misleading, because all the unused mcu key slots are un-programmed-cells (ones)
-- will hit assert on new key attempt if you just write that back
+- will hit assert on new MCU key attempt if you just write that back
 - trim and write only actual non-ones content
 
 # Wiping Secrets
@@ -102,9 +115,10 @@ Mk4:
 
 ## Bootloader upgrade 3.0.? to 3.0.2
 
+- mk3 only
 - capture pairing data:
 
-    dfu-util -d 0483:df11 -a 0 -s 0x0801e000:8192 -U pairing.bin
+    dfu-util -d 0483:df11 -a 0 -s 0x0801c000:8192 -U pairing.bin
 
 - do the above unlock write-protect process, but don't erase any flash
     - would only be required if "bag" operation done

@@ -1,6 +1,6 @@
 # (c) Copyright 2020 by Coinkite Inc. This file is covered by license found in COPYING-CC.
 #
-import pytest, time, sys, random, re, ndef, os, glob, hashlib, json
+import pytest, time, sys, random, re, ndef, os, glob, hashlib, json, functools, pdb
 from subprocess import check_output
 from ckcc.protocol import CCProtocolPacker
 from helpers import B2A, U2SAT
@@ -10,6 +10,10 @@ from api import bitcoind_wallet, bitcoind_d_wallet, bitcoind_d_wallet_w_sk, bitc
 from api import bitcoind_d_sim_watch, finalize_v2_v0_convert
 from binascii import b2a_hex, a2b_hex
 from constants import *
+from charcodes import *
+from core_fixtures import _need_keypress, _sim_exec, _cap_story, _cap_menu, _cap_screen
+from core_fixtures import _press_select, _pick_menu_item, _enter_complex, _dev_hw_label
+
 
 # lock down randomness
 random.seed(42)
@@ -37,6 +41,10 @@ def pytest_addoption(parser):
                      default=False, help="Operate with multisig checks off")
     parser.addoption("--psbt2", action="store_true",
                      default=False, help="fake_txn produces PSBTv2")
+    parser.addoption("--Q", action="store_true", default=False,
+                     help="Uses Q simulator when running 'login_settings_tests' module")
+    parser.addoption("--headless", action="store_true", default=False,
+                     help="Simulator is running in headless mode")
     # to make bitcoind produce psbt v2 one currently needs https://github.com/achow101/bitcoin/tree/psbt2
     # or wait until https://github.com/bitcoin/bitcoin/pull/21283 merged and released
 
@@ -76,14 +84,8 @@ def simulator(request):
 def sim_exec(dev):
     # run code in the simulator's interpretor
     # - can work on real product too, if "debug build" is used.
-
-    def doit(cmd, binary=False):
-        s = dev.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
-        if binary: return s
-        #print(f'sim_exec: {cmd!r} -> {s!r}')
-        return s.decode('utf-8') if not isinstance(s, str) else s
-
-    return doit
+    f = functools.partial(_sim_exec, dev)
+    return f
 
 @pytest.fixture(scope='module')
 def sim_eval(dev):
@@ -115,24 +117,6 @@ def is_simulator(dev):
     return doit
 
 @pytest.fixture(scope='module')
-def sim_card_ejected(sim_exec, is_simulator):
-    def doit(ejected):
-        if not is_simulator():
-            # assuming no card on device
-            if not ejected:
-                raise pytest.fail('cant insert on real dev')
-            else:
-                return
-
-        # see unix/frozen-modules/pyb.py class SDCard
-        cmd = f'import pyb; pyb.SDCard.ejected={ejected}; RV.write("ok")'
-        assert sim_exec(cmd) == 'ok'
-
-    yield doit
-    if is_simulator():
-        doit(False)
-
-@pytest.fixture(scope='module')
 def send_ux_abort(simulator):
 
     def doit():
@@ -144,7 +128,6 @@ def send_ux_abort(simulator):
 
 @pytest.fixture(scope='module')
 def need_keypress(dev, request):
-
     def doit(k, timeout=1000):
         if request.config.getoption("--manual"):
             # need actual user interaction
@@ -152,23 +135,35 @@ def need_keypress(dev, request):
             input()
         else:
             # simulator has special USB command, and can be used on real device in dev builds
-            dev.send_recv(CCProtocolPacker.sim_keypress(k.encode('ascii')), timeout=timeout)
+            _need_keypress(dev, k, timeout=timeout)
 
     return doit
 
+
 @pytest.fixture(scope='module')
-def enter_number(need_keypress):
+def enter_number(need_keypress, press_select):
     def doit(number):
         number = str(number) if not isinstance(number, str) else number
         for d in number:
             need_keypress(d)
-        need_keypress('y')
+        press_select()
 
     return doit
 
+@pytest.fixture
+def enter_complex(dev, is_q1):
+    # full entry mode
+    # - just left to right here
+    # - not testing case swap, because might remove that
+    f = functools.partial(_enter_complex, dev, is_q1)
+    return f
+
 @pytest.fixture(scope='module')
-def enter_hex(need_keypress):
+def enter_hex(need_keypress, enter_text, is_q1):
     def doit(hex_str):
+        if is_q1:
+            return enter_text(hex_str)
+
         for ch in hex_str:
             int_ch = int(ch, 16)
             for i in range(int_ch):
@@ -179,22 +174,58 @@ def enter_hex(need_keypress):
     return doit
 
 @pytest.fixture(scope='module')
-def enter_pin(enter_number, need_keypress, cap_screen):
+def enter_pin(enter_number, press_select, cap_screen, is_q1):
     def doit(pin):
         assert '-' in pin
         a,b = pin.split('-')
         enter_number(a)
 
-        # capture words? hard to know in general what they should be tho
-        words = cap_screen().split('\n')[2:4]
+        scr = cap_screen().split('\n')
+        if is_q1:
+            words = [i.strip() for i in scr[7].split()]
+        else:
+            # capture words? hard to know in general what they should be tho
+            words = scr[2:4]
+            press_select()
 
-        need_keypress('y')
         enter_number(b)
 
         return words
 
     return doit
+
+
+@pytest.fixture(scope='module')
+def do_keypresses(need_keypress):
+    # do a series of keypresses, any kind
+    def doit(value):
+        for ch in value:
+            need_keypress(ch)
+
+    return doit
     
+
+@pytest.fixture(scope='module')
+def enter_text(need_keypress, is_q1):
+    # enter a text value, might be a number or string ... on Q can be multiline
+    def doit(value, multiline=False):
+        if not multiline:
+            assert KEY_ENTER not in value
+        if not is_q1:
+            assert value.isdigit(), f'bad value: {value}'
+            assert not multiline
+
+        for ch in value:
+            need_keypress(ch)
+
+        if is_q1:
+            time.sleep(0.010)
+            need_keypress(KEY_ENTER if not multiline else KEY_CANCEL)
+        else:
+            need_keypress('y')
+
+    return doit
+
     
 @pytest.fixture(scope='module')
 def master_xpub(dev):
@@ -255,10 +286,12 @@ def addr_vs_path(master_xpub):
     from ckcc_protocol.constants import AF_P2WPKH_P2SH, AF_P2SH, AF_P2WSH, AF_P2WSH_P2SH
     from bech32 import bech32_decode, convertbits, Encoding
     from pycoin.encoding import a2b_hashed_base58, hash160
-    from  pycoin.key.BIP32Node import PublicPrivateMismatchError
+    from pycoin.key.BIP32Node import PublicPrivateMismatchError
     from hashlib import sha256
 
     def doit(given_addr, path=None, addr_fmt=None, script=None, testnet=True):
+        if path:
+            path = path.replace("h", "'")
         if not script:
             try:
                 # prefer using xpub if we can
@@ -330,16 +363,10 @@ def capture_enabled(sim_eval):
     assert sim_eval("'sim_display' in sys.modules") == 'True'
 
 @pytest.fixture(scope='module')
-def cap_menu(sim_exec):
+def cap_menu(dev):
     "Return menu items as a list"
-    def doit():
-        rv = sim_exec('from ux import the_ux; RV.write(repr('
-                            '[i.label for i in the_ux.top_of_stack().items]))')
-        if 'Traceback' in rv:
-            raise RuntimeError(rv)      # not looking at a menu, typically
-        return eval(rv)
-
-    return doit
+    f = functools.partial(_cap_menu, dev)
+    return f
 
 @pytest.fixture(scope='module')
 def is_ftux_screen(sim_exec):
@@ -352,7 +379,7 @@ def is_ftux_screen(sim_exec):
     return doit
 
 @pytest.fixture
-def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
+def expect_ftux(cap_menu, cap_story, press_select, is_ftux_screen):
     # seed was entered, FTUX happens, get to main menu
     def doit():
         # first time UX here
@@ -360,7 +387,7 @@ def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
             _, story = cap_story()
             if not story: 
                 break
-            need_keypress('y')
+            press_select()
 
         m = cap_menu()
         assert m[0] == 'Ready To Sign'
@@ -369,24 +396,35 @@ def expect_ftux(cap_menu, cap_story, need_keypress, is_ftux_screen):
 
 
 @pytest.fixture(scope='module')
-def cap_screen(sim_exec):
+def cap_screen(dev):
+    f = functools.partial(_cap_screen, dev)
+    return f
+
+@pytest.fixture(scope='module')
+def cap_text_box(cap_screen):
+    # provides text inside a lined box on the screen right now - Q1 only
     def doit():
-        # capture text shown; 4 lines or so?
-        return sim_exec('RV.write(sim_display.full_contents)')
+        # capture text shown; 4-10 lines or so?
+        lines = cap_screen().split('\n')
+        rv = []
+        for ln in lines:
+            ll = ln.find('\x03')        # left-side vertical line
+            rr = ln.find('\x07')        # right-side vertical line (dashed)
+            if ll >=0 and rr >= ll:
+                rv.append(ln[ll+1:rr])
+        return rv
 
     return doit
 
 @pytest.fixture(scope='module')
-def cap_story(sim_exec):
+def cap_story(dev):
     # returns (title, body) of whatever story is being actively shown
-    def doit():
-        rv = sim_exec("RV.write('\0'.join(sim_display.story or []))")
-        return rv.split('\0', 1) if rv else ('','')
+    f = functools.partial(_cap_story, dev)
+    return f
 
-    return doit
 
 @pytest.fixture(scope='module')
-def cap_image(sim_exec):
+def cap_image(request, sim_exec, is_q1, is_headless):
 
     def flip(raw):
         reorg = bytearray(128*64)
@@ -398,18 +436,37 @@ def cap_image(sim_exec):
                     j += 1
         return bytes(reorg)
 
-    # returns Pillow image  of whatever story is being actively shown on OLED
+    # returns Pillow image of whatever pixels are being actively shown on OLED/LCD
     def doit():
         from PIL import Image
 
-        #raw = a2b_hex(sim_execfile('devtest/cap-image.py'))
-        raw = a2b_hex(sim_exec('''
+        if is_q1:
+            if is_headless:
+                raise pytest.skip("headless mode: QR tests disabled")
+            # trigger simulator to capture a snapshot into a named file, read it.
+            fn = os.path.realpath(f'./debug/snap-{random.randint(1E6, 9E6)}.png')
+            try:
+                sim_exec(f"from glob import dis; dis.dis.save_snapshot({fn!r})")
+                for _ in range(20):
+                    time.sleep(0.10)
+                    try:
+                        rv = Image.open(fn)
+                        break
+                    except:
+                        # PIL parsing errors and FileNotFoundError
+                        continue
+            finally:
+                os.remove(fn)
+            return rv
+        else:
+            # reads internal memory buffer of intended screen contents
+            raw = a2b_hex(sim_exec('''
 from glob import dis;
 from ubinascii import hexlify as b2a_hex;
 RV.write(b2a_hex(dis.dis.buffer))'''))
 
-        assert len(raw) == (128*64//8)
-        return Image.frombytes('L', (128,64), flip(raw), 'raw')
+            assert len(raw) == (128*64//8)
+            return Image.frombytes('L', (128,64), flip(raw), 'raw')
 
     return doit
 
@@ -434,7 +491,7 @@ def qr_quality_check():
     count = len(QR_HISTORY)
     TH = 32
 
-    scale=3
+    scale=2
     rv = Image.new('RGB', (w*scale, ((h*scale)+TH)*count), color=(64,64,64))
     y = 0
     try:
@@ -472,7 +529,7 @@ def qr_quality_check():
 
 @pytest.fixture(scope='module')
 def cap_screen_qr(cap_image):
-    def doit(x=0, w=64):
+    def doit(no_history=False):
         # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
         # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
         global QR_HISTORY
@@ -482,34 +539,51 @@ def cap_screen_qr(cap_image):
         except ImportError:
             raise pytest.skip('need zbar-py module')
         import numpy, os
-        from PIL import ImageOps
+        from PIL import ImageOps, ImageDraw
 
         # see <http://qrlogo.kaarposoft.dk/qrdecode.html>
 
         orig_img = cap_image()
 
-        # document it
-        if x < 10:
-            # removes dups: happen when same image samples for two different
-            # QR's in side-by-side mode
+        if not no_history:
+            # document it
             tname = os.environ.get('PYTEST_CURRENT_TEST')
             QR_HISTORY.append( (tname, orig_img) )
 
-        img = orig_img.crop( (x, 0, x+w, w) )
-        img = ImageOps.expand(img, 16, 0)
-        img = img.resize( (256, 256))
+        if orig_img.width == 128:
+            # Mk3/4 - pull out just the QR, blow it up 16x
+            x, w = 0, 64
+            img = orig_img.crop( (x, 0, x+w, w) )
+            img = ImageOps.expand(img, 16, 0)       # add border
+            img = img.resize( (256, 256))
+        else:
+            # Q - convert to greyscale
+            # - and trim progress bar (does cause readability issues)
+            # - MAYBE: blow up the size, helps on fine 1:1 QR cases.
+            w, h = orig_img.size        # 320x240
+            img = orig_img.crop( (0, 0, w, h-5) ).convert('L')
+
         img.save('debug/last-qr.png')
         #img.show()
-    
-        scanner = zbar.Scanner()
-        np = numpy.array(img.getdata(), 'uint8').reshape(img.width, img.height)
 
-        for sym, value, *_ in scanner.scan(np):
-            assert sym == 'QR-Code', 'unexpected symbology: ' + sym
-            return value            # bytes, could be binary
+        # Above usually works @ zoom=1, but not always!
+        # - simulate what users do... move phone back and forth until it scans
+        oo = img
+        for zoom in range(1, 7):
+            if zoom > 1:
+                w, h = oo.size
+                img = oo.resize( (w*zoom, h*zoom) )
 
-        # debug: check debug/last-qr.png
-        raise pytest.fail('qr code not found')
+            # Important: w/h reversed in shape of NP array
+            np = numpy.array(img.getdata(), 'uint8').reshape(img.height, img.width)
+
+            scanner = zbar.Scanner()
+            for sym, value, *_ in scanner.scan(np):
+                if sym == 'QR-Code':
+                    return value            # bytes, could be binary
+
+        # for debug, check debug/last-qr.png
+        raise RuntimeError('qr code not found')
 
     return doit
 
@@ -517,7 +591,7 @@ def cap_screen_qr(cap_image):
 def get_pp_sofar(sim_exec):
     # get entry value for bip39 passphrase
     def doit():
-        resp = sim_exec('import seed; RV.write(seed.pp_sofar)')
+        resp = sim_exec('import seed; RV.write(seed.PassphraseMenu.pp_sofar)')
         assert 'Error' not in resp
         return resp
 
@@ -543,13 +617,60 @@ def get_secrets(sim_execfile):
 
     return doit
 
+@pytest.fixture(scope='module')
+def press_select(dev, has_qwerty):
+    f = functools.partial(_press_select, dev, has_qwerty)
+    return f
+
+@pytest.fixture(scope='module')
+def press_cancel(need_keypress, has_qwerty):
+    def doit(**kws):
+        need_keypress(KEY_CANCEL if has_qwerty else 'x', **kws)
+    return doit
+
+@pytest.fixture(scope='module')
+def press_delete(need_keypress, has_qwerty):
+    def doit(**kws):
+        need_keypress(KEY_DELETE if has_qwerty else 'x', **kws)
+    return doit
+
+@pytest.fixture(scope='module')
+def press_nfc(need_keypress, has_qwerty):
+    def doit(num=3, **kws):
+        need_keypress(KEY_NFC if has_qwerty else str(num), **kws)
+    return doit
+
+@pytest.fixture(scope='module')
+def press_up(need_keypress, has_qwerty):
+    def doit(**kws):
+        need_keypress(KEY_UP if has_qwerty else "5", **kws)
+    return doit
+
+@pytest.fixture(scope='module')
+def press_down(need_keypress, has_qwerty):
+    def doit(**kws):
+        need_keypress(KEY_DOWN if has_qwerty else "8", **kws)
+    return doit
+
+@pytest.fixture(scope='module')
+def press_left(need_keypress, has_qwerty):
+    def doit(**kws):
+        need_keypress(KEY_LEFT if has_qwerty else "7", **kws)
+    return doit
+
+@pytest.fixture(scope='module')
+def press_right(need_keypress, has_qwerty):
+    def doit(**kws):
+        need_keypress(KEY_RIGHT if has_qwerty else "9", **kws)
+    return doit
+
 @pytest.fixture
-def goto_home(cap_menu, need_keypress, pick_menu_item):
+def goto_home(cap_menu, press_cancel, press_select, pick_menu_item, cap_screen):
 
     def doit():
         # get to top, force a redraw
         for i in range(10):
-            need_keypress('x')
+            press_cancel()
             time.sleep(.1)      # required
 
             m = cap_menu()
@@ -558,7 +679,14 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
                 # special case to get out of passphrase menu
                 pick_menu_item('CANCEL')
                 time.sleep(.01)
-                need_keypress('y')
+                if "Are you SURE ?" in cap_screen():
+                    press_select()
+
+            chk = cap_screen()
+            if m[0] not in chk:
+                # menu vs. screen wrong ... happens if looking at a story, not a menu
+                press_cancel()
+                continue
 
             if m[0] in { 'New Seed Words',  'Ready To Sign'}:
                 break
@@ -572,39 +700,13 @@ def goto_home(cap_menu, need_keypress, pick_menu_item):
 
     return doit
 
-@pytest.fixture
-def pick_menu_item(cap_menu, need_keypress):
-    WRAP_IF_OVER = 16       # see ../shared/menu.py
-
-    def doit(text):
-        print(f"PICK menu item: {text}")
-        need_keypress('0')
-        m = cap_menu()
-        if text not in m:
-            raise KeyError(text, "%r not in menu: %r" % (text, m))
-
-        m_pos = m.index(text)
-
-        if len(m) > WRAP_IF_OVER and m_pos > (len(m)//2):
-            # use wrap around, work up from bottom
-            for n in range(len(m) - m_pos):
-                need_keypress('5')
-                time.sleep(.01)      # required
-            need_keypress('y')
-            time.sleep(.01)      # required
-        else:
-            # go down
-            for n in range(m_pos):
-                need_keypress('8')
-                time.sleep(.01)      # required
-            need_keypress('y')
-            time.sleep(.01)      # required
-
-    return doit
-
+@pytest.fixture(scope="module")
+def pick_menu_item(dev, has_qwerty):
+    f = functools.partial(_pick_menu_item, dev, has_qwerty)
+    return f
 
 @pytest.fixture(scope='module')
-def virtdisk_path(request, is_simulator, only_mk4):
+def virtdisk_path(request, is_simulator, needs_virtdisk):
     # get a path to indicated filename on emulated/shared dir
 
     def doit(fn):
@@ -627,7 +729,7 @@ def virtdisk_path(request, is_simulator, only_mk4):
     return doit
 
 @pytest.fixture(scope='module')
-def virtdisk_wipe(dev, only_mk4, virtdisk_path):
+def virtdisk_wipe(dev, needs_virtdisk, virtdisk_path):
     def doit():
         for fn in glob.glob(virtdisk_path('*')):
             if os.path.isdir(fn): continue
@@ -761,6 +863,12 @@ def use_mainnet(settings_set):
     yield doit
     settings_set('chain', 'XTN')
 
+@pytest.fixture(scope="function")
+def use_testnet(settings_set):
+    def doit(do_testnet):
+        settings_set('chain', 'XTN' if do_testnet else 'BTC')
+    yield doit
+    settings_set('chain', 'XTN')
 
 @pytest.fixture(scope="function")
 def use_regtest(request, settings_set):
@@ -832,8 +940,8 @@ def settings_set(sim_exec):
 @pytest.fixture()
 def settings_get(sim_exec):
 
-    def doit(key):
-        cmd = f"RV.write(repr(settings.get('{key}')))"
+    def doit(key, def_val=None):
+        cmd = f"RV.write(repr(settings.get('{key}', {def_val!r})))"
         resp = sim_exec(cmd)
         assert 'Traceback' not in resp, resp
         return eval(resp)
@@ -861,8 +969,8 @@ def settings_remove(sim_exec):
     return doit
 
 @pytest.fixture(scope='module')
-def repl(request, is_mark4):
-    return request.getfixturevalue('mk4_repl' if is_mark4 else 'old_mk_repl')
+def repl(request):
+    return request.getfixturevalue('mk4_repl')
     
 
 @pytest.fixture(scope='module')
@@ -991,7 +1099,7 @@ def decode_with_bitcoind(bitcoind):
             return bitcoind.rpc.decoderawtransaction(B2A(raw_txn))
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
-            return bitcoind.decoderawtransaction(B2A(raw_txn))
+            return bitcoind.rpc.decoderawtransaction(B2A(raw_txn))
 
     return doit
 
@@ -1003,10 +1111,10 @@ def decode_psbt_with_bitcoind(bitcoind):
         from base64 import b64encode
 
         try:
-            return bitcoind.decodepsbt(b64encode(raw_psbt).decode('ascii'))
+            return bitcoind.rpc.decodepsbt(b64encode(raw_psbt).decode('ascii'))
         except ConnectionResetError:
             # bitcoind sleeps on us sometimes, give it another chance.
-            return bitcoind.decodepsbt(b64encode(raw_psbt).decode('ascii'))
+            return bitcoind.rpc.decodepsbt(b64encode(raw_psbt).decode('ascii'))
 
     return doit
 
@@ -1101,10 +1209,8 @@ def try_sign_microsd(open_microsd, cap_story, pick_menu_item, goto_home, need_ke
         pick_menu_item('Ready To Sign')
 
         time.sleep(.1)
-        _, story = cap_story()
-        if 'Choose PSBT file' in story:
-            need_keypress('y')
-            time.sleep(.1)
+        title, story = cap_story()
+        if not "OK TO SEND" in title:
             pick_menu_item(psbtname+'.psbt')
 
         time.sleep(.1)
@@ -1231,7 +1337,7 @@ def end_sign(dev, need_keypress):
 
         if accept_ms_import:
             # XXX would be better to do cap_story here, but that would limit test to simulator
-            need_keypress('y')
+            need_keypress('y', timeout=None)
             time.sleep(0.050)
 
         if accept != None:
@@ -1295,40 +1401,88 @@ def is_mark2(request):
     return int(request.config.getoption('--mk')) == 2
 
 @pytest.fixture(scope='session')
-def is_mark3(dev):
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    return (v[4] == 'mk3')
+def dev_hw_label(dev):
+    # gets a short string that labels product: mk4 / q1, etc
+    return _dev_hw_label(dev)
 
 @pytest.fixture(scope='session')
-def is_mark4(dev):
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    return (v[4] == 'mk4')
+def is_mark3(dev_hw_label):
+    return (dev_hw_label == 'mk3')
 
 @pytest.fixture(scope='session')
-def mk_num(dev):
+def is_mark4(dev_hw_label):
+    return (dev_hw_label == 'mk4')
+
+@pytest.fixture(scope='session')
+def is_q1(dev_hw_label):
+    return (dev_hw_label == 'q1')
+
+
+@pytest.fixture(scope="session")
+def is_headless(request):
+    return request.config.getoption('--headless')
+
+@pytest.fixture(scope='session')
+def is_mark4plus(is_mark4, is_q1):
+    # mark4 PLUS ... so Q1 and Mk4
+    return is_mark4 or is_q1
+
+@pytest.fixture(scope='session')
+def mk_num(dev_hw_label):
     # return 1..4 as number (mark number)
-    v = dev.send_recv(CCProtocolPacker.version()).split()[4]
-    assert v[0:2] == 'mk'
-    return int(v[2:])
+    # - give 4 here for Q1
+    v = dev_hw_label
+    if v[0:2] == 'mk':
+        return int(v[2:])
+    elif v == 'q1':
+        return 4
+    else:
+        raise ValueError(v)
 
 @pytest.fixture(scope='session')
-def only_mk4(dev):
-    # better: ask it .. use USB version cmd
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    if v[4] != 'mk4':
+def only_mk4(is_mark4):
+    # NOTE: avoid this, and try to be more specific! ie. NFC vs. QR etc
+    if not is_mark4:
         raise pytest.skip("Mk4 only")
 
 @pytest.fixture(scope='session')
-def only_mk3(dev):
-    # better: ask it .. use USB version cmd
-    v = dev.send_recv(CCProtocolPacker.version()).split()
-    if v[4] != 'mk3':
+def only_q1(is_q1):
+    if not is_q1:
+        raise pytest.skip("Q only")
+
+@pytest.fixture(scope='session')
+def needs_nfc(is_mark4, is_q1):
+    if is_mark4 or is_q1:
+        return
+    raise pytest.skip("Needs NFC support")
+
+@pytest.fixture(scope='session')
+def needs_virtdisk(is_mark4, is_q1):
+    # TODO/MAYBE: test if feature enabled in settings?
+    if is_mark4 or is_q1:
+        return
+    raise pytest.skip("Needs VirtDisk support")
+
+@pytest.fixture(scope='session')
+def only_mk4plus(mk_num):
+    # Mk4 and Q1
+    if mk_num < 4:
+        raise pytest.skip("Mk4/Q1 only")
+
+@pytest.fixture(scope='session')
+def only_mk3(mk_num):
+    if mk_num != 3:
         raise pytest.skip("Mk3 only")
 
+@pytest.fixture(scope='session')
+def has_qwerty(is_q1):
+    # has a full keyboard on product?
+    return is_q1
+
 @pytest.fixture(scope='module')
-def rf_interface(only_mk4, sim_exec):
+def rf_interface(needs_nfc, sim_exec):
     # provide a read/write connection over NFC
-    # - requires pyscard module and NFC-V reader like HID OMNIKEY 5022CL
+    # - requires pyscard module and desktop NFC-V reader which doesn't exist
     raise pytest.xfail('broken NFC-V challenges')
     class RFHandler:
         def __init__(self, want_atr=None):
@@ -1387,13 +1541,14 @@ def rf_interface(only_mk4, sim_exec):
     sim_exec('glob.NFC.set_rf_disable(1)')
 
 @pytest.fixture()
-def nfc_read(request, only_mk4):
+def nfc_read(request, needs_nfc):
     # READ data from NFC chip
     # - perfer to do over NFC reader, but can work over USB too
     def doit_usb():
         sim_exec = request.getfixturevalue('sim_exec')
-        rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"")', binary=True)
+        rv = sim_exec('RV.write(glob.NFC.dump_ndef() if glob.NFC else b"DISABLED")', binary=True)
         if b'Traceback' in rv: raise pytest.fail(rv.decode('utf-8'))
+        if rv == b'DISABLED': raise pytest.xfail('NFC disabled')
         return rv
 
     try:
@@ -1404,14 +1559,14 @@ def nfc_read(request, only_mk4):
         return doit_usb
 
 @pytest.fixture()
-def nfc_write(request, only_mk4):
+def nfc_write(request, needs_nfc, is_q1):
     # WRITE data into NFC "chip"
     def doit_usb(ccfile):
         sim_exec = request.getfixturevalue('sim_exec')
-        need_keypress = request.getfixturevalue('need_keypress')
+        press_select = request.getfixturevalue('press_select')
         rv = sim_exec('list(glob.NFC.big_write(%r))' % ccfile)
         if 'Traceback' in rv: raise pytest.fail(rv)
-        need_keypress('y')      # to end the animation and have it check value immediately
+        press_select()      # to end the animation and have it check value immediately
 
     try:
         raise NotImplementedError
@@ -1419,6 +1574,22 @@ def nfc_write(request, only_mk4):
         return rf.write_nfc
     except:
         return doit_usb
+
+@pytest.fixture()
+def scan_a_qr(sim_exec, is_q1):
+    # simulate a QR being scanned 
+    # XXX limitation: our USB protocol can't send a v40 QR, limit is more like 30 or so
+
+    def doit(qr):
+        if not is_q1:
+            raise pytest.xfail('needs scanner')
+        assert isinstance(qr, str)
+        qr = qr.encode('ascii')
+        rv = sim_exec(f'glob.SCAN._q.put_nowait({qr!r})')
+        if 'Traceback' in rv: raise pytest.fail(rv)
+
+    return doit
+
 
 def ccfile_wrap(recs):
     from struct import pack
@@ -1487,6 +1658,7 @@ def load_shared_mod():
         import importlib.util
         spec = importlib.util.spec_from_file_location(name, path)
         mod = importlib.util.module_from_spec(spec)
+        mod.const = int         # pre-define const() to improve portability
         spec.loader.exec_module(mod)
         return mod
     return doit
@@ -1576,23 +1748,30 @@ def load_export_and_verify_signature(microsd_path, virtdisk_path, verify_detache
 
 @pytest.fixture
 def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_text, nfc_read_json,
-                load_export_and_verify_signature):
+                load_export_and_verify_signature, is_q1, press_cancel, press_select, readback_bbqr,
+                cap_screen_qr):
     def doit(way, label, is_json, sig_check=True, addr_fmt=AF_CLASSIC, ret_sig_addr=False,
              tail_check=None, sd_key=None, vdisk_key=None, nfc_key=None, ret_fname=False,
-             fpattern=None):
+             fpattern=None, qr_key=None):
+        
+        s_label = None
+        if label == "Address summary":
+            s_label = "address summary"
+
         key_map = {
             "sd": sd_key or "1",
             "vdisk": vdisk_key or "2",
-            "nfc": nfc_key or "3",
+            "nfc": nfc_key or (KEY_NFC if is_q1 else "3"),
+            "qr": qr_key or (KEY_QR if is_q1 else "4"),
         }
         time.sleep(0.2)
         title, story = cap_story()
         if way == "sd":
-            if f"({key_map['sd']}) to save {label} file to SD Card" in story:
+            if f"({key_map['sd']}) to save {s_label if s_label else label} file to SD Card" in story:
                 need_keypress(key_map['sd'])
 
         elif way == "nfc":
-            if f"({key_map['nfc']}) to share via NFC" not in story:
+            if f"{key_map['nfc'] if is_q1 else '(3)'} to share via NFC" not in story:
                 pytest.skip("NFC disabled")
             else:
                 need_keypress(key_map['nfc'])
@@ -1602,8 +1781,31 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 else:
                     nfc_export = nfc_read_text()
                 time.sleep(0.3)
-                need_keypress("x")  # exit NFC animation
+                press_cancel()  # exit NFC animation
                 return nfc_export
+        elif way == "qr":
+            if 'file written' in story:
+                assert not is_q1
+                # mk4 only does QR if fits in normal QR, becaise it can't do BBQr
+                pytest.skip('no BBQr on Mk4')
+
+            need_keypress(key_map["qr"])
+            time.sleep(0.3)
+            try:
+                file_type, data = readback_bbqr()
+                if file_type == "J":
+                    return json.loads(data)
+                elif file_type == "U":
+                    return data.decode('utf-8') if not isinstance(data, str) else data
+                else:
+                    raise NotImplementedError
+            except:
+                raise
+                res = cap_screen_qr().decode('ascii')
+                try:
+                    return json.loads(res)
+                except:
+                    return res
         else:
             # virtual disk
             if f"({key_map['vdisk']}) to save to Virtual Disk" not in story:
@@ -1638,7 +1840,7 @@ def load_export(need_keypress, cap_story, microsd_path, virtdisk_path, nfc_read_
                 if is_json:
                     export = json.loads(export)
 
-            need_keypress("y")
+            press_select()
 
         if ret_sig_addr and sig_addr:
             return export, sig_addr
@@ -1707,10 +1909,6 @@ def verify_backup_file(goto_home, pick_menu_item, cap_story, need_keypress):
         pick_menu_item('Backup')
         pick_menu_item('Verify Backup')
         time.sleep(0.1)
-        title, body = cap_story()
-        assert "Select file" in body
-        need_keypress('y')
-        time.sleep(0.1)
         pick_menu_item(os.path.basename(fn))
 
         time.sleep(0.1)
@@ -1750,7 +1948,7 @@ def check_and_decrypt_backup(microsd_path):
 
 @pytest.fixture
 def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
-                      need_keypress, word_menu_entry, get_setting):
+                      press_select, word_menu_entry, get_setting):
     # restore backup with clear seed as first step
     def doit(fn, passphrase, avail_settings=None):
         unit_test('devtest/clear_seed.py')
@@ -1760,16 +1958,24 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
         pick_menu_item('Import Existing')
         pick_menu_item('Restore Backup')
 
-        # skip
-        title, body = cap_story()
-        if ('files to pick from' in body) or ("only one file to pick from" in body):
-            need_keypress('y')
-            time.sleep(.01)
-
-            pick_menu_item(fn)
+        time.sleep(.1)
+        pick_menu_item(fn)
 
         time.sleep(.1)
-        word_menu_entry(passphrase)
+        word_menu_entry(passphrase, has_checksum=False)
+
+        time.sleep(.3)
+        title, body = cap_story()
+        # on simulator Disable USB is always off - so FTUX all the time
+        assert title == 'NO-TITLE'  # no Welcome!
+        assert "best security practices" in body
+        assert "USB disabled" in body
+        assert "NFC disabled" in body
+        assert "VirtDisk disabled" in body
+        assert "You can change these under Settings > Hardware On/Off" in body
+        press_select()
+
+        time.sleep(.3)
         title, body = cap_story()
         assert title == 'Success!'
         assert 'has been successfully restored' in body
@@ -1778,24 +1984,97 @@ def restore_backup_cs(unit_test, pick_menu_item, cap_story, cap_menu,
             for key in avail_settings:
                 assert get_setting(key)
 
+        # after successful restore - user is in default mode - all OFF
+        # (besides USB on simulator - that is always ON)
+        assert not get_setting("nfc")
+        assert not get_setting("vidsk")
+
         # avoid simulator reboot; restore normal state
         unit_test('devtest/abort_ux.py')
+
+    return doit
+
+@pytest.fixture
+def seed_story_to_words():
+    # Q may display words in a number of different ways to get them all onto the screen,
+    # so need to be more general about searching screen for the words.
+
+    def doit(story: str):
+        # filter those that starts with space, number and colon --> actual words
+        # NOTE: will show xprv/tprv in full if we are not storing
+        #       words (ie. BIP-32 loaded as master secret). So just return that string.
+        if story[1:4] == 'prv':
+            return story.split()[0]
+
+        words = [(int(idx), word) for idx, word in re.findall(r'(\d{1,2}):\s?(\w+)', story)]
+        return [w for _,w in sorted(words)]
+
+    return doit
+
+@pytest.fixture
+def sd_cards_eject(is_q1, sim_exec, is_simulator):
+    def doit(slot_a=1, slot_b=1):
+        if not is_simulator():
+            return
+
+        slot_a = slot_a if is_q1 else not slot_a
+        cmd = (f'from machine import Pin;'
+               f'import files;'
+               f'files.CardSlot.sd_detect = Pin("SD_DETECT",value={slot_a});')
+        if is_q1:
+            cmd += f'files.CardSlot.sd_detect2 = Pin("SD_DETECT2",value={slot_b});'
+        assert sim_exec(cmd) == ''
+    return doit
+
+@pytest.fixture
+def set_addr_exp_start_idx(pick_menu_item, cap_menu, enter_number):
+    def doit(start_idx):
+        start_idx_mi = "Start Idx: 0"
+        m = cap_menu()
+        if start_idx:
+            assert start_idx_mi in m
+            pick_menu_item(start_idx_mi)
+            enter_number(start_idx)
+            time.sleep(.1)
+            assert ("Start Idx: %d" % start_idx) in cap_menu() \
+                            or ("Start:%d" % start_idx) in cap_menu()
+        else:
+            assert start_idx_mi not in m
+
+    return doit
+
+
+@pytest.fixture
+def go_to_passphrase(cap_story, press_select, goto_home, pick_menu_item):
+    # drill to the enter passphrase menu
+    def doit():
+        goto_home()
+        pick_menu_item('Passphrase')
+
+        _, story = cap_story()
+        if 'add a passphrase to your BIP-39 seed words' in story:
+            assert "100 characters max" in story
+            assert "ASCII" in story
+            press_select()  # skip warning
+            time.sleep(.1)
 
     return doit
 
 
 # useful fixtures
 from test_backup import backup_system
+from test_bbqr import readback_bbqr, render_bbqr, readback_bbqr_ll
 from test_bip39pw import set_bip39_pw
 from test_drv_entro import derive_bip85_secret, activate_bip85_ephemeral
 from test_ephemeral import generate_ephemeral_words, import_ephemeral_xprv, goto_eph_seed_menu
 from test_ephemeral import ephemeral_seed_disabled_ui, restore_main_seed, confirm_tmp_seed
 from test_ephemeral import verify_ephemeral_secret_ui, get_identity_story, get_seed_value_ux, seed_vault_enable
+from test_export import mk4_qr_not_allowed
 from test_multisig import import_ms_wallet, make_multisig, offer_ms_import, fake_ms_txn
 from test_multisig import make_ms_address, clear_ms, make_myself_wallet
 from test_se2 import goto_trick_menu, clear_all_tricks, new_trick_pin, se2_gate, new_pin_confirmed
 from test_seed_xor import restore_seed_xor
-from test_ux import enter_complex, pass_word_quiz, word_menu_entry
+from test_ux import pass_word_quiz, word_menu_entry
 from txn import fake_txn
 
 # EOF

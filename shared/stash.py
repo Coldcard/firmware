@@ -98,7 +98,7 @@ class SecretStash:
             hd.from_chaincode_privkey(ch, pk)
             return 'xprv', ch+pk, hd
 
-        if marker & 0x80:
+        elif marker & 0x80:
             # seed phrase
             ll = ((marker & 0x3) + 2) * 8
 
@@ -186,7 +186,7 @@ class SensitiveValues:
             # - but that's real slow, so avoid if possible
             from pincodes import pa
 
-            if pa.is_secret_blank():
+            if not pa.has_secrets():
                 raise ZeroSecretException
             self.deltamode = pa.is_deltamode()
 
@@ -303,7 +303,7 @@ class SensitiveValues:
         from glob import settings
 
         # Implicit in the values is the BIP-39 encryption passphrase,
-        # which we might not want to actually store.
+        # which we not want to actually store.
         xfp = swab32(self.node.my_fp())
         xpub = self.chain.serialize_public(self.node)
 
@@ -316,6 +316,8 @@ class SensitiveValues:
         if self.mode == 'words':
             nw = len_to_numwords(len(self.raw))
         settings.put('words', nw)
+
+        return xfp
 
     def register(self, item):
         # Caller can add his own sensitive (derived?) data to our wiper
@@ -351,7 +353,7 @@ class SensitiveValues:
         # Return a bip32 node for the duress wallet linked to this wallet.
         # 0x80000000 - 0xCC10 = 2147431408
         # Obsoleted in Mk4: use BIP-85 instead
-        p = "m/2147431408'/0'/0'"
+        p = "m/2147431408h/0h/0h"
         dirty = self.derive_path(p)
 
         # clear the parent linkage by rebuilding it.
@@ -368,7 +370,7 @@ class SensitiveValues:
     def encryption_key(self, salt):
         # Return a 32-byte derived secret to be used for our own internal encryption purposes
         # 0x80000000 - 0xCC30 = 2147431376
-        node = self.derive_path("m/2147431408'/0'")     # plan: 0' will be an index for other apps
+        node = self.derive_path("m/2147431408h/0h")     # plan: 0h will be an index for other apps
 
         acc = sha256(salt)
         acc.update(node.privkey())

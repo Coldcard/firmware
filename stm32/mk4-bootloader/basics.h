@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "console.h"
+#include "config.h"
 
 extern void fatal_error(const char *) __attribute__((noreturn));
 
@@ -53,7 +54,12 @@ extern void fatal_error(const char *) __attribute__((noreturn));
 #endif
 
 // Wait for an interrupt which will never happen (ie. die)
+#ifdef FOR_Q1_ONLY
+extern void q1_wait_powerdown(void) __attribute__((noreturn));
+#define LOCKUP_FOREVER()    q1_wait_powerdown()
+#else
 #define LOCKUP_FOREVER()    while(1) { __WFI(); }
+#endif
 
 // Like "sizeof()" but works on arrays, and returns the "numberof" elements.
 //

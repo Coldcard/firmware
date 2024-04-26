@@ -35,5 +35,20 @@ class IncorrectUTXOAmount(FatalPSBTIssue):
     def __init__(self, in_idx, msg):
         super().__init__('Input#%d: %s' % (in_idx, msg))
 
+# This signals the need to switch from current
+# menu (or whatever) to show something new. The
+# stack has already been updated, but the old 
+# top-of-stack code was waiting for a key event.
+#
+class AbortInteraction(BaseException):
+    pass
+
+# Useful text to show user when we can't handle a QR
+class QRDecodeExplained(ValueError):
+    pass
+
+# Text about the problem w/ a address during search
+class UnknownAddressExplained(ValueError):
+    pass
 
 # EOF

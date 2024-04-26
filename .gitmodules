@@ -14,3 +14,9 @@
 [submodule "stm32/mk4-bootloader/hal"]
 	path = stm32/mk4-bootloader/hal
 	url = https://github.com/STMicroelectronics/STM32CubeL4.git
+[submodule "misc/gpu/external/stm32c0xx_hal_driver"]
+	path = misc/gpu/external/stm32c0xx_hal_driver
+	url = https://github.com/STMicroelectronics/stm32c0xx_hal_driver.git
+[submodule "misc/gpu/external/cmsis_device_c0"]
+	path = misc/gpu/external/cmsis_device_c0
+	url = https://github.com/STMicroelectronics/cmsis_device_c0.git

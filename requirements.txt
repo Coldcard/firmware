@@ -6,6 +6,7 @@ pyusb
 -r ./external/ckcc-protocol/requirements.txt
 -r ./testing/requirements.txt
 -r ./unix/requirements.txt
+-r ./misc/gpu/requirements.txt
 
 ckcc-protocol[cli]
 

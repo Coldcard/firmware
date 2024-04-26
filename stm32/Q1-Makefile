@@ -1,0 +1,42 @@
+# (c) Copyright 2023 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
+# Q1 .. mostly same as Mk4
+#
+
+BOARD = COLDCARD_Q1
+FIRMWARE_BASE   = 0x08020000
+BOOTLOADER_BASE = 0x08000000
+HW_MODEL = q1
+PARENT_MKFILE = Q1-Makefile
+
+# This is release of the bootloader that will be built into the factory.dfu
+BOOTLOADER_VERSION = 1.0.4
+BOOTLOADER_DIR = q1-bootloader
+
+LATEST_RELEASE = $(shell ls -t1 ../releases/*-q1-*.dfu | head -1)
+
+# Our version for this release.
+VERSION_STRING = 1.2.0Q
+
+# Remove this closer to shipping.
+#$(warning "Forcing debug build")
+#DEBUG_BUILD ?= 1
+
+# keep near top, because defined default target (all)
+include shared.mk
+
+# In another window: 
+#
+#		openocd -f openocd-q1.cfg
+#
+# Can do:
+# - "load" which writes the flash (medium speed, lots of output on st-util)
+# - "cont" starts/continues system
+# - "br main" sets breakpoints
+# - "mon reset" to reset micro
+# - and so on
+#
+debug:
+	arm-none-eabi-gdb $(BUILD_DIR)/firmware.elf -x gogo-q1.gdb
+
+# EOF

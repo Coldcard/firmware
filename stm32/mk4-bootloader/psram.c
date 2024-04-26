@@ -9,8 +9,8 @@
 #include "psram.h"
 #include "oled.h"
 #include "clocks.h"
-#include "sigheader.h"
-#include "assets/screens.h"
+#include "config.h"
+#include SCREENS_H
 #include <string.h>
 #include "delay.h"
 #include "rng.h"

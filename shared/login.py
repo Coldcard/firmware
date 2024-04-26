@@ -2,19 +2,22 @@
 #
 # login.py - UX related to PIN code entry/login.
 #
-# NOTE: Mark3+ hardware does not support secondary wallet concept.
-#
 import pincodes, version, random
 from glob import dis
-from display import FontLarge, FontTiny
-from ux import PressRelease, ux_wait_keyup, ux_show_story
-from utils import pretty_delay
+from ux import ux_wait_keyup, ux_wait_keydown, ux_show_story, ux_show_pin, ux_show_phish_words
 from callgate import show_logout
 from pincodes import pa
 from uasyncio import sleep_ms
+from charcodes import KEY_DELETE, KEY_ENTER, KEY_CANCEL, KEY_CLEAR, KEY_LEFT, KEY_RIGHT, KEY_TAB
+from version import has_qwerty
 
 MAX_PIN_PART_LEN = 6
 MIN_PIN_PART_LEN = 2
+
+if not has_qwerty:
+    KEY_ENTER = 'y'
+    KEY_CANCEL = 'x'
+    KEY_DELETE = 'x'
 
 class LoginUX:
 
@@ -23,7 +26,6 @@ class LoginUX:
         self.is_repeat = False
         self.subtitle = False
         self.kill_btn = kill_btn
-        self.offer_second = not version.has_608
         self.reset()
         self.randomize = randomize
 
@@ -36,118 +38,37 @@ class LoginUX:
         self.pin = ''       # just the part we're showing
         self.pin_prefix = None
         self.words_ok = False
-        self.is_secondary = False
         self.footer = None
 
-    def show_pin_randomized(self, force_draw):
-        # screen redraw, when we are "randomized"
-
-        if force_draw:
-            dis.clear()
-
-            # prompt
-            dis.text(5+3, 2, "ENTER PIN")
-            dis.text(5+6, 17, ('1st part' if not self.pin_prefix else '2nd part'))
-
-            # remapped keypad
-            y = 2
-            x = 89
-            h = 16
-            for i in range(0, 10, 3):
-                if i == 9:
-                    dis.text(x, y, '  %s' % self.randomize[0])
-                else:
-                    dis.text(x, y, ' '.join(self.randomize[1+i:1+i+3]))
-                y += h
-        else:
-            # just clear what we need to: the PIN area
-            dis.clear_rect(0, 40, 88, 20)
-
-        # placeholder text
-        msg = '[' + ('*'*len(self.pin)) + ']'
-        x = 40 - ((10*len(msg))//2)
-        dis.text(x, 40, msg, FontLarge)
-
-        dis.show()
-
     def show_pin(self, force_draw=False):
-        if self.randomize:
-            return self.show_pin_randomized(force_draw)
+        # redraw screen with prompting
+        ux_show_pin(dis, self.pin, self.subtitle, self.pin_prefix, self.is_repeat,
+                        force_draw, footer=self.footer, randomize=self.randomize)
 
-        filled = len(self.pin)
-        y = 27
+    def _show_words(self):
+        # Show the anti-phising words, but coordinate w/ the large delay from the SE.
 
-        if force_draw:
+        # - show prompt w/o any words first
+        if not has_qwerty:
             dis.clear()
+            prompt = "Recognize these?" if (not self.is_setting) or self.is_repeat \
+                                else "Write these down:"
+            dis.text(None, 0, prompt)
+            dis.show()
 
-            if not self.pin_prefix:
-                prompt="Enter PIN Prefix" 
-            else:
-                prompt="Enter rest of PIN" 
-
-
-            if self.subtitle:
-                dis.text(None, 0, self.subtitle)
-                dis.text(None, 16, prompt, FontTiny)
-            else:
-                dis.text(None, 4, prompt)
-
-            if self.footer:
-                footer = self.footer
-            elif self.is_repeat:
-                footer = "CONFIRM PIN VALUE"
-            elif not self.pin_prefix:
-                footer = "X to CANCEL, or OK when DONE"
-            else:
-                footer = "X to CANCEL, or OK to CONTINUE"
-
-            dis.text(None, -1, footer, FontTiny)
-
-        else:
-            # just clear what we need to: the PIN area
-            dis.clear_rect(0, y, 128, 21)
-
-        w = 18
-
-        # extra (empty) box after
-        if not filled:
-            dis.icon(64-(w//2), y, 'box')
-        else:
-            x = 64 - ((w*filled)//2)
-            # filled boxes
-            for idx in range(filled):
-                dis.icon(x, y, 'xbox')
-                x += w
-
-        dis.show()
-
-    def _show_words(self, has_secondary=False):
-
-        dis.clear()
-        dis.text(None, 0, "Recognize these?" if (not self.is_setting) or self.is_repeat \
-                            else "Write these down:")
-
-        dis.show()
+        # - show as busy for 1-2 seconds
         dis.busy_bar(True)
         words = pincodes.PinAttempt.prefix_words(self.pin.encode())
+        dis.busy_bar(False)
 
-        y = 15
-        x = 18
-        dis.text(x, y,    words[0], FontLarge)
-        dis.text(x, y+18, words[1], FontLarge)
-
-        if self.offer_second:
-            dis.text(None, -1, "Press (2) for secondary wallet", FontTiny)
-        else:
-            dis.text(None, -1, "X to CANCEL, or OK to CONTINUE", FontTiny)
+        # - show rest of screen and CTA
+        ux_show_phish_words(dis, words)
 
         dis.busy_bar(False)     # includes a dis.show()
-        #dis.show()
 
     def cancel(self):
         self.reset()
         self.show_pin(True)
-            
 
     async def interact(self):
         # Prompt for prefix and pin. Returns string or None if the abort.
@@ -155,11 +76,32 @@ class LoginUX:
             self.shuffle_keys()
 
         self.show_pin(True)
-        pr = PressRelease('y')
         while 1:
-            ch = await pr.wait()
+            ch = await ux_wait_keydown()
+            if ch is None: continue     # not expected
 
-            if ch == 'x':
+            if has_qwerty and not self.is_setting and ch.upper() == self.kill_btn:
+                # wipe the seed if they press a special key
+                import callgate
+                callgate.fast_wipe(False)
+                # NOT REACHED
+
+            if has_qwerty and ch in KEY_DELETE+KEY_LEFT:
+                if self.pin:
+                    self.pin = self.pin[:-1]
+                    self.show_pin()
+                elif self.pin_prefix:
+                    # trying to delete past start of second half, take them
+                    # to first part again. Q only
+                    ux_show_phish_words(dis, None)
+                    self.pin = self.pin_prefix
+                    self.pin_prefix = None
+                    self.show_pin()
+
+            elif ch == KEY_CLEAR:
+                self.pin = ''
+                self.show_pin()
+            elif ch == KEY_CANCEL:
                 if not self.pin and self.pin_prefix:
                     # cancel on empty 2nd-stage: start over
                     self.reset()
@@ -170,14 +112,19 @@ class LoginUX:
                     # X on blank first screen: stop
                     return None
                     
-                # do a backspace
-                if self.pin:
-                    self.pin = self.pin[:-1]
+                if KEY_CANCEL == KEY_DELETE:
+                    # do a backspace
+                    if self.pin:
+                        self.pin = self.pin[:-1]
+                        self.show_pin()
+                else:
+                    # clear input, because they have a BS key
+                    self.pin = ''
                     self.show_pin()
 
-            elif ch == 'y':
+            elif ch in KEY_ENTER+' -_'+KEY_RIGHT+KEY_TAB:
                 if len(self.pin) < MIN_PIN_PART_LEN:
-                    # they haven't given enough yet
+                    # they haven't given enough yet - ignore
                     continue
 
                 if self.pin_prefix:
@@ -186,33 +133,37 @@ class LoginUX:
 
                 self._show_words()
 
-                pattern = 'xy'
-                if self.offer_second:
-                    pattern += '2'
-                if self.kill_btn:
-                    pattern += self.kill_btn
+                if not has_qwerty:
+                    # Mk4
+                    pattern = KEY_ENTER + KEY_CANCEL
+                    if self.kill_btn:
+                        pattern += self.kill_btn
 
-                nxt = await ux_wait_keyup(pattern)
+                    nxt = await ux_wait_keyup(pattern, flush=True)
 
-                if not self.is_setting and nxt == self.kill_btn:
-                    # wipe the seed if they press a special key
-                    import callgate
-                    callgate.fast_wipe(False)
-                    # not reached
+                    if not self.is_setting and nxt == self.kill_btn:
+                        # wipe the seed if they press a special key
+                        import callgate
+                        callgate.fast_wipe(False)
+                        # not reached
 
-                if nxt == 'y' or nxt == '2':
+                    if nxt == KEY_ENTER:
+                        self.pin_prefix = self.pin
+                        self.pin = ''
+
+                        if self.randomize:
+                            self.shuffle_keys()
+                    elif nxt == KEY_CANCEL:
+                        self.reset()
+
+                    self.show_pin(True)
+                else:
+                    # not confirming the words on Q, they see them and continue or not
                     self.pin_prefix = self.pin
                     self.pin = ''
-                    self.is_secondary = (nxt == '2')
+                    self.show_pin(False)
 
-                    if self.randomize:
-                        self.shuffle_keys()
-                elif nxt == 'x':
-                    self.reset()
-
-                self.show_pin(True)
-
-            else:
+            elif '0' <= ch <= '9':
                 # digit pressed
                 if self.randomize and ch:
                     ch = self.randomize[int(ch)]
@@ -223,20 +174,9 @@ class LoginUX:
                     self.pin += ch
 
                 self.show_pin()
-
-    async def do_delay(self):
-        # show # of failures and implement the delay, which could be 
-        # very long.
-        dis.clear()
-        dis.text(None, 0, "Checking...", FontLarge)
-        dis.text(None, 24, 'Wait '+pretty_delay(pa.delay_required * pa.seconds_per_tick))
-        dis.text(None, 40, "(%d failures)" % pa.num_fails)
-
-        while pa.is_delay_needed():
-            dis.progress_bar(pa.delay_achieved / pa.delay_required)
-            dis.show()
-
-            pa.delay()
+            else:
+                # other key on Q1? Ignore
+                pass
 
     async def we_are_ewaste(self, num_fails):
         msg = '''After %d failed PIN attempts this Coldcard is locked forever. \
@@ -249,7 +189,7 @@ Restore your seed words onto a new Coldcard.''' % num_fails
             ch = await ux_show_story(msg, title='I Am Brick!', escape='6')
             if ch == '6': break
 
-    async def confirm_attempt(self, attempts_left, num_fails, value):
+    async def confirm_attempt(self, attempts_left, value):
 
         ch = await ux_show_story('''You have %d attempts left before this Coldcard BRICKS \
 ITSELF FOREVER.
@@ -267,33 +207,27 @@ Press OK to continue, X to stop for now.
     async def try_login(self, bypass_pin=None):
         while 1:
 
-            if version.has_608 and not pa.attempts_left:
+            if not pa.attempts_left:
                 # tell them it's futile
                 await self.we_are_ewaste(pa.num_fails)
 
             self.reset()
 
             if pa.num_fails:
-                self.footer = '%d failures' % pa.num_fails
-                if version.has_608:
-                    self.footer += ', %d tries left' % pa.attempts_left
+                self.footer = '%d failures, %d tries left' % (pa.num_fails, pa.attempts_left)
 
             pin = await self.interact()
 
             if pin is None:
                 # pressed X on empty screen ... RFU
                 continue
-            
-            dis.fullscreen("Wait...")
-            pa.setup(pin, self.is_secondary)
 
-            if version.has_608 and pa.num_fails > 3:
+            if pa.num_fails > 3:
                 # they are approaching brickage, so warn them each attempt
-                await self.confirm_attempt(pa.attempts_left, pa.num_fails, pin)
-                dis.fullscreen("Wait...")
-            elif pa.is_delay_needed():
-                # mark 1/2 might come here, never mark3
-                await self.do_delay()
+                await self.confirm_attempt(pa.attempts_left, pin)
+            
+            dis.fullscreen("Loading...")
+            pa.setup(pin)
 
             # do the actual login attempt now
             try:
@@ -315,24 +249,18 @@ Press OK to continue, X to stop for now.
                 dis.busy_bar(False)
 
             pa.num_fails += 1
-            if version.has_608:
-                pa.attempts_left -= 1
+            pa.attempts_left -= 1
 
             msg = ""
-            nf = '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
-            if version.has_608:
-                if not pa.attempts_left:
-                    await self.we_are_ewaste(pa.num_fails)
-                    continue
+            if not pa.attempts_left:
+                await self.we_are_ewaste(pa.num_fails)
+                continue
 
-                msg += '%d attempts left' % (pa.attempts_left)
-            else:
-                msg += '%s' % nf
+            msg += '%d attempts left' % (pa.attempts_left)
 
             msg += '''\n\nPlease check all digits carefully, and that prefix versus \
-suffix break point is correct.'''
-            if version.has_608:
-                msg += '\n\n' + nf
+suffix break point is correct.\n\n'''
+            msg += '1 failure' if pa.num_fails <= 1 else ('%d failures' % pa.num_fails)
 
             await ux_show_story(msg, title='WRONG PIN')
 
@@ -345,12 +273,10 @@ suffix break point is correct.'''
     async def get_new_pin(self, title, story=None, allow_clear=False):
         # Do UX flow to get new (or change) PIN. Always does the double-entry thing
         self.is_setting = True
-        self.offer_second = False
 
         if story:
             # give them background
             ch = await ux_show_story(story, title=title)
-
             if ch == 'x': return None
 
         # first first one

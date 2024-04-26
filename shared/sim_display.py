@@ -3,7 +3,8 @@
 # DEBUG ONLY -- only installed for debug builds
 # Hack to monitor screen contents, as text.
 # Import this file to install the hacks.
-import ux
+#
+import ux, version
 
 global contents, full_contents, story
 
@@ -16,40 +17,50 @@ full_contents = ''
 # copy of the story being shown
 story = None
 
-
-from display import Display
+if version.hw_label == 'q1':
+    from lcd_display import Display
+    has_lcd = True
+else:
+    from display import Display
+    has_lcd = False
 
 orig_text = Display.text
 orig_clear = Display.clear
 orig_show = Display.show
 
-Display.text = lambda *a, **kw: hack_text(*a, **kw)
-Display.clear = lambda *a, **kw: hack_clear(*a, **kw)
+
+if not has_lcd:
+    Display.text = lambda *a, **kw: hack_text(*a, **kw)
+    def hack_text(themself, *a, **kw):
+        #print('of=%r ts=%r a=%r kw=%r' % (orig_func, themself, a, kw))
+
+        x, y, msg = a[0:3]
+
+        global contents
+        contents[y] = msg
+
+        #print('text (%s, %s): %s' % (x,y, msg))
+
+        return orig_text(themself, *a, **kw)
+
+    Display.clear = lambda *a, **kw: hack_clear(*a, **kw)
+    def hack_clear(themself, *a, **kw):
+        global contents
+        contents = {}
+        return orig_clear(themself, *a, **kw)
+
 Display.show = lambda *a, **kw: hack_show(*a, **kw)
-
-def hack_text(themself, *a, **kw):
-    #print('of=%r ts=%r a=%r kw=%r' % (orig_func, themself, a, kw))
-
-    x, y, msg = a[0:3]
-
-    global contents
-    contents[y] = msg
-
-    #print('text (%s, %s): %s' % (x,y, msg))
-
-    return orig_text(themself, *a, **kw)
-
-def hack_clear(themself, *a, **kw):
-    global contents
-    contents = {}
-    return orig_clear(themself, *a, **kw)
-
 def hack_show(themself, *a, **kw):
     global contents, full_contents
-    scr = '\n'.join(contents[y] for y in sorted(contents))
 
-    #print("\n---\n%s\n---\n" % scr)
-    full_contents = scr
+    if not has_lcd:
+        scr = '\n'.join(contents[y] for y in sorted(contents))
+        #print("\n---\n%s\n---\n" % scr)
+        full_contents = scr
+    else:
+        lines = [themself.next_buf[y] for y in range(10)]
+        lines = [bytes(i&0x7f for i in ln).decode('ascii') for ln in lines]
+        full_contents = '\n'.join(i.strip() for i in lines)
         
     return orig_show(themself, *a, **kw)
 

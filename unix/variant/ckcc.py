@@ -4,10 +4,9 @@
 #
 # REMINDER: you must recompile coldcard-mpy if you change this file!
 #
-import ustruct, sys
+import ustruct, sys, uasyncio, utime
 from ubinascii import hexlify as b2a_hex
 #from ubinascii import unhexlify as a2b_hex
-#import utime as time
 
 from uerrno import *
 ERANGE = const(34)
@@ -16,10 +15,16 @@ rng_fd = open('/dev/urandom', 'rb')
 
 # Emulate the red/green LED
 global genuine_led
-
 led_pipe = open(int(sys.argv[3]), 'wb')
-led_pipe.write(b'\xf1')     # all off, except green
+led_pipe.write(b'\xff\x01')     # all off, except SE1 green
 genuine_led = True
+
+# State of SE1/SE2/bootrom
+from sim_secel import SEState
+SE_STATE = SEState()
+
+# Provide a way to dump few hundred/4k bytes of data from QR or NFC simulated read
+data_pipe = uasyncio.StreamReader(open(int(sys.argv[4]), 'rb'))
         
 # HACK: reduce size of heap in Unix simulator to be more similar to 
 # actual hardware, so we can enjoy those out-of-memory errors too!
@@ -72,11 +77,11 @@ def gate(method, buf_io, arg2):
 
     if method == 16:
         if len(buf_io) < 8: return ERANGE
+        utime.sleep_ms(500)     # because is slow in real world
         return pin_prefix(buf_io[0:arg2], buf_io)
 
     if method == 18:
-        from sim_secel import pin_stuff
-        return pin_stuff(arg2, buf_io)
+        return SE_STATE.pin_stuff(arg2, buf_io)
 
     if method == 4:
         # control the green/red light
@@ -84,11 +89,11 @@ def gate(method, buf_io, arg2):
         if arg2 == 1:
             # clear it
             genuine_led = False
-            led_pipe.write(b'\x10')
+            led_pipe.write(b'\x01\x00')
         if arg2 == 3:
             # real code would do checksum then go green
             genuine_led = True
-            led_pipe.write(b'\x11')
+            led_pipe.write(b'\x01\x01')
         return 1 if genuine_led else 0
 
     if method == 5:
@@ -105,9 +110,10 @@ def gate(method, buf_io, arg2):
             buf_io[0:32] = b'CSIM0000' + b'\0'*(32-8)
         if arg2 == 1:
             # not supported: write
-            return buf_io
+            print("Write BAG NUMBER: %r" % buf_io)
+            return 0
         if arg2 == 2:
-            # in factory mode?
+            # query RDP level, ie. in factory mode?
             buf_io[0] = 0xff if ('-f' in sys.argv) else 2
 
     if method == 21:
@@ -124,7 +130,7 @@ def gate(method, buf_io, arg2):
     if method == 20:
         # read 608 config bytes (128)
         assert len(buf_io) == 128
-        buf_io[:] = b'\x01#\xbf\x0b\x00\x00`\x03CP,\xbf\xeeap\x00\xe1\x00a\x00\x00\x00\x8f-\x8f\x80\x8fC\xaf\x80\x00C\x00C\x8fG\xc3C\xc3C\xc7G\x00G\x00\x00\x8fM\x8fC\x00\x00\x00\x00\x1f\xff\x00\x1a\x00\x1a\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xea\xff\x02\x15\x00\x00\x00\x00<\x00\\\x00\xbc\x01\xfc\x01\xbc\x01\x9c\x01\x9c\x01\xfc\x01\xdc\x03\xdc\x03\xdc\x07\x9c\x01<\x00\xfc\x01\xdc\x01<\x00'
+        buf_io[:] = b'\x01#\xbf\x0b\x00\x00`\x04CP,\xbf\xeeap\x00\xe1\x00a\x00\x00\x00\x8f-\x8f\x80\x8fC\xaf\x80\x00C\x00C\x8fG\xc3C\xc3C\xc7G\x00G\x00\x00\x8fM\x8fC\x00\x00\x00\x00\x1f\xff\x00\x1a\x00\x1a\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xea\xff\x02\x15\x00\x00\x00\x00<\x00\\\x00\xbc\x01\xfc\x01\xbc\x01\x9c\x01\x9c\x01\xfc\x01\xdc\x03\xdc\x03\xdc\x07\x9c\x01<\x00\xfc\x01\xdc\x01<\x00'
         return 0
 
     if method == 22 and version.has_se2:
@@ -173,7 +179,7 @@ def gate(method, buf_io, arg2):
         return 0
 
     if method == 27:
-        buf_io[:] = b'ATECC608B\nDS28C36B'
+        buf_io[:] = b'ATECC608B\nDS28C36B\0'
         return 0
 
     return ENOENT
@@ -183,9 +189,8 @@ def oneway(method, arg2):
     # TODO: capture method/arg2 into an object so unit tests can read it back while we are dead
 
     print("\n\nNOTE: One-way callgate into bootloader: method=%d arg2=%d\n\n" % (method, arg2))
-    import time
     while 1:
-        time.sleep(60)
+        utime.sleep(60)
 
 def is_simulator():
     return True
@@ -228,9 +233,14 @@ def get_cpi_id():
         return 0x461       # STM32L496RG6
     if ('--mk4' in sys.argv):
         return 0x470       # STM32L4S5
+    if ('--q1' in sys.argv):
+        return 0x470       # STM32L4S5
 
     #default mk4
     return 0x470       # STM32L4S5
 
+def lcd_blast(buf):
+    # sends to LCD
+    return
 
 # EOF

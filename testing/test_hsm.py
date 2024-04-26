@@ -71,7 +71,7 @@ def compute_policy_hash(policy):
             if type_ == Deriv:
                 rv = []
                 for orig in value or []:
-                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "'").replace('h', "'"))
+                    rv.append(orig if orig in ["any", "p2sh"] else orig.replace('p', "h").replace("'", 'h'))
             elif type_ == WhitelistOpts:
                 rv = OrderedDict()
                 rv["mode"] =  value.get("mode", "BASIC")
@@ -114,7 +114,7 @@ def compute_policy_hash(policy):
     return b2a_hex(sha256(json_.encode()).digest()).decode()
 
 @pytest.fixture(autouse=True)
-def enable_hsm_commands(dev, sim_exec):
+def enable_hsm_commands(dev, sim_exec, only_mk4):
     cmd = 'from glob import settings; settings.set("hsmcmd", 1)'
     sim_exec(cmd)
     yield
@@ -165,17 +165,17 @@ def hsm_reset(dev, sim_exec):
     (DICT(boot_to_hsm='123123'), 'Boot to HSM enabled'),
 
     # msg signing
-    (DICT(msg_paths=["m/1'/2p/3H"]), "m/1'/2'/3'"),
+    (DICT(msg_paths=["m/1'/2p/3H"]), "m/1h/2h/3h"),
     (DICT(msg_paths=["m/1", "m/2"]), "m/1 OR m/2"),
     (DICT(msg_paths=["any"]), "(any path)"),
 
     # data sharing
-    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1'/2'/3'"]),
+    (DICT(share_addrs=["m/1'/2p/3H"]), ['Address values values will be shared', "m/1h/2h/3h"]),
     (DICT(share_addrs=["m/1", "m/2"]), ['Address values values will be shared', "m/1 OR m/2"]),
     (DICT(share_addrs=["any"]), ['Address values values will be shared', "(any path)"]),
     (DICT(share_addrs=["p2sh", "any"]), ['Address values values will be shared', "(any P2SH)", "(any path"]),
 
-    (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1'/2'/3'"]),
+    (DICT(share_xpubs=["m/1'/2p/3H"]), ['XPUB values will be shared', "m/1h/2h/3h"]),
     (DICT(share_xpubs=["m/1", "m/2"]), ['XPUB values will be shared', "m/1 OR m/2"]),
     (DICT(share_xpubs=["any"]), ['XPUB values will be shared', "(any path)"]),
 
@@ -389,7 +389,7 @@ def quick_start_hsm(hsm_reset, start_hsm, hsm_status, change_hsm, sim_eval):
     return doit
 
 @pytest.fixture
-def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
+def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress, press_select):
     
     def doit(policy):
         try:
@@ -415,7 +415,7 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
 
         if cap_story:
             # approve it
-            need_keypress('y')
+            press_select()
             time.sleep(.1)
 
             title, body2 = cap_story()
@@ -444,7 +444,7 @@ def start_hsm(request, dev, hsm_reset, hsm_status, need_keypress):
 
         else:
             # do keypresses blindly
-            need_keypress('y')
+            press_select()
             time.sleep(.1)
             for ch in '12346':
                 need_keypress(ch, timeout=10000)
@@ -857,8 +857,8 @@ def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
 
     time.sleep(.2)
     if dev.is_simulator:
-        need_keypress = request.getfixturevalue('need_keypress')
-        need_keypress("y")
+        press_select = request.getfixturevalue('press_select')
+        press_select()
     else:
         import pdb;pdb.set_trace()  # user interaction required on real CC
 
@@ -898,7 +898,7 @@ def test_multiple_signings_multisig(cc_first, M_N, dev, quick_start_hsm,
         attempt_psbt(psbt)
 
 
-def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
+def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign):
     # message signing, but only at certain derivations
     permit = ['m/73', "m/*'", 'm/1p/3h/4/5/6/7' ]
     block = ['m', 'm/72', permit[-1][:-2]]
@@ -907,15 +907,14 @@ def test_sign_msg_good(quick_start_hsm, change_hsm, attempt_msg_sign, addr_fmt=A
     policy = DICT(msg_paths=permit)
     quick_start_hsm(policy)
 
-    if 1:
-        for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
+    for addr_fmt in  [ AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]:
 
-            for p in permit: 
-                p = p.replace('*', '75333')
-                attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
+        for p in permit:
+            p = p.replace('*', '75333')
+            attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-            for p in block:
-                attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
+        for p in block:
+            attempt_msg_sign('not enabled for that path', msg, p, addr_fmt=addr_fmt)
 
     policy = DICT(msg_paths=['any'])
     change_hsm(policy)
@@ -935,7 +934,7 @@ def test_sign_msg_any(quick_start_hsm, attempt_msg_sign, addr_fmt=AF_CLASSIC):
     for p in permit+block: 
         attempt_msg_sign(None, msg, p, addr_fmt=addr_fmt)
 
-def test_must_log(dev, start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
+def test_must_log(dev, start_hsm, sd_cards_eject, attempt_msg_sign, fake_txn, attempt_psbt, is_simulator):
     # stop everything if can't log
     policy = DICT(must_log=True, msg_paths=['m'], rules=[{}])
 
@@ -943,25 +942,28 @@ def test_must_log(dev, start_hsm, sim_card_ejected, attempt_msg_sign, fake_txn, 
 
     psbt = fake_txn(1, 1, dev.master_xpub)
 
-    sim_card_ejected(True)
+    sd_cards_eject(1)
     attempt_msg_sign('Could not log details', b'hello', 'm', addr_fmt=AF_CLASSIC)
     attempt_psbt(psbt, 'Could not log details')
 
     if is_simulator():
-        sim_card_ejected(False)
+        sd_cards_eject(0)
         attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
         attempt_psbt(psbt)
 
-def test_never_log(dev, start_hsm, attempt_msg_sign, fake_txn, attempt_psbt, sim_card_ejected):
+def test_never_log(dev, start_hsm, attempt_msg_sign, fake_txn, attempt_psbt, sd_cards_eject):
     # never try to log anything
     policy = DICT(never_log=True, msg_paths=['m'], rules=[{}])
 
     start_hsm(policy)
 
-    sim_card_ejected(True)
+    sd_cards_eject(1)
 
     # WEAK test
     attempt_msg_sign(None, b'hello', 'm', addr_fmt=AF_CLASSIC)
+
+    # clean-up
+    sd_cards_eject(0)
 
 @pytest.fixture
 def enter_local_code(need_keypress):
@@ -1547,7 +1549,7 @@ def test_op_return_output_bitcoind(op_return_data, start_hsm, attempt_psbt, bitc
     start_hsm(policy)
     attempt_psbt(base64.b64decode(psbt), refuse="non-whitelisted address: 6a")  # 6a --> OP_RETURN
 
-def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, need_keypress, hsm_reset, start_hsm,
+def test_hsm_commands_disabled(dev, goto_home, pick_menu_item, hsm_reset, start_hsm,
                                sim_exec, enable_hsm_commands):
     dev.send_recv(CCProtocolPacker.create_user(b"xxx", 3, 32 * b"y"))
     dev.send_recv(CCProtocolPacker.delete_user(b"xxx"))

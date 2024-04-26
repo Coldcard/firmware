@@ -48,7 +48,7 @@ def test_public(sim_execfile):
         if ln[0:1] == 'm' and '=>' in ln:
             subpath, result = ln.split(' => ', 1)
 
-            sk = node_prv.subkey_for_path(subpath[2:])
+            sk = node_prv.subkey_for_path(subpath[2:].replace("h", "'"))
 
             if result[1:4] == 'pub' and result[0] not in 'xt':
                 # SLIP-132 garbage
@@ -91,7 +91,7 @@ def test_nvram(unit_test, only_mk3):
     # exercise nvram simulation: not mk4
     unit_test('devtest/nvram.py')
 
-def test_nvram_mk4(unit_test, only_mk4):
+def test_nvram_mk4(unit_test, only_mk4plus):
     # exercise nvram simulation: only mk4
     unit_test('devtest/nvram_mk4.py')
 
@@ -199,12 +199,12 @@ def test_hmac_key(dev, sim_exec, count=10):
 @pytest.mark.parametrize('path,ans', [
     ("m", "m"),
     ("", "m"),
-    ("55555p/66666", "m/55555'/66666"),
+    ("55555p/66666", "m/55555h/66666"),
     ("m/1/2/3", "m/1/2/3"),
-    ("m/1'/2h/3p/4H/5P", "m/1'/2'/3'/4'/5'"),
-    ("m/1'/2h/3p/4H/*'", "m/1'/2'/3'/4'/*'"),
-    ("m/1'/2h/3p/4H/*", "m/1'/2'/3'/4'/*"),
-    ("m/10000000/5'/*", "m/10000000/5'/*"),
+    ("m/1'/2h/3p/4H/5P", "m/1h/2h/3h/4h/5h"),
+    ("m/1'/2h/3p/4H/*'", "m/1h/2h/3h/4h/*h"),
+    ("m/1'/2h/3p/4H/*", "m/1h/2h/3h/4h/*"),
+    ("m/10000000/5'/*", "m/10000000/5h/*"),
 ])
 @pytest.mark.parametrize('star', [False, True])
 def test_cleanup_deriv_path_good(path, ans, star, sim_exec):
@@ -240,13 +240,16 @@ def test_cleanup_deriv_path_fails(path, ans, sim_exec, star=True):
 
 @pytest.mark.parametrize('patterns, paths, answers', [
     (["m"], ("m", "m/2", "*", "any"), [True, False, False, False]),
-    (["any"], ("m", "m/2", "*", "1/2/3/4/5/6'/55'"), [True]*4),
-    (["m/1", "m/2/*'"], ("m", "m/1", "m/3/4", "m/2/4'", "m/2/4"), 
+    (["any"], ("m", "m/2", "*", "1/2/3/4/5/6h/55h"), [True]*4),
+    (["m/1", "m/2/*h"], ("m", "m/1", "m/3/4", "m/2/4h", "m/2/4"),
                         [0,    1,    0,       1,        0]),
-    (["m/1/*", "m/2/*'"], ("m/1/2", "m/1/2'", "m/2/1", "m/2/1'"), 
+    (["m/1/*", "m/2/*h"], ("m/1/2", "m/1/2h", "m/2/1", "m/2/1h"),
                            [1,       0,       0,       1]),
+    (["m/20/*", "m/30h/*h"], ("m/20/2", "m/30/2h", "m/2h/1", "m/30h/1h"),
+                              [1,       0,       0,       1]),
 ])
 def test_match_deriv_path(patterns, paths, answers, sim_exec):
+    # only testing internal function which inputs are already normalized by cleanu_deriv_path
     for path, ans in zip(paths, answers):
         cmd = f'from utils import match_deriv_path; RV.write(str(match_deriv_path({repr(patterns)}, {repr(path)})))'
         rv = sim_exec(cmd)
@@ -271,14 +274,86 @@ def test_is_dir(microsd_path, sim_exec):
     assert rv == "False"
     shutil.rmtree(microsd_path("my_dir"))
 
+@pytest.mark.parametrize('txt, x_line2', [
+    ('Disk, press \x0e to share via NFC, \x11 to share', '\x11 to share'),
+])
+def test_word_wrap(txt, x_line2, sim_exec, only_q1, width=34):
+    # one tricky double-wide char word-wrapping case .. but add others
+    assert '\n' not in txt
 
-def test_aes_compatibility(sim_execfile):
-    res = sim_execfile('devtest/unit_aes_compat.py')
-    assert res == ""
+    cmd = f'from utils import word_wrap; RV.write("\\n".join(word_wrap({txt!r}, {width})))'
+    got = sim_exec(cmd)
+    assert 'Traceback' not in got
 
+    lines = got.split('\n')
+
+    assert width*2//3 <= len(lines[0]) <= width
+    assert lines[1] == x_line2
+
+    want_words = [i.strip() for i in txt.split()]
+    got_words = [i.strip() for i in got.split()]
+
+    assert want_words == got_words
+
+from constants import AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+
+@pytest.mark.parametrize('addr,net,fmt', [
+    ( 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', 'BTC', AF_P2WPKH ),
+])
+def test_addr_detect(addr, net, fmt, sim_exec):
+    cmd = f'from chains import AllChains; RV.write(repr([(ch.ctype, ch.possible_address_fmt({addr!r})) for ch in AllChains]))'
+    print(cmd)
+    lst = sim_exec(cmd)
+    assert 'Error' not in lst
+
+    for got_net, match in eval(lst):
+        if match:
+            assert net == got_net
+            assert match == fmt
+        else:
+            assert net != got_net
+            assert match == 0
+
+'''
+    >>> [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH]
+        [14,       8,       26,            1,          7,         19]
+'''
+@pytest.mark.parametrize('addr_fmt', [
+    AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH, AF_CLASSIC, AF_P2WPKH, AF_P2WPKH_P2SH
+])
+@pytest.mark.parametrize('testnet', [ False, True] )
+def test_addr_fake_detect(addr_fmt, testnet, sim_exec):
+    from txn import fake_address
+
+    addr = fake_address(addr_fmt, testnet)
+
+    cmd = f'from chains import AllChains; RV.write(repr([(ch.ctype, ch.possible_address_fmt({addr!r})) for ch in AllChains]))'
+    lst = sim_exec(cmd)
+    assert 'Error' not in lst
+    #print(lst)
+
+    expect_net = ('BTC' if not testnet else 'XTN')
+
+    expect_addr_fmt = addr_fmt if addr_fmt not in { AF_P2WSH_P2SH, AF_P2WPKH_P2SH } else AF_P2SH
+
+    for got_net, match in eval(lst):
+        if match:
+            if got_net == 'XRT':
+                assert expect_net == 'XTN'
+            else:
+                assert got_net == expect_net
+            assert match == expect_addr_fmt
+        else:
+            assert got_net != expect_net
+            assert match == 0
 
 def test_af(sim_execfile):
     res = sim_execfile('devtest/unit_af.py')
+    assert res == ""
+
+
+def test_aes_compatibility(sim_execfile):
+    res = sim_execfile('devtest/unit_aes_compat.py')
     assert res == ""
 
 # EOF

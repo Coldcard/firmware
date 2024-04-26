@@ -4,38 +4,26 @@
 #
 # MARK 4 with different chip and layout
 #
-include version.mk
 
 BOARD = COLDCARD_MK4
 FIRMWARE_BASE   = 0x08020000
 BOOTLOADER_BASE = 0x08000000
-MK_NUM = 4
+HW_MODEL = mk4
+PARENT_MKFILE = MK4-Makefile
 
-# This is release of the bootloader that will be built into the release firmware.
-BOOTLOADER_VERSION = 3.1.4
+# This is release of the bootloader that will be built into the factory.dfu
+BOOTLOADER_VERSION = 3.2.0
 BOOTLOADER_DIR = mk4-bootloader
 
 LATEST_RELEASE = $(shell ls -t1 ../releases/*-mk4-*.dfu | head -1)
 
+# Our version for this release.
+# - caution, the bootrom will not accept version < 3.0.0
+VERSION_STRING = 5.3.0
+
 # keep near top, because defined default target (all)
 include shared.mk
 
-# This is fast for Coinkite devs, but no DFU support in the wild.
-dfu-up: dev.dfu
-	echo 'dfu' | nc localhost 4444
-	$(PYTHON_DO_DFU) -u dev.dfu
-
-dfu-up2: dev.dfu
-	$(PYTHON_DO_DFU) -u dev.dfu
-
-# Super fast, assumes Coldcard already attached and unlock on this Mac.
-up: dev.dfu
-	cp dev.dfu /Volumes/COLDCARD/.
-	diskutil eject /Volumes/COLDCARD
-
-# Fairly fast, assumes openocd already running, and its current directory is here.
-ocp-up: dev.dfu
-	echo 'load_image dev.dfu 0x08010000 bin; reset run' | nc localhost 4444
 
 # In another window: 
 #

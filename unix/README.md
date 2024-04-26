@@ -9,6 +9,10 @@
 
     make && ./simulator.py
 
+OR
+
+    make && ./simulator.py --q1
+
 
 ## Other Startup Flags
 
@@ -21,6 +25,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `-q` => boot and drop into REPL; does nothing else, no setup
 - `-f -w` => boot like a unit that hasn't left factory yet
 - `-p` => pretend we don't know the seed words (xprv import) and so menus are different
+- `-g` => don't skip login sequence
 - `--ms` => define a 2-of-4 multisig wallet, and start off in multisig wallet menu; cosigners are
             "Me", "Myself", "And I" and empty string. BIP45 path.
         - add `--p2wsh` or `--wrap` for the other two address types
@@ -28,7 +33,7 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--mk2` => emulate mark2 hardware (older micro, etc), default is current-gen (mark4)
 - `--mk3` => emulate mark3 hardware
 - `--mk4` => emulate mark4 hardware
-- `-g` => don't skip login sequence
+- `--q1` => emulate Q1 hardware
 - `--addr` => go to the address explorer at startup
 - `--xw` => go to the wallet export submenu
 - `--paper` => go to the Paper Wallet menu at startup
@@ -50,8 +55,26 @@ wallet (on testnet, always with the same seed). But there are other options:
 - `--eject` => pretend no (simulated) SD Card is inserted
 - `--eff` => (mk4) wipe setttings at startup, use simulator defaults
 - `--seq 1234yx34` => after start, enter those keypresses to get you to some submenu
+- `--seq 2ENTER` => (Q) press 2 then ENTER, does QR at startup
+- `--bootup-movie` => begin a movie on startup, to capture boot sequence
+- `--scan` => (Q) use attached serial port connected to a QR scanner module (not simulation)
+- `--battery` => (Q) assume the USB cable is NOT connected (ie. on battery power)
+- `--early-usb` => start simulated USB interface even before user is login (useful for login testing)
 
 See `variant/sim_settings.py` for the details of settings-related options.
+
+## Clicking on Simulated Device
+
+### Q
+
+- send keystrokes when clicking on keys, but much easier to use real keyboard
+- click screen to send current clipboard contents as a QR reading
+- click on area near USB plug to cycle through battery levels and USB plugged/not
+
+### Mk4
+
+- sends keystrokes 
+
 
 ## Requirements
 

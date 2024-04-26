@@ -9,14 +9,15 @@
 #
 import utime, ngu, ndef
 from uasyncio import sleep_ms
+import uasyncio as asyncio
 from ustruct import pack, unpack
 from ubinascii import unhexlify as a2b_hex
 from ubinascii import b2a_base64, a2b_base64
 
-from ux import ux_show_story, ux_poll_key
+from ux import ux_show_story, ux_wait_keydown
 from utils import B2A, problem_file_line, parse_addr_fmt_str
 from public_constants import AF_CLASSIC
-
+from charcodes import KEY_ENTER, KEY_CANCEL
 
 # practical limit for things to share: 8k part, minus overhead
 MAX_NFC_SIZE = const(8000)
@@ -51,6 +52,12 @@ class NFCHandler:
         self.i2c = I2C(1, freq=400000)
         self.last_edge = 0
         self.pin_ed = Pin('NFC_ED', mode=Pin.IN, pull=Pin.PULL_UP)
+
+        try:
+            # Q1 and maybe later Mk4's have a light
+            self.active_led = Pin('NFC_ACTIVE', mode=Pin.OUT, value=0)
+        except ValueError:
+            self.active_led = lambda n: None
 
         # track time of last edge
         def _irq(x):
@@ -134,6 +141,9 @@ class NFCHandler:
         return (self.read_dyn(RF_MNGT_Dyn) != 0)
 
     def set_rf_disable(self, val):
+        # set light to match state
+        self.active_led(not val)
+
         # using stronger "off" rather than sleep/disable
         if val:
             self.i2c.writeto(I2C_ADDR_RF_OFF, b'')
@@ -242,26 +252,26 @@ class NFCHandler:
 
         return await self.share_start(n)
         
-    async def share_deposit_address(self, addr):
+    async def share_deposit_address(self, addr, **kws):
         n = ndef.ndefMaker()
         n.add_text('Deposit Address')
         n.add_custom('bitcoin.org:addr', addr.encode())
-        return await self.share_start(n)
+        return await self.share_start(n, **kws)
 
-    async def share_json(self, json_data):
+    async def share_json(self, json_data, **kws):
         # a text file of JSON for programs to read
         n = ndef.ndefMaker()
         n.add_mime_data('application/json', json_data)
 
-        return await self.share_start(n)
+        return await self.share_start(n, **kws)
 
-    async def share_text(self, data):
+    async def share_text(self, data, **kws):
         # share text from a list of values
         # - just a text file, no multiple records; max usability!
         n = ndef.ndefMaker()
         n.add_text(data)
 
-        return await self.share_start(n)
+        return await self.share_start(n, **kws)
 
     async def wait_ready(self):
         # block until chip ready to continue (ACK happens)
@@ -287,18 +297,22 @@ class NFCHandler:
         self.write_dyn(GPO_CTRL_Dyn, 0x01)      # GPO_EN
         self.read_dyn(IT_STS_Dyn)               # clear interrupt
 
-    async def ux_animation(self, write_mode):
+    async def ux_animation(self, write_mode, allow_enter=True):
         # Run the pretty animation, and detect both when we are written, and/or key to exit/abort.
         # - similar when "read" and then removed from field
         # - return T if aborted by user
-        from glob import dis
-        from graphics_mk4 import Graphics
+        from glob import dis, numpad
 
         await self.wait_ready()
         self.set_rf_disable(0)
         await self.setup_gpio()
 
-        frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
+        if dis.has_lcd:
+            dis.real_clear()        # bugfix
+            dis.text(None, -2, 'Tap phone to screen, or CANCEL.', dark=True)
+        else:
+            from graphics_mk4 import Graphics
+            frames = [getattr(Graphics, 'mk4_nfc_%d'%i) for i in range(1, 5)]
 
         aborted = True
         phase = -1
@@ -309,11 +323,17 @@ class NFCHandler:
         min_delay = (3000 if write_mode else 1000)
 
         while 1:
-            phase = (phase + 1) % 4
-            dis.clear()
-            dis.icon(0, 8, frames[phase])
-            dis.show()
-            await sleep_ms(250)
+            if dis.has_lcd:
+                phase = (phase + 1) % 2
+                dis.image(None, 59, 'nfc_%d' % phase)
+            else:
+                dis.clear()
+                phase = (phase + 1) % 4
+                dis.icon(0, 8, frames[phase])
+                dis.show()
+
+            # wait for key or 250ms animation delay
+            ch = await ux_wait_keydown(KEY_ENTER+KEY_CANCEL+'xy', 250)
 
             if self.last_edge:
                 self.last_edge = 0
@@ -330,11 +350,14 @@ class NFCHandler:
                     # 0x2 = RF activity
                     last_activity = utime.ticks_ms()
 
-            # X or OK to quit, with slightly different meanings
-            ch = ux_poll_key()
-            if ch and ch in 'xy': 
-                aborted = (ch == 'x')
-                break
+            # X or OK to quit, but with slightly different meanings
+            if ch:
+                if ch in 'x'+KEY_CANCEL:
+                    aborted = True
+                    break
+                elif allow_enter and ch in 'y'+KEY_ENTER:
+                    aborted = False
+                    break
 
             if last_activity:
                 dt = utime.ticks_diff(utime.ticks_ms(), last_activity)
@@ -350,21 +373,21 @@ class NFCHandler:
 
         return aborted
 
-    async def share_start(self, ndef_obj):
+    async def share_start(self, ndef_obj, **kws):
         # do the UX while we are sharing a value over NFC
         # - assumpting is people know what they are scanning
         # - x key to abort early, but also self-clears
 
         await self.big_write(ndef_obj.bytes())
 
-        return await self.ux_animation(False)
+        return await self.ux_animation(False, **kws)
 
-    async def start_nfc_rx(self):
+    async def start_nfc_rx(self, **kws):
         # Pretend to be a big warm empty tag ready to be stuffed with data
         await self.big_write(ndef.CC_WR_FILE)
 
         # wait until something is written
-        aborted = await self.ux_animation(True)
+        aborted = await self.ux_animation(True, **kws)
         if aborted: return
 
         # read CCFILE area (header)
@@ -480,12 +503,13 @@ class NFCHandler:
 
     @classmethod
     async def selftest(cls):
-        # check for chip present, field present .. and that it works
+        # Check for chip present, field present .. and that it works
+        # - important: do not allow user (tester) to quit without sending anything over link
         n = cls()
         n.setup()
         assert n.uid
 
-        aborted = await n.share_text("NFC is working: %s" % n.get_uid())
+        aborted = await n.share_text("NFC is working: %s" % n.get_uid(), allow_enter=False)
         assert not aborted, "Aborted"
 
     
@@ -498,10 +522,8 @@ class NFCHandler:
             f = fname.lower()
             return f.endswith('.psbt') or f.endswith('.txn') or f.endswith('.txt')
 
-        msg = "Lists PSBT, text, and TXN files on MicroSD. Select to share contents via NFC."
-
         while 1:
-            fn = await file_picker(msg, min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
+            fn = await file_picker(min_size=10, max_size=MAX_NFC_SIZE, taster=is_suitable)
             if not fn: return
 
             basename = fn.split('/')[-1]
@@ -551,7 +573,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Unable to find multisig descriptor.')
             return
 
         from auth import maybe_enroll_xpub
@@ -574,7 +596,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Unable to find seed words')
             return
 
         try:
@@ -598,9 +620,7 @@ class NFCHandler:
         from auth import show_address, ApproveMessageSign
 
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -611,7 +631,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Expected address and derivation path.')
             return
 
         if len(winner) == 1:
@@ -637,9 +657,7 @@ class NFCHandler:
         UserAuthorizedAction.cleanup()
 
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -650,7 +668,7 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find data expected in NDEF')
+            await ux_show_story('Unable to find correctly formated message to sign.')
             return
 
         if len(winner) == 1:
@@ -685,9 +703,7 @@ class NFCHandler:
         from auth import verify_armored_signed_msg
 
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -696,13 +712,41 @@ class NFCHandler:
                 winner = msg.strip()
                 break
 
+        if not winner:
+            await ux_show_story('Unable to find signed message.')
+            return
+
         await verify_armored_signed_msg(winner, digest_check=False)
+
+    async def verify_address_nfc(self):
+        # Get an address or complete bip-21 url even and search it... slow.
+        from utils import decode_bip21_text
+
+        data = await self.start_nfc_rx()
+        if not data: return
+
+        winner = None
+        for urn, msg, meta in ndef.record_parser(data):
+            msg = bytes(msg).decode()  # from memory view
+            try:
+                what, vals = decode_bip21_text(msg)
+                if what == 'addr':
+                    winner = vals[1]
+                    break
+            except ValueError:
+                pass
+
+        if not winner:
+            await ux_show_story('Unable to find address from NFC data.')
+            return
+
+        from ownership import OWNERSHIP
+        await OWNERSHIP.search_ux(winner)
+
 
     async def read_extended_private_key(self):
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -712,16 +756,14 @@ class NFCHandler:
                 break
 
         if not winner:
-            await ux_show_story('Unable to find extended private key in NDEF data')
+            await ux_show_story('Unable to find extended private key.')
             return
 
         return winner
 
     async def read_tapsigner_b64_backup(self):
         data = await self.start_nfc_rx()
-        if not data:
-            await ux_show_story('Unable to find data expected in NDEF')
-            return
+        if not data: return
 
         winner = None
         for urn, msg, meta in ndef.record_parser(data):
@@ -734,7 +776,7 @@ class NFCHandler:
                 pass
 
         if not winner:
-            await ux_show_story('Unable to find base64 encoded TAPSIGNER backup in NDEF data')
+            await ux_show_story('Unable to find base64 encoded TAPSIGNER backup.')
             return
 
         return winner

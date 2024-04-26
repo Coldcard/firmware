@@ -15,14 +15,12 @@
 # - you cannot move data between slots because AES-CTR with CTR seed based on slot #
 # - SHA-256 check on decrypted data
 # - (Mk4) each slot is a file on /flash/settings 
+# - os.sync() not helpful because block device under filesystem doesnt implement it
 #
-import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr
+import os, ujson, ustruct, ckcc, gc, ngu, aes256ctr, version
 from uhashlib import sha256
 from random import randbelow
 from utils import call_later_ms
-from version import mk_num, is_devmode
-
-# TODO fs.sync
 
 # Setting values:
 #   xfp = master xpub's fingerprint (32 bit unsigned)
@@ -31,6 +29,7 @@ from version import mk_num, is_devmode
 #   words = {0/12/18/24} nummber of BIP-39 seed words exist (default: 24, 0=XPRV, etc)
 #   b39skip = (bool) skip discussion about use of BIP-39 passphrase
 #   idle_to = idle timeout period (seconds)
+#   batt_to = (when on battery only) idle timeout period
 #   _age = internal verison number for data (see below)
 #   tested = selftest has been completed successfully
 #   multisig = list of defined multisig wallets (complex)
@@ -55,6 +54,11 @@ from version import mk_num, is_devmode
 #   sighshchk = (bool) set if sighash checks are disabled
 #   seedvault = (bool) opt-in enable seed vault feature
 #   seeds = list of stored secrets for seedvault feature
+#   bright = (int:0-255) LCD brightness when on battery
+#   notes = (complex) Secure notes held for user, see notes.py
+#   accts = (list of tuples: (addr_fmt, account#)) Single-sig wallets we've seen them use
+#   aei   = (bool) allow changing start index in Address Explorer
+#   b85max = (bool) allow max BIP-32 int value in BIP-85 derivations
 
 # Stored w/ key=00 for access before login
 #   _skip_pin = hard code a PIN value (dangerous, only for debug)
@@ -64,7 +68,7 @@ from version import mk_num, is_devmode
 #   cd_lgto = [<=mk3] minutes to show in countdown (in countdown-to-brick mode)
 #   cd_mode = [<=mk3] set to enable some less-destructive modes
 #   cd_pin = [<=mk3] pin code which enables "countdown to brick" mode
-#   kbtn =  (1 char) '1'-'9' that will wipe seed during login process (mk4+)
+#   kbtn =  (1 char str) button will wipe seed during login process (mk4+, Q)
 #   terms_ok = customer has signed-off on the terms of sale
 
 # settings linked to seed
@@ -75,14 +79,13 @@ from version import mk_num, is_devmode
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
 # keep these settings only if unspecified on the other end
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
-                          "axskip", "del", "pms", "idle_to", "b39skip"]
+                          "axskip", "del", "pms", "idle_to", "batt_to", "b39skip", "brite"]
 
 SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words']
 
 NUM_SLOTS = const(100)
 SLOTS = range(NUM_SLOTS)
 MK4_WORKDIR = '/flash/settings/'
-
 
 # for mk4: we store binary files on LFS2 filesystem
 def MK4_FILENAME(slot):
@@ -94,20 +97,24 @@ class SettingsObject:
     master_sv_data = {}
     master_nvram_key = None
 
+    # need to cache this: settings used before login
+    _prelogin = None
+
     def __init__(self, nvram_key=None):
         # NOTE: constructor no longer loads the values by default (too slow).
         self.is_dirty = 0
         self.my_pos = None
 
-        self.nvram_key = nvram_key or b'\0'*32
+        self.nvram_key = nvram_key or bytes(32)
         self.current = self.default_values()
 
     @classmethod
     def prelogin(cls):
         # make an instance of the pre-login settings (ie. w/o key)
-        rv = cls()
-        rv.load()
-        return rv
+        if not cls._prelogin:
+            cls._prelogin = cls()
+            cls._prelogin.load()
+        return cls._prelogin
 
     def get_aes(self, pos):
         # Build AES object for en/decrypt of specific block.
@@ -139,7 +146,7 @@ class SettingsObject:
         mine = False
 
         if not new_secret:
-            if not pa.is_successful() or pa.is_secret_blank():
+            if not pa.is_successful() or not pa.has_secrets():
                 # simple fixed key allows us to store a few things when logged out
                 key = bytes(32)
             else:
@@ -184,13 +191,6 @@ class SettingsObject:
             # Error (ENOENT) expected here when saving first time, because the
             # "old" slot was not in use
             pass
-
-    def _deny_slot(self, pos):
-        # write garbage to look legit in a slot
-        with self._open_file(pos, 'wb') as fd:
-            for i in range(0, 4096, 256):
-                h = ngu.random.bytes(256)
-                fd.write(h)
 
     def _read_slot(self, pos, decryptor):
         # Mk4 is just reading a binary file and decrypt as we go.
@@ -369,8 +369,6 @@ class SettingsObject:
 
         # pick a (new) random home
         self.my_pos = self.find_spot(-1)
-        if is_devmode:
-            self.current['chain'] = 'XTN'
 
     def get(self, kn, default=None):
         return self.current.get(kn, default)
@@ -398,6 +396,7 @@ class SettingsObject:
     def merge_previous_active(self, previous):
         if previous:
             for k in KEEP_IF_BLANK_SETTINGS:
+                # XXX this assumes all default values are falsy, better would be "defined" vs not
                 if previous.get(k, None) and not self.current.get(k, None):
                     self.current[k] = previous[k]
 
@@ -467,7 +466,7 @@ class SettingsObject:
         if avail:
             return avail.pop()
 
-        # TODO destructive
+        # destructive
         victim = randbelow(NUM_SLOTS)
         self._wipe_slot(victim)
 
@@ -491,10 +490,10 @@ class SettingsObject:
 
     def blank(self):
         # erase current copy of values in nvram; older ones may exist still
-        # - use when clearing the seed value
+        # - used when clearing the current seed value
         if self.my_pos is not None:
             self._wipe_slot(self.my_pos)
-            self.my_pos = 0
+            self.my_pos = None
 
         # act blank too, just in case.
         self.current.clear()
@@ -502,8 +501,11 @@ class SettingsObject:
 
     @staticmethod
     def default_values():
-        # Please try to avoid defaults here... It's better to put into code
+        # Please try to avoid adding defaults here... It's better to put into code
         # where value is used, and treat undefined as the default state.
-        return dict(_age=0)
+        rv = dict(_age=0)
+        if version.is_devmode:
+            rv['chain'] = 'XTN'
+        return rv
 
 # EOF

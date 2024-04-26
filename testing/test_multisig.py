@@ -22,6 +22,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.tx import Tx
 from io import BytesIO
 from hashlib import sha256
+from bbqr import split_qrs
 
 
 def HARD(n=0):
@@ -110,7 +111,7 @@ def make_multisig(dev, sim_execfile):
             else:
                 path = deriv.format(idx=i).replace('m/', '')
                 try:
-                    sub = pk.subkey_for_path(path)
+                    sub = pk.subkey_for_path(path.replace("h", "'"))
                 except IndexError:
                     # some test cases are using bogus paths
                     sub = pk
@@ -131,7 +132,7 @@ def make_multisig(dev, sim_execfile):
         else:
             path = deriv.format(idx=N-1).replace('m/', '')
             try:
-                sub = pk.subkey_for_path(path)
+                sub = pk.subkey_for_path(path.replace("h", "'"))
             except IndexError:
                 # some test cases are using bogus paths
                 sub = pk
@@ -143,7 +144,7 @@ def make_multisig(dev, sim_execfile):
     return doit
 
 @pytest.fixture
-def offer_ms_import(cap_story, dev, need_keypress):
+def offer_ms_import(cap_story, dev):
     def doit(config, allow_non_ascii=False):
         # upload the file, trigger import
         file_len, sha = dev.upload_file(config.encode('utf-8' if allow_non_ascii else 'ascii'))
@@ -161,11 +162,12 @@ def offer_ms_import(cap_story, dev, need_keypress):
     return doit
 
 @pytest.fixture
-def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
+def import_ms_wallet(dev, make_multisig, offer_ms_import, press_select,
+                     is_q1, request, need_keypress):
 
     def doit(M, N, addr_fmt=None, name=None, unique=0, accept=False, common=None,
              keys=None, do_import=True, derivs=None, descriptor=False,
-             int_ext_desc=False, dev_key=False):
+             int_ext_desc=False, dev_key=False, way=None):
         keys = keys or make_multisig(M, N, unique=unique, dev_key=dev_key,
                                      deriv=common or (derivs[0] if derivs else None))
         name = name or f'test-{M}-{N}'
@@ -176,7 +178,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
         if descriptor:
             if not derivs:
                 if not common:
-                    common = "m/45'"
+                    common = "m/45h"
                 key_list = [(xfp, common, dd.hwif(as_private=False)) for xfp, m, dd in keys]
             else:
                 assert len(derivs) == N
@@ -211,7 +213,73 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
         #print(config)
         open('debug/last-ms.txt', 'wt').write(config)
 
-        title, story = offer_ms_import(config)
+        if way is None:  # USB
+            title, story = offer_ms_import(config)
+        else:
+            # only get those simulator related fixtures here, to be able to
+            # use this with real HW
+            cap_menu = request.getfixturevalue('cap_menu')
+            cap_story = request.getfixturevalue('cap_story')
+            goto_home = request.getfixturevalue('goto_home')
+            pick_menu_item = request.getfixturevalue('pick_menu_item')
+
+            if "Skip Checks?" not in cap_menu():
+                # we are not in multisig menu
+                goto_home()
+                pick_menu_item("Settings")
+                pick_menu_item("Multisig Wallets")
+                time.sleep(.1)
+
+            ms_menu = cap_menu()
+            if way == "qr":
+                if "Import from QR" not in ms_menu and not is_q1:
+                    pytest.skip("No QR support")
+
+                scan_a_qr = request.getfixturevalue('scan_a_qr')
+                pick_menu_item("Import from QR")
+
+                actual_vers, parts = split_qrs(config, 'U', max_version=20)
+                random.shuffle(parts)
+
+                for p in parts:
+                    scan_a_qr(p)
+                    time.sleep(2.0 / len(parts))
+
+            elif way == "nfc":
+                if "Import via NFC" not in ms_menu:
+                    pytest.skip("NFC disabled")
+
+                nfc_write_text = request.getfixturevalue('nfc_write_text')
+                pick_menu_item("Import via NFC")
+                nfc_write_text(config)
+                time.sleep(0.5)
+
+            else:
+                assert way in ("sd", "vdisk")
+                if way == "sd":
+                    path_f = request.getfixturevalue('microsd_path')
+                else:
+                    path_f = request.getfixturevalue('virtdisk_path')
+
+                fname = name + ".txt"
+                with open(path_f(fname), "w") as f:
+                    f.write(config)
+
+                pick_menu_item("Import from File")
+                time.sleep(.1)
+                _, story = cap_story()
+                if way == "vdisk":
+                    if "(2) to import from Virtual Disk" not in story:
+                        pytest.skip("VDisk disabled")
+                    need_keypress("2")
+                else:
+                    if "Press (1)" in story:
+                        need_keypress("1")
+
+                pick_menu_item(fname)
+
+            time.sleep(.2)
+            title, story = cap_story()
 
         assert 'Create new multisig' in story \
                 or 'Update existing multisig wallet' in story \
@@ -223,7 +291,7 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
         if accept:
             time.sleep(.1)
-            need_keypress('y')
+            press_select()
 
             # Test it worked.
             time.sleep(.1)      # required
@@ -238,9 +306,10 @@ def import_ms_wallet(dev, make_multisig, offer_ms_import, need_keypress):
 
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_ms_import_variations(N, make_multisig, offer_ms_import, need_keypress):
+def test_ms_import_variations(N, make_multisig, offer_ms_import, press_cancel, is_q1):
     # all the different ways...
     keys = make_multisig(N, N)
+
 
     # bare, no fingerprints
     # - no xfps
@@ -248,7 +317,7 @@ def test_ms_import_variations(N, make_multisig, offer_ms_import, need_keypress):
     config = '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
     title, story = offer_ms_import(config)
     assert f'Policy: {N} of {N}\n' in story
-    need_keypress('x')
+    press_cancel()
 
     # exclude myself (expect fail)
     config = '\n'.join(sk.hwif(as_private=False) 
@@ -264,7 +333,7 @@ def test_ms_import_variations(N, make_multisig, offer_ms_import, need_keypress):
         config = f'name: {name}\n'
         config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
         title, story = offer_ms_import(config)
-        need_keypress('x')
+        press_cancel()
         assert name in story
 
     # too long name
@@ -284,14 +353,14 @@ def test_ms_import_variations(N, make_multisig, offer_ms_import, need_keypress):
         config.insert(i, '')
     title, story = offer_ms_import('\n'.join(config))
     assert f'Policy: {N} of {N}\n' in story
-    need_keypress('x')
+    press_cancel()
 
     # the different addr formats
     for af in unmap_addr_fmt.keys():
         config = f'format: {af}\n'
         config += '\n'.join(sk.hwif(as_private=False) for xfp,m,sk in keys)
         title, story = offer_ms_import(config)
-        need_keypress('x')
+        press_cancel()
         assert f'Policy: {N} of {N}\n' in story
 
 def make_redeem(M, keys, path_mapper=None,
@@ -394,7 +463,8 @@ def make_ms_address(M, keys, idx=0, is_change=0, addr_fmt=AF_P2SH, testnet=1, **
     
 
 @pytest.fixture
-def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh, has_ms_checks):
+def test_ms_show_addr(dev, cap_story, press_select, addr_vs_path, bitcoind_p2sh,
+                      has_ms_checks, is_q1):
     def doit(M, keys, addr_fmt=AF_P2SH, bip45=True, **make_redeem_args):
         # test we are showing addresses correctly
         # - verifies against bitcoind as well
@@ -424,7 +494,7 @@ def test_ms_show_addr(dev, cap_story, need_keypress, addr_vs_path, bitcoind_p2sh
         else:
             assert 'UNVERIFIED' in story
 
-        need_keypress('y')
+        press_select()
 
         # check expected addr was generated based on my math
         addr_vs_path(got_addr, addr_fmt=addr_fmt, script=scr)
@@ -459,7 +529,8 @@ def test_import_ranges(m_of_n, use_regtest, addr_fmt, clear_ms, import_ms_wallet
 
 @pytest.mark.bitcoind
 @pytest.mark.ms_danger
-def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks):
+def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet,
+                       test_ms_show_addr, has_ms_checks):
     # detect when pubkeys are not in order in the redeem script
     M, N = 1, 15
 
@@ -477,7 +548,8 @@ def test_violate_bip67(clear_ms, use_regtest, import_ms_wallet, need_keypress, t
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('which_pubkey', [0, 1, 14])
-def test_bad_pubkey(has_ms_checks, use_regtest, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr, which_pubkey):
+def test_bad_pubkey(has_ms_checks, use_regtest, clear_ms, import_ms_wallet,
+                    test_ms_show_addr, which_pubkey):
     # give incorrect pubkey inside redeem script
     M, N = 1, 15
     keys = import_ms_wallet(M, N, accept=1)
@@ -498,7 +570,8 @@ def test_bad_pubkey(has_ms_checks, use_regtest, clear_ms, import_ms_wallet, need
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-def test_zero_depth(clear_ms, use_regtest, addr_fmt, import_ms_wallet, need_keypress, test_ms_show_addr, make_multisig):
+def test_zero_depth(clear_ms, use_regtest, addr_fmt, import_ms_wallet
+                    , test_ms_show_addr, make_multisig):
     # test having a co-signer with "m" only key ... ie. depth=0
 
     M, N = 1, 2
@@ -524,7 +597,8 @@ def test_zero_depth(clear_ms, use_regtest, addr_fmt, import_ms_wallet, need_keyp
 @pytest.mark.parametrize('mode', ['wrong-xfp', 'long-path', 'short-path', 'zero-path'])
 @pytest.mark.ms_danger
 @pytest.mark.bitcoind
-def test_bad_xfp(mode, clear_ms, use_regtest, import_ms_wallet, need_keypress, test_ms_show_addr, has_ms_checks, request):
+def test_bad_xfp(mode, clear_ms, use_regtest, import_ms_wallet
+                 , test_ms_show_addr, has_ms_checks, request):
     # give incorrect xfp+path args during show_address
 
     if has_ms_checks and (mode in {'zero-path', 'wrong-xfp'}):
@@ -572,7 +646,8 @@ def test_bad_xfp(mode, clear_ms, use_regtest, import_ms_wallet, need_keypress, t
     "m/1/2/3/4/5/6/7/8/9/10/11/12/13",          # assuming MAX_PATH_DEPTH==12
 ])
 @pytest.mark.bitcoind
-def test_bad_common_prefix(cpp, use_regtest, clear_ms, import_ms_wallet, need_keypress, test_ms_show_addr):
+def test_bad_common_prefix(cpp, use_regtest, clear_ms, import_ms_wallet,
+                           test_ms_show_addr):
     # give some incorrect path values as the common prefix derivation
 
     M, N = 1, 15
@@ -581,7 +656,8 @@ def test_bad_common_prefix(cpp, use_regtest, clear_ms, import_ms_wallet, need_ke
     assert 'bad derivation line' in str(ee)
 
 
-def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
+def test_import_detail(clear_ms, import_ms_wallet, need_keypress,
+                       cap_story, is_q1, press_cancel):
     # check all details are shown right
 
     M,N = 14, 15
@@ -600,17 +676,21 @@ def test_import_detail(clear_ms, import_ms_wallet, need_keypress, cap_story):
     for xp in xpubs:
         assert xp in story
 
-    need_keypress('x')
+    press_cancel()
 
     time.sleep(.1)
-    need_keypress('x')
+    press_cancel()
 
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", ["qr", "sd", "vdisk", "nfc"])
 @pytest.mark.parametrize('acct_num', [0, 99, 123])
 @pytest.mark.parametrize('testnet', [True, False])
-def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu, need_keypress,
-                       microsd_path, load_export, use_mainnet, testnet, way):
+def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
+                       need_keypress, microsd_path, load_export, use_mainnet,
+                       testnet, way, is_q1, press_select, mk4_qr_not_allowed):
+
+    mk4_qr_not_allowed(way)
+
     if not testnet:
         use_mainnet()
 
@@ -622,17 +702,17 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
     time.sleep(.1)
     title, story = cap_story()
     assert 'BIP-48' in story
-    assert "m/45'" not in story
-    assert f"m/48'/{int(testnet)}'" in story
-    assert "acct'" in story
+    assert "m/45h" not in story
+    assert f"m/48h/{int(testnet)}h" in story
+    assert "{acct}h" in story
     
-    need_keypress('y')
+    press_select()
 
     # enter account number every time
     time.sleep(.1)
     for n in str(acct_num):
         need_keypress(n)
-    need_keypress('y')
+    press_select()
 
     rv = load_export(way, is_json=True, label="Multisig XPUB", fpattern="ccxp-", sig_check=False)
 
@@ -657,8 +737,8 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         assert expect.hwif() == n.hwif()
 
     for name, deriv in [ 
-        ('p2sh_p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/1'"),
-        ('p2wsh', f"m/48'/{int(testnet)}'/{acct_num}'/2'"),
+        ('p2sh_p2wsh', f"m/48h/{int(testnet)}h/{acct_num}h/1h"),
+        ('p2wsh', f"m/48h/{int(testnet)}h/{acct_num}h/2h"),
     ]:
         e = BIP32Node.from_wallet_key(simulator_fixed_tprv)
         if not testnet:
@@ -670,15 +750,16 @@ def test_export_airgap(acct_num, goto_home, cap_story, pick_menu_item, cap_menu,
         assert n.tree_depth() == 4
         assert n.child_index() & (1<<31)
         assert n.child_index() & 0xff == int(deriv[-2])
-        expect = e.subkey_for_path(deriv[2:] + ".pub") 
+        expect = e.subkey_for_path(deriv[2:].replace("h", "'") + ".pub")
         assert expect.hwif() == n.hwif()
 
         # TODO add tests for descriptor template
 
 @pytest.mark.parametrize('N', [ 3, 15])
 @pytest.mark.parametrize('vdisk', [True, False])
-def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item, need_keypress, microsd_path, make_multisig,
-                   virtdisk_path):
+def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item,
+                   need_keypress, microsd_path, make_multisig,
+                   virtdisk_path, is_q1, press_cancel, press_select):
     # test menu-based UX for importing wallet file from SD
     M = N-1
 
@@ -701,21 +782,14 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item, need_keypress
         pick_menu_item('Import from File')
         time.sleep(0.5)
         _, story = cap_story()
-        if vdisk and "Unable to find any suitable files for this operation" in story:
-            pytest.skip("Vdisk disabled")
-        if "Press (1) to import multisig wallet file from SD Card" in story:
-            if vdisk:
-                if "press (2) to import from Virtual Disk" not in story:
-                    pytest.skip("Vdisk disabled")
-                else:
-                    need_keypress("2")
+        if vdisk:
+            if "(2) to import from Virtual Disk" not in story:
+                pytest.skip("Vdisk disabled")
             else:
+                need_keypress("2")
+        else:
+            if "(1) to import multisig wallet file from SD Card" in story:
                 need_keypress("1")
-
-        time.sleep(.1)
-        _, story = cap_story()
-        assert "Pick multisig wallet" in story
-        need_keypress('y')
 
         time.sleep(.1)
         pick_menu_item(fname.rsplit('/', 1)[1])
@@ -728,18 +802,18 @@ def test_import_ux(N, vdisk, goto_home, cap_story, pick_menu_item, need_keypress
         assert f'Policy: {M} of {N}\n' in story
 
         # abort install
-        need_keypress('x')
+        press_cancel()
 
     finally:
         # cleanup
         try: os.unlink(fname)
         except: pass
 
-@pytest.mark.parametrize("way", ["sd", "vdisk", "nfc"])
+@pytest.mark.parametrize("way", [None, "sd", "vdisk", "nfc", "qr"])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-@pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45'"])
-def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, need_keypress,
-                          microsd_path, import_ms_wallet, addr_fmt, clear_ms, way, load_export):
+@pytest.mark.parametrize('comm_prefix', ['m/1/2/3/4/5/6/7/8/9/10/11/12', None, "m/45h"])
+def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap_menu, press_select,
+                          microsd_path, import_ms_wallet, addr_fmt, clear_ms, way, load_export, is_q1):
 
     # create a wallet, export to SD card, check file created.
     # - checks some values for derivation path, assuming MAX_PATH_DEPTH==12
@@ -747,8 +821,9 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     clear_ms()
 
     name = 'ex-test-%d' % random.randint(10000,99999)
-    M,N = 3, 15
-    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1, common=comm_prefix)
+    M,N = 3, 5
+    keys = import_ms_wallet(M, N, name=name, addr_fmt=addr_fmt, accept=1,
+                            common=comm_prefix, way=way)
 
     goto_home()
     pick_menu_item('Settings')
@@ -759,7 +834,10 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     pick_menu_item(item)
 
     pick_menu_item('Coldcard Export')
-    contents = load_export(way, label="Coldcard multisig setup", is_json=False, sig_check=False)
+    contents = load_export(way or "sd", label="Coldcard multisig setup", is_json=False, sig_check=False)
+    if way == "qr":
+        # QR code still displayed on screen
+        press_select()
 
     got = set()
     for ln in io.StringIO(contents).readlines():
@@ -780,7 +858,7 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
             assert value == f'{M} of {N}'
             got.add(label)
         elif label == 'Derivation':
-            assert value == (comm_prefix or "m/45'")
+            assert value == (comm_prefix or "m/45h")
             got.add(label)
         elif label == 'Format':
             assert value == addr_fmt.upper()
@@ -803,11 +881,12 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
     pick_menu_item('Delete')
 
     time.sleep(.2)
-    _, story = cap_story()
-    assert 'you SURE' in story
+    title, story = cap_story()
+    where = title if is_q1 else story
+    assert 'you SURE' in where
     assert name in story
 
-    need_keypress('y')
+    press_select()
     time.sleep(.1)
     menu = cap_menu()
     assert not [i for i in menu if name in i]
@@ -815,16 +894,17 @@ def test_export_single_ux(goto_home, comm_prefix, cap_story, pick_menu_item, cap
 
 
 @pytest.mark.parametrize('N', [ 3, 15])
-def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story, mk_num):
+def test_overflow(N, import_ms_wallet, clear_ms, press_select, cap_story, mk_num, is_q1):
+
     clear_ms()
     M = N
     name = 'a'*20       # longest possible
     for count in range(1, 10):
         keys = import_ms_wallet(M, N, name=name, addr_fmt='p2wsh', unique=count, accept=0,
-                                    common="m/45'/0'/34'")
+                                    common="m/45h/0h/34h")
 
         time.sleep(.1)
-        need_keypress('y')
+        press_select()
 
         time.sleep(.2)
         title, story = cap_story()
@@ -842,7 +922,7 @@ def test_overflow(N, import_ms_wallet, clear_ms, need_keypress, cap_story, mk_nu
         if N == 15:
             assert count == 2, "Expect fail at 2"
 
-    need_keypress('y')
+    press_select()
     clear_ms()
 
 @pytest.fixture
@@ -869,8 +949,11 @@ def test_make_example_file(microsd_path, make_multisig):
     return doit
 
 @pytest.mark.parametrize('N', [ 5, 10])
-def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu):
+def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import,
+                         need_keypress, cap_story, goto_home, pick_menu_item,
+                         cap_menu, is_q1, press_select):
     # import wallet, rename it, (check that indicated, works), attempt same w/ addr fmt different
+
     M = N
 
     clear_ms()
@@ -892,13 +975,14 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
 
         menu = cap_menu()
         assert f'{M}/{N}: {name}' in menu
-        assert (len(menu) - num_wallets) in [5, 6]        # depending if NFC enabled or not
+        # depending if NFC enabled or not, and if Q (has QR)
+        assert (len(menu) - num_wallets) in [5, 6, 7]
 
     title, story = offer_ms_import(make_named('xxx-orig'))
     assert 'Create new multisig wallet' in story
     assert 'xxx-orig' in story
     assert 'P2SH' in story
-    need_keypress('y')
+    press_select()
     has_name('xxx-orig')
 
     # just simple rename
@@ -906,7 +990,7 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
     assert 'update name only' in story.lower()
     assert 'xxx-new' in story
 
-    need_keypress('y')
+    press_select()
     has_name('xxx-new')
 
     assert N < 15, 'cant make more, no space'
@@ -921,9 +1005,10 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
     assert 'P2WSH' in story
 
     # should be 2 now, slightly different
-    need_keypress('y')
+    press_select()
     has_name('xxx-newer', 2)
 
+    # TODO
     # repeat last one, should still be two
     for keys in ['yn', 'n']:
         title, story = offer_ms_import(newer)
@@ -939,7 +1024,9 @@ def test_import_dup_safe(N, clear_ms, make_multisig, offer_ms_import, need_keypr
     clear_ms()
 
 @pytest.mark.parametrize('N', [ 5])
-def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import, need_keypress, cap_story, goto_home, pick_menu_item, cap_menu):
+def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import,
+                              press_select, cap_story, goto_home,
+                              pick_menu_item, cap_menu, is_q1):
     # import wallet, tweak xpub only, check that change detected
     clear_ms()
 
@@ -963,7 +1050,7 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import, need_
     assert 'Create new multisig wallet' in story
     assert 'xxx-orig' in story
     assert 'P2SH' in story
-    need_keypress('y')
+    press_select()
 
     # change one key.
     title, story = offer_ms_import(make_named('xxx-new', tweaked=True))
@@ -977,7 +1064,8 @@ def test_import_dup_diff_xpub(N, clear_ms, make_multisig, offer_ms_import, need_
 @pytest.mark.bitcoind
 @pytest.mark.parametrize('m_of_n', [(2,2), (2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', ['p2sh-p2wsh', 'p2sh', 'p2wsh' ])
-def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms, make_multisig, import_ms_wallet, need_keypress, test_ms_show_addr):
+def test_import_dup_xfp_fails(m_of_n, use_regtest, addr_fmt, clear_ms,
+                              make_multisig, import_ms_wallet, test_ms_show_addr):
 
     M, N = m_of_n
 
@@ -1003,7 +1091,7 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
     clear_ms()
     keys = import_ms_wallet(M, N, name='cli-test', accept=1)
 
-    pmapper = lambda i: [HARD(45), i, 0,0]
+    pmapper = lambda i: [HARD(45), i, 0,3]
 
     scr, pubkeys, xfp_paths = make_redeem(M, keys, pmapper)
 
@@ -1047,11 +1135,12 @@ def test_ms_cli(dev, addr_fmt, clear_ms, import_ms_wallet, addr_vs_path, M=1, N=
 
 
 @pytest.fixture
-def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_ms,
-                       reset_seed_words):
+def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, press_select, clear_ms,
+                       reset_seed_words, is_q1):
 
     # construct a wallet (M of 4) using different bip39 passwords, and default sim
     def doit(M, addr_fmt=None, do_import=True):
+
         passwords = ['Me', 'Myself', 'And I', '']
 
         if 0:
@@ -1069,6 +1158,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
             pprint(keys)
         else:
             # Much, FASTER!
+            # XXX assumes testnet
             assert dev.is_simulator
             keys = [(3503269483, None,
                         BIP32Node.from_hwif('tpubD9429UXFGCTKJ9NdiNK4rC5ygqSUkginycYHccqSg5gkmyQ7PZRHNjk99M6a6Y3NY8ctEUUJvCu6iCCui8Ju3xrHRu3Ez1CKB4ZFoRZDdP9')),
@@ -1095,7 +1185,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
 
             # dont care if update or create; accept it.
             time.sleep(.1)
-            need_keypress('y')
+            press_select()
 
         def select_wallet(idx):
             # select to specific pw
@@ -1103,7 +1193,7 @@ def make_myself_wallet(dev, set_bip39_pw, offer_ms_import, need_keypress, clear_
             if do_import:
                 offer_ms_import(config)
                 time.sleep(.1)
-                need_keypress('y')
+                press_select()
             assert xfp == keys[idx][0]
 
         return (keys, select_wallet)
@@ -1332,8 +1422,9 @@ def test_ms_sign_myself(M, use_regtest, make_myself_wallet, segwit, num_ins, dev
 @pytest.mark.parametrize('addr_fmt', ['p2wsh', 'p2sh-p2wsh'])
 @pytest.mark.parametrize('acct_num', [ 0, 99, 4321])
 @pytest.mark.parametrize('N', [ 3, 14])
-def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_item, need_keypress,
-                        microsd_path, set_bip39_pw, clear_ms, get_settings, load_export):
+def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_item,
+                        need_keypress, microsd_path, set_bip39_pw, clear_ms,
+                        get_settings, load_export, is_q1, press_select, press_cancel):
     # test UX and math for bip45 export
 
     # cleanup
@@ -1355,13 +1446,13 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
         pick_menu_item('Multisig Wallets')
         pick_menu_item('Export XPUB')
         time.sleep(.05)
-        need_keypress('y')
+        press_select()
 
         # enter account number every time
         time.sleep(.05)
         for n in str(acct_num):
             need_keypress(n)
-        need_keypress('y')
+        press_select()
 
         need_keypress('1')
 
@@ -1378,7 +1469,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     assert 'XPUB' in story
 
     if addr_fmt == 'p2wsh':
-        need_keypress('y')
+        press_select()
     elif addr_fmt == 'p2sh-p2wsh':
         need_keypress('1')
     elif addr_fmt == 'p2sh':
@@ -1407,13 +1498,13 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     else:
         assert 0, N
 
-    need_keypress('y')
+    press_select()
 
     time.sleep(.1)
     title, story = cap_story()
 
     assert "Create new multisig" in story
-    need_keypress('y')
+    press_select()
 
     impf, fname = load_export("sd", label="Coldcard multisig setup", is_json=False, sig_check=False,
                               tail_check="Import that file onto the other Coldcards involved with this multisig wallet",
@@ -1428,8 +1519,8 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     el_fname = microsd_path(fname)
     assert f'{M}of{N}' in wal['wallet_type']
 
-    need_keypress('y')
-    need_keypress('y')
+    press_select()
+    press_select()
 
     if N == 4 and acct_num == 0:
 
@@ -1453,8 +1544,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     _, story = cap_story()
     if "Press (1) to import multisig wallet file from SD Card" in story:
         need_keypress("1")
-    time.sleep(.05)
-    need_keypress('y')
+
     time.sleep(.05)
     pick_menu_item(cc_fname.rsplit('/', 1)[1])
 
@@ -1463,7 +1553,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     assert "Create new multisig" in story
     assert f"Policy: {M} of {N}" in story
     if addr_fmt != 'p2sh':
-        assert f"/{acct_num}'/" in story
+        assert f"/{acct_num}h/" in story
 
     need_keypress('1')
     time.sleep(.05)
@@ -1471,8 +1561,8 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
     # test code ehre
 
     # abort import, good enough
-    need_keypress('x')
-    need_keypress('x')
+    press_cancel()
+    press_cancel()
 
 
 @pytest.mark.unfinalized
@@ -1480,7 +1570,7 @@ def test_make_airgapped(addr_fmt, acct_num, N, goto_home, cap_story, pick_menu_i
 @pytest.mark.parametrize('addr_style', ["legacy", "p2sh-segwit", "bech32"])
 @pytest.mark.parametrize('cc_sign_first', [True, False])
 def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clear_ms, try_sign,
-                            need_keypress, addr_style, use_regtest):
+                            press_cancel, addr_style, use_regtest, is_q1):
     # Make a P2SH wallet with local bitcoind as a co-signer (and simulator)
     # - send an receive various
     # - following text of <https://github.com/bitcoin/bitcoin/blob/master/doc/psbt.md>
@@ -1526,10 +1616,12 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
     M,N=2,2
 
     clear_ms()
-    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45'"])
+    import_ms_wallet(M, N, keys=keys, accept=1, name="core-cosign", derivs=[bc_deriv, "m/45h"])
 
-    cc_deriv = "m/45'/55"
-    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(cc_deriv[2:]).sec())
+    cc_deriv = "m/45h/55"
+    cc_pubkey = B2A(BIP32Node.from_hwif(simulator_fixed_tprv).subkey_for_path(
+        cc_deriv[2:].replace("h", "'")
+    ).sec())
 
     # NOTE: bitcoind doesn't seem to implement pubkey sorting. We have to do it.
     resp = bitcoind.supply_wallet.addmultisigaddress(M, list(sorted([cc_pubkey, bc_pubkey])),
@@ -1551,7 +1643,7 @@ def test_bitcoind_cosigning(cc_sign_first, dev, bitcoind, import_ms_wallet, clea
                                 M, xfp_paths, scr, addr_fmt=addr_fmt), timeout=None)
     assert got_addr == ms_addr
     time.sleep(.1)
-    need_keypress('x')      # clear screen / start over
+    press_cancel()      # clear screen / start over
 
     print(f"Will be signing an input from {ms_addr}")
 
@@ -1744,7 +1836,7 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
     assert xfp == expect_xfp
 
     # check Coldcard derives expected Upub
-    derivation = "m/48'/1'/0'/1'"       # part of devtest/unit_iss6743.py 
+    derivation = "m/48h/1h/0h/1h"       # part of devtest/unit_iss6743.py
     expect_xpub = 'Upub5SJWbuhs5tM4mkJST69tnpGGaf8dDTqByx3BLSocWFpq5YLh1fky4DQTFGQVG6nCSqZfUiAAeStdxSQteUcfMsWjDkhniZx4GdwpB18Tnbq'
 
     pub = sim_execfile('devtest/unit_iss6743.py')
@@ -1766,10 +1858,10 @@ def test_iss6743(repeat, set_seed_words, sim_execfile, try_sign):
 
 @pytest.mark.parametrize('N', [ 3, 15])
 @pytest.mark.parametrize('xderiv', [ None, 'any', 'unknown', '*', '', 'none'])
-def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import, need_keypress):
+def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import):
     # try various synonyms for unknown/any derivation styles
 
-    keys = make_multisig(N, N, deriv="m/48'/0'/0'/1'/0", unique=1)
+    keys = make_multisig(N, N, deriv="m/48h/0h/0h/1h/0", unique=1)
 
     # just fingerprints, no deriv paths
     config = 'Format: p2sh-p2wsh\n'
@@ -1785,13 +1877,14 @@ def test_ms_import_nopath(N, xderiv, make_multisig, clear_ms, offer_ms_import, n
 @pytest.mark.parametrize('N', [ 15])
 @pytest.mark.parametrize('M', [ 1, 15])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_import, need_keypress,
+def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_import, press_select,
                                pick_menu_item, cap_story, microsd_path, virtdisk_path, nfc_read_text,
-                               goto_home, load_export):
+                               goto_home, load_export, is_q1):
     # try config file with different derivation paths given, including None
     # - also check we can convert those into Electrum wallets
-    actual = "m/48'/0'/0'/1'/0"
-    derivs = [ actual, 'm', "m/45'/0'/99'", "m/45'/34/34'/34"]
+
+    actual = "m/48h/0h/0h/1h/0"
+    derivs = [ actual, 'm', "m/45h/0h/99h", "m/45h/34/34h/34"]
 
     keys = make_multisig(M, N, deriv=actual, unique=1)
 
@@ -1814,7 +1907,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
     assert f'P2SH-P2WSH' in story
     assert 'Derivation:\n  Varies' in story
     assert f'  Varies ({len(set(derivs))})\n' in story
-    need_keypress('y')
+    press_select()
 
     goto_home()
     pick_menu_item('Settings')
@@ -1834,7 +1927,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
     time.sleep(.25)
     title, story = cap_story()
     assert 'This saves a skeleton Electrum wallet file' in story
-    need_keypress('y')
+    press_select()
 
     el = load_export(way, label="Electrum multisig wallet", sig_check=False, is_json=True)
 
@@ -1846,7 +1939,7 @@ def test_ms_import_many_derivs(M, N, way, make_multisig, clear_ms, offer_ms_impo
         co = el[kk]
         assert 'Coldcard' in co['label']
         dd = co['derivation']
-        assert (dd in derivs) or (dd == actual) or ("42069'" in dd) or (dd == 'm')
+        assert (dd in derivs) or (dd == actual) or ("42069h" in dd) or (dd == 'm')
 
     clear_ms()
 
@@ -1875,22 +1968,24 @@ def test_danger_warning(request, descriptor, clear_ms, import_ms_wallet, cap_sto
     else:
         assert 'WARNING' not in story
 
-@pytest.mark.parametrize('descriptor', [True, False])
 @pytest.mark.parametrize('change', [True, False])
-@pytest.mark.parametrize('N', [ 3, 15])
-@pytest.mark.parametrize('M', [ 3, 15])
+@pytest.mark.parametrize('start_idx', [1000, MAX_BIP32_IDX, 0])
+@pytest.mark.parametrize('M_N', [(2,3), (15,15)])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH] )
-def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, clear_ms, need_keypress, goto_home,
-                          pick_menu_item, cap_story, cap_menu, import_ms_wallet):
+def test_ms_addr_explorer(change, M_N, addr_fmt, start_idx, clear_ms, cap_menu,
+                          need_keypress, goto_home, pick_menu_item, cap_story,
+                          import_ms_wallet, make_multisig, settings_set,
+                          enter_number, set_addr_exp_start_idx):
     clear_ms()
+    M, N = M_N
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
-    M = min(M, N)
+    settings_set("aei", True if start_idx else False)
 
     dd = {
-        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
-        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+        AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45h/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48h/1h/0h/1h/{idx}", 'p2sh-p2wsh'),
     }
     deriv, text_a_fmt = dd[addr_fmt]
 
@@ -1899,29 +1994,30 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
     derivs = [deriv.format(idx=i) for i in range(N)]
 
     clear_ms()
-    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs, addr_fmt=text_a_fmt, descriptor=descriptor)
+    keys = import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs,
+                            addr_fmt=text_a_fmt)
 
     goto_home()
     pick_menu_item("Address Explorer")
     need_keypress('4')      # warning
+
+    set_addr_exp_start_idx(start_idx)
+
     m = cap_menu()
-    if descriptor:
-        wal_name = m[-1]
-    else:
-        assert wal_name in m
+    assert wal_name in m
     pick_menu_item(wal_name)
 
     time.sleep(.5)
     title, story = cap_story()
-    assert "Press (6)" in story
+    assert "(0)" in story
     assert "change addresses." in story
     if change:
-        need_keypress("6")
+        need_keypress("0")
         time.sleep(0.2)
         title, story = cap_story()
         # once change is selected - do not offer this option again
         assert "change addresses." not in story
-        assert "Press (6)" not in story
+        assert "(0)" not in story
     # unwrap text a bit
     if change:
         story = story.replace("=>\n", "=> ").replace('1/0]\n =>', "1/0 =>")
@@ -1938,8 +2034,12 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
 
         maps.append( (path, addr) )
 
-    assert len(maps) == 10
-    for idx, (subpath, addr) in enumerate(maps):
+    if start_idx <= 2147483638:
+        assert len(maps) == 10
+    else:
+        assert len(maps) == (MAX_BIP32_IDX - start_idx) + 1
+
+    for idx, (subpath, addr) in enumerate(maps, start=start_idx):
         chng_idx = 1 if change else 0
         path_mapper = lambda co_idx: str_to_path(derivs[co_idx]) + [chng_idx, idx]
         
@@ -1954,9 +2054,12 @@ def test_ms_addr_explorer(descriptor, change, M, N, addr_fmt, make_multisig, cle
         assert expect.endswith(end)
 
 
-def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_wallet, clear_ms, M=2, N=3):
+def test_dup_ms_wallet_bug(goto_home, pick_menu_item, press_select, import_ms_wallet,
+                           clear_ms, is_q1):
+    M = 2
+    N = 3
 
-    deriv = ["m/48'/1'/0'/69'/1"]*N
+    deriv = ["m/48h/1h/0h/69h/1"]*N
     fmts = [ 'p2wsh', 'p2sh-p2wsh']
 
     clear_ms()
@@ -1972,13 +2075,13 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_w
     time.sleep(.1)
     pick_menu_item('2/3: name-1')
     pick_menu_item('Delete')
-    need_keypress('y')
+    press_select()
 
     # BUG: pre v4.0.3, would be showing a "Yikes" referencing multisig:419 at this point
 
     pick_menu_item('2/3: name-0')
     pick_menu_item('Delete')
-    need_keypress('y')
+    press_select()
 
     clear_ms()
 
@@ -1987,8 +2090,8 @@ def test_dup_ms_wallet_bug(goto_home, pick_menu_item, need_keypress, import_ms_w
 @pytest.mark.parametrize('int_ext_desc', [True, False])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
 def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, goto_home, pick_menu_item,
-                          need_keypress, clear_ms, cap_story, microsd_path, virtdisk_path,
-                          nfc_read_text, load_export):
+                          press_select, clear_ms, cap_story, microsd_path, virtdisk_path,
+                          nfc_read_text, load_export, is_q1):
     clear_ms()
     M, N = M_N
     import_ms_wallet(M, N, addr_fmt=addr_fmt, accept=1, descriptor=True, int_ext_desc=int_ext_desc)
@@ -1996,7 +2099,7 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
-    need_keypress('y')  # only one enrolled multisig - choose it
+    press_select()  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item('Export')
     contents = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
@@ -2017,23 +2120,29 @@ def test_import_desciptor(M_N, addr_fmt, int_ext_desc, way, import_ms_wallet, go
 
 @pytest.mark.bitcoind
 @pytest.mark.parametrize("change", [True, False])
-@pytest.mark.parametrize('descriptor', [True, False])
-@pytest.mark.parametrize('M_N', [(3, 15), (2, 2), (3, 5), (15, 15)])
+@pytest.mark.parametrize("start_idx", [2147483540, MAX_BIP32_IDX, 0])
+@pytest.mark.parametrize('M_N', [(2, 2), (3, 5), (15, 15)])
 @pytest.mark.parametrize('addr_fmt', [AF_P2WSH, AF_P2SH, AF_P2WSH_P2SH])
 @pytest.mark.parametrize('way', ["sd", "vdisk", "nfc"])
-def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
+def test_bitcoind_ms_address(change, M_N, addr_fmt, clear_ms, goto_home, need_keypress,
                              pick_menu_item, cap_menu, cap_story, make_multisig, import_ms_wallet,
-                             microsd_path, bitcoind_d_wallet_w_sk, use_regtest, load_export, way):
+                             microsd_path, bitcoind_d_wallet_w_sk, use_regtest, load_export, way,
+                             is_q1, press_select, start_idx, settings_set, set_addr_exp_start_idx):
     use_regtest()
     clear_ms()
     bitcoind = bitcoind_d_wallet_w_sk
     M, N = M_N
+    # whether to import as descriptor or old school to CC
+    descriptor = random.choice([True, False])
+
+    settings_set("aei", True if start_idx else False)
+
     wal_name = f"ax{M}-{N}-{addr_fmt}"
 
     dd = {
-        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
-        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+        AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45h/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48h/1h/0h/1h/{idx}", 'p2sh-p2wsh'),
     }
     deriv, text_a_fmt = dd[addr_fmt]
 
@@ -2042,37 +2151,39 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
     derivs = [deriv.format(idx=i) for i in range(N)]
 
     clear_ms()
-    import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs, addr_fmt=text_a_fmt,
-                            descriptor=descriptor)
+    import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=derivs,
+                     addr_fmt=text_a_fmt, descriptor=descriptor)
 
     goto_home()
     pick_menu_item("Address Explorer")
     need_keypress('4')  # warning
+    set_addr_exp_start_idx(start_idx)
+
     m = cap_menu()
     if descriptor:
-        wal_name = m[-1]
+        wal_name = m[-2 if start_idx else -1]
     else:
         assert wal_name in m
     pick_menu_item(wal_name)
 
     time.sleep(0.2)
     title, story = cap_story()
-    assert "Press (6)" in story
+    assert "(0)" in story
     assert "change addresses." in story
     if change:
-        need_keypress("6")
+        need_keypress("0")
         time.sleep(0.2)
         title, story = cap_story()
         # once change is selected - do not offer this option again
         assert "change addresses." not in story
-        assert "Press (6)" not in story
+        assert "(0)" not in story
 
-    contents = load_export(way, label="Address summary", is_json=False, sig_check=False, vdisk_key="4")
+    contents = load_export(way, label="Address summary", is_json=False, sig_check=False)
     addr_cont = contents.strip()
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
-    need_keypress('y')  # only one enrolled multisig - choose it
+    press_select()  # only one enrolled multisig - choose it
     pick_menu_item('Descriptors')
     pick_menu_item("Bitcoin Core")
     contents = load_export(way, label="Bitcoin Core multisig setup", is_json=False, sig_check=False)
@@ -2090,14 +2201,24 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 
     if descriptor:
             assert "sortedmulti(" in desc_export
+
     if way == "nfc":
-        addr_range = [0, 9]
+        end_idx = start_idx + 9
+        if end_idx > MAX_BIP32_IDX:
+            end_idx = start_idx + (MAX_BIP32_IDX - start_idx)
+
+        addr_range = [start_idx, end_idx]
         cc_addrs = addr_cont.split("\n")
         part_addr_index = 0
     else:
-        addr_range = [0, 249]
+        end_idx = start_idx + 249
+        if end_idx > MAX_BIP32_IDX:
+            end_idx = start_idx + (MAX_BIP32_IDX - start_idx)
+
+        addr_range = [start_idx, end_idx]
         cc_addrs = addr_cont.split("\n")[1:]
         part_addr_index = 1
+
     bitcoind_addrs = bitcoind.deriveaddresses(desc_export, addr_range)
     for idx, cc_item in enumerate(cc_addrs):
         cc_item = cc_item.split(",")
@@ -2111,7 +2232,9 @@ def test_bitcoind_ms_address(change, descriptor, M_N, addr_fmt, clear_ms, goto_h
 
 @pytest.mark.bitcoind
 def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, microsd_wipe, goto_home, need_keypress,
-                                              pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign):
+                                              pick_menu_item, cap_story, load_export, microsd_path, cap_menu, try_sign,
+                                              is_q1, press_select):
+
     use_regtest()
     clear_ms()
     microsd_wipe()
@@ -2129,9 +2252,9 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     time.sleep(0.5)
     title, story = cap_story()
     assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
-    need_keypress("y")
+    press_select()
     need_keypress("0")  # account
-    need_keypress("y")
+    press_select()
     xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
     template = xpub_obj["p2sh_desc"]
     # get key from bitcoind cosigner
@@ -2158,8 +2281,8 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     if "Press (1) to import multisig wallet file from SD Card" in story:
         # in case Vdisk is enabled
         need_keypress("1")
+
     time.sleep(0.5)
-    need_keypress("y")
     pick_menu_item(name)
     _, story = cap_story()
     assert "Create new multisig wallet?" in story
@@ -2168,7 +2291,7 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
     assert f"All {N} co-signers must approve spends" in story
     assert "P2SH" in story
     assert "Derivation:\n  Varies (2)" in story
-    need_keypress("y")  # approve multisig import
+    press_select()  # approve multisig import
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
@@ -2221,8 +2344,10 @@ def test_legacy_multisig_witness_utxo_in_psbt(bitcoind, use_regtest, clear_ms, m
 @pytest.mark.parametrize("psbt_v2", [True, False])
 def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypress, pick_menu_item,
                                 sighash, cap_menu, cap_story, microsd_path, use_regtest, bitcoind,
-                                microsd_wipe, load_export, settings_set, psbt_v2, finalize_v2_v0_convert):
+                                microsd_wipe, load_export, settings_set, psbt_v2, is_q1,
+                                finalize_v2_v0_convert, press_select):
     # 2of2 case here is described in docs with tutorial
+
     M, N = m_n
     settings_set("sighshchk", 1)  # disable checks
     use_regtest()
@@ -2251,9 +2376,9 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     time.sleep(0.5)
     title, story = cap_story()
     assert "extended public keys (XPUB) you would need to join a multisig wallet" in story
-    need_keypress("y")
+    press_select()
     need_keypress("0")  # account
-    need_keypress("y")
+    press_select()
     xpub_obj = load_export("sd", label="Multisig XPUB", is_json=True, sig_check=False)
     template = xpub_obj[desc_type]
     # get keys from bitcoind signers
@@ -2289,7 +2414,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
         # in case Vdisk is enabled
         need_keypress("1")
     time.sleep(0.5)
-    need_keypress("y")
+
     pick_menu_item(name)
     _, story = cap_story()
     assert "Create new multisig wallet?" in story
@@ -2306,7 +2431,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     else:
         assert "P2SH-P2WSH" in story
     assert "Derivation:\n  Varies (2)" in story
-    need_keypress("y")  # approve multisig import
+    press_select()  # approve multisig import
     goto_home()
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
@@ -2369,18 +2494,10 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     pick_menu_item("Ready To Sign")
     time.sleep(0.5)
     title, story = cap_story()
-    if "OK TO SEND?" in title:
-        # multiple files
-        pass
-    else:
-        try:
-            pick_menu_item(name)
-        except:
-            time.sleep(0.5)
-            need_keypress("y")
-            pick_menu_item(name)
-            time.sleep(0.5)
-            title, story = cap_story()
+    if not "OK TO SEND?" in title:
+        pick_menu_item(name)
+        title, story = cap_story()
+
     assert title == "OK TO SEND?"
     if sighash != "ALL":
         assert "(1 warning below)" in story
@@ -2391,12 +2508,12 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
         else:
             assert "Caution" in story
             assert "Some inputs have unusual SIGHASH values not used in typical cases." in story
-    need_keypress("y")  # confirm signing
+    press_select()  # confirm signing
     time.sleep(0.5)
     title, story = cap_story()
     assert "PSBT Signed" == title
     assert "Updated PSBT is:" in story
-    need_keypress("y")
+    press_select()
     os.remove(microsd_path(name))
 
     fname = story.split("\n\n")[-1]
@@ -2434,20 +2551,12 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     pick_menu_item("Ready To Sign")
     time.sleep(0.5)
     title, _ = cap_story()
-    if "OK TO SEND?" in title:
-        # multiple files
-        pass
-    else:
-        try:
-            pick_menu_item(name)
-        except:
-            time.sleep(0.5)
-            need_keypress("y")
-            pick_menu_item(name)
-            time.sleep(0.5)
-            title, story = cap_story()
+    if not "OK TO SEND?" in title:
+        pick_menu_item(name)
+        title, story = cap_story()
+
     assert title == "OK TO SEND?"
-    need_keypress("y")  # confirm signing
+    press_select()  # confirm signing
     time.sleep(0.5)
     title, story = cap_story()
     if "SINGLE" in sighash:
@@ -2460,7 +2569,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
 
     assert "PSBT Signed" == title
     assert "Updated PSBT is:" in story
-    need_keypress("y")
+    press_select()
     fname = story.split("\n\n")[-1]
     with open(microsd_path(fname), "r") as f:
         cc_signed_psbt = f.read().strip()
@@ -2499,7 +2608,7 @@ def test_bitcoind_MofN_tutorial(m_n, desc_type, clear_ms, goto_home, need_keypre
     ("M must be <= N", "wsh(sortedmulti(3,[0f056943/48'/1'/0'/2']tpubDF2rnouQaaYrXF4noGTv6rQYmx87cQ4GrUdhpvXkhtChwQPbdGTi8GA88NUaSrwZBwNsTkC9bFkkC8vDyGBVVAQTZ2AS6gs68RQXtXcCvkP/0/*,[c463f778/44'/0'/0']tpubDD8pw7eZ9bUzYUR1LK5wpkA69iy3BpuLxPzsE6FFNdtTnJDySduc1VJdFEhEJQDKjYktznKdJgHwaQDRfQDQJpceDxH22c1ZKUMjrarVs7M/0/*))#uueddtsy"),
 ])
 def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_item, cap_menu, cap_story, make_multisig,
-                            import_ms_wallet, microsd_path, bitcoind_d_wallet_w_sk, use_regtest):
+                            import_ms_wallet, microsd_path, bitcoind_d_wallet_w_sk, use_regtest, is_q1, press_select):
     use_regtest()
     clear_ms()
     msg, desc = desc
@@ -2512,13 +2621,13 @@ def test_exotic_descriptors(desc, clear_ms, goto_home, need_keypress, pick_menu_
     pick_menu_item('Settings')
     pick_menu_item('Multisig Wallets')
     pick_menu_item('Import from File')
-    time.sleep(0.5)
+    time.sleep(0.1)
     _, story = cap_story()
     if "Pick multisig wallet file to import" not in story:
         assert "Press (1) to import multisig wallet file from SD Card" in story
         need_keypress("1")
-    time.sleep(0.5)
-    need_keypress("y")
+
+    time.sleep(0.1)
     pick_menu_item(name)
     _, story = cap_story()
     assert "Failed to import" in story
@@ -2592,16 +2701,16 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     wal_name = f"reexport_{M}-{N}-{addr_fmt}"
 
     dd = {
-        AF_P2WSH: ("m/48'/1'/0'/2'/{idx}", 'p2wsh'),
-        AF_P2SH: ("m/45'/{idx}", 'p2sh'),
-        AF_P2WSH_P2SH: ("m/48'/1'/0'/1'/{idx}", 'p2sh-p2wsh'),
+        AF_P2WSH: ("m/48h/1h/0h/2h/{idx}", 'p2wsh'),
+        AF_P2SH: ("m/45h/{idx}", 'p2sh'),
+        AF_P2WSH_P2SH: ("m/48h/1h/0h/1h/{idx}", 'p2sh-p2wsh'),
     }
     deriv, text_a_fmt = dd[addr_fmt]
     keys = make_multisig(M, N, unique=1, deriv=None if cmn_pth_from_root else deriv)
     derivs = [deriv.format(idx=i) for i in range(N)]
     clear_ms()
     import_ms_wallet(M, N, accept=1, keys=keys, name=wal_name, derivs=None if cmn_pth_from_root else derivs,
-                     addr_fmt=text_a_fmt, descriptor=False, common="m/45'" if cmn_pth_from_root else None)
+                     addr_fmt=text_a_fmt, descriptor=False, common="m/45h" if cmn_pth_from_root else None)
     # get bare descriptor
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
@@ -2613,7 +2722,14 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("View Descriptor")
-    need_keypress("1")
+    for _ in range(5):
+        _, story = cap_story()
+        if "Press (1) to export" in story:
+            need_keypress("1")
+            break
+        else:
+            time.sleep(1)
+
     contents = load_export(way, label="Descriptor multisig setup", is_json=False, sig_check=False)
     pretty_desc = contents.strip()
 
@@ -2634,7 +2750,14 @@ def test_multisig_descriptor_export(M_N, way, addr_fmt, cmn_pth_from_root, clear
     choose_multisig_wallet()
     pick_menu_item("Descriptors")
     pick_menu_item("View Descriptor")
-    _, story = cap_story()
+    for _ in range(5):
+        try:
+            _, story = cap_story()
+            if "Press (1)" in story:
+                break
+        except:
+            time.sleep(1)
+
     view_desc = story.strip().split("\n\n")[1]
 
     # assert that bare and pretty are the same after parse

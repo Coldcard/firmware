@@ -10,7 +10,7 @@ from public_constants import STXN_FLAGS_MASK
 from ustruct import pack, unpack_from
 from ckcc import watchpoint, is_simulator
 from utils import problem_file_line, call_later_ms
-from version import is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
+from version import supports_hsm, is_devmode, MAX_TXN_LEN, MAX_UPLOAD_LEN
 from exceptions import FramingError, CCBusyError, HSMDenied, HSMCMDDisabled
 
 # Unofficial, unpermissioned... numbers
@@ -552,11 +552,10 @@ class USBHandler:
         if cmd == 'pass':
             # bip39 passphrase provided, maybe use it if authorized
             assert self.encrypted_req, 'must encrypt'
-            from flow import bip39_passphrase_active
             from auth import start_bip39_passphrase
             from glob import settings
 
-            assert bip39_passphrase_active(), 'no seed'
+            assert settings.get("words", True), 'no seed'
             assert len(args) < 400, 'too long'
             pw = str(args, 'utf8')
             assert len(pw) < 100, 'too long'
@@ -577,64 +576,65 @@ class USBHandler:
         if cmd == 'bagi':
             return self.handle_bag_number(args)
 
-        # HSM and user-related features only supported on larger-memory Mk3
+        if supports_hsm:
+            # HSM and user-related features only supported on Mk4
 
-        if cmd == 'hsms':
-            # HSM mode "start" -- requires user approval
-            if args:
-                file_len, file_sha = unpack_from('<I32s', args)
-                if file_sha != self.file_checksum.digest():
-                    return b'err_Checksum'
-                assert 2 <= file_len <= (200*1000), "badlen"
-            else:
-                file_len = 0
+            if cmd == 'hsms':
+                # HSM mode "start" -- requires user approval
+                if args:
+                    file_len, file_sha = unpack_from('<I32s', args)
+                    if file_sha != self.file_checksum.digest():
+                        return b'err_Checksum'
+                    assert 2 <= file_len <= (200*1000), "badlen"
+                else:
+                    file_len = 0
 
-            # Start an UX interaction but return (mostly) immediately here
-            from hsm_ux import start_hsm_approval
-            await start_hsm_approval(sf_len=file_len, usb_mode=True)
+                # Start an UX interaction but return (mostly) immediately here
+                from hsm_ux import start_hsm_approval
+                await start_hsm_approval(sf_len=file_len, usb_mode=True)
 
-            return None
-
-        if cmd == 'hsts':
-            # can always query HSM mode
-            from hsm import hsm_status_report
-            import ujson
-            return b'asci' + ujson.dumps(hsm_status_report())
-
-        if cmd == 'gslr':
-            # get the value held in the Storage Locker
-            assert hsm_active, 'need hsm'
-            return b'biny' + hsm_active.fetch_storage_locker()
-
-        # User Mgmt
-        if cmd == 'nwur':     # new user
-            from users import Users
-            auth_mode, ul, sl = unpack_from('<BBB', args)
-            username = bytes(args[3:3+ul]).decode('ascii')
-            secret = bytes(args[3+ul:3+ul+sl])
-
-            return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
-
-        if cmd == 'rmur':     # delete user
-            from users import Users
-            ul, = unpack_from('<B', args)
-            username = bytes(args[1:1+ul]).decode('ascii')
-
-            return Users.delete(username)
-
-        if cmd == 'user':       # auth user (HSM mode)
-            from users import Users
-            totp_time, ul, tl = unpack_from('<IBB', args)
-            username = bytes(args[6:6+ul]).decode('ascii')
-            token = bytes(args[6+ul:6+ul+tl])
-
-            if hsm_active:
-                # just queues these details, can't be checked until PSBT on-hand
-                hsm_active.usb_auth_user(username, token, totp_time)
                 return None
-            else:
-                # dryrun/testing purposes: validate only, doesn't unlock nothing
-                return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
+
+            if cmd == 'hsts':
+                # can always query HSM mode
+                from hsm import hsm_status_report
+                import ujson
+                return b'asci' + ujson.dumps(hsm_status_report())
+
+            if cmd == 'gslr':
+                # get the value held in the Storage Locker
+                assert hsm_active, 'need hsm'
+                return b'biny' + hsm_active.fetch_storage_locker()
+
+            # User Mgmt
+            if cmd == 'nwur':     # new user
+                from users import Users
+                auth_mode, ul, sl = unpack_from('<BBB', args)
+                username = bytes(args[3:3+ul]).decode('ascii')
+                secret = bytes(args[3+ul:3+ul+sl])
+
+                return b'asci' + Users.create(username, auth_mode, secret).encode('ascii')
+
+            if cmd == 'rmur':     # delete user
+                from users import Users
+                ul, = unpack_from('<B', args)
+                username = bytes(args[1:1+ul]).decode('ascii')
+
+                return Users.delete(username)
+
+            if cmd == 'user':       # auth user (HSM mode)
+                from users import Users
+                totp_time, ul, tl = unpack_from('<IBB', args)
+                username = bytes(args[6:6+ul]).decode('ascii')
+                token = bytes(args[6+ul:6+ul+tl])
+
+                if hsm_active:
+                    # just queues these details, can't be checked until PSBT on-hand
+                    hsm_active.usb_auth_user(username, token, totp_time)
+                    return None
+                else:
+                    # dryrun/testing purposes: validate only, doesn't unlock nothing
+                    return b'asci' + Users.auth_okay(username, token, totp_time).encode('ascii')
 
         #print("USB garbage: %s +[%d]" % (cmd, len(args)))
 
@@ -738,6 +738,7 @@ class USBHandler:
         from glob import dis, hsm_active
         from utils import check_firmware_hdr
         from sigheader import FW_HEADER_OFFSET, FW_HEADER_SIZE, FW_HEADER_MAGIC
+        from pincodes import pa
 
         # maintain a running SHA256 over what's received
         if offset == 0:
@@ -776,6 +777,7 @@ class USBHandler:
                     if prob:
                         raise ValueError(prob)
                     self.is_fw_upgrade = bytes(hdr)
+                    assert not pa.tmp_value, "tmp"
 
             if is_trailer and self.is_fw_upgrade:
                 # expect the trailer to exactly match the original one
@@ -829,7 +831,7 @@ class USBHandler:
         from glob import dis, settings
         from pincodes import pa
 
-        if version.is_factory_mode and bag_num:
+        if bag_num and version.is_factory_mode and not version.has_qr:
             # check state first
             assert settings.get('tested', False)
             assert pa.is_blank()
@@ -839,7 +841,7 @@ class USBHandler:
             failed = callgate.set_bag_number(bag_num)
             assert not failed
 
-            callgate.set_rdp_level(2 if not is_devmode else 0)
+            callgate.set_rdp_level(2)
             pa.greenlight_firmware()
             dis.fullscreen(bytes(bag_num).decode())
 
@@ -852,6 +854,55 @@ class USBHandler:
 
 class EmulatedKeyboard:
     # be a context manager, used during kbd emulation
+
+    # <https://usb.org/sites/default/files/hut1_3_0.pdf> page 88+
+    char_map = {
+        "a": 0x04,
+        "b": 0x05,
+        "c": 0x06,
+        "d": 0x07,
+        "e": 0x08,
+        "f": 0x09,
+        "g": 0x0A,
+        "h": 0x0B,
+        "i": 0x0C,
+        "j": 0x0D,
+        "k": 0x0E,
+        "l": 0x0F,
+        "m": 0x10,
+        "n": 0x11,
+        "o": 0x12,
+        "p": 0x13,
+        "q": 0x14,
+        "r": 0x15,
+        "s": 0x16,
+        "t": 0x17,
+        "u": 0x18,
+        "v": 0x19,
+        "w": 0x1A,
+        "x": 0x1B,
+        "y": 0x1C,  # qwerty
+        "z": 0x1D,
+        # numbers (top row - USA centric)
+        "1": 0x1e,
+        "2": 0x1f,
+        "3": 0x20,
+        "4": 0x21,
+        "5": 0x22,
+        "6": 0x23,
+        "7": 0x24,
+        "8": 0x25,
+        "9": 0x26,
+        "0": 0x27,
+        " ": 0x2C,      # spacebar
+        # HACK: Keypad symbols work w/o concern for language, shift state
+        "/": 0x54,
+        "*": 0x55,
+        "-": 0x56,
+        "+": 0x57,
+        # Keyboard Enter
+        "\r": 0x28,
+    }
 
     def __enter__(self):
         return self
@@ -905,6 +956,12 @@ class EmulatedKeyboard:
             # enable usb only if it was previously enabled, otherwise keep disabled
             enable_usb()
 
+    @classmethod
+    def can_type(cls, s):
+        # do we know how to type all the chars in "s"
+        # .lower() has no effect on symbols, numbers, and escapes
+        return all(ch.lower() in cls.char_map for ch in s)
+
     async def send_keystrokes(self, keystroke_string):
         from glob import dis
         # Send keystrokes to enter a password... only expected to support Base64 charset
@@ -912,62 +969,19 @@ class EmulatedKeyboard:
             print("Simulating keystrokes: " + repr(keystroke_string))
             return
 
-        # <https://usb.org/sites/default/files/hut1_3_0.pdf> page 88+
-        char_map = {
-            "a": 0x04,
-            "b": 0x05,
-            "c": 0x06,
-            "d": 0x07,
-            "e": 0x08,
-            "f": 0x09,
-            "g": 0x0A,
-            "h": 0x0B,
-            "i": 0x0C,
-            "j": 0x0D,
-            "k": 0x0E,
-            "l": 0x0F,
-            "m": 0x10,
-            "n": 0x11,
-            "o": 0x12,
-            "p": 0x13,
-            "q": 0x14,
-            "r": 0x15,
-            "s": 0x16,
-            "t": 0x17,
-            "u": 0x18,
-            "v": 0x19,
-            "w": 0x1A,
-            "x": 0x1B,
-            "y": 0x1C,  # qwerty
-            "z": 0x1D,
-            # numbers (top row - USA centric)
-            "1": 0x1e,
-            "2": 0x1f,
-            "3": 0x20,
-            "4": 0x21,
-            "5": 0x22,
-            "6": 0x23,
-            "7": 0x24,
-            "8": 0x25,
-            "9": 0x26,
-            "0": 0x27,
-            # only symbols required for b64 without padding
-            "+": 0x57,  # Keypad
-            "/": 0x54,  # Keypad
-            # Keyboard Enter
-            "\r": 0x28,
-        }
         buf = bytearray(8)
         pwd_len = len(keystroke_string)
         dis.fullscreen('Typing...')
 
         for i, ch in enumerate(keystroke_string, start=1):
             cap = False
-            if ch in char_map:
-                to_press = char_map[ch]
-            else:
+            to_press = self.char_map.get(ch, None)
+            if to_press is None:
                 cap = True
-                to_press = char_map[ch.lower()]
+                to_press = self.char_map.get(ch.lower(), None)
+            if to_press is None:
+                # problem: we don't know how to type this char
+                to_press = 0x1B     # X
 
             buf[2] = to_press
             if cap:

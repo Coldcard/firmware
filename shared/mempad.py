@@ -40,7 +40,10 @@ class MembraneNumpad(NumpadBase):
         # each full scan is pushed onto this, only last one kept if overflow
         self.scans = deque((), 50, 0)
 
-        # internal to timer irq handler
+        # have we given this specific key to higher layers yet?
+        self._char_reported = set()
+
+        # internal state for timer irq handler
         self._history = None        # see _start_scan
         self._scan_count = 0
         self._cycle = 0
@@ -56,21 +59,22 @@ class MembraneNumpad(NumpadBase):
         # ready to start 
 
     def anypress_irq(self, pin):
-        # come here for any change, high or low
+        # come here for any change on column inputs, high or low
         if self.waiting_for_any:
             # something was pressed, but we don't know what.. start a scan+debounce
             self._start_scan()
 
     def start(self):
-        # Begin scanning for events
+        # begin scanning for events
         self._wait_any()
 
     def _wait_any(self):
-        # wait for any press.
+        # wait for any press but stop continuously scanning for now
         self.timer.deinit()
 
         for r in self.rows:
             r.off()
+
         self.waiting_for_any = True
 
     def _start_scan(self):
@@ -121,17 +125,16 @@ class MembraneNumpad(NumpadBase):
 
             # handle debounce, which happens in both directions: press and release
             # - all samples must be in agreement to count as either up or down
-            # - only handling single key-down at a time.
             if sum(self._history) == 0:
                 # all are up, and debounced as such
                 self.scans.append(0xff)
+            else:
+                for i in range(NUM_ROWS * NUM_COLS):
+                    if self._history[i] == NUM_SAMPLES:
+                        # down
+                        self.scans.append(i)
 
-            for i in range(NUM_ROWS * NUM_COLS):
-                if self._history[i] == NUM_SAMPLES:
-                    # down
-                    self.scans.append(i)
-
-                self._history[i] = 0
+                    self._history[i] = 0
 
     async def _finish_scan(self):
         # we're done a full scan (mulitple times: NUM_SAMPLES)
@@ -141,16 +144,19 @@ class MembraneNumpad(NumpadBase):
 
             if event == 0xff:
                 # all keys are now up
-                if self.key_pressed:
+                if self._char_reported:
+                    self._char_reported.clear()
                     self._key_event('')
             else:
                 # indicated key was found to be down
-                key = DECODER[event]
-                self._key_event(key)
+                ch = DECODER[event]
+                if ch not in self._char_reported:
+                    self._char_reported.add(ch)
+                    self._key_event(ch)
 
-                self.lp_time = utime.ticks_ms()
+                    self.lp_time = utime.ticks_ms()
 
-        if not self.key_pressed and utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
+        if not self._char_reported and utime.ticks_diff(utime.ticks_ms(), self.lp_time) > 250:
             # stop scanning now... nothing happening
             self._wait_any()
         else:

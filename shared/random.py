@@ -7,8 +7,8 @@ import ngu
 # use this instead of rand%n
 randbelow = ngu.random.uniform
 
-# for bytes
-bytes = ngu.random.bytes
+# for bytes, use ngu.random.byte(len)
+#bytes = ngu.random.bytes
 
 # In-place list shuffle using Fisher-Yates algo
 #

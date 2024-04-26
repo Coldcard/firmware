@@ -56,9 +56,10 @@ class ImportantTask:
                 # not reached, except on simulator:
                 break
         else:
-            print("IMPTASK: " + context["message"])
+            # uncaught exception in an unnamed (and unimportant) task
+            print("UNNAMED: " + context["message"])
             sys.print_exception(context["exception"])
-            print("... ignoring that")
+            print("... future: %r" % context.get("future", '?'))
 
     def start_task(self, name, awaitable):
         # start a critical task and watch for it to never die

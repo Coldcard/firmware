@@ -3,19 +3,48 @@
 # menu.py - Implement an interactive menu system.
 #
 import gc
-from display import FontLarge, FontTiny
 from ux import PressRelease, the_ux
 from uasyncio import sleep_ms
+from charcodes import (KEY_UP, KEY_DOWN, KEY_HOME, KEY_SPACE, KEY_END,
+                       KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER, KEY_CANCEL)
+from version import has_qwerty
 
-# number of full lines per screen
-PER_M = const(4)
+# Number of full text lines per screen.
+# - we will draw one past this because on Mk1-4 it shows a partial line under those 4
+if not has_qwerty:
+    PER_M = 4
+else:
+    from lcd_display import CHARS_H
+    PER_M = CHARS_H - 1
 
-# do wrap-around, but only for mega menus like seed words
-WRAP_IF_OVER = const(16)
+def numpad_remap(key):
+    # map from numpad+2 (12 keys) into symbolic names
+    # - might only make sense within context of menus.
+    if key == '5':
+        return KEY_UP
+    elif key == '8':
+        return KEY_DOWN
+    elif key == '7':
+        return KEY_PAGE_UP
+    elif key == '9':
+        return KEY_END
+    elif key == '0':
+        return KEY_HOME
+    elif key == 'y':
+        return KEY_ENTER
+    elif key == 'x':
+        return KEY_CANCEL
+    else:
+        # keys 1-4 useful for selecting the top visible items from menu
+        return key
 
 def start_chooser(chooser):
     # get which one to show as selected, list of choices, and fcn to call after
-    selected, choices, setter = chooser()
+    # - optional: a function to preview a value
+    selected, choices, setter, *preview = chooser()
+
+    if preview:
+        preview, = preview
 
     async def picked(menu, picked, xx_self):
         menu.chosen = picked
@@ -27,10 +56,14 @@ def start_chooser(chooser):
 
     # make a new menu, just for the choices
     m = MenuSystem([MenuItem(c, f=picked) for c in choices], chosen=selected)
+    if preview:
+        m.late_draw = lambda dis: preview(m.cursor)
+
     the_ux.push(m)
 
 class MenuItem:
-    def __init__(self, label, menu=None, f=None, chooser=None, arg=None, predicate=None):
+    def __init__(self, label, menu=None, f=None, chooser=None, arg=None,
+                 predicate=None, shortcut=None):
         self.label = label
         self.arg = arg
         if menu:
@@ -39,8 +72,17 @@ class MenuItem:
             self.next_function = f
         if chooser:
             self.chooser = chooser
-        if predicate:
-            self.predicate = predicate
+        if predicate is not None:
+            self._predicate = predicate
+        if shortcut:
+            self.shortcut_key = shortcut
+
+    def predicate(self):
+        if not hasattr(self, "_predicate"):
+            return True  # does not have predicate - allow
+        if callable(self._predicate):
+            return self._predicate()
+        return self._predicate
     
     async def activate(self, menu, idx):
 
@@ -53,8 +95,8 @@ class MenuItem:
             if f:
                 rv = await f(menu, idx, self)
                 if isinstance(rv, MenuSystem):
-                    # XXX the function should do this itself
-                    # go to new menu
+                    # XXX the function should do this itself, as the_ux.push(rv)
+                    # replace current with new menu from function
                     the_ux.replace(rv)
 
             m = getattr(self, 'next_menu', None)
@@ -68,11 +110,40 @@ class MenuItem:
             if m:
                 the_ux.push(m)
 
+class ShortcutItem(MenuItem):
+    # Add these to a menu to define action when a single special key is pressed.
+    # - typically NFC and QR keys
+    # - never displayed
+    # - can have predicate
+    def __init__(self, key, **kws):
+        super().__init__('SHORTCUT', shortcut=key, **kws)
+
+class NonDefaultMenuItem(MenuItem):
+    # Show a checkmark if setting is defined and not the default ... so know know it's set
+    def __init__(self, label, nvkey, prelogin=False, default_value=None, **kws):
+        super().__init__(label, **kws)
+        self.nvkey = nvkey
+        self.prelogin = prelogin
+        self.def_value = default_value       # treated the same as missing
+
+    def is_chosen(self):
+        # should we show a check in parent menu?
+        if self.prelogin:
+            from nvstore import SettingsObject
+            s = SettingsObject.prelogin()
+        else:
+            from glob import settings
+            s = settings
+
+        return (s.get(self.nvkey, self.def_value) != self.def_value)
+
+
 class ToggleMenuItem(MenuItem):
     # Handle toggles: must use undefined (missing) as default
     # - can remap values a little, but default is to store 0/1/2
-    def __init__(self, label, nvkey, choices, predicate=None, story=None, on_change=None, invert=False, value_map=None):
-        self.label = label
+    def __init__(self, label, nvkey, choices, predicate=None, story=None,
+                 on_change=None, invert=False, value_map=None):
+        super().__init__(label, predicate=predicate)
         self.story = story
         self.nvkey = nvkey
         self.choices = choices          # list of strings, at least 2
@@ -81,34 +152,42 @@ class ToggleMenuItem(MenuItem):
             self.invert = True
         if value_map:
             self.value_map = value_map
-        if predicate:
-            self.predicate = predicate
+
+    def get(self, default=None):
+        from glob import settings
+        return settings.get(self.nvkey, default)
+
+    def set(self, v):
+        from glob import settings
+        return settings.set(self.nvkey, v)
+
+    def remove_key(self):
+        from glob import settings
+        return settings.remove_key(self.nvkey)
 
     def is_chosen(self):
         # should we show a check in parent menu?
-        from glob import settings
         if self.nvkey == "chain":
-            rv = True if settings.get(self.nvkey) in ["XRT", "XTN"] else False
+            rv = True if self.get() in ["XRT", "XTN"] else False
         else:
-            rv = bool(settings.get(self.nvkey, 0))
+            rv = bool(self.get(0))
         if getattr(self, 'invert', False):
             rv = not rv
         return rv
     
     async def activate(self, menu, idx):
-        from glob import settings
         from ux import ux_show_story
 
         # skip story if default value has been changed
         if self.nvkey == "chain":
-            default = settings.get(self.nvkey) == "BTC"
+            default = (self.get() == "BTC")
         else:
-            default = settings.get(self.nvkey, None) == None
+            default = (self.get(None) == None)
         if self.story and default:
             ch = await ux_show_story(self.story)
             if ch == 'x': return
 
-        value = settings.get(self.nvkey, 0)
+        value = self.get(0)
         if hasattr(self, 'value_map'):
             for n,v in enumerate(self.value_map):
                 if value == v:
@@ -121,28 +200,45 @@ class ToggleMenuItem(MenuItem):
         the_ux.push(m)
 
     async def picked(self, menu, picked, xx_self):
-        from glob import settings
-
         menu.chosen = picked
         menu.show()
         await sleep_ms(100)     # visual feedback that we changed it
 
         if picked == 0:
-            settings.remove_key(self.nvkey)
+            self.remove_key()
         else:
             if hasattr(self, 'value_map'):
                 picked = self.value_map[picked]     # want IndexError if wrong here
-            settings.set(self.nvkey, picked)
+            self.set(picked)
 
         if self.on_change:
             await self.on_change(picked)
 
         the_ux.pop()
 
+class PreloginToggleMenuItem(ToggleMenuItem):
+    # Handle toggle settings related to pre-login stuff
+
+    def get(self, default=None):
+        from nvstore import SettingsObject
+        s = SettingsObject.prelogin()
+        return s.get(self.nvkey, default)
+
+    def set(self, v):
+        from nvstore import SettingsObject
+        s = SettingsObject.prelogin()
+        return s.set(self.nvkey, v)
+
+    def remove_key(self):
+        from nvstore import SettingsObject
+        s = SettingsObject.prelogin()
+        return s.remove_key(self.nvkey)
 
 class MenuSystem:
 
-    def __init__(self, menu_items, chosen=None, should_cont=None, space_indicators=False):
+    def __init__(self, menu_items, chosen=None, should_cont=None,
+                        space_indicators=False):
+        self.shortcuts = {}
         self.should_continue = should_cont or (lambda: True)
         self.replace_items(menu_items)
         self.space_indicators = space_indicators
@@ -153,8 +249,6 @@ class MenuSystem:
     # subclasses: override us
     #
     def late_draw(self, dis):
-        pass
-    def early_draw(self, dis):
         pass
 
     def update_contents(self):
@@ -167,7 +261,15 @@ class MenuSystem:
             self.cursor = 0
             self.ypos = 0
 
-        self.items = [m for m in menu_items if not getattr(m, 'predicate', None) or m.predicate()]
+        self.items = [
+            m
+            for m in menu_items
+            if not isinstance(m, ShortcutItem) and m.predicate()
+        ]
+        for m in menu_items:
+            if isinstance(m, ShortcutItem):
+                self.shortcuts[m.shortcut_key] = m
+
         self.count = len(self.items)
 
     def goto_label(self, label):
@@ -183,28 +285,17 @@ class MenuSystem:
         # Redraw the menu.
         #
         from glob import dis
+
         dis.clear()
 
-        #print('cur=%d ypos=%d' % (self.cursor, self.ypos))
-
-        # subclass hook
-        self.early_draw(dis)
-
-        x,y = (10, 2)
-        h = 14
+        cursor_y = None
         for n in range(self.ypos+PER_M+1):
             if n+self.ypos >= self.count: break
+
             msg = self.items[n+self.ypos].label
             is_sel = (self.cursor == n+self.ypos)
             if is_sel:
-                dis.dis.fill_rect(0, y, 128, h-1, 1)
-                dis.icon(2, y, 'wedge', invert=1)
-                dis.text(x, y, msg, invert=1)
-            else:
-                dis.text(x, y, msg)
-
-            if msg[0] == ' ' and self.space_indicators:
-                dis.icon(x-2, y+11, 'space', invert=is_sel)
+                cursor_y = n
 
             # show check?
             checked = (self.chosen is not None and (n+self.ypos) == self.chosen)
@@ -213,27 +304,28 @@ class MenuSystem:
             if fcn and fcn():
                 checked = True
 
-            if checked:
-                dis.icon(108, y, 'selected', invert=is_sel)
-
-            y += h
-            if y > 128: break
+            dis.menu_draw(n, msg, is_sel, checked, self.space_indicators)
 
         # subclass hook
         self.late_draw(dis)
 
         if self.count > PER_M:
-            dis.scroll_bar(self.ypos / (self.count-PER_M))
+            dis.scroll_bar(self.ypos, self.count, PER_M)
 
-        dis.show()
+        dis.menu_show(cursor_y)
 
-    def get_wrap_length(self):
+    def should_wrap_menu(self):
         from glob import settings
-        # wa is boolean value from config
-        # True --> wrap around all menus with length greater than 1
-        # False --> wrap around is active only for menus with length > WRAP_IF_OVER
+        # "wa" is boolean value from config:
+        # True --> wrap around all menus
+        # False --> (default) wrap around is active only for menus with length > WRAP_IF_OVER
         wrap = settings.get("wa", 0)
-        return 1 if wrap else WRAP_IF_OVER
+        if wrap: return True
+
+        # Do wrap-around (by request from NVK) if longer than the screen itself (on Q),
+        # for mk4, limit is 16 which hits mostly the seed word menus.
+        limit = 10 if has_qwerty else 16
+        return self.count > limit
 
     def down(self):
         if self.cursor < self.count-1:
@@ -242,8 +334,7 @@ class MenuSystem:
             if self.cursor - self.ypos >= (PER_M-1):
                 self.ypos += 1
         else:
-            wrap_length = self.get_wrap_length()
-            if self.count > wrap_length:
+            if self.should_wrap_menu():
                 self.goto_idx(0)
 
     def up(self):
@@ -252,8 +343,7 @@ class MenuSystem:
             if self.cursor < self.ypos:
                 self.ypos -= 1
         else:
-            wrap_length = self.get_wrap_length()
-            if self.count > wrap_length:
+            if self.should_wrap_menu():
                 self.goto_idx(self.count - 1)
 
     def top(self):
@@ -277,7 +367,7 @@ class MenuSystem:
             self.ypos = n - 2
 
     def page(self, n):
-        # relative page dn/up
+        # relative page dn/up - may wrap around
         if n == 1:
             for i in range(PER_M):
                 self.down()
@@ -292,17 +382,14 @@ class MenuSystem:
             # top of stack (main top-level menu)
             self.top()
 
-    async def activate(self, idx):
+    async def activate(self, picked):
         # Activate a specific choice in our menu.
         #
-        if idx is None:
+        if picked is None:
             # "go back" or cancel or something
             self.on_cancel()
         else:
-            assert idx < self.count
-            ch = self.items[idx]
-
-            await ch.activate(self, idx)
+            await picked.activate(self, self.cursor)
 
 
     async def interact(self):
@@ -314,14 +401,14 @@ class MenuSystem:
             await self.activate(ch)
             
     async def wait_choice(self):
-        #
         # Wait until a menu choice is picked; let them move around
         # the menu, keep redrawing it and so on.
+        # returns the item picked, or None for cancel=Back
 
         key = None
 
         # 5,8 have key-repeat, not others
-        pr = PressRelease('790xy')
+        pr = PressRelease('790xy')      # on Q, arg is ignored
 
         while 1:
             self.show()
@@ -330,26 +417,52 @@ class MenuSystem:
 
             if not key:
                 continue
-            if key == '5':
+
+            if not has_qwerty:
+                key = numpad_remap(key)
+
+            if key == KEY_ENTER or key == KEY_SPACE:
+                # selected - done
+                return self.items[self.cursor]
+            elif key == KEY_CANCEL:
+                # abort/nothing selected/back out?
+                return None
+            elif key == KEY_UP:
                 self.up()
-            elif key == '8':
+            elif key == KEY_DOWN:
                 self.down()
-            elif key == '7':
-                self.page(-1)       # maybe should back out of nested menus?
-            elif key == '9':
+            elif key == KEY_PAGE_UP:
+                self.page(-1)
+            elif key == KEY_PAGE_DOWN:
                 self.page(1)
-            elif key == '0':
+            elif key == KEY_END:
+                self.goto_idx(self.count-1)
+            elif key == KEY_HOME:
                 # zip to top, no selection
                 self.cursor = 0
                 self.ypos = 0
-            elif key in '1234':
+            elif '1' <= key <= '9':
                 # jump down, based on screen postion
                 self.goto_n(ord(key)-ord('1'))
-            elif key == 'y':
-                # selected
-                return self.cursor
-            elif key == 'x':
-                # abort/nothing selected/back out?
-                return None
+            elif key in self.shortcuts:
+                # run the function, if predicate allows
+                m = self.shortcuts[key]
+                if m.predicate():
+                    return m
+            else:
+                # maybe a shortcut?
+                for n, item in enumerate(self.items):
+                    if getattr(item, 'shortcut_key', None) == key:
+                        # matched. do it
+                        self.goto_idx(n)
+                        return self.items[self.cursor]
+
+                # search downwards for a menu item that starts with indicated letter
+                # if found, select it but dont drill down
+                lst = list(range(self.cursor+1, self.count)) + list(range(0, self.cursor))
+                for n in lst:
+                    if self.items[n].label[0].upper() == key.upper():
+                        self.goto_idx(n)
+                        break
 
 # EOF

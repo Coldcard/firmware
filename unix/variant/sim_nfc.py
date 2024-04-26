@@ -1,10 +1,12 @@
+# (c) Copyright 2021 by Coinkite Inc. This file is covered by license found in COPYING-CC.
+#
 # Replace NFC tag chip w/ emulation
 from nfc import NFCHandler
 
 global TAG_DATA
 TAG_DATA = bytearray(8196)
 
-# unix/working/nfc-dump.ndef
+# unix/work/nfc-dump.ndef
 DATA_FILE = 'nfc-dump.ndef'
 
 class SimulatedNFCHandler(NFCHandler):
@@ -30,7 +32,7 @@ class SimulatedNFCHandler(NFCHandler):
         atime, mtime, ctime = os.stat(DATA_FILE)[-3:]
         self._mtime = mtime
         self._atime = atime
-        print("%d bytes of NDEF written to work/nfc-dump.ndef .. Press N or touch or read that file to simulate taps" % n)
+        print("%d bytes of NDEF written to work/nfc-dump.ndef .. Ctrl-N or touch or read that file to simulate taps" % n)
 
     async def wipe(self, full_wipe):
         print("NFC chip wiped (full=%d)" % int(full_wipe))
