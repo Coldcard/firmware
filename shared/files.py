@@ -239,6 +239,7 @@ class CardSlot:
 
     @classmethod
     def both_inserted(cls):
+        # Predicate: Is there a card in both slots? If only one slot exists, return None
         if cls.mux:
             return (cls.sd_detect() == 0) and (cls.sd_detect2() == 0)
         # return None (implicit)
