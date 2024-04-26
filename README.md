@@ -1,4 +1,4 @@
-# Coldcard Wallet
+# COLDCARD Hardware Wallet
 
 Coldcard is an Affordable, Ultra-secure & Verifiable Hardware Wallet for Bitcoin.
 Get yours at [Coldcard.com](http://coldcard.com)
@@ -10,6 +10,12 @@ with the latest updates and security alerts.
 
 ![Mk4 coldcard picture front](https://coldcard.com/static/images/mk4.png)
 
+## Quick Links
+
+- [Latest firmware changes and updates](releases/ChangeLog.md)
+- [PGP signature file](releases/signatures.txt)
+- [Firmware binaries](https://coldcard.com/downloads)
+
 ## Reproducible Builds
 
 To have confidence this source code tree is the same as the binary on your device,
@@ -18,17 +24,21 @@ has been automated using Docker. Steps are as follows:
 
 1. Install [Docker](https://www.docker.com) and start it.
 2. Install [make (GNUMake)](https://www.gnu.org/software/make/) if you don't already have it.
-3. Checkout the code, and start the process.
+3. Checkout a specific version of the code, and start the process.
 
     ```shell
     git clone https://github.com/Coldcard/firmware.git
+    git checkout 2023-12-21T1526-v5.2.2
+    # get a copy of that binary into ./releases/2023-12-21T1526-v5.2.2-mk4-coldcard.dfu
     cd firmware/stm32
-    make repro
+    make -f MK4-Makefile repro
     ```
 
 4. At the end of the process a clear confirmation message is shown, or the differences.
 5. Build products can be found `firmware/stm32/built`.
-6. If you do not trust the results of `make repro` refer to `docs/notes-on-repro.md` which breaks down the process.
+6. If you do not trust the results of `make repro` refer to `docs/notes-on-repro.md`
+   which breaks down the process.
+7. Process for Q firmware is the same, but change `MK4-Makefile` in last step to `Q1-Makefile`
 
 ## Long-Lived Branches
 
@@ -39,13 +49,17 @@ such as Taproot or Miniscript. Our standards for releasing new Edge
 versions are lower, so we can iterate faster and get these advancements
 out to other developers.
 
+Q and Mk4 share the same code base. Individual files that are added,
+or removed, can be see in differences between `shared/manifest_mk4.py`
+and `shared/manifest_q1.py`. Common files are in `shared/manifest.py`.
+
 
 ## Check-out and Setup
 
-**NOTE** This is the `master` branch and covers the latest hardware (Mk4).
+**NOTE** This is the `master` branch and covers the latest hardware (Mk4 and Q).
 See branch `v4-legacy` for firmware which supports only Mk3/Mk2 and earlier.
 
-Do a checkout, recursively to get all the submodules:
+Do a checkout, recursively, to get all the submodules:
 
 ```shell
 git clone --recursive https://github.com/Coldcard/firmware.git
@@ -68,7 +82,7 @@ git submodule update --init --recursive
 ```
 
 Do not use a path with any spaces in it. The Makefiles do not handle
-that well, and we're not planning to fix it.
+that well and we're not planning to fix it.
 
 Keep in mind that python requirements may change between versions,
 so at the top level, do this command:
@@ -240,13 +254,14 @@ Top-level dirs:
 - however, you can inspect what code is on your coldcard and compare to this.
 
 `stm32/mk4-bootloader`
+`stm32/q1-bootloader`
 
-- 128k of factory-set code that you cannot change for Mk4
+- 128k of factory-set code that you cannot change for Mk4 or Q
 - however, you can inspect what code is on your coldcard and compare to this.
 
 `hardware`
 
-- schematic and bill of materials for the Coldcard
+- schematic and bill of materials for the Coldcard, all versions.
 
 `unix/work/...`
 
@@ -259,3 +274,4 @@ Top-level dirs:
 ## Support
 
 Found a bug? Email: support@coinkite.com
+
