@@ -18,6 +18,7 @@ from usb import CCBusyError
 from utils import HexWriter, xfp2str, problem_file_line, cleanup_deriv_path
 from utils import B2A, parse_addr_fmt_str, to_ascii_printable
 from psbt import psbtObject, FatalPSBTIssue, FraudulentChangeOutput
+from files import CardSlot
 from exceptions import HSMDenied
 from version import MAX_TXN_LEN
 from charcodes import KEY_QR, KEY_NFC, KEY_ENTER, KEY_CANCEL
@@ -582,7 +583,7 @@ async def verify_txt_sig_file(filename):
 
 
 class ApproveTransaction(UserAuthorizedAction):
-    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None):
+    def __init__(self, psbt_len, flags=0x0, approved_cb=None, psbt_sha=None, is_sd=None):
         super().__init__()
         self.psbt_len = psbt_len
         self.do_finalize = bool(flags & STXN_FINALIZE)
@@ -592,6 +593,7 @@ class ApproveTransaction(UserAuthorizedAction):
         self.psbt_sha = psbt_sha
         self.approved_cb = approved_cb
         self.result = None      # will be (len, sha256) of the resulting PSBT
+        self.is_sd = is_sd
         self.chain = chains.current_chain()
 
     def render_output(self, o):
@@ -731,8 +733,11 @@ class ApproveTransaction(UserAuthorizedAction):
 
             dis.progress_bar_show(1)  # finish the Validating...
             if not hsm_active:
-                msg.write("Press OK to approve and sign transaction. X to abort.")
-                ch = await ux_show_story(msg, title="OK TO SEND?")
+                msg.write("Press OK to approve and sign transaction.")
+                if self.is_sd and CardSlot.both_inserted():
+                    msg.write(" (B) to write to lower SD slot.")
+                msg.write(" X to abort.")
+                ch = await ux_show_story(msg, title="OK TO SEND?", escape="b")
             else:
                 ch = await hsm_active.approve_transaction(self.psbt, self.psbt_sha, msg.getvalue())
                 dis.progress_bar_show(1)     # finish the Validating...
@@ -748,7 +753,7 @@ class ApproveTransaction(UserAuthorizedAction):
             msg = "Transaction is too complex"
             return await self.failure(msg)
 
-        if ch != 'y':
+        if ch not in 'yb':
             # they don't want to!
             self.refused = True
 
@@ -774,7 +779,10 @@ class ApproveTransaction(UserAuthorizedAction):
 
         if self.approved_cb:
             # for micro sd case
-            await self.approved_cb(self.psbt)
+            kws = dict(psbt=self.psbt)
+            if self.is_sd and (ch == "b"):
+                kws["slot_b"] = True
+            await self.approved_cb(**kws)
             self.done()
             return
 
@@ -1045,7 +1053,8 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
             assert total <= psbt_len
             psbt_len = total
 
-    async def done(psbt):
+    async def done(psbt, slot_b=None):
+        print(psbt, slot_b)
         dis.fullscreen("Wait...")
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
@@ -1070,7 +1079,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
 
             for path in [orig_path, None]:
                 try:
-                    with CardSlot(force_vdisk, readonly=True) as card:
+                    with CardSlot(force_vdisk, readonly=True, slot_b=slot_b) as card:
                         out_full, out_fn = card.pick_filename(target_fname, path)
                         out_path = path
                         if out_full: break
@@ -1084,7 +1093,7 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
             else:
                 # attempt write-out
                 try:
-                    with CardSlot(force_vdisk) as card:
+                    with CardSlot(force_vdisk, slot_b=slot_b) as card:
                         if is_comp and del_after:
                             # don't write signed PSBT if we'd just delete it anyway
                             out_fn = None
@@ -1155,7 +1164,8 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
         UserAuthorizedAction.cleanup()
 
     UserAuthorizedAction.cleanup()
-    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done)
+    UserAuthorizedAction.active_request = ApproveTransaction(psbt_len, approved_cb=done,
+                                                             is_sd=not force_vdisk)
     the_ux.push(UserAuthorizedAction.active_request)
 
 class RemoteBackup(UserAuthorizedAction):

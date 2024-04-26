@@ -43,6 +43,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
 - Enhancement: Status bar text sharper now.
+- Enhancement: Added ability to write signed PSBT/txn to lower (B) SD slot when both cards inserted.
 - Bugfix: Fullscreen display of v23 and v24 QRs were too dense and hard to read.
 - Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
   seed without master secret

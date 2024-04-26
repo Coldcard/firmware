@@ -237,6 +237,12 @@ class CardSlot:
         else:
             return cls.sd_detect() == 1
 
+    @classmethod
+    def both_inserted(cls):
+        if cls.mux:
+            return (cls.sd_detect() == 0) and (cls.sd_detect2() == 0)
+        # return None (implicit)
+
     def __init__(self, force_vdisk=False, readonly=False, slot_b=None):
         self.mountpt = None
         self.force_vdisk = force_vdisk
