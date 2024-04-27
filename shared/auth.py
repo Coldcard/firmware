@@ -1054,7 +1054,6 @@ async def sign_psbt_file(filename, force_vdisk=False, slot_b=None):
             psbt_len = total
 
     async def done(psbt, slot_b=None):
-        print(psbt, slot_b)
         dis.fullscreen("Wait...")
         orig_path, basename = filename.rsplit('/', 1)
         orig_path += '/'
