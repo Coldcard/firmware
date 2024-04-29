@@ -79,7 +79,7 @@ from utils import call_later_ms
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
 # keep these settings only if unspecified on the other end
 KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
-                          "axskip", "del", "pms", "idle_to", "batt_to", "b39skip", "brite"]
+                          "axskip", "del", "pms", "idle_to", "batt_to", "b39skip", "bright"]
 
 SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words']
 
