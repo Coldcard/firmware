@@ -1214,7 +1214,7 @@ async def named_generic_skeleton(menu, label, item):
     name = item.arg
     # make a single JSON file with basically all useful XPUB's in it.
     # identical to generic_skeleton but with different story and filename.
-    prompt = ('This saves a JSON file onto MicroSD card to use with %s Wallet. '
+    prompt = ('This saves a JSON file to use with %s Wallet. '
               'Works for both single signature and multisig wallets.') % name
 
     await _generic_export(prompt, '%s Wallet' % name,

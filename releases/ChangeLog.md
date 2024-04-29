@@ -27,6 +27,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 - Enhancement: When providing 12 or 18 word seed phrase, valid final word choices
   are presented in a new menu.
+- Enhancement: Move dice rolls (for generating master seed) to `Advanced` submenu.
 - Enhancement: Using "Verify Address" in NFC Tools menu, allows entry of a payment address
   and reports if it is part of a wallet this Coldcard knows the key for. Includes Multisig
   and single sig wallets.
@@ -34,6 +35,13 @@ This lists the changes in the most recent firmware, for each hardware platform.
     - stores data as it goes to accelerate future uses
     - worst case, it can take up to 2 minutes to rule out an address, but after that it is fast!
 - Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
+- Bugfix: Constant `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`.
+- Bugfix: Fix inability to activate Duress Wallet as temporary seed when master seed is 12 words.
+- Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set.
+- Tweak: Force default HW settings (USB,NFC,VDisk OFF) after clone/backup is restored.
+- Tweak: Cleanup in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
+- Tweak: Function button change from (6) to (0) to view change addresses in `Address Explorer`
+- Tweak: Function button change from (2) to (0) to switch to derived secret in `Derive Seed B85`
 - Bootrom version bump: 3.2.0 released with no functional changes except those shared with Q.
 
 # Q Specific Changes

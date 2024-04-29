@@ -188,9 +188,8 @@ if 0:
 @pytest.mark.bitcoind
 @pytest.mark.veryslow
 @pytest.mark.parametrize('segwit', [True, False])
-@pytest.mark.parametrize('out_style', ADDR_STYLES)
 def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3, is_mark4,
-                    start_sign, end_sign, dev, segwit, out_style, accept = True):
+                    start_sign, end_sign, dev, segwit, accept = True):
 
     # try a bunch of different bigger sized txns
     # - important to test on real device, due to it's limited memory
@@ -214,7 +213,7 @@ def test_io_size(request, use_regtest, decode_with_bitcoind, fake_txn, is_mark3,
         num_in = 250
         num_out = 2000
 
-    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=[out_style])
+    psbt = fake_txn(num_in, num_out, dev.master_xpub, segwit_in=segwit, outstyles=ADDR_STYLES)
 
     open('debug/last.psbt', 'wb').write(psbt)
 
