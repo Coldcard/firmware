@@ -304,6 +304,10 @@ class MenuSystem:
             if fcn and fcn():
                 checked = True
 
+            if not has_qwerty and checked and (len(msg) > 14):
+                # on mk4 every label longer than 14 will overlap with checkmark
+                checked = False
+
             dis.menu_draw(n, msg, is_sel, checked, self.space_indicators)
 
         # subclass hook
