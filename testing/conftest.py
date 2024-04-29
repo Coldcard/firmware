@@ -531,7 +531,7 @@ def qr_quality_check():
 def cap_screen_qr(cap_image):
     def doit(no_history=False):
         # NOTE: version=4 QR is pixel doubled to be 66x66 with 2 missing lines at bottom
-        # LATER: not doing that anymore; v=3 doubled, all higher 1:1 pixels (tiny)
+        # LATER: not doing that anymore; v={1,2,3} doubled, all higher 1:1 pixels (tiny)
         global QR_HISTORY
 
         try:
@@ -552,7 +552,7 @@ def cap_screen_qr(cap_image):
 
         if orig_img.width == 128:
             # Mk3/4 - pull out just the QR, blow it up 16x
-            x, w = 0, 64
+            x, w = 2, 64
             img = orig_img.crop( (x, 0, x+w, w) )
             img = ImageOps.expand(img, 16, 0)       # add border
             img = img.resize( (256, 256))

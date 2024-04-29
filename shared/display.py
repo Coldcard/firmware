@@ -328,12 +328,14 @@ class Display:
         self.clear()
 
         w = qr_data.width()
-        if w == 29:
-            # version 3 => we can double-up the pixels
-            XO,YO = 4, 3    # offsets
+        if w <= 29:
+            # version 1,2,3 => we can double-up the pixels
             dbl = True
-            bw = 62
-            lm, tm = 2, 1           # left, top margin
+            lm = 5 if idx_hint else 2  # do not overlap with idx
+            h = w * 2
+            bw = h + 4  # 2 white pixels from each side
+            tm = (self.HEIGHT - bw) // 2
+            XO, YO = lm + 2, tm + 2  # two white pixel around QR
         else:
             # v4+ => just one pixel per module, might not be easy to read
             # - vert center, left justify; text on space to right
