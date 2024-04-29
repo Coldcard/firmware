@@ -288,7 +288,7 @@ def doit(out_fname='font_iosevka.py', cls_name='FontIosevka'):
     #colours = list(col for (cnt, col) in cells.getcolors())
     #print(f'Shades: {colours}')
     shades = cells.getpalette('RGB')
-    assert set(shades[3*NUM_GREYS:]) == {0}     # unused positions in 8-bit /256 value pal
+    assert len(set(shades[3*NUM_GREYS:])) in {0, 1}    # unused positions in 8-bit /256 value pal
     shades = shades[0:3*NUM_GREYS]
     assert shades[0::3] == shades[1::3] == shades[2::3], 'not all greyscale?'
 
