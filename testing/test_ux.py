@@ -92,11 +92,12 @@ def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
 
             if len(words) == 23:
                 do_keypresses(KEY_DOWN)
+                time.sleep(.3)
                 cap_scr = cap_screen()
                 while 'Next key' in cap_scr:
                     target = cap_scr.split("\n")[-1].replace("Next key: ", "")
                     do_keypresses(target[0])
-                    time.sleep(.1)
+                    time.sleep(.3)
                     cap_scr = cap_screen()
             else:
                 cap_scr = cap_screen()
