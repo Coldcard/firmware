@@ -279,7 +279,7 @@ DangerZoneMenu = [
     MenuItem("Set High-Water", f=set_highwater),
     MenuItem('Wipe HSM Policy', f=wipe_hsm_policy, predicate=hsm_policy_available),
     MenuItem('Clear OV cache', f=wipe_ovc),
-    MenuItem("Clear Address cache", f=wipe_address_cache),
+    MenuItem("Clear Address cache" if version.has_qwerty else "Clear Addr cache", f=wipe_address_cache),
     ToggleMenuItem("Sighash Checks", "sighshchk", ["Default: Block", "Warn"],
                    invert=True,
                    story='''\
