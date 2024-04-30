@@ -39,6 +39,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Fix inability to activate Duress Wallet as temporary seed when master seed is 12 words.
 - Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set.
 - Bugfix: v1 and v2 QRs too small and not readable (fixed)
+- Bugfix: Show indexes for full range of addresses we are able to generate during QR display.
 - Tweak: Force default HW settings (USB,NFC,VDisk OFF) after clone/backup is restored.
 - Tweak: Cleanup in NFC code: repeated messages, "Unable to find data expectd in NDEF", removed.
 - Tweak: Function button change from (6) to (0) to view change addresses in `Address Explorer`

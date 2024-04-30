@@ -395,12 +395,12 @@ class Display:
                 y += dy
 
         if not invert and idx_hint:
-            # show path number, very tiny: 1 or 2 digits, vertical left edge
-            if len(idx_hint) == 1:
-                self.text(0, 30, idx_hint[0], FontTiny)
-            else:
-                self.text(0, 27, idx_hint[0], FontTiny)
-                self.text(0, 27+7, idx_hint[1], FontTiny)
+            # show path number, very tiny: vertical left edge
+            assert len(idx_hint) <= 10
+            y = 2
+            for c in idx_hint:
+                self.text(0, y, c, FontTiny)
+                y += 6  # number is 5px + 1px space
 
         self.busy_bar(False)     # includes show
 
