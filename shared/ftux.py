@@ -2,10 +2,10 @@
 #
 # ftux.py - First Time User Experience! A new ride at the waterpark.
 #
-import version, ckcc
+import ckcc
 from glob import settings
 from ux import ux_show_story, the_ux
-from actions import change_usb_disable
+from actions import change_usb_disable, change_virtdisk_enable, change_nfc_enable
 
 class FirstTimeUX:
     async def interact(self, title="Welcome!"):
@@ -17,8 +17,10 @@ class FirstTimeUX:
                 settings.set('du', 1)       # disable USB
                 await change_usb_disable(1)
 
-            #settings.set('nfc', 0)     # default already
-            #settings.set('vidsk', 0)   # same as default
+            await change_virtdisk_enable(0)
+            settings.remove_key("vidsk")
+            await change_nfc_enable(0)
+            settings.remove_key("nfc")
 
             await ux_show_story('''\
 Your COLDCARD has been configured for \

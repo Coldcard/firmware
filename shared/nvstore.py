@@ -78,8 +78,8 @@ from utils import call_later_ms
 # prelogin settings - do not need to be part of other saved settings
 # PRELOGIN_SETTINGS = ["_skip_pin", "nick", "rngk", "lgto", "kbtn", "terms_ok"]
 # keep these settings only if unspecified on the other end
-KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz",
-                          "axskip", "del", "pms", "idle_to", "batt_to", "b39skip", "bright"]
+KEEP_IF_BLANK_SETTINGS = ["bkpw", "wa", "sighshchk", "emu", "rz", "b39skip",
+                          "axskip", "del", "pms", "idle_to", "batt_to", "bright"]
 
 SEEDVAULT_FIELDS = ['seeds', 'seedvault', 'xfp', 'words']
 
@@ -394,42 +394,37 @@ class SettingsObject:
         self.changed()
 
     def merge_previous_active(self, previous):
+        import pyb
+        from glob import NFC, VD
+
         if previous:
             for k in KEEP_IF_BLANK_SETTINGS:
-                # XXX this assumes all default values are falsy, better would be "defined" vs not
-                if previous.get(k, None) and not self.current.get(k, None):
+                if k in previous and k not in self.current:
                     self.current[k] = previous[k]
 
         # nfc, usb, vidsk handling
-        self.update_interface_state()
-
-    def update_interface_state(self):
         # update current settings based on actual state
         # settings that need to be copied to any newly loaded settings
         # as they describe state as is (a.k.a current state)
-        import pyb
-        from glob import NFC, VD
-        to_update = []
+        # otherwise UX would be incorrect if only settings considered
 
         nfc_on = int(bool(NFC))
         if nfc_on != self.get("nfc", 0):
-            to_update.append(("nfc", nfc_on))
+            self.current["nfc"] = nfc_on
 
         vidsk_on = int(bool(VD))
         vidsk_setting = self.get("vidsk", 0)
-        if vidsk_on != vidsk_setting:
-            # state no2 is auto
-            if not (vidsk_on and (vidsk_setting == 2)):
-                to_update.append(("vidsk", vidsk_on))
+        if vidsk_on and previous and previous.get("vidsk", 0) == 2:
+            self.current["vidsk"] = 2
+        elif vidsk_on != vidsk_setting:
+            self.current["vidsk"] = vidsk_on
 
         usb_on = int(bool(pyb.usb_mode()))
         du_setting = self.get("du", 0)
         if usb_on == du_setting:
-            to_update.append(("du", int(not du_setting)))
+            self.current["du"] = int(not du_setting)
 
-        # actual setting
-        for k, v in to_update:
-            self.put(k, v)
+        self.changed()
 
     def clear(self):
         # could be just:
