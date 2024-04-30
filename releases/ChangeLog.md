@@ -60,6 +60,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Bugfix: Battery idle timeout also considers last progress bar update
 - Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
 - Bugfix: Pressing SYM+SHIFT was toggling CAPS continuously. Now toggles once only.
+- Bugfix: Restrict keys that can be pressed during seed entry after final word inserted
 
 
 # Release History

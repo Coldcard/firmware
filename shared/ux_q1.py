@@ -604,7 +604,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
 
     assert num_words and prompt and done_cb
 
-    words = ['' for i in range(num_words)]
+    words = ['' for _ in range(num_words)]
 
     dis.clear()
     dis.text(None, 0, prompt, invert=1)
@@ -645,11 +645,12 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         ch = await press.wait()
 
         commit = False
+        final = (word_num == num_words)
         if ch == KEY_ENTER:
-            if word_num == num_words:
+            if final:
                 break
             commit = True
-        elif ch == KEY_DELETE or ch == KEY_LEFT:
+        elif (ch == KEY_DELETE) or (ch == KEY_LEFT):
             # delete last char
             if len(value) > 0:
                 value = value[:-1]
@@ -668,8 +669,10 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
                     dis.restore_state(tmp)
                     continue
             return None
-            
-        elif ch in { ' ', KEY_TAB, KEY_DOWN, KEY_RIGHT }:
+        elif final:
+            # below options not allowed if all words already provided
+            continue
+        elif ch in {' ', KEY_TAB, KEY_DOWN, KEY_RIGHT}:
             # re-consider if word done, like "act" and other 3-letter cases
             commit = True
         elif ch.isalpha():
@@ -677,7 +680,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
         else:
             continue
 
-        if has_checksum and word_num == num_words-1 and (len(value) >= 1 or commit):
+        if has_checksum and (word_num == num_words-1) and ((len(value) >= 1) or commit):
             assert last_words
             if value not in last_words:
                 maybe = [i for i in last_words if i.startswith(value)]
@@ -696,6 +699,7 @@ async def seed_word_entry(prompt, num_words, has_checksum=True, done_cb=None):
                     nextchars = ''.join(sorted(set(i[len(value)] for i in maybe)))
                     err_msg = 'Next key: ' + nextchars
                     continue
+
             if value in last_words:
                 dis.text(x, y, '%-8s' % value)
                 words[word_num] = value

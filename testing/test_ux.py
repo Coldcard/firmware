@@ -66,7 +66,7 @@ def test_home_menu(cap_menu, cap_story, cap_screen, need_keypress, reset_seed_wo
 
 @pytest.fixture
 def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
-    def doit(words, has_checksum=True):
+    def doit(words, has_checksum=True, q_accept=True):
         if is_q1:
             # easier for us on Q, but have to anticipate the autocomplete
             for n, w in enumerate(words, start=1):
@@ -106,7 +106,9 @@ def word_menu_entry(cap_menu, pick_menu_item, is_q1, do_keypresses, cap_screen):
                 assert 'Valid words' in cap_scr
             else:
                 assert 'Press ENTER if all done' in cap_scr
-            do_keypresses('\r')
+
+            if q_accept:
+                do_keypresses('\r')
             return
 
         # do the massive drilling-down to pick a specific pass phrase
@@ -803,6 +805,23 @@ def test_bip39_pw_signing_xfp_ux(pick_menu_item, press_select, cap_story, enter_
     assert title_sign == title
     reset_seed_words()  # for subsequent tests
 
+
+def test_q1_seed_word_entry_bug(word_menu_entry, unit_test, pick_menu_item,
+                                is_q1, do_keypresses, press_select, expect_ftux):
+    # internal/issues/750
+    if not is_q1:
+        raise pytest.skip("Q only")
+
+    unit_test('devtest/clear_seed.py')
+    pick_menu_item('Import Existing')
+    pick_menu_item('24 Words')
+    sw = ["abandon"] * 23
+    sw += ["art"]
+    word_menu_entry(sw, q_accept=False)
+    do_keypresses("art")
+    # now we we are yikes if bug not fixed
+    press_select()
+    expect_ftux()
 
 @pytest.mark.onetime
 def test_dump_menutree(sim_execfile):
