@@ -728,8 +728,14 @@ class Display:
                     y += 1
 
             if idx_hint:
-                # show path index number: just 1 or 2 digits
-                self.text(-1, 0, idx_hint)
+                lh = len(idx_hint)
+                assert lh <= 10
+                if lh > 6:
+                    # needs 2 lines
+                    self.text(-1, 0, idx_hint[:6])
+                    self.text(-1, 1, idx_hint[6:])
+                else:
+                    self.text(-1, 0, idx_hint)
 
             # pass a max brightness flag here, which will be cleared after next show
             self.show(max_bright=True)
