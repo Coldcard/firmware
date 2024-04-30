@@ -20,7 +20,7 @@ class SimBlockDev:
         if cb:
             self.task = asyncio.create_task(self.monitor_task(self))
         else:
-            self.task.stop()
+            self.task.cancel()
 
     def set_inserted(self, en):
         print("sim-virtdisk: " + "inserted" if en else "ejected")
