@@ -434,7 +434,10 @@ class MultisigWallet(WalletABC):
 
         lst = settings.get('multisig', [])
         del lst[self.storage_idx]
-        settings.set('multisig', lst)
+        if lst:
+            settings.set('multisig', lst)
+        else:
+            settings.remove_key('multisig')
         settings.save()
 
         self.storage_idx = -1

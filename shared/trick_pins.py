@@ -9,7 +9,7 @@
 # 
 import uctypes, errno, ngu, sys, stash, bip39, version
 from menu import MenuSystem, MenuItem
-from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux, ux_aborted
+from ux import ux_show_story, ux_confirm, ux_dramatic_pause, ux_enter_number, the_ux
 from stash import SecretStash
 from drv_entro import bip85_derive
 
@@ -105,7 +105,10 @@ class TrickPinMgmt:
     def save_record(self):
         # commit changes back to settings
         from glob import settings
-        settings.set('tp', self.tp)
+        if self.tp:
+            settings.set('tp', self.tp)
+        else:
+            settings.remove_key('tp')
         settings.save()
 
     def roundtrip(self, method_num, slot_buf=None):
