@@ -375,15 +375,15 @@ def verify_armored_signature(pick_menu_item, nfc_write_text, press_select,
     return doit
 
 @pytest.mark.bitcoind
+@pytest.mark.parametrize("chain", ["XRT", "BTC", "XTN"])
 @pytest.mark.parametrize("way", ("sd", "nfc"))
-@pytest.mark.parametrize("addr_fmt", ("p2pkh", "p2sh-p2wpkh", "p2wpkh"))
+@pytest.mark.parametrize("addr_fmt", ["p2pkh", "p2sh-p2wpkh", "p2wpkh"])
 @pytest.mark.parametrize("path", ("m/1'", "m/3h/2h/1h", "m/1000'/100'/10'/1"))
-@pytest.mark.parametrize("msg", (
-        "coldcard", "blablablablablablablabla", "morecornfor us", 240 * "a",
-))
+@pytest.mark.parametrize("msg", ("coldcard", 240 * "a"))
 def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_home, pick_menu_item,
                                cap_story, bitcoind, microsd_path, nfc_write_text,
-                               verify_armored_signature):
+                               verify_armored_signature, chain, settings_set):
+    settings_set("chain", chain)
     sig, addr = sign_on_microsd(msg, path, msg_sign_unmap_addr_fmt[addr_fmt])
     fname = 't-msgsign-signed.txt'
     should = RFC_SIGNATURE_TEMPLATE.format(addr=addr, sig=sig, msg=msg)
@@ -394,7 +394,7 @@ def test_verify_signature_file(way, addr_fmt, path, msg, sign_on_microsd, goto_h
     assert title == "CORRECT"
     assert "Good signature" in story
     assert addr in story
-    if addr_fmt == "p2pkh":
+    if (addr_fmt == "p2pkh") and (chain != "BTC"):
         res = bitcoind.rpc.verifymessage(addr, sig, msg)
         assert res is True
 
