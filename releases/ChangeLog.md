@@ -13,10 +13,14 @@ This lists the changes in the most recent firmware, for each hardware platform.
   already in use. Use `Restore Master` with ability to keep or purge current
   passphrase wallet settings.
 - Change: Removed ability to add passphrase to master seed if active temporary seed.
-- Change: Wipe LFS during `Lock Down Seed`
+- Change: Wipe LFS during `Lock Down Seed` and `Destroy Seed`
 - Bugfix: Do not allow non-ascii or ascii non-printable characters in multisig wallet name
 - Bugfix: `Brick Me` option for `If Wrong` PIN caused yikes.
 - Bugfix: Properly handle and finalize framing error response in USB protocol.
+- Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
+  seed without master secret
+- Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
+- Bugfix: Properly verify signed armored message with regtest address
 - Recovery SD Card image building moved into its own repo:
   [github.com/Coldcard/recovery-images](https://github.com/Coldcard/recovery-images)
 
@@ -34,7 +38,6 @@ This lists the changes in the most recent firmware, for each hardware platform.
     - searches up to the first 1528 addresses (external and change addresses)
     - stores data as it goes to accelerate future uses
     - worst case, it can take up to 2 minutes to rule out an address, but after that it is fast!
-- Bugfix: Saving passphrase on SD Card caused a freeze that required reboot
 - Bugfix: Constant `AFC_BECH32M` incorrectly set `AFC_WRAPPED` and `AFC_BECH32`.
 - Bugfix: Fix inability to activate Duress Wallet as temporary seed when master seed is 12 words.
 - Bugfix: Yikes when using BIP39 passphrase with temporary seed without master seed set.
@@ -55,8 +58,6 @@ This lists the changes in the most recent firmware, for each hardware platform.
 - Enhancement: Status bar text sharper now.
 - Enhancement: Added ability to write signed PSBT/txn to lower (B) SD slot when both cards inserted.
 - Bugfix: Fullscreen display of v23 and v24 QRs were too dense and hard to read.
-- Bugfix: Handle ZeroSecretException for BIP39 passphrase calculation when on temporary
-  seed without master secret
 - Bugfix: Battery idle timeout also considers last progress bar update
 - Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
 - Bugfix: Pressing SYM+SHIFT was toggling CAPS continuously. Now toggles once only.

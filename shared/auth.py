@@ -463,7 +463,7 @@ def verify_signature(msg, addr, sig_str):
         decoded_addr = ngu.codecs.b58_decode(addr)
         hash160 = decoded_addr[1:]  # remove prefix
     elif addr.startswith("bc1q") or addr.startswith("tb1q") or addr.startswith("bcrt1q"):
-        if len(addr) > 42:
+        if len(addr) > 44:  # testnet/mainnet max singlesig len 42, regtest 44
             # p2wsh
             raise ValueError(invalid_addr_fmt_msg)
         addr_fmt = AF_P2WPKH
