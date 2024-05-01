@@ -1095,10 +1095,10 @@ def ss_descriptor_export_story(addition="", background="", acct=True):
 
 async def ss_descriptor_skeleton(_0, _1, item):
     # Export of descriptor data (wallet)
-    int_ext, addition = None, ""
+    int_ext, addition, f_pattern = None, "", "descriptor.txt"
     allowed_af = [AF_P2WPKH, AF_CLASSIC, AF_P2WPKH_P2SH]
     if item.arg:
-        int_ext, allowed_af, ll = item.arg
+        int_ext, allowed_af, ll, f_pattern = item.arg
         addition = " for " + ll
 
     ch = await ux_show_story(ss_descriptor_export_story(addition), escape='1')
@@ -1119,11 +1119,12 @@ async def ss_descriptor_skeleton(_0, _1, item):
 
     if len(allowed_af) == 1:
         await make_descriptor_wallet_export(allowed_af[0], account_num,
-                                            int_ext=int_ext)
+                                            int_ext=int_ext,
+                                            fname_pattern=f_pattern)
     else:
         rv = [
             MenuItem(addr_fmt_label(af), f=descriptor_skeleton_step2,
-                     arg=(af, account_num, int_ext))
+                     arg=(af, account_num, int_ext, f_pattern))
             for af in allowed_af
         ]
         the_ux.push(MenuSystem(rv))
@@ -1157,8 +1158,9 @@ async def samourai_account_descriptor(name, account_num):
 
 async def descriptor_skeleton_step2(_1, _2, item):
     # pick a semi-random file name, render and save it.
-    addr_fmt, account_num, int_ext = item.arg
-    await make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext)
+    addr_fmt, account_num, int_ext, f_pattern = item.arg
+    await make_descriptor_wallet_export(addr_fmt, account_num, int_ext=int_ext,
+                                        fname_pattern=f_pattern)
 
 
 async def bitcoin_core_skeleton(*A):
