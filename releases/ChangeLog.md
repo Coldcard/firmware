@@ -4,10 +4,9 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Shared Improvements - Both Mk4 and Q
 
-- Enhancement: Add `Nunchuk` option to `Export Wallet`
-- Enhancement: Add `Zeus` option to `Export Wallet`
-- Enhancement: `View Identity` shows temporary seed active on the top
-- Enhancement: Allow to specify start index for address explorer export and browsing
+- Enhancement: Add `Nunchuk` and `Zeus` options to `Export Wallet`
+- Enhancement: `View Identity` shows temporary seed active at the top
+- Enhancement: Can specify start index for address explorer export and browsing
 - Enhancement: Allow unlimited index for BIP-85 derivations. Must be enabled first in `Danger Zone` 
 - Change: `Passphrase` menu item is no longer offered if BIP39 passphrase
   already in use. Use `Restore Master` with ability to keep or purge current
@@ -27,7 +26,7 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Mk4 Specific Changes
 
-## 5.3.0 - 2024-05-0X
+## 5.3.0 - 2024-05-02
 
 - Enhancement: When providing 12 or 18 word seed phrase, valid final word choices
   are presented in a new menu.
@@ -51,16 +50,16 @@ This lists the changes in the most recent firmware, for each hardware platform.
 
 # Q Specific Changes
 
-## 1.2.0Q - 2024-05-0X
+## 1.2.0Q - 2024-05-02
 
 - Enhancement: Allow export of multisig XPUBs via BBQr
 - Enhancement: Import multisig via QR/BBQr - both legacy COLDCARD export and descriptors supported
-- Enhancement: Status bar text sharper now.
-- Enhancement: Added ability to write signed PSBT/txn to lower (B) SD slot when both cards inserted.
-- Bugfix: Fullscreen display of v23 and v24 QRs were too dense and hard to read.
+- Enhancement: Status bar text is sharper now
+- Enhancement: Added ability to write signed PSBT/txn to lower (B) SD slot when both cards inserted
+- Bugfix: Fullscreen display of v23 and v24 QRs were too dense and hard to read
 - Bugfix: Battery idle timeout also considers last progress bar update
 - Bugfix: Allow `Send Password` (keystrokes) of capital letters of alphabet
-- Bugfix: Pressing SYM+SHIFT was toggling CAPS continuously. Now toggles once only.
+- Bugfix: Pressing SYM+SHIFT was toggling CAPS continuously. Now toggles once only
 - Bugfix: Restrict keys that can be pressed during seed entry after final word inserted
 
 
