@@ -385,7 +385,7 @@ def test_ux_wrong_pin(num_wrong, op_mode, expect, xflags, enter_number,
     pick_menu_item('Add If Wrong')
     time.sleep(.1)
     _, story = cap_story()
-    assert 'After X incorrect' in story
+    assert 'After N incorrect' in story
 
     press_select()
     enter_number(num_wrong)

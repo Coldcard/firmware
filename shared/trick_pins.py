@@ -612,7 +612,7 @@ differ only in final 4 positions (ignoring dash).\
 
     async def set_any_wrong(self, *a):
         ch = await ux_show_story('''\
-After X incorrect PIN attempts, this feature will be triggered. It can wipe \
+After N incorrect PIN attempts, this feature will be triggered. It can wipe \
 the seed phrase, and/or brick the Coldcard. Regardless of this (or any other \
 setting) the Coldcard will always brick after 13 failed PIN attempts.''')
         if ch == 'x': return
