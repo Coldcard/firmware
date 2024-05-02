@@ -155,7 +155,7 @@ code-committed:
 sign-release:
 	(cd ../releases; shasum -a 256 *.dfu *.md | sort -rk 2 | \
 		gpg --clearsign -u A3A31BAD5A2A5B10 --digest-algo SHA256 --output signatures.txt --yes - )
-	git commit -m "Signed for release." ../releases/signatures.txt
+	git commit -m "Signed for $(HW_MODEL) release." ../releases/signatures.txt
 
 # Tag source code associate with built release version.
 # - do "make release" before this step!
